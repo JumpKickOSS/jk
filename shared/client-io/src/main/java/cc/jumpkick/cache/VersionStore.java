@@ -86,11 +86,130 @@ public final class VersionStore {
     }
 
     /**
+     * Drop AOT artifacts that do not belong to the live product version when a generation becomes
+     * primary (JK-1452). Names are {@code engine-<ver>-<key>.aot} and
+     * {@code <tool>-<ver>-<key>.aot}; anything without {@code -<keepVersion>-} before a 16-hex key
+     * is deleted (including legacy unversioned worker names). The live version's caches are kept
+     * so a respawn does not throw away a just-trained engine/worker AOT.
+     *
+     * <p>Displaced engines must not retrain ({@link cc.jumpkick.util.AotSettings#suppressTraining()}).
+     * Best-effort; never throws. Call only from primary claim / install materialize — not on every
+     * ensure of an already-live same-version engine.
+     *
+     * @return number of primary {@code *.aot} cache files removed
+     */
+    public static int deleteSupersededEngineAot(Path aotDir, String keepVersion) {
+        return wipeAotDirectory(aotDir, keepVersion);
+    }
+
+    /**
+     * Delete AOT artifacts under {@code aotDir} that are not for {@code keepVersion}. When
+     * {@code keepVersion} is null/blank, deletes everything (install without a version pin).
+     * Leaves the directory and any {@code *.lock} files.
+     *
+     * @return number of primary {@code *.aot} cache files removed
+     */
+    public static int wipeAotDirectory(Path aotDir) {
+        return wipeAotDirectory(aotDir, null);
+    }
+
+    public static int wipeAotDirectory(Path aotDir, String keepVersion) {
+        if (aotDir == null || !Files.isDirectory(aotDir)) return 0;
+        boolean keepAny = keepVersion != null && !keepVersion.isBlank();
+        int aotFiles = 0;
+        List<String> removedPrimaries = new ArrayList<>();
+        try (var stream = Files.list(aotDir)) {
+            for (Path p : stream.toList()) {
+                String name = p.getFileName().toString();
+                if (name.endsWith(".lock")) continue;
+                if (name.equals(cc.jumpkick.util.AotManifest.FILE_NAME)) {
+                    // Dropped after file sweep if nothing remains, or rewritten via remove.
+                    continue;
+                }
+                if (!isAotArtifactName(name)) continue;
+                if (keepAny && belongsToProductVersion(name, keepVersion)) continue;
+                if (isPrimaryAotCacheName(name)) {
+                    aotFiles++;
+                    removedPrimaries.add(name);
+                } else if (name.endsWith(".aot.noaot") || name.endsWith(".aot.config")) {
+                    // map sidecar names back to the primary for manifest cleanup
+                    String primary = name.endsWith(".aot.noaot")
+                            ? name.substring(0, name.length() - ".noaot".length())
+                            : name.substring(0, name.length() - ".config".length());
+                    if (isPrimaryAotCacheName(primary)) removedPrimaries.add(primary);
+                }
+                Files.deleteIfExists(p);
+            }
+        } catch (IOException ignored) {
+            // best-effort
+        }
+        if (!removedPrimaries.isEmpty()) {
+            cc.jumpkick.util.AotManifest.remove(aotDir, removedPrimaries);
+            cc.jumpkick.util.AotManifest.reconcile(aotDir);
+        }
+        // If the dir has no primary caches left, drop a stale empty-ish manifest.
+        if (!keepAny || !hasPrimaryAot(aotDir)) {
+            try {
+                Files.deleteIfExists(aotDir.resolve(cc.jumpkick.util.AotManifest.FILE_NAME));
+            } catch (IOException ignored) {
+            }
+        }
+        return aotFiles;
+    }
+
+    /**
+     * True when {@code name} is an AOT artifact for product version {@code ver}: a 16-hex key
+     * immediately after {@code -}<ver>{@code -}. Does not match a longer qualifier (e.g. keep
+     * {@code 0.11.0} does not match {@code engine-0.11.0-SNAPSHOT-…}).
+     */
+    static boolean belongsToProductVersion(String name, String ver) {
+        if (name == null || ver == null || ver.isBlank()) return false;
+        // Match …-<ver>-<16hex> as a path segment before optional .aot / .noaot / .config suffixes.
+        String needle = "-" + ver + "-";
+        int i = name.indexOf(needle);
+        while (i >= 0) {
+            int keyStart = i + needle.length();
+            if (keyStart + 16 <= name.length()) {
+                String key = name.substring(keyStart, keyStart + 16);
+                if (key.chars().allMatch(c -> (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) {
+                    char after = keyStart + 16 < name.length() ? name.charAt(keyStart + 16) : '\0';
+                    if (after == '\0' || after == '.') return true;
+                }
+            }
+            i = name.indexOf(needle, i + 1);
+        }
+        return false;
+    }
+
+    private static boolean hasPrimaryAot(Path aotDir) {
+        try (var stream = Files.list(aotDir)) {
+            return stream.map(p -> p.getFileName().toString()).anyMatch(VersionStore::isPrimaryAotCacheName);
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /** Primary cache: ends with {@code .aot} — not {@code .aot.noaot} or {@code .aot.config}. */
+    static boolean isPrimaryAotCacheName(String name) {
+        return name != null && name.endsWith(".aot") && name.length() > 4 && !name.contains(".aot.");
+    }
+
+    static boolean isAotArtifactName(String name) {
+        if (name == null || name.isBlank()) return false;
+        return name.endsWith(".aot")
+                || name.endsWith(".noaot")
+                || name.endsWith(".config")
+                || name.endsWith(".training")
+                || name.contains(".tmp-");
+    }
+
+    /**
      * Delete version {@code v}'s engine AOT artifacts ({@code engine-<v>-<16-hex-key>.*}) from the
      * shared {@code state/aot/} dir. The key-shape check keeps a version whose name extends this
      * one ({@code 0.10.0} vs {@code 0.10.1}) out of the blast radius.
      */
-    private static void deleteEngineAotFiles(Path aotDir, String v) {
+    static void deleteEngineAotFiles(Path aotDir, String v) {
+        if (aotDir == null || v == null || v.isBlank() || !Files.isDirectory(aotDir)) return;
         String prefix = "engine-" + v + "-";
         List<String> removed = new ArrayList<>();
         try (var entries = Files.newDirectoryStream(aotDir, "engine-*")) {

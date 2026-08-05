@@ -47,7 +47,7 @@
   --header-bd: #1c2833;
   --run-line: #5ab0ff;              /* running step-node border — brighter than --run on --runc fill */
   --run-fg: #d6ecff;                /* running step-node text */
-  --on-warn: #1d2026;               /* dark text that stays legible on the amber (--warn) fills */
+  --on-fill: #1d2026;               /* near-black text on bright success/err/warn fills (not on deep --runc) */
   --prog-a: #4d8bff;                /* neon progress gradient: electric blue … */
   --prog-b: #c04dff;                /* … → neon violet */
   --modal-scrim: rgba(4, 8, 11, 0.66);
@@ -82,7 +82,32 @@
  * selected text stays readable without the white flash. */
 ::selection { background: rgba(var(--bright-rgb), 0.2); }
 
-* { box-sizing: border-box; }
+/* Scrollbars match the dark mission-control chrome (page + nested panes: log, config, modals).
+ * Firefox: scrollbar-color / scrollbar-width. Chromium/WebKit: ::-webkit-scrollbar*. */
+* {
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--s3) var(--s1);
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: var(--s1);
+  border-radius: var(--r-sm);
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--s3);
+  border: 2px solid var(--s1);
+  border-radius: var(--r-sm);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--bd);
+}
+*::-webkit-scrollbar-corner {
+  background: var(--s1);
+}
 
 body {
   margin: 0;
@@ -174,11 +199,13 @@ header {
 /* faint vertical divider between header groups */
 .hdiv { width: 1px; align-self: stretch; margin: 15px 2px; background: rgba(var(--cn-rgb), 0.14); flex: none; }
 
-/* outlined system box: CORES / RAM (engine host resources) */
+/* outlined system box: CORES + LOAD / RAM + AVAIL (engine host resources; 5s poll) */
 .sysbox {
   display: grid;
-  grid-template-columns: auto auto;   /* labels | values */
-  gap: 2px 10px;
+  /* two label/value pairs per row: CORES n  LOAD p%  /  RAM n  AVAIL n */
+  grid-template-columns: auto auto auto auto;
+  column-gap: 10px;
+  row-gap: 2px;
   padding: 5px 12px;
   border: 1px solid var(--bd);
   border-radius: var(--r-md);
@@ -186,7 +213,9 @@ header {
 }
 .sysrow { display: contents; }
 .sk { font: 600 9px var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); text-align: right; align-self: center; }
-.sv { font: 600 11.5px var(--mono); color: var(--bright); text-align: left; align-self: center; }
+/* A little extra air between the two pairs on a row (after CORES value / after RAM value). */
+.sysbox .sv:nth-child(4n+2) { padding-right: 6px; }
+.sv { font: 600 11.5px var(--mono); color: var(--bright); text-align: left; align-self: center; white-space: nowrap; }
 
 nav { display: flex; gap: 4px; }
 
@@ -375,8 +404,11 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 .card.cancelled, .card.finished { --glow-rgb: var(--warn-rgb); }
 
 /* Hover = a neon state-coloured OUTLINE + glow, NO motion (lights up like WSLUI's cards); the left
- * inward glow intensifies too. */
+ * inward glow intensifies too. z-index lifts the card so its millis I/O tooltip paints above the
+ * card stacked below it. */
 .card:hover {
+  position: relative;
+  z-index: 1;
   border-color: rgba(var(--glow-rgb), 0.55);
   box-shadow: inset 8px 0 18px -8px rgba(var(--glow-rgb), 0.9),
               0 0 20px rgba(var(--glow-rgb), 0.16),
@@ -397,32 +429,88 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
   white-space: nowrap;
 }
 
-.badge.success { background: var(--okc); }
-.badge.failed { background: var(--err); }
-.badge.cancelled, .badge.finished { background: var(--warn); color: var(--on-warn); }
+.badge.success { background: var(--okc); color: var(--on-fill); }
+.badge.failed { background: var(--err); color: var(--on-fill); }
+.badge.cancelled, .badge.finished { background: var(--warn); color: var(--on-fill); }
 
 .coord { font-size: 12.5px; font-weight: 500; }
 .coord .cg { color: var(--cg); }
 .coord .cn { color: var(--cn); font-size: 16px; }
 .coord .csep { color: var(--tx); }
 
+/* Activity feed: outcome badge + coordinates open the project detail page. */
+.to-project { cursor: pointer; }
+.to-project:hover { filter: brightness(1.12); }
+.to-project:focus-visible {
+  outline: 2px solid rgba(var(--cn-rgb), 0.55);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+.badge.to-project:focus-visible { border-radius: var(--r-sm); }
+
 .kind { color: var(--mu); font-size: 12px; }
 .summary { color: var(--mu); font-size: 12px; }
-.millis { color: var(--mu); font-size: 12px; }
+/* Duration on the card head. When the run moved bytes, `.has-io` marks it as the hover target for
+ * the I/O tooltip (dotted underline = affordance; colour still means state, never decoration). */
+.millis {
+  position: relative;
+  color: var(--mu);
+  font-size: 12px;
+  font-family: var(--mono);
+}
+/* Running count-up: dim while ETA remaining > 0; yellow once the countdown freezes at 0 (CLI parity). */
+.millis.elapsed-dim { color: var(--dim); }
+.millis.elapsed-warn { color: var(--warn); }
+.millis.has-io {
+  cursor: help;
+  border-bottom: 1px dotted var(--dim);
+}
 .ago { color: var(--dim); font-size: 11.5px; }
-/* ETA countdown on a running card — dim mono, sits just before the elapsed timer. */
-.eta { color: var(--dim); font-size: 11.5px; font-family: var(--mono); }
+/* ETA dual-clock: italic/dim "ETA" label + blue ~remaining (dim frozen 0s on overrun). */
+.eta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  color: var(--dim);
+  font-size: 11.5px;
+  font-family: var(--mono);
+}
+.eta-label {
+  color: var(--dim);
+  font-style: italic;
+  font-weight: 400;
+}
+.eta-cd { color: var(--run); }
+.eta-cd.zero { color: var(--dim); }
 
-/* Per-run byte counters, stacked at the card's right edge under the elapsed/ago pair: one row per
- * scope, `scope  N ↑ / N ↓`. Deliberately colourless (mono + muted) — colour on a card means state,
- * and a byte count is not a state. Both numbers are right-aligned in a fixed column with tabular
- * figures, so the two rows' digits (and their arrows) line up under each other. */
-.io {
+/* Per-run byte counters as a hover tooltip on `.millis`: one row per scope, `scope  N ↑ / N ↓`.
+ * Deliberately colourless (mono + muted) — colour on a card means state, and a byte count is not a
+ * state. Both numbers are right-aligned in a fixed column with tabular figures so the two rows'
+ * digits (and their arrows) line up. Anchored under the duration, right-aligned to it. */
+.millis .io {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 6;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 1px;
-  margin-top: 3px;
+  gap: 2px;
+  padding: 7px 9px;
+  background: var(--s3);
+  border: 1px solid var(--bd);
+  border-radius: var(--r-sm);
+  box-shadow: 0 10px 28px -8px rgba(0, 0, 0, 0.55);
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity var(--dur-fast) var(--ease), visibility var(--dur-fast) var(--ease);
+}
+.millis.has-io:hover .io,
+.millis.has-io:focus-within .io {
+  opacity: 1;
+  visibility: visible;
 }
 .io-row {
   display: inline-flex;
@@ -654,8 +742,8 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 
 /* right group: the outcome pill (#buildNumber) and the reliability readout */
 .proj-stats { display: flex; align-items: center; gap: 16px; flex: 0 0 auto; }
-.badge.running { background: var(--runc); }
-.badge.issue { background: var(--warn); color: var(--on-warn); }
+.badge.running { background: var(--runc); } /* deep blue: keep default white badge text */
+.badge.issue { background: var(--warn); color: var(--on-fill); }
 
 .reliability {
   display: flex;
@@ -751,7 +839,7 @@ table.stats.history td.ok { color: var(--ok); }
 .kpi { font: 700 17px/1.2 var(--mono); color: var(--bright); overflow-wrap: anywhere; }
 .kpi.ok { color: var(--ok); }
 
-.panels { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+.panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-bottom: 14px; }
 @media (max-width: 860px) { .panels { grid-template-columns: 1fr; } }
 
 .panel {
@@ -787,6 +875,33 @@ table.stats.history td.ok { color: var(--ok); }
 
 /* The Cache panel's utilization meter sits above its breakdown list. */
 .panel .meter + dl { margin-top: 11px; }
+
+/* Configuration table: scroll like the engine log when the effective config is long.
+ * Header row sticks to the top of the scroll pane so Key / Default / Override stay in view. */
+.config-scroll {
+  max-height: 260px;
+  overflow-y: auto;
+  margin: 0;
+  border: 1px solid var(--bd2);
+  border-radius: var(--r-md);
+  background: var(--console-bg);
+  padding: 0 10px 6px;
+}
+table.stats.config-table { font-size: 12px; }
+table.stats.config-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--console-bg);
+  /* Match tbody border-top so rows don't show through the sticky edge */
+  box-shadow: 0 1px 0 var(--bd2);
+  padding-top: 8px;
+}
+table.stats.config-table th.left,
+table.stats.config-table td.left { text-align: left; padding-left: 0; padding-right: 14px; }
+table.stats.config-table th:last-child,
+table.stats.config-table td:last-child { padding-right: 0; }
+table.stats.config-table tr.overridden td:last-child { color: var(--cn); font-weight: 500; }
 
 /* ---- the Status view's build-stats table (running aggregates) ---- */
 table.stats { width: 100%; border-collapse: collapse; font-size: 12.5px; }
@@ -970,16 +1085,39 @@ input:focus-visible,
 .rebuild:hover { color: var(--cn); border-color: rgba(var(--cn-rgb), 0.6); background: rgba(var(--cn-rgb), 0.16); box-shadow: 0 0 14px rgba(var(--cn-rgb), 0.3); }
 .rebuild.icon.danger:hover { color: var(--err); border-color: rgba(var(--err-rgb), 0.7); background: rgba(var(--err-rgb), 0.2); box-shadow: 0 0 14px rgba(var(--err-rgb), 0.3); }
 
-/* ghost buttons (back; Dependencies/Trends stay disabled) */
-.trigger button.ghost, .detail-actions button.ghost, .back { transition: color var(--dur-fast) var(--ease); }
+/* ghost buttons (back; Dependencies/Trends stay disabled; New project Cancel) */
+.trigger button.ghost,
+.detail-actions button.ghost,
+.back,
+.new-project-form button.ghost {
+  background: var(--s1);
+  color: var(--mu);
+  border: 1px solid var(--bd);
+  border-radius: var(--r-md);
+  padding: 7px 13px;
+  font: 600 12.5px var(--mono);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease);
+}
+.trigger button.ghost:hover,
+.detail-actions button.ghost:hover:not(:disabled),
+.back:hover,
+.new-project-form button.ghost:hover {
+  color: var(--tx);
+  border-color: rgba(var(--cn-rgb), 0.45);
+  background: rgba(var(--cn-rgb), 0.1);
+}
 
-/* primary actions (Build, Use this folder) — WSLUI-style TINTED neon button: translucent green
- * fill + green border + green text, intensifying on hover (never a flat solid that stays "on").
- * Plus a one-pass light sweep; overflow:hidden clips it to the rounded button. inline-flex + gap so
- * the leading bolt icon sits with the label. (.browse is excluded — it's the cyan button below.) */
+/* primary actions (Build, Use this folder, Create project, New project) — WSLUI-style TINTED neon
+ * button: translucent green fill + green border + green text, intensifying on hover (never a flat
+ * solid that stays "on"). Plus a one-pass light sweep; overflow:hidden clips it to the rounded
+ * button. inline-flex + gap so the leading icon sits with the label. (.browse is excluded — cyan.) */
 .trigger button:not(.ghost):not(.browse),
 .use-folder,
-.detail-actions button:not(.ghost) {
+.detail-actions button:not(.ghost),
+button.new-project,
+.new-project-form button.primary {
   position: relative;
   overflow: hidden;
   display: inline-flex;
@@ -988,19 +1126,27 @@ input:focus-visible,
   background: rgba(var(--ok-rgb), 0.12);
   color: var(--ok);
   border: 1px solid rgba(var(--ok-rgb), 0.4);
+  border-radius: var(--r-md);
+  padding: 7px 13px;
+  font: 600 12.5px var(--mono);
+  cursor: pointer;
   transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease),
     box-shadow var(--dur) var(--ease);
 }
 .trigger button:not(.ghost):not(.browse):hover:not(:disabled),
 .use-folder:hover:not(:disabled),
-.detail-actions button:not(.ghost):hover:not(:disabled) {
+.detail-actions button:not(.ghost):hover:not(:disabled),
+button.new-project:hover:not(:disabled),
+.new-project-form button.primary:hover:not(:disabled) {
   background: rgba(var(--ok-rgb), 0.22);
   border-color: rgba(var(--ok-rgb), 0.65);
   box-shadow: 0 0 16px rgba(var(--ok-rgb), 0.22);
 }
 .trigger button:not(.ghost):not(.browse)::before,
 .use-folder::before,
-.detail-actions button:not(.ghost)::before {
+.detail-actions button:not(.ghost)::before,
+button.new-project::before,
+.new-project-form button.primary::before {
   content: '';
   position: absolute;
   top: 0;
@@ -1012,16 +1158,27 @@ input:focus-visible,
 }
 .trigger button:not(.ghost):not(.browse):hover:not(:disabled)::before,
 .use-folder:hover:not(:disabled)::before,
-.detail-actions button:not(.ghost):hover:not(:disabled)::before {
+.detail-actions button:not(.ghost):hover:not(:disabled)::before,
+button.new-project:hover:not(:disabled)::before,
+.new-project-form button.primary:hover:not(:disabled)::before {
   left: 100%;
 }
+.new-project-form button.primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
 
-/* Browse — a neon-cyan icon button (accent colour at rest, brighter on hover). */
-.trigger button.browse {
+/* Browse — a neon-cyan icon button (accent colour at rest, brighter on hover). Used on Activity
+ * (workspace picker) and New project (parent-dir picker). Square-ish icon control. */
+button.browse {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 7px 12px;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  padding: 0;
   background: rgba(var(--cn-rgb), 0.1);
   color: var(--cn);
   border: 1px solid rgba(var(--cn-rgb), 0.4);
@@ -1030,12 +1187,12 @@ input:focus-visible,
   transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
     box-shadow var(--dur-fast) var(--ease);
 }
-.trigger button.browse:hover {
+button.browse:hover {
   background: rgba(var(--cn-rgb), 0.2);
   border-color: rgba(var(--cn-rgb), 0.65);
   box-shadow: 0 0 14px rgba(var(--cn-rgb), 0.2);
 }
-.trigger button.browse .ico { width: 17px; height: 17px; }
+button.browse .ico { width: 17px; height: 17px; }
 
 /* ---- hover shimmer ----
  * The one-pass light sweep the Build button has, extended to every other button so they all shimmer
@@ -1044,7 +1201,7 @@ input:focus-visible,
 nav button,
 .icon-btn,
 .rebuild,
-.trigger button.browse {
+button.browse {
   position: relative;
   overflow: hidden;
 }
@@ -1053,7 +1210,7 @@ nav button::before,
 .icon-btn::before,
 .rebuild::before,
 .chain-nav::before,
-.trigger button.browse::before {
+button.browse::before {
   content: '';
   position: absolute;
   top: 0;
@@ -1068,7 +1225,7 @@ nav button:hover::before,
 .icon-btn:hover::before,
 .rebuild:hover::before,
 .chain-nav:hover::before,
-.trigger button.browse:hover::before {
+button.browse:hover::before {
   left: 100%;
 }
 
@@ -1114,22 +1271,11 @@ nav button:hover::before,
 /* ---- Help / About modal ---- */
 .modal.about { width: 460px; }
 
-/* New project form (JK-1193) */
-button.new-project {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--run, #3d9bff);
-  color: #0a0e14;
-  border: none;
-  border-radius: 6px;
-  padding: 6px 12px;
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-button.new-project:hover { filter: brightness(1.08); }
-.modal.new-project-modal { width: min(480px, 94vw); }
+/* New project form (JK-1193). Primary/ghost/browse chrome lives with the shared interactive polish
+ * rules above; this block is form layout + field surfaces + custom checkbox. */
+.modal.new-project-modal { width: min(520px, 94vw); }
+/* Stack above the new-project modal (base .modal-bg is z-index 60) when browsing a parent dir. */
+.browser-modal-bg { z-index: 70; }
 .new-project-form {
   display: flex;
   flex-direction: column;
@@ -1139,37 +1285,139 @@ button.new-project:hover { filter: brightness(1.08); }
 .new-project-form label {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  font-size: 0.85rem;
+  gap: 5px;
+  font: 600 11px var(--mono);
+  color: var(--mu);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
-.new-project-form label.check {
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
+.new-project-form label > span .dim {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
 }
 .new-project-form input[type="text"],
 .new-project-form input:not([type]),
+.new-project-form input:not([type="checkbox"]),
 .new-project-form select {
-  background: var(--bg2, #121820);
-  border: 1px solid var(--bd2, #2a3340);
-  border-radius: 6px;
-  color: inherit;
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--s1);
+  border: 1px solid var(--bd);
+  border-radius: var(--r-md);
+  color: var(--tx);
   padding: 8px 10px;
-  font: inherit;
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.9rem;
+  font: 12.5px/1.4 var(--mono);
+  /* Dark list-box for native <select> / option chrome (Language, Layout, Template). */
+  color-scheme: dark;
+  accent-color: var(--cn);
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.new-project-form input:focus,
+.new-project-form select:focus {
+  outline: none;
+  border-color: var(--cn);
+  box-shadow: 0 0 0 3px rgba(var(--cn-rgb), 0.18);
+}
+/* Option rows: dark panel so the OS popup doesn't flash white. Highlight colour is still
+ * platform-controlled, but color-scheme + these surfaces keep it on-theme on modern browsers. */
+.new-project-form select option {
+  background: var(--s2);
+  color: var(--tx);
+}
+.new-project-form select option:checked,
+.new-project-form select option:hover {
+  background: rgba(var(--cn-rgb), 0.22);
+  color: var(--bright);
 }
 .new-project-form .parent-row {
   display: flex;
+  align-items: stretch;
   gap: 8px;
 }
-.new-project-form .parent-row input { flex: 1; }
+.new-project-form .parent-row input { flex: 1; min-width: 0; }
+.new-project-form .parent-row .browse { align-self: stretch; height: auto; min-height: 36px; }
+
+/* Themed checkbox — hide the native control, paint a square that tracks :checked. */
+.new-project-form label.check {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  text-transform: none;
+  letter-spacing: 0;
+  font: 500 12.5px var(--mono);
+  color: var(--tx);
+  cursor: pointer;
+  user-select: none;
+}
+.new-project-form label.check input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  pointer-events: none;
+}
+.new-project-form label.check .check-box {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid rgba(var(--cn-rgb), 0.45);
+  background: rgba(var(--cn-rgb), 0.06);
+  box-shadow: inset 0 0 0 0 rgba(var(--cn-rgb), 0);
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+  position: relative;
+}
+.new-project-form label.check .check-box::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 5px;
+  height: 9px;
+  border: solid var(--cn);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) scale(0);
+  transition: transform var(--dur-fast) var(--ease);
+}
+.new-project-form label.check input:checked + .check-box {
+  background: rgba(var(--cn-rgb), 0.18);
+  border-color: rgba(var(--cn-rgb), 0.7);
+  box-shadow: 0 0 10px rgba(var(--cn-rgb), 0.2);
+}
+.new-project-form label.check input:checked + .check-box::after {
+  transform: rotate(45deg) scale(1);
+}
+.new-project-form label.check input:focus-visible + .check-box {
+  box-shadow: 0 0 0 3px rgba(var(--cn-rgb), 0.22);
+}
+.new-project-form label.check:hover .check-box {
+  border-color: rgba(var(--cn-rgb), 0.65);
+  background: rgba(var(--cn-rgb), 0.12);
+}
 .new-project-form .form-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 0;
   margin-top: 4px;
   justify-content: flex-end;
 }
-.new-project-form .error { color: var(--err, #ff5c7a); margin: 0; font-size: 0.9rem; }
+.new-project-form .error { color: var(--err); margin: 0; font: 500 12.5px var(--mono); }
+/* Read-only note when a template is selected: its layout is fixed by the template, not the blank
+ * simple/traditional control. */
+.new-project-form .template-meta {
+  margin: -2px 0 0;
+  font: 500 11.5px var(--mono);
+  color: var(--mu);
+}
+.new-project-form .template-meta b {
+  color: var(--cn);
+  font-weight: 700;
+  text-transform: none;
+}
 .about-logo {
   width: auto;
   height: 48px;

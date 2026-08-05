@@ -61,6 +61,9 @@ public final class Giter8LocalApply {
         }
 
         Files.createDirectories(dest);
+        // Resolve writes against the realpath of dest so macOS /var vs /private/var (and other
+        // alias pairs) cannot make a safe relative path look like an escape under startsWith.
+        Path destReal = dest.toRealPath();
         int[] count = {0};
         Files.walkFileTree(contentRoot, new SimpleFileVisitor<>() {
             @Override
@@ -68,11 +71,23 @@ public final class Giter8LocalApply {
                 if (file.getFileName().toString().equals("default.properties")) {
                     return FileVisitResult.CONTINUE;
                 }
+                // A template is untrusted input (any git ref a user names). Never read through a
+                // symlink in the template tree — that would copy host files (SSH keys, tokens)
+                // into the generated project (JK-1465).
+                if (!attrs.isRegularFile() || Files.isSymbolicLink(file)) {
+                    return FileVisitResult.CONTINUE;
+                }
                 String rel = contentRoot.relativize(file).toString().replace('\\', '/');
                 // Path tokens: package-like props use '/' (Giter8 packaged format approximation).
                 String renderedRel = substitute(rel, props, true);
-                Path out = dest.resolve(renderedRel);
+                // Always anchor under destReal (not the pre-realpath dest) so lexical startsWith
+                // and the on-disk path share one prefix.
+                Path out = destReal.resolve(renderedRel).normalize();
+                // The rendered name carries template-controlled property values, so it can spell
+                // `../..` or an absolute path — every write must stay under dest (JK-1463).
+                requireInside(destReal, out, renderedRel);
                 Files.createDirectories(out.getParent());
+                requireInside(destReal, out.getParent().toRealPath().resolve(out.getFileName()), renderedRel);
                 byte[] raw = Files.readAllBytes(file);
                 // Binary-ish: if null byte present, copy raw without token replace
                 boolean binary = false;
@@ -93,6 +108,17 @@ public final class Giter8LocalApply {
             }
         });
         return count[0];
+    }
+
+    /**
+     * Fail unless {@code candidate} stays under {@code destReal}. Checked both lexically (on the
+     * normalized path) and again after the parent directories exist and can be real-pathed, so a
+     * symlink already sitting in the destination cannot be written through.
+     */
+    static void requireInside(Path destReal, Path candidate, String renderedRel) throws IOException {
+        if (!candidate.normalize().startsWith(destReal)) {
+            throw new IOException("template entry escapes the project directory: " + renderedRel);
+        }
     }
 
     public static String substitute(String input, Map<String, String> props) {

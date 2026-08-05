@@ -34,6 +34,14 @@ public final class ActionCache {
         this.root = Objects.requireNonNull(root, "root");
     }
 
+    /**
+     * CAS pool this action cache stores/restores payloads in — must be the <em>cache</em> CAS
+     * ({@link cc.jumpkick.cache.JkStores#cacheCas}), never the artifact store.
+     */
+    public Cas cas() {
+        return cas;
+    }
+
     public Optional<ActionRecord> lookup(String actionKey) throws IOException {
         Path file = keysDir().resolve(actionKey);
         if (!Files.exists(file)) return Optional.empty();

@@ -33,8 +33,7 @@ class QuarkusJunit5ResolveTest {
     @Test
     @Timeout(value = 20, unit = TimeUnit.SECONDS)
     void quarkus_junit5_alone_solves_fast(@TempDir Path tmp) throws Exception {
-        Path cache = Path.of(System.getProperty("user.home"), ".jk/cache");
-        Cas cas = new Cas(cache);
+        Cas cas = new Cas(QuarkusLockPerfTest.developerStore());
         RepoGroup repos =
                 RepoGroup.of(new MavenRepo("central", URI.create("https://repo1.maven.org/maven2/"), new Http(), cas));
         EffectivePomBuilder pomBuilder = new EffectivePomBuilder(repos);

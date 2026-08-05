@@ -38,9 +38,15 @@
 
       <span class="hdiv"></span>
 
-      <div class="sysbox" title="Engine host resources">
-        <div class="sysrow"><span class="sk">CORES</span><span class="sv">{{ status ? status.cores : '—' }}</span></div>
-        <div class="sysrow"><span class="sk">RAM</span><span class="sv">{{ status ? gib(status.totalMemoryBytes) : '—' }}</span></div>
+      <div class="sysbox" title="Engine host resources (refreshed every 5s)">
+        <div class="sysrow">
+          <span class="sk">CORES</span><span class="sv">{{ status ? status.cores : '—' }}</span>
+          <span class="sk">LOAD</span><span class="sv">{{ loadPercent() }}</span>
+        </div>
+        <div class="sysrow">
+          <span class="sk">RAM</span><span class="sv">{{ status ? gib(status.totalMemoryBytes) : '—' }}</span>
+          <span class="sk">AVAIL</span><span class="sv">{{ status ? gib(status.freeMemoryBytes) : '—' }}</span>
+        </div>
       </div>
 
       <span class="spacer"></span>
@@ -72,15 +78,29 @@
       </div>
       <p v-if="buildError" class="error">{{ buildError }}</p>
 
-      <p v-if="cards.length === 0" class="empty">
+      <p v-if="cards.length === 0 && connection === 'unauthorized'" class="empty">
+        Authorize this tab with the tokenized URL from <code>jk engine status</code> (or
+        <code>jk web</code>) to load build history.
+      </p>
+      <p v-else-if="cards.length === 0" class="empty">
         No activity yet — run a <code>jk build</code> (or any hosted command) and it appears here live.
       </p>
 
       <article v-for="(card, i) in cards" :key="card.id" class="card rise-in" :class="outcome(card)" :style="{ animationDelay: riseDelay(i) }">
         <div class="card-head">
           <span v-if="outcome(card) === 'running'" class="spin"></span>
-          <span v-else class="badge" :class="outcome(card)"><jk-icon :name="stateIcon(outcome(card))"></jk-icon>{{ activityBadge(card) }}</span>
-          <span class="coord">
+          <span v-else class="badge to-project" :class="outcome(card)"
+                role="link" tabindex="0"
+                title="Open this project"
+                @click="openProjectFromCard(card)"
+                @keydown.enter.prevent="openProjectFromCard(card)">
+            <jk-icon :name="stateIcon(outcome(card))"></jk-icon>{{ activityBadge(card) }}
+          </span>
+          <span class="coord to-project"
+                role="link" tabindex="0"
+                title="Open this project"
+                @click="openProjectFromCard(card)"
+                @keydown.enter.prevent="openProjectFromCard(card)">
             <template v-if="coordParts(card).group"><span class="cg">{{ coordParts(card).group }}</span><span class="csep">:</span></template>
             <span class="cn">{{ coordParts(card).name }}</span>
           </span>
@@ -93,24 +113,33 @@
                   @click="triggerBuild(card.dir)" aria-label="Rebuild" title="Build this directory again"><jk-icon name="refresh"></jk-icon></button>
           <button v-if="outcome(card) !== 'running' && card.historyId" class="rebuild icon danger"
                   @click="deleteCard(card)" aria-label="Delete" title="Delete this run from history"><jk-icon name="trash"></jk-icon></button>
-          <span v-if="outcome(card) === 'running' && eta(card)" class="eta" title="estimated time remaining">{{ eta(card) }}</span>
-          <span class="millis">{{ outcome(card) === 'running' ? elapsed(card) : duration(card.millis) }}</span>
-          <span v-if="outcome(card) !== 'running'" class="ago">{{ ago(card) }}</span>
-        </div>
-
-        <!-- Bytes the run moved, right-aligned under the elapsed/ago pair: one row per scope
-             ("remote data" = network, "local data" = build cache), read as `label  N ↑ / N ↓` — each
-             arrow trails the number it belongs to. Rows with no traffic are dropped, so an offline
-             warm build shows only "local data" and a no-op run shows nothing. -->
-        <div v-if="ioLines(card).length" class="io">
-          <span v-for="l in ioLines(card)" :key="l.scope" class="io-row" :title="l.scope === 'remote'
-                ? 'network: ' + bytes(l.up) + ' uploaded / ' + bytes(l.down) + ' downloaded'
-                : 'build cache: ' + bytes(l.up) + ' stored / ' + bytes(l.down) + ' restored'">
-            <span class="io-scope">{{ l.label }}</span>
-            <span class="io-n">{{ bytes(l.up) }}</span><jk-icon name="arrow-up"></jk-icon>
-            <span class="io-sep">/</span>
-            <span class="io-n">{{ bytes(l.down) }}</span><jk-icon name="arrow-down"></jk-icon>
+          <!-- Dual clock (CLI parity): italic/dim "ETA" + blue ~remaining (freezes dim at 0s on
+               overrun). Count-up sits next to it; dim while remaining > 0, yellow after. -->
+          <span v-if="outcome(card) === 'running' && hasEta(card)" class="eta" title="estimated time remaining">
+            <span class="eta-label">ETA</span>
+            <span class="eta-cd" :class="{ zero: etaOverdue(card) }">{{ etaCountdown(card) }}</span>
           </span>
+          <!-- Duration; when the run moved bytes, hover or keyboard focus reveals the I/O
+               breakdown (remote = network, local = build cache) as `label  N ↑ / N ↓`.
+               No traffic → no tip. tabindex + aria-label keep it keyboard/SR reachable. -->
+          <span class="millis" :class="{
+                  'has-io': ioLines(card).length,
+                  'elapsed-dim': outcome(card) === 'running' && hasEta(card) && !etaOverdue(card),
+                  'elapsed-warn': outcome(card) === 'running' && (!hasEta(card) || etaOverdue(card))
+                }"
+                :tabindex="ioLines(card).length ? 0 : null"
+                :aria-label="ioLines(card).length ? ioSummary(card) : null">
+            {{ outcome(card) === 'running' ? elapsed(card) : duration(card.millis) }}
+            <span v-if="ioLines(card).length" class="io" role="tooltip">
+              <span v-for="l in ioLines(card)" :key="l.scope" class="io-row">
+                <span class="io-scope">{{ l.label }}</span>
+                <span class="io-n">{{ bytes(l.up) }}</span><jk-icon name="arrow-up"></jk-icon>
+                <span class="io-sep">/</span>
+                <span class="io-n">{{ bytes(l.down) }}</span><jk-icon name="arrow-down"></jk-icon>
+              </span>
+            </span>
+          </span>
+          <span v-if="outcome(card) !== 'running'" class="ago">{{ ago(card) }}</span>
         </div>
 
         <div v-if="outcome(card) === 'running'" class="cardbar" role="progressbar">
@@ -185,37 +214,6 @@
         </div>
 
       </article>
-      <div v-if="browser" class="modal-bg" @click.self="closeBrowser()">
-        <div class="modal">
-          <div class="modal-head">
-            <span class="lbl">choose a workspace</span>
-            <span class="spacer"></span>
-            <button class="rebuild" @click="closeBrowser()">Close</button>
-          </div>
-          <div class="modal-path">{{ browser.dir }}</div>
-          <div class="modal-list">
-            <div v-if="browser.parent" class="fs-entry up" @click="browseTo(browser.parent)"><span class="fs-arrow"><jk-icon name="arrow-up"></jk-icon></span> ..</div>
-            <div v-for="d in browser.dirs" :key="d" class="fs-entry" @click="browseTo(joinPath(browser.dir, d))">
-              <span class="fs-arrow"><jk-icon name="folder"></jk-icon></span> {{ d }}
-            </div>
-            <div v-if="browser.dirs.length === 0" class="fs-entry none">No subfolders</div>
-            <div v-if="browser.truncated" class="fs-entry none">… list truncated</div>
-          </div>
-          <div class="modal-foot">
-            <template v-if="browserMode === 'parent'">
-              <span class="dim small">New project will be created as a child of this folder</span>
-              <span class="spacer"></span>
-              <button class="use-folder" @click="chooseBrowsed()">Use as parent</button>
-            </template>
-            <template v-else>
-              <span v-if="browser.hasJkToml" class="jk-found"><jk-icon name="check"></jk-icon>jk.toml found</span>
-              <span v-else class="dim small">No jk.toml in this folder</span>
-              <span class="spacer"></span>
-              <button class="use-folder" :disabled="!browser.hasJkToml" @click="chooseBrowsed()">Use this folder</button>
-            </template>
-          </div>
-        </div>
-      </div>
     </main>
 
     <main v-if="view === 'projects'">
@@ -341,10 +339,7 @@
           </div>
         </div>
 
-        <!-- Running build stats (docs/metrics.md): the engine's persistent aggregates, folded at
-             every build/test finish. Tiles roll up the machine-wide invocation tiers; the table is
-             the per-step tier (a plugin verb runs as its own step, so this is also the
-             per-worker/per-plugin view). -->
+        <!-- Running build stats (docs/metrics.md): KPI tiles here; the steps table is last. -->
         <template v-if="metrics && metrics.length">
           <div class="tiles">
             <div class="tile"><span class="lbl">builds recorded</span><span class="kpi">{{ metricsTotals().runs }}</span></div>
@@ -354,53 +349,93 @@
             </div>
             <div class="tile"><span class="lbl">time building</span><span class="kpi">{{ duration(metricsTotals().totalMillis) }}</span></div>
           </div>
-          <div class="panels">
-            <div class="panel wide">
-              <div class="panel-head"><span class="lbl">steps (by total time)</span><span class="spacer"></span><span class="mono dim">state/builds/metrics.json</span></div>
-              <table class="stats">
-                <thead><tr><th>Step</th><th>Runs</th><th>Avg</th><th>Min</th><th>Max</th><th>Total</th><th>Failed</th></tr></thead>
+        </template>
+        <p v-else class="dim small">No build metrics yet — run a build and the stats appear here.</p>
+
+        <!-- Cache tier + artifact store share a row. -->
+        <div class="panels">
+          <div class="panel">
+            <div class="panel-head"><span class="lbl">cache tier</span><span class="spacer"></span>
+              <span v-if="cache" class="mono dim">{{ mib(actionCacheBytes()) }} of {{ actionMaxBytes() != null ? mib(actionMaxBytes()) : '—' }} · pruned {{ prunedAgo() }}</span></div>
+            <template v-if="cache">
+              <span class="meter" title="vs [cache] max-cache-size-mb">
+                <span class="meter-fill used" :style="{ width: actionCacheUtilizationPercent() + '%' }"></span>
+              </span>
+              <dl>
+                <dt>action index</dt><dd>{{ count(cache.actionsCount) }} · {{ mib(cache.actionsBytes) }}</dd>
+                <dt>cache CAS</dt><dd>{{ count(cache.cacheCasCount != null ? cache.cacheCasCount : 0) }} · {{ mib(cache.cacheCasBytes != null ? cache.cacheCasBytes : 0) }}</dd>
+                <dt>format stamps</dt><dd>{{ count(cache.formatStampsCount) }} · {{ mib(cache.formatStampsBytes) }}</dd>
+              </dl>
+              <p class="dim small" style="margin:8px 0 0">Rebuildable action outputs under the cache dir — safe to wipe without losing deps. <span class="mono">jk cache storage</span></p>
+            </template>
+            <div v-else class="dim small">Cache tier loading…</div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><span class="lbl">artifact store</span><span class="spacer"></span>
+              <span v-if="cache" class="mono dim">{{ mib(artifactStorageBytes()) }} of {{ mib(cache.maxBytes) }}</span></div>
+            <template v-if="cache">
+              <span class="meter" title="vs [cache] max-store-size-mb (artifact store budget)">
+                <span class="meter-fill used" :style="{ width: artifactStorageUtilizationPercent() + '%' }"></span>
+              </span>
+              <dl>
+                <dt>store CAS</dt><dd>{{ count(cache.casCount) }} · {{ mib(cache.casBytes) }}</dd>
+                <dt>repos / workers</dt><dd>{{ count(cache.workerJarsCount) }} · {{ mib(cache.workerJarsBytes) }}</dd>
+                <dt>run logs</dt><dd>{{ count(cache.runLogsCount) }} · {{ mib(cache.runLogsBytes) }}</dd>
+              </dl>
+              <p class="dim small" style="margin:8px 0 0">Long-lived deps under the artifact store. <span class="mono">jk repo storage</span></p>
+            </template>
+            <div v-else class="dim small">Artifact store loading…</div>
+          </div>
+        </div>
+
+        <!-- Effective config.toml: key · default · override. Scrolls when long (like engine log). -->
+        <div class="panels">
+          <div class="panel wide">
+            <div class="panel-head">
+              <span class="lbl">configuration</span>
+              <span class="spacer"></span>
+              <span class="mono dim">{{ configPath || '~/.config/jk/config.toml' }}</span>
+            </div>
+            <div v-if="configRows && configRows.length" class="config-scroll">
+              <table class="stats config-table">
+                <thead>
+                  <tr>
+                    <th class="left">Key</th>
+                    <th class="left">Default</th>
+                    <th class="left">Override</th>
+                  </tr>
+                </thead>
                 <tbody>
-                  <tr v-for="r in metricsSteps()" :key="r.step">
-                    <td class="mono">{{ r.step }}</td>
-                    <td>{{ r.okCount }}</td>
-                    <td>{{ duration(r.okAvgMillis) }}</td>
-                    <td>{{ duration(r.okMinMillis) }}</td>
-                    <td>{{ duration(r.okMaxMillis) }}</td>
-                    <td>{{ duration(r.okTotalMillis) }}</td>
-                    <td :class="{ err: r.failCount > 0 }">{{ r.failCount > 0 ? r.failCount : '' }}</td>
+                  <tr v-for="r in configRows" :key="r.key" :class="{ overridden: r.overridden }">
+                    <td class="mono left">{{ r.key }}</td>
+                    <td class="mono left dim">{{ r.default }}</td>
+                    <td class="mono left" :class="{ accent: r.overridden }">{{ r.overridden ? r.value : '' }}</td>
                   </tr>
                 </tbody>
               </table>
             </div>
+            <div v-else class="dim small">Configuration loading…</div>
           </div>
-        </template>
-        <p v-else class="dim small">No build metrics yet — run a build and the stats appear here.</p>
+        </div>
 
-        <div class="panels">
-          <div class="panel">
-            <div class="panel-head"><span class="lbl">configuration</span><span class="spacer"></span><span class="mono dim">~/.jk/config.toml</span></div>
-            <dl>
-              <dt>max-concurrent-requests</dt><dd>{{ status.maxConcurrentRequests }}</dd>
-              <dt>web-root</dt><dd class="mono">{{ status.webRoot }}</dd>
-              <dt>url</dt><dd class="mono accent">{{ status.httpUrl }}</dd>
-            </dl>
-          </div>
-          <div class="panel">
-            <div class="panel-head"><span class="lbl">cache</span><span class="spacer"></span>
-              <span v-if="cache" class="mono dim">{{ mib(cache.totalBytes) }} of {{ mib(cache.maxBytes) }} · pruned {{ prunedAgo() }}</span></div>
-            <template v-if="cache">
-              <span class="meter">
-                <span class="meter-fill used" :style="{ width: cacheUtilizationPercent() + '%' }"></span>
-              </span>
-              <dl>
-                <dt>CAS blobs</dt><dd>{{ count(cache.casCount) }} · {{ mib(cache.casBytes) }}</dd>
-                <dt>action cache</dt><dd>{{ count(cache.actionsCount) }} · {{ mib(cache.actionsBytes) }}</dd>
-                <dt>worker JARs</dt><dd>{{ count(cache.workerJarsCount) }} · {{ mib(cache.workerJarsBytes) }}</dd>
-                <dt>run logs</dt><dd>{{ count(cache.runLogsCount) }} · {{ mib(cache.runLogsBytes) }}</dd>
-                <dt>format stamps</dt><dd>{{ count(cache.formatStampsCount) }} · {{ mib(cache.formatStampsBytes) }}</dd>
-              </dl>
-            </template>
-            <div v-else class="dim small">Cache breakdown loading…</div>
+        <!-- Steps table; engine log is always the final row. -->
+        <div v-if="metrics && metrics.length" class="panels">
+          <div class="panel wide">
+            <div class="panel-head"><span class="lbl">steps (by total time)</span><span class="spacer"></span><span class="mono dim">state/builds/metrics.json</span></div>
+            <table class="stats">
+              <thead><tr><th>Step</th><th>Runs</th><th>Avg</th><th>Min</th><th>Max</th><th>Total</th><th>Failed</th></tr></thead>
+              <tbody>
+                <tr v-for="r in metricsSteps()" :key="r.step">
+                  <td class="mono">{{ r.step }}</td>
+                  <td>{{ r.okCount }}</td>
+                  <td>{{ duration(r.okAvgMillis) }}</td>
+                  <td>{{ duration(r.okMinMillis) }}</td>
+                  <td>{{ duration(r.okMaxMillis) }}</td>
+                  <td>{{ duration(r.okTotalMillis) }}</td>
+                  <td :class="{ err: r.failCount > 0 }">{{ r.failCount > 0 ? r.failCount : '' }}</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -418,7 +453,9 @@
       <div class="sb-left">
         <span class="sb-item"><jk-icon name="activity"></jk-icon>Builds Running&nbsp;<b>{{ buildsRunning() }}</b></span>
         <span class="sb-div"></span>
-        <span class="sb-item"><jk-icon name="database"></jk-icon>Cache Used&nbsp;<b>{{ cache ? mib(cache.totalBytes) : '—' }}</b></span>
+        <span class="sb-item" title="Cache tier (rebuildable action outputs) — jk cache storage"><jk-icon name="database"></jk-icon>Cache&nbsp;<b>{{ actionCacheBytes() != null ? mib(actionCacheBytes()) : '—' }}</b></span>
+        <span class="sb-div"></span>
+        <span class="sb-item" title="Artifact store (deps CAS + repos) — jk repo storage"><jk-icon name="database"></jk-icon>Store&nbsp;<b>{{ artifactStorageBytes() != null ? mib(artifactStorageBytes()) : '—' }}</b></span>
         <span class="sb-div"></span>
         <span class="sb-item"><jk-icon name="cpu"></jk-icon>Engine Heap&nbsp;<b>{{ status ? mib(status.heapCommittedBytes) : '—' }}</b></span>
       </div>
@@ -428,6 +465,40 @@
         <span class="live-label">{{ connection === 'live' ? 'Live' : connection === 'connecting' ? 'Connecting' : connection === 'unauthorized' ? 'Unauthorized' : 'Offline' }}</span>
       </div>
     </footer>
+
+    <!-- Workspace / parent-dir picker — hoisted out of the Activity main so Projects (and New
+         project) can open it too. browserMode selects the footer's Use action. -->
+    <div v-if="browser" class="modal-bg browser-modal-bg" @click.self="closeBrowser()">
+      <div class="modal">
+        <div class="modal-head">
+          <span class="lbl">{{ browserMode === 'parent' ? 'choose a parent directory' : 'choose a workspace' }}</span>
+          <span class="spacer"></span>
+          <button class="rebuild" @click="closeBrowser()">Close</button>
+        </div>
+        <div class="modal-path">{{ browser.dir }}</div>
+        <div class="modal-list">
+          <div v-if="browser.parent" class="fs-entry up" @click="browseTo(browser.parent)"><span class="fs-arrow"><jk-icon name="arrow-up"></jk-icon></span> ..</div>
+          <div v-for="d in browser.dirs" :key="d" class="fs-entry" @click="browseTo(joinPath(browser.dir, d))">
+            <span class="fs-arrow"><jk-icon name="folder"></jk-icon></span> {{ d }}
+          </div>
+          <div v-if="browser.dirs.length === 0" class="fs-entry none">No subfolders</div>
+          <div v-if="browser.truncated" class="fs-entry none">… list truncated</div>
+        </div>
+        <div class="modal-foot">
+          <template v-if="browserMode === 'parent'">
+            <span class="dim small">New project will be created as a child of this folder</span>
+            <span class="spacer"></span>
+            <button class="use-folder" @click="chooseBrowsed()">Use as parent</button>
+          </template>
+          <template v-else>
+            <span v-if="browser.hasJkToml" class="jk-found"><jk-icon name="check"></jk-icon>jk.toml found</span>
+            <span v-else class="dim small">No jk.toml in this folder</span>
+            <span class="spacer"></span>
+            <button class="use-folder" :disabled="!browser.hasJkToml" @click="chooseBrowsed()">Use this folder</button>
+          </template>
+        </div>
+      </div>
+    </div>
 
     <!-- New project (JK-1193) -->
     <div v-if="newProjectOpen" class="modal-bg" @click.self="closeNewProject()">
@@ -440,48 +511,61 @@
         <form class="new-project-form" @submit.prevent="submitNewProject()">
           <label>
             <span>Name</span>
-            <input v-model="newProject.name" required spellcheck="false" placeholder="my-app" autocomplete="off">
+            <input ref="nameInput" v-model="newProject.name" required spellcheck="false" placeholder="my-app" autocomplete="off"
+                   @focus="$event.target.select()">
           </label>
           <label>
             <span>Group</span>
-            <input v-model="newProject.group" spellcheck="false" placeholder="com.example" autocomplete="off">
+            <input v-model="newProject.group" spellcheck="false" placeholder="com.example" autocomplete="off"
+                   @focus="$event.target.select()">
           </label>
           <label>
             <span>Language</span>
-            <select v-model="newProject.lang">
+            <select v-model="newProject.lang" @change="onNewProjectLangChange()">
               <option value="java">Java</option>
               <option value="kotlin">Kotlin</option>
               <option value="groovy">Groovy</option>
             </select>
           </label>
           <label>
+            <span>Template <span class="dim">(optional · {{ newProject.lang }})</span></span>
+            <select v-model="newProject.template">
+              <option value="">None — blank project from language / layout</option>
+              <option v-for="t in templatesForLang" :key="t.id" :value="t.id">{{ t.id }} — {{ t.description }}</option>
+            </select>
+          </label>
+          <!-- Layout + executable only apply to the blank scaffolder. A Giter8 template ships a
+               fixed tree (simple / traditional / custom) — the apply path does not reshape it. -->
+          <label v-if="!newProject.template">
             <span>Layout</span>
             <select v-model="newProject.layout">
               <option value="simple">Simple (Mill-like)</option>
               <option value="traditional">Traditional (Maven-like)</option>
             </select>
           </label>
-          <label>
-            <span>Template <span class="dim">(optional short name)</span></span>
-            <input v-model="newProject.template" list="jk-templates" spellcheck="false" placeholder="java-cli">
-            <datalist id="jk-templates">
-              <option v-for="t in templates" :key="t.id" :value="t.id">{{ t.description }}</option>
-            </datalist>
-          </label>
+          <p v-else class="template-meta dim small">
+            Template layout: <b>{{ selectedTemplateLayout() }}</b>
+            <span v-if="selectedTemplateLayout() === 'custom'"> (framework tree — not simple/traditional)</span>
+          </p>
           <label>
             <span>Parent directory</span>
             <div class="parent-row">
-              <input v-model="newProject.parentDir" required spellcheck="false" placeholder="/home/you/src">
-              <button type="button" class="browse" @click="openParentBrowser()" title="Browse"><jk-icon name="folder-open"></jk-icon></button>
+              <input v-model="newProject.parentDir" required spellcheck="false" placeholder="/home/you/src"
+                     @focus="$event.target.select()">
+              <button type="button" class="browse" @click="openParentBrowser()" aria-label="Browse for a parent directory"
+                      title="Browse for a parent directory"><jk-icon name="folder-open"></jk-icon></button>
             </div>
           </label>
-          <label class="check">
-            <input type="checkbox" v-model="newProject.executable"> Executable (with main)
+          <label v-if="!newProject.template" class="check">
+            <input type="checkbox" v-model="newProject.executable">
+            <span class="check-box" aria-hidden="true"></span>
+            <span>Executable (with main)</span>
           </label>
           <p v-if="newProjectError" class="error">{{ newProjectError }}</p>
           <div class="modal-foot form-actions">
             <button type="button" class="ghost" @click="closeNewProject()">Cancel</button>
-            <button type="submit" :disabled="newProjectBusy">
+            <button type="submit" class="primary" :disabled="newProjectBusy">
+              <jk-icon name="plus"></jk-icon>
               {{ newProjectBusy ? 'Creating…' : 'Create project' }}
             </button>
           </div>
@@ -505,7 +589,9 @@
           <dt>Engine URL</dt><dd class="mono">{{ status ? status.httpUrl : '—' }}</dd>
           <dt>PID</dt><dd class="mono">{{ status ? status.pid : '—' }}</dd>
           <dt>Cores</dt><dd class="mono">{{ status ? status.cores : '—' }}</dd>
+          <dt>Load</dt><dd class="mono">{{ loadPercent() }}</dd>
           <dt>System RAM</dt><dd class="mono">{{ status ? gib(status.totalMemoryBytes) : '—' }}</dd>
+          <dt>Available RAM</dt><dd class="mono">{{ status ? gib(status.freeMemoryBytes) : '—' }}</dd>
           <dt>Dashboard docs</dt><dd class="mono">docs/webclient.md</dd>
         </dl>
         <div class="modal-foot">

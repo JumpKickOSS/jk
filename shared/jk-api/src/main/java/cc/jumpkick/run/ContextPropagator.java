@@ -46,6 +46,32 @@ public final class ContextPropagator {
         active = (p == null) ? IDENTITY : p;
     }
 
+    /**
+     * Add {@code p} alongside whatever is already bound, so several independent kinds of ambient
+     * context ride the same pool hop. {@code p} is the outer wrapper: it captures first and
+     * restores last. Unlike {@link #bind} this never displaces an existing propagator — a second
+     * subsystem must not silently drop the session context the first one carries.
+     */
+    public static synchronized void add(Propagator p) {
+        if (p == null) return;
+        Propagator inner = active;
+        if (inner == IDENTITY) {
+            active = p;
+            return;
+        }
+        active = new Propagator() {
+            @Override
+            public Runnable wrapRunnable(Runnable r) {
+                return p.wrapRunnable(inner.wrapRunnable(r));
+            }
+
+            @Override
+            public <T> Callable<T> wrapCallable(Callable<T> c) {
+                return p.wrapCallable(inner.wrapCallable(c));
+            }
+        };
+    }
+
     /** Wrap a Runnable via the active propagator (called on the submitting thread). */
     public static Runnable wrapRunnable(Runnable r) {
         return active.wrapRunnable(r);

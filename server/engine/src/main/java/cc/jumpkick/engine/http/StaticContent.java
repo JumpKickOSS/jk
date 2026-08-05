@@ -107,6 +107,14 @@ final class StaticContent {
     private boolean serveFromDisk(HttpExchange exchange, String rel, boolean head) throws IOException {
         Path file = root.resolve(rel).normalize();
         if (!file.startsWith(root) || !Files.isRegularFile(file)) return false;
+        // Lexical containment is not enough: builds may write into web-root, so a symlink planted
+        // there would resolve outside and be served *unauthenticated* (static content is never
+        // token-gated). Compare real paths (JK-1487).
+        try {
+            if (!file.toRealPath().startsWith(root.toRealPath())) return false;
+        } catch (IOException e) {
+            return false; // unresolvable — treat as absent
+        }
 
         Instant lastModified;
         try {

@@ -24,11 +24,16 @@ public final class LockfileReader {
     private LockfileReader() {}
 
     /**
-     * Process-lifetime memo of {@link #read(Path)}, keyed by path + size + mtime (rewrites re-parse).
+     * Process-lifetime memo of {@link #read(Path)}: one entry per path, holding the size + mtime it
+     * was parsed at (a rewrite re-parses and replaces).
+     *
+     * <p>Keyed by PATH, not (path, size, mtime): with the stamp in the key every {@code jk lock} /
+     * {@code jk add} / {@code jk update} would strand the previous {@code Lockfile} — hundreds of
+     * artifacts each — for the engine's lifetime (JK-1483).
      */
-    private static final ConcurrentHashMap<CacheKey, Lockfile> READ_CACHE = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Path, Cached> READ_CACHE = new ConcurrentHashMap<>();
 
-    private record CacheKey(Path path, long size, FileTime modified) {}
+    private record Cached(long size, FileTime modified, Lockfile value) {}
 
     /** Test seam: drop the per-process read memo so freshly-written files re-parse. */
     public static void clearCache() {
@@ -37,12 +42,14 @@ public final class LockfileReader {
 
     public static Lockfile read(Path file) throws IOException {
         BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
-        CacheKey key = new CacheKey(file.toAbsolutePath().normalize(), attrs.size(), attrs.lastModifiedTime());
-        Lockfile cached = READ_CACHE.get(key);
-        if (cached != null) return cached;
+        Path key = file.toAbsolutePath().normalize();
+        Cached cached = READ_CACHE.get(key);
+        if (cached != null && cached.size() == attrs.size() && cached.modified().equals(attrs.lastModifiedTime())) {
+            return cached.value();
+        }
         TomlParseResult result = Toml.parse(file);
         Lockfile lockfile = fromResult(result, file.toString());
-        READ_CACHE.put(key, lockfile);
+        READ_CACHE.put(key, new Cached(attrs.size(), attrs.lastModifiedTime(), lockfile));
         return lockfile;
     }
 

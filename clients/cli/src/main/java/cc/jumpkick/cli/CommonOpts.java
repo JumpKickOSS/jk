@@ -15,16 +15,14 @@ public final class CommonOpts {
     private CommonOpts() {}
 
     /**
-     * Download / action cache (CAS) override. Default is {@code $JK_CACHE_DIR}, else {@code
-     * $JK_HOME/cache} ({@code ~/.cache/jk}). Engine-hosted commands pass the resolved path on the
-     * wire so the resident engine uses the same tree — no need to wipe {@code ~/.cache/jk} for cold
-     * resolve tests.
+     * Cache-tier root override (action index + cache CAS + format stamps). Default is {@code
+     * $JK_CACHE_DIR}, else {@code $JK_HOME/cache} ({@code ~/.cache/jk}). Does <em>not</em> move the
+     * artifact store ({@code JK_STORE_DIR}). Engine-hosted commands pass the resolved path on the
+     * wire so the resident engine uses the same tree.
      */
     public static Opt cacheDir() {
-        return Opt.value(
-                "<dir>",
-                "Override action-cache directory",
-                "--cache-dir");
+        // Keep ≤ ~36 chars: build-family help pads the flag column wide (78-col budget).
+        return Opt.value("<dir>", "Override cache-tier root (not store)", "--cache-dir");
     }
 
     /** Hidden variant for internal / rarely-needed commands. */

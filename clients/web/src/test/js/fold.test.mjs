@@ -492,3 +492,60 @@ test('fmtBytes picks the unit that keeps the number small', () => {
   assert.equal(fmtBytes(1_607_467_008), '1.5 GiB'); // never 1533 MiB
   assert.equal(fmtBytes(1_099_511_627_776), '1 TiB');
 });
+
+test('FAIL steps beat a cancelled bit on the card (test failure must not read as cancelled)', () => {
+  const cards = [];
+  seedFromHistory(cards, [
+    historyRecord('fail1', '/w', {
+      success: false,
+      cancelled: true, // journal race / cooperative fail-fast used to stamp this
+      modules: [
+        {
+          coord: 'g:core',
+          dir: '/w/core',
+          success: false,
+          exitCode: 4,
+          millis: 100,
+          steps: [
+            { name: 'compile-java', status: 'SUCCESS', phase: 'compile' },
+            { name: 'run-tests', status: 'FAIL', phase: 'test' },
+          ],
+        },
+      ],
+      diagnostics: [
+        {
+          severity: 'error',
+          dir: '/w/core',
+          step: 'run-tests',
+          code: 'test-failure',
+          message: 'expected 1 but was 90',
+        },
+      ],
+    }),
+  ]);
+  assert.equal(outcomeOf(cards[0]), 'failed');
+});
+
+test('cancelled without FAIL steps still reads as cancelled', () => {
+  const cards = [];
+  seedFromHistory(cards, [
+    historyRecord('cancel1', '/w', {
+      success: false,
+      cancelled: true,
+      modules: [
+        {
+          coord: 'g:core',
+          dir: '/w/core',
+          success: false,
+          exitCode: 1,
+          millis: 50,
+          steps: [
+            { name: 'compile-java', status: 'SUCCESS', phase: 'compile' },
+            { name: 'run-tests', status: 'CANCELLED', phase: 'test' },
+          ],
+        },
+      ],
+    }),
+  ]);
+  assert.equal(outcomeOf(cards[0]), 'cancelled');
+});

@@ -64,6 +64,7 @@ public final class HttpEngineServer implements AutoCloseable {
     private final cc.jumpkick.engine.journal.BuildJournal journal;
     private final Supplier<java.util.List<cc.jumpkick.runtime.BuildMetrics.Entry>> metrics;
     private final Supplier<CacheSnapshot> cache;
+    private final LiveVitals liveVitals;
     private final ApiRouter api = new ApiRouter();
     private final Consumer<String> log;
     private final McpHandler mcp;
@@ -71,6 +72,37 @@ public final class HttpEngineServer implements AutoCloseable {
 
     private volatile HttpServer server;
     private volatile ExecutorService executor;
+
+    /**
+     * GET paths that require the bearer token even on loopback. {@code /api/fs} lists the
+     * filesystem with the owner's permissions; {@code /api/log} and {@code /api/history/artifact}
+     * carry full on-disk diagnostics; {@code /api/project} is a path-existence oracle; {@code
+     * /api/metrics} emits every project dir and coordinate ever built; {@code
+     * /api/projects/defaults} derives from the owner's git identity and home layout.
+     *
+     * <p>{@code GET /api/history} (the journal <em>list</em>) is intentionally <strong>not</strong>
+     * here: the activity stream is already open on loopback so a tokenless dashboard can show live
+     * builds, and a hard-refresh must rehydrate that same journal rather than flash "No activity
+     * yet". Artifacts stay gated.
+     */
+    private static final java.util.Set<String> SENSITIVE_READS = java.util.Set.of(
+            "/api/fs",
+            "/api/log",
+            "/api/history/artifact",
+            "/api/project",
+            "/api/metrics",
+            "/api/projects/defaults");
+
+    /**
+     * {@code GET /api/templates} response cache — building the index walks every template root
+     * (with a deep DFS for catalog-only ids), so repeated modal opens must not rescan the disk
+     * (JK-1455). One immutable holder rather than two volatiles: a reader must never pair the old
+     * JSON with the new timestamp and serve stale rows for a full TTL.
+     */
+    private record TemplatesCache(String json, long atNanos) {}
+
+    private volatile TemplatesCache templatesCache;
+    private static final long TEMPLATES_TTL_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
     private byte[] token;
     private long heartbeatMillis = DEFAULT_HEARTBEAT_MILLIS;
 
@@ -120,6 +152,7 @@ public final class HttpEngineServer implements AutoCloseable {
         this.journal = journal;
         this.metrics = metrics;
         this.cache = cache;
+        this.liveVitals = new LiveVitals(events, status, cache);
         this.log = log != null ? log : s -> {};
         this.engineVersion = version;
         this.progressTokens = new ProgressTokenRegistry();
@@ -128,6 +161,7 @@ public final class HttpEngineServer implements AutoCloseable {
                 ? new McpHandler(status, jobs, this::projectMap, () -> journal.rawRecords(200), version, progressTokens)
                 : null;
         api.register("GET", "/api/status", this::handleStatus);
+        api.register("GET", "/api/config", this::handleConfig);
         api.register("GET", "/api/events", this::handleEvents);
         api.register("GET", "/api/log", this::handleLog);
         api.register("GET", "/api/fs", this::handleFs);
@@ -140,6 +174,7 @@ public final class HttpEngineServer implements AutoCloseable {
         api.register("GET", "/api/cache", this::handleCache);
         api.register("GET", "/api/project", this::handleProject);
         api.register("POST", "/api/projects", this::handleNewProject);
+        api.register("GET", "/api/projects/defaults", this::handleProjectDefaults);
         api.register("GET", "/api/templates", this::handleTemplates);
     }
 
@@ -249,6 +284,22 @@ public final class HttpEngineServer implements AutoCloseable {
         stop(STOP_GRACE_SECONDS);
     }
 
+    /**
+     * Change-gated {@code status} SSE after pipeline count may have moved (request start/finish).
+     * No-op without subscribers.
+     */
+    public void notifyLiveStatus() {
+        liveVitals.publishStatus(false);
+    }
+
+    /**
+     * Change-gated {@code cache} SSE after store/action-cache may have grown (request finish, prune).
+     * IO-shaped — only call off the hot step path.
+     */
+    public void notifyLiveCache() {
+        liveVitals.publishCache(false);
+    }
+
     /** Stop the server (once) and interrupt its executor; nulling both makes any repeat call a no-op. */
     private void stop(int graceSeconds) {
         if (server != null) {
@@ -261,42 +312,56 @@ public final class HttpEngineServer implements AutoCloseable {
             executor.shutdownNow();
             executor = null;
         }
+        liveVitals.close();
     }
 
     /** Every request funnels through here: gates first, then dispatch. */
     private void handle(HttpExchange exchange) throws IOException {
+        // The catch sits INSIDE the try-with-resources: a resource is closed before the catch of
+        // the same statement runs, so a 500 written outside would always go to a closed exchange
+        // and be swallowed — every handler bug read as a silent connection drop (JK-1476).
         try (exchange) {
-            if (!HostCheck.allowed(
-                    exchange.getRequestHeaders().getFirst("Host"),
-                    server.getAddress().getPort())) {
-                sendText(exchange, 421, "unrecognized Host header\n");
-                return;
-            }
-            boolean sse = isEventStreamRequest(exchange);
-            boolean mcpSurface = isMcpPath(exchange.getRequestURI().getPath());
-            Semaphore gate = sse ? (mcpSurface ? mcpSse : webSse) : admission;
-            if (!gate.tryAcquire()) {
-                exchange.getResponseHeaders().set("Retry-After", "1");
-                sendText(
-                        exchange,
-                        503,
-                        !sse
-                                ? "engine busy\n"
-                                : mcpSurface ? "too many MCP event streams\n" : "too many event streams\n");
-                return;
-            }
             try {
-                dispatch(exchange);
-            } finally {
-                gate.release();
-            }
-        } catch (RuntimeException e) {
-            // A handler bug must not kill the virtual thread silently mid-response; best-effort 500.
-            log.accept("jk engine: http handler error: " + e);
-            try {
-                sendText(exchange, 500, "internal error\n");
-            } catch (Exception ignored) {
-                // response already started (IllegalStateException) or client gone — nothing more to do
+                // Snapshot: stop()/stopNow() nulls `server` while exchanges are still in flight
+                // (the displacement handoff does exactly that), and dereferencing it here would
+                // NPE instead of closing cleanly.
+                HttpServer current = server;
+                if (current == null) {
+                    sendText(exchange, 503, "engine is shutting down\n");
+                    return;
+                }
+                if (!HostCheck.allowed(
+                        exchange.getRequestHeaders().getFirst("Host"),
+                        current.getAddress().getPort())) {
+                    sendText(exchange, 421, "unrecognized Host header\n");
+                    return;
+                }
+                boolean sse = isEventStreamRequest(exchange);
+                boolean mcpSurface = isMcpPath(exchange.getRequestURI().getPath());
+                Semaphore gate = sse ? (mcpSurface ? mcpSse : webSse) : admission;
+                if (!gate.tryAcquire()) {
+                    exchange.getResponseHeaders().set("Retry-After", "1");
+                    sendText(
+                            exchange,
+                            503,
+                            !sse
+                                    ? "engine busy\n"
+                                    : mcpSurface ? "too many MCP event streams\n" : "too many event streams\n");
+                    return;
+                }
+                try {
+                    dispatch(exchange);
+                } finally {
+                    gate.release();
+                }
+            } catch (RuntimeException e) {
+                // A handler bug must not kill the virtual thread silently mid-response.
+                log.accept("jk engine: http handler error: " + e);
+                try {
+                    sendText(exchange, 500, "internal error\n");
+                } catch (Exception ignored) {
+                    // response already started (IllegalStateException) or client gone
+                }
             }
         }
     }
@@ -482,11 +547,13 @@ public final class HttpEngineServer implements AutoCloseable {
     private boolean authorized(HttpExchange exchange) {
         String method = exchange.getRequestMethod();
         boolean read = method.equals("GET") || method.equals("HEAD");
-        // /api/fs lists the filesystem with the engine owner's permissions, and /api/log can carry
-        // build diagnostics — on a shared machine another local user must not browse either over
-        // loopback, so they are never token-exempt.
+        // Reads that disclose the engine owner's filesystem, identity, or full on-disk artifacts are
+        // never token-exempt: on a shared machine another local user must not have them for free
+        // over loopback (JK-1305, JK-1453, JK-1466). Aggregate-only reads (/api/status,
+        // /api/cache), the activity stream, and the journal list (/api/history) stay open so a
+        // tokenless loopback dashboard can rehydrate past builds after refresh.
         String path = exchange.getRequestURI().getPath();
-        boolean sensitiveRead = path.equals("/api/fs") || path.equals("/api/log");
+        boolean sensitiveRead = SENSITIVE_READS.contains(path);
         if (read && !readsRequireToken && !sensitiveRead) return true;
         if (tokenValid(bearerToken(exchange.getRequestHeaders().getFirst("Authorization")))) return true;
         return read
@@ -532,6 +599,8 @@ public final class HttpEngineServer implements AutoCloseable {
                 .put("aotTrainingPid", s.aotTrainingPid())
                 .put("cores", s.cores())
                 .put("totalMemoryBytes", s.totalMemoryBytes())
+                .put("freeMemoryBytes", s.freeMemoryBytes())
+                .put("systemCpuLoad", s.systemCpuLoad())
                 .put("httpUrl", url())
                 // url already ends with /; avoid //mcp in status/mcpUrl. Null when MCP is off.
                 .put("mcpUrl", config.mcp().enabled() && url() != null ? url().replaceAll("/+$", "") + "/mcp" : null)
@@ -542,6 +611,27 @@ public final class HttpEngineServer implements AutoCloseable {
                 .put("webRoot", webRoot.toString())
                 .toString();
         sendJson(exchange, 200, body);
+    }
+
+    /**
+     * {@code GET /api/config} — effective machine {@code config.toml} as key / default / effective
+     * rows for the Status Configuration panel. Same openness as {@code GET /api/status} (loopback
+     * without token; token required when bound beyond loopback).
+     */
+    private void handleConfig(HttpExchange exchange) throws IOException {
+        java.util.List<java.util.Map<String, Object>> rows = new java.util.ArrayList<>();
+        for (cc.jumpkick.config.EffectiveUserConfig.Row r : cc.jumpkick.config.EffectiveUserConfig.rows()) {
+            java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("key", r.key());
+            m.put("default", r.defaultValue());
+            m.put("value", r.effectiveValue());
+            m.put("overridden", r.overridden());
+            rows.add(m);
+        }
+        java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("path", cc.jumpkick.config.EffectiveUserConfig.configPath().toString());
+        body.put("rows", rows);
+        sendJson(exchange, 200, cc.jumpkick.plugin.protocol.MiniJson.write(body));
     }
 
     /**
@@ -602,7 +692,13 @@ public final class HttpEngineServer implements AutoCloseable {
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
         exchange.sendResponseHeaders(200, 0);
         var out = exchange.getResponseBody();
-        try (HttpEvents.Subscription subscription = events.subscribe()) {
+        HttpEvents.Subscription subscription = events.subscribe();
+        liveVitals.onSubscriberJoined();
+        // Connect hydrate: push current vitals onto the bus (change-gate skipped) so the tab does
+        // not wait for the first 2s / 30s sampler tick. Build activity remains inflicted-only.
+        liveVitals.publishStatus(true);
+        liveVitals.publishCache(true);
+        try {
             out.write(": connected\n\n".getBytes(StandardCharsets.UTF_8));
             out.flush();
             while (true) {
@@ -614,6 +710,9 @@ public final class HttpEngineServer implements AutoCloseable {
             Thread.currentThread().interrupt(); // server shutting down
         } catch (IOException e) {
             // The client closed the tab — routine stream end, not an error.
+        } finally {
+            subscription.close();
+            liveVitals.onSubscriberLeft();
         }
     }
 
@@ -714,25 +813,68 @@ public final class HttpEngineServer implements AutoCloseable {
         }
     }
 
-    /** {@code GET /api/templates} — short-name catalog for the new-project picker. */
+    /**
+     * {@code GET /api/projects/defaults} — educated guesses for the New project modal (group from
+     * git email like {@code jk new}, parent dir from history / well-known roots / git clusters).
+     */
+    private void handleProjectDefaults(HttpExchange exchange) throws IOException {
+        String group = cc.jumpkick.scaffold.NewGroupGuess.guess();
+        java.util.List<java.nio.file.Path> historyDirs = new java.util.ArrayList<>();
+        try {
+            for (var rec : journal.list()) {
+                if (rec != null && rec.dir() != null && !rec.dir().isBlank()) {
+                    historyDirs.add(java.nio.file.Path.of(rec.dir()));
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // journal empty / unreadable — parent guess still works without it
+        }
+        java.nio.file.Path parent = cc.jumpkick.scaffold.NewParentDirGuess.guess(
+                java.util.Optional.ofNullable(System.getProperty("user.home"))
+                        .map(java.nio.file.Path::of)
+                        .orElse(null),
+                historyDirs);
+        sendJson(
+                exchange,
+                200,
+                JsonOut.object()
+                        .put("group", group)
+                        .put("parentDir", parent.toString())
+                        .toString());
+    }
+
+    /**
+     * {@code GET /api/templates} — short-name catalog for the new-project picker. Each row is
+     * {@code {id, description, languages:[…], layout:"simple"|"traditional"|"custom"}}. Official
+     * catalog rows are merged with on-disk {@code jk_languages}/{@code jk_layout} from local
+     * template roots (see {@link cc.jumpkick.scaffold.Giter8TemplateIndex}).
+     */
     private void handleTemplates(HttpExchange exchange) throws IOException {
-        var desc = new java.util.LinkedHashMap<String, String>();
-        desc.put("java-cli", "Simple Java executable (Mill SIMPLE layout)");
-        desc.put("kotlin-cli", "Simple Kotlin executable (Mill SIMPLE layout)");
-        desc.put("quarkus", "Quarkus REST application ([quarkus] plugin)");
-        // Flat list for the SPA: [{id, description}, ...]
+        TemplatesCache cached = templatesCache;
+        if (cached != null && System.nanoTime() - cached.atNanos() < TEMPLATES_TTL_NANOS) {
+            sendJson(exchange, 200, cached.json());
+            return;
+        }
+        // Same roots the short-name resolver uses (JK-1458) — the picker must never list a
+        // template that then resolves differently, or miss one that would resolve.
+        var entries = cc.jumpkick.scaffold.Giter8TemplateIndex.build(
+                cc.jumpkick.scaffold.Giter8TemplateIndex.searchRoots());
         var arr = new StringBuilder("[");
         boolean first = true;
-        for (var e : desc.entrySet()) {
+        for (var e : entries) {
             if (!first) arr.append(',');
             first = false;
             arr.append(JsonOut.object()
-                    .put("id", e.getKey())
-                    .put("description", e.getValue())
+                    .put("id", e.id())
+                    .put("description", e.description())
+                    .putStrings("languages", e.languages())
+                    .put("layout", e.layout())
                     .toString());
         }
         arr.append(']');
-        sendJson(exchange, 200, arr.toString());
+        String json = arr.toString();
+        templatesCache = new TemplatesCache(json, System.nanoTime());
+        sendJson(exchange, 200, json);
     }
 
     /** {@code POST /api/build} — acknowledge with a request id; progress streams on {@code /api/events}. */
@@ -872,24 +1014,7 @@ public final class HttpEngineServer implements AutoCloseable {
      * IO-shaped (a walk of the cache sections), so it is computed per request, never cached.
      */
     private void handleCache(HttpExchange exchange) throws IOException {
-        CacheSnapshot c = cache.get();
-        String body = JsonOut.object()
-                .put("casCount", c.casCount())
-                .put("casBytes", c.casBytes())
-                .put("actionsCount", c.actionsCount())
-                .put("actionsBytes", c.actionsBytes())
-                .put("workerJarsCount", c.workerJarsCount())
-                .put("workerJarsBytes", c.workerJarsBytes())
-                .put("runLogsCount", c.runLogsCount())
-                .put("runLogsBytes", c.runLogsBytes())
-                .put("formatStampsCount", c.formatStampsCount())
-                .put("formatStampsBytes", c.formatStampsBytes())
-                .put("totalCount", c.totalCount())
-                .put("totalBytes", c.totalBytes())
-                .put("maxBytes", c.maxBytes())
-                .put("lastPrunedMillis", c.lastPrunedMillis())
-                .toString();
-        sendJson(exchange, 200, body);
+        sendJson(exchange, 200, cache.get().toJson().toString());
     }
 
     /**

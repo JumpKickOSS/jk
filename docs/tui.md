@@ -103,7 +103,7 @@ via the caller's `CommandWedge.envelopeStart()` and degrades to ASCII under `--n
 | `jk doctor` | `≡ Doctor` menu chip, then the checklist rows + summary |
 | `jk auth status` | `≡ Auth status` chip, then per-forge status lines |
 | `jk history show` | `≡ Build <id>` chip, then the detail block |
-| `jk cache storage` | `≡ Action Cache Storage` chip, then bullet rows (file count, size, utilization, last pruned) |
+| `jk cache storage` | `≡ Cache Storage` chip, then bullet rows (file count, size, utilization, last pruned) |
 
 ### Hybrid settles (CommandWedge.ok/fail)
 

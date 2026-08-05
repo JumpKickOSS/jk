@@ -92,6 +92,32 @@ jk new --template https://github.com/org/t.g8.git#main
 - Interactive prompts only when stdin is a TTY and a prop is missing (Mill-like).
 - `--param` / env overrides win over defaults.
 
+### JumpKick metadata props (picker / catalog)
+
+| Key | Values | Purpose |
+|-----|--------|---------|
+| `jk_languages` | `java`, `kotlin`, `groovy` (comma-separated) | Which Language the template is built for (web + catalog filter) |
+| `jk_layout` | `simple` \| `traditional` \| `custom` | Layout the template **ships** (not a user override at apply time) |
+
+Official short names also carry the same fields in the built-in catalog
+(`Giter8ShortNames` / `GET /api/templates`). On-disk props win when present
+(`Giter8TemplateIndex`).
+
+### Layout vs Giter8 templates
+
+**Simple / traditional is a blank-scaffolder choice only** (`jk new` without `--template`, or
+web “None — blank project”). A Giter8 apply copies a fixed tree — JumpKick’s apply path has no
+conditionals, so we do **not** reshape a template to match the user’s layout radio.
+
+| Approach | Verdict |
+|----------|---------|
+| Dynamic layout inside one `.g8` | Needs full Giter8 conditionals (not shipped); dual trees would be two templates |
+| Rewrite dirs after apply | Fragile for framework trees (Spring `src/main/…`, Grails `grails-app/`) |
+| **Hide layout when a template is selected** | **Shipped policy** — template owns its tree; blank projects keep the control |
+
+`jk_layout=custom` marks framework-specific trees (e.g. Grails) that are neither Mill simple nor
+Maven traditional.
+
 ## Implementation (shipped vs design)
 
 | Constraint | Shipped today | Longer-term design |

@@ -53,6 +53,24 @@ class OfficialTemplatesFreshenTest {
         assertEquals("git exit 3", e.getMessage());
     }
 
+    /** JK-1454: one git attempt per cache key per TTL — success or failure — so a missing
+     * short name on an offline host can't re-run a 60–120s git attempt on every retry. */
+    @Test
+    void attemptGuardAllowsFirstBlocksWithinTtlAndReopensAfter() {
+        OfficialTemplatesFreshen.resetAttemptGuardForTests();
+        long t0 = 1_000L;
+        assertTrue(OfficialTemplatesFreshen.markAttempt("key-a", t0));
+        assertTrue(
+                !OfficialTemplatesFreshen.markAttempt(
+                        "key-a", t0 + OfficialTemplatesFreshen.ATTEMPT_TTL_NANOS - 1),
+                "second attempt within the TTL must be suppressed");
+        assertTrue(OfficialTemplatesFreshen.markAttempt("key-b", t0), "keys are independent");
+        assertTrue(
+                OfficialTemplatesFreshen.markAttempt("key-a", t0 + OfficialTemplatesFreshen.ATTEMPT_TTL_NANOS),
+                "attempt slot reopens after the TTL");
+        OfficialTemplatesFreshen.resetAttemptGuardForTests();
+    }
+
     private Path script(String body) throws IOException {
         Path script = tmp.resolve("fake-git.sh");
         Files.writeString(script, body);

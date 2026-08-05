@@ -1589,6 +1589,8 @@ public final class EngineClient {
                         "the build engine is shutting down — wait for it to stop, or run `jk engine stop --force`");
             }
             if (clientVersion.equals(hs.version()) && buildIdCurrent(hs, clientVersion)) {
+                // Already primary — do not wipe AOT (would thrash the live train). Wipe only on
+                // materialize / new endpoint claim (JK-1452).
                 return hs;
             }
             // Version skew (incl. same -SNAPSHOT with different content identity) → TAKEOVER, not
@@ -1694,6 +1696,8 @@ public final class EngineClient {
                         writeNoAotMarker(target.aotCache());
                         logReason(paths, "AOT cache was ignored by the engine JVM; skipping it for this key");
                     }
+                    // EngineServer wipes state/aot after claiming the endpoint (JK-1452). Do not
+                    // wipe again here — the sidecar may already be training into a fresh file.
                     return r.handshake();
                 }
                 case TIMED_OUT -> throw notStarted(paths); // alive but never served → genuine hang
@@ -1979,9 +1983,10 @@ public final class EngineClient {
         // ONE home for every AOT cache — engine and workers alike live in ~/.local/state/jk/aot/ so a
         // user (or `jk engine aot`) finds them all side by side. The engine's file
         // carries its jk version ("engine-<version>-<key>.aot") because its LIFETIME is
-        // version-scoped: VersionStore.prune retires a version's caches with the version, and
-        // the sweep below stays within one version so side-by-side installs never thrash
-        // each other's caches. Worker caches (kotlinc-/java-compiler-) have no version dimension.
+        // version-scoped: a new primary reaps other versions' engine AOT (JK-1452), and
+        // VersionStore.prune also retires them with the version tree. The sweep below stays
+        // within one version so side-by-side keys for the same version never thrash each other.
+        // Worker caches (kotlinc-/java-compiler-) have no version dimension.
         Path aotDir = cc.jumpkick.util.JkDirs.state().resolve("aot");
         try {
             Files.createDirectories(aotDir);

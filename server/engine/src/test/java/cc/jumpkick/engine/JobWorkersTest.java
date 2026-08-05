@@ -115,4 +115,34 @@ class JobWorkersTest {
         // Default product path (env unset in unit tests): 500ms shared wall clock.
         assertThat(JobWorkers.cancelGraceMs()).isEqualTo(500L);
     }
+
+    /**
+     * JK-1469: CPU steps run on a process-wide ForkJoinPool whose threads inherit whatever scope
+     * was open when the pool created them. A fork must attach to the request that submitted the
+     * work, not to that stale inherited one.
+     */
+    @Test
+    void request_scope_rides_the_shared_cpu_pool() throws Exception {
+        // Warm the pool from a thread carrying a *different* (stale) scope, so its threads inherit
+        // 111 — exactly the situation that used to misattribute later requests' workers.
+        JobWorkers.open(111L);
+        JobWorkers.warmPoolForTest();
+        JobWorkers.close();
+
+        JobWorkers.open(222L);
+        try {
+            Long seen = cc.jumpkick.run.JkThreads.cpu()
+                    .submit(JobWorkers::currentScope)
+                    .get(10, TimeUnit.SECONDS);
+            assertThat(seen).as("pool task must see the submitting request's scope").isEqualTo(222L);
+        } finally {
+            JobWorkers.close();
+        }
+
+        // With no scope open, a pool task must not inherit a stale one either.
+        Long unscoped = cc.jumpkick.run.JkThreads.cpu()
+                .submit(JobWorkers::currentScope)
+                .get(10, TimeUnit.SECONDS);
+        assertThat(unscoped).as("no ambient scope must not leak a stale request").isNull();
+    }
 }

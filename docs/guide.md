@@ -48,7 +48,8 @@ repo: see [CONTRIBUTING.md](../CONTRIBUTING.md).
 | **config** | `~/.config/jk/config.toml` | `%APPDATA%\jk\config.toml` |
 | **managed JDKs** | Linux: `~/.jdks` · macOS: `~/Library/Java/JavaVirtualMachines` | `%USERPROFILE%\.jdks` |
 
-Store (network-fetched CAS) lives under **data** (`…/store`). Side-by-side client +
+**Artifact store** (deps CAS + `repos/`) lives under **data** (`…/store`). **Cache
+CAS** (action outputs) lives under **cache** (`…/cache/sha256`). Side-by-side client +
 engine installs live under **data** (`…/versions/<v>/`). Managed JDKs use the
 **IntelliJ shared root** so the IDE and JumpKick share runtimes; discovery still
 picks up SDKMAN, mise, Homebrew, `JAVA_HOME`, and system installs before
@@ -106,8 +107,8 @@ jk’s correctness does **not** depend on local caches — a cold machine with a
 
 | Path | What it holds | Safe to restore in CI? |
 |------|----------------|------------------------|
-| Platform **cache** (`~/.cache/jk` or `$JK_CACHE_DIR`) | Action cache | **Yes** |
-| Platform **store** (`~/.local/share/jk/store` or `$JK_STORE_DIR`) | CAS / downloaded artifacts | **Yes** — primary warm-build win |
+| Platform **cache** (`~/.cache/jk` or `$JK_CACHE_DIR`) | Action index + cache CAS (rebuildable outputs) | **Yes** |
+| Platform **store** (`~/.local/share/jk/store` or `$JK_STORE_DIR`) | Artifact CAS + `repos/` mirrors | **Yes** — primary warm-build win |
 | Shared **JDKs** (`~/.jdks` / macOS Library JVMs or `$JK_JDKS_DIR`) | Managed JDKs | Yes if jobs share the same pin / OS |
 | `target/.jk/` (per project) | Project-local engine state, including **preflight memos** (`dirty-memo.txt`, `graph-memo.txt`, `shape-memo.txt` under `target/.jk/preflight/`) | **Yes** with the project workspace |
 | Platform **state** builds runs | Run history + `details.jsonl` transcripts | Optional for CI speed; useful for agents |
@@ -136,11 +137,12 @@ cache, a normal `jk build` should hit action cache for unchanged modules.
 
 | Command | Scope |
 |---------|--------|
-| **`jk cache storage`** | Action cache only (`actions/` under the cache dir): file count, size, utilization |
-| **`jk cache clear` / `prune` / `purge`** | Invalidate, expire, or wipe **action-cache entries** (`actions/` + format stamps). CAS blobs, repo mirrors, and run logs survive all three |
-| **`jk repo storage`** | CAS blobs + worker JAR mirrors + run logs under the store |
-| **`jk repo prune`** | Sweep unreferenced CAS blobs + expired run logs; `--max-size <size>` LRU-evicts down to a budget |
+| **`jk cache storage`** | Cache tier: action index + cache CAS (`sha256/` under the cache dir) + format stamps |
+| **`jk cache clear` / `prune` / `purge`** | Invalidate, expire, or wipe the **cache tier** (actions + cache CAS + format stamps). Artifact store CAS and repo mirrors survive |
+| **`jk repo storage`** | Artifact store CAS + `repos/` mirrors + run logs |
+| **`jk repo prune`** | Sweep unreferenced store CAS blobs + expired run logs; `--max-size <size>` LRU-evicts to the store budget |
 | **`jk repo search`** | Offline search of locally mirrored coordinates |
+| **`jk repo refresh <coord>`** | Evict a coordinate from the mirror so it re-fetches. The mirror is first-write-wins (Maven Central's immutability contract); this is the escape hatch for an upstream that genuinely republished — see [mirror-verification-decision.md](mirror-verification-decision.md) |
 | **`jk repo login` / `logout`** | Artifact-repository credentials |
 | **`jk self purge`** | Wipe **jk-owned** data only. Never touches the PATH bin dir or JDKs. |
 
@@ -154,8 +156,8 @@ jk self purge --store --config
 | Flag | Deletes | Keeps |
 |------|---------|-------|
 | `--all` | Every target below (default when none named) | — |
-| `--cache` | Action cache (`~/.cache/jk`) | — |
-| `--store` | CAS blobs, repo mirrors, store catalogs (`jdks.json`, `libs.global.toml`), shell completions, **old** `versions/*` | **Active** `versions/<this-jk>/`, **`store/lib/`** (latest plugins), forge/repo credentials, live JDK pointer symlinks |
+| `--cache` | Cache tier (`~/.cache/jk` — action index + cache CAS) | — |
+| `--store` | Artifact CAS, repo mirrors, store catalogs (`jdks.json`, `libs.global.toml`), shell completions, **old** `versions/*` | **Active** `versions/<this-jk>/`, **`store/lib/`** (latest plugins), forge/repo credentials, live JDK pointer symlinks |
 | `--state` | Engine sockets, AOT, builds, scratch tmp (`~/.local/state/jk`) | — |
 | `--config` | User config (`~/.config/jk`; under `JK_HOME`, only `config.toml`) | — |
 
@@ -165,14 +167,14 @@ Utilization bars:
 
 | Report | Cap (config) | Default |
 |--------|--------------|---------|
-| `jk cache storage` | `[cache] action-max-size-mb` / `JK_ACTION_MAX_SIZE_MB` | **1024** (1 GiB) |
-| `jk repo storage` | `[cache] max-size-gb` / `JK_MAX_SIZE_GB` | **20** GiB when unset |
+| `jk cache storage` | `[cache] max-cache-size-mb` / `JK_MAX_CACHE_SIZE_MB` | **1024** (1 GiB) |
+| `jk repo storage` | `[cache] max-store-size-mb` / `JK_MAX_STORE_SIZE_MB` | **4096** (4 GiB) |
 
 ```toml
 # ~/.config/jk/config.toml
 [cache]
-action-max-size-mb = 1024   # action-cache utilization denominator
-max-size-gb = 20            # store / CAS prune budget + repo utilization
+max-cache-size-mb = 1024    # cache CAS + action index (ephemeral build outputs)
+max-store-size-mb = 4096    # artifact store CAS + repos/ (long-lived deps)
 ```
 
 `0` (or a negative value) for either size — file key or env var — means **unset**: the default

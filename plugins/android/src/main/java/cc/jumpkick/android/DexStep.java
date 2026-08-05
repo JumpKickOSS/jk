@@ -17,7 +17,7 @@ final class DexStep {
     static void run(StepExec exec) throws Exception {
         Path r8 = exec.requireExtra("r8");
         // d8 judges --lib inputs by extension; the fetched blob carries none — give it one.
-        Path platformJar = jarNamed(exec, exec.requireExtra("android-jar"), "android-platform.jar");
+        Path platformJar = JarInputs.jarNamed(exec, exec.requireExtra("android-jar"), "android-platform.jar");
         Path dexOut = exec.outputDir("dex");
         List<Path> classFiles = ResourceStep.filesUnder(exec.classesDir(), ".class");
         if (classFiles.isEmpty()) {
@@ -32,6 +32,8 @@ final class DexStep {
         for (var entry : exec.runtimeEntries()) {
             if (entry.jar() != null) runtimeJars.add(entry.jar());
         }
+        // Program inputs are judged by extension too — alias extensionless CAS blobs (JK-1449).
+        runtimeJars = JarInputs.jarSuffixed(exec, runtimeJars);
 
         exec.label("d8 (" + classFiles.size() + " classes + " + runtimeJars.size() + " jars)");
         StepExec.ToolRun d8 = exec.java()
@@ -51,16 +53,4 @@ final class DexStep {
         }
     }
 
-    /** A {@code .jar}-suffixed alias of {@code source} under the step's scratch. */
-    private static Path jarNamed(StepExec exec, Path source, String name) throws java.io.IOException {
-        Path alias = java.nio.file.Files.createDirectories(exec.scratch().resolve("tools"))
-                .resolve(name);
-        java.nio.file.Files.deleteIfExists(alias);
-        try {
-            java.nio.file.Files.createLink(alias, source);
-        } catch (java.io.IOException | UnsupportedOperationException e) {
-            java.nio.file.Files.copy(source, alias);
-        }
-        return alias;
-    }
 }

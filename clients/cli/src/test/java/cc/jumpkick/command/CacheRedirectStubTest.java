@@ -24,7 +24,7 @@ class CacheRedirectStubTest {
         Path cache = tempDir.resolve("cache");
         Capture c = capture(() -> Jk.execute("cache", "info", "--cache-dir", cache.toString()));
         assertThat(c.exit).isEqualTo(0);
-        assertThat(TestAnsi.strip(c.stdout)).contains("Action cache");
+        assertThat(TestAnsi.strip(c.stdout)).contains("Cache");
     }
 
     @Test

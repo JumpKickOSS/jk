@@ -88,5 +88,86 @@ Loopback binds serve the dashboard without a token; mutations are token-gated. N
 carry the token — `EventSource` cannot send headers, so streams pass it as an `access_token` query
 parameter, and the SPA bootstraps from a `#t=` fragment.
 
+**Sensitive reads need the token even on loopback**, because on a shared machine another local
+account must not have the engine owner's filesystem and identity for free:
+
+| Endpoint | Why |
+|---|---|
+| `GET /api/fs` | lists the filesystem with the owner's permissions |
+| `GET /api/log` | engine log tail |
+| `GET /api/history/artifact` | full on-disk diagnostics / lock snapshots |
+| `GET /api/project` | path-existence oracle |
+| `GET /api/metrics` | every project dir and coordinate ever built |
+| `GET /api/projects/defaults` | derives from the owner's git identity and home layout |
+
+Aggregate-only reads (`GET /api/status`, `GET /api/cache`, `GET /api/config`), the activity stream
+(`GET /api/events`), and the **journal list** (`GET /api/history`) stay open on loopback so a
+tokenless dashboard can show live builds **and** rehydrate them after a hard refresh. History
+**artifacts** remain token-gated.
+
+### `GET /api/config`
+
+Effective machine `~/.config/jk/config.toml` (plus env) as `{ path, rows: [{ key, default, value,
+overridden }] }` for the Status Configuration panel — every known scalar key with its default and
+whether the effective value differs.
+
 The token file persists across restarts precisely so an open tab survives an upgrade or crash
 respawn. `jk engine rotate-token` is the explicit way to invalidate it.
+
+## Live updates (`GET /api/events`)
+
+One SSE stream serves **build activity** and **chrome vitals**. Additive event names only (no
+protocol version bump). Fan-out is `HttpEvents` (bounded drop-oldest queues); the engine skips
+work when `hasSubscribers()` is false.
+
+| Kind | Events | When published |
+| --- | --- | --- |
+| **Inflicted** (realtime) | `request-start` / `plan` / `module-*` / `step-*` / `pipeline-progress` / `workspace-progress` / `eta` / `output` / `diagnostic` / `*-finish` / `request-finish` | As the pipeline mutates state — never batched on a timer |
+| **Sampled** (change-gated) | `status` | ~every 2 s while any client is subscribed, **and** only when presentation-quantized vitals change (CPU ~1 pp, RAM/heap ~1 MiB, counters exact). Also forced on stream connect and nudged on request start/finish |
+| **Sampled** (change-gated, IO) | `cache` | Slow tick (~30 s) while subscribed, plus after request finish; **not** on the 2 s status sampler. Live frames are **thin** (dual surface totals + budgets, `"thin": true`); full section breakdown is REST-only |
+
+### `event: status`
+
+Core engine/host vitals (same facts as `GET /api/status` heap/load/pipelines fields). Config knobs
+(`httpUrl`, `maxConcurrentRequests`, …) stay REST-only; the SPA merges SSE into the last REST
+hydrate.
+
+### `event: cache` and `GET /api/cache`
+
+Two storage surfaces (CLI parity: `jk cache storage` / `jk repo storage`), not one combined
+“cache used” total:
+
+| Surface | Bytes | Budget field |
+| --- | --- | --- |
+| **Cache tier** | action index + cache CAS + format stamps → `cacheBytes` / `actionCacheBytes` | `cacheMaxBytes` / `actionMaxBytes` (`[cache] max-cache-size-mb`, default 1 GiB) |
+| **Artifact store** | store CAS + `repos/` mirrors + run logs → `artifactStorageBytes` | `maxBytes` (`[cache] max-store-size-mb`, default 4 GiB) |
+
+Full REST also exposes `actionsCount`/`actionsBytes` (index), `cacheCasCount`/`cacheCasBytes`
+(cache CAS), and store section fields. **Live SSE (thin):** `{ "thin": true, cacheBytes,
+cacheMaxBytes, actionCacheBytes, actionMaxBytes, artifactStorageBytes, maxBytes,
+lastPrunedMillis }` — enough for the footer; change-gated on MiB quanta.
+
+**REST (full):** section counts (`casCount`, `actionsCount`, …) for the Status panels. `totalBytes`
+is a legacy combined sum; prefer the two surfaces for UI.
+
+REST `GET /api/status` and `GET /api/cache` remain for hydrate, offline fallback, CLI/MCP tools,
+and curl. Metrics (`GET /api/metrics`) stay **REST-only / view-scoped** — not on the vitals SSE bus.
+
+### Build SSE publish map (JK-1499)
+
+Inflicted publishers live on `EngineServer` (socket listener + HTTP job listeners). Every dashboard
+fold type has a site; progress is coalesced only by the intentional ≥0.1% / TTY-frame filter on
+`workspace-progress` (same as the TUI), never by `LiveVitals`.
+
+| Event | Publisher (typical) | Notes |
+| --- | --- | --- |
+| `request-start` | `publishRequestStart` | CLI admit + HTTP workspace/lock |
+| `plan` | `publishPlan` | Total weight for bar denominator |
+| `module-start` / `module-finish` | workspace listener | Per-module rows |
+| `step-start` / `step-finish` | pipeline listener | Phase-tagged steps |
+| `pipeline-progress` | pipeline ticks | Single-module / per-module detail |
+| `workspace-progress` | `emitWorkspaceProgress` | Aggregate %; peak-hold + 0.1% / frame filter |
+| `eta` | `publishEta` | Seed + re-projections |
+| `output` / `diagnostic` | step output / failures | Bounded diagnostics |
+| `pipeline-finish` | pipeline end | Module-level success |
+| `request-finish` | request finally | Always includes `success` + `cancelled` (CLI + HTTP) |

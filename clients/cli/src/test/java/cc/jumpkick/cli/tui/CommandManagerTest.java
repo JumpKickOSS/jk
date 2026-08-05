@@ -197,27 +197,55 @@ class CommandManagerTest {
         cm.nerdfont = false;
         cm.progress(50, 100);
 
-        // No estimate set → the clock counts elapsed up from 0s (4s elapsed → "4s").
+        // No estimate set → single yellow count-up from construction.
         String up = cm.renderPipelineLines(120, 4_000).get(0);
-        assertThat(TestAnsi.strip(up)).contains("4s");
+        assertThat(TestAnsi.strip(up)).contains("+4s");
 
-        // Seeded with a 60s estimate, the clock counts down by pure wall-clock: at 4s
-        // elapsed, 56s remain — independent of the bar's numerator/denominator.
+        // Seeded with a 60s estimate: dual clock — countdown ~56s + elapsed +4s.
         cm.setEtaEstimate(60_000);
         String header = cm.renderPipelineLines(120, 4_000).get(0);
-        assertThat(TestAnsi.strip(header)).contains("56s");
-        // Countdown is blue; count-up stays yellow. The · separator is bright-black.
-        assertThat(header).contains(Theme.colorize("56s", Theme.active().blue()));
+        String plain = TestAnsi.strip(header);
+        assertThat(plain).contains("ETA ~56s");
+        assertThat(plain).contains("+4s");
+        // Countdown is blue with tilde; count-up is dim while remaining > 0.
+        assertThat(header).contains(Theme.colorize("~56s", Theme.active().blue()));
+        assertThat(header).contains(Theme.colorize("+4s", Theme.active().darkGray()));
         assertThat(header).contains(Theme.colorize("·", Theme.active().darkGray()));
     }
 
     @Test
-    void eta_countdown_flips_to_count_up_when_the_build_overruns_the_estimate() {
+    void eta_countdown_freezes_at_zero_and_count_up_turns_yellow_on_overrun() {
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
         cm.setEtaEstimate(10_000); // 10s estimate
-        // 15s elapsed → 5s overrun → clock flips to "+5s".
-        assertThat(TestAnsi.strip(cm.renderPipelineLines(120, 15_000).get(0))).contains("+5s");
+        // 15s elapsed → countdown freezes at dim 0s; count-up is full elapsed (yellow).
+        String header = cm.renderPipelineLines(120, 15_000).get(0);
+        String plain = TestAnsi.strip(header);
+        assertThat(plain).contains("ETA 0s");
+        assertThat(plain).contains("+15s");
+        assertThat(header).contains(Theme.colorize("0s", Theme.active().darkGray()));
+        assertThat(header).contains(Theme.colorize("+15s", Theme.active().warning()));
+    }
+
+    @Test
+    void dual_clock_ticks_together_even_when_seed_is_not_second_aligned() {
+        // Independent floor(remainingMs) vs floor(elapsedMs) desynced the two faces by the seed's
+        // sub-second remainder (e.g. 100ms after setRemainingWorkEstimate). Both must advance on
+        // the same whole-second elapsed boundary.
+        var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdfont = false;
+        cm.setEtaEstimate(60_100); // 60s + 100ms
+        String mid = TestAnsi.strip(cm.renderPipelineLines(120, 4_050).get(0));
+        assertThat(mid).contains("ETA ~56s");
+        assertThat(mid).contains("+4s");
+        // Still the same pair just under the next second (old code would drop countdown here).
+        String justBefore = TestAnsi.strip(cm.renderPipelineLines(120, 4_999).get(0));
+        assertThat(justBefore).contains("ETA ~56s");
+        assertThat(justBefore).contains("+4s");
+        // One paint advances both faces.
+        String next = TestAnsi.strip(cm.renderPipelineLines(120, 5_000).get(0));
+        assertThat(next).contains("ETA ~55s");
+        assertThat(next).contains("+5s");
     }
 
     @Test
@@ -228,7 +256,7 @@ class CommandManagerTest {
         cm.setEtaEstimate(60_000);
         cm.setEtaEstimate(38_000); // post-prepare refine while modulesComplete == 0
         // 4s elapsed → 34s remaining from the refined seed.
-        assertThat(TestAnsi.strip(cm.renderPipelineLines(120, 4_000).get(0))).contains("34s");
+        assertThat(TestAnsi.strip(cm.renderPipelineLines(120, 4_000).get(0))).contains("ETA ~34s");
     }
 
     @Test
@@ -241,10 +269,13 @@ class CommandManagerTest {
         // via setRemainingWorkEstimate after construction; render at that elapsed.
         // We can't freeze elapsedMillis, so set total = 30s + 90s and render at 30s.
         cm.setEtaEstimate(30_000 + 90_000);
-        assertThat(TestAnsi.strip(cm.renderPipelineLines(120, 30_000).get(0))).contains("1m 30s");
-        // At end of remaining work (elapsed 120s) → 0s / overrun.
+        String at30 = TestAnsi.strip(cm.renderPipelineLines(120, 30_000).get(0));
+        assertThat(at30).contains("ETA ~1m 30s");
+        assertThat(at30).contains("+30s");
+        // At end of remaining work (elapsed 120s) → frozen 0s + yellow full elapsed.
         String done = TestAnsi.strip(cm.renderPipelineLines(120, 120_000).get(0));
-        assertThat(done).containsAnyOf("0s", "+0s");
+        assertThat(done).contains("ETA 0s");
+        assertThat(done).contains("+2m 00s");
     }
 
     @Test
@@ -257,9 +288,13 @@ class CommandManagerTest {
         cm.setModuleProgress(1, 2); // first module finished → lock
         cm.setEtaEstimate(20_000); // would-be re-projection: ignore
         // 10s elapsed of a locked 38s seed → 28s remain (not 10s from the rejected re-projection).
-        assertThat(TestAnsi.strip(cm.renderPipelineLines(120, 10_000).get(0))).contains("28s");
-        // Overrun still pure wall-clock from the locked seed: 40s elapsed → +2s, not re-projected.
-        assertThat(TestAnsi.strip(cm.renderPipelineLines(120, 40_000).get(0))).contains("+2s");
+        String mid = TestAnsi.strip(cm.renderPipelineLines(120, 10_000).get(0));
+        assertThat(mid).contains("ETA ~28s");
+        assertThat(mid).contains("+10s");
+        // Overrun still pure wall-clock from the locked seed: freeze 0s + full elapsed (not re-projected).
+        String over = TestAnsi.strip(cm.renderPipelineLines(120, 40_000).get(0));
+        assertThat(over).contains("ETA 0s");
+        assertThat(over).contains("+40s");
     }
 
     @Test
@@ -271,21 +306,24 @@ class CommandManagerTest {
         // A zero ETA must not reset or clear a later positive seed's continuity either.
         cm.setEtaEstimate(30_000);
         cm.setEtaEstimate(0); // ignore clear
-        assertThat(TestAnsi.strip(cm.renderPipelineLines(120, 12_000).get(0))).contains("18s");
+        String seeded = TestAnsi.strip(cm.renderPipelineLines(120, 12_000).get(0));
+        assertThat(seeded).contains("ETA ~18s");
+        assertThat(seeded).contains("+12s");
     }
 
     @Test
     void header_countdown_has_dim_eta_prefix_and_no_module_counter() {
-        // Countdown: dim "ETA " + remaining; module n/m lives on tree rows only.
+        // Dual clock: dim italic "ETA " + ~remaining · +elapsed; module n/m lives on tree rows only.
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
         cm.progress(50, 100);
         cm.setEtaEstimate(60_000);
         cm.setModuleProgress(2, 8);
         String header = TestAnsi.strip(cm.renderPipelineLines(120, 4_000).get(0));
-        assertThat(header).contains("ETA 56s");
+        assertThat(header).contains("ETA ~56s");
+        assertThat(header).contains("+4s");
         assertThat(header).doesNotContain("2/8");
-        // Count-up has no ETA prefix.
+        // Cold count-up has no ETA prefix.
         String cold = TestAnsi.strip(CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false)
                 .renderPipelineLines(120, 12_000)
                 .get(0));
@@ -419,18 +457,20 @@ class CommandManagerTest {
     }
 
     @Test
-    void header_countdown_is_blue_count_up_is_yellow() {
+    void header_countdown_is_blue_count_up_is_dim_then_yellow() {
         Theme t = Theme.active();
-        // Seeded ETA with elapsed under the seed → dim "ETA " + blue remaining.
+        // Seeded ETA with remaining > 0 → dim italic "ETA " + blue "~remaining" · dim "+elapsed".
         var down = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
         down.nerdfont = false;
         down.progress(10, 100);
         down.setEtaEstimate(60_000);
         String downHeader = down.renderPipelineLines(120, 4_000).get(0);
-        assertThat(TestAnsi.strip(downHeader)).contains("ETA 56s");
+        assertThat(TestAnsi.strip(downHeader)).contains("ETA ~56s");
+        assertThat(TestAnsi.strip(downHeader)).contains("+4s");
         assertThat(downHeader).contains(Theme.colorize("ETA ", t.darkGray().italic()));
-        assertThat(downHeader).contains(Theme.colorize("56s", t.blue()));
-        assertThat(downHeader).doesNotContain(Theme.colorize("56s", t.warning()));
+        assertThat(downHeader).contains(Theme.colorize("~56s", t.blue()));
+        assertThat(downHeader).contains(Theme.colorize("+4s", t.darkGray()));
+        assertThat(downHeader).doesNotContain(Theme.colorize("+4s", t.warning()));
 
         // No seed → +elapsed count-up (yellow), no ETA prefix.
         var up = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
@@ -441,15 +481,17 @@ class CommandManagerTest {
         assertThat(TestAnsi.strip(upHeader)).doesNotContain("ETA ");
         assertThat(upHeader).contains(Theme.colorize("+12s", t.warning()));
 
-        // Seed overrun → +excess count-up (yellow), no ETA prefix.
+        // Seed overrun → frozen dim 0s + yellow full elapsed (still keeps ETA prefix).
         var over = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
         over.nerdfont = false;
         over.progress(90, 100);
         over.setEtaEstimate(10_000);
         String overHeader = over.renderPipelineLines(120, 15_000).get(0);
-        assertThat(TestAnsi.strip(overHeader)).contains("+5s");
-        assertThat(TestAnsi.strip(overHeader)).doesNotContain("ETA ");
-        assertThat(overHeader).contains(Theme.colorize("+5s", t.warning()));
+        assertThat(TestAnsi.strip(overHeader)).contains("ETA 0s");
+        assertThat(TestAnsi.strip(overHeader)).contains("+15s");
+        assertThat(overHeader).contains(Theme.colorize("ETA ", t.darkGray().italic()));
+        assertThat(overHeader).contains(Theme.colorize("0s", t.darkGray()));
+        assertThat(overHeader).contains(Theme.colorize("+15s", t.warning()));
     }
 
     @Test

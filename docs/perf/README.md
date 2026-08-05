@@ -56,7 +56,7 @@ disk memo under `<cache>/hash-memo/`. Action key material unchanged (still path 
 
 ## Test suite tiers
 
-Default `./gradlew test` = unit tier (excludes `@Tag("integration"|"slow"|"bench")`; target <5 min);
+Default `./gradlew test` = unit tier (excludes `@Tag("integration"|"slow"|"bench"|"network")`; target <5 min);
 `integrationTest` = tagged integration/slow; `checkAll` = both (pre-merge bar).
 See [test-suite-tiers.md](test-suite-tiers.md).
 

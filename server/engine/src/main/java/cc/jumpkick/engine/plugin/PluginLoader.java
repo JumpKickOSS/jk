@@ -83,12 +83,14 @@ public final class PluginLoader {
             Consumer<String> onProtocol,
             Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
-        return PluginProcess.converse(
+        // One-shot: close the child's stdin immediately so suite tests that hit Confirm /
+        // System.in.readLine() see EOF instead of hanging on an open protocol pipe.
+        return PluginProcess.run(
                 command(javaExe, classpath, jvmFlags, args),
                 extraEnv,
                 workDir,
                 prefix,
-                (json, convo) -> onProtocol.accept(json),
+                onProtocol,
                 onPassthrough);
     }
 

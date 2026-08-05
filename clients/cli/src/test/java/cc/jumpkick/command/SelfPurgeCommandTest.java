@@ -267,9 +267,17 @@ class SelfPurgeCommandTest {
         Path marker = cache.resolve("decline-keep");
         Files.writeString(marker, "keep");
 
-        // No -y, no TTY: the cooked prompt hits EOF, which answers the default (no).
-        int exit = capture(() -> Jk.execute("self", "purge", "--cache"));
-        assertThat(exit).isEqualTo(1);
+        // No -y: cooked Confirm treats empty/EOF stdin as decline. Explicit System.in is required —
+        // under `jk test` the worker's System.in is (or was) a protocol pipe that never EOFs, so
+        // relying on ambient stdin hung the suite.
+        java.io.InputStream prevIn = System.in;
+        try {
+            System.setIn(new java.io.ByteArrayInputStream(new byte[0]));
+            int exit = capture(() -> Jk.execute("self", "purge", "--cache"));
+            assertThat(exit).isEqualTo(1);
+        } finally {
+            System.setIn(prevIn);
+        }
         assertThat(marker).exists();
         Files.deleteIfExists(marker);
     }

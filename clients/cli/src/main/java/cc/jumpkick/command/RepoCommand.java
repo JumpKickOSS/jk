@@ -22,8 +22,9 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * {@code jk repo} — local CAS / Maven mirrors, offline coordinate search, and artifact-repository
- * credentials ({@code ~/.jk/repo-credentials/}). Distinct from {@code jk cache} (action cache only).
+ * {@code jk repo} — artifact store (store CAS + Maven-layout {@code repos/} mirrors), offline
+ * coordinate search, and repository credentials. Distinct from {@code jk cache} (cache tier:
+ * rebuildable action outputs under {@code JK_CACHE_DIR}).
  */
 public final class RepoCommand extends GroupCommand {
 
@@ -34,7 +35,7 @@ public final class RepoCommand extends GroupCommand {
 
     @Override
     public String description() {
-        return "Manage artifact repos, local CAS, and credentials";
+        return "Manage the artifact store (deps CAS, repos, credentials)";
     }
 
     @Override
@@ -42,9 +43,93 @@ public final class RepoCommand extends GroupCommand {
         return List.of(
                 new RepoStorageCommand(),
                 new RepoSearchCommand(),
+                new RepoRefreshCommand(),
                 new RepoPruneCommand(),
                 new RepoLoginCommand(),
                 new RepoLogoutCommand());
+    }
+
+    /**
+     * {@code jk repo refresh <coordinate>} — drop a coordinate's mirror entries so the next resolve
+     * re-fetches it.
+     *
+     * <p>jk's mirror is first-write-wins: a stored coordinate keeps serving the bytes it was first
+     * fetched with, which matches Maven Central's immutability contract. This is the escape hatch
+     * for the case where upstream genuinely republished different bytes (JK-1460; see
+     * {@code docs/mirror-verification-decision.md}).
+     */
+    public static final class RepoRefreshCommand implements CliCommand {
+        @Override
+        public String name() {
+            return "refresh";
+        }
+
+        @Override
+        public String description() {
+            return "Evict a coordinate from the local mirror so it re-fetches";
+        }
+
+        @Override
+        public List<Opt> options() {
+            return List.of(cc.jumpkick.cli.CommonOpts.cacheDir());
+        }
+
+        @Override
+        public List<Param> parameters() {
+            return List.of(
+                    Param.of("coordinate", Arity.ONE_OR_MORE, "One or more group:artifact:version coordinates."));
+        }
+
+        @Override
+        public int run(Invocation in) {
+            Path cacheRoot = CacheCommand.resolveCacheRoot(
+                    in.value("cache-dir").map(Path::of).orElse(null));
+            Path reposRoot = JkStores.storeRootFor(cacheRoot).resolve("repos");
+            List<String> repoNames = repoNames(reposRoot);
+            int evicted = 0;
+            int missed = 0;
+            for (String spec : in.positionals()) {
+                cc.jumpkick.model.Coordinate coord;
+                try {
+                    coord = cc.jumpkick.model.Coordinate.parse(spec);
+                } catch (IllegalArgumentException e) {
+                    CliOutput.err(e.getMessage());
+                    return 2;
+                }
+                String relPath = cc.jumpkick.repo.MavenLayout.artifactPath(coord);
+                List<String> hitRepos = new ArrayList<>();
+                for (String repo : repoNames) {
+                    if (RepoArtifactStore.forRepoName(cacheRoot, repo).evict(relPath)) hitRepos.add(repo);
+                }
+                if (hitRepos.isEmpty()) {
+                    missed++;
+                    CliOutput.out("not mirrored: " + Coords.gav(coord));
+                } else {
+                    evicted++;
+                    CliOutput.out("evicted " + Coords.gav(coord) + " from " + String.join(", ", hitRepos));
+                }
+            }
+            if (evicted > 0) {
+                CliOutput.out("");
+                CliOutput.out("Re-fetches on the next resolve (`jk lock` or a build).");
+            }
+            // Nothing evicted at all is a soft failure: the user named something jk does not hold.
+            return evicted == 0 && missed > 0 ? 1 : 0;
+        }
+
+        /** Named mirror directories under {@code store/repos/}, or the well-known set if unlistable. */
+        private static List<String> repoNames(Path reposRoot) {
+            if (!Files.isDirectory(reposRoot)) return List.of("central", "local");
+            try (var s = Files.list(reposRoot)) {
+                List<String> names = s.filter(Files::isDirectory)
+                        .map(p -> p.getFileName().toString())
+                        .sorted()
+                        .toList();
+                return names.isEmpty() ? List.of("central", "local") : names;
+            } catch (IOException e) {
+                return List.of("central", "local");
+            }
+        }
     }
 
     /**
@@ -132,7 +217,8 @@ public final class RepoCommand extends GroupCommand {
     }
 
     /**
-     * {@code jk repo storage} — CAS blobs, worker JAR mirrors, and run logs (not the action cache).
+     * {@code jk repo storage} — artifact store: store CAS + {@code repos/} mirrors + run logs (not
+     * the cache tier).
      */
     public static final class RepoStorageCommand implements CliCommand {
         @Override
@@ -142,7 +228,7 @@ public final class RepoCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Show local CAS / repo mirror size and utilization";
+            return "Show artifact-store size and utilization";
         }
 
         @Override
@@ -163,7 +249,7 @@ public final class RepoCommand extends GroupCommand {
             }
             CacheCommand.SectionStats s = CacheCommand.sectionStats(cacheRoot);
             var cfg = cc.jumpkick.config.JkCacheConfig.resolve();
-            long maxBytes = cfg.storeMaxSizeBytes();
+            long maxBytes = cfg.maxStoreSizeBytes();
             // Last-pruned stamp still lives under the cache root (prune job).
             String lastPruned = CacheCommand.lastPrunedLabel(cacheRoot);
             for (String line : CacheCommand.renderRepoStorageTable(

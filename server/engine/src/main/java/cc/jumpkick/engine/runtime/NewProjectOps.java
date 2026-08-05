@@ -3,6 +3,7 @@ package cc.jumpkick.engine.runtime;
 
 import cc.jumpkick.config.JkTemplatesConfig;
 import cc.jumpkick.scaffold.Giter8LocalApply;
+import cc.jumpkick.scaffold.Giter8TemplateIndex;
 import cc.jumpkick.scaffold.NewInputs;
 import cc.jumpkick.scaffold.NewScaffolder;
 import java.io.IOException;
@@ -141,103 +142,127 @@ public final class NewProjectOps {
         return new Result(target);
     }
 
-    /** Local / home / classpath short names only (no remote git on engine for v1). */
+    /**
+     * Resolve a template ref: absolute/relative path, short name via {@link
+     * Giter8TemplateIndex#resolveShortName} (local roots + monorepo dogfood + official cache
+     * freshen from the public {@code jkbuild/jk-templates} repo), then classpath bootstrap
+     * ({@code giter8/java-cli|kotlin-cli|quarkus}).
+     */
     static Path resolveTemplate(String ref, Path cwd) throws IOException {
-        // Absolute or relative path to a template root
         Path asPath = Path.of(ref);
         if (asPath.isAbsolute() && isTemplateRoot(asPath)) {
             return asPath.normalize();
         }
-        Path rel = cwd.resolve(ref).normalize();
-        if (Files.isDirectory(rel) && isTemplateRoot(rel)) return rel;
+        if (cwd != null) {
+            Path rel = cwd.resolve(ref).normalize();
+            if (Files.isDirectory(rel) && isTemplateRoot(rel)) return rel;
+        }
 
-        // Short name: ~/.jk/templates, $JK_TEMPLATES, classpath giter8/<name>/
         if (ref.matches("[a-z][a-z0-9-]*")) {
-            String dirName = ref + ".g8";
-            String env = System.getenv("JK_TEMPLATES");
-            if (env != null && !env.isBlank()) {
-                Path p = Path.of(env).resolve(dirName);
-                if (isTemplateRoot(p)) return p.toAbsolutePath().normalize();
-                Path bare = Path.of(env).resolve(ref);
-                if (isTemplateRoot(bare)) return bare.toAbsolutePath().normalize();
-            }
-            Path home = Path.of(System.getProperty("user.home"), ".jk", "templates", dirName);
-            if (isTemplateRoot(home)) return home.toAbsolutePath().normalize();
+            // Disk + official monorepo cache (freshen clones if missing / incomplete).
+            Optional<Path> indexed = Giter8TemplateIndex.resolveShortName(ref, cwd);
+            if (indexed.isPresent()) return indexed.get();
 
-            // Classpath resource giter8/<name>/ → extract to temp
+            // Classpath bootstrap only (three offline names shipped in :core resources).
             Path extracted = extractClasspathTemplate(ref);
             if (extracted != null) return extracted;
 
-            // Official/third-party git sources still resolve via CLI (Giter8Git).
             JkTemplatesConfig cfg = JkTemplatesConfig.resolve();
             throw new IllegalArgumentException(
-                    "template short name not found locally: "
+                    "template short name not found: "
                             + ref
-                            + " (install under ~/.jk/templates/"
-                            + dirName
-                            + " or use `jk new --template "
+                            + " (looked under $JK_TEMPLATES, ~/.jk/templates, monorepo templates/,"
+                            + " official cache; try `jk new --template "
                             + ref
-                            + "` for git resolution; official="
+                            + "` once to populate the cache, or install under ~/.jk/templates/"
+                            + ref
+                            + ".g8; official="
                             + cfg.officialUrl()
                             + ")");
         }
         throw new IllegalArgumentException("unknown template ref: " + ref);
     }
 
+    /**
+     * Extracted classpath templates, one per short name per engine run — the engine is long-lived,
+     * so re-extracting (and leaking) a fresh temp tree per create is not acceptable (JK-1457).
+     */
+    private static final java.util.concurrent.ConcurrentHashMap<String, Path> EXTRACTED =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * Unpack {@code classpath:giter8/&lt;shortName&gt;/…} when present (bootstrap java-cli /
+     * kotlin-cli / quarkus). Looks up a file marker — jar classloaders often omit directory URLs.
+     */
     private static Path extractClasspathTemplate(String shortName) throws IOException {
-        String base = "giter8/" + shortName + "/";
-        var cl = NewProjectOps.class.getClassLoader();
-        var url = cl.getResource(base);
-        if (url == null) return null;
-        if ("file".equals(url.getProtocol())) {
-            try {
-                Path root = Path.of(url.toURI());
-                if (isTemplateRoot(root)) return root;
-            } catch (Exception e) {
-                throw new IOException("classpath template path: " + url, e);
+        String prefix = "giter8/" + shortName;
+        ClassLoader cl = NewProjectOps.class.getClassLoader();
+        java.net.URL marker = cl.getResource(prefix + "/default.properties");
+        if (marker == null) return null;
+        try {
+            if ("file".equals(marker.getProtocol())) {
+                Path props = Path.of(marker.toURI());
+                Path root = props.getParent();
+                return root != null && isTemplateRoot(root) ? root.toAbsolutePath().normalize() : null;
             }
+            if ("jar".equals(marker.getProtocol())) {
+                String external = marker.toExternalForm();
+                int bang = external.indexOf('!');
+                if (bang < 0) return null;
+                return extractFromJar(java.net.URI.create(external.substring(0, bang)), prefix, shortName);
+            }
+        } catch (Exception e) {
+            throw new IOException("failed to extract classpath template '" + shortName + "': " + e.getMessage(), e);
         }
-        Path tmp = Files.createTempDirectory("jk-g8-" + shortName + "-");
-        copyResourceTree(cl, base, tmp);
-        return isTemplateRoot(tmp) ? tmp : null;
+        return null;
     }
 
-    private static void copyResourceTree(ClassLoader cl, String base, Path dest) throws IOException {
-        // Best-effort: copy default.properties and walk using jar filesystem if possible
+    /** Jar branch of {@link #extractClasspathTemplate}: extract once, reuse, clean up on failure. */
+    static Path extractFromJar(java.net.URI jarUri, String prefix, String shortName) throws IOException {
+        Path cached = EXTRACTED.get(shortName);
+        if (cached != null && isTemplateRoot(cached)) return cached;
+        Path tmp = Files.createTempDirectory("jk-g8-" + shortName + "-");
         try {
-            var url = cl.getResource(base);
-            if (url == null) return;
-            if ("jar".equals(url.getProtocol())) {
-                String s = url.toString();
-                int bang = s.indexOf('!');
-                java.net.URI jarUri = java.net.URI.create(s.substring(0, bang));
-                try (var fs = java.nio.file.FileSystems.newFileSystem(jarUri, Map.of())) {
-                    Path root = fs.getPath(s.substring(bang + 1));
-                    if (!Files.isDirectory(root)) return;
-                    try (var walk = Files.walk(root)) {
-                        for (Path p : (Iterable<Path>) walk::iterator) {
-                            if (!Files.isRegularFile(p)) continue;
-                            Path rel = root.relativize(p);
-                            Path out = dest.resolve(rel.toString());
+            String rootEntry = prefix + "/";
+            try (var fs = java.nio.file.FileSystems.newFileSystem(jarUri, Map.of())) {
+                Path root = fs.getPath(rootEntry);
+                if (!Files.isDirectory(root)) root = fs.getPath("/" + rootEntry);
+                if (!Files.isDirectory(root)) {
+                    deleteTreeQuiet(tmp);
+                    return null;
+                }
+                try (var walk = Files.walk(root)) {
+                    for (Path p : (Iterable<Path>) walk::iterator) {
+                        Path rel = root.relativize(p);
+                        Path out = tmp.resolve(rel.toString().replace('\\', '/'));
+                        if (Files.isDirectory(p)) {
+                            Files.createDirectories(out);
+                        } else {
                             Files.createDirectories(out.getParent());
                             Files.copy(p, out);
                         }
                     }
                 }
-            } else if ("file".equals(url.getProtocol())) {
-                Path root = Path.of(url.toURI());
-                try (var walk = Files.walk(root)) {
-                    for (Path p : (Iterable<Path>) walk::iterator) {
-                        if (!Files.isRegularFile(p)) continue;
-                        Path rel = root.relativize(p);
-                        Path out = dest.resolve(rel.toString());
-                        Files.createDirectories(out.getParent());
-                        Files.copy(p, out);
-                    }
-                }
             }
-        } catch (Exception e) {
-            throw new IOException("failed to extract classpath template: " + base, e);
+            if (!isTemplateRoot(tmp)) {
+                deleteTreeQuiet(tmp);
+                return null;
+            }
+            EXTRACTED.put(shortName, tmp);
+            return tmp;
+        } catch (IOException | RuntimeException e) {
+            deleteTreeQuiet(tmp); // no partial trees left behind
+            throw e;
+        }
+    }
+
+    private static void deleteTreeQuiet(Path root) {
+        try (var walk = Files.walk(root)) {
+            for (Path p : walk.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(p);
+            }
+        } catch (IOException ignored) {
+            // best-effort cleanup
         }
     }
 
@@ -255,11 +280,36 @@ public final class NewProjectOps {
         Path home = Path.of(System.getProperty("user.home")).toAbsolutePath().normalize();
         Path tmp = Path.of(System.getProperty("java.io.tmpdir")).toAbsolutePath().normalize();
         Path p = parent.toAbsolutePath().normalize();
-        if (p.startsWith(home) || p.equals(home) || p.startsWith(tmp) || p.equals(tmp)) {
+        // normalize() is textual, so a symlink satisfies the allowlist while the writes land
+        // wherever it points — and java.io.tmpdir is world-writable, so an unprivileged local user
+        // can plant one. Compare resolved paths for anything that already exists (JK-1485).
+        if (allowed(realOrSelf(p), realOrSelf(home), realOrSelf(tmp)) && allowed(p, home, tmp)) {
             return;
         }
         throw new IllegalArgumentException(
                 "parentDir must be under $HOME or the system temp directory (got " + p + ")");
+    }
+
+    private static boolean allowed(Path p, Path home, Path tmp) {
+        return p.startsWith(home) || p.equals(home) || p.startsWith(tmp) || p.equals(tmp);
+    }
+
+    /**
+     * {@code path} with symlinks resolved; the nearest existing ancestor's real path when the leaf
+     * does not exist yet (a new project's parent may be created on demand).
+     */
+    private static Path realOrSelf(Path path) {
+        for (Path p = path; p != null; p = p.getParent()) {
+            if (!Files.exists(p)) continue;
+            try {
+                Path real = p.toRealPath();
+                Path rest = p.equals(path) ? null : p.relativize(path);
+                return rest == null ? real : real.resolve(rest).normalize();
+            } catch (IOException e) {
+                return path; // unresolvable — fall back to the lexical form
+            }
+        }
+        return path;
     }
 
     private static NewInputs.Language parseLang(String lang) {

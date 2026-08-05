@@ -1,7 +1,7 @@
 # Integration / slow / bench suite triage (JK-1286)
 
 Snapshot: **2026-08-02**. Default `./gradlew test` and self-host exclude these tags
-(`integration` | `slow` | `bench`). Run keepers via:
+(`integration` | `slow` | `bench` | `network`). Run keepers via:
 
 ```bash
 ./gradlew integrationTest          # integration + slow (not bench)
@@ -37,7 +37,7 @@ Most **CLI `@Tag("integration")`** command tests and **engine** wire/plugin test
 
 | Class | Notes |
 |-------|--------|
-| `QuarkusLockPerfTest` | `@Tag("network")`, 30s budget, Maven Central; `assumeTrue(networkOk())` |
+| `QuarkusLockPerfTest` | `@Tag("network")` + `@Tag("slow")`, 30s budget, Maven Central; warm `JkDirs.store()`; `assumeTrue(networkOk())` |
 | Several `slow` Grails/Groovy e2e | Cold BOM resolve; warm CAS helps |
 | Android suites under `slow` | Google Maven + SDK |
 

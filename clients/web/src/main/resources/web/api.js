@@ -6,18 +6,46 @@ const TOKEN_KEY = 'jk-http-token';
 
 /**
  * On load, adopt a token from the URL fragment (`#t=…` — printed by `jk engine status`), stash it
- * in sessionStorage, and scrub it from the address bar. Fragments never leave the browser.
+ * in sessionStorage <em>and</em> localStorage, and scrub it from the address bar. Fragments never
+ * leave the browser. localStorage lets a new tab on the same origin load history without
+ * re-opening the tokenized URL (sessionStorage alone is per-tab).
  */
 export function bootstrapToken() {
   const match = /^#t=([A-Za-z0-9_=-]+)$/.exec(location.hash);
   if (match) {
-    sessionStorage.setItem(TOKEN_KEY, match[1]);
+    storeToken(match[1]);
     history.replaceState(null, '', location.pathname + location.search);
+    return;
+  }
+  // Promote a previously stored token into this tab's session when the hash is absent
+  // (plain refresh, new tab, bookmarked loopback URL).
+  if (!sessionStorage.getItem(TOKEN_KEY)) {
+    try {
+      const saved = localStorage.getItem(TOKEN_KEY);
+      if (saved) sessionStorage.setItem(TOKEN_KEY, saved);
+    } catch {
+      // private mode / blocked storage — token stays absent; loopback history still works
+    }
+  }
+}
+
+function storeToken(value) {
+  sessionStorage.setItem(TOKEN_KEY, value);
+  try {
+    localStorage.setItem(TOKEN_KEY, value);
+  } catch {
+    // best-effort cross-tab persistence
   }
 }
 
 export function token() {
-  return sessionStorage.getItem(TOKEN_KEY);
+  return sessionStorage.getItem(TOKEN_KEY) || (() => {
+    try {
+      return localStorage.getItem(TOKEN_KEY);
+    } catch {
+      return null;
+    }
+  })();
 }
 
 function loopback() {
@@ -62,7 +90,10 @@ export async function del(path) {
   return resp.json().catch(() => ({}));
 }
 
-/** The engine event types the dashboard folds (EventSource needs a listener per named event). */
+/**
+ * Engine event types the dashboard listens for (EventSource needs a listener per named event).
+ * Build activity is folded by fold.js; `status` / `cache` update chrome vitals (JK-1495+).
+ */
 const EVENT_TYPES = [
   'request-start',
   'plan',
@@ -77,6 +108,8 @@ const EVENT_TYPES = [
   'pipeline-finish',
   'module-finish',
   'request-finish',
+  'status',
+  'cache',
 ];
 
 /**

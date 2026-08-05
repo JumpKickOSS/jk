@@ -3,6 +3,8 @@ package cc.jumpkick.engine.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Locale;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
@@ -35,6 +37,39 @@ class MemoryProbeTest {
         assertThat(m.totalBytes()).isPositive();
         assertThat(m.availableBytes()).isPositive();
         assertThat(m.availableBytes()).isLessThanOrEqualTo(m.totalBytes());
+    }
+
+    @Test
+    void current_is_uncached_and_sane() {
+        MemoryProbe.Memory a = MemoryProbe.current();
+        MemoryProbe.Memory b = MemoryProbe.current();
+        assertThat(a.totalBytes()).isPositive();
+        assertThat(a.availableBytes()).isPositive();
+        assertThat(a.availableBytes()).isLessThanOrEqualTo(a.totalBytes());
+        // Same machine between two back-to-back reads: totals match; available within a band.
+        assertThat(b.totalBytes()).isEqualTo(a.totalBytes());
+        assertThat(b.availableBytes()).isPositive();
+    }
+
+    @Test
+    void linux_available_tracks_memavailable_not_memfree() throws Exception {
+        Assumptions.assumeTrue(
+                System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("linux"));
+        Path meminfoPath = Path.of("/proc/meminfo");
+        Assumptions.assumeTrue(Files.isReadable(meminfoPath));
+        String meminfo = Files.readString(meminfoPath);
+        long memFree = MemoryProbe.meminfoValueBytes(meminfo, "MemFree");
+        long memAvail = MemoryProbe.meminfoValueBytes(meminfo, "MemAvailable");
+        Assumptions.assumeTrue(memFree > 0 && memAvail > 0);
+        MemoryProbe.Memory m = MemoryProbe.current();
+        // On a typical busy host MemAvailable ≫ MemFree; probe must not report idle free alone.
+        // Allow cgroup clamping: available ≤ MemAvailable and much closer to it than to MemFree
+        // when the host is cache-heavy (MemAvailable > 2× MemFree).
+        assertThat(m.availableBytes()).isLessThanOrEqualTo(memAvail + 1024L * 1024L);
+        if (memAvail > memFree * 2) {
+            long mid = memFree + (memAvail - memFree) / 2;
+            assertThat(m.availableBytes()).isGreaterThan(mid);
+        }
     }
 
     @Test

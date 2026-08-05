@@ -7,10 +7,11 @@ Status: **normative** for TUI / wire progress (JK-1150). Implementations: JK-115
 1. **One aggregate** for the whole request (single module, selection subset, or monorepo).
 2. **Real-work denominator** — weight what will actually run; cache/skip → token ticks.
 3. **Hierarchical learning** — method → class → step → phase → module → invocation.
-4. **Countdown first** — when a seed ETA is trustworthy, the TUI header counts down pure
-   wall-clock from that total (`seed − elapsed`); count-up only if truly cold (`+Ns` from
-   command start) or wall-clock overrun past the seed (`+Ns` excess). The clock never resets
-   on phase/module boundaries.
+4. **Dual clock** — when a seed ETA is trustworthy, the TUI / web header shows both: dim italic
+   `ETA` + blue `~remaining` (countdown from `seed − elapsed`) and dim `+elapsed` (count-up from
+   command start). When remaining hits zero the countdown freezes dim at `0s` and count-up turns
+   yellow. With no seed both modes collapse to a single yellow `+elapsed` count-up. The clock
+   never resets on phase/module boundaries.
 5. **details.jsonl** carries fine timings; the header bar/clock stay run-wide.
 
 ## Engine owns aggregate math

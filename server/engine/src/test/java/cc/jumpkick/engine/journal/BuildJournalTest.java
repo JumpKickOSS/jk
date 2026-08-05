@@ -180,4 +180,65 @@ class BuildJournalTest {
         List<Long> numbers = j.list().stream().map(BuildRecord::buildNumber).toList();
         assertThat(numbers).contains(Long.parseLong(newest)).doesNotContain(Long.parseLong(oldest));
     }
+
+    /**
+     * JK-1471: build numbers are per project, so deleting "8" must not resolve into whichever
+     * project home happens to sort first.
+     */
+    /** JK-1491: an in-flight run's stub must survive a prune that runs alongside it. */
+    @Test
+    void prune_never_reaps_a_running_entry() {
+        BuildJournal j = new BuildJournal(dir);
+        // Old enough that any age budget would sweep it, but still running.
+        String live = j.begin(BuildRecord.running(1, "build", "/proj", "g:a", 1L, "9.9", "cli"));
+        assertThat(live).isNotNull();
+        BuildJournal.PruneResult r = j.prune(1, 1, 1_700_000_000_000L);
+        assertThat(r.removedEntries()).isZero();
+        assertThat(j.get(live)).isPresent();
+    }
+
+    /** JK-1479/JK-1481: the limited views must agree with the full list, just truncated. */
+    @Test
+    void limited_list_and_raw_records_match_the_full_list() {
+        BuildJournal j = new BuildJournal(dir);
+        for (int i = 0; i < 5; i++) {
+            j.append(record(1_700_000_000_000L + i * 1000L, true, "g:a"), new BuildJournal.Snapshot(null, null, null));
+        }
+        List<BuildRecord> full = j.list();
+        assertThat(full).hasSize(5);
+        assertThat(j.list(3)).containsExactlyElementsOf(full.subList(0, 3));
+        assertThat(j.list(99)).containsExactlyElementsOf(full);
+        assertThat(j.list(0)).isEmpty();
+
+        List<String> raw = j.rawRecords(3);
+        assertThat(raw).hasSize(3);
+        // Same records, in the same order — the raw text is the JSON each was parsed from.
+        for (int i = 0; i < raw.size(); i++) {
+            assertThat(raw.get(i)).contains(full.get(i).id());
+        }
+    }
+
+    @Test
+    void scoped_delete_does_not_touch_another_projects_run_of_the_same_number() {
+        BuildJournal j = new BuildJournal(dir);
+        j.begin(BuildRecord.running(8, "build", "/projA", "g:a", 1_700_000_000_000L, "9.9", "cli"));
+        j.begin(BuildRecord.running(8, "build", "/projB", "g:b", 1_700_000_000_000L, "9.9", "cli"));
+        assertThat(j.runDir("g:a", "/projA", 8)).isPresent();
+        assertThat(j.runDir("g:b", "/projB", 8)).isPresent();
+
+        assertThat(j.delete("8", "g:b", "/projB")).isTrue();
+
+        assertThat(j.runDir("g:b", "/projB", 8)).as("target removed").isEmpty();
+        assertThat(j.runDir("g:a", "/projA", 8))
+                .as("the other project's run of the same number survives")
+                .isPresent();
+    }
+
+    @Test
+    void scoped_delete_of_a_number_absent_from_that_project_is_a_no_op() {
+        BuildJournal j = new BuildJournal(dir);
+        j.begin(BuildRecord.running(8, "build", "/projA", "g:a", 1_700_000_000_000L, "9.9", "cli"));
+        assertThat(j.delete("8", "g:b", "/projB")).isFalse();
+        assertThat(j.runDir("g:a", "/projA", 8)).isPresent();
+    }
 }

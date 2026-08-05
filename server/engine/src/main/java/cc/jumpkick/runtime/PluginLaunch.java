@@ -39,9 +39,28 @@ final class PluginLaunch {
         afterMem.addAll(jvmFlags);
         afterMem.add("-cp");
         afterMem.add(cp);
-        afterMem.add(PluginLoader.WORKER_MAIN);
+        afterMem.add(mainClassOf(workerJar));
         afterMem.add(spec.toAbsolutePath().toString());
         return JvmOptions.javaCommand(javaExe.toString(), 1, afterMem);
+    }
+
+    /**
+     * The jar's own {@code Main-Class} when it declares one, else the SDK host. First-party workers
+     * declare {@link PluginLoader#WORKER_MAIN} and are unaffected; a third-party plugin that
+     * hand-rolls its entry point must not be launched under the SDK host, which would
+     * {@code ServiceLoader}-look for a {@code Plugin} the jar never registers and exit 70 (JK-1449).
+     */
+    private static String mainClassOf(Path workerJar) {
+        try (var jar = new java.util.jar.JarFile(workerJar.toFile())) {
+            var manifest = jar.getManifest();
+            if (manifest != null) {
+                String declared = manifest.getMainAttributes().getValue("Main-Class");
+                if (declared != null && !declared.isBlank()) return declared.strip();
+            }
+        } catch (java.io.IOException ignored) {
+            // unreadable jar — the launch itself will surface the real error
+        }
+        return PluginLoader.WORKER_MAIN;
     }
 
     /** {@code java -cp … PluginMain spec} with no extra JVM args. */

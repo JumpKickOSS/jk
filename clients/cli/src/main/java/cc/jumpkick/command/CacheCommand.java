@@ -23,9 +23,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * {@code jk cache} — manage the <strong>action cache</strong> under {@code $JK_CACHE_DIR}
- * ({@code actions/}). CAS blobs and Maven/repo mirrors live under the store ({@code JK_STORE_DIR});
- * see {@code jk repo storage} / {@code jk repo search}.
+ * {@code jk cache} — manage the <strong>cache tier</strong> under {@code $JK_CACHE_DIR}: action
+ * index ({@code actions/}), cache CAS ({@code sha256/}), and format stamps. Long-lived artifact
+ * CAS and Maven/repo mirrors live under the store ({@code JK_STORE_DIR}); see {@code jk repo
+ * storage} / {@code jk repo search}.
  */
 public final class CacheCommand extends GroupCommand {
 
@@ -36,7 +37,7 @@ public final class CacheCommand extends GroupCommand {
 
     @Override
     public String description() {
-        return "Manage the action cache (build results)";
+        return "Manage the cache tier (action outputs)";
     }
 
     @Override
@@ -74,34 +75,28 @@ public final class CacheCommand extends GroupCommand {
      * Cache/store section sizes for {@code jk cache storage}, {@code jk repo storage}, {@code jk
      * status}, and dashboard parity.
      *
-     * <p>CAS ({@code sha256/}) and {@code repos/} resolve via {@link JkStores}; action/run/stamp
-     * trees stay under the cache root.
+     * <p>Artifact CAS + {@code repos/} resolve via {@link JkStores} (store). Cache CAS ({@code
+     * <cacheRoot>/sha256/}), action index, runs, and stamps stay under the cache root.
      *
-     * <p>Byte sizes are exclusive across sections (CAS first), so hard-linked repo jars do not
-     * inflate "Size on Disk" or the utilization bar.
+     * <p>Byte sizes are exclusive across store sections (CAS first), so hard-linked repo jars do not
+     * inflate "Size on Disk" or the utilization bar. Cache-tier {@code actions} stats include the
+     * cache CAS blob tree.
      */
     static SectionStats sectionStats(Path cacheRoot) throws IOException {
-        Path cas;
-        Path repos;
-        Path abs = cacheRoot.toAbsolutePath().normalize();
-        Path ambient = JkDirs.cache().toAbsolutePath().normalize();
-        // Explicit --cache-dir (tests / alternate roots): keep trees under that directory.
-        // Ambient: CAS + repos live in the artifact store (JkStores), not under the cache root.
-        if (abs.equals(ambient)) {
-            cas = JkStores.resolve(cacheRoot, "sha256");
-            repos = JkStores.resolve(cacheRoot, "repos");
-        } else {
-            cas = cacheRoot.resolve("sha256");
-            repos = cacheRoot.resolve("repos");
-        }
+        Path storeCas = JkStores.resolve(cacheRoot, "sha256");
+        Path repos = JkStores.resolve(cacheRoot, "repos");
         Path actions = cacheRoot.resolve("actions");
+        Path cacheCas = cacheRoot.resolve("sha256");
         Path runs = cacheRoot.resolve("runs");
         Path stamps = cacheRoot.resolve("format-stamps");
-        // Order: CAS claims blob bytes; repos only adds unique (sidecars / non-linked copies).
-        DiskUsage.Stats[] parts = DiskUsage.exclusive(cas, repos, actions, runs, stamps);
+        // Store CAS first so hard-linked repos/ do not double-count; cache trees are exclusive of store.
+        DiskUsage.Stats[] parts = DiskUsage.exclusive(storeCas, repos, actions, runs, stamps);
+        DiskUsage.Stats cacheCasStats = DiskUsage.of(cacheCas);
+        Stats actionsPlusCacheCas = new Stats(
+                parts[2].files() + cacheCasStats.files(), parts[2].bytes() + cacheCasStats.bytes());
         return new SectionStats(
                 Stats.from(parts[0]),
-                Stats.from(parts[2]),
+                actionsPlusCacheCas,
                 Stats.from(parts[1]),
                 Stats.from(parts[3]),
                 Stats.from(parts[4]));
@@ -216,8 +211,8 @@ public final class CacheCommand extends GroupCommand {
     }
 
     /**
-     * {@code jk cache storage} — action-cache footprint only (file count, size, utilization vs
-     * {@code [cache] action-max-size-mb}, last pruned).
+     * {@code jk cache storage} — cache-tier footprint (action index + cache CAS + format stamps;
+     * utilization vs {@code [cache] max-cache-size-mb}, last pruned).
      */
     public static final class CacheStorageCommand implements CliCommand {
         /**
@@ -240,7 +235,7 @@ public final class CacheCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Show action-cache size and utilization";
+            return "Show cache-tier size and utilization";
         }
 
         @Override
@@ -252,21 +247,26 @@ public final class CacheCommand extends GroupCommand {
         public int run(Invocation in) throws IOException {
             Path root = resolveCacheRoot(in.value("cache-dir").map(Path::of).orElse(null));
             Path actions = root.resolve("actions");
-            if (!Files.isDirectory(root) && !Files.isDirectory(actions)) {
-                CliOutput.out("Action cache: " + cc.jumpkick.cli.PathDisplay.styledRaw(root) + " (not yet created)");
+            Path cacheCas = root.resolve("sha256");
+            if (!Files.isDirectory(root)
+                    && !Files.isDirectory(actions)
+                    && !Files.isDirectory(cacheCas)) {
+                CliOutput.out("Cache: " + cc.jumpkick.cli.PathDisplay.styledRaw(root) + " (not yet created)");
                 return 0;
             }
-            Stats a = Files.isDirectory(actions) ? statsOf(actions) : new Stats(0, 0);
+            SectionStats s = sectionStats(root);
+            // Cache tier: action index + cache CAS + format stamps.
+            long files = s.actions().files + s.stamps().files;
+            long bytes = s.actions().bytes + s.stamps().bytes;
             var cfg = cc.jumpkick.config.JkCacheConfig.resolve();
-            // JkCacheConfig treats 0/negative budgets as unset, so this is always positive.
-            long maxBytes = cfg.actionMaxSizeBytes();
+            long maxBytes = cfg.maxCacheSizeBytes();
             String lastPruned = lastPrunedLabel(root);
 
             CommandWedge.envelopeStart();
-            CliOutput.out(CommandWedge.menu("Action Cache Storage"));
-            detail("File Count", Long.toString(a.files));
-            detail("Storage Size", fmtBytes(a.bytes));
-            detail("Utilization", utilizationText(a.bytes, maxBytes));
+            CliOutput.out(CommandWedge.menu("Cache Storage"));
+            detail("File Count", Long.toString(files));
+            detail("Storage Size", fmtBytes(bytes));
+            detail("Utilization", utilizationText(bytes, maxBytes));
             Theme t = Theme.active();
             detail(
                     "Last Pruned",
@@ -533,7 +533,7 @@ public final class CacheCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Delete the entire action cache (asks to confirm)";
+            return "Delete the entire cache tier (asks to confirm)";
         }
 
         @Override
@@ -556,7 +556,7 @@ public final class CacheCommand extends GroupCommand {
             }
             Stats stats = actionCacheStats(root);
             if (stats.files == 0) {
-                cc.jumpkick.cli.tui.CommandWedge.printOk("Cache", "Nothing to purge — the action cache is empty.");
+                cc.jumpkick.cli.tui.CommandWedge.printOk("Cache", "Nothing to purge — the cache tier is empty.");
                 return 0;
             }
             if (dryRun) {
@@ -597,14 +597,15 @@ public final class CacheCommand extends GroupCommand {
         }
 
         /**
-         * The action-cache footprint the purge will delete: {@code actions/} + {@code format-stamps/}
-         * (mirrors {@code CachePipelines.purgeActionCache}). Store-side trees under the same root
-         * (CAS, repo mirrors, run logs) are excluded — purge keeps them.
+         * Cache-tier footprint the purge will delete: {@code actions/}, {@code format-stamps/}, and
+         * cache {@code sha256/} (mirrors {@code CachePipelines.purgeActionCache}). Collocated
+         * {@code repos/} and {@code runs/} are excluded — artifact store stays under {@code
+         * JK_STORE_DIR}.
          */
         static Stats actionCacheStats(Path root) throws IOException {
             long files = 0;
             long bytes = 0;
-            for (String tree : new String[] {"actions", "format-stamps"}) {
+            for (String tree : new String[] {"actions", "format-stamps", "sha256"}) {
                 Path dir = root.resolve(tree);
                 if (!Files.isDirectory(dir)) continue;
                 Stats s = statsOf(dir);
@@ -614,22 +615,22 @@ public final class CacheCommand extends GroupCommand {
             return new Stats(files, bytes);
         }
 
-        /** Stern, default-to-no confirmation before wiping the action cache. */
+        /** Stern, default-to-no confirmation before wiping the cache tier. */
         private static boolean confirmPurge(Path root, Stats stats) {
             Theme t = Theme.active();
             String bang = Theme.colorize(Glyphs.BANG, t.warning());
             CliOutput.out();
             CliOutput.out(bang
                     + " "
-                    + Theme.colorize("This permanently deletes the ENTIRE action cache.", t.errorLabel()));
+                    + Theme.colorize("This permanently deletes the ENTIRE cache tier.", t.errorLabel()));
             CliOutput.out("  " + root);
             CliOutput.stdout()
                     .printf(
-                            "  %s files, %s — every action-cache entry (actions/ + format stamps) under this root.%n",
+                            "  %s files, %s — action index, cache CAS (sha256/), and format stamps.%n",
                             fmtCount(stats.files), fmtBytes(stats.bytes));
-            CliOutput.out("  CAS blobs, repo mirrors, and run logs are kept (see jk repo). The next build re-runs work.");
-            return cc.jumpkick.cli.tui.Confirm.of(bang + " Purge the action cache?", false)
-                    .ask();
+            CliOutput.out(
+                    "  Artifact store (deps under JK_STORE_DIR) is kept. Rebuildable — the next build re-runs work.");
+            return cc.jumpkick.cli.tui.Confirm.of(bang + " Purge the cache tier?", false).ask();
         }
     }
 
@@ -680,7 +681,7 @@ public final class CacheCommand extends GroupCommand {
 
     /**
      * Box table for {@code jk repo storage}: CAS + worker jars + run logs, utilization vs store
-     * {@code max-size-gb}, last-pruned footer.
+     * {@code max-store-size-mb}, last-pruned footer.
      */
     static List<String> renderRepoStorageTable(
             Stats cas, Stats repos, Stats runs, long totalFiles, long totalBytes, long maxBytes, String lastPruned) {

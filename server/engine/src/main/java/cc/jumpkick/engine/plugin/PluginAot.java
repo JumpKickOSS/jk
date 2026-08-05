@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.jdk.JdkVendor;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.util.AotManifest;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.Hashing;
@@ -102,7 +103,9 @@ public final class PluginAot {
      * …). Never blocks, never throws.
      *
      * <p>{@code tool} is a short prefix ({@code kotlinc}, {@code java-compiler}) so caches do not
-     * collide across plugin kinds that share a jar path shape.
+     * collide across plugin kinds that share a jar path shape. File names are
+     * {@code <tool>-<jk-version>-<16hex>.aot} so a primary wipe can keep the live product line
+     * (JK-1452).
      */
     public static List<String> pluginWorkerFlags(
             String tool, Path javaHome, String workerClasspath, TrainerCommand trainer) {
@@ -114,7 +117,7 @@ public final class PluginAot {
             String gc = effectiveGc(batch); // must match javaCommand / PluginLoader
             String prefix = (tool == null || tool.isBlank()) ? "plugin" : tool;
             String cacheKey = key(id, gc, workerClasspath);
-            Path cache = dir().resolve(prefix + "-" + cacheKey + ".aot");
+            Path cache = cacheFile(prefix, cacheKey);
             CacheMeta meta = new CacheMeta(prefix, cacheKey, id, gc, workerClasspath, batch);
             if (usableCache(cache)) {
                 touch(cache); // retention is by last use; the JVM mapping a cache never updates mtime
@@ -170,10 +173,19 @@ public final class PluginAot {
             if (id == null) return null;
             String gc = effectiveGc(JvmOptions.batchFlags(1));
             String prefix = (tool == null || tool.isBlank()) ? "plugin" : tool;
-            return dir().resolve(prefix + "-" + key(id, gc, workerClasspath) + ".aot");
+            return cacheFile(prefix, key(id, gc, workerClasspath));
         } catch (RuntimeException e) {
             return null;
         }
+    }
+
+    /**
+     * On-disk name for a worker cache: {@code <tool>-<JkVersion>-<16hex>.aot}. Version is in the
+     * path so {@link cc.jumpkick.cache.VersionStore#wipeAotDirectory} can keep the live product
+     * line and drop every other generation's worker + engine caches.
+     */
+    static Path cacheFile(String toolPrefix, String cacheKey) {
+        return dir().resolve(toolPrefix + "-" + JkVersion.VERSION + "-" + cacheKey + ".aot");
     }
 
     /**
@@ -205,7 +217,7 @@ public final class PluginAot {
             String gc = effectiveGc(batch);
             String prefix = (tool == null || tool.isBlank()) ? "plugin" : tool;
             String cacheKey = key(id, gc, workerClasspath);
-            Path cache = dir().resolve(prefix + "-" + cacheKey + ".aot");
+            Path cache = cacheFile(prefix, cacheKey);
             CacheMeta meta = new CacheMeta(prefix, cacheKey, id, gc, workerClasspath, batch);
             if (force) {
                 try {
@@ -473,11 +485,13 @@ public final class PluginAot {
      * JDKs, Kotlin versions, GC pins); expiring a stale {@code .noaot} also gives a once-failed key
      * a fresh training attempt. Engine caches ({@code engine-<version>-…}) share this directory but
      * are version-lifecycle-owned (EngineClient sweep + VersionStore.prune) — never touched here.
+     *
+     * <p>Names are {@code <tool>-<jk-version>-<16hex>.aot}; the pool is one product version of one
+     * tool (e.g. {@code java-compiler-0.11.0-*}).
      */
     private static void sweepTool(Path cache) {
-        // "<tool>-<16 hex>.aot" → "<tool>-". Strip the fixed-width key suffix, not up to the
-        // first hyphen: tool tags may themselves contain hyphens (java-compiler), and a
-        // first-hyphen cut would lump every "java-*" tool into one retention pool.
+        // "<tool>-<version>-<16 hex>.aot" → strip fixed-width key suffix, not up to the first
+        // hyphen (tool tags may contain hyphens: java-compiler).
         String name = cache.getFileName().toString();
         if (!name.endsWith(".aot") || name.length() < 22) return;
         String tool = name.substring(0, name.length() - 20); // 16-hex key + ".aot"
@@ -626,6 +640,7 @@ public final class PluginAot {
         AotManifest.Entry.Builder b = AotManifest.Entry.builder(cache.getFileName().toString())
                 .tool(meta.tool())
                 .key(meta.key())
+                .jkVersion(JkVersion.VERSION)
                 .status("ready")
                 .sizeBytes(AotManifest.sizeOf(cache))
                 .jdkHome(meta.id().home().toString())
@@ -664,6 +679,7 @@ public final class PluginAot {
         if (meta != null) {
             b.tool(meta.tool())
                     .key(meta.key())
+                    .jkVersion(JkVersion.VERSION)
                     .jdkHome(meta.id().home().toString())
                     .jdkVendor(meta.id().vendor().name())
                     .jdkVersion(meta.id().version())

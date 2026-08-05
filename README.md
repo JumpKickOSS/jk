@@ -1,6 +1,6 @@
 <img width="1024" height="274" alt="JumpKick" src="https://github.com/user-attachments/assets/5cf7e056-1eed-43f7-9c6f-67bbb8d1e807" />
 
-# JumpKick — the modern build tool for the JVM
+# JumpKick — the best damn build tool for the JVM
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Java](https://img.shields.io/badge/Java-25-orange.svg)](https://openjdk.org/projects/jdk/25/)

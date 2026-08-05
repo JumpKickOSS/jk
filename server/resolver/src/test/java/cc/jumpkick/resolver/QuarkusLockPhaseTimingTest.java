@@ -26,7 +26,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * wall-time breakdown of warm Quarkus locks (graph vs materialize). Uses the developer's
- * {@code ~/.cache/jk} so re-runs measure CAS-local materialize, not cold downloads.
+ * artifact store so re-runs measure CAS-local materialize, not cold downloads.
  */
 @Tag("integration")
 class QuarkusLockPhaseTimingTest {
@@ -34,7 +34,8 @@ class QuarkusLockPhaseTimingTest {
     @Test
     @Timeout(value = 120, unit = TimeUnit.SECONDS)
     void warm_quarkus_lock_phases(@TempDir Path tmp) throws Exception {
-        assumeTrue(Files.isDirectory(Path.of(System.getProperty("user.home"), ".jk/cache")));
+        Path store = QuarkusLockPerfTest.developerStore();
+        assumeTrue(Files.isDirectory(store));
         Files.writeString(tmp.resolve("jk.toml"), """
                 [project]
                 name = "q-phase"
@@ -56,7 +57,7 @@ class QuarkusLockPhaseTimingTest {
                 """);
 
         JkBuild project = JkBuildParser.parse(tmp.resolve("jk.toml"));
-        Cas cas = new Cas(Path.of(System.getProperty("user.home"), ".jk/cache"));
+        Cas cas = new Cas(store);
         RepoGroup repos =
                 RepoGroup.of(new MavenRepo("central", URI.create("https://repo1.maven.org/maven2/"), new Http(), cas));
 

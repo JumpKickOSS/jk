@@ -346,6 +346,9 @@ public final class JUnitLauncher {
         if (testEnv != null) env.putAll(testEnv);
         env.putIfAbsent(
                 "TEST_TO_MAIN_MAPPINGS", "classes" + File.separator + "test" + ":classes" + File.separator + "main");
+        // Suite JVMs must never prompt on the developer's controlling TTY (Confirm/Wizard via JLine
+        // system terminal) or hang waiting for a keystroke during `jk build` / `jk test`.
+        env.putIfAbsent("JK_NONINTERACTIVE", "1");
         this.testEnv = Map.copyOf(env);
         this.inferredModuleDir = inferModuleDir(testClassesDir);
         ensureQuarkusToolingPom(this.inferredModuleDir);

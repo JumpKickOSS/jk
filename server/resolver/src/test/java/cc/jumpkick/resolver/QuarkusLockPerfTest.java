@@ -12,10 +12,12 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.util.JkDirs;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -23,9 +25,11 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Quarkus platform + rest/arc must lock under the default engine budget (≪ 2 minutes).
- * Requires network (Maven Central); skipped offline.
+ * Requires network (Maven Central); skipped offline. Warm metadata lives in the developer's
+ * artifact store (not the action-cache tier, and not hermetic {@code JK_HOME} from Gradle).
  */
 @Tag("network")
+@Tag("slow")
 class QuarkusLockPerfTest {
 
     @Test
@@ -51,9 +55,9 @@ class QuarkusLockPerfTest {
         JkBuild project = JkBuildParser.parse(tmp.resolve("jk.toml"));
         assertThat(project.dependencies().of(Scope.PLATFORM)).isNotEmpty();
 
-        Path cache = Path.of(System.getProperty("user.home"), ".jk/cache");
-        assumeTrue(Files.isDirectory(cache), "local jk cache helps warm metadata");
-        Cas cas = new Cas(cache);
+        Path store = developerStore();
+        assumeTrue(Files.isDirectory(store), "local jk store helps warm metadata");
+        Cas cas = new Cas(store);
         MavenRepo central = new MavenRepo("central", URI.create("https://repo1.maven.org/maven2/"), new Http(), cas);
         long t0 = System.nanoTime();
         Lockfile lock =
@@ -63,6 +67,18 @@ class QuarkusLockPerfTest {
                 "quarkus-rest lock ms=" + ms + " packages=" + lock.artifacts().size());
         assertThat(lock.artifacts()).isNotEmpty();
         assertThat(ms).as("lock wall time %d ms", ms).isLessThan(30_000L);
+    }
+
+    /**
+     * Platform / XDG artifact store for the real user home, ignoring hermetic
+     * {@code JK_HOME}/{@code JK_STORE_DIR} that Gradle test conventions inject.
+     */
+    static Path developerStore() {
+        Function<String, String> env = k -> switch (k) {
+            case "JK_HOME", "JK_STORE_DIR", "JK_DATA_DIR", "JK_CACHE_DIR" -> null;
+            default -> System.getenv(k);
+        };
+        return JkDirs.of(env, System.getProperty("user.home")).storeDir();
     }
 
     private static boolean networkOk() {

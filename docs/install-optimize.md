@@ -37,7 +37,7 @@ Network errors are **fail-fast and quiet** (no retries). The next minute/12 h 
 
 | Artifact | Notes |
 |----------|--------|
-| **java-compiler-*.aot** | ToolProvider javac worker (HotSpot 25+) — pre-trained on idle |
+| **java-compiler-`<jk-version>`-*.aot** | ToolProvider javac worker (HotSpot 25+) — pre-trained on idle |
 | **engine-`<jk-version>`-*.aot** | Resident engine JAR (sidecar train; same GC / native-access as serve) |
 | **host-metrics.toml `[calibration]`** | HardwareProbe multi-probe for cold ETA |
 
@@ -46,6 +46,28 @@ project/version-specific; a dedicated bootstrap key would not match production f
 with `jk engine aot`.
 **Not** AOT-cached at all: **Groovy** workers (no cache integration yet) and test-runner AOT
 (suite classpath includes project classes; caches are not reusable).
+
+### AOT on upgrade / displace (JK-1452)
+
+All JEP 514 caches live under the **shared** `state/aot/` directory (not under
+`versions/<v>/`). File names carry the product version:
+
+- `engine-0.11.0-<key>.aot`
+- `java-compiler-0.11.0-<key>.aot` / `kotlinc-0.11.0-<key>.aot`
+
+Policy when a generation becomes primary (endpoint claim / `jk self materialize` — not every
+ensure of an already-live same-version engine):
+
+1. **Reap other versions** — delete every AOT artifact whose name is not for this exact
+   product version (no `-<version>-<16hex>` segment). Legacy unversioned worker names
+   (`java-compiler-<key>.aot`) are dropped. **This version's** caches are kept so a respawn
+   does not discard a just-trained engine AOT.
+2. **Displaced engines** — kill any engine AOT training sidecar **and** suppress all further
+   AOT training in that process (workers included), so they cannot recreate missing caches
+   while draining.
+3. **New primary** — maps existing same-version caches; trains engine/workers on miss.
+
+Old product lines' multi‑tens of MiB of AOT do not accumulate across upgrades.
 
 ### `aot.toml` (human index)
 

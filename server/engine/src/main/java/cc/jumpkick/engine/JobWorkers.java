@@ -42,12 +42,59 @@ public final class JobWorkers {
     public static final long MAX_CANCEL_GRACE_MS = 5_000L;
 
     /**
-     * Inheritable so test/plugin worker threads forked from the request runner still attach
-     * processes to the same request id.
+     * The request a fork on this thread belongs to.
+     *
+     * <p>Inheritable so a thread the request runner creates itself still attaches to the same
+     * request. Inheritance alone is <em>not</em> enough, though: CPU steps (compile-java,
+     * compile-kotlin, plugin-*) run on {@code JkThreads.cpu()}, a process-wide ForkJoinPool whose
+     * threads inherit whatever scope happened to be open when the pool first created them — so a
+     * javac forked for request 7 could land under request 1 (or nowhere), and cancel would never
+     * kill it. The propagator registered below carries the submitting thread's scope across that
+     * pool hop, which is what makes the cancel contract in the class javadoc actually hold
+     * (JK-1469).
      */
     private static final InheritableThreadLocal<Long> CURRENT = new InheritableThreadLocal<>();
 
     private static final ConcurrentHashMap<Long, Set<Process>> BY_REQUEST = new ConcurrentHashMap<>();
+
+    static {
+        cc.jumpkick.run.ContextPropagator.add(new cc.jumpkick.run.ContextPropagator.Propagator() {
+            @Override
+            public Runnable wrapRunnable(Runnable r) {
+                Long captured = CURRENT.get();
+                return () -> runWithScope(captured, r);
+            }
+
+            @Override
+            public <T> java.util.concurrent.Callable<T> wrapCallable(java.util.concurrent.Callable<T> c) {
+                Long captured = CURRENT.get();
+                return () -> {
+                    Long previous = CURRENT.get();
+                    setScope(captured);
+                    try {
+                        return c.call();
+                    } finally {
+                        setScope(previous);
+                    }
+                };
+            }
+        });
+    }
+
+    private static void runWithScope(Long captured, Runnable r) {
+        Long previous = CURRENT.get();
+        setScope(captured);
+        try {
+            r.run();
+        } finally {
+            setScope(previous);
+        }
+    }
+
+    private static void setScope(Long id) {
+        if (id == null) CURRENT.remove();
+        else CURRENT.set(id);
+    }
 
     private JobWorkers() {}
 
@@ -59,6 +106,29 @@ public final class JobWorkers {
     /** Drop the thread's request scope (does not kill processes). */
     public static void close() {
         CURRENT.remove();
+    }
+
+    /** Test seam: the request scope currently open on this thread, or {@code null}. */
+    static Long currentScope() {
+        return CURRENT.get();
+    }
+
+    /** Test seam: force the shared CPU pool's threads to exist under the caller's scope. */
+    static void warmPoolForTest() throws Exception {
+        int n = Math.max(2, Runtime.getRuntime().availableProcessors());
+        java.util.List<java.util.concurrent.Future<?>> pending = new java.util.ArrayList<>();
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        for (int i = 0; i < n; i++) {
+            pending.add(cc.jumpkick.run.JkThreads.cpu().submit(() -> {
+                try {
+                    release.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }));
+        }
+        release.countDown();
+        for (var f : pending) f.get(10, TimeUnit.SECONDS);
     }
 
     /** Forget all processes for {@code requestId} without killing them (scope end after clean exit). */

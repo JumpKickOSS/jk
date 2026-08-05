@@ -22,13 +22,29 @@ import java.util.function.Consumer;
  */
 public final class OfficialTemplatesFreshen {
 
+    /**
+     * Last freshen attempt (success or failure) per cache key. Short-name resolution calls
+     * {@link #refreshQuiet} from the engine's request path (JK-1454): without this guard an offline
+     * host would re-run a 60–120 s git attempt on every retry of a missing template.
+     */
+    private static final java.util.concurrent.ConcurrentHashMap<String, Long> LAST_ATTEMPT_NANOS =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    static final long ATTEMPT_TTL_NANOS = TimeUnit.MINUTES.toNanos(10);
+
     private OfficialTemplatesFreshen() {}
 
-    /** Best-effort freshen; never throws. Network / missing git → silent skip. */
+    /**
+     * Best-effort freshen; never throws. Network / missing git → silent skip. Attempts are rate
+     * limited to one per cache key per {@link #ATTEMPT_TTL_NANOS} (success <em>or</em> failure);
+     * the 12 h maintenance cycle and engine-start warmup are unaffected by a 10 min TTL.
+     */
     public static void refreshQuiet(Consumer<String> log) {
         if (log == null) log = s -> {};
         try {
-            refresh(JkTemplatesConfig.resolve(), log);
+            JkTemplatesConfig cfg = JkTemplatesConfig.resolve();
+            if (!markAttempt(parse(officialRef(cfg)).cacheKey(), System.nanoTime())) return;
+            refresh(cfg, log);
         } catch (Throwable t) {
             // Quiet: one short line only when something unexpected is worth a breadcrumb.
             String m = t.getMessage();
@@ -38,15 +54,37 @@ public final class OfficialTemplatesFreshen {
         }
     }
 
-    static void refresh(JkTemplatesConfig config, Consumer<String> log) throws IOException {
+    /** True when the caller won the attempt slot (none in the last TTL); atomically records it. */
+    static boolean markAttempt(String cacheKey, long nowNanos) {
+        boolean[] won = {false};
+        LAST_ATTEMPT_NANOS.compute(cacheKey, (k, last) -> {
+            if (last != null && nowNanos - last < ATTEMPT_TTL_NANOS) return last;
+            won[0] = true;
+            return nowNanos;
+        });
+        return won[0];
+    }
+
+    static void resetAttemptGuardForTests() {
+        LAST_ATTEMPT_NANOS.clear();
+    }
+
+    static String officialRef(JkTemplatesConfig config) {
         JkTemplatesConfig cfg = config == null ? JkTemplatesConfig.defaults() : config;
         String ref = cfg.officialUrl();
-        if (ref == null || ref.isBlank()) ref = JkTemplatesConfig.DEFAULT_OFFICIAL;
+        return ref == null || ref.isBlank() ? JkTemplatesConfig.DEFAULT_OFFICIAL : ref;
+    }
+
+    static void refresh(JkTemplatesConfig config, Consumer<String> log) throws IOException {
+        JkTemplatesConfig cfg = config == null ? JkTemplatesConfig.defaults() : config;
+        String ref = officialRef(cfg);
         Path cacheRoot = primaryCacheRoot();
         Files.createDirectories(cacheRoot);
         Parsed p = parse(ref);
         Path dest = cacheRoot.resolve(p.cacheKey());
-        if (!Files.isDirectory(dest) || isEmptyDir(dest)) {
+        // Incomplete clones (e.g. only a .git dir left from a failed private-repo attempt) must be
+        // wiped and re-cloned — fetch/reset cannot recover them.
+        if (!Files.isDirectory(dest) || isEmptyDir(dest) || !looksLikeTemplateMonorepo(dest)) {
             if (Files.exists(dest)) deleteRecursively(dest);
             Files.createDirectories(dest.getParent());
             runGit(p.cloneArgs(dest), 120);
@@ -54,20 +92,48 @@ public final class OfficialTemplatesFreshen {
             return;
         }
         // Existing shallow clone: cheap fetch + hard reset (no merge noise).
-        List<String> fetch = new ArrayList<>();
-        fetch.add("git");
-        fetch.add("-C");
-        fetch.add(dest.toString());
-        fetch.add("fetch");
-        fetch.add("--depth");
-        fetch.add("1");
-        fetch.add("origin");
-        if (p.rev() != null && !p.rev().isBlank()) {
-            fetch.add(p.rev());
+        try {
+            List<String> fetch = new ArrayList<>();
+            fetch.add("git");
+            fetch.add("-C");
+            fetch.add(dest.toString());
+            fetch.add("fetch");
+            fetch.add("--depth");
+            fetch.add("1");
+            fetch.add("origin");
+            if (p.rev() != null && !p.rev().isBlank()) {
+                fetch.add(p.rev());
+            }
+            runGit(fetch, 60);
+            List<String> reset = List.of("git", "-C", dest.toString(), "reset", "--hard", "FETCH_HEAD");
+            runGit(reset, 30);
+        } catch (IOException fetchFailed) {
+            // Corrupt / auth-skewed cache: delete and clone clean.
+            deleteRecursively(dest);
+            Files.createDirectories(dest.getParent());
+            runGit(p.cloneArgs(dest), 120);
+            log.accept("jk engine: re-cloned official templates (" + dest.getFileName() + ")");
         }
-        runGit(fetch, 60);
-        List<String> reset = List.of("git", "-C", dest.toString(), "reset", "--hard", "FETCH_HEAD");
-        runGit(reset, 30);
+    }
+
+    /**
+     * True when {@code dest} looks like a usable templates monorepo (has at least one {@code *.g8}
+     * tree or a nested {@code templates/} dir). A bare {@code .git} from a failed clone is not.
+     */
+    static boolean looksLikeTemplateMonorepo(Path dest) {
+        if (dest == null || !Files.isDirectory(dest)) return false;
+        try (var stream = Files.list(dest)) {
+            return stream.anyMatch(p -> {
+                String n = p.getFileName().toString();
+                if (n.startsWith(".")) return false;
+                if (n.endsWith(".g8") && Files.isDirectory(p)) return true;
+                if (n.equals("templates") && Files.isDirectory(p)) return true;
+                // Single-template or flat monorepo clone with default.properties at root
+                return Files.isRegularFile(p.resolve("default.properties"));
+            });
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     /** Prefer legacy {@code ~/.jk/cache/templates} (CLI Giter8Git), else XDG cache. */

@@ -176,11 +176,14 @@ public final class BuildJournal {
             writeRunMetricsToml(tmp, toWrite);
             Files.move(tmp.resolve(RECORD), target.resolve(RECORD), StandardCopyOption.REPLACE_EXISTING);
             if (Files.isRegularFile(tmp.resolve(ProjectBuilds.METRICS))) {
-                Files.move(
-                        tmp.resolve(ProjectBuilds.METRICS),
-                        target.resolve(ProjectBuilds.METRICS),
-                        StandardCopyOption.REPLACE_EXISTING);
+                synchronized (metricsLock(target)) {
+                    Files.move(
+                            tmp.resolve(ProjectBuilds.METRICS),
+                            target.resolve(ProjectBuilds.METRICS),
+                            StandardCopyOption.REPLACE_EXISTING);
+                }
             }
+            METRICS_LOCKS.remove(target.toAbsolutePath().normalize());
             if (snapshot != null) {
                 if (snapshot.testResultsMd() != null && Files.isRegularFile(tmp.resolve(TEST_RESULTS_MD))) {
                     Files.move(
@@ -225,29 +228,45 @@ public final class BuildJournal {
         }
     }
 
+    /**
+     * Serializes every mutation of a run's {@code metrics.toml}: {@link #appendHostSamples} is a
+     * read-modify-write and {@code complete()} moves a freshly written file over the same path, so
+     * without this one of the two silently loses (JK-1491). Keyed by run dir; entries are dropped
+     * once the run is complete.
+     */
+    private static final java.util.concurrent.ConcurrentHashMap<Path, Object> METRICS_LOCKS =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static Object metricsLock(Path runDir) {
+        return METRICS_LOCKS.computeIfAbsent(runDir.toAbsolutePath().normalize(), k -> new Object());
+    }
+
     public void appendHostSamples(String locator, List<HostSampleLine> samples) {
         if (!validLocator(locator) || samples == null || samples.isEmpty()) return;
         Path run = findRunDir(locator).orElse(null);
         if (run == null) return;
         Path metrics = run.resolve(ProjectBuilds.METRICS);
-        try {
-            StringBuilder sb = new StringBuilder();
-            if (Files.isRegularFile(metrics)) {
-                sb.append(Files.readString(metrics, StandardCharsets.UTF_8));
-                if (sb.length() > 0 && sb.charAt(sb.length() - 1) != '\n') sb.append('\n');
-            } else {
-                sb.append("# run metrics\n");
+        synchronized (metricsLock(run)) {
+            try {
+                StringBuilder sb = new StringBuilder();
+                if (Files.isRegularFile(metrics)) {
+                    sb.append(Files.readString(metrics, StandardCharsets.UTF_8));
+                    if (sb.length() > 0 && sb.charAt(sb.length() - 1) != '\n') sb.append('\n');
+                } else {
+                    sb.append("# run metrics\n");
+                }
+                for (HostSampleLine s : samples) {
+                    if (s == null || s.key() == null || s.key().isBlank() || !(s.ms() > 0)) continue;
+                    sb.append("host.")
+                            .append(sanitize(s.key()))
+                            .append(" = ")
+                            .append(Math.round(s.ms()))
+                            .append('\n');
+                }
+                Files.writeString(metrics, sb.toString(), StandardCharsets.UTF_8);
+            } catch (IOException ignored) {
+                // best-effort: host samples are diagnostics, never worth failing a build
             }
-            for (HostSampleLine s : samples) {
-                if (s == null || s.key() == null || s.key().isBlank() || !(s.ms() > 0)) continue;
-                sb.append("host.")
-                        .append(sanitize(s.key()))
-                        .append(" = ")
-                        .append(Math.round(s.ms()))
-                        .append('\n');
-            }
-            Files.writeString(metrics, sb.toString(), StandardCharsets.UTF_8);
-        } catch (IOException ignored) {
         }
     }
 
@@ -374,14 +393,43 @@ public final class BuildJournal {
 
     public List<BuildRecord> list() {
         List<BuildRecord> out = new ArrayList<>();
+        for (Loaded l : loadAll()) out.add(l.record());
+        return out;
+    }
+
+    /** A record with the JSON text it came from and the directory holding it. */
+    private record Loaded(BuildRecord record, String json, Path dir) {}
+
+    /**
+     * Every non-synthetic record, newest first, read <em>once</em>.
+     *
+     * <p>Callers used to parse the whole journal and then re-read the same {@code record.json}
+     * files as raw text, so a dashboard refresh cost two full passes over every run on disk
+     * (JK-1479). Keeping the source JSON alongside the parsed record makes the second pass free.
+     */
+    private List<Loaded> loadAll() {
+        List<Loaded> out = new ArrayList<>();
         for (Path dir : entryDirs()) {
-            readRecord(dir).ifPresent(r -> {
-                // Defense in depth: never surface optimize/calibrate fixtures (JK-1390).
-                if (!r.synthetic()) out.add(r);
-            });
+            Path record = dir.resolve(RECORD);
+            if (!Files.isRegularFile(record)) continue;
+            String json;
+            try {
+                json = Files.readString(record, StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                continue;
+            }
+            BuildRecord parsed;
+            try {
+                parsed = Json.read(json);
+            } catch (RuntimeException e) {
+                continue;
+            }
+            // Defense in depth: never surface optimize/calibrate fixtures (JK-1390).
+            if (parsed != null && !parsed.synthetic()) out.add(new Loaded(parsed, json, dir));
         }
         // Newest first by startedAt / finishedAt
-        out.sort(Comparator.comparingLong((BuildRecord r) -> r.finishedAt() > 0 ? r.finishedAt() : r.startedAt())
+        out.sort(Comparator.comparingLong((Loaded l) ->
+                        l.record().finishedAt() > 0 ? l.record().finishedAt() : l.record().startedAt())
                 .reversed());
         return out;
     }
@@ -401,19 +449,24 @@ public final class BuildJournal {
         return Optional.empty();
     }
 
+    /** The newest {@code limit} records as their raw JSON — no second read (see {@link #loadAll}). */
     public List<String> rawRecords(int limit) {
         List<String> out = new ArrayList<>();
-        for (BuildRecord r : list()) {
+        for (Loaded l : loadAll()) {
             if (out.size() >= limit) break;
-            // Prefer path via build number + project
-            Optional<Path> dir = runDir(r.coord(), r.dir(), r.buildNumber());
-            if (dir.isEmpty()) dir = findRunDir(ProjectBuilds.runDirName(r.buildNumber()));
-            if (dir.isEmpty()) continue;
-            Path rec = dir.get().resolve(RECORD);
-            try {
-                if (Files.isRegularFile(rec)) out.add(Files.readString(rec, StandardCharsets.UTF_8));
-            } catch (IOException ignored) {
-            }
+            out.add(l.json());
+        }
+        return out;
+    }
+
+    /** The newest {@code limit} records, parsed — truncated without materialising the rest. */
+    public List<BuildRecord> list(int limit) {
+        if (limit <= 0) return List.of();
+        List<Loaded> all = loadAll();
+        List<BuildRecord> out = new ArrayList<>(Math.min(limit, all.size()));
+        for (Loaded l : all) {
+            if (out.size() >= limit) break;
+            out.add(l.record());
         }
         return out;
     }
@@ -434,9 +487,43 @@ public final class BuildJournal {
         return true;
     }
 
+    /**
+     * Delete a run, resolving the locator <em>within one project</em>.
+     *
+     * <p>Build numbers are allocated per project, so a bare number like {@code "8"} names a
+     * different run in every project home; the unscoped {@link #delete(String)} resolves it by
+     * scanning project homes in sorted order and taking the first hit, which can wipe an unrelated
+     * project's history. Callers that know the project (they just wrote the record) must use this
+     * (JK-1471). Falls back to the unscoped lookup only when the project is unknown or the number
+     * does not exist under it — e.g. a history id rather than a build number.
+     */
+    public boolean delete(String idOrLocator, String coord, String dir) {
+        if (idOrLocator != null && !idOrLocator.isBlank() && ProjectBuilds.validRunDirName(idOrLocator)) {
+            try {
+                long n = Long.parseLong(idOrLocator);
+                Optional<Path> scoped = runDir(coord, dir, n);
+                if (scoped.isPresent()) {
+                    if (!Files.isDirectory(scoped.get())) return false;
+                    deleteTreeQuietly(scoped.get());
+                    return true;
+                }
+                // A per-project number that does not exist under this project is not ours to
+                // resolve globally — another project's run of the same number is not the target.
+                return false;
+            } catch (NumberFormatException ignored) {
+                // not a build number — fall through to the id lookup
+            }
+        }
+        return delete(idOrLocator);
+    }
+
     public PruneResult prune(long maxAgeMillis, long maxDiskBytes, long nowMillis) {
         List<Entry> entries = new ArrayList<>();
         for (Path dir : entryDirs()) {
+            // Never reap a run that has not finished: the idle gate is checked before this call,
+            // so a build admitted in between would otherwise have its `running` stub deleted out
+            // from under it (JK-1491).
+            if (readRecord(dir).map(BuildRecord::running).orElse(false)) continue;
             entries.add(new Entry(dir, entryMillis(dir, nowMillis), sizeOf(dir)));
         }
         int removed = 0;

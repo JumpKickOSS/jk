@@ -18,10 +18,11 @@ the doc the shell's source files cite.
 ## Auth
 
 Token bootstrap rides the URL fragment: `jk engine status` prints a dashboard link ending in
-`#t=<token>`; on load `api.js` stashes the token in `sessionStorage` and scrubs the fragment from
-the address bar (fragments never leave the browser). Every `/api` call then sends
-`Authorization: Bearer <token>`. Auth tiers (read-only vs token-gated mutations) are defined in
-[http.md](http.md).
+`#t=<token>`; on load `api.js` stashes the token in `sessionStorage` and `localStorage` and scrubs
+the fragment from the address bar (fragments never leave the browser). Later tabs/refreshes reuse
+the stored token. Every `/api` call then sends `Authorization: Bearer <token>` when present. On
+loopback the journal list (`GET /api/history`) is open without a token so a hard-refresh still
+rehydrates Activity; mutations and sensitive reads stay token-gated (see [http.md](http.md)).
 
 ## Dependencies: CDN, pinned, integrity-locked
 
@@ -32,9 +33,23 @@ bundler and no npm build step: the shell ships as static resources inside the en
 
 ## Live updates
 
-`api.js` subscribes to the `/api/events` SSE stream; `fold.js` reduces events into the activity
-feed with hard bounds (`MAX_CARDS`, `MAX_OUTPUT_LINES`, `MAX_DIAGNOSTICS`) so a long-lived tab
-cannot grow without limit.
+`api.js` opens one `EventSource` on `/api/events` (see [http.md](http.md#live-updates-get-apievents)).
+
+| Path | Handler |
+| --- | --- |
+| Build activity | `fold.js` → activity cards (hard bounds: `MAX_CARDS`, `MAX_OUTPUT_LINES`, `MAX_DIAGNOSTICS`) |
+| `status` | Header sysbox (CORES/LOAD/RAM/AVAIL) + footer Builds Running / Engine Heap |
+| `cache` | Footer **Cache** + **Store** (thin dual-surface frames); Status panels load full breakdown via REST on view entry |
+
+While the stream is **live**, the SPA does **not** poll `/api/status` or `/api/cache` on a timer.
+REST hydrate runs on load/reconnect. **Offline** status fallback uses stepped backoff (5 s → 30 s
+cap) and pauses when the tab is hidden (`document.hidden`); EventSource stays open. Metrics are
+**view-scoped** (Status / Projects / project detail), not a global chrome poll. All REST GETs go
+through a single-flight gate (`fetchOnce`) so reconnect cannot stack duplicate in-flight calls.
+Relative “ago” labels use a local 1 s `now` tick only (no network).
+
+Build phase/progress must stay **near-realtime** (inflicted SSE). Host vitals are sampled ~2 s and
+change-gated server-side so unchanged free RAM does not repaint noise.
 
 ## Testing
 

@@ -141,26 +141,67 @@ public final class ProjectBuilds {
         AtomicWrites.replace(home.resolve(IDENTITY), body);
     }
 
+    /**
+     * Allocate this project's next build number.
+     *
+     * <p>Guarded across <em>processes</em>, not just threads: two engines are routinely alive at
+     * once (a displaced engine drains in-flight work while its successor already serves, and
+     * {@code --job} child engines exist by design). With a JVM-only lock both could read {@code 7},
+     * both write {@code 8}, and the second {@code runs/8} write would delete the first's completed
+     * run tree. Threads first, then a file lock — the same nesting {@code AotManifest.withLock}
+     * uses, since a second {@code FileChannel.lock()} in one JVM throws (JK-1472).
+     */
     public static long allocateRunNumber(Path projectHome) throws IOException {
+        Files.createDirectories(projectHome);
+        Path f = projectHome.resolve(RUN_NUMBER);
+        Path lockPath = projectHome.resolve(RUN_NUMBER + ".lock").toAbsolutePath().normalize();
         RUN_NUMBER_LOCK.lock();
         try {
-            Path f = projectHome.resolve(RUN_NUMBER);
-            long next = 1;
-            if (Files.isRegularFile(f)) {
+            java.nio.channels.FileChannel ch = null;
+            try {
+                ch = java.nio.channels.FileChannel.open(
+                        lockPath,
+                        java.nio.file.StandardOpenOption.CREATE,
+                        java.nio.file.StandardOpenOption.WRITE,
+                        java.nio.file.StandardOpenOption.READ);
+            } catch (IOException | RuntimeException noLockFile) {
+                // No usable lock file (exotic or read-only filesystem): still allocate under the
+                // JVM lock rather than failing the build — degrades to the previous
+                // single-process guarantee instead of breaking.
+                return bumpRunNumber(f);
+            }
+            try (java.nio.channels.FileChannel channel = ch) {
+                java.nio.channels.FileLock fileLock = null;
                 try {
-                    next = Long.parseLong(
-                                    Files.readString(f, StandardCharsets.UTF_8).trim())
-                            + 1;
-                } catch (NumberFormatException ignored) {
-                    next = 1;
+                    fileLock = channel.lock();
+                } catch (IOException | RuntimeException noFlock) {
+                    return bumpRunNumber(f); // e.g. NFS without lockd
+                }
+                try {
+                    return bumpRunNumber(f);
+                } finally {
+                    fileLock.release();
                 }
             }
-            if (next < 1) next = 1;
-            AtomicWrites.replace(f, Long.toString(next) + "\n");
-            return next;
         } finally {
             RUN_NUMBER_LOCK.unlock();
         }
+        // The 0-byte .lock file intentionally stays on disk: unlinking it while another process
+        // holds the flock would let a third process lock a fresh inode at the same path.
+    }
+
+    private static long bumpRunNumber(Path f) throws IOException {
+        long next = 1;
+        if (Files.isRegularFile(f)) {
+            try {
+                next = Long.parseLong(Files.readString(f, StandardCharsets.UTF_8).trim()) + 1;
+            } catch (NumberFormatException ignored) {
+                next = 1;
+            }
+        }
+        if (next < 1) next = 1;
+        AtomicWrites.replace(f, Long.toString(next) + "\n");
+        return next;
     }
 
     public static long readRunNumber(Path projectHome) {
@@ -224,8 +265,15 @@ public final class ProjectBuilds {
         for (Path home : listProjectHomes(buildsRoot)) {
             all.addAll(listRuns(home));
         }
-        all.sort(Comparator.comparingLong(ProjectBuilds::mtimeOf).reversed());
-        return all;
+        // Decorate-sort-undecorate: mtimeOf is a stat(2), and a comparator key extractor is
+        // re-evaluated O(n log n) times — ~44k syscalls for 2000 runs instead of 2000 (JK-1480).
+        record Stamped(Path path, long mtime) {}
+        List<Stamped> stamped = new ArrayList<>(all.size());
+        for (Path p : all) stamped.add(new Stamped(p, mtimeOf(p)));
+        stamped.sort(Comparator.comparingLong(Stamped::mtime).reversed());
+        List<Path> sorted = new ArrayList<>(stamped.size());
+        for (Stamped s : stamped) sorted.add(s.path());
+        return sorted;
     }
 
     private static long mtimeOf(Path p) {

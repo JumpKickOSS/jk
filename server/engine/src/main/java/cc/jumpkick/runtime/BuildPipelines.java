@@ -363,8 +363,9 @@ public final class BuildPipelines {
 
     /** As {@link #coreBuilder(Inputs)} with upstream-dirty {@code forceRebuild} for weight prediction. */
     public static Pipeline.Builder coreBuilder(Inputs in, boolean forceRebuild) {
-        Cas cas = JkStores.cas(in.cache());
-        ActionCache actionCache = new ActionCache(cas, in.cache().resolve("actions"));
+        Cas cas = JkStores.cas(in.cache()); // artifact store CAS (deps, workers)
+        ActionCache actionCache =
+                new ActionCache(JkStores.cacheCas(in.cache()), in.cache().resolve("actions"));
 
         // Compose only the language steps the project uses, so a single-language
         // project never shows a no-op step for the other. Explicit jk.toml
@@ -1556,7 +1557,7 @@ public final class BuildPipelines {
                             cc.jumpkick.model.BuildIdentity.cacheKeyVersion(),
                             !rerun,
                             !in.ephemeralActions(), // verify-scratch: no persistent residue
-                            cas,
+                            actionCache.cas(),
                             actionCache,
                             javaStateDir,
                             ap);
@@ -3917,7 +3918,7 @@ public final class BuildPipelines {
                 cc.jumpkick.model.BuildIdentity.cacheKeyVersion(),
                 !rerun,
                 !in.ephemeralActions(), // verify-scratch: no persistent residue
-                cas,
+                actionCache.cas(),
                 actionCache);
     }
 
@@ -4001,7 +4002,7 @@ public final class BuildPipelines {
                 cc.jumpkick.model.BuildIdentity.cacheKeyVersion(),
                 !rerun,
                 !in.ephemeralActions(), // verify-scratch: no persistent residue
-                cas,
+                actionCache.cas(),
                 actionCache);
     }
 
@@ -4168,7 +4169,7 @@ public final class BuildPipelines {
         if (cc.jumpkick.config.SessionContext.current().config().rebuildOr(false)) {
             return false;
         }
-        ActionCache ac = new ActionCache(JkStores.cas(cacheRoot), cacheRoot.resolve("actions"));
+        ActionCache ac = new ActionCache(JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"));
         var hit = ac.lookup(key);
         return hit.isPresent() && ac.restoreArtifacts(hit.get(), baseDir);
     }
@@ -4191,7 +4192,7 @@ public final class BuildPipelines {
             boolean persist)
             throws IOException {
         if (!persist) return;
-        new ActionCache(JkStores.cas(cacheRoot), cacheRoot.resolve("actions"))
+        new ActionCache(JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"))
                 .storeArtifacts(taskId, key, Map.of("inputs", String.join(";", tokens)), baseDir, artifacts);
     }
 

@@ -74,18 +74,23 @@ public final class GlobalConfig {
     private static boolean booleanFromGlobal(Path file, String key, boolean fallback) {
         if (file == null) return fallback;
         String cacheKey;
+        long size;
+        long modified;
         try {
             if (!java.nio.file.Files.exists(file)) return fallback;
             var attrs = java.nio.file.Files.readAttributes(file, java.nio.file.attribute.BasicFileAttributes.class);
-            cacheKey = file + "|" + key + "|" + attrs.size() + "|"
-                    + attrs.lastModifiedTime().toMillis();
+            cacheKey = file + "|global." + key;
+            size = attrs.size();
+            modified = attrs.lastModifiedTime().toMillis();
         } catch (java.io.IOException e) {
             return fallback;
         }
-        String value = SCAN_CACHE
-                .computeIfAbsent(
+        String value = memoized(
+                        SCAN_CACHE,
                         cacheKey,
-                        k -> Optional.ofNullable(
+                        size,
+                        modified,
+                        () -> Optional.ofNullable(
                                 TomlScan.scan(file, "global." + key).get("global." + key)))
                 .orElse(null);
         if (value == null) return fallback;
@@ -121,44 +126,82 @@ public final class GlobalConfig {
         if (file == null) return Optional.empty();
         String dotted = table + "." + key;
         String cacheKey;
+        long size;
+        long modified;
         try {
             if (!java.nio.file.Files.exists(file)) return Optional.empty();
             var attrs = java.nio.file.Files.readAttributes(file, java.nio.file.attribute.BasicFileAttributes.class);
-            cacheKey = file + "|" + dotted + "|" + attrs.size() + "|"
-                    + attrs.lastModifiedTime().toMillis();
+            cacheKey = file + "|" + dotted;
+            size = attrs.size();
+            modified = attrs.lastModifiedTime().toMillis();
         } catch (java.io.IOException e) {
             return Optional.empty();
         }
-        return SCAN_CACHE
-                .computeIfAbsent(
+        return memoized(
+                        SCAN_CACHE,
                         cacheKey,
-                        k -> Optional.ofNullable(TomlScan.scan(file, dotted).get(dotted)))
+                        size,
+                        modified,
+                        () -> Optional.ofNullable(TomlScan.scan(file, dotted).get(dotted)))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty());
     }
 
-    private static final ConcurrentHashMap<String, Optional<String>> SCAN_CACHE = new ConcurrentHashMap<>();
+    /**
+     * One entry per (file, dotted key), carrying the size+mtime stamp it was scanned at.
+     *
+     * <p>The stamp lives in the value, not the key: with it in the key every config rewrite minted
+     * a new entry and nothing ever removed the old one — and this cache had no clear path at all,
+     * so it grew for the life of the process (JK-1483).
+     */
+    private static final ConcurrentHashMap<String, Stamped<Optional<String>>> SCAN_CACHE = new ConcurrentHashMap<>();
 
-    // Memoize per path+size+mtime (file is process-stable; nerdfont hits this often).
-    private static final ConcurrentHashMap<String, Optional<TomlParseResult>> CONFIG_CACHE = new ConcurrentHashMap<>();
+    // Memoize per path, revalidated on size+mtime (file is process-stable; nerdfont hits this often).
+    private static final ConcurrentHashMap<String, Stamped<Optional<TomlParseResult>>> CONFIG_CACHE =
+            new ConcurrentHashMap<>();
+
+    /** A memoized value plus the file stamp it was computed from. */
+    private record Stamped<T>(long size, long modifiedMillis, T value) {
+        boolean matches(long otherSize, long otherModified) {
+            return size == otherSize && modifiedMillis == otherModified;
+        }
+    }
+
+    /** Look up {@code key}, recomputing when the file's stamp moved; one entry per key, replaced. */
+    private static <T> T memoized(
+            ConcurrentHashMap<String, Stamped<T>> cache,
+            String key,
+            long size,
+            long modifiedMillis,
+            java.util.function.Supplier<T> compute) {
+        Stamped<T> hit = cache.get(key);
+        if (hit != null && hit.matches(size, modifiedMillis)) return hit.value();
+        T fresh = compute.get();
+        cache.put(key, new Stamped<>(size, modifiedMillis, fresh));
+        return fresh;
+    }
 
     private static Optional<TomlParseResult> parseConfig(Path file) {
         if (file == null) return Optional.empty();
         String key;
+        long size;
+        long modified;
         try {
             if (!java.nio.file.Files.exists(file)) return Optional.empty();
             var attrs = java.nio.file.Files.readAttributes(file, java.nio.file.attribute.BasicFileAttributes.class);
-            key = file.toAbsolutePath() + "|" + attrs.size() + "|"
-                    + attrs.lastModifiedTime().toMillis();
+            key = file.toAbsolutePath().toString();
+            size = attrs.size();
+            modified = attrs.lastModifiedTime().toMillis();
         } catch (java.io.IOException e) {
             return TomlValues.parse(file); // uncached fallback on stat failure
         }
-        return CONFIG_CACHE.computeIfAbsent(key, k -> TomlValues.parse(file));
+        return memoized(CONFIG_CACHE, key, size, modified, () -> TomlValues.parse(file));
     }
 
     /** Clear the memoized config parse. For tests that rewrite {@code ~/.config/jk/config.toml} in one JVM. */
     static void clearCache() {
         CONFIG_CACHE.clear();
+        SCAN_CACHE.clear();
     }
 
     // Repositories

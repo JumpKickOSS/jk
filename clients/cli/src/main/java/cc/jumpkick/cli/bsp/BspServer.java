@@ -454,13 +454,20 @@ public final class BspServer {
         return b.toString();
     }
 
+    /** Compiled once, not per JSON-RPC message (JK-1490): the field set is small and fixed. */
+    private static final java.util.Map<String, Pattern> STRING_FIELD_PATTERNS = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static final Pattern ID_PATTERN = Pattern.compile("\"id\"\\s*:\\s*(\"[^\"]*\"|\\d+)");
+
     private static String extractString(String json, String field) {
-        Matcher m = Pattern.compile("\"" + field + "\"\\s*:\\s*\"([^\"]+)\"").matcher(json);
+        Pattern p = STRING_FIELD_PATTERNS.computeIfAbsent(
+                field, f -> Pattern.compile("\"" + f + "\"\\s*:\\s*\"([^\"]+)\""));
+        Matcher m = p.matcher(json);
         return m.find() ? m.group(1) : null;
     }
 
     private static String extractId(String json) {
-        Matcher m = Pattern.compile("\"id\"\\s*:\\s*(\"[^\"]*\"|\\d+)").matcher(json);
+        Matcher m = ID_PATTERN.matcher(json);
         return m.find() ? m.group(1) : null;
     }
 }

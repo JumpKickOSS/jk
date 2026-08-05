@@ -332,9 +332,11 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      * construction}:
      *
      * <ul>
-     * <li>With a seed {@code > 0}: count down {@code seed − elapsed} one second per real second;
-     * at overrun flip to {@code +Ns} count-up of the excess.
-     * <li>With no seed ({@code 0}): count up {@code +Ns} from {@code +0s} for the whole command.
+     * <li>With a seed {@code > 0}: show both {@code ETA ~remaining} (countdown) and {@code +elapsed}
+     * (count-up). When remaining hits zero the countdown freezes at dim {@code 0s} and the count-up
+     * turns yellow; it does not switch to an excess-only display.
+     * <li>With no seed ({@code 0}): count up {@code +Ns} from {@code +0s} for the whole command
+     * (yellow).
      * </ul>
      *
      * <p>Early + post-prepare seeds may refine the total while no module has finished yet. Once
@@ -1596,33 +1598,53 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             }
         }
         // After the bar's percent: a bright-black middle dot, then the run-wide build clock.
-        // Seeded estimate → pure wall-clock countdown (dim "ETA " + blue time) then +Ns overrun
-        // (yellow); no seed → +Ns count-up from construction (yellow). Never resets on
-        // phase/module boundaries. Module n/m is only on tree rows below — not repeated here.
+        // Seeded: dim italic "ETA " + blue "~remaining" · dim "+elapsed". When remaining hits 0 the
+        // countdown freezes dim at "0s" and count-up turns yellow. No seed: both modes collapse to
+        // a single yellow "+elapsed" count-up. Never resets on phase/module boundaries. Module n/m
+        // is only on tree rows below — not repeated here.
+        //
+        // Both faces are derived from the same whole-second elapsed counter so they tick on the
+        // same paint (flooring remaining-ms and elapsed-ms independently desynced them by the
+        // seed's sub-second remainder — often ~100ms after setRemainingWorkEstimate).
         h.append(' ').append(Theme.colorize("·", dim)).append(' ');
+        long elapsedSec = Math.max(0L, elapsedMillis) / 1000L;
         if (etaEstimateMs > 0) {
-            long remaining = etaEstimateMs - elapsedMillis;
-            if (remaining <= 0) {
-                h.append(Theme.colorize("+" + fmtClock(-remaining), t.warning()));
+            long etaSec = Math.max(0L, etaEstimateMs) / 1000L;
+            long remainingSec = etaSec - elapsedSec;
+            h.append(Theme.colorize("ETA ", dim.italic()));
+            if (remainingSec <= 0) {
+                h.append(Theme.colorize("0s", dim));
             } else {
-                h.append(Theme.colorize("ETA ", dim.italic())).append(Theme.colorize(fmtClock(remaining), t.blue()));
+                h.append(Theme.colorize("~" + fmtClockSeconds(remainingSec), t.blue()));
             }
+            h.append(' ').append(Theme.colorize("·", dim)).append(' ');
+            AttributedStyle up = remainingSec <= 0 ? t.warning() : dim;
+            h.append(Theme.colorize("+" + fmtClockSeconds(elapsedSec), up));
         } else {
-            h.append(Theme.colorize("+" + fmtClock(elapsedMillis), t.warning()));
+            h.append(Theme.colorize("+" + fmtClockSeconds(elapsedSec), t.warning()));
         }
         return h.toString();
     }
 
     /**
-     * Countdown/elapsed duration: {@code "42s"}, {@code "1m 02s"}, {@code "1h 05m 09s"} (units past
-     * the lead zero-padded). Callers prepend {@code "+"} for count-up display.
+     * Countdown/elapsed duration from milliseconds: {@code "42s"}, {@code "1m 02s"},
+     * {@code "1h 05m 09s"} (units past the lead zero-padded). Callers prepend {@code "+"} for
+     * count-up display.
      */
     static String fmtClock(long millis) {
-        long totalSec = Math.max(0, millis) / 1000;
-        long h = totalSec / 3600, m = (totalSec % 3600) / 60, s = totalSec % 60;
-        if (h > 0) return h + "h " + String.format("%02d", m) + "m " + String.format("%02d", s) + "s";
-        if (m > 0) return m + "m " + String.format("%02d", s) + "s";
-        return s + "s";
+        return fmtClockSeconds(Math.max(0L, millis) / 1000L);
+    }
+
+    /**
+     * Same as {@link #fmtClock} but from a whole-second counter — used so dual-clock faces share
+     * one tick boundary.
+     */
+    static String fmtClockSeconds(long totalSec) {
+        long s = Math.max(0L, totalSec);
+        long h = s / 3600, m = (s % 3600) / 60, sec = s % 60;
+        if (h > 0) return h + "h " + String.format("%02d", m) + "m " + String.format("%02d", sec) + "s";
+        if (m > 0) return m + "m " + String.format("%02d", sec) + "s";
+        return sec + "s";
     }
 
     private static String phaseKey(String phase, String stepKey) {

@@ -275,9 +275,30 @@ const BuildBars = {
   },
 };
 
-/** A finished record's outcome for the Projects tab: cancelled ▸ success ▸ failed (records are terminal). */
+/**
+ * A finished record's outcome for the Projects tab.
+ * FAIL steps / error diagnostics beat a cancel bit (same rule as fold.outcomeOf).
+ */
 function recordOutcome(r) {
-  return r.cancelled ? 'cancelled' : r.success ? 'success' : 'failed';
+  if (recordHasFailStep(r) || recordHasErrorDiag(r)) return 'failed';
+  if (r.cancelled) return 'cancelled';
+  return r.success ? 'success' : 'failed';
+}
+
+function recordHasFailStep(r) {
+  const bad = (st) => {
+    const u = String(st || '').toUpperCase();
+    return u === 'FAIL' || u === 'FAILED';
+  };
+  for (const s of r.steps || []) if (bad(s.status)) return true;
+  for (const m of r.modules || []) {
+    for (const s of m.steps || []) if (bad(s.status)) return true;
+  }
+  return false;
+}
+
+function recordHasErrorDiag(r) {
+  return (r.diagnostics || []).some((d) => d && d.severity === 'error');
 }
 
 /**
@@ -326,8 +347,10 @@ Vue.createApp({
     connection: 'connecting', // 'connecting' | 'live' | 'offline' | 'unauthorized'
     status: null, // the /api/status payload
     metrics: null, // the /api/metrics payload (running build aggregates), shown on the Status view
-    cache: null, // the /api/cache payload (cache breakdown), shown on the Status view
+    cache: null, // /api/cache + live `cache` SSE: cache tier + artifact store breakdown
     engineLog: '', // the /api/log tail, shown on the Status view
+    configPath: null, // absolute path of the machine config.toml
+    configRows: [], // EffectiveUserConfig rows: {key, default, value, overridden}
     cards: [], // folded activity, newest first
     projectHistory: [], // raw /api/history records (up to 200), grouped into the Projects tab
     buildDir: '',
@@ -340,7 +363,7 @@ Vue.createApp({
     newProjectError: null,
     newProject: {
       name: '',
-      group: 'com.example',
+      group: '',
       lang: 'java',
       layout: 'simple',
       template: '',
@@ -349,11 +372,24 @@ Vue.createApp({
     },
     templates: [],
     now: Date.now(), // 1s tick driving elapsed counters and "ago" stamps
+    // JK-1500: single-flight keys → in-flight Promise; offline status poll backoff (ms).
+    _inflight: Object.create(null),
+    _offlineStatusBackoffMs: 5_000,
+    _offlineStatusTimer: null,
   }),
 
   mounted() {
     events(
       (event) => {
+        // Live chrome vitals (JK-1495+): change-gated on the server; apply without folding cards.
+        if (event.type === 'status') {
+          this.applyStatusEvent(event.data);
+          return;
+        }
+        if (event.type === 'cache') {
+          this.applyCacheEvent(event.data);
+          return;
+        }
         foldEvent(this.cards, { ...event, at: Date.now() });
         // The build number + journal record are written just after request-finish (writeJournal),
         // so re-pull history a beat later: it reconciles the live card (tagging its #number) and
@@ -363,16 +399,31 @@ Vue.createApp({
           this._reconcileTimer = setTimeout(() => {
             this.loadHistory();
             this.loadProjectHistory();
+            // Metrics are view-scoped (JK-1503); refresh them only where they paint.
+            if (this.view === 'status' || this.view === 'projects' || this.view === 'project') {
+              this.refreshMetrics();
+            }
           }, 500);
         }
       },
       (state) => {
         const wasOffline = this.connection === 'offline';
         if (this.connection !== 'unauthorized' || state === 'live') this.connection = state;
-        if (state === 'live' && wasOffline) {
-          this.refresh(); // resync after an engine restart
-          this.loadHistory(); // re-seed persisted runs (dedupe keeps this idempotent)
-          this.loadProjectHistory();
+        if (state === 'live') {
+          this._offlineStatusBackoffMs = 5_000;
+          this.clearOfflineStatusFallback();
+          if (wasOffline) {
+            this.refresh(); // resync after an engine restart
+            this.loadHistory(); // re-seed persisted runs (dedupe keeps this idempotent)
+            this.loadProjectHistory();
+          } else if (this.cards.length === 0) {
+            // First open / hard-refresh: mount also loads history; re-try once the stream is live
+            // in case the earlier GET raced a cold engine or a missing token that is now present.
+            this.loadHistory();
+            this.loadProjectHistory();
+          }
+        } else if (state === 'offline') {
+          this.scheduleOfflineStatusFallback();
         }
       },
     );
@@ -381,12 +432,28 @@ Vue.createApp({
     this.loadProjectHistory(); // so the Projects tab is populated the moment it's opened
     // Back/forward and any hash change re-derive the route (openProject sets the hash, which lands here).
     window.addEventListener('hashchange', () => this.applyRoute());
+    // JK-1500: pause offline REST polling while the tab is hidden; keep SSE open (orphan engine).
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this.clearOfflineStatusFallback();
+      else if (this.connection !== 'live') this.scheduleOfflineStatusFallback();
+    });
     if (this.view === 'project' && this.selectedProjectDir) this.loadProjectMeta(this.selectedProjectDir);
-    setInterval(() => this.refresh(), 30_000); // slow fallback; SSE is the primary signal
+    // Local clock only — no network (relative "ago" labels).
     setInterval(() => (this.now = Date.now()), 1_000);
   },
 
   computed: {
+    // Template short names compatible with the New-project Language field. Entries without a
+    // languages list are treated as universal (legacy / fallback payloads).
+    templatesForLang() {
+      const lang = (this.newProject?.lang || 'java').toLowerCase();
+      return (this.templates || []).filter((t) => {
+        const langs = t.languages;
+        if (!Array.isArray(langs) || langs.length === 0) return true;
+        return langs.some((l) => String(l).toLowerCase() === lang);
+      });
+    },
+
     // Group the journal into per-project rows for the Projects tab. A computed (not a method) so it
     // recomputes only when projectHistory or the live cards change — never on the 1s clock tick, so
     // the ECharts canvases don't re-render every second. Key = coord when the project has one, else
@@ -566,8 +633,11 @@ Vue.createApp({
     setView(view) {
       this.view = view;
       history.replaceState(null, '', '#' + view);
-      if (view === 'status') this.refresh();
-      if (view === 'projects') this.loadProjectHistory();
+      if (view === 'status') this.refresh(); // full cache + metrics + log
+      if (view === 'projects') {
+        this.loadProjectHistory();
+        this.refreshMetrics(); // JK-1503: view-scoped, not a global timer
+      }
     },
 
     // ---- the Projects tab (grouped /api/history + live running overlay) ----
@@ -629,13 +699,22 @@ Vue.createApp({
       location.hash = '#project/' + encodeURIComponent(dir);
     },
 
+    /** Activity card badge / coord → project detail (routed by dir). */
+    openProjectFromCard(card) {
+      if (!card || !card.dir) return;
+      this.openProject(card.dir);
+    },
+
     // Re-derive view + selected project from the hash, loading whatever that route needs.
     applyRoute() {
       const r = routeFromHash();
       this.view = r.view;
       this.selectedProjectDir = r.dir;
       if (r.view === 'project' && r.dir) this.loadProjectMeta(r.dir);
-      if (r.view === 'projects') this.loadProjectHistory();
+      if (r.view === 'projects') {
+        this.loadProjectHistory();
+        this.refreshMetrics();
+      }
       if (r.view === 'status') this.refresh();
     },
 
@@ -673,20 +752,44 @@ Vue.createApp({
       return Math.min(99, Math.round((100 * weightNumerator(card)) / den));
     },
 
-    // Live ETA countdown for a running card — the same calibrated millis the CLI countdown and
-    // `jk explain` show. remaining = eta − elapsed; overrun flips to '+'. Empty when no estimate
-    // (the elapsed "+Ns" timer already covers count-up). Re-emitted eta events retarget it.
+    // Live ETA dual-clock (CLI parity). Both faces share one whole-second elapsed counter so they
+    // tick on the same paint — flooring remaining-ms and elapsed-ms independently desynced them.
+    // Countdown freezes at "0s" on overrun; count-up is always full elapsed. No seed → count-up only.
+    hasEta(card) {
+      return (
+        this.outcome(card) === 'running' &&
+        card.etaMillis != null &&
+        card.etaMillis > 0 &&
+        card.startedAt != null
+      );
+    },
+    elapsedSeconds(card) {
+      if (card.startedAt == null) return 0;
+      return Math.max(0, Math.floor((this.now - card.startedAt) / 1000));
+    },
+    etaSeconds(card) {
+      return Math.max(0, Math.floor(card.etaMillis / 1000));
+    },
+    etaOverdue(card) {
+      return this.hasEta(card) && this.elapsedSeconds(card) >= this.etaSeconds(card);
+    },
+    etaCountdown(card) {
+      if (!this.hasEta(card)) return '';
+      const rem = this.etaSeconds(card) - this.elapsedSeconds(card);
+      return rem <= 0 ? '0s' : '~' + this.fmtClockSeconds(rem);
+    },
+    // Back-compat alias used by older snapshots/tests: bare countdown string (no "ETA " label).
     eta(card) {
-      if (this.outcome(card) !== 'running') return '';
-      const ms = card.etaMillis;
-      if (ms == null || ms <= 0 || card.startedAt == null) return '';
-      const remaining = ms - (this.now - card.startedAt);
-      return remaining >= 0 ? '~' + this.fmtClock(remaining) : '+' + this.fmtClock(-remaining);
+      return this.etaCountdown(card);
     },
 
     // mm:ss-style clock mirroring the CLI's CommandManager.fmtClock: "42s" / "1m 02s" / "1h 05m 09s".
+    // Whole seconds only (floor) so dual-clock faces share one boundary — not Math.round.
     fmtClock(ms) {
-      const s = Math.max(0, Math.round(ms / 1000));
+      return this.fmtClockSeconds(Math.max(0, Math.floor(ms / 1000)));
+    },
+    fmtClockSeconds(totalSec) {
+      const s = Math.max(0, totalSec | 0);
       if (s < 60) return s + 's';
       const pad = (n) => String(n).padStart(2, '0');
       const m = Math.floor(s / 60);
@@ -770,16 +873,106 @@ Vue.createApp({
       return this.shortDir(m.dir);
     },
 
-    async refresh() {
-      try {
-        this.status = await get('/api/status');
-        if (this.connection === 'unauthorized') this.connection = 'live';
-      } catch (e) {
-        if (e.status === 401) this.connection = 'unauthorized';
+    // ---- JK-1500 live-refresh coordinator ------------------------------------
+
+    /**
+     * At most one in-flight REST call per key. Concurrent callers share the same Promise so
+     * double refresh / reconnect cannot stack GETs for the same path.
+     */
+    fetchOnce(key, fn) {
+      const inflight = this._inflight;
+      if (inflight[key]) return inflight[key];
+      const p = Promise.resolve()
+        .then(fn)
+        .finally(() => {
+          if (inflight[key] === p) delete inflight[key];
+        });
+      inflight[key] = p;
+      return p;
+    },
+
+    clearOfflineStatusFallback() {
+      if (this._offlineStatusTimer != null) {
+        clearTimeout(this._offlineStatusTimer);
+        this._offlineStatusTimer = null;
       }
-      // Separate try: the log tail is a sensitive read (token-required even on loopback,
-      // JK-1305) — a tokenless session keeps the Status vitals and just loses the tail.
-      if (this.view === 'status') {
+    },
+
+    /**
+     * Offline-only status poll with stepped backoff (5s → … → 30s). No-op while SSE is live or
+     * the document is hidden (keep EventSource open; do not REST-hammer a background tab).
+     */
+    scheduleOfflineStatusFallback() {
+      this.clearOfflineStatusFallback();
+      if (document.hidden || this.connection === 'live') return;
+      const delay = this._offlineStatusBackoffMs || 5_000;
+      this._offlineStatusTimer = setTimeout(async () => {
+        this._offlineStatusTimer = null;
+        if (document.hidden || this.connection === 'live') return;
+        await this.refreshStatus();
+        this._offlineStatusBackoffMs = Math.min(30_000, Math.round((this._offlineStatusBackoffMs || 5_000) * 1.5));
+        this.scheduleOfflineStatusFallback();
+      }, delay);
+    },
+
+    // Merge a live `status` SSE frame into this.status. Frames carry core vitals only (not httpUrl
+    // / config knobs from GET /api/status) — keep REST fields when present.
+    applyStatusEvent(data) {
+      if (!data || typeof data !== 'object') return;
+      this.status = this.status ? { ...this.status, ...data } : { ...data };
+      if (this.connection === 'unauthorized') this.connection = 'live';
+    },
+
+    // Thin live `cache` frames (JK-1502) merge into the last full REST snapshot; full frames replace.
+    applyCacheEvent(data) {
+      if (!data || typeof data !== 'object') return;
+      if (data.thin) {
+        const prev = this.cache || {};
+        this.cache = { ...prev, ...data };
+      } else {
+        this.cache = data;
+      }
+    },
+
+    // REST hydrate / offline fallback for header sysbox + footer heap / builds-running.
+    async refreshStatus() {
+      return this.fetchOnce('status', async () => {
+        try {
+          this.status = await get('/api/status');
+          if (this.connection === 'unauthorized') this.connection = 'live';
+        } catch (e) {
+          if (e.status === 401) this.connection = 'unauthorized';
+        }
+      });
+    },
+
+    /** Full cache breakdown for Status panels (REST). Footer uses thin SSE while live. */
+    async refreshCache() {
+      return this.fetchOnce('cache', async () => {
+        try {
+          this.cache = await get('/api/cache');
+        } catch (e) {
+          if (e.status === 401) this.connection = 'unauthorized';
+        }
+      });
+    },
+
+    /**
+     * Running build aggregates — view-scoped (JK-1503), not a global chrome poll. Call when
+     * opening Status/Projects or after a finished build while those views are visible.
+     */
+    async refreshMetrics() {
+      return this.fetchOnce('metrics', async () => {
+        try {
+          this.metrics = await get('/api/metrics');
+        } catch (e) {
+          if (e.status === 401) this.connection = 'unauthorized';
+        }
+      });
+    },
+
+    async refreshLog() {
+      return this.fetchOnce('log', async () => {
         try {
           this.engineLog = await getText('/api/log?lines=100');
         } catch (e) {
@@ -787,28 +980,90 @@ Vue.createApp({
             this.engineLog = '(engine log requires the tokened dashboard URL — reopen via `jk web`)';
           }
         }
+      });
+    },
+
+    /** Effective machine config.toml (key / default / override) for the Status Configuration panel. */
+    async refreshConfig() {
+      return this.fetchOnce('config', async () => {
+        try {
+          const payload = await get('/api/config');
+          this.configPath = payload.path || null;
+          this.configRows = Array.isArray(payload.rows) ? payload.rows : [];
+        } catch (e) {
+          if (e.status === 401) this.connection = 'unauthorized';
+        }
+      });
+    },
+
+    /**
+     * Hydrate REST surfaces for the current view. Status always pulls full cache + metrics + log;
+     * Projects pulls metrics; Activity only needs status/cache hydrate when offline or first paint.
+     */
+    async refresh(opts) {
+      const sseLive = this.connection === 'live';
+      const wantStatus = !opts || opts.status !== false;
+      if (wantStatus) await this.refreshStatus();
+
+      if (this.view === 'status') {
+        await this.refreshLog();
+        await this.refreshConfig();
+        await this.refreshMetrics();
+        await this.refreshCache(); // full breakdown for dual Status panels
+        return;
       }
-      // Separate try: a metrics hiccup must not blank the status vitals.
-      try {
-        this.metrics = await get('/api/metrics');
-      } catch (e) {
-        if (e.status === 401) this.connection = 'unauthorized';
+      if (this.view === 'projects' || this.view === 'project') {
+        await this.refreshMetrics();
       }
-      // Cache breakdown: needed by the always-on footer (Cache Used), so pull it on every refresh
-      // rather than only on the Status view. Still only on the 30s refresh cadence, not the 1s tick.
-      try {
-        this.cache = await get('/api/cache');
-      } catch (e) {
-        if (e.status === 401) this.connection = 'unauthorized';
+      // Cache tier + artifact store footer: SSE while live; REST hydrate when offline or empty.
+      if (!sseLive || !this.cache) {
+        await this.refreshCache();
       }
     },
 
-    // ---- the Status view's Cache panel (/api/cache) ----
+    // ---- Status view storage panels (/api/cache + live `cache` SSE) ----
 
-    cacheUtilizationPercent() {
+    /** Cache-tier bytes (CLI: jk cache storage) — index + cache CAS + stamps. */
+    actionCacheBytes() {
       const c = this.cache;
-      if (!c || c.maxBytes <= 0) return 0;
-      return Math.min(100, Math.round((100 * c.totalBytes) / c.maxBytes));
+      if (!c) return null;
+      if (c.cacheBytes != null) return c.cacheBytes;
+      if (c.actionCacheBytes != null) return c.actionCacheBytes;
+      return (c.actionsBytes || 0) + (c.cacheCasBytes || 0) + (c.formatStampsBytes || 0);
+    },
+
+    actionMaxBytes() {
+      const c = this.cache;
+      if (!c) return null;
+      if (c.cacheMaxBytes != null) return c.cacheMaxBytes;
+      return c.actionMaxBytes != null ? c.actionMaxBytes : null;
+    },
+
+    /** Artifact store: store CAS + repos/workers + run logs (CLI: jk repo storage). */
+    artifactStorageBytes() {
+      const c = this.cache;
+      if (!c) return null;
+      if (c.artifactStorageBytes != null) return c.artifactStorageBytes;
+      return (c.casBytes || 0) + (c.workerJarsBytes || 0) + (c.runLogsBytes || 0);
+    },
+
+    actionCacheUtilizationPercent() {
+      const used = this.actionCacheBytes();
+      const max = this.actionMaxBytes();
+      if (used == null || !max || max <= 0) return 0;
+      return Math.min(100, Math.round((100 * used) / max));
+    },
+
+    artifactStorageUtilizationPercent() {
+      const c = this.cache;
+      const used = this.artifactStorageBytes();
+      if (!c || used == null || !c.maxBytes || c.maxBytes <= 0) return 0;
+      return Math.min(100, Math.round((100 * used) / c.maxBytes));
+    },
+
+    /** @deprecated combined meter — prefer action / artifact helpers */
+    cacheUtilizationPercent() {
+      return this.artifactStorageUtilizationPercent();
     },
 
     prunedAgo() {
@@ -855,13 +1110,19 @@ Vue.createApp({
     },
 
     // Backfill the feed from the persisted journal (/api/history), reconciled with live cards.
+    // Always reassign `this.cards` so a bulk seed after a hard-refresh repaints (Vue tracks the
+    // array identity as well as mutations).
     async loadHistory() {
-      try {
-        const records = await get('/api/history');
-        seedFromHistory(this.cards, records);
-      } catch (e) {
-        if (e.status === 401) this.connection = 'unauthorized';
-      }
+      return this.fetchOnce('history', async () => {
+        try {
+          const records = await get('/api/history');
+          const next = this.cards.slice();
+          seedFromHistory(next, records);
+          this.cards = next;
+        } catch (e) {
+          if (e.status === 401) this.connection = 'unauthorized';
+        }
+      });
     },
 
     // Delete a finished run from history (engine + disk), then drop its card locally.
@@ -902,12 +1163,16 @@ Vue.createApp({
         this.browser = await get('/api/fs' + (dir ? '?dir=' + encodeURIComponent(dir) : ''));
       } catch (e) {
         if (e.status === 401) {
-          this.buildError = 'Unauthorized — open the tokenized URL printed by `jk engine status`';
+          const msg = 'Unauthorized — open the tokenized URL printed by `jk engine status`';
+          this.buildError = msg;
+          if (this.browserMode === 'parent') this.newProjectError = msg;
           this.browser = null;
         } else if (this.browser) {
           // an unreadable subdir: stay where we are
         } else {
-          this.buildError = 'Could not list that directory';
+          const msg = 'Could not list that directory';
+          this.buildError = msg;
+          if (this.browserMode === 'parent') this.newProjectError = msg;
         }
       }
     },
@@ -932,8 +1197,17 @@ Vue.createApp({
       this.newProjectOpen = true;
       this.newProjectError = null;
       this.newProjectBusy = false;
-      if (!this.newProject.parentDir) {
-        // Prefer $HOME from a fresh fs listing
+      // Defaults (group from git email like `jk new`, parent from history / well-known roots)
+      // and the short-name catalog — load in parallel so the modal fills quickly.
+      const [defaults, templates] = await Promise.all([
+        get('/api/projects/defaults').catch(() => null),
+        get('/api/templates').catch(() => null),
+      ]);
+      if (defaults) {
+        if (defaults.group && !this.newProject.group) this.newProject.group = defaults.group;
+        if (defaults.parentDir && !this.newProject.parentDir) this.newProject.parentDir = defaults.parentDir;
+      } else if (!this.newProject.parentDir) {
+        // Last-resort parent: $HOME from a bare fs listing (same as before defaults existed).
         try {
           const fs = await get('/api/fs');
           this.newProject.parentDir = fs.dir || '';
@@ -941,14 +1215,44 @@ Vue.createApp({
           /* leave blank */
         }
       }
-      try {
-        this.templates = await get('/api/templates');
-      } catch (_) {
-        this.templates = [
-          { id: 'java-cli', description: 'Simple Java executable' },
-          { id: 'kotlin-cli', description: 'Simple Kotlin executable' },
-        ];
-      }
+      if (!this.newProject.group) this.newProject.group = 'com.example';
+      // Offline fallback: mirror of the full Giter8ShortNames catalog (order + metadata) so a
+      // tokenless/errored /api/templates still offers every first-party short name (JK-1458).
+      this.templates = Array.isArray(templates) && templates.length
+        ? templates
+        : [
+            { id: 'java-cli', description: 'Simple Java 25 executable (Mill SIMPLE layout)', languages: ['java'], layout: 'simple' },
+            { id: 'kotlin-cli', description: 'Simple Kotlin executable (Mill SIMPLE layout)', languages: ['kotlin'], layout: 'simple' },
+            { id: 'java-cli-native', description: 'Interactive Java CLI with JLine (jk native ready)', languages: ['java'], layout: 'simple' },
+            { id: 'spring-boot-webmvc', description: 'Spring Boot 4.1 WebMVC + JPA/H2 + Actuator', languages: ['java'], layout: 'traditional' },
+            { id: 'spring-boot-webmvc-kotlin', description: 'Kotlin Spring Boot 4.1 WebMVC + JPA/H2 + Actuator', languages: ['kotlin'], layout: 'traditional' },
+            { id: 'spring-boot-mcp', description: 'Spring Boot MCP server (Spring AI, @Tool over SSE)', languages: ['java'], layout: 'traditional' },
+            { id: 'quarkus', description: 'Quarkus 3.x REST application ([quarkus] plugin)', languages: ['java'], layout: 'simple' },
+            { id: 'ktor-3', description: 'Ktor 3 service with Koin DI and Exposed/H2', languages: ['kotlin'], layout: 'simple' },
+            { id: 'micronaut', description: 'Micronaut HTTP service (compile-time DI, Netty)', languages: ['java'], layout: 'simple' },
+            { id: 'grails-8', description: 'Grails 8 REST app (GORM, H2, Groovy 5)', languages: ['groovy'], layout: 'custom' },
+          ];
+      this.onNewProjectLangChange(); // drop a leftover template that no longer matches Language
+      // Focus Name so the user can type the app name immediately; @focus selects any existing value.
+      this.$nextTick(() => {
+        const el = this.$refs.nameInput;
+        if (el && typeof el.focus === 'function') el.focus();
+      });
+    },
+
+    // Language drives the template short-name list; clear a selection that is no longer offered.
+    onNewProjectLangChange() {
+      const id = this.newProject.template;
+      if (!id) return;
+      const ok = this.templatesForLang.some((t) => t.id === id);
+      if (!ok) this.newProject.template = '';
+    },
+
+    selectedTemplateLayout() {
+      const id = this.newProject.template;
+      if (!id) return '';
+      const t = (this.templates || []).find((x) => x.id === id);
+      return (t && t.layout) || 'simple';
     },
 
     closeNewProject() {
@@ -960,15 +1264,17 @@ Vue.createApp({
     async submitNewProject() {
       this.newProjectError = null;
       this.newProjectBusy = true;
+      const hasTemplate = !!(this.newProject.template && this.newProject.template.trim());
       const body = {
         name: this.newProject.name.trim(),
         group: this.newProject.group.trim() || 'com.example',
         lang: this.newProject.lang,
-        layout: this.newProject.layout,
+        // Layout + executable only affect the blank scaffolder; omit noise when a template applies.
+        layout: hasTemplate ? 'simple' : this.newProject.layout,
         parentDir: this.newProject.parentDir.trim(),
-        executable: !!this.newProject.executable,
+        executable: hasTemplate ? false : !!this.newProject.executable,
       };
-      if (this.newProject.template && this.newProject.template.trim()) {
+      if (hasTemplate) {
         body.template = this.newProject.template.trim();
       }
       try {
@@ -977,6 +1283,7 @@ Vue.createApp({
         this.closeNewProject();
         this.newProject.name = '';
         this.newProject.template = '';
+        // Keep group + parentDir so the next create is one field away from a sibling project.
         if (path) {
           this.openProject(path);
           await this.triggerBuild(path);
@@ -1024,9 +1331,16 @@ Vue.createApp({
     mib(bytes) {
       return bytes < 0 ? '—' : Math.round(bytes / 1048576) + ' MiB';
     },
-    // System RAM reads naturally in GiB (total physical memory the engine's OS reports).
+    // System RAM reads naturally in GiB (total / free physical memory the engine's OS reports).
     gib(bytes) {
       return bytes == null || bytes < 0 ? '—' : (bytes / 1073741824).toFixed(1) + ' GiB';
+    },
+    // Header sysbox LOAD: whole-host CPU utilisation from /api/status systemCpuLoad ∈ [0,1].
+    // The bean returns -1 until the first sample; show an em-dash rather than "0%".
+    loadPercent() {
+      const load = this.status?.systemCpuLoad;
+      if (load == null || load < 0) return '—';
+      return Math.min(100, Math.round(load * 100)) + '%';
     },
     // Header version pill: "v0.10.0" — the build-metadata suffix (-SNAPSHOT) is dropped for the chip.
     versionPill() {
@@ -1057,7 +1371,8 @@ Vue.createApp({
     },
     elapsed(card) {
       if (card.startedAt == null) return '';
-      return '+' + Math.max(0, Math.floor((this.now - card.startedAt) / 1000)) + 's';
+      // Full run-wide count-up from the same whole-second counter as the countdown.
+      return '+' + this.fmtClockSeconds(this.elapsedSeconds(card));
     },
     ago(card) {
       if (card.finishedAt == null) return '';
@@ -1076,6 +1391,12 @@ Vue.createApp({
     // rows and the size formatting are pure functions in fold.js so they're covered headlessly.
     ioLines(card) {
       return ioLines(card);
+    },
+    // Screen-reader text for the I/O breakdown; the visual tooltip is CSS hover/focus (JK-1459).
+    ioSummary(card) {
+      return this.ioLines(card)
+        .map((l) => `${l.label}: ${fmtBytes(l.up)} up, ${fmtBytes(l.down)} down`)
+        .join('; ');
     },
     bytes(n) {
       return fmtBytes(n);

@@ -17,10 +17,24 @@ public final class OwnerOnlyFiles {
 
     private OwnerOnlyFiles() {}
 
-    /** Write {@code content} to {@code file} readable only by the owner, ensuring {@code dir} is {@code 0700}. */
+    /**
+     * Write {@code content} to {@code file} readable only by the owner, ensuring {@code dir} is
+     * {@code 0700}.
+     *
+     * <p>A fresh file is <em>created</em> {@code 0600} rather than created-then-tightened: these
+     * files hold secrets, and the gap between an umask-default create and the chmod is a window in
+     * which another local user can read one.
+     */
     public static void write(Path dir, Path file, String content) throws IOException {
         Files.createDirectories(dir);
         setOwnerOnly(dir, "rwx------");
+        if (!Files.exists(file) && Files.getFileAttributeView(file, PosixFileAttributeView.class) != null) {
+            try {
+                Files.createFile(file, PosixFilePermissions.asFileAttribute(OWNER_ONLY));
+            } catch (java.nio.file.FileAlreadyExistsException | UnsupportedOperationException ignored) {
+                // raced or non-POSIX — the tighten below still applies
+            }
+        }
         Files.writeString(
                 file,
                 content,
@@ -30,6 +44,9 @@ public final class OwnerOnlyFiles {
                 StandardOpenOption.WRITE);
         setOwnerOnly(file, "rw-------");
     }
+
+    private static final java.util.Set<java.nio.file.attribute.PosixFilePermission> OWNER_ONLY =
+            PosixFilePermissions.fromString("rw-------");
 
     /** Best-effort tighten POSIX permissions on {@code path}; a no-op where POSIX perms are unsupported. */
     public static void setOwnerOnly(Path path, String perms) {

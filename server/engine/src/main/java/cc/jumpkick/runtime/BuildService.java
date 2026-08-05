@@ -285,8 +285,8 @@ public final class BuildService {
             fps = Map.of();
         }
         try {
-            Cas cas = JkStores.cas(cache);
-            ActionCache ac = new ActionCache(cas, cache.resolve("actions"));
+            Cas cas = JkStores.cas(cache); // artifact CAS for classpath fingerprints
+            ActionCache ac = new ActionCache(JkStores.cacheCas(cache), cache.resolve("actions"));
             Set<Path> dirty = new HashSet<>();
             for (BuildPlan.Module m : BuildPlanForecast.of(graph, cas, ac, cache, skipTests)) {
                 if (m.dirty()) dirty.add(m.dir());
@@ -322,8 +322,8 @@ public final class BuildService {
         if (graph.hasErrors()) {
             return new ExplainPlan(List.of(), Map.of(), 1, List.copyOf(graph.errors()));
         }
-        Cas cas = JkStores.cas(cache);
-        ActionCache actionCache = new ActionCache(cas, cache.resolve("actions"));
+        Cas cas = JkStores.cas(cache); // artifact CAS for classpath fingerprints
+        ActionCache actionCache = new ActionCache(JkStores.cacheCas(cache), cache.resolve("actions"));
         // Same forecast walk as build preflight (BuildPlanForecast) — skipTests=false matches bare
         // `jk build`. Callers that need --skip-tests pass it through the engine explain request.
         List<BuildPlan.Module> modules = BuildPlanForecast.of(graph, cas, actionCache, cache, false);

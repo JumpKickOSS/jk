@@ -104,6 +104,23 @@ class BuildLayoutTest {
     }
 
     @Test
+    void moduleTargetDir_aligns_symlink_path_aliases(@TempDir Path workspace) throws IOException {
+        // On macOS TempDir is often under /var/folders while unit dirs realpath to /private/var/…
+        // A naive normalize() then treats the member as outside the workspace and falls back to
+        // <member>/target — breaking preflight clean-row checks (and Mill-style output roots).
+        Path module = Files.createDirectories(workspace.resolve("core"));
+        Path wsNorm = workspace.toAbsolutePath().normalize();
+        Path modReal = module.toAbsolutePath().toRealPath();
+        Path expected = wsNorm.resolve("target").resolve("core");
+
+        assertThat(BuildLayout.moduleTargetDir(workspace, module)).isEqualTo(expected);
+        // Cross-alias: workspace as /var/…, module as /private/var/… (or the reverse).
+        assertThat(BuildLayout.moduleTargetDir(wsNorm, modReal)).isEqualTo(expected);
+        assertThat(BuildLayout.moduleTargetDir(wsNorm, modReal).endsWith(Path.of("core", "target")))
+                .isFalse();
+    }
+
+    @Test
     void of_auto_discovers_enclosing_workspace_root(@TempDir Path workspace) throws IOException {
         Files.writeString(workspace.resolve("jk.toml"), """
                 [project]

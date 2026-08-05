@@ -73,7 +73,7 @@ class RebuildPackageStoreParityTest {
             return null;
         });
 
-        ActionCache ac = new ActionCache(JkStores.cas(cache), cache.resolve("actions"));
+        ActionCache ac = new ActionCache(JkStores.cacheCas(cache), cache.resolve("actions"));
         assertThat(ac.lookup(key))
                 .as("rebuild must persist package-jar action keys for the next explain/build")
                 .isPresent();

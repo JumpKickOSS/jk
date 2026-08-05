@@ -65,7 +65,9 @@ public final class AffectedSelection {
     /** {@code null} on git failure. Paths relative to the process cwd (repo root). */
     public static List<String> gitDiffNameOnly(Path root, String ref) {
         try {
-            Process p = new ProcessBuilder("git", "diff", "--name-only", ref + "...HEAD")
+            // --end-of-options: a ref like "--output=…" must be read as a revision, not a git
+            // option (JK-1488). Matches the discipline in GitCliExtension.
+            Process p = new ProcessBuilder("git", "diff", "--name-only", "--end-of-options", ref + "...HEAD")
                     .directory(root.toFile())
                     .redirectErrorStream(true)
                     .start();

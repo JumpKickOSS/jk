@@ -11,23 +11,26 @@ import java.util.function.Function;
  * Precedence: {@code JK_*} env &gt; user file &gt; defaults ({@link #DEFAULTS}: auto-prune on).
  * Malformed values fall back to defaults.
  *
- * <p>{@link #maxSizeGb} is the <strong>CAS / store</strong> budget ({@code jk repo storage}, prune
- * {@code --max-size}). {@link #actionMaxSizeMb} is the <strong>action cache</strong> budget
- * ({@code jk cache storage} utilization bar); default 1024 MiB. Both size budgets treat {@code 0}
- * (and negatives) as unset — the documented default applies, on every surface (JK-1441).
+ * <p>{@link #maxStoreSizeMb} is the <strong>artifact store</strong> budget ({@code jk repo
+ * storage}, store CAS + {@code repos/}). {@link #maxCacheSizeMb} is the <strong>cache</strong>
+ * budget ({@code jk cache storage}: cache CAS + action index + format stamps). Both treat {@code
+ * 0} (and negatives) as unset — the documented default applies.
  */
 public record JkCacheConfig(
         boolean autoPrune,
-        Optional<Integer> maxSizeGb,
+        int maxStoreSizeMb,
         int pruneIntervalDays,
         int recordTtlDays,
-        int actionMaxSizeMb) {
+        int maxCacheSizeMb) {
 
-    /** Default action-cache utilization denominator (1 GiB). */
-    public static final int DEFAULT_ACTION_MAX_SIZE_MB = 1024;
+    /** Default cache-tier utilization / prune budget (1 GiB). */
+    public static final int DEFAULT_MAX_CACHE_SIZE_MB = 1024;
+
+    /** Default artifact-store utilization / prune budget (4 GiB). */
+    public static final int DEFAULT_MAX_STORE_SIZE_MB = 4096;
 
     public static final JkCacheConfig DEFAULTS =
-            new JkCacheConfig(true, Optional.empty(), 7, 30, DEFAULT_ACTION_MAX_SIZE_MB);
+            new JkCacheConfig(true, DEFAULT_MAX_STORE_SIZE_MB, 7, 30, DEFAULT_MAX_CACHE_SIZE_MB);
 
     /** Effective machine config: user-global file + env overrides. */
     public static JkCacheConfig resolve() {
@@ -39,10 +42,10 @@ public record JkCacheConfig(
         JkCacheConfig base = fromToml(userConfig);
         return new JkCacheConfig(
                 EnvValues.bool(env, "JK_AUTO_PRUNE").orElse(base.autoPrune),
-                envPositiveInt(env, "JK_MAX_SIZE_GB").or(() -> base.maxSizeGb),
+                envPositiveInt(env, "JK_MAX_STORE_SIZE_MB").orElse(base.maxStoreSizeMb),
                 envNonNegativeInt(env, "JK_PRUNE_INTERVAL_DAYS").orElse(base.pruneIntervalDays),
                 envNonNegativeInt(env, "JK_RECORD_TTL_DAYS").orElse(base.recordTtlDays),
-                envPositiveInt(env, "JK_ACTION_MAX_SIZE_MB").orElse(base.actionMaxSizeMb));
+                envPositiveInt(env, "JK_MAX_CACHE_SIZE_MB").orElse(base.maxCacheSizeMb));
     }
 
     private static Optional<Integer> envNonNegativeInt(Function<String, String> env, String name) {
@@ -59,35 +62,32 @@ public record JkCacheConfig(
         TomlScan scan = TomlScan.scan(
                 file,
                 "cache.auto-prune",
-                "cache.max-size-gb",
+                "cache.max-store-size-mb",
                 "cache.prune-interval-days",
                 "cache.record-ttl-days",
-                "cache.action-max-size-mb");
+                "cache.max-cache-size-mb");
         boolean autoPrune =
                 switch (String.valueOf(scan.get("cache.auto-prune"))) {
                     case "true" -> true;
                     case "false" -> false;
                     default -> DEFAULTS.autoPrune;
                 };
-        Optional<Integer> maxSize = positive(scanInt(scan, "cache.max-size-gb"));
+        int storeMb = positive(scanInt(scan, "cache.max-store-size-mb")).orElse(DEFAULTS.maxStoreSizeMb);
         int interval = nonNegative(scanInt(scan, "cache.prune-interval-days")).orElse(DEFAULTS.pruneIntervalDays);
         int ttl = nonNegative(scanInt(scan, "cache.record-ttl-days")).orElse(DEFAULTS.recordTtlDays);
-        int actionMb = positive(scanInt(scan, "cache.action-max-size-mb")).orElse(DEFAULTS.actionMaxSizeMb);
+        int cacheMb = positive(scanInt(scan, "cache.max-cache-size-mb")).orElse(DEFAULTS.maxCacheSizeMb);
 
-        return new JkCacheConfig(autoPrune, maxSize, interval, ttl, actionMb);
+        return new JkCacheConfig(autoPrune, storeMb, interval, ttl, cacheMb);
     }
 
-    /** Action-cache utilization denominator in bytes ({@link #actionMaxSizeMb}). */
-    public long actionMaxSizeBytes() {
-        return Math.max(0, (long) actionMaxSizeMb) * 1024L * 1024L;
+    /** Cache-tier budget in bytes ({@link #maxCacheSizeMb}). */
+    public long maxCacheSizeBytes() {
+        return Math.max(0, (long) maxCacheSizeMb) * 1024L * 1024L;
     }
 
-    /**
-     * Store / CAS utilization denominator in bytes. Unset {@link #maxSizeGb} → documented 20 GiB
-     * default (same as historical {@code jk cache info}).
-     */
-    public long storeMaxSizeBytes() {
-        return (long) maxSizeGb.orElse(20) * 1024L * 1024L * 1024L;
+    /** Artifact-store budget in bytes ({@link #maxStoreSizeMb}). */
+    public long maxStoreSizeBytes() {
+        return Math.max(0, (long) maxStoreSizeMb) * 1024L * 1024L;
     }
 
     /** A scanned integer scalar; absent or malformed → empty (the lenient-read contract). */

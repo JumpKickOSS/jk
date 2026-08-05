@@ -29,8 +29,23 @@ import org.junit.jupiter.api.io.TempDir;
 @Tag("integration")
 class HttpEngineServerTest {
 
-    private static final StatusSnapshot SNAPSHOT =
-            new StatusSnapshot("9.9.9-test", 42, 1_000, 1, 0, 1_000, 2_000, 3_000, -1, -1, 8, 16_000_000_000L);
+    private static final StatusSnapshot SNAPSHOT = new StatusSnapshot(
+            "9.9.9-test",
+            42,
+            1_000,
+            1,
+            0,
+            1_000,
+            2_000,
+            3_000,
+            -1,
+            -1,
+            8,
+            16_000_000_000L,
+            8_000_000_000L,
+            0.18,
+            1,
+            0);
 
     @TempDir
     Path webRoot;
@@ -47,7 +62,8 @@ class HttpEngineServerTest {
     private final java.util.List<cc.jumpkick.runtime.BuildMetrics.Entry> metricsRows = new java.util.ArrayList<>();
 
     /** The snapshot served by {@code GET /api/cache} — tests reassign the field directly. */
-    private static final CacheSnapshot EMPTY_CACHE = new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    private static final CacheSnapshot EMPTY_CACHE =
+            new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
     private CacheSnapshot cacheSnapshot = EMPTY_CACHE;
     private HttpEngineServer server;
@@ -155,6 +171,22 @@ class HttpEngineServerTest {
     void url_reports_the_bound_loopback_address() {
         assertThat(baseUrl).startsWith("http://127.0.0.1:").endsWith("/");
         assertThat(port).isGreaterThan(0);
+    }
+
+    @Test
+    void a_symlink_under_web_root_is_not_served() throws Exception {
+        // Static content is deliberately never token-gated, so a link planted in web-root (builds
+        // may write there) must not become an unauthenticated read of anything outside it (JK-1487).
+        Path secret = stateDir.resolve("outside-secret.txt");
+        Files.writeString(secret, "TOP SECRET");
+        try {
+            Files.createSymbolicLink(webRoot.resolve("leak.txt"), secret);
+        } catch (UnsupportedOperationException | java.io.IOException unsupported) {
+            return; // filesystem without symlink support — nothing to prove here
+        }
+        HttpResponse<String> resp = get("/leak.txt");
+        assertThat(resp.statusCode()).isNotEqualTo(200);
+        assertThat(resp.body()).doesNotContain("TOP SECRET");
     }
 
     @Test
@@ -357,6 +389,10 @@ class HttpEngineServerTest {
                 .contains("\"pid\":42")
                 .contains("\"heapMaxBytes\":3000")
                 .contains("\"rssBytes\":-1")
+                .contains("\"cores\":8")
+                .contains("\"totalMemoryBytes\":16000000000")
+                .contains("\"freeMemoryBytes\":8000000000")
+                .contains("\"systemCpuLoad\":0.18")
                 .contains("\"httpUrl\":\"" + baseUrl + "\"");
     }
 
@@ -444,7 +480,23 @@ class HttpEngineServerTest {
     }
 
     @Test
-    void api_metrics_reports_aggregate_rows_without_a_token_on_loopback() throws Exception {
+    void api_metrics_requires_the_token_even_on_loopback() throws Exception {
+        // Rows carry every project dir and coordinate ever built — same class as /api/fs (JK-1466).
+        assertThat(get("/api/metrics").statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void api_history_list_is_open_on_loopback_but_artifacts_and_project_need_token() throws Exception {
+        // Journal list rehydrates the Activity feed after refresh (same openness as /api/events).
+        // Full artifacts and path-oracle GETs stay token-gated even on loopback.
+        assertThat(get("/api/history").statusCode()).isEqualTo(200);
+        assertThat(get("/api/history/artifact?id=1&name=diagnostics.txt").statusCode())
+                .isEqualTo(401);
+        assertThat(get("/api/project?dir=" + stateDir).statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void api_metrics_reports_aggregate_rows_with_the_token() throws Exception {
         var ok = new cc.jumpkick.runtime.BuildMetrics.Stats(3, 6000, 1000, 3000);
         var empty = cc.jumpkick.runtime.BuildMetrics.Stats.EMPTY;
         metricsRows.add(new cc.jumpkick.runtime.BuildMetrics.Entry("build", "", null, null, ok, empty, empty, 5L));
@@ -452,7 +504,7 @@ class HttpEngineServerTest {
         metricsRows.add(
                 new cc.jumpkick.runtime.BuildMetrics.Entry(null, "/other", null, "compile-java", ok, empty, empty, 5L));
 
-        HttpResponse<String> resp = get("/api/metrics");
+        HttpResponse<String> resp = get("/api/metrics", "Authorization", "Bearer " + token());
         assertThat(resp.statusCode()).isEqualTo(200);
         assertThat(resp.headers().firstValue("Content-Type")).contains("application/json; charset=utf-8");
         assertThat(resp.body())
@@ -464,20 +516,37 @@ class HttpEngineServerTest {
                 .contains("\"coord\":\"g:n\"");
 
         // ?dir= keeps the global tiers but drops other projects' rows.
-        String filtered = get("/api/metrics?dir=/p").body();
+        String filtered =
+                get("/api/metrics?dir=/p", "Authorization", "Bearer " + token()).body();
         assertThat(filtered).contains("\"scope\":\"global\"").contains("\"dir\":\"/p\"");
         assertThat(filtered).doesNotContain("/other");
     }
 
     @Test
     void api_metrics_is_an_empty_array_when_nothing_has_been_recorded() throws Exception {
-        assertThat(get("/api/metrics").body()).isEqualTo("[]");
+        assertThat(get("/api/metrics", "Authorization", "Bearer " + token()).body())
+                .isEqualTo("[]");
     }
 
     @Test
     void api_cache_reports_the_cache_breakdown_without_a_token_on_loopback() throws Exception {
+        // maxBytes = store/artifact budget; actionMaxBytes = action-cache budget (CLI parity).
         cacheSnapshot = new CacheSnapshot(
-                100, 5_000_000, 40, 200_000, 3, 30_000_000, 7, 9_000, 2, 100, 21_474_836_480L, 1_700_000_000_000L);
+                100,
+                5_000_000,
+                40,
+                200_000,
+                0,
+                0,
+                3,
+                30_000_000,
+                7,
+                9_000,
+                2,
+                100,
+                4_294_967_296L,
+                1_073_741_824L,
+                1_700_000_000_000L);
         HttpResponse<String> resp = get("/api/cache");
         assertThat(resp.statusCode()).isEqualTo(200);
         assertThat(resp.headers().firstValue("Content-Type")).contains("application/json; charset=utf-8");
@@ -488,7 +557,10 @@ class HttpEngineServerTest {
                 .contains("\"workerJarsBytes\":30000000")
                 .contains("\"totalCount\":152")
                 .contains("\"totalBytes\":35209100")
-                .contains("\"maxBytes\":21474836480")
+                .contains("\"actionCacheBytes\":200100")
+                .contains("\"actionMaxBytes\":1073741824") // max-cache-size-mb default 1024
+                .contains("\"artifactStorageBytes\":35009000")
+                .contains("\"maxBytes\":4294967296")
                 .contains("\"lastPrunedMillis\":1700000000000");
     }
 
@@ -553,6 +625,19 @@ class HttpEngineServerTest {
         assertThat(get("/api/fs?dir=" + stateDir.resolve("no-such-dir"), "Authorization", "Bearer " + token())
                         .statusCode())
                 .isEqualTo(400);
+    }
+
+    @Test
+    void project_defaults_require_the_token_even_on_loopback() throws Exception {
+        // Derived from the owner's git identity + home layout — same class as /api/fs.
+        assertThat(get("/api/projects/defaults").statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void project_defaults_return_group_and_parent_dir_with_token() throws Exception {
+        HttpResponse<String> resp = get("/api/projects/defaults", "Authorization", "Bearer " + token());
+        assertThat(resp.statusCode()).isEqualTo(200);
+        assertThat(resp.body()).contains("\"group\":").contains("\"parentDir\":");
     }
 
     @Test
@@ -885,11 +970,11 @@ class HttpEngineServerTest {
     void events_stream_delivers_published_frames_in_sse_format() throws Exception {
         var lines = openEvents("");
         assertThat(nextLine(lines)).isEqualTo(": connected");
-        events.publish("request-start", JsonOut.object().put("requestId", 1).put("kind", "build"));
         assertThat(nextLine(lines)).isEqualTo(""); // blank line terminating the connected comment
-        assertThat(nextLine(lines)).startsWith("id: ");
-        assertThat(nextLine(lines)).isEqualTo("event: request-start");
-        assertThat(nextLine(lines)).isEqualTo("data: {\"requestId\":1,\"kind\":\"build\"}");
+        // Connect hydrate may publish status/cache before our frame (JK-1495 LiveVitals).
+        events.publish("request-start", JsonOut.object().put("requestId", 1).put("kind", "build"));
+        assertThat(awaitSseEvent(lines, "request-start"))
+                .isEqualTo("data: {\"requestId\":1,\"kind\":\"build\"}");
     }
 
     @Test
@@ -898,7 +983,34 @@ class HttpEngineServerTest {
         var lines = openEvents("");
         assertThat(nextLine(lines)).isEqualTo(": connected");
         assertThat(nextLine(lines)).isEqualTo("");
-        assertThat(nextLine(lines)).isEqualTo(": heartbeat"); // no events published — comment keepalive
+        // Hydrate status/cache frames may precede the first quiet-stream heartbeat.
+        assertThat(awaitSseComment(lines, ": heartbeat")).isEqualTo(": heartbeat");
+    }
+
+    /**
+     * Read SSE lines until {@code event: <type>}, then return the following {@code data:} line.
+     * Skips connect-hydrate vitals and other interleaved frames.
+     */
+    private static String awaitSseEvent(java.util.Iterator<String> lines, String type) throws Exception {
+        String want = "event: " + type;
+        for (int i = 0; i < 200; i++) {
+            String line = nextLine(lines);
+            if (want.equals(line)) {
+                String data = nextLine(lines);
+                assertThat(data).startsWith("data: ");
+                return data;
+            }
+        }
+        throw new AssertionError("did not see event: " + type + " within 200 lines");
+    }
+
+    /** Read until a comment line equals {@code comment} (e.g. {@code : heartbeat}). */
+    private static String awaitSseComment(java.util.Iterator<String> lines, String comment) throws Exception {
+        for (int i = 0; i < 200; i++) {
+            String line = nextLine(lines);
+            if (comment.equals(line)) return line;
+        }
+        throw new AssertionError("did not see " + comment + " within 200 lines");
     }
 
     @Test

@@ -115,6 +115,35 @@ public final class EngineServer implements AutoCloseable {
         peakActivePipelines.accumulateAndGet(n, Math::max);
     }
 
+    /**
+     * Atomically decide "not shutting down" <em>and</em> join the active-pipeline count, under
+     * {@link #lifecycleLock}.
+     *
+     * <p>Checking {@code draining} and incrementing separately is a real race: displacement and
+     * {@code jk engine stop} both decide under this lock, so a job that passed the check but had
+     * not yet incremented is invisible to them — they see zero pipelines, set {@code shuttingDown},
+     * close the listener, and the JVM exits mid-build. Claiming the slot inside the same lock the
+     * deciders use closes that window (JK-1470).
+     *
+     * @return false when the engine is draining or already shutting down (caller must refuse)
+     */
+    private boolean tryStartPipeline() {
+        synchronized (lifecycleLock) {
+            if (draining || shuttingDown) return false;
+            notePipelineStarted();
+            return true;
+        }
+    }
+
+    /**
+     * Return a slot claimed by {@link #tryStartPipeline} when the job never actually ran (admission
+     * rejected). Deliberately not {@code notePipelineFinished}: no work happened, so this must not
+     * trigger the idle-housekeeping that a real pipeline completion does.
+     */
+    private void abandonPipelineSlot() {
+        activePipelines.decrementAndGet();
+    }
+
     /** Dashboard SSE fan-out; non-null only when {@link #httpConfig} is set. */
     private final cc.jumpkick.engine.http.HttpEvents httpEvents;
 
@@ -370,7 +399,11 @@ public final class EngineServer implements AutoCloseable {
             serverChannel.bind(new java.net.InetSocketAddress(java.net.InetAddress.getLoopbackAddress(), 0));
             int port = ((java.net.InetSocketAddress) serverChannel.getLocalAddress()).getPort();
             expectedToken = EngineTransport.newToken();
-            Files.writeString(active.token(), expectedToken);
+            // This token gates every engine RPC — i.e. arbitrary code execution as the engine
+            // owner. It must be owner-only, like the HTTP bearer token, not left to the ambient
+            // umask on a shared machine (JK-1467).
+            cc.jumpkick.util.OwnerOnlyFiles.write(
+                    active.token().getParent(), active.token(), expectedToken);
             Files.writeString(active.socket(), Integer.toString(port));
         } else {
             serverChannel = ServerSocketChannel.open(StandardProtocolFamily.UNIX);
@@ -387,8 +420,24 @@ public final class EngineServer implements AutoCloseable {
         planSharedWorkerMemoryOnce();
 
         log.accept("jk engine: listening on " + active.socket() + " (pid " + pid + ")");
-        startAotTrainerIfConfigured();
+
+        // Order matters (JK-1452, JK-1475): tell the predecessor to drain FIRST — that is what
+        // makes it suppress training and kill its trainer sidecar. Wiping before that signal
+        // leaves a window in which its in-flight trainer can atomically rename a fresh cache into
+        // the directory we just swept, which is exactly the refill this was meant to prevent.
+        // Our own trainer starts last, after the sweep, so it never sweeps its own output.
         drainDisplaced(previousActive);
+        // Drop other product versions' AOT (engine + workers); keep ours (named *-<version>-*).
+        try {
+            int wiped = cc.jumpkick.cache.VersionStore.wipeAotDirectory(
+                    cc.jumpkick.util.JkDirs.state().resolve("aot"), version);
+            if (wiped > 0) {
+                log.accept("jk engine: retired " + wiped + " AOT cache(s) from other versions");
+            }
+        } catch (RuntimeException ignored) {
+            // best-effort
+        }
+        startAotTrainerIfConfigured();
         // HTTP binds only after the displaced predecessor has been told to drain — it still holds the
         // fixed port until it exits, so binding earlier loses the handoff race with "Address already in
         // use" and (being advisory, never retried for the engine's life) sticks in `jk engine status`.
@@ -539,6 +588,8 @@ public final class EngineServer implements AutoCloseable {
                             if (Files.isRegularFile(ep)
                                     && !mine.equals(Files.readString(ep).trim())) {
                                 log.accept("jk engine: displaced by a newer generation — draining");
+                                // JK-1452: do not finish / re-start engine AOT for a lame-duck generation.
+                                stopAotTrainerQuietly();
                                 synchronized (lifecycleLock) {
                                     if (activePipelines.get() == 0) {
                                         shuttingDown = true;
@@ -552,6 +603,7 @@ public final class EngineServer implements AutoCloseable {
                             }
                             if (!Files.exists(ep) && orphanedAndUnused()) {
                                 log.accept("jk engine: no endpoint names this engine and it is unused — exiting");
+                                stopAotTrainerQuietly();
                                 synchronized (lifecycleLock) {
                                     shuttingDown = true;
                                     closeServerChannelQuietly();
@@ -701,11 +753,18 @@ public final class EngineServer implements AutoCloseable {
                     }
                     case EngineProtocol.SHUTDOWN -> {
                         boolean force = cc.jumpkick.plugin.protocol.Jsonl.bool(line, "force", false);
+                        // Takeover already repointed the endpoint before sending shutdown — kill the
+                        // engine AOT sidecar so it cannot re-publish engine-<old-v>-* (JK-1452).
+                        // Voluntary `jk engine stop` still names us; leave train to finish then.
+                        if (!endpointNamesThisEngine()) {
+                            stopAotTrainerQuietly();
+                        }
                         synchronized (lifecycleLock) {
                             int jobs = activePipelines.get();
                             if (force || jobs == 0) {
                                 // Immediate: no in-flight jobs, or an explicit force — close the listener
-                                // now so run returns and the JVM exits cleanly (AOT still assembles).
+                                // now so run returns and the JVM exits cleanly (AOT still assembles when
+                                // we remain primary).
                                 send(writer, EngineProtocol.bye(jobs, false));
                                 shuttingDown = true;
                                 closeServerChannelQuietly();
@@ -926,7 +985,13 @@ public final class EngineServer implements AutoCloseable {
         // Refuse new jobs while draining (a graceful shutdown is finishing in-flight work). The client
         // normally can't even get here — its handshake sees `draining` and fails first — but guard the
         // server too so a raced/last-moment request is rejected instead of prolonging the drain.
-        if (draining) {
+        // A pipeline claims its slot in the same breath, so shutdown can never observe zero
+        // pipelines for a job that is about to start (JK-1470).
+        boolean claimedPipelineSlot = false;
+        if (pipeline) {
+            claimedPipelineSlot = tryStartPipeline();
+        }
+        if (pipeline ? !claimedPipelineSlot : draining) {
             try {
                 send(
                         writer,
@@ -967,6 +1032,7 @@ public final class EngineServer implements AutoCloseable {
             } catch (IOException ignored) {
                 // client gone
             }
+            if (claimedPipelineSlot) abandonPipelineSlot(); // nothing ran — give the slot back
             return;
         }
         publishRequestStart(eventRequestId, eventKind, eventDir, admit.buildNumber());
@@ -979,7 +1045,7 @@ public final class EngineServer implements AutoCloseable {
                 rebuildRun,
                 admit.buildNumber(),
                 admit.journalId());
-        if (pipeline) notePipelineStarted();
+        // The slot was already claimed above, atomically with the shutdown check.
         Thread heartbeatThread = null;
         java.util.concurrent.atomic.AtomicReference<Thread> runnerRef =
                 new java.util.concurrent.atomic.AtomicReference<>();
@@ -1152,9 +1218,9 @@ public final class EngineServer implements AutoCloseable {
             // Idempotent: runner finally usually released already; covers admit-without-run paths.
             inFlightBuilds.release(eventRequestId);
             long elapsedMillis = clockMillis.getAsLong() - eventStartMillis;
-            // cancelToken.cancelled also trips on the benign end-of-request EOF, so a successful
-            // build can look cancelled. Correct it once here for both the dashboard event and the
-            // journal (a build that succeeded was not cancelled).
+            // cancelToken.cancelled also trips on the benign end-of-request EOF, so a finished
+            // build (success or failure) can look cancelled. Correct it once here for both the
+            // dashboard event and the journal.
             boolean cancelled = effectiveCancelled(eventRequestId, cancelToken.cancelled());
             if (!cancelled) lastProgressByRequest.put(eventRequestId, 100.0);
             // Safety netif the runner was abandoned/interrupted without a terminal
@@ -1165,6 +1231,12 @@ public final class EngineServer implements AutoCloseable {
                 // their client loop only ends on pipeline-finish.
                 sendQuiet(writer, cancelledTerminalLine(workspaceStream, eventDir));
             }
+            // success: same default as BuildAccumulator.toRecord — HTTP jobs always sent it; CLI
+            // socket jobs used to omit it and force the SPA to derive from module rows (JK-1499).
+            BuildAccumulator finishAcc = accumulators.get(eventRequestId);
+            boolean success = finishAcc != null
+                    ? finishAcc.effectiveSuccess(cancelled)
+                    : !cancelled;
             publishEvent(
                     "request-finish",
                     withProgress(
@@ -1176,6 +1248,7 @@ public final class EngineServer implements AutoCloseable {
                                             .put("jid", eventRequestId)
                                             .put("kind", eventKind)
                                             .put("dir", eventDir)
+                                            .put("success", success)
                                             .put("cancelled", cancelled)
                                             .put("millis", elapsedMillis),
                                     eventRequestId),
@@ -1244,7 +1317,9 @@ public final class EngineServer implements AutoCloseable {
         if (exclusive && !fp.isEmpty()) {
             var raced = inFlightBuilds.tryAcquire(candidate);
             if (raced.isPresent()) {
-                if (journalId != null) journal.delete(journalId);
+                // Scoped: journalId is this project's build number, which another project may
+                // also use (JK-1471).
+                if (journalId != null) journal.delete(journalId, coord, dir);
                 return AdmitResult.reject(raced.get());
             }
         } else {
@@ -1472,17 +1547,18 @@ public final class EngineServer implements AutoCloseable {
      * <p>{@code cancelToken.cancelled} alone is unreliable — it also trips on the benign
      * end-of-request EOF (client closes the socket the instant it reads the terminal message). For a
      * request with an accumulator we trust an explicit stamp ({@link BuildAccumulator#markUserCancelled}
-     * from BUILD_CANCEL / mid-job EOF / deadline, or {@link PipelineResult#userCancelled}). A clean
-     * success never reports cancelled even if the token later flips (see {@link BuildAccumulator#toRecord}).
-     * No accumulator → raw token.
+     * from BUILD_CANCEL / mid-job EOF / deadline, or {@link PipelineResult#userCancelled}). A runner
+     * that already stamped a terminal outcome (success <em>or</em> failure) is never re-labelled
+     * cancelled by that race — otherwise a failed test run journals as "Cancelled" in the web UI
+     * after the CLI closes the socket. No accumulator → raw token.
      */
     private boolean effectiveCancelled(long requestId, boolean rawCancelled) {
         BuildAccumulator a = accumulators.get(requestId);
         if (a == null) return rawCancelled;
         if (a.wasCancelled()) return true;
         // Token cancelled mid-job but stamp missed (legacy path): still cancel unless the runner
-        // already reported success (EOF-after-finish race).
-        return rawCancelled && !a.succeeded();
+        // already reported a terminal outcome (EOF-after-finish race for success or failure).
+        return rawCancelled && !a.hasOutcome();
     }
 
     /** The request's location for journal/dashboard rows: {@code dir}, else the nearest thing. */
@@ -1494,9 +1570,22 @@ public final class EngineServer implements AutoCloseable {
         return "";
     }
 
-    /** Publish to the dashboard event hub — free (one subscriber check) when no dashboard is open. */
+    /**
+     * Publish an <strong>inflicted</strong> build/activity frame to the dashboard SSE hub (JK-1499).
+     * Call only when the engine already mutated user-visible state — never batch build progress on
+     * the sampled vitals timer ({@link cc.jumpkick.engine.http.LiveVitals}). No-op without
+     * subscribers. Sampled chrome ({@code status}/{@code cache}) is separate: change-gated and
+     * nudged only on request start/finish so Builds Running / storage totals stay timely.
+     */
     private void publishEvent(String type, cc.jumpkick.engine.http.JsonOut payload) {
         if (httpEvents != null && httpEvents.hasSubscribers()) httpEvents.publish(type, payload);
+        // Sampled chrome (status/cache SSE) is change-gated; nudge it when jobs start/finish so
+        // Builds Running and storage totals do not wait for the next timer tick (JK-1495/1497).
+        HttpEngineServer http = httpServer;
+        if (http != null && ("request-start".equals(type) || "request-finish".equals(type))) {
+            http.notifyLiveStatus();
+            if ("request-finish".equals(type)) http.notifyLiveCache();
+        }
     }
 
     /**
@@ -1532,8 +1621,29 @@ public final class EngineServer implements AutoCloseable {
                 .put("localDownBytes", t.localDown());
     }
 
+    /**
+     * Requests whose progress state has been torn down.
+     *
+     * <p>A job the engine gave up on ("still running after deadline+grace — abandoned") keeps
+     * emitting: its module listener calls back into {@link #progressTracker} and
+     * {@code emitWorkspaceProgress} <em>after</em> {@link #clearProgress} ran, and those are
+     * {@code computeIfAbsent}/{@code put} sites — so every abandoned job used to strand five
+     * permanent map entries in a process that runs for days, and two threads could even hold
+     * different emit locks for one request. Marking the id retired makes those late writes
+     * no-ops (JK-1474).
+     *
+     * <p>Bounded: request ids come from a monotonic counter, so ids far below the newest can no
+     * longer be live and are pruned on each teardown.
+     */
+    private final java.util.concurrent.ConcurrentHashMap<Long, Boolean> retiredRequests =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** How far below the newest request id a retired marker is still worth keeping. */
+    private static final long RETIRED_WINDOW = 1024L;
+
     private void clearProgress(long requestId) {
         if (requestId <= 0) return;
+        retiredRequests.put(requestId, Boolean.TRUE);
         lastProgressByRequest.remove(requestId);
         lastProgressDenByRequest.remove(requestId);
         progressTrackers.remove(requestId);
@@ -1541,9 +1651,21 @@ public final class EngineServer implements AutoCloseable {
         progressWeights.remove(requestId);
         progressEmitState.remove(requestId);
         progressEmitLocks.remove(requestId);
+        long cutoff = requestIds.get() - RETIRED_WINDOW;
+        if (cutoff > 0) retiredRequests.keySet().removeIf(id -> id < cutoff);
     }
 
+    /** True once {@link #clearProgress} has retired this request — late emits must not re-register. */
+    private boolean progressRetired(long requestId) {
+        return retiredRequests.containsKey(requestId);
+    }
+
+    /**
+     * For a retired request, a detached tracker that is never stored: callers keep a non-null
+     * object to update (no null checks at eight call sites) and the update goes nowhere.
+     */
     private cc.jumpkick.runtime.WorkspaceProgressTracker progressTracker(long requestId) {
+        if (progressRetired(requestId)) return new cc.jumpkick.runtime.WorkspaceProgressTracker();
         return progressTrackers.computeIfAbsent(requestId, id -> new cc.jumpkick.runtime.WorkspaceProgressTracker());
     }
 
@@ -1579,6 +1701,9 @@ public final class EngineServer implements AutoCloseable {
      */
     private void emitWorkspaceProgress(long requestId, java.io.BufferedWriter writer, boolean force) {
         if (requestId <= 0) return;
+        // A straggler from an abandoned job must not re-register the maps teardown just cleared,
+        // nor take a fresh emit lock that no longer serializes against anything (JK-1474).
+        if (progressRetired(requestId)) return;
         Object lock = progressEmitLocks.computeIfAbsent(requestId, id -> new Object());
         synchronized (lock) {
             cc.jumpkick.runtime.WorkspaceProgressTracker tracker = progressTrackers.get(requestId);
@@ -2020,7 +2145,7 @@ public final class EngineServer implements AutoCloseable {
                         config.recordTtlDays(),
                         false,
                         true,
-                        config.maxSizeGb().map(gb -> gb + "G").orElse(null),
+                        config.maxStoreSizeMb() + "M",
                         false);
                 cc.jumpkick.run.PipelineResult result = pipeline.run();
                 if (result.success()) {
@@ -4269,7 +4394,7 @@ public final class EngineServer implements AutoCloseable {
             if (record.synthetic()) {
                 String jid = a.journalId();
                 if (jid != null && !jid.isBlank()) {
-                    journal.delete(jid);
+                    journal.delete(jid, record.coord(), record.dir());
                 }
                 journal.purgeProject(record.coord(), record.dir());
                 return;
@@ -4295,21 +4420,41 @@ public final class EngineServer implements AutoCloseable {
      */
     private static String gitCommit(String dir) {
         if (dir == null || dir.isEmpty()) return null;
+        Process p = null;
         try {
-            Process p = new ProcessBuilder("git", "-C", dir, "rev-parse", "--short", "HEAD")
-                    .redirectErrorStream(false)
+            // stderr is discarded at the OS level and stdout drained on a side thread, so the 1s
+            // cap actually holds. Reading stdout to EOF inline deadlocks on a repo where git is
+            // chatty enough to fill its stderr pipe (dubious-ownership, many warnings): git can't
+            // exit, stdout never sees EOF, and the waitFor below is never reached — on the journal
+            // teardown path that hangs the whole request (JK-1473).
+            p = new ProcessBuilder("git", "-C", dir, "rev-parse", "--short", "HEAD")
+                    .redirectError(ProcessBuilder.Redirect.DISCARD)
                     .start();
-            String out;
-            try (var in = p.getInputStream()) {
-                out = new String(in.readAllBytes(), StandardCharsets.UTF_8).trim();
-            }
+            Process proc = p;
+            StringBuilder sb = new StringBuilder();
+            Thread drainer = new Thread(
+                    () -> {
+                        try (var in = proc.getInputStream()) {
+                            sb.append(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+                        } catch (IOException ignored) {
+                            // killed mid-read — no stamp
+                        }
+                    },
+                    "jk-git-commit-probe");
+            drainer.setDaemon(true);
+            drainer.start();
             if (!p.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)) {
                 p.destroyForcibly();
                 return null;
             }
+            drainer.join(200);
+            String out = sb.toString().trim();
             return p.exitValue() == 0 && !out.isEmpty() ? out : null;
         } catch (IOException | InterruptedException | RuntimeException e) {
-            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+                if (p != null) p.destroyForcibly();
+            }
             return null;
         }
     }
@@ -4548,10 +4693,9 @@ public final class EngineServer implements AutoCloseable {
     /** {@code history-list-request} → one flat {@code history-entry} per entry, then {@code history-done}. */
     private void handleHistoryList(String requestLine, BufferedWriter writer) throws IOException {
         int limit = Math.max(1, Jsonl.intValue(requestLine, "limit", 200));
-        // Skip optimize/calibrate synthetic fixtures (JK-1390).
-        java.util.List<BuildRecord> records = journal.list().stream()
-                .filter(r -> r != null && !r.synthetic())
-                .toList();
+        // Truncate in the journal (synthetic fixtures are already filtered there, JK-1390) rather
+        // than materialising every record on disk and then dropping most of them (JK-1481).
+        java.util.List<BuildRecord> records = journal.list(limit);
         int n = Math.min(records.size(), limit);
         for (int i = 0; i < n; i++) {
             BuildRecord r = records.get(i);
@@ -4755,7 +4899,10 @@ public final class EngineServer implements AutoCloseable {
                             : realPipeline
                                     .get(cc.jumpkick.runtime.BuildPipelines.BUILD_OUTCOME)
                                     .orElse(null);
-                    boolean cancelled = result.userCancelled() || result.cancelled();
+                    // Wire "cancelled" is user/deadline cancel only. PipelineResult.cancelled is also
+                    // set on cooperative fail-fast (remaining steps aborted after a real FAIL) — that
+                    // must not look like the user cancelled the job.
+                    boolean cancelled = result.userCancelled();
                     String finish = testResult == null && buildOutcome == null
                             ? EngineProtocol.pipelineFinish(dir, result.success(), cancelled)
                             : EngineProtocol.withCancelled(
@@ -5067,9 +5214,23 @@ public final class EngineServer implements AutoCloseable {
      * GET /mcp} event-stream).
      */
     private long triggerHttpWorkspace(String dirStr, String kind, boolean skipTests, boolean testOnly) {
-        if (draining) {
+        // Claim the pipeline slot atomically with the shutdown check, so displacement/stop can
+        // never see zero pipelines for a job that is about to start (JK-1470). Any failure before
+        // the runner thread is started gives the slot back — a leaked slot would stall shutdown.
+        if (!tryStartPipeline()) {
             throw new IllegalStateException("engine is shutting down");
         }
+        boolean started = false;
+        try {
+            long id = startHttpWorkspace(dirStr, kind, skipTests, testOnly);
+            started = true;
+            return id;
+        } finally {
+            if (!started) abandonPipelineSlot();
+        }
+    }
+
+    private long startHttpWorkspace(String dirStr, String kind, boolean skipTests, boolean testOnly) {
         Path entryDir = Path.of(dirStr);
         if (!entryDir.isAbsolute()) {
             throw new IllegalArgumentException("dir must be an absolute path");
@@ -5096,8 +5257,10 @@ public final class EngineServer implements AutoCloseable {
         publishRequestStart(eventRequestId, kind, entryDir.toString(), admit.buildNumber());
         registerAccumulator(
                 eventRequestId, kind, entryDir.toString(), "web", false, false, admit.buildNumber(), admit.journalId());
-        notePipelineStarted();
-        Thread t = Thread.ofVirtual().name("jk-engine-http-" + kind + "-", 0).start(() -> {
+        // Unstarted: registration below must complete before the body can reach its finally and
+        // remove the very keys we are about to insert, which would leak a dead Thread under this
+        // id forever and make a cancel arriving in that window a no-op (JK-1478).
+        Thread t = Thread.ofVirtual().name("jk-engine-http-" + kind + "-", 0).unstarted(() -> {
             cacheGate.readLock().lock();
             currentEventRequestId.set(eventRequestId);
             JobWorkers.open(eventRequestId);
@@ -5143,13 +5306,28 @@ public final class EngineServer implements AutoCloseable {
         });
         runnerRef.set(t);
         httpJobThreads.put(eventRequestId, t);
+        t.start();
         return eventRequestId;
     }
 
     private long triggerHttpLock(String dirStr) {
-        if (draining) {
+        // Claim the pipeline slot atomically with the shutdown check, so displacement/stop can
+        // never see zero pipelines for a job that is about to start (JK-1470). Any failure before
+        // the runner thread is started gives the slot back — a leaked slot would stall shutdown.
+        if (!tryStartPipeline()) {
             throw new IllegalStateException("engine is shutting down");
         }
+        boolean started = false;
+        try {
+            long id = startHttpLock(dirStr);
+            started = true;
+            return id;
+        } finally {
+            if (!started) abandonPipelineSlot();
+        }
+    }
+
+    private long startHttpLock(String dirStr) {
         Path entryDir = Path.of(dirStr);
         if (!entryDir.isAbsolute()) {
             throw new IllegalArgumentException("dir must be an absolute path");
@@ -5166,8 +5344,8 @@ public final class EngineServer implements AutoCloseable {
         registerLiveJob(eventRequestId, cancelToken, runnerRef, null, null, entryDir.toString(), "lock", false);
         publishRequestStart(eventRequestId, "lock", entryDir.toString());
         registerAccumulator(eventRequestId, "lock", entryDir.toString(), "web");
-        notePipelineStarted();
-        Thread t = Thread.ofVirtual().name("jk-engine-http-lock-", 0).start(() -> {
+        // Unstarted — see the note in startHttpWorkspace (JK-1478).
+        Thread t = Thread.ofVirtual().name("jk-engine-http-lock-", 0).unstarted(() -> {
             cacheGate.readLock().lock();
             currentEventRequestId.set(eventRequestId);
             JobWorkers.open(eventRequestId);
@@ -5211,6 +5389,7 @@ public final class EngineServer implements AutoCloseable {
         });
         runnerRef.set(t);
         httpJobThreads.put(eventRequestId, t);
+        t.start();
         return eventRequestId;
     }
 
@@ -5485,6 +5664,8 @@ public final class EngineServer implements AutoCloseable {
     private cc.jumpkick.engine.http.StatusSnapshot statusSnapshot() {
         Runtime rt = Runtime.getRuntime();
         long heapCommitted = rt.totalMemory();
+        // Same available-memory semantics as HeapPlan (MemAvailable / reclaimable / MXBean free).
+        MemoryProbe.Memory host = MemoryProbe.current();
         return new cc.jumpkick.engine.http.StatusSnapshot(
                 version,
                 pid,
@@ -5497,17 +5678,23 @@ public final class EngineServer implements AutoCloseable {
                 MemoryProbe.ownRssBytes(),
                 aotTrainingPid(),
                 rt.availableProcessors(),
-                systemMemoryBytes(),
+                host.totalBytes(),
+                host.availableBytes(),
+                systemCpuLoad(),
                 peakActiveConnections.get(),
                 peakActivePipelines.get());
     }
 
-    /** Total physical memory the OS reports, or {@code -1} if the platform bean can't answer. */
-    private static long systemMemoryBytes() {
+    /**
+     * Recent whole-host CPU utilisation in {@code [0, 1]}, or {@code -1} until the first sample / when
+     * the platform bean can't answer. The dashboard renders this as a percent next to CORES.
+     */
+    private static double systemCpuLoad() {
         try {
-            return ((com.sun.management.OperatingSystemMXBean)
-                            java.lang.management.ManagementFactory.getOperatingSystemMXBean())
-                    .getTotalMemorySize();
+            var os = (com.sun.management.OperatingSystemMXBean)
+                    java.lang.management.ManagementFactory.getOperatingSystemMXBean();
+            double load = os.getCpuLoad();
+            return load >= 0 && load <= 1 ? load : -1;
         } catch (RuntimeException e) {
             return -1;
         }
@@ -5553,6 +5740,37 @@ public final class EngineServer implements AutoCloseable {
             });
         } catch (RuntimeException e) {
             log.accept("jk engine: AOT training sidecar failed to start: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Kill a live engine AOT sidecar, clear the spawner, and suppress <em>all</em> AOT training
+     * (workers included) so a lame-duck process cannot refill {@code state/aot} after the primary
+     * wipe (JK-1452). Idempotent.
+     */
+    private void stopAotTrainerQuietly() {
+        cc.jumpkick.util.AotSettings.suppressTraining();
+        aotTrainerSpawner = null;
+        Process p = aotTrainer;
+        aotTrainer = null;
+        if (p == null || !p.isAlive()) return;
+        try {
+            p.destroyForcibly();
+            log.accept("jk engine: killed AOT training sidecar (no longer primary, pid " + p.pid() + ")");
+        } catch (RuntimeException ignored) {
+            // best-effort
+        }
+    }
+
+    /** Whether the endpoint pointer still names this generation's socket. */
+    private boolean endpointNamesThisEngine() {
+        if (active == null) return false;
+        try {
+            Path ep = EnginePaths.endpoint(paths);
+            if (!Files.isRegularFile(ep)) return false;
+            return active.socket().getFileName().toString().equals(Files.readString(ep).trim());
+        } catch (IOException e) {
+            return false;
         }
     }
 
@@ -5793,18 +6011,39 @@ public final class EngineServer implements AutoCloseable {
             return Boolean.TRUE.equals(success);
         }
 
+        /** True when the runner already stamped success or failure via {@link #setOutcome}. */
+        boolean hasOutcome() {
+            return success != null;
+        }
+
+        /**
+         * Outcome for SSE {@code request-finish} — same default as {@link #toRecord}: explicit
+         * stamp when set, else not-failed and not cancelled.
+         */
+        boolean effectiveSuccess(boolean cancelled) {
+            if (cancelled) return false;
+            return success != null ? success : !anyFailure;
+        }
+
         /**
          * Genuine user/deadline cancellation — set by {@link #markUserCancelled} when BUILD_CANCEL /
          * mid-job EOF / deadline fires, or by a finished pipeline with
-         * {@link PipelineResult#userCancelled}. Not the racy end-of-request EOF after a clean success
-         * (that is filtered in {@link #toRecord}).
+         * {@link PipelineResult#userCancelled}. Not the racy end-of-request EOF after a terminal
+         * outcome (that is ignored in {@link #markUserCancelled} / {@link #toRecord}).
          */
         boolean wasCancelled() {
             return userCancelled;
         }
 
-        /** Stamp cancel immediately so a force-killed runner still journals as cancelled, not success. */
+        /**
+         * Stamp cancel immediately so a force-killed runner still journals as cancelled, not success.
+         * No-op once an outcome is known: either {@link #setOutcome} already ran, or a module/pipeline
+         * already reported failure ({@code anyFailure}). The client often closes the socket the
+         * instant it reads a terminal failure, and that EOF must not re-label a test/compile failure
+         * as cancelled.
+         */
         void markUserCancelled() {
+            if (success != null || anyFailure) return;
             userCancelled = true;
         }
 
@@ -5972,11 +6211,11 @@ public final class EngineServer implements AutoCloseable {
                 CacheBenefit.Result benefit) {
             boolean ok = success != null ? success : (!anyFailure && !cancelled);
             int exit = success != null ? exitCode : (ok ? 0 : 1);
-            // A build that reported success was not cancelled: cancelToken.cancelled also fires on
-            // the benign end-of-request EOF (the client closes the socket the instant it reads the
-            // terminal message, which can land just before the runner marks itself done), so trust
-            // the outcome over that flag and never label a successful run "cancelled".
-            boolean cancelledEffective = cancelled && !ok;
+            // cancelToken / late markUserCancelled also trip on the benign end-of-request EOF (the
+            // client closes the socket as soon as it reads the terminal). Trust a stamped outcome:
+            // success is never cancelled; an explicit failure is cancelled only when the user/deadline
+            // stamp was set (not merely cancelled=true from cooperative fail-fast / EOF race).
+            boolean cancelledEffective = resolveCancelledFlag(success, userCancelled, cancelled);
             // Each workspace module carries its own step chain (keyed by its dir); a single-pipeline
             // build has no module rows, so its steps live in the record's top-level list (the ""
             // bucket). This is exactly the two shapes the dashboard renders (per-module vs compact).
@@ -6026,5 +6265,22 @@ public final class EngineServer implements AutoCloseable {
         private static boolean notBlank(String s) {
             return s != null && !s.isBlank();
         }
+    }
+
+    /**
+     * Journal / SSE cancel bit from a stamped runner outcome + cancel flags.
+     *
+     * <ul>
+     *   <li>Stamped success → never cancelled (EOF-after-finish race).
+     *   <li>Stamped failure → cancelled only when the user/deadline stamp was set (not cooperative
+     *       fail-fast or post-finish EOF).
+     *   <li>No outcome yet (force-killed mid-job) → honour the cancel hint.
+     * </ul>
+     */
+    static boolean resolveCancelledFlag(Boolean successStamp, boolean userCancelled, boolean cancelHint) {
+        if (Boolean.TRUE.equals(successStamp)) return false;
+        if (userCancelled) return true;
+        if (successStamp != null) return false; // explicit failure without a user-cancel stamp
+        return cancelHint;
     }
 }
