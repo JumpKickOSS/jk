@@ -476,6 +476,25 @@ test('eta is captured and cleared on finish', () => {
   assert.equal(cards[0].etaMillis, null); // countdown stops on finish
 });
 
+test('etaTotalMillis anchors remaining work at the emission time, not request-start (JK-1517)', async () => {
+  const { etaTotalMillis } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const cards = [];
+  foldEvent(cards, { ...start(1, '/w'), at: 1000 });
+  // 10s into the run (slow lock/prepare), the engine projects 30s of REMAINING work.
+  foldEvent(cards, { ...{ type: 'eta', data: { requestId: 1, millis: 30_000 } }, at: 11_000 });
+  // Run-wide total = elapsed-at-emission (10s) + remaining (30s), not 30s.
+  assert.equal(etaTotalMillis(cards[0]), 40_000);
+
+  // A later re-projection replaces the anchor — still no double count.
+  foldEvent(cards, { ...{ type: 'eta', data: { requestId: 1, millis: 25_000 } }, at: 21_000 });
+  assert.equal(etaTotalMillis(cards[0]), 45_000);
+
+  // Journal-seeded shape (no etaAt): millis is treated as the total.
+  assert.equal(etaTotalMillis({ etaMillis: 30_000, etaAt: null, startedAt: 1000 }), 30_000);
+  assert.equal(etaTotalMillis({ etaMillis: null }), null);
+  assert.equal(etaTotalMillis({ etaMillis: 0 }), null);
+});
+
 test('phaseChainOf collapses steps into coarse phase nodes in encounter order', () => {
   const cards = [];
   foldEvent(cards, start(1, '/proj'));

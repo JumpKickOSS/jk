@@ -27,6 +27,7 @@ import {
   liveStepDetail,
   detailSegments,
   orderedModules,
+  etaTotalMillis,
 } from './fold.js';
 
 bootstrapToken();
@@ -962,7 +963,9 @@ Vue.createApp({
       return Math.max(0, Math.floor((this.now - card.startedAt) / 1000));
     },
     etaSeconds(card) {
-      return Math.max(0, Math.floor(card.etaMillis / 1000));
+      // Run-wide total from the remaining-work etaMillis (see fold.etaTotalMillis, JK-1517).
+      const total = etaTotalMillis(card);
+      return total == null ? 0 : Math.max(0, Math.floor(total / 1000));
     },
     etaOverdue(card) {
       return this.hasEta(card) && this.elapsedSeconds(card) >= this.etaSeconds(card);

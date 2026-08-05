@@ -207,6 +207,22 @@ export function foldEvent(cards, event) {
  * Aggregate numerator for the request bar (JK-1120). Prefers engine workspace-progress units;
  * falls back to summing module ticks only when no aggregate event has arrived yet.
  */
+/**
+ * Run-wide ETA total for a card, in ms — or null when the card has no usable ETA. `etaMillis` is
+ * REMAINING work at emission time (BuildService remaining-work semantics), so the total is
+ * (etaAt - startedAt) + etaMillis: the same elapsed+remaining conversion the CLI does. Without
+ * it, a slow lock/prepare window or an ETA re-projection double-counts already-elapsed time and
+ * the countdown hits "0s" while the build is on schedule (JK-1517). Journal-seeded cards carry
+ * no etaAt: their etaMillis is treated as the total (legacy shape).
+ */
+export function etaTotalMillis(card) {
+  if (typeof card.etaMillis !== 'number' || card.etaMillis <= 0) return null;
+  if (card.etaAt != null && card.startedAt != null) {
+    return card.etaAt - card.startedAt + card.etaMillis;
+  }
+  return card.etaMillis;
+}
+
 export function weightNumerator(card) {
   if (card.progressDen > 0 || card.progressPercent != null) return card.progressNum || 0;
   let n = 0;
