@@ -121,6 +121,12 @@ class EffortWeightsTest {
             Files.writeString(f, "class Foo" + i + " {}");
             sources.add(f);
         }
+        // looksFresh uses mtime >= stampMillis — same-millisecond source writes count as dirty.
+        // Pin sources into the past so the stamp is unambiguously newer (see KotlinForecastStampTest).
+        long past = System.currentTimeMillis() - 3_600_000L;
+        for (Path f : sources) {
+            Files.setLastModifiedTime(f, java.nio.file.attribute.FileTime.fromMillis(past));
+        }
         BuildPipelines.Inputs in = new BuildPipelines.Inputs(
                 dir,
                 dir.resolve("cache"),
