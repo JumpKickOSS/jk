@@ -79,8 +79,8 @@ public final class AddCommand implements CliCommand {
         return List.of(Param.of(
                 "dep|path",
                 Arity.ONE,
-                "Library short name, name@ver, group:artifact[:ver], or local path.\n"
-                        + "Bare name is a path when that relative dir exists; else a library."));
+                "Library short name, name@ver, group:artifact[:ver], or path.\n"
+                        + "A bare name is a path when that directory exists."));
     }
 
     @Override

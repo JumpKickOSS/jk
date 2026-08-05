@@ -54,8 +54,8 @@ public final class RemoveCommand implements CliCommand {
         return List.of(Param.of(
                 "name|path",
                 Arity.ONE,
-                "Library short name, group:artifact[:ver], name@ver, or local path.\n"
-                        + "Version is ignored when present; path uses the module project name."));
+                "Library short name, group:artifact[:ver], name@ver, or path.\n"
+                        + "Version is ignored; a path resolves to the module name."));
     }
 
     @Override
