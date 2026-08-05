@@ -199,10 +199,10 @@ header {
 /* faint vertical divider between header groups */
 .hdiv { width: 1px; align-self: stretch; margin: 15px 2px; background: rgba(var(--cn-rgb), 0.14); flex: none; }
 
-/* outlined system box: CORES + LOAD / RAM + FREE (engine host resources; 5s poll) */
+/* outlined system box: CORES + LOAD / RAM + AVAIL (engine host resources; 5s poll) */
 .sysbox {
   display: grid;
-  /* two label/value pairs per row: CORES n  LOAD p%  /  RAM n  FREE n */
+  /* two label/value pairs per row: CORES n  LOAD p%  /  RAM n  AVAIL n */
   grid-template-columns: auto auto auto auto;
   column-gap: 10px;
   row-gap: 2px;

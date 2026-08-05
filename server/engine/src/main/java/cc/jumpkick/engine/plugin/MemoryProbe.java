@@ -15,8 +15,19 @@ import java.util.Locale;
 
 /**
  * Container-aware host memory from the OS (not a JVM bean), so native and hosted jk agree.
- * Linux uses {@code /proc} + cgroup limits; macOS uses {@code host_statistics64} (inactive pages
- * count as free); else the OS MXBean. Best-effort; falls back to {@link #FALLBACK_TOTAL}.
+ *
+ * <p>Platform sources for {@link Memory#availableBytes()}:
+ *
+ * <ul>
+ *   <li><b>Linux</b> — {@code /proc/meminfo} {@code MemAvailable} (same as {@code free -h}'s
+ *       "available" column: free + reclaimable page cache), plus cgroup limits when present.
+ *       Not {@code MemFree} / MXBean free, which under-report on aggressive file-cache hosts.
+ *   <li><b>macOS</b> — {@code host_statistics64} reclaimable pages (free + inactive + speculative +
+ *       purgeable), not MXBean free alone.
+ *   <li><b>else</b> (Windows, …) — {@code OperatingSystemMXBean} total/free physical memory.
+ * </ul>
+ *
+ * Best-effort; falls back to {@link #FALLBACK_TOTAL}.
  */
 public final class MemoryProbe {
 
@@ -50,6 +61,14 @@ public final class MemoryProbe {
             }
         }
         return m;
+    }
+
+    /**
+     * Live host memory (uncached) for status / SSE vitals. Prefer {@link #probe()} when sizing
+     * worker heaps so the plan stays stable for one build.
+     */
+    public static Memory current() {
+        return measure();
     }
 
     /**

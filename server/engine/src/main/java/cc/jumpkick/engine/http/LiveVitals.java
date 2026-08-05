@@ -185,8 +185,8 @@ public final class LiveVitals implements AutoCloseable {
     }
 
     /**
-     * Quantized status for equality — free/heap to 1 MiB, CPU load to 1 percentage point, counters
-     * exact. Keeps "still 5.0 GiB free" from spamming the wire.
+     * Quantized status for equality — available/heap to 1 MiB, CPU load to 1 percentage point,
+     * counters exact. Keeps "still 5.0 GiB available" from spamming the wire.
      */
     record PresentStatus(
             int activePipelines,

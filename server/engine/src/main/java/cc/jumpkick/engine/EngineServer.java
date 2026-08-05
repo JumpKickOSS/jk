@@ -5664,7 +5664,8 @@ public final class EngineServer implements AutoCloseable {
     private cc.jumpkick.engine.http.StatusSnapshot statusSnapshot() {
         Runtime rt = Runtime.getRuntime();
         long heapCommitted = rt.totalMemory();
-        var os = systemOsBean();
+        // Same available-memory semantics as HeapPlan (MemAvailable / reclaimable / MXBean free).
+        MemoryProbe.Memory host = MemoryProbe.current();
         return new cc.jumpkick.engine.http.StatusSnapshot(
                 version,
                 pid,
@@ -5677,50 +5678,21 @@ public final class EngineServer implements AutoCloseable {
                 MemoryProbe.ownRssBytes(),
                 aotTrainingPid(),
                 rt.availableProcessors(),
-                systemMemoryBytes(os),
-                systemFreeMemoryBytes(os),
-                systemCpuLoad(os),
+                host.totalBytes(),
+                host.availableBytes(),
+                systemCpuLoad(),
                 peakActiveConnections.get(),
                 peakActivePipelines.get());
-    }
-
-    /** Platform OS bean, or {@code null} when monitoring is unavailable (e.g. restricted native-image). */
-    private static com.sun.management.OperatingSystemMXBean systemOsBean() {
-        try {
-            return (com.sun.management.OperatingSystemMXBean)
-                    java.lang.management.ManagementFactory.getOperatingSystemMXBean();
-        } catch (RuntimeException e) {
-            return null;
-        }
-    }
-
-    /** Total physical memory the OS reports, or {@code -1} if the platform bean can't answer. */
-    private static long systemMemoryBytes(com.sun.management.OperatingSystemMXBean os) {
-        if (os == null) return -1;
-        try {
-            return os.getTotalMemorySize();
-        } catch (RuntimeException e) {
-            return -1;
-        }
-    }
-
-    /** Free physical memory the OS reports, or {@code -1} if the platform bean can't answer. */
-    private static long systemFreeMemoryBytes(com.sun.management.OperatingSystemMXBean os) {
-        if (os == null) return -1;
-        try {
-            return os.getFreeMemorySize();
-        } catch (RuntimeException e) {
-            return -1;
-        }
     }
 
     /**
      * Recent whole-host CPU utilisation in {@code [0, 1]}, or {@code -1} until the first sample / when
      * the platform bean can't answer. The dashboard renders this as a percent next to CORES.
      */
-    private static double systemCpuLoad(com.sun.management.OperatingSystemMXBean os) {
-        if (os == null) return -1;
+    private static double systemCpuLoad() {
         try {
+            var os = (com.sun.management.OperatingSystemMXBean)
+                    java.lang.management.ManagementFactory.getOperatingSystemMXBean();
             double load = os.getCpuLoad();
             return load >= 0 && load <= 1 ? load : -1;
         } catch (RuntimeException e) {
