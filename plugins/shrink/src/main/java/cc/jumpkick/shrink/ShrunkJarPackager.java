@@ -2,7 +2,7 @@
 package cc.jumpkick.shrink;
 
 import cc.jumpkick.plugin.build.PackageIo;
-import cc.jumpkick.plugin.build.StepExec;
+import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -112,7 +112,7 @@ final class ShrunkJarPackager {
             Files.writeString(rules, pro);
 
             Path shrunk = work.resolve("shrunk.jar");
-            StepExec.ToolRun run = io.java()
+            TaskExec.ToolRun run = io.java()
                     .classpath(List.of(r8))
                     .mainClass("com.android.tools.r8.R8")
                     .arg("--release")
@@ -137,7 +137,7 @@ final class ShrunkJarPackager {
             for (Path p : program) before += Files.size(p);
             io.label("R8 shrink (" + program.size() + " inputs, " + mb(before) + ")");
             for (Path p : program) run.arg(p.toString());
-            StepExec.ToolRun.Result result = run.run();
+            TaskExec.ToolRun.Result result = run.run();
             if (result.exit() != 0) {
                 throw new IllegalStateException("R8 failed (exit " + result.exit() + "):\n" + result.output());
             }

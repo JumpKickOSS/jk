@@ -136,7 +136,7 @@ class PrivatePluginPathTest {
 
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
         // Drive lock-plugins via the real pipeline helper used by jk lock.
-        var result = LockPipelines.lockPipeline(
+        var result = LockPipelines.lockBuildPlan(
                         project, build, tmp.resolve("cache"), null, List.of(), true, false, ResolveObserver.NOOP, null)
                 .run();
         assertThat(result.success()).isFalse();

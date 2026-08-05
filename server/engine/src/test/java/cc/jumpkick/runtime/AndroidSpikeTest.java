@@ -6,8 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The P6 validation gate (build-plugins plan §4; android-plan.md Step 1): {@code jk build} on a
+ * The P6 validation gate (build-plugins plan §4; android-plan.md Task 1): {@code jk build} on a
  * minimal Android hello-world produces a signed APK via {@code plugins/android}, with the
  * R-gen → compile → dex → assemble chain running entirely over the public SPI — the engine has
  * zero Android-specific code.
@@ -84,12 +84,12 @@ class AndroidSpikeTest {
                 false,
                 java.util.Set.of(),
                 cc.jumpkick.config.SessionContext.current());
-        Pipeline pipeline = BuildPipelines.coreBuilder(in).build();
+        BuildPlan pipeline = BuildPipelines.coreBuilder(in).build();
 
         assertThat(pipeline.steps().stream().map(p -> p.name()))
                 .contains("plugin-android-manifest", "plugin-android-res", "plugin-android-dex", "package-jar");
 
-        PipelineResult result = pipeline.run();
+        BuildPlanResult result = pipeline.run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
 

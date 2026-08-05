@@ -98,7 +98,7 @@ include(
     ":io",              // repo fetch/publish machinery: transports (http/file/s3), POM, metadata
     ":resolver",        // PubGrub solver + conflict diagnostics
     ":toolchain",       // resolver-backed tool installs, Gradle/Maven import machinery
-    ":engine",          // the Pipeline/Step scheduler + build pipeline
+    ":engine",          // the BuildPlan/Step scheduler + build pipeline
     // clients/
     ":cli",             // the slim native GraalVM client
     ":web",             // the web dashboard SPA (resources-only; bundled into the engine jar)

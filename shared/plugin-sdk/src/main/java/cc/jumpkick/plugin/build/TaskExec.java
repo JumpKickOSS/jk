@@ -11,11 +11,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * What a {@link StepSpec.Body} gets to work with, inside the plugin's worker JVM: the resolved
+ * What a {@link TaskSpec.Body} gets to work with, inside the plugin's worker JVM: the resolved
  * declared inputs, the scratch output root, progress labelling, and JDK tool forks — and nothing
  * about action keys, the CAS, or jk's directory layout.
  */
-public interface StepExec {
+public interface TaskExec {
 
     /** The module's compiled classes dir (resources copied in) — {@link In#classes()}. */
     Path classesDir();

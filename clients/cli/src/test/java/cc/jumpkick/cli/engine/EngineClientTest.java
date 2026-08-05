@@ -144,7 +144,7 @@ class EngineClientTest {
                 .isFalse();
         var s = EngineClient.status(EnginePaths.activeSocket(p)).orElseThrow();
         assertThat(s.draining()).isFalse();
-        assertThat(s.activePipelines()).isZero();
+        assertThat(s.activeBuildPlans()).isZero();
 
         server.close();
     }

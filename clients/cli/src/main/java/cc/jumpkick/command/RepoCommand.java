@@ -170,8 +170,8 @@ public final class RepoCommand extends GroupCommand {
                     dryRun,
                     () -> summary[0] != null ? summary[0].files() : 0L,
                     () -> summary[0] != null ? summary[0].bytes() : 0L);
-            cc.jumpkick.cli.run.PipelineConsole.Mode mode = cc.jumpkick.cli.run.PipelineConsole.modeFor(global);
-            cc.jumpkick.run.PipelineResult result;
+            cc.jumpkick.cli.run.BuildPlanConsole.Mode mode = cc.jumpkick.cli.run.BuildPlanConsole.modeFor(global);
+            cc.jumpkick.run.BuildPlanResult result;
             try {
                 // olderThanDays = MAX_VALUE: a pre-"sweep" engine falls back to its prune pipeline;
                 // the huge cutoff keeps action entries untouched while sweep=true still runs the GC.
@@ -179,7 +179,7 @@ public final class RepoCommand extends GroupCommand {
                         cc.jumpkick.engine.EnginePaths.current(),
                         new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest(
                                 "sweep", root, Integer.MAX_VALUE, dryRun, true, maxSize, false),
-                        steps -> cc.jumpkick.cli.run.PipelineConsole.chooseConsoleListener(steps, mode, spec, "Repo"),
+                        steps -> cc.jumpkick.cli.run.BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Repo"),
                         CacheCommand::printWait,
                         summary);
             } catch (IOException e) {

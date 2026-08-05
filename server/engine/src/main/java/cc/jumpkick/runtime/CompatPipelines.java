@@ -7,10 +7,10 @@ import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineKey;
-import cc.jumpkick.run.Step;
-import cc.jumpkick.run.StepKind;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskKind;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -31,23 +31,23 @@ public final class CompatPipelines {
     }
 
     /** The import plugin's exit code (0 = converted cleanly). */
-    public static final PipelineKey<Integer> EXIT = PipelineKey.of("import-exit", Integer.class);
+    public static final BuildPlanKey<Integer> EXIT = BuildPlanKey.of("import-exit", Integer.class);
 
     /** The import plugin's reported issue count (rendered as "Import notes: N issue(s)"). */
-    public static final PipelineKey<Integer> WARNINGS = PipelineKey.of("import-warnings", Integer.class);
+    public static final BuildPlanKey<Integer> WARNINGS = BuildPlanKey.of("import-warnings", Integer.class);
 
     /** The import plugin's terminal error text, if any. */
-    public static final PipelineKey<String> ERROR = PipelineKey.of("import-error", String.class);
+    public static final BuildPlanKey<String> ERROR = BuildPlanKey.of("import-error", String.class);
 
     /** The plugin's passthrough chatter, kept only when it exited non-zero. */
-    public static final PipelineKey<String> DIAG = PipelineKey.of("import-diag", String.class);
+    public static final BuildPlanKey<String> DIAG = BuildPlanKey.of("import-diag", String.class);
 
     /**
      * Build the import pipeline. All paths arrive absolute (the command pre-flighted source detection
      * and overwrite checks); {@code report} may be {@code null}. Locates the plugin jar eagerly, so
      * a missing plugin fails here with side-load instructions rather than mid-pipeline.
      */
-    public static Pipeline importPipeline(
+    public static BuildPlan importBuildPlan(
             Path source,
             Path out,
             Path baseDir,
@@ -68,8 +68,8 @@ public final class CompatPipelines {
         if (report != null)
             specWriter.configString("report", report.toAbsolutePath().toString());
 
-        Step convert = Step.builder("import")
-                .kind(StepKind.IO)
+        Task convert = Task.builder("import")
+                .kind(TaskKind.IO)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("convert " + source.getFileName() + " via compat plugin");
@@ -101,7 +101,7 @@ public final class CompatPipelines {
                 })
                 .build();
 
-        return Pipeline.builder("import").addStep(convert).build();
+        return BuildPlan.builder("import").addTask(convert).build();
     }
 
     /** A provisioning call's outcome — the flat fields {@code jk mvn}/{@code jk gradle} render from. */

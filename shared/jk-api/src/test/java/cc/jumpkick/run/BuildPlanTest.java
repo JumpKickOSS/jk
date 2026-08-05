@@ -12,13 +12,13 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
-class PipelineTest {
+class BuildPlanTest {
 
     @Test
     void single_phase_succeeds_and_collects_progress() {
         AtomicInteger ran = new AtomicInteger();
-        var pipeline = Pipeline.builder("test")
-                .addStep(Step.builder("step")
+        var pipeline = BuildPlan.builder("test")
+                .addTask(Task.builder("step")
                         .ticks(5)
                         .execute(ctx -> {
                             for (int i = 0; i < 5; i++) ctx.progress(1);
@@ -31,16 +31,16 @@ class PipelineTest {
         assertThat(ran).hasValue(1);
         assertThat(result.success()).isTrue();
         assertThat(result.steps()).hasSize(1);
-        assertThat(result.steps().getFirst().status()).isEqualTo(StepStatus.SUCCESS);
+        assertThat(result.steps().getFirst().status()).isEqualTo(TaskStatus.SUCCESS);
         assertThat(pipeline.snapshot().percent()).isEqualTo(100);
     }
 
     @Test
     void scope_sums_across_phases() {
-        var pipeline = Pipeline.builder("multi")
-                .addStep(Step.builder("a").ticks(3).execute(ctx -> {}).build())
-                .addStep(Step.builder("b").ticks(7).execute(ctx -> {}).build())
-                .addStep(Step.builder("c").ticks(2).execute(ctx -> {}).build())
+        var pipeline = BuildPlan.builder("multi")
+                .addTask(Task.builder("a").ticks(3).execute(ctx -> {}).build())
+                .addTask(Task.builder("b").ticks(7).execute(ctx -> {}).build())
+                .addTask(Task.builder("c").ticks(2).execute(ctx -> {}).build())
                 .build();
 
         var result = pipeline.run();
@@ -54,16 +54,16 @@ class PipelineTest {
     @Test
     void estimated_total_weight_sums_phase_estimates_without_running() {
         AtomicInteger ran = new AtomicInteger();
-        var pipeline = Pipeline.builder("estimate")
-                .addStep(Step.builder("a")
+        var pipeline = BuildPlan.builder("estimate")
+                .addTask(Task.builder("a")
                         .ticks(3)
                         .execute(ctx -> ran.incrementAndGet())
                         .build())
-                .addStep(Step.builder("b")
+                .addTask(Task.builder("b")
                         .ticks(() -> 7)
                         .execute(ctx -> ran.incrementAndGet())
                         .build())
-                .addStep(Step.builder("c").execute(ctx -> ran.incrementAndGet()).build()) // default ticks 1
+                .addTask(Task.builder("c").execute(ctx -> ran.incrementAndGet()).build()) // default ticks 1
                 .build();
 
         // No explicit weights → weight tracks ticks, so the total is unchanged.
@@ -83,10 +83,10 @@ class PipelineTest {
         // proportionally inside updateTicks to "preserve the fraction,"
         // which compounded into a 2× overshoot.
         AtomicInteger maxNumOverDen = new AtomicInteger(0);
-        var pipeline = Pipeline.builder("interleaved")
-                .addListener(new PipelineListener() {
+        var pipeline = BuildPlan.builder("interleaved")
+                .addListener(new BuildPlanListener() {
                     @Override
-                    public void progress(String step, int delta, PipelineView view) {
+                    public void progress(String step, int delta, BuildPlanView view) {
                         if (view.numerator() > view.denominator()) {
                             maxNumOverDen.updateAndGet(
                                     prev -> Math.max(prev, (int) (view.numerator() - view.denominator())));
@@ -94,14 +94,14 @@ class PipelineTest {
                     }
 
                     @Override
-                    public void tickUpdate(String step, int delta, PipelineView view) {
+                    public void tickUpdate(String step, int delta, BuildPlanView view) {
                         if (view.numerator() > view.denominator()) {
                             maxNumOverDen.updateAndGet(
                                     prev -> Math.max(prev, (int) (view.numerator() - view.denominator())));
                         }
                     }
                 })
-                .addStep(Step.builder("loop")
+                .addTask(Task.builder("loop")
                         .ticks(0)
                         .execute(ctx -> {
                             for (int i = 0; i < 100; i++) {
@@ -122,9 +122,9 @@ class PipelineTest {
     @Test
     void update_scope_grows_denominator() {
         var listener = new RecordingListener();
-        var pipeline = Pipeline.builder("growing")
+        var pipeline = BuildPlan.builder("growing")
                 .addListener(listener)
-                .addStep(Step.builder("expand")
+                .addTask(Task.builder("expand")
                         .ticks(2)
                         .execute(ctx -> {
                             ctx.progress(1);
@@ -145,14 +145,14 @@ class PipelineTest {
     @Test
     void dag_respects_requires_ordering() {
         List<String> order = new ArrayList<>();
-        var pipeline = Pipeline.builder("dag")
-                .addStep(
-                        Step.builder("setup").execute(ctx -> order.add("setup")).build())
-                .addStep(Step.builder("middle")
+        var pipeline = BuildPlan.builder("dag")
+                .addTask(
+                        Task.builder("setup").execute(ctx -> order.add("setup")).build())
+                .addTask(Task.builder("middle")
                         .requires("setup")
                         .execute(ctx -> order.add("middle"))
                         .build())
-                .addStep(Step.builder("end")
+                .addTask(Task.builder("end")
                         .requires("middle")
                         .execute(ctx -> order.add("end"))
                         .build())
@@ -166,16 +166,16 @@ class PipelineTest {
     void independent_async_phases_run_in_parallel() throws InterruptedException {
         CountDownLatch sawBothRunning = new CountDownLatch(2);
         CountDownLatch release = new CountDownLatch(1);
-        var pipeline = Pipeline.builder("parallel")
-                .addStep(Step.builder("a")
-                        .kind(StepKind.IO)
+        var pipeline = BuildPlan.builder("parallel")
+                .addTask(Task.builder("a")
+                        .kind(TaskKind.IO)
                         .execute(ctx -> {
                             sawBothRunning.countDown();
                             release.await();
                         })
                         .build())
-                .addStep(Step.builder("b")
-                        .kind(StepKind.IO)
+                .addTask(Task.builder("b")
+                        .kind(TaskKind.IO)
                         .execute(ctx -> {
                             sawBothRunning.countDown();
                             release.await();
@@ -195,15 +195,15 @@ class PipelineTest {
     @Test
     void failed_phase_cancels_dependent_phases() {
         var ran = new AtomicInteger();
-        var pipeline = Pipeline.builder("fail")
-                .addStep(Step.builder("ok").execute(ctx -> {}).build())
-                .addStep(Step.builder("boom")
+        var pipeline = BuildPlan.builder("fail")
+                .addTask(Task.builder("ok").execute(ctx -> {}).build())
+                .addTask(Task.builder("boom")
                         .requires("ok")
                         .execute(ctx -> {
                             throw new RuntimeException("intentional");
                         })
                         .build())
-                .addStep(Step.builder("downstream")
+                .addTask(Task.builder("downstream")
                         .requires("boom")
                         .execute(ctx -> ran.incrementAndGet())
                         .build())
@@ -213,12 +213,12 @@ class PipelineTest {
         assertThat(result.success()).isFalse();
         assertThat(ran).hasValue(0); // downstream never ran
         assertThat(result.steps())
-                .extracting(PipelineResult.StepReport::status)
-                .containsExactly(StepStatus.SUCCESS, StepStatus.FAIL, StepStatus.CANCELLED);
+                .extracting(BuildPlanResult.StepReport::status)
+                .containsExactly(TaskStatus.SUCCESS, TaskStatus.FAIL, TaskStatus.CANCELLED);
         // Dependency edges survive into the report (needed by the engine's cache-benefit metric),
         // including on the CANCELLED path.
         assertThat(result.steps())
-                .extracting(PipelineResult.StepReport::name, PipelineResult.StepReport::requires)
+                .extracting(BuildPlanResult.StepReport::name, BuildPlanResult.StepReport::requires)
                 .containsExactly(
                         tuple("ok", List.of()), tuple("boom", List.of("ok")), tuple("downstream", List.of("boom")));
         assertThat(result.errors()).hasSize(1);
@@ -227,8 +227,8 @@ class PipelineTest {
 
     @Test
     void warnings_accumulate_and_dont_fail_the_goal() {
-        var pipeline = Pipeline.builder("nags")
-                .addStep(Step.builder("one")
+        var pipeline = BuildPlan.builder("nags")
+                .addTask(Task.builder("one")
                         .execute(ctx -> {
                             ctx.warn("dep.unverified", "no checksum for X");
                             ctx.warn("dep.unverified", "no checksum for Y");
@@ -242,9 +242,9 @@ class PipelineTest {
 
     @Test
     void duplicate_phase_names_are_rejected() {
-        assertThatThrownBy(() -> Pipeline.builder("dup")
-                        .addStep(Step.builder("x").execute(ctx -> {}).build())
-                        .addStep(Step.builder("x").execute(ctx -> {}).build())
+        assertThatThrownBy(() -> BuildPlan.builder("dup")
+                        .addTask(Task.builder("x").execute(ctx -> {}).build())
+                        .addTask(Task.builder("x").execute(ctx -> {}).build())
                         .build())
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("duplicate");
@@ -252,8 +252,8 @@ class PipelineTest {
 
     @Test
     void unknown_requires_is_rejected() {
-        assertThatThrownBy(() -> Pipeline.builder("bad")
-                        .addStep(Step.builder("x")
+        assertThatThrownBy(() -> BuildPlan.builder("bad")
+                        .addTask(Task.builder("x")
                                 .requires("nope")
                                 .execute(ctx -> {})
                                 .build())
@@ -264,12 +264,12 @@ class PipelineTest {
 
     @Test
     void cycle_is_rejected() {
-        assertThatThrownBy(() -> Pipeline.builder("loop")
-                        .addStep(Step.builder("a")
+        assertThatThrownBy(() -> BuildPlan.builder("loop")
+                        .addTask(Task.builder("a")
                                 .requires("b")
                                 .execute(ctx -> {})
                                 .build())
-                        .addStep(Step.builder("b")
+                        .addTask(Task.builder("b")
                                 .requires("a")
                                 .execute(ctx -> {})
                                 .build())
@@ -280,18 +280,18 @@ class PipelineTest {
 
     @Test
     void typed_state_flows_between_phases() {
-        PipelineKey<String> NAME = PipelineKey.of("name", String.class);
-        PipelineKey<Integer> COUNT = PipelineKey.of("count", Integer.class);
+        BuildPlanKey<String> NAME = BuildPlanKey.of("name", String.class);
+        BuildPlanKey<Integer> COUNT = BuildPlanKey.of("count", Integer.class);
         List<String> consumed = new ArrayList<>();
 
-        var pipeline = Pipeline.builder("flow")
-                .addStep(Step.builder("producer")
+        var pipeline = BuildPlan.builder("flow")
+                .addTask(Task.builder("producer")
                         .execute(ctx -> {
                             ctx.put(NAME, "widget");
                             ctx.put(COUNT, 42);
                         })
                         .build())
-                .addStep(Step.builder("consumer")
+                .addTask(Task.builder("consumer")
                         .requires("producer")
                         .execute(ctx -> {
                             consumed.add(ctx.require(NAME));
@@ -309,9 +309,9 @@ class PipelineTest {
 
     @Test
     void require_throws_when_key_missing() {
-        PipelineKey<String> MISSING = PipelineKey.of("missing", String.class);
-        var pipeline = Pipeline.builder("oops")
-                .addStep(Step.builder("reader")
+        BuildPlanKey<String> MISSING = BuildPlanKey.of("missing", String.class);
+        var pipeline = BuildPlan.builder("oops")
+                .addTask(Task.builder("reader")
                         .execute(ctx -> ctx.require(MISSING))
                         .build())
                 .build();
@@ -325,9 +325,9 @@ class PipelineTest {
     void cancellation_propagates_to_running_phases() throws InterruptedException {
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch sawCancelled = new CountDownLatch(1);
-        var pipeline = Pipeline.builder("cancellable")
-                .addStep(Step.builder("worker")
-                        .kind(StepKind.IO)
+        var pipeline = BuildPlan.builder("cancellable")
+                .addTask(Task.builder("worker")
+                        .kind(TaskKind.IO)
                         .execute(ctx -> {
                             started.countDown();
                             while (!ctx.cancelled()) {
@@ -354,33 +354,33 @@ class PipelineTest {
         // not ok (ETA prior).
         SessionCancel.bind(() -> true);
         try {
-            var pipeline = Pipeline.builder("session-cancel")
-                    .addStep(Step.builder("worker")
-                            .kind(StepKind.SYNC)
+            var pipeline = BuildPlan.builder("session-cancel")
+                    .addTask(Task.builder("worker")
+                            .kind(TaskKind.SYNC)
                             .execute(ctx -> {
                                 if (ctx.cancelled()) throw new RuntimeException("cancelled");
                             })
                             .build())
                     .build();
-            PipelineResult r = pipeline.run();
+            BuildPlanResult r = pipeline.run();
             assertThat(r.success()).isFalse();
             assertThat(r.userCancelled()).isTrue();
             assertThat(r.cancelled()).isTrue();
-            assertThat(r.steps().getFirst().status()).isEqualTo(StepStatus.CANCELLED);
+            assertThat(r.steps().getFirst().status()).isEqualTo(TaskStatus.CANCELLED);
         } finally {
             SessionCancel.bind(null);
         }
     }
 
     /** Listener that records every event for assertion. */
-    static final class RecordingListener implements PipelineListener {
+    static final class RecordingListener implements BuildPlanListener {
         final List<Integer> scopeUpdates = new ArrayList<>();
         final List<String> warnings = new ArrayList<>();
         final List<String> errors = new ArrayList<>();
-        volatile PipelineResult finalResult;
+        volatile BuildPlanResult finalResult;
 
         @Override
-        public void tickUpdate(String step, int delta, PipelineView view) {
+        public void tickUpdate(String step, int delta, BuildPlanView view) {
             scopeUpdates.add(delta);
         }
 
@@ -395,7 +395,7 @@ class PipelineTest {
         }
 
         @Override
-        public void pipelineFinish(PipelineResult result) {
+        public void pipelineFinish(BuildPlanResult result) {
             finalResult = result;
         }
     }

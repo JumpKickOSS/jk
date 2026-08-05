@@ -390,15 +390,15 @@ public final class PreflightMemo {
         return structureFingerprint(entryDir, unitDirs);
     }
 
-    // Pipeline shape (layer B)
+    // BuildPlan shape (layer B)
 
     /**
      * Static pipeline outline for one module: total weight, serial test-step weight, and step
      * names/phases. Used to skip pipeline assembly on ETA-only paths and to skip
-     * {@link cc.jumpkick.run.Pipeline#estimatedTotalWeight} on prepare. Never trusted
+     * {@link cc.jumpkick.run.BuildPlan#estimatedTotalWeight} on prepare. Never trusted
      * under force/rebuild.
      */
-    public record PipelineShape(int weight, int testWeight, List<StepShape> steps) {
+    public record BuildPlanShape(int weight, int testWeight, List<StepShape> steps) {
         public record StepShape(String name, String phase) {}
     }
 
@@ -419,7 +419,7 @@ public final class PreflightMemo {
         }
     }
 
-    public static Optional<PipelineShape> tryLoadShape(Path entryDir, Path moduleDir, boolean skipTests) {
+    public static Optional<BuildPlanShape> tryLoadShape(Path entryDir, Path moduleDir, boolean skipTests) {
         Path file = shapeMemoFile(entryDir);
         if (!Files.isRegularFile(file)) return Optional.empty();
         try {
@@ -445,7 +445,7 @@ public final class PreflightMemo {
                 if (!rel.equals(p[1])) continue;
                 if (!wantFp.equals(p[2])) continue; // other skipTests/fp variant — keep scanning
                 return Optional.of(
-                        new PipelineShape(Integer.parseInt(p[3]), Integer.parseInt(p[4]), parseStepField(p[5])));
+                        new BuildPlanShape(Integer.parseInt(p[3]), Integer.parseInt(p[4]), parseStepField(p[5])));
             }
             return Optional.empty();
         } catch (Exception e) {
@@ -453,13 +453,13 @@ public final class PreflightMemo {
         }
     }
 
-    private static List<PipelineShape.StepShape> parseStepField(String stepsField) {
-        List<PipelineShape.StepShape> steps = new ArrayList<>();
+    private static List<BuildPlanShape.StepShape> parseStepField(String stepsField) {
+        List<BuildPlanShape.StepShape> steps = new ArrayList<>();
         if (stepsField == null || stepsField.isBlank()) return List.of();
         for (String tok : stepsField.split(",")) {
             int c = tok.indexOf(':');
-            if (c < 0) steps.add(new PipelineShape.StepShape(tok, ""));
-            else steps.add(new PipelineShape.StepShape(tok.substring(0, c), tok.substring(c + 1)));
+            if (c < 0) steps.add(new BuildPlanShape.StepShape(tok, ""));
+            else steps.add(new BuildPlanShape.StepShape(tok.substring(0, c), tok.substring(c + 1)));
         }
         return List.copyOf(steps);
     }
@@ -473,7 +473,7 @@ public final class PreflightMemo {
     }
 
     /** Upsert one module's pipeline shape into the shape memo. Best-effort. */
-    public static void storeShape(Path entryDir, Path moduleDir, boolean skipTests, PipelineShape shape) {
+    public static void storeShape(Path entryDir, Path moduleDir, boolean skipTests, BuildPlanShape shape) {
         if (shape == null) return;
         Path root = entryDir.toAbsolutePath().normalize();
         Object lock = SHAPE_LOCKS.computeIfAbsent(root, k -> new Object());
@@ -486,7 +486,7 @@ public final class PreflightMemo {
                 StringBuilder steps = new StringBuilder();
                 for (int i = 0; i < shape.steps().size(); i++) {
                     if (i > 0) steps.append(',');
-                    PipelineShape.StepShape s = shape.steps().get(i);
+                    BuildPlanShape.StepShape s = shape.steps().get(i);
                     steps.append(s.name()).append(':').append(s.phase() == null ? "" : s.phase());
                 }
                 String newLine =
@@ -528,15 +528,15 @@ public final class PreflightMemo {
         }
     }
 
-    /** Build a {@link PipelineShape} from an assembled pipeline (weights + step outline). */
-    public static PipelineShape shapeOf(cc.jumpkick.run.Pipeline pipeline, int weight) {
-        List<PipelineShape.StepShape> steps = new ArrayList<>();
+    /** Build a {@link BuildPlanShape} from an assembled pipeline (weights + step outline). */
+    public static BuildPlanShape shapeOf(cc.jumpkick.run.BuildPlan pipeline, int weight) {
+        List<BuildPlanShape.StepShape> steps = new ArrayList<>();
         int testWeight = 0;
         for (var s : pipeline.steps()) {
             String phase = s.phase()
                     .map(p -> p.name().toLowerCase(java.util.Locale.ROOT))
                     .orElse("");
-            steps.add(new PipelineShape.StepShape(s.name(), phase));
+            steps.add(new BuildPlanShape.StepShape(s.name(), phase));
             if ("run-tests".equals(s.name())) {
                 try {
                     testWeight += s.estimateWeight();
@@ -545,7 +545,7 @@ public final class PreflightMemo {
                 }
             }
         }
-        return new PipelineShape(weight, testWeight, List.copyOf(steps));
+        return new BuildPlanShape(weight, testWeight, List.copyOf(steps));
     }
 
     /**
@@ -553,18 +553,18 @@ public final class PreflightMemo {
      * early {@code onPlan} so the aggregate bar can calibrate during prepare. Must never be
      * executed; the real plan replaces it after prepare.
      */
-    public static ModulePlan provisionalModulePlan(BuildGraph.BuildUnit unit, PipelineShape shape, Path cache) {
+    public static ModulePlan provisionalModulePlan(BuildGraph.BuildUnit unit, BuildPlanShape shape, Path cache) {
         Objects.requireNonNull(unit, "unit");
         Objects.requireNonNull(shape, "shape");
-        cc.jumpkick.run.Pipeline.Builder b = cc.jumpkick.run.Pipeline.builder(unit.coord());
-        for (PipelineShape.StepShape s : shape.steps()) {
+        cc.jumpkick.run.BuildPlan.Builder b = cc.jumpkick.run.BuildPlan.builder(unit.coord());
+        for (BuildPlanShape.StepShape s : shape.steps()) {
             cc.jumpkick.plugin.build.Phase phase = null;
             try {
                 phase = cc.jumpkick.plugin.build.Phase.fromWireOrNull(s.phase());
             } catch (IllegalArgumentException ignored) {
                 // unknown phase wire name — leave unset
             }
-            b.addStep(cc.jumpkick.run.Step.builder(s.name())
+            b.addTask(cc.jumpkick.run.Task.builder(s.name())
                     .phase(phase)
                     .ticks(0)
                     .weight(0)

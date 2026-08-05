@@ -2,10 +2,10 @@
 package cc.jumpkick.engine;
 
 import cc.jumpkick.plugin.build.Phase;
-import cc.jumpkick.run.PipelineListener;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.PipelineView;
-import cc.jumpkick.run.StepStatus;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.BuildPlanView;
+import cc.jumpkick.run.TaskStatus;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.Executors;
@@ -29,22 +29,22 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <p>Env: {@code JK_WIRE_PROGRESS_MS} — milliseconds between progress/label flushes ({@code 0} =
  * unbatched passthrough for debugging).
  */
-public final class CoalescingPipelineListener implements PipelineListener, AutoCloseable {
+public final class CoalescingBuildPlanListener implements BuildPlanListener, AutoCloseable {
 
     /** Default human cadence — half a second is plenty for eyes; 1 s feels sluggish. */
     public static final long DEFAULT_CADENCE_MS = 500L;
 
-    private final PipelineListener delegate;
+    private final BuildPlanListener delegate;
     private final long cadenceMs;
     private final Object lock = new Object();
 
     private String progressStep;
     private int progressDelta;
-    private PipelineView progressView;
+    private BuildPlanView progressView;
 
     private String tickStep;
     private int tickDelta;
-    private PipelineView tickView;
+    private BuildPlanView tickView;
 
     private String labelStep;
     private String labelText;
@@ -75,11 +75,11 @@ public final class CoalescingPipelineListener implements PipelineListener, AutoC
     private static final java.util.concurrent.ExecutorService FLUSHERS =
             Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("jk-wire-flush-", 0).factory());
 
-    public CoalescingPipelineListener(PipelineListener delegate) {
+    public CoalescingBuildPlanListener(BuildPlanListener delegate) {
         this(delegate, cadenceFromEnv());
     }
 
-    public CoalescingPipelineListener(PipelineListener delegate, long cadenceMs) {
+    public CoalescingBuildPlanListener(BuildPlanListener delegate, long cadenceMs) {
         this.delegate = Objects.requireNonNull(delegate, "delegate");
         this.cadenceMs = Math.max(0L, cadenceMs);
         this.lastFlushNanos = 0L;
@@ -97,7 +97,7 @@ public final class CoalescingPipelineListener implements PipelineListener, AutoC
     }
 
     @Override
-    public void pipelineStart(PipelineView view) {
+    public void pipelineStart(BuildPlanView view) {
         flush();
         delegate.pipelineStart(view);
     }
@@ -109,7 +109,7 @@ public final class CoalescingPipelineListener implements PipelineListener, AutoC
     }
 
     @Override
-    public void progress(String step, int delta, PipelineView view) {
+    public void progress(String step, int delta, BuildPlanView view) {
         if (cadenceMs == 0) {
             delegate.progress(step, delta, view);
             return;
@@ -123,7 +123,7 @@ public final class CoalescingPipelineListener implements PipelineListener, AutoC
     }
 
     @Override
-    public void tickUpdate(String step, int delta, PipelineView view) {
+    public void tickUpdate(String step, int delta, BuildPlanView view) {
         if (cadenceMs == 0) {
             delegate.tickUpdate(step, delta, view);
             return;
@@ -174,13 +174,13 @@ public final class CoalescingPipelineListener implements PipelineListener, AutoC
     }
 
     @Override
-    public void stepFinish(String step, Phase phase, StepStatus status, Duration duration) {
+    public void stepFinish(String step, Phase phase, TaskStatus status, Duration duration) {
         flush();
         delegate.stepFinish(step, phase, status, duration);
     }
 
     @Override
-    public void pipelineFinish(PipelineResult result) {
+    public void pipelineFinish(BuildPlanResult result) {
         flush();
         delegate.pipelineFinish(result);
         close();
@@ -203,14 +203,14 @@ public final class CoalescingPipelineListener implements PipelineListener, AutoC
     private void emitPendingLocked() {
         String pStep = progressStep;
         int pDelta = progressDelta;
-        PipelineView pView = progressView;
+        BuildPlanView pView = progressView;
         progressStep = null;
         progressDelta = 0;
         progressView = null;
 
         String tStep = tickStep;
         int tDelta = tickDelta;
-        PipelineView tView = tickView;
+        BuildPlanView tView = tickView;
         tickStep = null;
         tickDelta = 0;
         tickView = null;

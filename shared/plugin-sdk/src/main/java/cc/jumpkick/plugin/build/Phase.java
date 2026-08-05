@@ -2,7 +2,7 @@
 package cc.jumpkick.plugin.build;
 
 /**
- * Pipeline anchor points a {@link StepSpec} orders itself against (build-plugins plan §3.2).
+ * Pipeline anchor points a {@link TaskSpec} orders itself against (build-plugins plan §3.2).
  * Anchors, not step-name coupling: the engine maps each anchor onto its internal {@code
  * Step.requires} graph, so plugins never learn jk's step names and the pipeline can evolve
  * without breaking plugins.

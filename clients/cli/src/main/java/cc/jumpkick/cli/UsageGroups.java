@@ -47,7 +47,7 @@ public final class UsageGroups {
                     "System commands:", List.of("doctor", "cache", "repo", "env", "jobs", "engine", "web")));
 
     /**
-     * Curated subset of commands shown when the user runs bare {@code jk}. Pipeline: cover the day-to-day
+     * Curated subset of commands shown when the user runs bare {@code jk}. BuildPlan: cover the day-to-day
      * commands without overwhelming first-time users. The full screen is still one keystroke away via
      * {@code --help}.
      */

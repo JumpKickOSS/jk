@@ -8,8 +8,8 @@ import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.WorkspaceMerge;
 import cc.jumpkick.resolver.ResolveObserver;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -106,9 +106,9 @@ class NiaScratchTest {
         var rootManifest = JkBuildParser.parse(NIA.resolve("jk.toml"));
         var modules = WorkspaceLoader.loadModules(NIA, rootManifest);
         build = WorkspaceMerge.applyToModule(rootManifest, build, modules.values());
-        Pipeline lock = LockPipelines.lockPipeline(
+        BuildPlan lock = LockPipelines.lockBuildPlan(
                 module, build, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
-        PipelineResult lockResult = lock.run();
+        BuildPlanResult lockResult = lock.run();
         System.out.println("NIA-RELEASE lock: " + lockResult.errors());
 
         BuildPipelines.Inputs in = new BuildPipelines.Inputs(
@@ -135,7 +135,7 @@ class NiaScratchTest {
                                 // PKCS12: the key password IS the store password (keytool
                                 // ignores -keypass for PKCS12 stores).
                                 "RELEASE_KEY_PASSWORD", "rel-store-pass"));
-        PipelineResult result = BuildPipelines.coreBuilder(in).build().run();
+        BuildPlanResult result = BuildPipelines.coreBuilder(in).build().run();
         System.out.println("NIA-RELEASE diags: " + result.errors());
         System.out.println("NIA-RELEASE success: " + result.success());
         try (var walk = Files.walk(module.resolve("target"))) {
@@ -158,9 +158,9 @@ class NiaScratchTest {
                 build = WorkspaceMerge.applyToModule(rootManifest, build, modules.values());
             }
         }
-        Pipeline lock = LockPipelines.lockPipeline(
+        BuildPlan lock = LockPipelines.lockBuildPlan(
                 module, build, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
-        PipelineResult lockResult = lock.run();
+        BuildPlanResult lockResult = lock.run();
         if (!lockResult.errors().isEmpty())
             return "lock: " + lockResult.errors().getFirst();
         BuildPipelines.Inputs in = new BuildPipelines.Inputs(
@@ -187,7 +187,7 @@ class NiaScratchTest {
                 || module.getFileName().toString().equals("app")) {
             in = in.withVariant("contentType=demo", java.util.Map.of());
         }
-        PipelineResult result = BuildPipelines.coreBuilder(in).build().run();
+        BuildPlanResult result = BuildPipelines.coreBuilder(in).build().run();
         if (!result.errors().isEmpty()) return "build: ALL-DIAGS " + result.errors();
         if (!result.success()) return "build: failed without diagnostics";
         return null;

@@ -18,7 +18,7 @@ import org.junit.jupiter.api.io.TempDir;
  * The forecast's compile-groovy block is stamp-only (like Kotlin's): no stamp ⇒ FULL and the
  * module seeds downstream dirtiness; a fresh {@code .gstamp} in the merged classes dir ⇒ CACHED.
  */
-class BuildPlanForecastGroovyTest {
+class TaskForecasterGroovyTest {
 
     @Test
     void groovy_module_forecasts_full_then_cached_on_stamp(@TempDir Path tmp) throws Exception {
@@ -63,11 +63,11 @@ class BuildPlanForecastGroovyTest {
         Cas cas = new Cas(cache);
         ActionCache actionCache = new ActionCache(cas, cache.resolve("actions"));
 
-        List<BuildPlan.Module> plan = BuildPlanForecast.of(graph, cas, actionCache, cache);
+        List<TaskForecast.Module> plan = TaskForecaster.of(graph, cas, actionCache, cache);
         // TempDir paths may be symlink-normalized by the graph — match by basename.
-        BuildPlan.Module a =
+        TaskForecast.Module a =
                 plan.stream().filter(m -> m.dir().endsWith("a")).findFirst().orElseThrow();
-        BuildPlan.Step gv = a.steps().stream()
+        TaskForecast.Task gv = a.steps().stream()
                 .filter(s -> s.name().equals("compile-groovy"))
                 .findFirst()
                 .orElseThrow();
@@ -77,8 +77,8 @@ class BuildPlanForecastGroovyTest {
         var layout = cc.jumpkick.layout.BuildLayout.of(mod, JkBuildParser.parse(mod.resolve("jk.toml")));
         FreshnessStamp.write(
                 layout.classesDir(), FreshnessStamp.GROOVY_STAMP, "compile-groovy", "", List.of(foo), List.of(), 21);
-        List<BuildPlan.Module> warm = BuildPlanForecast.of(graph, cas, actionCache, cache);
-        BuildPlan.Step warmGv =
+        List<TaskForecast.Module> warm = TaskForecaster.of(graph, cas, actionCache, cache);
+        TaskForecast.Task warmGv =
                 warm.stream().filter(m -> m.dir().endsWith("a")).findFirst().orElseThrow().steps().stream()
                         .filter(s -> s.name().equals("compile-groovy"))
                         .findFirst()

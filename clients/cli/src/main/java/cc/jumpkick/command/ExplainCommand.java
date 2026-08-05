@@ -19,7 +19,7 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.runtime.BuildPlan;
+import cc.jumpkick.runtime.TaskForecast;
 import cc.jumpkick.runtime.ExplainPlan;
 import cc.jumpkick.util.HostCalibrationStatus;
 import cc.jumpkick.util.JkDirs;
@@ -205,23 +205,23 @@ public final class ExplainCommand implements CliCommand {
         boolean nerdfont = cc.jumpkick.config.GlobalConfig.nerdfont();
         // On a TTY, wrap the cached-module list to the terminal width; piped output gets
         // the full list on one line (MAX_VALUE → never wraps).
-        int width = cc.jumpkick.cli.run.PipelineConsole.isInteractiveTerminal()
+        int width = cc.jumpkick.cli.run.BuildPlanConsole.isInteractiveTerminal()
                 ? cc.jumpkick.cli.tui.CommandManager.detectColumns()
                 : Integer.MAX_VALUE;
 
         // Forecast every module's full step pipeline (compile → test → package),
-        // truthfully — see BuildPlanForecast.
-        List<BuildPlan.Module> modules = plan.modules();
+        // truthfully — see TaskForecaster.
+        List<TaskForecast.Module> modules = plan.modules();
         boolean all = in.isSet("verbose");
 
         // Header: plan chip (nerd powerline / ansi two-space trail / plain " = Build Plan >")
         // then the build-time estimate.
         String header =
-                cc.jumpkick.cli.tui.PipelineWedge.planChip(cc.jumpkick.cli.tui.Glyphs.MENU, "Build Plan", nerdfont);
+                cc.jumpkick.cli.tui.BuildPlanWedge.planChip(cc.jumpkick.cli.tui.Glyphs.MENU, "Build Plan", nerdfont);
         // Fully-cached plans report eta 0 from the engine ("no work") — that is not unknown;
         // a pure cache verify is sub-second. Only show "unknown" when there is real
         // work but no learned timings yet.
-        boolean fullyCached = !modules.isEmpty() && modules.stream().noneMatch(BuildPlan.Module::dirty);
+        boolean fullyCached = !modules.isEmpty() && modules.stream().noneMatch(TaskForecast.Module::dirty);
         String estimate = buildTimeEstimate(etaMillis, fullyCached, t);
         // Leading blank once per command (prep lock wedge may already have opened it).
         CommandWedge.envelopeStart();
@@ -234,12 +234,12 @@ public final class ExplainCommand implements CliCommand {
         // Workspace-wide stats directly under the root bullet.
         int totalModules = modules.size();
         int totalSources =
-                modules.stream().mapToInt(BuildPlan.Module::sourceCount).sum();
-        int totalTests = modules.stream().mapToInt(BuildPlan.Module::testCount).sum();
+                modules.stream().mapToInt(TaskForecast.Module::sourceCount).sum();
+        int totalTests = modules.stream().mapToInt(TaskForecast.Module::testCount).sum();
         int totalJars =
-                (int) modules.stream().filter(BuildPlan.Module::producesJar).count();
+                (int) modules.stream().filter(TaskForecast.Module::producesJar).count();
         int totalImages =
-                (int) modules.stream().filter(BuildPlan.Module::producesImage).count();
+                (int) modules.stream().filter(TaskForecast.Module::producesImage).count();
         String rootPfx = ansi ? " " + Theme.colorize("│", t.darkGray()) + " · " : " | - ";
         if (totalModules > 1) CliOutput.out(rootPfx + "Modules: " + String.format("%,d", totalModules));
         CliOutput.out(rootPfx + "Sources: " + fmtCount(totalSources, "file", "files"));
@@ -295,12 +295,12 @@ public final class ExplainCommand implements CliCommand {
             String secPfx = ansi ? "    " + Theme.colorize("│", t.darkGray()) + " · " : "    | - ";
             int dirtyModules = dirtyIdx.size();
             int dirtySources = modules.stream()
-                    .filter(BuildPlan.Module::dirty)
-                    .mapToInt(BuildPlan.Module::sourceCount)
+                    .filter(TaskForecast.Module::dirty)
+                    .mapToInt(TaskForecast.Module::sourceCount)
                     .sum();
             int dirtyTests = modules.stream()
-                    .filter(BuildPlan.Module::dirty)
-                    .mapToInt(BuildPlan.Module::testCount)
+                    .filter(TaskForecast.Module::dirty)
+                    .mapToInt(TaskForecast.Module::testCount)
                     .sum();
             int dirtyJars = (int)
                     modules.stream().filter(m -> m.dirty() && m.producesJar()).count();
@@ -363,7 +363,7 @@ public final class ExplainCommand implements CliCommand {
      * rebuilds, or always under {@code verbose}.
      */
     private static void renderModuleRow(
-            BuildPlan.Module m,
+            TaskForecast.Module m,
             int idx,
             boolean last,
             String prefix,
@@ -381,17 +381,17 @@ public final class ExplainCommand implements CliCommand {
             String spine = ansi
                     ? prefix + (last ? "   " : Theme.colorize("│", t.darkGray()) + "  ")
                     : prefix + (last ? "   " : "|  ");
-            List<BuildPlan.Step> ph = m.steps();
+            List<TaskForecast.Task> ph = m.steps();
             // Pad each step name to the widest in this module with bright-black dots so the
             // □ / ✓ column lines up (package-assembly is longer than compile-main, etc.).
             int nameCol = 0;
-            for (BuildPlan.Step p : ph) {
+            for (TaskForecast.Task p : ph) {
                 nameCol = Math.max(nameCol, p.name().length());
             }
             nameCol += STEP_NAME_DOT_GAP;
             // Pad each □ step's command to the widest in this module so the · column lines up.
             int commandCol = 0;
-            for (BuildPlan.Step p : ph) {
+            for (TaskForecast.Task p : ph) {
                 if (!p.cached()) commandCol = Math.max(commandCol, commandWidth(p.text()));
             }
             for (int k = 0; k < ph.size(); k++) {
@@ -459,7 +459,7 @@ public final class ExplainCommand implements CliCommand {
      * across the module's steps), the {@code ·} bright-black, and the trailing detail in italic.
      * When {@code !ansi}: {@code (cached)} / {@code [run]} ASCII equivalents, no color.
      */
-    private static String renderStatus(BuildPlan.Step p, int commandCol, Theme t, boolean ansi) {
+    private static String renderStatus(TaskForecast.Task p, int commandCol, Theme t, boolean ansi) {
         if (p.cached()) {
             if (!ansi) {
                 StringBuilder s = new StringBuilder("(cached)");

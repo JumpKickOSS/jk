@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
-import cc.jumpkick.plugin.build.StepExec;
+import cc.jumpkick.plugin.build.TaskExec;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -16,7 +16,7 @@ final class BuildConfigStep {
 
     private BuildConfigStep() {}
 
-    static void run(StepExec exec) throws Exception {
+    static void run(TaskExec exec) throws Exception {
         String namespace = exec.config().string("namespace");
         boolean debug = !"release".equals(exec.config().stringOpt("build-type").orElse("debug"));
         String applicationId =

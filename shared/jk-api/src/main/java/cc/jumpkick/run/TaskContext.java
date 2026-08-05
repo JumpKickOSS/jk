@@ -2,10 +2,10 @@
 package cc.jumpkick.run;
 
 /**
- * Step → Pipeline handle. Thread-safe for worker threads. Report {@link #progress}, grow
+ * Step → BuildPlan handle. Thread-safe for worker threads. Report {@link #progress}, grow
  * {@link #updateTicks}, set {@link #label}, poll {@link #cancelled}, emit {@link #warn}/{@link #error}.
  */
-public interface StepContext {
+public interface TaskContext {
 
     /** Add {@code delta} to the pipeline's progress numerator. */
     void progress(int delta);
@@ -18,7 +18,7 @@ public interface StepContext {
      * for unweighted steps.
      */
     default void reweight(int newWeight) {
-        /* dynamic-weight steps override via DefaultStepContext */
+        /* dynamic-weight steps override via DefaultTaskContext */
     }
 
     /** Current sub-task label for the TUI; null/empty clears. */
@@ -30,7 +30,7 @@ public interface StepContext {
      */
     void output(String line);
 
-    /** Mark outputs already up-to-date/cached; recorded as {@link StepStatus#SKIPPED}. Idempotent. */
+    /** Mark outputs already up-to-date/cached; recorded as {@link TaskStatus#SKIPPED}. Idempotent. */
     default void cached() {}
 
     /** Accumulating warning for the run report. */
@@ -38,7 +38,7 @@ public interface StepContext {
 
     /**
      * Accumulating non-fatal error for the report. Fatal failure is by throwing from
-     * {@link Step#execute}.
+     * {@link Task#execute}.
      */
     void error(String code, String message);
 
@@ -51,11 +51,11 @@ public interface StepContext {
     boolean cancelled();
 
     /** Stash a value for later steps; one producer per key. */
-    <T> void put(PipelineKey<T> key, T value);
+    <T> void put(BuildPlanKey<T> key, T value);
 
     /** Previously stashed value, or empty if never put. */
-    <T> java.util.Optional<T> get(PipelineKey<T> key);
+    <T> java.util.Optional<T> get(BuildPlanKey<T> key);
 
     /** Required upstream value; throws {@link IllegalStateException} if missing. */
-    <T> T require(PipelineKey<T> key);
+    <T> T require(BuildPlanKey<T> key);
 }

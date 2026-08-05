@@ -6,12 +6,12 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.run.ConsoleSpec;
-import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
-import cc.jumpkick.cli.tui.PipelineWedge;
+import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.model.command.Exit;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -43,7 +43,7 @@ public final class RunCommand {
         Path cache = cacheDir();
 
         String coord = BuildCommand.buildTarget(projectDir.resolve("jk.toml"), projectDir);
-        PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         // In chip modes (AUTO/QUIET) the build pipeline settles as the ▶ Run CommandWedge with
         // "Executing `java …`" — no second banner line. In VERBOSE/JSON no chip is printed, so
         // printExecBanner runs after the pipeline as before.
@@ -56,7 +56,7 @@ public final class RunCommand {
                         return "Executing";
                     }
                 },
-                r -> PipelineWedge.coord(coord),
+                r -> BuildPlanWedge.coord(coord),
                 true,
                 true,
                 r -> {
@@ -73,7 +73,7 @@ public final class RunCommand {
                     }
                 });
 
-        PipelineResult result;
+        BuildPlanResult result;
         cc.jumpkick.run.TestSummary testResult;
         var session = cc.jumpkick.config.SessionContext.current();
         cc.jumpkick.run.TestSummary[] testResultHolder = new cc.jumpkick.run.TestSummary[1];
@@ -106,8 +106,8 @@ public final class RunCommand {
                                 true,
                                 true)
                         .withVariant(session.variant(), session.clientEnv());
-                boolean liveWorkspace = mode == PipelineConsole.Mode.AUTO
-                        && PipelineConsole.isInteractiveTerminal()
+                boolean liveWorkspace = mode == BuildPlanConsole.Mode.AUTO
+                        && BuildPlanConsole.isInteractiveTerminal()
                         && !global.outputIsJson();
                 cc.jumpkick.runtime.WorkspaceResult wr;
                 if (liveWorkspace) {
@@ -142,7 +142,7 @@ public final class RunCommand {
                     return 1;
                 }
                 // Synthetic success result so the exec chip path continues unchanged.
-                result = new PipelineResult(
+                result = new BuildPlanResult(
                         "workspace", true, java.time.Duration.ZERO, List.of(), List.of(), List.of(), false);
                 testResult = null;
             } else {
@@ -161,7 +161,7 @@ public final class RunCommand {
                                 session.force(),
                                 session.variant(),
                                 session.clientEnv()),
-                        steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, coord),
+                        steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, coord),
                         testResultHolder,
                         new String[1]);
                 testResult = testResultHolder[0];
@@ -190,7 +190,7 @@ public final class RunCommand {
             // The chip already settled with this exact failure (spec's softFailure closure ran
             // first and cached the same plan) — VERBOSE/JSON print no chip, so give them the plain
             // text version there instead of leaving the command silent.
-            if (mode == PipelineConsole.Mode.VERBOSE || mode == PipelineConsole.Mode.JSON) {
+            if (mode == BuildPlanConsole.Mode.VERBOSE || mode == BuildPlanConsole.Mode.JSON) {
                 CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Run", e.getMessage()));
             }
             return Exit.DATA_ERR;
@@ -198,7 +198,7 @@ public final class RunCommand {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Run", e.getMessage()));
             return Exit.USAGE;
         }
-        if (mode == PipelineConsole.Mode.VERBOSE || mode == PipelineConsole.Mode.JSON) {
+        if (mode == BuildPlanConsole.Mode.VERBOSE || mode == BuildPlanConsole.Mode.JSON) {
             // No chip was printed in these modes — show the banner line as before.
             printExecBanner(projectDir, execPlan(projectDir));
         } else {
@@ -219,9 +219,9 @@ public final class RunCommand {
      * the host JVM). Output lines stream back as the command's output.
      */
     private int dispatchDeployCommand(
-            Path projectDir, Path cache, String command, List<String> appArgs, PipelineConsole.Mode mode)
+            Path projectDir, Path cache, String command, List<String> appArgs, BuildPlanConsole.Mode mode)
             throws IOException {
-        if (mode != PipelineConsole.Mode.VERBOSE && mode != PipelineConsole.Mode.JSON) {
+        if (mode != BuildPlanConsole.Mode.VERBOSE && mode != BuildPlanConsole.Mode.JSON) {
             CliOutput.err();
         }
         cc.jumpkick.engine.protocol.PluginCommandReport report;
@@ -289,12 +289,12 @@ public final class RunCommand {
     /**
      * {@code Failed to run {coord}. No valid [yellow]main[/] method was specified or detected} (or,
      * for {@code issue = "ambiguous"}, {@code Multiple [yellow]main[/] methods found.}) — the
-     * sentence {@link cc.jumpkick.cli.tui.PipelineWedge#failureLineCustom} renders after the red chip.
+     * sentence {@link cc.jumpkick.cli.tui.BuildPlanWedge#failureLineCustom} renders after the red chip.
      */
     private static String mainIssueSentence(String issue, String coord) {
         Theme t = Theme.active();
         String main = Theme.colorize("main", t.highlight());
-        String head = Theme.colorize("Failed", t.error()) + " to run " + PipelineWedge.coord(coord) + ". ";
+        String head = Theme.colorize("Failed", t.error()) + " to run " + BuildPlanWedge.coord(coord) + ". ";
         return head
                 + ("ambiguous".equals(issue)
                         ? "Multiple " + main + " methods found."
@@ -373,7 +373,7 @@ public final class RunCommand {
             }
 
             @Override
-            public cc.jumpkick.run.PipelineListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
+            public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
                 var log = cc.jumpkick.cli.run.EventLogListener.open(
                         m.cache(), m.pipeline().name());
                 List<String> buf = java.util.Collections.synchronizedList(new ArrayList<String>());
@@ -381,7 +381,7 @@ public final class RunCommand {
                 var lis = new cc.jumpkick.cli.run.AggregateModuleListener(
                         agg, m.coord(), m.pipeline().steps(), m.weight());
                 lis.bufferOutputInto(buf);
-                return cc.jumpkick.cli.run.CompositePipelineListener.of(lis, log);
+                return cc.jumpkick.cli.run.CompositeBuildPlanListener.of(lis, log);
             }
 
             @Override
@@ -409,19 +409,19 @@ public final class RunCommand {
             wr = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
                     cc.jumpkick.engine.EnginePaths.current(), request, listener);
         } catch (cc.jumpkick.cli.engine.JobCancelledException e) {
-            view.finishPipelineCancelled(deferredOutput);
+            view.finishBuildPlanCancelled(deferredOutput);
             return null;
         } catch (IOException e) {
-            view.finishPipelineFailure(String.valueOf(e.getMessage()), deferredOutput);
+            view.finishBuildPlanFailure(String.valueOf(e.getMessage()), deferredOutput);
             return null;
         }
         if (!wr.success()) {
             String tail = wr.errors().isEmpty() ? "workspace build failed" : wr.errors().get(0);
-            view.finishPipelineFailure(tail, deferredOutput);
+            view.finishBuildPlanFailure(tail, deferredOutput);
             return null;
         }
         int n = Math.max(total[0], wr.modules().size());
-        view.finishPipelineExec(n + (n == 1 ? " module ready" : " modules ready"), deferredOutput);
+        view.finishBuildPlanExec(n + (n == 1 ? " module ready" : " modules ready"), deferredOutput);
         return wr;
     }
 

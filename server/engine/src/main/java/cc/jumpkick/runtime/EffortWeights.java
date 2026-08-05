@@ -51,7 +51,7 @@ public final class EffortWeights {
     static final int COMPILE_FLOOR = 2;
     static final int ARTIFACT_FETCH = 8;
 
-    /** Weight unit ≈150 ms — {@code Pipeline} interpolation constant. */
+    /** Weight unit ≈150 ms — {@code BuildPlan} interpolation constant. */
     public static final int MS_PER_WEIGHT = 150;
 
     static final int PACKAGE_JAR = 5;
@@ -281,10 +281,10 @@ public final class EffortWeights {
      * the build countdown so it shares {@link #costFromRunningSteps} with explain rather than
      * re-pricing with empty counts (which collapses cold test ETA to suite-startup only).
      */
-    public static java.util.Map<String, Integer> stepCountsFromPipeline(cc.jumpkick.run.Pipeline pipeline) {
+    public static java.util.Map<String, Integer> stepCountsFromBuildPlan(cc.jumpkick.run.BuildPlan pipeline) {
         java.util.Map<String, Integer> counts = new java.util.HashMap<>();
         if (pipeline == null) return counts;
-        for (cc.jumpkick.run.Step s : pipeline.steps()) {
+        for (cc.jumpkick.run.Task s : pipeline.steps()) {
             String key = metricsStepName(s.name());
             if (key.isEmpty()) continue;
             int ticks;
@@ -302,10 +302,10 @@ public final class EffortWeights {
      * Steps that will do real work in a prepared pipeline (weight &gt; {@link #TOKEN}). Cached/skip
      * checks stay as tokens and are omitted — same idea as forecast {@code !step.cached}.
      */
-    public static java.util.List<String> runningStepsFromPipeline(cc.jumpkick.run.Pipeline pipeline) {
+    public static java.util.List<String> runningStepsFromBuildPlan(cc.jumpkick.run.BuildPlan pipeline) {
         java.util.List<String> running = new java.util.ArrayList<>();
         if (pipeline == null) return running;
-        for (cc.jumpkick.run.Step s : pipeline.steps()) {
+        for (cc.jumpkick.run.Task s : pipeline.steps()) {
             try {
                 if (s.estimateWeight() > TOKEN) running.add(s.name());
             } catch (RuntimeException e) {
@@ -494,7 +494,7 @@ public final class EffortWeights {
         if (lockStale) rerun = true;
 
         int sync = predictSync(in, cas);
-        // Learned per-unit rates (cold ⇒ empty ⇒ static Step-1 weights). Keyed by
+        // Learned per-unit rates (cold ⇒ empty ⇒ static Task-1 weights). Keyed by
         // module dir, the same key the recorder writes at build end.
         StepTimings timings = StepTimings.load(in.cache());
         String mod = in.dir().toString();
@@ -767,12 +767,12 @@ public final class EffortWeights {
      * step as a cross-module serial bound). Shared by {@code jk build} and {@code jk explain} so
      * their wall-clock estimates are computed from the pipeline identically.
      */
-    public static ModuleCost costOf(Path dir, Set<Path> prereqs, cc.jumpkick.run.Pipeline pipeline) {
+    public static ModuleCost costOf(Path dir, Set<Path> prereqs, cc.jumpkick.run.BuildPlan pipeline) {
         return costOf(dir, prereqs, pipeline, Set.of());
     }
 
     /**
-     * As {@link #costOf(Path, Set, cc.jumpkick.run.Pipeline)}, but charging {@link #SKIP} for steps
+     * As {@link #costOf(Path, Set, cc.jumpkick.run.BuildPlan)}, but charging {@link #SKIP} for steps
      * the forecast already determined are cached.
      *
      * <p>A pipeline's estimated weight is what the steps would cost if they all ran. Estimating a
@@ -782,10 +782,10 @@ public final class EffortWeights {
      * cost rounds to "&lt;1s".
      */
     public static ModuleCost costOf(
-            Path dir, Set<Path> prereqs, cc.jumpkick.run.Pipeline pipeline, Set<String> cachedSteps) {
+            Path dir, Set<Path> prereqs, cc.jumpkick.run.BuildPlan pipeline, Set<String> cachedSteps) {
         int weight = 0;
         int testWeight = 0;
-        for (cc.jumpkick.run.Step step : pipeline.steps()) {
+        for (cc.jumpkick.run.Task step : pipeline.steps()) {
             int stepWeight;
             if (cachedSteps.contains(step.name())) {
                 stepWeight = SKIP;

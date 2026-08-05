@@ -67,10 +67,10 @@ class CachedEtaTest {
     }
 
     /** A pipeline of no-op steps, each carrying a non-trivial estimated weight. */
-    private static cc.jumpkick.run.Pipeline pipelineOf(String... names) {
-        cc.jumpkick.run.Pipeline.Builder b = cc.jumpkick.run.Pipeline.builder("test");
+    private static cc.jumpkick.run.BuildPlan pipelineOf(String... names) {
+        cc.jumpkick.run.BuildPlan.Builder b = cc.jumpkick.run.BuildPlan.builder("test");
         for (String name : names) {
-            b.addStep(cc.jumpkick.run.Step.builder(name)
+            b.addTask(cc.jumpkick.run.Task.builder(name)
                     .weight(10)
                     .execute(ctx -> {})
                     .build());

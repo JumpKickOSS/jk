@@ -5,13 +5,13 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.run.ConsoleSpec;
-import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -67,7 +67,7 @@ public final class SyncCommand implements CliCommand {
         Files.createDirectories(cache);
 
         String targetLabel = dir.getFileName() != null ? dir.getFileName().toString() : dir.toString();
-        PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
 
         // Sync materializes the lock — freshen first so users never hand-run `jk lock`.
         int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(dir, cache, global, "Sync");
@@ -103,7 +103,7 @@ public final class SyncCommand implements CliCommand {
         ConsoleSpec spec = syncSpec(() -> fetched[0], () -> upToDate[0]);
 
         var session = cc.jumpkick.config.SessionContext.current();
-        PipelineResult result;
+        BuildPlanResult result;
         try {
             result = EngineClient.runSync(
                     cc.jumpkick.engine.EnginePaths.current(),
@@ -117,7 +117,7 @@ public final class SyncCommand implements CliCommand {
                             session.force(),
                             session.config().forceOr(false),
                             global.verbose),
-                    steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, targetLabel),
+                    steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, targetLabel),
                     fetched,
                     upToDate);
         } catch (IOException e) {

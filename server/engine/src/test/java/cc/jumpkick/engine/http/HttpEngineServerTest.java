@@ -400,7 +400,7 @@ class HttpEngineServerTest {
     void api_status_carries_config_and_pipeline_fields() throws Exception {
         String body = get("/api/status").body();
         assertThat(body)
-                .contains("\"activePipelines\":0")
+                .contains("\"activeBuildPlans\":0")
                 .contains("\"maxConcurrentRequests\":16")
                 .contains("\"webRoot\":\"" + webRoot + "\"");
     }

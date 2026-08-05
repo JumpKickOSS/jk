@@ -2,7 +2,7 @@
 package cc.jumpkick.plugin.buildlogic;
 
 /**
- * Pipeline splice points for project build-logic tasks ({@code .jk-build/} SPI).
+ * BuildPlan splice points for project build-logic tasks ({@code .jk-build/} SPI).
  *
  * <p>{@code jk.toml} stays data-only — anchors are chosen in Java, not the manifest.
  */

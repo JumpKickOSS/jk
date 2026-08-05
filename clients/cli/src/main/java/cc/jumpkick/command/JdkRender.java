@@ -3,7 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.PipelineWedge;
+import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkVendor;
 import java.nio.file.Path;
@@ -46,7 +46,7 @@ public final class JdkRender {
     }
 
     /**
-     * PipelineWedge chip line for a JDK availability result:
+     * BuildPlanWedge chip line for a JDK availability result:
      *
      * <ul>
      *   <li>{@code downloaded=false}: {@code ✓ JDK ▶ {bold name} is available at {~/path}} — used
@@ -61,11 +61,11 @@ public final class JdkRender {
         String msg = Theme.colorize(displayName, t.focused())
                 + Theme.colorize(command, t.normalGray())
                 + Theme.colorize(JdkInstallCommand.tildeCollapse(home), t.path());
-        return PipelineWedge.chipLine(Glyphs.CHECK, "JDK", nerdfont, msg);
+        return BuildPlanWedge.chipLine(Glyphs.CHECK, "JDK", nerdfont, msg);
     }
 
     /**
-     * PipelineWedge chip line for a successful uninstall:
+     * BuildPlanWedge chip line for a successful uninstall:
      *
      * <pre>
      *   ✓ JDK ▶ Removed {source}/identifier
@@ -78,7 +78,7 @@ public final class JdkRender {
         String coord =
                 Theme.colorize("{" + source + "}", t.path().italic()) + Theme.colorize("/" + identifier, t.path());
         String msg = Theme.colorize("Removed ", t.normalGray()) + coord;
-        return PipelineWedge.chipLine(Glyphs.CHECK, "JDK", nerdfont, msg);
+        return BuildPlanWedge.chipLine(Glyphs.CHECK, "JDK", nerdfont, msg);
     }
 
     // ── internal helpers ────────────────────────────────────────────────────

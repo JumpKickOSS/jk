@@ -24,7 +24,7 @@ class LiveVitalsTest {
                 base.pid(),
                 base.startedAtMillis(),
                 base.activeRequests(),
-                base.activePipelines() + 1,
+                base.activeBuildPlans() + 1,
                 base.heapUsedBytes(),
                 base.heapCommittedBytes(),
                 base.heapMaxBytes(),
@@ -35,7 +35,7 @@ class LiveVitalsTest {
                 base.freeMemoryBytes(),
                 base.systemCpuLoad(),
                 base.peakActiveRequests(),
-                base.peakActivePipelines());
+                base.peakActiveBuildPlans());
         StatusSnapshot hotter = snap(5L * 1024 * 1024 * 1024, 0.50);
         assertThat(LiveVitals.PresentStatus.of(base)).isNotEqualTo(LiveVitals.PresentStatus.of(moreJobs));
         assertThat(LiveVitals.PresentStatus.of(base)).isNotEqualTo(LiveVitals.PresentStatus.of(hotter));
@@ -68,7 +68,7 @@ class LiveVitalsTest {
             live.publishStatus(false);
             assertThat(sub.next(50)).isNull();
 
-            // Pipeline count change → frame
+            // BuildPlan count change → frame
             StatusSnapshot s = status.get();
             status.set(new StatusSnapshot(
                     s.version(),
@@ -86,10 +86,10 @@ class LiveVitalsTest {
                     s.freeMemoryBytes(),
                     s.systemCpuLoad(),
                     s.peakActiveRequests(),
-                    s.peakActivePipelines()));
+                    s.peakActiveBuildPlans()));
             live.publishStatus(false);
             String second = sub.next(200);
-            assertThat(second).contains("event: status").contains("\"activePipelines\":3");
+            assertThat(second).contains("event: status").contains("\"activeBuildPlans\":3");
         }
     }
 

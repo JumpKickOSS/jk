@@ -8,9 +8,9 @@ import java.util.List;
  * Front-end-safe build forecast data for {@code jk explain} and dirty-set reporting — pure data, no
  * engine internals.
  */
-public final class BuildPlan {
+public final class TaskForecast {
 
-    private BuildPlan() {}
+    private TaskForecast() {}
 
     /** Per-step verdict. CACHED = restored from cache; the rest do real work. */
     public enum Status {
@@ -24,7 +24,7 @@ public final class BuildPlan {
      * One step of a module's build. {@code text} is the right-hand detail after the status glyph;
      * {@code key} is the 8-char action key when known (cached).
      */
-    public record Step(String name, Status status, String text, String key) {
+    public record Task(String name, Status status, String text, String key) {
         public boolean cached() {
             return status == Status.CACHED;
         }
@@ -34,7 +34,7 @@ public final class BuildPlan {
     public static final class Module {
         private final Path dir;
         private final String coord;
-        private final List<Step> steps;
+        private final List<Task> steps;
         private final int sourceCount;
         private final int testCount;
         private final boolean producesJar;
@@ -43,7 +43,7 @@ public final class BuildPlan {
         public Module(
                 Path dir,
                 String coord,
-                List<Step> steps,
+                List<Task> steps,
                 int sourceCount,
                 int testCount,
                 boolean producesJar,
@@ -61,7 +61,7 @@ public final class BuildPlan {
         public static Module fromWire(
                 Path dir,
                 String coord,
-                List<Step> steps,
+                List<Task> steps,
                 int sourceCount,
                 int testCount,
                 boolean producesJar,
@@ -79,7 +79,7 @@ public final class BuildPlan {
             return dir;
         }
 
-        public List<Step> steps() {
+        public List<Task> steps() {
             return steps;
         }
 

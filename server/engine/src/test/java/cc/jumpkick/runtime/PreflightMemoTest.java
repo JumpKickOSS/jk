@@ -261,14 +261,14 @@ class PreflightMemoTest {
     void shape_memo_round_trip(@TempDir Path tmp) throws Exception {
         writeProject(tmp);
         Path mod = tmp.toAbsolutePath().normalize();
-        var shape = new PreflightMemo.PipelineShape(
+        var shape = new PreflightMemo.BuildPlanShape(
                 42,
                 8,
                 List.of(
-                        new PreflightMemo.PipelineShape.StepShape("compile-java", "compile"),
-                        new PreflightMemo.PipelineShape.StepShape("package-jar", "package")));
+                        new PreflightMemo.BuildPlanShape.StepShape("compile-java", "compile"),
+                        new PreflightMemo.BuildPlanShape.StepShape("package-jar", "package")));
         PreflightMemo.storeShape(tmp, mod, false, shape);
-        Optional<PreflightMemo.PipelineShape> hit = PreflightMemo.tryLoadShape(tmp, mod, false);
+        Optional<PreflightMemo.BuildPlanShape> hit = PreflightMemo.tryLoadShape(tmp, mod, false);
         assertThat(hit).isPresent();
         assertThat(hit.get().weight()).isEqualTo(42);
         assertThat(hit.get().testWeight()).isEqualTo(8);
@@ -280,7 +280,7 @@ class PreflightMemoTest {
     void shape_memo_misses_when_toml_changes(@TempDir Path tmp) throws Exception {
         writeProject(tmp);
         Path mod = tmp.toAbsolutePath().normalize();
-        PreflightMemo.storeShape(tmp, mod, false, new PreflightMemo.PipelineShape(10, 0, List.of()));
+        PreflightMemo.storeShape(tmp, mod, false, new PreflightMemo.BuildPlanShape(10, 0, List.of()));
         Files.writeString(tmp.resolve("jk.toml"), """
                 [project]
                 group = "t"
@@ -301,16 +301,16 @@ class PreflightMemoTest {
                 tmp,
                 mod,
                 false,
-                new PreflightMemo.PipelineShape(
-                        40, 10, List.of(new PreflightMemo.PipelineShape.StepShape("run-tests", "test"))));
+                new PreflightMemo.BuildPlanShape(
+                        40, 10, List.of(new PreflightMemo.BuildPlanShape.StepShape("run-tests", "test"))));
         PreflightMemo.storeShape(
                 tmp,
                 mod,
                 true,
-                new PreflightMemo.PipelineShape(
-                        30, 0, List.of(new PreflightMemo.PipelineShape.StepShape("compile-java", "compile"))));
-        Optional<PreflightMemo.PipelineShape> withTests = PreflightMemo.tryLoadShape(tmp, mod, false);
-        Optional<PreflightMemo.PipelineShape> skipTests = PreflightMemo.tryLoadShape(tmp, mod, true);
+                new PreflightMemo.BuildPlanShape(
+                        30, 0, List.of(new PreflightMemo.BuildPlanShape.StepShape("compile-java", "compile"))));
+        Optional<PreflightMemo.BuildPlanShape> withTests = PreflightMemo.tryLoadShape(tmp, mod, false);
+        Optional<PreflightMemo.BuildPlanShape> skipTests = PreflightMemo.tryLoadShape(tmp, mod, true);
         assertThat(withTests).isPresent();
         assertThat(withTests.get().weight()).isEqualTo(40);
         assertThat(withTests.get().testWeight()).isEqualTo(10);
@@ -343,8 +343,8 @@ class PreflightMemoTest {
                 jdk = 25
                 java = 25
                 """);
-        var shapeA = new PreflightMemo.PipelineShape(11, 0, List.of());
-        var shapeB = new PreflightMemo.PipelineShape(22, 0, List.of());
+        var shapeA = new PreflightMemo.BuildPlanShape(11, 0, List.of());
+        var shapeB = new PreflightMemo.BuildPlanShape(22, 0, List.of());
         Thread t1 = new Thread(() -> {
             for (int i = 0; i < 40; i++) PreflightMemo.storeShape(tmp, a, false, shapeA);
         });
@@ -379,12 +379,12 @@ class PreflightMemoTest {
         var entry = JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml")));
         BuildGraph.Result graph = BuildGraph.resolve(tmp, entry);
         BuildGraph.BuildUnit u = graph.topoOrder().getFirst();
-        var shape = new PreflightMemo.PipelineShape(
+        var shape = new PreflightMemo.BuildPlanShape(
                 77,
                 12,
                 List.of(
-                        new PreflightMemo.PipelineShape.StepShape("compile-java", "compile"),
-                        new PreflightMemo.PipelineShape.StepShape("run-tests", "test")));
+                        new PreflightMemo.BuildPlanShape.StepShape("compile-java", "compile"),
+                        new PreflightMemo.BuildPlanShape.StepShape("run-tests", "test")));
         ModulePlan plan = PreflightMemo.provisionalModulePlan(u, shape, tmp.resolve("cache"));
         assertThat(plan.weight()).isEqualTo(77);
         assertThat(plan.coord()).isEqualTo(u.coord());

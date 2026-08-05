@@ -26,7 +26,7 @@ class CancelledTerminalTest {
     @Test
     void single_pipeline_stream_gets_a_cancelled_pipeline_finish() {
         String line = EngineServer.cancelledTerminalLine(false, "/proj");
-        assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.PIPELINE_FINISH);
+        assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.BUILDPLAN_FINISH);
         assertThat(Jsonl.bool(line, "cancelled", false)).isTrue();
         assertThat(Jsonl.str(line, "dir")).isEqualTo("/proj");
     }
@@ -34,6 +34,6 @@ class CancelledTerminalTest {
     @Test
     void a_null_dir_still_encodes() {
         String line = EngineServer.cancelledTerminalLine(false, null);
-        assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.PIPELINE_FINISH);
+        assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.BUILDPLAN_FINISH);
     }
 }

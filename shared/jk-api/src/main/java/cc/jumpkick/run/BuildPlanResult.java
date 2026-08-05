@@ -6,10 +6,10 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Terminal result of a {@link Pipeline#run}. Lists every step that ran (with status + duration) plus
+ * Terminal result of a {@link BuildPlan#run}. Lists every step that ran (with status + duration) plus
  * the accumulated warnings and errors emitted across all steps.
  */
-public record PipelineResult(
+public record BuildPlanResult(
         String pipelineName,
         boolean success,
         Duration duration,
@@ -19,7 +19,7 @@ public record PipelineResult(
         boolean cancelled,
         boolean userCancelled) {
 
-    public PipelineResult {
+    public BuildPlanResult {
         Objects.requireNonNull(pipelineName, "pipelineName");
         Objects.requireNonNull(duration, "duration");
         steps = List.copyOf(steps);
@@ -31,7 +31,7 @@ public record PipelineResult(
      * 7-arg compatibility constructor. {@code cancelled=true} is presumed user-initiated when no
      * separate flag is supplied — the older callers all came from the SIGINT bridge.
      */
-    public PipelineResult(
+    public BuildPlanResult(
             String pipelineName,
             boolean success,
             Duration duration,
@@ -44,23 +44,23 @@ public record PipelineResult(
 
     /**
      * One row in the report's per-step breakdown. {@code requires} carries the step's dependency
-     * edges (from {@link Step#requires()}) so downstream consumers can reconstruct the step DAG —
-     * the edges are otherwise lost once {@link Pipeline#run} returns. Used by the engine's
+     * edges (from {@link Task#requires()}) so downstream consumers can reconstruct the step DAG —
+     * the edges are otherwise lost once {@link BuildPlan#run} returns. Used by the engine's
      * critical-path cache-benefit metric.
      */
-    public record StepReport(String name, StepStatus status, Duration duration, List<String> requires) {
+    public record StepReport(String name, TaskStatus status, Duration duration, List<String> requires) {
         public StepReport {
             requires = requires == null ? List.of() : List.copyOf(requires);
         }
 
         /** Compatibility constructor for callers that don't track dependency edges. */
-        public StepReport(String name, StepStatus status, Duration duration) {
+        public StepReport(String name, TaskStatus status, Duration duration) {
             this(name, status, duration, List.of());
         }
     }
 
     /**
-     * Structured diagnostic from {@link StepContext#warn} / {@link StepContext#error}.
+     * Structured diagnostic from {@link TaskContext#warn} / {@link TaskContext#error}.
      *
      * <p>{@code test} and {@code exceptionClass} carry the discrete parts of a test failure (the
      * failing test's display name and the thrown exception's class) so structured consumers don't

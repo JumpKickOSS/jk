@@ -261,7 +261,7 @@ public final class McpHandler {
         m.put("startedAt", s.startedAtMillis());
         m.put("uptimeSeconds", Math.max(0, (System.currentTimeMillis() - s.startedAtMillis()) / 1000));
         m.put("activeRequests", s.activeRequests());
-        m.put("activePipelines", s.activePipelines());
+        m.put("activeBuildPlans", s.activeBuildPlans());
         m.put("heapUsedBytes", s.heapUsedBytes());
         m.put("heapCommittedBytes", s.heapCommittedBytes());
         m.put("heapMaxBytes", s.heapMaxBytes());

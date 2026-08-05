@@ -11,7 +11,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.HostedEvents;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -123,14 +123,14 @@ public final class ImportCommand implements CliCommand {
                             force,
                             reportPath,
                             cache),
-                    steps -> new cc.jumpkick.run.PipelineListener() {},
+                    steps -> new cc.jumpkick.run.BuildPlanListener() {},
                     observer);
         } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Import", e.getMessage()));
             return Exit.SOFTWARE;
         }
         if (!outcome.result().success()) {
-            for (PipelineResult.Diagnostic d : outcome.result().errors()) {
+            for (BuildPlanResult.Diagnostic d : outcome.result().errors()) {
                 CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Import", d.message()));
             }
             return 1;

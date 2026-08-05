@@ -74,33 +74,52 @@ public final class PluginBuild {
 
     // ---- declarations (describe, file-cached) -------------------------------------------------
 
-    /** One registered step, as declared over the describe protocol. */
-    public record StepDecl(
+    /** One registered task, as declared over the describe protocol. */
+    public record TaskDecl(
             String name,
-            String after,
-            String before,
+            List<String> requires,
             List<String> inputs,
             List<String> outputs,
             List<String> contributesClasses,
             List<String> contributesResources,
             List<String> contributesSources,
             List<String> contributesTestClasspath,
-            /** The classes-replacing output dir ({@code StepSpec.transformsClasses}), or null. */
+            /** The classes-replacing output dir ({@code TaskSpec.transformsClasses}), or null. */
             String transformsClasses) {
 
-        /** True when this step replaces the module's classes dir downstream. */
+        /** True when this task replaces the module's classes dir downstream. */
         public boolean transforms() {
             return transformsClasses != null && !transformsClasses.isBlank();
         }
 
-        /** The coarse {@link cc.jumpkick.plugin.build.Phase} this step orders itself after, or null. */
-        public cc.jumpkick.plugin.build.Phase afterPhase() {
-            return after == null ? null : cc.jumpkick.plugin.build.Phase.fromWire(after);
+        /** True when this task feeds the compiler source set. */
+        public boolean sourceGenerating() {
+            return contributesSources != null && !contributesSources.isEmpty();
         }
 
-        /** The coarse {@link cc.jumpkick.plugin.build.Phase} this step orders itself before, or null. */
-        public cc.jumpkick.plugin.build.Phase beforePhase() {
-            return before == null ? null : cc.jumpkick.plugin.build.Phase.fromWire(before);
+        /** True when this task only contributes to the test runtime classpath. */
+        public boolean testOnly() {
+            return contributesTestClasspath != null
+                    && !contributesTestClasspath.isEmpty()
+                    && !sourceGenerating()
+                    && (contributesClasses == null || contributesClasses.isEmpty())
+                    && (contributesResources == null || contributesResources.isEmpty())
+                    && !transforms();
+        }
+
+        /**
+         * True when package/classes consumers must wait on this task (post-compile work, transforms,
+         * class/resource contributions — not pure source generation).
+         */
+        public boolean packageTime() {
+            if (sourceGenerating() && !transforms() && (contributesClasses == null || contributesClasses.isEmpty())) {
+                return false;
+            }
+            if (testOnly()) return false;
+            return transforms()
+                    || (contributesClasses != null && !contributesClasses.isEmpty())
+                    || (contributesResources != null && !contributesResources.isEmpty())
+                    || (inputs != null && inputs.contains("classes"));
         }
     }
 
@@ -110,10 +129,10 @@ public final class PluginBuild {
     /** One registered plugin command, as declared. */
     public record CommandDecl(String name, String description) {}
 
-    public record Declarations(List<StepDecl> steps, PackagerDecl packager, List<CommandDecl> commands) {
+    public record Declarations(List<TaskDecl> steps, PackagerDecl packager, List<CommandDecl> commands) {
 
-        public StepDecl step(String name) {
-            for (StepDecl s : steps) if (s.name().equals(name)) return s;
+        public TaskDecl step(String name) {
+            for (TaskDecl s : steps) if (s.name().equals(name)) return s;
             return null;
         }
 
@@ -124,15 +143,15 @@ public final class PluginBuild {
     }
 
     /** A step's scratch root — its declared output dirs resolve under this. */
-    public static Path stepScratch(BuildLayout layout, String stepName) {
+    public static Path taskScratch(BuildLayout layout, String stepName) {
         return layout.moduleTargetDir().resolve("plugin").resolve(stepName);
     }
 
     /** Every dir the declared steps contribute as classes/resources, in declaration order. */
     public static List<Path> contributedDirs(Declarations decls, BuildLayout layout) {
         List<Path> out = new ArrayList<>();
-        for (StepDecl step : decls.steps()) {
-            Path scratch = stepScratch(layout, step.name());
+        for (TaskDecl step : decls.steps()) {
+            Path scratch = taskScratch(layout, step.name());
             for (String rel : step.contributesClasses()) out.add(scratch.resolve(rel));
             for (String rel : step.contributesResources()) out.add(scratch.resolve(rel));
         }
@@ -174,16 +193,15 @@ public final class PluginBuild {
 
     /** Decode a describe reply's declaration lines (the cached file's exact content). */
     static Declarations decode(List<String> lines) {
-        List<StepDecl> steps = new ArrayList<>();
+        List<TaskDecl> steps = new ArrayList<>();
         PackagerDecl packager = null;
         List<CommandDecl> commands = new ArrayList<>();
         for (String line : lines) {
             switch (String.valueOf(Jsonl.str(line, "t"))) {
-                case "step" ->
-                    steps.add(new StepDecl(
+                case "task", "step" ->
+                    steps.add(new TaskDecl(
                             Jsonl.str(line, "name"),
-                            Jsonl.str(line, "after"),
-                            Jsonl.str(line, "before"),
+                            Jsonl.strArray(line, "requires"),
                             Jsonl.strArray(line, "inputs"),
                             Jsonl.strArray(line, "outputs"),
                             Jsonl.strArray(line, "contributesClasses"),
@@ -589,7 +607,7 @@ public final class PluginBuild {
 
         public SpecWriter op(String op, String step, String pluginId) {
             StringBuilder b = new StringBuilder("{\"t\":\"op\",\"op\":").append(Jsonl.quote(op));
-            if (step != null) b.append(",\"step\":").append(Jsonl.quote(step));
+            if (step != null) b.append(",\"task\":").append(Jsonl.quote(step));
             b.append(",\"plugin\":").append(Jsonl.quote(pluginId)).append('}');
             lines.add(b.toString());
             return this;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
-import cc.jumpkick.plugin.build.StepExec;
+import cc.jumpkick.plugin.build.TaskExec;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -14,7 +14,7 @@ final class DexStep {
 
     private DexStep() {}
 
-    static void run(StepExec exec) throws Exception {
+    static void run(TaskExec exec) throws Exception {
         Path r8 = exec.requireExtra("r8");
         // d8 judges --lib inputs by extension; the fetched blob carries none — give it one.
         Path platformJar = JarInputs.jarNamed(exec, exec.requireExtra("android-jar"), "android-platform.jar");
@@ -36,7 +36,7 @@ final class DexStep {
         runtimeJars = JarInputs.jarSuffixed(exec, runtimeJars);
 
         exec.label("d8 (" + classFiles.size() + " classes + " + runtimeJars.size() + " jars)");
-        StepExec.ToolRun d8 = exec.java()
+        TaskExec.ToolRun d8 = exec.java()
                 .classpath(List.of(r8))
                 .mainClass("com.android.tools.r8.D8")
                 .arg("--lib")
@@ -47,7 +47,7 @@ final class DexStep {
                 .arg(dexOut.toAbsolutePath().toString());
         for (Path f : classFiles) d8.arg(f.toAbsolutePath().toString());
         for (Path jar : runtimeJars) d8.arg(jar.toAbsolutePath().toString());
-        StepExec.ToolRun.Result result = d8.run();
+        TaskExec.ToolRun.Result result = d8.run();
         if (result.exit() != 0) {
             throw new IllegalStateException("d8 failed:\n" + result.output());
         }

@@ -24,16 +24,16 @@ All machine surfaces should carry **the same conceptual events**. Framing differ
 
 | Concept | CLI JSONL (`type`) | Web SSE (`event` + `data`) | Verbose (human) | MCP (tools / SSE) |
 |---------|--------------------|----------------------------|-----------------|-------------------|
-| Request / session start | `pipeline-start` (per pipeline); workspace: `workspace-start` | `request-start` | `▶ pipeline (N steps)` | tool result / `notifications/jk/event` |
-| Step start | `step-start` | `step-start` | `· phase/step (ticks: N)` | notification |
+| Request / session start | `buildplan-start` (per pipeline); workspace: `workspace-start` | `request-start` | `▶ pipeline (N steps)` | tool result / `notifications/jk/event` |
+| Step start | `task-start` | `task-start` | `· phase/step (ticks: N)` | notification |
 | Progress ticks (fine) | `progress`, `tick-update` | `pipeline-progress` | (bar / quiet) | notification |
 | **Whole-job % (aggregate)** | **`workspace-progress`** | **`workspace-progress`** | TUI bar | filter `type=workspace-progress` |
 | Label (current work) | `label` | (via progress / output) | last label on finish line | notification |
 | User/compiler output | `output` | `output` | printed lines | notification |
 | Warning | `warn` | (diagnostic-like) | bang line | notification |
 | Error / test failure | `error` (+ `test`, `exceptionClass`) | `diagnostic` | FAILED lines / stacks | tool error + structured fields |
-| Step end | `step-finish` | `step-finish` | `✓/✗ step took …` | notification |
-| Pipeline end | `pipeline-finish` | module/request finish | wedge chip | tool result |
+| Step end | `task-finish` | `task-finish` | `✓/✗ step took …` | notification |
+| BuildPlan end | `buildplan-finish` | module/request finish | wedge chip | tool result |
 | Plan / ETA | (wire → engine; extend JSONL) | `plan`, `eta` | explain / bar countdown | tools |
 | Module (workspace) | `module-start` / `module-finish` (+ nested step JSONL) | `module-start` / `module-finish` | completion lines | same events on MCP SSE |
 | Workspace end | `workspace-finish` | `request-finish` | summary chip | notification |
@@ -68,11 +68,11 @@ export JK_OUTPUT=json         # or jsonl
 Example lines (illustrative):
 
 ```json
-{"schema":1,"ts":1721664000123,"type":"pipeline-start","pipeline":"test","denominator":42,"steps":3,"progress":12.5}
-{"schema":1,"ts":1721664000456,"type":"step-start","step":"run-tests","phase":"test","ticks":10,"progress":45}
+{"schema":1,"ts":1721664000123,"type":"buildplan-start","pipeline":"test","denominator":42,"steps":3,"progress":12.5}
+{"schema":1,"ts":1721664000456,"type":"task-start","step":"run-tests","phase":"test","ticks":10,"progress":45}
 {"schema":1,"ts":1721664000789,"type":"label","step":"run-tests","label":"cc.jumpkick:jk-core :: FooTest > bar()  [w2]","progress":67.3}
 {"schema":1,"ts":1721664000901,"type":"error","step":"run-tests","code":"test-failure","message":"…","test":"cc.jumpkick:jk-core :: FooTest > bar()  [w2]","exceptionClass":"org.opentest4j.AssertionFailedError","progress":67.3}
-{"schema":1,"ts":1721664001000,"type":"pipeline-finish","pipeline":"test","success":false,"duration_ms":880,"warnings":0,"errors":1,"progress":100}
+{"schema":1,"ts":1721664001000,"type":"buildplan-finish","pipeline":"test","success":false,"duration_ms":880,"warnings":0,"errors":1,"progress":100}
 ```
 
 Implementation: `JsonlListener` + `JsonlShape` (stdout); `EventLogListener` and
@@ -127,7 +127,7 @@ Disable: `--no-timeline` / `JK_CHROME_PROFILE=off`. Linked from docs; not duplic
 Engine hosts HTTP (loopback) with:
 
 - `GET /api/status`, `GET /api/events` (SSE), `POST /api/build`, …
-- SSE: `event: <type>` + `data: <json>` — types include `request-start`, `step-start`, `step-finish`, `pipeline-progress`, `eta`, `diagnostic`, module events, …
+- SSE: `event: <type>` + `data: <json>` — types include `request-start`, `task-start`, `task-finish`, `pipeline-progress`, `eta`, `diagnostic`, module events, …
 
 **Convergence (one conceptual model):** SSE `data`, MCP `notifications/jk/event` params, CLI
 JSONL, and (additively) the client↔engine wire all carry the same facts where they describe the
@@ -136,7 +136,7 @@ same work:
 | Field | Meaning |
 |-------|---------|
 | `schema` | Always `1` until jk 1.0 |
-| `type` | Conceptual event name (`step-start`, `progress`, `error`, …) |
+| `type` | Conceptual event name (`task-start`, `progress`, `error`, …) |
 | `progress` | Aggregate % 0–100 or `null` (JK-1117/1119) — **not** `progress_num`/`progress_den` |
 | `step` / `phase` / `status` / `dir` / `coord` | Same names across surfaces |
 | `numerator` / `denominator` | Step-scoped weights (progress events); optional beside the % rider |
@@ -204,7 +204,7 @@ jk test --output json --modules 'shared/*' 2>/dev/null
 
 # Exit code still meaningful (0 ok, non-zero fail).
 # Parse stdout as JSONL; look for type=workspace-progress (whole-job %) or
-# type=pipeline-finish / error / step-finish (fine detail).
+# type=buildplan-finish / error / task-finish (fine detail).
 
 # Offline / mid-run:
 #   target/.jk-cli/<latest>/details.jsonl   # tail -F during the run
@@ -218,7 +218,7 @@ Do **not** set `TERM=dumb` and scrape wedges. Do **not** use verbose as the prim
 
 When you add information (e.g. module on a test failure):
 
-1. [ ] Pipeline / engine model carries the fact  
+1. [ ] BuildPlan / engine model carries the fact  
 2. [ ] `JsonlShape` / JSONL fields (**additive only** — keep `schema: 1` until 1.0)  
 3. [ ] Web SSE payload fields (same names)  
 4. [ ] Verbose / failure headline text (human projection)  
@@ -236,7 +236,7 @@ Pre-1.0: **no schema version bumps** across jk.toml, lock, wire, REST, SSE, MCP 
 | `JK_CANCEL_GRACE_MS` | **500** | Shared wall-clock after signalling **all** workers; then force-kill leftovers |
 | Env clamp max | **5000** | Safety only if someone sets a huge env value — not the default |
 | Join after user cancel | grace + 500 ms | Connection thread abandons if runner still stuck |
-| Pipeline step cancel | 200 ms | In-process `Future.cancel` after cooperative flag |
+| BuildPlan step cancel | 200 ms | In-process `Future.cancel` after cooperative flag |
 
 **Timeline (N workers):** `destroy()` all → wait ≤500 ms once → `destroyForcibly()` stragglers.  
 Not N×500 ms. **Windows:** no SIGTERM; `destroy()` is often already terminal — grace bounds the
@@ -244,7 +244,7 @@ engine’s wait, not a guaranteed hook window. See [architecture.md](architectur
 
 ## Refs
 
-- CLI: `JsonlListener`, `JsonlShape`, `LiveProgress`, `PipelineConsole.Mode.JSON`, `EventLogListener`, `CliSessionTranscript`, `SessionMirrorListener`
+- CLI: `JsonlListener`, `JsonlShape`, `LiveProgress`, `BuildPlanConsole.Mode.JSON`, `EventLogListener`, `CliSessionTranscript`, `SessionMirrorListener`
 - Engine HTTP: `HttpEngineServer`, `HttpEvents`
 - Guide: [guide.md](guide.md) (CLI UX + machine output)
 - UX charter: kanartist JK-1076–1079

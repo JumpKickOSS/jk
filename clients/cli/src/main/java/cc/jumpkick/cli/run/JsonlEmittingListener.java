@@ -2,10 +2,10 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.plugin.build.Phase;
-import cc.jumpkick.run.PipelineListener;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.PipelineView;
-import cc.jumpkick.run.StepStatus;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.BuildPlanView;
+import cc.jumpkick.run.TaskStatus;
 import java.time.Duration;
 
 /**
@@ -13,7 +13,7 @@ import java.time.Duration;
  * applied). Subclasses supply only the sink via {@link #emit}. {@code immediate} marks semantic
  * boundaries (per-line flush); hot ticks ({@link JsonlShape#HOT_TYPES}) use the heartbeat.
  */
-abstract class JsonlEmittingListener implements PipelineListener {
+abstract class JsonlEmittingListener implements BuildPlanListener {
 
     /**
      * True when this listener owns the aggregate {@code progress} rider (single-pipeline stdout).
@@ -31,24 +31,24 @@ abstract class JsonlEmittingListener implements PipelineListener {
     protected abstract void emit(String line, boolean immediate);
 
     @Override
-    public void pipelineStart(PipelineView v) {
-        line(JsonlShape.pipelineStart(v), "pipeline-start");
+    public void pipelineStart(BuildPlanView v) {
+        line(JsonlShape.pipelineStart(v), "buildplan-start");
     }
 
     @Override
     public void stepStart(String step, Phase phase, int ticks) {
-        line(JsonlShape.stepStart(step, wire(phase), ticks), "step-start");
+        line(JsonlShape.stepStart(step, wire(phase), ticks), "task-start");
     }
 
     @Override
-    public void progress(String step, int delta, PipelineView v) {
+    public void progress(String step, int delta, BuildPlanView v) {
         // Per-step numerator/denominator on the event; aggregate % via LiveProgress rider.
         if (aggregateRider) LiveProgress.get().update(v.numerator(), v.denominator());
         line(JsonlShape.progress(step, delta, v), "progress");
     }
 
     @Override
-    public void tickUpdate(String step, int delta, PipelineView v) {
+    public void tickUpdate(String step, int delta, BuildPlanView v) {
         if (aggregateRider) LiveProgress.get().update(v.numerator(), v.denominator());
         line(JsonlShape.tickUpdate(step, delta, v), "tick-update");
     }
@@ -79,13 +79,13 @@ abstract class JsonlEmittingListener implements PipelineListener {
     }
 
     @Override
-    public void stepFinish(String step, Phase phase, StepStatus s, Duration d) {
-        line(JsonlShape.stepFinish(step, wire(phase), s, d), "step-finish");
+    public void stepFinish(String step, Phase phase, TaskStatus s, Duration d) {
+        line(JsonlShape.stepFinish(step, wire(phase), s, d), "task-finish");
     }
 
     @Override
-    public void pipelineFinish(PipelineResult r) {
-        line(JsonlShape.pipelineFinish(r), "pipeline-finish");
+    public void pipelineFinish(BuildPlanResult r) {
+        line(JsonlShape.pipelineFinish(r), "buildplan-finish");
     }
 
     private void line(String raw, String type) {

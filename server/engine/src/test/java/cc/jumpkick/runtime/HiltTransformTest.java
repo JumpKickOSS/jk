@@ -7,8 +7,8 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanResult;
 import java.lang.classfile.ClassFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * android-plan Step 5, blocker 4: Hilt unmodified-source parity. Sources spell plain
+ * android-plan Task 5, blocker 4: Hilt unmodified-source parity. Sources spell plain
  * {@code @HiltAndroidApp class App : Application()} / {@code @AndroidEntryPoint class
  * MainActivity : ComponentActivity()} — no {@code Hilt_*} in source, exactly what an AGP project
  * writes. {@code [android] hilt = true} contributes the processor's superclass-validation toggle
@@ -42,9 +42,9 @@ class HiltTransformTest {
         acceptLicenses();
 
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
-        Pipeline lock = LockPipelines.lockPipeline(
+        BuildPlan lock = LockPipelines.lockBuildPlan(
                 project, build, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
-        PipelineResult lockResult = lock.run();
+        BuildPlanResult lockResult = lock.run();
         assertThat(lockResult.errors()).isEmpty();
 
         BuildPipelines.Inputs in = new BuildPipelines.Inputs(
@@ -63,7 +63,7 @@ class HiltTransformTest {
                 false,
                 java.util.Set.of(),
                 SessionContext.current());
-        PipelineResult result = BuildPipelines.coreBuilder(in).build().run();
+        BuildPlanResult result = BuildPipelines.coreBuilder(in).build().run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
 

@@ -14,11 +14,11 @@ import cc.jumpkick.plugin.build.Phase;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineKey;
-import cc.jumpkick.run.Step;
-import cc.jumpkick.run.StepKind;
-import cc.jumpkick.run.StepNames;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskKind;
+import cc.jumpkick.run.TaskNames;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -55,18 +55,18 @@ public final class PublishPipelines {
             boolean sbom,
             RepoCredential credential) {}
 
-    public static final PipelineKey<JkBuild> PROJECT = PipelineKey.of("project", JkBuild.class);
-    public static final PipelineKey<Path> JAR = PipelineKey.of("jar", Path.class);
+    public static final BuildPlanKey<JkBuild> PROJECT = BuildPlanKey.of("project", JkBuild.class);
+    public static final BuildPlanKey<Path> JAR = BuildPlanKey.of("jar", Path.class);
 
     /** The plugin's uploaded-file count (0 for {@code --dry-run}), populated by the publish step. */
-    public static final PipelineKey<Integer> FILES = PipelineKey.of("pub-files", Integer.class);
+    public static final BuildPlanKey<Integer> FILES = BuildPlanKey.of("pub-files", Integer.class);
 
     /** Build the publish pipeline for {@code projectDir}. Locates the plugin jar eagerly (fail fast, with side-load hints). */
-    public static Pipeline publishPipeline(Path projectDir, Path cache, Request req) {
+    public static BuildPlan publishBuildPlan(Path projectDir, Path cache, Request req) {
         Path workerJar = PluginJar.PUBLISHER.locate(JkStores.cas(cache));
         Path jkBuildPath = projectDir.resolve("jk.toml");
 
-        Step parseBuild = Step.builder(StepNames.PARSE_BUILD)
+        Task parseBuild = Task.builder(TaskNames.PARSE_BUILD)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("parse jk.toml + validate version");
@@ -110,10 +110,10 @@ public final class PublishPipelines {
                 })
                 .build();
 
-        Step publish = Step.builder("publish")
+        Task publish = Task.builder("publish")
                 .phase(Phase.PUBLISH)
-                .kind(StepKind.IO)
-                .requires(StepNames.PARSE_BUILD)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.PARSE_BUILD)
                 .ticks(1)
                 .execute(ctx -> {
                     Path jar = ctx.require(JAR);
@@ -128,7 +128,7 @@ public final class PublishPipelines {
                 })
                 .build();
 
-        return Pipeline.builder("publish").addStep(parseBuild).addStep(publish).build();
+        return BuildPlan.builder("publish").addTask(parseBuild).addTask(publish).build();
     }
 
     /** Fork the {@code jk-publisher} plugin; returns the uploaded-file count. */

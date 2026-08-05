@@ -221,7 +221,7 @@ public final class LockFlow {
         if (existing != null && lock.kotlin() == null && existing.kotlin() != null) {
             lock = lock.withKotlin(existing.kotlin());
         }
-        // First lock of a Kotlin project (nothing to carry): resolve the pin like lockPipeline
+        // First lock of a Kotlin project (nothing to carry): resolve the pin like lockBuildPlan
         // does — a lock written without it loses compiler provisioning (JK-1371).
         if (lock.kotlin() == null) {
             String kotlinVersion = LockPipelines.resolveKotlinVersion(effective, pathPrep.repos());

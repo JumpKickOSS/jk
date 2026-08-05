@@ -12,7 +12,7 @@ import org.jline.utils.AttributedStyle;
  * chip ({@code ✷ JDK ▶}), a block-bar fill, a white percent, and the download label — all on one
  * carriage-returned line.
  *
- * <p>On completion, the bar is wiped and replaced with a {@link PipelineWedge} check-chip result line:
+ * <p>On completion, the bar is wiped and replaced with a {@link BuildPlanWedge} check-chip result line:
  * {@code ✓ JDK ▶ Finished downloading [bold]Eclipse Temurin 26[/]}.
  *
  * <p>Registers as the active {@link LiveRegion} so the global Ctrl-C handler can repaint it on

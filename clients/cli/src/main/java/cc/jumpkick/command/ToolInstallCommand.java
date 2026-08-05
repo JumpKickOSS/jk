@@ -3,7 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.model.Coordinate;
@@ -148,7 +148,7 @@ public final class ToolInstallCommand implements CliCommand {
                         "Tool", "no jk.toml in " + projectDir + " — a directory target must be a jk project."));
                 return Exit.CONFIG;
             }
-            return appInstallDelegate().runProjectInstallPipeline(projectDir, "install");
+            return appInstallDelegate().runProjectInstallBuildPlan(projectDir, "install");
         }
         if (classified instanceof cc.jumpkick.tool.ToolTarget.Git git) {
             String raw = git.raw().startsWith("git+") ? git.raw().substring("git+".length()) : git.raw();
@@ -200,7 +200,7 @@ public final class ToolInstallCommand implements CliCommand {
         Path binDir = binDirOverride != null ? binDirOverride : JkDirs.binDir();
         Path envsRoot = stateDir.resolve("tools").resolve("envs");
         Files.createDirectories(cacheDir);
-        PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
 
         ToolEnv env;
         cc.jumpkick.cli.engine.EngineClient.ToolResolveOutcome outcome;
@@ -209,7 +209,7 @@ public final class ToolInstallCommand implements CliCommand {
                     cc.jumpkick.engine.EnginePaths.current(),
                     new cc.jumpkick.cli.engine.EngineClient.ToolResolveRequest(
                             resolved.coordSpec(), with, bin, mainClass, repoUrl, cacheDir),
-                    steps -> PipelineConsole.chooseConsoleListener("tool-install", steps, mode));
+                    steps -> BuildPlanConsole.chooseConsoleListener("tool-install", steps, mode));
         } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", e.getMessage()));
             return Exit.SOFTWARE;
@@ -315,7 +315,7 @@ public final class ToolInstallCommand implements CliCommand {
         Path binDir = binDirOverride != null ? binDirOverride : JkDirs.binDir();
         Path envsRoot = stateDir.resolve("tools").resolve("envs");
         Files.createDirectories(cacheDir);
-        PipelineConsole.Mode consoleMode = PipelineConsole.modeFor(global);
+        BuildPlanConsole.Mode consoleMode = BuildPlanConsole.modeFor(global);
 
         cc.jumpkick.cli.engine.EngineClient.ScriptPrepareOutcome prep;
         try {
@@ -323,7 +323,7 @@ public final class ToolInstallCommand implements CliCommand {
                     cc.jumpkick.engine.EnginePaths.current(),
                     new cc.jumpkick.cli.engine.EngineClient.ScriptPrepareRequest(
                             mode, file.toAbsolutePath(), cacheDir, stateDir, repoUrl, false, with),
-                    steps -> PipelineConsole.chooseConsoleListener("tool-install", steps, consoleMode));
+                    steps -> BuildPlanConsole.chooseConsoleListener("tool-install", steps, consoleMode));
         } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", e.getMessage()));
             return Exit.SOFTWARE;

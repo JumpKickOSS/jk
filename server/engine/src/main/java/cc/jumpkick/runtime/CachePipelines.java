@@ -6,9 +6,9 @@ import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Workspace;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineKey;
-import cc.jumpkick.run.Step;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.Task;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.CacheGc;
 import java.io.IOException;
@@ -31,25 +31,25 @@ public final class CachePipelines {
     private CachePipelines() {}
 
     /** Files removed (or, on a dry run, that would be). {@code gc}: purged CAS blobs. */
-    public static final PipelineKey<Long> FILES = PipelineKey.of("cache-files", Long.class);
+    public static final BuildPlanKey<Long> FILES = BuildPlanKey.of("cache-files", Long.class);
 
     /** Bytes freed (or reclaimable, on a dry run). */
-    public static final PipelineKey<Long> BYTES = PipelineKey.of("cache-bytes", Long.class);
+    public static final BuildPlanKey<Long> BYTES = BuildPlanKey.of("cache-bytes", Long.class);
 
     /** Reachable CAS objects the LRU evictor removed to fit {@code --max-size} (prune only). */
-    public static final PipelineKey<Long> REACHABLE_EVICTED = PipelineKey.of("cache-reachable-evicted", Long.class);
+    public static final BuildPlanKey<Long> REACHABLE_EVICTED = BuildPlanKey.of("cache-reachable-evicted", Long.class);
 
     /** Repo-mirror links removed ({@code gc} only). */
-    public static final PipelineKey<Long> REPO_LINKS = PipelineKey.of("cache-repo-links", Long.class);
+    public static final BuildPlanKey<Long> REPO_LINKS = BuildPlanKey.of("cache-repo-links", Long.class);
 
     /**
      * Prune pipeline for the cache at {@code root}: expire stale entries, GC sidecar files, optional
      * CAS sweep + LRU eviction. {@code includeJkTmp} sweeps {@code state/tmp} only for the default
      * cache dir.
      */
-    public static Pipeline prunePipeline(
+    public static BuildPlan pruneBuildPlan(
             Path root, int olderThanDays, boolean dryRun, boolean sweep, String maxSize, boolean includeJkTmp) {
-        Step pruneStep = Step.builder("prune")
+        Task pruneStep = Task.builder("prune")
                 .ticks(1)
                 .execute(ctx -> {
                     // LRU-sweep materialized jk versions (keep running + recent; rest re-fetch).
@@ -161,7 +161,7 @@ public final class CachePipelines {
                     ctx.progress(1);
                 })
                 .build();
-        return Pipeline.builder("cache-prune").addStep(pruneStep).build();
+        return BuildPlan.builder("cache-prune").addTask(pruneStep).build();
     }
 
     /**
@@ -170,14 +170,14 @@ public final class CachePipelines {
      * CAS) are never under this root in the ambient layout; hermetic collocated {@code repos/} is
      * kept.
      */
-    public static Pipeline purgePipeline(Path root) {
-        Step purgeStep = Step.builder("purge")
+    public static BuildPlan purgeBuildPlan(Path root) {
+        Task purgeStep = Task.builder("purge")
                 .execute(ctx -> {
                     ctx.label("Purging cache…");
                     purgeActionCache(root);
                 })
                 .build();
-        return Pipeline.builder("cache-purge").addStep(purgeStep).build();
+        return BuildPlan.builder("cache-purge").addTask(purgeStep).build();
     }
 
     /**
@@ -195,8 +195,8 @@ public final class CachePipelines {
      * Build the store-sweep pipeline ({@code jk repo prune}): artifact CAS temp cleanup, run-log TTL
      * GC, unreferenced-blob sweep, and (with {@code maxSize}) LRU eviction down to the budget.
      */
-    public static Pipeline sweepPipeline(Path root, boolean dryRun, String maxSize) {
-        Step sweepStep = Step.builder("sweep")
+    public static BuildPlan sweepBuildPlan(Path root, boolean dryRun, String maxSize) {
+        Task sweepStep = Task.builder("sweep")
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("Sweeping store…");
@@ -210,7 +210,7 @@ public final class CachePipelines {
                     ctx.progress(1);
                 })
                 .build();
-        return Pipeline.builder("repo-prune").addStep(sweepStep).build();
+        return BuildPlan.builder("repo-prune").addTask(sweepStep).build();
     }
 
     /** Totals for one store sweep ({@link #sweepStore}). */
@@ -278,8 +278,8 @@ public final class CachePipelines {
     }
 
     /** Build the GC pipeline ({@code jk clean --cache}): purge CAS blobs idle 90+ days via {@link CacheGc}. */
-    public static Pipeline gcPipeline(Path root) {
-        Step gcStep = Step.builder("gc")
+    public static BuildPlan gcBuildPlan(Path root) {
+        Task gcStep = Task.builder("gc")
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("Collecting cache…");
@@ -290,7 +290,7 @@ public final class CachePipelines {
                     ctx.progress(1);
                 })
                 .build();
-        return Pipeline.builder("cache-gc").addStep(gcStep).build();
+        return BuildPlan.builder("cache-gc").addTask(gcStep).build();
     }
 
     /**
@@ -298,8 +298,8 @@ public final class CachePipelines {
      * and its workspace modules (match by output {@link ActionKey#taskTag} or INPUT path under a
      * module). CAS blobs are left for a later prune.
      */
-    public static Pipeline clearPipeline(Path cacheRoot, Path projectDir, boolean dryRun) {
-        Step clearStep = Step.builder("clear")
+    public static BuildPlan clearBuildPlan(Path cacheRoot, Path projectDir, boolean dryRun) {
+        Task clearStep = Task.builder("clear")
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label(dryRun ? "Inspecting build cache…" : "Clearing build cache…");
@@ -356,7 +356,7 @@ public final class CachePipelines {
                     ctx.progress(1);
                 })
                 .build();
-        return Pipeline.builder("cache-clear").addStep(clearStep).build();
+        return BuildPlan.builder("cache-clear").addTask(clearStep).build();
     }
 
     /** The current project dir plus, if it's in a workspace, every {@code [workspace]} module dir. */

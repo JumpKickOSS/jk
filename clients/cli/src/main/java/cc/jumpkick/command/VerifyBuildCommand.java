@@ -3,7 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
@@ -13,13 +13,13 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineKey;
-import cc.jumpkick.run.PipelineListener;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.Step;
-import cc.jumpkick.run.StepKind;
-import cc.jumpkick.run.StepNames;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskKind;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.ModulePlan;
 import cc.jumpkick.runtime.WorkspaceBuildListener;
 import cc.jumpkick.runtime.WorkspaceRequest;
@@ -78,9 +78,9 @@ public final class VerifyBuildCommand implements CliCommand {
     /** All per-artifact comparisons, in module order. */
     private record Report(List<Comparison> comparisons) {}
 
-    private static final PipelineKey<VerifyPlan> PLAN = PipelineKey.of("verify-plan", VerifyPlan.class);
-    private static final PipelineKey<Path> SCRATCH = PipelineKey.of("scratch", Path.class);
-    private static final PipelineKey<Report> REPORT = PipelineKey.of("report", Report.class);
+    private static final BuildPlanKey<VerifyPlan> PLAN = BuildPlanKey.of("verify-plan", VerifyPlan.class);
+    private static final BuildPlanKey<Path> SCRATCH = BuildPlanKey.of("scratch", Path.class);
+    private static final BuildPlanKey<Report> REPORT = BuildPlanKey.of("report", Report.class);
 
     @Override
     public int run(Invocation in) throws IOException {
@@ -96,7 +96,7 @@ public final class VerifyBuildCommand implements CliCommand {
         }
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
 
-        Step parseBuild = Step.builder(StepNames.PARSE_BUILD)
+        Task parseBuild = Task.builder(TaskNames.PARSE_BUILD)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("parse jk.toml + jk-lock.toml");
@@ -119,9 +119,9 @@ public final class VerifyBuildCommand implements CliCommand {
                 })
                 .build();
 
-        Step rebuild = Step.builder(StepNames.REBUILD_SCRATCH)
-                .kind(StepKind.CPU)
-                .requires(StepNames.PARSE_BUILD)
+        Task rebuild = Task.builder(TaskNames.REBUILD_SCRATCH)
+                .kind(TaskKind.CPU)
+                .requires(TaskNames.PARSE_BUILD)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("rebuild into scratch");
@@ -140,8 +140,8 @@ public final class VerifyBuildCommand implements CliCommand {
                 })
                 .build();
 
-        Step compare = Step.builder(StepNames.COMPARE_HASHES)
-                .requires(StepNames.REBUILD_SCRATCH)
+        Task compare = Task.builder(TaskNames.COMPARE_HASHES)
+                .requires(TaskNames.REBUILD_SCRATCH)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("sha256 artifacts");
@@ -152,16 +152,16 @@ public final class VerifyBuildCommand implements CliCommand {
                 })
                 .build();
 
-        Pipeline pipeline = Pipeline.builder("verify-build")
-                .addStep(parseBuild)
-                .addStep(rebuild)
-                .addStep(compare)
+        BuildPlan pipeline = BuildPlan.builder("verify-build")
+                .addTask(parseBuild)
+                .addTask(rebuild)
+                .addTask(compare)
                 .build();
-        PipelineResult result = PipelineConsole.run(pipeline, PipelineConsole.modeFor(global), cache);
+        BuildPlanResult result = BuildPlanConsole.run(pipeline, BuildPlanConsole.modeFor(global), cache);
         pipeline.get(SCRATCH).ifPresent(PathUtil::deleteRecursively);
 
         if (!result.success()) {
-            for (PipelineResult.Diagnostic d : result.errors()) {
+            for (BuildPlanResult.Diagnostic d : result.errors()) {
                 if ("missing-jar".equals(d.code())) return Exit.NO_INPUT;
             }
             return 1;
@@ -190,7 +190,7 @@ public final class VerifyBuildCommand implements CliCommand {
 
     // ---- scratch rebuild --------------------------------------------------
 
-    /** A sink for build-failure diagnostics — matches {@code StepContext.error}'s shape. */
+    /** A sink for build-failure diagnostics — matches {@code TaskContext.error}'s shape. */
     private interface ErrorSink {
         void error(String code, String message);
     }
@@ -227,8 +227,8 @@ public final class VerifyBuildCommand implements CliCommand {
         List<String> buildErrors = Collections.synchronizedList(new ArrayList<>());
         WorkspaceBuildListener listener = new WorkspaceBuildListener() {
             @Override
-            public PipelineListener onModuleStart(ModulePlan m) {
-                return new PipelineListener() {
+            public BuildPlanListener onModuleStart(ModulePlan m) {
+                return new BuildPlanListener() {
                     @Override
                     public void error(String step, String code, String message) {
                         buildErrors.add(step + ": " + message);

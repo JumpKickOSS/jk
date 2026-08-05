@@ -23,11 +23,11 @@ import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.NaiveResolver;
 import cc.jumpkick.resolver.Resolution;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineKey;
-import cc.jumpkick.run.Step;
-import cc.jumpkick.run.StepKind;
-import cc.jumpkick.run.StepNames;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskKind;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.script.ScriptHeader;
 import cc.jumpkick.script.ScriptHeaderParser;
 import cc.jumpkick.tool.JarManifest;
@@ -55,25 +55,25 @@ public final class ScriptPipelines {
     private ScriptPipelines() {}
 
     // Cross-step keys (mode-specific, but all live in the same record).
-    static final PipelineKey<ScriptHeader> HEADER = PipelineKey.of("script-header", ScriptHeader.class);
-    public static final PipelineKey<Path> CLASSES_DIR = PipelineKey.of("classes-dir", Path.class);
+    static final BuildPlanKey<ScriptHeader> HEADER = BuildPlanKey.of("script-header", ScriptHeader.class);
+    public static final BuildPlanKey<Path> CLASSES_DIR = BuildPlanKey.of("classes-dir", Path.class);
 
     @SuppressWarnings("rawtypes")
-    private static final PipelineKey<List> WORKER_CP = PipelineKey.of("kotlin-worker-cp", List.class);
+    private static final BuildPlanKey<List> WORKER_CP = BuildPlanKey.of("kotlin-worker-cp", List.class);
 
-    public static final PipelineKey<Path> KT_STDLIB = PipelineKey.of("kotlin-stdlib", Path.class);
-    public static final PipelineKey<Path> KOTLINC_BIN = PipelineKey.of("kotlinc-bin", Path.class);
-    public static final PipelineKey<String> MAIN_CLASS = PipelineKey.of("main-class", String.class);
-
-    @SuppressWarnings("rawtypes")
-    public static final PipelineKey<List> CLASSPATH = PipelineKey.of("classpath", List.class);
+    public static final BuildPlanKey<Path> KT_STDLIB = BuildPlanKey.of("kotlin-stdlib", Path.class);
+    public static final BuildPlanKey<Path> KOTLINC_BIN = BuildPlanKey.of("kotlinc-bin", Path.class);
+    public static final BuildPlanKey<String> MAIN_CLASS = BuildPlanKey.of("main-class", String.class);
 
     @SuppressWarnings("rawtypes")
-    private static final PipelineKey<List> JAR_DECLARED_DEPS = PipelineKey.of("jar-declared-deps", List.class);
+    public static final BuildPlanKey<List> CLASSPATH = BuildPlanKey.of("classpath", List.class);
+
+    @SuppressWarnings("rawtypes")
+    private static final BuildPlanKey<List> JAR_DECLARED_DEPS = BuildPlanKey.of("jar-declared-deps", List.class);
 
     /** The finished pipeline's classpath, as the typed list the raw {@link #CLASSPATH} key stores. */
     @SuppressWarnings("unchecked")
-    public static List<Path> classpathOf(Pipeline pipeline) {
+    public static List<Path> classpathOf(BuildPlan pipeline) {
         return (List<Path>) pipeline.get(CLASSPATH).orElse(List.of());
     }
 
@@ -87,13 +87,13 @@ public final class ScriptPipelines {
     // --- .java -----------------------------------------------------------
 
     /** {@code parse-script → resolve-deps → compile-java} for a {@code .java} script. */
-    public static Pipeline javaScriptPipeline(
+    public static BuildPlan javaScriptBuildPlan(
             Path script, Path cacheDir, Path stateDir, URI repoUrl, boolean forceRecompile) throws IOException {
-        return javaScriptPipeline(script, cacheDir, stateDir, repoUrl, forceRecompile, List.of());
+        return javaScriptBuildPlan(script, cacheDir, stateDir, repoUrl, forceRecompile, List.of());
     }
 
     /** As above with {@code extraDeps} — alias/{@code --with} injections joining the header's deps. */
-    public static Pipeline javaScriptPipeline(
+    public static BuildPlan javaScriptBuildPlan(
             Path script, Path cacheDir, Path stateDir, URI repoUrl, boolean forceRecompile, List<Dependency> extraDeps)
             throws IOException {
         byte[] bytes = Files.readAllBytes(script);
@@ -102,7 +102,7 @@ public final class ScriptPipelines {
         Path classesDir = classesDirFor(stateDir, bytes);
         String mainClass = header.main() != null ? header.main() : simpleMainClassName(script, ".java");
 
-        Step parseHeader = Step.builder(StepNames.PARSE_SCRIPT)
+        Task parseHeader = Task.builder(TaskNames.PARSE_SCRIPT)
                 .phase(Phase.RESOLVE)
                 .ticks(1)
                 .execute(ctx -> {
@@ -115,10 +115,10 @@ public final class ScriptPipelines {
                 })
                 .build();
 
-        Step resolveDeps = Step.builder(StepNames.RESOLVE_DEPS)
+        Task resolveDeps = Task.builder(TaskNames.RESOLVE_DEPS)
                 .phase(Phase.RESOLVE)
-                .kind(StepKind.IO)
-                .requires(StepNames.PARSE_SCRIPT)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.PARSE_SCRIPT)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("resolve script dependencies");
@@ -136,10 +136,10 @@ public final class ScriptPipelines {
                 })
                 .build();
 
-        Step compile = Step.builder(StepNames.COMPILE_JAVA)
+        Task compile = Task.builder(TaskNames.COMPILE_JAVA)
                 .phase(Phase.COMPILE)
-                .kind(StepKind.CPU)
-                .requires(StepNames.RESOLVE_DEPS)
+                .kind(TaskKind.CPU)
+                .requires(TaskNames.RESOLVE_DEPS)
                 .ticks(1)
                 .execute(ctx -> {
                     boolean rerun = forceRecompile
@@ -176,10 +176,10 @@ public final class ScriptPipelines {
                 })
                 .build();
 
-        return Pipeline.builder("run-java")
-                .addStep(parseHeader)
-                .addStep(resolveDeps)
-                .addStep(compile)
+        return BuildPlan.builder("run-java")
+                .addTask(parseHeader)
+                .addTask(resolveDeps)
+                .addTask(compile)
                 .build();
     }
 
@@ -201,13 +201,13 @@ public final class ScriptPipelines {
     // --- .kt -------------------------------------------------------------
 
     /** {@code parse-script → (resolve-deps ∥ resolve-kotlinc) → compile-kt} for a {@code .kt} script. */
-    public static Pipeline kotlinScriptPipeline(
+    public static BuildPlan kotlinScriptBuildPlan(
             Path script, Path cacheDir, Path stateDir, URI repoUrl, boolean forceRecompile) throws IOException {
-        return kotlinScriptPipeline(script, cacheDir, stateDir, repoUrl, forceRecompile, List.of());
+        return kotlinScriptBuildPlan(script, cacheDir, stateDir, repoUrl, forceRecompile, List.of());
     }
 
     /** As above with {@code extraDeps} — alias/{@code --with} injections joining the header's deps. */
-    public static Pipeline kotlinScriptPipeline(
+    public static BuildPlan kotlinScriptBuildPlan(
             Path script, Path cacheDir, Path stateDir, URI repoUrl, boolean forceRecompile, List<Dependency> extraDeps)
             throws IOException {
         byte[] bytes = Files.readAllBytes(script);
@@ -217,7 +217,7 @@ public final class ScriptPipelines {
         Path classesDir = classesDirFor(stateDir, bytes);
         String mainClass = header.main() != null ? header.main() : kotlinMainClassName(script);
 
-        Step parseHeader = Step.builder(StepNames.PARSE_SCRIPT)
+        Task parseHeader = Task.builder(TaskNames.PARSE_SCRIPT)
                 .phase(Phase.RESOLVE)
                 .ticks(1)
                 .execute(ctx -> {
@@ -232,10 +232,10 @@ public final class ScriptPipelines {
 
         // resolve-deps and resolve-kotlinc are independent and slow; run
         // them in parallel.
-        Step resolveDeps = Step.builder(StepNames.RESOLVE_DEPS)
+        Task resolveDeps = Task.builder(TaskNames.RESOLVE_DEPS)
                 .phase(Phase.RESOLVE)
-                .kind(StepKind.IO)
-                .requires(StepNames.PARSE_SCRIPT)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.PARSE_SCRIPT)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("resolve script dependencies");
@@ -253,10 +253,10 @@ public final class ScriptPipelines {
                 })
                 .build();
 
-        Step resolveKotlinc = Step.builder(StepNames.RESOLVE_KOTLINC)
+        Task resolveKotlinc = Task.builder(TaskNames.RESOLVE_KOTLINC)
                 .phase(Phase.RESOLVE)
-                .kind(StepKind.IO)
-                .requires(StepNames.PARSE_SCRIPT)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.PARSE_SCRIPT)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label(
@@ -280,10 +280,10 @@ public final class ScriptPipelines {
                 })
                 .build();
 
-        Step compile = Step.builder(StepNames.COMPILE_KOTLIN)
+        Task compile = Task.builder(TaskNames.COMPILE_KOTLIN)
                 .phase(Phase.COMPILE)
-                .kind(StepKind.CPU)
-                .requires(StepNames.RESOLVE_DEPS, StepNames.RESOLVE_KOTLINC)
+                .kind(TaskKind.CPU)
+                .requires(TaskNames.RESOLVE_DEPS, TaskNames.RESOLVE_KOTLINC)
                 .ticks(1)
                 .execute(ctx -> {
                     boolean rerun = forceRecompile
@@ -346,11 +346,11 @@ public final class ScriptPipelines {
                 })
                 .build();
 
-        return Pipeline.builder("run-kt")
-                .addStep(parseHeader)
-                .addStep(resolveDeps)
-                .addStep(resolveKotlinc)
-                .addStep(compile)
+        return BuildPlan.builder("run-kt")
+                .addTask(parseHeader)
+                .addTask(resolveDeps)
+                .addTask(resolveKotlinc)
+                .addTask(compile)
                 .build();
     }
 
@@ -362,20 +362,20 @@ public final class ScriptPipelines {
      * @file:DependsOn} / {@code //DEPS} / {@code //jk dep}) resolve here and reach kotlinc via
      * {@code -classpath} — jk's own CAS-first resolution, not kotlin-main-kts's embedded Ivy.
      */
-    public static Pipeline ktsScriptPipeline(Path script, Path cacheDir, URI repoUrl) throws IOException {
-        return ktsScriptPipeline(script, cacheDir, repoUrl, List.of());
+    public static BuildPlan ktsScriptBuildPlan(Path script, Path cacheDir, URI repoUrl) throws IOException {
+        return ktsScriptBuildPlan(script, cacheDir, repoUrl, List.of());
     }
 
     /** As above with {@code extraDeps} — alias/{@code --with} injections joining the header's deps. */
-    public static Pipeline ktsScriptPipeline(Path script, Path cacheDir, URI repoUrl, List<Dependency> extraDeps)
+    public static BuildPlan ktsScriptBuildPlan(Path script, Path cacheDir, URI repoUrl, List<Dependency> extraDeps)
             throws IOException {
         ScriptHeader header = withExtras(
                 ScriptHeaderParser.parseKotlin(new String(Files.readAllBytes(script), StandardCharsets.UTF_8)),
                 extraDeps);
 
-        Step resolveDeps = Step.builder(StepNames.RESOLVE_DEPS)
+        Task resolveDeps = Task.builder(TaskNames.RESOLVE_DEPS)
                 .phase(Phase.RESOLVE)
-                .kind(StepKind.IO)
+                .kind(TaskKind.IO)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("resolve script dependencies");
@@ -391,9 +391,9 @@ public final class ScriptPipelines {
                 })
                 .build();
 
-        Step resolveKotlinc = Step.builder(StepNames.RESOLVE_KOTLINC)
+        Task resolveKotlinc = Task.builder(TaskNames.RESOLVE_KOTLINC)
                 .phase(Phase.RESOLVE)
-                .kind(StepKind.IO)
+                .kind(TaskKind.IO)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("provision kotlinc");
@@ -408,17 +408,17 @@ public final class ScriptPipelines {
                     ctx.progress(1);
                 })
                 .build();
-        return Pipeline.builder("run-kts")
-                .addStep(resolveDeps)
-                .addStep(resolveKotlinc)
+        return BuildPlan.builder("run-kts")
+                .addTask(resolveDeps)
+                .addTask(resolveKotlinc)
                 .build();
     }
 
     // --- .jar ------------------------------------------------------------
 
     /** {@code inspect-jar → resolve-jar-deps} for a prebuilt jar (manifest main + embedded-POM deps). */
-    public static Pipeline jarPipeline(Path jar, Path cacheDir, URI repoUrl) {
-        Step inspect = Step.builder(StepNames.INSPECT_JAR)
+    public static BuildPlan jarBuildPlan(Path jar, Path cacheDir, URI repoUrl) {
+        Task inspect = Task.builder(TaskNames.INSPECT_JAR)
                 .phase(Phase.RESOLVE)
                 .ticks(1)
                 .execute(ctx -> {
@@ -458,10 +458,10 @@ public final class ScriptPipelines {
                 })
                 .build();
 
-        Step resolveJarDeps = Step.builder(StepNames.RESOLVE_JAR_DEPS)
+        Task resolveJarDeps = Task.builder(TaskNames.RESOLVE_JAR_DEPS)
                 .phase(Phase.RESOLVE)
-                .kind(StepKind.IO)
-                .requires(StepNames.INSPECT_JAR)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.INSPECT_JAR)
                 .ticks(1)
                 .execute(ctx -> {
                     @SuppressWarnings("unchecked")
@@ -491,9 +491,9 @@ public final class ScriptPipelines {
                 })
                 .build();
 
-        return Pipeline.builder("run-jar")
-                .addStep(inspect)
-                .addStep(resolveJarDeps)
+        return BuildPlan.builder("run-jar")
+                .addTask(inspect)
+                .addTask(resolveJarDeps)
                 .build();
     }
 

@@ -12,11 +12,11 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.CacheSync;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineKey;
-import cc.jumpkick.run.Step;
-import cc.jumpkick.run.StepKind;
-import cc.jumpkick.run.StepNames;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskKind;
+import cc.jumpkick.run.TaskNames;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -35,22 +35,22 @@ public final class SyncPipelines {
     private SyncPipelines() {}
 
     /** Cross-step pipeline keys. */
-    public static final PipelineKey<Lockfile> LOCKFILE = PipelineKey.of("lockfile", Lockfile.class);
+    public static final BuildPlanKey<Lockfile> LOCKFILE = BuildPlanKey.of("lockfile", Lockfile.class);
 
-    public static final PipelineKey<JkBuild> BUILD = PipelineKey.of("build", JkBuild.class);
-    public static final PipelineKey<JdkEnsure.Outcome> JDK_OUTCOME =
-            PipelineKey.of("jdk-outcome", JdkEnsure.Outcome.class);
-    public static final PipelineKey<CacheSync.Report> CAS_REPORT = PipelineKey.of("cas-report", CacheSync.Report.class);
-    public static final PipelineKey<JkPluginSync.Result> WORKER_REPORT =
-            PipelineKey.of("worker-report", JkPluginSync.Result.class);
-    public static final PipelineKey<Integer> WORKSPACE_MODULES = PipelineKey.of("workspace-modules", Integer.class);
-    public static final PipelineKey<Boolean> LOCKFILE_CREATED = PipelineKey.of("lockfile-created", Boolean.class);
+    public static final BuildPlanKey<JkBuild> BUILD = BuildPlanKey.of("build", JkBuild.class);
+    public static final BuildPlanKey<JdkEnsure.Outcome> JDK_OUTCOME =
+            BuildPlanKey.of("jdk-outcome", JdkEnsure.Outcome.class);
+    public static final BuildPlanKey<CacheSync.Report> CAS_REPORT = BuildPlanKey.of("cas-report", CacheSync.Report.class);
+    public static final BuildPlanKey<JkPluginSync.Result> WORKER_REPORT =
+            BuildPlanKey.of("worker-report", JkPluginSync.Result.class);
+    public static final BuildPlanKey<Integer> WORKSPACE_MODULES = BuildPlanKey.of("workspace-modules", Integer.class);
+    public static final BuildPlanKey<Boolean> LOCKFILE_CREATED = BuildPlanKey.of("lockfile-created", Boolean.class);
 
     /**
      * Sync pipeline for {@code dir}. {@code refresh} comes from ambient {@link SessionContext}.
      * {@code allowJdkInstall} is true only for in-process paths.
      */
-    public static Pipeline syncPipeline(
+    public static BuildPlan syncBuildPlan(
             Path dir,
             Path cache,
             Path jdksDir,
@@ -76,7 +76,7 @@ public final class SyncPipelines {
         }
         final int preScanDenominator = preScannedTotal;
 
-        Step parseLock = Step.builder(StepNames.PARSE_LOCK)
+        Task parseLock = Task.builder(TaskNames.PARSE_LOCK)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("parse jk-lock.toml");
@@ -123,9 +123,9 @@ public final class SyncPipelines {
                 })
                 .build();
 
-        Step ensureJdk = Step.builder(StepNames.ENSURE_JDK)
-                .kind(StepKind.IO)
-                .requires(StepNames.PARSE_LOCK)
+        Task ensureJdk = Task.builder(TaskNames.ENSURE_JDK)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.PARSE_LOCK)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("resolve JDK");
@@ -143,9 +143,9 @@ public final class SyncPipelines {
                 })
                 .build();
 
-        Step syncCas = Step.builder(StepNames.SYNC_CAS)
-                .kind(StepKind.IO)
-                .requires(StepNames.PARSE_LOCK)
+        Task syncCas = Task.builder(TaskNames.SYNC_CAS)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.PARSE_LOCK)
                 .ticks(preScanDenominator) // pre-scanned; 0 → updateTicks() fallback
                 .execute(ctx -> {
                     Lockfile lock = ctx.require(LOCKFILE);
@@ -194,9 +194,9 @@ public final class SyncPipelines {
         // jk's own plugin jars (test-runner, kotlin-compiler) — pulled from the
         // local Maven repo into the CAS so `jk test` / Kotlin builds find them by
         // SHA. Best-effort: absent plugins warn but don't fail the sync.
-        Step syncWorkers = Step.builder(StepNames.SYNC_WORKERS)
-                .kind(StepKind.IO)
-                .requires(StepNames.PARSE_LOCK)
+        Task syncWorkers = Task.builder(TaskNames.SYNC_WORKERS)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.PARSE_LOCK)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("sync jk workers");
@@ -223,8 +223,8 @@ public final class SyncPipelines {
                 })
                 .build();
 
-        Step writeManifest = Step.builder(StepNames.WRITE_SYNC_MANIFEST)
-                .requires(StepNames.SYNC_CAS)
+        Task writeManifest = Task.builder(TaskNames.WRITE_SYNC_MANIFEST)
+                .requires(TaskNames.SYNC_CAS)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("stamp reachability manifest");
@@ -239,9 +239,9 @@ public final class SyncPipelines {
                 .build();
 
         // Sync declared third-party plugin jars from Maven to CAS.
-        Step syncPlugins = Step.builder(StepNames.SYNC_PLUGINS)
-                .kind(StepKind.IO)
-                .requires(StepNames.PARSE_LOCK)
+        Task syncPlugins = Task.builder(TaskNames.SYNC_PLUGINS)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.PARSE_LOCK)
                 .ticks(0)
                 .execute(ctx -> {
                     Lockfile lock = ctx.require(LOCKFILE);
@@ -286,9 +286,9 @@ public final class SyncPipelines {
                 .build();
 
         // Sync sources JARs for packages that have sourcesChecksum pinned in lock.
-        Step syncSources = Step.builder(StepNames.SYNC_SOURCES)
-                .kind(StepKind.IO)
-                .requires(StepNames.PARSE_LOCK)
+        Task syncSources = Task.builder(TaskNames.SYNC_SOURCES)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.PARSE_LOCK)
                 .ticks(0)
                 .execute(ctx -> {
                     if (!sources) return; // opt-in only
@@ -328,24 +328,24 @@ public final class SyncPipelines {
 
         // Workspace modules no longer own lockfiles — the root jk-lock.toml is the only pin set
         // (synced above via SYNC_CAS). SYNC_MODULES remains a no-op step for wire/plan stability.
-        Step syncModules = Step.builder(StepNames.SYNC_MODULES)
-                .kind(StepKind.IO)
-                .requires(StepNames.WRITE_SYNC_MANIFEST)
+        Task syncModules = Task.builder(TaskNames.SYNC_MODULES)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.WRITE_SYNC_MANIFEST)
                 .ticks(0)
                 .execute(ctx -> {
                     /* intentionally empty — single workspace lock covers all modules */
                 })
                 .build();
 
-        return Pipeline.builder("sync")
-                .addStep(parseLock)
-                .addStep(ensureJdk)
-                .addStep(syncCas)
-                .addStep(syncSources)
-                .addStep(syncPlugins)
-                .addStep(syncWorkers)
-                .addStep(writeManifest)
-                .addStep(syncModules)
+        return BuildPlan.builder("sync")
+                .addTask(parseLock)
+                .addTask(ensureJdk)
+                .addTask(syncCas)
+                .addTask(syncSources)
+                .addTask(syncPlugins)
+                .addTask(syncWorkers)
+                .addTask(writeManifest)
+                .addTask(syncModules)
                 .build();
     }
 

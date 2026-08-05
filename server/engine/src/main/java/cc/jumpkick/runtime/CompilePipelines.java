@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.run.Pipeline;
+import cc.jumpkick.run.BuildPlan;
 import java.nio.file.Path;
 import java.util.Set;
 
@@ -11,7 +11,7 @@ public final class CompilePipelines {
     private CompilePipelines() {}
 
     /** Compile-only pipeline for {@code dir} (auto-locks like {@code jk build}). */
-    public static Pipeline compilePipeline(Path dir, Path cache, String profileName, boolean verbose) {
+    public static BuildPlan compileBuildPlan(Path dir, Path cache, String profileName, boolean verbose) {
         Path buildFile = dir.resolve("jk.toml");
         Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
         BuildPipelines.Inputs inputs = new BuildPipelines.Inputs(

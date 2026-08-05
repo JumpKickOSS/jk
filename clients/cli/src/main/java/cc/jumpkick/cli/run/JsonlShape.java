@@ -2,9 +2,9 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.plugin.protocol.Jsonl;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.PipelineView;
-import cc.jumpkick.run.StepStatus;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.BuildPlanView;
+import cc.jumpkick.run.TaskStatus;
 import java.time.Duration;
 import java.time.Instant;
 
@@ -144,8 +144,8 @@ public final class JsonlShape {
         return sb.append('}').toString();
     }
 
-    static String pipelineStart(PipelineView v) {
-        return open("pipeline-start")
+    static String pipelineStart(BuildPlanView v) {
+        return open("buildplan-start")
                 .append(",\"pipeline\":")
                 .append(js(v.pipelineName()))
                 .append(",\"denominator\":")
@@ -157,8 +157,8 @@ public final class JsonlShape {
     }
 
     static String stepStart(String step, String phase, int ticks) {
-        return open("step-start")
-                .append(",\"step\":")
+        return open("task-start")
+                .append(",\"task\":")
                 .append(js(step))
                 .append(",\"phase\":")
                 .append(js(phase))
@@ -168,9 +168,9 @@ public final class JsonlShape {
                 .toString();
     }
 
-    static String progress(String step, int delta, PipelineView v) {
+    static String progress(String step, int delta, BuildPlanView v) {
         return open("progress")
-                .append(",\"step\":")
+                .append(",\"task\":")
                 .append(js(step))
                 .append(",\"delta\":")
                 .append(delta)
@@ -182,9 +182,9 @@ public final class JsonlShape {
                 .toString();
     }
 
-    static String tickUpdate(String step, int delta, PipelineView v) {
+    static String tickUpdate(String step, int delta, BuildPlanView v) {
         return open("tick-update")
-                .append(",\"step\":")
+                .append(",\"task\":")
                 .append(js(step))
                 .append(",\"delta\":")
                 .append(delta)
@@ -196,7 +196,7 @@ public final class JsonlShape {
 
     static String label(String step, String label) {
         return open("label")
-                .append(",\"step\":")
+                .append(",\"task\":")
                 .append(js(step))
                 .append(",\"label\":")
                 .append(js(label))
@@ -206,7 +206,7 @@ public final class JsonlShape {
 
     static String output(String step, String line) {
         return open("output")
-                .append(",\"step\":")
+                .append(",\"task\":")
                 .append(js(step))
                 .append(",\"line\":")
                 .append(js(line))
@@ -216,7 +216,7 @@ public final class JsonlShape {
 
     static String warn(String step, String code, String msg) {
         return open("warn")
-                .append(",\"step\":")
+                .append(",\"task\":")
                 .append(js(step))
                 .append(",\"code\":")
                 .append(js(code))
@@ -237,7 +237,7 @@ public final class JsonlShape {
      */
     static String error(String step, String code, String msg, String test, String exceptionClass) {
         StringBuilder sb = open("error")
-                .append(",\"step\":")
+                .append(",\"task\":")
                 .append(js(step))
                 .append(",\"code\":")
                 .append(js(code))
@@ -249,9 +249,9 @@ public final class JsonlShape {
         return sb.append('}').toString();
     }
 
-    static String stepFinish(String step, String phase, StepStatus status, Duration duration) {
-        return open("step-finish")
-                .append(",\"step\":")
+    static String stepFinish(String step, String phase, TaskStatus status, Duration duration) {
+        return open("task-finish")
+                .append(",\"task\":")
                 .append(js(step))
                 .append(",\"phase\":")
                 .append(js(phase))
@@ -263,8 +263,8 @@ public final class JsonlShape {
                 .toString();
     }
 
-    static String pipelineFinish(PipelineResult r) {
-        return open("pipeline-finish")
+    static String pipelineFinish(BuildPlanResult r) {
+        return open("buildplan-finish")
                 .append(",\"pipeline\":")
                 .append(js(r.pipelineName()))
                 .append(",\"success\":")

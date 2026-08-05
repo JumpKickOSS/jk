@@ -220,9 +220,9 @@ public final class LiveVitals implements AutoCloseable {
                         "uptimeSeconds",
                         Math.max(0, (System.currentTimeMillis() - s.startedAtMillis()) / 1000))
                 .put("activeRequests", s.activeRequests())
-                .put("activePipelines", s.activePipelines())
+                .put("activeBuildPlans", s.activeBuildPlans())
                 .put("peakActiveRequests", s.peakActiveRequests())
-                .put("peakActivePipelines", s.peakActivePipelines())
+                .put("peakActiveBuildPlans", s.peakActiveBuildPlans())
                 .put("heapUsedBytes", s.heapUsedBytes())
                 .put("heapCommittedBytes", s.heapCommittedBytes())
                 .put("heapMaxBytes", s.heapMaxBytes())
@@ -239,7 +239,7 @@ public final class LiveVitals implements AutoCloseable {
      * counters exact. Keeps "still 5.0 GiB available" from spamming the wire.
      */
     record PresentStatus(
-            int activePipelines,
+            int activeBuildPlans,
             int activeRequests,
             int loadPp,
             long freeMib,
@@ -254,7 +254,7 @@ public final class LiveVitals implements AutoCloseable {
         static PresentStatus of(StatusSnapshot s) {
             int loadPp = s.systemCpuLoad() < 0 ? -1 : (int) Math.round(s.systemCpuLoad() * 100);
             return new PresentStatus(
-                    s.activePipelines(),
+                    s.activeBuildPlans(),
                     s.activeRequests(),
                     loadPp,
                     mib(s.freeMemoryBytes()),

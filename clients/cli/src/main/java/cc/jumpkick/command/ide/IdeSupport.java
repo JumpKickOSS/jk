@@ -224,7 +224,7 @@ public final class IdeSupport {
     private static final long BEST_EFFORT_SYNC_MS = 30_000L;
 
     private static void hostedBestEffortSync(Path wsRoot, Path cache, Path jdksDir, GlobalOptions global) {
-        cc.jumpkick.cli.run.PipelineConsole.Mode mode = cc.jumpkick.cli.run.PipelineConsole.modeFor(global);
+        cc.jumpkick.cli.run.BuildPlanConsole.Mode mode = cc.jumpkick.cli.run.BuildPlanConsole.modeFor(global);
         long[] fetched = new long[1];
         long[] upToDate = new long[1];
         cc.jumpkick.cli.run.ConsoleSpec spec = new cc.jumpkick.cli.run.ConsoleSpec(
@@ -249,7 +249,7 @@ public final class IdeSupport {
                         cc.jumpkick.cli.engine.EngineClient.runSync(
                                 paths,
                                 req,
-                                steps -> cc.jumpkick.cli.run.PipelineConsole.chooseConsoleListener(
+                                steps -> cc.jumpkick.cli.run.BuildPlanConsole.chooseConsoleListener(
                                         steps, mode, spec, label),
                                 fetched,
                                 upToDate);

@@ -9,7 +9,7 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.PipelineWedge;
+import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.model.command.CliCommand;
@@ -70,7 +70,7 @@ public final class WebCommand implements CliCommand {
         String url = tokenizedUrl(status.httpUrl(), paths);
         Theme t = Theme.active();
         CommandWedge.envelopeStart();
-        CliOutput.out(PipelineWedge.chipLine(
+        CliOutput.out(BuildPlanWedge.chipLine(
                 Glyphs.PLAY, "Web", GlobalConfig.nerdfont(), "JumpKick dashboard"));
         CliOutput.out("");
         CliOutput.out("  Live build activity from this host's engine.");

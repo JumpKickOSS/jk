@@ -85,7 +85,7 @@ public final class CompileToolchain {
     /**
      * As {@link #resolveKotlinHome(Path, String)}, but reports a one-line provisioning notice
      * ("Linked/Installed Kotlin …") to {@code notice} instead of a stream — the caller (the CLI view,
-     * or a step's {@code StepContext::output}) decides how to surface it.
+     * or a step's {@code TaskContext::output}) decides how to surface it.
      */
     public static Path resolveKotlinHome(Path cacheDir, String versionOverride, Consumer<String> notice) {
         // ToolProvisioning already runs the EnvVarProbe (which reads

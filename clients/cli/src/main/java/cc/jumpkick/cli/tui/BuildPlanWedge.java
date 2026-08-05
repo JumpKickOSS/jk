@@ -21,9 +21,9 @@ import org.jline.utils.AttributedStyle;
  * (the {@code >} replaces a color transition).
  * </ul>
  */
-public final class PipelineWedge {
+public final class BuildPlanWedge {
 
-    private PipelineWedge() {}
+    private BuildPlanWedge() {}
 
     /**
      * Chip body + trailing pad on {@code chip} style. Trailing pad is one space when {@code

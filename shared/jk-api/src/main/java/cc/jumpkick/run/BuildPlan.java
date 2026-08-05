@@ -25,13 +25,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
 
 /**
- * Named DAG of {@link Step}s for one invocation: readiness-level scheduling, progress, diagnostics,
- * and a terminal {@link PipelineResult}. Cancellation is cooperative at the step level: a flag is
+ * Named DAG of {@link Task}s for one invocation: readiness-level scheduling, progress, diagnostics,
+ * and a terminal {@link BuildPlanResult}. Cancellation is cooperative at the step level: a flag is
  * set, futures are cancelled after a short grace ({@link #COOPERATIVE_CANCEL_GRACE}). OS-level
  * worker JVMs are shut down by the engine ({@code JobWorkers},soft then force within
  * ~500 ms — never hang.
  */
-public final class Pipeline {
+public final class BuildPlan {
 
     /** How long we wait for async steps to notice cancellation before calling {@code Future.cancel}. */
     static final Duration COOPERATIVE_CANCEL_GRACE = Duration.ofMillis(200);
@@ -48,12 +48,12 @@ public final class Pipeline {
     private static final long INTERP_NANOS_PER_WEIGHT = 150_000_000L; // ~150ms
 
     /** Running steps currently being eased forward by the interpolation interpTimer. */
-    private final Set<DefaultStepContext> easing = ConcurrentHashMap.newKeySet();
+    private final Set<DefaultTaskContext> easing = ConcurrentHashMap.newKeySet();
 
     private final String name;
     private final boolean interactive;
-    private final List<Step> steps;
-    private final List<PipelineListener> listeners;
+    private final List<Task> steps;
+    private final List<BuildPlanListener> listeners;
 
     private final LongAdder numerator = new LongAdder();
     private final LongAdder denominator = new LongAdder();
@@ -63,15 +63,15 @@ public final class Pipeline {
     /** True only for host {@link #requestCancel} (vs internal cancel after a step failure). */
     private final AtomicBoolean userRequestedCancel = new AtomicBoolean(false);
 
-    private final Map<String, StepStatus> statuses = new ConcurrentHashMap<>();
-    private final List<PipelineResult.Diagnostic> warnings = Collections.synchronizedList(new ArrayList<>());
-    private final List<PipelineResult.Diagnostic> errors = Collections.synchronizedList(new ArrayList<>());
-    private final List<PipelineResult.StepReport> reports = Collections.synchronizedList(new ArrayList<>());
+    private final Map<String, TaskStatus> statuses = new ConcurrentHashMap<>();
+    private final List<BuildPlanResult.Diagnostic> warnings = Collections.synchronizedList(new ArrayList<>());
+    private final List<BuildPlanResult.Diagnostic> errors = Collections.synchronizedList(new ArrayList<>());
+    private final List<BuildPlanResult.StepReport> reports = Collections.synchronizedList(new ArrayList<>());
 
-    /** Cross-step shared state — typed via {@link PipelineKey}. Reads happen via StepContext. */
+    /** Cross-step shared state — typed via {@link BuildPlanKey}. Reads happen via TaskContext. */
     private final ConcurrentHashMap<String, Object> state = new ConcurrentHashMap<>();
 
-    Pipeline(String name, boolean interactive, List<Step> steps, List<PipelineListener> listeners) {
+    BuildPlan(String name, boolean interactive, List<Task> steps, List<BuildPlanListener> listeners) {
         this.name = Objects.requireNonNull(name);
         this.interactive = interactive;
         this.steps = List.copyOf(steps);
@@ -88,29 +88,29 @@ public final class Pipeline {
         return interactive;
     }
 
-    public List<Step> steps() {
+    public List<Task> steps() {
         return steps;
     }
 
-    public void addListener(PipelineListener listener) {
+    public void addListener(BuildPlanListener listener) {
         listeners.add(Objects.requireNonNull(listener));
     }
 
-    /** Request cancellation; running steps see {@link StepContext#cancelled} flip. */
+    /** Request cancellation; running steps see {@link TaskContext#cancelled} flip. */
     public void requestCancel() {
         userRequestedCancel.set(true);
         cancelled.set(true);
     }
 
-    public PipelineView snapshot() {
-        return new PipelineView(
+    public BuildPlanView snapshot() {
+        return new BuildPlanView(
                 name, numerator.sum(), denominator.sum(), steps.size(), stepsComplete.get(), cancelled.get());
     }
 
     /** Sum of step weights without running; a throwing estimate contributes 0. */
     public int estimatedTotalWeight() {
         List<CompletableFuture<Integer>> futures = new ArrayList<>(steps.size());
-        for (Step p : steps) {
+        for (Task p : steps) {
             futures.add(CompletableFuture.supplyAsync(p::estimateWeight, JkThreads.io()));
         }
         int total = 0;
@@ -126,9 +126,9 @@ public final class Pipeline {
 
     /**
      * Run the pipeline. Blocks until every step reaches a terminal state. Throws no checked exceptions
-     * step failures are folded into {@link PipelineResult#success}.
+     * step failures are folded into {@link BuildPlanResult#success}.
      */
-    public PipelineResult run() {
+    public BuildPlanResult run() {
         Instant pipelineStart = Instant.now();
 
         // Step 1: ticks estimation (parallel on IO). `initialTicks` is each step's
@@ -137,13 +137,13 @@ public final class Pipeline {
         // file-count-scoped compile can't dwarf a quick step. A step without an
         // explicit weight reuses its ticks, so the denominator is unchanged for it.
         List<CompletableFuture<Integer>> tickFutures = new ArrayList<>(steps.size());
-        for (Step p : steps) {
+        for (Task p : steps) {
             tickFutures.add(CompletableFuture.supplyAsync(p::estimateTicks, JkThreads.io()));
         }
         Map<String, Integer> initialTicks = new HashMap<>();
         Map<String, Integer> weights = new HashMap<>();
         for (int i = 0; i < steps.size(); i++) {
-            Step p = steps.get(i);
+            Task p = steps.get(i);
             int s = 0;
             try {
                 s = tickFutures.get(i).get();
@@ -158,8 +158,8 @@ public final class Pipeline {
             denominator.add(w);
         }
 
-        for (Step p : steps) {
-            statuses.put(p.name(), StepStatus.PENDING);
+        for (Task p : steps) {
+            statuses.put(p.name(), TaskStatus.PENDING);
         }
         emit(l -> l.pipelineStart(snapshot()));
 
@@ -170,10 +170,10 @@ public final class Pipeline {
 
         // Step 2: run steps by readiness levels.
         Set<String> completedOk = new HashSet<>();
-        List<Step> remaining = new ArrayList<>(topoSort(steps));
+        List<Task> remaining = new ArrayList<>(topoSort(steps));
         try {
             while (!remaining.isEmpty() && !cancelled.get()) {
-                List<Step> ready = remaining.stream()
+                List<Task> ready = remaining.stream()
                         .filter(p -> completedOk.containsAll(p.requires()))
                         .toList();
                 if (ready.isEmpty()) {
@@ -183,7 +183,7 @@ public final class Pipeline {
                 }
                 remaining.removeAll(ready);
                 boolean levelOk = runLevel(ready, initialTicks, weights);
-                for (Step p : ready) {
+                for (Task p : ready) {
                     if (isOk(statuses.get(p.name()))) {
                         completedOk.add(p.name());
                     }
@@ -198,9 +198,9 @@ public final class Pipeline {
         }
 
         // Any remaining (un-run) steps are CANCELLED because a dep failed.
-        for (Step p : remaining) {
-            statuses.put(p.name(), StepStatus.CANCELLED);
-            reports.add(new PipelineResult.StepReport(p.name(), StepStatus.CANCELLED, Duration.ZERO, p.requires()));
+        for (Task p : remaining) {
+            statuses.put(p.name(), TaskStatus.CANCELLED);
+            reports.add(new BuildPlanResult.StepReport(p.name(), TaskStatus.CANCELLED, Duration.ZERO, p.requires()));
         }
 
         // Session cancel (Ctrl-C / BUILD_CANCEL) may never call requestCancel — fold it in so the
@@ -210,16 +210,16 @@ public final class Pipeline {
             cancelled.set(true);
         }
         boolean success = !cancelled.get()
-                && steps.stream().map(p -> statuses.get(p.name())).allMatch(Pipeline::isOk);
+                && steps.stream().map(p -> statuses.get(p.name())).allMatch(BuildPlan::isOk);
 
         // Sort reports back into declaration order so the printed summary
         // matches the user's mental model of the build pipeline.
         Map<String, Integer> declOrder = new HashMap<>();
         for (int i = 0; i < steps.size(); i++) declOrder.put(steps.get(i).name(), i);
-        List<PipelineResult.StepReport> orderedReports = new ArrayList<>(reports);
+        List<BuildPlanResult.StepReport> orderedReports = new ArrayList<>(reports);
         orderedReports.sort(Comparator.comparingInt(r -> declOrder.getOrDefault(r.name(), Integer.MAX_VALUE)));
 
-        PipelineResult result = new PipelineResult(
+        BuildPlanResult result = new BuildPlanResult(
                 name,
                 success,
                 Duration.between(pipelineStart, Instant.now()),
@@ -240,7 +240,7 @@ public final class Pipeline {
      * shuts it down when the run finishes.
      */
     private ScheduledExecutorService startInterpolationTimer() {
-        if (steps.stream().noneMatch(Step::interpolated)) return null;
+        if (steps.stream().noneMatch(Task::interpolated)) return null;
         ScheduledExecutorService interpTimer = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "jk-progress-interp");
             t.setDaemon(true);
@@ -249,7 +249,7 @@ public final class Pipeline {
         interpTimer.scheduleAtFixedRate(
                 () -> {
                     long now = System.nanoTime();
-                    for (DefaultStepContext c : easing) {
+                    for (DefaultTaskContext c : easing) {
                         try {
                             c.tick(now);
                         } catch (RuntimeException ignored) {
@@ -268,17 +268,17 @@ public final class Pipeline {
      * parallel on their respective pools. Returns true when every step in the level succeeded; false
      * on the first fail (triggers cooperative cancellation).
      */
-    private boolean runLevel(List<Step> ready, Map<String, Integer> initialTicks, Map<String, Integer> weights) {
-        List<CompletableFuture<StepStatus>> futures = new ArrayList<>();
-        for (Step p : ready) {
+    private boolean runLevel(List<Task> ready, Map<String, Integer> initialTicks, Map<String, Integer> weights) {
+        List<CompletableFuture<TaskStatus>> futures = new ArrayList<>();
+        for (Task p : ready) {
             int ticks = initialTicks.getOrDefault(p.name(), 0);
             int weight = weights.getOrDefault(p.name(), ticks);
-            statuses.put(p.name(), StepStatus.RUNNING);
+            statuses.put(p.name(), TaskStatus.RUNNING);
             String stepName = p.name();
             Phase stepPhase = p.phase().orElse(null);
             emit(l -> l.stepStart(stepName, stepPhase, ticks));
             Executor exec = executorFor(p.kind());
-            if (p.kind() == StepKind.SYNC) {
+            if (p.kind() == TaskKind.SYNC) {
                 futures.add(CompletableFuture.completedFuture(runOneStep(p, ticks, weight)));
             } else {
                 futures.add(CompletableFuture.supplyAsync(() -> runOneStep(p, ticks, weight), exec));
@@ -286,9 +286,9 @@ public final class Pipeline {
         }
 
         boolean ok = true;
-        for (CompletableFuture<StepStatus> f : futures) {
+        for (CompletableFuture<TaskStatus> f : futures) {
             try {
-                StepStatus s = f.get();
+                TaskStatus s = f.get();
                 if (!isOk(s)) ok = false;
             } catch (Exception e) {
                 ok = false;
@@ -303,7 +303,7 @@ public final class Pipeline {
             } catch (InterruptedException ignored) {
                 Thread.currentThread().interrupt();
             }
-            for (CompletableFuture<StepStatus> f : futures) {
+            for (CompletableFuture<TaskStatus> f : futures) {
                 if (!f.isDone()) f.cancel(true);
             }
         }
@@ -312,19 +312,19 @@ public final class Pipeline {
 
     /**
      * A step status that counts as "the step is done and the build may proceed": a real success or
-     * a cache-hit/up-to-date {@link StepStatus#SKIPPED}. Used for dependency gating and overall
+     * a cache-hit/up-to-date {@link TaskStatus#SKIPPED}. Used for dependency gating and overall
      * success so a fully-cached build (every step SKIPPED) is still a success.
      */
-    private static boolean isOk(StepStatus s) {
-        return s == StepStatus.SUCCESS || s == StepStatus.SKIPPED;
+    private static boolean isOk(TaskStatus s) {
+        return s == TaskStatus.SUCCESS || s == TaskStatus.SKIPPED;
     }
 
-    private StepStatus runOneStep(Step step, int initialTicks, int weight) {
+    private TaskStatus runOneStep(Task step, int initialTicks, int weight) {
         Instant start = Instant.now();
         long startNum = numerator.sum();
         long startNanos = System.nanoTime();
         long expectedNanos = step.interpolated() ? (long) weight * INTERP_NANOS_PER_WEIGHT : 0;
-        DefaultStepContext ctx = new DefaultStepContext(
+        DefaultTaskContext ctx = new DefaultTaskContext(
                 step.name(), this, initialTicks, weight, step.hasExplicitWeight(), expectedNanos, startNanos);
         boolean ticked = ctx.interpolating();
         if (ticked) easing.add(ctx);
@@ -347,10 +347,10 @@ public final class Pipeline {
             // ctx.cached) terminates SKIPPED, not SUCCESS. SKIPPED counts as "ok" everywhere the
             // pipeline decides success (see isOk), so it never fails a build — it only feeds the
             // dashboard's per-project cache-hit ("steps skipped") ratio.
-            StepStatus terminal = ctx.wasCached() ? StepStatus.SKIPPED : StepStatus.SUCCESS;
+            TaskStatus terminal = ctx.wasCached() ? TaskStatus.SKIPPED : TaskStatus.SUCCESS;
             statuses.put(step.name(), terminal);
             Duration dur = Duration.between(start, Instant.now());
-            reports.add(new PipelineResult.StepReport(step.name(), terminal, dur, step.requires()));
+            reports.add(new BuildPlanResult.StepReport(step.name(), terminal, dur, step.requires()));
             stepsComplete.incrementAndGet();
             emit(l -> l.stepFinish(step.name(), step.phase().orElse(null), terminal, dur));
             return terminal;
@@ -361,7 +361,7 @@ public final class Pipeline {
             // pile on a duplicate "exception" diagnostic — the step
             // told us exactly what went wrong. We only synthesise a
             // generic diagnostic when nothing else was reported.
-            // Pipeline flag (sibling fail / requestCancel) OR session-level Ctrl-C (SessionCancel).
+            // BuildPlan flag (sibling fail / requestCancel) OR session-level Ctrl-C (SessionCancel).
             // Session cancel alone must still terminal-CANCELLED and set userCancelled on the result,
             // otherwise force-killed builds journal as failed/success and poison ETA history.
             boolean cancel = cancelled.get() || SessionCancel.cancelled();
@@ -369,13 +369,13 @@ public final class Pipeline {
             boolean stepAlreadyReported =
                     !cancel && errors.stream().anyMatch(d -> step.name().equals(d.step()));
             if (!stepAlreadyReported) {
-                errors.add(new PipelineResult.Diagnostic(
+                errors.add(new BuildPlanResult.Diagnostic(
                         step.name(), cancel ? "cancelled" : "exception", diagnosticMessage(t)));
             }
-            StepStatus terminal = cancel ? StepStatus.CANCELLED : StepStatus.FAIL;
+            TaskStatus terminal = cancel ? TaskStatus.CANCELLED : TaskStatus.FAIL;
             statuses.put(step.name(), terminal);
             Duration dur = Duration.between(start, Instant.now());
-            reports.add(new PipelineResult.StepReport(step.name(), terminal, dur, step.requires()));
+            reports.add(new BuildPlanResult.StepReport(step.name(), terminal, dur, step.requires()));
             stepsComplete.incrementAndGet();
             emit(l -> l.stepFinish(step.name(), step.phase().orElse(null), terminal, dur));
             return terminal;
@@ -397,7 +397,7 @@ public final class Pipeline {
         return msg;
     }
 
-    private static Executor executorFor(StepKind kind) {
+    private static Executor executorFor(TaskKind kind) {
         return switch (kind) {
             case IO -> JkThreads.io();
             case CPU -> JkThreads.cpu();
@@ -407,8 +407,8 @@ public final class Pipeline {
 
     // --- Fanout helpers ------------------------------------------------
 
-    void emit(java.util.function.Consumer<PipelineListener> action) {
-        for (PipelineListener l : listeners) {
+    void emit(java.util.function.Consumer<BuildPlanListener> action) {
+        for (BuildPlanListener l : listeners) {
             try {
                 action.accept(l);
             } catch (RuntimeException ignored) {
@@ -433,11 +433,11 @@ public final class Pipeline {
         return cancelled;
     }
 
-    List<PipelineResult.Diagnostic> warningsRef() {
+    List<BuildPlanResult.Diagnostic> warningsRef() {
         return warnings;
     }
 
-    List<PipelineResult.Diagnostic> errorsRef() {
+    List<BuildPlanResult.Diagnostic> errorsRef() {
         return errors;
     }
 
@@ -450,7 +450,7 @@ public final class Pipeline {
      * state steps produced — resolved lockfile, JDK outcome, etc. — into their summary output
      * without needing a separate holder object.
      */
-    public <T> java.util.Optional<T> get(PipelineKey<T> key) {
+    public <T> java.util.Optional<T> get(BuildPlanKey<T> key) {
         Object raw = state.get(key.name());
         if (raw == null) return java.util.Optional.empty();
         if (!key.type().isInstance(raw)) {
@@ -466,14 +466,14 @@ public final class Pipeline {
 
     // --- DAG validation + topo sort -----------------------------------
 
-    private static void validate(List<Step> steps) {
+    private static void validate(List<Task> steps) {
         Set<String> known = new HashSet<>();
-        for (Step p : steps) {
+        for (Task p : steps) {
             if (!known.add(p.name())) {
                 throw new IllegalArgumentException("duplicate step name: " + p.name());
             }
         }
-        for (Step p : steps) {
+        for (Task p : steps) {
             for (String req : p.requires()) {
                 if (!known.contains(req)) {
                     throw new IllegalArgumentException("step '" + p.name() + "' requires unknown '" + req + "'");
@@ -484,21 +484,21 @@ public final class Pipeline {
         topoSort(steps);
     }
 
-    private static List<Step> topoSort(List<Step> steps) {
-        Map<String, Step> byName = new HashMap<>();
+    private static List<Task> topoSort(List<Task> steps) {
+        Map<String, Task> byName = new HashMap<>();
         Map<String, Integer> inDegree = new HashMap<>();
         Map<String, List<String>> reverse = new HashMap<>();
-        for (Step p : steps) {
+        for (Task p : steps) {
             byName.put(p.name(), p);
             inDegree.put(p.name(), 0);
         }
-        for (Step p : steps) {
+        for (Task p : steps) {
             for (String r : p.requires()) {
                 inDegree.merge(p.name(), 1, Integer::sum);
                 reverse.computeIfAbsent(r, k -> new ArrayList<>()).add(p.name());
             }
         }
-        List<Step> out = new ArrayList<>();
+        List<Task> out = new ArrayList<>();
         List<String> ready = new ArrayList<>();
         for (var e : inDegree.entrySet()) {
             if (e.getValue() == 0) ready.add(e.getKey());
@@ -526,8 +526,8 @@ public final class Pipeline {
     public static final class Builder {
         private final String name;
         private boolean interactive = false;
-        private final List<Step> steps = new ArrayList<>();
-        private final List<PipelineListener> listeners = new ArrayList<>();
+        private final List<Task> steps = new ArrayList<>();
+        private final List<BuildPlanListener> listeners = new ArrayList<>();
 
         Builder(String name) {
             this.name = Objects.requireNonNull(name);
@@ -543,7 +543,7 @@ public final class Pipeline {
             return this;
         }
 
-        public Builder addStep(Step step) {
+        public Builder addTask(Task step) {
             steps.add(step);
             return this;
         }
@@ -552,22 +552,22 @@ public final class Pipeline {
          * Append every step from {@code more} whose name is not already present — ordered-set
          * semantics. Use this to compose a pipeline from multiple step sequences without duplicate steps.
          */
-        public Builder addAllSteps(java.util.Collection<Step> more) {
+        public Builder addAllTasks(java.util.Collection<Task> more) {
             java.util.Set<String> existing = new java.util.HashSet<>();
-            for (Step p : steps) existing.add(p.name());
-            for (Step p : more) {
+            for (Task p : steps) existing.add(p.name());
+            for (Task p : more) {
                 if (existing.add(p.name())) steps.add(p);
             }
             return this;
         }
 
-        public Builder addListener(PipelineListener listener) {
+        public Builder addListener(BuildPlanListener listener) {
             listeners.add(listener);
             return this;
         }
 
-        public Pipeline build() {
-            return new Pipeline(name, interactive, steps, listeners);
+        public BuildPlan build() {
+            return new BuildPlan(name, interactive, steps, listeners);
         }
     }
 }

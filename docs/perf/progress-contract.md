@@ -43,7 +43,7 @@ At least one tick per phase that appears in the live tree.
 build countdown seed both call `EffortWeights.costFromRunningSteps` + `seedEta` with the same
 inputs: dirty running steps, **unit counts** (sources / test methods), project dirs, and test
 workers. Explain takes counts from the forecast (`sourceCount` / `testCount`); build takes them
-from prepared pipeline ticks (`stepCountsFromPipeline`). Empty counts must never be passed on a
+from prepared pipeline ticks (`stepCountsFromBuildPlan`). Empty counts must never be passed on a
 cold host — that prices every `run-tests` as suite-startup only and yields a ~10s countdown next
 to a multi-minute explain. The initial countdown figure must match the explain estimate even when
 that figure is imperfect.

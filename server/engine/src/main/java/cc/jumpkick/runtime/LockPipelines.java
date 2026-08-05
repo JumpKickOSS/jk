@@ -29,13 +29,13 @@ import cc.jumpkick.resolver.VersionSelectors;
 import cc.jumpkick.resolver.Versions;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
 import cc.jumpkick.resolver.pubgrub.VersionSet;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineKey;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.Step;
-import cc.jumpkick.run.StepKind;
-import cc.jumpkick.run.StepNames;
-import cc.jumpkick.run.StepStatus;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskKind;
+import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.run.TaskStatus;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -55,17 +55,17 @@ public final class LockPipelines {
     private LockPipelines() {}
 
     /** Cross-step key: the effective (workspace-merged) manifest the resolve step reads. */
-    public static final PipelineKey<JkBuild> EFFECTIVE = PipelineKey.of("effective-build", JkBuild.class);
+    public static final BuildPlanKey<JkBuild> EFFECTIVE = BuildPlanKey.of("effective-build", JkBuild.class);
 
     /** Cross-step key: the lockfile as it accumulates through resolve → lock-plugins → write. */
-    public static final PipelineKey<Lockfile> LOCKFILE = PipelineKey.of("lockfile", Lockfile.class);
+    public static final BuildPlanKey<Lockfile> LOCKFILE = BuildPlanKey.of("lockfile", Lockfile.class);
 
     /**
      * Cross-step key: manifests digest captured at parse time — the write step stamps this instead
      * of re-reading live files, so a manifest edited mid-resolution leaves a stale-reading lock
      * (JK-1357).
      */
-    public static final PipelineKey<String> MANIFESTS_SHA = PipelineKey.of("manifests-sha", String.class);
+    public static final BuildPlanKey<String> MANIFESTS_SHA = BuildPlanKey.of("manifests-sha", String.class);
 
     /**
      * Build the {@code jk lock} pipeline for one project directory: {@code parse-build} → {@code
@@ -80,7 +80,7 @@ public final class LockPipelines {
      * to emit no per-package labels (the engine-hosted path — the client synthesizes them from
      * {@code lock-package} events so coloring stays client-side)
      */
-    public static Pipeline lockPipeline(
+    public static BuildPlan lockBuildPlan(
             Path dir,
             JkBuild effective,
             Path cache,
@@ -90,18 +90,18 @@ public final class LockPipelines {
             boolean sources,
             ResolveObserver observer,
             BiFunction<String, String, String> coordLabel) {
-        return lockPipeline(
+        return lockBuildPlan(
                 dir, effective, cache, repoUrl, features, withDefaultFeatures, sources, false, observer, coordLabel);
     }
 
     /**
-     * As {@link #lockPipeline(Path, JkBuild, Path, URI, List, boolean, boolean, ResolveObserver,
+     * As {@link #lockBuildPlan(Path, JkBuild, Path, URI, List, boolean, boolean, ResolveObserver,
      * BiFunction)} with a {@code conservative} switch: an invisible freshen ({@code
      * EnsureFreshLock}) keeps every pin from the existing lock as a solver preference — only
      * coordinates a new or changed constraint rules out move. Explicit {@code jk lock} passes
      * {@code false} and floats to latest.
      */
-    public static Pipeline lockPipeline(
+    public static BuildPlan lockBuildPlan(
             Path dir,
             JkBuild effective,
             Path cache,
@@ -115,7 +115,7 @@ public final class LockPipelines {
         Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
         AtomicInteger resolveEstimate = new AtomicInteger(0);
 
-        Step parseBuild = Step.builder(StepNames.PARSE_BUILD)
+        Task parseBuild = Task.builder(TaskNames.PARSE_BUILD)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("parse jk.toml");
@@ -125,11 +125,11 @@ public final class LockPipelines {
                 })
                 .build();
 
-        Step resolve = Step.builder(StepNames.RESOLVE_DEPS)
+        Task resolve = Task.builder(TaskNames.RESOLVE_DEPS)
                 .phase(Phase.RESOLVE)
                 .label("Resolving")
-                .kind(StepKind.IO)
-                .requires(StepNames.PARSE_BUILD)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.PARSE_BUILD)
                 .ticks(() -> {
                     int estimate = scopeEstimate(effective, lockFile);
                     resolveEstimate.set(estimate);
@@ -147,7 +147,7 @@ public final class LockPipelines {
                             ctx.put(LOCKFILE, existing);
                             return;
                         } catch (Exception e) {
-                            ctx.error(StepNames.RESOLVE_DEPS, e.getMessage());
+                            ctx.error(TaskNames.RESOLVE_DEPS, e.getMessage());
                             throw new RuntimeException(e);
                         }
                     }
@@ -171,7 +171,7 @@ public final class LockPipelines {
                         pathPrep = PathSourceResolution.prepare(
                                 prep.project(), prep.repos(), cas, dir, javaHome, JkVersion.VERSION);
                     } catch (Exception e) {
-                        ctx.error(StepNames.RESOLVE_DEPS, e.getMessage());
+                        ctx.error(TaskNames.RESOLVE_DEPS, e.getMessage());
                         throw new RuntimeException(e);
                     }
                     RepoGroup repos = pathPrep.repos();
@@ -255,15 +255,15 @@ public final class LockPipelines {
                         ctx.error("verbatim", e.getMessage());
                         throw new RuntimeException(e);
                     } catch (Exception e) {
-                        ctx.error(StepNames.RESOLVE_DEPS, e.getMessage());
+                        ctx.error(TaskNames.RESOLVE_DEPS, e.getMessage());
                         throw new RuntimeException(e);
                     }
                 })
                 .build();
 
-        Step lockPlugins = Step.builder(StepNames.LOCK_PLUGINS)
-                .kind(StepKind.IO)
-                .requires(StepNames.RESOLVE_DEPS)
+        Task lockPlugins = Task.builder(TaskNames.LOCK_PLUGINS)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.RESOLVE_DEPS)
                 .ticks(() ->
                         effective.plugins().isEmpty() ? 0 : effective.plugins().size())
                 .execute(ctx -> {
@@ -323,9 +323,9 @@ public final class LockPipelines {
                 })
                 .build();
 
-        Step lockSdk = Step.builder(StepNames.LOCK_SDK)
-                .kind(StepKind.IO)
-                .requires(StepNames.LOCK_PLUGINS)
+        Task lockSdk = Task.builder(TaskNames.LOCK_SDK)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.LOCK_PLUGINS)
                 .ticks(1)
                 .execute(ctx -> {
                     // Lockfile pins for every sdk-component a plugin contributes: installed → on-disk
@@ -365,8 +365,8 @@ public final class LockPipelines {
                 })
                 .build();
 
-        Step write = Step.builder(StepNames.WRITE_LOCKFILE)
-                .requires(StepNames.LOCK_SDK)
+        Task write = Task.builder(TaskNames.WRITE_LOCKFILE)
+                .requires(TaskNames.LOCK_SDK)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("write " + lockFile.getFileName());
@@ -377,26 +377,26 @@ public final class LockPipelines {
                 })
                 .build();
 
-        return Pipeline.builder("lock")
-                .addStep(parseBuild)
-                .addStep(resolve)
-                .addStep(lockPlugins)
-                .addStep(lockSdk)
-                .addStep(write)
+        return BuildPlan.builder("lock")
+                .addTask(parseBuild)
+                .addTask(resolve)
+                .addTask(lockPlugins)
+                .addTask(lockSdk)
+                .addTask(write)
                 .build();
     }
 
-    /** {@code jk update}: same as {@link #lockPipeline} but always resolves fresh. */
-    public static Pipeline updatePipeline(
+    /** {@code jk update}: same as {@link #lockBuildPlan} but always resolves fresh. */
+    public static BuildPlan updateBuildPlan(
             Path dir, JkBuild effective, Path cache, URI repoUrl, List<String> features, boolean withDefaultFeatures) {
-        return updatePipeline(dir, effective, cache, repoUrl, features, withDefaultFeatures, null);
+        return updateBuildPlan(dir, effective, cache, repoUrl, features, withDefaultFeatures, null);
     }
 
     /**
-     * As {@link #updatePipeline(Path, JkBuild, Path, URI, List, boolean)} with optional CLI
+     * As {@link #updateBuildPlan(Path, JkBuild, Path, URI, List, boolean)} with optional CLI
      * platform-policy override ({@code enforced}|{@code floor},.
      */
-    public static Pipeline updatePipeline(
+    public static BuildPlan updateBuildPlan(
             Path dir,
             JkBuild effective,
             Path cache,
@@ -407,7 +407,7 @@ public final class LockPipelines {
         Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
         PlatformPolicy policy = effectivePlatformPolicy(effective, platformOverride);
 
-        Step parseBuild = Step.builder(StepNames.PARSE_BUILD)
+        Task parseBuild = Task.builder(TaskNames.PARSE_BUILD)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("parse jk.toml");
@@ -417,10 +417,10 @@ public final class LockPipelines {
                 })
                 .build();
 
-        Step resolve = Step.builder(StepNames.RESOLVE_DEPS)
+        Task resolve = Task.builder(TaskNames.RESOLVE_DEPS)
                 .phase(Phase.RESOLVE)
-                .kind(StepKind.IO)
-                .requires(StepNames.PARSE_BUILD)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.PARSE_BUILD)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("re-resolve dependencies");
@@ -451,15 +451,15 @@ public final class LockPipelines {
                         }
                         ctx.put(LOCKFILE, lock);
                     } catch (Exception e) {
-                        ctx.error(StepNames.RESOLVE_DEPS, e.getMessage());
+                        ctx.error(TaskNames.RESOLVE_DEPS, e.getMessage());
                         throw new RuntimeException(e);
                     }
                     ctx.progress(1);
                 })
                 .build();
 
-        Step write = Step.builder(StepNames.WRITE_LOCKFILE)
-                .requires(StepNames.RESOLVE_DEPS)
+        Task write = Task.builder(TaskNames.WRITE_LOCKFILE)
+                .requires(TaskNames.RESOLVE_DEPS)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("write " + lockFile.getFileName());
@@ -470,10 +470,10 @@ public final class LockPipelines {
                 })
                 .build();
 
-        return Pipeline.builder("update")
-                .addStep(parseBuild)
-                .addStep(resolve)
-                .addStep(write)
+        return BuildPlan.builder("update")
+                .addTask(parseBuild)
+                .addTask(resolve)
+                .addTask(write)
                 .build();
     }
 
@@ -646,11 +646,11 @@ public final class LockPipelines {
      * Map a failed lock/update pipeline to its exit code: a failed {@code resolve} step (unsatisfiable
      * deps, unreachable repos) exits 6; anything else is a config problem ({@link Exit#CONFIG}).
      */
-    public static int failureExitCode(PipelineResult result) {
+    public static int failureExitCode(BuildPlanResult result) {
         boolean resolveFailed = result.steps().stream()
-                .filter(p -> p.status() == StepStatus.FAIL)
-                .map(PipelineResult.StepReport::name)
-                .anyMatch(StepNames.RESOLVE_DEPS::equals);
+                .filter(p -> p.status() == TaskStatus.FAIL)
+                .map(BuildPlanResult.StepReport::name)
+                .anyMatch(TaskNames.RESOLVE_DEPS::equals);
         return resolveFailed ? 6 : Exit.CONFIG;
     }
 

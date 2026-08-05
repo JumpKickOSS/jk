@@ -11,8 +11,8 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.task.ActionCache;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -98,11 +98,11 @@ class RebuildRunTestsMarkerTest {
         Session rebuild = Session.defaults().withConfig(rebuildConfig()).withCacheDir(cache);
         SessionContext.runWhere(rebuild, () -> {
             try {
-                Pipeline lock = LockPipelines.lockPipeline(
+                BuildPlan lock = LockPipelines.lockBuildPlan(
                         project, parsed, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
                 assertThat(lock.run().errors()).isEmpty();
 
-                PipelineResult result = BuildPipelines.coreBuilder(new BuildPipelines.Inputs(
+                BuildPlanResult result = BuildPipelines.coreBuilder(new BuildPipelines.Inputs(
                                 project,
                                 cache,
                                 project.resolve("jk.toml"),
@@ -133,7 +133,7 @@ class RebuildRunTestsMarkerTest {
                 BuildGraph.Result graph = BuildGraph.resolve(project, parsed);
                 Cas cas = JkStores.cas(cache);
                 ActionCache actionCache = new ActionCache(cas, cache.resolve("actions"));
-                List<BuildPlan.Module> plan = BuildPlanForecast.of(graph, cas, actionCache, cache, false);
+                List<TaskForecast.Module> plan = TaskForecaster.of(graph, cas, actionCache, cache, false);
                 assertThat(plan).hasSize(1);
                 assertThat(plan.get(0).steps())
                         .as("run-tests marker stored under --redo → forecast sees CACHED")

@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * package and a running total. The client should prefer {@link
  * cc.jumpkick.cli.engine.EngineClient.LockCounts} for the final count (not message cardinality).
  *
- * <p>Same cadence as {@link CoalescingPipelineListener} ({@code JK_WIRE_PROGRESS_MS}, default
+ * <p>Same cadence as {@link CoalescingBuildPlanListener} ({@code JK_WIRE_PROGRESS_MS}, default
  * 500 ms).
  */
 public final class CoalescingLockPackages implements AutoCloseable {
@@ -42,7 +42,7 @@ public final class CoalescingLockPackages implements AutoCloseable {
     });
 
     public CoalescingLockPackages(Emitter emitter) {
-        this(emitter, CoalescingPipelineListener.cadenceFromEnv());
+        this(emitter, CoalescingBuildPlanListener.cadenceFromEnv());
     }
 
     public CoalescingLockPackages(Emitter emitter, long cadenceMs) {

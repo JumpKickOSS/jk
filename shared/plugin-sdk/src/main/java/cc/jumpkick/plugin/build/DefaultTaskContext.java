@@ -6,17 +6,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The {@link BuildPluginHarness}-supplied implementation of the step-oriented capability contexts.
- * It accumulates the implicit step's declarations and materializes a single {@link StepSpec} the
- * moment {@link #run} is called, registering it against the wrapped {@link BuildPluginContext} — so
- * the capability layer produces exactly the declarations {@code register()} would have.
+ * Harness-supplied implementation of resolve/build/test contribution contexts. Accumulates the
+ * implicit task and materializes a {@link TaskSpec} on {@link #run}.
  */
-final class DefaultStepContext implements BuildContext, ResolveContext, TestContext {
+final class DefaultTaskContext implements BuildContext, ResolveContext, TestContext {
 
     private final BuildPluginContext ctx;
     private String name;
-    private Phase after;
-    private Phase before;
+    private final List<String> requires = new ArrayList<>();
     private final List<In> inputs = new ArrayList<>();
     private final List<String> outputs = new ArrayList<>();
     private final List<String> contributesSources = new ArrayList<>();
@@ -26,11 +23,9 @@ final class DefaultStepContext implements BuildContext, ResolveContext, TestCont
     private String transformsClasses;
     private boolean bodyRun;
 
-    DefaultStepContext(BuildPluginContext ctx, String defaultName, Phase after, Phase before) {
+    DefaultTaskContext(BuildPluginContext ctx, String defaultName) {
         this.ctx = ctx;
         this.name = defaultName;
-        this.after = after;
-        this.before = before;
     }
 
     @Override
@@ -44,73 +39,69 @@ final class DefaultStepContext implements BuildContext, ResolveContext, TestCont
     }
 
     @Override
-    public StepContribution named(String name) {
+    public TaskContribution named(String name) {
         this.name = name;
         return this;
     }
 
     @Override
-    public StepContribution after(Phase phase) {
-        this.after = phase;
+    public TaskContribution requires(String... taskNames) {
+        for (String t : taskNames) {
+            if (t != null && !t.isBlank()) requires.add(t);
+        }
         return this;
     }
 
     @Override
-    public StepContribution before(Phase phase) {
-        this.before = phase;
-        return this;
-    }
-
-    @Override
-    public StepContribution inputs(In... ins) {
+    public TaskContribution inputs(In... ins) {
         for (In in : ins) inputs.add(in);
         return this;
     }
 
     @Override
-    public StepContribution outputs(String... dirs) {
+    public TaskContribution outputs(String... dirs) {
         for (String d : dirs) outputs.add(d);
         return this;
     }
 
     @Override
-    public StepContribution contributesSources(String relDir) {
+    public TaskContribution contributesSources(String relDir) {
         contributesSources.add(relDir);
         return this;
     }
 
     @Override
-    public StepContribution contributesClasses(String relDir) {
+    public TaskContribution contributesClasses(String relDir) {
         contributesClasses.add(relDir);
         return this;
     }
 
     @Override
-    public StepContribution contributesResources(String relDir) {
+    public TaskContribution contributesResources(String relDir) {
         contributesResources.add(relDir);
         return this;
     }
 
     @Override
-    public StepContribution contributesTestClasspath(String relDir) {
+    public TaskContribution contributesTestClasspath(String relDir) {
         contributesTestClasspath.add(relDir);
         return this;
     }
 
     @Override
-    public StepContribution transformsClasses(String relDir) {
+    public TaskContribution transformsClasses(String relDir) {
         this.transformsClasses = relDir;
         return this;
     }
 
     @Override
-    public void run(StepSpec.Body body) {
+    public void run(TaskSpec.Body body) {
         if (bodyRun) {
-            throw new IllegalStateException("the implicit step's body is already set for `" + name
-                    + "` — register additional steps with step(StepSpec)");
+            throw new IllegalStateException("the implicit task's body is already set for `" + name
+                    + "` — register additional tasks with task(TaskSpec)");
         }
         bodyRun = true;
-        StepSpec spec = StepSpec.named(name).after(after).before(before);
+        TaskSpec spec = TaskSpec.named(name).requires(requires.toArray(new String[0]));
         spec.inputs(inputs.toArray(new In[0]));
         spec.outputs(outputs.toArray(new String[0]));
         for (String d : contributesSources) spec.contributesSources(d);
@@ -119,11 +110,11 @@ final class DefaultStepContext implements BuildContext, ResolveContext, TestCont
         for (String d : contributesTestClasspath) spec.contributesTestClasspath(d);
         if (transformsClasses != null) spec.transformsClasses(transformsClasses);
         spec.run(body);
-        ctx.step(spec);
+        ctx.task(spec);
     }
 
     @Override
-    public void step(StepSpec spec) {
-        ctx.step(spec);
+    public void task(TaskSpec spec) {
+        ctx.task(spec);
     }
 }

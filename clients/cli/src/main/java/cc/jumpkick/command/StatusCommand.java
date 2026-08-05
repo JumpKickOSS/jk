@@ -5,7 +5,7 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.EngineClient;
-import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -23,7 +23,7 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.plugin.protocol.Jsonl;
-import cc.jumpkick.runtime.BuildPlan;
+import cc.jumpkick.runtime.TaskForecast;
 import cc.jumpkick.runtime.ExplainPlan;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -76,7 +76,7 @@ public final class StatusCommand implements CliCommand {
         boolean live = !global.outputIsJson()
                 && !global.quiet
                 && !global.noProgress
-                && PipelineConsole.isInteractiveTerminal();
+                && BuildPlanConsole.isInteractiveTerminal();
 
         List<String> rows;
         Optional<EngineClient.Status> engine = Optional.empty();
@@ -646,12 +646,12 @@ public final class StatusCommand implements CliCommand {
             int total = plan.modules().size();
             int cached = 0;
             int sources = 0, tests = 0, artifacts = 0;
-            for (BuildPlan.Module m : plan.modules()) {
+            for (TaskForecast.Module m : plan.modules()) {
                 sources += m.sourceCount();
                 tests += m.testCount();
-                boolean allCached = !m.steps().isEmpty() && m.steps().stream().allMatch(BuildPlan.Step::cached);
+                boolean allCached = !m.steps().isEmpty() && m.steps().stream().allMatch(TaskForecast.Task::cached);
                 if (allCached) cached++;
-                for (BuildPlan.Step s : m.steps()) {
+                for (TaskForecast.Task s : m.steps()) {
                     if (s.cached()) artifacts++;
                 }
             }

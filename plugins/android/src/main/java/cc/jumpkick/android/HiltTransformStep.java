@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
-import cc.jumpkick.plugin.build.StepExec;
+import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,7 +26,7 @@ final class HiltTransformStep {
 
     private HiltTransformStep() {}
 
-    static void run(StepExec exec) throws Exception {
+    static void run(TaskExec exec) throws Exception {
         Path in = exec.classesDir();
         Path out = exec.outputDir("classes");
         int[] rewritten = {0};

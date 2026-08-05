@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.run.PipelineListener;
+import cc.jumpkick.run.BuildPlanListener;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -9,7 +9,7 @@ import java.util.Set;
 
 /**
  * Workspace-build events for front-ends. Defaults are no-ops; {@link #onModuleStart} attaches a
- * per-module {@link PipelineListener}; {@link #onPlan} supplies weights for aggregate progress.
+ * per-module {@link BuildPlanListener}; {@link #onPlan} supplies weights for aggregate progress.
  */
 public interface WorkspaceBuildListener {
 
@@ -35,11 +35,11 @@ public interface WorkspaceBuildListener {
     default void onModuleGraph(Map<Path, Set<Path>> prereqs) {}
 
     /**
-     * A module is about to build. Return the {@link PipelineListener} to attach to its pipeline (its
+     * A module is about to build. Return the {@link BuildPlanListener} to attach to its pipeline (its
      * step/progress/output events), or {@code null} / a no-op listener to ignore them.
      */
-    default PipelineListener onModuleStart(ModulePlan module) {
-        return new PipelineListener() {};
+    default BuildPlanListener onModuleStart(ModulePlan module) {
+        return new BuildPlanListener() {};
     }
 
     /** A module finished (success or failure). */

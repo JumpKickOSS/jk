@@ -11,8 +11,7 @@ import cc.jumpkick.plugin.build.In;
 import cc.jumpkick.plugin.build.PackageContext;
 import cc.jumpkick.plugin.build.PackageExtension;
 import cc.jumpkick.plugin.build.PackageIo;
-import cc.jumpkick.plugin.build.Phase;
-import cc.jumpkick.plugin.build.StepExec;
+import cc.jumpkick.plugin.build.TaskExec;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -47,8 +46,6 @@ public final class SpringBootPlugin implements Plugin, BuildExtension, PackageEx
         // AOT gate: explicit aot = true, or auto when [native] is declared.
         if (boot.bool("aot").orElse(ctx.project().nativeDeclared())) {
             ctx.named("spring-aot")
-                    .after(Phase.COMPILE)
-                    .before(Phase.PACKAGE)
                     .inputs(In.classes(), In.runtimeClasspath(), In.config())
                     .outputs("classes", "resources", "sources")
                     .contributesClasses("classes")
@@ -65,7 +62,7 @@ public final class SpringBootPlugin implements Plugin, BuildExtension, PackageEx
 
     // ---- spring-aot step --------------------------------------------------------------------
 
-    private static void runAot(StepExec exec) throws Exception {
+    private static void runAot(TaskExec exec) throws Exception {
         String startClass = exec.project().mainClass();
         if (startClass == null || startClass.isBlank()) {
             throw new IOException("no application main class — Spring AOT needs the entry point");
@@ -79,7 +76,7 @@ public final class SpringBootPlugin implements Plugin, BuildExtension, PackageEx
         classpath.add(exec.classesDir());
         classpath.addAll(exec.runtimeClasspath());
 
-        StepExec.ToolRun.Result run = exec.java()
+        TaskExec.ToolRun.Result run = exec.java()
                 .classpath(classpath)
                 .mainClass(AOT_PROCESSOR)
                 .arg(startClass)
@@ -104,7 +101,7 @@ public final class SpringBootPlugin implements Plugin, BuildExtension, PackageEx
         if (!aotSources.isEmpty()) {
             List<Path> compileCp = new ArrayList<>(classpath);
             compileCp.add(classes);
-            StepExec.ToolRun javac = exec.tool("javac")
+            TaskExec.ToolRun javac = exec.tool("javac")
                     .arg("--release")
                     .arg(Integer.toString(exec.project().javaRelease()))
                     .classpath(compileCp)
@@ -112,7 +109,7 @@ public final class SpringBootPlugin implements Plugin, BuildExtension, PackageEx
                     .arg("-d")
                     .arg(classes.toString());
             for (Path src : aotSources) javac.arg(src.toString());
-            StepExec.ToolRun.Result compile = javac.run();
+            TaskExec.ToolRun.Result compile = javac.run();
             if (compile.exit() != 0) {
                 throw new IOException("compiling Spring AOT generated sources failed:\n" + tail(compile.output()));
             }

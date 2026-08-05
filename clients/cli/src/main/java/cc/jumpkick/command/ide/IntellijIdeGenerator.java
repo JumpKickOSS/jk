@@ -5,7 +5,7 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.PipelineWedge;
+import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.Scope;
@@ -104,7 +104,7 @@ public final class IntellijIdeGenerator implements IdeGenerator {
         String check = Theme.colorize(Glyphs.CHECK, t.success());
 
         CommandWedge.envelopeStart();
-        CliOutput.out(PipelineWedge.chipLine(
+        CliOutput.out(BuildPlanWedge.chipLine(
                 Glyphs.CHECK,
                 "IDEA",
                 GlobalConfig.nerdfont(),

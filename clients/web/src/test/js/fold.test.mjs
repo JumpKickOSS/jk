@@ -76,7 +76,7 @@ test('socket finish without success derives the outcome from module rows', () =>
 test('all-success module rows derive success; no rows stay neutral', () => {
   const cards = [];
   foldEvent(cards, start(1, '/w'));
-  foldEvent(cards, { type: 'pipeline-finish', data: { requestId: 1, dir: '/w', success: true } });
+  foldEvent(cards, { type: 'buildplan-finish', data: { requestId: 1, dir: '/w', success: true } });
   foldEvent(cards, finish(1, {}));
   assert.equal(outcomeOf(cards[0]), 'success');
 
@@ -88,7 +88,7 @@ test('all-success module rows derive success; no rows stay neutral', () => {
 test('cancelled wins over derived outcomes', () => {
   const cards = [];
   foldEvent(cards, start(1, '/w'));
-  foldEvent(cards, { type: 'pipeline-finish', data: { requestId: 1, dir: '/w', success: true } });
+  foldEvent(cards, { type: 'buildplan-finish', data: { requestId: 1, dir: '/w', success: true } });
   foldEvent(cards, finish(1, { cancelled: true }));
   assert.equal(outcomeOf(cards[0]), 'cancelled');
 });
@@ -114,7 +114,7 @@ test('didWork false marks module checked; summary says checked not built (JK-129
 test('pipeline-finish creates a module row when module-start never fired (single-pipeline requests)', () => {
   const cards = [];
   foldEvent(cards, start(1, '/w'));
-  foldEvent(cards, { type: 'pipeline-finish', data: { requestId: 1, dir: '/w', success: false } });
+  foldEvent(cards, { type: 'buildplan-finish', data: { requestId: 1, dir: '/w', success: false } });
   assert.equal(cards[0].modules.length, 1);
   assert.equal(cards[0].modules[0].state, 'failed');
 });
@@ -157,11 +157,11 @@ test('coord and client timestamps ride the card', () => {
 test('steps fold per module, each module keeping its own chain', () => {
   const cards = [];
   foldEvent(cards, start(1, '/w'));
-  foldEvent(cards, { type: 'step-start', data: { requestId: 1, dir: '/w/a', step: 'compile', phase: 'compile' } });
-  foldEvent(cards, { type: 'step-start', data: { requestId: 1, dir: '/w/b', step: 'compile', phase: 'compile' } });
-  foldEvent(cards, { type: 'step-finish', data: { requestId: 1, dir: '/w/a', step: 'compile', phase: 'compile', status: 'SUCCESS' } });
-  foldEvent(cards, { type: 'step-start', data: { requestId: 1, dir: '/w/a', step: 'test', phase: 'test' } });
-  foldEvent(cards, { type: 'step-finish', data: { requestId: 1, dir: '/w/a', step: 'test', phase: 'test', status: 'FAIL' } });
+  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '/w/a', task: 'compile', phase: 'compile' } });
+  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '/w/b', task: 'compile', phase: 'compile' } });
+  foldEvent(cards, { type: 'task-finish', data: { requestId: 1, dir: '/w/a', task: 'compile', phase: 'compile', status: 'SUCCESS' } });
+  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '/w/a', task: 'test', phase: 'test' } });
+  foldEvent(cards, { type: 'task-finish', data: { requestId: 1, dir: '/w/a', task: 'test', phase: 'test', status: 'FAIL' } });
   const byDir = (dir) => cards[0].modules.find((m) => m.dir === dir);
   assert.equal(cards[0].modules.length, 2); // two modules, not one merged chain
   assert.deepEqual(
@@ -183,13 +183,13 @@ test('orderedModules puts running first (newest activity), finished last', () =>
   foldEvent(cards, { type: 'module-start', data: { requestId: 1, dir: '/w/a' }, at: 100 });
   foldEvent(cards, { type: 'module-finish', data: { requestId: 1, dir: '/w/a', success: true, millis: 10 }, at: 200 });
   foldEvent(cards, { type: 'module-start', data: { requestId: 1, dir: '/w/b' }, at: 300 });
-  foldEvent(cards, { type: 'step-start', data: { requestId: 1, dir: '/w/b', step: 'compile', phase: 'compile' }, at: 400 });
+  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '/w/b', task: 'compile', phase: 'compile' }, at: 400 });
   foldEvent(cards, { type: 'module-start', data: { requestId: 1, dir: '/w/c' }, at: 350 });
   foldEvent(cards, { type: 'module-finish', data: { requestId: 1, dir: '/w/c', success: false, millis: 5 }, at: 360 });
   // Later tick on b → b is the most recently active runner.
   foldEvent(cards, {
     type: 'label',
-    data: { requestId: 1, dir: '/w/b', step: 'compile', label: 'compiling' },
+    data: { requestId: 1, dir: '/w/b', task: 'compile', label: 'compiling' },
     at: 500,
   });
 
@@ -203,8 +203,8 @@ test('orderedModules puts running first (newest activity), finished last', () =>
 test('single-pipeline step events (empty dir) become one module with a chain', () => {
   const cards = [];
   foldEvent(cards, start(1, '/proj'));
-  foldEvent(cards, { type: 'step-start', data: { requestId: 1, dir: '', step: 'compile-java', phase: 'compile' } });
-  foldEvent(cards, { type: 'step-finish', data: { requestId: 1, dir: '', step: 'compile-java', phase: 'compile', status: 'SUCCESS' } });
+  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '', task: 'compile-java', phase: 'compile' } });
+  foldEvent(cards, { type: 'task-finish', data: { requestId: 1, dir: '', task: 'compile-java', phase: 'compile', status: 'SUCCESS' } });
   assert.equal(cards[0].modules.length, 1);
   assert.equal(cards[0].modules[0].dir, '');
   assert.deepEqual(cards[0].modules[0].steps.map((p) => p.name + ':' + p.state), ['compile-java:success']);
@@ -216,7 +216,7 @@ test('single-pipeline step events (empty dir) become one module with a chain', (
 test('a step-start without a phase stores an empty phase', () => {
   const cards = [];
   foldEvent(cards, start(1, '/w'));
-  foldEvent(cards, { type: 'step-start', data: { requestId: 1, dir: '', step: 'lock' } });
+  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '', task: 'lock' } });
   assert.equal(cards[0].modules[0].steps[0].phase, ''); // default, never undefined
 });
 
@@ -290,7 +290,7 @@ test('output keeps a bounded tail and clears on finish', () => {
   const cards = [];
   foldEvent(cards, start(1, '/w'));
   for (let i = 1; i <= MAX_OUTPUT_LINES + 5; i++) {
-    foldEvent(cards, { type: 'output', data: { requestId: 1, dir: '/w/m', step: 'test', line: 'line ' + i } });
+    foldEvent(cards, { type: 'output', data: { requestId: 1, dir: '/w/m', task: 'test', line: 'line ' + i } });
   }
   assert.equal(cards[0].output.length, MAX_OUTPUT_LINES);
   assert.equal(cards[0].output.at(-1).line, 'line ' + (MAX_OUTPUT_LINES + 5));
@@ -304,12 +304,12 @@ test('diagnostics attach to their module by dir, survive finish, and are capped 
   foldEvent(cards, start(1, '/w'));
   foldEvent(cards, {
     type: 'diagnostic',
-    data: { requestId: 1, dir: '/w/core', step: 'test', code: 'fail', message: 'expected 3 but was 4',
+    data: { requestId: 1, dir: '/w/core', task: 'test', code: 'fail', message: 'expected 3 but was 4',
             test: 'adds()', exceptionClass: 'AssertionFailedError' },
   });
   foldEvent(cards, {
     type: 'diagnostic',
-    data: { requestId: 1, dir: '/w/api', step: 'lock', code: 'resolve', message: 'no versions for com.foo:bar' },
+    data: { requestId: 1, dir: '/w/api', task: 'lock', code: 'resolve', message: 'no versions for com.foo:bar' },
   });
   foldEvent(cards, finish(1, { success: false }));
   const core = cards[0].modules.find((m) => m.dir === '/w/core');
@@ -319,7 +319,7 @@ test('diagnostics attach to their module by dir, survive finish, and are capped 
   assert.equal(api.diagnostics.length, 1);
   assert.equal(api.diagnostics[0].step, 'lock');
   for (let i = 0; i < MAX_DIAGNOSTICS + 5; i++) {
-    foldEvent(cards, { type: 'diagnostic', data: { requestId: 1, dir: '/w/core', step: 'p', message: 'm' + i } });
+    foldEvent(cards, { type: 'diagnostic', data: { requestId: 1, dir: '/w/core', task: 'p', message: 'm' + i } });
   }
   assert.equal(core.diagnostics.length, MAX_DIAGNOSTICS); // capped per module
 });
@@ -410,8 +410,8 @@ test('mid-build refresh: history stub rebinds on workspace-progress and finishes
   assert.equal(cards[0].progressPercent, 50);
 
   foldEvent(cards, {
-    type: 'step-start',
-    data: { requestId: 99, dir: '/w/a', step: 'compile-java', phase: 'compile' },
+    type: 'task-start',
+    data: { requestId: 99, dir: '/w/a', task: 'compile-java', phase: 'compile' },
   });
   assert.equal(cards[0].modules[0].steps[0].name, 'compile-java');
   assert.equal(cards[0].modules[0].steps[0].state, 'running');
@@ -529,8 +529,8 @@ test('phaseChainOf collapses steps into coarse phase nodes in encounter order', 
   const cards = [];
   foldEvent(cards, start(1, '/proj'));
   const step = (name, phase, status) => {
-    foldEvent(cards, { type: 'step-start', data: { requestId: 1, dir: '', step: name, phase } });
-    if (status) foldEvent(cards, { type: 'step-finish', data: { requestId: 1, dir: '', step: name, phase, status } });
+    foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '', task: name, phase } });
+    if (status) foldEvent(cards, { type: 'task-finish', data: { requestId: 1, dir: '', task: name, phase, status } });
   };
   step('resolve-deps', 'resolve', 'SUCCESS');
   step('compile-java', 'compile', 'SUCCESS');
@@ -575,12 +575,12 @@ test('label event stores live tick text on the running step', () => {
   const cards = [];
   foldEvent(cards, start(1, '/w'));
   foldEvent(cards, {
-    type: 'step-start',
-    data: { requestId: 1, dir: '', step: 'run-tests', phase: 'test' },
+    type: 'task-start',
+    data: { requestId: 1, dir: '', task: 'run-tests', phase: 'test' },
   });
   foldEvent(cards, {
     type: 'label',
-    data: { requestId: 1, dir: '', step: 'run-tests', label: 'g:a :: FooTest.bar()  [w2]' },
+    data: { requestId: 1, dir: '', task: 'run-tests', label: 'g:a :: FooTest.bar()  [w2]' },
   });
   const step = cards[0].modules[0].steps[0];
   assert.equal(step.message, 'g:a :: FooTest.bar()  [w2]');

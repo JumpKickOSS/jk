@@ -2,37 +2,37 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.plugin.build.Phase;
-import cc.jumpkick.run.PipelineListener;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.PipelineView;
-import cc.jumpkick.run.StepStatus;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.BuildPlanView;
+import cc.jumpkick.run.TaskStatus;
 import java.time.Duration;
 
 /**
- * Fans every {@link PipelineListener} callback out to two delegates. Needed because an engine-hosted
- * module's {@code Pipeline} is a client-side, never-{@code run()} reconstruction (see {@code
+ * Fans every {@link BuildPlanListener} callback out to two delegates. Needed because an engine-hosted
+ * module's {@code BuildPlan} is a client-side, never-{@code run()} reconstruction (see {@code
  * EngineBuildListenerAdapter}) — a listener attached via {@code pipeline.addListener(...)} is never
  * driven. The listener a caller <em>returns</em> from {@code onModuleStart}, by contrast, is driven
  * by both the in-process and engine-hosted paths alike, so composing extra listeners (e.g. {@link
  * EventLogListener}) into the returned listener is the one place that works either way.
  */
-public final class CompositePipelineListener implements PipelineListener {
+public final class CompositeBuildPlanListener implements BuildPlanListener {
 
-    private final PipelineListener a;
-    private final PipelineListener b;
+    private final BuildPlanListener a;
+    private final BuildPlanListener b;
 
-    private CompositePipelineListener(PipelineListener a, PipelineListener b) {
+    private CompositeBuildPlanListener(BuildPlanListener a, BuildPlanListener b) {
         this.a = a;
         this.b = b;
     }
 
     /** {@code second} may be {@code null} (e.g. {@link EventLogListener#open} failed) — returns {@code first} as-is. */
-    public static PipelineListener of(PipelineListener first, PipelineListener second) {
-        return second == null ? first : new CompositePipelineListener(first, second);
+    public static BuildPlanListener of(BuildPlanListener first, BuildPlanListener second) {
+        return second == null ? first : new CompositeBuildPlanListener(first, second);
     }
 
     @Override
-    public void pipelineStart(PipelineView view) {
+    public void pipelineStart(BuildPlanView view) {
         a.pipelineStart(view);
         b.pipelineStart(view);
     }
@@ -44,13 +44,13 @@ public final class CompositePipelineListener implements PipelineListener {
     }
 
     @Override
-    public void progress(String step, int delta, PipelineView view) {
+    public void progress(String step, int delta, BuildPlanView view) {
         a.progress(step, delta, view);
         b.progress(step, delta, view);
     }
 
     @Override
-    public void tickUpdate(String step, int delta, PipelineView view) {
+    public void tickUpdate(String step, int delta, BuildPlanView view) {
         a.tickUpdate(step, delta, view);
         b.tickUpdate(step, delta, view);
     }
@@ -86,13 +86,13 @@ public final class CompositePipelineListener implements PipelineListener {
     }
 
     @Override
-    public void stepFinish(String step, Phase phase, StepStatus status, Duration duration) {
+    public void stepFinish(String step, Phase phase, TaskStatus status, Duration duration) {
         a.stepFinish(step, phase, status, duration);
         b.stepFinish(step, phase, status, duration);
     }
 
     @Override
-    public void pipelineFinish(PipelineResult result) {
+    public void pipelineFinish(BuildPlanResult result) {
         a.pipelineFinish(result);
         b.pipelineFinish(result);
     }

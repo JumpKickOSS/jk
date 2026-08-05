@@ -2,9 +2,9 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.plugin.build.Phase;
-import cc.jumpkick.run.PipelineListener;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.StepStatus;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestSummary;
 import java.time.Duration;
 import java.util.List;
@@ -21,7 +21,7 @@ import java.util.function.Supplier;
  * count when available via display names) over planned ticks so the next plan's learned rate
  * matches real suite size.
  */
-public final class StepTimingsRecorder implements PipelineListener {
+public final class StepTimingsRecorder implements BuildPlanListener {
 
     /** Cap a single hung suite from poisoning host method averages (~5 min/method). */
     private static final double MAX_METHOD_MS = 300_000;
@@ -63,9 +63,9 @@ public final class StepTimingsRecorder implements PipelineListener {
     }
 
     @Override
-    public void stepFinish(String step, Phase phase, StepStatus status, Duration duration) {
+    public void stepFinish(String step, Phase phase, TaskStatus status, Duration duration) {
         // Only successful real work teaches the ledger — CANCELLED / FAIL / SKIPPED never do.
-        if (status != StepStatus.SUCCESS || !learnable(step)) return;
+        if (status != TaskStatus.SUCCESS || !learnable(step)) return;
         long ms = duration == null ? 0 : duration.toMillis();
         durationByStep.put(step, ms);
         // Defer all samples until pipelineFinish so a later cancel/fail drops the whole module's
@@ -73,7 +73,7 @@ public final class StepTimingsRecorder implements PipelineListener {
     }
 
     @Override
-    public void pipelineFinish(PipelineResult result) {
+    public void pipelineFinish(BuildPlanResult result) {
         // Cancelled or failed pipelines must not train rates — truncated walls poison ETA.
         if (result == null || !result.success() || result.cancelled() || result.userCancelled()) return;
         // Compile / other count-scaled steps: deferred from stepFinish.

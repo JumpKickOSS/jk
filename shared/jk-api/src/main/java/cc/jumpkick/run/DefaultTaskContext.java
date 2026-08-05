@@ -5,13 +5,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Internal {@link StepContext}: wires progress/diagnostics into the pipeline and tracks ticks for
+ * Internal {@link TaskContext}: wires progress/diagnostics into the pipeline and tracks ticks for
  * bar auto-fill on success.
  */
-final class DefaultStepContext implements StepContext {
+final class DefaultTaskContext implements TaskContext {
 
     private final String step;
-    private final Pipeline pipeline;
+    private final BuildPlan pipeline;
 
     /** Time-driven ease caps at this fraction of weight; auto-fill closes the rest on success. */
     private static final double INTERP_CAP = 0.9;
@@ -31,9 +31,9 @@ final class DefaultStepContext implements StepContext {
 
     private final long startNanos;
 
-    DefaultStepContext(
+    DefaultTaskContext(
             String step,
-            Pipeline pipeline,
+            BuildPlan pipeline,
             int internalTicks,
             int weight,
             boolean weighted,
@@ -147,9 +147,9 @@ final class DefaultStepContext implements StepContext {
         // also added to num, so num grew ~2× faster than den, producing
         // displays like "318 of 161"). Honest mid-step backtracking is
         // strictly better than nonsense counts; step-end auto-fill in
-        // Pipeline.runOneStep still closes any residual gap on success.
+        // BuildPlan.runOneStep still closes any residual gap on success.
         pipeline.denominatorRef().add(additional);
-        PipelineView snap = pipeline.snapshot();
+        BuildPlanView snap = pipeline.snapshot();
         pipeline.emit(l -> l.tickUpdate(step, additional, snap));
     }
 
@@ -177,19 +177,19 @@ final class DefaultStepContext implements StepContext {
 
     @Override
     public void warn(String code, String message) {
-        pipeline.warningsRef().add(new PipelineResult.Diagnostic(step, code, message));
+        pipeline.warningsRef().add(new BuildPlanResult.Diagnostic(step, code, message));
         pipeline.emit(l -> l.warn(step, code, message));
     }
 
     @Override
     public void error(String code, String message) {
-        pipeline.errorsRef().add(new PipelineResult.Diagnostic(step, code, message));
+        pipeline.errorsRef().add(new BuildPlanResult.Diagnostic(step, code, message));
         pipeline.emit(l -> l.error(step, code, message));
     }
 
     @Override
     public void error(String code, String message, String test, String exceptionClass) {
-        pipeline.errorsRef().add(new PipelineResult.Diagnostic(step, code, message, test, exceptionClass));
+        pipeline.errorsRef().add(new BuildPlanResult.Diagnostic(step, code, message, test, exceptionClass));
         pipeline.emit(l -> l.error(step, code, message, test, exceptionClass));
     }
 
@@ -203,7 +203,7 @@ final class DefaultStepContext implements StepContext {
     }
 
     @Override
-    public <T> void put(PipelineKey<T> key, T value) {
+    public <T> void put(BuildPlanKey<T> key, T value) {
         // Allow null to be stored as a sentinel? Decided against — steps
         // should signal "no value" by not putting at all and downstream
         // reading via .get() returning empty.
@@ -215,12 +215,12 @@ final class DefaultStepContext implements StepContext {
     }
 
     @Override
-    public <T> java.util.Optional<T> get(PipelineKey<T> key) {
+    public <T> java.util.Optional<T> get(BuildPlanKey<T> key) {
         return pipeline.get(key);
     }
 
     @Override
-    public <T> T require(PipelineKey<T> key) {
+    public <T> T require(BuildPlanKey<T> key) {
         return pipeline.get(key)
                 .orElseThrow(() -> new IllegalStateException("step '"
                         + step
@@ -235,7 +235,7 @@ final class DefaultStepContext implements StepContext {
      */
     void notifyProgress(int delta) {
         if (delta <= 0) return;
-        PipelineView snap = pipeline.snapshot();
+        BuildPlanView snap = pipeline.snapshot();
         pipeline.emit(l -> l.progress(step, delta, snap));
     }
 }

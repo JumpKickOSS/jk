@@ -7,7 +7,6 @@ import cc.jumpkick.plugin.build.BuildContext;
 import cc.jumpkick.plugin.build.BuildExtension;
 import cc.jumpkick.plugin.build.BuildPluginHarness;
 import cc.jumpkick.plugin.build.In;
-import cc.jumpkick.plugin.build.Phase;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.util.List;
 
@@ -34,8 +33,6 @@ public final class ProtoCompiler implements Plugin, BuildExtension {
     public void build(BuildContext ctx) {
         String src = ctx.config().stringOpt("src").orElse("proto");
         ctx.named("protoc")
-                .after(Phase.RESOLVE)
-                .before(Phase.COMPILE)
                 .inputs(In.projectFiles(src), In.config())
                 .outputs("gen")
                 .contributesSources("gen")

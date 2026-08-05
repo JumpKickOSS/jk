@@ -10,11 +10,11 @@ import cc.jumpkick.plugin.build.Phase;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineKey;
-import cc.jumpkick.run.Step;
-import cc.jumpkick.run.StepKind;
-import cc.jumpkick.run.StepNames;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskKind;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.tool.ToolResolver;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -56,12 +56,12 @@ public final class FormatPipelines {
     }
 
     /** Summary counts, populated by the format step (all present once the pipeline finishes successfully). */
-    public static final PipelineKey<Integer> CHANGED = PipelineKey.of("format-changed", Integer.class);
+    public static final BuildPlanKey<Integer> CHANGED = BuildPlanKey.of("format-changed", Integer.class);
 
-    public static final PipelineKey<Integer> CLEAN = PipelineKey.of("format-clean", Integer.class);
-    public static final PipelineKey<Integer> ERRORS = PipelineKey.of("format-errors", Integer.class);
-    public static final PipelineKey<Integer> TOTAL = PipelineKey.of("format-total", Integer.class);
-    public static final PipelineKey<Integer> WORKER_EXIT = PipelineKey.of("format-worker-exit", Integer.class);
+    public static final BuildPlanKey<Integer> CLEAN = BuildPlanKey.of("format-clean", Integer.class);
+    public static final BuildPlanKey<Integer> ERRORS = BuildPlanKey.of("format-errors", Integer.class);
+    public static final BuildPlanKey<Integer> TOTAL = BuildPlanKey.of("format-total", Integer.class);
+    public static final BuildPlanKey<Integer> WORKER_EXIT = BuildPlanKey.of("format-worker-exit", Integer.class);
 
     /**
      * Build the format pipeline for {@code projectDir}. Style names arrive already resolved (flags/env/
@@ -70,7 +70,7 @@ public final class FormatPipelines {
      * format} (IO) forks the plugin and streams per-file results. A project with no sources
      * finishes successfully with {@link #TOTAL} = 0 and no plugin forked.
      */
-    public static Pipeline formatPipeline(
+    public static BuildPlan formatBuildPlan(
             Path projectDir,
             Path cache,
             boolean check,
@@ -79,12 +79,12 @@ public final class FormatPipelines {
             boolean optimizeImports,
             Path rewriteConfig,
             FileObserver observer) {
-        PipelineKey<List> javaFilesKey = PipelineKey.of("format-java-files", List.class);
-        PipelineKey<List> kotlinFilesKey = PipelineKey.of("format-kotlin-files", List.class);
-        PipelineKey<List> javaJarsKey = PipelineKey.of("format-java-jars", List.class);
-        PipelineKey<List> kotlinJarsKey = PipelineKey.of("format-kotlin-jars", List.class);
+        BuildPlanKey<List> javaFilesKey = BuildPlanKey.of("format-java-files", List.class);
+        BuildPlanKey<List> kotlinFilesKey = BuildPlanKey.of("format-kotlin-files", List.class);
+        BuildPlanKey<List> javaJarsKey = BuildPlanKey.of("format-java-jars", List.class);
+        BuildPlanKey<List> kotlinJarsKey = BuildPlanKey.of("format-kotlin-jars", List.class);
 
-        Step collect = Step.builder(StepNames.COLLECT_SOURCES)
+        Task collect = Task.builder(TaskNames.COLLECT_SOURCES)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("collect sources");
@@ -97,10 +97,10 @@ public final class FormatPipelines {
                 })
                 .build();
 
-        Step resolve = Step.builder(StepNames.RESOLVE_FORMATTERS)
+        Task resolve = Task.builder(TaskNames.RESOLVE_FORMATTERS)
                 .phase(Phase.RESOLVE)
-                .kind(StepKind.IO)
-                .requires(StepNames.COLLECT_SOURCES)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.COLLECT_SOURCES)
                 .ticks(1)
                 .execute(ctx -> {
                     @SuppressWarnings("unchecked")
@@ -139,9 +139,9 @@ public final class FormatPipelines {
                 })
                 .build();
 
-        Step format = Step.builder("format")
-                .kind(StepKind.IO)
-                .requires(StepNames.RESOLVE_FORMATTERS)
+        Task format = Task.builder("format")
+                .kind(TaskKind.IO)
+                .requires(TaskNames.RESOLVE_FORMATTERS)
                 .ticks(0) // grown to the real file count once collected
                 .execute(ctx -> {
                     @SuppressWarnings("unchecked")
@@ -210,10 +210,10 @@ public final class FormatPipelines {
                 })
                 .build();
 
-        return Pipeline.builder("format")
-                .addStep(collect)
-                .addStep(resolve)
-                .addStep(format)
+        return BuildPlan.builder("format")
+                .addTask(collect)
+                .addTask(resolve)
+                .addTask(format)
                 .build();
     }
 

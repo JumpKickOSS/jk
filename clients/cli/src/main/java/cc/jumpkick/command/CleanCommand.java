@@ -4,7 +4,7 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.run.ConsoleSpec;
-import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -103,11 +103,11 @@ public final class CleanCommand implements CliCommand {
         // bar); the counts ride the terminal pipeline-finish.
         var summary = new cc.jumpkick.cli.engine.EngineClient.CacheMaintSummary[1];
         try (Spinner spinner = Spinner.show(CliOutput.stdout(), "Collecting cache...")) {
-            cc.jumpkick.run.PipelineResult result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
+            cc.jumpkick.run.BuildPlanResult result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
                     cc.jumpkick.engine.EnginePaths.current(),
                     new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest(
                             "gc", JkDirs.cache(), 0, false, false, null, false),
-                    steps -> new cc.jumpkick.run.PipelineListener() {},
+                    steps -> new cc.jumpkick.run.BuildPlanListener() {},
                     (external, pipelines) -> {},
                     summary);
             if (!result.success() || summary[0] == null) {
@@ -218,7 +218,7 @@ public final class CleanCommand implements CliCommand {
             projectDir = projectDir.toAbsolutePath().normalize();
         }
         Path root = CacheCommand.resolveCacheRoot(cacheDirOverride);
-        PipelineConsole.Mode mode = PipelineConsole.modeFor(new GlobalOptions());
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(new GlobalOptions());
 
         var summary = new cc.jumpkick.cli.engine.EngineClient.CacheMaintSummary[1];
         ConsoleSpec spec = CacheCommand.CacheClearCommand.clearSpec(
@@ -230,7 +230,7 @@ public final class CleanCommand implements CliCommand {
                     cc.jumpkick.engine.EnginePaths.current(),
                     new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest(
                             "clear", root, 0, false, false, null, false, projectDir),
-                    steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
+                    steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
                     CacheCommand::printWait,
                     summary);
             return result.success() ? 0 : 1;

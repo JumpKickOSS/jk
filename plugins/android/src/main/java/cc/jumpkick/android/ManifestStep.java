@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
-import cc.jumpkick.plugin.build.StepExec;
+import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,7 +17,7 @@ final class ManifestStep {
 
     private ManifestStep() {}
 
-    static void run(StepExec exec) throws Exception {
+    static void run(TaskExec exec) throws Exception {
         Path manifest = AndroidDeps.androidFile(exec.moduleDir(), "AndroidManifest.xml");
         if (!Files.isRegularFile(manifest)) {
             // Optional since AGP 7 — a manifest-less library gets a synthesized minimal one
@@ -54,7 +54,7 @@ final class ManifestStep {
         }
 
         exec.label("merge manifest");
-        StepExec.ToolRun merger = exec.java()
+        TaskExec.ToolRun merger = exec.java()
                 .classpath(jarsIn(mergerLib))
                 .mainClass("com.android.manifmerger.Merger")
                 .arg("--main")
@@ -74,7 +74,7 @@ final class ManifestStep {
             // not reach aapt2, which rejects e.g. a <property> left carrying only tools attrs.
             merger.arg("--remove-tools-declarations");
         }
-        StepExec.ToolRun.Result result = merger.arg("--property")
+        TaskExec.ToolRun.Result result = merger.arg("--property")
                 .arg("PACKAGE=" + namespace)
                 .arg("--property")
                 .arg("MIN_SDK_VERSION=" + minSdk)

@@ -270,14 +270,14 @@ public final class Spinner implements AutoCloseable {
         String msg = (message == null || message.isBlank()) ? "working" : message;
         String tail = msg + " - working...";
         if (command == null) return " " + Glyphs.PULSE_PLAIN + " " + tail;
-        return PipelineWedge.plainWedge(Glyphs.PULSE_PLAIN, command, tail);
+        return BuildPlanWedge.plainWedge(Glyphs.PULSE_PLAIN, command, tail);
     }
 
     static String plainDoneLine(String command, String message) {
         String msg = (message == null || message.isBlank()) ? "working" : message;
         String tail = msg + " - done.";
         if (command == null) return " " + Glyphs.PULSE_PLAIN + " " + tail;
-        return PipelineWedge.plainWedge(Glyphs.PULSE_PLAIN, command, tail);
+        return BuildPlanWedge.plainWedge(Glyphs.PULSE_PLAIN, command, tail);
     }
 
     /**
@@ -291,7 +291,7 @@ public final class Spinner implements AutoCloseable {
         String msg = message == null ? "" : message;
         if (!t.isAnsi()) {
             // " * Status > Analyzing…"
-            return PipelineWedge.plainWedge(Glyphs.PULSE_PLAIN, name, msg);
+            return BuildPlanWedge.plainWedge(Glyphs.PULSE_PLAIN, name, msg);
         }
         AttributedStyle chip = t.pipelineChip();
         AttributedStyle pulse = t.withBackground(pulseFg[Math.floorMod(frame, pulseFg.length)], t.planBadgeColor());
@@ -300,7 +300,7 @@ public final class Spinner implements AutoCloseable {
         h.append(Theme.colorize(" ", chip)).append(Theme.colorize(PULSE_GLYPH, pulse));
         if (nerdfont) {
             h.append(Theme.colorize(name.isEmpty() ? " " : " " + name + " ", chip));
-            h.append(PipelineWedge.cap(t.planBadgeColor(), true));
+            h.append(BuildPlanWedge.cap(t.planBadgeColor(), true));
         } else {
             h.append(Theme.colorize(name.isEmpty() ? "  " : " " + name + "  ", chip));
         }

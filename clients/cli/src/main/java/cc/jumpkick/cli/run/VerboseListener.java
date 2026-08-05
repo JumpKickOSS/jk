@@ -4,10 +4,10 @@ package cc.jumpkick.cli.run;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.plugin.build.Phase;
-import cc.jumpkick.run.PipelineListener;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.PipelineView;
-import cc.jumpkick.run.StepStatus;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.BuildPlanView;
+import cc.jumpkick.run.TaskStatus;
 import java.io.PrintStream;
 import java.time.Duration;
 import java.util.concurrent.ConcurrentHashMap;
@@ -17,7 +17,7 @@ import java.util.concurrent.ConcurrentMap;
  * Per-step progress with one line per step, like Cargo / uv. Activated by {@code --verbose}.
  * Steps scroll up as they complete; the active step shows its current label.
  */
-public final class VerboseListener implements PipelineListener {
+public final class VerboseListener implements BuildPlanListener {
 
     private final PrintStream out;
     private final PrintStream err;
@@ -29,7 +29,7 @@ public final class VerboseListener implements PipelineListener {
     }
 
     @Override
-    public void pipelineStart(PipelineView view) {
+    public void pipelineStart(BuildPlanView view) {
         out.println(Theme.colorize("▶", Theme.active().activeStep())
                 + " "
                 + Theme.colorize(view.pipelineName(), Theme.active().focused())
@@ -67,7 +67,7 @@ public final class VerboseListener implements PipelineListener {
     }
 
     @Override
-    public void stepFinish(String step, Phase phase, StepStatus status, Duration duration) {
+    public void stepFinish(String step, Phase phase, TaskStatus status, Duration duration) {
         String glyph =
                 switch (status) {
                     case SUCCESS -> Theme.colorize(Glyphs.CHECK, Theme.active().completedStep());
@@ -101,7 +101,7 @@ public final class VerboseListener implements PipelineListener {
     }
 
     @Override
-    public void pipelineFinish(PipelineResult result) {
+    public void pipelineFinish(BuildPlanResult result) {
         String summary = result.success()
                 ? Theme.colorize(Glyphs.CHECK + " done", Theme.active().completedStep())
                 : Theme.colorize(Glyphs.CROSS + " failed", Theme.active().error());

@@ -18,7 +18,7 @@ public record StatusSnapshot(
         long pid,
         long startedAtMillis,
         int activeRequests,
-        int activePipelines,
+        int activeBuildPlans,
         long heapUsedBytes,
         long heapCommittedBytes,
         long heapMaxBytes,
@@ -31,7 +31,7 @@ public record StatusSnapshot(
         /** High-water mark of concurrent client connections since engine start. */
         int peakActiveRequests,
         /** High-water mark of concurrent pipelines since engine start. */
-        int peakActivePipelines) {
+        int peakActiveBuildPlans) {
 
     /** Back-compat constructor without free/load/peak counters (tests). */
     public StatusSnapshot(
@@ -39,7 +39,7 @@ public record StatusSnapshot(
             long pid,
             long startedAtMillis,
             int activeRequests,
-            int activePipelines,
+            int activeBuildPlans,
             long heapUsedBytes,
             long heapCommittedBytes,
             long heapMaxBytes,
@@ -52,7 +52,7 @@ public record StatusSnapshot(
                 pid,
                 startedAtMillis,
                 activeRequests,
-                activePipelines,
+                activeBuildPlans,
                 heapUsedBytes,
                 heapCommittedBytes,
                 heapMaxBytes,
@@ -63,6 +63,6 @@ public record StatusSnapshot(
                 /* freeMemoryBytes */ -1L,
                 /* systemCpuLoad */ -1d,
                 activeRequests,
-                activePipelines);
+                activeBuildPlans);
     }
 }

@@ -152,7 +152,7 @@ public final class Provenance {
 
     private static Path reconstruct(
             String root, String target, Map<String, String> cameFrom, Map<String, Lockfile.Artifact> byModule) {
-        List<Step> steps = new ArrayList<>();
+        List<Task> steps = new ArrayList<>();
         String cur = root;
         steps.add(stepOf(cur, byModule));
         while (!cur.equals(target)) {
@@ -164,11 +164,11 @@ public final class Provenance {
         return new Path(steps);
     }
 
-    private static Step stepOf(String module, Map<String, Lockfile.Artifact> byModule) {
+    private static Task stepOf(String module, Map<String, Lockfile.Artifact> byModule) {
         Lockfile.Artifact pkg = byModule.get(module);
         if (pkg == null) pkg = byModule.get(ga(module));
         String version = pkg != null ? pkg.version() : "?";
-        return new Step(module, version);
+        return new Task(module, version);
     }
 
     /** True when {@code module} is a declared root, matching either package key or GA form. */
@@ -196,7 +196,7 @@ public final class Provenance {
     }
 
     /** A path from a declared root (first) down to the target (last). */
-    public record Path(List<Step> steps) {
+    public record Path(List<Task> steps) {
         public Path {
             Objects.requireNonNull(steps, "steps");
             steps = List.copyOf(steps);
@@ -207,5 +207,5 @@ public final class Provenance {
         }
     }
 
-    public record Step(String module, String version) {}
+    public record Task(String module, String version) {}
 }

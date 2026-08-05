@@ -306,14 +306,14 @@ public final class BuildJournal {
             }
         }
         if (finished.steps() != null) {
-            for (BuildRecord.Step s : finished.steps()) {
+            for (BuildRecord.Task s : finished.steps()) {
                 appendStepMetrics(sb, s, finished.dir());
             }
         }
         if (finished.modules() != null) {
             for (BuildRecord.Module m : finished.modules()) {
                 if (m == null || m.steps() == null) continue;
-                for (BuildRecord.Step s : m.steps()) {
+                for (BuildRecord.Task s : m.steps()) {
                     appendStepMetrics(sb, s, m.dir());
                 }
             }
@@ -323,7 +323,7 @@ public final class BuildJournal {
         }
     }
 
-    private static void appendStepMetrics(StringBuilder sb, BuildRecord.Step s, String moduleDir) {
+    private static void appendStepMetrics(StringBuilder sb, BuildRecord.Task s, String moduleDir) {
         if (s == null || s.millis() <= 0) return;
         if (s.status() == null || !"SUCCESS".equalsIgnoreCase(s.status())) return;
         String step = sanitize(s.name());

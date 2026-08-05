@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
-import cc.jumpkick.plugin.build.StepExec;
+import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,13 +19,13 @@ final class JarInputs {
     private JarInputs() {}
 
     /** A {@code .jar}-suffixed alias of {@code source} under the step's scratch. */
-    static Path jarNamed(StepExec exec, Path source, String name) throws IOException {
+    static Path jarNamed(TaskExec exec, Path source, String name) throws IOException {
         Path alias = Files.createDirectories(exec.scratch().resolve("tools")).resolve(name);
         return linkOrCopy(source, alias);
     }
 
     /** Alias every extensionless jar in {@code jars} as {@code .jar}; pass suffixed ones through. */
-    static List<Path> jarSuffixed(StepExec exec, List<Path> jars) throws IOException {
+    static List<Path> jarSuffixed(TaskExec exec, List<Path> jars) throws IOException {
         List<Path> out = new ArrayList<>(jars.size());
         Path dir = null;
         int i = 0;

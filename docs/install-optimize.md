@@ -98,7 +98,7 @@ Worker training failures back off, but never permanently:
   removed, giving a once-failed key a fresh training attempt. (A JDK/Kotlin/GC bump mints a new
   key and retries immediately, marker or not.)
 
-Work runs on a **daemon idle thread** when `activePipelines == 0` so client builds are not blocked.
+Work runs on a **daemon idle thread** when `activeBuildPlans == 0` so client builds are not blocked.
 Within a maintenance workset, **`System.gc()` is always last** — after prune, journal/metrics
 retention, metrics harvest, feeds/templates, AOT train, and calibration — so the heap is not
 shrunk mid-chore.

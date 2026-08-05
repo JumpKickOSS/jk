@@ -3,8 +3,8 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.run.PipelineKey;
-import cc.jumpkick.run.StepContext;
+import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.test.TestProgressListener;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Verifies the verbose gate on test-process stdout/stderr forwarding and the Pipeline-framework wiring
+ * Verifies the verbose gate on test-process stdout/stderr forwarding and the BuildPlan-framework wiring
  * of the bridge listener.
  */
 class TestCommandUserOutputTest {
@@ -62,7 +62,7 @@ class TestCommandUserOutputTest {
 
         listener.onUserOutput(0, "hello from a passing test");
 
-        // Routed via StepContext.output — never touches System.out directly.
+        // Routed via TaskContext.output — never touches System.out directly.
         assertThat(ctx.outputs).containsExactly("hello from a passing test");
         assertThat(captured.toString(StandardCharsets.UTF_8)).doesNotContain("hello from a passing test");
     }
@@ -202,8 +202,8 @@ class TestCommandUserOutputTest {
         assertThat(cc.jumpkick.runtime.TestSupport.estimateTestCount(src)).isEqualTo(1);
     }
 
-    /** Minimal StepContext stub that records every call. */
-    private static final class RecordingContext implements StepContext {
+    /** Minimal TaskContext stub that records every call. */
+    private static final class RecordingContext implements TaskContext {
         int scopeAdded = 0;
         final List<Integer> progressTicks = new ArrayList<>();
         final List<String> labels = new ArrayList<>();
@@ -251,15 +251,15 @@ class TestCommandUserOutputTest {
         }
 
         @Override
-        public <T> void put(PipelineKey<T> key, T value) {}
+        public <T> void put(BuildPlanKey<T> key, T value) {}
 
         @Override
-        public <T> Optional<T> get(PipelineKey<T> key) {
+        public <T> Optional<T> get(BuildPlanKey<T> key) {
             return Optional.empty();
         }
 
         @Override
-        public <T> T require(PipelineKey<T> key) {
+        public <T> T require(BuildPlanKey<T> key) {
             throw new IllegalStateException();
         }
     }

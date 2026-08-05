@@ -635,7 +635,7 @@ Human TTY mode stays terse and visual. **Agents, scripts, and CI should not scra
 ```bash
 jk build --output json …     # live JSONL on stdout (one object per line)
 jk test  --output jsonl …    # identical to json — both mean live events
-export JK_OUTPUT=json        # same for any command that uses PipelineConsole
+export JK_OUTPUT=json        # same for any command that uses BuildPlanConsole
 ```
 
 - **`json` and `jsonl` are the same mode:** a **live** event stream (phases, progress ticks, labels,
@@ -833,7 +833,7 @@ jk explain --graph mermaid --modules 'libs/*' --graph-out filtered.mmd
 jk explain --graph dot --modules 'libs/*' --graph-out filtered.dot
 # Interactive DAG: engine dashboard → Project → Dependencies (loads on demand; Apache ECharts)
 
-# Pipeline tasks (Mill resolve-lite)
+# BuildPlan tasks (Mill resolve-lite)
 jk tasks                         # list first-party steps
 jk show package-jar              # primary jar path for this module
 jk inspect compile-java          # phase + path + on-disk status

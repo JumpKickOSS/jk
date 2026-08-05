@@ -12,11 +12,11 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
 import cc.jumpkick.run.JkThreads;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineKey;
-import cc.jumpkick.run.PipelineListener;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.StepStatus;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
 import java.io.IOException;
@@ -248,7 +248,7 @@ public final class BuildService {
     /**
      * As {@link #forecastDirtyDirs(BuildGraph.Result, Path, boolean)} with optional {@code entryDir}
      * for the local preflight dirty memo. When {@code entryDir} is non-null and inputs are
-     * unchanged, returns the memoized dirty set without a full {@link BuildPlanForecast} walk.
+     * unchanged, returns the memoized dirty set without a full {@link TaskForecaster} walk.
      */
     public static Set<Path> forecastDirtyDirs(BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
         return forecastWithFingerprints(graph, cache, skipTests, entryDir).dirty();
@@ -288,10 +288,10 @@ public final class BuildService {
             Cas cas = JkStores.cas(cache); // artifact CAS for classpath fingerprints
             ActionCache ac = new ActionCache(JkStores.cacheCas(cache), cache.resolve("actions"));
             Set<Path> dirty = new HashSet<>();
-            for (BuildPlan.Module m : BuildPlanForecast.of(graph, cas, ac, cache, skipTests)) {
+            for (TaskForecast.Module m : TaskForecaster.of(graph, cas, ac, cache, skipTests)) {
                 if (m.dirty()) dirty.add(m.dir());
                 if (Perf.ENABLED && m.dirty()) {
-                    for (BuildPlan.Step p : m.steps()) {
+                    for (TaskForecast.Task p : m.steps()) {
                         if (!p.cached())
                             System.err.println("[jk-perf] dirty " + m.coord() + " " + p.name() + " (" + p.text() + ")");
                     }
@@ -312,7 +312,7 @@ public final class BuildService {
 
     /**
      * Forecast the build without running it: resolve the module graph and run the truthful
-     * per-step {@link BuildPlanForecast} over it, returning an {@link ExplainPlan} the caller
+     * per-step {@link TaskForecaster} over it, returning an {@link ExplainPlan} the caller
      * renders. Pure policy — nothing here writes to {@code stdout}/{@code stderr}. Graph-resolution
      * errors come back in {@link ExplainPlan#errors} (the caller renders the same failure); an
      * {@link IOException} probing the workspace still propagates, exactly as the direct resolve did.
@@ -324,9 +324,9 @@ public final class BuildService {
         }
         Cas cas = JkStores.cas(cache); // artifact CAS for classpath fingerprints
         ActionCache actionCache = new ActionCache(JkStores.cacheCas(cache), cache.resolve("actions"));
-        // Same forecast walk as build preflight (BuildPlanForecast) — skipTests=false matches bare
+        // Same forecast walk as build preflight (TaskForecaster) — skipTests=false matches bare
         // `jk build`. Callers that need --skip-tests pass it through the engine explain request.
-        List<BuildPlan.Module> modules = BuildPlanForecast.of(graph, cas, actionCache, cache, false);
+        List<TaskForecast.Module> modules = TaskForecaster.of(graph, cas, actionCache, cache, false);
         return new ExplainPlan(modules, graph.edges(), graph.maxReadyWidth(), List.of());
     }
 
@@ -357,7 +357,7 @@ public final class BuildService {
             // All modules of this build graph — the project/workspace set each module's prediction
             // borrows a learned rate from when it has no history of its own (EffortWeights.learned).
             Set<Path> projectModules = new HashSet<>();
-            for (BuildPlan.Module m : plan.modules()) projectModules.add(m.dir());
+            for (TaskForecast.Module m : plan.modules()) projectModules.add(m.dir());
             List<String> projectDirs =
                     projectModules.stream().map(Path::toString).toList();
             boolean distrust = SessionContext.current().config().forceOr(false)
@@ -369,22 +369,22 @@ public final class BuildService {
             // Only dirty modules (or every module under --redo/--force). Each cost is Σ of that
             // module's *running* steps from measured step walls — not a whole-build prior, and not
             // shape-memo bar weights that ignore which steps are actually dirty.
-            for (BuildPlan.Module m : plan.modules()) {
+            for (TaskForecast.Module m : plan.modules()) {
                 if (!distrust && !m.dirty()) continue;
                 Path mdir = m.dir();
                 Set<Path> prereqs = plan.edges().getOrDefault(mdir, Set.of());
                 List<String> running = new ArrayList<>();
-                for (BuildPlan.Step s : m.steps()) {
+                for (TaskForecast.Task s : m.steps()) {
                     if (!distrust && s.cached()) continue;
                     running.add(s.name());
                 }
                 // Rebuild with an empty step list still means "all work" — fall back to pipeline.
                 if (running.isEmpty() && distrust) {
-                    BuildPipelines.Inputs inputs = BuildPlanForecast.inputsFor(
+                    BuildPipelines.Inputs inputs = TaskForecaster.inputsFor(
                             mdir, cache, workers, jdksDir, profile, skipTests, verbose, projectModules);
-                    Pipeline.Builder builder = BuildPipelines.coreBuilder(inputs, true);
+                    BuildPlan.Builder builder = BuildPipelines.coreBuilder(inputs, true);
                     BuildPipelines.appendDeclaredTails(builder, inputs);
-                    for (cc.jumpkick.run.Step s : builder.build().steps()) running.add(s.name());
+                    for (cc.jumpkick.run.Task s : builder.build().steps()) running.add(s.name());
                 }
                 java.util.Map<String, Integer> counts = new java.util.HashMap<>();
                 if (m.testCount() > 0) counts.put("run-tests", m.testCount());
@@ -498,7 +498,7 @@ public final class BuildService {
     // Workspace build (the front-end-callable event-emitting entry point)
     // =========================================================================
 
-    private static final PipelineKey<TestSummary> TEST_RESULT = PipelineKey.of("test-result", TestSummary.class);
+    private static final BuildPlanKey<TestSummary> TEST_RESULT = BuildPlanKey.of("test-result", TestSummary.class);
 
     /**
      * Build a whole workspace: resolve the module graph, size the worker-JVM memory plan (unless
@@ -657,7 +657,7 @@ public final class BuildService {
                         allShaped = false;
                         break;
                     }
-                    PreflightMemo.PipelineShape sh = shape.get();
+                    PreflightMemo.BuildPlanShape sh = shape.get();
                     Set<Path> prereqs = graph.edges().getOrDefault(u.dir(), Set.of());
                     // Prefer measured step walls when this module has history. Without counts the
                     // cold reprice path collapses run-tests to suite-startup only (~seconds for a
@@ -1060,9 +1060,9 @@ public final class BuildService {
             BuildMetrics metrics,
             StepTimings timings,
             List<String> projectDirs) {
-        List<String> running = EffortWeights.runningStepsFromPipeline(p.pipeline());
+        List<String> running = EffortWeights.runningStepsFromBuildPlan(p.pipeline());
         if (!running.isEmpty()) {
-            Map<String, Integer> counts = EffortWeights.stepCountsFromPipeline(p.pipeline());
+            Map<String, Integer> counts = EffortWeights.stepCountsFromBuildPlan(p.pipeline());
             // Within-module test workers: same resolve as explain (jobs × class guess from methods).
             int methods = counts.getOrDefault("run-tests", 0);
             int classGuess = methods > 0 ? Math.max(1, methods / 3) : 0;
@@ -1233,7 +1233,7 @@ public final class BuildService {
         Path dir = u.dir();
         Path buildFile = dir.resolve("jk.toml");
         if (!Files.exists(buildFile)) return null;
-        BuildPipelines.Inputs inputs = BuildPlanForecast.inputsFor(
+        BuildPipelines.Inputs inputs = TaskForecaster.inputsFor(
                         dir,
                         req.cache(),
                         req.workers() > 0 ? req.workers() : 1,
@@ -1245,9 +1245,9 @@ public final class BuildService {
                         req.testOnly())
                 .withVariant(req.variant(), req.clientEnv())
                 .withEphemeralActions(req.ephemeralActions());
-        Pipeline.Builder b = BuildPipelines.coreBuilder(inputs, forceRebuild);
+        BuildPlan.Builder b = BuildPipelines.coreBuilder(inputs, forceRebuild);
         BuildPipelines.appendDeclaredTails(b, inputs);
-        Pipeline pipeline = b.build();
+        BuildPlan pipeline = b.build();
         boolean distrust = SessionContext.current().config().forceOr(false)
                 || SessionContext.current().config().rebuildOr(false);
         int weight;
@@ -1282,11 +1282,11 @@ public final class BuildService {
 
     /** Run one module's pipeline, attaching the caller's per-module listener; map the result to an outcome. */
     private static ModuleOutcome runModule(ModulePlan plan, WorkspaceBuildListener listener) {
-        PipelineListener ml = listener.onModuleStart(plan);
+        BuildPlanListener ml = listener.onModuleStart(plan);
         if (ml != null) plan.pipeline().addListener(ml);
         long t0 = System.nanoTime();
         try {
-            PipelineResult r = plan.pipeline().run();
+            BuildPlanResult r = plan.pipeline().run();
             long ms = (System.nanoTime() - t0) / 1_000_000;
             int exit = r.success() ? 0 : exitCodeFor(plan.pipeline());
             // Failures always count as work; successes count only when a productive step ran
@@ -1305,13 +1305,13 @@ public final class BuildService {
 
     /**
      * True when any productive step (compile / test / package / native / image / …) terminated
-     * {@link StepStatus#SUCCESS} rather than cache-hit {@link StepStatus#SKIPPED}. Setup steps
+     * {@link TaskStatus#SUCCESS} rather than cache-hit {@link TaskStatus#SKIPPED}. Setup steps
      * (parse, resolve, ensure-jdk, copy-resources, write-stamp) always succeed without marking
      * cached and must not make a pure check look like a rebuild.
      */
-    public static boolean moduleDidWork(PipelineResult r) {
-        for (PipelineResult.StepReport s : r.steps()) {
-            if (s.status() != StepStatus.SUCCESS) continue;
+    public static boolean moduleDidWork(BuildPlanResult r) {
+        for (BuildPlanResult.StepReport s : r.steps()) {
+            if (s.status() != TaskStatus.SUCCESS) continue;
             if (isProductiveStep(s.name())) return true;
         }
         return false;
@@ -1321,7 +1321,7 @@ public final class BuildService {
     public static boolean isProductiveStep(String name) {
         if (name == null || name.isEmpty()) return false;
         return name.startsWith("compile")
-                || name.equals(cc.jumpkick.run.StepNames.RUN_TESTS)
+                || name.equals(cc.jumpkick.run.TaskNames.RUN_TESTS)
                 || name.startsWith("package")
                 || name.startsWith("native")
                 || name.startsWith("write-image")
@@ -1331,7 +1331,7 @@ public final class BuildService {
     }
 
     /** Test failures exit 4; every other pipeline failure exits 1. */
-    private static int exitCodeFor(Pipeline pipeline) {
+    private static int exitCodeFor(BuildPlan pipeline) {
         TestSummary tr = pipeline.get(TEST_RESULT).orElse(null);
         return tr != null && !tr.allPassed() ? 4 : 1;
     }

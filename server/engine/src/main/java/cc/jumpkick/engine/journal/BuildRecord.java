@@ -32,7 +32,7 @@ public record BuildRecord(
         String jkVersion,
         Tests tests,
         List<Module> modules,
-        List<Step> steps,
+        List<Task> steps,
         List<Diag> diagnostics,
         String trigger,
         String commit,
@@ -175,7 +175,7 @@ public record BuildRecord(
      * build/test, whose steps sit in the record's top-level {@code steps}). {@code steps} is this
      * module's own step chain, so the dashboard shows a chain per module.
      */
-    public record Module(String coord, String dir, boolean success, int exitCode, long millis, List<Step> steps) {
+    public record Module(String coord, String dir, boolean success, int exitCode, long millis, List<Task> steps) {
         public Module {
             steps = steps == null ? List.of() : List.copyOf(steps);
         }
@@ -187,8 +187,8 @@ public record BuildRecord(
      * ({@code ""} when unphased) so the dashboard can fold reloaded/finished cards into the same
      * phase-chain the live cards render.
      */
-    public record Step(String name, String phase, String status, long millis) {
-        public Step {
+    public record Task(String name, String phase, String status, long millis) {
+        public Task {
             phase = phase == null ? "" : phase;
         }
     }

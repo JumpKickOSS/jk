@@ -2,7 +2,7 @@
 package cc.jumpkick.run;
 
 /** Read-only pipeline snapshot for listeners ({@code numerator}/{@code denominator} may grow). */
-public record PipelineView(
+public record BuildPlanView(
         String pipelineName, long numerator, long denominator, int stepsTotal, int stepsComplete, boolean cancelled) {
 
     public double fraction() {

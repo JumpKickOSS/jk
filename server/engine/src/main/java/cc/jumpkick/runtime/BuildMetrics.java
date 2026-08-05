@@ -89,7 +89,7 @@ public final class BuildMetrics {
             Stats cancelled,
             long updatedMillis) {}
 
-    /** One step's outcome within a finished run; {@code status} is a {@code StepStatus} name. */
+    /** One step's outcome within a finished run; {@code status} is a {@code TaskStatus} name. */
     public record StepSample(String dir, String step, String status, long millis) {}
 
     /** What the engine maps a finished build record into — the store's only input shape. */
@@ -369,7 +369,7 @@ public final class BuildMetrics {
         ph.put(k, new Entry(null, dir, null, step, ok, failed, cancelled, nowMillis));
     }
 
-    /** Maps a {@code StepStatus} name to a stats bucket; null = don't record (SKIPPED, non-terminal). */
+    /** Maps a {@code TaskStatus} name to a stats bucket; null = don't record (SKIPPED, non-terminal). */
     private static String bucketOf(String status) {
         if (status == null) return null;
         return switch (status) {

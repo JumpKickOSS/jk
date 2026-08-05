@@ -18,7 +18,7 @@ import java.util.regex.Pattern;
 
 /**
  * Driver for GraalVM {@code native-image}: verify binary, assemble classpath, exec. Stdout/stderr
- * go to a caller sink (e.g. {@code StepContext::output}); does not install GraalVM.
+ * go to a caller sink (e.g. {@code TaskContext::output}); does not install GraalVM.
  */
 public final class NativeImageDriver {
 
@@ -83,7 +83,7 @@ public final class NativeImageDriver {
      * share the sink, preserving the interleaved order the user would see on a console). stdout is
      * additionally parsed for {@code [N/M]} step headers; each header fires {@link
      * ProgressListener#onStep} on the stdout-reader thread. The engine passes {@code
-     * StepContext::output} so lines reach the view layer above the progress bar — this driver never
+     * TaskContext::output} so lines reach the view layer above the progress bar — this driver never
      * touches {@code System.out}/{@code System.err}.
      *
      * <p>{@code listener} may be {@code null} — output still flows to {@code out} but no callbacks are
@@ -99,7 +99,7 @@ public final class NativeImageDriver {
 
         // Do NOT use inheritIO() — it writes directly to fd 1/2, escaping the view
         // layer entirely. Instead each stream is drained line-by-line into the
-        // caller's sink (the engine's StepContext::output), which renders output
+        // caller's sink (the engine's TaskContext::output), which renders output
         // above the TUI progress bar. No System.out/err, no reliance on a stream swap.
         Consumer<String> sink = (out == null) ? line -> {} : out;
         Process process = new ProcessBuilder(command).start();

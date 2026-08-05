@@ -8,7 +8,7 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.PipelineWedge;
+import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.model.command.CliCommand;
@@ -58,7 +58,7 @@ public final class EngineStatusCommand implements CliCommand {
                 CliOutput.out("{\"running\":false,\"engines\":" + enginesJson(others) + "}");
             } else {
                 CommandWedge.envelopeStart();
-                CliOutput.out(PipelineWedge.chipLine(
+                CliOutput.out(BuildPlanWedge.chipLine(
                         Glyphs.STOP,
                         "Engine",
                         GlobalConfig.nerdfont(),
@@ -92,11 +92,11 @@ public final class EngineStatusCommand implements CliCommand {
             return Exit.SUCCESS;
         }
         CommandWedge.envelopeStart();
-        CliOutput.out(PipelineWedge.chipLine(
+        CliOutput.out(BuildPlanWedge.chipLine(
                 Glyphs.PLAY, "Engine", GlobalConfig.nerdfont(), "Engine is running (pid " + pidStyled(s.pid()) + ")"));
         detail("Version", s.version());
         detail("Uptime", formatUptime(uptimeSeconds));
-        detail("Jobs", String.valueOf(s.activePipelines()));
+        detail("Jobs", String.valueOf(s.activeBuildPlans()));
         // Transient by design: the sidecar trainer lives ~15s after a fresh install/upgrade, then
         // this line disappears — steady state stays exactly four/five bullets.
         if (s.aotTrainingPid() > 0) {
@@ -143,7 +143,7 @@ public final class EngineStatusCommand implements CliCommand {
                 line.append("  up ")
                         .append(formatUptime(up))
                         .append("  jobs ")
-                        .append(m.status().activePipelines());
+                        .append(m.status().activeBuildPlans());
             } else {
                 // Alive but not answering. Worth saying plainly: it still holds memory and its port, and it
                 // is the case a user is most likely to need to stop.
@@ -172,8 +172,8 @@ public final class EngineStatusCommand implements CliCommand {
             if (m.responsive()) {
                 b.append(",\"startedAt\":")
                         .append(m.status().startedAtMillis())
-                        .append(",\"activePipelines\":")
-                        .append(m.status().activePipelines())
+                        .append(",\"activeBuildPlans\":")
+                        .append(m.status().activeBuildPlans())
                         .append(",\"version\":")
                         .append(Jsonl.quote(m.status().version()));
             }

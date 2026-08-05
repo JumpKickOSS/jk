@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.run.Pipeline;
+import cc.jumpkick.run.BuildPlan;
 import java.nio.file.Path;
 
 /**
@@ -11,12 +11,12 @@ import java.nio.file.Path;
 public final class ModulePlan {
     private final Path dir;
     private final String coord;
-    private final Pipeline pipeline;
+    private final BuildPlan pipeline;
     private final int weight;
     private final boolean fullyCached;
     private final Path cache;
 
-    public ModulePlan(Path dir, String coord, Pipeline pipeline, int weight, boolean fullyCached, Path cache) {
+    public ModulePlan(Path dir, String coord, BuildPlan pipeline, int weight, boolean fullyCached, Path cache) {
         this.dir = dir;
         this.coord = coord;
         this.pipeline = pipeline;
@@ -27,7 +27,7 @@ public final class ModulePlan {
 
     /** Reconstruct a plan client-side from wire-level data (engine front-ends). */
     public static ModulePlan fromWire(
-            Path dir, String coord, Pipeline pipeline, int weight, boolean fullyCached, Path cache) {
+            Path dir, String coord, BuildPlan pipeline, int weight, boolean fullyCached, Path cache) {
         return new ModulePlan(dir, coord, pipeline, weight, fullyCached, cache);
     }
 
@@ -39,7 +39,7 @@ public final class ModulePlan {
         return dir;
     }
 
-    public Pipeline pipeline() {
+    public BuildPlan pipeline() {
         return pipeline;
     }
 

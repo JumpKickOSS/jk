@@ -21,7 +21,7 @@ import org.junit.jupiter.api.io.TempDir;
  * After {@code jk clean}, package/assembly forecast must use the same action keys as the live
  * restore path — not {@code missing:} fingerprints or "jar exists on disk".
  */
-class BuildPlanForecastCleanPackageTest {
+class TaskForecasterCleanPackageTest {
 
     @Test
     void classes_token_after_clean_matches_pre_clean_tree(@TempDir Path tmp) throws Exception {
@@ -58,7 +58,7 @@ class BuildPlanForecastCleanPackageTest {
         // The helper reconstructs against layout.classesDir(); pin that it is the tree we
         // stored the compile record for, so the equality below cannot silently test nothing.
         assertThat(layout.classesDir()).isEqualTo(classes.toAbsolutePath().normalize());
-        String tok = BuildPlanForecast.classesTokenForPackage(module, true, layout, project, ac, "key-compile");
+        String tok = TaskForecaster.classesTokenForPackage(module, true, layout, project, ac, "key-compile");
         // Reconstruct must equal the pre-clean live fingerprint (class + resource).
         assertThat(tok).isEqualTo(live);
     }
@@ -128,7 +128,7 @@ class BuildPlanForecastCleanPackageTest {
 
         // Reconstruction keyed by the CURRENT (v1) key must produce v1's fingerprint —
         // the live build restores v1 and computes v1's package key, not v2's.
-        String tok = BuildPlanForecast.classesTokenForPackage(module, true, layout, project, ac, "key-v1");
+        String tok = TaskForecaster.classesTokenForPackage(module, true, layout, project, ac, "key-v1");
         assertThat(tok).isEqualTo(v1Live);
     }
 

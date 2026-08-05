@@ -92,9 +92,9 @@ public final class EngineProtocol {
     public static final String PLAN_MODULE = "plan-module";
 
     /** Server → client, repeated once per (module, step): a plan-module's step list entry. */
-    public static final String PLAN_STEP = "plan-step";
+    public static final String PLAN_TASK = "plan-task";
 
-    /** Server → client: the plan burst ({@link #PLAN_MODULE}/{@link #PLAN_STEP}) is complete. */
+    /** Server → client: the plan burst ({@link #PLAN_MODULE}/{@link #PLAN_TASK}) is complete. */
     public static final String PLAN_DONE = "plan-done";
 
     /** Server → client: {@code onEtaEstimate}. */
@@ -110,38 +110,38 @@ public final class EngineProtocol {
     /** Server → client: a module's pipeline is about to run — {@code onModuleStart}. */
     public static final String MODULE_START = "module-start";
 
-    /** Server → client: {@code PipelineListener.pipelineStart}. */
-    public static final String PIPELINE_START = "pipeline-start";
+    /** Server → client: {@code BuildPlanListener.pipelineStart}. */
+    public static final String BUILDPLAN_START = "buildplan-start";
 
-    /** Server → client: {@code PipelineListener.stepStart}. */
-    public static final String STEP_START = "step-start";
+    /** Server → client: {@code BuildPlanListener.stepStart}. */
+    public static final String TASK_START = "task-start";
 
-    /** Server → client: {@code PipelineListener.progress}. */
+    /** Server → client: {@code BuildPlanListener.progress}. */
     public static final String PROGRESS = "progress";
 
-    /** Server → client: {@code PipelineListener.tickUpdate}. */
+    /** Server → client: {@code BuildPlanListener.tickUpdate}. */
     public static final String TICK_UPDATE = "tick-update";
 
-    /** Server → client: {@code PipelineListener.label}. */
+    /** Server → client: {@code BuildPlanListener.label}. */
     public static final String LABEL = "label";
 
-    /** Server → client: {@code PipelineListener.output}. */
+    /** Server → client: {@code BuildPlanListener.output}. */
     public static final String OUTPUT = "output";
 
-    /** Server → client: {@code PipelineListener.warn}. */
+    /** Server → client: {@code BuildPlanListener.warn}. */
     public static final String WARN = "warn";
 
-    /** Server → client: {@code PipelineListener.error} — one line of error-stream diagnostics. */
+    /** Server → client: {@code BuildPlanListener.error} — one line of error-stream diagnostics. */
     public static final String ERROR_LINE = "error-line";
 
-    /** Server → client, repeated, immediately before {@link #PIPELINE_FINISH}: one of its result's diagnostics. */
-    public static final String PIPELINE_DIAGNOSTIC = "pipeline-diagnostic";
+    /** Server → client, repeated, immediately before {@link #BUILDPLAN_FINISH}: one of its result's diagnostics. */
+    public static final String BUILDPLAN_DIAGNOSTIC = "buildplan-diagnostic";
 
-    /** Server → client: {@code PipelineListener.stepFinish}. */
-    public static final String STEP_FINISH = "step-finish";
+    /** Server → client: {@code BuildPlanListener.stepFinish}. */
+    public static final String TASK_FINISH = "task-finish";
 
-    /** Server → client: {@code PipelineListener.pipelineFinish} (success flag only; see {@link #PIPELINE_DIAGNOSTIC}). */
-    public static final String PIPELINE_FINISH = "pipeline-finish";
+    /** Server → client: {@code BuildPlanListener.pipelineFinish} (success flag only; see {@link #BUILDPLAN_DIAGNOSTIC}). */
+    public static final String BUILDPLAN_FINISH = "buildplan-finish";
 
     /** Server → client: {@code onModuleFinish}. */
     public static final String MODULE_FINISH = "module-finish";
@@ -199,10 +199,10 @@ public final class EngineProtocol {
      */
     public static final String EXPLAIN_REQUEST = "explain-request";
 
-    /** Server → client, repeated once per module: {@code BuildPlan.Module}'s identity/sizing. */
+    /** Server → client, repeated once per module: {@code TaskForecast.Module}'s identity/sizing. */
     public static final String EXPLAIN_MODULE = "explain-module";
 
-    /** Server → client, repeated once per (module, step): a {@code BuildPlan.Module}'s step list entry. */
+    /** Server → client, repeated once per (module, step): a {@code TaskForecast.Module}'s step list entry. */
     public static final String EXPLAIN_STEP = "explain-step";
 
     /** Server → client, repeated once per dependency edge. */
@@ -602,7 +602,7 @@ public final class EngineProtocol {
             long pid,
             long startedAtMillis,
             int activeRequests,
-            int activePipelines,
+            int activeBuildPlans,
             boolean draining,
             long heapUsedBytes,
             long heapCommittedBytes,
@@ -616,7 +616,7 @@ public final class EngineProtocol {
                 pid,
                 startedAtMillis,
                 activeRequests,
-                activePipelines,
+                activeBuildPlans,
                 draining,
                 heapUsedBytes,
                 heapCommittedBytes,
@@ -627,7 +627,7 @@ public final class EngineProtocol {
                 httpError,
                 true,
                 activeRequests,
-                activePipelines);
+                activeBuildPlans);
     }
 
     /**
@@ -639,7 +639,7 @@ public final class EngineProtocol {
             long pid,
             long startedAtMillis,
             int activeRequests,
-            int activePipelines,
+            int activeBuildPlans,
             boolean draining,
             long heapUsedBytes,
             long heapCommittedBytes,
@@ -650,7 +650,7 @@ public final class EngineProtocol {
             String httpError,
             boolean mcpEnabled,
             int peakActiveRequests,
-            int peakActivePipelines) {
+            int peakActiveBuildPlans) {
         String mcpUrl = mcpEnabled ? mcpUrlFromHttp(httpUrl) : null;
         return "{\"type\":\""
                 + STATUS_ACK
@@ -664,8 +664,8 @@ public final class EngineProtocol {
                 + PROTOCOL
                 + ",\"activeRequests\":"
                 + activeRequests
-                + ",\"activePipelines\":"
-                + activePipelines
+                + ",\"activeBuildPlans\":"
+                + activeBuildPlans
                 + ",\"draining\":"
                 + draining
                 + ",\"heapUsedBytes\":"
@@ -686,8 +686,8 @@ public final class EngineProtocol {
                 + Jsonl.quote(mcpUrl)
                 + ",\"peakActiveRequests\":"
                 + peakActiveRequests
-                + ",\"peakActivePipelines\":"
-                + peakActivePipelines
+                + ",\"peakActiveBuildPlans\":"
+                + peakActiveBuildPlans
                 + "}";
     }
 
@@ -1800,7 +1800,7 @@ public final class EngineProtocol {
 
     public static String planStep(String dir, String name, String label, String phase) {
         return "{\"type\":\""
-                + PLAN_STEP
+                + PLAN_TASK
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
                 + ",\"name\":"
@@ -1859,7 +1859,7 @@ public final class EngineProtocol {
             int stepsComplete,
             boolean cancelled) {
         return "{\"schema\":1,\"type\":\""
-                + PIPELINE_START
+                + BUILDPLAN_START
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
                 + ",\"pipelineName\":"
@@ -1881,7 +1881,7 @@ public final class EngineProtocol {
 
     public static String stepStart(String dir, String step, String phase, int ticks) {
         return "{\"schema\":1,\"type\":\""
-                + STEP_START
+                + TASK_START
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
                 + ",\"step\":"
@@ -2014,12 +2014,12 @@ public final class EngineProtocol {
 
     public static String pipelineDiagnostic(
             String dir, String step, String code, String message, String test, String exceptionClass) {
-        return diagnosticLike(PIPELINE_DIAGNOSTIC, dir, step, code, message, test, exceptionClass);
+        return diagnosticLike(BUILDPLAN_DIAGNOSTIC, dir, step, code, message, test, exceptionClass);
     }
 
     public static String stepFinish(String dir, String step, String phase, String status) {
         return "{\"type\":\""
-                + STEP_FINISH
+                + TASK_FINISH
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
                 + ",\"step\":"
@@ -2038,7 +2038,7 @@ public final class EngineProtocol {
     /** Single-pipeline terminal with optional cancel flag. */
     public static String pipelineFinish(String dir, boolean success, boolean cancelled) {
         return "{\"type\":\""
-                + PIPELINE_FINISH
+                + BUILDPLAN_FINISH
                 + "\",\"kind\":\"build\",\"dir\":"
                 + Jsonl.quote(dir)
                 + ",\"success\":"
@@ -2071,7 +2071,7 @@ public final class EngineProtocol {
     public static String pipelineFinish(
             String dir, boolean success, String buildOutcome, long total, long succeeded, long failed, long skipped) {
         return "{\"type\":\""
-                + PIPELINE_FINISH
+                + BUILDPLAN_FINISH
                 + "\",\"kind\":\"build\",\"dir\":"
                 + Jsonl.quote(dir)
                 + ",\"success\":"
@@ -2097,7 +2097,7 @@ public final class EngineProtocol {
      */
     public static String pipelineFinishLock(String dir, boolean success, long packages, long sources, long plugins) {
         return "{\"type\":\""
-                + PIPELINE_FINISH
+                + BUILDPLAN_FINISH
                 + "\",\"kind\":\"lock\",\"dir\":"
                 + Jsonl.quote(dir)
                 + ",\"success\":"
@@ -2117,7 +2117,7 @@ public final class EngineProtocol {
      */
     public static String pipelineFinishSync(String dir, boolean success, long fetched, long upToDate) {
         return "{\"type\":\""
-                + PIPELINE_FINISH
+                + BUILDPLAN_FINISH
                 + "\",\"kind\":\"sync\",\"dir\":"
                 + Jsonl.quote(dir)
                 + ",\"success\":"
@@ -2273,7 +2273,7 @@ public final class EngineProtocol {
     public static String pipelineFinishFormat(
             String dir, boolean success, int changed, int clean, int errors, int total, int workerExit) {
         return "{\"type\":\""
-                + PIPELINE_FINISH
+                + BUILDPLAN_FINISH
                 + "\",\"kind\":\"format\",\"dir\":"
                 + Jsonl.quote(dir)
                 + ",\"success\":"
@@ -2297,7 +2297,7 @@ public final class EngineProtocol {
      */
     public static String pipelineFinishGitFetch(String dir, boolean success, String checkout, String sha) {
         return "{\"type\":\""
-                + PIPELINE_FINISH
+                + BUILDPLAN_FINISH
                 + "\",\"kind\":\"git-fetch\",\"dir\":"
                 + Jsonl.quote(dir)
                 + ",\"success\":"
@@ -2312,7 +2312,7 @@ public final class EngineProtocol {
     /** As {@link #pipelineFinish(String, boolean)}, additionally carrying a {@code jk publish} run's uploaded-file count. */
     public static String pipelineFinishPublish(String dir, boolean success, int files) {
         return "{\"type\":\""
-                + PIPELINE_FINISH
+                + BUILDPLAN_FINISH
                 + "\",\"kind\":\"publish\",\"dir\":"
                 + Jsonl.quote(dir)
                 + ",\"success\":"
@@ -2330,7 +2330,7 @@ public final class EngineProtocol {
     public static String pipelineFinishImport(
             String dir, boolean success, int exitCode, int warnings, String error, String diag) {
         return "{\"type\":\""
-                + PIPELINE_FINISH
+                + BUILDPLAN_FINISH
                 + "\",\"kind\":\"import\",\"dir\":"
                 + Jsonl.quote(dir)
                 + ",\"success\":"
@@ -2367,7 +2367,7 @@ public final class EngineProtocol {
             String version,
             String daemonExe) {
         return "{\"type\":\""
-                + PIPELINE_FINISH
+                + BUILDPLAN_FINISH
                 + "\",\"kind\":\"image\",\"dir\":"
                 + Jsonl.quote(dir)
                 + ",\"success\":"
@@ -2582,7 +2582,7 @@ public final class EngineProtocol {
     public static String pipelineFinishTool(
             String dir, boolean success, String coord, String mainClass, List<String> classpath) {
         return "{\"type\":\""
-                + PIPELINE_FINISH
+                + BUILDPLAN_FINISH
                 + "\",\"kind\":\"tool\",\"dir\":"
                 + Jsonl.quote(dir)
                 + ",\"success\":"
@@ -2641,7 +2641,7 @@ public final class EngineProtocol {
             String kotlincBin,
             String stdlib) {
         return "{\"type\":\""
-                + PIPELINE_FINISH
+                + BUILDPLAN_FINISH
                 + "\",\"kind\":\"script\",\"dir\":"
                 + Jsonl.quote(dir)
                 + ",\"success\":"
@@ -2726,7 +2726,7 @@ public final class EngineProtocol {
     public static String pipelineFinishCache(
             String dir, boolean success, long files, long bytes, long reachableEvicted, long repoLinks) {
         return "{\"type\":\""
-                + PIPELINE_FINISH
+                + BUILDPLAN_FINISH
                 + "\",\"kind\":\"cache\",\"dir\":"
                 + Jsonl.quote(dir)
                 + ",\"success\":"

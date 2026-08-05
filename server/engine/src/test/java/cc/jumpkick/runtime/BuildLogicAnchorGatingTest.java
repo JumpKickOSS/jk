@@ -3,9 +3,9 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.Step;
-import cc.jumpkick.run.StepNames;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskNames;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -21,54 +21,54 @@ class BuildLogicAnchorGatingTest {
     @Test
     void before_package_requires_resources_and_is_required_by_package(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
-        Pipeline p = pipeline(project, dir.resolve("cache"), false);
-        Map<String, Step> byName = index(p);
+        BuildPlan p = pipeline(project, dir.resolve("cache"), false);
+        Map<String, Task> byName = index(p);
 
         assertThat(byName)
                 .containsKeys(
-                        StepNames.BUILD_LOGIC_AFTER_COMPILE,
-                        StepNames.BUILD_LOGIC_BEFORE_PACKAGE,
-                        StepNames.COPY_RESOURCES,
-                        StepNames.PACKAGE_JAR,
-                        StepNames.COMPILE_TEST,
-                        StepNames.RUN_TESTS);
+                        TaskNames.BUILD_LOGIC_AFTER_COMPILE,
+                        TaskNames.BUILD_LOGIC_BEFORE_PACKAGE,
+                        TaskNames.COPY_RESOURCES,
+                        TaskNames.PACKAGE_JAR,
+                        TaskNames.COMPILE_TEST,
+                        TaskNames.RUN_TESTS);
 
-        Step after = byName.get(StepNames.BUILD_LOGIC_AFTER_COMPILE);
-        Step before = byName.get(StepNames.BUILD_LOGIC_BEFORE_PACKAGE);
-        Step resources = byName.get(StepNames.COPY_RESOURCES);
-        Step packageJar = byName.get(StepNames.PACKAGE_JAR);
-        Step compileTest = byName.get(StepNames.COMPILE_TEST);
+        Task after = byName.get(TaskNames.BUILD_LOGIC_AFTER_COMPILE);
+        Task before = byName.get(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE);
+        Task resources = byName.get(TaskNames.COPY_RESOURCES);
+        Task packageJar = byName.get(TaskNames.PACKAGE_JAR);
+        Task compileTest = byName.get(TaskNames.COMPILE_TEST);
 
         // AFTER_COMPILE is ordered before consumers that write/read main classes.
-        assertThat(resources.requires()).contains(StepNames.BUILD_LOGIC_AFTER_COMPILE);
-        assertThat(compileTest.requires()).contains(StepNames.BUILD_LOGIC_AFTER_COMPILE);
+        assertThat(resources.requires()).contains(TaskNames.BUILD_LOGIC_AFTER_COMPILE);
+        assertThat(compileTest.requires()).contains(TaskNames.BUILD_LOGIC_AFTER_COMPILE);
         assertThat(after.requires()).isNotEmpty(); // mainCompile at minimum
 
         // BEFORE_PACKAGE is not level-0: needs resources + tests.
         assertThat(before.requires())
-                .contains(StepNames.COPY_RESOURCES, StepNames.RUN_TESTS)
-                .doesNotContain(StepNames.PARSE_BUILD);
+                .contains(TaskNames.COPY_RESOURCES, TaskNames.RUN_TESTS)
+                .doesNotContain(TaskNames.PARSE_BUILD);
 
         // package-jar waits on BEFORE_PACKAGE (not only resources).
-        assertThat(packageJar.requires()).contains(StepNames.BUILD_LOGIC_BEFORE_PACKAGE);
+        assertThat(packageJar.requires()).contains(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE);
     }
 
     @Test
     void before_package_skips_run_tests_when_skip_tests(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
-        Pipeline p = pipeline(project, dir.resolve("cache"), true);
-        Map<String, Step> byName = index(p);
+        BuildPlan p = pipeline(project, dir.resolve("cache"), true);
+        Map<String, Task> byName = index(p);
 
-        assertThat(byName).containsKey(StepNames.BUILD_LOGIC_BEFORE_PACKAGE);
-        assertThat(byName).doesNotContainKey(StepNames.RUN_TESTS);
-        assertThat(byName.get(StepNames.BUILD_LOGIC_BEFORE_PACKAGE).requires())
-                .contains(StepNames.COPY_RESOURCES)
-                .doesNotContain(StepNames.RUN_TESTS);
-        assertThat(byName.get(StepNames.PACKAGE_JAR).requires()).contains(StepNames.BUILD_LOGIC_BEFORE_PACKAGE);
+        assertThat(byName).containsKey(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE);
+        assertThat(byName).doesNotContainKey(TaskNames.RUN_TESTS);
+        assertThat(byName.get(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE).requires())
+                .contains(TaskNames.COPY_RESOURCES)
+                .doesNotContain(TaskNames.RUN_TESTS);
+        assertThat(byName.get(TaskNames.PACKAGE_JAR).requires()).contains(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE);
     }
 
-    private static Map<String, Step> index(Pipeline p) {
-        return p.steps().stream().collect(Collectors.toMap(Step::name, Function.identity(), (a, b) -> a));
+    private static Map<String, Task> index(BuildPlan p) {
+        return p.steps().stream().collect(Collectors.toMap(Task::name, Function.identity(), (a, b) -> a));
     }
 
     private static Path scaffold(Path dir) throws Exception {
@@ -87,7 +87,7 @@ class BuildLogicAnchorGatingTest {
         return project;
     }
 
-    private static Pipeline pipeline(Path project, Path cache, boolean skipTests) {
+    private static BuildPlan pipeline(Path project, Path cache, boolean skipTests) {
         FilesCreateCache(cache);
         BuildPipelines.Inputs in = new BuildPipelines.Inputs(
                 project,

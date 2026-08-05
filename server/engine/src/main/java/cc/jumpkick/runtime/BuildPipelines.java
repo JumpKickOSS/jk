@@ -27,15 +27,15 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.build.Phase;
-import cc.jumpkick.plugin.build.PhaseGraph;
+
 import cc.jumpkick.resolver.CacheSync;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineKey;
-import cc.jumpkick.run.Step;
-import cc.jumpkick.run.StepContext;
-import cc.jumpkick.run.StepKind;
-import cc.jumpkick.run.StepNames;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskContext;
+import cc.jumpkick.run.TaskKind;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
@@ -54,12 +54,12 @@ import java.util.stream.Stream;
 
 /**
  * Shared build pipeline for build-family commands: core steps via {@link #coreBuilder}, then
- * command-specific tails (native, image, install, …) in one {@link Pipeline}.
+ * command-specific tails (native, image, install, …) in one {@link BuildPlan}.
  */
 public final class BuildPipelines {
 
     static {
-        // Wire session cancel into StepContext.cancelled (lazy; pool tasks see it via
+        // Wire session cancel into TaskContext.cancelled (lazy; pool tasks see it via
         // SessionContext propagation on JkThreads).
         cc.jumpkick.run.SessionCancel.bind(
                 () -> cc.jumpkick.config.SessionContext.current().cancelled());
@@ -68,61 +68,61 @@ public final class BuildPipelines {
     private BuildPipelines() {}
 
     // ---- shared cross-step keys ---------------------------------------
-    public static final PipelineKey<JkBuild> PROJECT = PipelineKey.of("project", JkBuild.class);
-    public static final PipelineKey<Lockfile> LOCKFILE = PipelineKey.of("lockfile", Lockfile.class);
-    public static final PipelineKey<Path> JAVA_HOME = PipelineKey.of("java-home", Path.class);
-    public static final PipelineKey<Integer> RELEASE = PipelineKey.of("release", Integer.class);
+    public static final BuildPlanKey<JkBuild> PROJECT = BuildPlanKey.of("project", JkBuild.class);
+    public static final BuildPlanKey<Lockfile> LOCKFILE = BuildPlanKey.of("lockfile", Lockfile.class);
+    public static final BuildPlanKey<Path> JAVA_HOME = BuildPlanKey.of("java-home", Path.class);
+    public static final BuildPlanKey<Integer> RELEASE = BuildPlanKey.of("release", Integer.class);
 
     @SuppressWarnings("rawtypes")
-    public static final PipelineKey<List> CLASSPATH = PipelineKey.of("classpath", List.class);
+    public static final BuildPlanKey<List> CLASSPATH = BuildPlanKey.of("classpath", List.class);
 
     @SuppressWarnings("rawtypes")
-    public static final PipelineKey<List> JAVA_SOURCES = PipelineKey.of("java-sources", List.class);
+    public static final BuildPlanKey<List> JAVA_SOURCES = BuildPlanKey.of("java-sources", List.class);
 
     @SuppressWarnings("rawtypes")
-    public static final PipelineKey<List> KOTLIN_SOURCES = PipelineKey.of("kotlin-sources", List.class);
+    public static final BuildPlanKey<List> KOTLIN_SOURCES = BuildPlanKey.of("kotlin-sources", List.class);
 
     @SuppressWarnings("rawtypes")
-    public static final PipelineKey<List> GROOVY_SOURCES = PipelineKey.of("groovy-sources", List.class);
+    public static final BuildPlanKey<List> GROOVY_SOURCES = BuildPlanKey.of("groovy-sources", List.class);
 
     @SuppressWarnings("rawtypes")
-    public static final PipelineKey<List> JAVAC_ARGS = PipelineKey.of("javac-args", List.class);
+    public static final BuildPlanKey<List> JAVAC_ARGS = BuildPlanKey.of("javac-args", List.class);
 
     @SuppressWarnings("rawtypes")
-    public static final PipelineKey<List> PROCESSOR_CP = PipelineKey.of("processor-cp", List.class);
+    public static final BuildPlanKey<List> PROCESSOR_CP = BuildPlanKey.of("processor-cp", List.class);
 
     /** The javac half of the processor split — set by the ksp step (KSP jars removed). */
     @SuppressWarnings("rawtypes")
-    public static final PipelineKey<List> JAVAC_PROCESSOR_CP = PipelineKey.of("javac-processor-cp", List.class);
+    public static final BuildPlanKey<List> JAVAC_PROCESSOR_CP = BuildPlanKey.of("javac-processor-cp", List.class);
 
     /** The [[contribute.provided-classpath]] jars (platform), published for the test step. */
     @SuppressWarnings("rawtypes")
-    public static final PipelineKey<List> PROVIDED_CP = PipelineKey.of("provided-cp", List.class);
+    public static final BuildPlanKey<List> PROVIDED_CP = BuildPlanKey.of("provided-cp", List.class);
 
     @SuppressWarnings("rawtypes")
-    public static final PipelineKey<List> COMPILE_TEST_CP = PipelineKey.of("cp-test", List.class);
+    public static final BuildPlanKey<List> COMPILE_TEST_CP = BuildPlanKey.of("cp-test", List.class);
 
     @SuppressWarnings("rawtypes")
-    public static final PipelineKey<List> TEST_RUNTIME_CP = PipelineKey.of("cp-runtime", List.class);
+    public static final BuildPlanKey<List> TEST_RUNTIME_CP = BuildPlanKey.of("cp-runtime", List.class);
 
-    public static final PipelineKey<String> ACTION_KEY = PipelineKey.of("action-key", String.class);
+    public static final BuildPlanKey<String> ACTION_KEY = BuildPlanKey.of("action-key", String.class);
 
     @SuppressWarnings("rawtypes")
-    public static final PipelineKey<List> TEST_SOURCES = PipelineKey.of("test-sources", List.class);
+    public static final BuildPlanKey<List> TEST_SOURCES = BuildPlanKey.of("test-sources", List.class);
 
     /** Suite resource dirs copied into classes/test — a TestStamp input. */
     @SuppressWarnings("rawtypes")
-    public static final PipelineKey<List> TEST_RESOURCE_DIRS = PipelineKey.of("test-resource-dirs", List.class);
+    public static final BuildPlanKey<List> TEST_RESOURCE_DIRS = BuildPlanKey.of("test-resource-dirs", List.class);
 
-    public static final PipelineKey<String> BUILD_OUTCOME = PipelineKey.of("build-outcome", String.class);
-    public static final PipelineKey<String> KOTLIN_OUTCOME = PipelineKey.of("kotlin-outcome", String.class);
-    public static final PipelineKey<String> GROOVY_OUTCOME = PipelineKey.of("groovy-outcome", String.class);
-    public static final PipelineKey<Path> JAR_PATH = PipelineKey.of("jar-path", Path.class);
-    public static final PipelineKey<Path> MAIN_CLASSES = PipelineKey.of("main-classes", Path.class);
-    public static final PipelineKey<Path> TEST_CLASSES = PipelineKey.of("test-classes", Path.class);
-    public static final PipelineKey<BuildLayout> LAYOUT = PipelineKey.of("layout", BuildLayout.class);
-    public static final PipelineKey<TestSummary> TEST_RESULT = PipelineKey.of("test-result", TestSummary.class);
-    public static final PipelineKey<Boolean> NO_TEST_SOURCES = PipelineKey.of("no-test-sources", Boolean.class);
+    public static final BuildPlanKey<String> BUILD_OUTCOME = BuildPlanKey.of("build-outcome", String.class);
+    public static final BuildPlanKey<String> KOTLIN_OUTCOME = BuildPlanKey.of("kotlin-outcome", String.class);
+    public static final BuildPlanKey<String> GROOVY_OUTCOME = BuildPlanKey.of("groovy-outcome", String.class);
+    public static final BuildPlanKey<Path> JAR_PATH = BuildPlanKey.of("jar-path", Path.class);
+    public static final BuildPlanKey<Path> MAIN_CLASSES = BuildPlanKey.of("main-classes", Path.class);
+    public static final BuildPlanKey<Path> TEST_CLASSES = BuildPlanKey.of("test-classes", Path.class);
+    public static final BuildPlanKey<BuildLayout> LAYOUT = BuildPlanKey.of("layout", BuildLayout.class);
+    public static final BuildPlanKey<TestSummary> TEST_RESULT = BuildPlanKey.of("test-result", TestSummary.class);
+    public static final BuildPlanKey<Boolean> NO_TEST_SOURCES = BuildPlanKey.of("no-test-sources", Boolean.class);
 
     /**
      * Process-wide gate that serializes the {@code run-tests} step across concurrently-built units
@@ -357,12 +357,12 @@ public final class BuildPipelines {
     static final int W_NATIVE = 90;
 
     /** Core build steps plus assembly/native tails from {@code jk.toml}. */
-    public static Pipeline.Builder coreBuilder(Inputs in) {
+    public static BuildPlan.Builder coreBuilder(Inputs in) {
         return coreBuilder(in, false);
     }
 
     /** As {@link #coreBuilder(Inputs)} with upstream-dirty {@code forceRebuild} for weight prediction. */
-    public static Pipeline.Builder coreBuilder(Inputs in, boolean forceRebuild) {
+    public static BuildPlan.Builder coreBuilder(Inputs in, boolean forceRebuild) {
         Cas cas = JkStores.cas(in.cache()); // artifact store CAS (deps, workers)
         ActionCache actionCache =
                 new ActionCache(JkStores.cacheCas(in.cache()), in.cache().resolve("actions"));
@@ -456,7 +456,7 @@ public final class BuildPipelines {
         // mixed-pipeline routing the KSP/Hilt case above takes, decided here because the
         // declarations only exist after the describe round.
         if ((useKotlin || useGroovy) && !useJava && pluginDecls != null) {
-            for (PluginBuild.StepDecl step : pluginDecls.steps()) {
+            for (PluginBuild.TaskDecl step : pluginDecls.steps()) {
                 if (!step.contributesSources().isEmpty()) {
                     useJava = true;
                     break;
@@ -484,10 +484,10 @@ public final class BuildPipelines {
         final boolean kotlinModule = useKotlin; // effectively-final copy for lambdas
         final boolean groovyModule = useGroovy;
         String mainCompile = (mixed || mixedGroovy)
-                ? StepNames.ASSEMBLE_CLASSES
+                ? TaskNames.ASSEMBLE_CLASSES
                 : (useKotlin
-                        ? StepNames.COMPILE_KOTLIN
-                        : (useGroovy ? StepNames.COMPILE_GROOVY : StepNames.COMPILE_JAVA));
+                        ? TaskNames.COMPILE_KOTLIN
+                        : (useGroovy ? TaskNames.COMPILE_GROOVY : TaskNames.COMPILE_JAVA));
 
         // Predict each step's bar weight from the work it will actually do this
         // run (skipped/cached steps collapse to ~1; real work dominates). Computed
@@ -541,120 +541,120 @@ public final class BuildPipelines {
                 mainCompile,
                 kspEnabled);
 
-        Step parseBuild = parseBuildStep(cx);
+        Task parseBuild = parseBuildStep(cx);
 
         // ---- sync-deps --------------------------------------------------
-        Step syncDeps = syncDepsStep(cx);
+        Task syncDeps = syncDepsStep(cx);
 
         // ---- ensure-jdk -------------------------------------------------
-        Step ensureJdk = ensureJdkStep(cx);
+        Task ensureJdk = ensureJdkStep(cx);
 
         // ---- compile-java -----------------------------------------------
-        Step compileJava = compileJavaStep(cx, pluginDeclsF);
+        Task compileJava = compileJavaStep(cx, pluginDeclsF);
 
         // ---- compile-kotlin ---------------------------------------------
-        Step compileKotlin = compileKotlinStep(cx, pluginDeclsF);
+        Task compileKotlin = compileKotlinStep(cx, pluginDeclsF);
 
         // ---- compile-groovy ---------------------------------------------
-        Step compileGroovy = compileGroovyStep(cx, pluginDeclsF);
+        Task compileGroovy = compileGroovyStep(cx, pluginDeclsF);
 
         // ---- copy-resources ---------------------------------------------
-        Step copyResources = copyResourcesStep(cx);
+        Task copyResources = copyResourcesStep(cx);
 
         // ---- compile-test -----------------------------------------------
-        Step compileTest = compileTestStep(cx);
+        Task compileTest = compileTestStep(cx);
 
         // ---- run-tests --------------------------------------------------
-        Step runTests = runTestsStep(cx, pluginDeclsF);
+        Task runTests = runTestsStep(cx, pluginDeclsF);
 
         // ---- plugin steps ------------------------------------------------
-        List<Step> pluginSteps = new ArrayList<>();
-        PluginBuild.StepDecl transform = transformStep(pluginDeclsF);
+        List<Task> pluginSteps = new ArrayList<>();
+        PluginBuild.TaskDecl transform = transformStep(pluginDeclsF);
         if (pluginDeclsF != null) {
-            for (PluginBuild.StepDecl step : pluginDeclsF.steps()) {
-                pluginSteps.add(pluginStepStep(cx, pluginActiveF, step, transform));
+            for (PluginBuild.TaskDecl step : pluginDeclsF.steps()) {
+                pluginSteps.add(pluginTask(cx, pluginActiveF, step, transform));
             }
         }
 
         // ---- package-jar ------------------------------------------------
-        Step packageJar = packageJarStep(cx, pluginActiveF, pluginDeclsF, variantSecretsF);
+        Task packageJar = packageJarStep(cx, pluginActiveF, pluginDeclsF, variantSecretsF);
 
         // ---- write-stamp ------------------------------------------------
-        Step writeStamp = writeStampStep(cx);
+        Task writeStamp = writeStampStep(cx);
 
         // ---- write-stamp-kotlin -----------------------------------------
         // Kotlin's freshness companion (cf. write-stamp for Java). Mirrors the
         // input set compile-kotlin checked: Kotlin sources, plus Java sources in
         // a mixed module. No action-cache key exists yet — the direct kotlinc
         // path leaves it empty until incremental Kotlin lands.
-        Step writeStampKotlin = writeStampKotlinStep(cx);
+        Task writeStampKotlin = writeStampKotlinStep(cx);
 
         // ---- write-stamp-groovy -----------------------------------------
         // Groovy's freshness companion, mirroring write-stamp-kotlin.
-        Step writeStampGroovy = writeStampGroovyStep(cx);
+        Task writeStampGroovy = writeStampGroovyStep(cx);
 
         // ---- assemble-classes (mixed modules only) ----------------------
         // Merge the per-language output dirs into the shared classes dir that
         // packaging, tests, and the run/native tails all read.
-        Step assembleClasses = assembleClassesStep(cx);
+        Task assembleClasses = assembleClassesStep(cx);
 
-        Pipeline.Builder b =
-                Pipeline.builder("build").addStep(parseBuild).addStep(syncDeps).addStep(ensureJdk);
+        BuildPlan.Builder b =
+                BuildPlan.builder("build").addTask(parseBuild).addTask(syncDeps).addTask(ensureJdk);
         // Workspace root with no sources: validate jk.toml + sync deps, nothing more.
         if (workspaceNoSources) return b;
         if (kspEnabled) {
-            b.addStep(kspStep(cx, pluginDeclsF));
+            b.addTask(kspStep(cx, pluginDeclsF));
         }
         if (useGroovy) {
-            b.addStep(compileGroovy);
+            b.addTask(compileGroovy);
         }
         if (useJava) {
-            b.addStep(compileJava);
+            b.addTask(compileJava);
         }
         if (useKotlin) {
-            b.addStep(compileKotlin);
+            b.addTask(compileKotlin);
         }
         if (mixed || mixedGroovy) {
-            b.addStep(assembleClasses);
+            b.addTask(assembleClasses);
         }
         // `jk compile` stops here: lock → sync → compile (+ freshness stamps),
         // no resources/test/package. Everything later depends on these steps.
         if (in.compileOnly()) {
             if (useJava) {
-                b.addStep(writeStamp);
+                b.addTask(writeStamp);
             }
             if (useKotlin) {
-                b.addStep(writeStampKotlin);
+                b.addTask(writeStampKotlin);
             }
             if (useGroovy) {
-                b.addStep(writeStampGroovy);
+                b.addTask(writeStampGroovy);
             }
             return b;
         }
         // Build-logic AFTER_COMPILE (SPI) before resources / AFTER_RESOURCES.
-        b.addStep(buildLogicAfterCompileStep(cx));
-        b.addStep(copyResources);
+        b.addTask(buildLogicAfterCompileStep(cx));
+        b.addTask(copyResources);
         if (in.testOnly() || !in.skipTests()) {
-            b.addStep(compileTest).addStep(runTests);
+            b.addTask(compileTest).addTask(runTests);
         }
         // `jk test` stops at run-tests — it never packages a jar. Plugin steps run only
         // when packaging does: they exist to feed the packaged/native artifact.
         if (!in.testOnly()) {
-            for (Step p : pluginSteps) b.addStep(p);
-            b.addStep(buildLogicBeforePackageStep(cx));
-            b.addStep(packageJar);
+            for (Task p : pluginSteps) b.addTask(p);
+            b.addTask(buildLogicBeforePackageStep(cx));
+            b.addTask(packageJar);
         }
         // write-stamp is the Java-compile freshness companion; only when Java ran.
         if (useJava) {
-            b.addStep(writeStamp);
+            b.addTask(writeStamp);
         }
         // write-stamp-kotlin is the Kotlin-compile freshness companion.
         if (useKotlin) {
-            b.addStep(writeStampKotlin);
+            b.addTask(writeStampKotlin);
         }
         // write-stamp-groovy is the Groovy-compile freshness companion.
         if (useGroovy) {
-            b.addStep(writeStampGroovy);
+            b.addTask(writeStampGroovy);
         }
         return b;
     }
@@ -681,7 +681,7 @@ public final class BuildPipelines {
             String mainCompile,
             boolean ksp) {}
 
-    private static Step parseBuildStep(Ctx cx) {
+    private static Task parseBuildStep(Ctx cx) {
         Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
@@ -695,7 +695,7 @@ public final class BuildPipelines {
         boolean kotlinModule = cx.kotlinModule();
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
-        return Step.builder(StepNames.PARSE_BUILD)
+        return Task.builder(TaskNames.PARSE_BUILD)
                 .phase(Phase.RESOLVE)
                 .label("Parsing")
                 .weight(() -> plan.get().fullyCached() ? W_CACHED_TOUCH : W_PARSE)
@@ -901,7 +901,7 @@ public final class BuildPipelines {
                 .build();
     }
 
-    private static Step syncDepsStep(Ctx cx) {
+    private static Task syncDepsStep(Ctx cx) {
         Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
@@ -914,11 +914,11 @@ public final class BuildPipelines {
         boolean kotlinModule = cx.kotlinModule();
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
-        return Step.builder(StepNames.RESOLVE_DEPS)
+        return Task.builder(TaskNames.RESOLVE_DEPS)
                 .phase(Phase.RESOLVE)
                 .label("Syncing")
-                .kind(StepKind.IO)
-                .requires(StepNames.PARSE_BUILD)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.PARSE_BUILD)
                 .weight(() -> plan.get().sync())
                 .ticks(() -> {
                     try {
@@ -963,7 +963,7 @@ public final class BuildPipelines {
                 .build();
     }
 
-    private static Step ensureJdkStep(Ctx cx) {
+    private static Task ensureJdkStep(Ctx cx) {
         Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
@@ -976,11 +976,11 @@ public final class BuildPipelines {
         boolean kotlinModule = cx.kotlinModule();
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
-        return Step.builder(StepNames.ENSURE_JDK)
+        return Task.builder(TaskNames.ENSURE_JDK)
                 .phase(Phase.RESOLVE)
                 .label("JDK")
-                .kind(StepKind.IO)
-                .requires(StepNames.PARSE_BUILD)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.PARSE_BUILD)
                 .weight(() -> EffortWeights.jdkWeight(in.dir(), in.jdksDir()))
                 .ticks(1)
                 .execute(ctx -> {
@@ -1013,7 +1013,7 @@ public final class BuildPipelines {
     private static List<String> sourceGenStepSteps(PluginBuild.Declarations decls) {
         List<String> out = new ArrayList<>();
         if (decls != null) {
-            for (PluginBuild.StepDecl step : decls.steps()) {
+            for (PluginBuild.TaskDecl step : decls.steps()) {
                 if (beforeCompile(step)) out.add("plugin-" + step.name());
             }
         }
@@ -1029,9 +1029,9 @@ public final class BuildPipelines {
             BuildLayout layout, PluginBuild.Declarations decls, String suffix) throws IOException {
         List<Path> out = new ArrayList<>();
         if (decls == null) return out;
-        for (PluginBuild.StepDecl step : decls.steps()) {
+        for (PluginBuild.TaskDecl step : decls.steps()) {
             for (String rel : step.contributesSources()) {
-                Path dir = PluginBuild.stepScratch(layout, step.name()).resolve(rel);
+                Path dir = PluginBuild.taskScratch(layout, step.name()).resolve(rel);
                 if (!Files.isDirectory(dir)) continue;
                 try (var walk = Files.walk(dir)) {
                     walk.filter(f -> f.toString().endsWith(suffix) && Files.isRegularFile(f))
@@ -1047,9 +1047,9 @@ public final class BuildPipelines {
     private static List<Path> pluginContributedSourceDirs(BuildLayout layout, PluginBuild.Declarations decls) {
         List<Path> out = new ArrayList<>();
         if (decls == null) return out;
-        for (PluginBuild.StepDecl step : decls.steps()) {
+        for (PluginBuild.TaskDecl step : decls.steps()) {
             for (String rel : step.contributesSources()) {
-                Path dir = PluginBuild.stepScratch(layout, step.name()).resolve(rel);
+                Path dir = PluginBuild.taskScratch(layout, step.name()).resolve(rel);
                 if (Files.isDirectory(dir)) out.add(dir);
             }
         }
@@ -1060,9 +1060,9 @@ public final class BuildPipelines {
     private static List<Path> pluginTestClasspath(BuildLayout layout, PluginBuild.Declarations decls) {
         List<Path> out = new ArrayList<>();
         if (decls == null) return out;
-        for (PluginBuild.StepDecl step : decls.steps()) {
+        for (PluginBuild.TaskDecl step : decls.steps()) {
             for (String rel : step.contributesTestClasspath()) {
-                Path dir = PluginBuild.stepScratch(layout, step.name()).resolve(rel);
+                Path dir = PluginBuild.taskScratch(layout, step.name()).resolve(rel);
                 if (Files.isDirectory(dir)) out.add(dir);
             }
         }
@@ -1071,7 +1071,7 @@ public final class BuildPipelines {
 
     /** The provided-classpath contribution (platform jars), re-read for the test step. */
     @SuppressWarnings("unchecked")
-    private static List<Path> contributedProvidedFor(cc.jumpkick.run.StepContext ctx) {
+    private static List<Path> contributedProvidedFor(cc.jumpkick.run.TaskContext ctx) {
         return (List<Path>) ctx.get(PROVIDED_CP).orElse(List.of());
     }
 
@@ -1137,7 +1137,7 @@ public final class BuildPipelines {
      * KSP2 round: fork {@code KSPJvmMain} with KSP processor jars ({@link
      * cc.jumpkick.compile.KspProcessors}); outputs under {@code target/ksp/} join compile sources.
      */
-    private static Step kspStep(Ctx cx, PluginBuild.Declarations pluginDecls) {
+    private static Task kspStep(Ctx cx, PluginBuild.Declarations pluginDecls) {
         Inputs in = cx.in();
         Cas cas = cx.cas();
         boolean compact = cx.compact();
@@ -1145,12 +1145,12 @@ public final class BuildPipelines {
         // round and join its source roots — a contributed @Module/@Entity is processor input
         // like any hand-written one.
         List<String> requires =
-                new ArrayList<>(List.of(StepNames.PARSE_BUILD, StepNames.RESOLVE_DEPS, StepNames.ENSURE_JDK));
+                new ArrayList<>(List.of(TaskNames.PARSE_BUILD, TaskNames.RESOLVE_DEPS, TaskNames.ENSURE_JDK));
         requires.addAll(sourceGenStepSteps(pluginDecls));
-        return Step.builder("ksp")
+        return Task.builder("ksp")
                 .phase(Phase.COMPILE)
                 .label("KSP")
-                .kind(StepKind.CPU)
+                .kind(TaskKind.CPU)
                 .requires(requires.toArray(new String[0]))
                 .ticks(1)
                 .execute(ctx -> {
@@ -1346,10 +1346,10 @@ public final class BuildPipelines {
         // Plugin-contributed generated dirs can carry Java that Kotlin sources reference
         // (protoc: the --kotlin_out DSL wraps its own --java_out message classes).
         if (decls != null) {
-            for (PluginBuild.StepDecl step : decls.steps()) {
+            for (PluginBuild.TaskDecl step : decls.steps()) {
                 for (String rel : step.contributesSources()) {
                     Path contributed =
-                            PluginBuild.stepScratch(layout, step.name()).resolve(rel);
+                            PluginBuild.taskScratch(layout, step.name()).resolve(rel);
                     if (Files.isDirectory(contributed)) roots.add(contributed);
                 }
             }
@@ -1376,7 +1376,7 @@ public final class BuildPipelines {
     /** KSP's freshness companion, mirroring compile-kotlin's stamp discipline. */
     private static final String KSP_STAMP = ".kspstamp";
 
-    private static Step compileJavaStep(Ctx cx, PluginBuild.Declarations pluginDecls) {
+    private static Task compileJavaStep(Ctx cx, PluginBuild.Declarations pluginDecls) {
         Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
@@ -1389,10 +1389,10 @@ public final class BuildPipelines {
         boolean kotlinModule = cx.kotlinModule();
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
-        return Step.builder(StepNames.COMPILE_JAVA)
+        return Task.builder(TaskNames.COMPILE_JAVA)
                 .phase(Phase.COMPILE)
                 .label("Compiling")
-                .kind(StepKind.CPU)
+                .kind(TaskKind.CPU)
                 .requires(javaCompileRequires(mixed, cx.mixedGroovy(), pluginDecls, cx.ksp()))
                 // Ticks count sources (granularity); weight is the bar share. javac
                 // is opaque — one progress(sources.size) on completion — so ease the
@@ -1597,7 +1597,7 @@ public final class BuildPipelines {
 
     private static String[] kotlinCompileRequires(PluginBuild.Declarations decls, boolean ksp) {
         List<String> requires =
-                new ArrayList<>(List.of(StepNames.PARSE_BUILD, StepNames.RESOLVE_DEPS, StepNames.ENSURE_JDK));
+                new ArrayList<>(List.of(TaskNames.PARSE_BUILD, TaskNames.RESOLVE_DEPS, TaskNames.ENSURE_JDK));
         if (ksp) requires.add("ksp");
         requires.addAll(sourceGenStepSteps(decls));
         return requires.toArray(new String[0]);
@@ -1606,9 +1606,9 @@ public final class BuildPipelines {
     private static String[] javaCompileRequires(
             boolean mixed, boolean mixedGroovy, PluginBuild.Declarations decls, boolean ksp) {
         List<String> requires =
-                new ArrayList<>(List.of(StepNames.PARSE_BUILD, StepNames.RESOLVE_DEPS, StepNames.ENSURE_JDK));
-        if (mixed) requires.add(StepNames.COMPILE_KOTLIN);
-        if (mixedGroovy) requires.add(StepNames.COMPILE_GROOVY);
+                new ArrayList<>(List.of(TaskNames.PARSE_BUILD, TaskNames.RESOLVE_DEPS, TaskNames.ENSURE_JDK));
+        if (mixed) requires.add(TaskNames.COMPILE_KOTLIN);
+        if (mixedGroovy) requires.add(TaskNames.COMPILE_GROOVY);
         if (ksp) requires.add("ksp");
         requires.addAll(sourceGenStepSteps(decls));
         return requires.toArray(new String[0]);
@@ -1616,7 +1616,7 @@ public final class BuildPipelines {
 
     private static String[] groovyCompileRequires(PluginBuild.Declarations decls) {
         List<String> requires =
-                new ArrayList<>(List.of(StepNames.PARSE_BUILD, StepNames.RESOLVE_DEPS, StepNames.ENSURE_JDK));
+                new ArrayList<>(List.of(TaskNames.PARSE_BUILD, TaskNames.RESOLVE_DEPS, TaskNames.ENSURE_JDK));
         requires.addAll(sourceGenStepSteps(decls));
         return requires.toArray(new String[0]);
     }
@@ -1628,7 +1628,7 @@ public final class BuildPipelines {
         return procs != null && !procs.isEmpty();
     }
 
-    private static Step compileKotlinStep(Ctx cx, PluginBuild.Declarations pluginDecls) {
+    private static Task compileKotlinStep(Ctx cx, PluginBuild.Declarations pluginDecls) {
         Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
@@ -1641,10 +1641,10 @@ public final class BuildPipelines {
         boolean kotlinModule = cx.kotlinModule();
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
-        return Step.builder(StepNames.COMPILE_KOTLIN)
+        return Task.builder(TaskNames.COMPILE_KOTLIN)
                 .phase(Phase.COMPILE)
                 .label("Kotlin")
-                .kind(StepKind.CPU)
+                .kind(TaskKind.CPU)
                 // Kotlin compiles first (reads Java declarations from source), so it
                 // only needs the base steps — javac runs after it in a mixed module
                 // plus any source-generating plugin steps.
@@ -1731,7 +1731,7 @@ public final class BuildPipelines {
                     // dir and prunes files it didn't produce — so it can't share a
                     // dir with javac's output (it would delete the.class files).
                     Path ktOut = ctx.require(LAYOUT).kotlinClassesDir();
-                    String taskId = ActionKey.qualifiedTaskId(StepNames.COMPILE_KOTLIN, classes);
+                    String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_KOTLIN, classes);
                     Path workingDir = in.cache()
                             .resolve("actions")
                             .resolve("incremental-kotlin")
@@ -1766,7 +1766,7 @@ public final class BuildPipelines {
                 .build();
     }
 
-    private static Step compileGroovyStep(Ctx cx, PluginBuild.Declarations pluginDecls) {
+    private static Task compileGroovyStep(Ctx cx, PluginBuild.Declarations pluginDecls) {
         Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
@@ -1774,10 +1774,10 @@ public final class BuildPipelines {
         java.util.concurrent.atomic.AtomicReference<List<Path>> groovyMainSrcRef = cx.groovyMainSrcRef();
         boolean compact = cx.compact();
         boolean mixedGroovy = cx.mixedGroovy();
-        return Step.builder(StepNames.COMPILE_GROOVY)
+        return Task.builder(TaskNames.COMPILE_GROOVY)
                 .phase(Phase.COMPILE)
                 .label("Groovy")
-                .kind(StepKind.CPU)
+                .kind(TaskKind.CPU)
                 // Groovy compiles first (joint mode reads Java *declarations* by sweeping the
                 // .java roots; javac runs after it in a mixed module), so it only needs the
                 // base steps plus any source-generating plugin steps.
@@ -1851,7 +1851,7 @@ public final class BuildPipelines {
                     // dir (the worker's action cache snapshots its whole output dir — it must
                     // never share one with javac).
                     Path gvOut = ctx.require(LAYOUT).groovyClassesDir();
-                    String taskId = ActionKey.qualifiedTaskId(StepNames.COMPILE_GROOVY, classes);
+                    String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_GROOVY, classes);
                     // Mixed module: joint mode sweeps the Java roots for resolution only
                     // stubs are retained for javac's sourcepath; jk's javac worker stays
                     // authoritative for the real Java outputs.
@@ -1885,7 +1885,7 @@ public final class BuildPipelines {
                 .build();
     }
 
-    private static Step copyResourcesStep(Ctx cx) {
+    private static Task copyResourcesStep(Ctx cx) {
         Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
@@ -1898,12 +1898,12 @@ public final class BuildPipelines {
         boolean kotlinModule = cx.kotlinModule();
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
-        return Step.builder(StepNames.COPY_RESOURCES)
+        return Task.builder(TaskNames.COPY_RESOURCES)
                 .phase(Phase.COMPILE)
                 .label("Resources")
-                .kind(StepKind.CPU)
+                .kind(TaskKind.CPU)
                 // After AFTER_COMPILE SPI so generated classes land before resource merge.
-                .requires(StepNames.BUILD_LOGIC_AFTER_COMPILE)
+                .requires(TaskNames.BUILD_LOGIC_AFTER_COMPILE)
                 .weight(() -> plan.get().fullyCached() ? 0 : W_RESOURCES)
                 .ticks(1)
                 .execute(ctx -> {
@@ -1952,15 +1952,15 @@ public final class BuildPipelines {
     }
 
     /** SPI anchor {@code AFTER_COMPILE}: named build-logic tasks after main classes exist. */
-    private static Step buildLogicAfterCompileStep(Ctx cx) {
+    private static Task buildLogicAfterCompileStep(Ctx cx) {
         Inputs in = cx.in();
         ActionCache actionCache = cx.actionCache();
         java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
         String mainCompile = cx.mainCompile();
-        return Step.builder(StepNames.BUILD_LOGIC_AFTER_COMPILE)
+        return Task.builder(TaskNames.BUILD_LOGIC_AFTER_COMPILE)
                 .phase(Phase.COMPILE)
                 .label("Build logic (after compile)")
-                .kind(StepKind.CPU)
+                .kind(TaskKind.CPU)
                 .requires(mainCompile)
                 .weight(() -> plan.get().fullyCached() ? 0 : 1)
                 .ticks(1)
@@ -1984,14 +1984,14 @@ public final class BuildPipelines {
     }
 
     /** SPI anchor {@code BEFORE_PACKAGE}: named build-logic tasks immediately before jar/image. */
-    private static Step buildLogicBeforePackageStep(Ctx cx) {
+    private static Task buildLogicBeforePackageStep(Ctx cx) {
         Inputs in = cx.in();
         ActionCache actionCache = cx.actionCache();
         java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
-        return Step.builder(StepNames.BUILD_LOGIC_BEFORE_PACKAGE)
+        return Task.builder(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE)
                 .phase(Phase.PACKAGE)
                 .label("Build logic (before package)")
-                .kind(StepKind.CPU)
+                .kind(TaskKind.CPU)
                 .requires(beforePackageRequires(in))
                 .weight(() -> plan.get().fullyCached() ? 0 : 1)
                 .ticks(1)
@@ -2017,12 +2017,12 @@ public final class BuildPipelines {
     /** BEFORE_PACKAGE waits on resources (and tests when they run) so packaging sees a complete tree. */
     private static String[] beforePackageRequires(Inputs in) {
         List<String> requires = new ArrayList<>();
-        requires.add(StepNames.COPY_RESOURCES);
-        if (!in.skipTests()) requires.add(StepNames.RUN_TESTS);
+        requires.add(TaskNames.COPY_RESOURCES);
+        if (!in.skipTests()) requires.add(TaskNames.RUN_TESTS);
         return requires.toArray(new String[0]);
     }
 
-    private static Step compileTestStep(Ctx cx) {
+    private static Task compileTestStep(Ctx cx) {
         Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
@@ -2035,12 +2035,12 @@ public final class BuildPipelines {
         boolean kotlinModule = cx.kotlinModule();
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
-        return Step.builder(StepNames.COMPILE_TEST)
+        return Task.builder(TaskNames.COMPILE_TEST)
                 .phase(Phase.TEST)
                 .label("Test Compile")
-                .kind(StepKind.CPU)
+                .kind(TaskKind.CPU)
                 // AFTER_COMPILE SPI may generate types tests import.
-                .requires(StepNames.BUILD_LOGIC_AFTER_COMPILE, StepNames.RESOLVE_DEPS)
+                .requires(TaskNames.BUILD_LOGIC_AFTER_COMPILE, TaskNames.RESOLVE_DEPS)
                 .weight(() -> plan.get().compileTest())
                 .interpolated() // opaque javac/kotlinc call — ease it over time
                 .ticks(1)
@@ -2209,7 +2209,7 @@ public final class BuildPipelines {
                         }
                         boolean ok = TestSupport.compileWithCache(
                                 ctx,
-                                StepNames.COMPILE_TEST,
+                                TaskNames.COMPILE_TEST,
                                 javaTestSrc,
                                 javaTestOut,
                                 javaCp,
@@ -2254,7 +2254,7 @@ public final class BuildPipelines {
                 .build();
     }
 
-    private static Step runTestsStep(Ctx cx, PluginBuild.Declarations pluginDecls) {
+    private static Task runTestsStep(Ctx cx, PluginBuild.Declarations pluginDecls) {
         Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
@@ -2267,11 +2267,21 @@ public final class BuildPipelines {
         boolean kotlinModule = cx.kotlinModule();
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
-        return Step.builder(StepNames.RUN_TESTS)
+        List<String> testRequires = new ArrayList<>();
+        testRequires.add(TaskNames.COMPILE_TEST);
+        testRequires.add(TaskNames.COPY_RESOURCES);
+        if (pluginDecls != null) {
+            for (PluginBuild.TaskDecl step : pluginDecls.steps()) {
+                if (step.testOnly() || !step.contributesTestClasspath().isEmpty()) {
+                    testRequires.add("plugin-" + step.name());
+                }
+            }
+        }
+        return Task.builder(TaskNames.RUN_TESTS)
                 .phase(Phase.TEST)
                 .label("Testing")
-                .kind(StepKind.IO)
-                .requires(StepNames.COMPILE_TEST, StepNames.COPY_RESOURCES)
+                .kind(TaskKind.IO)
+                .requires(testRequires.toArray(new String[0]))
                 .weight(() -> plan.get().runTests())
                 .ticks(in.estimatedTestCount())
                 .execute(ctx -> {
@@ -2333,7 +2343,7 @@ public final class BuildPipelines {
                                     effectiveSel,
                                     projectUnderTest.build().testEnv(),
                                     in.dir()));
-                    String testTaskId = ActionKey.qualifiedTaskId(StepNames.RUN_TESTS, testClassesForStamp);
+                    String testTaskId = ActionKey.qualifiedTaskId(TaskNames.RUN_TESTS, testClassesForStamp);
                     // --force forces a real test run, matching the compile/package
                     // freshness checks above (which all guard on !rerun). Without
                     // this guard the action record would skip the runner even when
@@ -2376,7 +2386,7 @@ public final class BuildPipelines {
                     ctx.reweight(EffortWeights.learned(
                             StepTimings.load(in.cache()),
                             in.dir().toString(),
-                            StepNames.RUN_TESTS,
+                            TaskNames.RUN_TESTS,
                             in.estimatedTestCount(),
                             EffortWeights.runTestsWeight(in.estimatedTestCount()),
                             in.projectModules().stream().map(Path::toString).toList()));
@@ -2485,7 +2495,7 @@ public final class BuildPipelines {
         }
     }
 
-    private static Step packageJarStep(
+    private static Task packageJarStep(
             Ctx cx,
             PluginBuild.Active pluginActive,
             PluginBuild.Declarations pluginDecls,
@@ -2502,10 +2512,10 @@ public final class BuildPipelines {
         boolean kotlinModule = cx.kotlinModule();
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
-        return Step.builder(StepNames.PACKAGE_JAR)
+        return Task.builder(TaskNames.PACKAGE_JAR)
                 .phase(Phase.PACKAGE)
                 .label("Packaging")
-                .kind(StepKind.CPU)
+                .kind(TaskKind.CPU)
                 .requires(packageRequires(in, pluginDecls))
                 .weight(() -> plan.get().pkg())
                 .ticks(1)
@@ -2539,7 +2549,7 @@ public final class BuildPipelines {
                             "main:" + (mainClass == null ? "" : mainClass),
                             "sbom:" + (sbom == null ? "" : cc.jumpkick.util.Hashing.sha256Hex(sbom)),
                             "manifest:" + project.manifest());
-                    String pkgTask = ActionKey.qualifiedTaskId(StepNames.PACKAGE_JAR, jarPath);
+                    String pkgTask = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAR, jarPath);
                     String pkgKey =
                             ActionKey.forArtifact(pkgTask, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), tokens);
                     if (restorePackaged(in.cache(), pkgKey, jarPath.getParent())) {
@@ -2620,58 +2630,58 @@ public final class BuildPipelines {
      */
     private static String[] packageRequires(Inputs in, PluginBuild.Declarations decls) {
         List<String> requires = new ArrayList<>();
-        requires.add(StepNames.BUILD_LOGIC_BEFORE_PACKAGE);
+        requires.add(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE);
         if (decls != null) {
-            for (PluginBuild.StepDecl step : decls.steps()) {
-                if (Phase.PACKAGE == step.beforePhase()) requires.add("plugin-" + step.name());
+            for (PluginBuild.TaskDecl step : decls.steps()) {
+                if (step.packageTime()) requires.add("plugin-" + step.name());
             }
         }
         return requires.toArray(new String[0]);
     }
 
-    /** True when a declared step must run before the compilers (source generation). */
-    static boolean beforeCompile(PluginBuild.StepDecl step) {
-        return step.beforePhase() == Phase.COMPILE || !step.contributesSources().isEmpty();
+    /** True when a declared task must run before the compilers (source generation). */
+    static boolean beforeCompile(PluginBuild.TaskDecl step) {
+        return step.sourceGenerating();
     }
 
     /**
-     * The single classes-dir-replacing step ({@code transformsClasses}), if any. Two transforms are
-     * an error; validated at pipeline construction.
+     * The single classes-dir-replacing task ({@code transformsClasses}), if any. Two transforms are
+     * an error; validated at BuildPlan construction.
      */
-    static PluginBuild.StepDecl transformStep(PluginBuild.Declarations decls) {
+    static PluginBuild.TaskDecl transformStep(PluginBuild.Declarations decls) {
         if (decls == null) return null;
-        PluginBuild.StepDecl transform = null;
-        for (PluginBuild.StepDecl s : decls.steps()) {
+        PluginBuild.TaskDecl transform = null;
+        for (PluginBuild.TaskDecl s : decls.steps()) {
             if (!s.transforms()) continue;
             if (transform != null) {
-                throw new IllegalStateException("plugin steps " + transform.name() + " and " + s.name()
-                        + " both declare transformsClasses — at most one step may replace the classes dir"
+                throw new IllegalStateException("plugin tasks " + transform.name() + " and " + s.name()
+                        + " both declare transformsClasses — at most one task may replace the classes dir"
                         + " (conflicts are errors, not priorities)");
             }
             if (beforeCompile(s)) {
-                throw new IllegalStateException("plugin step " + s.name()
-                        + " declares transformsClasses but runs before compile — a transform rewrites"
-                        + " compiled classes (after COMPILE, before PACKAGE)");
+                throw new IllegalStateException("plugin task " + s.name()
+                        + " declares transformsClasses but is source-generating — a transform rewrites"
+                        + " compiled classes after compile");
             }
-            if (s.beforePhase() != Phase.PACKAGE) {
-                throw new IllegalStateException("plugin step " + s.name()
-                        + " declares transformsClasses but not before(PACKAGE) — the transform must"
+            if (!s.packageTime()) {
+                throw new IllegalStateException("plugin task " + s.name()
+                        + " declares transformsClasses but is not package-time — the transform must"
                         + " finish before anything consumes the replaced classes");
             }
             if (!s.inputs().contains("classes")) {
-                throw new IllegalStateException("plugin step " + s.name()
+                throw new IllegalStateException("plugin task " + s.name()
                         + " declares transformsClasses but not In.classes() — the classes dir is what"
                         + " it transforms");
             }
             if (!s.contributesClasses().isEmpty()
                     || !s.contributesResources().isEmpty()
                     || !s.contributesSources().isEmpty()) {
-                throw new IllegalStateException("plugin step " + s.name()
+                throw new IllegalStateException("plugin task " + s.name()
                         + " declares transformsClasses and contributes* — a transform REPLACES the"
                         + " classes dir; contributions merge, and the two don't compose");
             }
             if (!s.outputs().contains(s.transformsClasses())) {
-                throw new IllegalStateException("plugin step " + s.name() + " transformsClasses(\""
+                throw new IllegalStateException("plugin task " + s.name() + " transformsClasses(\""
                         + s.transformsClasses() + "\") must name a declared output dir");
             }
             transform = s;
@@ -2680,57 +2690,49 @@ public final class BuildPipelines {
     }
 
     /**
-     * One declared build-plugin step: engine fingerprints inputs, restores on hit, forks on miss.
+     * One declared build-plugin task: engine fingerprints inputs, restores on hit, forks on miss.
      */
-    private static Step pluginStepStep(
-            Ctx cx, PluginBuild.Active active, PluginBuild.StepDecl step, PluginBuild.StepDecl transform) {
+    private static Task pluginTask(
+            Ctx cx, PluginBuild.Active active, PluginBuild.TaskDecl step, PluginBuild.TaskDecl transform) {
         Inputs in = cx.in();
         boolean beforeCompile = beforeCompile(step);
         if (beforeCompile && step.inputs().contains("classes")) {
-            // Declared-input validation: a source-generating step runs before any classes exist.
-            throw new IllegalStateException("plugin step " + step.name()
-                    + " runs before compile but declares In.classes() — generated-source steps"
-                    + " consume project files (In.projectFiles), config, or other step outputs");
-        }
-        if (step.afterPhase() != null
-                && step.beforePhase() != null
-                && !PhaseGraph.isValidWindow(step.afterPhase(), step.beforePhase())) {
-            // Coherent window: after must run no later than before in the phase DAG.
-            throw new IllegalStateException("plugin step " + step.name() + " declares a reversed phase window —"
-                    + " after(" + step.afterPhase().wireName() + ") does not precede before("
-                    + step.beforePhase().wireName() + ")");
+            throw new IllegalStateException("plugin task " + step.name()
+                    + " is source-generating but declares In.classes() — generated-source tasks"
+                    + " consume project files (In.projectFiles), config, or other task outputs");
         }
         List<String> requires = new ArrayList<>();
-        if (beforeCompile) {
-            requires.add(StepNames.PARSE_BUILD);
-            requires.add(StepNames.RESOLVE_DEPS);
-            requires.add(StepNames.ENSURE_JDK);
-        } else {
-            requires.add(StepNames.COPY_RESOURCES);
-            if (step.afterPhase() == Phase.TEST && !in.skipTests()) requires.add(StepNames.RUN_TESTS);
+        // Explicit plugin-declared edges first.
+        if (step.requires() != null) {
+            for (String r : step.requires()) {
+                if (r != null && !r.isBlank()) requires.add(r);
+            }
         }
-        // A step consuming another step's output (In.stepOutput) runs after it — the edge
-        // that lets a chain like merge-manifest → aapt2-link order itself inside one anchor
-        // window (declared inputs ARE the dependency graph).
+        if (beforeCompile) {
+            requires.add(TaskNames.PARSE_BUILD);
+            requires.add(TaskNames.RESOLVE_DEPS);
+            requires.add(TaskNames.ENSURE_JDK);
+        } else if (step.testOnly()) {
+            requires.add(TaskNames.PARSE_BUILD);
+            requires.add(TaskNames.RESOLVE_DEPS);
+            requires.add(TaskNames.ENSURE_JDK);
+        } else {
+            requires.add(TaskNames.COPY_RESOURCES);
+        }
+        // Peer plugin outputs (In.stepOutput) — declared inputs ARE the dependency graph.
         for (String input : step.inputs()) {
             if (input.startsWith("step:")) requires.add("plugin-" + input.substring("step:".length()));
         }
-        // Any other classes-consuming step reads MAIN_CLASSES, which the transform re-points
-        // it must observe the transformed dir, never race the transform (dex after Hilt's rewrite).
+        // Classes consumers wait on the transform (dex after Hilt rewrite).
         if (transform != null
                 && !step.name().equals(transform.name())
                 && step.inputs().contains("classes")) {
             requires.add("plugin-" + transform.name());
         }
-        return Step.builder("plugin-" + step.name())
+        return Task.builder("plugin-" + step.name())
                 .label(step.name())
-                // Group the plugin's step under the coarse phase it contributes to, so the web
-                // phase-chain folds it in rather than showing a stray node: a before-compile source
-                // generator belongs to COMPILE, otherwise the anchor it orders itself after.
-                .phase(beforeCompile(step) ? Phase.COMPILE : step.afterPhase())
-                .kind(StepKind.CPU)
-                .requires(requires.toArray(new String[0]))
-                .ticks(1)
+                .kind(TaskKind.CPU)
+                .requires(requires.toArray(new String[0]))                .ticks(1)
                 // A plugin command forks its process and can dominate a build (d8 dex, AOT), yet its
                 // static reservation is a token 1 unit — price it from the running metrics once this
                 // machine has seen it run (own-project average, else host average).
@@ -2740,7 +2742,7 @@ public final class BuildPipelines {
                     BuildLayout layout = ctx.require(LAYOUT);
                     Path classes = ctx.require(MAIN_CLASSES);
                     Path javaHome = ctx.require(JAVA_HOME);
-                    Path scratch = PluginBuild.stepScratch(layout, step.name());
+                    Path scratch = PluginBuild.taskScratch(layout, step.name());
                     // Before compile no classes exist to scan — the declared main (or null) rides.
                     String startClass =
                             beforeCompile(step) ? project.mainClass() : resolvedMain(project, in.dir(), classes);
@@ -2776,7 +2778,7 @@ public final class BuildPipelines {
                             case "config" -> tokens.add("config:" + PluginBuild.configToken(active.config()));
                             default -> {
                                 if (input.startsWith("step:")) {
-                                    Path other = PluginBuild.stepScratch(layout, input.substring("step:".length()));
+                                    Path other = PluginBuild.taskScratch(layout, input.substring("step:".length()));
                                     tokens.add(input + ":" + cc.jumpkick.task.ClasspathFingerprint.entry(other));
                                 } else if (input.startsWith("project:")) {
                                     Path files = in.dir().resolve(input.substring("project:".length()));
@@ -2840,7 +2842,7 @@ public final class BuildPipelines {
                     for (String input : step.inputs()) {
                         if (input.startsWith("step:")) {
                             String other = input.substring("step:".length());
-                            specWriter.stepOutput(other, PluginBuild.stepScratch(layout, other));
+                            specWriter.stepOutput(other, PluginBuild.taskScratch(layout, other));
                         }
                     }
                     Path spec = specWriter.write();
@@ -2869,7 +2871,7 @@ public final class BuildPipelines {
      * deps, prepares SBOM, and hands coordinate-named runtime entries to the plugin.
      */
     private static void packagePlugin(
-            StepContext ctx,
+            TaskContext ctx,
             Inputs in,
             Cas cas,
             JkBuild project,
@@ -2926,7 +2928,7 @@ public final class BuildPipelines {
                 case "config" -> tokens.add("config:" + PluginBuild.configToken(active.config()));
                 default -> {
                     if (input.startsWith("step:")) {
-                        Path other = PluginBuild.stepScratch(layout, input.substring("step:".length()));
+                        Path other = PluginBuild.taskScratch(layout, input.substring("step:".length()));
                         tokens.add(input + ":" + cc.jumpkick.task.ClasspathFingerprint.entry(other));
                     } else if (input.startsWith("project:")) {
                         Path files = in.dir().resolve(input.substring("project:".length()));
@@ -2953,10 +2955,10 @@ public final class BuildPipelines {
         tokens.add("manifest:" + project.manifest());
         // Packager identity (e.g. shrink vs boot) so CLI packaging overrides cannot cache-collide.
         tokens.add("packaging:" + decls.packager().name());
-        // The packager's CODE is an input, same as plugin steps (see pluginStepStep).
+        // The packager's CODE is an input, same as plugin steps (see pluginTask).
         tokens.add(
                 "worker:" + cc.jumpkick.task.ClasspathFingerprint.entry(PluginBuild.workerJarFor(active, in.cache())));
-        String pkgTask = ActionKey.qualifiedTaskId(StepNames.PACKAGE_JAR, jarPath);
+        String pkgTask = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAR, jarPath);
         String pkgKey = ActionKey.forArtifact(pkgTask, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), tokens);
         if (restorePackaged(in.cache(), pkgKey, jarPath.getParent())) {
             ctx.put(JAR_PATH, jarPath);
@@ -2986,8 +2988,8 @@ public final class BuildPipelines {
         for (var e : extras.entrySet()) spec.extra(e.getKey(), e.getValue());
         for (var e : secrets.entrySet()) spec.secret(e.getKey(), e.getValue());
         spec.extra("sbom", sbomFile);
-        for (PluginBuild.StepDecl step : decls.steps()) {
-            Path scratch = PluginBuild.stepScratch(layout, step.name());
+        for (PluginBuild.TaskDecl step : decls.steps()) {
+            Path scratch = PluginBuild.taskScratch(layout, step.name());
             if (Files.isDirectory(scratch)) spec.stepOutput(step.name(), scratch);
         }
         Path specFile = spec.write();
@@ -3082,7 +3084,7 @@ public final class BuildPipelines {
     /** SBOM path inside plain/assembly application jars (jar root = classpath root). */
     static final String SBOM_JAR_ENTRY = "META-INF/sbom/application.cdx.json";
 
-    private static Step writeStampStep(Ctx cx) {
+    private static Task writeStampStep(Ctx cx) {
         Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
@@ -3095,9 +3097,9 @@ public final class BuildPipelines {
         boolean kotlinModule = cx.kotlinModule();
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
-        return Step.builder(StepNames.WRITE_STAMP)
+        return Task.builder(TaskNames.WRITE_STAMP)
                 .phase(Phase.COMPILE)
-                .requires(StepNames.COMPILE_JAVA)
+                .requires(TaskNames.COMPILE_JAVA)
                 .weight(() -> plan.get().fullyCached() ? 0 : W_STAMP)
                 .ticks(1)
                 .execute(ctx -> {
@@ -3141,7 +3143,7 @@ public final class BuildPipelines {
                 .build();
     }
 
-    private static Step writeStampKotlinStep(Ctx cx) {
+    private static Task writeStampKotlinStep(Ctx cx) {
         Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
@@ -3154,9 +3156,9 @@ public final class BuildPipelines {
         boolean kotlinModule = cx.kotlinModule();
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
-        return Step.builder(StepNames.WRITE_STAMP_KOTLIN)
+        return Task.builder(TaskNames.WRITE_STAMP_KOTLIN)
                 .phase(Phase.COMPILE)
-                .requires(StepNames.COMPILE_KOTLIN)
+                .requires(TaskNames.COMPILE_KOTLIN)
                 .weight(() -> plan.get().fullyCached() ? 0 : W_STAMP)
                 .ticks(1)
                 .execute(ctx -> {
@@ -3175,7 +3177,7 @@ public final class BuildPipelines {
                     cc.jumpkick.task.FreshnessStamp.write(
                             classes,
                             cc.jumpkick.task.FreshnessStamp.KOTLIN_STAMP,
-                            StepNames.COMPILE_KOTLIN,
+                            TaskNames.COMPILE_KOTLIN,
                             "",
                             freshInputs,
                             classpath,
@@ -3185,13 +3187,13 @@ public final class BuildPipelines {
                 .build();
     }
 
-    private static Step writeStampGroovyStep(Ctx cx) {
+    private static Task writeStampGroovyStep(Ctx cx) {
         Inputs in = cx.in();
         java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
         boolean mixedGroovy = cx.mixedGroovy();
-        return Step.builder(StepNames.WRITE_STAMP_GROOVY)
+        return Task.builder(TaskNames.WRITE_STAMP_GROOVY)
                 .phase(Phase.COMPILE)
-                .requires(StepNames.COMPILE_GROOVY)
+                .requires(TaskNames.COMPILE_GROOVY)
                 .weight(() -> plan.get().fullyCached() ? 0 : W_STAMP)
                 .ticks(1)
                 .execute(ctx -> {
@@ -3210,7 +3212,7 @@ public final class BuildPipelines {
                     cc.jumpkick.task.FreshnessStamp.write(
                             classes,
                             cc.jumpkick.task.FreshnessStamp.GROOVY_STAMP,
-                            StepNames.COMPILE_GROOVY,
+                            TaskNames.COMPILE_GROOVY,
                             "",
                             freshInputs,
                             classpath,
@@ -3220,7 +3222,7 @@ public final class BuildPipelines {
                 .build();
     }
 
-    private static Step assembleClassesStep(Ctx cx) {
+    private static Task assembleClassesStep(Ctx cx) {
         Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
@@ -3235,13 +3237,13 @@ public final class BuildPipelines {
         String mainCompile = cx.mainCompile();
         boolean mixedGroovy = cx.mixedGroovy();
         List<String> requires = new ArrayList<>();
-        requires.add(StepNames.COMPILE_JAVA);
-        if (mixed) requires.add(StepNames.COMPILE_KOTLIN);
-        if (mixedGroovy) requires.add(StepNames.COMPILE_GROOVY);
-        return Step.builder(StepNames.ASSEMBLE_CLASSES)
+        requires.add(TaskNames.COMPILE_JAVA);
+        if (mixed) requires.add(TaskNames.COMPILE_KOTLIN);
+        if (mixedGroovy) requires.add(TaskNames.COMPILE_GROOVY);
+        return Task.builder(TaskNames.ASSEMBLE_CLASSES)
                 .phase(Phase.COMPILE)
                 .label("Assembling")
-                .kind(StepKind.CPU)
+                .kind(TaskKind.CPU)
                 .requires(requires.toArray(new String[0]))
                 .weight(() -> plan.get().fullyCached() ? 0 : W_ASSEMBLE)
                 .ticks(1)
@@ -3289,27 +3291,27 @@ public final class BuildPipelines {
      * project JDK. {@code allowNative=false} skips the native tail for workspace prereq modules
      * that are not themselves selected for native (JK-1361).
      */
-    public static void appendDeclaredTails(Pipeline.Builder b, Inputs in) {
+    public static void appendDeclaredTails(BuildPlan.Builder b, Inputs in) {
         appendDeclaredTails(b, in, null, true);
     }
 
-    /** As {@link #appendDeclaredTails(Pipeline.Builder, Inputs)} with an explicit Graal home. */
-    public static void appendDeclaredTails(Pipeline.Builder b, Inputs in, Path graalHome) {
+    /** As {@link #appendDeclaredTails(BuildPlan.Builder, Inputs)} with an explicit Graal home. */
+    public static void appendDeclaredTails(BuildPlan.Builder b, Inputs in, Path graalHome) {
         appendDeclaredTails(b, in, graalHome, true);
     }
 
     /**
-     * As {@link #appendDeclaredTails(Pipeline.Builder, Inputs, Path)} with {@code allowNative} for
+     * As {@link #appendDeclaredTails(BuildPlan.Builder, Inputs, Path)} with {@code allowNative} for
      * workspace prereq modules that must stay JVM-only.
      */
-    public static void appendDeclaredTails(Pipeline.Builder b, Inputs in, Path graalHome, boolean allowNative) {
+    public static void appendDeclaredTails(BuildPlan.Builder b, Inputs in, Path graalHome, boolean allowNative) {
         try {
             JkBuild project = applyAssemblyOverride(JkBuildParser.parse(in.buildFile()), in.session());
             if (project.assembly()) {
-                b.addStep(assemblyStep(in.cache(), in.lockFile(), !in.ephemeralActions()));
+                b.addTask(assemblyStep(in.cache(), in.lockFile(), !in.ephemeralActions()));
             }
             if (allowNative && project.nativeMode() == JkBuild.NativeMode.ALWAYS) {
-                b.addStep(nativeStep(
+                b.addTask(nativeStep(
                         in.dir(),
                         in.cache(),
                         in.lockFile(),
@@ -3319,7 +3321,7 @@ public final class BuildPipelines {
                         List.of()));
             }
             if (project.project().sourcesMode() == JkBuild.SourcesMode.ALWAYS) {
-                b.addStep(sourcesStep(in.cache(), !in.ephemeralActions()));
+                b.addTask(sourcesStep(in.cache(), !in.ephemeralActions()));
             }
         } catch (Exception ignored) {
         }
@@ -3345,17 +3347,17 @@ public final class BuildPipelines {
     // ---- tail steps ----------------------------------------------------
 
     /** Assembly-jar packaging — requires package-jar. */
-    public static Step assemblyStep(Path cache, Path lockFile) {
+    public static Task assemblyStep(Path cache, Path lockFile) {
         return assemblyStep(cache, lockFile, true);
     }
 
     /** As {@link #assemblyStep(Path, Path)}; {@code persist=false} keeps verify-scratch keys out of the cache. */
-    public static Step assemblyStep(Path cache, Path lockFile, boolean persist) {
-        return Step.builder(StepNames.PACKAGE_ASSEMBLY)
+    public static Task assemblyStep(Path cache, Path lockFile, boolean persist) {
+        return Task.builder(TaskNames.PACKAGE_ASSEMBLY)
                 .phase(Phase.PACKAGE)
                 .label("Assembly")
-                .kind(StepKind.CPU)
-                .requires(StepNames.PACKAGE_JAR)
+                .kind(TaskKind.CPU)
+                .requires(TaskNames.PACKAGE_JAR)
                 .weight(() -> EffortWeights.assemblyWeight(lockFile.getParent()))
                 .ticks(1)
                 .execute(ctx -> {
@@ -3374,7 +3376,7 @@ public final class BuildPipelines {
                             "main:" + (project.mainClass() == null ? "" : project.mainClass()),
                             "manifest:" + project.manifest(),
                             "packaging:fat"); // distinct from shrink / thin package-jar
-                    String shTask = ActionKey.qualifiedTaskId(StepNames.PACKAGE_ASSEMBLY, assemblyJar);
+                    String shTask = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_ASSEMBLY, assemblyJar);
                     String shKey =
                             ActionKey.forArtifact(shTask, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), tokens);
                     if (restorePackaged(cache, shKey, assemblyJar.getParent())) {
@@ -3407,17 +3409,17 @@ public final class BuildPipelines {
     }
 
     /** Sources-jar packaging — writes {@code <artifact>-<version>-sources.jar} to the artifact dir. */
-    public static Step sourcesStep(Path cache) {
+    public static Task sourcesStep(Path cache) {
         return sourcesStep(cache, true);
     }
 
     /** As {@link #sourcesStep(Path)}; {@code persist=false} keeps verify-scratch keys out of the cache. */
-    public static Step sourcesStep(Path cache, boolean persist) {
-        return Step.builder(StepNames.PACKAGE_SOURCES)
+    public static Task sourcesStep(Path cache, boolean persist) {
+        return Task.builder(TaskNames.PACKAGE_SOURCES)
                 .phase(Phase.PACKAGE)
                 .label("Sources")
-                .kind(StepKind.CPU)
-                .requires(StepNames.PACKAGE_JAR)
+                .kind(TaskKind.CPU)
+                .requires(TaskNames.PACKAGE_JAR)
                 .weight(W_SOURCES)
                 .ticks(1)
                 .execute(ctx -> {
@@ -3443,7 +3445,7 @@ public final class BuildPipelines {
                                     })
                                     .toList());
                     List<String> tokens = List.of("sources:" + srcHash);
-                    String task = ActionKey.qualifiedTaskId(StepNames.PACKAGE_SOURCES, sourcesJar);
+                    String task = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_SOURCES, sourcesJar);
                     String key = ActionKey.forArtifact(task, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), tokens);
                     if (restorePackaged(cache, key, sourcesJar.getParent())) {
                         ctx.label(sourcesJar.getFileName() + " up-to-date");
@@ -3472,7 +3474,7 @@ public final class BuildPipelines {
      * bin/native-image} is used); when {@code null} the step falls back to the project JDK / {@code
      * $GRAALVM_HOME} / {@code PATH} search.
      */
-    public static Step nativeStep(
+    public static Task nativeStep(
             Path dir,
             Path cache,
             Path lockFile,
@@ -3483,11 +3485,11 @@ public final class BuildPipelines {
         // Install / native pipelines never run under verify's ephemeral scratch — persist.
         final boolean persist = true;
         List<String> extra = extraArgs == null ? List.of() : extraArgs;
-        return Step.builder(StepNames.NATIVE_IMAGE)
+        return Task.builder(TaskNames.NATIVE_IMAGE)
                 .phase(Phase.PACKAGE)
                 .label("Native")
-                .kind(StepKind.IO)
-                .requires(StepNames.PACKAGE_JAR)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.PACKAGE_JAR)
                 .weight(() -> EffortWeights.nativeWeight(dir))
                 .ticks(10) // preamble(1) + 8 native-image stages + done(1)
                 .execute(ctx -> {
@@ -3619,7 +3621,7 @@ public final class BuildPipelines {
                             "shared:" + shared,
                             "out:" + out.getFileName(),
                             "graal:" + graalTok);
-                    String nTask = ActionKey.qualifiedTaskId(StepNames.NATIVE_IMAGE, out);
+                    String nTask = ActionKey.qualifiedTaskId(TaskNames.NATIVE_IMAGE, out);
                     String nKey = ActionKey.forArtifact(
                             nTask, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), nativeTokens);
                     if (!shared && restorePackaged(cache, nKey, out.getParent())) {
@@ -3670,12 +3672,12 @@ public final class BuildPipelines {
     // ---- helpers --------------------------------------------------------
 
     @SuppressWarnings("unchecked")
-    private static List<Path> javaSources(StepContext ctx) {
+    private static List<Path> javaSources(TaskContext ctx) {
         return (List<Path>) ctx.get(JAVA_SOURCES).orElse(List.of());
     }
 
     @SuppressWarnings("unchecked")
-    private static List<Path> kotlinSources(StepContext ctx) {
+    private static List<Path> kotlinSources(TaskContext ctx) {
         return (List<Path>) ctx.get(KOTLIN_SOURCES).orElse(List.of());
     }
 
@@ -3703,7 +3705,7 @@ public final class BuildPipelines {
     }
 
     @SuppressWarnings("unchecked")
-    private static List<Path> groovySources(StepContext ctx) {
+    private static List<Path> groovySources(TaskContext ctx) {
         return (List<Path>) ctx.get(GROOVY_SOURCES).orElse(List.of());
     }
 
@@ -3833,7 +3835,7 @@ public final class BuildPipelines {
      * Kotlin can read Java declarations from source
      */
     private static cc.jumpkick.task.KotlinCompile.Result compileKotlinSources(
-            StepContext ctx,
+            TaskContext ctx,
             Inputs in,
             Cas cas,
             ActionCache actionCache,
@@ -3975,7 +3977,7 @@ public final class BuildPipelines {
      * @param stubsOut when non-null, Java-visible stubs are retained there for javac's sourcepath
      */
     private static cc.jumpkick.task.GroovyCompile.Result compileGroovySources(
-            StepContext ctx,
+            TaskContext ctx,
             Inputs in,
             Cas cas,
             ActionCache actionCache,
@@ -4079,7 +4081,7 @@ public final class BuildPipelines {
      * class implements {@code groovy.lang.GroovyObject}, so Java code referencing a Groovy type
      * needs the jar to resolve the supertype. Warm after compile-groovy's setup (CAS-memoized).
      */
-    private static Path groovyCompileJar(StepContext ctx, Cas cas) throws IOException {
+    private static Path groovyCompileJar(TaskContext ctx, Cas cas) throws IOException {
         String groovyVersion = CompileToolchain.groovyVersionFor(ctx.require(LOCKFILE), ctx.require(PROJECT));
         try {
             cc.jumpkick.repo.RepoGroup repos = RepoGroupBuilder.buildFor(ctx.require(PROJECT), null, cas);
@@ -4096,7 +4098,7 @@ public final class BuildPipelines {
      * onto the compile classpath, but the JVM still needs the full runtime closure when the code
      * runs (mirrors {@link #kotlinStdlib}).
      */
-    private static List<Path> groovyRuntime(StepContext ctx, Cas cas) throws IOException {
+    private static List<Path> groovyRuntime(TaskContext ctx, Cas cas) throws IOException {
         String groovyVersion = CompileToolchain.groovyVersionFor(ctx.require(LOCKFILE), ctx.require(PROJECT));
         if (groovyVersion == null || groovyVersion.isBlank()) {
             groovyVersion = cc.jumpkick.groovy.GroovyResolver.DEFAULT_VERSION;
@@ -4129,7 +4131,7 @@ public final class BuildPipelines {
      * with {@code -no-stdlib}, but the JVM still needs {@code kotlin.jvm.internal.*} etc. when the
      * code runs.
      */
-    private static Path kotlinStdlib(StepContext ctx, Cas cas) throws IOException {
+    private static Path kotlinStdlib(TaskContext ctx, Cas cas) throws IOException {
         String kotlinVersion = CompileToolchain.kotlinVersionFor(ctx.require(LOCKFILE), ctx.require(PROJECT));
         try {
             cc.jumpkick.repo.RepoGroup repos = RepoGroupBuilder.buildFor(ctx.require(PROJECT), null, cas);

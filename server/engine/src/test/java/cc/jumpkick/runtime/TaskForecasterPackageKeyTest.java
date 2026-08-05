@@ -17,7 +17,7 @@ import org.junit.jupiter.api.io.TempDir;
  * package-jar forecast keys must match {@link BuildPipelines} packaging tokens
  * (including empty {@code sbom:} for libraries) so a warm jar is not permanently "repackage".
  */
-class BuildPlanForecastPackageKeyTest {
+class TaskForecasterPackageKeyTest {
 
     @Test
     void library_package_tokens_include_empty_sbom_like_the_build(@TempDir Path tmp) throws Exception {
@@ -70,7 +70,7 @@ class BuildPlanForecastPackageKeyTest {
         actionCache.cas().put(bytes, sha);
 
         Path wiped = tmp.resolve("target/sibling.jar"); // does not exist (post-clean)
-        String recovered = BuildPlanForecast.fingerprintJarOrCached(
+        String recovered = TaskForecaster.fingerprintJarOrCached(
                 wiped, actionCache, Map.of(wiped.toAbsolutePath().normalize(), sha));
 
         // Live-build form: the same content on disk.
@@ -92,10 +92,10 @@ class BuildPlanForecastPackageKeyTest {
         Path blob = ac.cas().put(bytes, sha);
         ac.storeWithOutputs("task@x", "key-1", Map.of(), Map.of("lib.jar", sha), Map.of());
 
-        assertThat(BuildPlanForecast.present(ac, "key-1")).isTrue();
+        assertThat(TaskForecaster.present(ac, "key-1")).isTrue();
         Files.delete(blob); // simulate LRU eviction of the payload
-        assertThat(BuildPlanForecast.present(ac, "key-1")).isFalse();
-        assertThat(BuildPlanForecast.present(ac, "no-such-key")).isFalse();
+        assertThat(TaskForecaster.present(ac, "key-1")).isFalse();
+        assertThat(TaskForecaster.present(ac, "no-such-key")).isFalse();
     }
 
     @Test
@@ -129,7 +129,7 @@ class BuildPlanForecastPackageKeyTest {
                 "packaging:fat");
 
         // Forecast path: same deps set (assemblyDependencyJars) + fingerprintDepJars when jars exist.
-        String depsTok = BuildPlanForecast.fingerprintDepJars(depJars, null, Map.of());
+        String depsTok = TaskForecaster.fingerprintDepJars(depJars, null, Map.of());
         List<String> forecastTokens = List.of(
                 "classes:" + ClasspathFingerprint.entry(classes),
                 "deps:" + depsTok,

@@ -39,7 +39,7 @@ Companion: [test-parallelization.md](test-parallelization.md), [within-module-te
 
 | Layer | Behavior | Code |
 |-------|----------|------|
-| Cross-module test overlap | Default on; `--serial-tests` opts out | `Session.parallelTests`, `BuildPipelines` TEST_GATE, CLI `ParallelTestsOpts` |
+| Cross-module test overlap | Default on; `--serial-tests` opts out | `Session.parallelTests`, `BuildBuildPlans` TEST_GATE, CLI `ParallelTestsOpts` |
 | Within-module class shards | Default `-w0` auto; forks + pull queue | `TestWorkers`, `JUnitLauncher` |
 | Heap / neighborliness | Shrinks W / module peak JVMs | `HeapPlan`, `PluginSlots` |
 | In-process Jupiter parallel | **Not configured by jk** | Project may still enable via JUnit config on the test classpath |
@@ -101,6 +101,6 @@ risk. Detection: `JupiterParallelDetect`. Does not fail the run.
 
 ## Refs
 
-- `TestWorkers`, `JUnitLauncher`, `BuildPipelines` TEST_GATE  
+- `TestWorkers`, `JUnitLauncher`, `BuildBuildPlans` TEST_GATE  
 - [JUnit 5 User Guide — Parallel Execution](https://junit.org/junit5/docs/current/user-guide/#writing-tests-parallel-execution)  
 - JK-1086 / JK-1087  

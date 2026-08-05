@@ -7,8 +7,8 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Tag;
@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * android-plan Step 5, blocker 3: the protobuf plugin — protoc codegen before compile. A plain
+ * android-plan Task 5, blocker 3: the protobuf plugin — protoc codegen before compile. A plain
  * Java project (deliberately: the plugin is ecosystem-neutral) declares {@code [protobuf]}, the
  * engine fetches the per-OS protoc binary ({@code ${host.os-arch}@exe} step-dependency), the
  * plugin worker forks it over {@code proto/}, and the generated Java compiles and packages like
@@ -84,9 +84,9 @@ class ProtobufPluginTest {
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
         assertThat(build.pluginConfig("protobuf")).isPresent();
 
-        Pipeline lock = LockPipelines.lockPipeline(
+        BuildPlan lock = LockPipelines.lockBuildPlan(
                 project, build, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
-        PipelineResult lockResult = lock.run();
+        BuildPlanResult lockResult = lock.run();
         assertThat(lockResult.errors()).isEmpty();
 
         BuildPipelines.Inputs in = new BuildPipelines.Inputs(
@@ -105,8 +105,8 @@ class ProtobufPluginTest {
                 false,
                 java.util.Set.of(),
                 SessionContext.current());
-        Pipeline pipeline = BuildPipelines.coreBuilder(in).build();
-        PipelineResult result = pipeline.run();
+        BuildPlan pipeline = BuildPipelines.coreBuilder(in).build();
+        BuildPlanResult result = pipeline.run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
         assertThat(anyFile(project.resolve("target"), "Greeting.class"))
@@ -176,7 +176,7 @@ class ProtobufPluginTest {
                 """);
 
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
-        Pipeline lock = LockPipelines.lockPipeline(
+        BuildPlan lock = LockPipelines.lockBuildPlan(
                 project, build, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().errors()).isEmpty();
 
@@ -196,7 +196,7 @@ class ProtobufPluginTest {
                 false,
                 java.util.Set.of(),
                 SessionContext.current());
-        PipelineResult result = BuildPipelines.coreBuilder(in).build().run();
+        BuildPlanResult result = BuildPipelines.coreBuilder(in).build().run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
         assertThat(anyFile(project.resolve("target"), "GreetingKt.class"))

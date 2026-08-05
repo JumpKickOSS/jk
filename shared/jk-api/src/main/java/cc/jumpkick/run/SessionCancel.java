@@ -5,7 +5,7 @@ import java.util.function.BooleanSupplier;
 
 /**
  * Seam so steps can observe session-level cancel without a {@code jk-api → core} edge. Engine
- * {@link #bind binds} a probe; {@link DefaultStepContext#cancelled()} ORs it in. Unbound → false.
+ * {@link #bind binds} a probe; {@link DefaultTaskContext#cancelled()} ORs it in. Unbound → false.
  */
 public final class SessionCancel {
 

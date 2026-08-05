@@ -168,7 +168,7 @@ class CommandManagerTest {
         CommandWedge.resetEnvelope();
         var buf = new ByteArrayOutputStream();
         var cm = CommandManager.pipeline(stream(buf), "Run", false);
-        cm.finishPipelineExec("Executing `java -cp … Main`");
+        cm.finishBuildPlanExec("Executing `java -cp … Main`");
         String out = buf.toString(StandardCharsets.UTF_8);
         assertThat(out).startsWith("\n");
         assertThat(out).doesNotEndWith("\n\n");
@@ -183,7 +183,7 @@ class CommandManagerTest {
         var ps = stream(buf);
         CommandWedge.envelopeStart(ps); // e.g. EnsureFreshLock / analyzing
         var cm = CommandManager.pipeline(ps, "Build", false);
-        cm.finishPipelineSuccess("built");
+        cm.finishBuildPlanSuccess("built");
         String out = buf.toString(StandardCharsets.UTF_8);
         // Exactly one leading blank for the whole command, not two.
         assertThat(out).startsWith("\n");
@@ -198,12 +198,12 @@ class CommandManagerTest {
         cm.progress(50, 100);
 
         // No estimate set → single yellow count-up from construction.
-        String up = cm.renderPipelineLines(120, 4_000).get(0);
+        String up = cm.renderBuildPlanLines(120, 4_000).get(0);
         assertThat(TestAnsi.strip(up)).contains("+4s");
 
         // Seeded with a 60s estimate: dual clock — countdown ~56s + elapsed +4s.
         cm.setEtaEstimate(60_000);
-        String header = cm.renderPipelineLines(120, 4_000).get(0);
+        String header = cm.renderBuildPlanLines(120, 4_000).get(0);
         String plain = TestAnsi.strip(header);
         assertThat(plain).contains("ETA ~56s");
         assertThat(plain).contains("+4s");
@@ -219,7 +219,7 @@ class CommandManagerTest {
         cm.nerdfont = false;
         cm.setEtaEstimate(10_000); // 10s estimate
         // 15s elapsed → countdown freezes at dim 0s; count-up is full elapsed (yellow).
-        String header = cm.renderPipelineLines(120, 15_000).get(0);
+        String header = cm.renderBuildPlanLines(120, 15_000).get(0);
         String plain = TestAnsi.strip(header);
         assertThat(plain).contains("ETA 0s");
         assertThat(plain).contains("+15s");
@@ -235,15 +235,15 @@ class CommandManagerTest {
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
         cm.setEtaEstimate(60_100); // 60s + 100ms
-        String mid = TestAnsi.strip(cm.renderPipelineLines(120, 4_050).get(0));
+        String mid = TestAnsi.strip(cm.renderBuildPlanLines(120, 4_050).get(0));
         assertThat(mid).contains("ETA ~56s");
         assertThat(mid).contains("+4s");
         // Still the same pair just under the next second (old code would drop countdown here).
-        String justBefore = TestAnsi.strip(cm.renderPipelineLines(120, 4_999).get(0));
+        String justBefore = TestAnsi.strip(cm.renderBuildPlanLines(120, 4_999).get(0));
         assertThat(justBefore).contains("ETA ~56s");
         assertThat(justBefore).contains("+4s");
         // One paint advances both faces.
-        String next = TestAnsi.strip(cm.renderPipelineLines(120, 5_000).get(0));
+        String next = TestAnsi.strip(cm.renderBuildPlanLines(120, 5_000).get(0));
         assertThat(next).contains("ETA ~55s");
         assertThat(next).contains("+5s");
     }
@@ -256,7 +256,7 @@ class CommandManagerTest {
         cm.setEtaEstimate(60_000);
         cm.setEtaEstimate(38_000); // post-prepare refine while modulesComplete == 0
         // 4s elapsed → 34s remaining from the refined seed.
-        assertThat(TestAnsi.strip(cm.renderPipelineLines(120, 4_000).get(0))).contains("ETA ~34s");
+        assertThat(TestAnsi.strip(cm.renderBuildPlanLines(120, 4_000).get(0))).contains("ETA ~34s");
     }
 
     @Test
@@ -269,11 +269,11 @@ class CommandManagerTest {
         // via setRemainingWorkEstimate after construction; render at that elapsed.
         // We can't freeze elapsedMillis, so set total = 30s + 90s and render at 30s.
         cm.setEtaEstimate(30_000 + 90_000);
-        String at30 = TestAnsi.strip(cm.renderPipelineLines(120, 30_000).get(0));
+        String at30 = TestAnsi.strip(cm.renderBuildPlanLines(120, 30_000).get(0));
         assertThat(at30).contains("ETA ~1m 30s");
         assertThat(at30).contains("+30s");
         // At end of remaining work (elapsed 120s) → frozen 0s + yellow full elapsed.
-        String done = TestAnsi.strip(cm.renderPipelineLines(120, 120_000).get(0));
+        String done = TestAnsi.strip(cm.renderBuildPlanLines(120, 120_000).get(0));
         assertThat(done).contains("ETA 0s");
         assertThat(done).contains("+2m 00s");
     }
@@ -288,11 +288,11 @@ class CommandManagerTest {
         cm.setModuleProgress(1, 2); // first module finished → lock
         cm.setEtaEstimate(20_000); // would-be re-projection: ignore
         // 10s elapsed of a locked 38s seed → 28s remain (not 10s from the rejected re-projection).
-        String mid = TestAnsi.strip(cm.renderPipelineLines(120, 10_000).get(0));
+        String mid = TestAnsi.strip(cm.renderBuildPlanLines(120, 10_000).get(0));
         assertThat(mid).contains("ETA ~28s");
         assertThat(mid).contains("+10s");
         // Overrun still pure wall-clock from the locked seed: freeze 0s + full elapsed (not re-projected).
-        String over = TestAnsi.strip(cm.renderPipelineLines(120, 40_000).get(0));
+        String over = TestAnsi.strip(cm.renderBuildPlanLines(120, 40_000).get(0));
         assertThat(over).contains("ETA 0s");
         assertThat(over).contains("+40s");
     }
@@ -302,11 +302,11 @@ class CommandManagerTest {
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
         // No seed → +elapsed for the whole command.
-        assertThat(TestAnsi.strip(cm.renderPipelineLines(120, 12_000).get(0))).contains("+12s");
+        assertThat(TestAnsi.strip(cm.renderBuildPlanLines(120, 12_000).get(0))).contains("+12s");
         // A zero ETA must not reset or clear a later positive seed's continuity either.
         cm.setEtaEstimate(30_000);
         cm.setEtaEstimate(0); // ignore clear
-        String seeded = TestAnsi.strip(cm.renderPipelineLines(120, 12_000).get(0));
+        String seeded = TestAnsi.strip(cm.renderBuildPlanLines(120, 12_000).get(0));
         assertThat(seeded).contains("ETA ~18s");
         assertThat(seeded).contains("+12s");
     }
@@ -319,13 +319,13 @@ class CommandManagerTest {
         cm.progress(50, 100);
         cm.setEtaEstimate(60_000);
         cm.setModuleProgress(2, 8);
-        String header = TestAnsi.strip(cm.renderPipelineLines(120, 4_000).get(0));
+        String header = TestAnsi.strip(cm.renderBuildPlanLines(120, 4_000).get(0));
         assertThat(header).contains("ETA ~56s");
         assertThat(header).contains("+4s");
         assertThat(header).doesNotContain("2/8");
         // Cold count-up has no ETA prefix.
         String cold = TestAnsi.strip(CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false)
-                .renderPipelineLines(120, 12_000)
+                .renderBuildPlanLines(120, 12_000)
                 .get(0));
         assertThat(cold).contains("+12s");
         assertThat(cold).doesNotContain("ETA ");
@@ -341,7 +341,7 @@ class CommandManagerTest {
         String expected = "\033]0;" + Spinner.fillGlyph(0) + " JumpKick - Building cc.jumpkick:jk:0.11.0...\033\\";
         assertThat(set).contains(expected);
         buf.reset();
-        cm.finishPipelineSuccess("ok", List.of());
+        cm.finishBuildPlanSuccess("ok", List.of());
         String cleared = buf.toString(StandardCharsets.UTF_8);
         assertThat(cleared).contains("\033]0;\033\\");
     }
@@ -353,10 +353,10 @@ class CommandManagerTest {
         var buf = new ByteArrayOutputStream();
         var cm = CommandManager.pipeline(stream(buf), "Build", false);
         cm.setWindowTitle("JumpKick - Building g:a:v...");
-        cm.addStep("g:a", "compile-main");
+        cm.addTask("g:a", "compile-main");
         cm.stepDone("g:a", "compile-main", true);
         cm.tick();
-        cm.finishPipelineSuccess("ok", List.of());
+        cm.finishBuildPlanSuccess("ok", List.of());
         assertThat(buf.toString(StandardCharsets.UTF_8)).doesNotContain("\033]0;");
     }
 
@@ -380,7 +380,7 @@ class CommandManagerTest {
                     var buf = new ByteArrayOutputStream();
                     var cm = CommandManager.pipeline(stream(buf), "Build", true);
                     cm.setWindowTitle("JumpKick - Building g:a:v...");
-                    cm.finishPipelineSuccess("ok", List.of());
+                    cm.finishBuildPlanSuccess("ok", List.of());
                     assertThat(buf.toString(StandardCharsets.UTF_8)).doesNotContain("\033]0;");
                 });
     }
@@ -403,13 +403,13 @@ class CommandManagerTest {
                 cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
                     var buf = new ByteArrayOutputStream();
                     var cm = CommandManager.pipeline(stream(buf), "Format", true);
-                    cm.addStepLabeled("", "fmt", "Examining source files");
+                    cm.addTaskLabeled("", "fmt", "Examining source files");
                     cm.stepRunning("", "fmt");
                     cm.progress(0, 100);
                     cm.progress(15, 100); // crosses 10%
                     cm.progress(25, 100); // crosses 20%
                     cm.progress(100, 100); // still working chrome max 90% mid-run
-                    cm.finishPipelineSuccess("Already formatted - took 547ms", List.of());
+                    cm.finishBuildPlanSuccess("Already formatted - took 547ms", List.of());
                     String out = buf.toString(StandardCharsets.UTF_8);
                     assertThat(out).doesNotContain("\u001B[");
                     assertThat(out).doesNotContain(Spinner.PULSE_GLYPH);
@@ -453,7 +453,7 @@ class CommandManagerTest {
         assertThat(out).contains("\033]0;" + nextGlyph + " JumpKick - Building g:a:v...\033\\");
         // Only one OSC 0 in this window (the phase advance).
         assertThat(out.split("\033]0;", -1).length - 1).isEqualTo(1);
-        cm.finishPipelineSuccess("ok", List.of());
+        cm.finishBuildPlanSuccess("ok", List.of());
     }
 
     @Test
@@ -464,7 +464,7 @@ class CommandManagerTest {
         down.nerdfont = false;
         down.progress(10, 100);
         down.setEtaEstimate(60_000);
-        String downHeader = down.renderPipelineLines(120, 4_000).get(0);
+        String downHeader = down.renderBuildPlanLines(120, 4_000).get(0);
         assertThat(TestAnsi.strip(downHeader)).contains("ETA ~56s");
         assertThat(TestAnsi.strip(downHeader)).contains("+4s");
         assertThat(downHeader).contains(Theme.colorize("ETA ", t.darkGray().italic()));
@@ -476,7 +476,7 @@ class CommandManagerTest {
         var up = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
         up.nerdfont = false;
         up.progress(10, 100);
-        String upHeader = up.renderPipelineLines(120, 12_000).get(0);
+        String upHeader = up.renderBuildPlanLines(120, 12_000).get(0);
         assertThat(TestAnsi.strip(upHeader)).contains("+12s");
         assertThat(TestAnsi.strip(upHeader)).doesNotContain("ETA ");
         assertThat(upHeader).contains(Theme.colorize("+12s", t.warning()));
@@ -486,7 +486,7 @@ class CommandManagerTest {
         over.nerdfont = false;
         over.progress(90, 100);
         over.setEtaEstimate(10_000);
-        String overHeader = over.renderPipelineLines(120, 15_000).get(0);
+        String overHeader = over.renderBuildPlanLines(120, 15_000).get(0);
         assertThat(TestAnsi.strip(overHeader)).contains("ETA 0s");
         assertThat(TestAnsi.strip(overHeader)).contains("+15s");
         assertThat(overHeader).contains(Theme.colorize("ETA ", t.darkGray().italic()));
@@ -502,7 +502,7 @@ class CommandManagerTest {
         cm.stepDone("acme:api", "parse-build", true, "resolve"); // success → removed from chain
         cm.stepRunning("acme:api", "compile-java", "compile");
 
-        var raw = cm.renderPipelineLines(120, 112_000);
+        var raw = cm.renderBuildPlanLines(120, 112_000);
         String all = String.join("\n", stripAll(raw));
         assertThat(TestAnsi.strip(raw.get(0)))
                 .contains("Building")
@@ -523,7 +523,7 @@ class CommandManagerTest {
         cm.nerdfont = true;
         cm.progress(45, 100);
 
-        String header = cm.renderPipelineLines(120, 0).get(0);
+        String header = cm.renderBuildPlanLines(120, 0).get(0);
         // Pill: pulse circle + name + powerline cap.
         assertThat(TestAnsi.strip(header)).contains(Spinner.PULSE_GLYPH + " Build " + Glyphs.SEGMENT_END_NERD);
         AttributedStyle chip = Theme.active().pipelineChip();
@@ -564,7 +564,7 @@ class CommandManagerTest {
         cm.nerdfont = false;
         cm.stepRunning("com.foo:bar", "compile", "compile");
         cm.stepDone("com.foo:baz", "test", false, "test");
-        var raw = cm.renderPipelineLines(120, 0);
+        var raw = cm.renderBuildPlanLines(120, 0);
         String joined = String.join("\n", raw);
         String visible = String.join("\n", stripAll(raw));
         Theme t = Theme.active();
@@ -591,7 +591,7 @@ class CommandManagerTest {
         assertThat(Spinner.FILL_HOLD).isEqualTo(4);
         assertThat(Spinner.fillGlyph(0)).isEqualTo("\u25CB");
         assertThat(Spinner.fillGlyph(4)).isEqualTo("\u25CE");
-        String line0 = stripAll(cm.renderPipelineLines(120, 0)).get(1);
+        String line0 = stripAll(cm.renderBuildPlanLines(120, 0)).get(1);
         assertThat(line0).contains("\u25CB");
     }
 
@@ -602,7 +602,7 @@ class CommandManagerTest {
         cm.stepRunning("cc.jumpkick:jk-java-compiler", "package-jar", "package");
         cm.stepMessage("cc.jumpkick:jk-java-compiler", "package-jar", "shrinking jar");
 
-        String all = String.join("\n", stripAll(cm.renderPipelineLines(120, 0)));
+        String all = String.join("\n", stripAll(cm.renderBuildPlanLines(120, 0)));
         // ● module · Package · shrinking jar
         assertThat(all)
                 .contains("cc.jumpkick:jk-java-compiler")
@@ -618,7 +618,7 @@ class CommandManagerTest {
         cm.stepRunning("cc.jumpkick:jk-core", "run-tests", "test");
         cm.stepMessage("cc.jumpkick:jk-core", "run-tests", "cc.jumpkick:jk-core :: FooTest.bar()  [w2]");
 
-        String all = String.join("\n", stripAll(cm.renderPipelineLines(120, 0)));
+        String all = String.join("\n", stripAll(cm.renderBuildPlanLines(120, 0)));
         assertThat(all).contains("FooTest.bar()").contains("[w2]");
         // Module appears once as the row coordinate, not again in the detail segment.
         int first = all.indexOf("cc.jumpkick:jk-core");
@@ -633,7 +633,7 @@ class CommandManagerTest {
         cm.stepRunning("cc.jumpkick:jk-engine", "run-tests", "test");
         cm.stepMessage("cc.jumpkick:jk-engine", "run-tests", "VariantSwitchTest.switching_variants(Path)");
 
-        var raw = cm.renderPipelineLines(120, 0);
+        var raw = cm.renderBuildPlanLines(120, 0);
         String joined = String.join("\n", raw);
         String visible = String.join("\n", stripAll(raw));
         assertThat(visible).contains("VariantSwitchTest.switching_variants(Path)");
@@ -653,7 +653,7 @@ class CommandManagerTest {
         cm.stepMessage("cc.jumpkick:jk-engine", "run-tests", longName);
 
         int cols = 60;
-        for (String line : cm.renderPipelineLines(cols, 0)) {
+        for (String line : cm.renderBuildPlanLines(cols, 0)) {
             // Paint path hard-truncates; each rendered line must fit the terminal width.
             assertThat(CommandManager.truncateVisible(line, cols)
                             .replaceAll("\033\\[[0-9;]*[A-Za-z]", "")
@@ -662,7 +662,7 @@ class CommandManagerTest {
         }
         // Truncation adds an ellipsis rather than wrapping.
         String painted =
-                CommandManager.truncateVisible(cm.renderPipelineLines(cols, 0).get(1), cols);
+                CommandManager.truncateVisible(cm.renderBuildPlanLines(cols, 0).get(1), cols);
         assertThat(TestAnsi.strip(painted)).contains("…");
     }
 
@@ -793,7 +793,7 @@ class CommandManagerTest {
         cm.nerdfont = false;
         cm.preflight("lock", 0, 1, "resolving dependencies");
 
-        String all = String.join("\n", stripAll(cm.renderPipelineLines(120, 0)));
+        String all = String.join("\n", stripAll(cm.renderBuildPlanLines(120, 0)));
         assertThat(all).contains("Lock").contains("resolving dependencies");
     }
 
@@ -805,7 +805,7 @@ class CommandManagerTest {
         cm.stepDone("m", "s2", false, "compile"); // failed → stays
         cm.stepRunning("m", "s3", "test");
 
-        String all = String.join("\n", stripAll(cm.renderPipelineLines(120, 0)));
+        String all = String.join("\n", stripAll(cm.renderBuildPlanLines(120, 0)));
         assertThat(all).contains("Test").contains("Compile");
         assertThat(all).doesNotContain("Resolve");
         // Running rows first (newest), then failed by finish seq.
@@ -821,7 +821,7 @@ class CommandManagerTest {
         cm.attachPhaseError("m", "compile", "compile", "javac failed: cannot find symbol");
         cm.stepDone("m", "compile", false, "compile");
 
-        var lines = stripAll(cm.renderPipelineLines(120, 0));
+        var lines = stripAll(cm.renderBuildPlanLines(120, 0));
         String all = String.join("\n", lines);
         assertThat(all).contains("Compile").contains("cannot find symbol");
     }
@@ -835,7 +835,7 @@ class CommandManagerTest {
         cm.attachPhaseError("m", "compile-java", "", "cannot find symbol Foo");
         cm.stepDone("m", "compile-java", false, "compile");
 
-        var lines = stripAll(cm.renderPipelineLines(120, 0));
+        var lines = stripAll(cm.renderBuildPlanLines(120, 0));
         String all = String.join("\n", lines);
         assertThat(all).contains("Compile").contains("cannot find symbol Foo");
         assertThat(all).doesNotContain("Failed\n"); // not the generic-only brief when we have a real one
@@ -862,7 +862,7 @@ class CommandManagerTest {
         cm.attachPhaseError("m", "compile-java", "compile", "boom");
         cm.stepDone("m", "compile-java", false, "compile");
 
-        var lines = stripAll(cm.renderPipelineLines(120, 0));
+        var lines = stripAll(cm.renderBuildPlanLines(120, 0));
         // Find the error line after the last ╰─ row
         boolean sawClose = false;
         for (String line : lines) {
@@ -882,7 +882,7 @@ class CommandManagerTest {
         cm.nerdfont = false;
         cm.stepRunning("com.foo:a", "a", "compile");
         cm.stepRunning("com.foo:b", "b", "test");
-        var lines = stripAll(cm.renderPipelineLines(120, 0));
+        var lines = stripAll(cm.renderBuildPlanLines(120, 0));
         // header + two tree rows only (no leading │, no blank │ between).
         assertThat(lines).hasSize(3);
         assertThat(lines.get(1)).startsWith(" ├─").contains("com.foo").contains("·");
@@ -898,7 +898,7 @@ class CommandManagerTest {
         cm.height = 6;
         for (int i = 0; i < 20; i++) cm.stepRunning("m", "p" + i, "phase" + i);
 
-        var lines = cm.renderPipelineLines(120, 0);
+        var lines = cm.renderBuildPlanLines(120, 0);
         assertThat(lines.size()).isLessThanOrEqualTo(6 - 1);
     }
 
@@ -907,7 +907,7 @@ class CommandManagerTest {
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Building", false);
         cm.nerdfont = false;
         cm.stepRunning("m", "compile", "compile");
-        var lines = cm.renderPipelineLines(120, 0);
+        var lines = cm.renderBuildPlanLines(120, 0);
         // lines[0]=header, lines[1]=single work row (closing branch) — no leading blank rail.
         assertThat(TestAnsi.strip(lines.get(1))).startsWith(" ╰─").contains("Compile");
     }
@@ -920,7 +920,7 @@ class CommandManagerTest {
         cm.addCompletion("✓ [13 of 17] g:a13 took 1s");
         cm.addCompletion("✓ [14 of 17] g:a14 took 1s");
 
-        var lines = cm.renderPipelineLines(120, 0);
+        var lines = cm.renderBuildPlanLines(120, 0);
         // header, work row (╰─), then completions newest first.
         assertThat(TestAnsi.strip(lines.get(1))).startsWith(" ╰─").contains("Compile");
         assertThat(TestAnsi.strip(lines.get(2))).isEqualTo("    ✓ [14 of 17] g:a14 took 1s");
@@ -933,7 +933,7 @@ class CommandManagerTest {
         cm.stepRunning("m", "compile");
         for (int i = 1; i <= 8; i++) cm.addCompletion("✓ [0" + i + " of 17] g:a" + i + " took 1s");
 
-        var all = String.join("\n", stripAll(cm.renderPipelineLines(120, 0)));
+        var all = String.join("\n", stripAll(cm.renderBuildPlanLines(120, 0)));
         // Only MAX_COMPLETIONS (5) show; the newest is first; 3 collapse into the footer.
         assertThat(all).contains("    ✓ [08 of 17]").contains("    ✓ [04 of 17]");
         assertThat(all).doesNotContain("[03 of 17]");

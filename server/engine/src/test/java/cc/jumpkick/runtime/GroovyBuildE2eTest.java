@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.resolver.ResolveObserver;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Tag;
@@ -60,7 +60,7 @@ class GroovyBuildE2eTest {
                 }
                 """);
 
-        PipelineResult result = build(project, cache);
+        BuildPlanResult result = build(project, cache);
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
         assertThat(project.resolve("target/classes/main/com/example/Greeting.class"))
@@ -120,7 +120,7 @@ class GroovyBuildE2eTest {
                 }
                 """);
 
-        PipelineResult result = build(project, cache);
+        BuildPlanResult result = build(project, cache);
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
         Path classes = project.resolve("target/classes/main/com/example");
@@ -133,11 +133,11 @@ class GroovyBuildE2eTest {
         return Path.of(System.getProperty("user.dir"), "build", "groovy-e2e-cache");
     }
 
-    private static PipelineResult build(Path project, Path cache) throws Exception {
+    private static BuildPlanResult build(Path project, Path cache) throws Exception {
         var build = cc.jumpkick.config.JkBuildParser.parse(project.resolve("jk.toml"));
-        Pipeline lock = LockPipelines.lockPipeline(
+        BuildPlan lock = LockPipelines.lockBuildPlan(
                 project, build, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
-        PipelineResult lockResult = lock.run();
+        BuildPlanResult lockResult = lock.run();
         assertThat(lockResult.errors()).isEmpty();
 
         BuildPipelines.Inputs in = new BuildPipelines.Inputs(

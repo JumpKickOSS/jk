@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.run;
 
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlanResult;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -46,8 +46,8 @@ public final class EventLogListener extends JsonlEmittingListener {
         try {
             Path dir = cacheRoot.resolve("runs");
             Files.createDirectories(dir);
-            String safePipeline = pipelineName.replaceAll("[^A-Za-z0-9_.-]", "_");
-            Path file = dir.resolve(TS_FORMAT.format(Instant.now()) + "-" + safePipeline + ".jsonl");
+            String safeBuildPlan = pipelineName.replaceAll("[^A-Za-z0-9_.-]", "_");
+            Path file = dir.resolve(TS_FORMAT.format(Instant.now()) + "-" + safeBuildPlan + ".jsonl");
             PrintStream stream = new PrintStream(
                     Files.newOutputStream(file, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE),
                     /* autoFlush= */ true,
@@ -72,7 +72,7 @@ public final class EventLogListener extends JsonlEmittingListener {
     }
 
     @Override
-    public void pipelineFinish(PipelineResult r) {
+    public void pipelineFinish(BuildPlanResult r) {
         super.pipelineFinish(r);
         try {
             stream.close();

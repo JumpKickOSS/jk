@@ -33,12 +33,12 @@ import java.util.Set;
  * downstream keys are not trusted against about-to-change inputs (misses are pessimistic, never
  * false cache hits).
  */
-public final class BuildPlanForecast {
+public final class TaskForecaster {
 
-    private BuildPlanForecast() {}
+    private TaskForecaster() {}
 
     /** Forecast every module in {@code graph}, in topological (dependency) order. */
-    public static List<BuildPlan.Module> of(BuildGraph.Result graph, Cas cas, ActionCache actionCache, Path cache) {
+    public static List<TaskForecast.Module> of(BuildGraph.Result graph, Cas cas, ActionCache actionCache, Path cache) {
         return of(graph, cas, actionCache, cache, false);
     }
 
@@ -46,9 +46,9 @@ public final class BuildPlanForecast {
      * Like {@link #of(BuildGraph.Result, Cas, ActionCache, Path)} but omits test steps when
      * {@code skipTests} so a never-tested workspace is not forecast perpetually dirty.
      */
-    public static List<BuildPlan.Module> of(
+    public static List<TaskForecast.Module> of(
             BuildGraph.Result graph, Cas cas, ActionCache actionCache, Path cache, boolean skipTests) {
-        List<BuildPlan.Module> out = new ArrayList<>();
+        List<TaskForecast.Module> out = new ArrayList<>();
         // --force/--rerun bypasses jk's build caches, so every step runs — the forecast must say
         // so too (otherwise the plan tree renders "Fully Cached" while the ETA, which honors force,
         // predicts a full rebuild — a self-contradiction).
@@ -70,7 +70,7 @@ public final class BuildPlanForecast {
                 }
             }
             long t0 = Perf.start();
-            BuildPlan.Module m =
+            TaskForecast.Module m =
                     forecastModule(u, depDirty, force, skipTests, cas, actionCache, cache, restoredJarShas);
             Perf.end("forecast " + u.coord(), t0);
             // A module's consumed output changes — and so seeds downstream dirtiness
@@ -175,7 +175,7 @@ public final class BuildPlanForecast {
                 .withProjectModules(projectModules);
     }
 
-    private static BuildPlan.Module forecastModule(
+    private static TaskForecast.Module forecastModule(
             BuildGraph.BuildUnit u,
             boolean depDirty,
             boolean force,
@@ -186,19 +186,19 @@ public final class BuildPlanForecast {
             Map<Path, String> restoredJarShas) {
         JkBuild project = u.manifest();
         Path dir = u.dir();
-        List<BuildPlan.Step> steps = new ArrayList<>();
+        List<TaskForecast.Task> steps = new ArrayList<>();
         Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
         if (!Files.isRegularFile(lockFile)) {
             steps.add(
-                    new BuildPlan.Step("compile-main", BuildPlan.Status.RUN, "not locked yet (run `jk build`)", null));
-            return new BuildPlan.Module(u.dir(), u.coord(), steps, 0, 0, false, false);
+                    new TaskForecast.Task("compile-main", TaskForecast.Status.RUN, "not locked yet (run `jk build`)", null));
+            return new TaskForecast.Module(u.dir(), u.coord(), steps, 0, 0, false, false);
         }
         // Digest-only staleness — the same predicate the build's freshen uses (JK-1358), so the
         // forecast and the live build agree on whether a lock update runs.
         if (cc.jumpkick.runtime.AutoLock.isStale(dir, lockFile)) {
-            steps.add(new BuildPlan.Step(
-                    "compile-main", BuildPlan.Status.RUN, "jk.toml changed — lock update needed", null));
-            return new BuildPlan.Module(u.dir(), u.coord(), steps, 0, 0, false, false);
+            steps.add(new TaskForecast.Task(
+                    "compile-main", TaskForecast.Status.RUN, "jk.toml changed — lock update needed", null));
+            return new TaskForecast.Module(u.dir(), u.coord(), steps, 0, 0, false, false);
         }
         int sourceCount = 0, testCount = 0;
         boolean producesJar = false, producesImage = false;
@@ -225,7 +225,7 @@ public final class BuildPlanForecast {
             // The CURRENT compile-main action key when the content predictor ran — post-clean
             // reconstruction must resolve the record for this key, never lastFor (the last
             // record may belong to a different edit of the sources; see the revert scenario in
-            // BuildPlanForecastCleanPackageTest).
+            // TaskForecasterCleanPackageTest).
             String compileMainKey = null;
 
             // ---- compile-main (Java) ----
@@ -274,7 +274,7 @@ public final class BuildPlanForecast {
                     }
                 }
                 if (stampFresh) {
-                    steps.add(new BuildPlan.Step("compile-main", BuildPlan.Status.CACHED, "", null));
+                    steps.add(new TaskForecast.Task("compile-main", TaskForecast.Status.CACHED, "", null));
                 } else {
                     CompileRequest req = CompileRequest.builder()
                             .sources(mainSrc)
@@ -308,10 +308,10 @@ public final class BuildPlanForecast {
                         && FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.KOTLIN_STAMP, ktSrc);
                 steps.add(
                         fresh
-                                ? new BuildPlan.Step("compile-kotlin", BuildPlan.Status.CACHED, "", null)
-                                : new BuildPlan.Step(
+                                ? new TaskForecast.Task("compile-kotlin", TaskForecast.Status.CACHED, "", null)
+                                : new TaskForecast.Task(
                                         "compile-kotlin",
-                                        BuildPlan.Status.FULL,
+                                        TaskForecast.Status.FULL,
                                         "full compile · " + count(ktSrc.size(), "source"),
                                         null));
                 if (!fresh) compileDirty = true;
@@ -326,10 +326,10 @@ public final class BuildPlanForecast {
                         && FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.GROOVY_STAMP, gvSrc);
                 steps.add(
                         fresh
-                                ? new BuildPlan.Step("compile-groovy", BuildPlan.Status.CACHED, "", null)
-                                : new BuildPlan.Step(
+                                ? new TaskForecast.Task("compile-groovy", TaskForecast.Status.CACHED, "", null)
+                                : new TaskForecast.Task(
                                         "compile-groovy",
-                                        BuildPlan.Status.FULL,
+                                        TaskForecast.Status.FULL,
                                         "full compile · " + count(gvSrc.size(), "source"),
                                         null));
                 if (!fresh) compileDirty = true;
@@ -363,7 +363,7 @@ public final class BuildPlanForecast {
             if (haveTests && !skipTests) {
                 if (compileDirty) {
                     steps.add(
-                            new BuildPlan.Step("compile-test", BuildPlan.Status.RUN, "recompile · main changed", null));
+                            new TaskForecast.Task("compile-test", TaskForecast.Status.RUN, "recompile · main changed", null));
                     testDirty = true;
                 } else if (!javaTest.isEmpty()) {
                     List<Path> baseCp = new ArrayList<>();
@@ -390,12 +390,12 @@ public final class BuildPlanForecast {
                     var pred = JavaIncrementalCompile.predict(
                             taskId, req, BuildIdentity.cacheKeyVersion(), actionCache, stateDir);
                     Perf.end("  predict-compile-test", tt);
-                    BuildPlan.Step p = compileStep("compile-test", pred, false);
+                    TaskForecast.Task p = compileStep("compile-test", pred, false);
                     steps.add(p);
                     if (!p.cached()) testDirty = true;
                 } else {
                     // Kotlin/Groovy-only tests: no content predictor — assume fresh when main is clean.
-                    steps.add(new BuildPlan.Step("compile-test", BuildPlan.Status.CACHED, "", null));
+                    steps.add(new TaskForecast.Task("compile-test", TaskForecast.Status.CACHED, "", null));
                 }
 
                 // ---- run-tests ----
@@ -403,7 +403,7 @@ public final class BuildPlanForecast {
                 testCount = estimated;
                 String tests = estimated > 0 ? "~" + count(estimated, "test") : "tests";
                 if (compileDirty || testDirty) {
-                    steps.add(new BuildPlan.Step("run-tests", BuildPlan.Status.RUN, "run tests · " + tests, null));
+                    steps.add(new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · " + tests, null));
                 } else {
                     // Same factory as live run-testsdefault selection sources +
                     // worker/engine jar extras (nested-engine CLI included) so the key matches the
@@ -416,9 +416,9 @@ public final class BuildPlanForecast {
                     boolean hit = stampKey != null && present(actionCache, stampKey);
                     steps.add(
                             hit
-                                    ? new BuildPlan.Step("run-tests", BuildPlan.Status.CACHED, "· " + tests, null)
-                                    : new BuildPlan.Step(
-                                            "run-tests", BuildPlan.Status.RUN, "run tests · " + tests, null));
+                                    ? new TaskForecast.Task("run-tests", TaskForecast.Status.CACHED, "· " + tests, null)
+                                    : new TaskForecast.Task(
+                                            "run-tests", TaskForecast.Status.RUN, "run tests · " + tests, null));
                 }
             }
 
@@ -430,7 +430,7 @@ public final class BuildPlanForecast {
             if (mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty()) {
                 // Source-less aggregator module — nothing to package.
             } else if (compileDirty) {
-                steps.add(new BuildPlan.Step("package-jar", BuildPlan.Status.RUN, "repackage · compile changed", null));
+                steps.add(new TaskForecast.Task("package-jar", TaskForecast.Status.RUN, "repackage · compile changed", null));
             } else {
                 Path jar = layout.mainJar();
                 String mainClass = project.mainClass();
@@ -455,8 +455,8 @@ public final class BuildPlanForecast {
                 boolean hit = present(actionCache, pkgKey);
                 steps.add(
                         hit
-                                ? new BuildPlan.Step("package-jar", BuildPlan.Status.CACHED, "", key8(pkgKey))
-                                : new BuildPlan.Step("package-jar", BuildPlan.Status.RUN, "repackage", null));
+                                ? new TaskForecast.Task("package-jar", TaskForecast.Status.CACHED, "", key8(pkgKey))
+                                : new TaskForecast.Task("package-jar", TaskForecast.Status.RUN, "repackage", null));
                 if (hit && !Files.isRegularFile(jar)) {
                     // Publish the wiped jar's content sha from THIS key's record so downstream
                     // assembly forecasts fingerprint the same bytes the live restore produces.
@@ -474,15 +474,15 @@ public final class BuildPlanForecast {
             // Same action-key recipe as BuildPipelines.assemblyStep (not "jar exists on disk").
             if (project.assembly() && !(mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty())) {
                 if (compileDirty) {
-                    steps.add(new BuildPlan.Step(
-                            "package-assembly", BuildPlan.Status.RUN, "repackage · compile changed", null));
+                    steps.add(new TaskForecast.Task(
+                            "package-assembly", TaskForecast.Status.RUN, "repackage · compile changed", null));
                 } else {
                     boolean hit = assemblyActionCached(
                             dir, project, layout, lockFile, actionCache, cache, compileMainKey, restoredJarShas);
                     steps.add(
                             hit
-                                    ? new BuildPlan.Step("package-assembly", BuildPlan.Status.CACHED, "", null)
-                                    : new BuildPlan.Step("package-assembly", BuildPlan.Status.RUN, "repackage", null));
+                                    ? new TaskForecast.Task("package-assembly", TaskForecast.Status.CACHED, "", null)
+                                    : new TaskForecast.Task("package-assembly", TaskForecast.Status.RUN, "repackage", null));
                 }
             }
 
@@ -495,13 +495,13 @@ public final class BuildPlanForecast {
                 // Forecast is intentionally coarse: a present binary is treated as cached; a
                 // full native action-key match needs the Graal home the live step resolved.
                 if (compileDirty || !hit) {
-                    steps.add(new BuildPlan.Step(
+                    steps.add(new TaskForecast.Task(
                             "native-image",
-                            BuildPlan.Status.RUN,
+                            TaskForecast.Status.RUN,
                             compileDirty ? "rebuild · compile changed" : "native-image",
                             null));
                 } else {
-                    steps.add(new BuildPlan.Step("native-image", BuildPlan.Status.CACHED, "", null));
+                    steps.add(new TaskForecast.Task("native-image", TaskForecast.Status.CACHED, "", null));
                 }
             }
 
@@ -514,19 +514,19 @@ public final class BuildPlanForecast {
             if (!compileDirty && Files.isDirectory(layout.classesDir())) {
                 if (resourcesOutOfSync(
                         cc.jumpkick.layout.ModuleLayout.mainResourcesDir(dir, compact), layout.classesDir())) {
-                    steps.add(new BuildPlan.Step("copy-resources", BuildPlan.Status.RUN, "resources changed", null));
+                    steps.add(new TaskForecast.Task("copy-resources", TaskForecast.Status.RUN, "resources changed", null));
                 } else if (extraResourcesOutOfSync(project, dir, layout.classesDir())) {
                     // extra-resources come from OUTSIDE the module, so the resource-root walk above
                     // cannot see them. Editing a plugin's jk-plugin.toml must still rebuild
                     // whatever bakes it in.
-                    steps.add(new BuildPlan.Step(
-                            "copy-resources", BuildPlan.Status.RUN, "extra resources changed", null));
+                    steps.add(new TaskForecast.Task(
+                            "copy-resources", TaskForecast.Status.RUN, "extra resources changed", null));
                 }
                 if (haveTests && !skipTests && !testDirty && Files.isDirectory(layout.testClassesDir())) {
                     Path resTest = cc.jumpkick.layout.ModuleLayout.testResourcesDir(dir, compact);
                     if (resourcesOutOfSync(resTest, layout.testClassesDir())) {
-                        steps.add(new BuildPlan.Step(
-                                "copy-resources", BuildPlan.Status.RUN, "test resources changed", null));
+                        steps.add(new TaskForecast.Task(
+                                "copy-resources", TaskForecast.Status.RUN, "test resources changed", null));
                     }
                 }
             }
@@ -538,7 +538,7 @@ public final class BuildPlanForecast {
             // restore step: the module schedules and its steps resolve as cheap cache restores.
             // The name is deliberately not compile-*/package-jar so it never seeds downstream
             // dirtiness — restored outputs are byte-identical to what consumers hashed.
-            if (steps.stream().allMatch(BuildPlan.Step::cached)) {
+            if (steps.stream().allMatch(TaskForecast.Task::cached)) {
                 boolean outputsAbsent = false;
                 if (producesJar) {
                     outputsAbsent = !Files.isRegularFile(layout.mainJar())
@@ -550,18 +550,18 @@ public final class BuildPlanForecast {
                     outputsAbsent = !classesDirHasContent(layout.classesDir());
                 }
                 if (outputsAbsent) {
-                    steps.add(new BuildPlan.Step("restore-outputs", BuildPlan.Status.RUN, "restore from cache", null));
+                    steps.add(new TaskForecast.Task("restore-outputs", TaskForecast.Status.RUN, "restore from cache", null));
                 }
             }
         } catch (Exception e) {
             // Degrade gracefully — never crash explain over one unparseable module.
-            steps.add(new BuildPlan.Step(
+            steps.add(new TaskForecast.Task(
                     "compile-main",
-                    BuildPlan.Status.RUN,
+                    TaskForecast.Status.RUN,
                     "could not predict (" + e.getClass().getSimpleName() + ")",
                     null));
         }
-        return new BuildPlan.Module(u.dir(), u.coord(), steps, sourceCount, testCount, producesJar, producesImage);
+        return new TaskForecast.Module(u.dir(), u.coord(), steps, sourceCount, testCount, producesJar, producesImage);
     }
 
     /**
@@ -740,26 +740,26 @@ public final class BuildPlanForecast {
     }
 
     /** Map a {@link JavaIncrementalCompile.Prediction} to a step, honoring upstream dirtiness. */
-    private static BuildPlan.Step compileStep(String name, JavaIncrementalCompile.Prediction pred, boolean depDirty) {
+    private static TaskForecast.Task compileStep(String name, JavaIncrementalCompile.Prediction pred, boolean depDirty) {
         return switch (pred.outcome()) {
             case CACHE_HIT ->
                 depDirty
-                        ? new BuildPlan.Step(name, BuildPlan.Status.RUN, "recompile · dependency changed", null)
-                        : new BuildPlan.Step(name, BuildPlan.Status.CACHED, "", key8(pred.actionKey()));
+                        ? new TaskForecast.Task(name, TaskForecast.Status.RUN, "recompile · dependency changed", null)
+                        : new TaskForecast.Task(name, TaskForecast.Status.CACHED, "", key8(pred.actionKey()));
             case INCREMENTAL -> {
                 String detail = pred.reason() != null && !pred.reason().isBlank()
                         ? pred.reason()
                         : count(pred.sourceCount(), "source") + " changed";
-                yield new BuildPlan.Step(name, BuildPlan.Status.PARTIAL, "compile · " + detail, null);
+                yield new TaskForecast.Task(name, TaskForecast.Status.PARTIAL, "compile · " + detail, null);
             }
             case FULL -> {
                 // surface the concrete gate (classpath, options, first compile, …).
                 String why = pred.reason() != null && !pred.reason().isBlank()
                         ? pred.reason()
                         : "sources / options / classpath";
-                yield new BuildPlan.Step(
+                yield new TaskForecast.Task(
                         name,
-                        BuildPlan.Status.FULL,
+                        TaskForecast.Status.FULL,
                         "full compile · " + count(pred.sourceCount(), "source") + " · " + why,
                         null);
             }

@@ -2,9 +2,9 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.tui.CommandManager;
-import cc.jumpkick.run.PipelineListener;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.PipelineView;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.BuildPlanView;
 import java.io.PrintStream;
 
 /**
@@ -13,11 +13,11 @@ import java.io.PrintStream;
  * ConsoleSpec} mappers. On a pipe / under {@code --quiet} ({@code animate == false}) it skips the
  * spinner but still prints the result line, so non-interactive consumers keep a summary.
  *
- * <p>Diagnostics are read from the final {@link PipelineResult} and printed once, at {@code
+ * <p>Diagnostics are read from the final {@link BuildPlanResult} and printed once, at {@code
  * pipelineFinish}, <em>after</em> the spinner has been stopped — never mid-run — so nothing interleaves
  * with the live animation.
  */
-public final class SimpleTaskListener implements PipelineListener {
+public final class SimpleTaskListener implements BuildPlanListener {
 
     private final PrintStream out;
     private final PrintStream err;
@@ -34,7 +34,7 @@ public final class SimpleTaskListener implements PipelineListener {
     }
 
     @Override
-    public void pipelineStart(PipelineView view) {
+    public void pipelineStart(BuildPlanView view) {
         cm = CommandManager.simple(out, spec.command(), animate);
     }
 
@@ -47,7 +47,7 @@ public final class SimpleTaskListener implements PipelineListener {
     }
 
     @Override
-    public void pipelineFinish(PipelineResult result) {
+    public void pipelineFinish(BuildPlanResult result) {
         if (cm == null) cm = CommandManager.simple(out, spec.command(), animate);
         String suffix = " " + ConsoleSpec.took(result.duration());
         if (result.success()) {
@@ -56,10 +56,10 @@ public final class SimpleTaskListener implements PipelineListener {
             cm.finishFailure(spec.onFailure().apply(result) + suffix);
         }
         // Diagnostics below the result line; the spinner is already stopped.
-        for (PipelineResult.Diagnostic d : result.errors()) {
+        for (BuildPlanResult.Diagnostic d : result.errors()) {
             err.println(ConsoleSpec.renderError(d));
         }
-        for (PipelineResult.Diagnostic d : result.warnings()) {
+        for (BuildPlanResult.Diagnostic d : result.warnings()) {
             err.println(ConsoleSpec.renderWarning(d));
         }
     }

@@ -4,17 +4,17 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
-import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.DenyReport;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineKey;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.Step;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.Task;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -36,7 +36,7 @@ public final class DenyCommand implements CliCommand {
         return "Apply the project's license / source / yanked policy";
     }
 
-    private static final PipelineKey<DenyReport> REPORT = PipelineKey.of("deny-report", DenyReport.class);
+    private static final BuildPlanKey<DenyReport> REPORT = BuildPlanKey.of("deny-report", DenyReport.class);
 
     @Override
     public int run(Invocation in) throws IOException {
@@ -59,7 +59,7 @@ public final class DenyCommand implements CliCommand {
             return Exit.CONFIG;
         }
 
-        Step check = Step.builder("check")
+        Task check = Task.builder("check")
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("check policy against lock");
@@ -70,8 +70,8 @@ public final class DenyCommand implements CliCommand {
                 })
                 .build();
 
-        Pipeline pipeline = Pipeline.builder("deny").addStep(check).build();
-        PipelineResult result = PipelineConsole.run(pipeline, PipelineConsole.modeFor(global), cache);
+        BuildPlan pipeline = BuildPlan.builder("deny").addTask(check).build();
+        BuildPlanResult result = BuildPlanConsole.run(pipeline, BuildPlanConsole.modeFor(global), cache);
         if (!result.success()) return 1;
 
         DenyReport report = pipeline.get(REPORT).orElseThrow();

@@ -43,11 +43,11 @@ class AggregateProgressTest {
                 java.util.List.of(),
                 false,
                 false);
-        lis.pipelineStart(new cc.jumpkick.run.PipelineView("build", 1, 10, 1, 0, false));
-        lis.progress("compile", 1, new cc.jumpkick.run.PipelineView("build", 2, 10, 1, 0, false));
-        lis.tickUpdate("compile", 1, new cc.jumpkick.run.PipelineView("build", 3, 10, 1, 0, false));
+        lis.pipelineStart(new cc.jumpkick.run.BuildPlanView("build", 1, 10, 1, 0, false));
+        lis.progress("compile", 1, new cc.jumpkick.run.BuildPlanView("build", 2, 10, 1, 0, false));
+        lis.tickUpdate("compile", 1, new cc.jumpkick.run.BuildPlanView("build", 3, 10, 1, 0, false));
         assertThat(LiveProgress.get().percent()).isEqualTo(70.0);
-        lis.pipelineFinish(new cc.jumpkick.run.PipelineResult(
+        lis.pipelineFinish(new cc.jumpkick.run.BuildPlanResult(
                 "build",
                 true,
                 java.time.Duration.ZERO,

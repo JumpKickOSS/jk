@@ -2,9 +2,7 @@
 package cc.jumpkick.plugin.build;
 
 /**
- * The {@link BuildExtension} contribution surface: steps in the COMPILE window — before-compile
- * source generation (protobuf's {@code protoc}) or after-compile class production (Spring's AOT).
- * Set the window with {@link #after}/{@link #before}; the default is {@link Phase#COMPILE} →
- * {@link Phase#PACKAGE}.
+ * {@link BuildExtension} contribution surface: tasks that prepare sources, rewrite classes, or
+ * otherwise feed the compile/package graph via {@link TaskSpec#requires} and {@code contributes*}.
  */
-public interface BuildContext extends StepContribution {}
+public interface BuildContext extends TaskContribution {}

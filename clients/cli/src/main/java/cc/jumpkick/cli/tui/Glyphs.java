@@ -9,7 +9,7 @@ import cc.jumpkick.cli.theme.Theme;
  * Theme.colorize(Glyphs.CHECK, Theme.active().success())}).
  *
  * <p>Unicode forms are for ANSI/nerd modes. Prefer {@link #check()}, {@link #cross()}, etc. when
- * emitting markers outside {@link PipelineWedge} so {@code --no-ansi} stays ASCII-only. Free-form
+ * emitting markers outside {@link BuildPlanWedge} so {@code --no-ansi} stays ASCII-only. Free-form
  * message text is rewritten at print time by {@link PlainAscii} (ellipsis, bullets, pulse).
  */
 public final class Glyphs {

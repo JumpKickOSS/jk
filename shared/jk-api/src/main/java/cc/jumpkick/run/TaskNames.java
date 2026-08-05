@@ -7,9 +7,9 @@ package cc.jumpkick.run;
  * place kills the stringly-typed producer/consumer duplication where a typo would otherwise be a
  * silent missing-dependency edge rather than a compile error.
  */
-public final class StepNames {
+public final class TaskNames {
 
-    private StepNames() {}
+    private TaskNames() {}
 
     public static final String ASSEMBLE_CLASSES = "assemble-classes";
     public static final String CACHE_INSTALL = "cache-install";

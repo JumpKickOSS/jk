@@ -32,11 +32,11 @@ class JsonTest {
                         1,
                         3000,
                         List.of(
-                                new BuildRecord.Step("compile", "compile", "SUCCESS", 800),
-                                new BuildRecord.Step("test", "test", "FAIL", 1200)))),
+                                new BuildRecord.Task("compile", "compile", "SUCCESS", 800),
+                                new BuildRecord.Task("test", "test", "FAIL", 1200)))),
                 List.of(
-                        new BuildRecord.Step("compile", "compile", "SUCCESS", 800),
-                        new BuildRecord.Step("test", "test", "FAIL", 1200)),
+                        new BuildRecord.Task("compile", "compile", "SUCCESS", 800),
+                        new BuildRecord.Task("test", "test", "FAIL", 1200)),
                 List.of(new BuildRecord.Diag(
                         "error",
                         "/proj",
@@ -68,10 +68,10 @@ class JsonTest {
         assertThat(back.modules()).hasSize(1);
         assertThat(back.modules().get(0).coord()).isEqualTo("com.example:app");
         assertThat(back.modules().get(0).steps())
-                .extracting(BuildRecord.Step::name)
+                .extracting(BuildRecord.Task::name)
                 .containsExactly("compile", "test");
-        assertThat(back.steps()).extracting(BuildRecord.Step::status).containsExactly("SUCCESS", "FAIL");
-        assertThat(back.steps()).extracting(BuildRecord.Step::phase).containsExactly("compile", "test");
+        assertThat(back.steps()).extracting(BuildRecord.Task::status).containsExactly("SUCCESS", "FAIL");
+        assertThat(back.steps()).extracting(BuildRecord.Task::phase).containsExactly("compile", "test");
         assertThat(back.diagnostics()).hasSize(1);
         assertThat(back.diagnostics().get(0).dir()).isEqualTo("/proj");
         assertThat(back.diagnostics().get(0).message()).isEqualTo("expected 1 but was 2\nline two");

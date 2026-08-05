@@ -9,11 +9,11 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineKey;
-import cc.jumpkick.run.Step;
-import cc.jumpkick.run.StepKind;
-import cc.jumpkick.run.StepNames;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskKind;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.Hashing;
 import java.io.IOException;
@@ -22,17 +22,17 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * {@code jk install} heavy halves: {@link #projectInstallPipeline} (build + cache-install into
- * {@code repos/local/}) and {@link #gitFetchPipeline}. User-home launcher shims stay client-side.
+ * {@code jk install} heavy halves: {@link #projectInstallBuildPlan} (build + cache-install into
+ * {@code repos/local/}) and {@link #gitFetchBuildPlan}. User-home launcher shims stay client-side.
  */
 public final class InstallPipelines {
 
     private InstallPipelines() {}
 
     // Cross-step keys.
-    public static final PipelineKey<Coordinate> PRIMARY = PipelineKey.of("primary-coord", Coordinate.class);
-    public static final PipelineKey<Path> CHECKOUT = PipelineKey.of("checkout-dir", Path.class);
-    public static final PipelineKey<String> FETCHED_SHA = PipelineKey.of("fetched-sha", String.class);
+    public static final BuildPlanKey<Coordinate> PRIMARY = BuildPlanKey.of("primary-coord", Coordinate.class);
+    public static final BuildPlanKey<Path> CHECKOUT = BuildPlanKey.of("checkout-dir", Path.class);
+    public static final BuildPlanKey<String> FETCHED_SHA = BuildPlanKey.of("fetched-sha", String.class);
 
     /**
      * Build the project-install pipeline for {@code projectDir}: core pipeline + declared tails +
@@ -40,7 +40,7 @@ public final class InstallPipelines {
      * cache-install} step. {@code m2Dir} is the local Maven repo root ({@code ~/.m2} or the
      * {@code --m2-dir} override).
      */
-    public static Pipeline projectInstallPipeline(
+    public static BuildPlan projectInstallBuildPlan(
             Path projectDir, Path cache, Path m2Dir, boolean skipTests, boolean verbose, Path graalHome)
             throws IOException {
         JkBuild proj = JkBuildParser.parse(projectDir.resolve("jk.toml"));
@@ -68,18 +68,18 @@ public final class InstallPipelines {
                 false,
                 java.util.Set.of(),
                 cc.jumpkick.config.SessionContext.current());
-        Pipeline.Builder builder = BuildPipelines.coreBuilder(inputs);
+        BuildPlan.Builder builder = BuildPipelines.coreBuilder(inputs);
         // ALWAYS modules get native from appendDeclaredTails (same as jk build); pass the
         // client-resolved GraalVM so install does not re-resolve.
         BuildPipelines.appendDeclaredTails(builder, inputs, graalHome, true);
 
         // cache-install reads the freshly-built jar and must run after every runnable artifact
         // this project produces (so a follow-up client-side make-install finds them all built).
-        java.util.List<String> requires = new java.util.ArrayList<>(List.of(StepNames.PACKAGE_JAR));
-        if (isNative) requires.add(StepNames.NATIVE_IMAGE);
-        if (proj.isApplication() && proj.assembly() && !isNative) requires.add(StepNames.PACKAGE_ASSEMBLY);
+        java.util.List<String> requires = new java.util.ArrayList<>(List.of(TaskNames.PACKAGE_JAR));
+        if (isNative) requires.add(TaskNames.NATIVE_IMAGE);
+        if (proj.isApplication() && proj.assembly() && !isNative) requires.add(TaskNames.PACKAGE_ASSEMBLY);
 
-        Step cacheInstall = Step.builder(StepNames.CACHE_INSTALL)
+        Task cacheInstall = Task.builder(TaskNames.CACHE_INSTALL)
                 .requires(requires.toArray(new String[0]))
                 .ticks(1)
                 .execute(ctx -> {
@@ -92,7 +92,7 @@ public final class InstallPipelines {
                     try {
                         cacheInstallArtifact(project, layout, cache, m2Dir);
                     } catch (IOException e) {
-                        ctx.error(StepNames.CACHE_INSTALL, e.getMessage());
+                        ctx.error(TaskNames.CACHE_INSTALL, e.getMessage());
                         throw new RuntimeException(e);
                     }
                     ctx.put(PRIMARY, coord);
@@ -100,7 +100,7 @@ public final class InstallPipelines {
                 })
                 .build();
 
-        return builder.addStep(cacheInstall).build();
+        return builder.addTask(cacheInstall).build();
     }
 
     /**
@@ -109,16 +109,16 @@ public final class InstallPipelines {
      * checkout to carry a {@code jk.toml}. {@code refresh} forces a re-fetch. Publishes {@link
      * #CHECKOUT} + {@link #FETCHED_SHA}.
      */
-    public static Pipeline gitFetchPipeline(
+    public static BuildPlan gitFetchBuildPlan(
             String url, String canonicalUrl, String ref, Path cacheDir, boolean refresh) {
-        return gitFetchPipeline(url, canonicalUrl, ref, cacheDir, refresh, /* requireJkToml */ true);
+        return gitFetchBuildPlan(url, canonicalUrl, ref, cacheDir, refresh, /* requireJkToml */ true);
     }
 
-    /** Like {@link #gitFetchPipeline(String, String, String, Path, boolean)} with optional jk.toml gate. */
-    public static Pipeline gitFetchPipeline(
+    /** Like {@link #gitFetchBuildPlan(String, String, String, Path, boolean)} with optional jk.toml gate. */
+    public static BuildPlan gitFetchBuildPlan(
             String url, String canonicalUrl, String ref, Path cacheDir, boolean refresh, boolean requireJkToml) {
-        Step fetch = Step.builder(StepNames.FETCH_GIT)
-                .kind(StepKind.IO)
+        Task fetch = Task.builder(TaskNames.FETCH_GIT)
+                .kind(TaskKind.IO)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("git fetch " + url + " @ " + ref);
@@ -140,7 +140,7 @@ public final class InstallPipelines {
                     ctx.progress(1);
                 })
                 .build();
-        return Pipeline.builder("install-git-fetch").addStep(fetch).build();
+        return BuildPlan.builder("install-git-fetch").addTask(fetch).build();
     }
 
     /** Try the user's ref as a tag first, then a branch. */

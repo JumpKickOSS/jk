@@ -4,8 +4,8 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.Step;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.Task;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -31,8 +31,8 @@ class BuildPipelinesGroovyStepTest {
     @Test
     void jdk_plus_java_plus_groovy_enables_both(@TempDir Path dir) throws Exception {
         writeManifest(dir, "group=\"com.example\"\nname=\"b\"\nversion=\"0.1.0\"\njdk=25\njava=25\ngroovy=\"5.0.4\"\n");
-        Pipeline pipeline = pipeline(dir);
-        assertThat(pipeline.steps().stream().map(Step::name))
+        BuildPlan pipeline = pipeline(dir);
+        assertThat(pipeline.steps().stream().map(Task::name))
                 .contains(
                         "compile-groovy",
                         "compile-java",
@@ -41,12 +41,12 @@ class BuildPipelinesGroovyStepTest {
                         // mixed modules add the assembler that merges both outputs
                         "assemble-classes");
         // Joint mode: groovyc first, javac against its output.
-        Step compileJava = pipeline.steps().stream()
+        Task compileJava = pipeline.steps().stream()
                 .filter(s -> s.name().equals("compile-java"))
                 .findFirst()
                 .orElseThrow();
         assertThat(compileJava.requires()).contains("compile-groovy");
-        Step assemble = pipeline.steps().stream()
+        Task assemble = pipeline.steps().stream()
                 .filter(s -> s.name().equals("assemble-classes"))
                 .findFirst()
                 .orElseThrow();
@@ -107,10 +107,10 @@ class BuildPipelinesGroovyStepTest {
     }
 
     private static List<String> stepNames(Path dir) {
-        return pipeline(dir).steps().stream().map(Step::name).toList();
+        return pipeline(dir).steps().stream().map(Task::name).toList();
     }
 
-    private static Pipeline pipeline(Path dir) {
+    private static BuildPlan pipeline(Path dir) {
         BuildPipelines.Inputs in = new BuildPipelines.Inputs(
                 dir,
                 dir.resolve("cache"),

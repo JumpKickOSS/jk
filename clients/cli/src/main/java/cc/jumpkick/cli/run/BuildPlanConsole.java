@@ -2,16 +2,16 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineListener;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.Step;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.Task;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
 import java.util.List;
 
 /**
- * Single entry point CLI commands use to run a {@link Pipeline} against the right set of console
+ * Single entry point CLI commands use to run a {@link BuildPlan} against the right set of console
  * listeners — picks {@link CommandManagerListener} (default TTY), {@link VerboseListener} ({@code
  * --verbose}), {@link JsonlListener} ({@code --output json}), or {@link SilentListener} (non-TTY,
  * {@code --quiet}, or interactive pipeline); always layers an {@link EventLogListener} on top so the
@@ -22,7 +22,7 @@ import java.util.List;
  * ‼ Canceled by user}, and halts. There is no cooperative unwind — a hard cancel is immediate and
  * predictable.
  */
-public final class PipelineConsole {
+public final class BuildPlanConsole {
 
     /** Output mode requested by the user. */
     public enum Mode {
@@ -36,21 +36,21 @@ public final class PipelineConsole {
         JSON
     }
 
-    private PipelineConsole() {}
+    private BuildPlanConsole() {}
 
     /**
      * Pick listeners + run the pipeline. Ctrl-C is handled by the app-level {@link
-     * cc.jumpkick.cli.tui.GlobalCancel} handler. Returns the pipeline's {@link PipelineResult}; caller
+     * cc.jumpkick.cli.tui.GlobalCancel} handler. Returns the pipeline's {@link BuildPlanResult}; caller
      * decides what exit code to surface based on {@code result.success}.
      */
-    public static PipelineResult run(Pipeline pipeline, Mode mode, Path cacheRoot) {
+    public static BuildPlanResult run(BuildPlan pipeline, Mode mode, Path cacheRoot) {
         // Always log every run for post-hoc debug. Best-effort: a
         // failed log open just leaves the listener out of the chain.
         EventLogListener log = EventLogListener.open(cacheRoot, pipeline.name());
         if (log != null) pipeline.addListener(log);
         attachSessionMirror(pipeline, mode);
 
-        PipelineListener console = chooseConsoleListener(pipeline, mode);
+        BuildPlanListener console = chooseConsoleListener(pipeline, mode);
         if (console != null) pipeline.addListener(console);
 
         return pipeline.run();
@@ -60,7 +60,7 @@ public final class PipelineConsole {
      * Variant that derives the cache root from {@link JkDirs#cache}. Use when the command doesn't
      * have an explicit override.
      */
-    public static PipelineResult run(Pipeline pipeline, Mode mode) {
+    public static BuildPlanResult run(BuildPlan pipeline, Mode mode) {
         return run(pipeline, mode, JkDirs.cache());
     }
 
@@ -70,12 +70,12 @@ public final class PipelineConsole {
      * json} still emits JSONL and {@code --verbose} still prints per-step lines; otherwise the
      * {@link SimpleTaskListener} owns the output (animating only on a TTY).
      */
-    public static PipelineResult run(Pipeline pipeline, Mode mode, Path cacheRoot, ConsoleSpec spec) {
+    public static BuildPlanResult run(BuildPlan pipeline, Mode mode, Path cacheRoot, ConsoleSpec spec) {
         EventLogListener log = EventLogListener.open(cacheRoot, pipeline.name());
         if (log != null) pipeline.addListener(log);
         attachSessionMirror(pipeline, mode);
 
-        PipelineListener console =
+        BuildPlanListener console =
                 switch (mode) {
                     case JSON -> new JsonlListener(System.out);
                     case VERBOSE -> new VerboseListener(System.out, System.err);
@@ -106,13 +106,13 @@ public final class PipelineConsole {
     }
 
     /**
-     * Pipeline-oriented variant: render the pipeline with the new {@link CommandManagerListener} (spinner
+     * BuildPlan-oriented variant: render the pipeline with the new {@link CommandManagerListener} (spinner
      * header + aggregate bar + dynamic step list) attributed to {@code module} (the project's {@code
      * group:artifact}), then a {@code ✓}/{@code ✗} result line from {@code spec}. {@code --output
      * json} still emits JSONL and {@code --verbose} still prints per-step lines.
      */
-    public static PipelineResult runPipeline(
-            Pipeline pipeline, Mode mode, Path cacheRoot, ConsoleSpec spec, String module) {
+    public static BuildPlanResult runBuildPlan(
+            BuildPlan pipeline, Mode mode, Path cacheRoot, ConsoleSpec spec, String module) {
         EventLogListener log = EventLogListener.open(cacheRoot, pipeline.name());
         if (log != null) pipeline.addListener(log);
         attachSessionMirror(pipeline, mode);
@@ -122,12 +122,12 @@ public final class PipelineConsole {
     }
 
     /**
-     * The listener {@link #runPipeline} picks per {@code mode} — split out so a caller that doesn't have
-     * a real {@code Pipeline} yet (a engine-hosted test run reconstructing the step list from wire
+     * The listener {@link #runBuildPlan} picks per {@code mode} — split out so a caller that doesn't have
+     * a real {@code BuildPlan} yet (a engine-hosted test run reconstructing the step list from wire
      * events; see {@code EngineBuildListenerAdapter}) can choose the same listener from just {@code
      * steps} once it knows them, instead of duplicating this switch.
      */
-    public static PipelineListener chooseConsoleListener(List<Step> steps, Mode mode, ConsoleSpec spec, String module) {
+    public static BuildPlanListener chooseConsoleListener(List<Task> steps, Mode mode, ConsoleSpec spec, String module) {
         return switch (mode) {
             case JSON -> new JsonlListener(System.out);
             case VERBOSE -> new VerboseListener(System.out, System.err);
@@ -142,8 +142,8 @@ public final class PipelineConsole {
      * LiveProgress} — the aggregate {@code progress} rider belongs to the engine's {@code
      * workspace-progress} snapshots alone.
      */
-    public static PipelineListener chooseWorkspaceMemberListener(
-            List<Step> steps, Mode mode, ConsoleSpec spec, String module) {
+    public static BuildPlanListener chooseWorkspaceMemberListener(
+            List<Task> steps, Mode mode, ConsoleSpec spec, String module) {
         return switch (mode) {
             case JSON -> new JsonlListener(System.out, false);
             case VERBOSE -> new VerboseListener(System.out, System.err);
@@ -158,7 +158,7 @@ public final class PipelineConsole {
      * concurrently, where N live progress bars can't share one terminal region; the caller prints a
      * compact summary line per unit instead.
      */
-    public static PipelineResult runPipelineSilently(Pipeline pipeline, Path cacheRoot) {
+    public static BuildPlanResult runBuildPlanSilently(BuildPlan pipeline, Path cacheRoot) {
         EventLogListener log = EventLogListener.open(cacheRoot, pipeline.name());
         if (log != null) pipeline.addListener(log);
         // Silent still mirrors to details.jsonl when a session is open (TTY chrome suppressed).
@@ -168,7 +168,7 @@ public final class PipelineConsole {
     }
 
     /** A buffered run's result paired with its captured output/diagnostic lines. */
-    public record Buffered(PipelineResult result, List<String> output) {}
+    public record Buffered(BuildPlanResult result, List<String> output) {}
 
     /**
      * Run {@code pipeline} capturing its output + warnings + errors into a buffer instead of rendering
@@ -176,12 +176,12 @@ public final class PipelineConsole {
      * contiguous block on completion (no interleaving across parallel builds). Only the event log
      * renders eagerly.
      */
-    public static Buffered runPipelineBuffered(Pipeline pipeline, Path cacheRoot) {
+    public static Buffered runBuildPlanBuffered(BuildPlan pipeline, Path cacheRoot) {
         EventLogListener log = EventLogListener.open(cacheRoot, pipeline.name());
         if (log != null) pipeline.addListener(log);
         attachSessionMirror(pipeline, Mode.QUIET);
         List<String> lines = new java.util.ArrayList<>();
-        pipeline.addListener(new PipelineListener() {
+        pipeline.addListener(new BuildPlanListener() {
             @Override
             public synchronized void output(String step, String line) {
                 lines.add(line);
@@ -197,13 +197,13 @@ public final class PipelineConsole {
                 lines.add("  " + Glyphs.CROSS + " " + step + ": " + message);
             }
         });
-        PipelineResult r = pipeline.run();
+        BuildPlanResult r = pipeline.run();
         synchronized (lines) { // visibility barrier after the pipeline's threads finish
             return new Buffered(r, new java.util.ArrayList<>(lines));
         }
     }
 
-    private static PipelineListener chooseConsoleListener(Pipeline pipeline, Mode mode) {
+    private static BuildPlanListener chooseConsoleListener(BuildPlan pipeline, Mode mode) {
         // Interactive pipelines (wizards) must NOT render a progress bar
         // the wizard owns the terminal. Same for JSON output (events
         // already go to stdout via JsonlListener) and explicit quiet.
@@ -212,12 +212,12 @@ public final class PipelineConsole {
     }
 
     /**
-     * The default (spec-less) listener {@link #run(Pipeline, Mode, Path)} picks per {@code mode} — split
-     * out so a caller with no real {@code Pipeline} (an engine-hosted run reconstructing the step list
+     * The default (spec-less) listener {@link #run(BuildPlan, Mode, Path)} picks per {@code mode} — split
+     * out so a caller with no real {@code BuildPlan} (an engine-hosted run reconstructing the step list
      * from wire events; see {@code EngineResolveAdapter}) can choose the same listener from just the
      * pipeline's name and steps, instead of duplicating this switch. Non-interactive pipelines only.
      */
-    public static PipelineListener chooseConsoleListener(String pipelineName, List<Step> steps, Mode mode) {
+    public static BuildPlanListener chooseConsoleListener(String pipelineName, List<Task> steps, Mode mode) {
         return switch (mode) {
             case QUIET -> new SilentListener(System.out, System.err);
             case JSON -> new JsonlListener(System.out);
@@ -235,19 +235,19 @@ public final class PipelineConsole {
      * view. The shared view is settled by the caller after the last module. Always records the event
      * log.
      */
-    public static PipelineResult runPipelineInto(
-            Pipeline pipeline, Path cacheRoot, String module, AggregateContext agg) {
-        return runPipelineInto(pipeline, cacheRoot, module, agg, 0);
+    public static BuildPlanResult runBuildPlanInto(
+            BuildPlan pipeline, Path cacheRoot, String module, AggregateContext agg) {
+        return runBuildPlanInto(pipeline, cacheRoot, module, agg, 0);
     }
 
     /**
-     * As {@link #runPipelineInto(Pipeline, Path, String, AggregateContext)}, but with the module's reserved
+     * As {@link #runBuildPlanInto(BuildPlan, Path, String, AggregateContext)}, but with the module's reserved
      * {@code slice} of the calibrated total (its pre-scan estimate). The slice scales the module's
      * own 0→100% into its share of the aggregate bar so the bar advances cumulatively without
      * backtracking. Pass the same estimate that was summed into {@link AggregateContext#calibrate}.
      */
-    public static PipelineResult runPipelineInto(
-            Pipeline pipeline, Path cacheRoot, String module, AggregateContext agg, long slice) {
+    public static BuildPlanResult runBuildPlanInto(
+            BuildPlan pipeline, Path cacheRoot, String module, AggregateContext agg, long slice) {
         EventLogListener log = EventLogListener.open(cacheRoot, pipeline.name());
         if (log != null) pipeline.addListener(log);
         // Workspace TTY path is never JSON mode — always mirror pipeline events into details.jsonl.
@@ -257,14 +257,14 @@ public final class PipelineConsole {
     }
 
     /**
-     * As {@link #runPipelineInto(Pipeline, Path, String, AggregateContext, long)} but for a module built
+     * As {@link #runBuildPlanInto(BuildPlan, Path, String, AggregateContext, long)} but for a module built
      * <em>concurrently</em>: its process output is appended to {@code outBuffer} instead of being
      * written above the live region as it arrives, so parallel modules' logs never interleave. The
      * caller flushes the buffer (above the shared region) when the module completes. Step/progress
      * events still feed the shared aggregate view live (the running rows + bar).
      */
-    public static PipelineResult runPipelineIntoBuffered(
-            Pipeline pipeline,
+    public static BuildPlanResult runBuildPlanIntoBuffered(
+            BuildPlan pipeline,
             Path cacheRoot,
             String module,
             AggregateContext agg,
@@ -283,7 +283,7 @@ public final class PipelineConsole {
      * When a CLI session is open and stdout is <em>not</em> already JSONL, mirror pipeline events
      * into {@code details.jsonl}. JSON mode dual-writes via {@link JsonlListener} instead.
      */
-    private static void attachSessionMirror(Pipeline pipeline, Mode mode) {
+    private static void attachSessionMirror(BuildPlan pipeline, Mode mode) {
         if (mode == Mode.JSON) return;
         CliSessionTranscript session = CliSessionTranscript.active();
         if (session == null) return;

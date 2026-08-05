@@ -17,7 +17,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
-import cc.jumpkick.runtime.BuildPlan;
+import cc.jumpkick.runtime.TaskForecast;
 import cc.jumpkick.runtime.ExplainPlan;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
@@ -305,8 +305,8 @@ public final class TasksCommand implements CliCommand {
             return "unknown (engine offline or forecast failed — try `jk explain`)";
         }
         Path abs = modDir.toAbsolutePath().normalize();
-        BuildPlan.Module mod = null;
-        for (BuildPlan.Module m : plan.modules()) {
+        TaskForecast.Module mod = null;
+        for (TaskForecast.Module m : plan.modules()) {
             if (m.dir() != null && m.dir().toAbsolutePath().normalize().equals(abs)) {
                 mod = m;
                 break;
@@ -318,8 +318,8 @@ public final class TasksCommand implements CliCommand {
         if (mod == null) {
             return "unknown (module not in forecast)";
         }
-        BuildPlan.Step step = null;
-        for (BuildPlan.Step s : mod.steps()) {
+        TaskForecast.Task step = null;
+        for (TaskForecast.Task s : mod.steps()) {
             if (s.name() != null && s.name().equals(stepName)) {
                 step = s;
                 break;

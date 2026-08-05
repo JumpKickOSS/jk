@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
-import cc.jumpkick.plugin.build.StepExec;
+import cc.jumpkick.plugin.build.TaskExec;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -14,7 +14,7 @@ final class TestConfigStep {
 
     private TestConfigStep() {}
 
-    static void run(StepExec exec) throws Exception {
+    static void run(TaskExec exec) throws Exception {
         Path manifest = exec.requireStepOutput("android-manifest").resolve("merged/AndroidManifest.xml");
         Path res = exec.requireStepOutput("android-res");
         Path rawRes = res.resolve("raw-res");

@@ -20,7 +20,7 @@ public final class CacheBenefit {
 
     private CacheBenefit() {}
 
-    /** One step within a module: its terminal {@code StepStatus} name, measured millis, and edges. */
+    /** One step within a module: its terminal {@code TaskStatus} name, measured millis, and edges. */
     public record StepInput(String name, String status, long millis, List<String> requires) {
         public StepInput {
             requires = requires == null ? List.of() : List.copyOf(requires);

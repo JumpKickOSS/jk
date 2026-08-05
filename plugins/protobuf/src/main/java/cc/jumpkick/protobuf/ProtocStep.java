@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.protobuf;
 
-import cc.jumpkick.plugin.build.StepExec;
+import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,7 +22,7 @@ final class ProtocStep {
 
     private ProtocStep() {}
 
-    static void run(StepExec exec) throws Exception {
+    static void run(TaskExec exec) throws Exception {
         String src = exec.config().stringOpt("src").orElse("proto");
         Path protoDir = exec.moduleDir().resolve(src);
         Path gen = exec.outputDir("gen");
@@ -33,7 +33,7 @@ final class ProtocStep {
         boolean lite = exec.config().bool("lite", false);
         Path protoc = executable(exec);
         exec.label("protoc (" + protos.size() + (protos.size() == 1 ? " file)" : " files)"));
-        StepExec.ToolRun run = exec.tool(protoc)
+        TaskExec.ToolRun run = exec.tool(protoc)
                 .arg("--java_out=" + (lite ? "lite:" : "") + gen.toAbsolutePath())
                 .arg("-I")
                 .arg(protoDir.toAbsolutePath().toString())
@@ -46,7 +46,7 @@ final class ProtocStep {
         for (Path proto : protos) {
             run.arg(proto.toAbsolutePath().toString());
         }
-        StepExec.ToolRun.Result result = run.run();
+        TaskExec.ToolRun.Result result = run.run();
         if (result.exit() != 0) {
             throw new IllegalStateException("protoc failed (exit " + result.exit() + "):\n" + result.output());
         }
@@ -63,7 +63,7 @@ final class ProtocStep {
     }
 
     /** Stage the fetched binary into scratch with the executable bit set (cache files are read-only). */
-    private static Path executable(StepExec exec) throws IOException {
+    private static Path executable(TaskExec exec) throws IOException {
         Path fetched = exec.requireExtra("protoc");
         boolean windows = System.getProperty("os.name", "")
                 .toLowerCase(java.util.Locale.ROOT)

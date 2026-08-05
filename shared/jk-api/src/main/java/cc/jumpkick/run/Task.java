@@ -9,16 +9,16 @@ import java.util.Optional;
 import java.util.function.IntSupplier;
 
 /**
- * One unit of work inside a {@link Pipeline}. Steps declare their dependencies by name and run when
+ * One unit of work inside a {@link BuildPlan}. Steps declare their dependencies by name and run when
  * their prerequisites finish.
  *
- * <p>Steps are immutable after construction. Use {@link Step#builder} to assemble one.
+ * <p>Steps are immutable after construction. Use {@link Task#builder} to assemble one.
  */
-public final class Step {
+public final class Task {
 
     private final String name;
     private final String label;
-    private final StepKind kind;
+    private final TaskKind kind;
     private final List<String> requires;
     private final IntSupplier ticks;
     private final IntSupplier weight; // null → weight tracks ticks (legacy behaviour)
@@ -26,10 +26,10 @@ public final class Step {
     private final Phase phase; // nullable — the coarse pipeline stage this step belongs to
     private final Body body;
 
-    Step(
+    Task(
             String name,
             String label,
-            StepKind kind,
+            TaskKind kind,
             List<String> requires,
             IntSupplier ticks,
             IntSupplier weight,
@@ -61,7 +61,7 @@ public final class Step {
         return label;
     }
 
-    public StepKind kind() {
+    public TaskKind kind() {
         return kind;
     }
 
@@ -105,11 +105,11 @@ public final class Step {
     }
 
     public boolean async() {
-        return kind != StepKind.SYNC;
+        return kind != TaskKind.SYNC;
     }
 
     /** Step body — runs on whatever thread the scheduler dispatched it on. */
-    public void execute(StepContext ctx) throws Exception {
+    public void execute(TaskContext ctx) throws Exception {
         body.run(ctx);
     }
 
@@ -117,16 +117,16 @@ public final class Step {
         return new Builder(name);
     }
 
-    /** Functional shape of {@link Step#execute}; {@code Exception} → fail. */
+    /** Functional shape of {@link Task#execute}; {@code Exception} → fail. */
     @FunctionalInterface
     public interface Body {
-        void run(StepContext ctx) throws Exception;
+        void run(TaskContext ctx) throws Exception;
     }
 
     public static final class Builder {
         private final String name;
         private String label;
-        private StepKind kind = StepKind.SYNC;
+        private TaskKind kind = TaskKind.SYNC;
         private final List<String> requires = new ArrayList<>();
         private IntSupplier ticks = () -> 1;
         private IntSupplier weight = null; // null → weight tracks ticks
@@ -144,7 +144,7 @@ public final class Step {
             return this;
         }
 
-        public Builder kind(StepKind kind) {
+        public Builder kind(TaskKind kind) {
             this.kind = kind;
             return this;
         }
@@ -157,7 +157,7 @@ public final class Step {
 
         /**
          * Cheap up-front size estimate. Called once before the pipeline starts. Use {@link
-         * StepContext#updateTicks} during execution if it turns out the estimate was low.
+         * TaskContext#updateTicks} during execution if it turns out the estimate was low.
          */
         public Builder ticks(IntSupplier supplier) {
             this.ticks = supplier;
@@ -190,7 +190,7 @@ public final class Step {
 
         /**
          * Ease this step's bar slice forward over elapsed time while it runs. For opaque steps only —
-         * see {@link Step#interpolated()}.
+         * see {@link Task#interpolated()}.
          */
         public Builder interpolated() {
             this.interpolated = true;
@@ -208,8 +208,8 @@ public final class Step {
             return this;
         }
 
-        public Step build() {
-            return new Step(name, label, kind, requires, ticks, weight, interpolated, phase, body);
+        public Task build() {
+            return new Task(name, label, kind, requires, ticks, weight, interpolated, phase, body);
         }
     }
 }

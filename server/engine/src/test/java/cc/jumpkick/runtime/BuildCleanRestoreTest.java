@@ -11,8 +11,8 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.task.ActionCache;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -75,11 +75,11 @@ class BuildCleanRestoreTest {
         BuildLayout layout = BuildLayout.of(project, parsed);
         Session nested = Session.defaults().withCacheDir(cache);
         run(nested, () -> {
-            Pipeline lock = LockPipelines.lockPipeline(
+            BuildPlan lock = LockPipelines.lockBuildPlan(
                     project, parsed, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
             assertThat(lock.run().errors()).isEmpty();
 
-            PipelineResult first = BuildPipelines.coreBuilder(inputs(project, cache, nested, false))
+            BuildPlanResult first = BuildPipelines.coreBuilder(inputs(project, cache, nested, false))
                     .build()
                     .run();
             assertThat(first.errors()).isEmpty();
@@ -92,7 +92,7 @@ class BuildCleanRestoreTest {
             BuildGraph.Result graph = BuildGraph.resolve(project, parsed);
             Cas cas = JkStores.cas(cache);
             ActionCache actionCache = new ActionCache(cas, cache.resolve("actions"));
-            List<BuildPlan.Module> plan = BuildPlanForecast.of(graph, cas, actionCache, cache, false);
+            List<TaskForecast.Module> plan = TaskForecaster.of(graph, cas, actionCache, cache, false);
             assertThat(plan).hasSize(1);
             assertThat(plan.get(0).dirty())
                     .as("wiped no-test module must schedule so the build restores target/")
@@ -100,12 +100,12 @@ class BuildCleanRestoreTest {
             // When everything else is cache-clean the schedule reason is the restore gate.
             if (plan.get(0).steps().stream()
                     .filter(s -> !s.name().equals("restore-outputs"))
-                    .allMatch(BuildPlan.Step::cached)) {
-                assertThat(plan.get(0).steps()).extracting(BuildPlan.Step::name).contains("restore-outputs");
+                    .allMatch(TaskForecast.Task::cached)) {
+                assertThat(plan.get(0).steps()).extracting(TaskForecast.Task::name).contains("restore-outputs");
             }
 
             // The scheduled build restores the outputs from cache.
-            PipelineResult second = BuildPipelines.coreBuilder(inputs(project, cache, nested, false))
+            BuildPlanResult second = BuildPipelines.coreBuilder(inputs(project, cache, nested, false))
                     .build()
                     .run();
             assertThat(second.errors()).isEmpty();
@@ -164,11 +164,11 @@ class BuildCleanRestoreTest {
         BuildLayout layout = BuildLayout.of(project, parsed);
         Session nested = Session.defaults().withCacheDir(cache);
         run(nested, () -> {
-            Pipeline lock = LockPipelines.lockPipeline(
+            BuildPlan lock = LockPipelines.lockBuildPlan(
                     project, parsed, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
             assertThat(lock.run().errors()).isEmpty();
 
-            PipelineResult first = BuildPipelines.coreBuilder(inputs(project, cache, nested, true))
+            BuildPlanResult first = BuildPipelines.coreBuilder(inputs(project, cache, nested, true))
                     .build()
                     .run();
             assertThat(first.errors()).isEmpty();
@@ -181,11 +181,11 @@ class BuildCleanRestoreTest {
             BuildGraph.Result graph = BuildGraph.resolve(project, parsed);
             Cas cas = JkStores.cas(cache);
             ActionCache actionCache = new ActionCache(cas, cache.resolve("actions"));
-            List<BuildPlan.Module> plan = BuildPlanForecast.of(graph, cas, actionCache, cache, true);
+            List<TaskForecast.Module> plan = TaskForecaster.of(graph, cas, actionCache, cache, true);
             assertThat(plan).hasSize(1);
             assertThat(plan.get(0).dirty()).isTrue();
 
-            PipelineResult second = BuildPipelines.coreBuilder(inputs(project, cache, nested, true))
+            BuildPlanResult second = BuildPipelines.coreBuilder(inputs(project, cache, nested, true))
                     .build()
                     .run();
             assertThat(second.errors()).isEmpty();

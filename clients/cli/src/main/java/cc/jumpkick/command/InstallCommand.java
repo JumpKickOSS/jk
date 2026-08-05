@@ -4,13 +4,13 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
-import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.repo.MavenLayout;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.tool.JarManifest;
 import cc.jumpkick.tool.ToolEnv;
@@ -57,7 +57,7 @@ public final class InstallCommand {
                     "Install", "no jk.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(projectDir)));
             return Exit.CONFIG;
         }
-        return runProjectInstallPipeline(projectDir, "install");
+        return runProjectInstallBuildPlan(projectDir, "install");
     }
 
     // --- mode 2: local file ----------------------------------------------
@@ -145,7 +145,7 @@ public final class InstallCommand {
         Path envsRoot = stateDir().resolve("tools").resolve("envs");
         Path binDir = binDir();
         Files.createDirectories(cacheDir);
-        PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
 
         ToolEnv env;
         cc.jumpkick.cli.engine.EngineClient.ToolResolveOutcome outcome;
@@ -154,7 +154,7 @@ public final class InstallCommand {
                     cc.jumpkick.engine.EnginePaths.current(),
                     new cc.jumpkick.cli.engine.EngineClient.ToolResolveRequest(
                             resolved.coordSpec(), java.util.List.of(), bin, mainClass, repoUrl, cacheDir),
-                    steps -> PipelineConsole.chooseConsoleListener("install-maven", steps, mode));
+                    steps -> BuildPlanConsole.chooseConsoleListener("install-maven", steps, mode));
         } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Install", e.getMessage()));
             return Exit.SOFTWARE;
@@ -186,9 +186,9 @@ public final class InstallCommand {
         Path cacheDir = cacheDir();
         Files.createDirectories(cacheDir);
         boolean refresh = cc.jumpkick.config.SessionContext.current().config().forceOr(false);
-        PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
 
-        PipelineResult fetchResult;
+        BuildPlanResult fetchResult;
         Path checkout;
         String sha;
         // Engine-hosted clone: checkout path + sha ride the terminal pipeline-finish.
@@ -198,7 +198,7 @@ public final class InstallCommand {
                     cc.jumpkick.engine.EnginePaths.current(),
                     new cc.jumpkick.cli.engine.EngineClient.GitFetchRequest(
                             expanded, canonical, refStr, cacheDir, refresh),
-                    steps -> PipelineConsole.chooseConsoleListener("install-git-fetch", steps, mode));
+                    steps -> BuildPlanConsole.chooseConsoleListener("install-git-fetch", steps, mode));
         } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Install", e.getMessage()));
             return Exit.SOFTWARE;
@@ -208,7 +208,7 @@ public final class InstallCommand {
         sha = outcome.sha();
 
         if (!fetchResult.success() || checkout == null || sha == null) {
-            for (PipelineResult.Diagnostic d : fetchResult.errors()) {
+            for (BuildPlanResult.Diagnostic d : fetchResult.errors()) {
                 if ("no-jk-toml".equals(d.code())) return Exit.SOFTWARE;
             }
             return failureExit(fetchResult, "jk install", cacheDir);
@@ -220,13 +220,13 @@ public final class InstallCommand {
 
         // After fetch, hand off to the same project-install pipeline used by
         // mode 1, but with the checkout dir instead of the user's CWD.
-        return runProjectInstallPipeline(checkout, "install-git");
+        return runProjectInstallBuildPlan(checkout, "install-git");
     }
 
     // --- shared project-install pipeline ---------------------------------
 
     /** Package-private: {@code jk tool install <project-dir>} delegates here. */
-    int runProjectInstallPipeline(Path projectDir, String pipelineName) throws IOException {
+    int runProjectInstallBuildPlan(Path projectDir, String pipelineName) throws IOException {
         Path cacheDir = cacheDir();
         Path binDir = binDir();
         Path libDir = libDir();
@@ -271,8 +271,8 @@ public final class InstallCommand {
         // per jk.toml; jar + generated pom into ~/.m2 / repos/local) — engine-hosted for a real
         // invocation, in-process for the test-only bypass. The make-install half runs below,
         // client-side either way: it writes the user-home launcher/binary this process owns.
-        PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
-        PipelineResult result;
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
+        BuildPlanResult result;
         TestSummary testResult;
         var session = cc.jumpkick.config.SessionContext.current();
         TestSummary[] testResultHolder = new TestSummary[1];
@@ -288,7 +288,7 @@ public final class InstallCommand {
                             session.offline(),
                             session.force(),
                             global.verbose),
-                    steps -> PipelineConsole.chooseConsoleListener(pipelineName, steps, mode),
+                    steps -> BuildPlanConsole.chooseConsoleListener(pipelineName, steps, mode),
                     testResultHolder);
         } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Install", e.getMessage()));
@@ -382,7 +382,7 @@ public final class InstallCommand {
      * read uniformly; the listener already printed the "✗ Error" diagnostic so we don't repeat
      * ourselves.
      */
-    private static int failureExit(PipelineResult result, String label, Path cache) {
+    private static int failureExit(BuildPlanResult result, String label, Path cache) {
         return 1;
     }
 

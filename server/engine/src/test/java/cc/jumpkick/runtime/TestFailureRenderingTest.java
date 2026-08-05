@@ -96,7 +96,7 @@ class TestFailureRenderingTest {
         assertThat(last.get()).isEqualTo("cc.jumpkick:core :: FooTest.bar()");
     }
 
-    private static final class LabelCaptureContext implements cc.jumpkick.run.StepContext {
+    private static final class LabelCaptureContext implements cc.jumpkick.run.TaskContext {
         private final AtomicReference<String> last;
 
         LabelCaptureContext(AtomicReference<String> last) {
@@ -129,15 +129,15 @@ class TestFailureRenderingTest {
         }
 
         @Override
-        public <T> void put(cc.jumpkick.run.PipelineKey<T> key, T value) {}
+        public <T> void put(cc.jumpkick.run.BuildPlanKey<T> key, T value) {}
 
         @Override
-        public <T> Optional<T> get(cc.jumpkick.run.PipelineKey<T> key) {
+        public <T> Optional<T> get(cc.jumpkick.run.BuildPlanKey<T> key) {
             return Optional.empty();
         }
 
         @Override
-        public <T> T require(cc.jumpkick.run.PipelineKey<T> key) {
+        public <T> T require(cc.jumpkick.run.BuildPlanKey<T> key) {
             throw new IllegalStateException("missing " + key);
         }
     }

@@ -13,14 +13,14 @@ import org.junit.jupiter.api.Test;
  * progress is scaled into its weight, so a file-count-scoped compile can't dominate the bar. Steps
  * without an explicit weight keep the legacy 1:1 (weight tracks ticks) behaviour.
  */
-class StepWeightTest {
+class TaskWeightTest {
 
     /** Records the numerator/denominator seen on each progress event. */
-    private static final class ProgressTrace implements PipelineListener {
+    private static final class ProgressTrace implements BuildPlanListener {
         final List<long[]> points = new ArrayList<>(); // {numerator, denominator}
 
         @Override
-        public void progress(String step, int delta, PipelineView v) {
+        public void progress(String step, int delta, BuildPlanView v) {
             points.add(new long[] {v.numerator(), v.denominator()});
         }
     }
@@ -28,10 +28,10 @@ class StepWeightTest {
     @Test
     void denominator_sums_weights_not_scopes() {
         // A: weight 40 over 4 units; B: no weight → tracks its ticks of 6.
-        Pipeline pipeline = Pipeline.builder("g")
-                .addStep(
-                        Step.builder("a").weight(40).ticks(4).execute(ctx -> {}).build())
-                .addStep(Step.builder("b").ticks(6).execute(ctx -> {}).build())
+        BuildPlan pipeline = BuildPlan.builder("g")
+                .addTask(
+                        Task.builder("a").weight(40).ticks(4).execute(ctx -> {}).build())
+                .addTask(Task.builder("b").ticks(6).execute(ctx -> {}).build())
                 .build();
 
         assertThat(pipeline.estimatedTotalWeight()).isEqualTo(46); // 40 + 6, not 4 + 6
@@ -43,10 +43,10 @@ class StepWeightTest {
     @Test
     void internal_progress_scales_into_the_weight() {
         ProgressTrace trace = new ProgressTrace();
-        Pipeline pipeline = Pipeline.builder("g")
+        BuildPlan pipeline = BuildPlan.builder("g")
                 .addListener(trace)
                 // 4 internal ticks mapped onto a 40- tick weight → +10 each.
-                .addStep(Step.builder("a")
+                .addTask(Task.builder("a")
                         .weight(40)
                         .ticks(4)
                         .execute(ctx -> {
@@ -66,10 +66,10 @@ class StepWeightTest {
     @Test
     void weighted_progress_rounds_and_stays_monotonic() {
         ProgressTrace trace = new ProgressTrace();
-        Pipeline pipeline = Pipeline.builder("g")
+        BuildPlan pipeline = BuildPlan.builder("g")
                 .addListener(trace)
                 // 3 units over a weight of 10: round(10/3)=3, round(20/3)=7, 10.
-                .addStep(Step.builder("a")
+                .addTask(Task.builder("a")
                         .weight(10)
                         .ticks(3)
                         .execute(ctx -> {
@@ -91,10 +91,10 @@ class StepWeightTest {
     @Test
     void overrunning_internal_scope_never_exceeds_the_weight() {
         ProgressTrace trace = new ProgressTrace();
-        Pipeline pipeline = Pipeline.builder("g")
+        BuildPlan pipeline = BuildPlan.builder("g")
                 .addListener(trace)
                 // Reports more units (5) than its ticks (2): the bar clamps at weight.
-                .addStep(Step.builder("a")
+                .addTask(Task.builder("a")
                         .weight(20)
                         .ticks(2)
                         .execute(ctx -> {
@@ -113,8 +113,8 @@ class StepWeightTest {
     @Test
     void reweight_resizes_the_slice_and_the_denominator_mid_run() {
         // 'a' is estimated at 40 up front but discovers early it's a cheap restore (3).
-        Pipeline pipeline = Pipeline.builder("g")
-                .addStep(Step.builder("a")
+        BuildPlan pipeline = BuildPlan.builder("g")
+                .addTask(Task.builder("a")
                         .weight(40)
                         .ticks(1)
                         .execute(ctx -> {
@@ -122,7 +122,7 @@ class StepWeightTest {
                             ctx.progress(1);
                         })
                         .build())
-                .addStep(Step.builder("b")
+                .addTask(Task.builder("b")
                         .weight(10)
                         .ticks(1)
                         .execute(ctx -> ctx.progress(1))
@@ -141,8 +141,8 @@ class StepWeightTest {
         // A weighted, interpolated step with expected duration 1ms and weight 100.
         // Driving tick() with controlled timestamps eases the slice toward
         // weight × elapsed/expected, then holds at the 90% cap.
-        Pipeline pipeline = Pipeline.builder("g").build();
-        DefaultStepContext ctx = new DefaultStepContext(
+        BuildPlan pipeline = BuildPlan.builder("g").build();
+        DefaultTaskContext ctx = new DefaultTaskContext(
                 "p",
                 pipeline, /*ticks*/
                 1, /*weight*/
@@ -162,8 +162,8 @@ class StepWeightTest {
 
     @Test
     void real_progress_overrides_interpolation_and_fills_past_the_cap() {
-        Pipeline pipeline = Pipeline.builder("g").build();
-        DefaultStepContext ctx = new DefaultStepContext(
+        BuildPlan pipeline = BuildPlan.builder("g").build();
+        DefaultTaskContext ctx = new DefaultTaskContext(
                 "p",
                 pipeline, /*ticks*/
                 1, /*weight*/
@@ -183,9 +183,9 @@ class StepWeightTest {
     @Test
     void unweighted_phase_is_unchanged_one_to_one() {
         ProgressTrace trace = new ProgressTrace();
-        Pipeline pipeline = Pipeline.builder("g")
+        BuildPlan pipeline = BuildPlan.builder("g")
                 .addListener(trace)
-                .addStep(Step.builder("a")
+                .addTask(Task.builder("a")
                         .ticks(3)
                         .execute(ctx -> {
                             for (int i = 0; i < 3; i++) ctx.progress(1);

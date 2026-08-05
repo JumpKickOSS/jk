@@ -11,7 +11,7 @@ plugins {
 // filename version equals its own baked-in version.
 version = "0.11.0"
 
-description = "jk build engine: EngineMain, Pipeline/Step scheduler, and build pipeline. " +
+description = "jk build engine: EngineMain, BuildPlan/Task scheduler, and build pipeline. " +
         "Server-only — never links the CLI. Ships as jk-engine-<version>.jar."
 
 dependencies {

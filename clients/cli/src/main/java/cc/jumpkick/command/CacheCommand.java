@@ -6,7 +6,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.run.ConsoleSpec;
-import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -362,11 +362,11 @@ public final class CacheCommand extends GroupCommand {
 
             if (!dryRun && !confirmClear()) {
                 CliOutput.out(
-                        cc.jumpkick.cli.tui.PipelineWedge.chipLine(Glyphs.CROSS, "Cache", nerdfont, "Clear aborted."));
+                        cc.jumpkick.cli.tui.BuildPlanWedge.chipLine(Glyphs.CROSS, "Cache", nerdfont, "Clear aborted."));
                 return 1;
             }
 
-            PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
+            BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
 
             // Counts settle from the terminal pipeline-finish before the console listener renders.
             var summary = new cc.jumpkick.cli.engine.EngineClient.CacheMaintSummary[1];
@@ -374,13 +374,13 @@ public final class CacheCommand extends GroupCommand {
                     dryRun,
                     () -> summary[0] != null ? summary[0].files() : 0L,
                     () -> summary[0] != null ? summary[0].bytes() : 0L);
-            cc.jumpkick.run.PipelineResult result;
+            cc.jumpkick.run.BuildPlanResult result;
             try {
                 result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
                         cc.jumpkick.engine.EnginePaths.current(),
                         new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest(
                                 "clear", root, 0, dryRun, false, null, false, projectDir),
-                        steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
+                        steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
                         CacheCommand::printWait,
                         summary);
             } catch (IOException e) {
@@ -491,14 +491,14 @@ public final class CacheCommand extends GroupCommand {
                     dryRun,
                     () -> summary[0] != null ? summary[0].files() : 0L,
                     () -> summary[0] != null ? summary[0].bytes() : 0L);
-            PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
-            cc.jumpkick.run.PipelineResult result;
+            BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
+            cc.jumpkick.run.BuildPlanResult result;
             try {
                 result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
                         cc.jumpkick.engine.EnginePaths.current(),
                         new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest(
                                 "prune", root, olderThanDays, dryRun, sweep, maxSize, defaultCacheDir),
-                        steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
+                        steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
                         CacheCommand::printWait,
                         summary);
             } catch (IOException e) {
@@ -587,7 +587,7 @@ public final class CacheCommand extends GroupCommand {
             }
             if (!confirmPurge(root, stats)) {
                 cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
-                CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
+                CliOutput.out(cc.jumpkick.cli.tui.BuildPlanWedge.chipLine(
                         cc.jumpkick.cli.tui.Glyphs.CROSS, "Cache", nerdfont, "Purge aborted."));
                 return 1;
             }
@@ -598,15 +598,15 @@ public final class CacheCommand extends GroupCommand {
                     r -> "Purged " + fmtCount(result[0]) + " files, " + fmtBytes(result[1]) + " freed.",
                     r -> "Failed to purge cache.",
                     true);
-            PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
+            BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
 
-            cc.jumpkick.run.PipelineResult pipelineResult;
+            cc.jumpkick.run.BuildPlanResult pipelineResult;
             try {
                 pipelineResult = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
                         cc.jumpkick.engine.EnginePaths.current(),
                         new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest(
                                 "purge", root, 0, false, false, null, false),
-                        steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
+                        steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
                         CacheCommand::printWait,
                         new cc.jumpkick.cli.engine.EngineClient.CacheMaintSummary[1]);
             } catch (IOException e) {

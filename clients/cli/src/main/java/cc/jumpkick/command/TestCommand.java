@@ -5,17 +5,17 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.run.CliSessionTranscript;
-import cc.jumpkick.cli.run.CompositePipelineListener;
+import cc.jumpkick.cli.run.CompositeBuildPlanListener;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.JsonlShape;
-import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.SessionMirrorListener;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -170,9 +170,9 @@ public final class TestCommand implements CliCommand {
             }
         }
 
-        PipelineResult result;
+        BuildPlanResult result;
         TestSummary testResult;
-        // Engine-hosted (Step 3): the wire has no real Pipeline to attach a console listener to
+        // Engine-hosted (Task 3): the wire has no real BuildPlan to attach a console listener to
         // ahead of time, so the listener is chosen once the step list arrives over the socket
         // see EngineBuildListenerAdapter.runTest. testResultHolder is populated (if the run-tests
         // step actually ran) before the terminal pipeline-finish reaches that listener, exactly
@@ -181,7 +181,7 @@ public final class TestCommand implements CliCommand {
         ConsoleSpec spec = new ConsoleSpec(
                 "Test", r -> testSummary(testResultHolder[0], r), r -> testFailureMessage(testResultHolder[0], r));
         String module = BuildCommand.buildTarget(buildFile, dir);
-        PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         try {
             result = cc.jumpkick.cli.engine.EngineClient.runTest(
                     cc.jumpkick.engine.EnginePaths.current(),
@@ -199,7 +199,7 @@ public final class TestCommand implements CliCommand {
                             cc.jumpkick.config.SessionContext.current().force(),
                             parallelTests,
                             testSelection),
-                    steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, module),
+                    steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, module),
                     testResultHolder);
         } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", e.getMessage()));
@@ -330,10 +330,10 @@ public final class TestCommand implements CliCommand {
         ConsoleSpec spec = new ConsoleSpec(
                 "Test", r -> testSummary(testResultHolder[0], r), r -> testFailureMessage(testResultHolder[0], r));
         String module = BuildCommand.buildTarget(mod.resolve("jk.toml"), mod);
-        PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         JsonlShape.emitJsonl(JsonlShape.moduleStart(mod.toString(), module), json);
         long t0 = System.nanoTime();
-        PipelineResult result;
+        BuildPlanResult result;
         int code;
         try {
             result = cc.jumpkick.cli.engine.EngineClient.runTest(
@@ -351,9 +351,9 @@ public final class TestCommand implements CliCommand {
                             testSelection),
                     steps -> {
                         // Workspace member: no aggregate-rider writes from pipeline-local fractions.
-                        var console = PipelineConsole.chooseWorkspaceMemberListener(steps, mode, spec, module);
-                        if (mode == PipelineConsole.Mode.JSON || session == null) return console;
-                        return CompositePipelineListener.of(new SessionMirrorListener(session), console);
+                        var console = BuildPlanConsole.chooseWorkspaceMemberListener(steps, mode, spec, module);
+                        if (mode == BuildPlanConsole.Mode.JSON || session == null) return console;
+                        return CompositeBuildPlanListener.of(new SessionMirrorListener(session), console);
                     },
                     testResultHolder);
             if (session != null) {
@@ -379,18 +379,18 @@ public final class TestCommand implements CliCommand {
     /**
      * Success result line (sans the leading ✓): {@code Passed N tests in 32s}, or {@code No tests in
      * <t>} for a project with no test sources. Takes the resolved {@link TestSummary}
-     * directly (rather than a {@code Pipeline} to look it up from) so both the in-process path (which
+     * directly (rather than a {@code BuildPlan} to look it up from) so both the in-process path (which
      * reads it off {@code pipeline.get(TEST_RESULT)}) and the engine-hosted path (which has no real
-     * {@code Pipeline}, only a wire-populated holder) share this one rendering method.
+     * {@code BuildPlan}, only a wire-populated holder) share this one rendering method.
      */
-    static String testSummary(TestSummary testResult, PipelineResult result) {
+    static String testSummary(TestSummary testResult, BuildPlanResult result) {
         if (testResult == null || testResult.total() == 0) return "No tests";
         long total = testResult.total();
         String passed = Theme.colorize("Passed", Theme.active().focused());
         return passed + " " + total + " test" + (total == 1 ? "" : "s");
     }
 
-    static String testFailureMessage(TestSummary testResult, PipelineResult result) {
+    static String testFailureMessage(TestSummary testResult, BuildPlanResult result) {
         return (testResult != null && !testResult.allPassed()) ? "Tests failed" : "Build failed";
     }
 

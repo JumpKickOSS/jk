@@ -40,7 +40,7 @@ Command wedges (`CommandWedge`): working → blue pipeline chip; success → gre
 | `--path` | `#969DD4` | `PATH`, `path()` | Paths |
 | `--bg` | `#090C11` | *(web canvas; CLI has no page bg)* | Dashboard surface |
 
-Pipeline chips (CLI):
+BuildPlan chips (CLI):
 
 | Chip | Fill | Maps to |
 |------|------|---------|

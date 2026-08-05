@@ -269,12 +269,12 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     /** Register a not-yet-started step row with a humanized display name. */
-    public void addStep(String module, String stepKey) {
-        addStepLabeled(module, stepKey, humanize(stepKey));
+    public void addTask(String module, String stepKey) {
+        addTaskLabeled(module, stepKey, humanize(stepKey));
     }
 
     /** Register a not-yet-started step row with an explicit display label. */
-    public void addStepLabeled(String module, String stepKey, String display) {
+    public void addTaskLabeled(String module, String stepKey, String display) {
         synchronized (lock) {
             rows.computeIfAbsent(key(module, stepKey), k -> new Row(module, display, stepKey));
         }
@@ -530,15 +530,15 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     /**
      * Settle the build pipeline with the green chip: {@code ✓ Build ▶ Successfully <tail>}. The {@code
      * tail} (e.g. "built 17 modules took 1.4s") is pre-styled by the caller; this owns only the chip
-     * + cap + command. See {@link PipelineWedge}.
+     * + cap + command. See {@link BuildPlanWedge}.
      */
-    public void finishPipelineSuccess(String tail, List<String> above) {
-        settle(PipelineWedge.chipLine(Glyphs.CHECK, pipelineName(), nerdfont, tail), above);
+    public void finishBuildPlanSuccess(String tail, List<String> above) {
+        settle(BuildPlanWedge.chipLine(Glyphs.CHECK, pipelineName(), nerdfont, tail), above);
     }
 
-    /** {@link #finishPipelineSuccess(String, List)} with no buffered output above. */
-    public void finishPipelineSuccess(String tail) {
-        finishPipelineSuccess(tail, List.of());
+    /** {@link #finishBuildPlanSuccess(String, List)} with no buffered output above. */
+    public void finishBuildPlanSuccess(String tail) {
+        finishBuildPlanSuccess(tail, List.of());
     }
 
     /**
@@ -549,46 +549,46 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      * <p>{@code jk run} prints its own single separator before {@code inheritIO} (no settle
      * trailing blank — settles never add one; see {@link #settle}).
      */
-    public void finishPipelineExec(String tail, List<String> above) {
-        settle(PipelineWedge.chipLine(Glyphs.PLAY, pipelineName(), nerdfont, tail), above);
+    public void finishBuildPlanExec(String tail, List<String> above) {
+        settle(BuildPlanWedge.chipLine(Glyphs.PLAY, pipelineName(), nerdfont, tail), above);
     }
 
-    /** {@link #finishPipelineExec(String, List)} with no buffered output above. */
-    public void finishPipelineExec(String tail) {
-        finishPipelineExec(tail, List.of());
+    /** {@link #finishBuildPlanExec(String, List)} with no buffered output above. */
+    public void finishBuildPlanExec(String tail) {
+        finishBuildPlanExec(tail, List.of());
     }
 
     /** Settle the build pipeline with the red chip: {@code ‼ Build ▶ Failure <tail>}. */
-    public void finishPipelineFailure(String tail, List<String> above) {
-        settle(PipelineWedge.failureLine(pipelineName(), nerdfont, tail), above);
+    public void finishBuildPlanFailure(String tail, List<String> above) {
+        settle(BuildPlanWedge.failureLine(pipelineName(), nerdfont, tail), above);
     }
 
-    /** {@link #finishPipelineFailure(String, List)} with no buffered output above. */
-    public void finishPipelineFailure(String tail) {
-        finishPipelineFailure(tail, List.of());
+    /** {@link #finishBuildPlanFailure(String, List)} with no buffered output above. */
+    public void finishBuildPlanFailure(String tail) {
+        finishBuildPlanFailure(tail, List.of());
     }
 
     /**
      * Settle as a remote engine cancel ({@code jk cancel} / web): {@code Build job was cancelled
      * took …} — no "by user".
      */
-    public void finishPipelineCancelled(List<String> above) {
+    public void finishBuildPlanCancelled(List<String> above) {
         String took = cc.jumpkick.cli.run.ConsoleSpec.took(java.time.Duration.ofMillis(elapsedMillis()));
-        settle(PipelineWedge.cancelledJobLine(pipelineName(), nerdfont, false, took), above);
+        settle(BuildPlanWedge.cancelledJobLine(pipelineName(), nerdfont, false, took), above);
     }
 
-    /** {@link #finishPipelineCancelled(List)} with no buffered output above. */
-    public void finishPipelineCancelled() {
-        finishPipelineCancelled(List.of());
+    /** {@link #finishBuildPlanCancelled(List)} with no buffered output above. */
+    public void finishBuildPlanCancelled() {
+        finishBuildPlanCancelled(List.of());
     }
 
     /**
      * Settle the build pipeline with the red chip, but a fully caller-composed sentence instead of the
-     * "Failed to &lt;pipeline&gt;" derivation {@link #finishPipelineFailure} applies — see {@link
-     * PipelineWedge#failureLineCustom}.
+     * "Failed to &lt;pipeline&gt;" derivation {@link #finishBuildPlanFailure} applies — see {@link
+     * BuildPlanWedge#failureLineCustom}.
      */
-    public void finishPipelineFailureCustom(String sentence, List<String> above) {
-        settle(PipelineWedge.failureLineCustom(pipelineName(), nerdfont, sentence), above);
+    public void finishBuildPlanFailureCustom(String sentence, List<String> above) {
+        settle(BuildPlanWedge.failureLineCustom(pipelineName(), nerdfont, sentence), above);
     }
 
     /** Settle with a red cross and a failure message. */
@@ -748,7 +748,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     static String plainProgressLine(String command, String message, int percent, boolean done) {
         String msg = (message == null || message.isBlank()) ? "working" : message;
         String tail = msg + " - " + percent + "% - " + (done ? "done." : "working...");
-        return PipelineWedge.plainWedge(Glyphs.PULSE_PLAIN, command == null ? "" : command, tail);
+        return BuildPlanWedge.plainWedge(Glyphs.PULSE_PLAIN, command == null ? "" : command, tail);
     }
 
     private String plainProgressLine(int percent, boolean doneLine) {
@@ -762,7 +762,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         if (command == null || command.isEmpty()) {
             return " " + Glyphs.PULSE_PLAIN + " " + tail;
         }
-        return PipelineWedge.plainWedge(Glyphs.PULSE_PLAIN, command, tail);
+        return BuildPlanWedge.plainWedge(Glyphs.PULSE_PLAIN, command, tail);
     }
 
     private String plainIndeterminateLine(boolean doneLine) {
@@ -810,7 +810,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     @Override
     public boolean renderCanceled() {
         // Ctrl-C: hand the streams back so any buffered output flushes above the
-        // region, stop animating, then settle. Pipeline mode replaces the wiped region
+        // region, stop animating, then settle. BuildPlan mode replaces the wiped region
         // in place with the same cancelled-job wedge as a remote `jk cancel` / web cancel
         // ("✘ Build job was cancelled by user took …") and returns true so GlobalCancel
         // suppresses its generic notice. Simple / non-animating modes just settle and let
@@ -833,7 +833,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 }
                 // Ctrl-C: "by user" + took duration.
                 String took = cc.jumpkick.cli.run.ConsoleSpec.took(java.time.Duration.ofMillis(elapsedMillis()));
-                out.println(PipelineWedge.cancelledJobLine(pipelineName(), nerdfont, true, took));
+                out.println(BuildPlanWedge.cancelledJobLine(pipelineName(), nerdfont, true, took));
                 out.flush();
                 return true;
             }
@@ -907,7 +907,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     void tick() {
         synchronized (lock) {
             if (done || !animate) return;
-            if (pipelineMode) paintPipeline();
+            if (pipelineMode) paintBuildPlan();
             else paintSimple();
             // OSC title tracks the fill-circle phase (○→◎→◉→◎), not every chip-pulse frame.
             emitWindowTitleIfGlyphChanged();
@@ -954,7 +954,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             if (pipelineMode) {
                 lastLines = List.of();
                 linesDrawn = 0;
-                paintPipeline();
+                paintBuildPlan();
             } else {
                 paintSimple();
             }
@@ -972,8 +972,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      * advancing past unchanged ones with a bare newline), then clear any lines a now-shorter region
      * left behind.
      */
-    private void paintPipeline() {
-        List<String> lines = renderPipelineLines(width, elapsedMillis());
+    private void paintBuildPlan() {
+        List<String> lines = renderBuildPlanLines(width, elapsedMillis());
         int prev = lastLines.size();
         if (prev > 0) out.print(Ansi.cursorUp(prev)); // to the top of the region
         for (int i = 0; i < lines.size(); i++) {
@@ -1002,7 +1002,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      * (test class, package sub-task, fetch artifact, …). Failed rows use a red cross and keep a
      * one-line brief under the branch. No blank spacer rails between rows — vertically compact.
      */
-    public List<String> renderPipelineLines(int cols, long elapsedMillis) {
+    public List<String> renderBuildPlanLines(int cols, long elapsedMillis) {
         AttributedStyle dim = Theme.active().darkGray();
         List<String> lines = new ArrayList<>();
 
@@ -1548,7 +1548,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     /**
-     * Pipeline header: pulse circle + name on the chip, powerline (or plain) cap, bar, clock.
+     * BuildPlan header: pulse circle + name on the chip, powerline (or plain) cap, bar, clock.
      * The circle FG breathes white↔chip-blue while sitting on the chip background.
      */
     private String pipelineHeader(long elapsedMillis) {
@@ -1564,7 +1564,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 t.withBackground(chipPulseColors[Math.floorMod(frame, chipPulseColors.length)], t.planBadgeColor());
         if (!t.isAnsi()) {
             // " * Build >" then bar/clock plain text.
-            h.append(PipelineWedge.plainWedge(Glyphs.PULSE_PLAIN, name, null));
+            h.append(BuildPlanWedge.plainWedge(Glyphs.PULSE_PLAIN, name, null));
             if (phase1) {
                 h.append(' ').append(sl);
             } else {

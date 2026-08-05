@@ -19,12 +19,12 @@ import cc.jumpkick.plugin.build.Phase;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineKey;
-import cc.jumpkick.run.Step;
-import cc.jumpkick.run.StepContext;
-import cc.jumpkick.run.StepKind;
-import cc.jumpkick.run.StepNames;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskContext;
+import cc.jumpkick.run.TaskKind;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
@@ -45,16 +45,16 @@ public final class ImagePipelines {
 
     private ImagePipelines() {}
 
-    public static final PipelineKey<ImageConfig> CONFIG = PipelineKey.of("image-config", ImageConfig.class);
-    public static final PipelineKey<Path> TARBALL_PATH = PipelineKey.of("tarball-path", Path.class);
+    public static final BuildPlanKey<ImageConfig> CONFIG = BuildPlanKey.of("image-config", ImageConfig.class);
+    public static final BuildPlanKey<Path> TARBALL_PATH = BuildPlanKey.of("tarball-path", Path.class);
 
     @SuppressWarnings("rawtypes")
-    private static final PipelineKey<List> DEP_JARS = PipelineKey.of("dep-jars", List.class);
+    private static final BuildPlanKey<List> DEP_JARS = BuildPlanKey.of("dep-jars", List.class);
 
     @SuppressWarnings("rawtypes")
-    private static final PipelineKey<List> SNAPSHOT_JARS = PipelineKey.of("snapshot-jars", List.class);
+    private static final BuildPlanKey<List> SNAPSHOT_JARS = BuildPlanKey.of("snapshot-jars", List.class);
 
-    public static final PipelineKey<String> IMAGE_REF = PipelineKey.of("image-ref", String.class);
+    public static final BuildPlanKey<String> IMAGE_REF = BuildPlanKey.of("image-ref", String.class);
 
     /**
      * The base image template used when no {@code image.base} is set in the project or global
@@ -69,7 +69,7 @@ public final class ImagePipelines {
      * tri-state exactly like {@code --tarball}'s optional value: {@code null} (no tarball), {@code
      * ""} (default layout path), or an explicit path.
      */
-    public static Pipeline imagePipeline(
+    public static BuildPlan imageBuildPlan(
             Path projectDir,
             Path cache,
             Path jdksDir,
@@ -101,9 +101,9 @@ public final class ImagePipelines {
                 java.util.Set.of(),
                 cc.jumpkick.config.SessionContext.current());
 
-        Step imagePlan = Step.builder(StepNames.IMAGE_PLAN)
+        Task imagePlan = Task.builder(TaskNames.IMAGE_PLAN)
                 .phase(Phase.IMAGE)
-                .requires(StepNames.PACKAGE_JAR)
+                .requires(TaskNames.PACKAGE_JAR)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("resolve image config");
@@ -142,10 +142,10 @@ public final class ImagePipelines {
                 })
                 .build();
 
-        Step writeImage = Step.builder(StepNames.WRITE_IMAGE)
+        Task writeImage = Task.builder(TaskNames.WRITE_IMAGE)
                 .phase(Phase.IMAGE)
-                .kind(StepKind.IO)
-                .requires(StepNames.IMAGE_PLAN)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.IMAGE_PLAN)
                 .weight(() -> EffortWeights.ociWeight(projectDir))
                 .ticks(1)
                 .execute(ctx -> {
@@ -204,7 +204,7 @@ public final class ImagePipelines {
                                 "cfg:" + imageConfigToken(config),
                                 "worker:" + PluginJar.IMAGE_BUILDER.artifactId() + ":"
                                         + BuildIdentity.cacheKeyVersion());
-                        imgTask = ActionKey.qualifiedTaskId(StepNames.WRITE_IMAGE, tarballPath);
+                        imgTask = ActionKey.qualifiedTaskId(TaskNames.WRITE_IMAGE, tarballPath);
                         imgKey = ActionKey.forArtifact(imgTask, BuildIdentity.cacheKeyVersion(), tokens);
                         if (useCache) {
                             var hit = ac.lookup(imgKey);
@@ -245,8 +245,8 @@ public final class ImagePipelines {
                 })
                 .build();
 
-        Pipeline.Builder builder = BuildPipelines.coreBuilder(inputs);
-        builder.addStep(imagePlan).addStep(writeImage);
+        BuildPlan.Builder builder = BuildPipelines.coreBuilder(inputs);
+        builder.addTask(imagePlan).addTask(writeImage);
         return builder.build();
     }
 
@@ -397,7 +397,7 @@ public final class ImagePipelines {
      * engine-hosted case).
      */
     private static String runDockerfileBuild(
-            StepContext ctx, ImageConfig config, Path projectDir, Path tarballPath, JkBuild project)
+            TaskContext ctx, ImageConfig config, Path projectDir, Path tarballPath, JkBuild project)
             throws IOException, InterruptedException {
         String exe = config.dockerExecutable() != null ? config.dockerExecutable() : "docker";
         Path dockerfile = projectDir.resolve(config.dockerFile()).normalize();
@@ -431,7 +431,7 @@ public final class ImagePipelines {
     }
 
     /** Run a subprocess, streaming each output line via {@code ctx.output()}. */
-    private static void runSubprocess(StepContext ctx, List<String> cmd, Path cwd)
+    private static void runSubprocess(TaskContext ctx, List<String> cmd, Path cwd)
             throws IOException, InterruptedException {
         Process p = new ProcessBuilder(cmd)
                 .directory(cwd.toFile())

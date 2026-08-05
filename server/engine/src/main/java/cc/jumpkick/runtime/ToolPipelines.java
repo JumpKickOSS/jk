@@ -9,11 +9,11 @@ import cc.jumpkick.model.ToolCoordSpec;
 import cc.jumpkick.plugin.build.Phase;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineKey;
-import cc.jumpkick.run.Step;
-import cc.jumpkick.run.StepKind;
-import cc.jumpkick.run.StepNames;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskKind;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.tool.ToolEnv;
 import cc.jumpkick.tool.ToolResolver;
 import java.io.IOException;
@@ -30,7 +30,7 @@ public final class ToolPipelines {
     private ToolPipelines() {}
 
     /** The resolved tool env, populated by the {@code resolve-coord} step. */
-    public static final PipelineKey<ToolEnv> TOOL_ENV = PipelineKey.of("tool-env", ToolEnv.class);
+    public static final BuildPlanKey<ToolEnv> TOOL_ENV = BuildPlanKey.of("tool-env", ToolEnv.class);
 
     /**
      * Build the single-step resolve pipeline for {@code spec}.
@@ -45,7 +45,7 @@ public final class ToolPipelines {
      *     passes its themed {@code Coords.gav}, the engine passes the plain spec so no pre-themed
      *     text ever crosses the wire
      */
-    public static Pipeline resolvePipeline(
+    public static BuildPlan resolveBuildPlan(
             ToolCoordSpec spec,
             List<ToolCoordSpec> withSpecs,
             String bin,
@@ -53,9 +53,9 @@ public final class ToolPipelines {
             URI repoUrl,
             Path cache,
             String coordLabel) {
-        Step resolve = Step.builder(StepNames.RESOLVE_COORD)
+        Task resolve = Task.builder(TaskNames.RESOLVE_COORD)
                 .phase(Phase.RESOLVE)
-                .kind(StepKind.IO)
+                .kind(TaskKind.IO)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("resolve " + coordLabel);
@@ -71,6 +71,6 @@ public final class ToolPipelines {
                     ctx.progress(1);
                 })
                 .build();
-        return Pipeline.builder("tool-resolve").addStep(resolve).build();
+        return BuildPlan.builder("tool-resolve").addTask(resolve).build();
     }
 }

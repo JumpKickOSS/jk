@@ -79,19 +79,19 @@ export function foldEvent(cards, event) {
       }
       break;
     }
-    case 'step-start': {
+    case 'task-start': {
       const card = resolveCard(cards, d);
       if (card) {
-        const row = stepRow(card, d.dir, d.step, d.phase, event.at);
+        const row = stepRow(card, d.dir, (d.task || d.step), d.phase, event.at);
         row.state = 'running';
         row.message = ''; // new step — clear previous tick text
       }
       break;
     }
-    case 'step-finish': {
+    case 'task-finish': {
       const card = resolveCard(cards, d);
       if (card) {
-        const row = stepRow(card, d.dir, d.step, d.phase, event.at);
+        const row = stepRow(card, d.dir, (d.task || d.step), d.phase, event.at);
         row.state = stepState(d.status);
         // Keep last message for a moment of context only while running rows use it; finished
         // phases do not surface live detail.
@@ -101,7 +101,7 @@ export function foldEvent(cards, event) {
     case 'label': {
       // Live step detail (test class.method, "shrinking jar", …) — CLI tree-row parity.
       const card = resolveCard(cards, d);
-      if (card) stepRow(card, d.dir, d.step, d.phase, event.at).message = d.label || '';
+      if (card) stepRow(card, d.dir, (d.task || d.step), d.phase, event.at).message = d.label || '';
       break;
     }
     case 'plan': {
@@ -153,7 +153,7 @@ export function foldEvent(cards, event) {
         const mod = moduleRow(card, d.dir, event.at);
         if (mod.diagnostics.length < MAX_DIAGNOSTICS) {
           mod.diagnostics.push({
-            step: d.step || '',
+            step: d.task || d.step || d.step || '',
             code: d.code || '',
             message: d.message || '',
             test: d.test || '',
@@ -163,7 +163,7 @@ export function foldEvent(cards, event) {
       }
       break;
     }
-    case 'pipeline-finish': {
+    case 'buildplan-finish': {
       const card = resolveCard(cards, d);
       if (card) {
         const row = moduleRow(card, d.dir, event.at);
@@ -404,7 +404,7 @@ function historyDiags(diags, dir) {
   return (diags || [])
     .filter((d) => d.severity !== 'warning' && (d.dir || '') === (dir || ''))
     .map((d) => ({
-      step: d.step || '',
+      step: d.task || d.step || d.step || '',
       code: d.code || '',
       message: d.message || '',
       test: d.test || '',
@@ -462,7 +462,7 @@ function historyModules(rec) {
     diagnostics: (rec.diagnostics || [])
       .filter((d) => d.severity !== 'warning')
       .map((d) => ({
-        step: d.step || '',
+        step: d.task || d.step || d.step || '',
         code: d.code || '',
         message: d.message || '',
         test: d.test || '',

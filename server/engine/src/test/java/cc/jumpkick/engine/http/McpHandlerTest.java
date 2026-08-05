@@ -41,7 +41,7 @@ class McpHandlerTest {
                     1L,
                     System.currentTimeMillis() - 5_000,
                     /* activeRequests */ 0,
-                    /* activePipelines */ 0,
+                    /* activeBuildPlans */ 0,
                     1L << 20,
                     2L << 20,
                     256L << 20,

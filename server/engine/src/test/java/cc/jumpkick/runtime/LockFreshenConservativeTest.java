@@ -147,7 +147,7 @@ class LockFreshenConservativeTest {
         touchManifest(tmp);
 
         var effective = cc.jumpkick.config.JkBuildParser.parse(tmp.resolve("jk.toml"));
-        var pipeline = LockPipelines.lockPipeline(
+        var pipeline = LockPipelines.lockBuildPlan(
                 tmp, effective, tmp.resolve("cache2"), base, List.of(), true, false, true, ResolveObserver.NOOP, null);
         var result = pipeline.run();
         assertThat(result.success()).isTrue();
@@ -195,7 +195,7 @@ class LockFreshenConservativeTest {
     @Test
     void first_lock_of_a_kotlin_project_pins_the_compiler(@TempDir Path tmp) throws Exception {
         // JK-1371: LockFlow (first-run/workspace freshen path) writes the kotlin pin like
-        // lockPipeline does.
+        // lockBuildPlan does.
         serveLib("1.0");
         serveLeaf("org.jetbrains.kotlin", "kotlin-compiler-embeddable", "2.1.0");
         Files.writeString(tmp.resolve("jk.toml"), """

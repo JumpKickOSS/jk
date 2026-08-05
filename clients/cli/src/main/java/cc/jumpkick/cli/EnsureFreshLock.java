@@ -11,7 +11,7 @@ import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
-import cc.jumpkick.run.PipelineListener;
+import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -89,9 +89,9 @@ public final class EnsureFreshLock {
 
             EngineClient.LockHandler quiet = new EngineClient.LockHandler() {
                 @Override
-                public PipelineListener onModuleStart(
-                        String moduleDir, String moduleCoord, List<cc.jumpkick.run.Step> steps) {
-                    return new PipelineListener() {};
+                public BuildPlanListener onModuleStart(
+                        String moduleDir, String moduleCoord, List<cc.jumpkick.run.Task> steps) {
+                    return new BuildPlanListener() {};
                 }
             };
 
@@ -150,9 +150,9 @@ public final class EnsureFreshLock {
     /** True when interactive AUTO mode (live spinners allowed). */
     public static boolean isInteractiveAuto(GlobalOptions global) {
         try {
-            return cc.jumpkick.cli.run.PipelineConsole.isInteractiveTerminal()
-                    && cc.jumpkick.cli.run.PipelineConsole.modeFor(global)
-                            == cc.jumpkick.cli.run.PipelineConsole.Mode.AUTO;
+            return cc.jumpkick.cli.run.BuildPlanConsole.isInteractiveTerminal()
+                    && cc.jumpkick.cli.run.BuildPlanConsole.modeFor(global)
+                            == cc.jumpkick.cli.run.BuildPlanConsole.Mode.AUTO;
         } catch (RuntimeException e) {
             return false;
         }

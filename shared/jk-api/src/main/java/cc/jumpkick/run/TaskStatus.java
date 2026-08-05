@@ -2,7 +2,7 @@
 package cc.jumpkick.run;
 
 /** Step lifecycle: PENDING → RUNNING → terminal (SUCCESS/FAIL/CANCELLED/SKIPPED). */
-public enum StepStatus {
+public enum TaskStatus {
     PENDING,
     RUNNING,
     SUCCESS,

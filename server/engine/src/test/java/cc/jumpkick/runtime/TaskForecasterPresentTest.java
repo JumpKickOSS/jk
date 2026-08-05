@@ -12,10 +12,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1529 extended {@link BuildPlanForecast#present} to verify CAS payloads — but run-tests
+ * JK-1529 extended {@link TaskForecaster#present} to verify CAS payloads — but run-tests
  * green markers store scalar counts, not digests. Those must still count as present.
  */
-class BuildPlanForecastPresentTest {
+class TaskForecasterPresentTest {
 
     @Test
     void marker_only_run_tests_record_is_present(@TempDir Path tmp) throws Exception {
@@ -31,7 +31,7 @@ class BuildPlanForecastPresentTest {
                         "tests.total", "0",
                         "tests.succeeded", "0",
                         "tests.skipped", "0"));
-        assertThat(BuildPlanForecast.present(ac, key)).isTrue();
+        assertThat(TaskForecaster.present(ac, key)).isTrue();
     }
 
     @Test
@@ -48,9 +48,9 @@ class BuildPlanForecastPresentTest {
         String sha = cc.jumpkick.util.Hashing.sha256Hex(Files.readAllBytes(jar));
         cas.put(Files.readAllBytes(jar), sha);
         ac.storeWithOutputs("package-jar@x", key, Map.of(), Map.of("app.jar", sha));
-        assertThat(BuildPlanForecast.present(ac, key)).isTrue();
+        assertThat(TaskForecaster.present(ac, key)).isTrue();
         Files.delete(cas.pathFor(sha));
-        assertThat(BuildPlanForecast.present(ac, key)).isFalse();
+        assertThat(TaskForecaster.present(ac, key)).isFalse();
     }
 
     @Test
@@ -58,14 +58,14 @@ class BuildPlanForecastPresentTest {
         Path cache = tmp.resolve("cache");
         Files.createDirectories(cache);
         ActionCache ac = new ActionCache(new Cas(cache.resolve("cas")), cache.resolve("actions"));
-        assertThat(BuildPlanForecast.present(ac, "no-such-key")).isFalse();
+        assertThat(TaskForecaster.present(ac, "no-such-key")).isFalse();
     }
 
     @Test
     void isSha256Hex_shape() {
-        assertThat(BuildPlanForecast.isSha256Hex("0")).isFalse();
-        assertThat(BuildPlanForecast.isSha256Hex("a".repeat(64))).isTrue();
-        assertThat(BuildPlanForecast.isSha256Hex("A".repeat(64))).isTrue();
-        assertThat(BuildPlanForecast.isSha256Hex("g".repeat(64))).isFalse();
+        assertThat(TaskForecaster.isSha256Hex("0")).isFalse();
+        assertThat(TaskForecaster.isSha256Hex("a".repeat(64))).isTrue();
+        assertThat(TaskForecaster.isSha256Hex("A".repeat(64))).isTrue();
+        assertThat(TaskForecaster.isSha256Hex("g".repeat(64))).isFalse();
     }
 }

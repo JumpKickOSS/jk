@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
-import cc.jumpkick.plugin.build.StepExec;
+import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,7 +26,7 @@ final class R8Step {
             -renamesourcefileattribute SourceFile
             """;
 
-    static void run(StepExec exec) throws Exception {
+    static void run(TaskExec exec) throws Exception {
         Path r8 = exec.requireExtra("r8");
         Path platformJar = JarInputs.jarNamed(exec, exec.requireExtra("android-jar"), "android-platform.jar");
         Path dexOut = exec.outputDir("dex");
@@ -72,7 +72,7 @@ final class R8Step {
         rules.add(outputs);
 
         exec.label("R8 (" + classFiles.size() + " classes + " + runtimeJars.size() + " jars)");
-        StepExec.ToolRun run = exec.java()
+        TaskExec.ToolRun run = exec.java()
                 .classpath(List.of(r8))
                 .mainClass("com.android.tools.r8.R8")
                 .arg("--release")
@@ -89,7 +89,7 @@ final class R8Step {
         }
         for (Path f : classFiles) run.arg(f.toAbsolutePath().toString());
         for (Path jar : runtimeJars) run.arg(jar.toAbsolutePath().toString());
-        StepExec.ToolRun.Result result = run.run();
+        TaskExec.ToolRun.Result result = run.run();
         if (result.exit() != 0) {
             throw new IllegalStateException("R8 failed:\n" + result.output());
         }

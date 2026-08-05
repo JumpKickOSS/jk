@@ -56,12 +56,12 @@ class BuildServiceEtaParityTest {
 
     @Test
     void pipeline_cost_of_derives_test_weight_from_the_same_walk() {
-        var pipeline = cc.jumpkick.run.Pipeline.builder("m")
-                .addStep(cc.jumpkick.run.Step.builder("compile-java")
+        var pipeline = cc.jumpkick.run.BuildPlan.builder("m")
+                .addTask(cc.jumpkick.run.Task.builder("compile-java")
                         .weight(20)
                         .execute(ctx -> {})
                         .build())
-                .addStep(cc.jumpkick.run.Step.builder("run-tests")
+                .addTask(cc.jumpkick.run.Task.builder("run-tests")
                         .weight(100)
                         .execute(ctx -> {})
                         .build())

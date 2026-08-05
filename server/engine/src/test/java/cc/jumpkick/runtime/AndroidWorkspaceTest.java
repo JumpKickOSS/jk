@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
@@ -52,7 +52,7 @@ class AndroidWorkspaceTest {
         // Workspace members write to the central out tree: <workspace>/target/<module>/…
         // (Mill-style layout; artifacts under lib/ since the modules declare no main).
         Path lib = root.resolve("lib");
-        PipelineResult libResult = build(lib, cache);
+        BuildPlanResult libResult = build(lib, cache);
         assertThat(libResult.errors()).isEmpty();
         assertThat(libResult.success()).isTrue();
 
@@ -86,7 +86,7 @@ class AndroidWorkspaceTest {
 
         // ---- 2. Build the app module against the sibling library ----
         Path app = root.resolve("app");
-        PipelineResult appResult = build(app, cache);
+        BuildPlanResult appResult = build(app, cache);
         assertThat(appResult.errors()).isEmpty();
         assertThat(appResult.success()).isTrue();
 
@@ -118,7 +118,7 @@ class AndroidWorkspaceTest {
         assertThat(zipEntries(apk)).contains("classes.dex", "res/layout/lib_view.xml", "resources.arsc");
     }
 
-    private static PipelineResult build(Path module, Path cache) throws Exception {
+    private static BuildPlanResult build(Path module, Path cache) throws Exception {
         LockfileWriter.write(
                 new Lockfile(
                         Lockfile.CURRENT_VERSION,
@@ -145,7 +145,7 @@ class AndroidWorkspaceTest {
                 false,
                 java.util.Set.of(),
                 cc.jumpkick.config.SessionContext.current());
-        Pipeline pipeline = BuildPipelines.coreBuilder(in).build();
+        BuildPlan pipeline = BuildPipelines.coreBuilder(in).build();
         return pipeline.run();
     }
 

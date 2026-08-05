@@ -104,9 +104,9 @@ final class Json {
         return MiniJson.writePretty(o);
     }
 
-    private static List<Object> stepList(List<BuildRecord.Step> steps) {
+    private static List<Object> stepList(List<BuildRecord.Task> steps) {
         List<Object> out = new ArrayList<>(steps.size());
-        for (BuildRecord.Step p : steps) {
+        for (BuildRecord.Task p : steps) {
             Map<String, Object> pm = new LinkedHashMap<>();
             pm.put("name", p.name());
             pm.put("phase", p.phase());
@@ -145,7 +145,7 @@ final class Json {
                     readSteps(mm)));
         }
 
-        List<BuildRecord.Step> steps = readSteps(o);
+        List<BuildRecord.Task> steps = readSteps(o);
 
         BuildRecord.CacheBenefit benefit = null;
         if (o.get("benefit") instanceof Map<?, ?> bm) {
@@ -218,11 +218,11 @@ final class Json {
 
     /** Read a {@code "steps"} array from a record or a module object. */
     @SuppressWarnings("unchecked")
-    private static List<BuildRecord.Step> readSteps(Map<String, Object> o) {
-        List<BuildRecord.Step> steps = new ArrayList<>();
+    private static List<BuildRecord.Task> readSteps(Map<String, Object> o) {
+        List<BuildRecord.Task> steps = new ArrayList<>();
         for (Object e : arr(o, "steps")) {
             Map<String, Object> pm = (Map<String, Object>) e;
-            steps.add(new BuildRecord.Step(str(pm, "name"), str(pm, "phase"), str(pm, "status"), lng(pm, "millis")));
+            steps.add(new BuildRecord.Task(str(pm, "name"), str(pm, "phase"), str(pm, "status"), lng(pm, "millis")));
         }
         return steps;
     }

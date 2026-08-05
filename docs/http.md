@@ -185,11 +185,11 @@ fold type has a site; progress is coalesced only by the intentional ≥0.1% / TT
 | `request-start` | `publishRequestStart` | CLI admit + HTTP workspace/lock |
 | `plan` | `publishPlan` | Total weight for bar denominator |
 | `module-start` / `module-finish` | workspace listener | Per-module rows |
-| `step-start` / `step-finish` | pipeline listener | Phase-tagged steps |
+| `task-start` / `task-finish` | pipeline listener | Phase-tagged steps |
 | `label` | pipeline listener | Live step detail (test class.method, “shrinking jar”, …); SPA paints after the running phase node |
 | `pipeline-progress` | pipeline ticks | Single-module / per-module detail |
 | `workspace-progress` | `emitWorkspaceProgress` | Aggregate %; peak-hold + 0.1% / frame filter |
 | `eta` | `publishEta` | Seed + re-projections |
 | `output` / `diagnostic` | step output / failures | Bounded diagnostics |
-| `pipeline-finish` | pipeline end | Module-level success |
+| `buildplan-finish` | pipeline end | Module-level success |
 | `request-finish` | request finally | Always includes `success` + `cancelled` (CLI + HTTP) |

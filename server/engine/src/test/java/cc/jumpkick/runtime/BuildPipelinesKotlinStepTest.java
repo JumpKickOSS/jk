@@ -3,8 +3,8 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.Step;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.Task;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -114,7 +114,7 @@ class BuildPipelinesKotlinStepTest {
                 false,
                 java.util.Set.of(),
                 cc.jumpkick.config.SessionContext.current());
-        Pipeline pipeline = BuildPipelines.coreBuilder(in).build();
-        return pipeline.steps().stream().map(Step::name).toList();
+        BuildPlan pipeline = BuildPipelines.coreBuilder(in).build();
+        return pipeline.steps().stream().map(Task::name).toList();
     }
 }

@@ -4,11 +4,11 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
-import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.model.command.Exit;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.script.ScriptHeader;
 import cc.jumpkick.script.ScriptHeaderParser;
 import cc.jumpkick.util.JkDirs;
@@ -114,7 +114,7 @@ final class ScriptRunner {
         if (!prep.result().success() || prep.kotlincBin() == null) {
             // "kotlinc-missing" is an EX_SOFTWARE (70) shape; everything
             // else collapses to the generic resolver error code.
-            for (PipelineResult.Diagnostic d : prep.result().errors()) {
+            for (BuildPlanResult.Diagnostic d : prep.result().errors()) {
                 if ("kotlinc-missing".equals(d.code())) return Exit.SOFTWARE;
             }
             return failureExitCode(prep.result());
@@ -166,7 +166,7 @@ final class ScriptRunner {
         }
         EngineClient.ScriptPrepareOutcome prep = prepare("jar", jar);
         if (!prep.result().success() || prep.mainClass() == null) {
-            for (PipelineResult.Diagnostic d : prep.result().errors()) {
+            for (BuildPlanResult.Diagnostic d : prep.result().errors()) {
                 if ("no-main-class".equals(d.code())) return Exit.DATA_ERR;
             }
             return failureExitCode(prep.result());
@@ -197,13 +197,13 @@ final class ScriptRunner {
      * standard single-pipeline progress either way.
      */
     private EngineClient.ScriptPrepareOutcome prepare(String mode, Path file) throws IOException, InterruptedException {
-        PipelineConsole.Mode consoleMode = PipelineConsole.modeFor(global);
+        BuildPlanConsole.Mode consoleMode = BuildPlanConsole.modeFor(global);
 
         return EngineClient.runScriptPrepare(
                 cc.jumpkick.engine.EnginePaths.current(),
                 new EngineClient.ScriptPrepareRequest(
                         mode, file.toAbsolutePath(), cacheDir(), stateDir(), repoUrl, forceRecompile, extraDeps),
-                steps -> PipelineConsole.chooseConsoleListener("script", steps, consoleMode));
+                steps -> BuildPlanConsole.chooseConsoleListener("script", steps, consoleMode));
     }
 
     /** Client-side header parse — only the exec-relevant bits ({@code //JAVA_OPTIONS}) are read here. */
@@ -215,7 +215,7 @@ final class ScriptRunner {
      * Map a failed pipeline to exit code 1. The listener already painted the diagnostic and the "Failed"
      * bar; we don't repeat ourselves.
      */
-    private int failureExitCode(PipelineResult result) {
+    private int failureExitCode(BuildPlanResult result) {
         return 1;
     }
 

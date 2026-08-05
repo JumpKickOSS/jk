@@ -8,10 +8,10 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.Step;
-import cc.jumpkick.run.StepKind;
-import cc.jumpkick.run.StepNames;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskKind;
+import cc.jumpkick.run.TaskNames;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -38,7 +38,7 @@ public final class AuditPipelines {
      * label; {@code osvBatchUrl}/{@code osvVulnsUrl} are the hidden test overrides ({@code null} =
      * the real OSV endpoints).
      */
-    public static Pipeline auditPipeline(
+    public static BuildPlan auditBuildPlan(
             Path lockPath,
             Path cache,
             String thresholdLabel,
@@ -47,7 +47,7 @@ public final class AuditPipelines {
             FindingObserver observer) {
         Path workerJar = PluginJar.AUDITOR.locate(JkStores.cas(cache));
 
-        Step readLock = Step.builder(StepNames.READ_LOCK)
+        Task readLock = Task.builder(TaskNames.READ_LOCK)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("read jk-lock.toml");
@@ -57,9 +57,9 @@ public final class AuditPipelines {
                 })
                 .build();
 
-        Step queryOsv = Step.builder(StepNames.QUERY_OSV)
-                .kind(StepKind.IO)
-                .requires(StepNames.READ_LOCK)
+        Task queryOsv = Task.builder(TaskNames.QUERY_OSV)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.READ_LOCK)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("query OSV via audit worker");
@@ -73,8 +73,8 @@ public final class AuditPipelines {
                 })
                 .build();
 
-        Step evaluate = Step.builder("evaluate")
-                .requires(StepNames.QUERY_OSV)
+        Task evaluate = Task.builder("evaluate")
+                .requires(TaskNames.QUERY_OSV)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("apply " + thresholdLabel + " threshold");
@@ -82,10 +82,10 @@ public final class AuditPipelines {
                 })
                 .build();
 
-        return Pipeline.builder("audit")
-                .addStep(readLock)
-                .addStep(queryOsv)
-                .addStep(evaluate)
+        return BuildPlan.builder("audit")
+                .addTask(readLock)
+                .addTask(queryOsv)
+                .addTask(evaluate)
                 .build();
     }
 

@@ -5,7 +5,7 @@ import cc.jumpkick.plugin.build.Phase;
 import java.time.Duration;
 
 /**
- * Callbacks the Pipeline scheduler emits as steps progress. Every method has a no-op default —
+ * Callbacks the BuildPlan scheduler emits as steps progress. Every method has a no-op default —
  * implementations override only the ones they care about (a JSON emitter cares about all events; a
  * quiet log listener cares only about {@code pipelineFinish}).
  *
@@ -17,9 +17,9 @@ import java.time.Duration;
  * ordering is guaranteed beyond {@code stepStart} preceding any of that step's other events and
  * {@code stepFinish} following them.
  */
-public interface PipelineListener {
+public interface BuildPlanListener {
 
-    default void pipelineStart(PipelineView view) {}
+    default void pipelineStart(BuildPlanView view) {}
 
     /**
      * A step began. {@code phase} is the coarse {@link Phase} this step belongs to (nullable when the
@@ -27,9 +27,9 @@ public interface PipelineListener {
      */
     default void stepStart(String step, Phase phase, int ticks) {}
 
-    default void progress(String step, int delta, PipelineView view) {}
+    default void progress(String step, int delta, BuildPlanView view) {}
 
-    default void tickUpdate(String step, int delta, PipelineView view) {}
+    default void tickUpdate(String step, int delta, BuildPlanView view) {}
 
     default void label(String step, String label) {}
 
@@ -46,7 +46,7 @@ public interface PipelineListener {
 
     /**
      * Error carrying discrete {@code test} / {@code exceptionClass} detail (see {@link
-     * StepContext#error(String, String, String, String)}). Defaults to the plain {@link
+     * TaskContext#error(String, String, String, String)}). Defaults to the plain {@link
      * #error(String, String, String)} so listeners that don't model the structured form still receive
      * the diagnostic with its message.
      */
@@ -54,7 +54,7 @@ public interface PipelineListener {
         error(step, code, message);
     }
 
-    default void stepFinish(String step, Phase phase, StepStatus status, Duration duration) {}
+    default void stepFinish(String step, Phase phase, TaskStatus status, Duration duration) {}
 
-    default void pipelineFinish(PipelineResult result) {}
+    default void pipelineFinish(BuildPlanResult result) {}
 }

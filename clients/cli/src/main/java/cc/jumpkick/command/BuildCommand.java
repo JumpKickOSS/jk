@@ -6,12 +6,12 @@ import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.run.AggregateContext;
 import cc.jumpkick.cli.run.CliSessionTranscript;
 import cc.jumpkick.cli.run.ConsoleSpec;
-import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.BuildNotify;
 import cc.jumpkick.cli.tui.CommandManager;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.PipelineWedge;
+import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
@@ -20,9 +20,9 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.run.JkThreads;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineKey;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
@@ -79,15 +79,15 @@ public final class BuildCommand implements CliCommand {
     java.util.Map<String, String> clientEnv = java.util.Map.of();
     /** Best-effort session transcript; null when disabled / no project. */
     private CliSessionTranscript session;
-    // ---- PipelineKeys -------------------------------------------------------
+    // ---- BuildPlanKeys -------------------------------------------------------
     // BuildPipelines owns the step DAG and all of its keys; BuildCommand only
     // reads a few results back out of the finished pipeline to render its result
-    // line. PipelineKeys are name-keyed, so these match BuildPipelines's by name.
+    // line. BuildPlanKeys are name-keyed, so these match BuildPipelines's by name.
 
-    private static final PipelineKey<String> BUILD_OUTCOME = PipelineKey.of("build-outcome", String.class);
-    private static final PipelineKey<Path> JAR_PATH = PipelineKey.of("jar-path", Path.class);
-    private static final PipelineKey<BuildLayout> LAYOUT = PipelineKey.of("layout", BuildLayout.class);
-    private static final PipelineKey<TestSummary> TEST_RESULT = PipelineKey.of("test-result", TestSummary.class);
+    private static final BuildPlanKey<String> BUILD_OUTCOME = BuildPlanKey.of("build-outcome", String.class);
+    private static final BuildPlanKey<Path> JAR_PATH = BuildPlanKey.of("jar-path", Path.class);
+    private static final BuildPlanKey<BuildLayout> LAYOUT = BuildPlanKey.of("layout", BuildLayout.class);
+    private static final BuildPlanKey<TestSummary> TEST_RESULT = BuildPlanKey.of("test-result", TestSummary.class);
 
     // ---- Entry point ----------------------------------------------------
 
@@ -225,8 +225,8 @@ public final class BuildCommand implements CliCommand {
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
 
         // Detect mode first (zero I/O) so we can branch before touching the disk.
-        PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
-        boolean live = mode == PipelineConsole.Mode.AUTO || mode == PipelineConsole.Mode.QUIET;
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
+        boolean live = mode == BuildPlanConsole.Mode.AUTO || mode == BuildPlanConsole.Mode.QUIET;
 
         // --modules / --affected-since resolve identically for live and headless paths (JK-1363):
         // the CI-shaped `jk build -m api --output json` must not silently build everything.
@@ -252,7 +252,7 @@ public final class BuildCommand implements CliCommand {
 
         // Live path (AUTO / QUIET): open the TUI immediately so forecast + engine preflight are never
         // silent. Fully-cached builds still settle to a success chip after Checking (no long flash).
-        boolean animate = mode == PipelineConsole.Mode.AUTO && PipelineConsole.isInteractiveTerminal();
+        boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
         boolean nerdfont = cc.jumpkick.config.GlobalConfig.nerdfont();
 
         // Optimize/start the engine before forecast (may show engine wedge once); then Build TUI.
@@ -274,11 +274,11 @@ public final class BuildCommand implements CliCommand {
         Set<Path> dirtyDirs = null;
         if (sel != null) {
             if (sel.error() != null) {
-                view.finishPipelineFailure(sel.error(), List.of());
+                view.finishBuildPlanFailure(sel.error(), List.of());
                 return Exit.CONFIG;
             }
             if (sel.empty()) {
-                view.finishPipelineSuccess(selectionEmptyMessage(), List.of());
+                view.finishBuildPlanSuccess(selectionEmptyMessage(), List.of());
                 return 0;
             }
             // Force-include selected modules (engine still respects action cache unless --force).
@@ -376,7 +376,7 @@ public final class BuildCommand implements CliCommand {
                         }
 
                         @Override
-                        public cc.jumpkick.run.PipelineListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
+                        public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
                             // Durable run log, same as the old buffered path. Composed into the *returned*
                             // listener (not attached to m.pipeline directly) since an engine-hosted module's
                             // pipeline is a client-side reconstruction that's never run — only the returned
@@ -390,12 +390,12 @@ public final class BuildCommand implements CliCommand {
                             if (json) {
                                 // Live step/progress events for agents (same shape as single-module jsonl).
                                 // Workspace member: no aggregate-rider writes (engine snapshot owns it).
-                                return cc.jumpkick.cli.run.CompositePipelineListener.of(
+                                return cc.jumpkick.cli.run.CompositeBuildPlanListener.of(
                                         new cc.jumpkick.cli.run.JsonlListener(System.out, false), log);
                             }
                             List<String> buf = java.util.Collections.synchronizedList(new ArrayList<>());
                             buffers.put(m.dir(), buf);
-                            var outLis = new cc.jumpkick.run.PipelineListener() {
+                            var outLis = new cc.jumpkick.run.BuildPlanListener() {
                                 @Override
                                 public synchronized void output(String step, String line) {
                                     buf.add(line);
@@ -412,8 +412,8 @@ public final class BuildCommand implements CliCommand {
                                 }
                             };
                             var mirror = sessionMirror();
-                            return cc.jumpkick.cli.run.CompositePipelineListener.of(
-                                    cc.jumpkick.cli.run.CompositePipelineListener.of(outLis, mirror), log);
+                            return cc.jumpkick.cli.run.CompositeBuildPlanListener.of(
+                                    cc.jumpkick.cli.run.CompositeBuildPlanListener.of(outLis, mirror), log);
                         }
 
                         @Override
@@ -439,7 +439,7 @@ public final class BuildCommand implements CliCommand {
                     cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsed, total[0]), json);
             if (!json) {
                 String took = ConsoleSpec.took(java.time.Duration.ofMillis(elapsed));
-                CliOutput.out(PipelineWedge.cancelledJobLine("Build", GlobalConfig.nerdfont(), false, took));
+                CliOutput.out(BuildPlanWedge.cancelledJobLine("Build", GlobalConfig.nerdfont(), false, took));
             }
             if (session != null) session.wedge("Build job was cancelled");
             notifyBuild(BuildNotify.Outcome.CANCELLED, entryDir, entryBuild, 0, elapsed);
@@ -463,7 +463,7 @@ public final class BuildCommand implements CliCommand {
                     cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]), json);
             if (!json) {
                 String took = ConsoleSpec.took(java.time.Duration.ofMillis(elapsedMs));
-                CliOutput.out(PipelineWedge.cancelledJobLine("Build", GlobalConfig.nerdfont(), false, took));
+                CliOutput.out(BuildPlanWedge.cancelledJobLine("Build", GlobalConfig.nerdfont(), false, took));
             }
             if (session != null) session.wedge("Build job was cancelled");
             notifyBuild(BuildNotify.Outcome.CANCELLED, entryDir, entryBuild, 0, elapsedMs);
@@ -601,7 +601,7 @@ public final class BuildCommand implements CliCommand {
                 }
 
                 @Override
-                public cc.jumpkick.run.PipelineListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
+                public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
                     // Composed into the returned listener, not attached to m.pipeline directly — see
                     // the headless path's onModuleStart above for why.
                     var log = cc.jumpkick.cli.run.EventLogListener.open(
@@ -615,8 +615,8 @@ public final class BuildCommand implements CliCommand {
                     cc.jumpkick.cli.run.JsonlShape.emitJsonl(
                             cc.jumpkick.cli.run.JsonlShape.moduleStart(m.dir().toString(), m.coord()), false);
                     var mirror = sessionMirror();
-                    return cc.jumpkick.cli.run.CompositePipelineListener.of(
-                            cc.jumpkick.cli.run.CompositePipelineListener.of(lis, mirror), log);
+                    return cc.jumpkick.cli.run.CompositeBuildPlanListener.of(
+                            cc.jumpkick.cli.run.CompositeBuildPlanListener.of(lis, mirror), log);
                 }
 
                 @Override
@@ -647,16 +647,16 @@ public final class BuildCommand implements CliCommand {
                     cc.jumpkick.engine.EnginePaths.current(), request, liveListener);
         } catch (cc.jumpkick.cli.engine.JobCancelledException e) {
             long elapsedMs = (System.nanoTime() - start) / 1_000_000;
-            view.finishPipelineCancelled(List.of());
+            view.finishBuildPlanCancelled(List.of());
             if (session != null) session.wedge("Build job was cancelled");
             notifyBuild(BuildNotify.Outcome.CANCELLED, entryDir, entryBuild, view.etaEstimateMs(), elapsedMs);
             return 1;
         } catch (java.io.IOException e) {
-            // finishPipelineFailure's own `tail` already gets wrapped in PipelineWedge.failureLine(pipelineName,
+            // finishBuildPlanFailure's own `tail` already gets wrapped in BuildPlanWedge.failureLine(pipelineName,
             // nerdfont, tail) internally — pass the plain message, not a pre-rendered failure line
             // (passing one double-wraps it into a garbled "‼ Build ‼ Build..." chip).
             long elapsedMs = (System.nanoTime() - start) / 1_000_000;
-            view.finishPipelineFailure(String.valueOf(e.getMessage()), List.of());
+            view.finishBuildPlanFailure(String.valueOf(e.getMessage()), List.of());
             if (session != null) session.error(String.valueOf(e.getMessage()));
             notifyBuild(BuildNotify.Outcome.FAILED, entryDir, entryBuild, view.etaEstimateMs(), elapsedMs);
             return Exit.SOFTWARE;
@@ -664,7 +664,7 @@ public final class BuildCommand implements CliCommand {
         if (session != null) {
             for (var m : result.modules()) session.module(m.coord());
             for (String err : result.errors()) session.error(err);
-            for (PipelineResult.Diagnostic d : agg.lastErrors()) {
+            for (BuildPlanResult.Diagnostic d : agg.lastErrors()) {
                 session.error(d.step(), d.code(), d.message());
             }
         }
@@ -672,7 +672,7 @@ public final class BuildCommand implements CliCommand {
         long estimateMs = view.etaEstimateMs();
         if (result.cancelled()) {
             List<String> above = snapshot(deferredOutput);
-            view.finishPipelineCancelled(above);
+            view.finishBuildPlanCancelled(above);
             if (session != null) session.wedge("Build job was cancelled");
             cc.jumpkick.cli.run.JsonlShape.emitJsonl(
                     cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]), false);
@@ -682,7 +682,7 @@ public final class BuildCommand implements CliCommand {
         if (!result.errors().isEmpty()) {
             List<String> above = new ArrayList<>();
             for (String err : result.errors()) above.add(ConsoleSpec.errorLine("composite", err));
-            view.finishPipelineFailure("dependency resolution failed", above);
+            view.finishBuildPlanFailure("dependency resolution failed", above);
             if (session != null) session.wedge("dependency resolution failed");
             cc.jumpkick.cli.run.JsonlShape.emitJsonl(
                     cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]), false);
@@ -694,7 +694,7 @@ public final class BuildCommand implements CliCommand {
             // Buffered sub-process output first, then the error diagnostics just above the
             // "‼ Build failed" line — which stays last so the outcome is visible without scrolling.
             List<String> above = snapshot(deferredOutput);
-            for (PipelineResult.Diagnostic d : agg.lastErrors()) {
+            for (BuildPlanResult.Diagnostic d : agg.lastErrors()) {
                 if ("test-failure".equals(d.code())) continue; // already printed by run-tests
                 above.add(ConsoleSpec.renderError(d));
             }
@@ -704,7 +704,7 @@ public final class BuildCommand implements CliCommand {
                     .findFirst()
                     .orElse("build");
             String failTail = failureTail(failedCoord, start);
-            view.finishPipelineFailure(failTail, above);
+            view.finishBuildPlanFailure(failTail, above);
             if (session != null) session.wedge(failTail);
             cc.jumpkick.cli.run.JsonlShape.emitJsonl(
                     cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]), false);
@@ -714,7 +714,7 @@ public final class BuildCommand implements CliCommand {
         // Empty execute plan (total==0) = engine found nothing dirty single-RPC path).
         // Explicit empty dirtyHint is also up-to-date. Null dirtyDirs with work means force/rebuild.
         String okTail = successTail(result.modules(), total[0], dirtyDirs, start);
-        view.finishPipelineSuccess(okTail, snapshot(deferredOutput));
+        view.finishBuildPlanSuccess(okTail, snapshot(deferredOutput));
         if (session != null) session.wedge(okTail);
         cc.jumpkick.cli.run.JsonlShape.emitJsonl(
                 cc.jumpkick.cli.run.JsonlShape.workspaceFinish(true, elapsedMs, total[0]), false);
@@ -732,7 +732,7 @@ public final class BuildCommand implements CliCommand {
 
     /** Build one graph unit with output buffered. */
     /** Test failures exit 4; everything else exits 1 (mirrors {@link #runPrepared}). */
-    private static int exitCodeFor(Pipeline pipeline) {
+    private static int exitCodeFor(BuildPlan pipeline) {
         var testResult = pipeline.get(TEST_RESULT).orElse(null);
         return testResult != null && !testResult.allPassed() ? 4 : 1;
     }
@@ -789,7 +789,7 @@ public final class BuildCommand implements CliCommand {
         // Single-module fast path: skip the TUI entirely when the engine's forecast says every
         // work step is already cached (stat/CAS lookups engine-side, one round trip here).
         // A distrusting build (--force/--redo) never takes the trust-the-cache shortcut.
-        if (PipelineConsole.isInteractiveTerminal() && !global.outputIsJson() && !global.force && !global.rebuild) {
+        if (BuildPlanConsole.isInteractiveTerminal() && !global.outputIsJson() && !global.force && !global.rebuild) {
             try {
                 var forecast = cc.jumpkick.cli.engine.EngineClient.forecast(
                         cc.jumpkick.engine.EnginePaths.current(), dir, cache, buildOpts.skipTests);
@@ -806,7 +806,7 @@ public final class BuildCommand implements CliCommand {
             }
         }
 
-        // The wire has no real Pipeline to read BUILD_OUTCOME/LAYOUT from ahead of time (they arrive
+        // The wire has no real BuildPlan to read BUILD_OUTCOME/LAYOUT from ahead of time (they arrive
         // on the terminal pipeline-finish event), so projectTail's ingredients are supplied two ways:
         // BUILD_OUTCOME rides the wire (only the engine, which actually ran the pipeline, knows it);
         // LAYOUT is reconstructed independently — it's a pure derivation from dir + the parsed
@@ -821,10 +821,10 @@ public final class BuildCommand implements CliCommand {
         ConsoleSpec spec = new ConsoleSpec(
                 "Build",
                 r -> projectTail(buildOutcomeHolder[0], tailDir, tailInfo),
-                r -> PipelineWedge.coord(timelineModule),
+                r -> BuildPlanWedge.coord(timelineModule),
                 true);
-        PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
-        PipelineResult result;
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
+        BuildPlanResult result;
         try {
             result = cc.jumpkick.cli.engine.EngineClient.runSingleBuild(
                     cc.jumpkick.engine.EnginePaths.current(),
@@ -841,16 +841,16 @@ public final class BuildCommand implements CliCommand {
                             variant,
                             clientEnv),
                     steps -> {
-                        var console = PipelineConsole.chooseConsoleListener(steps, mode, spec, timelineModule);
+                        var console = BuildPlanConsole.chooseConsoleListener(steps, mode, spec, timelineModule);
                         // Mirror pipeline events into details.jsonl (JSON mode dual-writes itself).
-                        if (mode == PipelineConsole.Mode.JSON || session == null) return console;
-                        return cc.jumpkick.cli.run.CompositePipelineListener.of(
+                        if (mode == BuildPlanConsole.Mode.JSON || session == null) return console;
+                        return cc.jumpkick.cli.run.CompositeBuildPlanListener.of(
                                 new cc.jumpkick.cli.run.SessionMirrorListener(session), console);
                     },
                     testResultHolder,
                     buildOutcomeHolder);
         } catch (cc.jumpkick.cli.engine.JobCancelledException e) {
-            CliOutput.out(PipelineWedge.cancelledJobLine("Build", GlobalConfig.nerdfont(), false, ""));
+            CliOutput.out(BuildPlanWedge.cancelledJobLine("Build", GlobalConfig.nerdfont(), false, ""));
             if (session != null) session.wedge("Build job was cancelled");
             return 1;
         } catch (java.io.IOException e) {
@@ -993,14 +993,14 @@ public final class BuildCommand implements CliCommand {
      * rebuilt, else {@code Build successful. Built <artifact>} naming the headline output. No
      * duration — the framework appends it.
      */
-    static String projectTail(Pipeline pipeline) {
+    static String projectTail(BuildPlan pipeline) {
         return projectTail(
                 pipeline.get(BUILD_OUTCOME).orElse(""), pipeline.get(LAYOUT).orElse(null));
     }
 
     /**
-     * As {@link #projectTail(Pipeline)}, but from already-resolved values instead of a live {@code Pipeline}
-     * — for an engine-hosted build, where there's no local {@code Pipeline} to read {@code BUILD_OUTCOME}/
+     * As {@link #projectTail(BuildPlan)}, but from already-resolved values instead of a live {@code BuildPlan}
+     * — for an engine-hosted build, where there's no local {@code BuildPlan} to read {@code BUILD_OUTCOME}/
      * {@code LAYOUT} off of (they arrive over the wire / get reconstructed independently instead; see
      * {@code EngineClient.runSingleBuild}).
      */
@@ -1041,11 +1041,11 @@ public final class BuildCommand implements CliCommand {
      * the native binary/library if present, else the assembly jar, else the plain jar. Empty when
      * none exists. Shared with {@code jk native}.
      */
-    static String builtArtifact(Pipeline pipeline) {
+    static String builtArtifact(BuildPlan pipeline) {
         return builtArtifact(pipeline.get(LAYOUT).orElse(null));
     }
 
-    /** As {@link #builtArtifact(Pipeline)}, from an already-resolved {@link BuildLayout} (or {@code null}). */
+    /** As {@link #builtArtifact(BuildPlan)}, from an already-resolved {@link BuildLayout} (or {@code null}). */
     static String builtArtifact(BuildLayout layout) {
         if (layout == null) return "";
         Path art = firstExisting(layout.nativeBinary(), layout.nativeLibrary(), layout.assemblyJar(), layout.mainJar());
@@ -1087,7 +1087,7 @@ public final class BuildCommand implements CliCommand {
 
     /** Failure tail {@code group:name took T} — coord colored, {@code took T} bright-black. */
     private static String failureTail(String coord, long start) {
-        return PipelineWedge.coord(coord) + " " + elapsedSince(start);
+        return BuildPlanWedge.coord(coord) + " " + elapsedSince(start);
     }
 
     /** Failure tail for a module missing its {@code jk.toml}. */

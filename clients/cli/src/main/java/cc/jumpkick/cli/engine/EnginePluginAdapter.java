@@ -6,11 +6,11 @@ import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.plugin.build.Phase;
 import cc.jumpkick.plugin.protocol.Jsonl;
-import cc.jumpkick.run.PipelineListener;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.PipelineView;
-import cc.jumpkick.run.Step;
-import cc.jumpkick.run.StepStatus;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.BuildPlanView;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskStatus;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -40,7 +40,7 @@ final class EnginePluginAdapter {
     private EnginePluginAdapter() {}
 
     /** A hosted single-pipeline run's outcome: the replayed result plus the raw terminal line to decode. */
-    record HostedFinish(PipelineResult result, String finishLine) {}
+    record HostedFinish(BuildPlanResult result, String finishLine) {}
 
     /**
      * Send {@code requestLine} and replay the single-pipeline stream: plan-step burst → {@code
@@ -52,7 +52,7 @@ final class EnginePluginAdapter {
             EnginePaths.Paths paths,
             String requestLine,
             String pipelineName,
-            Function<List<Step>, PipelineListener> listenerFactory,
+            Function<List<Task>, BuildPlanListener> listenerFactory,
             BiConsumer<String, String> onEvent)
             throws IOException {
         return stream(paths, requestLine, pipelineName, listenerFactory, onEvent, null);
@@ -69,7 +69,7 @@ final class EnginePluginAdapter {
             EnginePaths.Paths paths,
             String requestLine,
             String pipelineName,
-            Function<List<Step>, PipelineListener> listenerFactory,
+            Function<List<Task>, BuildPlanListener> listenerFactory,
             BiConsumer<String, String> onEvent,
             java.util.function.Consumer<String> preFinish)
             throws IOException {
@@ -92,17 +92,17 @@ final class EnginePluginAdapter {
                             session.jvm(),
                             session.config().rebuildOr(false)));
 
-            List<Step> steps = new ArrayList<>();
-            List<PipelineResult.Diagnostic> diagnostics = new ArrayList<>();
-            PipelineListener listener = null;
+            List<Task> steps = new ArrayList<>();
+            List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
+            BuildPlanListener listener = null;
 
             String line;
             while ((line = reader.readLine()) != null) {
                 String type = EngineProtocol.typeOf(line);
                 if (type == null) continue;
                 switch (type) {
-                    case EngineProtocol.PLAN_STEP ->
-                        steps.add(Step.builder(Jsonl.str(line, "name"))
+                    case EngineProtocol.PLAN_TASK ->
+                        steps.add(Task.builder(Jsonl.str(line, "name"))
                                 .label(Jsonl.str(line, "label"))
                                 .phase(Phase.fromWireOrNull(Jsonl.str(line, "phase")))
                                 .build());
@@ -111,8 +111,8 @@ final class EnginePluginAdapter {
                             EngineProtocol.FORMAT_FILE,
                             EngineProtocol.IMPORT_NOTE,
                             EngineProtocol.PRUNE_WAIT -> onEvent.accept(type, line);
-                    case EngineProtocol.PIPELINE_FINISH -> {
-                        PipelineResult result = new PipelineResult(
+                    case EngineProtocol.BUILDPLAN_FINISH -> {
+                        BuildPlanResult result = new BuildPlanResult(
                                 pipelineName,
                                 Jsonl.bool(line, "success", false),
                                 Duration.ZERO,
@@ -127,7 +127,7 @@ final class EnginePluginAdapter {
                     }
                     case EngineProtocol.ERROR ->
                         throw new IOException("jk engine: run failed: " + Jsonl.str(line, "message"));
-                    default -> dispatchPipelineEvent(type, line, listener, diagnostics);
+                    default -> dispatchBuildPlanEvent(type, line, listener, diagnostics);
                 }
             }
             throw disconnected();
@@ -190,26 +190,26 @@ final class EnginePluginAdapter {
      * pipeline-diagnostic}s aside) — the same shared tail {@link EngineResolveAdapter} keeps for the
      * resolver family. Unknown types are forward-compatible no-ops.
      */
-    private static void dispatchPipelineEvent(
-            String type, String line, PipelineListener listener, List<PipelineResult.Diagnostic> diagnostics) {
+    private static void dispatchBuildPlanEvent(
+            String type, String line, BuildPlanListener listener, List<BuildPlanResult.Diagnostic> diagnostics) {
         if (listener == null) {
             // pipeline-diagnostics can still matter pre-listener; everything else needs one.
-            if (EngineProtocol.PIPELINE_DIAGNOSTIC.equals(type)) {
+            if (EngineProtocol.BUILDPLAN_DIAGNOSTIC.equals(type)) {
                 diagnostics.add(readDiagnostic(line));
             }
             return;
         }
         switch (type) {
-            case EngineProtocol.PIPELINE_START -> listener.pipelineStart(readPipelineView(line));
-            case EngineProtocol.STEP_START ->
+            case EngineProtocol.BUILDPLAN_START -> listener.pipelineStart(readBuildPlanView(line));
+            case EngineProtocol.TASK_START ->
                 listener.stepStart(
                         Jsonl.str(line, "step"),
                         Phase.fromWireOrNull(Jsonl.str(line, "phase")),
                         Jsonl.intValue(line, "ticks", 0));
             case EngineProtocol.PROGRESS ->
-                listener.progress(Jsonl.str(line, "step"), Jsonl.intValue(line, "delta", 0), readPipelineView(line));
+                listener.progress(Jsonl.str(line, "step"), Jsonl.intValue(line, "delta", 0), readBuildPlanView(line));
             case EngineProtocol.TICK_UPDATE ->
-                listener.tickUpdate(Jsonl.str(line, "step"), Jsonl.intValue(line, "delta", 0), readPipelineView(line));
+                listener.tickUpdate(Jsonl.str(line, "step"), Jsonl.intValue(line, "delta", 0), readBuildPlanView(line));
             case EngineProtocol.LABEL -> listener.label(Jsonl.str(line, "step"), Jsonl.str(line, "label"));
             case EngineProtocol.OUTPUT -> listener.output(Jsonl.str(line, "step"), Jsonl.str(line, "line"));
             case EngineProtocol.WARN ->
@@ -221,12 +221,12 @@ final class EnginePluginAdapter {
                         Jsonl.str(line, "message"),
                         Jsonl.str(line, "test"),
                         Jsonl.str(line, "exceptionClass"));
-            case EngineProtocol.PIPELINE_DIAGNOSTIC -> diagnostics.add(readDiagnostic(line));
-            case EngineProtocol.STEP_FINISH ->
+            case EngineProtocol.BUILDPLAN_DIAGNOSTIC -> diagnostics.add(readDiagnostic(line));
+            case EngineProtocol.TASK_FINISH ->
                 listener.stepFinish(
                         Jsonl.str(line, "step"),
                         Phase.fromWireOrNull(Jsonl.str(line, "phase")),
-                        StepStatus.valueOf(Jsonl.str(line, "status")),
+                        TaskStatus.valueOf(Jsonl.str(line, "status")),
                         Duration.ZERO);
             default -> {
                 /* forward-compatible no-op */
@@ -234,8 +234,8 @@ final class EnginePluginAdapter {
         }
     }
 
-    private static PipelineResult.Diagnostic readDiagnostic(String line) {
-        return new PipelineResult.Diagnostic(
+    private static BuildPlanResult.Diagnostic readDiagnostic(String line) {
+        return new BuildPlanResult.Diagnostic(
                 Jsonl.str(line, "step"),
                 Jsonl.str(line, "code"),
                 Jsonl.str(line, "message"),
@@ -243,8 +243,8 @@ final class EnginePluginAdapter {
                 Jsonl.str(line, "exceptionClass"));
     }
 
-    private static PipelineView readPipelineView(String line) {
-        return new PipelineView(
+    private static BuildPlanView readBuildPlanView(String line) {
+        return new BuildPlanView(
                 Jsonl.str(line, "pipelineName"),
                 Jsonl.longValue(line, "numerator", 0),
                 Jsonl.longValue(line, "denominator", 0),

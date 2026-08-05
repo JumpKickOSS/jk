@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -85,8 +85,8 @@ class AndroidReleaseTest {
                                 "RELEASE_KEYSTORE", keystore.toAbsolutePath().toString(),
                                 "RELEASE_STORE_PASSWORD", "rel-store-pass",
                                 "RELEASE_KEY_PASSWORD", "rel-key-pass"));
-        Pipeline pipeline = BuildPipelines.coreBuilder(in).build();
-        PipelineResult result = pipeline.run();
+        BuildPlan pipeline = BuildPipelines.coreBuilder(in).build();
+        BuildPlanResult result = pipeline.run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
 

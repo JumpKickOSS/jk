@@ -128,8 +128,8 @@ const PhaseChain = {
         </span>
       </div>
       <div v-if="openPhase" class="phase-steps">
-        <template v-for="(s, i) in openPhase.steps" :key="s.name">
-          <span v-if="i > 0" class="step-edge" :class="openPhase.steps[i - 1].state"></span>
+        <template v-for="(s, i) in openPhase.tasks" :key="s.name">
+          <span v-if="i > 0" class="step-edge" :class="openPhase.tasks[i - 1].state"></span>
           <span class="step-node" :class="s.state" :title="s.message || s.name">
             <span v-if="s.state === 'running'" class="spin small"></span>
             <jk-icon v-else-if="s.state === 'success'" name="check" class="step-glyph ok"></jk-icon>
@@ -1244,7 +1244,7 @@ Vue.createApp({
     // the phase) by matching the diagnostic's step name. '' when the step has no phase or isn't found
     // — the failure line then reads step › … without a phase prefix.
     diagPhase(mod, d) {
-      const st = ((mod && mod.steps) || []).find((s) => s.name === d.step);
+      const st = ((mod && mod.tasks) || []).find((s) => s.name === d.task);
       const wire = st && st.phase ? st.phase : '';
       return wire ? wire.charAt(0).toUpperCase() + wire.slice(1) : '';
     },
@@ -1796,7 +1796,7 @@ Vue.createApp({
     },
     // Footer "Builds Running": the engine's live pipeline count (authoritative, always in /api/status).
     buildsRunning() {
-      return this.status ? this.status.activePipelines : 0;
+      return this.status ? this.status.activeBuildPlans : 0;
     },
     heapUsedPercent() {
       return this.percentOfMax(this.status?.heapUsedBytes);

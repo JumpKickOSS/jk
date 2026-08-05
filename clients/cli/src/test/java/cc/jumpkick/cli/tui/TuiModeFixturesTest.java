@@ -36,8 +36,8 @@ class TuiModeFixturesTest {
         });
 
         // When ANSI is available in the suite, check nerd vs non-nerd caps.
-        String nerd = PipelineWedge.chipLine(Glyphs.CHECK, "Clean", true, "ok");
-        String ansi = PipelineWedge.chipLine(Glyphs.CHECK, "Clean", false, "ok");
+        String nerd = BuildPlanWedge.chipLine(Glyphs.CHECK, "Clean", true, "ok");
+        String ansi = BuildPlanWedge.chipLine(Glyphs.CHECK, "Clean", false, "ok");
         if (!nerd.startsWith("+")) {
             assertThat(nerd).contains(PUA);
             assertThat(ansi).doesNotContain(PUA);

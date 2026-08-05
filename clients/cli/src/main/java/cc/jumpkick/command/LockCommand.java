@@ -7,7 +7,7 @@ import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.run.ConsoleSpec;
-import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandManager;
@@ -19,9 +19,9 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.repo.LibraryRegistryClient;
 import cc.jumpkick.repo.LibraryRegistrySync;
-import cc.jumpkick.run.PipelineListener;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.Step;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.Task;
 import cc.jumpkick.util.JkDirs;
 import java.net.URI;
 import java.nio.file.Files;
@@ -103,8 +103,8 @@ public final class LockCommand implements CliCommand {
                 libraryRegistryUrl != null ? libraryRegistryUrl : LibraryRegistryClient.DEFAULT_SOURCE,
                 libraryCacheFile != null ? libraryCacheFile : LibraryCatalog.downloadedFile());
 
-        PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
-        boolean live = mode == PipelineConsole.Mode.AUTO || mode == PipelineConsole.Mode.QUIET;
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
+        boolean live = mode == BuildPlanConsole.Mode.AUTO || mode == BuildPlanConsole.Mode.QUIET;
 
         // Optimize/start the engine before the Lock pipeline console so a one-time AOT training shows the
         // "Engine — optimizing…" wedge first, then the Lock TUI takes over (never interleaved).
@@ -133,8 +133,8 @@ public final class LockCommand implements CliCommand {
      * workspace modules, driven from wire events — one row per module, per-package completion lines
      * (colorized here, never engine-side), and the final Lock chip.
      */
-    private int runHostedLive(Path dir, Path cache, PipelineConsole.Mode mode) {
-        boolean animate = mode == PipelineConsole.Mode.AUTO && PipelineConsole.isInteractiveTerminal();
+    private int runHostedLive(Path dir, Path cache, BuildPlanConsole.Mode mode) {
+        boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
         CommandManager view = CommandManager.pipeline(CliOutput.stdout(), "Lock", animate);
         long start = System.nanoTime();
 
@@ -148,15 +148,15 @@ public final class LockCommand implements CliCommand {
 
         EngineClient.LockHandler handler = new EngineClient.LockHandler() {
             @Override
-            public PipelineListener onModuleStart(String moduleDir, String coord, List<Step> steps) {
+            public BuildPlanListener onModuleStart(String moduleDir, String coord, List<Task> steps) {
                 coordByDir.put(moduleDir, coord);
                 // The display label is empty so renderActiveRow produces "module › dep".
-                view.addStepLabeled(coord, "lock", "");
+                view.addTaskLabeled(coord, "lock", "");
                 view.stepRunning(coord, "lock");
                 // Lock is purely resolution — total is unknown upfront, so we show a
                 // static top-line label and record each resolved dep as a completion line.
                 view.solveLabel("Locking versions…");
-                return new PipelineListener() {};
+                return new BuildPlanListener() {};
             }
 
             @Override
@@ -190,7 +190,7 @@ public final class LockCommand implements CliCommand {
             }
 
             @Override
-            public void onModuleFinish(String moduleDir, PipelineResult result, EngineClient.LockCounts counts) {
+            public void onModuleFinish(String moduleDir, BuildPlanResult result, EngineClient.LockCounts counts) {
                 view.stepDone(coordByDir.get(moduleDir), "lock", result.success());
                 // Authoritative package count from the written lockfile (not wire event cardinality).
                 if (counts != null && counts.packages() >= 0) {
@@ -201,7 +201,7 @@ public final class LockCommand implements CliCommand {
                     globalLocked.set(Math.max(globalLocked.get(), sum));
                 }
                 if (!result.success()) {
-                    for (PipelineResult.Diagnostic d : result.errors()) {
+                    for (BuildPlanResult.Diagnostic d : result.errors()) {
                         errorLines.add(ConsoleSpec.renderError(d));
                     }
                 }
@@ -212,26 +212,26 @@ public final class LockCommand implements CliCommand {
         try {
             outcome = EngineClient.runLock(cc.jumpkick.engine.EnginePaths.current(), lockRequest(dir, cache), handler);
         } catch (java.io.IOException e) {
-            view.finishPipelineFailure(String.valueOf(e.getMessage()), List.of());
+            view.finishBuildPlanFailure(String.valueOf(e.getMessage()), List.of());
             return Exit.SOFTWARE;
         }
         if (!outcome.success()) {
             errorLines.addAll(outcome.errors());
-            view.finishPipelineFailure(lockFailTail(), errorLines);
+            view.finishBuildPlanFailure(lockFailTail(), errorLines);
             return outcome.exitCode();
         }
-        view.finishPipelineSuccess(lockSuccessTail(globalLocked.get(), start, dir));
+        view.finishBuildPlanSuccess(lockSuccessTail(globalLocked.get(), start, dir));
         return 0;
     }
 
     /** Hosted plain path (--verbose / --output json): one console listener per cascade module. */
-    private int runHostedPlain(Path dir, Path cache, PipelineConsole.Mode mode) {
+    private int runHostedPlain(Path dir, Path cache, BuildPlanConsole.Mode mode) {
         EngineClient.LockHandler handler = new EngineClient.LockHandler() {
-            private PipelineListener current;
+            private BuildPlanListener current;
 
             @Override
-            public PipelineListener onModuleStart(String moduleDir, String coord, List<Step> steps) {
-                current = PipelineConsole.chooseConsoleListener("lock", steps, mode);
+            public BuildPlanListener onModuleStart(String moduleDir, String coord, List<Task> steps) {
+                current = BuildPlanConsole.chooseConsoleListener("lock", steps, mode);
                 return current;
             }
 
@@ -258,7 +258,7 @@ public final class LockCommand implements CliCommand {
 
     // ---- shared rendering helpers --------------------------------------------
 
-    /** Failure result tail for the Lock chip (PipelineWedge prepends "Failed to lock"). */
+    /** Failure result tail for the Lock chip (BuildPlanWedge prepends "Failed to lock"). */
     static String lockFailTail() {
         return "dependencies";
     }

@@ -4,7 +4,7 @@ package cc.jumpkick.cli.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlanResult;
 import java.io.BufferedReader;
 import java.io.StringReader;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,8 +33,8 @@ class EngineBuildListenerAdapterStreamTest {
                 EngineProtocol.planDone(0),
                 EngineProtocol.pipelineFinish("/proj", true, false));
 
-        PipelineResult result = EngineBuildListenerAdapter.streamSinglePipelineEvents(
-                reader, steps -> new cc.jumpkick.run.PipelineListener() {}, null, null);
+        BuildPlanResult result = EngineBuildListenerAdapter.streamSingleBuildPlanEvents(
+                reader, steps -> new cc.jumpkick.run.BuildPlanListener() {}, null, null);
 
         assertThat(result.success()).isTrue();
         assertThat(EngineClient.ActiveJobs.snapshot()).isEmpty();
@@ -47,8 +47,8 @@ class EngineBuildListenerAdapterStreamTest {
                 // Remote cancel injected before the plan burst ever created the listener.
                 EngineProtocol.pipelineFinish("/proj", false, true));
 
-        PipelineResult result = EngineBuildListenerAdapter.streamSinglePipelineEvents(
-                reader, steps -> new cc.jumpkick.run.PipelineListener() {}, null, null);
+        BuildPlanResult result = EngineBuildListenerAdapter.streamSingleBuildPlanEvents(
+                reader, steps -> new cc.jumpkick.run.BuildPlanListener() {}, null, null);
 
         assertThat(result.cancelled()).isTrue();
         assertThat(result.success()).isFalse();

@@ -5,7 +5,7 @@ How jk is structured today. For day-to-day usage see [guide.md](guide.md).
 ## Design tenets
 
 1. **Declarative core** — `jk.toml` is data; logic lives in plugins and task scripts, not the manifest.
-2. **Fast client, hosted build** — native CLI for UX; resident engine for resolution, pipelines, and memory coordination.
+2. **Fast client, hosted build** — native CLI for UX; resident engine for resolution, BuildPlans, and memory coordination.
 3. **Reproducibility by default** — lockfile, content-addressed cache, deterministic packaging.
 4. **Diagnostics as product** — PubGrub prose, `jk why` / `jk explain`, machine-readable output.
 5. **Adoption first** — `jk mvn` / `jk gradle`, import/export, Maven Central semantics.
@@ -25,8 +25,8 @@ How jk is structured today. For day-to-day usage see [guide.md](guide.md).
 - **Client** — presentation, shell hooks, JDK install prompts, anything that owns your terminal
   (`jk run` exec, `jk mvn`/`gradle` interactive). Sub-50 ms cold start; no engine code in the
   native image.
-- **Engine** — dependency resolution, action graph, CAS, toolchains, compiler/test workers,
-  hosted verbs (`build`, `test`, `lock`, `publish`, …). Default heap ceiling **256 MiB**
+- **Engine** — dependency resolution, task graph / BuildPlan execution, CAS, toolchains,
+  compiler/test workers, hosted verbs (`build`, `test`, `lock`, `publish`, …). Default heap ceiling **256 MiB**
   (`~/.config/jk/config.toml` → `[engine] max-heap-mb`, or `JK_ENGINE_MAX_HEAP_MB`).
   **Three budgets:** (1) engine heap = thin coordinator (JK-1075 measured ~36 MiB peak on a
   200-module build); (2) worker JVM heaps from free RAM via `HeapPlan`; (3) concurrency via
@@ -135,7 +135,7 @@ Same-version client/engine only — not a multi-version public API. Conventions 
 | Handshake | `hello` / `hello-ack` carry `version`, `proto` (`EngineProtocol.PROTOCOL`), `purpose` (`connect`\|`probe`); `hello-ack` uses `startedAt` (millis) |
 | Errors | `{"type":"error","code",…,"message",…}` (`auth`, `protocol`, `version-skew`, …) |
 | Project path | Field name is always `dir` |
-| Pipeline finish | `{"type":"pipeline-finish","kind":…,"dir":…,"success":…}` (+ kind-specific tails) |
+| BuildPlan finish | `{"type":"buildplan-finish","kind":…,"dir":…,"success":…}` (+ kind-specific tails) |
 | Session extras | Variant / client env / JVM tuning via typed `withSession` builders — no JSON string surgery |
 | Line limits | Bounded line reader + idle timeout; unknown/`type`-less lines → `error`, not silent drop |
 

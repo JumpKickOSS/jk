@@ -4,20 +4,20 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
-import cc.jumpkick.cli.run.CompositePipelineListener;
+import cc.jumpkick.cli.run.CompositeBuildPlanListener;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.EventLogListener;
-import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandManager;
-import cc.jumpkick.cli.tui.PipelineWedge;
+import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -171,7 +171,7 @@ public final class NativeCommand implements CliCommand {
     // --- workspace cascade ---------------------------------------------------
 
     private int runWorkspaceNative(Path wsRoot, Path cache) throws Exception {
-        PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         long buildStart = System.nanoTime();
 
         // Thin client: per-module native-mode + graal spec ride ProjectInfo summaries; the
@@ -251,7 +251,7 @@ public final class NativeCommand implements CliCommand {
             Path cache,
             Map<Path, Path> graalHomes,
             List<Path> selectedModuleDirs,
-            PipelineConsole.Mode mode,
+            BuildPlanConsole.Mode mode,
             long buildStart,
             int totalModules,
             long nativeCount) {
@@ -260,12 +260,12 @@ public final class NativeCommand implements CliCommand {
 
         // JSON / verbose: append-only per-module listeners. JSON must not print human banners and
         // must not let module-local num/den clobber the engine aggregate rider.
-        if (mode != PipelineConsole.Mode.AUTO && mode != PipelineConsole.Mode.QUIET) {
+        if (mode != BuildPlanConsole.Mode.AUTO && mode != BuildPlanConsole.Mode.QUIET) {
             int[] idx = {0};
             // Engine-corrected denominator: with -m the engine adds transitive prereqs the client
             // never counted, so the plan's modulesTotal wins over the client-side guess (JK-1361).
             int[] total = {totalModules};
-            boolean json = mode == PipelineConsole.Mode.JSON;
+            boolean json = mode == BuildPlanConsole.Mode.JSON;
             var listener = new cc.jumpkick.runtime.WorkspaceBuildListener() {
                 @Override
                 public void onWorkspaceProgress(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
@@ -284,7 +284,7 @@ public final class NativeCommand implements CliCommand {
                 }
 
                 @Override
-                public cc.jumpkick.run.PipelineListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
+                public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
                     if (!json) {
                         CliOutput.out();
                         CliOutput.out("══ " + wsRoot.relativize(m.dir()) + " (" + (++idx[0]) + "/"
@@ -294,9 +294,9 @@ public final class NativeCommand implements CliCommand {
                     // JSON: workspace member listener (no aggregate-rider writes). Verbose: full console.
                     var console = json
                             ? new cc.jumpkick.cli.run.JsonlListener(System.out, false)
-                            : PipelineConsole.chooseConsoleListener(
+                            : BuildPlanConsole.chooseConsoleListener(
                                     m.pipeline().name(), m.pipeline().steps(), mode);
-                    return CompositePipelineListener.of(console, log);
+                    return CompositeBuildPlanListener.of(console, log);
                 }
 
                 @Override
@@ -320,7 +320,7 @@ public final class NativeCommand implements CliCommand {
 
         // AUTO / QUIET: one shared aggregate view, calibrated to the whole cascade up front
         // (the plan burst carries every module pipeline's estimated weight).
-        boolean animate = mode == PipelineConsole.Mode.AUTO && PipelineConsole.isInteractiveTerminal();
+        boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
         CommandManager view = CommandManager.pipeline(CliOutput.stdout(), "Build", animate);
         cc.jumpkick.cli.run.AggregateContext agg = new cc.jumpkick.cli.run.AggregateContext(view);
         int[] built = {0};
@@ -331,9 +331,9 @@ public final class NativeCommand implements CliCommand {
             }
 
             @Override
-            public cc.jumpkick.run.PipelineListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
+            public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
                 var log = EventLogListener.open(m.cache(), m.pipeline().name());
-                return CompositePipelineListener.of(
+                return CompositeBuildPlanListener.of(
                         new cc.jumpkick.cli.run.AggregateModuleListener(
                                 agg, m.coord(), m.pipeline().steps(), m.weight()),
                         log);
@@ -348,11 +348,11 @@ public final class NativeCommand implements CliCommand {
         try {
             result = EngineClient.runNative(paths, req, listener);
         } catch (IOException e) {
-            view.finishPipelineFailure(String.valueOf(e.getMessage()));
+            view.finishBuildPlanFailure(String.valueOf(e.getMessage()));
             return Exit.SOFTWARE;
         }
         if (!result.errors().isEmpty()) {
-            view.finishPipelineFailure("dependency resolution failed");
+            view.finishBuildPlanFailure("dependency resolution failed");
             for (String err : result.errors()) CliOutput.err(ConsoleSpec.errorLine("composite", err));
             return result.exitCode();
         }
@@ -362,13 +362,13 @@ public final class NativeCommand implements CliCommand {
                     .map(cc.jumpkick.runtime.ModuleOutcome::coord)
                     .findFirst()
                     .orElse("build");
-            view.finishPipelineFailure(PipelineWedge.coord(failedCoord) + " " + BuildCommand.elapsedSince(buildStart));
-            for (PipelineResult.Diagnostic d : agg.lastErrors()) {
+            view.finishBuildPlanFailure(BuildPlanWedge.coord(failedCoord) + " " + BuildCommand.elapsedSince(buildStart));
+            for (BuildPlanResult.Diagnostic d : agg.lastErrors()) {
                 CliOutput.err(ConsoleSpec.renderError(d));
             }
             return result.exitCode();
         }
-        view.finishPipelineSuccess(
+        view.finishBuildPlanSuccess(
                 Theme.colorize("Native build successful", Theme.active().success())
                         + ", "
                         + workspaceSummary(built[0], nativeCount)
@@ -408,7 +408,7 @@ public final class NativeCommand implements CliCommand {
         if (graalHome.isEmpty()) return Exit.CONFIG; // GraalResolver already printed why
 
         String coord = BuildCommand.buildTarget(buildFile, projectDir);
-        PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
 
         // Engine-hosted (a cascade of one): the success tail names the built artifact from
         // the engine summary's candidate paths (thin client — no local layout derivation).
@@ -416,14 +416,14 @@ public final class NativeCommand implements CliCommand {
                 "Build",
                 r -> Theme.colorize("Native build successful", Theme.active().success())
                         + BuildCommand.builtArtifact(projectDir, build),
-                r -> PipelineWedge.coord(coord),
+                r -> BuildPlanWedge.coord(coord),
                 true);
         var listener = new cc.jumpkick.runtime.WorkspaceBuildListener() {
             @Override
-            public cc.jumpkick.run.PipelineListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
+            public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
                 var log = EventLogListener.open(m.cache(), m.pipeline().name());
-                return CompositePipelineListener.of(
-                        PipelineConsole.chooseConsoleListener(m.pipeline().steps(), mode, spec, coord), log);
+                return CompositeBuildPlanListener.of(
+                        BuildPlanConsole.chooseConsoleListener(m.pipeline().steps(), mode, spec, coord), log);
             }
         };
         cc.jumpkick.runtime.WorkspaceResult result;

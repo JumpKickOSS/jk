@@ -5,8 +5,8 @@ import cc.jumpkick.config.ImageConfigParser;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanResult;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -52,7 +52,7 @@ public final class NativePipelines {
      * ignored otherwise). Non-eligible modules still compile and package so eligible siblings can
      * depend on them.
      */
-    public static Pipeline modulePipeline(
+    public static BuildPlan moduleBuildPlan(
             Path moduleDir,
             JkBuild module,
             Path cache,
@@ -62,17 +62,17 @@ public final class NativePipelines {
             List<String> extraArgs,
             boolean skipTests,
             boolean verbose) {
-        return modulePipeline(
+        return moduleBuildPlan(
                 moduleDir, module, cache, jdksDir, graalHome, mainOverride, extraArgs, skipTests, verbose, true);
     }
 
     /**
-     * As {@link #modulePipeline(Path, JkBuild, Path, Path, Path, String, List, boolean, boolean)}
+     * As {@link #moduleBuildPlan(Path, JkBuild, Path, Path, Path, String, List, boolean, boolean)}
      * with {@code allowNative}: a prereq the cascade pulled in for a {@code -m} selection builds to
      * a jar only — the user selected what gets native-compiled, and the client resolved GraalVM
      * homes for the selection alone (JK-1361).
      */
-    public static Pipeline modulePipeline(
+    public static BuildPlan moduleBuildPlan(
             Path moduleDir,
             JkBuild module,
             Path cache,
@@ -103,11 +103,11 @@ public final class NativePipelines {
                 false,
                 java.util.Set.of(),
                 cc.jumpkick.config.SessionContext.current());
-        Pipeline.Builder builder = BuildPipelines.coreBuilder(inputs);
+        BuildPlan.Builder builder = BuildPipelines.coreBuilder(inputs);
         // Assembly / sources tails only here — native carries CLI main/args from this command.
         BuildPipelines.appendDeclaredTails(builder, inputs, graalHome, /*allowNative*/ false);
         if (allowNative && isNativeEligible(module)) {
-            builder.addStep(BuildPipelines.nativeStep(
+            builder.addTask(BuildPipelines.nativeStep(
                     moduleDir,
                     cache,
                     lockFile,
@@ -123,8 +123,8 @@ public final class NativePipelines {
      * {@code jk native}'s exit-code mapping for a failed module pipeline: a native-step "main class"
      * misconfiguration exits {@link Exit#USAGE}, a test failure exits 4, anything else 1.
      */
-    public static int failureExitCode(Pipeline pipeline, PipelineResult result) {
-        for (PipelineResult.Diagnostic d : result.errors()) {
+    public static int failureExitCode(BuildPlan pipeline, BuildPlanResult result) {
+        for (BuildPlanResult.Diagnostic d : result.errors()) {
             if ("native".equals(d.code()) && d.message() != null && d.message().contains("main class")) {
                 return Exit.USAGE;
             }

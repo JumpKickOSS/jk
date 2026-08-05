@@ -3,7 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.config.RepositoriesScan;
 import cc.jumpkick.credential.RepoCredential;
@@ -13,7 +13,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.repo.RepoCredentialResolver;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
@@ -139,8 +139,8 @@ public final class PublishCommand implements CliCommand {
         }
         String gpgPass = sign ? (keyPassphrase != null ? keyPassphrase : System.getenv("JK_GPG_PASSPHRASE")) : null;
 
-        PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
-        PipelineResult result;
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
+        BuildPlanResult result;
         int files;
         cc.jumpkick.cli.engine.EngineClient.PublishOutcome outcome;
         try {
@@ -162,7 +162,7 @@ public final class PublishCommand implements CliCommand {
                             sbom,
                             cred,
                             global.verbose),
-                    steps -> PipelineConsole.chooseConsoleListener("publish", steps, mode));
+                    steps -> BuildPlanConsole.chooseConsoleListener("publish", steps, mode));
         } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Publish", e.getMessage()));
             return Exit.SOFTWARE;
@@ -171,7 +171,7 @@ public final class PublishCommand implements CliCommand {
         files = outcome.files();
 
         if (!result.success()) {
-            for (PipelineResult.Diagnostic d : result.errors()) {
+            for (BuildPlanResult.Diagnostic d : result.errors()) {
                 if ("snapshot".equals(d.code())) return Exit.DATA_ERR;
                 if ("missing-jar".equals(d.code())) return Exit.NO_INPUT;
             }

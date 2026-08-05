@@ -2,7 +2,7 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.tui.CommandManager;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.WorkspaceProgressTracker;
 import java.util.List;
 
@@ -17,7 +17,7 @@ import java.util.List;
 public final class AggregateContext {
 
     private final CommandManager cm;
-    private volatile List<PipelineResult.Diagnostic> lastErrors = List.of();
+    private volatile List<BuildPlanResult.Diagnostic> lastErrors = List.of();
 
     public AggregateContext(CommandManager cm) {
         this.cm = cm;
@@ -49,11 +49,11 @@ public final class AggregateContext {
         cm.preflight(stage, done, total, label);
     }
 
-    public List<PipelineResult.Diagnostic> lastErrors() {
+    public List<BuildPlanResult.Diagnostic> lastErrors() {
         return lastErrors;
     }
 
-    public void notifyErrors(List<PipelineResult.Diagnostic> errors) {
+    public void notifyErrors(List<BuildPlanResult.Diagnostic> errors) {
         this.lastErrors = errors;
     }
 }

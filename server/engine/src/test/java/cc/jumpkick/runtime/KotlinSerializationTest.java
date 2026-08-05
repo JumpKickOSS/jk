@@ -7,8 +7,8 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Tag;
@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * android-plan Step 5, blocker 2: project-declared Kotlin compiler plugins
+ * android-plan Task 5, blocker 2: project-declared Kotlin compiler plugins
  * ({@code [[kotlin-plugins]]}) — kotlinx-serialization is the Now-in-Android consumer. A
  * {@code @Serializable} class only gets its generated {@code .serializer()} companion when the
  * serialization compiler plugin actually loaded into kotlinc, so compiling a reference to it IS
@@ -80,9 +80,9 @@ class KotlinSerializationTest {
         assertThat(build.build().kotlinPlugins().getFirst().id())
                 .isEqualTo("kotlin-serialization-compiler-plugin-embeddable");
 
-        Pipeline lock = LockPipelines.lockPipeline(
+        BuildPlan lock = LockPipelines.lockBuildPlan(
                 project, build, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
-        PipelineResult lockResult = lock.run();
+        BuildPlanResult lockResult = lock.run();
         assertThat(lockResult.errors()).isEmpty();
 
         BuildPipelines.Inputs in = new BuildPipelines.Inputs(
@@ -101,8 +101,8 @@ class KotlinSerializationTest {
                 false,
                 java.util.Set.of(),
                 SessionContext.current());
-        Pipeline pipeline = BuildPipelines.coreBuilder(in).build();
-        PipelineResult result = pipeline.run();
+        BuildPlan pipeline = BuildPipelines.coreBuilder(in).build();
+        BuildPlanResult result = pipeline.run();
         System.out.println(
                 "STEPS: " + pipeline.steps().stream().map(ph -> ph.name()).toList());
         try (var w = Files.walk(project.resolve("target"))) {

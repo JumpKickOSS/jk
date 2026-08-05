@@ -43,7 +43,7 @@ This is **not** a marketing comparison. JumpKick and Mill occupy overlapping “
 | | Mill | JumpKick |
 |---|---|---|
 | Config default | Declarative YAML *or* programmable Scala `build.mill` | Declarative `jk.toml` (data) by convention |
-| Mental model | Object hierarchy of modules; tasks are methods | Workspace + verbs (`build`/`test`/`lock`); plugins own steps |
+| Mental model | Object hierarchy of modules; tasks are methods | Workspace + targets; BuildPlan of tasks with requires; plugins contribute tasks |
 | Resolve | Coursier; no committed lockfile as law | PubGrub + **`jk-lock.toml` is law**; builds do not re-resolve |
 | Extension | Override `Task`s in-process; publish Mill plugins | Out-of-process workers today; **Mill-like escape hatch planned** |
 | Process model | Launcher + long-lived Mill daemon | Native CLI + memory-capped engine (JSONL wire) |

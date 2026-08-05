@@ -6,7 +6,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Answers;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.PipelineWedge;
+import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.cli.tui.Wizard;
 import cc.jumpkick.cli.tui.WizardStep;
 import cc.jumpkick.config.GlobalConfig;
@@ -119,7 +119,7 @@ public final class ActivateCommand implements CliCommand {
             ensureJkxLauncher();
             ShellCompletions.writeAll();
             CommandWedge.envelopeStart();
-            CliOutput.out(PipelineWedge.chipLine(
+            CliOutput.out(BuildPlanWedge.chipLine(
                     Glyphs.CHECK,
                     "Activate",
                     nerdfont,
@@ -132,7 +132,7 @@ public final class ActivateCommand implements CliCommand {
         JkxLink.Result jkx = ensureJkxLauncher();
         ShellCompletions.writeAll();
         CommandWedge.envelopeStart();
-        CliOutput.out(PipelineWedge.chipLine(
+        CliOutput.out(BuildPlanWedge.chipLine(
                 Glyphs.CHECK,
                 "Activate",
                 nerdfont,
@@ -164,7 +164,7 @@ public final class ActivateCommand implements CliCommand {
                 ensureJkxLauncher();
                 ShellCompletions.writeAll();
                 CommandWedge.envelopeStart();
-                CliOutput.out(PipelineWedge.chipLine(
+                CliOutput.out(BuildPlanWedge.chipLine(
                         Glyphs.CHECK,
                         "Activate",
                         nerdfont,
@@ -176,7 +176,7 @@ public final class ActivateCommand implements CliCommand {
         ensureJkxLauncher();
         ShellCompletions.writeAll();
         CommandWedge.envelopeStart();
-        CliOutput.out(PipelineWedge.chipLine(
+        CliOutput.out(BuildPlanWedge.chipLine(
                 Glyphs.BANG,
                 "Activate",
                 nerdfont,
@@ -199,7 +199,7 @@ public final class ActivateCommand implements CliCommand {
                 ShellCompletions.writeAll();
                 Theme t = Theme.active();
                 CommandWedge.envelopeStart();
-                CliOutput.out(PipelineWedge.chipLine(
+                CliOutput.out(BuildPlanWedge.chipLine(
                         Glyphs.CHECK,
                         "Activate",
                         nerdfont,
@@ -232,7 +232,7 @@ public final class ActivateCommand implements CliCommand {
             Theme t = Theme.active();
             String block = ShellInstallerBlock.render(shell, JkDirs.binDir(), JkDirs.data());
             CommandWedge.envelopeStart();
-            CliOutput.out(PipelineWedge.chipLine(
+            CliOutput.out(BuildPlanWedge.chipLine(
                     Glyphs.BANG,
                     "Activate",
                     nerdfont,
