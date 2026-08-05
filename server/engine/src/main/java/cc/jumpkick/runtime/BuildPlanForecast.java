@@ -783,9 +783,21 @@ public final class BuildPlanForecast {
         return cp;
     }
 
-    private static boolean present(ActionCache ac, String key) {
+    /**
+     * Record exists AND every output payload blob is still in the action cache's CAS. LRU
+     * eviction removes payloads while their records live on (records die by TTL), and a record
+     * whose blobs are gone cannot restore — forecasting it CACHED would over-promise: wrong
+     * {@code jk explain}, undercounted dirty set, deflated ETA seed (JK-1529). Presence check
+     * only ({@code pathFor} + {@code isRegularFile}); never hashes bytes.
+     */
+    static boolean present(ActionCache ac, String key) {
         try {
-            return ac.lookup(key).isPresent();
+            var rec = ac.lookup(key);
+            if (rec.isEmpty()) return false;
+            for (String sha : rec.get().outputs().values()) {
+                if (!Files.isRegularFile(ac.cas().pathFor(sha))) return false;
+            }
+            return true;
         } catch (Exception e) {
             return false;
         }

@@ -81,6 +81,24 @@ class BuildPlanForecastPackageKeyTest {
     }
 
     @Test
+    void present_requires_payload_blobs_not_just_the_record(@TempDir Path tmp) throws Exception {
+        // JK-1529: LRU eviction removes cache-CAS payloads while records live on (TTL). A record
+        // whose blobs are gone cannot restore, so the forecast must report RUN, not CACHED.
+        Path cacheRoot = tmp.resolve("cache");
+        var ac = new cc.jumpkick.task.ActionCache(
+                cc.jumpkick.cache.JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"));
+        byte[] bytes = "payload".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        String sha = cc.jumpkick.util.Hashing.sha256Hex(bytes);
+        Path blob = ac.cas().put(bytes, sha);
+        ac.storeWithOutputs("task@x", "key-1", Map.of(), Map.of("lib.jar", sha), Map.of());
+
+        assertThat(BuildPlanForecast.present(ac, "key-1")).isTrue();
+        Files.delete(blob); // simulate LRU eviction of the payload
+        assertThat(BuildPlanForecast.present(ac, "key-1")).isFalse();
+        assertThat(BuildPlanForecast.present(ac, "no-such-key")).isFalse();
+    }
+
+    @Test
     void estimate_eta_is_zero_when_plan_is_fully_cached(@TempDir Path tmp) {
         // Empty plan modules → 0; fully-cached modules skipped in estimateEtaMillis.
         ExplainPlan empty = new ExplainPlan(List.of(), Map.of(), 1, List.of());
