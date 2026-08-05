@@ -30,11 +30,15 @@ opens it in a browser (`$BROWSER` when set — word-split, so values with argume
 `open` / `rundll32 url.dll,FileProtocolHandler` / `xdg-open`). Use `--no-open` to print only.
 
 When a required token is **missing or invalid** (non-loopback binds, a rotated/stale stored token,
-or any `401` from a gated call), the SPA opens a **blocking authorization dialog** and freezes the
-rest of the UI — it does not half-render open endpoints under a quiet “Unauthorized” footer chip.
-The dialog explains how to recover: run `jk web` (opens a new authenticated tab), open the printed
-URL, or paste the `#t=…` URL / token. Unauthorized is sticky until a token is accepted; open
-loopback reads and SSE must not clear it.
+or a `401` from a gated call *while a token is held*), the SPA opens a **blocking authorization
+dialog** and freezes the rest of the UI — it does not half-render open endpoints under a quiet
+“Unauthorized” footer chip. The dialog explains how to recover: run `jk web` (opens a new
+authenticated tab), open the printed URL, or paste the `#t=…` URL / token. Unauthorized is sticky
+until a token is accepted; open loopback reads and SSE must not clear it.
+
+**Tokenless loopback is watch-only, not an error** (JK-1530): the activity stream, journal list,
+status and cache vitals stay live, while gated panels (metrics, engine log, configuration) simply
+degrade — their `401`s never throw the dialog. Pasting a token upgrades the session in place.
 
 ## Dependencies: CDN, pinned, integrity-locked
 

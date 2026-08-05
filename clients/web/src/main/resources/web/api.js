@@ -66,7 +66,7 @@ export function token() {
   })();
 }
 
-function loopback() {
+export function loopback() {
   return ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(location.hostname);
 }
 

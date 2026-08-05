@@ -13,6 +13,7 @@ import {
   post,
   del,
   events,
+  loopback,
 } from './api.js';
 import {
   foldEvent,
@@ -380,7 +381,9 @@ function fmtMillis(millis) {
   if (millis == null) return '';
   if (millis < 1000) return millis + ' ms';
   if (millis < 60_000) return (millis / 1000).toFixed(1) + ' s';
-  return Math.floor(millis / 60_000) + 'm ' + String(Math.round((millis % 60_000) / 1000)).padStart(2, '0') + 's';
+  // Floor whole seconds — rounding the remainder reached "1m 60s" (JK-1530).
+  const totalSec = Math.floor(millis / 1000);
+  return Math.floor(totalSec / 60) + 'm ' + String(totalSec % 60).padStart(2, '0') + 's';
 }
 
 Vue.createApp({
@@ -672,6 +675,11 @@ Vue.createApp({
     /** True when {@code e} is a 401 — marks unauthorized and returns true so callers can stop. */
     handleHttpError(e) {
       if (e && e.status === 401) {
+        // Tokenless loopback is deliberately open for watch-only (checkAuth's contract): a 401
+        // from a gated panel (metrics/log/config) is expected there, not a session failure —
+        // degrade that panel instead of wiping the cards and throwing the blocking gate
+        // (JK-1530). With a token present, a 401 means the token was rejected — gate as before.
+        if (!token() && loopback()) return true;
         this.markUnauthorized({ clear: !!token() });
         return true;
       }
@@ -809,10 +817,13 @@ Vue.createApp({
         this.authTokenInput = '';
         this.connection = 'connecting';
         this.connectEvents();
+        // Re-derive the route from the hash: URL changes made while the gate was up were
+        // dropped by applyRoute's authModal guard (JK-1530). This also loads the route's data
+        // (project meta / metrics / status refresh).
+        this.applyRoute();
         this.refresh();
         this.loadHistory();
         this.loadProjectHistory();
-        if (this.view === 'project' && this.selectedProjectDir) this.loadProjectMeta(this.selectedProjectDir);
       } catch (e) {
         clearToken();
         this.authError =
@@ -1559,7 +1570,9 @@ Vue.createApp({
       return { group: null, name: parts.length ? parts[parts.length - 1] : card.dir };
     },
     mib(bytes) {
-      return bytes < 0 ? '—' : Math.round(bytes / 1048576) + ' MiB';
+      // Null guard: a thin cache SSE frame can land before the full REST snapshot on a hard load
+      // to #status — section fields are absent and rendered "NaN MiB" without it (JK-1530).
+      return bytes == null || bytes < 0 ? '—' : Math.round(bytes / 1048576) + ' MiB';
     },
     // System RAM reads naturally in GiB (total / free physical memory the engine's OS reports).
     gib(bytes) {
@@ -1615,7 +1628,9 @@ Vue.createApp({
       if (millis == null) return '';
       if (millis < 1000) return millis + ' ms';
       if (millis < 60_000) return (millis / 1000).toFixed(1) + ' s';
-      return Math.floor(millis / 60_000) + 'm ' + Math.round((millis % 60_000) / 1000) + 's';
+      // Floor whole seconds — rounding the remainder reached "1m 60s" at e.g. 119,600ms (JK-1530).
+      const totalSec = Math.floor(millis / 1000);
+      return Math.floor(totalSec / 60) + 'm ' + (totalSec % 60) + 's';
     },
     // The run's byte counters, one row per scope (remote = network, local = build cache). Both the
     // rows and the size formatting are pure functions in fold.js so they're covered headlessly.
