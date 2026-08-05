@@ -7,16 +7,24 @@
 [![GraalVM](https://img.shields.io/badge/native--image-GraalVM%2025-yellow.svg)](https://www.graalvm.org/)
 [![Status](https://img.shields.io/badge/status-alpha-red.svg)](docs/architecture.md)
 
-**JumpKick** (CLI: **`jk`**) is Cargo for the JVM — Java, Kotlin, and Groovy. One native binary. One TOML file.
-A real lockfile. Conflicts you can read. Builds that skip work they can prove is already done.
+**JumpKick** is an elegant and powerful build system for the JVM.
+It supports Java, Kotlin, and Groovy, consistens of a fast native binary, and requires only a simple TOML build definition file.
+It leverages a  real version lockfile, provides dependency conflict warnings you can read--and best of all--powers builds that _skip work they can prove is already done_
 
-> The fastest way to run your existing Maven or Gradle build — and a better tool
-> you can switch to when you're ready.
+JumpKick comes with _batteries included_. It is able to replace many tools with a superior solution, including:
+- Maven
+- Gradle
+- SDKMAN!
+- JBang
+- and more...
+
+> When you're ready to upgrade your JVM-based development experience, import your Maven or Gradle projects, and see what you've been missing.
 
 ```bash
-jk init my-app && cd my-app
-jk add com.fasterxml.jackson.core:jackson-databind:2.18.2
-jk build && jk test
+jk new my-app
+cd my-app
+jk add jnats
+jk build
 ```
 
 ```toml
@@ -25,13 +33,10 @@ jk build && jk test
 group   = "com.example"
 name    = "my-app"
 version = "0.1.0"
-java    = 25                 # language + bytecode; jk already requires JDK 25+ to run
+java    = 25
 
 [dependencies]
-jackson3-databind = "3.0.0"   # means ^3.0.0 (caret by default)
-
-[test-dependencies]
-junit-jupiter = "6.0.0"
+jnats  = "latest"   # supports SemVer, ranges, exact verion pins, or the "latest" release
 
 [platform-dependencies]       # BOMs — enforced platforms (Maven depMgmt contract)
 spring-boot-dependencies = "4.1.0"
