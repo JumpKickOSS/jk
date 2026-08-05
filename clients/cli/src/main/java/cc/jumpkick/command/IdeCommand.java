@@ -55,9 +55,7 @@ public final class IdeCommand implements CliCommand {
             opts.add(Opt.flag("Only generate IntelliJ IDEA files (.idea/ + *.iml).", "--idea"));
             opts.add(Opt.flag("Only generate VS Code files (.vscode/ + Eclipse metadata).", "--vscode"));
         }
-        opts.add(Opt.flag(
-                "Print the engine ide-model as a single JSON object on stdout (no file generation).",
-                "--print-model"));
+        opts.add(Opt.flag("Print engine ide-model JSON only (no files).", "--print-model"));
         opts.add(Opt.value(
                         "<dir>",
                         "Override cache-tier directory (action outputs; not the artifact store). Default: $JK_CACHE_DIR or ~/.cache/jk.",
