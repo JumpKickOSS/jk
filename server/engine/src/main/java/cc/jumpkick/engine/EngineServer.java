@@ -1141,13 +1141,14 @@ public final class EngineServer implements AutoCloseable {
                         String line = reader.readLine();
                         parkedOnRead.set(false);
                         if (line == null) {
-                            // EOF / client gone mid-job — same bounded cancel path.
-                            beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs);
+                            // EOF / client gone mid-job — same bounded cancel path (not explicit:
+                            // an EOF after a reported failure is the terminal-read race, JK-1521).
+                            beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs, false);
                             break;
                         }
                         if (EngineProtocol.BUILD_CANCEL.equals(EngineProtocol.typeOf(line))) {
                             // Explicit cancel on this socket: cooperative flag + worker grace→force.
-                            beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs);
+                            beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs, true);
                         }
                     } catch (IOException e) {
                         parkedOnRead.set(false);
@@ -1155,14 +1156,14 @@ public final class EngineServer implements AutoCloseable {
                         if (done.getCount() == 0 || Thread.currentThread().isInterrupted()) {
                             break; // runner done / cancel wake — join below
                         }
-                        beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs);
+                        beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs, false);
                         break;
                     }
                 }
                 parkedOnRead.set(false);
             } catch (RuntimeException ignored) {
                 if (done.getCount() > 0) {
-                    beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs);
+                    beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs, false);
                 }
             }
             // Clear interrupt so await/join below is not spuriously skipped.
@@ -1222,7 +1223,15 @@ public final class EngineServer implements AutoCloseable {
             // build (success or failure) can look cancelled. Correct it once here for both the
             // dashboard event and the journal.
             boolean cancelled = effectiveCancelled(eventRequestId, cancelToken.cancelled());
-            if (!cancelled) lastProgressByRequest.put(eventRequestId, 100.0);
+            // success: same default as BuildAccumulator.toRecord — HTTP jobs always sent it; CLI
+            // socket jobs used to omit it and force the SPA to derive from module rows (JK-1499).
+            BuildAccumulator finishAcc = accumulators.get(eventRequestId);
+            boolean success = finishAcc != null
+                    ? finishAcc.effectiveSuccess(cancelled)
+                    : !cancelled;
+            // Pin 100% only on success — a failed build keeps its last true percent, matching the
+            // workspace-runner path and the stated policy (JK-1521).
+            if (success && !cancelled) lastProgressByRequest.put(eventRequestId, 100.0);
             // Safety netif the runner was abandoned/interrupted without a terminal
             // wire event, still tell the CLI the job was cancelled so it does not report a crash.
             // Harmless if the runner already sent workspace-/pipeline-finish (client has returned).
@@ -1231,12 +1240,6 @@ public final class EngineServer implements AutoCloseable {
                 // their client loop only ends on pipeline-finish.
                 sendQuiet(writer, cancelledTerminalLine(workspaceStream, eventDir));
             }
-            // success: same default as BuildAccumulator.toRecord — HTTP jobs always sent it; CLI
-            // socket jobs used to omit it and force the SPA to derive from module rows (JK-1499).
-            BuildAccumulator finishAcc = accumulators.get(eventRequestId);
-            boolean success = finishAcc != null
-                    ? finishAcc.effectiveSuccess(cancelled)
-                    : !cancelled;
             publishEvent(
                     "request-finish",
                     withProgress(
@@ -1340,9 +1343,10 @@ public final class EngineServer implements AutoCloseable {
             long eventRequestId,
             Session.CancelToken cancelToken,
             java.util.concurrent.atomic.AtomicReference<Thread> runnerRef,
-            long cancelGraceMs) {
+            long cancelGraceMs,
+            boolean explicit) {
         cancelToken.cancel();
-        markUserCancelled(eventRequestId);
+        markUserCancelled(eventRequestId, explicit);
         Thread.ofVirtual().name("jk-cancel-" + eventRequestId, 0).start(() -> {
             int killed = JobWorkers.shutdownForRequest(eventRequestId, cancelGraceMs);
             interruptRunner(runnerRef != null ? runnerRef.get() : null);
@@ -1410,7 +1414,8 @@ public final class EngineServer implements AutoCloseable {
     boolean cancelJob(long jid) {
         LiveJob job = liveJobs.get(jid);
         if (job != null) {
-            beginUserCancel(jid, job.token(), job.runnerRef(), JobWorkers.cancelGraceMs());
+            // Remote `jk cancel` / POST /api/cancel — an explicit signal (JK-1521).
+            beginUserCancel(jid, job.token(), job.runnerRef(), JobWorkers.cancelGraceMs(), true);
             // Terminal + reader wake happen off-thread: the job's stream writer can be wedged in a
             // socket write (client not draining), and `jk cancel` / POST /api/cancel must ack
             // without waiting behind that monitor. Order inside the task still matters:
@@ -1501,9 +1506,9 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /** Stamp the request's accumulator so journal/metrics never treat a cancelled wall as success. */
-    private void markUserCancelled(long requestId) {
+    private void markUserCancelled(long requestId, boolean explicit) {
         BuildAccumulator a = accumulators.get(requestId);
-        if (a != null) a.markUserCancelled();
+        if (a != null) a.markUserCancelled(explicit);
     }
 
     private static void interruptRunner(Thread runnerThread) {
@@ -1527,7 +1532,7 @@ public final class EngineServer implements AutoCloseable {
             BufferedWriter writer,
             long deadlineMs) {
         cancelToken.cancel();
-        markUserCancelled(eventRequestId);
+        markUserCancelled(eventRequestId, true);
         // Soft then force within cancel grace (not the 30s join grace).
         int killed = JobWorkers.shutdownForRequest(eventRequestId, JobWorkers.cancelGraceMs());
         interruptRunner(runnerThread);
@@ -5450,7 +5455,7 @@ public final class EngineServer implements AutoCloseable {
         Session.CancelToken token = httpCancelTokens.get(requestId);
         if (token == null) return false;
         token.cancel();
-        markUserCancelled(requestId);
+        markUserCancelled(requestId, true);
         JobWorkers.shutdownForRequest(requestId, JobWorkers.cancelGraceMs());
         Thread runner = httpJobThreads.get(requestId);
         if (runner != null) {
@@ -5976,7 +5981,8 @@ public final class EngineServer implements AutoCloseable {
      * BuildRecord} at request-finish. Success is taken from the runner's terminal result when set,
      * else derived (no failed module/pipeline and not cancelled).
      */
-    private static final class BuildAccumulator {
+    // Package-private so the cancel-stamp guard is unit-testable (JK-1521).
+    static final class BuildAccumulator {
         private final String kind;
         private final String dir;
         private final String coord;
@@ -6100,13 +6106,16 @@ public final class EngineServer implements AutoCloseable {
 
         /**
          * Stamp cancel immediately so a force-killed runner still journals as cancelled, not success.
-         * No-op once an outcome is known: either {@link #setOutcome} already ran, or a module/pipeline
-         * already reported failure ({@code anyFailure}). The client often closes the socket the
-         * instant it reads a terminal failure, and that EOF must not re-label a test/compile failure
-         * as cancelled.
+         * No-op once {@link #setOutcome} ran. For a non-{@code explicit} signal (socket EOF), also a
+         * no-op once a module/pipeline reported failure ({@code anyFailure}): the client often closes
+         * the socket the instant it reads a terminal failure, and that EOF must not re-label a
+         * test/compile failure as cancelled. An {@code explicit} signal (BUILD_CANCEL, dashboard
+         * cancel, wall deadline) is not that race — a genuine abort after a module failure still
+         * journals as cancelled (JK-1521).
          */
-        void markUserCancelled() {
-            if (success != null || anyFailure) return;
+        void markUserCancelled(boolean explicit) {
+            if (success != null) return;
+            if (!explicit && anyFailure) return;
             userCancelled = true;
         }
 
