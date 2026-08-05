@@ -14,6 +14,11 @@ const {
   seedFromHistory,
   ioLines,
   fmtBytes,
+  detailForDisplay,
+  liveStepDetail,
+  detailSegments,
+  looksLikeJavaMember,
+  orderedModules,
   MAX_CARDS,
   MAX_OUTPUT_LINES,
 } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
@@ -171,6 +176,30 @@ test('steps fold per module, each module keeping its own chain', () => {
   assert.deepEqual(byDir('/w/a').steps.map((p) => p.phase), ['compile', 'test']);
 });
 
+test('orderedModules puts running first (newest activity), finished last', () => {
+  const cards = [];
+  foldEvent(cards, start(1, '/w'));
+  // a starts first, finishes; b starts later and stays running; c fails.
+  foldEvent(cards, { type: 'module-start', data: { requestId: 1, dir: '/w/a' }, at: 100 });
+  foldEvent(cards, { type: 'module-finish', data: { requestId: 1, dir: '/w/a', success: true, millis: 10 }, at: 200 });
+  foldEvent(cards, { type: 'module-start', data: { requestId: 1, dir: '/w/b' }, at: 300 });
+  foldEvent(cards, { type: 'step-start', data: { requestId: 1, dir: '/w/b', step: 'compile', phase: 'compile' }, at: 400 });
+  foldEvent(cards, { type: 'module-start', data: { requestId: 1, dir: '/w/c' }, at: 350 });
+  foldEvent(cards, { type: 'module-finish', data: { requestId: 1, dir: '/w/c', success: false, millis: 5 }, at: 360 });
+  // Later tick on b → b is the most recently active runner.
+  foldEvent(cards, {
+    type: 'label',
+    data: { requestId: 1, dir: '/w/b', step: 'compile', label: 'compiling' },
+    at: 500,
+  });
+
+  const ordered = orderedModules(cards[0].modules);
+  assert.deepEqual(
+    ordered.map((m) => m.dir + ':' + m.state),
+    ['/w/b:running', '/w/c:failed', '/w/a:success'],
+  );
+});
+
 test('single-pipeline step events (empty dir) become one module with a chain', () => {
   const cards = [];
   foldEvent(cards, start(1, '/proj'));
@@ -310,6 +339,64 @@ test('seedFromHistory seeds a running in-flight journal row', () => {
   assert.equal(cards[0].state, 'running');
   assert.equal(cards[0].buildNumber, 27);
   assert.equal(outcomeOf(cards[0]), 'running');
+  assert.equal(cards[0].id, 'h:20260101T000000000-run1'); // no live requestId yet
+});
+
+test('seedFromHistory uses live requestId when history is enriched', () => {
+  const cards = [];
+  seedFromHistory(cards, [
+    historyRecord('20260101T000000000-run1', '/w/a', {
+      finishedAt: 0,
+      millis: 0,
+      running: true,
+      buildNumber: 27,
+      requestId: 42,
+      progress: 61,
+    }),
+  ]);
+  assert.equal(cards[0].id, 42);
+  assert.equal(cards[0].progressPercent, 61);
+});
+
+test('mid-build refresh: history stub rebinds on workspace-progress and finishes', () => {
+  // Hard refresh while a build is streaming: journal seeds h:… then SSE events use numeric requestId.
+  const cards = [];
+  seedFromHistory(cards, [
+    historyRecord('20260101T000000000-run1', '/w/a', {
+      finishedAt: 0,
+      millis: 0,
+      running: true,
+      buildNumber: 27,
+      startedAt: 1000,
+    }),
+  ]);
+  assert.equal(cards[0].id, 'h:20260101T000000000-run1');
+
+  foldEvent(cards, {
+    type: 'workspace-progress',
+    data: { requestId: 99, dir: '/w/a', numerator: 50, denominator: 100, progress: 50 },
+  });
+  assert.equal(cards[0].id, 99); // rebind
+  assert.equal(cards[0].progressPercent, 50);
+
+  foldEvent(cards, {
+    type: 'step-start',
+    data: { requestId: 99, dir: '/w/a', step: 'compile-java', phase: 'compile' },
+  });
+  assert.equal(cards[0].modules[0].steps[0].name, 'compile-java');
+  assert.equal(cards[0].modules[0].steps[0].state, 'running');
+
+  foldEvent(cards, finish(99, { success: true, millis: 8000 }));
+  assert.equal(outcomeOf(cards[0]), 'success');
+  assert.equal(cards[0].millis, 8000);
+});
+
+test('request-start rehydrate is idempotent when card already has requestId', () => {
+  const cards = [];
+  foldEvent(cards, start(5, '/w/a', { buildNumber: 3 }));
+  foldEvent(cards, start(5, '/w/a', { buildNumber: 3 })); // SSE connect rehydrate
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].id, 5);
 });
 
 test('seedFromHistory reconciles running SSE card with durable in-flight row', () => {
@@ -433,6 +520,48 @@ test('phaseChainOf keeps an unphased step as its own node, keyed by name', () =>
   assert.equal(chain[0].phase, '');
   assert.equal(chain[0].key, 'lock'); // last-resort: keyed by the step name so it is never dropped
   assert.equal(chain[0].label, 'Lock');
+});
+
+test('label event stores live tick text on the running step', () => {
+  const cards = [];
+  foldEvent(cards, start(1, '/w'));
+  foldEvent(cards, {
+    type: 'step-start',
+    data: { requestId: 1, dir: '', step: 'run-tests', phase: 'test' },
+  });
+  foldEvent(cards, {
+    type: 'label',
+    data: { requestId: 1, dir: '', step: 'run-tests', label: 'g:a :: FooTest.bar()  [w2]' },
+  });
+  const step = cards[0].modules[0].steps[0];
+  assert.equal(step.message, 'g:a :: FooTest.bar()  [w2]');
+  assert.equal(liveStepDetail('g:a', cards[0].modules[0].steps), 'FooTest.bar()  [w2]');
+});
+
+test('detailForDisplay strips a leading module :: prefix', () => {
+  assert.equal(detailForDisplay('g:a', 'g:a :: FooTest.t()'), 'FooTest.t()');
+  assert.equal(detailForDisplay('g:a', 'shrinking jar'), 'shrinking jar');
+  assert.equal(detailForDisplay('g:a', ''), '');
+});
+
+test('looksLikeJavaMember detects Class.method form', () => {
+  assert.equal(looksLikeJavaMember('FooTest.bar(Path)'), true);
+  assert.equal(looksLikeJavaMember('FooTest'), true);
+  assert.equal(looksLikeJavaMember('shrinking jar'), false);
+});
+
+test('detailSegments syntax-highlights test members and mid-grays prose', () => {
+  const java = detailSegments('VariantSwitchTest.switching_variants(Path)');
+  assert.ok(java.some((s) => s.cls === 'det-type' && s.text === 'VariantSwitchTest'));
+  assert.ok(java.some((s) => s.cls === 'det-fn' && s.text === 'switching_variants'));
+  assert.ok(java.some((s) => s.cls === 'det-type' && s.text === 'Path'));
+
+  const prose = detailSegments('compiling 12 Groovy test sources');
+  assert.ok(prose.some((s) => s.cls === 'det-num' && s.text === '12'));
+  assert.ok(prose.some((s) => s.cls === 'det-mid' && s.text === 'compiling'));
+
+  const withWorker = detailSegments('FooTest.bar()  [w2]');
+  assert.ok(withWorker.some((s) => s.cls === 'det-mid' && s.text === '  [w2]'));
 });
 
 test('request-finish folds the run\'s byte counters onto the card', () => {

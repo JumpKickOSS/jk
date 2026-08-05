@@ -14,6 +14,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
@@ -70,8 +73,48 @@ public final class HttpEngineServer implements AutoCloseable {
     private final McpHandler mcp;
     private final String engineVersion;
 
+    /**
+     * Currently-running jobs (from {@code EngineServer}'s in-flight registry). Used to enrich
+     * {@code GET /api/history} with live {@code requestId}/progress so a hard-refreshed dashboard
+     * rebinds SSE, and to drive connect-time rehydrate callbacks.
+     */
+    private volatile Supplier<List<LiveRun>> liveRuns = List::of;
+
+    /**
+     * Invoked once after each dashboard SSE subscription is registered — re-publishes
+     * {@code request-start} + current progress for in-flight jobs so a refreshed tab resumes
+     * the live stream (not only a frozen history stub).
+     */
+    private volatile Runnable onEventsConnect = () -> {};
+
     private volatile HttpServer server;
     private volatile ExecutorService executor;
+
+    /**
+     * One in-flight job for history enrichment / SSE rehydrate. {@code progress} is NaN when
+     * unknown.
+     */
+    public record LiveRun(
+            long requestId,
+            long buildNumber,
+            String kind,
+            String dir,
+            String coord,
+            long startedAt,
+            double progress,
+            String journalId) {}
+
+    /**
+     * Wire the engine's live-job view. Optional — tests leave the defaults (empty / no-op).
+     *
+     * @param liveRuns snapshot of holds currently running
+     * @param onEventsConnect after a new {@code GET /api/events} subscription is live, rehydrate
+     *     in-flight jobs onto the SSE bus (request-start + progress)
+     */
+    public void setLiveRunSupport(Supplier<List<LiveRun>> liveRuns, Runnable onEventsConnect) {
+        this.liveRuns = liveRuns != null ? liveRuns : List::of;
+        this.onEventsConnect = onEventsConnect != null ? onEventsConnect : () -> {};
+    }
 
     /**
      * GET paths that require the bearer token even on loopback. {@code /api/fs} lists the
@@ -695,9 +738,15 @@ public final class HttpEngineServer implements AutoCloseable {
         HttpEvents.Subscription subscription = events.subscribe();
         liveVitals.onSubscriberJoined();
         // Connect hydrate: push current vitals onto the bus (change-gate skipped) so the tab does
-        // not wait for the first 2s / 30s sampler tick. Build activity remains inflicted-only.
+        // not wait for the first 2s / 30s sampler tick. Re-publish in-flight build request-start +
+        // progress so a hard refresh mid-build rebinds the SPA to the live requestId stream.
         liveVitals.publishStatus(true);
         liveVitals.publishCache(true);
+        try {
+            onEventsConnect.run();
+        } catch (RuntimeException e) {
+            log.accept("jk engine: sse connect rehydrate failed: " + e.getMessage());
+        }
         try {
             out.write(": connected\n\n".getBytes(StandardCharsets.UTF_8));
             out.flush();
@@ -967,10 +1016,74 @@ public final class HttpEngineServer implements AutoCloseable {
                         JsonOut.object().put("error", "no such build: " + id).toString());
                 return;
             }
-            sendJson(exchange, 200, Files.readString(record.get(), StandardCharsets.UTF_8));
+            sendJson(exchange, 200, enrichHistoryJson(Files.readString(record.get(), StandardCharsets.UTF_8)));
             return;
         }
-        sendJson(exchange, 200, "[" + String.join(",", journal.rawRecords(HISTORY_LIST_LIMIT)) + "]");
+        List<String> raw = journal.rawRecords(HISTORY_LIST_LIMIT);
+        List<String> parts = new ArrayList<>(raw.size());
+        for (String r : raw) parts.add(enrichHistoryJson(r));
+        sendJson(exchange, 200, "[" + String.join(",", parts) + "]");
+    }
+
+    /**
+     * Attach live {@code requestId}/{@code jid}/{@code progress} to an in-flight journal record so
+     * the dashboard can rebind SSE after refresh (parity with the wire {@code history-list}
+     * path). Finished records are returned unchanged.
+     */
+    private String enrichHistoryJson(String raw) {
+        if (raw == null || raw.isBlank()) return raw;
+        try {
+            Object parsed = cc.jumpkick.plugin.protocol.MiniJson.parse(raw);
+            if (!(parsed instanceof Map<?, ?> m0)) return raw;
+            @SuppressWarnings("unchecked")
+            Map<String, Object> m = (Map<String, Object>) m0;
+            if (!Boolean.TRUE.equals(m.get("running"))) return raw;
+            LiveRun match = matchLiveRun(m);
+            if (match == null) return raw;
+            m.put("requestId", match.requestId());
+            m.put("jid", match.requestId());
+            if (!Double.isNaN(match.progress())) m.put("progress", match.progress());
+            return cc.jumpkick.plugin.protocol.MiniJson.write(m);
+        } catch (RuntimeException e) {
+            return raw; // best-effort — never break the list for a bad row
+        }
+    }
+
+    private LiveRun matchLiveRun(Map<String, Object> rec) {
+        List<LiveRun> live = liveRuns.get();
+        if (live == null || live.isEmpty()) return null;
+        long buildNumber = liveLong(rec.get("buildNumber"));
+        String dir = rec.get("dir") instanceof String s ? s : null;
+        String id = rec.get("id") instanceof String s ? s : null;
+        for (LiveRun h : live) {
+            boolean sameRun = buildNumber > 0
+                    && buildNumber == h.buildNumber()
+                    && dir != null
+                    && dir.equals(h.dir());
+            boolean sameJournal = id != null
+                    && h.journalId() != null
+                    && (id.equals(h.journalId())
+                            || h.journalId().equals(Long.toString(h.buildNumber()))
+                                    && id.equals(Long.toString(h.buildNumber())));
+            if (sameRun || sameJournal) return h;
+        }
+        // Single live job with matching dir (buildNumber missing on older stubs).
+        if (dir != null) {
+            LiveRun only = null;
+            for (LiveRun h : live) {
+                if (dir.equals(h.dir())) {
+                    if (only != null) return null; // ambiguous
+                    only = h;
+                }
+            }
+            return only;
+        }
+        return null;
+    }
+
+    private static long liveLong(Object v) {
+        if (v instanceof Number n) return n.longValue();
+        return 0L;
     }
 
     /**

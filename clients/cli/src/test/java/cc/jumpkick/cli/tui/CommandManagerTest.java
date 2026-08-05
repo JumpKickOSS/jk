@@ -559,7 +559,7 @@ class CommandManagerTest {
     }
 
     @Test
-    void tree_rows_use_blue_spinner_and_green_phase_not_background_pills() {
+    void tree_rows_use_blue_spinner_and_blue_phase_not_background_pills() {
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
         cm.stepRunning("com.foo:bar", "compile", "compile");
@@ -571,7 +571,8 @@ class CommandManagerTest {
         // Compact module · phase: no bg pills / powerline caps on the tree.
         assertThat(visible).contains("com.foo:bar").contains("·").contains("Compile");
         assertThat(visible).contains("com.foo:baz").contains("Test");
-        assertThat(joined).contains(Theme.colorize("Compile", t.success()));
+        // Running phase is bold blue (web parity); failed phase stays red.
+        assertThat(joined).contains(Theme.colorize("Compile", t.blue().bold()));
         assertThat(joined).contains(Theme.colorize("Test", t.error()));
         assertThat(joined).contains(Theme.colorize("·", t.darkGray()));
         assertThat(joined).doesNotContain(Glyphs.PILL_LEFT_NERD);
@@ -698,7 +699,7 @@ class CommandManagerTest {
         String painted = CommandManager.colorDetail("Test", "compiling 12 Groovy test sources", t);
         assertThat(TestAnsi.strip(painted)).isEqualTo("compiling 12 Groovy test sources");
         assertThat(painted).contains(Theme.colorize("compiling", t.midGray()));
-        assertThat(painted).contains(Theme.colorize("12", t.synNumber()));
+        assertThat(painted).contains(Theme.colorize("12", t.warning()));
         assertThat(painted).contains(Theme.colorize("Groovy", t.midGray()));
         // Must not route through SyntaxHighlight (PLAIN = terminal default/white).
         assertThat(painted).doesNotContain("compiling 12 Groovy test sources"); // unstyled whole string
@@ -714,22 +715,22 @@ class CommandManagerTest {
     }
 
     @Test
-    void compile_detail_uses_blue_for_source_count() {
+    void compile_detail_uses_yellow_for_source_count() {
         Theme t = Theme.active();
         String painted = CommandManager.colorDetail("Compile", "compiling 42 sources", t);
         assertThat(TestAnsi.strip(painted)).isEqualTo("compiling 42 sources");
         assertThat(painted).contains(Theme.colorize("compiling", t.midGray()));
-        assertThat(painted).contains(Theme.colorize("42", t.synNumber()));
+        assertThat(painted).contains(Theme.colorize("42", t.warning()));
         assertThat(painted).contains(Theme.colorize("sources", t.midGray()));
     }
 
     @Test
-    void size_uses_blue_number_and_gray_unit() {
+    void size_uses_yellow_number_and_gray_unit() {
         Theme t = Theme.active();
         String painted = CommandManager.colorDetail("Package", "shrunk 4.2 MiB → 1.1 MiB", t);
         assertThat(TestAnsi.strip(painted)).isEqualTo("shrunk 4.2 MiB → 1.1 MiB");
-        assertThat(painted).contains(Theme.colorize("4.2", t.synNumber()));
-        assertThat(painted).contains(Theme.colorize("1.1", t.synNumber()));
+        assertThat(painted).contains(Theme.colorize("4.2", t.warning()));
+        assertThat(painted).contains(Theme.colorize("1.1", t.warning()));
         assertThat(painted).contains(Theme.colorize("MiB", t.midGray()));
     }
 
@@ -751,22 +752,22 @@ class CommandManagerTest {
     }
 
     @Test
-    void cache_hit_hex_is_dim_not_number_blue() {
+    void cache_hit_hex_is_dim_not_number_yellow() {
         Theme t = Theme.active();
         String painted = CommandManager.colorDetail("Compile", "cache hit 9aa55003", t);
         assertThat(TestAnsi.strip(painted)).isEqualTo("cache hit 9aa55003");
-        // Slightly dimmer than mid-gray body prose, still not number-blue.
+        // Slightly dimmer than mid-gray body prose, still not number-yellow.
         assertThat(painted).contains(Theme.colorize("9aa55003", t.darkGray()));
-        assertThat(painted).doesNotContain(Theme.colorize("9aa55003", t.synNumber()));
+        assertThat(painted).doesNotContain(Theme.colorize("9aa55003", t.warning()));
     }
 
     @Test
-    void paren_count_still_blues_the_number() {
+    void paren_count_still_yellows_the_number() {
         Theme t = Theme.active();
         String painted = CommandManager.colorDetail("Compile", "d8 (12 classes + 3 jars)", t);
         assertThat(TestAnsi.strip(painted)).isEqualTo("d8 (12 classes + 3 jars)");
-        assertThat(painted).contains(Theme.colorize("12", t.synNumber()));
-        assertThat(painted).contains(Theme.colorize("3", t.synNumber()));
+        assertThat(painted).contains(Theme.colorize("12", t.warning()));
+        assertThat(painted).contains(Theme.colorize("3", t.warning()));
     }
 
     @Test

@@ -741,9 +741,10 @@ public final class BuildCommand implements CliCommand {
      * A finished unit's scroll-back line: {@code ✓ [01 of 16] group:artifact took 16ms}. No leading
      * indent (it's complete, not active); the numerator is zero-padded to the denominator's width;
      * the duration is normalized like every other jk duration ({@link ConsoleSpec#took}). Colors:
-     * green check, bright-black {@code } brackets around a plain {@code NN of MM} count, the
-     * {@code group:artifact} plain with a strikethrough to mark it done, and the bright-black italic
-     * {@code took …} suffix. A failed unit keeps the red cross and {@code — failed}.
+     * green check, bright-black brackets around a plain {@code NN of MM} count, the
+     * {@code group:artifact} in green with strikethrough (done, web success color), and the
+     * bright-black italic {@code took …} suffix. A failed unit keeps the red cross and {@code —
+     * failed}.
      */
     /** Module completion line shared by {@code jk build} and workspace {@code jk test}. */
     static String completionLine(boolean ok, int index, int total, String coord, long millis) {
@@ -755,7 +756,8 @@ public final class BuildCommand implements CliCommand {
                 .append(ConsoleSpec.countBracket(index, total, th))
                 .append(' ');
         if (ok) {
-            sb.append(Theme.colorize(coord, th.plainWhite().crossedOut()))
+            // Green + strike matches web success modules (was plain white strike).
+            sb.append(Theme.colorize(coord, th.success().crossedOut()))
                     .append(' ')
                     .append(ConsoleSpec.took(java.time.Duration.ofMillis(millis)));
         } else {

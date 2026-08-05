@@ -78,11 +78,7 @@
       </div>
       <p v-if="buildError" class="error">{{ buildError }}</p>
 
-      <p v-if="cards.length === 0 && connection === 'unauthorized'" class="empty">
-        Authorize this tab with the tokenized URL from <code>jk engine status</code> (or
-        <code>jk web</code>) to load build history.
-      </p>
-      <p v-else-if="cards.length === 0" class="empty">
+      <p v-if="cards.length === 0 && !authModal" class="empty">
         No activity yet — run a <code>jk build</code> (or any hosted command) and it appears here live.
       </p>
 
@@ -142,8 +138,11 @@
           <span v-if="outcome(card) !== 'running'" class="ago">{{ ago(card) }}</span>
         </div>
 
-        <div v-if="outcome(card) === 'running'" class="cardbar" role="progressbar">
-          <span class="cardbar-fill" :style="{ width: progress(card) + '%' }"></span>
+        <div v-if="outcome(card) === 'running'" class="cardbar" role="progressbar"
+             :aria-valuenow="progress(card)" aria-valuemin="0" aria-valuemax="100">
+          <span class="cardbar-fill" :style="{ width: progress(card) + '%' }">
+            <span class="cardbar-pct">{{ progress(card) }}%</span>
+          </span>
         </div>
 
         <!-- Compact (single-module): the step chain rolls up under a "success details" accordion
@@ -152,10 +151,10 @@
         <template v-if="compact(card)">
           <details v-if="okModules(card).length && singleChain(card).length" class="module-group" :open="outcome(card) === 'running'">
             <summary>success details</summary>
-            <phase-chain :steps="singleChain(card)"></phase-chain>
+            <phase-chain :steps="singleChain(card)" :module="card.coord || ''"></phase-chain>
           </details>
           <template v-if="failedModules(card).length">
-            <phase-chain v-if="singleChain(card).length" :steps="singleChain(card)"></phase-chain>
+            <phase-chain v-if="singleChain(card).length" :steps="singleChain(card)" :module="card.coord || ''"></phase-chain>
             <div v-if="singleModule(card) && singleModule(card).diagnostics.length" class="diag">
               <div class="console">
                 <div v-for="(d, i) in singleModule(card).diagnostics" :key="i" class="diag-line">
@@ -183,7 +182,7 @@
                 <span class="spacer"></span>
                 <span class="millis">{{ duration(m.millis) }}</span>
               </div>
-              <phase-chain v-if="m.steps.length" :steps="m.steps"></phase-chain>
+              <phase-chain v-if="m.steps.length" :steps="m.steps" :module="m.coord || card.coord || ''"></phase-chain>
             </div>
           </details>
           <details v-if="failedModules(card).length" class="module-group fail" open>
@@ -195,7 +194,7 @@
                 <span class="spacer"></span>
                 <span class="millis">{{ duration(m.millis) }}</span>
               </div>
-              <phase-chain v-if="m.steps.length" :steps="m.steps"></phase-chain>
+              <phase-chain v-if="m.steps.length" :steps="m.steps" :module="m.coord || card.coord || ''"></phase-chain>
               <div v-if="m.diagnostics.length" class="diag">
                 <div class="console">
                   <div v-for="(d, i) in m.diagnostics" :key="i" class="diag-line">
@@ -366,7 +365,7 @@
                 <dt>cache CAS</dt><dd>{{ count(cache.cacheCasCount != null ? cache.cacheCasCount : 0) }} · {{ mib(cache.cacheCasBytes != null ? cache.cacheCasBytes : 0) }}</dd>
                 <dt>format stamps</dt><dd>{{ count(cache.formatStampsCount) }} · {{ mib(cache.formatStampsBytes) }}</dd>
               </dl>
-              <p class="dim small" style="margin:8px 0 0">Rebuildable action outputs under the cache dir — safe to wipe without losing deps. <span class="mono">jk cache storage</span></p>
+              <p class="dim small" style="margin:8px 0 0">Rebuildable action outputs under the cache dir</p>
             </template>
             <div v-else class="dim small">Cache tier loading…</div>
           </div>
@@ -596,6 +595,47 @@
         </dl>
         <div class="modal-foot">
           <span class="dim small">Live build activity streams over SSE. Run <code>jk build</code> in any workspace to see it here.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Blocking auth gate: missing/invalid token — no dismiss via scrim (docs/webclient.md). -->
+    <div v-if="authModal" class="modal-bg auth-modal-bg" role="presentation">
+      <div class="modal about auth-modal" role="alertdialog" aria-modal="true" aria-labelledby="auth-title" aria-describedby="auth-desc">
+        <div class="modal-head">
+          <jk-icon name="alert" class="auth-icon"></jk-icon>
+          <div>
+            <div id="auth-title" class="about-title">Authorization required</div>
+            <div class="about-sub">Engine token missing or invalid</div>
+          </div>
+        </div>
+        <div id="auth-desc" class="auth-body">
+          <p>
+            This dashboard needs a valid bearer token. Without it the page cannot load engine
+            data or run builds.
+          </p>
+          <ol class="auth-steps">
+            <li>Run <code>jk web</code> — opens a new authenticated browser tab</li>
+            <li>Or open the URL it prints (ends with <code>#t=…</code>)</li>
+            <li>Or paste that URL or token below</li>
+          </ol>
+          <label class="auth-paste">
+            <span>Token or dashboard URL</span>
+            <input
+              v-model="authTokenInput"
+              type="password"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="paste #t=… URL or bare token"
+              @keydown.enter.prevent="submitAuthToken()">
+          </label>
+          <p v-if="authError" class="error">{{ authError }}</p>
+        </div>
+        <div class="modal-foot auth-actions">
+          <button type="button" class="use-folder" :disabled="authBusy" @click="submitAuthToken()">
+            <jk-icon name="check"></jk-icon>
+            {{ authBusy ? 'Checking…' : 'Authorize' }}
+          </button>
         </div>
       </div>
     </div>

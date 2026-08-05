@@ -1121,9 +1121,9 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     /**
      * One tree body: {@code ● group:name · Phase · detail} (or {@code ● Phase} with no module).
      * Running uses a blue pulse spinner with no background; failed uses a red cross; phase label is
-     * green or red. Detail text is phase-aware (see {@link #colorDetail}): gray by default, Java
-     * syntax for tests, path color for artifacts, blue counts for compile. Lines never wrap — the
-     * paint path hard-truncates to the terminal width.
+     * bold blue (running) or red (failed). Detail text is phase-aware (see {@link #colorDetail}): gray
+     * by default, Java syntax for tests, path color for artifacts, yellow counts for compile. Lines
+     * never wrap — the paint path hard-truncates to the terminal width.
      */
     private String renderWorkRow(String module, String displayPhase, boolean failed, String detail) {
         Theme t = Theme.active();
@@ -1135,7 +1135,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         } else {
             // Filling circle (○→◎→◉→◎) in constant blue — not the CommandWedge color-pulse ●.
             icon = Theme.colorize(Spinner.fillGlyph(frame), t.blue());
-            phaseStyle = t.success();
+            // Running phase: bold blue (matches web running chips; spinner stays plain blue).
+            phaseStyle = t.blue().bold();
         }
         String phase = displayPhase == null || displayPhase.isEmpty() ? "?" : displayPhase;
         StringBuilder sb = new StringBuilder();
@@ -1163,7 +1164,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      * <li><b>Everything else</b>: prose in mid-gray ({@link Theme#midGray} {@code #A0A0A0}), never
      * cyan and never dim bright-black, with:
      * <ul>
-     * <li>integers / counts / sizes → blue ({@link Theme#synNumber})
+     * <li>integers / counts / sizes → yellow ({@link Theme#warning})
      * <li>size units ({@code MiB}, {@code KB}, …) stay gray after the number
      * <li>artifact filenames and path-like tokens → {@link Theme#path}
      * <li>Maven {@code group:artifact(:version)} → {@link cc.jumpkick.cli.theme.Coords}
@@ -1202,7 +1203,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     static String colorProseDetail(String text, Theme t) {
         if (text == null || text.isEmpty()) return "";
         AttributedStyle gray = t.midGray(); // #A0A0A0 — ordinary gray, not dim chrome
-        AttributedStyle number = t.synNumber();
+        AttributedStyle number = t.warning(); // yellow counts (e.g. "Compiling N sources")
         AttributedStyle path = t.path();
         AttributedStyle hash = t.darkGray(); // slightly dimmer than body — cache key hex
         StringBuilder out = new StringBuilder(text.length() + 64);

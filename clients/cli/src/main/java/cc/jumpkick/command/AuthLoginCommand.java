@@ -18,11 +18,9 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import java.io.IOException;
-import java.lang.ProcessBuilder.Redirect;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.function.Function;
 
@@ -169,18 +167,6 @@ public final class AuthLoginCommand implements CliCommand {
     }
 
     private static void openBrowser(String url) {
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        List<String> cmd = os.contains("mac")
-                ? List.of("open", url)
-                : os.contains("win")
-                        ? List.of("rundll32", "url.dll,FileProtocolHandler", url)
-                        : List.of("xdg-open", url);
-        try {
-            new ProcessBuilder(cmd)
-                    .redirectOutput(Redirect.DISCARD)
-                    .redirectError(Redirect.DISCARD)
-                    .start();
-        } catch (IOException ignored) {
-        }
+        cc.jumpkick.cli.OpenBrowser.open(url);
     }
 }

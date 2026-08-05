@@ -1829,6 +1829,25 @@ public final class EngineServer implements AutoCloseable {
                         requestId));
     }
 
+    /**
+     * Live step detail (test class.method, "shrinking jar", …) — same payload as the socket
+     * {@code label} line. The SPA paints it after the running phase node (CLI tree-row parity).
+     */
+    private void publishLabel(long requestId, String dir, String step, String label) {
+        if (!eventsWanted()) return;
+        publishEvent(
+                "label",
+                withProgress(
+                        cc.jumpkick.engine.http.JsonOut.object()
+                                .put("schema", 1)
+                                .put("type", "label")
+                                .put("requestId", requestId)
+                                .put("dir", dir)
+                                .put("step", step)
+                                .put("label", redactEnv(dir, label)),
+                        requestId));
+    }
+
     /** Wire spelling of a step's coarse {@link cc.jumpkick.plugin.build.Phase} — {@code ""} when unset. */
     private static String phaseWire(cc.jumpkick.plugin.build.Phase phase) {
         return phase == null ? "" : phase.wireName();
@@ -4997,7 +5016,9 @@ public final class EngineServer implements AutoCloseable {
 
             @Override
             public void label(String step, String label) {
-                sendQuiet(writer, EngineProtocol.label(dir, step, redactEnv(dir, label)));
+                String safe = redactEnv(dir, label);
+                sendQuiet(writer, EngineProtocol.label(dir, step, safe));
+                publishLabel(eventRequestId, dir, step, safe);
             }
 
             @Override
@@ -5164,6 +5185,9 @@ public final class EngineServer implements AutoCloseable {
                 () -> BuildMetrics.load(metricsFile).entries(),
                 () -> cc.jumpkick.engine.http.CacheSnapshot.capture(cc.jumpkick.util.JkDirs.cache()),
                 log);
+        // Hard-refresh mid-build: history rows carry live requestId/progress; SSE connect replays
+        // request-start + current workspace-progress so the SPA rebinds the stream.
+        candidate.setLiveRunSupport(this::liveRunsSnapshot, this::rehydrateLiveRunsOnSseConnect);
         try {
             candidate.start();
             Files.writeString(paths.http(), candidate.url());
@@ -5173,6 +5197,35 @@ public final class EngineServer implements AutoCloseable {
             candidate.close();
             httpError = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             log.accept("jk engine: http failed to start (" + httpError + ") — continuing without http");
+        }
+    }
+
+    /** Snapshot of in-flight holds for dashboard history enrichment. */
+    private java.util.List<cc.jumpkick.engine.http.HttpEngineServer.LiveRun> liveRunsSnapshot() {
+        java.util.List<cc.jumpkick.engine.http.HttpEngineServer.LiveRun> out = new java.util.ArrayList<>();
+        for (InFlightBuilds.Hold h : inFlightBuilds.list()) {
+            Double p = lastProgressByRequest.get(h.requestId());
+            out.add(new cc.jumpkick.engine.http.HttpEngineServer.LiveRun(
+                    h.requestId(),
+                    h.buildNumber(),
+                    h.kind(),
+                    h.dir(),
+                    h.coord(),
+                    h.startedAt(),
+                    p != null && !p.isNaN() ? p : Double.NaN,
+                    h.journalId()));
+        }
+        return out;
+    }
+
+    /**
+     * After a new dashboard SSE subscription: re-emit request-start + current aggregate progress
+     * for every still-running job so a refreshed tab does not sit on a frozen history stub.
+     */
+    private void rehydrateLiveRunsOnSseConnect() {
+        for (InFlightBuilds.Hold h : inFlightBuilds.list()) {
+            publishRequestStart(h.requestId(), h.kind(), h.dir(), h.buildNumber());
+            emitWorkspaceProgress(h.requestId(), null, true);
         }
     }
 
@@ -5535,6 +5588,11 @@ public final class EngineServer implements AutoCloseable {
                     Duration duration) {
                 publishStepFinish(eventRequestId, dir, step, phaseWire(phase), status.name());
             }
+
+            @Override
+            public void label(String step, String label) {
+                publishLabel(eventRequestId, dir, step, label);
+            }
         };
     }
 
@@ -5627,6 +5685,11 @@ public final class EngineServer implements AutoCloseable {
                             Duration duration) {
                         publishStepFinish(eventRequestId, dir, step, phaseWire(phase), status.name());
                         accStepFinish(eventRequestId, dir, step, phaseWire(phase), status.name(), duration.toMillis());
+                    }
+
+                    @Override
+                    public void label(String step, String label) {
+                        publishLabel(eventRequestId, dir, step, label);
                     }
 
                     @Override

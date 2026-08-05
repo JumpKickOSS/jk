@@ -86,7 +86,8 @@ Task Manager.
 
 Loopback binds serve the dashboard without a token; mutations are token-gated. Non-loopback origins
 carry the token — `EventSource` cannot send headers, so streams pass it as an `access_token` query
-parameter, and the SPA bootstraps from a `#t=` fragment.
+parameter, and the SPA bootstraps from a `#t=` fragment. **`jk web`** starts the engine if needed,
+prints the tokenized URL, and opens a browser (`$BROWSER` or the platform default).
 
 **Sensitive reads need the token even on loopback**, because on a shared machine another local
 account must not have the engine owner's filesystem and identity for free:
@@ -122,7 +123,7 @@ work when `hasSubscribers()` is false.
 
 | Kind | Events | When published |
 | --- | --- | --- |
-| **Inflicted** (realtime) | `request-start` / `plan` / `module-*` / `step-*` / `pipeline-progress` / `workspace-progress` / `eta` / `output` / `diagnostic` / `*-finish` / `request-finish` | As the pipeline mutates state — never batched on a timer |
+| **Inflicted** (realtime) | `request-start` / `plan` / `module-*` / `step-*` / `label` / `pipeline-progress` / `workspace-progress` / `eta` / `output` / `diagnostic` / `*-finish` / `request-finish` | As the pipeline mutates state — never batched on a timer |
 | **Sampled** (change-gated) | `status` | ~every 2 s while any client is subscribed, **and** only when presentation-quantized vitals change (CPU ~1 pp, RAM/heap ~1 MiB, counters exact). Also forced on stream connect and nudged on request start/finish |
 | **Sampled** (change-gated, IO) | `cache` | Slow tick (~30 s) while subscribed, plus after request finish; **not** on the 2 s status sampler. Live frames are **thin** (dual surface totals + budgets, `"thin": true`); full section breakdown is REST-only |
 
@@ -165,6 +166,7 @@ fold type has a site; progress is coalesced only by the intentional ≥0.1% / TT
 | `plan` | `publishPlan` | Total weight for bar denominator |
 | `module-start` / `module-finish` | workspace listener | Per-module rows |
 | `step-start` / `step-finish` | pipeline listener | Phase-tagged steps |
+| `label` | pipeline listener | Live step detail (test class.method, “shrinking jar”, …); SPA paints after the running phase node |
 | `pipeline-progress` | pipeline ticks | Single-module / per-module detail |
 | `workspace-progress` | `emitWorkspaceProgress` | Aggregate %; peak-hold + 0.1% / frame filter |
 | `eta` | `publishEta` | Seed + re-projections |

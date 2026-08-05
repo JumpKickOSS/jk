@@ -1,0 +1,63 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.cli;
+
+import java.io.IOException;
+import java.lang.ProcessBuilder.Redirect;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.function.Function;
+
+/**
+ * Best-effort "open this URL in a browser". Prefer {@code $BROWSER} when set; else platform default
+ * ({@code open} on macOS, {@code cmd /c start} on Windows, {@code xdg-open} on Linux). Failures are
+ * silent — callers always print the URL so headless sessions still work.
+ */
+public final class OpenBrowser {
+
+    private OpenBrowser() {}
+
+    /** Open {@code url}; {@code true} if a process was started (not that a window appeared). */
+    public static boolean open(String url) {
+        return open(url, System::getenv);
+    }
+
+    /** Testable variant: {@code env} supplies {@code BROWSER} (and any future vars). */
+    static boolean open(String url, Function<String, String> env) {
+        if (url == null || url.isBlank()) return false;
+        List<String> cmd = command(url, env, System.getProperty("os.name", ""));
+        if (cmd.isEmpty()) return false;
+        try {
+            new ProcessBuilder(cmd)
+                    .redirectOutput(Redirect.DISCARD)
+                    .redirectError(Redirect.DISCARD)
+                    .start();
+            return true;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Argv used to open {@code url}. Empty when nothing sensible can be built. Package-visible for
+     * unit tests.
+     */
+    static List<String> command(String url, Function<String, String> env, String osName) {
+        if (url == null || url.isBlank()) return List.of();
+        String browser = env != null ? env.apply("BROWSER") : null;
+        if (browser != null && !browser.isBlank()) {
+            // $BROWSER is conventionally a single executable; append the URL as the last arg.
+            List<String> cmd = new ArrayList<>(2);
+            cmd.add(browser.trim());
+            cmd.add(url);
+            return cmd;
+        }
+        String os = osName == null ? "" : osName.toLowerCase(Locale.ROOT);
+        if (os.contains("mac")) return List.of("open", url);
+        if (os.contains("win")) {
+            // `start` is a cmd builtin; empty title arg so URLs with spaces/& are not misparsed.
+            return List.of("cmd", "/c", "start", "", url);
+        }
+        return List.of("xdg-open", url);
+    }
+}

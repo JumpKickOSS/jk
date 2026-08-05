@@ -38,6 +38,24 @@ function storeToken(value) {
   }
 }
 
+/** Persist a bearer token (paste dialog / tests). Scrubs surrounding whitespace. */
+export function applyToken(value) {
+  const t = (value || '').trim();
+  if (!t) return false;
+  storeToken(t);
+  return true;
+}
+
+/** Drop a missing/invalid token so we stop sending a bad Authorization header. */
+export function clearToken() {
+  sessionStorage.removeItem(TOKEN_KEY);
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // private mode
+  }
+}
+
 export function token() {
   return sessionStorage.getItem(TOKEN_KEY) || (() => {
     try {
@@ -100,6 +118,7 @@ const EVENT_TYPES = [
   'module-start',
   'step-start',
   'step-finish',
+  'label',
   'pipeline-progress',
   'workspace-progress',
   'eta',
