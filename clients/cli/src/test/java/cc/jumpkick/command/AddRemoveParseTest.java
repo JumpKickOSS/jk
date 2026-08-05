@@ -31,6 +31,34 @@ class AddRemoveParseTest {
     }
 
     @Test
+    void isLocalPathArg_separators_win_over_at_and_colon() {
+        // JK-1514: coords/versions never contain path separators, so a separator always means a
+        // path — Windows absolute paths and @-containing nested paths must not fall into the
+        // Maven-coord / library branches.
+        Path cwd = Path.of(".");
+        assertThat(AddCommand.isLocalPathArg("C:\\work\\lib", cwd)).isTrue();
+        assertThat(AddCommand.isLocalPathArg("C:/work/lib", cwd)).isTrue();
+        assertThat(AddCommand.isLocalPathArg("./libs/foo@v2/mod", cwd)).isTrue();
+        assertThat(AddCommand.isLocalPathArg("libs\\foo@v2", cwd)).isTrue();
+    }
+
+    @Test
+    void explicit_path_syntax_detection() {
+        assertThat(AddCommand.isExplicitPathSyntax(":m")).isTrue();
+        assertThat(AddCommand.isExplicitPathSyntax("./m")).isTrue();
+        assertThat(AddCommand.isExplicitPathSyntax("C:\\work")).isTrue();
+        assertThat(AddCommand.isExplicitPathSyntax("m")).isFalse();
+        assertThat(AddCommand.isExplicitPathSyntax("g:a")).isFalse();
+        assertThat(AddCommand.isExplicitPathSyntax("m@1.0")).isFalse();
+    }
+
+    @Test
+    void remove_shortNameOf_windows_absolute_path_is_a_path(@TempDir Path tmp) {
+        // Pre-fix this fell into the Maven-coord branch (group "C", artifact "\\work\\lib").
+        assertThat(RemoveCommand.shortNameOf("C:\\work\\lib", tmp)).isEqualTo("lib");
+    }
+
+    @Test
     void parsedDep_at_version_preserves_selectors() {
         var p = AddCommand.ParsedDep.parse("jackson3-core@=3.1.0", null, null, null, null);
         assertThat(p.library()).isEqualTo("jackson3-core");

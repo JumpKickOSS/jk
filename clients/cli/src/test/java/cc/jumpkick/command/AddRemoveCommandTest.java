@@ -175,6 +175,38 @@ class AddRemoveCommandTest {
         assertThat(msg).contains("picocli");
     }
 
+    @Test
+    void add_with_coord_flags_wins_over_shadowing_directory(@TempDir Path tempDir) throws Exception {
+        // JK-1514: explicit coordinate flags mean the library form even when ./<name> is a
+        // directory — they must not be silently dropped by the path branch.
+        run("new", tempDir.toString());
+        Files.createDirectories(tempDir.resolve("spring-web"));
+        int exit = run(
+                "add",
+                "spring-web",
+                "--group",
+                "org.springframework.boot",
+                "--name",
+                "spring-boot-starter-web",
+                "--ver",
+                "3.4.0",
+                "-C",
+                tempDir.toString());
+        assertThat(exit).isEqualTo(0);
+        String toml = Files.readString(tempDir.resolve("jk.toml"));
+        assertThat(toml)
+                .contains("spring-web = { group = \"org.springframework.boot\", "
+                        + "name = \"spring-boot-starter-web\", version = \"3.4.0\" }");
+    }
+
+    @Test
+    void add_explicit_path_with_coord_flags_is_a_usage_error(@TempDir Path tempDir) throws Exception {
+        run("new", tempDir.toString());
+        Files.createDirectories(tempDir.resolve("mod"));
+        int exit = run("add", "./mod", "--ver", "1.0", "-C", tempDir.toString());
+        assertThat(exit).isEqualTo(64);
+    }
+
     private static int run(String... args) {
         return Jk.execute(args);
     }

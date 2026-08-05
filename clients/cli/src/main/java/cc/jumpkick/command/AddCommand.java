@@ -99,8 +99,19 @@ public final class AddCommand implements CliCommand {
 
         Path dir = global.workingDir();
 
+        // Explicit coordinate flags mean the library/coord form: a bare name that happens to stat
+        // as a directory must not silently drop --group/--name/--ver/--ping (JK-1514). On
+        // explicit path syntax the combination is contradictory — refuse rather than guess.
+        boolean coordFlags =
+                libraryFlag != null || groupFlag != null || nameFlag != null || versionFlag != null || ping;
+        if (coordFlags && isExplicitPathSyntax(coord)) {
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Add", "--library/--group/--name/--ver/--ping do not apply to a local path"));
+            return Exit.USAGE;
+        }
+
         // Local path argument: file jar, workspace module dir, or bare name that stats as a dir.
-        if (isLocalPathArg(coord, dir)) {
+        if (!coordFlags && isLocalPathArg(coord, dir)) {
             String normalized = coord.replace('\\', '/');
             String stripped = (normalized.charAt(0) == ':') ? normalized.substring(1) : normalized;
             Path candidate = dir.resolve(stripped).normalize();
@@ -183,23 +194,32 @@ public final class AddCommand implements CliCommand {
      *
      * <ul>
      *   <li>{@code :name} — explicit local marker
-     *   <li>{@code ./n}, {@code n/}, {@code ../n}, backslash forms — path separators
+     *   <li>{@code ./n}, {@code n/}, {@code ../n}, backslash forms — path separators. Separators
+     *       win over {@code @}/{@code :}: coords and versions never contain them, but Windows
+     *       absolute paths ({@code C:\x}) and nested paths ({@code ./libs/foo@v2/mod}) do
      *   <li>bare {@code n} — <em>path</em> only when {@code cwd/n} is an existing directory; else
      *       library short name
-     *   <li>{@code n@…} or {@code g:a…} — never a path (version / Maven coord)
+     *   <li>separator-free {@code n@…} or {@code g:a…} — never a path (version / Maven coord)
      * </ul>
      */
     static boolean isLocalPathArg(String arg, Path cwd) {
         if (arg == null || arg.isEmpty()) return false;
         if (arg.charAt(0) == ':') return true;
+        if (arg.indexOf('/') >= 0 || arg.indexOf('\\') >= 0) return true;
         // Versioned library short name — never a path.
         if (arg.indexOf('@') >= 0) return false;
         // Maven GAV (group:artifact[:version]) — ':' after the group, not a leading local marker.
         if (arg.indexOf(':') >= 0) return false;
-        if (arg.indexOf('/') >= 0 || arg.indexOf('\\') >= 0) return true;
         // Bare token: path if a relative directory exists, otherwise a library short name.
         if (cwd == null) return false;
         return Files.isDirectory(cwd.resolve(arg).normalize());
+    }
+
+    /** Explicit path syntax ({@code :name} marker or a separator) — never a library form. */
+    static boolean isExplicitPathSyntax(String arg) {
+        return arg != null
+                && !arg.isEmpty()
+                && (arg.charAt(0) == ':' || arg.indexOf('/') >= 0 || arg.indexOf('\\') >= 0);
     }
 
     /**
