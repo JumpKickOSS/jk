@@ -7,23 +7,25 @@
 [![GraalVM](https://img.shields.io/badge/native--image-GraalVM%2025-yellow.svg)](https://www.graalvm.org/)
 [![Status](https://img.shields.io/badge/status-alpha-red.svg)](docs/architecture.md)
 
-**JumpKick** is an elegant and powerful build system for the JVM.
-It supports Java, Kotlin, and Groovy, consistens of a fast native binary, and requires only a simple TOML build definition file.
-It leverages a  real version lockfile, provides dependency conflict warnings you can read--and best of all--powers builds that _skip work they can prove is already done_
+**JumpKick** (CLI: **`jk`**) is an elegant, powerful build system for the JVM — Java, Kotlin, and
+Groovy. A fast native binary. One simple TOML build definition. A real version lockfile. Dependency
+conflicts you can read. And best of all: builds that _skip work they can prove is already done_.
 
-JumpKick comes with _batteries included_. It is able to replace many tools with a superior solution, including:
+JumpKick is _batteries included_ — a superior replacement for many tools you already juggle:
+
 - Maven
 - Gradle
 - SDKMAN!
 - JBang
-- and more...
+- and more…
 
-> When you're ready to upgrade your JVM-based development experience, import your Maven or Gradle projects, and see what you've been missing.
+> When you're ready to upgrade your JVM development experience, import your Maven or Gradle
+> projects and see what you've been missing.
 
 ```bash
 jk new my-app
 cd my-app
-jk add jnats
+jk add jnats          # catalog short name (or group:artifact[:version], path, …)
 jk build
 ```
 
@@ -36,9 +38,9 @@ version = "0.1.0"
 java    = 25
 
 [dependencies]
-jnats  = "latest"   # supports SemVer, ranges, exact verion pins, or the "latest" release
+jnats = "latest"   # SemVer ranges, exact pins, or "latest"
 
-[platform-dependencies]       # BOMs — enforced platforms (Maven depMgmt contract)
+[platform-dependencies]   # BOMs — enforced platforms (Maven depMgmt contract)
 spring-boot-dependencies = "4.1.0"
 ```
 
@@ -61,7 +63,7 @@ That's it. No `build.gradle.kts` that is itself a software project. No 200-line 
 | **Supply chain built in** | `audit` (OSV), `deny`, signing, Sigstore, SLSA, CycloneDX/SPDX SBOM |
 | **JDK management included** | `jk jdk install/pin` + shell activation — SDKMAN/jenv/toolchains in one place |
 
-Coming from **Maven**: think “Cargo-shaped UX on top of Central.”  
+Coming from **Maven**: think “Cargo-shaped UX on top of Central.”
 Coming from **Gradle**: think “declarative TOML + real lockfile, without the configuration graph.”
 
 ### Stay on the newest versions (core value)
@@ -201,7 +203,7 @@ jk engine stop
 ### Day one
 
 ```bash
-jk init payments-api && cd payments-api
+jk new payments-api && cd payments-api
 
 jk add org.springframework.boot:spring-boot-starter-web:3.4.0
 jk add --test org.springframework.boot:spring-boot-starter-test:3.4.0
