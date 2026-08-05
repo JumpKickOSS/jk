@@ -88,6 +88,9 @@ public final class EngineProtocol {
      */
     public static final String PREFLIGHT = "preflight";
 
+    /** Server → client: outer InvocationPhase enter/leave ({@code phase}, {@code status}). */
+    public static final String INVOCATION_PHASE = "invocation-phase";
+
     /** Server → client, repeated once per module: {@code onPlan}'s per-module identity/sizing. */
     public static final String PLAN_MODULE = "plan-module";
 
@@ -1781,6 +1784,16 @@ public final class EngineProtocol {
                 + Jsonl.quote(label == null ? "" : label)
                 + "}";
     }
+
+    /** Outer invocation phase: {@code phase} wire name + {@code status} ({@code start}|{@code finish}). */
+    public static String invocationPhase(String phase, String status) {
+        return "{"" + TYPE_FIELD + "":"" + INVOCATION_PHASE + "","phase":"
+                + Jsonl.quote(phase == null ? "" : phase)
+                + ","status":"
+                + Jsonl.quote(status == null ? "" : status)
+                + "}";
+    }
+
 
     public static String planModule(String dir, String coord, String pipelineName, int weight, boolean fullyCached) {
         return "{\"type\":\""

@@ -4068,6 +4068,16 @@ public final class EngineServer implements AutoCloseable {
             @Override
             public void onPreflight(String stage, int done, int total, String label) {
                 sendQuiet(writer, EngineProtocol.preflight(stage, done, total, label));
+                // Map coarse preflight stages onto user-visible InvocationPhases.
+                String inv = switch (stage == null ? "" : stage) {
+                    case "lock", "graph" -> "resolve";
+                    case "checking", "plan", "prepare", "calibrate" -> "plan";
+                    default -> null;
+                };
+                if (inv != null) {
+                    String status = (total > 0 && done >= total) ? "finish" : "start";
+                    sendQuiet(writer, EngineProtocol.invocationPhase(inv, status));
+                }
                 if (eventRequestId > 0) {
                     progressTracker(eventRequestId).preflight(stage, done, total);
                     emitWorkspaceProgress(eventRequestId, writer, true);
