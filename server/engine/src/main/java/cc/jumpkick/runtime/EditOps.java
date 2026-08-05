@@ -11,7 +11,7 @@ import java.util.List;
 
 /**
  * Engine-hosted {@code jk.toml} edits via {@link JkBuildEditor} (client never parses TOML). Ops:
- * add/remove dependency, add-file-dependency, add/register workspace module.
+ * add/remove dependency, add-file-dependency, add/register/remove workspace module.
  */
 public final class EditOps {
 
@@ -47,6 +47,8 @@ public final class EditOps {
                         case "add-workspace-module" -> JkBuildEditor.addWorkspaceModule(original, args.get(0));
                         case "register-workspace-module" ->
                             JkBuildEditor.registerWorkspaceModule(original, args.get(0));
+                        case "remove-workspace-module" ->
+                            JkBuildEditor.removeWorkspaceModule(original, args.get(0));
                         default -> throw new IllegalArgumentException("unknown edit op: " + op);
                     };
             if (updated.equals(original)) return new Result(false, null);

@@ -260,6 +260,79 @@ public final class JkBuildEditor {
         return validated(join(lines));
     }
 
+    /**
+     * Remove {@code modulePath} from the root manifest's {@code [workspace].modules} array,
+     * preserving the array's shape. Idempotent: a missing {@code [workspace]} table, missing
+     * {@code modules} key, or absent element returns the content unchanged.
+     */
+    public static String removeWorkspaceModule(String content, String modulePath) {
+        if (modulePath == null || modulePath.isBlank()) {
+            throw new IllegalArgumentException("module path must not be blank");
+        }
+        String path = modulePath.replace('\\', '/');
+
+        List<String> lines = splitPreservingTerminator(content);
+        int wsHeader = -1;
+        for (int i = 0; i < lines.size(); i++) {
+            if (WORKSPACE_HEADER.matcher(lines.get(i)).matches()) {
+                wsHeader = i;
+                break;
+            }
+        }
+        if (wsHeader < 0) return content;
+
+        int end = endOfTable(lines, wsHeader);
+        int modulesLine = -1;
+        for (int i = wsHeader + 1; i < end; i++) {
+            if (MODULES_KEY.matcher(lines.get(i)).matches()) {
+                modulesLine = i;
+                break;
+            }
+        }
+        if (modulesLine < 0) return content;
+
+        int closeLine = -1;
+        for (int i = modulesLine; i < end; i++) {
+            if (lines.get(i).indexOf(']') >= 0) {
+                closeLine = i;
+                break;
+            }
+        }
+        if (closeLine < 0) {
+            throw new IllegalStateException("malformed modules array in [workspace]");
+        }
+
+        for (int i = modulesLine; i <= closeLine; i++) {
+            String line = lines.get(i);
+            Matcher q = QUOTED.matcher(line);
+            while (q.find()) {
+                if (!q.group(1).equals(path)) continue;
+                // Cut the quoted element plus one adjacent comma (the following one when present,
+                // else the preceding one) so the remaining array stays valid.
+                String before = line.substring(0, q.start());
+                String after = line.substring(q.end());
+                int a = 0;
+                while (a < after.length() && Character.isWhitespace(after.charAt(a))) a++;
+                if (a < after.length() && after.charAt(a) == ',') {
+                    after = after.substring(a + 1);
+                    if (after.startsWith(" ")) after = after.substring(1);
+                } else {
+                    int b = before.length() - 1;
+                    while (b >= 0 && Character.isWhitespace(before.charAt(b))) b--;
+                    if (b >= 0 && before.charAt(b) == ',') before = before.substring(0, b);
+                }
+                String rewritten = before + after;
+                if (rewritten.isBlank() && i != modulesLine) {
+                    lines.remove(i); // element-only line of a multi-line array
+                } else {
+                    lines.set(i, rewritten);
+                }
+                return validated(join(lines));
+            }
+        }
+        return content; // not a registered module — idempotent
+    }
+
     /** Insert {@code "path"} before the {@code ]} on a single-line modules array. */
     private static void insertInlineModule(List<String> lines, int lineIdx, String path) {
         String line = lines.get(lineIdx);

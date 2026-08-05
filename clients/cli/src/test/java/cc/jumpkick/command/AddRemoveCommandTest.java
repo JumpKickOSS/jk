@@ -176,6 +176,53 @@ class AddRemoveCommandTest {
     }
 
     @Test
+    void remove_bare_name_prefers_manifest_key_over_shadowing_directory(@TempDir Path tempDir) throws Exception {
+        // JK-1516: an unrelated checkout ./jackson (project name jackson-core) must not redirect
+        // `jk remove jackson` away from the manifest dep of the same name.
+        run("new", tempDir.toString());
+        run("add", "com.foo.addrm:jackson:1.0", "-C", tempDir.toString());
+        Path shadow = tempDir.resolve("jackson");
+        Files.createDirectories(shadow);
+        Files.writeString(
+                shadow.resolve("jk.toml"),
+                """
+                [project]
+                group = "g"
+                name = "jackson-core"
+                version = "1.0.0"
+                """);
+
+        int exit = run("remove", "jackson", "-C", tempDir.toString());
+        assertThat(exit).isEqualTo(0);
+        assertThat(JkBuildParser.parse(tempDir.resolve("jk.toml")).dependencies().of(Scope.MAIN))
+                .isEmpty();
+    }
+
+    @Test
+    void remove_path_form_unregisters_the_workspace_module(@TempDir Path tempDir) throws Exception {
+        // JK-1516: `jk add ./libb` registers [workspace].modules; `jk remove ./libb` must undo it.
+        run("new", tempDir.toString());
+        Path lib = tempDir.resolve("libb");
+        Files.createDirectories(lib);
+        Files.writeString(
+                lib.resolve("jk.toml"),
+                """
+                [project]
+                group = "cc.jumpkick"
+                name = "libb"
+                version = "0.2.0"
+                """);
+        assertThat(run("add", "./libb", "-C", tempDir.toString())).isEqualTo(0);
+        assertThat(JkBuildParser.parse(tempDir.resolve("jk.toml")).workspace().modules())
+                .contains("libb");
+
+        assertThat(run("remove", "./libb", "-C", tempDir.toString())).isEqualTo(0);
+        JkBuild parsed = JkBuildParser.parse(tempDir.resolve("jk.toml"));
+        assertThat(parsed.dependencies().of(Scope.MAIN)).isEmpty();
+        assertThat(parsed.workspace().modules()).doesNotContain("libb");
+    }
+
+    @Test
     void add_with_coord_flags_wins_over_shadowing_directory(@TempDir Path tempDir) throws Exception {
         // JK-1514: explicit coordinate flags mean the library form even when ./<name> is a
         // directory — they must not be silently dropped by the path branch.

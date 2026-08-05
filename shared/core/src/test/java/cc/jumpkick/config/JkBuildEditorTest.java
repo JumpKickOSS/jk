@@ -406,6 +406,51 @@ class JkBuildEditorTest {
     }
 
     @Test
+    void remove_module_from_inline_array() {
+        assertThat(JkBuildParser.parse(JkBuildEditor.removeWorkspaceModule(WS, "core"))
+                        .workspace()
+                        .modules())
+                .containsExactly("io");
+        assertThat(JkBuildParser.parse(JkBuildEditor.removeWorkspaceModule(WS, "io"))
+                        .workspace()
+                        .modules())
+                .containsExactly("core");
+    }
+
+    @Test
+    void remove_module_from_multiline_array_drops_the_element_line() {
+        String start = """
+                [project]
+                group    = "cc.jumpkick"
+                name     = "jk"
+                version  = "0.1.0"
+
+                # the workspace
+                [workspace]
+                modules = [
+                    "core",
+                    "io",
+                ]
+                """;
+        String result = JkBuildEditor.removeWorkspaceModule(start, "core");
+        assertThat(result).contains("# the workspace").doesNotContain("\"core\"");
+        assertThat(JkBuildParser.parse(result).workspace().modules()).containsExactly("io");
+    }
+
+    @Test
+    void remove_module_is_idempotent_for_absent_paths_and_missing_tables() {
+        assertThat(JkBuildEditor.removeWorkspaceModule(WS, "not-a-module")).isEqualTo(WS);
+        assertThat(JkBuildEditor.removeWorkspaceModule(BASE, "core")).isEqualTo(BASE);
+    }
+
+    @Test
+    void remove_last_module_leaves_an_empty_array() {
+        String one = JkBuildEditor.removeWorkspaceModule(WS, "core");
+        String none = JkBuildEditor.removeWorkspaceModule(one, "io");
+        assertThat(JkBuildParser.parse(none).workspace().modules()).isEmpty();
+    }
+
+    @Test
     void register_module_creates_the_workspace_table_for_a_plain_project() {
         String result = JkBuildEditor.registerWorkspaceModule(BASE, "core");
         assertThat(result).contains("[workspace]");
