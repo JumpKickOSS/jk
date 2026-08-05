@@ -68,8 +68,11 @@ class HiltTransformTest {
                         .filter(d -> d.message() == null
                                 || !d.message().contains("sun.misc.Unsafe"))
                         .toList())
+                .as("errors: %s steps: %s", result.errors(), result.steps())
                 .isEmpty();
-        assertThat(result.success()).isTrue();
+        assertThat(result.success())
+                .as("success=false errors=%s steps=%s", result.errors(), result.steps())
+                .isTrue();
 
         // KSP generated the bases from the UNMODIFIED sources (validation toggle worked).
         assertThat(anyFile(project.resolve("target/ksp"), "Hilt_MainActivity"))

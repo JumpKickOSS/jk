@@ -284,8 +284,9 @@ class EngineServerTest {
                     .filter(r -> "project/step".equals(Jsonl.str(r, "scope")))
                     .findFirst()
                     .orElseThrow();
-            assertThat(Jsonl.str(stepRow, "task") != null ? Jsonl.str(stepRow, "task") : Jsonl.str(stepRow, "step"))
-                    .isEqualTo("compile-java");
+            String stepName = Jsonl.str(stepRow, "task");
+            if (stepName == null || stepName.isBlank()) stepName = Jsonl.str(stepRow, "step");
+            assertThat(stepName).isEqualTo("compile-java");
             assertThat(Jsonl.longValue(stepRow, "okTotalMillis", -1)).isEqualTo(700);
         }
         server.close();
