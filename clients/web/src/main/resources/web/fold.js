@@ -247,7 +247,10 @@ export function weightDenominator(card) {
  * repeatedly (on load and after every reconnect): a run already present as a live SSE card is not
  * duplicated — instead the live card is tagged with its `historyId` so it becomes deletable. Live
  * cards key on the numeric engine request id (which resets per engine start); history entries key on
- * the durable string id, so the two never collide and are reconciled here by (dir, finishedAt).
+ * the durable string id, so the two never collide and are reconciled here by (dir, buildNumber) —
+ * structurally, since `finishedAt` on a live card is browser receipt time while the record carries
+ * engine time, and clock skew on a remote dashboard would otherwise duplicate every finished build
+ * (JK-1519). The ±2s time window remains only as a fallback for cards without a buildNumber.
  */
 export function seedFromHistory(cards, records) {
   for (const rec of records || []) {
@@ -255,6 +258,13 @@ export function seedFromHistory(cards, records) {
     const live = cards.find(
       (c) =>
         c.historyId === rec.id ||
+        // A stale running:true stub (journal write racing the reconcile) must not rebind a
+        // just-finished live card and flip it back to running — hence the state agreement guard.
+        (typeof c.id === 'number' &&
+          c.dir === rec.dir &&
+          rec.buildNumber &&
+          c.buildNumber === rec.buildNumber &&
+          (!rec.running || c.state === 'running')) ||
         (typeof c.id === 'number' &&
           c.dir === rec.dir &&
           c.finishedAt != null &&
@@ -277,6 +287,15 @@ export function seedFromHistory(cards, records) {
       continue;
     }
     if (cards.some((c) => c.id === 'h:' + rec.id)) continue; // already seeded
+    // A running stub for a run this tab already saw finish is stale (reconcile raced the journal
+    // write) — seeding it would add a phantom running row next to the finished card (JK-1519).
+    if (
+      rec.running &&
+      rec.buildNumber &&
+      cards.some((c) => typeof c.id === 'number' && c.dir === rec.dir && c.buildNumber === rec.buildNumber)
+    ) {
+      continue;
+    }
     cards.push(historyCard(rec));
   }
   cards.sort((a, b) => (b.finishedAt ?? b.startedAt ?? 0) - (a.finishedAt ?? a.startedAt ?? 0));

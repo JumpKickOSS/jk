@@ -220,6 +220,36 @@ test('a step-start without a phase stores an empty phase', () => {
   assert.equal(cards[0].modules[0].steps[0].phase, ''); // default, never undefined
 });
 
+test('finished live cards reconcile by (dir, buildNumber) despite clock skew (JK-1519)', async () => {
+  const { seedFromHistory } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const cards = [];
+  foldEvent(cards, { ...start(1, '/w', { buildNumber: 6 }), at: 100_000 });
+  foldEvent(cards, { ...finish(1, { success: true, millis: 400 }), at: 100_400 });
+  // The journal record carries ENGINE time — 10s of clock skew vs the browser receipt stamps.
+  seedFromHistory(cards, [
+    { id: 'r6', dir: '/w', buildNumber: 6, kind: 'build', finishedAt: 110_400, startedAt: 110_000,
+      success: true, millis: 400, modules: [], steps: [], diagnostics: [] },
+  ]);
+  assert.equal(cards.length, 1); // no duplicate h:r6 card
+  assert.equal(cards[0].historyId, 'r6');
+});
+
+test('a stale running stub does not flip a finished live card back to running (JK-1519)', async () => {
+  const { seedFromHistory } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const cards = [];
+  foldEvent(cards, { ...start(1, '/w', { buildNumber: 6 }), at: 100_000 });
+  foldEvent(cards, { ...finish(1, { success: true, millis: 400 }), at: 100_400 });
+  // Reconcile raced the journal write: the record still says running.
+  seedFromHistory(cards, [
+    { id: 'r6', dir: '/w', buildNumber: 6, kind: 'build', running: true, startedAt: 110_000,
+      modules: [], steps: [], diagnostics: [] },
+  ]);
+  const live = cards.find((c) => c.id === 1);
+  assert.equal(live.state, 'finished'); // untouched by the stale stub
+  assert.equal(live.historyId, undefined);
+  assert.equal(cards.length, 1); // and the stub is not seeded as a phantom running row
+});
+
 test('history backfill maps per-module steps; single-project synthesizes one module', async () => {
   const { seedFromHistory } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
   // workspace record: modules carry their own steps, and each diagnostic attaches to its module dir
