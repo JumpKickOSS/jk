@@ -207,8 +207,8 @@ class CommandManagerTest {
         String plain = TestAnsi.strip(header);
         assertThat(plain).contains("ETA ~56s");
         assertThat(plain).contains("+4s");
-        // Countdown is blue with tilde; count-up is dim while remaining > 0.
-        assertThat(header).contains(Theme.colorize("~56s", Theme.active().blue()));
+        // Countdown is mid-gray with tilde; count-up is dim while remaining > 0.
+        assertThat(header).contains(Theme.colorize("~56s", Theme.active().midGray()));
         assertThat(header).contains(Theme.colorize("+4s", Theme.active().darkGray()));
         assertThat(header).contains(Theme.colorize("·", Theme.active().darkGray()));
     }
@@ -457,9 +457,9 @@ class CommandManagerTest {
     }
 
     @Test
-    void header_countdown_is_blue_count_up_is_dim_then_yellow() {
+    void header_countdown_is_mid_gray_count_up_is_dim_then_yellow() {
         Theme t = Theme.active();
-        // Seeded ETA with remaining > 0 → dim italic "ETA " + blue "~remaining" · dim "+elapsed".
+        // Seeded ETA with remaining > 0 → dim italic "ETA " + mid-gray "~remaining" · dim "+elapsed".
         var down = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
         down.nerdfont = false;
         down.progress(10, 100);
@@ -468,7 +468,7 @@ class CommandManagerTest {
         assertThat(TestAnsi.strip(downHeader)).contains("ETA ~56s");
         assertThat(TestAnsi.strip(downHeader)).contains("+4s");
         assertThat(downHeader).contains(Theme.colorize("ETA ", t.darkGray().italic()));
-        assertThat(downHeader).contains(Theme.colorize("~56s", t.blue()));
+        assertThat(downHeader).contains(Theme.colorize("~56s", t.midGray()));
         assertThat(downHeader).contains(Theme.colorize("+4s", t.darkGray()));
         assertThat(downHeader).doesNotContain(Theme.colorize("+4s", t.warning()));
 

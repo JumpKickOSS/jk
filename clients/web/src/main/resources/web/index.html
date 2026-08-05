@@ -109,7 +109,7 @@
                   @click="triggerBuild(card.dir)" aria-label="Rebuild" title="Build this directory again"><jk-icon name="refresh"></jk-icon></button>
           <button v-if="outcome(card) !== 'running' && card.historyId" class="rebuild icon danger"
                   @click="deleteCard(card)" aria-label="Delete" title="Delete this run from history"><jk-icon name="trash"></jk-icon></button>
-          <!-- Dual clock (CLI parity): italic/dim "ETA" + blue ~remaining (freezes dim at 0s on
+          <!-- Dual clock (CLI parity): italic/dim "ETA" + mid-gray ~remaining (freezes dim at 0s on
                overrun). Count-up sits next to it; dim while remaining > 0, yellow after. -->
           <span v-if="outcome(card) === 'running' && hasEta(card)" class="eta" title="estimated time remaining">
             <span class="eta-label">ETA</span>

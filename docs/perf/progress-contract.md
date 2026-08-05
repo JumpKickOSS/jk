@@ -8,7 +8,7 @@ Status: **normative** for TUI / wire progress (JK-1150). Implementations: JK-115
 2. **Real-work denominator** — weight what will actually run; cache/skip → token ticks.
 3. **Hierarchical learning** — method → class → step → phase → module → invocation.
 4. **Dual clock** — when a seed ETA is trustworthy, the TUI / web header shows both: dim italic
-   `ETA` + blue `~remaining` (countdown from `seed − elapsed`) and dim `+elapsed` (count-up from
+   `ETA` + mid-gray `~remaining` (countdown from `seed − elapsed`) and dim `+elapsed` (count-up from
    command start). When remaining hits zero the countdown freezes dim at `0s` and count-up turns
    yellow. With no seed both modes collapse to a single yellow `+elapsed` count-up. The clock
    never resets on phase/module boundaries.

@@ -1599,10 +1599,10 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             }
         }
         // After the bar's percent: a bright-black middle dot, then the run-wide build clock.
-        // Seeded: dim italic "ETA " + blue "~remaining" · dim "+elapsed". When remaining hits 0 the
-        // countdown freezes dim at "0s" and count-up turns yellow. No seed: both modes collapse to
-        // a single yellow "+elapsed" count-up. Never resets on phase/module boundaries. Module n/m
-        // is only on tree rows below — not repeated here.
+        // Seeded: dim italic "ETA " + mid-gray "~remaining" · dim "+elapsed". When remaining hits 0
+        // the countdown freezes dim at "0s" and count-up turns yellow. No seed: both modes collapse
+        // to a single yellow "+elapsed" count-up. Never resets on phase/module boundaries. Module
+        // n/m is only on tree rows below — not repeated here.
         //
         // Both faces are derived from the same whole-second elapsed counter so they tick on the
         // same paint (flooring remaining-ms and elapsed-ms independently desynced them by the
@@ -1616,7 +1616,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             if (remainingSec <= 0) {
                 h.append(Theme.colorize("0s", dim));
             } else {
-                h.append(Theme.colorize("~" + fmtClockSeconds(remainingSec), t.blue()));
+                h.append(Theme.colorize("~" + fmtClockSeconds(remainingSec), t.midGray()));
             }
             h.append(' ').append(Theme.colorize("·", dim)).append(' ');
             AttributedStyle up = remainingSec <= 0 ? t.warning() : dim;

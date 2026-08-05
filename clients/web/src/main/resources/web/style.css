@@ -471,7 +471,7 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
   border-bottom: 1px dotted var(--dim);
 }
 .ago { color: var(--dim); font-size: 11.5px; }
-/* ETA dual-clock: italic/dim "ETA" label + blue ~remaining (dim frozen 0s on overrun). */
+/* ETA dual-clock: italic/dim "ETA" label + mid-gray ~remaining (dim frozen 0s on overrun). */
 .eta {
   display: inline-flex;
   align-items: baseline;
@@ -485,7 +485,7 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
   font-style: italic;
   font-weight: 400;
 }
-.eta-cd { color: var(--run); }
+.eta-cd { color: var(--det-mid); }
 .eta-cd.zero { color: var(--dim); }
 
 /* Per-run byte counters as a hover tooltip on `.millis`: one row per scope, `scope  N ↑ / N ↓`.
