@@ -27,9 +27,20 @@ class OpenBrowserTest {
     }
 
     @Test
-    void windows_uses_cmd_start_with_empty_title() {
-        List<String> cmd = OpenBrowser.command("http://x/", k -> null, "Windows 11");
-        assertThat(cmd).containsExactly("cmd", "/c", "start", "", "http://x/");
+    void windows_uses_rundll32_never_cmd() {
+        // JK-1515: cmd would parse `&` in an unquoted URL as a command separator — and the auth
+        // login URL is network-supplied. rundll32's FileProtocolHandler does no shell parsing.
+        String hostile = "https://forge/device?user_code=X&calc";
+        List<String> cmd = OpenBrowser.command(hostile, k -> null, "Windows 11");
+        assertThat(cmd).containsExactly("rundll32", "url.dll,FileProtocolHandler", hostile);
+        assertThat(cmd.get(0)).isNotEqualTo("cmd");
+    }
+
+    @Test
+    void browser_env_with_arguments_is_word_split() {
+        List<String> cmd = OpenBrowser.command(
+                "http://x/", k -> "BROWSER".equals(k) ? "flatpak run org.mozilla.firefox" : null, "Linux");
+        assertThat(cmd).containsExactly("flatpak", "run", "org.mozilla.firefox", "http://x/");
     }
 
     @Test

@@ -26,8 +26,8 @@ hard-refresh still rehydrates Activity; mutations and sensitive reads stay token
 [http.md](http.md)).
 
 **`jk web`** ensures the engine is running, prints the authenticated URL as an OSC-8 hyperlink, and
-opens it in a browser (`$BROWSER` when set, else `open` / `cmd /c start` / `xdg-open`). Use
-`--no-open` to print only.
+opens it in a browser (`$BROWSER` when set — word-split, so values with arguments work — else
+`open` / `rundll32 url.dll,FileProtocolHandler` / `xdg-open`). Use `--no-open` to print only.
 
 When a required token is **missing or invalid** (non-loopback binds, a rotated/stale stored token,
 or any `401` from a gated call), the SPA opens a **blocking authorization dialog** and freezes the

@@ -10,8 +10,9 @@ import java.util.function.Function;
 
 /**
  * Best-effort "open this URL in a browser". Prefer {@code $BROWSER} when set; else platform default
- * ({@code open} on macOS, {@code cmd /c start} on Windows, {@code xdg-open} on Linux). Failures are
- * silent — callers always print the URL so headless sessions still work.
+ * ({@code open} on macOS, {@code rundll32 url.dll,FileProtocolHandler} on Windows, {@code
+ * xdg-open} on Linux). Failures are silent — callers always print the URL so headless sessions
+ * still work.
  */
 public final class OpenBrowser {
 
@@ -46,17 +47,19 @@ public final class OpenBrowser {
         if (url == null || url.isBlank()) return List.of();
         String browser = env != null ? env.apply("BROWSER") : null;
         if (browser != null && !browser.isBlank()) {
-            // $BROWSER is conventionally a single executable; append the URL as the last arg.
-            List<String> cmd = new ArrayList<>(2);
-            cmd.add(browser.trim());
+            // $BROWSER may carry arguments ("firefox --new-tab", "flatpak run org.mozilla.firefox")
+            // — word-split like other tools honoring the convention; append the URL last.
+            List<String> cmd = new ArrayList<>(List.of(browser.trim().split("\\s+")));
             cmd.add(url);
             return cmd;
         }
         String os = osName == null ? "" : osName.toLowerCase(Locale.ROOT);
         if (os.contains("mac")) return List.of("open", url);
         if (os.contains("win")) {
-            // `start` is a cmd builtin; empty title arg so URLs with spaces/& are not misparsed.
-            return List.of("cmd", "/c", "start", "", url);
+            // NOT `cmd /c start`: ProcessBuilder only quotes args containing whitespace, so a URL
+            // with `&` (network-supplied for auth login) would reach cmd.exe unquoted and execute
+            // the remainder as a command. rundll32's FileProtocolHandler does no shell parsing.
+            return List.of("rundll32", "url.dll,FileProtocolHandler", url);
         }
         return List.of("xdg-open", url);
     }
