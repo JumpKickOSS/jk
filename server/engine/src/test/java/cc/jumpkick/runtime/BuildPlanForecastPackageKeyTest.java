@@ -60,14 +60,18 @@ class BuildPlanForecastPackageKeyTest {
         // JK-1369: a jk-clean-wiped sibling recovered from the CAS must fingerprint as
         // "file:<sha>" (what the live step stored for the on-disk jar), not "cas:<blob path>" —
         // otherwise the post-clean assembly forecast can never key-match.
+        // JK-1511: the pinned sha names a payload blob in the CACHE-tier pool the action records
+        // write to — recovery must consult the action cache's own CAS, not the artifact store.
         byte[] bytes = "sibling-jar-bytes".getBytes(java.nio.charset.StandardCharsets.UTF_8);
         String sha = cc.jumpkick.util.Hashing.sha256Hex(bytes);
-        var cas = new cc.jumpkick.cache.Cas(tmp.resolve("cas"));
-        cas.put(bytes, sha);
+        Path cacheRoot = tmp.resolve("cache");
+        var actionCache = new cc.jumpkick.task.ActionCache(
+                cc.jumpkick.cache.JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"));
+        actionCache.cas().put(bytes, sha);
 
         Path wiped = tmp.resolve("target/sibling.jar"); // does not exist (post-clean)
         String recovered = BuildPlanForecast.fingerprintJarOrCached(
-                wiped, cas, Map.of(wiped.toAbsolutePath().normalize(), sha));
+                wiped, actionCache, Map.of(wiped.toAbsolutePath().normalize(), sha));
 
         // Live-build form: the same content on disk.
         Path onDisk = tmp.resolve("sibling.jar");

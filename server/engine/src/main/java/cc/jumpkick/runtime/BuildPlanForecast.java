@@ -478,7 +478,7 @@ public final class BuildPlanForecast {
                             "package-assembly", BuildPlan.Status.RUN, "repackage · compile changed", null));
                 } else {
                     boolean hit = assemblyActionCached(
-                            dir, project, layout, lockFile, cas, actionCache, cache, compileMainKey, restoredJarShas);
+                            dir, project, layout, lockFile, actionCache, cache, compileMainKey, restoredJarShas);
                     steps.add(
                             hit
                                     ? new BuildPlan.Step("package-assembly", BuildPlan.Status.CACHED, "", null)
@@ -617,7 +617,6 @@ public final class BuildPlanForecast {
             JkBuild project,
             BuildLayout layout,
             Path lockFile,
-            Cas cas,
             ActionCache actionCache,
             Path cache,
             String compileMainKey,
@@ -633,7 +632,7 @@ public final class BuildPlanForecast {
                 compileMainKey);
         // Same jar set as BuildPipelines.assemblyStep (ModuleRuntimeClasspath / JK-1345).
         List<Path> depJars = BuildPipelines.assemblyDependencyJars(dir, project, lockFile, cache);
-        String depsTok = fingerprintDepJars(depJars, cas, restoredJarShas);
+        String depsTok = fingerprintDepJars(depJars, actionCache, restoredJarShas);
         List<String> tokens = List.of(
                 "classes:" + classesTok,
                 "deps:" + depsTok,
@@ -650,27 +649,29 @@ public final class BuildPlanForecast {
      * jars wiped by {@code jk clean} from the CAS shas the walk pinned off each sibling's current
      * package record.
      */
-    static String fingerprintDepJars(List<Path> depJars, Cas cas, Map<Path, String> restoredJarShas)
+    static String fingerprintDepJars(List<Path> depJars, ActionCache actionCache, Map<Path, String> restoredJarShas)
             throws IOException {
         List<String> parts = new ArrayList<>(depJars.size());
         for (Path jar : depJars) {
-            parts.add(fingerprintJarOrCached(jar, cas, restoredJarShas));
+            parts.add(fingerprintJarOrCached(jar, actionCache, restoredJarShas));
         }
         parts.sort(java.util.Comparator.naturalOrder());
         return cc.jumpkick.util.Hashing.sha256Hex(String.join("\n", parts));
     }
 
-    static String fingerprintJarOrCached(Path jar, Cas cas, Map<Path, String> restoredJarShas) throws IOException {
+    static String fingerprintJarOrCached(Path jar, ActionCache actionCache, Map<Path, String> restoredJarShas)
+            throws IOException {
         if (Files.isRegularFile(jar)) {
             return ClasspathFingerprint.entry(jar);
         }
         // After clean: sibling jars live under target/ — recover content from the sha the walk
-        // pinned when the sibling's CURRENT package key hit. An unpinned wiped jar stays
-        // missing:… (assembly forecasts RUN — pessimistic, never a false hit): an unvalidated
-        // last-record pointer could name a different edit of the sibling.
+        // pinned when the sibling's CURRENT package key hit. The pinned sha names a payload blob
+        // in the ACTION-CACHE pool (cache tier), not the artifact store. An unpinned wiped jar
+        // stays missing:… (assembly forecasts RUN — pessimistic, never a false hit): an
+        // unvalidated last-record pointer could name a different edit of the sibling.
         String sha = restoredJarShas.get(jar.toAbsolutePath().normalize());
         if (sha != null) {
-            Path blob = cas.pathFor(sha);
+            Path blob = actionCache.cas().pathFor(sha);
             if (Files.isRegularFile(blob)) {
                 // The blob path would classify as "cas:<abs>", but the live step fingerprinted the
                 // on-disk sibling as "file:<content sha>" — return that form so a post-clean
