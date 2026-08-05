@@ -306,10 +306,10 @@ There is no third-party marketplace yet; first-party plugins ship with jk and ve
 | `buildTarget/compile` | `IdeEngineClient.build` |
 
 - **VS Code (ticket-1017):** `clients/vscode/` — VSIX, tasks/commands via `jk`, BSP install.  
-- **IntelliJ (JK-1054 / JK-1511):** `clients/intellij/` — install-from-disk zip. **Sync project**
+- **IntelliJ (JK-1054 / JK-1551):** `clients/intellij/` — install-from-disk zip. **Sync project**
   uses `jk ide --print-model` (structured model) + `jk ide --idea` (shared generator apply) +
   `jk bsp install` (dual-path with JetBrains BSP). Open-project activity offers/auto Sync when
-  `jk.toml` is present. No engine jars on the plugin classpath. BSP (JK-1512): run, cancel,
+  `jk.toml` is present. No engine jars on the plugin classpath. BSP (JK-1552): run, cancel,
   outputPaths, sources jars, publishDiagnostics.
 
 ### Project build logic (`.jk-build/`, ticket-1037)

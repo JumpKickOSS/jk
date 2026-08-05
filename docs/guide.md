@@ -947,7 +947,7 @@ object on stdout (lock + sync + model; no `.iml` / `.vscode` writes).
 
 **VS Code (ticket-1017):** [`clients/vscode/`](../clients/vscode/) — VSIX via `./scripts/package-vscode.sh`.
 
-**IntelliJ (JK-1054 / JK-1511):** [`clients/intellij/`](../clients/intellij/) — zip via
+**IntelliJ (JK-1054 / JK-1551):** [`clients/intellij/`](../clients/intellij/) — zip via
 `./scripts/package-intellij.sh`. **Tools → JumpKick → Sync project** runs
 `jk ide --print-model` + `jk ide --idea` + `jk bsp install` and refreshes the VFS. On open,
 projects with `jk.toml` are offered Sync (auto-Sync when no IDEA modules yet). No manual
