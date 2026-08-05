@@ -97,33 +97,53 @@ public final class BuildLayout {
 
     // ---- Per-module output -------------------------------------------------
 
+    /** Memoized {@link #moduleTargetDir()} — every layout accessor funnels through it, and the
+     * alias-fallback path costs filesystem walks; both roots are final, so the answer is stable
+     * for the instance's life (JK-1528). */
+    private volatile Path cachedModuleTargetDir;
+
     /**
      * Root of this module's output tree: {@code <module>/target/} when standalone (or the unit is
      * the workspace root itself); {@code <workspace>/target/<rel>/} for a workspace member.
      */
     public Path moduleTargetDir() {
-        return moduleTargetDir(workspaceRoot, moduleRoot);
+        Path cached = cachedModuleTargetDir;
+        if (cached == null) {
+            cached = moduleTargetDir(workspaceRoot, moduleRoot);
+            cachedModuleTargetDir = cached;
+        }
+        return cached;
     }
 
     /**
      * As {@link #moduleTargetDir} from the two roots alone — the layout decision needs no parsed
      * project, so callers on parse-free fast paths (preflight memo) share one rule.
      *
-     * <p>Membership uses {@link #absoluteKey} so symlink aliases ({@code /var} vs
-     * {@code /private/var} on macOS) still count as the same tree. The returned path keeps the
-     * caller's {@code workspaceRoot} form (absolute + normalize) so it matches other paths the
-     * caller already holds.
+     * <p>Membership is decided <em>lexically</em> first (zero filesystem I/O on the hot path, and
+     * a member symlinked <em>into</em> the workspace tree keeps its central out dir — realpath
+     * would relocate its outputs to a module-local {@code target/}). Only on a lexical miss does
+     * {@link #absoluteKey} reconcile symlink alias pairs ({@code /var} vs {@code /private/var} on
+     * macOS). The returned path keeps the caller's {@code workspaceRoot} form (absolute +
+     * normalize) so it matches other paths the caller already holds (JK-1528).
      */
     public static Path moduleTargetDir(Path workspaceRoot, Path moduleRoot) {
+        Path wsOut = workspaceRoot.toAbsolutePath().normalize();
+        Path modAbs = moduleRoot.toAbsolutePath().normalize();
+        if (modAbs.equals(wsOut)) {
+            return wsOut.resolve("target");
+        }
+        if (modAbs.startsWith(wsOut)) {
+            return wsOut.resolve("target").resolve(wsOut.relativize(modAbs));
+        }
+        // Lexical miss: an alias pair can still name the same tree — compare realpath keys.
         Path modKey = absoluteKey(moduleRoot);
         Path wsKey = absoluteKey(workspaceRoot);
-        Path wsOut = workspaceRoot.toAbsolutePath().normalize();
         if (modKey.equals(wsKey)) {
             return wsOut.resolve("target");
         }
         if (!modKey.startsWith(wsKey)) {
-            // Outside the workspace tree — fall back to module-local target/.
-            return moduleRoot.toAbsolutePath().normalize().resolve("target");
+            // Genuinely outside the workspace tree — fall back to module-local target/.
+            return modAbs.resolve("target");
         }
         return wsOut.resolve("target").resolve(wsKey.relativize(modKey));
     }
