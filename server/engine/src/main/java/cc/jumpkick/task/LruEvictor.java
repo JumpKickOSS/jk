@@ -44,6 +44,18 @@ public final class LruEvictor {
      */
     public static Report evictDownTo(Cas cas, long maxBytes, Set<String> reachable, AccessLedger ledger, boolean dryRun)
             throws IOException {
+        return evictDownTo(cas, maxBytes, reachable, ledger, dryRun, Set.of());
+    }
+
+    /**
+     * As {@link #evictDownTo(Cas, long, Set, AccessLedger, boolean)}, excluding {@code excluded}
+     * shas from both the size total and the candidate list — blobs a same-pass {@link CasSweep}
+     * already claimed. In a real run the files are gone before the evictor walks (harmless no-op);
+     * in a dry run this keeps FILES/BYTES from counting the same blob twice (JK-1526).
+     */
+    public static Report evictDownTo(
+            Cas cas, long maxBytes, Set<String> reachable, AccessLedger ledger, boolean dryRun, Set<String> excluded)
+            throws IOException {
         Path shaRoot = cas.root().resolve("sha256");
         if (!Files.isDirectory(shaRoot)) {
             return new Report(0, 0L, 0, 0L);
@@ -64,6 +76,7 @@ public final class LruEvictor {
                 var hexOpt = cas.hashFromPath(file);
                 if (hexOpt.isEmpty()) continue;
                 String hex = hexOpt.get();
+                if (excluded.contains(hex)) continue; // same-pass sweep victim (dry-run parity)
                 long size = Files.size(file);
                 long atime =
                         atimes.getOrDefault(hex, Files.getLastModifiedTime(file).toMillis());

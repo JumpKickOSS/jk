@@ -26,7 +26,8 @@ public final class CasSweep {
 
     private CasSweep() {}
 
-    public record Report(int deleted, long freedBytes, int kept) {}
+    /** {@code deletedShas}: the victims' hashes — lets a same-pass evictor skip them (JK-1526). */
+    public record Report(int deleted, long freedBytes, int kept, Set<String> deletedShas) {}
 
     /**
      * Walk the CAS and delete objects not present in {@code liveRefs} (subject to the age guards
@@ -38,7 +39,7 @@ public final class CasSweep {
 
         Path shaRoot = cas.root().resolve("sha256");
         if (!Files.isDirectory(shaRoot)) {
-            return new Report(0, 0L, 0);
+            return new Report(0, 0L, 0, Set.of());
         }
 
         int kept = 0;
@@ -86,6 +87,6 @@ public final class CasSweep {
         for (Victim v : victims) {
             freedBytes += v.size();
         }
-        return new Report(victims.size(), freedBytes, kept);
+        return new Report(victims.size(), freedBytes, kept, deletedShas);
     }
 }

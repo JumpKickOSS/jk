@@ -98,11 +98,9 @@ public final class CachePipelines {
                             }
                         }
                     }
-                    var runLogReport =
-                            cc.jumpkick.task.RunLogGc.sweep(root, cc.jumpkick.task.RunLogGc.DEFAULT_TTL, dryRun);
-                    totalFiles += runLogReport.deleted();
-                    totalBytes += runLogReport.freedBytes();
-
+                    // Run logs are store-tier (`jk repo storage`); their GC lives in sweepStore —
+                    // running it here too double-counted dry-run FILES/BYTES on every
+                    // prune-with-sweep (JK-1526).
                     var formatStampReport = cc.jumpkick.task.FormatStampGc.sweep(
                             root, cc.jumpkick.task.FormatStampGc.DEFAULT_TTL, dryRun);
                     totalFiles += formatStampReport.deleted();
@@ -131,9 +129,18 @@ public final class CachePipelines {
                     totalBytes += cacheSweep.freedBytes();
                     long cacheBudget = cc.jumpkick.config.JkCacheConfig.resolve().maxCacheSizeBytes();
                     if (cacheBudget > 0) {
+                        // Utilization surfaces (jk cache storage, /api/cache) measure index +
+                        // stamps + blobs against this budget, but eviction can only shrink blobs.
+                        // Aim the blob pool at what remains after the index overhead so a prune
+                        // can actually bring utilization back under 100% (JK-1526).
+                        long overheadBytes = cc.jumpkick.cache.DiskUsage.of(actionsDir)
+                                        .bytes()
+                                + cc.jumpkick.cache.DiskUsage.of(root.resolve("format-stamps"))
+                                        .bytes();
+                        long blobBudget = Math.max(0, cacheBudget - overheadBytes);
                         var ledger = cc.jumpkick.task.AccessLedger.atDefaultPath();
                         var evict = cc.jumpkick.task.LruEvictor.evictDownTo(
-                                cacheCas, cacheBudget, cacheLive, ledger, dryRun);
+                                cacheCas, blobBudget, cacheLive, ledger, dryRun, cacheSweep.deletedShas());
                         totalFiles += evict.deleted();
                         totalBytes += evict.freedBytes();
                         reachableEvicted += evict.reachableEvicted();
@@ -255,7 +262,8 @@ public final class CachePipelines {
         long budgetBytes = storeEvictionBudgetBytes(maxSize, cc.jumpkick.config.JkCacheConfig.resolve());
         if (budgetBytes > 0) {
             var ledger = cc.jumpkick.task.AccessLedger.atDefaultPath();
-            var evictReport = cc.jumpkick.task.LruEvictor.evictDownTo(cas, budgetBytes, liveRefs, ledger, dryRun);
+            var evictReport = cc.jumpkick.task.LruEvictor.evictDownTo(
+                    cas, budgetBytes, liveRefs, ledger, dryRun, sweepReport.deletedShas());
             totalFiles += evictReport.deleted();
             totalBytes += evictReport.freedBytes();
             reachableEvicted = evictReport.reachableEvicted();

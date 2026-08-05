@@ -181,7 +181,8 @@ max-store-size-mb = 4096    # artifact store CAS + repos/ (long-lived deps)
 above applies. Both storage reports use the same rule.
 
 The two budgets differ in what they *enforce*. The cache tier is rebuildable, so scheduled prunes
-LRU-evict it to its budget (default 1 GiB). The artifact store holds long-lived downloads: its
+LRU-evict it to its budget (default 1 GiB); the evictor targets the blob pool at the budget net
+of the action-index + stamp overhead, so a prune can bring the utilization bar back under 100%. The artifact store holds long-lived downloads: its
 4 GiB default drives the utilization bar **only** — reachable store blobs are LRU-evicted solely
 when you set `max-store-size-mb` (or `JK_MAX_STORE_SIZE_MB`) explicitly, or pass
 `--max-size` to `jk repo prune`. The pre-split knobs (`max-size-gb`, `action-max-size-mb`,
