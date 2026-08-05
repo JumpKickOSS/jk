@@ -3275,20 +3275,48 @@ public final class BuildPipelines {
     }
 
     /**
-     * Append the artifact tails the project's {@code jk.toml} declares: {@code assembly = true} →
-     * fat-jar step. {@code jk build} / {@code jk run} / {@code jk install} call this after {@link
-     * #coreBuilder}.
+     * Append the artifact tails the project's {@code jk.toml} declares after {@link #coreBuilder}:
      *
-     * <p>Native images are <em>not</em> appended here: {@code native = true} makes a project
-     * native-eligible, but a native artifact is only ever built by {@code jk native} (which composes
-     * the native tail explicitly) or by {@code jk install} of a native application (which adds the
-     * step itself, resolving GraalVM up front). {@code jk build} stays JVM-only.
+     * <ul>
+     *   <li>{@code [application] assembly = true} → fat-jar step
+     *   <li>{@code [native] always = true} → Graal native-image step (opt-in product of {@code jk
+     *       build} / {@code jk run} / install — same lever as {@code jk native})
+     *   <li>{@code sources = "always"} → sources-jar step
+     * </ul>
+     *
+     * <p>{@code graalHome} is the GraalVM the client resolved (install / {@code jk native}); pass
+     * {@code null} for plain {@code jk build} and the step falls back to {@code GRAALVM_HOME} / the
+     * project JDK. {@code allowNative=false} skips the native tail for workspace prereq modules
+     * that are not themselves selected for native (JK-1361).
      */
     public static void appendDeclaredTails(Pipeline.Builder b, Inputs in) {
+        appendDeclaredTails(b, in, null, true);
+    }
+
+    /** As {@link #appendDeclaredTails(Pipeline.Builder, Inputs)} with an explicit Graal home. */
+    public static void appendDeclaredTails(Pipeline.Builder b, Inputs in, Path graalHome) {
+        appendDeclaredTails(b, in, graalHome, true);
+    }
+
+    /**
+     * As {@link #appendDeclaredTails(Pipeline.Builder, Inputs, Path)} with {@code allowNative} for
+     * workspace prereq modules that must stay JVM-only.
+     */
+    public static void appendDeclaredTails(Pipeline.Builder b, Inputs in, Path graalHome, boolean allowNative) {
         try {
             JkBuild project = applyAssemblyOverride(JkBuildParser.parse(in.buildFile()), in.session());
             if (project.assembly()) {
                 b.addStep(assemblyStep(in.cache(), in.lockFile(), !in.ephemeralActions()));
+            }
+            if (allowNative && project.nativeMode() == JkBuild.NativeMode.ALWAYS) {
+                b.addStep(nativeStep(
+                        in.dir(),
+                        in.cache(),
+                        in.lockFile(),
+                        in.jdksDir(),
+                        graalHome,
+                        null,
+                        List.of()));
             }
             if (project.project().sourcesMode() == JkBuild.SourcesMode.ALWAYS) {
                 b.addStep(sourcesStep(in.cache(), !in.ephemeralActions()));
@@ -3465,11 +3493,10 @@ public final class BuildPipelines {
                 .execute(ctx -> {
                     // Fail-fast: verify native-image is available before compilation
                     // has already run and the user has waited for potentially minutes.
-                    Path javaHomeEarly = graalHome != null
-                            ? graalHome
-                            : cc.jumpkick.jdk.JdkResolver.forProject(dir, jdksDir)
-                                    .map(cc.jumpkick.jdk.InstalledJdk::home)
-                                    .orElseGet(JavaHomes::runningJavaHome);
+                    // Resolution: explicit graalHome (client) → $GRAALVM_HOME → project JDK →
+                    // running JVM. [native] always = true on jk build takes this path with
+                    // graalHome=null and relies on env / project JDK having native-image.
+                    Path javaHomeEarly = resolveNativeImageHome(graalHome, dir, jdksDir);
                     if (cc.jumpkick.tool.NativeImageDriver.resolve(javaHomeEarly)
                             .isEmpty()) {
                         ctx.error(
@@ -3652,18 +3679,33 @@ public final class BuildPipelines {
         return (List<Path>) ctx.get(KOTLIN_SOURCES).orElse(List.of());
     }
 
+    /**
+     * GraalVM / JDK home that has {@code bin/native-image}: client-resolved home first, then
+     * {@code $GRAALVM_HOME}, then the project JDK, then the running JVM.
+     */
+    static Path resolveNativeImageHome(Path graalHome, Path projectDir, Path jdksDir) {
+        if (graalHome != null
+                && cc.jumpkick.tool.NativeImageDriver.resolve(graalHome).isPresent()) {
+            return graalHome;
+        }
+        String env = System.getenv("GRAALVM_HOME");
+        if (env != null && !env.isBlank()) {
+            Path fromEnv = Path.of(env);
+            if (cc.jumpkick.tool.NativeImageDriver.resolve(fromEnv).isPresent()) return fromEnv;
+        }
+        try {
+            return cc.jumpkick.jdk.JdkResolver.forProject(projectDir, jdksDir)
+                    .map(cc.jumpkick.jdk.InstalledJdk::home)
+                    .orElseGet(JavaHomes::runningJavaHome);
+        } catch (IOException e) {
+            return JavaHomes.runningJavaHome();
+        }
+    }
+
     @SuppressWarnings("unchecked")
     private static List<Path> groovySources(StepContext ctx) {
         return (List<Path>) ctx.get(GROOVY_SOURCES).orElse(List.of());
     }
-
-    /**
-     * The main-compile classpath contributed by the lockfile and workspace siblings: {@code
-     * COMPILE_MAIN} lockfile deps + each depended sibling's built jar + those siblings' own {@code
-     * COMPILE_MAIN} lockfile deps (so e.g. tomlj declared in jk-core is visible when compiling
-     * jk-io). Shared by the {@code compile-main} step and {@code jk explain} so their javac action
-     * keys agree.
-     */
 
     /**
      * The resolved paths of {@code [[contribute.provided-classpath]]} entries — declared
@@ -4159,6 +4201,11 @@ public final class BuildPipelines {
      * Packaging cache (mirrors the compile {@link ActionCache} path, for artifacts). Returns {@code
      * true} when a cached artifact for {@code key} was hard-linked back into {@code baseDir} — the
      * caller then skips the (re)packaging work.
+     *
+     * <p>Invariant: every packaging step that writes a jar under {@code target/} also
+     * {@link #storePackaged stores} an action record. A jar without a record only happens when the
+     * action cache was deleted out of band while {@code target/} was kept — recovery is to
+     * re-package (this miss path), not to trust the on-disk jar as authoritative.
      *
      * <p>{@code --redo}/{@code --force} skip <em>restore</em> (always re-package) but still
      * {@link #storePackaged store} — same contract as {@link JavaIncrementalCompile}: the next

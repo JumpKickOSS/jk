@@ -25,7 +25,9 @@ jk native
 
 JLine ships GraalVM reachability metadata, and the shell falls back to a dumb terminal
 where a native terminal provider is unavailable, so the native build works without extra
-configuration. Note `always = true` also makes plain `jk build` produce the native
-binary — keep it off while iterating on the JVM if you prefer faster builds.
+configuration. With `always = true`, plain `jk build` (and `jk run`) also run the
+native-image step — keep it off while iterating on the JVM if you prefer faster builds.
+GraalVM must be available (`GRAALVM_HOME`, a project JDK with `native-image`, or the
+client-resolved Graal install used by `jk native` / `jk install`).
 
 [JLine]: https://github.com/jline/jline3

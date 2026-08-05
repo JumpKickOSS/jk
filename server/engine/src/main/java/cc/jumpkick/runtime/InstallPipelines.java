@@ -69,13 +69,9 @@ public final class InstallPipelines {
                 java.util.Set.of(),
                 cc.jumpkick.config.SessionContext.current());
         Pipeline.Builder builder = BuildPipelines.coreBuilder(inputs);
-        BuildPipelines.appendDeclaredTails(builder, inputs);
-
-        // `jk build` no longer auto-builds native (that's `jk native`), so an installed native
-        // application builds its binary here — with the GraalVM the client already resolved.
-        if (isNative) {
-            builder.addStep(BuildPipelines.nativeStep(projectDir, cache, lockFile, null, graalHome, null, List.of()));
-        }
+        // ALWAYS modules get native from appendDeclaredTails (same as jk build); pass the
+        // client-resolved GraalVM so install does not re-resolve.
+        BuildPipelines.appendDeclaredTails(builder, inputs, graalHome, true);
 
         // cache-install reads the freshly-built jar and must run after every runnable artifact
         // this project produces (so a follow-up client-side make-install finds them all built).

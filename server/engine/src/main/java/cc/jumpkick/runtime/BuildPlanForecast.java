@@ -486,6 +486,25 @@ public final class BuildPlanForecast {
                 }
             }
 
+            // ---- native-image — [native] always = true (same opt-in as jk build) ----
+            if (project.nativeMode() == cc.jumpkick.model.JkBuild.NativeMode.ALWAYS
+                    && !(mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty())) {
+                Path nativeOut = layout.nativeBinary();
+                boolean hit = Files.isRegularFile(nativeOut)
+                        || Files.isRegularFile(layout.nativeLibrary());
+                // Forecast is intentionally coarse: a present binary is treated as cached; a
+                // full native action-key match needs the Graal home the live step resolved.
+                if (compileDirty || !hit) {
+                    steps.add(new BuildPlan.Step(
+                            "native-image",
+                            BuildPlan.Status.RUN,
+                            compileDirty ? "rebuild · compile changed" : "native-image",
+                            null));
+                } else {
+                    steps.add(new BuildPlan.Step("native-image", BuildPlan.Status.CACHED, "", null));
+                }
+            }
+
             // ---- resource drift ----
             // The scheduled build re-copies resource trees unconditionally (main → classes, test →
             // test classes) and its package/test keys then see the fresh bytes; a clean-skipped
@@ -784,23 +803,41 @@ public final class BuildPlanForecast {
     }
 
     /**
-     * Record exists AND every output payload blob is still in the action cache's CAS. LRU
+     * Record exists AND every <em>payload</em> blob is still in the action cache's CAS. LRU
      * eviction removes payloads while their records live on (records die by TTL), and a record
      * whose blobs are gone cannot restore — forecasting it CACHED would over-promise: wrong
-     * {@code jk explain}, undercounted dirty set, deflated ETA seed (JK-1529). Presence check
-     * only ({@code pathFor} + {@code isRegularFile}); never hashes bytes.
+     * {@code jk explain}, undercounted dirty set, deflated ETA seed (JK-1529).
+     *
+     * <p>Only 64-char hex values are payload digests. Marker records (run-tests green stamp)
+     * park small scalars such as {@code tests.total=0} in the same map — those are not CAS
+     * keys and must not fail the presence check, or a successful empty/green suite is forever
+     * forecast as dirty (plan shows {@code run-tests [run]} after every build).
+     *
+     * <p>Presence check only ({@code pathFor} + {@code isRegularFile}); never hashes bytes.
      */
     static boolean present(ActionCache ac, String key) {
         try {
             var rec = ac.lookup(key);
             if (rec.isEmpty()) return false;
             for (String sha : rec.get().outputs().values()) {
+                if (!isSha256Hex(sha)) continue; // marker scalar, not a CAS blob
                 if (!Files.isRegularFile(ac.cas().pathFor(sha))) return false;
             }
             return true;
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /** Same shape {@link ActionCache} meters by — 64-char hex digests only. */
+    static boolean isSha256Hex(String s) {
+        if (s == null || s.length() != 64) return false;
+        for (int i = 0; i < 64; i++) {
+            char c = s.charAt(i);
+            boolean hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+            if (!hex) return false;
+        }
+        return true;
     }
 
     private static String key8(String key) {

@@ -104,9 +104,17 @@ public final class NativePipelines {
                 java.util.Set.of(),
                 cc.jumpkick.config.SessionContext.current());
         Pipeline.Builder builder = BuildPipelines.coreBuilder(inputs);
+        // Assembly / sources tails only here — native carries CLI main/args from this command.
+        BuildPipelines.appendDeclaredTails(builder, inputs, graalHome, /*allowNative*/ false);
         if (allowNative && isNativeEligible(module)) {
             builder.addStep(BuildPipelines.nativeStep(
-                    moduleDir, cache, lockFile, jdksDir, graalHome, resolveMain(buildFile, mainOverride), extraArgs));
+                    moduleDir,
+                    cache,
+                    lockFile,
+                    jdksDir,
+                    graalHome,
+                    resolveMain(buildFile, mainOverride),
+                    extraArgs == null ? List.of() : extraArgs));
         }
         return builder.build();
     }
