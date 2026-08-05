@@ -1,4 +1,4 @@
-<img width="1024" height="274" alt="JumpKick" src="https://github.com/user-attachments/assets/5cf7e056-1eed-43f7-9c6f-67bbb8d1e807" />
+<img width="1760" height="576" alt="jumpkick-banner" src="https://github.com/user-attachments/assets/10226663-2e29-420e-b604-654eee16ffa9" />
 
 # JumpKick — the best damn build tool for the JVM
 
