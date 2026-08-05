@@ -15,6 +15,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -119,9 +120,10 @@ public final class HttpEngineServer implements AutoCloseable {
     /**
      * GET paths that require the bearer token even on loopback. {@code /api/fs} lists the
      * filesystem with the owner's permissions; {@code /api/log} and {@code /api/history/artifact}
-     * carry full on-disk diagnostics; {@code /api/project} is a path-existence oracle; {@code
-     * /api/metrics} emits every project dir and coordinate ever built; {@code
-     * /api/projects/defaults} derives from the owner's git identity and home layout.
+     * carry full on-disk diagnostics; {@code /api/project} is a path-existence oracle;
+     * {@code /api/project/graph} walks workspace module layout; {@code /api/metrics} emits every
+     * project dir and coordinate ever built; {@code /api/projects/defaults} derives from the
+     * owner's git identity and home layout.
      *
      * <p>{@code GET /api/history} (the journal <em>list</em>) is intentionally <strong>not</strong>
      * here: the activity stream is already open on loopback so a tokenless dashboard can show live
@@ -133,6 +135,8 @@ public final class HttpEngineServer implements AutoCloseable {
             "/api/log",
             "/api/history/artifact",
             "/api/project",
+            // Module DAG walk discloses workspace layout / module paths (same class as /api/project).
+            "/api/project/graph",
             "/api/metrics",
             "/api/projects/defaults",
             // Returns the config file path (home layout) and verbatim effective values —
@@ -219,6 +223,7 @@ public final class HttpEngineServer implements AutoCloseable {
         api.register("GET", "/api/metrics", this::handleMetrics);
         api.register("GET", "/api/cache", this::handleCache);
         api.register("GET", "/api/project", this::handleProject);
+        api.register("GET", "/api/project/graph", this::handleProjectGraph);
         api.register("POST", "/api/projects", this::handleNewProject);
         api.register("GET", "/api/projects/defaults", this::handleProjectDefaults);
         api.register("GET", "/api/templates", this::handleTemplates);
@@ -1174,6 +1179,47 @@ public final class HttpEngineServer implements AutoCloseable {
             // Unparseable/missing jk.toml (deleted or moved workspace) → empty, never an error.
             sendJson(exchange, 200, JsonOut.object().put("dir", dir).toString());
         }
+    }
+
+    /**
+     * {@code GET /api/project/graph?dir=…} — module dependency DAG as JSON for the Project page
+     * ECharts panel (JK-1542). Same edges as {@code jk explain --graph} / {@link
+     * cc.jumpkick.config.ModuleDotGraph}. On-demand only (SPA lazy-loads); not on status/history
+     * polls. Token-gated like {@code /api/project}. Empty nodes when the dir has no usable
+     * {@code jk.toml}.
+     */
+    private void handleProjectGraph(HttpExchange exchange) throws IOException {
+        String dir = decode(queryParam(exchange.getRequestURI().getQuery(), "dir"));
+        if (dir == null || dir.isBlank()) {
+            sendJson(
+                    exchange,
+                    400,
+                    JsonOut.object().put("error", "missing \"dir\"").toString());
+            return;
+        }
+        Path projectDir = Path.of(dir);
+        var data = cc.jumpkick.config.ModuleDotGraph.forProjectDir(projectDir);
+        List<Map<String, Object>> nodes = new ArrayList<>(data.nodes().size());
+        for (var n : data.nodes()) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", n.id());
+            row.put("label", n.label());
+            row.put("path", n.path());
+            nodes.add(row);
+        }
+        List<Map<String, Object>> edges = new ArrayList<>(data.edges().size());
+        for (var e : data.edges()) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("from", e.from());
+            row.put("to", e.to());
+            edges.add(row);
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("dir", projectDir.toAbsolutePath().normalize().toString());
+        body.put("workspace", data.workspace());
+        body.put("nodes", nodes);
+        body.put("edges", edges);
+        sendJson(exchange, 200, cc.jumpkick.plugin.protocol.MiniJson.write(body));
     }
 
     /**

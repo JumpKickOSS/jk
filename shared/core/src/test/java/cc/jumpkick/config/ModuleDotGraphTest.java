@@ -198,4 +198,107 @@ class ModuleDotGraphTest {
         assertThat(ModuleDotGraph.isSupportedFormat("Mermaid")).isTrue();
         assertThat(ModuleDotGraph.isSupportedFormat("plantuml")).isFalse();
     }
+
+    @Test
+    void graph_data_matches_mermaid_edges() {
+        JkBuild lib = JkBuildParser.parse("""
+                [project]
+                group = "com.example"
+                name = "lib"
+                version = "1.0.0"
+                """);
+        JkBuild app = JkBuildParser.parse("""
+                [project]
+                group = "com.example"
+                name = "app"
+                version = "1.0.0"
+
+                [dependencies]
+                lib = { group = "com.example", name = "lib", version = "1.0.0" }
+                """);
+        Path root = Path.of("/ws").toAbsolutePath().normalize();
+        Map<Path, JkBuild> modules = new LinkedHashMap<>();
+        modules.put(root.resolve("lib"), lib);
+        modules.put(root.resolve("app"), app);
+
+        ModuleDotGraph.GraphData data = ModuleDotGraph.graphData(root, modules, null);
+
+        assertThat(data.workspace()).isTrue();
+        assertThat(data.nodes()).hasSize(2);
+        assertThat(data.nodes().stream().map(ModuleDotGraph.Node::label).toList())
+                .containsExactlyInAnyOrder("com.example:lib", "com.example:app");
+        assertThat(data.edges()).hasSize(1);
+        // dependent (app) → prereq (lib)
+        String appId = data.nodes().stream()
+                .filter(n -> n.label().equals("com.example:app"))
+                .findFirst()
+                .orElseThrow()
+                .id();
+        String libId = data.nodes().stream()
+                .filter(n -> n.label().equals("com.example:lib"))
+                .findFirst()
+                .orElseThrow()
+                .id();
+        assertThat(data.edges().getFirst()).isEqualTo(new ModuleDotGraph.Edge(appId, libId));
+        assertThat(data.nodes().stream().map(ModuleDotGraph.Node::path).toList())
+                .containsExactlyInAnyOrder("lib", "app");
+    }
+
+    @Test
+    void single_module_data_one_node() {
+        JkBuild b = JkBuildParser.parse("""
+                [project]
+                group = "g"
+                name = "n"
+                version = "1"
+                """);
+        ModuleDotGraph.GraphData data = ModuleDotGraph.singleModuleData(b, Path.of("/proj"));
+        assertThat(data.workspace()).isFalse();
+        assertThat(data.nodes()).containsExactly(new ModuleDotGraph.Node("m0", "g:n", "."));
+        assertThat(data.edges()).isEmpty();
+    }
+
+    @Test
+    void for_project_dir_workspace_and_missing(@org.junit.jupiter.api.io.TempDir Path tmp) throws Exception {
+        assertThat(ModuleDotGraph.forProjectDir(tmp.resolve("nope")).nodes()).isEmpty();
+
+        Path ws = tmp.resolve("ws");
+        java.nio.file.Files.createDirectories(ws.resolve("lib"));
+        java.nio.file.Files.createDirectories(ws.resolve("app"));
+        java.nio.file.Files.writeString(
+                ws.resolve("jk.toml"),
+                """
+                [project]
+                group = "com.example"
+                name = "ws"
+                version = "1.0.0"
+
+                [workspace]
+                modules = ["lib", "app"]
+                """);
+        java.nio.file.Files.writeString(
+                ws.resolve("lib/jk.toml"),
+                """
+                [project]
+                group = "com.example"
+                name = "lib"
+                version = "1.0.0"
+                """);
+        java.nio.file.Files.writeString(
+                ws.resolve("app/jk.toml"),
+                """
+                [project]
+                group = "com.example"
+                name = "app"
+                version = "1.0.0"
+
+                [dependencies]
+                lib = { group = "com.example", name = "lib", version = "1.0.0" }
+                """);
+
+        ModuleDotGraph.GraphData data = ModuleDotGraph.forProjectDir(ws);
+        assertThat(data.workspace()).isTrue();
+        assertThat(data.nodes()).hasSize(2);
+        assertThat(data.edges()).hasSize(1);
+    }
 }

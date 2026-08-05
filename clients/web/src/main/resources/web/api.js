@@ -75,9 +75,12 @@ function headers() {
   return t ? { Authorization: 'Bearer ' + t } : {};
 }
 
-/** GET an /api path as parsed JSON. Throws {status} on any non-2xx so callers can branch on 401. */
-export async function get(path) {
-  const resp = await fetch(path, { headers: headers() });
+/**
+ * GET an /api path as parsed JSON. Throws {status} on any non-2xx so callers can branch on 401.
+ * Optional {@code opts.signal} (AbortSignal) cancels the fetch when a lazy panel is closed.
+ */
+export async function get(path, opts = {}) {
+  const resp = await fetch(path, { headers: headers(), signal: opts.signal });
   if (!resp.ok) throw { status: resp.status };
   return resp.json();
 }

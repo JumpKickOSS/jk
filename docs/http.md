@@ -98,6 +98,7 @@ account must not have the engine owner's filesystem and identity for free:
 | `GET /api/log` | engine log tail |
 | `GET /api/history/artifact` | full on-disk diagnostics / lock snapshots |
 | `GET /api/project` | path-existence oracle |
+| `GET /api/project/graph` | module dependency DAG (workspace layout / module paths) |
 | `GET /api/metrics` | every project dir and coordinate ever built |
 | `GET /api/projects/defaults` | derives from the owner's git identity and home layout |
 | `GET /api/config` | config file path (home layout) + verbatim values (`templates.official` may embed credentials) |
@@ -106,6 +107,14 @@ Aggregate-only reads (`GET /api/status`, `GET /api/cache`), the activity stream
 (`GET /api/events`), and the **journal list** (`GET /api/history`) stay open on loopback so a
 tokenless dashboard can show live builds **and** rehydrate them after a hard refresh. History
 **artifacts** remain token-gated.
+
+### `GET /api/project/graph`
+
+Module dependency DAG for the Project page (JK-1542): `GET /api/project/graph?dir=<path>` →
+`{ dir, workspace, nodes: [{ id, label, path }], edges: [{ from, to }] }`. Same edges as
+`jk explain --graph` / `ModuleDotGraph` (dependent → prereq). Workspace roots expand all modules;
+standalone projects return one node. Token-gated like `/api/project`. The SPA loads this **only**
+when the user opens the Dependencies panel — not on project page mount.
 
 ### `GET /api/config`
 

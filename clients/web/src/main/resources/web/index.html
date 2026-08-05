@@ -17,8 +17,8 @@
   <script src="https://unpkg.com/vue@3.5.39/dist/vue.global.prod.js"
           integrity="sha384-yrrm1s9PCS0I4n39ldjMqQlTorYls89GAS3wXVJooje/BSWnC2vTgky2LIyzRLEo"
           crossorigin="anonymous" defer></script>
-  <!-- Apache ECharts powers the Projects tab's per-project build-history spark bars + trend line.
-       Version-pinned + SRI, same discipline as Vue above; update the hash whenever the pin moves. -->
+  <!-- Apache ECharts: Projects tab build-history sparks + Project-page module dependency graph
+       (lazy-loaded). Version-pinned + SRI; update the hash whenever the pin moves. -->
   <script src="https://unpkg.com/echarts@5.5.1/dist/echarts.min.js"
           integrity="sha384-Mx5lkUEQPM1pOJCwFtUICyX45KNojXbkWdYhkKUKsbv391mavbfoAmONbzkgYPzR"
           crossorigin="anonymous" defer></script>
@@ -271,7 +271,13 @@
         </span>
         <span class="spacer"></span>
         <div class="detail-actions">
-          <button class="ghost" title="Coming soon" disabled>Dependencies</button>
+          <button
+            class="ghost"
+            :class="{ active: projectGraphOpen }"
+            :disabled="!selectedProjectDir"
+            @click="toggleProjectGraph"
+            :title="projectGraphOpen ? 'Hide module dependency graph' : 'Show module dependency graph (loads on demand)'"
+          >Dependencies</button>
           <button class="ghost" title="Coming soon" disabled>Trends</button>
           <button v-if="projectDetail" @click="buildProject(projectDetail.dir)" title="Build this project now"><jk-icon name="bolt"></jk-icon>Build</button>
         </div>
@@ -309,6 +315,16 @@
         </div>
       </template>
       <p v-else-if="projectDetail && projectDetail.empty" class="empty">No build history retained for this project yet.</p>
+
+      <!-- JK-1542: module DAG under Dependencies — closed by default; fetch + echarts only when open. -->
+      <section v-if="projectGraphOpen && selectedProjectDir" class="panel wide dep-graph-panel">
+        <div class="panel-head">
+          <span class="lbl">dependency graph</span>
+          <span class="spacer"></span>
+          <span class="mono dim">module DAG · on demand</span>
+        </div>
+        <module-dep-graph :dir="selectedProjectDir" :key="selectedProjectDir"></module-dep-graph>
+      </section>
     </main>
 
     <main v-if="view === 'status'">

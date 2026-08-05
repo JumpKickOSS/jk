@@ -2,18 +2,23 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.model.JkBuild;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
 /**
- * Emit a module dependency DAG for {@code jk explain --graph}. Formats: Graphviz DOT and Mermaid
- * flowchart (same edges as {@link ModuleOrder} / {@link AffectedModules#edgesFor}). No external
- * binary required — users pipe DOT to {@code dot -Tsvg} or open Mermaid in any renderer.
+ * Emit a module dependency DAG for {@code jk explain --graph} and the engine dashboard.
+ * Formats: Graphviz DOT, Mermaid flowchart, and a structured {@link GraphData} model (JSON for
+ * the web client). Same edges as {@link ModuleOrder} / {@link AffectedModules#edgesFor}. No
+ * external binary required — users pipe DOT to {@code dot -Tsvg} or open Mermaid in any renderer.
  */
 public final class ModuleDotGraph {
 
@@ -21,6 +26,46 @@ public final class ModuleDotGraph {
     public static final Set<String> FORMATS = Set.of("dot", "mermaid");
 
     private ModuleDotGraph() {}
+
+    /**
+     * One module in the DAG. {@code id} is stable within a response ({@code m0}, {@code m1}, …);
+     * {@code label} is {@code group:name}; {@code path} is the workspace-relative dir (or
+     * {@code "."} for a standalone project).
+     */
+    public record Node(String id, String label, String path) {
+        public Node {
+            Objects.requireNonNull(id, "id");
+            Objects.requireNonNull(label, "label");
+            Objects.requireNonNull(path, "path");
+        }
+    }
+
+    /**
+     * Dependency edge: {@code from} (dependent) → {@code to} (prereq), same direction as
+     * {@link ModuleOrder} / DOT / Mermaid.
+     */
+    public record Edge(String from, String to) {
+        public Edge {
+            Objects.requireNonNull(from, "from");
+            Objects.requireNonNull(to, "to");
+        }
+    }
+
+    /**
+     * Structured module DAG for JSON / ECharts. Empty {@code nodes} is a valid empty workspace.
+     *
+     * @param workspace {@code true} when built from a {@code [workspace]} root
+     */
+    public record GraphData(boolean workspace, List<Node> nodes, List<Edge> edges) {
+        public GraphData {
+            nodes = List.copyOf(nodes);
+            edges = List.copyOf(edges);
+        }
+
+        public static GraphData empty(boolean workspace) {
+            return new GraphData(workspace, List.of(), List.of());
+        }
+    }
 
     /** True when {@code format} is a known graph format (case-insensitive). */
     public static boolean isSupportedFormat(String format) {
@@ -39,6 +84,48 @@ public final class ModuleDotGraph {
             case "mermaid" -> toMermaid(workspaceRoot, modulesByDir, only);
             default -> throw new IllegalArgumentException("unsupported graph format: " + format);
         };
+    }
+
+    /**
+     * Structured DAG for {@code modulesByDir}. When {@code only} is non-null, only those module
+     * dirs (and edges fully inside the set) appear.
+     */
+    public static GraphData graphData(Path workspaceRoot, Map<Path, JkBuild> modulesByDir, Set<Path> only) {
+        Graph g = build(workspaceRoot, modulesByDir, only);
+        return toGraphData(g, true);
+    }
+
+    /** Single-module project: one node, no edges. */
+    public static GraphData singleModuleData(JkBuild build, Path projectDir) {
+        Objects.requireNonNull(build, "build");
+        Path dir = projectDir != null ? projectDir.toAbsolutePath().normalize() : Path.of(".");
+        String label = coordOf(build, dir);
+        return new GraphData(false, List.of(new Node("m0", label, ".")), List.of());
+    }
+
+    /**
+     * Load the module DAG for a project directory (same rules as {@code jk explain --graph}):
+     * workspace root → all modules; standalone project → one node. Missing / unparseable
+     * {@code jk.toml} → empty non-workspace graph (never throws for absent files).
+     */
+    public static GraphData forProjectDir(Path projectDir) {
+        Objects.requireNonNull(projectDir, "projectDir");
+        Path root = projectDir.toAbsolutePath().normalize();
+        Path toml = root.resolve("jk.toml");
+        if (!Files.isRegularFile(toml)) {
+            return GraphData.empty(false);
+        }
+        try {
+            JkBuild entry = JkBuildParser.parse(toml);
+            if (entry.isWorkspaceRoot()) {
+                Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(root, entry);
+                return graphData(root, modules, null);
+            }
+            return singleModuleData(entry, root);
+        } catch (IOException | RuntimeException e) {
+            // Missing modules / parse errors: empty graph rather than 500 (detail page still loads).
+            return GraphData.empty(false);
+        }
     }
 
     /**
@@ -148,6 +235,25 @@ public final class ModuleDotGraph {
     }
 
     private record Graph(Path root, Map<Path, JkBuild> modules, Map<Path, Set<Path>> edges, Map<Path, String> ids) {}
+
+    private static GraphData toGraphData(Graph g, boolean workspace) {
+        List<Node> nodes = new ArrayList<>(g.ids.size());
+        for (var e : g.ids.entrySet()) {
+            Path dir = e.getKey();
+            nodes.add(new Node(e.getValue(), coordOf(g.modules.get(dir), dir), relLabel(g.root, dir)));
+        }
+        List<Edge> edges = new ArrayList<>();
+        for (var e : g.edges.entrySet()) {
+            String from = g.ids.get(e.getKey());
+            if (from == null) continue;
+            for (Path prereq : e.getValue()) {
+                String to = g.ids.get(prereq);
+                if (to == null) continue;
+                edges.add(new Edge(from, to));
+            }
+        }
+        return new GraphData(workspace, nodes, edges);
+    }
 
     private static Graph build(Path workspaceRoot, Map<Path, JkBuild> modulesByDir, Set<Path> only) {
         Objects.requireNonNull(workspaceRoot, "workspaceRoot");

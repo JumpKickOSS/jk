@@ -502,6 +502,79 @@ class HttpEngineServerTest {
         assertThat(get("/api/history/artifact?id=1&name=diagnostics.txt").statusCode())
                 .isEqualTo(401);
         assertThat(get("/api/project?dir=" + stateDir).statusCode()).isEqualTo(401);
+        assertThat(get("/api/project/graph?dir=" + stateDir).statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void api_project_graph_returns_module_dag_with_token() throws Exception {
+        Path ws = stateDir.resolve("graph-ws");
+        Files.createDirectories(ws.resolve("lib"));
+        Files.createDirectories(ws.resolve("app"));
+        Files.writeString(
+                ws.resolve("jk.toml"),
+                """
+                [project]
+                group = "com.example"
+                name = "ws"
+                version = "1.0.0"
+
+                [workspace]
+                modules = ["lib", "app"]
+                """);
+        Files.writeString(
+                ws.resolve("lib").resolve("jk.toml"),
+                """
+                [project]
+                group = "com.example"
+                name = "lib"
+                version = "1.0.0"
+                """);
+        Files.writeString(
+                ws.resolve("app").resolve("jk.toml"),
+                """
+                [project]
+                group = "com.example"
+                name = "app"
+                version = "1.0.0"
+
+                [dependencies]
+                lib = { group = "com.example", name = "lib", version = "1.0.0" }
+                """);
+
+        HttpResponse<String> missing = get("/api/project/graph", "Authorization", "Bearer " + token());
+        assertThat(missing.statusCode()).isEqualTo(400);
+        assertThat(missing.body()).contains("missing");
+
+        HttpResponse<String> resp =
+                get("/api/project/graph?dir=" + ws, "Authorization", "Bearer " + token());
+        assertThat(resp.statusCode()).isEqualTo(200);
+        assertThat(resp.headers().firstValue("Content-Type")).contains("application/json; charset=utf-8");
+        assertThat(resp.body())
+                .contains("\"workspace\":true")
+                .contains("\"label\":\"com.example:lib\"")
+                .contains("\"label\":\"com.example:app\"")
+                .contains("\"from\":")
+                .contains("\"to\":")
+                .contains("\"nodes\":")
+                .contains("\"edges\":");
+
+        // Standalone project → one node, no edges.
+        Path solo = stateDir.resolve("solo");
+        Files.createDirectories(solo);
+        Files.writeString(
+                solo.resolve("jk.toml"),
+                """
+                [project]
+                group = "g"
+                name = "n"
+                version = "1"
+                """);
+        String soloBody =
+                get("/api/project/graph?dir=" + solo, "Authorization", "Bearer " + token()).body();
+        assertThat(soloBody)
+                .contains("\"workspace\":false")
+                .contains("\"label\":\"g:n\"")
+                .contains("\"edges\":[]");
     }
 
     @Test

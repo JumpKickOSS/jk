@@ -42,10 +42,25 @@ degrade — their `401`s never throw the dialog. Pasting a token upgrades the se
 
 ## Dependencies: CDN, pinned, integrity-locked
 
-Vue (and ECharts for the Projects tab) load from the CDN, **version-pinned with an SRI
-`integrity` hash** — a CDN compromise must not be able to script a page that can trigger builds.
-When bumping a pin, update the `integrity` hash in `index.html` in the same change. There is no
-bundler and no npm build step: the shell ships as static resources inside the engine jar.
+Vue (and ECharts for history sparks **and** the Project-page module dependency graph) load from
+the CDN, **version-pinned with an SRI `integrity` hash** — a CDN compromise must not be able to
+script a page that can trigger builds. When bumping a pin, update the `integrity` hash in
+`index.html` in the same change. There is no bundler and no npm build step: the shell ships as
+static resources inside the engine jar.
+
+## Project page: dependency graph (lazy)
+
+On `#project/<dir>`, the **Dependencies** control opens a panel that renders the module DAG with
+ECharts (`series-graph`). Complex graphs are expensive server- and client-side, so:
+
+- the panel is **closed by default**;
+- `GET /api/project/graph` runs **only** when the panel opens (`module-dep-graph` mounts then);
+- `echarts.init` runs only after that payload lands;
+- closing the panel (or leaving the project) unmounts the component (aborts in-flight fetch,
+  disposes the chart).
+
+Token-gated like other project metadata; tokenless loopback watch-only shows a local error in the
+panel rather than the global auth dialog.
 
 ## Live updates
 

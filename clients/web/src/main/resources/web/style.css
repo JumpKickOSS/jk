@@ -865,7 +865,27 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 }
 .detail-actions button.ghost { background: var(--s1); color: var(--mu); border: 1px solid var(--bd); }
 .detail-actions button.ghost:hover:not(:disabled) { color: var(--cn); }
+.detail-actions button.ghost.active {
+  color: var(--cn);
+  border-color: rgba(var(--cn-rgb), 0.45);
+  box-shadow: 0 0 12px rgba(var(--cn-rgb), 0.12);
+}
 .detail-actions button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Project-page module dependency graph (JK-1542) — lazy panel under Dependencies. */
+.dep-graph-panel { margin-top: 14px; grid-column: 1 / -1; }
+.dep-graph-body { min-height: 2.5rem; }
+.dep-graph-status { margin: 0 0 8px; }
+.dep-graph-status.err { color: var(--err); }
+.dep-graph-canvas {
+  width: 100%;
+  height: min(480px, 55vh);
+  min-height: 280px;
+  border-radius: var(--r-md);
+  background: var(--console-bg);
+  border: 1px solid var(--bd2);
+}
+.dep-graph-hint { margin: 8px 0 0; font-size: 11px; }
 .proj-desc { color: var(--tx); margin: 2px 0 16px; max-width: 74ch; }
 
 /* min/max and last-built carry longer strings than a single KPI number */

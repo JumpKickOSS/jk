@@ -831,6 +831,7 @@ dot -Tsvg modules.dot -o modules.svg
 jk explain --graph mermaid > build.mmd
 jk explain --graph mermaid --modules 'libs/*' --graph-out filtered.mmd
 jk explain --graph dot --modules 'libs/*' --graph-out filtered.dot
+# Interactive DAG: engine dashboard → Project → Dependencies (loads on demand; Apache ECharts)
 
 # Pipeline tasks (Mill resolve-lite)
 jk tasks                         # list first-party steps

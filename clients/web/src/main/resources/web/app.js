@@ -321,6 +321,200 @@ const BuildBars = {
 };
 
 /**
+ * Lazy module dependency DAG (JK-1542): mounted only when the Project-page Dependencies panel is
+ * open. Fetches {@code GET /api/project/graph} on mount, aborts on unmount, and only then calls
+ * {@code echarts.init} — opening the project page alone must not pay graph cost.
+ */
+const ModuleDepGraph = {
+  props: { dir: { type: String, required: true } },
+  data: () => ({
+    loading: true,
+    error: null,
+    graph: null,
+  }),
+  template: `
+    <div class="dep-graph-body">
+      <p v-if="loading" class="dep-graph-status dim small">Loading dependency graph…</p>
+      <p v-else-if="error" class="dep-graph-status err small">{{ error }}</p>
+      <p v-else-if="graph && !(graph.nodes || []).length" class="dep-graph-status dim small">
+        No modules to graph (missing or empty workspace).
+      </p>
+      <div v-show="graph && (graph.nodes || []).length" class="dep-graph-canvas" ref="el"></div>
+      <p v-if="graph && (graph.nodes || []).length" class="dep-graph-hint dim small mono">
+        {{ graph.nodes.length }} module{{ graph.nodes.length === 1 ? '' : 's' }}
+        · {{ (graph.edges || []).length }} edge{{ (graph.edges || []).length === 1 ? '' : 's' }}
+        · pan / zoom · dependent → prereq
+      </p>
+    </div>
+  `,
+  mounted() {
+    this.load();
+  },
+  beforeUnmount() {
+    this.teardown();
+  },
+  watch: {
+    dir() {
+      this.load();
+    },
+  },
+  methods: {
+    teardown() {
+      if (this._abort) {
+        this._abort.abort();
+        this._abort = null;
+      }
+      if (this._ro) {
+        this._ro.disconnect();
+        this._ro = null;
+      }
+      if (this._chart) {
+        this._chart.dispose();
+        this._chart = null;
+      }
+    },
+    async load() {
+      this.teardown();
+      this.loading = true;
+      this.error = null;
+      this.graph = null;
+      if (!this.dir) {
+        this.loading = false;
+        this.error = 'No project directory';
+        return;
+      }
+      const ac = new AbortController();
+      this._abort = ac;
+      try {
+        const data = await get('/api/project/graph?dir=' + encodeURIComponent(this.dir), {
+          signal: ac.signal,
+        });
+        if (ac.signal.aborted) return;
+        this.graph = data;
+        this.loading = false;
+        // Paint after the canvas is in the DOM (v-show true on next tick).
+        await this.$nextTick();
+        if (ac.signal.aborted) return;
+        this.renderChart();
+      } catch (e) {
+        if (e && e.name === 'AbortError') return;
+        if (ac.signal.aborted) return;
+        this.loading = false;
+        if (e && e.status === 401) {
+          this.error = 'Authorization required to load the graph';
+        } else if (e && e.status) {
+          this.error = 'Failed to load graph (HTTP ' + e.status + ')';
+        } else {
+          this.error = 'Failed to load graph';
+        }
+      }
+    },
+    renderChart() {
+      const el = this.$refs.el;
+      const g = this.graph;
+      if (!el || !g || !(g.nodes || []).length) return;
+      if (!window.echarts) {
+        this.error = 'ECharts failed to load';
+        return;
+      }
+      if (this._chart) {
+        this._chart.dispose();
+        this._chart = null;
+      }
+      this._chart = echarts.init(el, null, { renderer: 'canvas' });
+      this._ro = new ResizeObserver(() => this._chart && this._chart.resize());
+      this._ro.observe(el);
+
+      const tx = cssVar('--tx', '#cfd8dc');
+      const dim = cssVar('--dim', '#5c6d78');
+      const cn = cssVar('--cn', '#00f0ff');
+      const s1 = cssVar('--s1', '#161d25');
+      const bd = cssVar('--bd', '#2a3742');
+      const bright = cssVar('--bright', '#eceff1');
+
+      const nodes = (g.nodes || []).map((n) => ({
+        id: n.id,
+        name: n.label,
+        path: n.path,
+        symbolSize: Math.max(28, Math.min(48, 56 - (g.nodes.length > 20 ? 12 : 0))),
+        itemStyle: {
+          color: s1,
+          borderColor: cn,
+          borderWidth: 1.5,
+        },
+        label: {
+          show: true,
+          position: 'right',
+          color: bright,
+          fontSize: 11,
+          fontFamily: 'var(--mono)',
+        },
+      }));
+      const links = (g.edges || []).map((e) => ({
+        source: e.from,
+        target: e.to,
+        lineStyle: { color: dim, curveness: 0.12, width: 1.2 },
+      }));
+      const n = nodes.length;
+      // Force layout is fine for small graphs; damp motion for large monorepos.
+      const repulsion = n > 40 ? 80 : n > 15 ? 140 : 220;
+      const edgeLength = n > 40 ? 40 : n > 15 ? 70 : 100;
+
+      this._chart.setOption(
+        {
+          animationDuration: n > 30 ? 200 : 400,
+          tooltip: {
+            show: true,
+            appendToBody: true,
+            backgroundColor: s1,
+            borderColor: bd,
+            borderWidth: 1,
+            padding: [6, 10],
+            textStyle: { color: tx, fontSize: 11, fontFamily: 'var(--mono)' },
+            formatter: (p) => {
+              if (p.dataType === 'edge') {
+                const s = p.data.source;
+                const t = p.data.target;
+                const sn = nodes.find((x) => x.id === s);
+                const tn = nodes.find((x) => x.id === t);
+                return (sn ? sn.name : s) + ' → ' + (tn ? tn.name : t);
+              }
+              const d = p.data || {};
+              const path = d.path ? '<br/><span style="opacity:.7">' + d.path + '</span>' : '';
+              return (d.name || p.name || '') + path;
+            },
+          },
+          series: [
+            {
+              type: 'graph',
+              layout: 'force',
+              roam: true,
+              draggable: true,
+              data: nodes,
+              links,
+              edgeSymbol: ['none', 'arrow'],
+              edgeSymbolSize: [0, 8],
+              force: {
+                repulsion,
+                edgeLength,
+                gravity: 0.08,
+                friction: 0.6,
+              },
+              emphasis: {
+                focus: 'adjacency',
+                lineStyle: { width: 2, color: cn },
+                itemStyle: { borderColor: cn, borderWidth: 2 },
+              },
+            },
+          ],
+        },
+        true,
+      );
+    },
+  },
+};
+
+/**
  * A finished record's outcome for the Projects tab.
  * FAIL steps / error diagnostics beat a cancel bit (same rule as fold.outcomeOf).
  */
@@ -391,6 +585,9 @@ Vue.createApp({
     view: routeFromHash().view, // 'activity' | 'projects' | 'project' | 'status'
     selectedProjectDir: routeFromHash().dir, // the project whose detail page is open (#project/<dir>)
     projectMeta: null, // live /api/project payload (coord + description) for the open project
+    // JK-1542: Dependencies panel on the Project page — closed by default; graph fetch + echarts
+    // only when opened (ModuleDepGraph mounts lazily).
+    projectGraphOpen: false,
     connection: 'connecting', // 'connecting' | 'live' | 'offline' | 'unauthorized'
     status: null, // the /api/status payload
     metrics: null, // the /api/metrics payload (running build aggregates), shown on the Status view
@@ -916,14 +1113,22 @@ Vue.createApp({
     applyRoute() {
       if (this.authModal) return;
       const r = routeFromHash();
+      const dirChanged = r.dir !== this.selectedProjectDir;
       this.view = r.view;
       this.selectedProjectDir = r.dir;
+      // Collapse the expensive graph panel when leaving project view or switching projects.
+      if (r.view !== 'project' || dirChanged) this.projectGraphOpen = false;
       if (r.view === 'project' && r.dir) this.loadProjectMeta(r.dir);
       if (r.view === 'projects') {
         this.loadProjectHistory();
         this.refreshMetrics();
       }
       if (r.view === 'status') this.refresh();
+    },
+
+    /** Toggle the Project-page Dependencies accordion (lazy graph load on open). */
+    toggleProjectGraph() {
+      this.projectGraphOpen = !this.projectGraphOpen;
     },
 
     // Live coord + description for the open project, straight from its jk.toml on disk.
@@ -1667,4 +1872,5 @@ Vue.createApp({
   .component('jk-icon', JkIcon)
   .component('phase-chain', PhaseChain)
   .component('build-bars', BuildBars)
+  .component('module-dep-graph', ModuleDepGraph)
   .mount('#app');
