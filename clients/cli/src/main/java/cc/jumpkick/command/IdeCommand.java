@@ -55,6 +55,9 @@ public final class IdeCommand implements CliCommand {
             opts.add(Opt.flag("Only generate IntelliJ IDEA files (.idea/ + *.iml).", "--idea"));
             opts.add(Opt.flag("Only generate VS Code files (.vscode/ + Eclipse metadata).", "--vscode"));
         }
+        opts.add(Opt.flag(
+                "Print the engine ide-model as a single JSON object on stdout (no file generation).",
+                "--print-model"));
         opts.add(Opt.value(
                         "<dir>",
                         "Override cache-tier directory (action outputs; not the artifact store). Default: $JK_CACHE_DIR or ~/.cache/jk.",
@@ -70,6 +73,11 @@ public final class IdeCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws Exception {
+        // Machine path for IDE plugins (JK-1511): structured model without writing .iml/.vscode.
+        if (in.has("print-model")) {
+            return printModel(in);
+        }
+
         Set<IdeTarget> targets = selectTargets(in);
 
         IdeModel model;
@@ -102,6 +110,24 @@ public final class IdeCommand implements CliCommand {
             return 1;
         }
         return 0;
+    }
+
+    /**
+     * Dump {@link cc.jumpkick.engine.protocol.IdeWireModel} JSON for IDE hosts. Reuses lock + sync
+     * + engine model (same as file generators) but skips disk writes.
+     */
+    private static int printModel(Invocation in) throws Exception {
+        try {
+            var wire = IdeSupport.wireModel(in);
+            // Raw wire JSON only — no TTY chrome (plugins parse stdout).
+            System.out.println(wire.encode());
+            return 0;
+        } catch (IdeSupport.IdeException e) {
+            if (e.getMessage() != null && !e.getMessage().isBlank()) {
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("IDE", e.getMessage()));
+            }
+            return e.code();
+        }
     }
 
     /** Resolve which IDEs to generate: the forced set, else the flags, else both. */

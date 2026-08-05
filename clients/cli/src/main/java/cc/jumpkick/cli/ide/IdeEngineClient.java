@@ -313,6 +313,70 @@ public class IdeEngineClient {
         return new BuildOutcome(r.success(), 1, r.success() ? 0 : 1, List.copyOf(errors));
     }
 
+    /**
+     * BSP {@code buildTarget/run}: build the module, then execute the engine exec plan (same path as
+     * {@code jk run}). Blocks until the process exits. {@code moduleDir} null → project root.
+     */
+    public BuildOutcome runModule(Path moduleDir, BuildListener listener) throws IOException {
+        BuildListener progress = listener == null ? BuildListener.NOOP : listener;
+        Path mod = moduleDir == null ? projectDir : moduleDir.toAbsolutePath().normalize();
+        BuildOutcome built = buildModule(mod, progress);
+        if (!built.success()) return built;
+
+        String coord = mod.getFileName() != null ? mod.getFileName().toString() : mod.toString();
+        progress.onModuleStart(coord + " (run)", mod);
+        try {
+            var plan = EngineClient.execPlan(EnginePaths.current(), mod, cacheDir, "run", null, null);
+            if (plan.error() != null && !plan.error().isBlank()) {
+                progress.onModuleFinish(coord + " (run)", false);
+                return new BuildOutcome(false, 1, 1, List.of(plan.error()));
+            }
+            List<String> argv = plan.argv();
+            if (argv == null || argv.isEmpty()) {
+                progress.onModuleFinish(coord + " (run)", false);
+                return new BuildOutcome(false, 1, 1, List.of("exec plan has empty argv"));
+            }
+            Path cwd = plan.workingDir() != null && !plan.workingDir().isBlank()
+                    ? Path.of(plan.workingDir())
+                    : mod;
+            ProcessBuilder pb = new ProcessBuilder(argv);
+            pb.directory(cwd.toFile());
+            pb.inheritIO();
+            int code = pb.start().waitFor();
+            boolean ok = code == 0;
+            progress.onModuleFinish(coord + " (run)", ok);
+            return new BuildOutcome(
+                    ok, 1, ok ? 0 : 1, ok ? List.of() : List.of("run exited with code " + code));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            progress.onModuleFinish(coord + " (run)", false);
+            return new BuildOutcome(false, 1, 1, List.of("run interrupted"));
+        } catch (IOException e) {
+            progress.onModuleFinish(coord + " (run)", false);
+            throw e;
+        }
+    }
+
+    /**
+     * Best-effort cancel of engine jobs under this project (and optional module dir). Used by BSP
+     * {@code build/cancel}. Does not spawn an engine solely to cancel.
+     */
+    public void cancel(Path moduleDir) {
+        Path dir = moduleDir != null ? moduleDir.toAbsolutePath().normalize() : projectDir;
+        try {
+            EngineClient.cancelForDir(EnginePaths.current(), dir.toString());
+        } catch (IOException ignored) {
+            // best-effort
+        }
+        try {
+            if (!dir.equals(projectDir)) {
+                EngineClient.cancelForDir(EnginePaths.current(), projectDir.toString());
+            }
+        } catch (IOException ignored) {
+            // best-effort
+        }
+    }
+
     private Path resolveSyncRoot() {
         try {
             ProjectInfo info = projectInfo();

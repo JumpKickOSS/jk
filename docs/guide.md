@@ -932,19 +932,29 @@ Fields mirror CLI: `allSuites` ↔ `--all`, `suites` ↔ `--suite`, tags ↔
 
 | Capability | Status |
 |---|---|
-| `workspace/buildTargets`, sources, dependency modules | yes |
-| `buildTarget/compile` | yes (per-target / module) |
+| `workspace/buildTargets`, sources (incl. resources + generated), dependency modules | yes |
+| Dependency **sources** jars (`classifier: sources` when present) | yes |
+| `buildTarget/outputPaths` | yes (main + test classes dirs) |
+| `buildTarget/compile` | yes (per-target / module); **publishDiagnostics** on failure when `path:line:` parseable |
 | `buildTarget/test` | yes (engine `jk test`; optional suite/tag `data`) |
-| `buildTarget/run` | **no** — use IDE tasks / `jk run` |
+| `buildTarget/run` | yes (build + exec plan / same as `jk run`; `canRun` when main class known) |
+| `build/cancel` | yes (engine cancel for in-flight compile/test/run) |
 | `workspace/reload` | yes |
 | Debug adapter | no |
 
+**Machine model for IDE plugins:** `jk ide --print-model` prints one engine `ide-model` JSON
+object on stdout (lock + sync + model; no `.iml` / `.vscode` writes).
+
 **VS Code (ticket-1017):** [`clients/vscode/`](../clients/vscode/) — VSIX via `./scripts/package-vscode.sh`.
 
-**IntelliJ (ticket-1054):** [`clients/intellij/`](../clients/intellij/) — zip via `./scripts/package-intellij.sh`
-(Tools → JumpKick actions).
+**IntelliJ (JK-1054 / JK-1511):** [`clients/intellij/`](../clients/intellij/) — zip via
+`./scripts/package-intellij.sh`. **Tools → JumpKick → Sync project** runs
+`jk ide --print-model` + `jk ide --idea` + `jk bsp install` and refreshes the VFS. On open,
+projects with `jk.toml` are offered Sync (auto-Sync when no IDEA modules yet). No manual
+`jk ide` required for import.
 
-Both are **wire-only** (shell `jk` / BSP; no engine jars in the IDE process). Requires `jk` on PATH.
+Both are **wire-only** (shell `jk` / BSP; no engine jars in the IDE process). Requires `jk` on PATH
+(or `JK_BIN`).
 
 ```bash
 ./scripts/package-vscode.sh      # → clients/vscode/jumpkick-*.vsix
