@@ -6,7 +6,6 @@ import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
-import cc.jumpkick.plugin.build.Phase;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
@@ -98,7 +97,7 @@ public final class FormatPipelines {
                 .build();
 
         Task resolve = Task.builder(TaskNames.RESOLVE_FORMATTERS)
-                .phase(Phase.RESOLVE)
+                .group("resolve")
                 .kind(TaskKind.IO)
                 .requires(TaskNames.COLLECT_SOURCES)
                 .ticks(1)

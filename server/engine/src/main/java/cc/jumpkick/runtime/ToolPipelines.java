@@ -6,7 +6,6 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.ToolCoordSpec;
-import cc.jumpkick.plugin.build.Phase;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.BuildPlan;
@@ -54,7 +53,7 @@ public final class ToolPipelines {
             Path cache,
             String coordLabel) {
         Task resolve = Task.builder(TaskNames.RESOLVE_COORD)
-                .phase(Phase.RESOLVE)
+                .group("resolve")
                 .kind(TaskKind.IO)
                 .ticks(1)
                 .execute(ctx -> {

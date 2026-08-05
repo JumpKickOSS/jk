@@ -29,7 +29,7 @@ class CoalescingBuildPlanListenerTest {
             }
 
             @Override
-            public void stepStart(String step, cc.jumpkick.plugin.build.Phase phase, int ticks) {
+            public void stepStart(String step, String group, int ticks) {
                 events.add("start:" + step);
             }
         };

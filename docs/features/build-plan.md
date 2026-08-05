@@ -24,6 +24,7 @@ dependencies, not a fixed lifecycle of slots.
 | `PhaseGraph` | Removed (task graph is law) |
 | “Goal” (terminal capability / UI) | **Target** |
 | Forecast type `BuildPlan` / `TaskForecaster` | `TaskForecast` / `TaskForecaster` |
+| Plugin/lifecycle `Phase` enum + `PhaseGraph` | Removed; optional free-form **group** label on tasks for UI only |
 
 ## Targets
 
@@ -55,8 +56,9 @@ sources / parse-build / resolve-deps / ensure-jdk
 
 - Edges are **requires** (data/order dependencies), never ordinal phase slots.
 - Independent tasks run in parallel (subject to `-j` / heap plan).
-- The engine builds a `BuildPlan` from core tasks + plugin contributions, validates the DAG
-  (unknown names, cycles), estimates weights, then executes.
+- The engine builds a `BuildPlan` from core tasks + plugin contributions, selects a **Target**,
+  **prunes** to the target’s upstream `requires` closure, validates the DAG (unknown names, cycles),
+  estimates weights, then executes.
 
 ### Plugin contributions
 

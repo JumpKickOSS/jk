@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.plugin.build.Phase;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskStatus;
@@ -58,12 +57,12 @@ public final class StepTimingsRecorder implements BuildPlanListener {
     }
 
     @Override
-    public void stepStart(String step, Phase phase, int ticks) {
+    public void stepStart(String step, String group, int ticks) {
         ticksByStep.put(step, ticks);
     }
 
     @Override
-    public void stepFinish(String step, Phase phase, TaskStatus status, Duration duration) {
+    public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
         // Only successful real work teaches the ledger — CANCELLED / FAIL / SKIPPED never do.
         if (status != TaskStatus.SUCCESS || !learnable(step)) return;
         long ms = duration == null ? 0 : duration.toMillis();

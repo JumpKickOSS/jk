@@ -3,7 +3,6 @@ package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.plugin.build.Phase;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
@@ -43,16 +42,16 @@ public final class VerboseListener implements BuildPlanListener {
     /** Renders a step's place in the run hierarchy as {@code phase/step} (a redundant {@code phase-}
      * prefix on the step name is dropped, so phase {@code compile} + step {@code compile-java} →
      * {@code compile/java}); the bare step name when it has no phase. */
-    static String qualified(String step, Phase phase) {
-        if (phase == null) return step;
-        String pw = phase.wireName();
+    static String qualified(String step, String group) {
+        if (group == null) return step;
+        String pw = group;
         String shortName = step.startsWith(pw + "-") ? step.substring(pw.length() + 1) : step;
         return pw + "/" + shortName;
     }
 
     @Override
-    public void stepStart(String step, Phase phase, int ticks) {
-        out.println("  " + Theme.colorize("·", Theme.active().normalGray()) + " " + qualified(step, phase) + " (ticks: "
+    public void stepStart(String step, String group, int ticks) {
+        out.println("  " + Theme.colorize("·", Theme.active().normalGray()) + " " + qualified(step, group) + " (ticks: "
                 + ticks + ")");
     }
 
@@ -67,7 +66,7 @@ public final class VerboseListener implements BuildPlanListener {
     }
 
     @Override
-    public void stepFinish(String step, Phase phase, TaskStatus status, Duration duration) {
+    public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
         String glyph =
                 switch (status) {
                     case SUCCESS -> Theme.colorize(Glyphs.CHECK, Theme.active().completedStep());
@@ -78,7 +77,7 @@ public final class VerboseListener implements BuildPlanListener {
         out.println("  "
                 + glyph
                 + " "
-                + qualified(step, phase)
+                + qualified(step, group)
                 + "  "
                 + Theme.colorize(
                         ConsoleSpec.fmtDuration(duration), Theme.active().darkGray()));

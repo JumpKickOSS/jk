@@ -7,6 +7,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.TaskNames;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -116,7 +117,7 @@ public final class NativePipelines {
                     resolveMain(buildFile, mainOverride),
                     extraArgs == null ? List.of() : extraArgs));
         }
-        return builder.build();
+        return builder.terminal(TaskNames.NATIVE_IMAGE).build();
     }
 
     /**

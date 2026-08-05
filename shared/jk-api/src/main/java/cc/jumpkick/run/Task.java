@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.run;
 
-import cc.jumpkick.plugin.build.Phase;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -9,10 +8,10 @@ import java.util.Optional;
 import java.util.function.IntSupplier;
 
 /**
- * One unit of work inside a {@link BuildPlan}. Steps declare their dependencies by name and run when
+ * One unit of work inside a {@link BuildPlan}. Tasks declare dependencies by name and run when
  * their prerequisites finish.
  *
- * <p>Steps are immutable after construction. Use {@link Task#builder} to assemble one.
+ * <p>Tasks are immutable after construction. Use {@link Task#builder} to assemble one.
  */
 public final class Task {
 
@@ -21,9 +20,10 @@ public final class Task {
     private final TaskKind kind;
     private final List<String> requires;
     private final IntSupplier ticks;
-    private final IntSupplier weight; // null → weight tracks ticks (legacy behaviour)
+    private final IntSupplier weight; // null → weight tracks ticks
     private final boolean interpolated;
-    private final Phase phase; // nullable — the coarse pipeline stage this step belongs to
+    /** Optional UI/group label (e.g. {@code compile}); not a lifecycle slot. */
+    private final String group;
     private final Body body;
 
     Task(
@@ -34,7 +34,7 @@ public final class Task {
             IntSupplier ticks,
             IntSupplier weight,
             boolean interpolated,
-            Phase phase,
+            String group,
             Body body) {
         this.name = Objects.requireNonNull(name);
         this.label = label != null ? label : name;
@@ -43,13 +43,22 @@ public final class Task {
         this.ticks = Objects.requireNonNull(ticks);
         this.weight = weight;
         this.interpolated = interpolated;
-        this.phase = phase;
+        this.group = (group == null || group.isBlank()) ? null : group;
         this.body = Objects.requireNonNull(body);
     }
 
-    /** The coarse pipeline {@link Phase} this step belongs to, if declared. */
-    public Optional<Phase> phase() {
-        return Optional.ofNullable(phase);
+    /**
+     * Optional free-form group label for UI folding (e.g. {@code compile}, {@code test}). Not a
+     * build lifecycle slot — ordering is solely {@link #requires()}.
+     */
+    public Optional<String> group() {
+        return Optional.ofNullable(group);
+    }
+
+    /** @deprecated use {@link #group()}; kept for call-site migration */
+    @Deprecated
+    public Optional<String> phase() {
+        return group();
     }
 
     public String name() {
@@ -69,37 +78,18 @@ public final class Task {
         return requires;
     }
 
-    /**
-     * Internal unit count — how granularly this step ticks (sources, artifacts, tests). Drives the
-     * within-step fraction, <em>not</em> the share of the bar the step occupies; see {@link
-     * #estimateWeight}.
-     */
     public int estimateTicks() {
         return Math.max(0, ticks.getAsInt());
     }
 
-    /** True when a {@link Builder#weight} was set, so the step self-weights. */
     public boolean hasExplicitWeight() {
         return weight != null;
     }
 
-    /**
-     * The step's share of the progress bar — a time-proportional cost, not a unit count. The pipeline's
-     * denominator sums these, and a step's own 0→100% (its {@link #estimateTicks} internal progress)
-     * is scaled into this many ticks. Defaults to {@link #estimateTicks} when no weight was set, so
-     * pipelines that don't opt in keep counting units exactly as before.
-     */
     public int estimateWeight() {
         return Math.max(0, weight != null ? weight.getAsInt() : ticks.getAsInt());
     }
 
-    /**
-     * True when the scheduler should ease this step's bar slice forward over elapsed time while it
-     * runs, rather than leaving it flat until the body reports progress. Use only for <em>opaque</em>
-     * steps (a single black-box call like javac) — steps that already report fine-grained progress
-     * (per-artifact, per-test, per-stage) must leave this off, or a too-short time estimate would
-     * race the bar ahead and then stall.
-     */
     public boolean interpolated() {
         return interpolated;
     }
@@ -108,7 +98,6 @@ public final class Task {
         return kind != TaskKind.SYNC;
     }
 
-    /** Step body — runs on whatever thread the scheduler dispatched it on. */
     public void execute(TaskContext ctx) throws Exception {
         body.run(ctx);
     }
@@ -117,7 +106,6 @@ public final class Task {
         return new Builder(name);
     }
 
-    /** Functional shape of {@link Task#execute}; {@code Exception} → fail. */
     @FunctionalInterface
     public interface Body {
         void run(TaskContext ctx) throws Exception;
@@ -129,16 +117,15 @@ public final class Task {
         private TaskKind kind = TaskKind.SYNC;
         private final List<String> requires = new ArrayList<>();
         private IntSupplier ticks = () -> 1;
-        private IntSupplier weight = null; // null → weight tracks ticks
+        private IntSupplier weight = null;
         private boolean interpolated = false;
-        private Phase phase = null;
+        private String group = null;
         private Body body = ctx -> {};
 
         Builder(String name) {
             this.name = Objects.requireNonNull(name);
         }
 
-        /** Override the TUI display label (defaults to the step name). */
         public Builder label(String label) {
             this.label = label;
             return this;
@@ -149,58 +136,49 @@ public final class Task {
             return this;
         }
 
-        /** Run after the named step(s) finish successfully. */
+        /** Run after the named task(s) finish successfully. */
         public Builder requires(String... names) {
             for (String n : names) requires.add(n);
             return this;
         }
 
-        /**
-         * Cheap up-front size estimate. Called once before the pipeline starts. Use {@link
-         * TaskContext#updateTicks} during execution if it turns out the estimate was low.
-         */
         public Builder ticks(IntSupplier supplier) {
             this.ticks = supplier;
             return this;
         }
 
-        /** Fixed ticks — equivalent to {@code ticks(() -> n)}. */
         public Builder ticks(int n) {
             this.ticks = () -> n;
             return this;
         }
 
-        /**
-         * Set the step's share of the progress bar — a time-proportional cost, independent of its
-         * {@link #ticks} unit count. Use this to keep a file-count- or test-count-scoped step from
-         * dominating the bar: e.g. a compile over 300 sources and a 5-test run can each be weighted by
-         * their expected duration so the bar paces by time, not by raw counts. When unset, the weight
-         * tracks the ticks (legacy behaviour).
-         */
         public Builder weight(IntSupplier supplier) {
             this.weight = supplier;
             return this;
         }
 
-        /** Fixed weight — equivalent to {@code weight(() -> n)}. */
         public Builder weight(int n) {
             this.weight = () -> n;
             return this;
         }
 
-        /**
-         * Ease this step's bar slice forward over elapsed time while it runs. For opaque steps only —
-         * see {@link Task#interpolated()}.
-         */
         public Builder interpolated() {
             this.interpolated = true;
             return this;
         }
 
-        /** Declare the coarse pipeline {@link Phase} this step belongs to. */
-        public Builder phase(Phase phase) {
-            this.phase = phase;
+        /** Optional free-form UI group label (e.g. {@code compile}). Not a lifecycle slot. */
+        public Builder group(String group) {
+            this.group = group;
             return this;
+        }
+
+        /**
+         * Same as {@link #group(String)}; retained so existing call sites and wire adapters keep
+         * compiling while the vocabulary settles on "group".
+         */
+        public Builder phase(String group) {
+            return group(group);
         }
 
         public Builder execute(Body body) {
@@ -209,7 +187,7 @@ public final class Task {
         }
 
         public Task build() {
-            return new Task(name, label, kind, requires, ticks, weight, interpolated, phase, body);
+            return new Task(name, label, kind, requires, ticks, weight, interpolated, group, body);
         }
     }
 }

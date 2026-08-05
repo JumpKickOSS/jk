@@ -21,7 +21,6 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.WorkspaceMerge;
 import cc.jumpkick.model.command.Exit;
-import cc.jumpkick.plugin.build.Phase;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.LockOrchestrator;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -126,7 +125,7 @@ public final class LockPipelines {
                 .build();
 
         Task resolve = Task.builder(TaskNames.RESOLVE_DEPS)
-                .phase(Phase.RESOLVE)
+                .group("resolve")
                 .label("Resolving")
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_BUILD)
@@ -418,7 +417,7 @@ public final class LockPipelines {
                 .build();
 
         Task resolve = Task.builder(TaskNames.RESOLVE_DEPS)
-                .phase(Phase.RESOLVE)
+                .group("resolve")
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_BUILD)
                 .ticks(1)

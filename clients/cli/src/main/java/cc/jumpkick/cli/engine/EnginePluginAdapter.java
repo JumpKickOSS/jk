@@ -4,7 +4,6 @@ package cc.jumpkick.cli.engine;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.plugin.build.Phase;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
@@ -104,7 +103,7 @@ final class EnginePluginAdapter {
                     case EngineProtocol.PLAN_TASK ->
                         steps.add(Task.builder(Jsonl.str(line, "name"))
                                 .label(Jsonl.str(line, "label"))
-                                .phase(Phase.fromWireOrNull(Jsonl.str(line, "phase")))
+                                .phase(wireGroup(Jsonl.str(line, "phase")))
                                 .build());
                     case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
                     case EngineProtocol.AUDIT_FINDING,
@@ -204,7 +203,7 @@ final class EnginePluginAdapter {
             case EngineProtocol.TASK_START ->
                 listener.stepStart(
                         Jsonl.str(line, "step"),
-                        Phase.fromWireOrNull(Jsonl.str(line, "phase")),
+                        wireGroup(Jsonl.str(line, "phase")),
                         Jsonl.intValue(line, "ticks", 0));
             case EngineProtocol.PROGRESS ->
                 listener.progress(Jsonl.str(line, "step"), Jsonl.intValue(line, "delta", 0), readBuildPlanView(line));
@@ -225,7 +224,7 @@ final class EnginePluginAdapter {
             case EngineProtocol.TASK_FINISH ->
                 listener.stepFinish(
                         Jsonl.str(line, "step"),
-                        Phase.fromWireOrNull(Jsonl.str(line, "phase")),
+                        wireGroup(Jsonl.str(line, "phase")),
                         TaskStatus.valueOf(Jsonl.str(line, "status")),
                         Duration.ZERO);
             default -> {
@@ -262,5 +261,9 @@ final class EnginePluginAdapter {
     private static IOException disconnected() {
         return new IOException("jk engine: the build engine disconnected unexpectedly before finishing "
                 + "(it may have crashed); run `jk engine status` for details");
+    }
+
+    private static String wireGroup(String raw) {
+        return raw == null || raw.isBlank() ? null : raw;
     }
 }

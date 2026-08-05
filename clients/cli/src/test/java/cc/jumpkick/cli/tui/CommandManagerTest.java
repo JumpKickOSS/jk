@@ -694,7 +694,7 @@ class CommandManagerTest {
 
     @Test
     void compile_test_under_test_phase_is_prose_mid_gray_not_syntax_white() {
-        // compile-test is Phase.TEST wire-wise, but labels are "compiling N sources" — not FooTest.bar.
+        // compile-test is "test" wire-wise, but labels are "compiling N sources" — not FooTest.bar.
         Theme t = Theme.active();
         String painted = CommandManager.colorDetail("Test", "compiling 12 Groovy test sources", t);
         assertThat(TestAnsi.strip(painted)).isEqualTo("compiling 12 Groovy test sources");

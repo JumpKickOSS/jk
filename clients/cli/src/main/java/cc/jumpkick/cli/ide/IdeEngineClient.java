@@ -7,7 +7,6 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.IdeWireModel;
 import cc.jumpkick.engine.protocol.ProjectInfo;
-import cc.jumpkick.plugin.build.Phase;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
@@ -337,8 +336,8 @@ public class IdeEngineClient {
             }
 
             @Override
-            public void stepStart(String step, Phase phase, int ticks) {
-                progress.onStepStart(step, phase == null ? "" : phase.name());
+            public void stepStart(String step, String group, int ticks) {
+                progress.onStepStart(step, group == null ? "" : group);
             }
 
             @Override
@@ -354,7 +353,7 @@ public class IdeEngineClient {
             }
 
             @Override
-            public void stepFinish(String step, Phase phase, TaskStatus status, Duration duration) {
+            public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
                 boolean ok = status == TaskStatus.SUCCESS || status == TaskStatus.SKIPPED;
                 progress.onStepFinish(step, ok, status == null ? "" : status.name());
             }

@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.Test;
 
 /** InvocationPhase visibility and wire names (replaces the old fixed PhaseGraph lifecycle). */
-class PhaseGraphTest {
+class InvocationPhaseTest {
 
     @Test
     void user_visible_phases_are_resolve_plan_build() {

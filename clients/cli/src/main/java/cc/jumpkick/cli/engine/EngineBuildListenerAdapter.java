@@ -7,7 +7,6 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.plugin.build.Phase;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
@@ -658,14 +657,14 @@ final class EngineBuildListenerAdapter {
                     case EngineProtocol.PLAN_TASK ->
                         steps.add(Task.builder(Jsonl.str(line, "name"))
                                 .label(Jsonl.str(line, "label"))
-                                .phase(Phase.fromWireOrNull(Jsonl.str(line, "phase")))
+                                .phase(wireGroup(Jsonl.str(line, "phase")))
                                 .build());
                     case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
                     case EngineProtocol.BUILDPLAN_START -> listener.pipelineStart(readBuildPlanView(line));
                     case EngineProtocol.TASK_START ->
                         listener.stepStart(
                                 Jsonl.str(line, "step"),
-                                Phase.fromWireOrNull(Jsonl.str(line, "phase")),
+                                wireGroup(Jsonl.str(line, "phase")),
                                 Jsonl.intValue(line, "ticks", 0));
                     case EngineProtocol.PROGRESS ->
                         listener.progress(
@@ -694,7 +693,7 @@ final class EngineBuildListenerAdapter {
                     case EngineProtocol.TASK_FINISH ->
                         listener.stepFinish(
                                 Jsonl.str(line, "step"),
-                                Phase.fromWireOrNull(Jsonl.str(line, "phase")),
+                                wireGroup(Jsonl.str(line, "phase")),
                                 TaskStatus.valueOf(Jsonl.str(line, "status")),
                                 Duration.ZERO);
                     case EngineProtocol.BUILDPLAN_FINISH -> {
@@ -793,7 +792,7 @@ final class EngineBuildListenerAdapter {
                         if (m != null) {
                             m.steps.add(Task.builder(Jsonl.str(line, "name"))
                                     .label(Jsonl.str(line, "label"))
-                                    .phase(Phase.fromWireOrNull(Jsonl.str(line, "phase")))
+                                    .phase(wireGroup(Jsonl.str(line, "phase")))
                                     .build());
                         }
                     }
@@ -828,7 +827,7 @@ final class EngineBuildListenerAdapter {
                                 .getOrDefault(dir, NOOP)
                                 .stepStart(
                                         Jsonl.str(line, "step"),
-                                        Phase.fromWireOrNull(Jsonl.str(line, "phase")),
+                                        wireGroup(Jsonl.str(line, "phase")),
                                         Jsonl.intValue(line, "ticks", 0));
                     case EngineProtocol.PROGRESS ->
                         pipelineListenersByDir
@@ -879,7 +878,7 @@ final class EngineBuildListenerAdapter {
                                 .getOrDefault(dir, NOOP)
                                 .stepFinish(
                                         Jsonl.str(line, "step"),
-                                        Phase.fromWireOrNull(Jsonl.str(line, "phase")),
+                                        wireGroup(Jsonl.str(line, "phase")),
                                         TaskStatus.valueOf(Jsonl.str(line, "status")),
                                         Duration.ZERO);
                     case EngineProtocol.BUILDPLAN_FINISH -> {
@@ -966,4 +965,8 @@ final class EngineBuildListenerAdapter {
     }
 
     private static final BuildPlanListener NOOP = new BuildPlanListener() {};
+
+    private static String wireGroup(String raw) {
+        return raw == null || raw.isBlank() ? null : raw;
+    }
 }

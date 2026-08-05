@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
-import cc.jumpkick.plugin.build.Phase;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
@@ -103,9 +102,9 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
     }
 
     @Override
-    public void stepStart(String step, Phase phase, int ticks) {
+    public void stepStart(String step, String group, int ticks) {
         flush();
-        delegate.stepStart(step, phase, ticks);
+        delegate.stepStart(step, group, ticks);
     }
 
     @Override
@@ -174,9 +173,9 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
     }
 
     @Override
-    public void stepFinish(String step, Phase phase, TaskStatus status, Duration duration) {
+    public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
         flush();
-        delegate.stepFinish(step, phase, status, duration);
+        delegate.stepFinish(step, group, status, duration);
     }
 
     @Override

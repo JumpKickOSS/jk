@@ -3,11 +3,9 @@ package cc.jumpkick.discovery;
 
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.plugin.Extension;
-import cc.jumpkick.plugin.build.Phase;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 /**
  * Service-provider interface for "find me a copy of this tool that's already installed locally"
@@ -32,11 +30,7 @@ public interface LocalToolProbe extends Extension {
         return name();
     }
 
-    /** Local-tool discovery participates in the {@link Phase#RESOLVE} phase. */
-    @Override
-    default Set<Phase> phases() {
-        return Set.of(Phase.RESOLVE);
-    }
+    
 
     /** Return a matching install, or empty if this probe doesn't have one. */
     Optional<DiscoveredTool> find(ToolSpec spec) throws IOException;

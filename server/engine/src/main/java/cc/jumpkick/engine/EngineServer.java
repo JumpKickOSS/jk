@@ -1876,9 +1876,9 @@ public final class EngineServer implements AutoCloseable {
                         requestId));
     }
 
-    /** Wire spelling of a step's coarse {@link cc.jumpkick.plugin.build.Phase} — {@code ""} when unset. */
-    private static String phaseWire(cc.jumpkick.plugin.build.Phase phase) {
-        return phase == null ? "" : phase.wireName();
+    /** Wire spelling of a step's coarse {@link String} — {@code ""} when unset. */
+    private static String phaseWire(String group) {
+        return group == null ? "" : group;
     }
 
     private void publishOutput(long requestId, String dir, String step, String line) {
@@ -4207,17 +4207,17 @@ public final class EngineServer implements AutoCloseable {
             }
 
             @Override
-            public void stepStart(String step, cc.jumpkick.plugin.build.Phase phase, int ticks) {
-                inner.stepStart(step, phase, ticks);
+            public void stepStart(String step, String group, int ticks) {
+                inner.stepStart(step, group, ticks);
             }
 
             @Override
             public void stepFinish(
                     String step,
-                    cc.jumpkick.plugin.build.Phase phase,
+                    String group,
                     cc.jumpkick.run.TaskStatus status,
                     Duration duration) {
-                inner.stepFinish(step, phase, status, duration);
+                inner.stepFinish(step, group, status, duration);
             }
 
             @Override
@@ -5015,9 +5015,9 @@ public final class EngineServer implements AutoCloseable {
             }
 
             @Override
-            public void stepStart(String step, cc.jumpkick.plugin.build.Phase phase, int ticks) {
-                sendQuiet(writer, EngineProtocol.stepStart(dir, step, phaseWire(phase), ticks));
-                publishStepStart(eventRequestId, dir, step, phaseWire(phase));
+            public void stepStart(String step, String group, int ticks) {
+                sendQuiet(writer, EngineProtocol.stepStart(dir, step, phaseWire(group), ticks));
+                publishStepStart(eventRequestId, dir, step, phaseWire(group));
             }
 
             @Override
@@ -5081,12 +5081,12 @@ public final class EngineServer implements AutoCloseable {
             @Override
             public void stepFinish(
                     String step,
-                    cc.jumpkick.plugin.build.Phase phase,
+                    String group,
                     cc.jumpkick.run.TaskStatus status,
                     Duration duration) {
-                sendQuiet(writer, EngineProtocol.stepFinish(dir, step, phaseWire(phase), status.name()));
-                publishStepFinish(eventRequestId, dir, step, phaseWire(phase), status.name());
-                accStepFinish(eventRequestId, dir, step, phaseWire(phase), status.name(), duration.toMillis());
+                sendQuiet(writer, EngineProtocol.stepFinish(dir, step, phaseWire(group), status.name()));
+                publishStepFinish(eventRequestId, dir, step, phaseWire(group), status.name());
+                accStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), duration.toMillis());
             }
 
             @Override
@@ -5616,17 +5616,17 @@ public final class EngineServer implements AutoCloseable {
             }
 
             @Override
-            public void stepStart(String step, cc.jumpkick.plugin.build.Phase phase, int ticks) {
-                publishStepStart(eventRequestId, dir, step, phaseWire(phase));
+            public void stepStart(String step, String group, int ticks) {
+                publishStepStart(eventRequestId, dir, step, phaseWire(group));
             }
 
             @Override
             public void stepFinish(
                     String step,
-                    cc.jumpkick.plugin.build.Phase phase,
+                    String group,
                     cc.jumpkick.run.TaskStatus status,
                     Duration duration) {
-                publishStepFinish(eventRequestId, dir, step, phaseWire(phase), status.name());
+                publishStepFinish(eventRequestId, dir, step, phaseWire(group), status.name());
             }
 
             @Override
@@ -5713,18 +5713,18 @@ public final class EngineServer implements AutoCloseable {
                     }
 
                     @Override
-                    public void stepStart(String step, cc.jumpkick.plugin.build.Phase phase, int ticks) {
-                        publishStepStart(eventRequestId, dir, step, phaseWire(phase));
+                    public void stepStart(String step, String group, int ticks) {
+                        publishStepStart(eventRequestId, dir, step, phaseWire(group));
                     }
 
                     @Override
                     public void stepFinish(
                             String step,
-                            cc.jumpkick.plugin.build.Phase phase,
+                            String group,
                             cc.jumpkick.run.TaskStatus status,
                             Duration duration) {
-                        publishStepFinish(eventRequestId, dir, step, phaseWire(phase), status.name());
-                        accStepFinish(eventRequestId, dir, step, phaseWire(phase), status.name(), duration.toMillis());
+                        publishStepFinish(eventRequestId, dir, step, phaseWire(group), status.name());
+                        accStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), duration.toMillis());
                     }
 
                     @Override

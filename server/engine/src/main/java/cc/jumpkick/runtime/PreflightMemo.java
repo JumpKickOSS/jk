@@ -533,9 +533,7 @@ public final class PreflightMemo {
         List<BuildPlanShape.StepShape> steps = new ArrayList<>();
         int testWeight = 0;
         for (var s : pipeline.steps()) {
-            String phase = s.phase()
-                    .map(p -> p.name().toLowerCase(java.util.Locale.ROOT))
-                    .orElse("");
+            String phase = s.group().orElse("");
             steps.add(new BuildPlanShape.StepShape(s.name(), phase));
             if ("run-tests".equals(s.name())) {
                 try {
@@ -558,14 +556,10 @@ public final class PreflightMemo {
         Objects.requireNonNull(shape, "shape");
         cc.jumpkick.run.BuildPlan.Builder b = cc.jumpkick.run.BuildPlan.builder(unit.coord());
         for (BuildPlanShape.StepShape s : shape.steps()) {
-            cc.jumpkick.plugin.build.Phase phase = null;
-            try {
-                phase = cc.jumpkick.plugin.build.Phase.fromWireOrNull(s.phase());
-            } catch (IllegalArgumentException ignored) {
-                // unknown phase wire name — leave unset
-            }
+            String group = s.phase();
+            if (group != null && group.isBlank()) group = null;
             b.addTask(cc.jumpkick.run.Task.builder(s.name())
-                    .phase(phase)
+                    .group(group)
                     .ticks(0)
                     .weight(0)
                     .build());

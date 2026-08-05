@@ -4,7 +4,6 @@ package cc.jumpkick.cli.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.tui.CommandManager;
-import cc.jumpkick.plugin.build.Phase;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskStatus;
@@ -28,14 +27,14 @@ class AggregateModuleListenerTest {
 
         var a = new AggregateModuleListener(agg, "g:api", List.of(step("compile", "Compile")));
         a.pipelineStart(new BuildPlanView("build", 0, 10, 1, 0, false));
-        a.stepStart("compile", Phase.COMPILE, 10);
+        a.stepStart("compile", "compile", 10);
         a.progress("compile", 10, new BuildPlanView("build", 10, 10, 1, 1, false));
-        a.stepFinish("compile", Phase.COMPILE, TaskStatus.SUCCESS, Duration.ZERO);
+        a.stepFinish("compile", "compile", TaskStatus.SUCCESS, Duration.ZERO);
         a.pipelineFinish(result(true));
 
         var b = new AggregateModuleListener(agg, "g:web", List.of(step("test", "Test")));
         b.pipelineStart(new BuildPlanView("build", 0, 10, 1, 0, false));
-        b.stepStart("test", Phase.TEST, 10);
+        b.stepStart("test", "test", 10);
 
         // Engine snapshot paints the bar (not module progress callbacks).
         agg.applySnapshot(new WorkspaceProgressTracker.Snapshot(75, 100, 75.0, "execute", 1, 2));
@@ -60,11 +59,11 @@ class AggregateModuleListenerTest {
 
         var a = new AggregateModuleListener(agg, "g:api", List.of(step("compile", "Compile")), 10);
         a.pipelineStart(new BuildPlanView("build", 0, 10, 1, 0, false));
-        a.stepStart("compile", Phase.COMPILE, 10);
+        a.stepStart("compile", "compile", 10);
 
         var b = new AggregateModuleListener(agg, "g:web", List.of(step("test", "Test")), 10);
         b.pipelineStart(new BuildPlanView("build", 0, 10, 1, 0, false));
-        b.stepStart("test", Phase.TEST, 10);
+        b.stepStart("test", "test", 10);
 
         // 110/120 → ProgressBar.percent rounds to 92
         agg.applySnapshot(new WorkspaceProgressTracker.Snapshot(110, 120, 91.7, "execute", 0, 2));
@@ -89,8 +88,8 @@ class AggregateModuleListenerTest {
 
         var a = new AggregateModuleListener(agg, "cc.jumpkick:jk-engine", List.of(step("run-tests", "Testing")));
         a.pipelineStart(new BuildPlanView("build", 0, 10, 1, 0, false));
-        a.stepStart("run-tests", Phase.TEST, 10);
-        a.stepFinish("run-tests", Phase.TEST, TaskStatus.SKIPPED, Duration.ZERO);
+        a.stepStart("run-tests", "test", 10);
+        a.stepFinish("run-tests", "test", TaskStatus.SKIPPED, Duration.ZERO);
 
         // Successful SKIPPED → phase drops from the live chain (same as SUCCESS).
         String all = String.join(
@@ -112,9 +111,9 @@ class AggregateModuleListenerTest {
 
         var a = new AggregateModuleListener(agg, "g:api", List.of(step("compile-java", "Compile")));
         a.pipelineStart(new BuildPlanView("build", 0, 10, 1, 0, false));
-        a.stepStart("compile-java", Phase.COMPILE, 10);
+        a.stepStart("compile-java", "compile", 10);
         a.error("compile-java", "javac", "cannot find symbol");
-        a.stepFinish("compile-java", Phase.COMPILE, TaskStatus.FAIL, Duration.ZERO);
+        a.stepFinish("compile-java", "compile", TaskStatus.FAIL, Duration.ZERO);
 
         String all = String.join(
                 "\n",

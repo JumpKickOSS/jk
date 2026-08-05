@@ -100,7 +100,7 @@ public final class InstallPipelines {
                 })
                 .build();
 
-        return builder.addTask(cacheInstall).build();
+        return builder.addTask(cacheInstall).terminal(TaskNames.CACHE_INSTALL).build();
     }
 
     /**

@@ -10,7 +10,6 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.plugin.build.Phase;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
@@ -111,7 +110,7 @@ public final class PublishPipelines {
                 .build();
 
         Task publish = Task.builder("publish")
-                .phase(Phase.PUBLISH)
+                .group("publish")
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_BUILD)
                 .ticks(1)

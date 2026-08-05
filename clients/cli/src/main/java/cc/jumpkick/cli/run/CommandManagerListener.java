@@ -2,7 +2,6 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.tui.CommandManager;
-import cc.jumpkick.plugin.build.Phase;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
@@ -94,8 +93,8 @@ public final class CommandManagerListener implements BuildPlanListener {
     }
 
     @Override
-    public void stepStart(String step, Phase phase, int ticks) {
-        cm.stepRunning(module, step, phase == null ? "" : phase.wireName());
+    public void stepStart(String step, String group, int ticks) {
+        cm.stepRunning(module, step, group == null ? "" : group);
     }
 
     @Override
@@ -128,10 +127,10 @@ public final class CommandManagerListener implements BuildPlanListener {
     }
 
     @Override
-    public void stepFinish(String step, Phase phase, TaskStatus status, Duration duration) {
+    public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
         // SKIPPED = cache hit / up-to-date — green terminal, same as SUCCESS.
         boolean ok = status == TaskStatus.SUCCESS || status == TaskStatus.SKIPPED;
-        cm.stepDone(module, step, ok, phase == null ? "" : phase.wireName());
+        cm.stepDone(module, step, ok, group == null ? "" : group);
     }
 
     @Override

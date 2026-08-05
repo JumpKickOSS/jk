@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.run;
 
-import cc.jumpkick.plugin.build.Phase;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
@@ -36,8 +35,8 @@ abstract class JsonlEmittingListener implements BuildPlanListener {
     }
 
     @Override
-    public void stepStart(String step, Phase phase, int ticks) {
-        line(JsonlShape.stepStart(step, wire(phase), ticks), "task-start");
+    public void stepStart(String step, String group, int ticks) {
+        line(JsonlShape.stepStart(step, wire(group), ticks), "task-start");
     }
 
     @Override
@@ -79,8 +78,8 @@ abstract class JsonlEmittingListener implements BuildPlanListener {
     }
 
     @Override
-    public void stepFinish(String step, Phase phase, TaskStatus s, Duration d) {
-        line(JsonlShape.stepFinish(step, wire(phase), s, d), "task-finish");
+    public void stepFinish(String step, String group, TaskStatus s, Duration d) {
+        line(JsonlShape.stepFinish(step, wire(group), s, d), "task-finish");
     }
 
     @Override
@@ -92,7 +91,7 @@ abstract class JsonlEmittingListener implements BuildPlanListener {
         emit(JsonlShape.withProgress(raw), !JsonlShape.HOT_TYPES.contains(type));
     }
 
-    private static String wire(Phase phase) {
-        return phase == null ? "" : phase.wireName();
+    private static String wire(String group) {
+        return group == null ? "" : group;
     }
 }

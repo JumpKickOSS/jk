@@ -15,7 +15,6 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.plugin.build.Phase;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
@@ -102,7 +101,7 @@ public final class ImagePipelines {
                 cc.jumpkick.config.SessionContext.current());
 
         Task imagePlan = Task.builder(TaskNames.IMAGE_PLAN)
-                .phase(Phase.IMAGE)
+                .group("image")
                 .requires(TaskNames.PACKAGE_JAR)
                 .ticks(1)
                 .execute(ctx -> {
@@ -143,7 +142,7 @@ public final class ImagePipelines {
                 .build();
 
         Task writeImage = Task.builder(TaskNames.WRITE_IMAGE)
-                .phase(Phase.IMAGE)
+                .group("image")
                 .kind(TaskKind.IO)
                 .requires(TaskNames.IMAGE_PLAN)
                 .weight(() -> EffortWeights.ociWeight(projectDir))
@@ -247,7 +246,7 @@ public final class ImagePipelines {
 
         BuildPlan.Builder builder = BuildPipelines.coreBuilder(inputs);
         builder.addTask(imagePlan).addTask(writeImage);
-        return builder.build();
+        return builder.terminal(TaskNames.WRITE_IMAGE).build();
     }
 
     private static Path resolveTarballPath(String tarballArg, BuildLayout layout) {

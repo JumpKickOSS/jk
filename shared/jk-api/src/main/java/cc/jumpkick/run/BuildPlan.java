@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.run;
 
-import cc.jumpkick.plugin.build.Phase;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -275,8 +275,8 @@ public final class BuildPlan {
             int weight = weights.getOrDefault(p.name(), ticks);
             statuses.put(p.name(), TaskStatus.RUNNING);
             String stepName = p.name();
-            Phase stepPhase = p.phase().orElse(null);
-            emit(l -> l.stepStart(stepName, stepPhase, ticks));
+            String stepGroup = p.group().orElse(null);
+            emit(l -> l.stepStart(stepName, stepGroup, ticks));
             Executor exec = executorFor(p.kind());
             if (p.kind() == TaskKind.SYNC) {
                 futures.add(CompletableFuture.completedFuture(runOneStep(p, ticks, weight)));
@@ -352,7 +352,7 @@ public final class BuildPlan {
             Duration dur = Duration.between(start, Instant.now());
             reports.add(new BuildPlanResult.StepReport(step.name(), terminal, dur, step.requires()));
             stepsComplete.incrementAndGet();
-            emit(l -> l.stepFinish(step.name(), step.phase().orElse(null), terminal, dur));
+            emit(l -> l.stepFinish(step.name(), step.group().orElse(null), terminal, dur));
             return terminal;
         } catch (Throwable t) {
             if (ticked) easing.remove(ctx);
@@ -377,7 +377,7 @@ public final class BuildPlan {
             Duration dur = Duration.between(start, Instant.now());
             reports.add(new BuildPlanResult.StepReport(step.name(), terminal, dur, step.requires()));
             stepsComplete.incrementAndGet();
-            emit(l -> l.stepFinish(step.name(), step.phase().orElse(null), terminal, dur));
+            emit(l -> l.stepFinish(step.name(), step.group().orElse(null), terminal, dur));
             return terminal;
         }
     }
@@ -528,13 +528,14 @@ public final class BuildPlan {
         private boolean interactive = false;
         private final List<Task> steps = new ArrayList<>();
         private final List<BuildPlanListener> listeners = new ArrayList<>();
+        private String terminal;
 
         Builder(String name) {
             this.name = Objects.requireNonNull(name);
         }
 
         /**
-         * Interactive pipelines (wizards, prompts) suppress automatic progress visualization — the
+         * Interactive plans (wizards, prompts) suppress automatic progress visualization — the
          * foreground UI owns the terminal. Listeners still get every event; only the default
          * progress-bar consumer respects this flag.
          */
@@ -549,8 +550,8 @@ public final class BuildPlan {
         }
 
         /**
-         * Append every step from {@code more} whose name is not already present — ordered-set
-         * semantics. Use this to compose a pipeline from multiple step sequences without duplicate steps.
+         * Append every task from {@code more} whose name is not already present — ordered-set
+         * semantics.
          */
         public Builder addAllTasks(java.util.Collection<Task> more) {
             java.util.Set<String> existing = new java.util.HashSet<>();
@@ -566,8 +567,53 @@ public final class BuildPlan {
             return this;
         }
 
-        public BuildPlan build() {
-            return new BuildPlan(name, interactive, steps, listeners);
+        /**
+         * Keep only the terminal task and its upstream {@link Task#requires()} closure. Call after
+         * all tasks are added (including command tails). Unknown terminal names fail at
+         * {@link #build()}.
+         */
+        public Builder terminal(String taskName) {
+            this.terminal = taskName;
+            return this;
         }
+
+        public Builder terminal(Target target) {
+            return terminal(target.taskName());
+        }
+
+        public BuildPlan build() {
+            List<Task> selected = terminal == null ? steps : pruneToTerminal(steps, terminal);
+            return new BuildPlan(name, interactive, selected, listeners);
+        }
+    }
+
+    /**
+     * Upstream closure of {@code terminal} (inclusive), preserving the original list order.
+     * Requires edges that point outside the plan are ignored at validation time only if pruned
+     * first — validation still requires every listed require to exist in the selected set.
+     */
+    static List<Task> pruneToTerminal(List<Task> all, String terminal) {
+        Map<String, Task> byName = new HashMap<>();
+        for (Task t : all) byName.put(t.name(), t);
+        if (!byName.containsKey(terminal)) {
+            throw new IllegalArgumentException(
+                    "terminal task '" + terminal + "' is not in the BuildPlan (" + byName.keySet() + ")");
+        }
+        Set<String> keep = new HashSet<>();
+        ArrayDeque<String> q = new ArrayDeque<>();
+        keep.add(terminal);
+        q.add(terminal);
+        while (!q.isEmpty()) {
+            Task t = byName.get(q.removeFirst());
+            if (t == null) continue;
+            for (String req : t.requires()) {
+                if (keep.add(req)) q.add(req);
+            }
+        }
+        List<Task> out = new ArrayList<>();
+        for (Task t : all) {
+            if (keep.contains(t.name())) out.add(t);
+        }
+        return out;
     }
 }

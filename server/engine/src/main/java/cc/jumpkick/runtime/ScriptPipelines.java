@@ -17,7 +17,6 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.mvn.PomImporter;
-import cc.jumpkick.plugin.build.Phase;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
@@ -103,7 +102,7 @@ public final class ScriptPipelines {
         String mainClass = header.main() != null ? header.main() : simpleMainClassName(script, ".java");
 
         Task parseHeader = Task.builder(TaskNames.PARSE_SCRIPT)
-                .phase(Phase.RESOLVE)
+                .group("resolve")
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("parse " + script.getFileName());
@@ -116,7 +115,7 @@ public final class ScriptPipelines {
                 .build();
 
         Task resolveDeps = Task.builder(TaskNames.RESOLVE_DEPS)
-                .phase(Phase.RESOLVE)
+                .group("resolve")
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_SCRIPT)
                 .ticks(1)
@@ -137,7 +136,7 @@ public final class ScriptPipelines {
                 .build();
 
         Task compile = Task.builder(TaskNames.COMPILE_JAVA)
-                .phase(Phase.COMPILE)
+                .group("compile")
                 .kind(TaskKind.CPU)
                 .requires(TaskNames.RESOLVE_DEPS)
                 .ticks(1)
@@ -218,7 +217,7 @@ public final class ScriptPipelines {
         String mainClass = header.main() != null ? header.main() : kotlinMainClassName(script);
 
         Task parseHeader = Task.builder(TaskNames.PARSE_SCRIPT)
-                .phase(Phase.RESOLVE)
+                .group("resolve")
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("parse " + script.getFileName());
@@ -233,7 +232,7 @@ public final class ScriptPipelines {
         // resolve-deps and resolve-kotlinc are independent and slow; run
         // them in parallel.
         Task resolveDeps = Task.builder(TaskNames.RESOLVE_DEPS)
-                .phase(Phase.RESOLVE)
+                .group("resolve")
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_SCRIPT)
                 .ticks(1)
@@ -254,7 +253,7 @@ public final class ScriptPipelines {
                 .build();
 
         Task resolveKotlinc = Task.builder(TaskNames.RESOLVE_KOTLINC)
-                .phase(Phase.RESOLVE)
+                .group("resolve")
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_SCRIPT)
                 .ticks(1)
@@ -281,7 +280,7 @@ public final class ScriptPipelines {
                 .build();
 
         Task compile = Task.builder(TaskNames.COMPILE_KOTLIN)
-                .phase(Phase.COMPILE)
+                .group("compile")
                 .kind(TaskKind.CPU)
                 .requires(TaskNames.RESOLVE_DEPS, TaskNames.RESOLVE_KOTLINC)
                 .ticks(1)
@@ -374,7 +373,7 @@ public final class ScriptPipelines {
                 extraDeps);
 
         Task resolveDeps = Task.builder(TaskNames.RESOLVE_DEPS)
-                .phase(Phase.RESOLVE)
+                .group("resolve")
                 .kind(TaskKind.IO)
                 .ticks(1)
                 .execute(ctx -> {
@@ -392,7 +391,7 @@ public final class ScriptPipelines {
                 .build();
 
         Task resolveKotlinc = Task.builder(TaskNames.RESOLVE_KOTLINC)
-                .phase(Phase.RESOLVE)
+                .group("resolve")
                 .kind(TaskKind.IO)
                 .ticks(1)
                 .execute(ctx -> {
@@ -419,7 +418,7 @@ public final class ScriptPipelines {
     /** {@code inspect-jar → resolve-jar-deps} for a prebuilt jar (manifest main + embedded-POM deps). */
     public static BuildPlan jarBuildPlan(Path jar, Path cacheDir, URI repoUrl) {
         Task inspect = Task.builder(TaskNames.INSPECT_JAR)
-                .phase(Phase.RESOLVE)
+                .group("resolve")
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("read manifest + embedded poms");
@@ -459,7 +458,7 @@ public final class ScriptPipelines {
                 .build();
 
         Task resolveJarDeps = Task.builder(TaskNames.RESOLVE_JAR_DEPS)
-                .phase(Phase.RESOLVE)
+                .group("resolve")
                 .kind(TaskKind.IO)
                 .requires(TaskNames.INSPECT_JAR)
                 .ticks(1)
