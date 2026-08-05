@@ -80,7 +80,8 @@ public final class CacheCommand extends GroupCommand {
      *
      * <p>Byte sizes are exclusive across store sections (CAS first), so hard-linked repo jars do not
      * inflate "Size on Disk" or the utilization bar. Cache-tier {@code actions} stats include the
-     * cache CAS blob tree.
+     * cache CAS blob tree; plain (non-exclusive) counting there is exact because the cache CAS is
+     * copy-only — no blob is ever hard-linked across tiers (verified for JK-1525).
      */
     static SectionStats sectionStats(Path cacheRoot) throws IOException {
         Path storeCas = JkStores.resolve(cacheRoot, "sha256");
@@ -101,6 +102,25 @@ public final class CacheCommand extends GroupCommand {
                 Stats.from(parts[3]),
                 Stats.from(parts[4]));
     }
+
+    /**
+     * Cache-tier stats only (action index + cache CAS, format stamps) — no artifact-store walk.
+     * The cache CAS is copy-only ({@code Cas.putFile} on both store and restore; only the store
+     * CAS ever hard-links, via {@code MavenRepo}), so no cross-tier links exist and plain sizes
+     * are exact. {@code jk cache storage} displays exactly these two numbers; walking the whole
+     * store CAS + repos for them added store-proportional latency in the slim CLI (JK-1525).
+     */
+    static CacheTierStats cacheTierStats(Path cacheRoot) throws IOException {
+        DiskUsage.Stats actions = DiskUsage.of(cacheRoot.resolve("actions"));
+        DiskUsage.Stats cacheCas = DiskUsage.of(cacheRoot.resolve("sha256"));
+        DiskUsage.Stats stamps = DiskUsage.of(cacheRoot.resolve("format-stamps"));
+        return new CacheTierStats(
+                new Stats(actions.files() + cacheCas.files(), actions.bytes() + cacheCas.bytes()),
+                Stats.from(stamps));
+    }
+
+    /** Cache-tier breakdown for {@code jk cache storage} ({@code actions} includes the cache CAS). */
+    record CacheTierStats(Stats actions, Stats stamps) {}
 
     /** Breakdown used by storage / status — fields ordered for the reports. */
     record SectionStats(Stats cas, Stats actions, Stats repos, Stats runs, Stats stamps) {
@@ -254,8 +274,8 @@ public final class CacheCommand extends GroupCommand {
                 CliOutput.out("Cache: " + cc.jumpkick.cli.PathDisplay.styledRaw(root) + " (not yet created)");
                 return 0;
             }
-            SectionStats s = sectionStats(root);
-            // Cache tier: action index + cache CAS + format stamps.
+            // Cache tier: action index + cache CAS + format stamps — never walks the store (JK-1525).
+            CacheTierStats s = cacheTierStats(root);
             long files = s.actions().files + s.stamps().files;
             long bytes = s.actions().bytes + s.stamps().bytes;
             var cfg = cc.jumpkick.config.JkCacheConfig.resolve();
