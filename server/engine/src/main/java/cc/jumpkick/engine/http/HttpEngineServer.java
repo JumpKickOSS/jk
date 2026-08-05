@@ -735,21 +735,25 @@ public final class HttpEngineServer implements AutoCloseable {
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
         exchange.sendResponseHeaders(200, 0);
         var out = exchange.getResponseBody();
+        // Everything after subscribe() sits inside the try: if onSubscriberJoined throws (e.g.
+        // RejectedExecutionException racing stop()), the subscription must still leave the hub
+        // set or hasSubscribers() stays true for the process's life (JK-1523).
         HttpEvents.Subscription subscription = events.subscribe();
-        liveVitals.onSubscriberJoined();
-        // Connect hydrate: push current vitals onto the bus (change-gate skipped) so the tab does
-        // not wait for the first 2s / 30s sampler tick. Cache hydrate re-sends the last captured
-        // snapshot and refreshes async — the store walk must not delay the ": connected" write.
-        // Re-publish in-flight build request-start + progress so a hard refresh mid-build rebinds
-        // the SPA to the live requestId stream.
-        liveVitals.publishStatus(true);
-        liveVitals.hydrateCache();
         try {
-            onEventsConnect.run();
-        } catch (RuntimeException e) {
-            log.accept("jk engine: sse connect rehydrate failed: " + e.getMessage());
-        }
-        try {
+            liveVitals.onSubscriberJoined();
+            // Connect hydrate: deliver current vitals to THIS subscription only (change-gate
+            // skipped) so the tab does not wait for the first 2s / 30s sampler tick — without
+            // re-broadcasting chrome to every open tab (JK-1523). Cache hydrate re-sends the last
+            // captured snapshot and refreshes async — the store walk must not delay the
+            // ": connected" write (JK-1513). Re-publish in-flight build request-start + progress
+            // (dashboard-wide, folded idempotently) so a hard refresh mid-build rebinds the SPA
+            // to the live requestId stream.
+            liveVitals.hydrateFor(subscription);
+            try {
+                onEventsConnect.run();
+            } catch (RuntimeException e) {
+                log.accept("jk engine: sse connect rehydrate failed: " + e.getMessage());
+            }
             out.write(": connected\n\n".getBytes(StandardCharsets.UTF_8));
             out.flush();
             while (true) {
@@ -1003,9 +1007,10 @@ public final class HttpEngineServer implements AutoCloseable {
     /**
      * {@code GET /api/history} — the persisted build journal (survives engine restarts). With no
      * {@code ?id=}, a JSON array of the newest entries' full records; with {@code ?id=}, that one
-     * entry's {@code record.json}. Each stored record is already valid JSON, so it streams verbatim
-     * (no re-serialization, and {@link JsonOut}'s flat-only shape never has to express the nested
-     * arrays). Read-tier auth, like every other GET.
+     * entry's {@code record.json}. Finished records stream verbatim (a cheap {@code "running":true}
+     * pre-check skips the parse); in-flight ones are MiniJson-parsed once to attach live
+     * {@code requestId}/{@code progress} (see {@link #enrichHistoryJson}). Read-tier auth, like
+     * every other GET.
      */
     private void handleHistory(HttpExchange exchange) throws IOException {
         String id = decode(queryParam(exchange.getRequestURI().getQuery(), "id"));
@@ -1034,6 +1039,9 @@ public final class HttpEngineServer implements AutoCloseable {
      */
     private String enrichHistoryJson(String raw) {
         if (raw == null || raw.isBlank()) return raw;
+        // Journal records are MiniJson-compact ("running":true, no spaces); finished records —
+        // the vast majority of a 200-row list — skip the parse entirely (JK-1523).
+        if (!raw.contains("\"running\":true")) return raw;
         try {
             Object parsed = cc.jumpkick.plugin.protocol.MiniJson.parse(raw);
             if (!(parsed instanceof Map<?, ?> m0)) return raw;

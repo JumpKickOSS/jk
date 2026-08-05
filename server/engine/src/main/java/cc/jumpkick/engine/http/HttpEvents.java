@@ -65,6 +65,17 @@ public final class HttpEvents {
         publish(type, payload, true);
     }
 
+    /**
+     * Deliver one frame to a single subscription — connect hydrate, never a broadcast. Existing
+     * subscribers already hold these facts; re-broadcasting them duplicated chrome on every new
+     * tab (JK-1523).
+     */
+    void deliverTo(Subscription s, String type, JsonOut payload) {
+        long id = seq.incrementAndGet();
+        String data = payload.toString();
+        s.offerDroppingOldest(s.style == FrameStyle.MCP ? mcpFrame(id, type, data) : dashboardFrame(id, type, data));
+    }
+
     private void publish(String type, JsonOut payload, boolean dashboardOnly) {
         long id = seq.incrementAndGet();
         String data = payload.toString();

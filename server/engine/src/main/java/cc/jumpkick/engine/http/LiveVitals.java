@@ -150,16 +150,27 @@ public final class LiveVitals implements AutoCloseable {
     }
 
     /**
-     * Connect hydrate: re-send the last captured snapshot immediately (no disk walk on the
-     * connect path), then refresh async on the sampler thread so a stale snapshot self-corrects.
-     * The first-ever connect has no snapshot yet — the async capture publishes shortly after, and
-     * the SPA's REST hydrate covers the gap (JK-1513).
+     * Connect hydrate for one new subscription: current status plus the last captured cache
+     * snapshot, delivered to <em>that subscription only</em> — existing tabs already hold these
+     * facts, and re-broadcasting them duplicated chrome on every new tab (JK-1523). The cache side
+     * never walks the disk on the connect path: it re-sends the stored snapshot and schedules an
+     * async refresh on the sampler thread (forced when no snapshot exists yet — the SPA's REST
+     * hydrate covers that brief first-connect gap, JK-1513).
      */
-    public void hydrateCache() {
+    public void hydrateFor(HttpEvents.Subscription sub) {
+        try {
+            StatusSnapshot s = status.get();
+            if (s != null) {
+                lastStatus.set(PresentStatus.of(s));
+                events.deliverTo(sub, "status", statusJson(s));
+            }
+        } catch (RuntimeException ignored) {
+            // status sampling is best-effort on the connect path
+        }
         CacheSnapshot last = lastCacheSnapshot.get();
         if (last != null) {
             lastCache.set(PresentCache.of(last));
-            events.publishDashboard("cache", last.toThinJson());
+            events.deliverTo(sub, "cache", last.toThinJson());
         }
         try {
             scheduler.execute(() -> publishCache(last == null));

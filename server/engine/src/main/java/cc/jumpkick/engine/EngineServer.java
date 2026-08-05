@@ -1583,7 +1583,20 @@ public final class EngineServer implements AutoCloseable {
      * nudged only on request start/finish so Builds Running / storage totals stay timely.
      */
     private void publishEvent(String type, cc.jumpkick.engine.http.JsonOut payload) {
-        if (httpEvents != null && httpEvents.hasSubscribers()) httpEvents.publish(type, payload);
+        publishEvent(type, payload, false);
+    }
+
+    /**
+     * As {@link #publishEvent(String, cc.jumpkick.engine.http.JsonOut)}; {@code dashboardOnly}
+     * frames (SSE-connect rehydrate replays) skip MCP subscriptions — the dashboard folds a
+     * duplicate {@code request-start} idempotently, but an MCP agent treating it as "job began"
+     * would double-count (JK-1523).
+     */
+    private void publishEvent(String type, cc.jumpkick.engine.http.JsonOut payload, boolean dashboardOnly) {
+        if (httpEvents != null && httpEvents.hasSubscribers()) {
+            if (dashboardOnly) httpEvents.publishDashboard(type, payload);
+            else httpEvents.publish(type, payload);
+        }
         // Sampled chrome (status/cache SSE) is change-gated; nudge it when jobs start/finish so
         // Builds Running and storage totals do not wait for the next timer tick (JK-1495/1497).
         HttpEngineServer http = httpServer;
@@ -1705,6 +1718,11 @@ public final class EngineServer implements AutoCloseable {
      * hub. Throttled unless {@code force} (stage boundaries, module complete, finish).
      */
     private void emitWorkspaceProgress(long requestId, java.io.BufferedWriter writer, boolean force) {
+        emitWorkspaceProgress(requestId, writer, force, false);
+    }
+
+    private void emitWorkspaceProgress(
+            long requestId, java.io.BufferedWriter writer, boolean force, boolean dashboardOnly) {
         if (requestId <= 0) return;
         // A straggler from an abandoned job must not re-register the maps teardown just cleared,
         // nor take a fresh emit lock that no longer serializes against anything (JK-1474).
@@ -1750,7 +1768,8 @@ public final class EngineServer implements AutoCloseable {
                                         .put("phase", snap.phase())
                                         .put("modulesComplete", snap.modulesComplete())
                                         .put("modulesTotal", snap.modulesTotal()),
-                                requestId));
+                                requestId),
+                        dashboardOnly);
             }
             Double held = lastProgressByRequest.get(requestId);
             long pctMillis = held != null
@@ -1782,6 +1801,10 @@ public final class EngineServer implements AutoCloseable {
     }
 
     private void publishRequestStart(long requestId, String kind, String dir, long buildNumber) {
+        publishRequestStart(requestId, kind, dir, buildNumber, false);
+    }
+
+    private void publishRequestStart(long requestId, String kind, String dir, long buildNumber, boolean dashboardOnly) {
         if (!eventsWanted()) return;
         String coord = null;
         try {
@@ -1799,7 +1822,7 @@ public final class EngineServer implements AutoCloseable {
                 .put("dir", dir)
                 .put("coord", coord);
         if (buildNumber > 0) payload = payload.put("buildNumber", buildNumber);
-        publishEvent("request-start", withProgress(payload, requestId));
+        publishEvent("request-start", withProgress(payload, requestId), dashboardOnly);
     }
 
     private void publishStepStart(long requestId, String dir, String step, String phase) {
@@ -5229,8 +5252,10 @@ public final class EngineServer implements AutoCloseable {
      */
     private void rehydrateLiveRunsOnSseConnect() {
         for (InFlightBuilds.Hold h : inFlightBuilds.list()) {
-            publishRequestStart(h.requestId(), h.kind(), h.dir(), h.buildNumber());
-            emitWorkspaceProgress(h.requestId(), null, true);
+            // Dashboard-only: existing tabs fold the duplicate request-start idempotently; MCP
+            // streams must not see a replayed "job began" (JK-1523).
+            publishRequestStart(h.requestId(), h.kind(), h.dir(), h.buildNumber(), true);
+            emitWorkspaceProgress(h.requestId(), null, true, true);
         }
     }
 

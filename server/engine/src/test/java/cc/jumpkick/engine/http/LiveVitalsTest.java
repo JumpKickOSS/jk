@@ -177,7 +177,7 @@ class LiveVitalsTest {
     }
 
     @Test
-    void hydrateCache_serves_last_snapshot_without_a_fresh_walk() throws Exception {
+    void hydrate_serves_last_snapshot_without_a_fresh_walk() throws Exception {
         // JK-1513: connect hydrate must not run the store walk on the connect path. With a
         // captured snapshot present, the frame arrives immediately even when a fresh capture
         // would take much longer than the read timeout.
@@ -202,11 +202,35 @@ class LiveVitalsTest {
             assertThat(sub.next(2_000)).contains("event: cache");
 
             long before = System.nanoTime();
-            live.hydrateCache();
+            live.hydrateFor(sub);
+            // First hydrate frame is the status; the cache frame follows from the stored snapshot.
+            String status1 = sub.next(500);
             String frame = sub.next(500);
             long elapsedMillis = (System.nanoTime() - before) / 1_000_000;
+            assertThat(status1).isNotNull().contains("event: status");
             assertThat(frame).isNotNull().contains("event: cache").contains("\"thin\":true");
             assertThat(elapsedMillis).isLessThan(900); // served from the stored snapshot, not a walk
+        }
+    }
+
+    @Test
+    void hydrate_delivers_to_the_new_subscription_only() throws Exception {
+        // JK-1523: connect hydrate must not re-broadcast chrome to every open tab.
+        HttpEvents hub = new HttpEvents();
+        AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
+        AtomicReference<CacheSnapshot> cache = new AtomicReference<>(
+                new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0));
+        try (LiveVitals live = new LiveVitals(hub, status::get, cache::get);
+                HttpEvents.Subscription existing = hub.subscribe();
+                HttpEvents.Subscription fresh = hub.subscribe()) {
+            live.publishCache(true); // seed the snapshot (broadcast — drain both)
+            assertThat(existing.next(500)).contains("event: cache");
+            assertThat(fresh.next(500)).contains("event: cache");
+
+            live.hydrateFor(fresh);
+            assertThat(fresh.next(500)).contains("event: status");
+            assertThat(fresh.next(500)).contains("event: cache");
+            assertThat(existing.next(100)).isNull(); // no duplicate chrome on the old tab
         }
     }
 
