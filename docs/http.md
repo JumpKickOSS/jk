@@ -127,6 +127,10 @@ work when `hasSubscribers()` is false.
 | **Sampled** (change-gated) | `status` | ~every 2 s while any client is subscribed, **and** only when presentation-quantized vitals change (CPU ~1 pp, RAM/heap ~1 MiB, counters exact). Also forced on stream connect and nudged on request start/finish |
 | **Sampled** (change-gated, IO) | `cache` | Slow tick (~30 s) while subscribed, plus after request finish; **not** on the 2 s status sampler. Live frames are **thin** (dual surface totals + budgets, `"thin": true`); full section breakdown is REST-only |
 
+The sampled `status`/`cache` frames are **dashboard-stream chrome**: MCP SSE subscriptions
+(`GET /mcp`) never receive them, and an MCP stream alone neither starts nor sustains the samplers
+— "while subscribed" above means dashboard (`/api/events`) subscribers.
+
 ### `event: status`
 
 Core engine/host vitals (same facts as `GET /api/status` heap/load/pipelines fields). Config knobs

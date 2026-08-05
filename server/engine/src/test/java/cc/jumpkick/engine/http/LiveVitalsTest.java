@@ -132,6 +132,50 @@ class LiveVitalsTest {
                 .doesNotContain("casCount");
     }
 
+    @Test
+    void mcp_only_subscription_neither_sustains_samplers_nor_receives_chrome() throws Exception {
+        // JK-1512: an MCP progress stream alone must not keep the vitals samplers alive, and
+        // status/cache chrome frames never land on MCP subscriptions.
+        HttpEvents hub = new HttpEvents();
+        AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
+        AtomicReference<CacheSnapshot> cache = new AtomicReference<>(
+                new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0));
+        try (LiveVitals live = new LiveVitals(hub, status::get, cache::get);
+                HttpEvents.Subscription mcp = hub.subscribe(HttpEvents.FrameStyle.MCP, null)) {
+            assertThat(hub.hasSubscribers()).isTrue();
+            assertThat(hub.hasDashboardSubscribers()).isFalse();
+
+            // Non-forced publishes are gated on dashboard subscribers, not any subscriber.
+            live.publishStatus(false);
+            live.publishCache(false);
+            assertThat(mcp.next(50)).isNull();
+
+            // Even a forced chrome publish (connect hydrate) skips MCP subscriptions...
+            live.publishStatus(true);
+            live.publishCache(true);
+            assertThat(mcp.next(50)).isNull();
+
+            // ...while build events still reach them.
+            hub.publish("request-start", JsonOut.object().put("requestId", 7));
+            assertThat(mcp.next(500)).contains("notifications/jk/event").contains("request-start");
+        }
+    }
+
+    @Test
+    void chrome_frames_reach_dashboard_but_not_mcp_side_by_side() throws Exception {
+        HttpEvents hub = new HttpEvents();
+        AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
+        AtomicReference<CacheSnapshot> cache = new AtomicReference<>(
+                new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0));
+        try (LiveVitals live = new LiveVitals(hub, status::get, cache::get);
+                HttpEvents.Subscription dash = hub.subscribe();
+                HttpEvents.Subscription mcp = hub.subscribe(HttpEvents.FrameStyle.MCP, null)) {
+            live.publishStatus(true);
+            assertThat(dash.next(500)).contains("event: status");
+            assertThat(mcp.next(50)).isNull();
+        }
+    }
+
     private static StatusSnapshot snap(long freeBytes, double load) {
         return new StatusSnapshot(
                 "0.11.0-test",

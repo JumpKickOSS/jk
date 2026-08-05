@@ -39,12 +39,38 @@ public final class HttpEvents {
         return !subscriptions.isEmpty();
     }
 
+    /**
+     * True when any {@link FrameStyle#DASHBOARD} subscription is attached. The vitals sampler
+     * lifecycle keys off this — an MCP progress stream alone must not keep status/cache sampling
+     * (and its 30s store walk) alive (JK-1512).
+     */
+    public boolean hasDashboardSubscribers() {
+        for (Subscription s : subscriptions) {
+            if (s.style == FrameStyle.DASHBOARD) return true;
+        }
+        return false;
+    }
+
     /** Render {@code payload} and fan out to every matching subscriber in its preferred style. */
     public void publish(String type, JsonOut payload) {
+        publish(type, payload, false);
+    }
+
+    /**
+     * As {@link #publish} but delivered to {@link FrameStyle#DASHBOARD} subscriptions only —
+     * engine chrome ({@code status}/{@code cache} vitals) that the MCP surface never advertised
+     * (JK-1512).
+     */
+    public void publishDashboard(String type, JsonOut payload) {
+        publish(type, payload, true);
+    }
+
+    private void publish(String type, JsonOut payload, boolean dashboardOnly) {
         long id = seq.incrementAndGet();
         String data = payload.toString();
         Long requestId = extractRequestId(data);
         for (Subscription s : subscriptions) {
+            if (dashboardOnly && s.style == FrameStyle.MCP) continue;
             if (!s.accepts(requestId)) continue;
             s.offerDroppingOldest(
                     s.style == FrameStyle.MCP ? mcpFrame(id, type, data) : dashboardFrame(id, type, data));
