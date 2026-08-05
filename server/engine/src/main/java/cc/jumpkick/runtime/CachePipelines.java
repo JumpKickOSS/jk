@@ -68,6 +68,9 @@ public final class CachePipelines {
                     }
 
                     ctx.label("Pruning cache…");
+                    for (String w : cc.jumpkick.config.JkCacheConfig.legacyKnobWarnings()) {
+                        ctx.warn("prune", w);
+                    }
                     long cutoffMillis = System.currentTimeMillis() - (long) olderThanDays * 24L * 60L * 60L * 1000L;
                     long totalFiles = 0;
                     long totalBytes = 0;
@@ -190,6 +193,9 @@ public final class CachePipelines {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("Sweeping store…");
+                    for (String w : cc.jumpkick.config.JkCacheConfig.legacyKnobWarnings()) {
+                        ctx.warn("sweep", w);
+                    }
                     SweepReport report = sweepStore(root, dryRun, maxSize);
                     ctx.put(FILES, report.files());
                     ctx.put(BYTES, report.bytes());
@@ -204,9 +210,20 @@ public final class CachePipelines {
     public record SweepReport(long files, long bytes, long reachableEvicted) {}
 
     /**
+     * Store LRU-eviction budget: an explicit {@code --max-size} wins; otherwise only an
+     * <em>explicitly configured</em> {@code max-store-size-mb} counts. {@code 0} = no eviction —
+     * the 4 GiB display default must never delete reachable store blobs (JK-1510).
+     */
+    static long storeEvictionBudgetBytes(String maxSize, cc.jumpkick.config.JkCacheConfig config) {
+        return maxSize != null
+                ? cc.jumpkick.task.LruEvictor.parseSize(maxSize)
+                : config.configuredStoreSizeBytes();
+    }
+
+    /**
      * Artifact-store reclamation: leftover store CAS {@code .put-} temps, expired run logs,
-     * unreferenced store blobs, and (when {@code maxSize} is set, else config
-     * {@code max-store-size-mb}) LRU eviction.
+     * unreferenced store blobs, and (when {@code maxSize} is set, else an <em>explicitly
+     * configured</em> {@code max-store-size-mb}) LRU eviction.
      */
     public static SweepReport sweepStore(Path root, boolean dryRun, String maxSize) throws IOException {
         long totalFiles = 0;
@@ -235,9 +252,7 @@ public final class CachePipelines {
         totalFiles += sweepReport.deleted();
         totalBytes += sweepReport.freedBytes();
 
-        long budgetBytes = maxSize != null
-                ? cc.jumpkick.task.LruEvictor.parseSize(maxSize)
-                : cc.jumpkick.config.JkCacheConfig.resolve().maxStoreSizeBytes();
+        long budgetBytes = storeEvictionBudgetBytes(maxSize, cc.jumpkick.config.JkCacheConfig.resolve());
         if (budgetBytes > 0) {
             var ledger = cc.jumpkick.task.AccessLedger.atDefaultPath();
             var evictReport = cc.jumpkick.task.LruEvictor.evictDownTo(cas, budgetBytes, liveRefs, ledger, dryRun);

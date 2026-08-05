@@ -13,7 +13,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class CachePruneSchedulerTest {
 
-    private static final JkCacheConfig ON = new JkCacheConfig(true, 4096, 7, 30, 1024);
+    private static final JkCacheConfig ON = new JkCacheConfig(true, 4096, 7, 30, 1024, false);
 
     @Test
     void should_run_when_stamp_missing(@TempDir Path cacheRoot) throws IOException {
@@ -51,15 +51,22 @@ class CachePruneSchedulerTest {
     }
 
     @Test
-    void command_includes_sweep_and_store_max_size(@TempDir Path cacheRoot) {
-        JkCacheConfig withCap = new JkCacheConfig(true, 2048, 7, 30, 512);
+    void command_includes_max_size_only_for_explicit_store_budget(@TempDir Path cacheRoot) {
+        JkCacheConfig withCap = new JkCacheConfig(true, 2048, 7, 30, 512, true);
         var cmd = CachePruneScheduler.commandFor(withCap, cacheRoot, "/usr/local/bin/jk");
         assertThat(cmd).contains("--sweep", "--background", "--max-size", "2048M");
     }
 
     @Test
+    void command_omits_max_size_for_default_store_budget(@TempDir Path cacheRoot) {
+        // The 4 GiB display default must not cue LRU eviction of reachable store blobs (JK-1510).
+        var cmd = CachePruneScheduler.commandFor(ON, cacheRoot, "/usr/local/bin/jk");
+        assertThat(cmd).contains("--sweep", "--background").doesNotContain("--max-size");
+    }
+
+    @Test
     void maybe_run_no_op_when_auto_prune_off(@TempDir Path cacheRoot) {
-        JkCacheConfig off = new JkCacheConfig(false, 4096, 7, 30, 1024);
+        JkCacheConfig off = new JkCacheConfig(false, 4096, 7, 30, 1024, false);
         CachePruneScheduler.maybeRun(off, cacheRoot, "/usr/local/bin/jk");
     }
 

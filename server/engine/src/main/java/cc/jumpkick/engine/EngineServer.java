@@ -2164,7 +2164,7 @@ public final class EngineServer implements AutoCloseable {
                         config.recordTtlDays(),
                         false,
                         true,
-                        config.maxStoreSizeMb() + "M",
+                        config.storeBudgetConfigured() ? config.maxStoreSizeMb() + "M" : null,
                         false);
                 cc.jumpkick.run.PipelineResult result = pipeline.run();
                 if (result.success()) {

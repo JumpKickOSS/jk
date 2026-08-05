@@ -180,6 +180,13 @@ max-store-size-mb = 4096    # artifact store CAS + repos/ (long-lived deps)
 `0` (or a negative value) for either size — file key or env var — means **unset**: the default
 above applies. Both storage reports use the same rule.
 
+The two budgets differ in what they *enforce*. The cache tier is rebuildable, so scheduled prunes
+LRU-evict it to its budget (default 1 GiB). The artifact store holds long-lived downloads: its
+4 GiB default drives the utilization bar **only** — reachable store blobs are LRU-evicted solely
+when you set `max-store-size-mb` (or `JK_MAX_STORE_SIZE_MB`) explicitly, or pass
+`--max-size` to `jk repo prune`. The pre-split knobs (`max-size-gb`, `action-max-size-mb`,
+`JK_MAX_SIZE_GB`, `JK_ACTION_MAX_SIZE_MB`) are no longer read; prune warns if one is still set.
+
 Preflight dirty memo fingerprints use **source content hashes** by default (CI-safe). Opt into
 faster path/size/mtime fingerprints with `JK_PREFLIGHT_MEMO_MTIME=1` if needed.
 
