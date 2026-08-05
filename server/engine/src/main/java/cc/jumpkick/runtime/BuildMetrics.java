@@ -499,7 +499,8 @@ public final class BuildMetrics {
         if (!(row instanceof Map<?, ?> o)) return null;
         String kind = str(o.get("kind"));
         String dir = str(o.get("dir"));
-        String step = str(o.get("step"));
+        String step = str(o.get("task"));
+        if (step == null) step = str(o.get("step"));
         if (dir == null || (invocation ? kind == null : step == null)) return null;
         return new Entry(
                 invocation ? kind : null,
@@ -535,7 +536,10 @@ public final class BuildMetrics {
         if (e.kind() != null) o.put("kind", e.kind());
         o.put("dir", e.dir());
         if (e.coord() != null) o.put("coord", e.coord());
-        if (e.step() != null) o.put("step", e.step());
+        if (e.step() != null) {
+            o.put("task", e.step());
+            o.put("step", e.step()); // alias during vocabulary settle
+        }
         o.put("ok", renderStats(e.ok()));
         o.put("failed", renderStats(e.failed()));
         o.put("cancelled", renderStats(e.cancelled()));

@@ -2655,9 +2655,16 @@ public final class BuildPipelines {
         return requires.toArray(new String[0]);
     }
 
-    /** True when a declared task must run before the compilers (source generation). */
+    /**
+     * True when a declared task must run before the compilers: source generation, or other
+     * resolve-window work that does not consume classes (e.g. android-manifest feeds aapt2).
+     */
     static boolean beforeCompile(PluginBuild.TaskDecl step) {
-        return step.sourceGenerating();
+        if (step.sourceGenerating()) return true;
+        if (step.testOnly() || step.packageTime()) return false;
+        // Intermediate tasks with no classes input (and no package/test contributions) run after
+        // resolve, not after copy-resources — otherwise they cycle with compile→resources.
+        return step.inputs() == null || !step.inputs().contains("classes");
     }
 
     /**

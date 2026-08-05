@@ -512,7 +512,13 @@ public final class BuildPlan {
             }
         }
         if (out.size() != steps.size()) {
-            throw new IllegalArgumentException("step DAG has a cycle");
+            java.util.Set<String> left = new HashSet<>(byName.keySet());
+            for (Task t : out) left.remove(t.name());
+            StringBuilder detail = new StringBuilder("step DAG has a cycle; remaining=");
+            for (String n : left) {
+                detail.append(n).append(byName.get(n).requires()).append(' ');
+            }
+            throw new IllegalArgumentException(detail.toString());
         }
         return out;
     }

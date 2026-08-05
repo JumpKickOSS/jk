@@ -83,7 +83,7 @@ class HttpEventsTest {
             String frame = s.next(1000);
             assertThat(frame).contains("event: message");
             assertThat(frame).contains("notifications/jk/event");
-            assertThat(frame).contains("\"event\":\"step-start\"");
+            assertThat(frame).contains("\"event\":\"task-start\"");
             assertThat(frame).contains("\"step\":\"compile\"");
             // agents read aggregate percent without parsing TTY bars.
             assertThat(frame).contains("\"progress\":42.5");

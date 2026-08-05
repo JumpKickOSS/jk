@@ -316,7 +316,8 @@ public final class BuildPluginHarness {
                 switch (String.valueOf(Jsonl.str(line, "t"))) {
                     case "op" -> {
                         op = String.valueOf(Jsonl.str(line, "op"));
-                        stepName = Jsonl.str(line, "step");
+                        stepName = Jsonl.str(line, "task");
+                        if (stepName == null || stepName.isBlank()) stepName = Jsonl.str(line, "step");
                         pluginId = String.valueOf(Jsonl.str(line, "plugin"));
                     }
                     case "config" -> {
