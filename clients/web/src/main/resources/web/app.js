@@ -768,7 +768,10 @@ Vue.createApp({
               this.loadProjectHistory();
             }
           } else if (state === 'offline') {
-            this.scheduleOfflineStatusFallback();
+            // EventSource's own retry cadence (~3s on refused connections) is shorter than the
+            // poll delay — re-arming on every onerror would perpetually reset the pending timer
+            // and the fallback poll would never actually run (JK-1518).
+            if (this._offlineStatusTimer == null) this.scheduleOfflineStatusFallback();
           }
         },
       );
@@ -1109,6 +1112,13 @@ Vue.createApp({
       this._offlineStatusTimer = setTimeout(async () => {
         this._offlineStatusTimer = null;
         if (document.hidden || this.connection === 'live' || this.connection === 'unauthorized') return;
+        // A non-200 answer (503 during an engine respawn, exhausted SSE budget, 421) kills
+        // EventSource for good — it only auto-reconnects after network errors. The offline poll
+        // doubles as the reconnect probe so the stream comes back once the engine is healthy
+        // (JK-1518).
+        if (this._eventSource && this._eventSource.readyState === EventSource.CLOSED) {
+          this.connectEvents();
+        }
         await this.refreshStatus();
         this._offlineStatusBackoffMs = Math.min(30_000, Math.round((this._offlineStatusBackoffMs || 5_000) * 1.5));
         this.scheduleOfflineStatusFallback();

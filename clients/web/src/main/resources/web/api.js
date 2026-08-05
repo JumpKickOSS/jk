@@ -133,9 +133,12 @@ const EVENT_TYPES = [
 
 /**
  * Open the SSE stream. `onEvent({type, data})` per engine event; `onState('live'|'offline')` as the
- * connection comes and goes. EventSource reconnects on its own; an HTTP-enabled engine never idles
- * out (docs/http.md), so 'offline' only ever means an explicit stop, an upgrade respawn, or a crash.
- * EventSource cannot send headers, so non-loopback origins carry the token as a query parameter.
+ * connection comes and goes. EventSource reconnects on its own after NETWORK errors only — any
+ * non-200 response (503 while the engine respawns or the SSE budget is exhausted, 421 bad Host)
+ * closes it permanently, so the caller's offline poll re-creates the source when it finds
+ * readyState CLOSED (JK-1518). An HTTP-enabled engine never idles out (docs/http.md), so
+ * 'offline' only ever means an explicit stop, an upgrade respawn, or a crash. EventSource cannot
+ * send headers, so non-loopback origins carry the token as a query parameter.
  */
 export function events(onEvent, onState) {
   const query = !loopback() && token() ? '?access_token=' + encodeURIComponent(token()) : '';
