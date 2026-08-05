@@ -1787,9 +1787,13 @@ public final class EngineProtocol {
 
     /** Outer invocation phase: {@code phase} wire name + {@code status} ({@code start}|{@code finish}). */
     public static String invocationPhase(String phase, String status) {
-        return "{"" + TYPE_FIELD + "":"" + INVOCATION_PHASE + "","phase":"
+        return "{\""
+                + TYPE_FIELD
+                + "\":\""
+                + INVOCATION_PHASE
+                + "\",\"phase\":"
                 + Jsonl.quote(phase == null ? "" : phase)
-                + ","status":"
+                + ",\"status\":"
                 + Jsonl.quote(status == null ? "" : status)
                 + "}";
     }
