@@ -2787,7 +2787,7 @@ public final class EngineServer implements AutoCloseable {
                 sendQuiet(
                         writer,
                         EngineProtocol.planStep(
-                                dir, p.name(), p.label(), phaseWire(p.phase().orElse(null))));
+                                dir, p.name(), p.label(), phaseWire(p.group().orElse(null))));
             }
             sendQuiet(writer, EngineProtocol.planDone(1));
             pipeline.addListener(wireBuildPlanListener(dir, writer, pipeline));
@@ -2873,7 +2873,7 @@ public final class EngineServer implements AutoCloseable {
                 sendQuiet(
                         writer,
                         EngineProtocol.planStep(
-                                dir, p.name(), p.label(), phaseWire(p.phase().orElse(null))));
+                                dir, p.name(), p.label(), phaseWire(p.group().orElse(null))));
             }
             sendQuiet(writer, EngineProtocol.planDone(1));
             pipeline.addListener(wireBuildPlanListener(dir, writer, pipeline));
@@ -3048,7 +3048,7 @@ public final class EngineServer implements AutoCloseable {
                                     dir,
                                     p.name(),
                                     p.label(),
-                                    phaseWire(p.phase().orElse(null))));
+                                    phaseWire(p.group().orElse(null))));
                 }
                 sendQuiet(writer, EngineProtocol.planDone(1));
                 pipeline.addListener(
@@ -3084,7 +3084,7 @@ public final class EngineServer implements AutoCloseable {
             sendQuiet(
                     writer,
                     EngineProtocol.planStep(
-                            dir, p.name(), p.label(), phaseWire(p.phase().orElse(null))));
+                            dir, p.name(), p.label(), phaseWire(p.group().orElse(null))));
         }
         sendQuiet(writer, EngineProtocol.planDone(1));
         pipeline.addListener(wireBuildPlanListener(dir, writer, finishEncoder));
@@ -3850,7 +3850,7 @@ public final class EngineServer implements AutoCloseable {
                 sendQuiet(
                         writer,
                         EngineProtocol.planStep(
-                                dirTag, p.name(), p.label(), phaseWire(p.phase().orElse(null))));
+                                dirTag, p.name(), p.label(), phaseWire(p.group().orElse(null))));
             }
         }
         sendQuiet(writer, EngineProtocol.planDone(pipelines.size()));
@@ -3976,7 +3976,7 @@ public final class EngineServer implements AutoCloseable {
                 sendQuiet(
                         writer,
                         EngineProtocol.planStep(
-                                dirTag, p.name(), p.label(), phaseWire(p.phase().orElse(null))));
+                                dirTag, p.name(), p.label(), phaseWire(p.group().orElse(null))));
             }
             sendQuiet(writer, EngineProtocol.planDone(1));
             pipeline.addListener(wireBuildPlanListener(
@@ -4107,7 +4107,7 @@ public final class EngineServer implements AutoCloseable {
                                         dir,
                                         p.name(),
                                         p.label(),
-                                        phaseWire(p.phase().orElse(null))));
+                                        phaseWire(p.group().orElse(null))));
                     }
                 }
                 sendQuiet(writer, EngineProtocol.planDone(plan.size()));
