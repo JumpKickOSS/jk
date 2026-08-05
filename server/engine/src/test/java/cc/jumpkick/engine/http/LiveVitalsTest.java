@@ -176,6 +176,59 @@ class LiveVitalsTest {
         }
     }
 
+    @Test
+    void hydrateCache_serves_last_snapshot_without_a_fresh_walk() throws Exception {
+        // JK-1513: connect hydrate must not run the store walk on the connect path. With a
+        // captured snapshot present, the frame arrives immediately even when a fresh capture
+        // would take much longer than the read timeout.
+        HttpEvents hub = new HttpEvents();
+        AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
+        CacheSnapshot snapshot =
+                new CacheSnapshot(10, 5_000_000, 2, 100_000, 0, 0, 1, 2_000_000, 0, 0, 0, 0, 20L << 30, 1L << 30, 0);
+        java.util.concurrent.atomic.AtomicInteger captures = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.function.Supplier<CacheSnapshot> slowCapture = () -> {
+            captures.incrementAndGet();
+            try {
+                Thread.sleep(1_000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return snapshot;
+        };
+        try (LiveVitals live = new LiveVitals(hub, status::get, slowCapture);
+                HttpEvents.Subscription sub = hub.subscribe()) {
+            // Seed the snapshot the way the sampler would (one slow capture, off-path here).
+            live.publishCache(true);
+            assertThat(sub.next(2_000)).contains("event: cache");
+
+            long before = System.nanoTime();
+            live.hydrateCache();
+            String frame = sub.next(500);
+            long elapsedMillis = (System.nanoTime() - before) / 1_000_000;
+            assertThat(frame).isNotNull().contains("event: cache").contains("\"thin\":true");
+            assertThat(elapsedMillis).isLessThan(900); // served from the stored snapshot, not a walk
+        }
+    }
+
+    @Test
+    void nudgeCache_runs_the_walk_off_the_caller_thread() throws Exception {
+        HttpEvents hub = new HttpEvents();
+        AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
+        CacheSnapshot snapshot =
+                new CacheSnapshot(10, 5_000_000, 2, 100_000, 0, 0, 1, 2_000_000, 0, 0, 0, 0, 20L << 30, 1L << 30, 0);
+        java.util.concurrent.atomic.AtomicReference<Thread> captureThread = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.function.Supplier<CacheSnapshot> capture = () -> {
+            captureThread.set(Thread.currentThread());
+            return snapshot;
+        };
+        try (LiveVitals live = new LiveVitals(hub, status::get, capture);
+                HttpEvents.Subscription sub = hub.subscribe()) {
+            live.nudgeCache();
+            assertThat(sub.next(2_000)).contains("event: cache");
+            assertThat(captureThread.get()).isNotNull().isNotEqualTo(Thread.currentThread());
+        }
+    }
+
     private static StatusSnapshot snap(long freeBytes, double load) {
         return new StatusSnapshot(
                 "0.11.0-test",

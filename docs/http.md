@@ -131,6 +131,11 @@ The sampled `status`/`cache` frames are **dashboard-stream chrome**: MCP SSE sub
 (`GET /mcp`) never receive them, and an MCP stream alone neither starts nor sustains the samplers
 — "while subscribed" above means dashboard (`/api/events`) subscribers.
 
+The `cache` storage walk never runs on a request thread: connect hydrate re-sends the last
+captured snapshot (refreshing async on the sampler thread), and the post-build nudge is likewise
+async — a first-ever connect may briefly carry no `cache` frame until the async capture lands
+(the SPA's REST hydrate covers that gap).
+
 ### `event: status`
 
 Core engine/host vitals (same facts as `GET /api/status` heap/load/pipelines fields). Config knobs

@@ -340,7 +340,7 @@ public final class HttpEngineServer implements AutoCloseable {
      * IO-shaped — only call off the hot step path.
      */
     public void notifyLiveCache() {
-        liveVitals.publishCache(false);
+        liveVitals.nudgeCache();
     }
 
     /** Stop the server (once) and interrupt its executor; nulling both makes any repeat call a no-op. */
@@ -738,10 +738,12 @@ public final class HttpEngineServer implements AutoCloseable {
         HttpEvents.Subscription subscription = events.subscribe();
         liveVitals.onSubscriberJoined();
         // Connect hydrate: push current vitals onto the bus (change-gate skipped) so the tab does
-        // not wait for the first 2s / 30s sampler tick. Re-publish in-flight build request-start +
-        // progress so a hard refresh mid-build rebinds the SPA to the live requestId stream.
+        // not wait for the first 2s / 30s sampler tick. Cache hydrate re-sends the last captured
+        // snapshot and refreshes async — the store walk must not delay the ": connected" write.
+        // Re-publish in-flight build request-start + progress so a hard refresh mid-build rebinds
+        // the SPA to the live requestId stream.
         liveVitals.publishStatus(true);
-        liveVitals.publishCache(true);
+        liveVitals.hydrateCache();
         try {
             onEventsConnect.run();
         } catch (RuntimeException e) {

@@ -43,6 +43,9 @@ public final class LiveVitals implements AutoCloseable {
     /** Last published dual-surface cache totals (MiB quanta); null until first publish. */
     private final AtomicReference<PresentCache> lastCache = new AtomicReference<>();
 
+    /** Last captured full snapshot — serves connect hydrate without a fresh store walk (JK-1513). */
+    private final AtomicReference<CacheSnapshot> lastCacheSnapshot = new AtomicReference<>();
+
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "jk-live-vitals");
         t.setDaemon(true);
@@ -119,6 +122,7 @@ public final class LiveVitals implements AutoCloseable {
         try {
             CacheSnapshot c = cache.get();
             if (c == null) return;
+            lastCacheSnapshot.set(c);
             PresentCache present = PresentCache.of(c);
             if (!force) {
                 PresentCache prev = lastCache.get();
@@ -128,6 +132,39 @@ public final class LiveVitals implements AutoCloseable {
             events.publishDashboard("cache", c.toThinJson());
         } catch (RuntimeException ignored) {
             // disk walk failures are best-effort
+        }
+    }
+
+    /**
+     * Post-build nudge: run the change-gated cache publish on the sampler thread instead of the
+     * caller's. The capture walks the store; it must never sit on a request-finish path where it
+     * delays the journal write and the terminal frame (JK-1513).
+     */
+    public void nudgeCache() {
+        if (!events.hasDashboardSubscribers()) return;
+        try {
+            scheduler.execute(() -> publishCache(false));
+        } catch (java.util.concurrent.RejectedExecutionException ignored) {
+            // closing — nothing left to notify
+        }
+    }
+
+    /**
+     * Connect hydrate: re-send the last captured snapshot immediately (no disk walk on the
+     * connect path), then refresh async on the sampler thread so a stale snapshot self-corrects.
+     * The first-ever connect has no snapshot yet — the async capture publishes shortly after, and
+     * the SPA's REST hydrate covers the gap (JK-1513).
+     */
+    public void hydrateCache() {
+        CacheSnapshot last = lastCacheSnapshot.get();
+        if (last != null) {
+            lastCache.set(PresentCache.of(last));
+            events.publishDashboard("cache", last.toThinJson());
+        }
+        try {
+            scheduler.execute(() -> publishCache(last == null));
+        } catch (java.util.concurrent.RejectedExecutionException ignored) {
+            // closing — nothing left to notify
         }
     }
 
