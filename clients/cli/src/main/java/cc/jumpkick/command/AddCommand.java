@@ -79,8 +79,8 @@ public final class AddCommand implements CliCommand {
         return List.of(Param.of(
                 "dep|path",
                 Arity.ONE,
-                "A dep: short-name, group:artifact[:version], or @version\n"
-                        + "...or a local module (:name or a path like ./foo/bar)."));
+                "Library short name, name@ver, group:artifact[:ver], or local path.\n"
+                        + "Bare name is a path when that relative dir exists; else a library."));
     }
 
     @Override
@@ -99,9 +99,8 @@ public final class AddCommand implements CliCommand {
 
         Path dir = global.workingDir();
 
-        // Local path argument: either a regular file (jk add ./libs/foo.jar)
-        // or a workspace sibling directory (uv's `uv add ./lib`).
-        if (isLocalPathArg(coord)) {
+        // Local path argument: file jar, workspace module dir, or bare name that stats as a dir.
+        if (isLocalPathArg(coord, dir)) {
             String normalized = coord.replace('\\', '/');
             String stripped = (normalized.charAt(0) == ':') ? normalized.substring(1) : normalized;
             Path candidate = dir.resolve(stripped).normalize();
@@ -180,19 +179,27 @@ public final class AddCommand implements CliCommand {
     }
 
     /**
-     * Whether the positional argument denotes a local workspace module rather than a Maven coord or
-     * catalog library. True when it begins with {@code :} (an explicit local marker, e.g. {@code
-     * :jackson}) or looks like a filesystem path — i.e. contains a {@code /} or {@code \} separator
-     * ({@code ./m}, {@code ../m}, {@code backend/m}, {@code m/}, {@code ..\..\m}).
+     * Whether the positional denotes a local path/module rather than a library or Maven coord.
      *
-     * <p>A bare name with none of these (e.g. {@code jackson}) is a catalog library and is resolved
-     * as a coord — never treated as a path, even if a directory by that name happens to exist. A
-     * Maven coord ({@code group:artifact:version}) has its {@code :} after the group, not at the
-     * start, so it is not mistaken for a local marker.
+     * <ul>
+     *   <li>{@code :name} — explicit local marker
+     *   <li>{@code ./n}, {@code n/}, {@code ../n}, backslash forms — path separators
+     *   <li>bare {@code n} — <em>path</em> only when {@code cwd/n} is an existing directory; else
+     *       library short name
+     *   <li>{@code n@…} or {@code g:a…} — never a path (version / Maven coord)
+     * </ul>
      */
-    private static boolean isLocalPathArg(String arg) {
-        if (arg.isEmpty()) return false;
-        return arg.charAt(0) == ':' || arg.indexOf('/') >= 0 || arg.indexOf('\\') >= 0;
+    static boolean isLocalPathArg(String arg, Path cwd) {
+        if (arg == null || arg.isEmpty()) return false;
+        if (arg.charAt(0) == ':') return true;
+        // Versioned library short name — never a path.
+        if (arg.indexOf('@') >= 0) return false;
+        // Maven GAV (group:artifact[:version]) — ':' after the group, not a leading local marker.
+        if (arg.indexOf(':') >= 0) return false;
+        if (arg.indexOf('/') >= 0 || arg.indexOf('\\') >= 0) return true;
+        // Bare token: path if a relative directory exists, otherwise a library short name.
+        if (cwd == null) return false;
+        return Files.isDirectory(cwd.resolve(arg).normalize());
     }
 
     /**
@@ -471,9 +478,12 @@ public final class AddCommand implements CliCommand {
             } else {
                 moduleStr = coord.substring(0, nextColon);
                 rawVersion = coord.substring(nextColon + 1);
-                floating = false;
+                // group:artifact:  (empty version) → same as group:artifact → latest
                 if (rawVersion.isBlank()) {
-                    throw new IllegalArgumentException("empty version after ':' in: " + coord);
+                    rawVersion = "latest";
+                    floating = true;
+                } else {
+                    floating = false;
                 }
             }
             int sep = moduleStr.indexOf(':');

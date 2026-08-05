@@ -123,10 +123,30 @@ class AddCommandTest {
     }
 
     @Test
-    void add_bare_name_is_resolved_as_library_not_path(@TempDir Path tmp) throws IOException {
-        // A bare name with no separators and no leading ':' is a library, even
-        // when a directory by that name exists. Unknown library + no --group →
-        // usage error, and the workspace is left untouched.
+    void add_bare_name_is_path_when_relative_dir_exists(@TempDir Path tmp) throws IOException {
+        // Bare token + existing relative directory → local module (not catalog library).
+        write(tmp.resolve("jk.toml"), """
+                [project]
+                group    = "cc.jumpkick"
+                name     = "jk"
+                version  = "0.1.0"
+
+                [workspace]
+                modules = ["core"]
+                """);
+        write(tmp.resolve("jackson/jk.toml"), module("jackson", "1.0.0"));
+
+        int exit = Jk.execute("add", "jackson", "-C", tmp.toString());
+        assertThat(exit).isEqualTo(0);
+        assertThat(Files.readString(tmp.resolve("jk.toml")))
+                .contains("jackson = { group = \"cc.jumpkick\", version = \"=1.0.0\" }");
+        assertThat(JkBuildParser.parse(tmp.resolve("jk.toml")).workspace().modules())
+                .containsExactly("core", "jackson");
+    }
+
+    @Test
+    void add_bare_name_is_library_when_no_relative_dir(@TempDir Path tmp) throws IOException {
+        // No directory by that name → library short name. Unknown catalog entry → usage error.
         write(tmp.resolve("jk.toml"), """
                 [project]
                 group    = "cc.jumpkick"
@@ -136,12 +156,60 @@ class AddCommandTest {
                 [workspace]
                 modules = []
                 """);
-        write(tmp.resolve("jackson/jk.toml"), module("jackson", "1.0.0"));
 
-        int exit = Jk.execute("add", "jackson", "-C", tmp.toString());
-        assertThat(exit).isEqualTo(64); // EX_USAGE — library resolution, not a path
-        assertThat(JkBuildParser.parse(tmp.resolve("jk.toml")).workspace().modules())
-                .isEmpty();
+        int exit = Jk.execute("add", "not-a-catalog-lib-xyz", "-C", tmp.toString());
+        assertThat(exit).isEqualTo(64);
+        assertThat(JkBuildParser.parse(tmp.resolve("jk.toml")).workspace().modules()).isEmpty();
+    }
+
+    @Test
+    void add_at_version_is_library_even_when_dir_exists(@TempDir Path tmp) throws IOException {
+        // name@version is always a library — path disambiguation does not apply.
+        write(tmp.resolve("jk.toml"), """
+                [project]
+                group    = "cc.jumpkick"
+                name     = "jk"
+                version  = "0.1.0"
+
+                [workspace]
+                modules = []
+                """);
+        write(tmp.resolve("jackson3-core/jk.toml"), module("jackson3-core", "9.9.9"));
+
+        int exit = Jk.execute("add", "jackson3-core@3.1.0", "-C", tmp.toString());
+        assertThat(exit).isEqualTo(0);
+        // Catalog library, not the local module's version.
+        assertThat(Files.readString(tmp.resolve("jk.toml"))).contains("jackson3-core = \"3.1.0\"");
+        assertThat(JkBuildParser.parse(tmp.resolve("jk.toml")).workspace().modules()).isEmpty();
+    }
+
+    @Test
+    void add_at_exact_version_selector(@TempDir Path tmp) throws IOException {
+        write(tmp.resolve("jk.toml"), """
+                [project]
+                group    = "cc.jumpkick"
+                name     = "jk"
+                version  = "0.1.0"
+                """);
+
+        int exit = Jk.execute("add", "jackson3-core@=3.1.0", "-C", tmp.toString());
+        assertThat(exit).isEqualTo(0);
+        assertThat(Files.readString(tmp.resolve("jk.toml"))).contains("jackson3-core = \"=3.1.0\"");
+    }
+
+    @Test
+    void add_group_artifact_trailing_colon_is_latest(@TempDir Path tmp) throws IOException {
+        write(tmp.resolve("jk.toml"), """
+                [project]
+                group    = "cc.jumpkick"
+                name     = "jk"
+                version  = "0.1.0"
+                """);
+
+        int exit = Jk.execute("add", "com.foo.emptyver:bar:", "-C", tmp.toString());
+        assertThat(exit).isEqualTo(0);
+        assertThat(Files.readString(tmp.resolve("jk.toml")))
+                .contains("bar = { group = \"com.foo.emptyver\", version = \"latest\" }");
     }
 
     @Test
