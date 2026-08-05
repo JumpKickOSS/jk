@@ -25,7 +25,7 @@ JumpKick is _batteries included_ — a superior replacement for many tools you a
 ```bash
 jk new my-app
 cd my-app
-jk add jnats          # catalog short name (or group:artifact[:version], path, …)
+jk add jackson3-databind   # catalog short name (or group:artifact[:version], path, …)
 jk build
 ```
 
@@ -38,7 +38,7 @@ version = "0.1.0"
 java    = 25
 
 [dependencies]
-jnats = "latest"   # SemVer ranges, exact pins, or "latest"
+jackson3-databind = "latest"   # SemVer ranges, exact pins, or "latest"
 
 [platform-dependencies]   # BOMs — enforced platforms (Maven depMgmt contract)
 spring-boot-dependencies = "4.1.0"
@@ -309,7 +309,7 @@ jk --help
 Developer setup: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ```bash
-jk init hello && cd hello
+jk new hello && cd hello
 jk build
 ```
 

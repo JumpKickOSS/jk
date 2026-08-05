@@ -15,8 +15,8 @@ Use the comment syntax appropriate to the file type (`//`, `#`, `<!--`, …).
 Bootstrap pins (`.sdkmanrc`):
 
 ```
-java=25.0.3-graal
-gradle=9.5.1
+java=25.0.4-graal
+gradle=9.6.1
 ```
 
 With SDKMAN: `sdk env install && sdk env`. Otherwise Gradle can provision a JDK via the
