@@ -84,6 +84,11 @@ jk lock --cache-dir "$COLD"          # or: JK_CACHE_DIR="$COLD" jk lock
 The engine process is keyed by state directory + store; isolating only the action
 cache leaves CAS reuse intact.
 
+Since the two-tier split, everything under a cache root — including its `sha256/` blob pool — is
+**cache tier**: rebuildable, prunable to the cache budget, and wiped by `jk cache purge`. A
+pre-split custom `--cache-dir` whose `sha256/` still holds store blobs should be recreated fresh
+(the old contents re-fetch on demand); jk does not special-case legacy collocated layouts.
+
 ### `jk env` — where values come from
 
 Build-visible environment is layered (lowest → highest): workspace `.env`, module `.env`, then
