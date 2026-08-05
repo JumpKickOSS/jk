@@ -1051,7 +1051,8 @@ public final class HttpEngineServer implements AutoCloseable {
         }
     }
 
-    private LiveRun matchLiveRun(Map<String, Object> rec) {
+    // Package-private for direct unit testing of the rebind rules (JK-1522).
+    LiveRun matchLiveRun(Map<String, Object> rec) {
         List<LiveRun> live = liveRuns.get();
         if (live == null || live.isEmpty()) return null;
         long buildNumber = liveLong(rec.get("buildNumber"));
@@ -1062,15 +1063,14 @@ public final class HttpEngineServer implements AutoCloseable {
                     && buildNumber == h.buildNumber()
                     && dir != null
                     && dir.equals(h.dir());
-            boolean sameJournal = id != null
-                    && h.journalId() != null
-                    && (id.equals(h.journalId())
-                            || h.journalId().equals(Long.toString(h.buildNumber()))
-                                    && id.equals(Long.toString(h.buildNumber())));
+            boolean sameJournal = id != null && h.journalId() != null && id.equals(h.journalId());
             if (sameRun || sameJournal) return h;
         }
-        // Single live job with matching dir (buildNumber missing on older stubs).
-        if (dir != null) {
+        // Single live job with matching dir — only for records that carry no buildNumber (older
+        // stubs). A record WITH a buildNumber that failed the strict match is a different run
+        // (e.g. a stale running stub from a crashed engine) and must not rebind to the current
+        // one's stream (JK-1522).
+        if (dir != null && buildNumber <= 0) {
             LiveRun only = null;
             for (LiveRun h : live) {
                 if (dir.equals(h.dir())) {

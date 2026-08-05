@@ -1137,4 +1137,19 @@ class HttpEngineServerTest {
         assertThat(nextLine(lines)).isNotNull(); // connected
         assertThat(server.liveEventStreams()).isEqualTo(1);
     }
+
+    @Test
+    void matchLiveRun_dir_fallback_applies_only_without_a_buildNumber() {
+        // JK-1522: a stale running record with a real buildNumber that fails the strict match is a
+        // DIFFERENT run (crashed-engine stub) — it must not rebind to the current run's stream.
+        var run = new HttpEngineServer.LiveRun(42, 6, "build", "/w", "g:w", 0, Double.NaN, "j6");
+        server.setLiveRunSupport(() -> java.util.List.of(run), null);
+
+        assertThat(server.matchLiveRun(java.util.Map.of("dir", "/w", "buildNumber", 6L)))
+                .isEqualTo(run); // strict (dir, buildNumber)
+        assertThat(server.matchLiveRun(java.util.Map.of("id", "j6"))).isEqualTo(run); // journal id
+        assertThat(server.matchLiveRun(java.util.Map.of("dir", "/w"))).isEqualTo(run); // legacy stub
+        assertThat(server.matchLiveRun(java.util.Map.of("dir", "/w", "buildNumber", 5L)))
+                .isNull(); // stale record, wrong build — no dir-only rebind
+    }
 }
