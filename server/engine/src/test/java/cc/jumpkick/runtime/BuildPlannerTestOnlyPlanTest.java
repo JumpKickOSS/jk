@@ -126,6 +126,73 @@ class BuildPlannerTestOnlyPlanTest {
                 .doesNotContain(TaskNames.PACKAGE_ASSEMBLY, TaskNames.PACKAGE_JAR);
     }
 
+    @Test
+    void test_only_plan_keeps_freshness_stamps(@TempDir Path dir) throws Exception {
+        Files.createDirectories(dir.resolve("src/main/java"));
+        Files.createDirectories(dir.resolve("src/main/kotlin"));
+        Files.writeString(dir.resolve("jk.toml"), """
+                [project]
+                group = "ex"
+                name = "m"
+                version = "1.0"
+                jdk = 25
+                java = 25
+                kotlin = "2.3.21"
+                """);
+        Set<String> names = BuildPlanner.coreBuilder(inputs(dir, true, false)).build().steps().stream()
+                .map(s -> s.name())
+                .collect(Collectors.toSet());
+        assertThat(names)
+                .as("edit→test loop keeps compile incrementality: stamps survive the run-tests prune")
+                .contains(TaskNames.RUN_TESTS, TaskNames.WRITE_STAMP, TaskNames.WRITE_STAMP_KOTLIN)
+                .doesNotContain(TaskNames.PACKAGE_JAR);
+    }
+
+    @Test
+    void mixed_compile_only_plan_keeps_both_stamps_and_assembler(@TempDir Path dir) throws Exception {
+        Files.createDirectories(dir.resolve("src/main/java"));
+        Files.createDirectories(dir.resolve("src/main/kotlin"));
+        Files.writeString(dir.resolve("jk.toml"), """
+                [project]
+                group = "ex"
+                name = "m"
+                version = "1.0"
+                jdk = 25
+                java = 25
+                kotlin = "2.3.21"
+                """);
+        Set<String> names = BuildPlanner.coreBuilder(inputs(dir, false, true)).build().steps().stream()
+                .map(s -> s.name())
+                .collect(Collectors.toSet());
+        assertThat(names)
+                .as("mixed jk compile keeps every language's stamp and the classes assembler")
+                .contains(
+                        TaskNames.WRITE_STAMP,
+                        TaskNames.WRITE_STAMP_KOTLIN,
+                        TaskNames.ASSEMBLE_CLASSES,
+                        BuildPlanner.COMPILE_JOIN)
+                .doesNotContain(TaskNames.PACKAGE_JAR, TaskNames.RUN_TESTS);
+    }
+
+    @Test
+    void single_language_compile_only_keeps_single_stamp_terminal(@TempDir Path dir) throws Exception {
+        Files.createDirectories(dir.resolve("src/main/java"));
+        Files.writeString(dir.resolve("jk.toml"), """
+                [project]
+                group = "ex"
+                name = "m"
+                version = "1.0"
+                java = 25
+                """);
+        Set<String> names = BuildPlanner.coreBuilder(inputs(dir, false, true)).build().steps().stream()
+                .map(s -> s.name())
+                .collect(Collectors.toSet());
+        assertThat(names)
+                .as("single-language jk compile: no join task, stamp is the terminal")
+                .contains(TaskNames.WRITE_STAMP)
+                .doesNotContain(BuildPlanner.COMPILE_JOIN, TaskNames.PACKAGE_JAR);
+    }
+
     // ---- fixture ------------------------------------------------------------------------------
 
     /** A Java module with a path-pinned, materialized [code] plugin (no worker fork needed). */

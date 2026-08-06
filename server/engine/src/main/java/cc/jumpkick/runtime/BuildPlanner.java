@@ -567,7 +567,16 @@ public final class BuildPlanner {
         Task compileTest = compileTestStep(cx);
 
         // ---- run-tests --------------------------------------------------
-        Task runTests = runTestsStep(cx, pluginDeclsF);
+        // In testOnly plans no package path exists to anchor the freshness stamps, so
+        // run-tests carries them in its requires — otherwise the target-closure prune drops
+        // them and the edit→test loop re-runs the main compile every invocation.
+        List<String> testStampRequires = new ArrayList<>();
+        if (in.testOnly()) {
+            if (useJava) testStampRequires.add(TaskNames.WRITE_STAMP);
+            if (useKotlin) testStampRequires.add(TaskNames.WRITE_STAMP_KOTLIN);
+            if (useGroovy) testStampRequires.add(TaskNames.WRITE_STAMP_GROOVY);
+        }
+        Task runTests = runTestsStep(cx, pluginDeclsF, testStampRequires);
 
         // ---- plugin steps ------------------------------------------------
         List<Task> pluginSteps = new ArrayList<>();
@@ -622,21 +631,38 @@ public final class BuildPlanner {
         // `jk compile` stops here: lock → sync → compile (+ freshness stamps),
         // no resources/test/package. Everything later depends on these steps.
         if (in.compileOnly()) {
+            List<String> stamps = new ArrayList<>();
             if (useJava) {
                 b.addTask(writeStamp);
+                stamps.add(TaskNames.WRITE_STAMP);
             }
             if (useKotlin) {
                 b.addTask(writeStampKotlin);
+                stamps.add(TaskNames.WRITE_STAMP_KOTLIN);
             }
             if (useGroovy) {
                 b.addTask(writeStampGroovy);
+                stamps.add(TaskNames.WRITE_STAMP_GROOVY);
             }
-            String compileTerminal = useJava
-                    ? TaskNames.WRITE_STAMP
-                    : (useKotlin
-                            ? TaskNames.WRITE_STAMP_KOTLIN
-                            : (useGroovy ? TaskNames.WRITE_STAMP_GROOVY : mainCompile));
-            return b.terminal(compileTerminal);
+            if (stamps.isEmpty()) return b.terminal(mainCompile);
+            if (stamps.size() == 1) return b.terminal(stamps.get(0));
+            // Mixed module: every language's stamp (and the classes assembler) is an
+            // independent leaf — a single-stamp terminal would prune the others and the
+            // pruned language recompiles every run. Join them so the closure keeps each
+            // one (same idiom as the deliver join).
+            if (mixed || mixedGroovy) {
+                stamps.add(TaskNames.ASSEMBLE_CLASSES);
+            }
+            b.addTask(Task.builder(COMPILE_JOIN)
+                    .group("compile")
+                    .requires(stamps.toArray(String[]::new))
+                    .weight(0)
+                    .ticks(0)
+                    .execute(ctx -> {
+                        /* join only */
+                    })
+                    .build());
+            return b.terminal(COMPILE_JOIN);
         }
         // Build-logic AFTER_COMPILE (SPI) before resources / AFTER_RESOURCES.
         b.addTask(buildLogicAfterCompileStep(cx));
@@ -2288,7 +2314,7 @@ public final class BuildPlanner {
                 .build();
     }
 
-    private static Task runTestsStep(Ctx cx, PluginBuild.Declarations pluginDecls) {
+    private static Task runTestsStep(Ctx cx, PluginBuild.Declarations pluginDecls, List<String> extraRequires) {
         Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
@@ -2304,6 +2330,7 @@ public final class BuildPlanner {
         List<String> testRequires = new ArrayList<>();
         testRequires.add(TaskNames.COMPILE_TEST);
         testRequires.add(TaskNames.COPY_RESOURCES);
+        testRequires.addAll(extraRequires);
         if (pluginDecls != null) {
             for (PluginBuild.TaskDecl step : pluginDecls.steps()) {
                 if (step.testOnly() || !step.contributesTestClasspath().isEmpty()) {
@@ -3412,6 +3439,9 @@ public final class BuildPlanner {
      * step — only exists so {@link BuildPlan.Builder#terminal} can keep every leaf.
      */
     static final String DELIVER_JOIN = "deliver";
+
+    /** Zero-work join terminal for mixed-language {@code jk compile}: keeps every language's stamp (and the assembler) in the pruned closure. */
+    static final String COMPILE_JOIN = "compile-join";
 
     /**
      * Apply {@link cc.jumpkick.config.Session#assemblyOverride} (CLI {@code --fat}/{@code --shrink})
