@@ -2099,8 +2099,11 @@ public final class BuildPlanner {
                 .group("test")
                 .label("Test Compile")
                 .kind(TaskKind.CPU)
-                // AFTER_COMPILE SPI may generate types tests import.
-                .requires(TaskNames.BUILD_LOGIC_AFTER_COMPILE, TaskNames.RESOLVE_DEPS)
+                // AFTER_COMPILE SPI may generate types tests import. copy-resources is a real
+                // input, not just ordering: the test classpath (and its action-key fingerprint)
+                // includes classes/main, which copy-resources writes — racing it fingerprints a
+                // half-copied dir and intermittently crashes on vanishing files under -r.
+                .requires(TaskNames.BUILD_LOGIC_AFTER_COMPILE, TaskNames.RESOLVE_DEPS, TaskNames.COPY_RESOURCES)
                 .weight(() -> plan.get().compileTest())
                 .interpolated() // opaque javac/kotlinc call — ease it over time
                 .ticks(1)
