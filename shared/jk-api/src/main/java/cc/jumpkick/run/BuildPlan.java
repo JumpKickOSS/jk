@@ -454,7 +454,7 @@ public final class BuildPlan {
         Object raw = state.get(key.name());
         if (raw == null) return java.util.Optional.empty();
         if (!key.type().isInstance(raw)) {
-            throw new ClassCastException("pipeline state '"
+            throw new ClassCastException("plan state '"
                     + key.name()
                     + "' is "
                     + raw.getClass().getName()

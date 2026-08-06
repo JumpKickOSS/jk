@@ -27,7 +27,7 @@ graalvm-nativeimage     = "latest"
 
 [test-dependencies]
 # Mirrors Gradle testImplementation(project(":engine")) — unit tests that touch TestSupport /
-# pipeline bridges need engine types; production classpath stays engine-free.
+# plan bridges need engine types; production classpath stays engine-free.
 jk-engine.workspace = true
 assertj-core            = "latest"
 junit-jupiter           = "latest"

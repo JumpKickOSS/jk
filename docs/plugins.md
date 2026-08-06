@@ -115,17 +115,19 @@ main = "cc.example.MyPluginMain"   # implements the plugin-sdk entry
 ```
 
 Workers speak the same JSONL style as compiler plugins. Prefer the harness in `plugin-sdk`
-(`BuildPlugin`, step/packager SPIs) over hand-rolled protocols.
+(`BuildPlugin`, `TaskSpec`/`TaskContribution` task and packager SPIs) over hand-rolled protocols.
 
-## Steps and transforms
+## Tasks and transforms
 
-Plugins contribute **steps** into the build plan (codegen before compile, class transforms
-after compile, custom packagers). Important SPI notes:
+Plugins contribute **tasks** into the build plan (codegen before compile, class transforms
+after compile, custom packagers) via `TaskSpec`/`TaskContribution`. Important SPI notes:
 
 - **`transformsClasses`** — at most one classes transform per build (e.g. Hilt weaving); runs
-  between compile and package and replaces the classes dir for downstream steps.
+  between compile and package and replaces the classes dir for downstream tasks.
 - **Action keys include plugin worker jar hashes** — upgrading the plugin invalidates cache.
-- Steps declare inputs/outputs so incrementality and `jk explain` stay correct.
+- Tasks declare inputs/outputs so incrementality and `jk explain` stay correct.
+- The worker wire keeps its legacy spellings (`run-step`, `step:` input refs, `step-output`) —
+  protocol literals, not API names.
 
 ## Testing
 

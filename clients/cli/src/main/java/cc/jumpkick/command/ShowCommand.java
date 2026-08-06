@@ -14,8 +14,8 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * {@code jk show &lt;step&gt;} — print primary output path(s) for a plan step.
- * Equivalent to {@code jk tasks show &lt;step&gt;}.
+ * {@code jk show &lt;task&gt;} — print primary output path(s) for a plan task.
+ * Equivalent to {@code jk tasks show &lt;task&gt;}.
  */
 public final class ShowCommand implements CliCommand {
 
@@ -38,7 +38,7 @@ public final class ShowCommand implements CliCommand {
 
     @Override
     public List<Param> parameters() {
-        return List.of(Param.of("step", Arity.ONE, "Step name (package-jar, compile-java, …)"));
+        return List.of(Param.of("task", Arity.ONE, "Task name (package-jar, compile-java, …)"));
     }
 
     @Override
@@ -48,7 +48,7 @@ public final class ShowCommand implements CliCommand {
         var proj = ProjectContext.require(startDir, "show").orElse(null);
         if (proj == null) return Exit.CONFIG;
         if (in.positionals().isEmpty()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Show", "expected a step name (try `jk tasks`)"));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Show", "expected a task name (try `jk tasks`)"));
             return Exit.USAGE;
         }
         try {

@@ -13,8 +13,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 /**
- * Per-step progress with one line per step, like Cargo / uv. Activated by {@code --verbose}.
- * Steps scroll up as they complete; the active step shows its current label.
+ * Per-task progress with one line per task, like Cargo / uv. Activated by {@code --verbose}.
+ * Tasks scroll up as they complete; the active task shows its current label.
  */
 public final class VerboseListener implements BuildPlanListener {
 
@@ -34,14 +34,14 @@ public final class VerboseListener implements BuildPlanListener {
                 + Theme.colorize(view.planName(), Theme.active().focused())
                 + " ("
                 + view.stepsTotal()
-                + " step"
+                + " task"
                 + (view.stepsTotal() == 1 ? "" : "s")
                 + ")");
     }
 
-    /** Renders a step's place in the run hierarchy as {@code phase/step} (a redundant {@code phase-}
-     * prefix on the step name is dropped, so phase {@code compile} + step {@code compile-java} →
-     * {@code compile/java}); the bare step name when it has no phase. */
+    /** Renders a task's place in the run hierarchy as {@code group/task} (a redundant {@code group-}
+     * prefix on the task name is dropped, so group {@code compile} + task {@code compile-java} →
+     * {@code compile/java}); the bare task name when it has no group. */
     static String qualified(String step, String group) {
         if (group == null) return step;
         String pw = group;

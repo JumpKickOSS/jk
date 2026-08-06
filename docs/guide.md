@@ -835,7 +835,7 @@ jk explain --graph dot --modules 'libs/*' --graph-out filtered.dot
 # Interactive DAG: engine dashboard → Project → Dependencies (loads on demand; Apache ECharts)
 
 # BuildPlan tasks (Mill resolve-lite)
-jk tasks                         # list first-party steps
+jk tasks                         # list first-party tasks
 jk show package-jar              # primary jar path for this module
 jk inspect compile-java          # phase + path + on-disk status
 jk tasks show package-jar --modules 'libs/*'
