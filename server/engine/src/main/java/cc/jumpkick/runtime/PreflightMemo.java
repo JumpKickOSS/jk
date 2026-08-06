@@ -546,28 +546,6 @@ public final class PreflightMemo {
         return new BuildPlanShape(weight, testWeight, List.copyOf(steps));
     }
 
-    /**
-     * wire-only {@link ModulePlan} from a warm shape memo — no real work steps. Used for an
-     * early {@code onPlan} so the aggregate bar can calibrate during prepare. Must never be
-     * executed; the real plan replaces it after prepare.
-     */
-    public static ModulePlan provisionalModulePlan(BuildGraph.BuildUnit unit, BuildPlanShape shape, Path cache) {
-        Objects.requireNonNull(unit, "unit");
-        Objects.requireNonNull(shape, "shape");
-        cc.jumpkick.run.BuildPlan.Builder b = cc.jumpkick.run.BuildPlan.builder(unit.coord());
-        for (BuildPlanShape.StepShape s : shape.steps()) {
-            String group = s.phase();
-            if (group != null && group.isBlank()) group = null;
-            b.addTask(cc.jumpkick.run.Task.builder(s.name())
-                    .group(group)
-                    .ticks(0)
-                    .weight(0)
-                    .build());
-        }
-        // Empty-step plan is fine; ModulePlan.weight carries the bar share.
-        return new ModulePlan(unit.dir(), unit.coord(), b.build(), shape.weight(), false, cache);
-    }
-
     // Module dirty fingerprint (sources)
 
     /**

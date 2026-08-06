@@ -373,28 +373,6 @@ class PreflightMemoTest {
     }
 
     @Test
-    void provisionalModulePlan_carries_shape_weight_and_step_names(@TempDir Path tmp) throws Exception {
-        // early onPlan uses wire-only plans (no-op steps) + memo weight.
-        writeProject(tmp);
-        var entry = JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml")));
-        BuildGraph.Result graph = BuildGraph.resolve(tmp, entry);
-        BuildGraph.BuildUnit u = graph.topoOrder().getFirst();
-        var shape = new PreflightMemo.BuildPlanShape(
-                77,
-                12,
-                List.of(
-                        new PreflightMemo.BuildPlanShape.StepShape("compile-java", "compile"),
-                        new PreflightMemo.BuildPlanShape.StepShape("run-tests", "test")));
-        ModulePlan plan = PreflightMemo.provisionalModulePlan(u, shape, tmp.resolve("cache"));
-        assertThat(plan.weight()).isEqualTo(77);
-        assertThat(plan.coord()).isEqualTo(u.coord());
-        assertThat(plan.plan().steps()).hasSize(2);
-        assertThat(plan.plan().steps().getFirst().name()).isEqualTo("compile-java");
-        // Must not do real work if accidentally run.
-        assertThat(plan.plan().run().success()).isTrue();
-    }
-
-    @Test
     void fingerprint_includes_simple_resources_dir(@TempDir Path tmp) throws Exception {
         writeSimpleProject(tmp);
         Files.createDirectories(tmp.resolve("resources"));

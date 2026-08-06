@@ -991,21 +991,6 @@ public final class BuildService {
     }
 
     /**
-     * Mixed-history guard for the pre-prepare ETA seed: a module with own compile walls but no
-     * own run-tests history falls to the count path with zero counts, pricing tests as suite
-     * startup only — the collapsed cold test ETA the full-work floor forbids. Floor the test
-     * component with the shape's coupled count-aware {@code testWeight} until the post-prepare
-     * reseed arrives with real counts. No-op when run-tests has own history or the shape has no
-     * larger test weight (including skip-tests shapes, whose testWeight is 0).
-     */
-    static EffortWeights.ModuleCost floorColdTests(
-            EffortWeights.ModuleCost cost, long runTestsOwnMillis, int shapeTestWeight) {
-        if (runTestsOwnMillis > 0 || shapeTestWeight <= cost.testWeight()) return cost;
-        return new EffortWeights.ModuleCost(
-                cost.dir(), cost.prereqs(), cost.weight() - cost.testWeight() + shapeTestWeight, shapeTestWeight);
-    }
-
-    /**
      * Single schedule-aware ETA (ms) used by both {@code jk explain} and {@code jk build}'s initial
      * countdown. Costs are already Σ of dirty-step weights (measured step walls preferred). Schedule
      * composes them with concurrency / serial-test bounds. Whole-build history is only a cold seed
@@ -1094,91 +1079,6 @@ public final class BuildService {
             for (EffortWeights.ModuleCost c : costs) dirs.add(c.dir());
         }
         return dirs;
-    }
-
-    /**
-     * Shape-memo cost when warm: both {@code weight} and {@code testWeight} from the same row so the
-     * schedule's critical-path / serial-test bounds stay consistent (splitting sources was the
-     * explain-vs-countdown divergence).
-     */
-    private static java.util.Optional<EffortWeights.ModuleCost> etaCostFromShape(
-            Path entryDir, Path moduleDir, Set<Path> prereqs, boolean skipTests, boolean distrust) {
-        if (distrust || entryDir == null || moduleDir == null) return java.util.Optional.empty();
-        return PreflightMemo.tryLoadShape(entryDir, moduleDir, skipTests)
-                .map(s -> EffortWeights.costOf(moduleDir, prereqs, s.weight(), s.testWeight()));
-    }
-
-    /**
-     * Cost for a prepared dirty module — same {@link EffortWeights#costFromRunningSteps} routine as
-     * {@link #estimateEtaMillis} ({@code jk explain}): measured step walls when present, else cold
-     * baselines × unit counts from the plan ticks (sources / test methods). Never reprice with
-     * empty counts; that was the explain≈5m / countdown≈12s cold divergence.
-     */
-    private static EffortWeights.ModuleCost etaCostForPreparedModule(
-            WorkspaceRequest req,
-            ModulePlan p,
-            Set<Path> prereqs,
-            boolean distrustShape,
-            BuildMetrics metrics,
-            StepTimings timings,
-            List<String> projectDirs) {
-        List<String> running = EffortWeights.runningStepsFromBuildPlan(p.plan());
-        if (!running.isEmpty()) {
-            Map<String, Integer> counts = EffortWeights.stepCountsFromBuildPlan(p.plan());
-            // Within-module test workers: same resolve as explain (jobs × class guess from methods).
-            int methods = counts.getOrDefault("run-tests", 0);
-            int classGuess = methods > 0 ? Math.max(1, methods / 3) : 0;
-            int jobs = Math.max(1, Runtime.getRuntime().availableProcessors());
-            int testW = cc.jumpkick.test.TestWorkers.resolve(req.workers(), classGuess, jobs);
-            return EffortWeights.costFromRunningSteps(
-                    p.dir(),
-                    prereqs,
-                    running,
-                    metrics,
-                    timings,
-                    projectDirs != null ? projectDirs : List.of(p.dir().toString()),
-                    counts,
-                    testW);
-        }
-        var shaped = etaCostFromShape(req.entryDir(), p.dir(), prereqs, req.skipTests(), distrustShape);
-        if (shaped.isPresent()) return shaped.get();
-        return EffortWeights.costOf(p.dir(), prereqs, p.plan());
-    }
-
-    /**
-     * Early countdown before prepare: sum measured heavy steps (compile/test/package) for each dirty
-     * module dir. Returns 0 when no step history exists yet.
-     */
-    private static long etaFromDirtyModuleDirs(Path entryDir, List<BuildGraph.BuildUnit> dirtyUnits, Path cache) {
-        if (dirtyUnits == null || dirtyUnits.isEmpty()) return 0;
-        BuildMetrics metrics = BuildMetrics.load(BuildMetrics.defaultFile());
-        StepTimings timings = StepTimings.load(cache);
-        List<String> projectDirs =
-                dirtyUnits.stream().map(u -> u.dir().toString()).toList();
-        // Representative heavy steps — early seed before forecast details are known.
-        List<String> heavy =
-                List.of("compile-java", "compile-kotlin", "compile-groovy", "compile-test", "run-tests", "package-jar");
-        List<EffortWeights.ModuleCost> costs = new ArrayList<>();
-        for (BuildGraph.BuildUnit u : dirtyUnits) {
-            // Only include steps that have measured history for this module (don't invent compile
-            // cost for a test-only dirty module when we don't yet know which steps run).
-            List<String> running = new ArrayList<>();
-            for (String step : heavy) {
-                if (EffortWeights.stepOkAvgMillis(metrics, u.dir().toString(), step) > 0) {
-                    running.add(step);
-                }
-            }
-            if (running.isEmpty()) continue;
-            costs.add(EffortWeights.costFromRunningSteps(
-                    u.dir(), Set.of(), running, metrics, timings, projectDirs, java.util.Map.of()));
-        }
-        if (costs.isEmpty()) return 0;
-        return EffortWeights.scheduleMillis(
-                costs,
-                Math.max(1, Runtime.getRuntime().availableProcessors()),
-                false,
-                false,
-                EffortWeights.MS_PER_WEIGHT);
     }
 
     /**
