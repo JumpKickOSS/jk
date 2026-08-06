@@ -325,14 +325,16 @@ Two fixed taxonomies (do not collapse them):
 - In-plan stage **`resolve`** (parse / lock classpath / ensure JDK) ≠ request phase **`RESOLVE`** (lock/graph for the command).
 - Prefer `Task.builder(…).stage(BuildStage.COMPILE)`; free-form `group("…")` maps unknown strings to `OTHER`.
 - `TaskPhases` remains a string facade over `BuildStage` for metrics call sites.
+- **Build-logic anchors** are pre/post cuts on stages (`BEFORE_COMPILE`→generate, `AFTER_COMPILE`→compile, `BEFORE_PACKAGE`→package).
 
 ### Project build logic (`.jk-build/`, ticket-1037)
 
 Convention directory **`.jk-build/`** (hidden) next to `jk.toml` holds project-local Java build
 logic (overridable via `[build].logic`). The engine compiles and runs mains (`--project` /
 `--out`) during `copy-resources`, action-caches outputs, and merges generated files into the
-classes tree. No scripts in TOML. Anchors (`AFTER_COMPILE`, …) will align to `BuildStage` cut
-points. See [features/project-build-logic.md](features/project-build-logic.md).
+classes tree. No scripts in TOML. Anchors: `BEFORE_COMPILE` (codegen), `AFTER_COMPILE`,
+`AFTER_RESOURCES`, `BEFORE_PACKAGE` — each carries a stage wire name aligned with `BuildStage`.
+See [features/project-build-logic.md](features/project-build-logic.md).
 
 ## Status
 

@@ -130,6 +130,9 @@ class BuildLogicSupportTest {
                 public class MultiAnchorLogic implements BuildLogicContributor {
                   @Override
                   public void register(BuildLogicGraph g) {
+                    g.task("before-compile-marker", BuildLogicAnchor.BEFORE_COMPILE, ctx -> {
+                      Files.writeString(ctx.outDir().resolve("before-compile.txt"), "g");
+                    });
                     g.task("after-compile-marker", BuildLogicAnchor.AFTER_COMPILE, ctx -> {
                       Files.writeString(ctx.outDir().resolve("after-compile.txt"), "c");
                     });
@@ -146,6 +149,15 @@ class BuildLogicSupportTest {
         Files.createDirectories(classes);
 
         StringBuilder labels = new StringBuilder();
+        assertTrue(BuildLogicSupport.run(
+                project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s)
+                        .append(';')));
+        assertTrue(Files.isRegularFile(classes.resolve("before-compile.txt")));
+        assertTrue(labels.toString().contains("before-compile-marker"), labels.toString());
+        assertEquals("generate", BuildLogicAnchor.BEFORE_COMPILE.stageWireName());
+
+
+        labels.setLength(0);
         assertTrue(BuildLogicSupport.run(
                 project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> labels.append(s)
                         .append(';')));

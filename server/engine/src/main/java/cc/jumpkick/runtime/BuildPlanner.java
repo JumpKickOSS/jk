@@ -614,6 +614,8 @@ public final class BuildPlanner {
                 BuildPlan.builder("build").addTask(parseBuild).addTask(syncDeps).addTask(ensureJdk);
         // Workspace root with no sources: validate jk.toml + sync deps, nothing more.
         if (workspaceNoSources) return b.terminal(TaskNames.RESOLVE_DEPS);
+        // SPI BEFORE_COMPILE / GENERATE: codegen before any language compile (or KSP).
+        b.addTask(buildLogicBeforeCompileStep(cx));
         if (kspEnabled) {
             b.addTask(kspStep(cx, pluginDeclsF));
         }
@@ -1207,8 +1209,11 @@ public final class BuildPlanner {
         // Plugin-contributed sources (protoc output, variant extra-src) must exist before the
         // round and join its source roots — a contributed @Module/@Entity is processor input
         // like any hand-written one.
-        List<String> requires =
-                new ArrayList<>(List.of(TaskNames.PARSE_BUILD, TaskNames.RESOLVE_DEPS, TaskNames.ENSURE_JDK));
+        List<String> requires = new ArrayList<>(List.of(
+                TaskNames.PARSE_BUILD,
+                TaskNames.RESOLVE_DEPS,
+                TaskNames.ENSURE_JDK,
+                TaskNames.BUILD_LOGIC_BEFORE_COMPILE));
         requires.addAll(sourceGenStepSteps(pluginDecls));
         return Task.builder("ksp")
                 .stage(BuildStage.COMPILE)
@@ -1659,8 +1664,11 @@ public final class BuildPlanner {
     }
 
     private static String[] kotlinCompileRequires(PluginBuild.Declarations decls, boolean ksp) {
-        List<String> requires =
-                new ArrayList<>(List.of(TaskNames.PARSE_BUILD, TaskNames.RESOLVE_DEPS, TaskNames.ENSURE_JDK));
+        List<String> requires = new ArrayList<>(List.of(
+                TaskNames.PARSE_BUILD,
+                TaskNames.RESOLVE_DEPS,
+                TaskNames.ENSURE_JDK,
+                TaskNames.BUILD_LOGIC_BEFORE_COMPILE));
         if (ksp) requires.add("ksp");
         requires.addAll(sourceGenStepSteps(decls));
         return requires.toArray(new String[0]);
@@ -1668,8 +1676,11 @@ public final class BuildPlanner {
 
     private static String[] javaCompileRequires(
             boolean mixed, boolean mixedGroovy, PluginBuild.Declarations decls, boolean ksp) {
-        List<String> requires =
-                new ArrayList<>(List.of(TaskNames.PARSE_BUILD, TaskNames.RESOLVE_DEPS, TaskNames.ENSURE_JDK));
+        List<String> requires = new ArrayList<>(List.of(
+                TaskNames.PARSE_BUILD,
+                TaskNames.RESOLVE_DEPS,
+                TaskNames.ENSURE_JDK,
+                TaskNames.BUILD_LOGIC_BEFORE_COMPILE));
         if (mixed) requires.add(TaskNames.COMPILE_KOTLIN);
         if (mixedGroovy) requires.add(TaskNames.COMPILE_GROOVY);
         if (ksp) requires.add("ksp");
@@ -1678,8 +1689,11 @@ public final class BuildPlanner {
     }
 
     private static String[] groovyCompileRequires(PluginBuild.Declarations decls) {
-        List<String> requires =
-                new ArrayList<>(List.of(TaskNames.PARSE_BUILD, TaskNames.RESOLVE_DEPS, TaskNames.ENSURE_JDK));
+        List<String> requires = new ArrayList<>(List.of(
+                TaskNames.PARSE_BUILD,
+                TaskNames.RESOLVE_DEPS,
+                TaskNames.ENSURE_JDK,
+                TaskNames.BUILD_LOGIC_BEFORE_COMPILE));
         requires.addAll(sourceGenStepSteps(decls));
         return requires.toArray(new String[0]);
     }
@@ -2005,6 +2019,40 @@ public final class BuildPlanner {
                                 cc.jumpkick.plugin.buildlogic.BuildLogicAnchor.AFTER_RESOURCES,
                                 ctx::label);
                         if (ran) ctx.label("build-logic applied");
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IOException("build-logic interrupted", e);
+                    }
+                    ctx.progress(1);
+                })
+                .build();
+    }
+
+    /**
+     * SPI anchor {@code BEFORE_COMPILE}: named build-logic tasks before main language compile
+     * (codegen). Product stage {@link BuildStage#GENERATE}.
+     */
+    private static Task buildLogicBeforeCompileStep(Ctx cx) {
+        Inputs in = cx.in();
+        ActionCache actionCache = cx.actionCache();
+        java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
+        return Task.builder(TaskNames.BUILD_LOGIC_BEFORE_COMPILE)
+                .stage(BuildStage.GENERATE)
+                .label("Build logic (before compile)")
+                .kind(TaskKind.CPU)
+                .requires(TaskNames.PARSE_BUILD, TaskNames.RESOLVE_DEPS, TaskNames.ENSURE_JDK)
+                .weight(() -> plan.get().fullyCached() ? 0 : 1)
+                .ticks(1)
+                .execute(ctx -> {
+                    Path classes = ctx.require(MAIN_CLASSES);
+                    try {
+                        BuildLogicSupport.run(
+                                in.dir(),
+                                ctx.require(LAYOUT),
+                                actionCache,
+                                classes,
+                                cc.jumpkick.plugin.buildlogic.BuildLogicAnchor.BEFORE_COMPILE,
+                                ctx::label);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         throw new IOException("build-logic interrupted", e);

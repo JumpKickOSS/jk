@@ -22,6 +22,8 @@ public final class TaskNames {
     public static final String COPY_RESOURCES = "copy-resources";
     /** Optional project build logic; often folded into copy-resources. */
     public static final String HATCH_GENERATE = "build-logic";
+    /** SPI BEFORE_COMPILE / GENERATE anchor (codegen before main compile). */
+    public static final String BUILD_LOGIC_BEFORE_COMPILE = "build-logic-before-compile";
     /** SPI AFTER_COMPILE anchor. */
     public static final String BUILD_LOGIC_AFTER_COMPILE = "build-logic-after-compile";
     /** SPI BEFORE_PACKAGE anchor. */

@@ -96,6 +96,7 @@ public enum BuildStage {
         }
         return switch (t) {
             case "parse-build", "resolve-deps", "ensure-jdk", "sync-deps", "read-lock", "parse-lock" -> RESOLVE;
+            case "build-logic-before-compile" -> GENERATE;
             case "compile-java",
                     "compile-kotlin",
                     "compile-groovy",
