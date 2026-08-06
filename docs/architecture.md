@@ -326,6 +326,8 @@ Two fixed taxonomies (do not collapse them):
 - Prefer `Task.builder(…).stage(BuildStage.COMPILE)`; free-form `group("…")` maps unknown strings to `OTHER`.
 - `TaskPhases` remains a string facade over `BuildStage` for metrics call sites.
 - **Build-logic anchors** are pre/post cuts on stages (`BEFORE_COMPILE`→generate, `AFTER_COMPILE`→compile, `BEFORE_PACKAGE`→package).
+- **Inter-stage requires**: a task may not require a task in a *later* stage (plan validation).
+- **Plugins**: optional `TaskSpec.stage("compile")` (describe wire); else engine infers (e.g. source-gen → `generate`).
 
 ### Project build logic (`.jk-build/`, ticket-1037)
 
