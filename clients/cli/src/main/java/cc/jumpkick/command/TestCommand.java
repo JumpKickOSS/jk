@@ -436,6 +436,10 @@ public final class TestCommand implements CliCommand {
         boolean json = global != null && global.outputIsJson();
         long start = System.nanoTime();
         int[] total = {0};
+        // Per-module console buffers (BuildCommand's headless pattern): modules stream
+        // concurrently, so output is buffered and printed as one block per module finish.
+        var buffers = new java.util.concurrent.ConcurrentHashMap<Path, List<String>>();
+        var done = new java.util.concurrent.atomic.AtomicInteger();
         var request = workspaceTestRequest(entryDir, entryBuild, cache, workerCount, dirtyDirs);
         WorkspaceResult result;
         try {
@@ -472,9 +476,28 @@ public final class TestCommand implements CliCommand {
                                 return CompositeBuildPlanListener.of(
                                         new cc.jumpkick.cli.run.JsonlListener(System.out, false), log);
                             }
+                            List<String> buf = java.util.Collections.synchronizedList(new ArrayList<>());
+                            buffers.put(m.dir(), buf);
+                            var outLis = new cc.jumpkick.run.BuildPlanListener() {
+                                @Override
+                                public synchronized void output(String step, String line) {
+                                    buf.add(line);
+                                }
+
+                                @Override
+                                public synchronized void warn(String step, String code, String message) {
+                                    buf.add("  " + cc.jumpkick.cli.tui.Glyphs.BANG + " " + step + ": " + message);
+                                }
+
+                                @Override
+                                public synchronized void error(String step, String code, String message) {
+                                    buf.add("  " + cc.jumpkick.cli.tui.Glyphs.CROSS + " " + step + ": " + message);
+                                }
+                            };
                             SessionMirrorListener mirror =
                                     session == null ? null : new SessionMirrorListener(session);
-                            return CompositeBuildPlanListener.of(mirror, log);
+                            return CompositeBuildPlanListener.of(
+                                    CompositeBuildPlanListener.of(outLis, mirror), log);
                         }
 
                         @Override
@@ -483,6 +506,13 @@ public final class TestCommand implements CliCommand {
                                     JsonlShape.moduleFinish(
                                             o.dir().toString(), o.coord(), o.success(), o.millis()),
                                     json);
+                            if (json) return;
+                            List<String> buf = buffers.getOrDefault(o.dir(), List.of());
+                            synchronized (BuildCommand.OUT_LOCK) {
+                                for (String line : buf) CliOutput.out(line);
+                                CliOutput.out(BuildCommand.completionLine(
+                                        o.success(), done.incrementAndGet(), total[0], o.coord(), o.millis()));
+                            }
                         }
                     });
         } catch (IOException e) {
@@ -506,6 +536,9 @@ public final class TestCommand implements CliCommand {
             return 0;
         }
         if (!json) {
+            // Workspace-level errors (graph/lock problems) never reach a module listener —
+            // print them before the wedge or a failing run shows no diagnostic at all.
+            for (String err : result.errors()) CliOutput.err(ConsoleSpec.errorLine("composite", err));
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
                     "Test", workspaceTestFailureTail(result, ms)));
         }

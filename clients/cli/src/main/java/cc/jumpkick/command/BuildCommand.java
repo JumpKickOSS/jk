@@ -209,7 +209,8 @@ public final class BuildCommand implements CliCommand {
         return runGraphParallel(root, rootBuild);
     }
 
-    private static final Object OUT_LOCK = new Object();
+    /** Shared by TestCommand's headless workspace path — one print lock per process. */
+    static final Object OUT_LOCK = new Object();
 
     /** One unit's build outcome, with its buffered output (flushed together on completion). */
 

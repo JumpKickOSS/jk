@@ -25,8 +25,15 @@ public final class CompositeBuildPlanListener implements BuildPlanListener {
         this.b = b;
     }
 
-    /** {@code second} may be {@code null} (e.g. {@link EventLogListener#open} failed) — returns {@code first} as-is. */
+    /**
+     * Null-tolerant composition: either side may be {@code null} (no session transcript, or
+     * {@link EventLogListener#open} failed). Both null yields a no-op listener — never a
+     * composite that would dereference null on the first event.
+     */
     public static BuildPlanListener of(BuildPlanListener first, BuildPlanListener second) {
+        if (first == null) {
+            return second == null ? new BuildPlanListener() {} : second;
+        }
         return second == null ? first : new CompositeBuildPlanListener(first, second);
     }
 
