@@ -25,6 +25,48 @@ class BuildServiceEtaParityTest {
     private static final Path MOD = Path.of("/ws/cli");
 
     /**
+     * Regression (JK-1585): under --force/--redo the ETA seed comes from a shape-only plan (no
+     * TaskForecaster content-prediction walk); the distrust fallback in etaCostsFromExplainPlan
+     * prices each module from its full plan shape, so the seed is still non-zero.
+     */
+    @org.junit.jupiter.api.Test
+    void force_prices_shape_only_plan_without_forecast_walk(@org.junit.jupiter.api.io.TempDir Path tmp)
+            throws Exception {
+        Path dir = java.nio.file.Files.createDirectories(tmp.resolve("mod"));
+        java.nio.file.Files.createDirectories(dir.resolve("src/main/java"));
+        java.nio.file.Files.writeString(dir.resolve("jk.toml"), """
+                [project]
+                group = "ex"
+                name = "m"
+                version = "1.0"
+                java = 25
+                """);
+        var shapeOnly = new cc.jumpkick.runtime.TaskForecast.Module(dir, "ex:m", List.of(), 0, 0, true, false);
+        var plan = new ExplainPlan(List.of(shapeOnly), java.util.Map.of(dir, Set.of()), 1, List.of());
+
+        var forced = cc.jumpkick.config.Session.defaults()
+                .withConfig(new cc.jumpkick.config.JkConfig(
+                        java.util.Optional.empty(),
+                        java.util.Optional.empty(),
+                        java.util.Optional.of(true), // rebuild — same distrust lever as force
+                        java.util.Optional.empty(),
+                        java.util.Optional.empty(),
+                        java.util.Optional.empty(),
+                        java.util.Optional.empty(),
+                        java.util.Optional.empty(),
+                        java.util.Optional.empty(),
+                        java.util.Optional.empty(),
+                        java.util.Optional.empty()))
+                .withCacheDir(tmp.resolve("cache"));
+        List<EffortWeights.ModuleCost> costs = cc.jumpkick.config.SessionContext.where(
+                forced,
+                () -> BuildService.etaCostsFromExplainPlan(
+                        plan, tmp.resolve("cache"), 1, null, null, false, false));
+        assertThat(costs).hasSize(1);
+        assertThat(costs.get(0).weight()).isGreaterThan(0);
+    }
+
+    /**
      * Regression (JK-1584): a selection build's ETA seed must price only the hinted modules —
      * the whole-graph forecast would bill dirty modules the build will never schedule.
      */

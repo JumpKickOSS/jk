@@ -768,11 +768,22 @@ public final class BuildService {
         long etaMs = 0;
         if (!dirtyUnits.isEmpty()) {
             ExplainPlan etaPlan;
+            boolean distrust = SessionContext.current().config().forceOr(false)
+                    || SessionContext.current().config().rebuildOr(false);
             if (preflight != null && !preflight.modules().isEmpty()) {
                 etaPlan = new ExplainPlan(
                         preflight.modules(), graph.edges(), graph.maxReadyWidth(), List.of());
             } else {
-                etaPlan = explainFromGraph(graph, req.cache(), req.skipTests());
+                if (distrust) {
+                    // --force/--redo: every step runs by definition — the TaskForecaster walk's
+                    // per-step verdicts would all say RUN, yet its content prediction hashes
+                    // sources+classpath for every module (a multi-second stall on monorepos).
+                    // Ship a shape-only plan; etaCostsFromExplainPlan's distrust fallback prices
+                    // each module from its full plan shape.
+                    etaPlan = fullyCachedExplainPlan(graph);
+                } else {
+                    etaPlan = explainFromGraph(graph, req.cache(), req.skipTests());
+                }
                 if (req.dirtyHint() != null) {
                     // Selection build (-m / --affected-since): the seed must price exactly the
                     // scheduled set — the whole-graph forecast would bill dirty modules this
