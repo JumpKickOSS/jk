@@ -473,10 +473,24 @@ public final class BuildPlan {
                 throw new IllegalArgumentException("duplicate step name: " + p.name());
             }
         }
+        Map<String, Task> byName = new HashMap<>();
+        for (Task p : steps) byName.put(p.name(), p);
         for (Task p : steps) {
             for (String req : p.requires()) {
                 if (!known.contains(req)) {
                     throw new IllegalArgumentException("step '" + p.name() + "' requires unknown '" + req + "'");
+                }
+                Task upstream = byName.get(req);
+                if (upstream != null && !p.stage().mayRequire(upstream.stage())) {
+                    throw new IllegalArgumentException("step '"
+                            + p.name()
+                            + "' (stage "
+                            + p.stage().wireName()
+                            + ") requires '"
+                            + req
+                            + "' (stage "
+                            + upstream.stage().wireName()
+                            + ") — cannot depend on a later BuildStage");
                 }
             }
         }

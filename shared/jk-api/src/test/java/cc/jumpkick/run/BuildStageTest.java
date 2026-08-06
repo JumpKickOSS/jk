@@ -46,4 +46,25 @@ class BuildStageTest {
         assertThat(other.stage()).isEqualTo(BuildStage.OTHER);
         assertThat(other.group()).contains("other");
     }
+
+    @Test
+    void may_require_rejects_later_stages() {
+        assertThat(BuildStage.COMPILE.mayRequire(BuildStage.GENERATE)).isTrue();
+        assertThat(BuildStage.COMPILE.mayRequire(BuildStage.COMPILE)).isTrue();
+        assertThat(BuildStage.COMPILE.mayRequire(BuildStage.TEST)).isFalse();
+        assertThat(BuildStage.PACKAGE.mayRequire(BuildStage.TEST)).isTrue();
+        assertThat(BuildStage.OTHER.mayRequire(BuildStage.TEST)).isTrue();
+    }
+
+    @Test
+    void build_plan_rejects_backward_stage_edge() {
+        Task compile = Task.builder("compile-java").stage(BuildStage.COMPILE).build();
+        Task bad = Task.builder("early")
+                .stage(BuildStage.GENERATE)
+                .requires("compile-java")
+                .build();
+        org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> BuildPlan.builder("t").addTask(compile).addTask(bad).build());
+    }
 }

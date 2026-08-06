@@ -56,6 +56,32 @@ public enum BuildStage {
     }
 
     /**
+     * Pipeline order for inter-stage {@code requires} checks. Lower runs earlier. {@link #OTHER}
+     * returns {@code -1} (skip cross-stage checks involving OTHER).
+     */
+    public int pipelineOrder() {
+        return switch (this) {
+            case RESOLVE -> 0;
+            case GENERATE -> 1;
+            case COMPILE -> 2;
+            case TEST -> 3;
+            case PACKAGE -> 4;
+            case NATIVE -> 5;
+            case IMAGE -> 6;
+            case OTHER -> -1;
+        };
+    }
+
+    /**
+     * True when a task in {@code this} stage may {@code require} a task in {@code upstream}.
+     * Same stage or earlier is allowed; later stages are not (no backward edges).
+     */
+    public boolean mayRequire(BuildStage upstream) {
+        if (this == OTHER || upstream == OTHER) return true;
+        return upstream.pipelineOrder() <= this.pipelineOrder();
+    }
+
+    /**
      * Parse a wire group/stage name. Unknown non-blank strings map to {@link #OTHER} so plugins
      * never invent a first-class strip slot by accident.
      */

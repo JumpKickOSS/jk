@@ -21,6 +21,7 @@ final class DefaultTaskContext implements BuildContext, ResolveContext, TestCont
     private final List<String> contributesResources = new ArrayList<>();
     private final List<String> contributesTestClasspath = new ArrayList<>();
     private String transformsClasses;
+    private String stage;
     private boolean bodyRun;
 
     DefaultTaskContext(BuildPluginContext ctx, String defaultName) {
@@ -49,6 +50,12 @@ final class DefaultTaskContext implements BuildContext, ResolveContext, TestCont
         for (String t : taskNames) {
             if (t != null && !t.isBlank()) requires.add(t);
         }
+        return this;
+    }
+
+    @Override
+    public TaskContribution stage(String stageWire) {
+        this.stage = (stageWire == null || stageWire.isBlank()) ? null : stageWire.trim();
         return this;
     }
 
@@ -102,6 +109,7 @@ final class DefaultTaskContext implements BuildContext, ResolveContext, TestCont
         }
         bodyRun = true;
         TaskSpec spec = TaskSpec.named(name).requires(requires.toArray(new String[0]));
+        if (stage != null) spec.stage(stage);
         spec.inputs(inputs.toArray(new In[0]));
         spec.outputs(outputs.toArray(new String[0]));
         for (String d : contributesSources) spec.contributesSources(d);

@@ -85,7 +85,12 @@ public final class PluginBuild {
             List<String> contributesSources,
             List<String> contributesTestClasspath,
             /** The classes-replacing output dir ({@code TaskSpec.transformsClasses}), or null. */
-            String transformsClasses) {
+            String transformsClasses,
+            /**
+             * Optional product stage wire ({@code generate}, {@code compile}, …). Empty/null → engine
+             * infers from contributions / name.
+             */
+            String stage) {
 
         /** True when this task replaces the module's classes dir downstream. */
         public boolean transforms() {
@@ -208,7 +213,8 @@ public final class PluginBuild {
                             Jsonl.strArray(line, "contributesResources"),
                             Jsonl.strArray(line, "contributesSources"),
                             Jsonl.strArray(line, "contributesTestClasspath"),
-                            Jsonl.str(line, "transformsClasses")));
+                            Jsonl.str(line, "transformsClasses"),
+                            blankToNull(Jsonl.str(line, "stage"))));
                 case "packager" -> packager = new PackagerDecl(Jsonl.str(line, "name"), Jsonl.strArray(line, "inputs"));
                 case "command" ->
                     commands.add(new CommandDecl(Jsonl.str(line, "name"), Jsonl.str(line, "description")));
@@ -745,6 +751,10 @@ public final class PluginBuild {
         return PluginDescriptorOps.jarFor(active.moduleDir(), declaration, cache)
                 .orElseThrow(() -> new IOException("plugin " + declaration.coordinateWithVersion()
                         + " is not in the local cache — run `jk sync` first"));
+    }
+
+    private static String blankToNull(String s) {
+        return (s == null || s.isBlank()) ? null : s;
     }
 
     private static void appendConfig(List<String> lines, PluginConfig config) {

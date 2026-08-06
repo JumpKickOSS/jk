@@ -178,6 +178,8 @@ public final class BuildPluginHarness {
                     .append(quoteArray(step.testClasspathContributions()))
                     .append(",\"transformsClasses\":")
                     .append(Jsonl.quote(step.classesTransform() == null ? "" : step.classesTransform()))
+                    .append(",\"stage\":")
+                    .append(Jsonl.quote(step.stage() == null ? "" : step.stage()))
                     .append('}');
             out.emit(b.toString());
         }

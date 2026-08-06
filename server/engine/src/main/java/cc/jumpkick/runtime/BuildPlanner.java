@@ -2823,6 +2823,16 @@ public final class BuildPlanner {
     /**
      * One declared build-plugin task: engine fingerprints inputs, restores on hit, forks on miss.
      */
+    /** Resolve product stage for a plugin task: explicit wire, else contribution-based inference. */
+    private static BuildStage pluginStage(PluginBuild.TaskDecl step) {
+        if (step.stage() != null && !step.stage().isBlank()) {
+            return BuildStage.fromWire(step.stage());
+        }
+        if (step.sourceGenerating()) return BuildStage.GENERATE;
+        if (step.testOnly()) return BuildStage.TEST;
+        return BuildStage.ofTaskName("plugin-" + step.name());
+    }
+
     private static Task pluginTask(
             Ctx cx, PluginBuild.Active active, PluginBuild.TaskDecl step, PluginBuild.TaskDecl transform) {
         Inputs in = cx.in();
@@ -2843,6 +2853,8 @@ public final class BuildPlanner {
             requires.add(TaskNames.PARSE_BUILD);
             requires.add(TaskNames.RESOLVE_DEPS);
             requires.add(TaskNames.ENSURE_JDK);
+            // Project build-logic codegen (BEFORE_COMPILE) before plugin source generators.
+            requires.add(TaskNames.BUILD_LOGIC_BEFORE_COMPILE);
         } else if (step.testOnly()) {
             requires.add(TaskNames.PARSE_BUILD);
             requires.add(TaskNames.RESOLVE_DEPS);
@@ -2863,7 +2875,9 @@ public final class BuildPlanner {
         return Task.builder("plugin-" + step.name())
                 .label(step.name())
                 .kind(TaskKind.CPU)
-                .requires(requires.toArray(new String[0]))                .ticks(1)
+                .stage(pluginStage(step))
+                .requires(requires.toArray(new String[0]))
+                .ticks(1)
                 // A plugin command forks its process and can dominate a build (d8 dex, AOT), yet its
                 // static reservation is a token 1 unit — price it from the running metrics once this
                 // machine has seen it run (own-project average, else host average).
