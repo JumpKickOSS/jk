@@ -24,6 +24,39 @@ class BuildServiceEtaParityTest {
 
     private static final Path MOD = Path.of("/ws/cli");
 
+    /**
+     * Regression (JK-1584): a selection build's ETA seed must price only the hinted modules —
+     * the whole-graph forecast would bill dirty modules the build will never schedule.
+     */
+    @Test
+    void restrict_to_selection_keeps_only_hinted_modules_and_edges() {
+        Path a = Path.of("/ws/a");
+        Path b = Path.of("/ws/b");
+        Path c = Path.of("/ws/c");
+        var run = new cc.jumpkick.runtime.TaskForecast.Task(
+                "compile-java", cc.jumpkick.runtime.TaskForecast.Status.RUN, "", null);
+        var cached = new cc.jumpkick.runtime.TaskForecast.Task(
+                "compile-java", cc.jumpkick.runtime.TaskForecast.Status.CACHED, "", "k");
+        var ma = new cc.jumpkick.runtime.TaskForecast.Module(a, "g:a", List.of(run), 1, 0, true, false);
+        var mb = new cc.jumpkick.runtime.TaskForecast.Module(b, "g:b", List.of(run), 1, 0, true, false);
+        var mc = new cc.jumpkick.runtime.TaskForecast.Module(c, "g:c", List.of(cached), 1, 0, true, false);
+        var plan = new ExplainPlan(
+                List.of(ma, mb, mc),
+                java.util.Map.of(a, Set.of(b, c), b, Set.of(), c, Set.of()),
+                2,
+                List.of());
+
+        ExplainPlan restricted = BuildService.restrictToSelection(plan, Set.of(a, c));
+
+        assertThat(restricted.modules()).extracting(m -> m.dir()).containsExactly(a, c);
+        // Edges intersect the selection: a→{b,c} loses the unselected b.
+        assertThat(restricted.edges().get(a)).containsExactly(c);
+        assertThat(restricted.edges()).doesNotContainKey(b);
+        // The hinted-but-clean module keeps its cache verdicts (prices ~0, not full RUN).
+        assertThat(restricted.modules().get(1).dirty()).isFalse();
+        assertThat(restricted.maxReadyWidth()).isEqualTo(plan.maxReadyWidth());
+    }
+
     @Test
     void shape_style_cost_keeps_weight_and_test_weight_coupled() {
         // Shape row: total 869, tests 841 (matches monorepo jk-cli shape-memo).

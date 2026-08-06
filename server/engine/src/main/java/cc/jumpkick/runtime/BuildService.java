@@ -489,6 +489,27 @@ public final class BuildService {
      * Dirty-module costs from a {@link TaskForecaster} plan — sole cost assembly for explain and
      * build countdown. Never prices prepared {@link BuildPlan} weights or shape-memo rows for ETA.
      */
+    /**
+     * Restrict an explain plan to the client's module selection so the ETA seed prices exactly
+     * the scheduled set (JK-1584). Edges are intersected with the selection; a hinted module
+     * keeps its per-step cache verdicts, so a forecast-clean selected module contributes only
+     * its cache-check cost — matching what scheduling will actually do.
+     */
+    static ExplainPlan restrictToSelection(ExplainPlan plan, Set<Path> selection) {
+        List<TaskForecast.Module> kept = new ArrayList<>();
+        for (TaskForecast.Module m : plan.modules()) {
+            if (selection.contains(m.dir())) kept.add(m);
+        }
+        Map<Path, Set<Path>> edges = new LinkedHashMap<>();
+        plan.edges().forEach((from, tos) -> {
+            if (!selection.contains(from)) return;
+            Set<Path> t = new LinkedHashSet<>(tos);
+            t.retainAll(selection);
+            edges.put(from, t);
+        });
+        return new ExplainPlan(kept, edges, plan.maxReadyWidth(), plan.errors());
+    }
+
     static List<EffortWeights.ModuleCost> etaCostsFromExplainPlan(
             ExplainPlan plan,
             Path cache,
@@ -752,6 +773,12 @@ public final class BuildService {
                         preflight.modules(), graph.edges(), graph.maxReadyWidth(), List.of());
             } else {
                 etaPlan = explainFromGraph(graph, req.cache(), req.skipTests());
+                if (req.dirtyHint() != null) {
+                    // Selection build (-m / --affected-since): the seed must price exactly the
+                    // scheduled set — the whole-graph forecast would bill dirty modules this
+                    // build will never run.
+                    etaPlan = restrictToSelection(etaPlan, dirty);
+                }
             }
             etaMs = estimateEtaMillis(
                     etaPlan,
