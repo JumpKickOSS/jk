@@ -127,7 +127,7 @@ class EffortWeightsTest {
         for (Path f : sources) {
             Files.setLastModifiedTime(f, java.nio.file.attribute.FileTime.fromMillis(past));
         }
-        BuildPipelines.Inputs in = new BuildPipelines.Inputs(
+        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                 dir,
                 dir.resolve("cache"),
                 dir.resolve("jk.toml"),

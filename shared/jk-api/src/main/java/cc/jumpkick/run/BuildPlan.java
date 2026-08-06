@@ -125,11 +125,11 @@ public final class BuildPlan {
     }
 
     /**
-     * Run the pipeline. Blocks until every step reaches a terminal state. Throws no checked exceptions
+     * Run the plan. Blocks until every step reaches a terminal state. Throws no checked exceptions
      * step failures are folded into {@link BuildPlanResult#success}.
      */
     public BuildPlanResult run() {
-        Instant pipelineStart = Instant.now();
+        Instant planStart = Instant.now();
 
         // Step 1: ticks estimation (parallel on IO). `initialTicks` is each step's
         // internal unit count (how granularly it ticks); `weights` is its share of
@@ -161,7 +161,7 @@ public final class BuildPlan {
         for (Task p : steps) {
             statuses.put(p.name(), TaskStatus.PENDING);
         }
-        emit(l -> l.pipelineStart(snapshot()));
+        emit(l -> l.planStart(snapshot()));
 
         // Interpolation interpTimer: while an opaque step runs, ease its bar slice
         // forward over elapsed time so the bar doesn't sit flat until the step's
@@ -213,7 +213,7 @@ public final class BuildPlan {
                 && steps.stream().map(p -> statuses.get(p.name())).allMatch(BuildPlan::isOk);
 
         // Sort reports back into declaration order so the printed summary
-        // matches the user's mental model of the build pipeline.
+        // matches the user's mental model of the build plan.
         Map<String, Integer> declOrder = new HashMap<>();
         for (int i = 0; i < steps.size(); i++) declOrder.put(steps.get(i).name(), i);
         List<BuildPlanResult.StepReport> orderedReports = new ArrayList<>(reports);
@@ -222,13 +222,13 @@ public final class BuildPlan {
         BuildPlanResult result = new BuildPlanResult(
                 name,
                 success,
-                Duration.between(pipelineStart, Instant.now()),
+                Duration.between(planStart, Instant.now()),
                 orderedReports,
                 warnings,
                 errors,
                 cancelled.get(),
                 userRequestedCancel.get());
-        emit(l -> l.pipelineFinish(result));
+        emit(l -> l.planFinish(result));
         return result;
     }
 
@@ -345,7 +345,7 @@ public final class BuildPlan {
             }
             // A step that reported no real work (outputs up-to-date / served from cache via
             // ctx.cached) terminates SKIPPED, not SUCCESS. SKIPPED counts as "ok" everywhere the
-            // pipeline decides success (see isOk), so it never fails a build — it only feeds the
+            // plan decides success (see isOk), so it never fails a build — it only feeds the
             // dashboard's per-project cache-hit ("steps skipped") ratio.
             TaskStatus terminal = ctx.wasCached() ? TaskStatus.SKIPPED : TaskStatus.SUCCESS;
             statuses.put(step.name(), terminal);
@@ -412,7 +412,7 @@ public final class BuildPlan {
             try {
                 action.accept(l);
             } catch (RuntimeException ignored) {
-                // Listeners must not impact the pipeline's success/fail decision.
+                // Listeners must not impact the plan's success/fail decision.
             }
         }
     }

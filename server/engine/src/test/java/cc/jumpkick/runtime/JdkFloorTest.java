@@ -89,11 +89,11 @@ class JdkFloorTest {
         // Isolated session — see FirstBuildJdkTest (do not inherit monorepo jdk pin from jk test).
         Session nested = Session.defaults().withCacheDir(cache);
         SessionContext.runWhere(nested, () -> {
-            BuildPlan lock = LockPipelines.lockBuildPlan(
+            BuildPlan lock = LockPlans.lockBuildPlan(
                     project, parsed, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
             assertThat(lock.run().errors()).isEmpty();
 
-            BuildPipelines.Inputs in = new BuildPipelines.Inputs(
+            BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                     project,
                     cache,
                     project.resolve("jk.toml"),
@@ -109,8 +109,8 @@ class JdkFloorTest {
                     false,
                     java.util.Set.of(),
                     nested);
-            BuildPlan pipeline = BuildPipelines.coreBuilder(in).build();
-            BuildPlanResult result = pipeline.run();
+            BuildPlan plan = BuildPlanner.coreBuilder(in).build();
+            BuildPlanResult result = plan.run();
             for (BuildPlanResult.Diagnostic d : result.errors()) {
                 System.out.println("DIAG [" + d.step() + "]: " + d.message());
             }

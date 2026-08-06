@@ -144,7 +144,7 @@ public final class NativeCommand implements CliCommand {
 
     /**
      * Native builds are opt-in ({@code native = true} → ALWAYS) — the same rule as the engine's
-     * {@code NativePipelines.isNativeEligible} (a one-line enum check on the shared model).
+     * {@code NativePlans.isNativeEligible} (a one-line enum check on the shared model).
      */
     static boolean nativeEligible(JkBuild build) {
         return build.nativeMode() == JkBuild.NativeMode.ALWAYS;
@@ -242,7 +242,7 @@ public final class NativeCommand implements CliCommand {
     }
 
     /**
-     * Engine-hosted workspace cascade: the engine assembles and runs each module's pipeline (the
+     * Engine-hosted workspace cascade: the engine assembles and runs each module's plan (the
      * {@code native-image} child forks engine-side) and streams the workspace event vocabulary
      * back; this method only renders. Exit codes arrive engine-computed.
      */
@@ -290,12 +290,12 @@ public final class NativeCommand implements CliCommand {
                         CliOutput.out("══ " + wsRoot.relativize(m.dir()) + " (" + (++idx[0]) + "/"
                                 + Math.max(total[0], idx[0]) + ") ══");
                     }
-                    var log = EventLogListener.open(m.cache(), m.pipeline().name());
+                    var log = EventLogListener.open(m.cache(), m.plan().name());
                     // JSON: workspace member listener (no aggregate-rider writes). Verbose: full console.
                     var console = json
                             ? new cc.jumpkick.cli.run.JsonlListener(System.out, false)
                             : BuildPlanConsole.chooseConsoleListener(
-                                    m.pipeline().name(), m.pipeline().steps(), mode);
+                                    m.plan().name(), m.plan().steps(), mode);
                     return CompositeBuildPlanListener.of(console, log);
                 }
 
@@ -319,9 +319,9 @@ public final class NativeCommand implements CliCommand {
         }
 
         // AUTO / QUIET: one shared aggregate view, calibrated to the whole cascade up front
-        // (the plan burst carries every module pipeline's estimated weight).
+        // (the plan burst carries every module plan's estimated weight).
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
-        CommandManager view = CommandManager.pipeline(CliOutput.stdout(), "Build", animate);
+        CommandManager view = CommandManager.plan(CliOutput.stdout(), "Build", animate);
         cc.jumpkick.cli.run.AggregateContext agg = new cc.jumpkick.cli.run.AggregateContext(view);
         int[] built = {0};
         var listener = new cc.jumpkick.runtime.WorkspaceBuildListener() {
@@ -332,10 +332,10 @@ public final class NativeCommand implements CliCommand {
 
             @Override
             public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
-                var log = EventLogListener.open(m.cache(), m.pipeline().name());
+                var log = EventLogListener.open(m.cache(), m.plan().name());
                 return CompositeBuildPlanListener.of(
                         new cc.jumpkick.cli.run.AggregateModuleListener(
-                                agg, m.coord(), m.pipeline().steps(), m.weight()),
+                                agg, m.coord(), m.plan().steps(), m.weight()),
                         log);
             }
 
@@ -401,7 +401,7 @@ public final class NativeCommand implements CliCommand {
             return Exit.CONFIG;
         }
 
-        // Resolve GraalVM before the pipeline/progress UI starts (a prompt/install
+        // Resolve GraalVM before the plan/progress UI starts (a prompt/install
         // can't run inside the captured-output region, and must never run inside
         // the engine — see docs/architecture.md).
         Optional<Path> graalHome = graal.resolve(projectDir, build.graal());
@@ -421,9 +421,9 @@ public final class NativeCommand implements CliCommand {
         var listener = new cc.jumpkick.runtime.WorkspaceBuildListener() {
             @Override
             public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
-                var log = EventLogListener.open(m.cache(), m.pipeline().name());
+                var log = EventLogListener.open(m.cache(), m.plan().name());
                 return CompositeBuildPlanListener.of(
-                        BuildPlanConsole.chooseConsoleListener(m.pipeline().steps(), mode, spec, coord), log);
+                        BuildPlanConsole.chooseConsoleListener(m.plan().steps(), mode, spec, coord), log);
             }
         };
         cc.jumpkick.runtime.WorkspaceResult result;

@@ -6,7 +6,7 @@ import cc.jumpkick.engine.EnginePaths;
 import java.io.IOException;
 
 /**
- * Bring the build engine up <em>before</em> an engine-backed command builds its own pipeline console, so
+ * Bring the build engine up <em>before</em> an engine-backed command builds its own plan console, so
  * a one-time AOT-cache optimization shows the "Engine — optimizing…" wedge first and the command's
  * TUI then takes over cleanly (sequential, never interleaved). When an engine is already running
  * this is a fast handshake no-op that shows nothing.

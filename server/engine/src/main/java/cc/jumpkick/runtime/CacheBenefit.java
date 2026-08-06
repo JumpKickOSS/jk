@@ -27,7 +27,7 @@ public final class CacheBenefit {
         }
     }
 
-    /** One module's steps. {@code dir} is the canonical project dir ({@code ""} = single-pipeline). */
+    /** One module's steps. {@code dir} is the canonical project dir ({@code ""} = single-plan). */
     public record ModuleInput(String dir, List<StepInput> steps) {
         public ModuleInput {
             steps = steps == null ? List.of() : List.copyOf(steps);

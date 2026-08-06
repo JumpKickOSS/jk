@@ -39,16 +39,16 @@ import java.util.Set;
  * direct dep (Maven metadata + git {@code ls-remote}). Cascades over workspace modules; skips
  * path/workspace/file/platform-managed deps.
  */
-public final class OutdatedPipelines {
+public final class OutdatedPlans {
 
-    private OutdatedPipelines() {}
+    private OutdatedPlans() {}
 
     /** Produce the report for the project (or workspace) rooted at {@code dir}. */
     public static OutdatedReport compute(Path dir, Path cache, URI repoUrl) {
         LinkedHashMap<Path, JkBuild> scopes = new LinkedHashMap<>();
         try {
             JkBuild root = JkBuildParser.parse(dir.resolve("jk.toml"));
-            JkBuild effectiveRoot = LockPipelines.applyWorkspaceContextIfModule(dir, root);
+            JkBuild effectiveRoot = LockPlans.applyWorkspaceContextIfModule(dir, root);
             scopes.put(dir, effectiveRoot);
             if (effectiveRoot.isWorkspaceRoot()) {
                 Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(dir, effectiveRoot);
@@ -69,7 +69,7 @@ public final class OutdatedPipelines {
         for (Map.Entry<Path, JkBuild> scope : scopes.entrySet()) {
             Path moduleDir = scope.getKey();
             JkBuild build = scope.getValue();
-            String moduleLabel = workspace ? LockPipelines.coordLabel(build, moduleDir) : "";
+            String moduleLabel = workspace ? LockPlans.coordLabel(build, moduleDir) : "";
             Map<String, String> locked = lockedVersions(cc.jumpkick.lock.LockPaths.lockFile(moduleDir));
             Cas cas = JkStores.cas(cache);
             RepoGroup repos = RepoGroupBuilder.buildFor(build, repoUrl, cas);

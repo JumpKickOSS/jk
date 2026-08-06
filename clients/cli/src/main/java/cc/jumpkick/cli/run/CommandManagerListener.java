@@ -12,19 +12,19 @@ import java.time.Duration;
 import java.util.List;
 
 /**
- * Console listener for pipeline-oriented commands ({@code jk build} and friends): drives a {@link
- * CommandManager} in pipeline mode — a spinner header, an aggregate progress bar, and a dynamic step
+ * Console listener for plan-oriented commands ({@code jk build} and friends): drives a {@link
+ * CommandManager} in plan mode — a spinner header, an aggregate progress bar, and a dynamic step
  * list. On completion the live region is replaced by a {@code ✓}/{@code ✗} result line built from
  * the {@link ConsoleSpec} mappers.
  *
  * <p>When constructed with a {@code null} {@link ConsoleSpec} the listener uses {@code command} as the
  * display name and calls {@link CommandManager#dismiss} on completion (the caller owns the result
  * line). This is used by {@link BuildPlanConsole#run(cc.jumpkick.run.BuildPlan, BuildPlanConsole.Mode,
- * java.nio.file.Path)} to drive the CommandManager spinner for simple pipelines.
+ * java.nio.file.Path)} to drive the CommandManager spinner for simple plans.
  *
- * <p>All steps of this pipeline are attributed to a single {@code module} (the project's {@code
+ * <p>All steps of this plan are attributed to a single {@code module} (the project's {@code
  * group:artifact}). Workspace aggregation across modules feeds one shared {@link CommandManager}
- * from several pipelines; that path is built on the same component.
+ * from several plans; that path is built on the same component.
  */
 public final class CommandManagerListener implements BuildPlanListener {
 
@@ -38,7 +38,7 @@ public final class CommandManagerListener implements BuildPlanListener {
     private final boolean animate;
     /**
      * False for one member of a multi-module workspace run: engine {@code workspace-progress} is the
-     * only aggregate truth — pipeline-local fractions must not reach {@link LiveProgress}.
+     * only aggregate truth — plan-local fractions must not reach {@link LiveProgress}.
      */
     private final boolean aggregateRider;
 
@@ -80,15 +80,15 @@ public final class CommandManagerListener implements BuildPlanListener {
     }
 
     @Override
-    public void pipelineStart(BuildPlanView view) {
-        cm = CommandManager.pipeline(out, command, animate);
+    public void planStart(BuildPlanView view) {
+        cm = CommandManager.plan(out, command, animate);
         cm.target(module);
         for (Task p : steps) {
             cm.addTaskLabeled(module, p.name(), display(p));
         }
         cm.progress(view.numerator(), view.denominator());
         if (aggregateRider) LiveProgress.get().update(view.numerator(), view.denominator());
-        // Route step/process output above the pinned region for the pipeline's lifetime.
+        // Route step/process output above the pinned region for the plan's lifetime.
         capture = cm.captureOutput();
     }
 
@@ -134,11 +134,11 @@ public final class CommandManagerListener implements BuildPlanListener {
     }
 
     @Override
-    public void pipelineFinish(BuildPlanResult result) {
+    public void planFinish(BuildPlanResult result) {
         // Restore the real streams before settling so the result line isn't
         // itself routed back above the (closing) region.
         if (capture != null) capture.close();
-        if (cm == null) cm = CommandManager.pipeline(out, command, animate);
+        if (cm == null) cm = CommandManager.plan(out, command, animate);
         // No-spec path: the caller owns the result line — just clean up the live region.
         if (spec == null) {
             cm.dismiss();
@@ -156,11 +156,11 @@ public final class CommandManagerListener implements BuildPlanListener {
         for (BuildPlanResult.Diagnostic d : result.errors()) {
             above.add(ConsoleSpec.renderError(d));
         }
-        // A soft failure overrides an otherwise-successful result: the pipeline itself is fine, but the
+        // A soft failure overrides an otherwise-successful result: the plan itself is fine, but the
         // command discovered afterward that it can't proceed (e.g. jk run found no runnable entry
         // point). Rendered as the red failure chip with the caller's exact sentence — no "Failed to
         // <command>" derivation — so a genuine build failure (below) keeps its normal phrasing.
-        // Only probe softFailure when the build succeeded (JK-1162): on a failed pipeline, execPlan
+        // Only probe softFailure when the build succeeded (JK-1162): on a failed plan, execPlan
         // / entry-point scans can emit red diagnostics that flash under the live region before the
         // real failure settle.
         String soft = null;

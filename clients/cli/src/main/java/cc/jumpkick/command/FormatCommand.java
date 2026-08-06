@@ -52,7 +52,7 @@ public final class FormatCommand implements CliCommand {
                 Opt.value("<file>", "OpenRewrite YAML config for recipes", "--rewrite-config"));
     }
 
-    /** A format run's summary — the same fields whichever transport ran the pipeline. */
+    /** A format run's summary — the same fields whichever transport ran the plan. */
     private record Outcome(BuildPlanResult result, int changed, int clean, int errors, int total, int workerExit) {}
 
     @Override
@@ -101,7 +101,7 @@ public final class FormatCommand implements CliCommand {
             return Exit.USAGE;
         }
         // Supplying --rewrite-config implicitly enables optimize-imports when neither
-        // flag nor env var said otherwise (so the OpenRewrite pipeline actually runs).
+        // flag nor env var said otherwise (so the OpenRewrite plan actually runs).
         boolean optimizeImports = styles.optimizeImports()
                 || (rewriteConfig != null && cliOptimize == null && envBool("JK_FORMAT_OPTIMIZE_IMPORTS") == null);
 
@@ -184,10 +184,10 @@ public final class FormatCommand implements CliCommand {
             return o.workerExit();
         }
 
-        // Animated path — start the TUI *first*, so the spinner is already visible while the pipeline's
+        // Animated path — start the TUI *first*, so the spinner is already visible while the plan's
         // collect/resolve steps (I/O) run behind it.
         String subtitle = optimizeImports ? "Examining source files & optimizing imports" : "Examining source files";
-        try (CommandManager cm = CommandManager.pipeline(CliOutput.stdout(), "Format", true)) {
+        try (CommandManager cm = CommandManager.plan(CliOutput.stdout(), "Format", true)) {
             cm.addTaskLabeled("", "fmt", subtitle);
             cm.stepRunning("", "fmt");
 
@@ -258,9 +258,9 @@ public final class FormatCommand implements CliCommand {
     }
 
     /**
-     * Run the shared {@code FormatPipelines} pipeline — engine-hosted normally, in-process under {@link
+     * Run the shared {@code FormatPlans} plan — engine-hosted normally, in-process under {@link
      * Engine-hosted format — driving the same {@code observer}. {@code listener}
-     * receives the standard pipeline events (only worker passthrough chatter is rendered from it).
+     * receives the standard plan events (only worker passthrough chatter is rendered from it).
      */
     private static Outcome runFormatBuildPlan(
             Path projectDir,
@@ -298,7 +298,7 @@ public final class FormatCommand implements CliCommand {
                 outcome.workerExit());
     }
 
-    /** A pipeline listener that surfaces the worker's passthrough chatter under {@code --verbose}. */
+    /** A plan listener that surfaces the worker's passthrough chatter under {@code --verbose}. */
     private static BuildPlanListener chatterListener(GlobalOptions global, Consumer<String> sink) {
         return new BuildPlanListener() {
             @Override

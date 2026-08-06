@@ -67,8 +67,8 @@ class AndroidSpikeTest {
                         List.of()),
                 project.resolve("jk-lock.toml"));
 
-        // The real declared pipeline, exactly as jk build assembles it.
-        BuildPipelines.Inputs in = new BuildPipelines.Inputs(
+        // The real declared plan, exactly as jk build assembles it.
+        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                 project,
                 cache,
                 project.resolve("jk.toml"),
@@ -84,12 +84,12 @@ class AndroidSpikeTest {
                 false,
                 java.util.Set.of(),
                 cc.jumpkick.config.SessionContext.current());
-        BuildPlan pipeline = BuildPipelines.coreBuilder(in).build();
+        BuildPlan plan = BuildPlanner.coreBuilder(in).build();
 
-        assertThat(pipeline.steps().stream().map(p -> p.name()))
+        assertThat(plan.steps().stream().map(p -> p.name()))
                 .contains("plugin-android-manifest", "plugin-android-res", "plugin-android-dex", "package-jar");
 
-        BuildPlanResult result = pipeline.run();
+        BuildPlanResult result = plan.run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
 

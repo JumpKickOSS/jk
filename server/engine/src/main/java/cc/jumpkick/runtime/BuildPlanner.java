@@ -52,10 +52,11 @@ import java.util.Set;
 import java.util.stream.Stream;
 
 /**
- * Shared build pipeline for build-family commands: core steps via {@link #coreBuilder}, then
- * command-specific tails (native, image, install, …) in one {@link BuildPlan}.
+ * Assembles {@link BuildPlan} DAGs for build-family commands: core tasks via {@link #coreBuilder},
+ * then command-specific tails (native, image, install, …). Not itself a runnable plan — callers
+ * {@code build()} the returned {@link BuildPlan.Builder} and {@link BuildPlan#run() run} it.
  */
-public final class BuildPipelines {
+public final class BuildPlanner {
 
     static {
         // Wire session cancel into TaskContext.cancelled (lazy; pool tasks see it via
@@ -64,7 +65,7 @@ public final class BuildPipelines {
                 () -> cc.jumpkick.config.SessionContext.current().cancelled());
     }
 
-    private BuildPipelines() {}
+    private BuildPlanner() {}
 
     // ---- shared cross-step keys ---------------------------------------
     public static final BuildPlanKey<JkBuild> PROJECT = BuildPlanKey.of("project", JkBuild.class);
@@ -134,7 +135,7 @@ public final class BuildPipelines {
      */
     private static final java.util.concurrent.Semaphore TEST_GATE = new java.util.concurrent.Semaphore(1);
 
-    /** Everything a build needs that isn't carried through the pipeline's state. */
+    /** Everything a build needs that isn't carried through the plan's state. */
     public record Inputs(
             Path dir,
             Path cache,
@@ -161,7 +162,7 @@ public final class BuildPipelines {
             // LOUD at the call site; no overload hides that read anymore.
             cc.jumpkick.config.Session session,
             // The variant selection ("", "release", "release|tier=free") — folded into plugin
-            // configs at parse time (VariantApply.apply), so pipelines are parameterized, never configured.
+            // configs at parse time (VariantApply.apply), so plans are parameterized, never configured.
             String variant,
             // Client-resolved env values (env: indirection in plugin configs — signing secrets):
             // the user's shell env rides the request; the engine env is only the fallback.
@@ -173,7 +174,7 @@ public final class BuildPipelines {
         /**
          * Back-compat: the pre-variant canonical shape. The variant selection defaults from the
          * SESSION — a command that installs a selection there (jk run/test/image/native/publish)
-         * parameterizes every pipeline factory without each one threading it explicitly.
+         * parameterizes every plan factory without each one threading it explicitly.
          */
         public Inputs(
                 Path dir,
@@ -387,11 +388,11 @@ public final class BuildPipelines {
             }
             // CLI packaging override (jk assemble --shrink / --fat) wins over jk.toml for this run.
             // Read from Inputs.session (not ambient SessionContext) — single-build constructs the
-            // pipeline outside SessionContext.where.
+            // plan outside SessionContext.where.
             jkBuild = applyAssemblyOverride(jkBuild, in.session());
             // Variant overlays fold into plugin configs HERE, so describe keys, contribution
             // predicates, step/packager action keys, and plugin specs all see one flat effective
-            // config (parameterized pipelines, not configured objects).
+            // config (parameterized plans, not configured objects).
             var applied = cc.jumpkick.plugin.manifest.VariantApply.apply(
                     jkBuild, in.dir(), cc.jumpkick.model.Variants.Selection.parse(in.variant()), in.clientEnv());
             jkBuild = applied.build();
@@ -403,7 +404,7 @@ public final class BuildPipelines {
             useKotlin = langs.kotlin();
             useGroovy = langs.groovy();
             // [processor-dependencies] on a Kotlin module can generate Java sources (Hilt's
-            // components are Java) — route through the mixed pipeline so javac compiles them.
+            // components are Java) — route through the mixed plan so javac compiles them.
             if (useKotlin && !useJava && hasProcessorDeps(jkBuild)) {
                 useJava = true;
             }
@@ -427,7 +428,7 @@ public final class BuildPipelines {
 
         // Build-plugin code layer: learn the registered steps/packager
         // over the file-cached describe protocol. A missing plugin jar or a broken registration
-        // must fail the build loudly here, not mid-pipeline.
+        // must fail the build loudly here, not mid-plan.
         PluginBuild.Active pluginActive = null;
         PluginBuild.Declarations pluginDecls = null;
         if (parsedBuild != null) {
@@ -452,7 +453,7 @@ public final class BuildPipelines {
 
         // Plugin-contributed generated sources can be Java even in a Kotlin- or Groovy-only
         // module (protoc's --kotlin_out DSL wraps its own --java_out classes) — same
-        // mixed-pipeline routing the KSP/Hilt case above takes, decided here because the
+        // mixed-plan routing the KSP/Hilt case above takes, decided here because the
         // declarations only exist after the describe round.
         if ((useKotlin || useGroovy) && !useJava && pluginDecls != null) {
             for (PluginBuild.TaskDecl step : pluginDecls.steps()) {
@@ -490,7 +491,7 @@ public final class BuildPipelines {
 
         // Predict each step's bar weight from the work it will actually do this
         // run (skipped/cached steps collapse to ~1; real work dominates). Computed
-        // once, lazily, when the first weight supplier fires during pipeline-start
+        // once, lazily, when the first weight supplier fires during plan-start
         // estimation — so the prediction (stamps/lock/CAS) is read off disk once.
         final java.util.concurrent.atomic.AtomicReference<EffortWeights.Plan> planRef =
                 new java.util.concurrent.atomic.AtomicReference<>();
@@ -508,7 +509,7 @@ public final class BuildPipelines {
 
         // Source-list caches shared between the tick suppliers (estimate step)
         // and the parse-build execute (authoritative collection). The scope fires
-        // first (pipeline-start estimation); parse-build execute reuses the result
+        // first (plan-start estimation); parse-build execute reuses the result
         // instead of walking the same directories again. Using AtomicReference
         // with lazy init: whichever side fires first populates the cache; the
         // other side finds the value already set.
@@ -1515,7 +1516,7 @@ public final class BuildPipelines {
                     // action-cache hit means a cheap hard-link restore (3), not a full
                     // javac (ceil(sources × 0.1)). Uses the exact key
                     // JavaIncrementalCompile will look up, so the estimate matches what
-                    // actually happens — no pipeline-start reconstruction divergence.
+                    // actually happens — no plan-start reconstruction divergence.
                     if (!rerun) {
                         try {
                             boolean restores = actionCache
@@ -3326,12 +3327,20 @@ public final class BuildPipelines {
     /**
      * As {@link #appendDeclaredTails(BuildPlan.Builder, Inputs, Path)} with {@code allowNative} for
      * workspace prereq modules that must stay JVM-only.
+     *
+     * <p>{@link BuildPlan.Builder#terminal} keeps only the named task and its <em>upstream</em>
+     * requires-closure. Core ends at {@code package-jar}; assembly / native / sources-jar are
+     * <em>downstream</em> of that terminal, so they must re-root the terminal (via a synthetic
+     * join when more than one tail is present) or {@link BuildPlan.Builder#build()} prunes them
+     * and fat jars / native images never run on {@code jk build}.
      */
     public static void appendDeclaredTails(BuildPlan.Builder b, Inputs in, Path graalHome, boolean allowNative) {
         try {
             JkBuild project = applyAssemblyOverride(JkBuildParser.parse(in.buildFile()), in.session());
+            List<String> leaves = new ArrayList<>();
             if (project.assembly()) {
                 b.addTask(assemblyStep(in.cache(), in.lockFile(), !in.ephemeralActions()));
+                leaves.add(TaskNames.PACKAGE_ASSEMBLY);
             }
             if (allowNative && project.nativeMode() == JkBuild.NativeMode.ALWAYS) {
                 b.addTask(nativeStep(
@@ -3342,18 +3351,42 @@ public final class BuildPipelines {
                         graalHome,
                         null,
                         List.of()));
+                leaves.add(TaskNames.NATIVE_IMAGE);
             }
             if (project.project().sourcesMode() == JkBuild.SourcesMode.ALWAYS) {
                 b.addTask(sourcesStep(in.cache(), !in.ephemeralActions()));
+                leaves.add(TaskNames.PACKAGE_SOURCES);
             }
+            if (leaves.isEmpty()) return;
+            if (leaves.size() == 1) {
+                b.terminal(leaves.get(0));
+                return;
+            }
+            // Multiple independent tails of package-jar — join them so prune keeps every branch.
+            b.addTask(Task.builder(DELIVER_JOIN)
+                    .group("package")
+                    .requires(leaves.toArray(String[]::new))
+                    .weight(0)
+                    .ticks(0)
+                    .execute(ctx -> {
+                        /* join only */
+                    })
+                    .build());
+            b.terminal(DELIVER_JOIN);
         } catch (Exception ignored) {
         }
     }
 
     /**
+     * Synthetic join for multiple declared tails (assembly + native + sources). Not a real work
+     * step — only exists so {@link BuildPlan.Builder#terminal} can keep every leaf.
+     */
+    static final String DELIVER_JOIN = "deliver";
+
+    /**
      * Apply {@link cc.jumpkick.config.Session#assemblyOverride} (CLI {@code --fat}/{@code --shrink})
      * over the parsed manifest for this invocation only. Prefer the request {@link Inputs#session}
-     * over ambient {@link SessionContext} so single-build pipeline construction (outside {@code
+     * over ambient {@link SessionContext} so single-build plan construction (outside {@code
      * SessionContext.where}) still sees the wire override.
      */
     static JkBuild applyAssemblyOverride(JkBuild build, cc.jumpkick.config.Session session) {
@@ -3505,7 +3538,7 @@ public final class BuildPipelines {
             Path graalHome,
             String mainOverride,
             List<String> extraArgs) {
-        // Install / native pipelines never run under verify's ephemeral scratch — persist.
+        // Install / native plans never run under verify's ephemeral scratch — persist.
         final boolean persist = true;
         List<String> extra = extraArgs == null ? List.of() : extraArgs;
         return Task.builder(TaskNames.NATIVE_IMAGE)
@@ -4320,12 +4353,16 @@ public final class BuildPipelines {
     /**
      * Resolve engine assembly + every first-party worker jar so CLI tests match Gradle's {@code
      * -Djk.engine.jar} / {@code -Djk.*.plugin.jar} wiring.
+     *
+     * <p>{@code jk test} (testOnly) does not package the engine assembly, so the workspace
+     * {@code *-all.jar} is often missing. Fall back to the host engine jar (the process serving
+     * this build) or the materialized install under {@code VersionStore} — same fat jar Gradle
+     * hands CLI tests via {@code :engine:shadowJar}.
      */
     static void enrichCliTestProps(Path moduleDir, Map<String, String> props) throws IOException {
         Map<String, Path> siblings = siblingMainJars(moduleDir);
-        Path engine = siblings.get("jk-engine");
-        if (engine == null) engine = siblings.get("engine");
-        if (engine != null && Files.isRegularFile(engine)) {
+        Path engine = resolveEngineJarForNestedTests(siblings);
+        if (engine != null) {
             props.put("jk.engine.jar", engine.toAbsolutePath().toString());
         }
         for (PluginJar w : PluginJar.values()) {
@@ -4344,9 +4381,93 @@ public final class BuildPipelines {
     }
 
     /**
+     * Engine jar for nested CLI suites: workspace assembly when present, else the host process's
+     * fat jar / installed VersionStore materialization.
+     */
+    static Path resolveEngineJarForNestedTests(Map<String, Path> siblings) {
+        Path engine = siblings != null ? siblings.get("jk-engine") : null;
+        if (engine == null && siblings != null) engine = siblings.get("engine");
+        if (engine != null && Files.isRegularFile(engine)) return engine.normalize();
+        return locateHostEngineJar();
+    }
+
+    /**
+     * Fat engine jar this process was launched from, the same version under {@link
+     * cc.jumpkick.cache.VersionStore}, or a monorepo product path ({@code build/dist/lib},
+     * Gradle {@code build/libs}, pure-jk {@code target/server/engine}). Null only when none
+     * of those exist (cold checkout with no install and no prior package).
+     */
+    static Path locateHostEngineJar() {
+        try {
+            var cs = cc.jumpkick.engine.EngineMain.class.getProtectionDomain().getCodeSource();
+            if (cs != null && cs.getLocation() != null) {
+                Path p = Path.of(cs.getLocation().toURI());
+                if (Files.isRegularFile(p) && p.getFileName().toString().endsWith(".jar")) {
+                    return p.normalize();
+                }
+            }
+        } catch (Exception ignored) {
+            // fall through — exploded test classpath is common under Gradle
+        }
+        String cp = System.getProperty("java.class.path", "");
+        for (String entry : cp.split(java.io.File.pathSeparator)) {
+            if (entry == null || entry.isBlank()) continue;
+            Path p = Path.of(entry);
+            String name = p.getFileName() != null ? p.getFileName().toString() : "";
+            if (Files.isRegularFile(p)
+                    && name.endsWith(".jar")
+                    && (name.startsWith("jk-engine") || name.equals("jk-engine.jar"))) {
+                return p.toAbsolutePath().normalize();
+            }
+        }
+        try {
+            var mat = cc.jumpkick.cache.VersionStore.current()
+                    .resolve(cc.jumpkick.model.JkVersion.VERSION);
+            if (mat.isPresent() && Files.isRegularFile(mat.get().engineJar())) {
+                return mat.get().engineJar().toAbsolutePath().normalize();
+            }
+        } catch (RuntimeException ignored) {
+            // Isolated JK_HOME (Gradle :engine:test / nested CLI suite) has no versions tree.
+        }
+        // Last resort: monorepo product outputs relative to user.dir (and parents). Pure-jk
+        // nested isolation runs with user.dir = clients/cli; host run-tests has monorepo root
+        // or server/engine as cwd under Gradle.
+        return findMonorepoEngineJar(Path.of(System.getProperty("user.dir", ".")).toAbsolutePath().normalize());
+    }
+
+    /** Prefer fat assembly, then dist/shadow, then thin main jar under known layout roots. */
+    static Path findMonorepoEngineJar(Path start) {
+        String ver = cc.jumpkick.model.JkVersion.VERSION;
+        Path walk = start;
+        for (int up = 0; up < 5 && walk != null; up++, walk = walk.getParent()) {
+            for (String rel : List.of(
+                    "target/server/engine/jk-engine-" + ver + "-all.jar",
+                    "build/dist/lib/jk-engine-" + ver + ".jar",
+                    "server/engine/build/libs/jk-engine-" + ver + ".jar",
+                    "build/libs/jk-engine-" + ver + ".jar",
+                    "target/server/engine/jk-engine-" + ver + ".jar",
+                    "server/engine/target/jk-engine-" + ver + "-all.jar",
+                    "server/engine/target/jk-engine-" + ver + ".jar")) {
+                Path p = walk.resolve(rel);
+                if (Files.isRegularFile(p)) return p.normalize();
+            }
+        }
+        return null;
+    }
+
+    /**
      * Isolated {@code JK_HOME} + short {@code JK_STATE_DIR} under {@code /tmp} (UDS path length) for
-     * nested-engine CLI tests. Keeps the host engine's socket alone; CAS stays on the real host
-     * cache so install-local workers remain visible.
+     * nested-engine CLI tests. Keeps the host engine's socket alone.
+     *
+     * <p><strong>Fully sandboxed product layout</strong> — cache and store both live under
+     * {@code $JK_HOME}. Never point {@code JK_CACHE_DIR} or {@code JK_STORE_DIR} at the host: a
+     * prior bug set them to the developer's real trees so {@code SelfPurgeCommandTest} /
+     * {@code jk cache purge} / {@code jk self purge --store} wiped action-cache and install-local
+     * workers mid-{@code jk build}. After that, post-green {@code jk explain} reported a full
+     * rebuild and subsequent tests could not find {@code jk-test-runner}.
+     *
+     * <p>Plugin/worker jars for nested suites still arrive via {@code -Djk.*.plugin.jar} props
+     * ({@link #enrichCliTestProps}), not by sharing the host store.
      */
     static Map<String, String> nestedEngineTestEnv(Path moduleDir) throws IOException {
         Path jkHome = moduleDir.resolve("target").resolve("test-jk-home");
@@ -4359,9 +4480,7 @@ public final class BuildPipelines {
         env.put("JK_HOME", jkHome.toAbsolutePath().toString());
         env.put("JK_JDKS_DIR", jkHome.resolve("jdks").toAbsolutePath().toString());
         env.put("JK_STATE_DIR", stateDir.toAbsolutePath().toString());
-        // Prefer the host CAS so plugins/deps materialize once; VersionStore still uses JK_HOME.
-        Path hostCache = cc.jumpkick.util.JkDirs.cache();
-        env.put("JK_CACHE_DIR", hostCache.toAbsolutePath().toString());
+        // Intentionally no JK_CACHE_DIR / JK_STORE_DIR — both resolve under JK_HOME.
         env.put("JK_STREAM_IDLE_MS", "45000");
         env.put("TERM", "xterm-256color");
         env.put("CI", "false");

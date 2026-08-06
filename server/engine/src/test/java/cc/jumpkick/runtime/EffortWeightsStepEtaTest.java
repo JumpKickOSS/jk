@@ -194,7 +194,7 @@ class EffortWeightsStepEtaTest {
 
     @Test
     void step_counts_and_running_steps_come_from_the_prepared_pipeline() {
-        var pipeline = cc.jumpkick.run.BuildPlan.builder("m")
+        var plan = cc.jumpkick.run.BuildPlan.builder("m")
                 .addTask(cc.jumpkick.run.Task.builder("parse-build")
                         .weight(EffortWeights.TOKEN)
                         .ticks(1)
@@ -211,10 +211,10 @@ class EffortWeightsStepEtaTest {
                         .execute(ctx -> {})
                         .build())
                 .build();
-        assertThat(EffortWeights.runningStepsFromBuildPlan(pipeline))
+        assertThat(EffortWeights.runningStepsFromBuildPlan(plan))
                 .containsExactly("compile-java", "run-tests"); // TOKEN parse-build omitted
         // Counts include every step with ticks>0 (harmless extras); pricing only uses running steps.
-        assertThat(EffortWeights.stepCountsFromBuildPlan(pipeline))
+        assertThat(EffortWeights.stepCountsFromBuildPlan(plan))
                 .containsEntry("compile-java", 227)
                 .containsEntry("run-tests", 884)
                 .containsEntry("parse-build", 1);

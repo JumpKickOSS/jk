@@ -378,7 +378,7 @@ public final class ToolInstallCommand implements CliCommand {
         return 0;
     }
 
-    /** The app-install pipeline, shared with {@code jk install}. */
+    /** The app-install plan, shared with {@code jk install}. */
     private InstallCommand appInstallDelegate() {
         InstallCommand delegate = new InstallCommand();
         delegate.binName = binName;

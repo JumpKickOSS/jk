@@ -11,7 +11,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Aggregate-rider disciplinea single-pipeline listener owns the rider; a workspace
+ * Aggregate-rider disciplinea single-plan listener owns the rider; a workspace
  * member must never stamp its module-local fraction over the engine's workspace aggregate.
  */
 class JsonlListenerTest {
@@ -22,7 +22,7 @@ class JsonlListenerTest {
     }
 
     @Test
-    void single_pipeline_listener_updates_aggregate_rider() {
+    void single_plan_listener_updates_aggregate_rider() {
         LiveProgress.get().clear();
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
         JsonlListener lis = new JsonlListener(new PrintStream(buf, true, StandardCharsets.UTF_8));
@@ -40,7 +40,7 @@ class JsonlListenerTest {
         lis.tickUpdate("compile", 1, new BuildPlanView("module-a", 2, 10, 3, 1, false));
         // Module-local 10%/20% must not drag the aggregate rider backwards.
         assertThat(LiveProgress.get().percent()).isEqualTo(80.0);
-        // Events still carry their pipeline-local numerator/denominator + the engine rider.
+        // Events still carry their plan-local numerator/denominator + the engine rider.
         String out = buf.toString(StandardCharsets.UTF_8);
         assertThat(out).contains("\"numerator\":1,\"denominator\":10");
         assertThat(out).contains("\"progress\":80");

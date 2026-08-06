@@ -112,4 +112,22 @@ class MavenMetadataCacheTest {
         assertThatThrownBy(() -> cache.fetch(uri, RepoCredential.ANONYMOUS))
                 .isInstanceOf(MavenRepo.ArtifactNotFoundException.class);
     }
+
+    @Test
+    void with_force_revalidate_skips_ttl_and_hits_the_network(@TempDir Path dir) throws Exception {
+        // Explicit jk lock uses this so a same-URL re-resolve sees newly published versions
+        // that a warm TTL cache would otherwise hide (JK-1350 float-to-latest).
+        MavenMetadataCache cache = cache(dir, Duration.ofHours(1));
+
+        assertThat(cache.fetch(uri, RepoCredential.ANONYMOUS)).isEqualTo(BODY);
+        assertThat(hits.get()).isEqualTo(1);
+
+        MavenMetadataCache.withForceRevalidate(() -> {
+            assertThat(cache.fetch(uri, RepoCredential.ANONYMOUS)).isEqualTo(BODY);
+            return null;
+        });
+        // Conditional GET (304) — still a network hop, not a pure TTL hit.
+        assertThat(hits.get()).isEqualTo(2);
+        assertThat(lastIfNoneMatch).isEqualTo(ETAG);
+    }
 }

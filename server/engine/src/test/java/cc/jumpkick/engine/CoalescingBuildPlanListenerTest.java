@@ -74,13 +74,13 @@ class CoalescingBuildPlanListenerTest {
             }
 
             @Override
-            public void pipelineFinish(BuildPlanResult result) {
+            public void planFinish(BuildPlanResult result) {
                 events.add("done");
             }
         };
         CoalescingBuildPlanListener c = new CoalescingBuildPlanListener(sink, 60_000L);
         c.label("s", "hello");
-        c.pipelineFinish(new BuildPlanResult("p", true, Duration.ZERO, List.of(), List.of(), List.of(), false, false));
+        c.planFinish(new BuildPlanResult("p", true, Duration.ZERO, List.of(), List.of(), List.of(), false, false));
         assertThat(events).containsExactly("l:hello", "done");
     }
 }

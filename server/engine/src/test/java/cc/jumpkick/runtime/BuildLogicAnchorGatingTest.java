@@ -21,7 +21,7 @@ class BuildLogicAnchorGatingTest {
     @Test
     void before_package_requires_resources_and_is_required_by_package(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
-        BuildPlan p = pipeline(project, dir.resolve("cache"), false);
+        BuildPlan p = plan(project, dir.resolve("cache"), false);
         Map<String, Task> byName = index(p);
 
         assertThat(byName)
@@ -56,7 +56,7 @@ class BuildLogicAnchorGatingTest {
     @Test
     void before_package_skips_run_tests_when_skip_tests(@TempDir Path dir) throws Exception {
         Path project = scaffold(dir);
-        BuildPlan p = pipeline(project, dir.resolve("cache"), true);
+        BuildPlan p = plan(project, dir.resolve("cache"), true);
         Map<String, Task> byName = index(p);
 
         assertThat(byName).containsKey(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE);
@@ -87,9 +87,9 @@ class BuildLogicAnchorGatingTest {
         return project;
     }
 
-    private static BuildPlan pipeline(Path project, Path cache, boolean skipTests) {
+    private static BuildPlan plan(Path project, Path cache, boolean skipTests) {
         FilesCreateCache(cache);
-        BuildPipelines.Inputs in = new BuildPipelines.Inputs(
+        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                 project,
                 cache,
                 project.resolve("jk.toml"),
@@ -105,7 +105,7 @@ class BuildLogicAnchorGatingTest {
                 false,
                 Set.of(),
                 cc.jumpkick.config.SessionContext.current());
-        return BuildPipelines.coreBuilder(in).build();
+        return BuildPlanner.coreBuilder(in).build();
     }
 
     private static void FilesCreateCache(Path cache) {

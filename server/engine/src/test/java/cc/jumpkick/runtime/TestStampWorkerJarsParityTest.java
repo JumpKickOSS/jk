@@ -53,21 +53,52 @@ class TestStampWorkerJarsParityTest {
                 """);
         Files.writeString(tmp.resolve("jk.toml"), """
                 [workspace]
-                members = ["clients/cli", "server/engine"]
+                modules = ["clients/cli", "server/engine"]
                 """);
 
         JkBuild project = JkBuildParser.parse(cli.resolve("jk.toml"));
-        assertThat(BuildPipelines.needsNestedEngineIsolation(project)).isTrue();
+        assertThat(BuildPlanner.needsNestedEngineIsolation(project)).isTrue();
 
-        Map<String, String> workers = BuildPipelines.testStampWorkerJars(cli, project);
-        // Without a full workspace sibling scan may not find engine — still must not NPE, and
-        // extras must include selection tags path via testStampExtras.
-        var extras = BuildPipelines.testStampExtras(cli, project);
+        Map<String, String> workers = BuildPlanner.testStampWorkerJars(cli, project);
+        // Host / VersionStore fallback always supplies jk.engine.jar under pure-jk (and
+        // when the workspace assembly is present, that path wins).
+        assertThat(workers).containsKey("jk.engine.jar");
+        var extras = BuildPlanner.testStampExtras(cli, project);
         assertThat(extras).anyMatch(s -> s.startsWith("sel:"));
         assertThat(extras).anyMatch(s -> s.startsWith("jk:"));
-        // When engine jar is discoverable, worker props appear in extras.
-        if (!workers.isEmpty()) {
-            assertThat(extras).anyMatch(s -> s.startsWith("worker:"));
+        assertThat(extras).anyMatch(s -> s.startsWith("worker:"));
+    }
+
+    @Test
+    void nested_engine_env_does_not_point_cache_or_store_at_host() throws Exception {
+        // Regression: JK_CACHE_DIR / JK_STORE_DIR used to be the host trees, so SelfPurge
+        // during pure-jk monorepo tests wiped the developer's real action cache and
+        // install-local workers mid-build.
+        Path cli = tmp.resolve("clients/cli");
+        Files.createDirectories(cli);
+        Map<String, String> env = BuildPlanner.nestedEngineTestEnv(cli);
+        assertThat(env).containsKey("JK_HOME");
+        assertThat(env).doesNotContainKey("JK_CACHE_DIR");
+        assertThat(env).doesNotContainKey("JK_STORE_DIR");
+        Path hostCache = cc.jumpkick.util.JkDirs.cache().toAbsolutePath().normalize();
+        Path hostStore = cc.jumpkick.util.JkDirs.store().toAbsolutePath().normalize();
+        Path jkHome = Path.of(env.get("JK_HOME")).toAbsolutePath().normalize();
+        assertThat(jkHome).isAbsolute();
+        assertThat(jkHome).isNotEqualTo(hostCache.getParent()); // not ambient product root
+        for (String v : env.values()) {
+            if (v == null || v.isBlank()) continue;
+            Path p;
+            try {
+                p = Path.of(v).toAbsolutePath().normalize();
+            } catch (Exception e) {
+                continue; // non-path values (TERM, CI, …)
+            }
+            assertThat(p)
+                    .as("nested env must not equal host action-cache root")
+                    .isNotEqualTo(hostCache);
+            assertThat(p)
+                    .as("nested env must not equal host artifact store root")
+                    .isNotEqualTo(hostStore);
         }
     }
 
@@ -83,9 +114,52 @@ class TestStampWorkerJarsParityTest {
                 java = 25
                 """);
         JkBuild project = JkBuildParser.parse(lib.resolve("jk.toml"));
-        assertThat(BuildPipelines.needsNestedEngineIsolation(project)).isFalse();
-        assertThat(BuildPipelines.testStampWorkerJars(lib, project)).isEmpty();
-        var extras = BuildPipelines.testStampExtras(lib, project);
+        assertThat(BuildPlanner.needsNestedEngineIsolation(project)).isFalse();
+        assertThat(BuildPlanner.testStampWorkerJars(lib, project)).isEmpty();
+        var extras = BuildPlanner.testStampExtras(lib, project);
         assertThat(extras).noneMatch(s -> s.startsWith("worker:"));
+    }
+
+    @Test
+    void cli_module_gets_engine_jar_prop_via_host_fallback_when_assembly_missing() throws Exception {
+        Path cli = tmp.resolve("clients/cli");
+        Files.createDirectories(cli);
+        Files.writeString(cli.resolve("jk.toml"), """
+                [project]
+                group = "cc.jumpkick"
+                name = "jk-cli"
+                version = "0.0.1"
+                java = 25
+
+                [application]
+                main = "cc.jumpkick.cli.Jk"
+                """);
+        // Engine module exists but has no assembly jar on disk (jk test does not package it).
+        Path engine = tmp.resolve("server/engine");
+        Files.createDirectories(engine);
+        Files.writeString(engine.resolve("jk.toml"), """
+                [project]
+                group = "cc.jumpkick"
+                name = "jk-engine"
+                version = "0.0.1"
+                java = 25
+
+                [application]
+                main = "cc.jumpkick.engine.EngineMain"
+                assembly = true
+                """);
+        Files.writeString(tmp.resolve("jk.toml"), """
+                [workspace]
+                modules = ["clients/cli", "server/engine"]
+                """);
+
+        JkBuild project = JkBuildParser.parse(cli.resolve("jk.toml"));
+        Map<String, String> workers = BuildPlanner.testStampWorkerJars(cli, project);
+        // Host process / VersionStore / classpath must supply a fat jar so pure-jk nested
+        // isolation still gets -Djk.engine.jar without a workspace *-all.jar.
+        assertThat(workers)
+                .as("jk.engine.jar must be set even when workspace assembly is absent")
+                .containsKey("jk.engine.jar");
+        assertThat(Path.of(workers.get("jk.engine.jar"))).isRegularFile();
     }
 }

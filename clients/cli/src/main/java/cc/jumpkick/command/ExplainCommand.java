@@ -63,7 +63,7 @@ public final class ExplainCommand implements CliCommand {
         // means feeding the same inputs to the shared estimate (and, with --run, to build).
         // Module concurrency: global -j/--jobs.
         opts.add(Opt.value("<name>", "Forecast with a build profile", "--profile"));
-        opts.add(Opt.value("<N>", "Forecast with N test JVMs per module", "-w", "--workers"));
+        opts.add(Opt.value("<N>", "Test JVMs per module (0=auto)", "-w", "--workers"));
         opts.add(cc.jumpkick.cli.CommonOpts.skipTests());
         // -r/--redo is a global flag (same as `jk build --redo`); see GlobalOptions.
         opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
@@ -108,14 +108,14 @@ public final class ExplainCommand implements CliCommand {
                     in.value("graph-out").orElse(null));
         }
 
-        // The plan-affecting options `jk build` reads, forecast with the same defaults build uses
-        // (jdksDir=null → full JDK probe chain, workers=1, skipTests=false) so a bare `jk explain`
-        // predicts exactly what a bare `jk build` would do. Parsed before the engine round-trip:
-        // they ride the explain request so the ETA is computed engine-side.
+        // HARD INVARIANT: bare `jk explain` uses the exact same defaults as bare `jk build`
+        // (-w 0 = auto, -j from jobsEffective, parallel-tests default on). The estimate must
+        // match the live countdown bit-for-bit — docs/perf/progress-contract.md.
         boolean parallelTests = cc.jumpkick.cli.ParallelTestsOpts.enabled(in);
         int jobs = global.jobsEffective();
         boolean serial = jobs == 1;
-        int workers = in.value("workers").map(Integer::parseInt).orElse(1);
+        // 0 = auto within-module test JVMs — same as BuildCommand when -w is omitted.
+        int workers = in.value("workers").map(Integer::parseInt).orElse(0);
         boolean skipTests = in.isSet("skip-tests");
         // Global --redo / --force: forecast full work + rebuild ETA priors.
         boolean rebuild = global.rebuild || global.force;
@@ -190,7 +190,8 @@ public final class ExplainCommand implements CliCommand {
                             serial,
                             parallelTests,
                             global.verbose,
-                            rebuild),
+                            rebuild,
+                            jobs),
                     etaOut);
         }
         etaMillis = etaOut[0];
@@ -209,7 +210,7 @@ public final class ExplainCommand implements CliCommand {
                 ? cc.jumpkick.cli.tui.CommandManager.detectColumns()
                 : Integer.MAX_VALUE;
 
-        // Forecast every module's full step pipeline (compile → test → package),
+        // Forecast every module's full step plan (compile → test → package),
         // truthfully — see TaskForecaster.
         List<TaskForecast.Module> modules = plan.modules();
         boolean all = in.isSet("verbose");

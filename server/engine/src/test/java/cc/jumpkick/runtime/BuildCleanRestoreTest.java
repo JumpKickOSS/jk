@@ -75,11 +75,11 @@ class BuildCleanRestoreTest {
         BuildLayout layout = BuildLayout.of(project, parsed);
         Session nested = Session.defaults().withCacheDir(cache);
         run(nested, () -> {
-            BuildPlan lock = LockPipelines.lockBuildPlan(
+            BuildPlan lock = LockPlans.lockBuildPlan(
                     project, parsed, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
             assertThat(lock.run().errors()).isEmpty();
 
-            BuildPlanResult first = BuildPipelines.coreBuilder(inputs(project, cache, nested, false))
+            BuildPlanResult first = BuildPlanner.coreBuilder(inputs(project, cache, nested, false))
                     .build()
                     .run();
             assertThat(first.errors()).isEmpty();
@@ -105,7 +105,7 @@ class BuildCleanRestoreTest {
             }
 
             // The scheduled build restores the outputs from cache.
-            BuildPlanResult second = BuildPipelines.coreBuilder(inputs(project, cache, nested, false))
+            BuildPlanResult second = BuildPlanner.coreBuilder(inputs(project, cache, nested, false))
                     .build()
                     .run();
             assertThat(second.errors()).isEmpty();
@@ -164,11 +164,11 @@ class BuildCleanRestoreTest {
         BuildLayout layout = BuildLayout.of(project, parsed);
         Session nested = Session.defaults().withCacheDir(cache);
         run(nested, () -> {
-            BuildPlan lock = LockPipelines.lockBuildPlan(
+            BuildPlan lock = LockPlans.lockBuildPlan(
                     project, parsed, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
             assertThat(lock.run().errors()).isEmpty();
 
-            BuildPlanResult first = BuildPipelines.coreBuilder(inputs(project, cache, nested, true))
+            BuildPlanResult first = BuildPlanner.coreBuilder(inputs(project, cache, nested, true))
                     .build()
                     .run();
             assertThat(first.errors()).isEmpty();
@@ -185,7 +185,7 @@ class BuildCleanRestoreTest {
             assertThat(plan).hasSize(1);
             assertThat(plan.get(0).dirty()).isTrue();
 
-            BuildPlanResult second = BuildPipelines.coreBuilder(inputs(project, cache, nested, true))
+            BuildPlanResult second = BuildPlanner.coreBuilder(inputs(project, cache, nested, true))
                     .build()
                     .run();
             assertThat(second.errors()).isEmpty();
@@ -211,8 +211,8 @@ class BuildCleanRestoreTest {
         void run() throws Exception;
     }
 
-    private static BuildPipelines.Inputs inputs(Path project, Path cache, Session session, boolean skipTests) {
-        return new BuildPipelines.Inputs(
+    private static BuildPlanner.Inputs inputs(Path project, Path cache, Session session, boolean skipTests) {
+        return new BuildPlanner.Inputs(
                 project,
                 cache,
                 project.resolve("jk.toml"),

@@ -19,8 +19,8 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * {@code jk image} — build an OCI image (full build pipeline + Jib worker, engine-hosted). This
- * command renders streamed pipeline events.
+ * {@code jk image} — build an OCI image (full build plan + Jib worker, engine-hosted). This
+ * command renders streamed plan events.
  */
 public final class ImageCommand implements CliCommand {
 
@@ -115,8 +115,8 @@ public final class ImageCommand implements CliCommand {
         BuildPlanResult result;
         cc.jumpkick.run.TestSummary testResult;
         // The wire has no real BuildPlan, so the success tail renders from the structured fields the
-        // terminal pipeline-finish carries — the summary holder is populated before the console
-        // listener's own pipelineFinish fires, same holder pattern as TestCommand's hosted path.
+        // terminal plan-finish carries — the summary holder is populated before the console
+        // listener's own planFinish fires, same holder pattern as TestCommand's hosted path.
         var session = cc.jumpkick.config.SessionContext.current();
         cc.jumpkick.cli.engine.EngineClient.ImageSummary[] summary =
                 new cc.jumpkick.cli.engine.EngineClient.ImageSummary[1];

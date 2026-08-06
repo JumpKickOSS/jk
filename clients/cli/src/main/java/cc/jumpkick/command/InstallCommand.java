@@ -26,7 +26,7 @@ import java.util.EnumSet;
 import java.util.Set;
 
 /**
- * App-install pipeline used by {@code jk tool install} / {@code jk install}: current project, Maven
+ * App-install plan used by {@code jk tool install} / {@code jk install}: current project, Maven
  * coordinate, or git URL (optional {@code @}/{@code #} ref; {@code gh:owner/repo} shorthands).
  * Cache-installs into the CAS/m2; applications also get a launcher under {@code ~/.local/bin}.
  */
@@ -191,7 +191,7 @@ public final class InstallCommand {
         BuildPlanResult fetchResult;
         Path checkout;
         String sha;
-        // Engine-hosted clone: checkout path + sha ride the terminal pipeline-finish.
+        // Engine-hosted clone: checkout path + sha ride the terminal plan-finish.
         cc.jumpkick.cli.engine.EngineClient.GitFetchOutcome outcome;
         try {
             outcome = cc.jumpkick.cli.engine.EngineClient.runGitFetch(
@@ -218,15 +218,15 @@ public final class InstallCommand {
                     "Fetched " + expanded + " @ " + refStr + " (" + sha.substring(0, Math.min(7, sha.length())) + ")");
         }
 
-        // After fetch, hand off to the same project-install pipeline used by
+        // After fetch, hand off to the same project-install plan used by
         // mode 1, but with the checkout dir instead of the user's CWD.
         return runProjectInstallBuildPlan(checkout, "install-git");
     }
 
-    // --- shared project-install pipeline ---------------------------------
+    // --- shared project-install plan ---------------------------------
 
     /** Package-private: {@code jk tool install <project-dir>} delegates here. */
-    int runProjectInstallBuildPlan(Path projectDir, String pipelineName) throws IOException {
+    int runProjectInstallBuildPlan(Path projectDir, String planName) throws IOException {
         Path cacheDir = cacheDir();
         Path binDir = binDir();
         Path libDir = libDir();
@@ -267,7 +267,7 @@ public final class InstallCommand {
             graalHome = resolved.get();
         }
 
-        // Build + cache-install through the shared InstallPipelines pipeline (jar always; assembly/native
+        // Build + cache-install through the shared InstallPlans plan (jar always; assembly/native
         // per jk.toml; jar + generated pom into ~/.m2 / repos/local) — engine-hosted for a real
         // invocation, in-process for the test-only bypass. The make-install half runs below,
         // client-side either way: it writes the user-home launcher/binary this process owns.
@@ -288,7 +288,7 @@ public final class InstallCommand {
                             session.offline(),
                             session.force(),
                             global.verbose),
-                    steps -> BuildPlanConsole.chooseConsoleListener(pipelineName, steps, mode),
+                    steps -> BuildPlanConsole.chooseConsoleListener(planName, steps, mode),
                     testResultHolder);
         } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Install", e.getMessage()));
@@ -378,7 +378,7 @@ public final class InstallCommand {
     // --- helpers ---------------------------------------------------------
 
     /**
-     * Maps a failed install pipeline to exit code 1. Kept as a named helper so the various call sites
+     * Maps a failed install plan to exit code 1. Kept as a named helper so the various call sites
      * read uniformly; the listener already printed the "✗ Error" diagnostic so we don't repeat
      * ourselves.
      */

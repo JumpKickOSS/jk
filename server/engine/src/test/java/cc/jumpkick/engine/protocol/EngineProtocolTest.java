@@ -108,10 +108,10 @@ class EngineProtocolTest {
     void bye_reports_in_flight_jobs_and_draining() {
         String bye = EngineProtocol.bye(3, true);
         assertThat(EngineProtocol.typeOf(bye)).isEqualTo(EngineProtocol.BYE);
-        assertThat(Jsonl.intValue(bye, "pipelines", -1)).isEqualTo(3);
+        assertThat(Jsonl.intValue(bye, "plans", -1)).isEqualTo(3);
         assertThat(Jsonl.bool(bye, "draining", false)).isTrue();
         // no-arg back-compat: 0 jobs, not draining
-        assertThat(Jsonl.intValue(EngineProtocol.bye(), "pipelines", -1)).isEqualTo(0);
+        assertThat(Jsonl.intValue(EngineProtocol.bye(), "plans", -1)).isEqualTo(0);
         assertThat(Jsonl.bool(EngineProtocol.bye(), "draining", true)).isFalse();
     }
 
@@ -142,10 +142,10 @@ class EngineProtocolTest {
 
     @Test
     void goal_finish_carries_its_kind_discriminator() {
-        assertThat(Jsonl.str(EngineProtocol.pipelineFinish("/w", true), "kind")).isEqualTo("build");
-        assertThat(Jsonl.str(EngineProtocol.pipelineFinishSync("/w", true, 3, 4), "kind"))
+        assertThat(Jsonl.str(EngineProtocol.planFinish("/w", true), "kind")).isEqualTo("build");
+        assertThat(Jsonl.str(EngineProtocol.planFinishSync("/w", true, 3, 4), "kind"))
                 .isEqualTo("sync");
-        assertThat(Jsonl.str(EngineProtocol.pipelineFinishLock("/w", true, 1, 2, 3), "kind"))
+        assertThat(Jsonl.str(EngineProtocol.planFinishLock("/w", true, 1, 2, 3), "kind"))
                 .isEqualTo("lock");
     }
 
@@ -235,7 +235,7 @@ class EngineProtocolTest {
 
     @Test
     void goal_finish_lock_variant_carries_the_lockfile_counts() {
-        String json = EngineProtocol.pipelineFinishLock("", true, 13, 2, 1);
+        String json = EngineProtocol.planFinishLock("", true, 13, 2, 1);
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.BUILDPLAN_FINISH);
         assertThat(Jsonl.bool(json, "success", false)).isTrue();
         assertThat(Jsonl.longValue(json, "lockPackages", -1)).isEqualTo(13);
@@ -245,7 +245,7 @@ class EngineProtocolTest {
 
     @Test
     void goal_finish_sync_variant_carries_the_summary_counts() {
-        String json = EngineProtocol.pipelineFinishSync("", true, 7, 42);
+        String json = EngineProtocol.planFinishSync("", true, 7, 42);
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.BUILDPLAN_FINISH);
         assertThat(Jsonl.longValue(json, "syncFetched", -1)).isEqualTo(7);
         assertThat(Jsonl.longValue(json, "syncUpToDate", -1)).isEqualTo(42);
@@ -310,7 +310,7 @@ class EngineProtocolTest {
         assertThat(Jsonl.intValue(file, "index", -1)).isEqualTo(3);
         assertThat(Jsonl.intValue(file, "total", -1)).isEqualTo(12);
 
-        String finish = EngineProtocol.pipelineFinishFormat("", true, 2, 9, 1, 12, 1);
+        String finish = EngineProtocol.planFinishFormat("", true, 2, 9, 1, 12, 1);
         assertThat(EngineProtocol.typeOf(finish)).isEqualTo(EngineProtocol.BUILDPLAN_FINISH);
         assertThat(Jsonl.intValue(finish, "formatChanged", -1)).isEqualTo(2);
         assertThat(Jsonl.intValue(finish, "formatClean", -1)).isEqualTo(9);
@@ -355,7 +355,7 @@ class EngineProtocolTest {
         assertThat(Jsonl.str(json, "pass")).isEqualTo("hunter2");
         assertThat(Jsonl.str(json, "token")).isNull();
 
-        String finish = EngineProtocol.pipelineFinishPublish("", true, 9);
+        String finish = EngineProtocol.planFinishPublish("", true, 9);
         assertThat(EngineProtocol.typeOf(finish)).isEqualTo(EngineProtocol.BUILDPLAN_FINISH);
         assertThat(Jsonl.intValue(finish, "publishFiles", -1)).isEqualTo(9);
     }
@@ -381,7 +381,7 @@ class EngineProtocolTest {
     @Test
     void goal_finish_image_variant_carries_the_success_tail_fields_and_test_counts() {
         String json =
-                EngineProtocol.pipelineFinishImage("", true, 12, 12, 0, 0, "reg.io/app:1.0", null, "app", "1.0", null);
+                EngineProtocol.planFinishImage("", true, 12, 12, 0, 0, "reg.io/app:1.0", null, "app", "1.0", null);
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.BUILDPLAN_FINISH);
         assertThat(Jsonl.longValue(json, "testTotal", -1)).isEqualTo(12);
         assertThat(Jsonl.str(json, "imageRef")).isEqualTo("reg.io/app:1.0");
@@ -405,7 +405,7 @@ class EngineProtocolTest {
         assertThat(Jsonl.str(note, "kind")).isEqualTo("wrote");
         assertThat(Jsonl.str(note, "text")).isEqualTo("/p/jk.toml");
 
-        String finish = EngineProtocol.pipelineFinishImport("", true, 0, 3, null, null);
+        String finish = EngineProtocol.planFinishImport("", true, 0, 3, null, null);
         assertThat(EngineProtocol.typeOf(finish)).isEqualTo(EngineProtocol.BUILDPLAN_FINISH);
         assertThat(Jsonl.intValue(finish, "importExit", -1)).isEqualTo(0);
         assertThat(Jsonl.intValue(finish, "importWarnings", -1)).isEqualTo(3);
@@ -460,7 +460,7 @@ class EngineProtocolTest {
                 .isEqualTo("/w");
         assertThat(Jsonl.str(EngineProtocol.provisionRequest("/c", "/w", "/t", false, false), "dir"))
                 .isEqualTo("/w");
-        assertThat(Jsonl.str(EngineProtocol.pipelineFinish("/w", true), "dir")).isEqualTo("/w");
+        assertThat(Jsonl.str(EngineProtocol.planFinish("/w", true), "dir")).isEqualTo("/w");
     }
 
     @Test
@@ -522,13 +522,13 @@ class EngineProtocolTest {
         assertThat(Jsonl.bool(req, "refresh", false)).isTrue();
         assertThat(Jsonl.bool(req, "requireJkToml", true)).isFalse();
 
-        String finish = EngineProtocol.pipelineFinishGitFetch("", true, "/cache/git/co/abc", "abc123");
+        String finish = EngineProtocol.planFinishGitFetch("", true, "/cache/git/co/abc", "abc123");
         assertThat(EngineProtocol.typeOf(finish)).isEqualTo(EngineProtocol.BUILDPLAN_FINISH);
         assertThat(Jsonl.bool(finish, "success", false)).isTrue();
         assertThat(Jsonl.str(finish, "gitCheckout")).isEqualTo("/cache/git/co/abc");
         assertThat(Jsonl.str(finish, "gitSha")).isEqualTo("abc123");
 
-        String failed = EngineProtocol.pipelineFinishGitFetch("", false, null, null);
+        String failed = EngineProtocol.planFinishGitFetch("", false, null, null);
         assertThat(Jsonl.str(failed, "gitCheckout")).isNull();
         assertThat(Jsonl.str(failed, "gitSha")).isNull();
     }
@@ -572,7 +572,7 @@ class EngineProtocolTest {
         assertThat(Jsonl.str(defaults, "repoUrl")).isNull();
         assertThat(Jsonl.strArray(defaults, "with")).isEmpty();
 
-        String finish = EngineProtocol.pipelineFinishTool(
+        String finish = EngineProtocol.planFinishTool(
                 "",
                 true,
                 "com.example:widget-cli:1.0.0",
@@ -584,7 +584,7 @@ class EngineProtocolTest {
         assertThat(Jsonl.str(finish, "toolMainClass")).isEqualTo("com.example.Main");
         assertThat(Jsonl.strArray(finish, "toolClasspath")).containsExactly("/cas/aa/1.jar", "/cas/bb/2.jar");
 
-        String failed = EngineProtocol.pipelineFinishTool("", false, null, null, List.of());
+        String failed = EngineProtocol.planFinishTool("", false, null, null, List.of());
         assertThat(Jsonl.str(failed, "toolCoord")).isNull();
         assertThat(Jsonl.str(failed, "toolMainClass")).isNull();
         assertThat(Jsonl.strArray(failed, "toolClasspath")).isEmpty();
@@ -608,10 +608,10 @@ class EngineProtocolTest {
     }
 
     @Test
-    void prune_wait_round_trips_pipelines_and_external() {
+    void prune_wait_round_trips_plans_and_external() {
         String inEngine = EngineProtocol.pruneWait(3, false);
         assertThat(EngineProtocol.typeOf(inEngine)).isEqualTo(EngineProtocol.PRUNE_WAIT);
-        assertThat(Jsonl.intValue(inEngine, "pipelines", -1)).isEqualTo(3);
+        assertThat(Jsonl.intValue(inEngine, "plans", -1)).isEqualTo(3);
         assertThat(Jsonl.bool(inEngine, "external", true)).isFalse();
 
         String external = EngineProtocol.pruneWait(0, true);
@@ -620,7 +620,7 @@ class EngineProtocolTest {
 
     @Test
     void cache_finish_variant_round_trips_the_summary() {
-        String json = EngineProtocol.pipelineFinishCache("", true, 12, 34_567, 2, -1);
+        String json = EngineProtocol.planFinishCache("", true, 12, 34_567, 2, -1);
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.BUILDPLAN_FINISH);
         assertThat(Jsonl.bool(json, "success", false)).isTrue();
         assertThat(Jsonl.longValue(json, "cacheFiles", -99)).isEqualTo(12);

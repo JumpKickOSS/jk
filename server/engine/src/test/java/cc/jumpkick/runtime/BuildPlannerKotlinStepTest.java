@@ -12,11 +12,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The build pipeline composes only the language steps a project opts into. Java and Kotlin are
+ * The build plan composes only the language steps a project opts into. Java and Kotlin are
  * independent opt-ins (given a required {@code jdk}): {@code jdk}+{@code kotlin} ⇒ Kotlin only;
  * {@code jdk}+{@code java}+{@code kotlin} ⇒ both; {@code jdk} alone ⇒ Java only.
  */
-class BuildPipelinesKotlinStepTest {
+class BuildPlannerKotlinStepTest {
 
     @Test
     void jdk_alone_is_a_java_project(@TempDir Path dir) throws Exception {
@@ -98,7 +98,7 @@ class BuildPipelinesKotlinStepTest {
     }
 
     private static List<String> stepNames(Path dir) {
-        BuildPipelines.Inputs in = new BuildPipelines.Inputs(
+        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                 dir,
                 dir.resolve("cache"),
                 dir.resolve("jk.toml"),
@@ -114,7 +114,7 @@ class BuildPipelinesKotlinStepTest {
                 false,
                 java.util.Set.of(),
                 cc.jumpkick.config.SessionContext.current());
-        BuildPlan pipeline = BuildPipelines.coreBuilder(in).build();
-        return pipeline.steps().stream().map(Task::name).toList();
+        BuildPlan plan = BuildPlanner.coreBuilder(in).build();
+        return plan.steps().stream().map(Task::name).toList();
     }
 }

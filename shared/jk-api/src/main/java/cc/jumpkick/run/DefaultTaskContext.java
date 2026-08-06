@@ -5,13 +5,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Internal {@link TaskContext}: wires progress/diagnostics into the pipeline and tracks ticks for
+ * Internal {@link TaskContext}: wires progress/diagnostics into the plan and tracks ticks for
  * bar auto-fill on success.
  */
 final class DefaultTaskContext implements TaskContext {
 
     private final String step;
-    private final BuildPlan pipeline;
+    private final BuildPlan plan;
 
     /** Time-driven ease caps at this fraction of weight; auto-fill closes the rest on success. */
     private static final double INTERP_CAP = 0.9;
@@ -33,14 +33,14 @@ final class DefaultTaskContext implements TaskContext {
 
     DefaultTaskContext(
             String step,
-            BuildPlan pipeline,
+            BuildPlan plan,
             int internalTicks,
             int weight,
             boolean weighted,
             long expectedNanos,
             long startNanos) {
         this.step = step;
-        this.pipeline = pipeline;
+        this.plan = plan;
         this.weighted = weighted;
         this.weight = weight;
         this.internalTicks = new AtomicLong(internalTicks);
@@ -52,7 +52,7 @@ final class DefaultTaskContext implements TaskContext {
     public void progress(int delta) {
         if (delta <= 0) return;
         if (!weighted) {
-            pipeline.numeratorRef().add(delta);
+            plan.numeratorRef().add(delta);
             notifyProgress(delta);
             return;
         }
@@ -73,7 +73,7 @@ final class DefaultTaskContext implements TaskContext {
     }
 
     /**
-     * Wall-clock interpolation tick (driven by the pipeline's scheduler for opaque steps). Eases the
+     * Wall-clock interpolation tick (driven by the plan's scheduler for opaque steps). Eases the
      * slice toward {@code weight × elapsed/expected}, capped at {@link #INTERP_CAP}. Never moves the
      * bar past where real progress already put it — {@link #advanceTo} is monotonic — so it only
      * fills the gap an opaque step leaves while its single body call runs.
@@ -94,7 +94,7 @@ final class DefaultTaskContext implements TaskContext {
         long diff = target - emitted.get();
         if (diff > 0) {
             emitted.addAndGet(diff);
-            pipeline.numeratorRef().add(diff);
+            plan.numeratorRef().add(diff);
             notifyProgress((int) Math.min(Integer.MAX_VALUE, diff));
         }
     }
@@ -109,7 +109,7 @@ final class DefaultTaskContext implements TaskContext {
         if (!weighted || newWeight < 0) return;
         long old = weight;
         if (newWeight == old) return;
-        pipeline.denominatorRef().add(newWeight - old);
+        plan.denominatorRef().add(newWeight - old);
         // Keep the per-weight interpolation duration constant as the slice resizes.
         if (old > 0 && expectedNanos > 0) {
             expectedNanos = expectedNanos * newWeight / old;
@@ -121,7 +121,7 @@ final class DefaultTaskContext implements TaskContext {
         long over = emitted.get() - newWeight;
         if (over > 0) {
             emitted.addAndGet(-over);
-            pipeline.numeratorRef().add(-over);
+            plan.numeratorRef().add(-over);
         }
     }
 
@@ -131,7 +131,7 @@ final class DefaultTaskContext implements TaskContext {
         if (weighted) {
             // The step's bar share is fixed at `weight`; discovering more units
             // just re-bases the fraction (each unit is now worth fewer ticks). Grow
-            // the internal denominator only — the pipeline denominator stays put, so the
+            // the internal denominator only — the plan denominator stays put, so the
             // bar neither grows nor jumps; advance() picks up the new ratio.
             internalTicks.addAndGet(additional);
             return;
@@ -148,9 +148,9 @@ final class DefaultTaskContext implements TaskContext {
         // displays like "318 of 161"). Honest mid-step backtracking is
         // strictly better than nonsense counts; step-end auto-fill in
         // BuildPlan.runOneStep still closes any residual gap on success.
-        pipeline.denominatorRef().add(additional);
-        BuildPlanView snap = pipeline.snapshot();
-        pipeline.emit(l -> l.tickUpdate(step, additional, snap));
+        plan.denominatorRef().add(additional);
+        BuildPlanView snap = plan.snapshot();
+        plan.emit(l -> l.tickUpdate(step, additional, snap));
     }
 
     @Override
@@ -166,40 +166,40 @@ final class DefaultTaskContext implements TaskContext {
     @Override
     public void label(String description) {
         String d = description == null ? "" : description;
-        pipeline.emit(l -> l.label(step, d));
+        plan.emit(l -> l.label(step, d));
     }
 
     @Override
     public void output(String line) {
         String s = line == null ? "" : line;
-        pipeline.emit(l -> l.output(step, s));
+        plan.emit(l -> l.output(step, s));
     }
 
     @Override
     public void warn(String code, String message) {
-        pipeline.warningsRef().add(new BuildPlanResult.Diagnostic(step, code, message));
-        pipeline.emit(l -> l.warn(step, code, message));
+        plan.warningsRef().add(new BuildPlanResult.Diagnostic(step, code, message));
+        plan.emit(l -> l.warn(step, code, message));
     }
 
     @Override
     public void error(String code, String message) {
-        pipeline.errorsRef().add(new BuildPlanResult.Diagnostic(step, code, message));
-        pipeline.emit(l -> l.error(step, code, message));
+        plan.errorsRef().add(new BuildPlanResult.Diagnostic(step, code, message));
+        plan.emit(l -> l.error(step, code, message));
     }
 
     @Override
     public void error(String code, String message, String test, String exceptionClass) {
-        pipeline.errorsRef().add(new BuildPlanResult.Diagnostic(step, code, message, test, exceptionClass));
-        pipeline.emit(l -> l.error(step, code, message, test, exceptionClass));
+        plan.errorsRef().add(new BuildPlanResult.Diagnostic(step, code, message, test, exceptionClass));
+        plan.emit(l -> l.error(step, code, message, test, exceptionClass));
     }
 
     @Override
     public boolean cancelled() {
-        // Per-pipeline cancel (a sibling failure, or Ctrl-C torn down by the scheduler) OR a
+        // Per-plan cancel (a sibling failure, or Ctrl-C torn down by the scheduler) OR a
         // session-level cancel signaled through the SessionCancel seam (a front-end's
         // CancelToken). The seam avoids an upward :model → :core dependency; until the engine
-        // binds a probe it reads false, so the per-pipeline behavior is unchanged.
-        return pipeline.cancelledRef().get() || SessionCancel.cancelled();
+        // binds a probe it reads false, so the per-plan behavior is unchanged.
+        return plan.cancelledRef().get() || SessionCancel.cancelled();
     }
 
     @Override
@@ -208,20 +208,20 @@ final class DefaultTaskContext implements TaskContext {
         // should signal "no value" by not putting at all and downstream
         // reading via .get() returning empty.
         if (value == null) {
-            pipeline.stateRef().remove(key.name());
+            plan.stateRef().remove(key.name());
         } else {
-            pipeline.stateRef().put(key.name(), value);
+            plan.stateRef().put(key.name(), value);
         }
     }
 
     @Override
     public <T> java.util.Optional<T> get(BuildPlanKey<T> key) {
-        return pipeline.get(key);
+        return plan.get(key);
     }
 
     @Override
     public <T> T require(BuildPlanKey<T> key) {
-        return pipeline.get(key)
+        return plan.get(key)
                 .orElseThrow(() -> new IllegalStateException("step '"
                         + step
                         + "' required key '"
@@ -235,7 +235,7 @@ final class DefaultTaskContext implements TaskContext {
      */
     void notifyProgress(int delta) {
         if (delta <= 0) return;
-        BuildPlanView snap = pipeline.snapshot();
-        pipeline.emit(l -> l.progress(step, delta, snap));
+        BuildPlanView snap = plan.snapshot();
+        plan.emit(l -> l.progress(step, delta, snap));
     }
 }

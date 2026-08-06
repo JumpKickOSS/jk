@@ -8,7 +8,7 @@ import java.io.PrintStream;
 import org.jline.utils.AttributedStyle;
 
 /**
- * Animated JDK download progress bar styled like the {@code jk build} pipeline header: the blue pipeline
+ * Animated JDK download progress bar styled like the {@code jk build} plan header: the blue plan
  * chip ({@code ✷ JDK ▶}), a block-bar fill, a white percent, and the download label — all on one
  * carriage-returned line.
  *
@@ -178,7 +178,7 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
         String label = Theme.colorize(command + displayName, t.normalGray());
 
         if (nerdfont) {
-            var chip = t.pipelineChip();
+            var chip = t.planChip();
             String chipStr = Theme.colorize(" ", chip)
                     + Theme.colorize(Spinner.PULSE_GLYPH, chip)
                     + Theme.colorize(" JDK ", chip)

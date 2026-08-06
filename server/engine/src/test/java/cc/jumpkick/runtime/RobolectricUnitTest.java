@@ -46,12 +46,12 @@ class RobolectricUnitTest {
         acceptLicenses();
 
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
-        BuildPlan lock = LockPipelines.lockBuildPlan(
+        BuildPlan lock = LockPlans.lockBuildPlan(
                 project, build, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
         BuildPlanResult lockResult = lock.run();
         assertThat(lockResult.errors()).isEmpty();
 
-        BuildPipelines.Inputs in = new BuildPipelines.Inputs(
+        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                 project,
                 cache,
                 project.resolve("jk.toml"),
@@ -67,7 +67,7 @@ class RobolectricUnitTest {
                 false,
                 java.util.Set.of(),
                 SessionContext.current());
-        BuildPlanResult result = BuildPipelines.coreBuilder(in).build().run();
+        BuildPlanResult result = BuildPlanner.coreBuilder(in).build().run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success())
                 .as("Robolectric resource test passed through jk's test step")

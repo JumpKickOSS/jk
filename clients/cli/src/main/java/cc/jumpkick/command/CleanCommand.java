@@ -99,8 +99,8 @@ public final class CleanCommand implements CliCommand {
         long purgedBlobs;
         long freedBytes;
         long repoLinksRemoved;
-        // Hosted: the spinner stays client-side (the pipeline has no per-file progress worth a
-        // bar); the counts ride the terminal pipeline-finish.
+        // Hosted: the spinner stays client-side (the plan has no per-file progress worth a
+        // bar); the counts ride the terminal plan-finish.
         var summary = new cc.jumpkick.cli.engine.EngineClient.CacheMaintSummary[1];
         try (Spinner spinner = Spinner.show(CliOutput.stdout(), "Collecting cache...")) {
             cc.jumpkick.run.BuildPlanResult result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
@@ -108,7 +108,7 @@ public final class CleanCommand implements CliCommand {
                     new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest(
                             "gc", JkDirs.cache(), 0, false, false, null, false),
                     steps -> new cc.jumpkick.run.BuildPlanListener() {},
-                    (external, pipelines) -> {},
+                    (external, plans) -> {},
                     summary);
             if (!result.success() || summary[0] == null) {
                 CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(

@@ -106,7 +106,7 @@ public final class LockCommand implements CliCommand {
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         boolean live = mode == BuildPlanConsole.Mode.AUTO || mode == BuildPlanConsole.Mode.QUIET;
 
-        // Optimize/start the engine before the Lock pipeline console so a one-time AOT training shows the
+        // Optimize/start the engine before the Lock plan console so a one-time AOT training shows the
         // "Engine — optimizing…" wedge first, then the Lock TUI takes over (never interleaved).
         cc.jumpkick.cli.engine.EnginePrewarm.ensure();
         return live ? runHostedLive(dir, cache, mode) : runHostedPlain(dir, cache, mode);
@@ -135,7 +135,7 @@ public final class LockCommand implements CliCommand {
      */
     private int runHostedLive(Path dir, Path cache, BuildPlanConsole.Mode mode) {
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
-        CommandManager view = CommandManager.pipeline(CliOutput.stdout(), "Lock", animate);
+        CommandManager view = CommandManager.plan(CliOutput.stdout(), "Lock", animate);
         long start = System.nanoTime();
 
         AtomicInteger globalLocked = new AtomicInteger(0);
@@ -238,7 +238,7 @@ public final class LockCommand implements CliCommand {
             @Override
             public void onPackage(String moduleDir, String name, String version) {
                 // The engine sends structured lock-package events instead of pre-themed labels;
-                // colorize here, client-side, exactly as the in-process pipeline labels itself.
+                // colorize here, client-side, exactly as the in-process plan labels itself.
                 current.label("resolve-deps", "Resolved " + Coords.module(name, version));
             }
         };

@@ -24,13 +24,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 /**
- * {@code jk format} pipeline: collect sources, resolve formatter jars, fork {@code jk-formatter}.
+ * {@code jk format} plan: collect sources, resolve formatter jars, fork {@code jk-formatter}.
  * Per-file results stream via {@link FileObserver}; plugin exit is a result on {@link #WORKER_EXIT}
- * ({@code --check} non-zero is not a pipeline failure).
+ * ({@code --check} non-zero is not a plan failure).
  */
-public final class FormatPipelines {
+public final class FormatPlans {
 
-    private FormatPipelines() {}
+    private FormatPlans() {}
 
     // jk-pinned formatter impl versions (resolved via jk; the plugin uses these).
     public static final String PALANTIR_VERSION = "2.80.0";
@@ -54,7 +54,7 @@ public final class FormatPipelines {
         void onFile(String path, String status, String message, int index, int total);
     }
 
-    /** Summary counts, populated by the format step (all present once the pipeline finishes successfully). */
+    /** Summary counts, populated by the format step (all present once the plan finishes successfully). */
     public static final BuildPlanKey<Integer> CHANGED = BuildPlanKey.of("format-changed", Integer.class);
 
     public static final BuildPlanKey<Integer> CLEAN = BuildPlanKey.of("format-clean", Integer.class);
@@ -63,7 +63,7 @@ public final class FormatPipelines {
     public static final BuildPlanKey<Integer> WORKER_EXIT = BuildPlanKey.of("format-worker-exit", Integer.class);
 
     /**
-     * Build the format pipeline for {@code projectDir}. Style names arrive already resolved (flags/env/
+     * Build the format plan for {@code projectDir}. Style names arrive already resolved (flags/env/
      * {@code [format]} block are the client's concern). Steps: {@code collect-sources} (SYNC) walks
      * the tree, {@code resolve-formatters} (IO) pulls the impl jars via {@link ToolResolver}, {@code
      * format} (IO) forks the plugin and streams per-file results. A project with no sources
@@ -278,7 +278,7 @@ public final class FormatPipelines {
         try (Stream<Path> walk = Files.walk(root)) {
             return walk.filter(Files::isRegularFile)
                     .filter(p -> p.getFileName().toString().endsWith(ext))
-                    .filter(FormatPipelines::notExcluded)
+                    .filter(FormatPlans::notExcluded)
                     .sorted()
                     .toList();
         }

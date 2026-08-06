@@ -336,7 +336,7 @@ public final class HttpEngineServer implements AutoCloseable {
     }
 
     /**
-     * Change-gated {@code status} SSE after pipeline count may have moved (request start/finish).
+     * Change-gated {@code status} SSE after plan count may have moved (request start/finish).
      * No-op without subscribers.
      */
     public void notifyLiveStatus() {

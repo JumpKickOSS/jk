@@ -22,13 +22,13 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Cache-maintenance pipelines for {@code jk cache prune}, {@code jk cache purge}, {@code jk repo
- * prune}, and {@code jk clean --cache}. Mutate caches pipelines may read concurrently — the engine
+ * Cache-maintenance plans for {@code jk cache prune}, {@code jk cache purge}, {@code jk repo
+ * prune}, and {@code jk clean --cache}. Mutate caches plans may read concurrently — the engine
  * runs them only at idle boundaries.
  */
-public final class CachePipelines {
+public final class CachePlans {
 
-    private CachePipelines() {}
+    private CachePlans() {}
 
     /** Files removed (or, on a dry run, that would be). {@code gc}: purged CAS blobs. */
     public static final BuildPlanKey<Long> FILES = BuildPlanKey.of("cache-files", Long.class);
@@ -43,7 +43,7 @@ public final class CachePipelines {
     public static final BuildPlanKey<Long> REPO_LINKS = BuildPlanKey.of("cache-repo-links", Long.class);
 
     /**
-     * Prune pipeline for the cache at {@code root}: expire stale entries, GC sidecar files, optional
+     * Prune plan for the cache at {@code root}: expire stale entries, GC sidecar files, optional
      * CAS sweep + LRU eviction. {@code includeJkTmp} sweeps {@code state/tmp} only for the default
      * cache dir.
      */
@@ -165,7 +165,7 @@ public final class CachePipelines {
     }
 
     /**
-     * Build the purge pipeline: wipe the entire cache tier under {@code root} ({@code actions/},
+     * Build the purge plan: wipe the entire cache tier under {@code root} ({@code actions/},
      * {@code format-stamps/}, cache {@code sha256/}). Artifact store trees ({@code repos/}, store
      * CAS) are never under this root in the ambient layout; hermetic collocated {@code repos/} is
      * kept.
@@ -192,7 +192,7 @@ public final class CachePipelines {
     }
 
     /**
-     * Build the store-sweep pipeline ({@code jk repo prune}): artifact CAS temp cleanup, run-log TTL
+     * Build the store-sweep plan ({@code jk repo prune}): artifact CAS temp cleanup, run-log TTL
      * GC, unreferenced-blob sweep, and (with {@code maxSize}) LRU eviction down to the budget.
      */
     public static BuildPlan sweepBuildPlan(Path root, boolean dryRun, String maxSize) {
@@ -277,7 +277,7 @@ public final class CachePipelines {
         return new SweepReport(totalFiles, totalBytes, reachableEvicted);
     }
 
-    /** Build the GC pipeline ({@code jk clean --cache}): purge CAS blobs idle 90+ days via {@link CacheGc}. */
+    /** Build the GC plan ({@code jk clean --cache}): purge CAS blobs idle 90+ days via {@link CacheGc}. */
     public static BuildPlan gcBuildPlan(Path root) {
         Task gcStep = Task.builder("gc")
                 .ticks(1)

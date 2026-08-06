@@ -88,7 +88,7 @@ public final class CommandWedge {
 
     /**
      * Blue menu chip used as the left half of a box-table title ({@link BoxTable#titleBar}): {@code
-     * ≡ Title} on the pipeline-blue chip. Prefer {@link BoxTable#titleBar} for full table chrome.
+     * ≡ Title} on the plan-blue chip. Prefer {@link BoxTable#titleBar} for full table chrome.
      */
     public static String menu(String title) {
         return BuildPlanWedge.planChip(Glyphs.MENU, title == null ? "" : title, GlobalConfig.nerdfont());

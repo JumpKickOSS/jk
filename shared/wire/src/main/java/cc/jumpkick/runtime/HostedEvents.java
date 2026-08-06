@@ -3,7 +3,7 @@ package cc.jumpkick.runtime;
 
 /**
  * The small per-command event/result contracts a front-end consumes from hosted commands, extracted from
- * the engine's pipeline factories ({@code AuditPipelines}/{@code FormatPipelines}/{@code CompatPipelines}) for the
+ * the engine's plan factories ({@code AuditPlans}/{@code FormatPlans}/{@code CompatPlans}) for the
  * slim client (Stage 5). The engine keeps its own equivalent nested types; the in-process seam
  * adapts between the two with method references, so neither side links the other.
  */

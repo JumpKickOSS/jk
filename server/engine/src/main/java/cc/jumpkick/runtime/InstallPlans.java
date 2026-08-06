@@ -25,9 +25,9 @@ import java.util.List;
  * {@code jk install} heavy halves: {@link #projectInstallBuildPlan} (build + cache-install into
  * {@code repos/local/}) and {@link #gitFetchBuildPlan}. User-home launcher shims stay client-side.
  */
-public final class InstallPipelines {
+public final class InstallPlans {
 
-    private InstallPipelines() {}
+    private InstallPlans() {}
 
     // Cross-step keys.
     public static final BuildPlanKey<Coordinate> PRIMARY = BuildPlanKey.of("primary-coord", Coordinate.class);
@@ -35,7 +35,7 @@ public final class InstallPipelines {
     public static final BuildPlanKey<String> FETCHED_SHA = BuildPlanKey.of("fetched-sha", String.class);
 
     /**
-     * Build the project-install pipeline for {@code projectDir}: core pipeline + declared tails +
+     * Build the project-install plan for {@code projectDir}: core plan + declared tails +
      * (native application only) the native-image tail with {@code graalHome} + the {@code
      * cache-install} step. {@code m2Dir} is the local Maven repo root ({@code ~/.m2} or the
      * {@code --m2-dir} override).
@@ -52,7 +52,7 @@ public final class InstallPipelines {
         Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
         boolean compact = cc.jumpkick.layout.ModuleLayout.isCompact(projectDir);
         int estimatedTestCount = TestSupport.estimateAllSuiteTestCount(projectDir, compact);
-        BuildPipelines.Inputs inputs = new BuildPipelines.Inputs(
+        BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
                 projectDir,
                 cache,
                 projectDir.resolve("jk.toml"),
@@ -68,10 +68,10 @@ public final class InstallPipelines {
                 false,
                 java.util.Set.of(),
                 cc.jumpkick.config.SessionContext.current());
-        BuildPlan.Builder builder = BuildPipelines.coreBuilder(inputs);
+        BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs);
         // ALWAYS modules get native from appendDeclaredTails (same as jk build); pass the
         // client-resolved GraalVM so install does not re-resolve.
-        BuildPipelines.appendDeclaredTails(builder, inputs, graalHome, true);
+        BuildPlanner.appendDeclaredTails(builder, inputs, graalHome, true);
 
         // cache-install reads the freshly-built jar and must run after every runnable artifact
         // this project produces (so a follow-up client-side make-install finds them all built).
@@ -83,8 +83,8 @@ public final class InstallPipelines {
                 .requires(requires.toArray(new String[0]))
                 .ticks(1)
                 .execute(ctx -> {
-                    JkBuild project = ctx.require(BuildPipelines.PROJECT);
-                    BuildLayout layout = ctx.require(BuildPipelines.LAYOUT);
+                    JkBuild project = ctx.require(BuildPlanner.PROJECT);
+                    BuildLayout layout = ctx.require(BuildPlanner.LAYOUT);
                     var p = project.project();
                     Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
                     ctx.label(
@@ -104,7 +104,7 @@ public final class InstallPipelines {
     }
 
     /**
-     * Build the git-fetch pipeline for {@code jk install <git-url>}: materialize {@code ref} (tried as
+     * Build the git-fetch plan for {@code jk install <git-url>}: materialize {@code ref} (tried as
      * a tag first, then a branch) of {@code url} under the cache's git store, requiring the
      * checkout to carry a {@code jk.toml}. {@code refresh} forces a re-fetch. Publishes {@link
      * #CHECKOUT} + {@link #FETCHED_SHA}.

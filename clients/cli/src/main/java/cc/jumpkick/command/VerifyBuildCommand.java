@@ -152,13 +152,13 @@ public final class VerifyBuildCommand implements CliCommand {
                 })
                 .build();
 
-        BuildPlan pipeline = BuildPlan.builder("verify-build")
+        BuildPlan plan = BuildPlan.builder("verify-build")
                 .addTask(parseBuild)
                 .addTask(rebuild)
                 .addTask(compare)
                 .build();
-        BuildPlanResult result = BuildPlanConsole.run(pipeline, BuildPlanConsole.modeFor(global), cache);
-        pipeline.get(SCRATCH).ifPresent(PathUtil::deleteRecursively);
+        BuildPlanResult result = BuildPlanConsole.run(plan, BuildPlanConsole.modeFor(global), cache);
+        plan.get(SCRATCH).ifPresent(PathUtil::deleteRecursively);
 
         if (!result.success()) {
             for (BuildPlanResult.Diagnostic d : result.errors()) {
@@ -167,7 +167,7 @@ public final class VerifyBuildCommand implements CliCommand {
             return 1;
         }
 
-        Report report = pipeline.get(REPORT).orElseThrow();
+        Report report = plan.get(REPORT).orElseThrow();
         long mismatches = report.comparisons().stream().filter(c -> !c.match()).count();
         if (!global.outputIsJson()) {
             for (Comparison c : report.comparisons()) {

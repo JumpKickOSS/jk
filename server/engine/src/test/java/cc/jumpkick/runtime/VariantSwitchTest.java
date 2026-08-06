@@ -66,7 +66,7 @@ class VariantSwitchTest {
                 """);
 
         var parsed = cc.jumpkick.config.JkBuildParser.parse(project.resolve("jk.toml"));
-        BuildPlan lock = LockPipelines.lockBuildPlan(
+        BuildPlan lock = LockPlans.lockBuildPlan(
                 project, parsed, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().errors()).isEmpty();
 
@@ -105,7 +105,7 @@ class VariantSwitchTest {
     }
 
     private static BuildPlanResult buildVariant(Path project, Path cache, String selection) {
-        BuildPipelines.Inputs in = new BuildPipelines.Inputs(
+        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                         project,
                         cache,
                         project.resolve("jk.toml"),
@@ -122,8 +122,8 @@ class VariantSwitchTest {
                         java.util.Set.of(),
                         cc.jumpkick.config.SessionContext.current())
                 .withVariant(selection, java.util.Map.of());
-        BuildPlan pipeline = BuildPipelines.coreBuilder(in).build();
-        BuildPlanResult result = pipeline.run();
+        BuildPlan plan = BuildPlanner.coreBuilder(in).build();
+        BuildPlanResult result = plan.run();
         for (BuildPlanResult.Diagnostic d : result.errors()) {
             System.out.println("DIAG [" + d.step() + "]: " + d.message());
         }

@@ -19,7 +19,7 @@ import java.util.List;
 
 /**
  * {@code jk compile} — lock, sync, then compile this project's sources to {@code target/classes}
- * (no resources, tests, or packaging). It runs the shared engine pipeline in compile-only
+ * (no resources, tests, or packaging). It runs the shared engine plan in compile-only
  * mode, so it auto-locks and syncs on first run, re-locks when {@code jk.toml} changed, and reuses
  * the same incremental compile cache as {@code jk build}/{@code jk test}.
  *
@@ -81,7 +81,7 @@ public final class CompileCommand implements CliCommand {
         }
 
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
-        // Engine-hosted: same pipeline as CompilePipelines; listener chosen when the step list
+        // Engine-hosted: same plan as CompilePlans; listener chosen when the step list
         // arrives over the socket.
         var session = cc.jumpkick.config.SessionContext.current();
         for (Path moduleDir : dirs) {

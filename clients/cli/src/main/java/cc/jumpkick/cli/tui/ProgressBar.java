@@ -103,7 +103,7 @@ public final class ProgressBar {
     }
 
     /**
-     * The bar's first-cell color — the lead color the pipeline-header's powerline cap blends into.
+     * The bar's first-cell color — the lead color the plan-header's powerline cap blends into.
      * Mirrors {@link #appendBar}'s coloring for cell 0.
      */
     public Rgb leadColor(long numerator, long denominator) {

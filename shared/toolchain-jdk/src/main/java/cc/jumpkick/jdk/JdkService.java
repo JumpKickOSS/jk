@@ -67,7 +67,7 @@ public final class JdkService {
 
     /**
      * Install a resolved catalog entry, emitting progress to {@code listener}. Owns the {@code
-     * download} + {@code extract} pipeline:
+     * download} + {@code extract} plan:
      *
      * <ol>
      *   <li>Unless {@code refresh}, short-circuit when the entry is already installed — emit {@link

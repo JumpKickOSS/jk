@@ -65,20 +65,40 @@ public final class EngineTestSupport {
         }
     }
 
-    /** {@code -Djk.engine.jar} or common workspace assembly locations relative to user.dir. */
+    /**
+     * {@code -Djk.engine.jar}, workspace assembly (module-local or Mill-style {@code
+     * target/<rel>/}), or the installed engine under {@link VersionStore}.
+     */
     static Path resolveEngineJar() {
         String jarProp = System.getProperty("jk.engine.jar");
         if (jarProp != null && !jarProp.isBlank()) {
             Path p = Path.of(jarProp);
             if (Files.isRegularFile(p)) return p;
         }
-        Path cwd = Path.of(System.getProperty("user.dir", "."));
-        // clients/cli cwd when running under Gradle; monorepo root under pure-jk module tests.
-        for (Path cand : List.of(
-                cwd.resolve("server/engine/target/jk-engine-" + JkVersion.VERSION + "-all.jar"),
-                cwd.resolve("../server/engine/target/jk-engine-" + JkVersion.VERSION + "-all.jar"),
-                cwd.resolve("../../server/engine/target/jk-engine-" + JkVersion.VERSION + "-all.jar"))) {
-            if (Files.isRegularFile(cand)) return cand.normalize();
+        Path cwd = Path.of(System.getProperty("user.dir", ".")).toAbsolutePath().normalize();
+        String ver = JkVersion.VERSION;
+        // Walk cwd → parent → grandparent so pure-jk (user.dir = clients/cli) and monorepo-root
+        // Gradle runs both find the jar. Layouts: Mill-style target/<rel>/, module-local target/,
+        // Gradle build/libs, dist/.
+        Path walk = cwd;
+        for (int up = 0; up < 3 && walk != null; up++, walk = walk.getParent()) {
+            for (Path cand : List.of(
+                    walk.resolve("target/server/engine/jk-engine-" + ver + "-all.jar"),
+                    walk.resolve("target/server/engine/jk-engine-" + ver + ".jar"),
+                    walk.resolve("server/engine/target/jk-engine-" + ver + "-all.jar"),
+                    walk.resolve("server/engine/target/jk-engine-" + ver + ".jar"),
+                    walk.resolve("server/engine/build/libs/jk-engine-" + ver + ".jar"),
+                    walk.resolve("build/dist/lib/jk-engine-" + ver + ".jar"))) {
+                if (Files.isRegularFile(cand)) return cand.normalize();
+            }
+        }
+        try {
+            var mat = VersionStore.current().resolve(JkVersion.VERSION);
+            if (mat.isPresent() && Files.isRegularFile(mat.get().engineJar())) {
+                return mat.get().engineJar().toAbsolutePath().normalize();
+            }
+        } catch (RuntimeException ignored) {
+            // isolated JK_HOME with no versions tree
         }
         return null;
     }

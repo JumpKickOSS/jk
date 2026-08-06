@@ -110,10 +110,10 @@ public final class EngineProtocol {
      */
     public static final String WORKSPACE_PROGRESS = "workspace-progress";
 
-    /** Server → client: a module's pipeline is about to run — {@code onModuleStart}. */
+    /** Server → client: a module's plan is about to run — {@code onModuleStart}. */
     public static final String MODULE_START = "module-start";
 
-    /** Server → client: {@code BuildPlanListener.pipelineStart}. */
+    /** Server → client: {@code BuildPlanListener.planStart}. */
     public static final String BUILDPLAN_START = "buildplan-start";
 
     /** Server → client: {@code BuildPlanListener.stepStart}. */
@@ -143,7 +143,7 @@ public final class EngineProtocol {
     /** Server → client: {@code BuildPlanListener.stepFinish}. */
     public static final String TASK_FINISH = "task-finish";
 
-    /** Server → client: {@code BuildPlanListener.pipelineFinish} (success flag only; see {@link #BUILDPLAN_DIAGNOSTIC}). */
+    /** Server → client: {@code BuildPlanListener.planFinish} (success flag only; see {@link #BUILDPLAN_DIAGNOSTIC}). */
     public static final String BUILDPLAN_FINISH = "buildplan-finish";
 
     /** Server → client: {@code onModuleFinish}. */
@@ -187,13 +187,13 @@ public final class EngineProtocol {
      */
     public static final String HEARTBEAT = "heartbeat";
 
-    /** Client → server: single-project test pipeline ({@code jk test}). */
+    /** Client → server: single-project test plan ({@code jk test}). */
     public static final String TEST_REQUEST = "test-request";
 
     /** Client → server: single-project build; same wire shape as {@link #TEST_REQUEST}. */
     public static final String SINGLE_BUILD_REQUEST = "single-build-request";
 
-    /** The {@code dir} tag {@link #TEST_REQUEST}/{@link #SINGLE_BUILD_REQUEST}'s single pipeline events carry. */
+    /** The {@code dir} tag {@link #TEST_REQUEST}/{@link #SINGLE_BUILD_REQUEST}'s single plan events carry. */
     public static final String SINGLE_PIPELINE_DIR = "";
 
     /**
@@ -307,7 +307,7 @@ public final class EngineProtocol {
     /** Server → client, terminal for {@link #LOCK_REQUEST}/{@link #UPDATE_REQUEST}: cascade outcome. */
     public static final String LOCK_FINISH = "lock-finish";
 
-    // ---- hosted worker commands (single-pipeline shape; structured results as repeated messages) ----
+    // ---- hosted worker commands (single-plan shape; structured results as repeated messages) ----
 
     /** Client → server: OSV scan ({@code jk audit}). Findings stream as {@link #AUDIT_FINDING}. */
     public static final String AUDIT_REQUEST = "audit-request";
@@ -339,9 +339,9 @@ public final class EngineProtocol {
     /** Server → client, terminal for {@link #PROVISION_REQUEST}: the provisioned tool's bin path. */
     public static final String PROVISION_RESULT = "provision-result";
 
-    // ---- hosted pipeline commands ------------------------------------------------------------------
+    // ---- hosted plan commands ------------------------------------------------------------------
 
-    /** Client → server: type-check ({@code jk compile}); single-pipeline shape. */
+    /** Client → server: type-check ({@code jk compile}); single-plan shape. */
     public static final String COMPILE_REQUEST = "compile-request";
 
     /** Client → server: native-image ({@code jk native}); Graal homes resolved client-side. */
@@ -372,7 +372,7 @@ public final class EngineProtocol {
 
     /**
      * Server → client, before the plan burst of a {@link #CACHE_PRUNE_REQUEST}: the operation is
-     * queued behind in-flight work — {@code pipelines} in-engine pipelines ({@code 0} with {@code
+     * queued behind in-flight work — {@code plans} in-engine plans ({@code 0} with {@code
      * external=true} means another process's prune holds {@code.prune.lock}).
      */
     public static final String PRUNE_WAIT = "prune-wait";
@@ -719,8 +719,8 @@ public final class EngineProtocol {
     }
 
     /** Ack for {@link #SHUTDOWN}: reports the in-flight job count and whether a drain is now underway. */
-    public static String bye(int pipelines, boolean draining) {
-        return "{\"type\":\"" + BYE + "\",\"pipelines\":" + pipelines + ",\"draining\":" + draining + "}";
+    public static String bye(int plans, boolean draining) {
+        return "{\"type\":\"" + BYE + "\",\"plans\":" + plans + ",\"draining\":" + draining + "}";
     }
 
     // ---- build-request (client → server) -------------------------------------------------------
@@ -1556,6 +1556,26 @@ public final class EngineProtocol {
             boolean parallelTests,
             boolean verbose,
             boolean rebuild) {
+        return explainRequest(
+                dir, cache, workers, skipTests, profile, jdksDir, serial, parallelTests, verbose, rebuild, serial ? 1 : 0);
+    }
+
+    /**
+     * As above with {@code maxModuleConcurrency} ({@code -j} / jobs) so explain and build clamp
+     * schedule concurrency the same way.
+     */
+    public static String explainRequest(
+            String dir,
+            String cache,
+            int workers,
+            boolean skipTests,
+            String profile,
+            String jdksDir,
+            boolean serial,
+            boolean parallelTests,
+            boolean verbose,
+            boolean rebuild,
+            int maxModuleConcurrency) {
         return "{\"type\":\""
                 + EXPLAIN_REQUEST
                 + "\",\"dir\":"
@@ -1578,6 +1598,8 @@ public final class EngineProtocol {
                 + verbose
                 + ",\"rebuild\":"
                 + rebuild
+                + ",\"maxModuleConcurrency\":"
+                + maxModuleConcurrency
                 + "}";
     }
 
@@ -1799,15 +1821,15 @@ public final class EngineProtocol {
     }
 
 
-    public static String planModule(String dir, String coord, String pipelineName, int weight, boolean fullyCached) {
+    public static String planModule(String dir, String coord, String planName, int weight, boolean fullyCached) {
         return "{\"type\":\""
                 + PLAN_MODULE
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
                 + ",\"coord\":"
                 + Jsonl.quote(coord)
-                + ",\"pipelineName\":"
-                + Jsonl.quote(pipelineName)
+                + ",\"planName\":"
+                + Jsonl.quote(planName)
                 + ",\"weight\":"
                 + weight
                 + ",\"fullyCached\":"
@@ -1867,9 +1889,9 @@ public final class EngineProtocol {
         return "{\"type\":\"" + MODULE_START + "\",\"dir\":" + Jsonl.quote(dir) + "}";
     }
 
-    public static String pipelineStart(
+    public static String planStart(
             String dir,
-            String pipelineName,
+            String planName,
             long numerator,
             long denominator,
             int stepsTotal,
@@ -1879,8 +1901,8 @@ public final class EngineProtocol {
                 + BUILDPLAN_START
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
-                + ",\"pipelineName\":"
-                + Jsonl.quote(pipelineName)
+                + ",\"planName\":"
+                + Jsonl.quote(planName)
                 + ",\"numerator\":"
                 + numerator
                 + ",\"denominator\":"
@@ -2029,7 +2051,7 @@ public final class EngineProtocol {
         return diagnosticLike(ERROR_LINE, dir, step, code, message, test, exceptionClass);
     }
 
-    public static String pipelineDiagnostic(
+    public static String planDiagnostic(
             String dir, String step, String code, String message, String test, String exceptionClass) {
         return diagnosticLike(BUILDPLAN_DIAGNOSTIC, dir, step, code, message, test, exceptionClass);
     }
@@ -2048,12 +2070,12 @@ public final class EngineProtocol {
                 + "}";
     }
 
-    public static String pipelineFinish(String dir, boolean success) {
-        return pipelineFinish(dir, success, false);
+    public static String planFinish(String dir, boolean success) {
+        return planFinish(dir, success, false);
     }
 
-    /** Single-pipeline terminal with optional cancel flag. */
-    public static String pipelineFinish(String dir, boolean success, boolean cancelled) {
+    /** Single-plan terminal with optional cancel flag. */
+    public static String planFinish(String dir, boolean success, boolean cancelled) {
         return "{\"type\":\""
                 + BUILDPLAN_FINISH
                 + "\",\"kind\":\"build\",\"dir\":"
@@ -2066,26 +2088,26 @@ public final class EngineProtocol {
     }
 
     /**
-     * As {@link #pipelineFinish(String, boolean)}, additionally carrying a {@code jk test} run's counts
-     * (total/succeeded/failed/skipped) — absent (-1) for a plain {@code buildWorkspace} pipeline-finish.
+     * As {@link #planFinish(String, boolean)}, additionally carrying a {@code jk test} run's counts
+     * (total/succeeded/failed/skipped) — absent (-1) for a plain {@code buildWorkspace} plan-finish.
      * Bundled into the same message rather than a separate terminal one because the client must know
      * these counts <em>before</em> dispatching this event to its console listener: the listener's own
-     * {@code pipelineFinish} handler is what renders the "Passed N tests" summary line.
+     * {@code planFinish} handler is what renders the "Passed N tests" summary line.
      */
-    public static String pipelineFinish(
+    public static String planFinish(
             String dir, boolean success, long total, long succeeded, long failed, long skipped) {
-        return pipelineFinish(dir, success, null, total, succeeded, failed, skipped);
+        return planFinish(dir, success, null, total, succeeded, failed, skipped);
     }
 
     /**
-     * As {@link #pipelineFinish(String, boolean, long, long, long, long)}, additionally carrying a {@code
-     * jk build} run's outcome (see {@code BuildPipelines.BUILD_OUTCOME}, e.g. {@code "up-to-date"}/
-     * {@code "no-sources"}) — {@code null} when not applicable (a workspace per-module pipeline, or a
-     * test-only run). Like the test counts, this rides along on {@code pipeline-finish} because the
-     * client's console listener renders its summary line from within its own {@code pipelineFinish}
+     * As {@link #planFinish(String, boolean, long, long, long, long)}, additionally carrying a {@code
+     * jk build} run's outcome (see {@code BuildPlanner.BUILD_OUTCOME}, e.g. {@code "up-to-date"}/
+     * {@code "no-sources"}) — {@code null} when not applicable (a workspace per-module plan, or a
+     * test-only run). Like the test counts, this rides along on {@code plan-finish} because the
+     * client's console listener renders its summary line from within its own {@code planFinish}
      * handler, before any later message could arrive.
      */
-    public static String pipelineFinish(
+    public static String planFinish(
             String dir, boolean success, String buildOutcome, long total, long succeeded, long failed, long skipped) {
         return "{\"type\":\""
                 + BUILDPLAN_FINISH
@@ -2107,12 +2129,12 @@ public final class EngineProtocol {
     }
 
     /**
-     * As {@link #pipelineFinish(String, boolean)}, additionally carrying a {@code jk lock}/{@code jk
+     * As {@link #planFinish(String, boolean)}, additionally carrying a {@code jk lock}/{@code jk
      * update} module's written-lockfile counts (packages / packages-with-sources / plugins) — the
      * structured ingredients of the client's summary lines, which its console listener renders from
-     * within its own {@code pipelineFinish} handler.
+     * within its own {@code planFinish} handler.
      */
-    public static String pipelineFinishLock(String dir, boolean success, long packages, long sources, long plugins) {
+    public static String planFinishLock(String dir, boolean success, long packages, long sources, long plugins) {
         return "{\"type\":\""
                 + BUILDPLAN_FINISH
                 + "\",\"kind\":\"lock\",\"dir\":"
@@ -2129,10 +2151,10 @@ public final class EngineProtocol {
     }
 
     /**
-     * As {@link #pipelineFinish(String, boolean)}, additionally carrying a {@code jk sync} run's
+     * As {@link #planFinish(String, boolean)}, additionally carrying a {@code jk sync} run's
      * fetched/up-to-date counts for the client's summary line ({@code "N fetched, M up-to-date"}).
      */
-    public static String pipelineFinishSync(String dir, boolean success, long fetched, long upToDate) {
+    public static String planFinishSync(String dir, boolean success, long fetched, long upToDate) {
         return "{\"type\":\""
                 + BUILDPLAN_FINISH
                 + "\",\"kind\":\"sync\",\"dir\":"
@@ -2181,7 +2203,7 @@ public final class EngineProtocol {
     /**
      * Terminal for a lock/update request. {@code exitCode} is computed engine-side (the engine saw
      * the step statuses: a failed {@code resolve} step exits 6, other failures exit 2/CONFIG);
-     * {@code errors} carries pre-pipeline failures (manifest parse, workspace module load) as plain
+     * {@code errors} carries pre-plan failures (manifest parse, workspace module load) as plain
      * uncolored text for the client to render. {@code refreshed} is {@code jk update --git}'s
      * refreshed-dependency count, {@code -1} for every other request.
      */
@@ -2282,12 +2304,12 @@ public final class EngineProtocol {
     }
 
     /**
-     * As {@link #pipelineFinish(String, boolean)}, additionally carrying a {@code jk format} run's
+     * As {@link #planFinish(String, boolean)}, additionally carrying a {@code jk format} run's
      * counts and the formatter worker's exit code ({@code jk format --check} exits non-zero when
-     * files need formatting — a legitimate outcome, not a pipeline failure, so it rides here rather
-     * than failing the pipeline). {@code total} of 0 means no sources were found.
+     * files need formatting — a legitimate outcome, not a plan failure, so it rides here rather
+     * than failing the plan). {@code total} of 0 means no sources were found.
      */
-    public static String pipelineFinishFormat(
+    public static String planFinishFormat(
             String dir, boolean success, int changed, int clean, int errors, int total, int workerExit) {
         return "{\"type\":\""
                 + BUILDPLAN_FINISH
@@ -2309,10 +2331,10 @@ public final class EngineProtocol {
     }
 
     /**
-     * As {@link #pipelineFinish(String, boolean)}, additionally carrying a {@link #GIT_FETCH_REQUEST}'s
+     * As {@link #planFinish(String, boolean)}, additionally carrying a {@link #GIT_FETCH_REQUEST}'s
      * materialized checkout path and resolved commit sha ({@code null} when the fetch failed).
      */
-    public static String pipelineFinishGitFetch(String dir, boolean success, String checkout, String sha) {
+    public static String planFinishGitFetch(String dir, boolean success, String checkout, String sha) {
         return "{\"type\":\""
                 + BUILDPLAN_FINISH
                 + "\",\"kind\":\"git-fetch\",\"dir\":"
@@ -2326,8 +2348,8 @@ public final class EngineProtocol {
                 + "}";
     }
 
-    /** As {@link #pipelineFinish(String, boolean)}, additionally carrying a {@code jk publish} run's uploaded-file count. */
-    public static String pipelineFinishPublish(String dir, boolean success, int files) {
+    /** As {@link #planFinish(String, boolean)}, additionally carrying a {@code jk publish} run's uploaded-file count. */
+    public static String planFinishPublish(String dir, boolean success, int files) {
         return "{\"type\":\""
                 + BUILDPLAN_FINISH
                 + "\",\"kind\":\"publish\",\"dir\":"
@@ -2340,11 +2362,11 @@ public final class EngineProtocol {
     }
 
     /**
-     * As {@link #pipelineFinish(String, boolean)}, additionally carrying a {@code jk import} run's
+     * As {@link #planFinish(String, boolean)}, additionally carrying a {@code jk import} run's
      * worker exit code, warning count, and error/diagnostic text (all plain — the client prefixes
      * and renders).
      */
-    public static String pipelineFinishImport(
+    public static String planFinishImport(
             String dir, boolean success, int exitCode, int warnings, String error, String diag) {
         return "{\"type\":\""
                 + BUILDPLAN_FINISH
@@ -2364,14 +2386,14 @@ public final class EngineProtocol {
     }
 
     /**
-     * As {@link #pipelineFinish(String, boolean, long, long, long, long)} (the image pipeline runs the full
-     * pipeline, so test counts ride along for the exit-code logic), additionally carrying the
+     * As {@link #planFinish(String, boolean, long, long, long, long)} (the image plan runs the full
+     * plan, so test counts ride along for the exit-code logic), additionally carrying the
      * structured ingredients of the Image chip's success tail: exactly one of {@code imageTarball}
      * (tarball mode), {@code imageDaemonExe} (local-daemon load), or neither (registry push, render
      * {@code imageRef}) is non-null; {@code imageName}/{@code imageVersion} name the image in
      * daemon mode.
      */
-    public static String pipelineFinishImage(
+    public static String planFinishImage(
             String dir,
             boolean success,
             long testTotal,
@@ -2460,8 +2482,8 @@ public final class EngineProtocol {
     }
 
     /**
-     * Append {@code "cancelled":true|false} to a pipeline-finish (or similar) JSON object. Additive
-     * field for without churning every {@code pipelineFinish*} overload.
+     * Append {@code "cancelled":true|false} to a plan-finish (or similar) JSON object. Additive
+     * field for without churning every {@code planFinish*} overload.
      */
     public static String withCancelled(String jsonLine, boolean cancelled) {
         if (jsonLine == null || jsonLine.isEmpty()) return jsonLine;
@@ -2590,13 +2612,13 @@ public final class EngineProtocol {
     }
 
     /**
-     * As {@link #pipelineFinish(String, boolean)}, additionally carrying a {@link #TOOL_RESOLVE_REQUEST}
+     * As {@link #planFinish(String, boolean)}, additionally carrying a {@link #TOOL_RESOLVE_REQUEST}
      * result: the pinned {@code g:a:v} the resolve landed on (a floating spec's concrete version is
      * decided engine-side against maven-metadata), the resolved {@code Main-Class}, and the
      * transitive classpath in resolution order (absolute CAS paths — a flat string array, per the
      * codec's no-nested-objects rule). All {@code null}/empty when the resolve failed.
      */
-    public static String pipelineFinishTool(
+    public static String planFinishTool(
             String dir, boolean success, String coord, String mainClass, List<String> classpath) {
         return "{\"type\":\""
                 + BUILDPLAN_FINISH
@@ -2645,11 +2667,11 @@ public final class EngineProtocol {
     }
 
     /**
-     * As {@link #pipelineFinish(String, boolean)}, additionally carrying a {@link
+     * As {@link #planFinish(String, boolean)}, additionally carrying a {@link
      * #SCRIPT_PREPARE_REQUEST} result: the exec ingredients the client-side launch needs. Fields
      * not applicable to the prepared mode (and everything on failure) are {@code null}/empty.
      */
-    public static String pipelineFinishScript(
+    public static String planFinishScript(
             String dir,
             boolean success,
             String mainClass,
@@ -2730,17 +2752,17 @@ public final class EngineProtocol {
     }
 
     /** The maintenance job is waiting for the cache to quiesce (see {@link #PRUNE_WAIT}). */
-    public static String pruneWait(int pipelines, boolean external) {
-        return "{\"type\":\"" + PRUNE_WAIT + "\",\"pipelines\":" + pipelines + ",\"external\":" + external + "}";
+    public static String pruneWait(int plans, boolean external) {
+        return "{\"type\":\"" + PRUNE_WAIT + "\",\"plans\":" + plans + ",\"external\":" + external + "}";
     }
 
     /**
-     * As {@link #pipelineFinish(String, boolean)}, additionally carrying a {@link #CACHE_PRUNE_REQUEST}
+     * As {@link #planFinish(String, boolean)}, additionally carrying a {@link #CACHE_PRUNE_REQUEST}
      * summary: files removed + bytes freed (what would be removed, on a dry run), the LRU evictor's
      * reachable-eviction count ({@code prune --max-size} only), and the repo-mirror links removed
      * ({@code gc} only). {@code -1} = not applicable to the op.
      */
-    public static String pipelineFinishCache(
+    public static String planFinishCache(
             String dir, boolean success, long files, long bytes, long reachableEvicted, long repoLinks) {
         return "{\"type\":\""
                 + BUILDPLAN_FINISH

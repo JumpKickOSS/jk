@@ -14,10 +14,10 @@ import java.util.List;
  * Single entry point CLI commands use to run a {@link BuildPlan} against the right set of console
  * listeners — picks {@link CommandManagerListener} (default TTY), {@link VerboseListener} ({@code
  * --verbose}), {@link JsonlListener} ({@code --output json}), or {@link SilentListener} (non-TTY,
- * {@code --quiet}, or interactive pipeline); always layers an {@link EventLogListener} on top so the
+ * {@code --quiet}, or interactive plan); always layers an {@link EventLogListener} on top so the
  * run lands in {@code <cacheRoot>/runs/}.
  *
- * <p>Ctrl-C during a pipeline is handled by the app-level {@link cc.jumpkick.cli.tui.GlobalCancel}
+ * <p>Ctrl-C during a plan is handled by the app-level {@link cc.jumpkick.cli.tui.GlobalCancel}
  * handler (installed at startup): it repaints the in-flight progress bar as canceled, prints {@code
  * ‼ Canceled by user}, and halts. There is no cooperative unwind — a hard cancel is immediate and
  * predictable.
@@ -30,7 +30,7 @@ public final class BuildPlanConsole {
         AUTO,
         /** Per-step lines (today's {@code --verbose}). */
         VERBOSE,
-        /** Silent (today's {@code --quiet}, or interactive pipelines). */
+        /** Silent (today's {@code --quiet}, or interactive plans). */
         QUIET,
         /** Live JSONL to stdout ({@code --output json} or {@code jsonl}; identical). */
         JSON
@@ -39,41 +39,41 @@ public final class BuildPlanConsole {
     private BuildPlanConsole() {}
 
     /**
-     * Pick listeners + run the pipeline. Ctrl-C is handled by the app-level {@link
-     * cc.jumpkick.cli.tui.GlobalCancel} handler. Returns the pipeline's {@link BuildPlanResult}; caller
+     * Pick listeners + run the plan. Ctrl-C is handled by the app-level {@link
+     * cc.jumpkick.cli.tui.GlobalCancel} handler. Returns the plan's {@link BuildPlanResult}; caller
      * decides what exit code to surface based on {@code result.success}.
      */
-    public static BuildPlanResult run(BuildPlan pipeline, Mode mode, Path cacheRoot) {
+    public static BuildPlanResult run(BuildPlan plan, Mode mode, Path cacheRoot) {
         // Always log every run for post-hoc debug. Best-effort: a
         // failed log open just leaves the listener out of the chain.
-        EventLogListener log = EventLogListener.open(cacheRoot, pipeline.name());
-        if (log != null) pipeline.addListener(log);
-        attachSessionMirror(pipeline, mode);
+        EventLogListener log = EventLogListener.open(cacheRoot, plan.name());
+        if (log != null) plan.addListener(log);
+        attachSessionMirror(plan, mode);
 
-        BuildPlanListener console = chooseConsoleListener(pipeline, mode);
-        if (console != null) pipeline.addListener(console);
+        BuildPlanListener console = chooseConsoleListener(plan, mode);
+        if (console != null) plan.addListener(console);
 
-        return pipeline.run();
+        return plan.run();
     }
 
     /**
      * Variant that derives the cache root from {@link JkDirs#cache}. Use when the command doesn't
      * have an explicit override.
      */
-    public static BuildPlanResult run(BuildPlan pipeline, Mode mode) {
-        return run(pipeline, mode, JkDirs.cache());
+    public static BuildPlanResult run(BuildPlan plan, Mode mode) {
+        return run(plan, mode, JkDirs.cache());
     }
 
     /**
-     * Simple-task variant: render the pipeline as a spinner + command (on a TTY) and a {@code ✓}/{@code ✗}
+     * Simple-task variant: render the plan as a spinner + command (on a TTY) and a {@code ✓}/{@code ✗}
      * result line from {@code spec}, instead of the step-by-step progress bar. {@code --output
      * json} still emits JSONL and {@code --verbose} still prints per-step lines; otherwise the
      * {@link SimpleTaskListener} owns the output (animating only on a TTY).
      */
-    public static BuildPlanResult run(BuildPlan pipeline, Mode mode, Path cacheRoot, ConsoleSpec spec) {
-        EventLogListener log = EventLogListener.open(cacheRoot, pipeline.name());
-        if (log != null) pipeline.addListener(log);
-        attachSessionMirror(pipeline, mode);
+    public static BuildPlanResult run(BuildPlan plan, Mode mode, Path cacheRoot, ConsoleSpec spec) {
+        EventLogListener log = EventLogListener.open(cacheRoot, plan.name());
+        if (log != null) plan.addListener(log);
+        attachSessionMirror(plan, mode);
 
         BuildPlanListener console =
                 switch (mode) {
@@ -84,8 +84,8 @@ public final class BuildPlanConsole {
                     case AUTO -> new SimpleTaskListener(System.out, System.err, spec, isInteractiveTerminal());
                     case QUIET -> new SimpleTaskListener(System.out, System.err, spec, false);
                 };
-        pipeline.addListener(console);
-        return pipeline.run();
+        plan.addListener(console);
+        return plan.run();
     }
 
     /**
@@ -106,19 +106,19 @@ public final class BuildPlanConsole {
     }
 
     /**
-     * BuildPlan-oriented variant: render the pipeline with the new {@link CommandManagerListener} (spinner
+     * BuildPlan-oriented variant: render the plan with the new {@link CommandManagerListener} (spinner
      * header + aggregate bar + dynamic step list) attributed to {@code module} (the project's {@code
      * group:artifact}), then a {@code ✓}/{@code ✗} result line from {@code spec}. {@code --output
      * json} still emits JSONL and {@code --verbose} still prints per-step lines.
      */
     public static BuildPlanResult runBuildPlan(
-            BuildPlan pipeline, Mode mode, Path cacheRoot, ConsoleSpec spec, String module) {
-        EventLogListener log = EventLogListener.open(cacheRoot, pipeline.name());
-        if (log != null) pipeline.addListener(log);
-        attachSessionMirror(pipeline, mode);
+            BuildPlan plan, Mode mode, Path cacheRoot, ConsoleSpec spec, String module) {
+        EventLogListener log = EventLogListener.open(cacheRoot, plan.name());
+        if (log != null) plan.addListener(log);
+        attachSessionMirror(plan, mode);
 
-        pipeline.addListener(chooseConsoleListener(pipeline.steps(), mode, spec, module));
-        return pipeline.run();
+        plan.addListener(chooseConsoleListener(plan.steps(), mode, spec, module));
+        return plan.run();
     }
 
     /**
@@ -138,7 +138,7 @@ public final class BuildPlanConsole {
 
     /**
      * As {@link #chooseConsoleListener(List, Mode, ConsoleSpec, String)}, for one member of a
-     * multi-module workspace run: listeners never stamp their pipeline-local fraction into {@link
+     * multi-module workspace run: listeners never stamp their plan-local fraction into {@link
      * LiveProgress} — the aggregate {@code progress} rider belongs to the engine's {@code
      * workspace-progress} snapshots alone.
      */
@@ -153,35 +153,35 @@ public final class BuildPlanConsole {
     }
 
     /**
-     * Run {@code pipeline} with no console output (only the event log), returning its result. For builds
+     * Run {@code plan} with no console output (only the event log), returning its result. For builds
      * whose progress must NOT render to the terminal — e.g. composite dependency units built
      * concurrently, where N live progress bars can't share one terminal region; the caller prints a
      * compact summary line per unit instead.
      */
-    public static BuildPlanResult runBuildPlanSilently(BuildPlan pipeline, Path cacheRoot) {
-        EventLogListener log = EventLogListener.open(cacheRoot, pipeline.name());
-        if (log != null) pipeline.addListener(log);
+    public static BuildPlanResult runBuildPlanSilently(BuildPlan plan, Path cacheRoot) {
+        EventLogListener log = EventLogListener.open(cacheRoot, plan.name());
+        if (log != null) plan.addListener(log);
         // Silent still mirrors to details.jsonl when a session is open (TTY chrome suppressed).
-        attachSessionMirror(pipeline, Mode.QUIET);
-        pipeline.addListener(new SilentListener(System.out, System.err));
-        return pipeline.run();
+        attachSessionMirror(plan, Mode.QUIET);
+        plan.addListener(new SilentListener(System.out, System.err));
+        return plan.run();
     }
 
     /** A buffered run's result paired with its captured output/diagnostic lines. */
     public record Buffered(BuildPlanResult result, List<String> output) {}
 
     /**
-     * Run {@code pipeline} capturing its output + warnings + errors into a buffer instead of rendering
+     * Run {@code plan} capturing its output + warnings + errors into a buffer instead of rendering
      * live — for concurrently-built units, where the caller flushes each unit's buffer as one
      * contiguous block on completion (no interleaving across parallel builds). Only the event log
      * renders eagerly.
      */
-    public static Buffered runBuildPlanBuffered(BuildPlan pipeline, Path cacheRoot) {
-        EventLogListener log = EventLogListener.open(cacheRoot, pipeline.name());
-        if (log != null) pipeline.addListener(log);
-        attachSessionMirror(pipeline, Mode.QUIET);
+    public static Buffered runBuildPlanBuffered(BuildPlan plan, Path cacheRoot) {
+        EventLogListener log = EventLogListener.open(cacheRoot, plan.name());
+        if (log != null) plan.addListener(log);
+        attachSessionMirror(plan, Mode.QUIET);
         List<String> lines = new java.util.ArrayList<>();
-        pipeline.addListener(new BuildPlanListener() {
+        plan.addListener(new BuildPlanListener() {
             @Override
             public synchronized void output(String step, String line) {
                 lines.add(line);
@@ -197,47 +197,47 @@ public final class BuildPlanConsole {
                 lines.add("  " + Glyphs.CROSS + " " + step + ": " + message);
             }
         });
-        BuildPlanResult r = pipeline.run();
-        synchronized (lines) { // visibility barrier after the pipeline's threads finish
+        BuildPlanResult r = plan.run();
+        synchronized (lines) { // visibility barrier after the plan's threads finish
             return new Buffered(r, new java.util.ArrayList<>(lines));
         }
     }
 
-    private static BuildPlanListener chooseConsoleListener(BuildPlan pipeline, Mode mode) {
-        // Interactive pipelines (wizards) must NOT render a progress bar
+    private static BuildPlanListener chooseConsoleListener(BuildPlan plan, Mode mode) {
+        // Interactive plans (wizards) must NOT render a progress bar
         // the wizard owns the terminal. Same for JSON output (events
         // already go to stdout via JsonlListener) and explicit quiet.
-        if (pipeline.interactive()) return new SilentListener(System.out, System.err, true);
-        return chooseConsoleListener(pipeline.name(), pipeline.steps(), mode);
+        if (plan.interactive()) return new SilentListener(System.out, System.err, true);
+        return chooseConsoleListener(plan.name(), plan.steps(), mode);
     }
 
     /**
      * The default (spec-less) listener {@link #run(BuildPlan, Mode, Path)} picks per {@code mode} — split
      * out so a caller with no real {@code BuildPlan} (an engine-hosted run reconstructing the step list
      * from wire events; see {@code EngineResolveAdapter}) can choose the same listener from just the
-     * pipeline's name and steps, instead of duplicating this switch. Non-interactive pipelines only.
+     * plan's name and steps, instead of duplicating this switch. Non-interactive plans only.
      */
-    public static BuildPlanListener chooseConsoleListener(String pipelineName, List<Task> steps, Mode mode) {
+    public static BuildPlanListener chooseConsoleListener(String planName, List<Task> steps, Mode mode) {
         return switch (mode) {
             case QUIET -> new SilentListener(System.out, System.err);
             case JSON -> new JsonlListener(System.out);
             case VERBOSE -> new VerboseListener(System.out, System.err);
             case AUTO ->
                 isInteractiveTerminal()
-                        ? new CommandManagerListener(System.out, pipelineName, pipelineName, steps, true)
+                        ? new CommandManagerListener(System.out, planName, planName, steps, true)
                         : new SilentListener(System.out, System.err);
         };
     }
 
     /**
-     * Run a workspace module's pipeline into a shared {@link AggregateContext} — its events feed the one
+     * Run a workspace module's plan into a shared {@link AggregateContext} — its events feed the one
      * aggregate {@link cc.jumpkick.cli.tui.CommandManager} (bar + step list) instead of a per-module
      * view. The shared view is settled by the caller after the last module. Always records the event
      * log.
      */
     public static BuildPlanResult runBuildPlanInto(
-            BuildPlan pipeline, Path cacheRoot, String module, AggregateContext agg) {
-        return runBuildPlanInto(pipeline, cacheRoot, module, agg, 0);
+            BuildPlan plan, Path cacheRoot, String module, AggregateContext agg) {
+        return runBuildPlanInto(plan, cacheRoot, module, agg, 0);
     }
 
     /**
@@ -247,13 +247,13 @@ public final class BuildPlanConsole {
      * backtracking. Pass the same estimate that was summed into {@link AggregateContext#calibrate}.
      */
     public static BuildPlanResult runBuildPlanInto(
-            BuildPlan pipeline, Path cacheRoot, String module, AggregateContext agg, long slice) {
-        EventLogListener log = EventLogListener.open(cacheRoot, pipeline.name());
-        if (log != null) pipeline.addListener(log);
-        // Workspace TTY path is never JSON mode — always mirror pipeline events into details.jsonl.
-        attachSessionMirror(pipeline, Mode.AUTO);
-        pipeline.addListener(new AggregateModuleListener(agg, module, pipeline.steps(), slice));
-        return pipeline.run();
+            BuildPlan plan, Path cacheRoot, String module, AggregateContext agg, long slice) {
+        EventLogListener log = EventLogListener.open(cacheRoot, plan.name());
+        if (log != null) plan.addListener(log);
+        // Workspace TTY path is never JSON mode — always mirror plan events into details.jsonl.
+        attachSessionMirror(plan, Mode.AUTO);
+        plan.addListener(new AggregateModuleListener(agg, module, plan.steps(), slice));
+        return plan.run();
     }
 
     /**
@@ -264,30 +264,30 @@ public final class BuildPlanConsole {
      * events still feed the shared aggregate view live (the running rows + bar).
      */
     public static BuildPlanResult runBuildPlanIntoBuffered(
-            BuildPlan pipeline,
+            BuildPlan plan,
             Path cacheRoot,
             String module,
             AggregateContext agg,
             long slice,
             java.util.List<String> outBuffer) {
-        EventLogListener log = EventLogListener.open(cacheRoot, pipeline.name());
-        if (log != null) pipeline.addListener(log);
-        attachSessionMirror(pipeline, Mode.AUTO);
-        AggregateModuleListener lis = new AggregateModuleListener(agg, module, pipeline.steps(), slice);
+        EventLogListener log = EventLogListener.open(cacheRoot, plan.name());
+        if (log != null) plan.addListener(log);
+        attachSessionMirror(plan, Mode.AUTO);
+        AggregateModuleListener lis = new AggregateModuleListener(agg, module, plan.steps(), slice);
         lis.bufferOutputInto(outBuffer);
-        pipeline.addListener(lis);
-        return pipeline.run();
+        plan.addListener(lis);
+        return plan.run();
     }
 
     /**
-     * When a CLI session is open and stdout is <em>not</em> already JSONL, mirror pipeline events
+     * When a CLI session is open and stdout is <em>not</em> already JSONL, mirror plan events
      * into {@code details.jsonl}. JSON mode dual-writes via {@link JsonlListener} instead.
      */
-    private static void attachSessionMirror(BuildPlan pipeline, Mode mode) {
+    private static void attachSessionMirror(BuildPlan plan, Mode mode) {
         if (mode == Mode.JSON) return;
         CliSessionTranscript session = CliSessionTranscript.active();
         if (session == null) return;
-        pipeline.addListener(new SessionMirrorListener(session));
+        plan.addListener(new SessionMirrorListener(session));
     }
 
     /**

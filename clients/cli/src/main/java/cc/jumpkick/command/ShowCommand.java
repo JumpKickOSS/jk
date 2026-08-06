@@ -14,7 +14,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * {@code jk show &lt;step&gt;} — print primary output path(s) for a pipeline step.
+ * {@code jk show &lt;step&gt;} — print primary output path(s) for a plan step.
  * Equivalent to {@code jk tasks show &lt;step&gt;}.
  */
 public final class ShowCommand implements CliCommand {
@@ -26,7 +26,7 @@ public final class ShowCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Print primary output path for a pipeline step";
+        return "Print primary output path for a build-plan task";
     }
 
     @Override

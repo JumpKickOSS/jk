@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * package-jar forecast keys must match {@link BuildPipelines} packaging tokens
+ * package-jar forecast keys must match {@link BuildPlanner} packaging tokens
  * (including empty {@code sbom:} for libraries) so a warm jar is not permanently "repackage".
  */
 class TaskForecasterPackageKeyTest {
@@ -31,7 +31,7 @@ class TaskForecasterPackageKeyTest {
         Map<String, String> manifest = Map.of();
         byte[] sbom = null; // libraries: no application SBOM
 
-        // BuildPipelines.packageJarStep tokens (library path).
+        // BuildPlanner.packageJarStep tokens (library path).
         List<String> buildTokens = List.of(
                 "classes:" + ClasspathFingerprint.entry(classes),
                 "main:" + mainClass,

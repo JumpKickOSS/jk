@@ -156,7 +156,7 @@ class IdeEngineClientTest {
         });
         assertThat(events).anyMatch(e -> e.startsWith("start:"));
         assertThat(events).anyMatch(e -> e.startsWith("finish:"));
-        // No tests is still a successful test pipeline (nothing failed).
+        // No tests is still a successful test plan (nothing failed).
         assertThat(outcome.modules()).isEqualTo(1);
     }
 }

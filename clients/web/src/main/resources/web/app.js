@@ -33,7 +33,7 @@ import {
 
 bootstrapToken();
 
-// The build **phase-chain**: a single horizontal strip of coarse pipeline phases (Resolve →
+// The build **phase-chain**: a single horizontal strip of coarse plan phases (Resolve →
 // Compile → Test → …), never wrapping. New phases advance rightward and push earlier ones off the
 // left; when phases are hidden a ◂ / ▸ nav button pages the view (no scrollbar). Anchored to the
 // newest phase on mount and whenever the chain grows. Each phase node is a click-to-expand toggle
@@ -1794,7 +1794,7 @@ Vue.createApp({
     versionPill() {
       return this.status ? 'v' + String(this.status.version).replace(/-SNAPSHOT$/, '') : '';
     },
-    // Footer "Builds Running": the engine's live pipeline count (authoritative, always in /api/status).
+    // Footer "Builds Running": the engine's live plan count (authoritative, always in /api/status).
     buildsRunning() {
       return this.status ? this.status.activeBuildPlans : 0;
     },

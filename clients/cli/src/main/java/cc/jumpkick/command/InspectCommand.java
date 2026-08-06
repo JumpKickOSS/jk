@@ -14,7 +14,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * {@code jk inspect &lt;step&gt;} — describe a pipeline step. Equivalent to {@code jk
+ * {@code jk inspect &lt;step&gt;} — describe a plan step. Equivalent to {@code jk
  * tasks inspect &lt;step&gt;}.
  */
 public final class InspectCommand implements CliCommand {
@@ -26,7 +26,7 @@ public final class InspectCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Describe a pipeline step (phase, output path, on-disk status)";
+        return "Describe a plan task (path and on-disk status)";
     }
 
     @Override

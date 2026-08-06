@@ -134,7 +134,7 @@ public final class ActivityCommand implements CliCommand {
         long buildNumber = Jsonl.longValue(entry, "buildNumber", 0);
         String kind = Jsonl.str(entry, "kind");
         if (kind == null || kind.isBlank()) kind = "build";
-        // Single-pipeline journal rows often have moduleCount 0 (steps live at top level).
+        // Single-plan journal rows often have moduleCount 0 (steps live at top level).
         int moduleCount = Jsonl.intValue(entry, "moduleCount", 0);
         if (moduleCount <= 0) moduleCount = 1;
         long millis = Jsonl.longValue(entry, "millis", -1);
@@ -245,8 +245,8 @@ public final class ActivityCommand implements CliCommand {
         // Chip fill; caps painted in that same color as FG (rounded edges).
         cc.jumpkick.cli.theme.Rgb chipRgb =
                 switch (outcome) {
-                    case SUCCESS -> t.pipelineChipColor();
-                    case FAILURE -> t.pipelineFailColor();
+                    case SUCCESS -> t.planChipColor();
+                    case FAILURE -> t.planFailColor();
                     case CANCELLED -> cc.jumpkick.cli.theme.Rgb.hex(0xFFB800); // matches web --warn
                     case RUNNING -> t.planBadgeColor();
                 };

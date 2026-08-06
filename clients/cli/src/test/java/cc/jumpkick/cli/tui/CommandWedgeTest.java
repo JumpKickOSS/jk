@@ -38,7 +38,7 @@ class CommandWedgeTest {
             assertThat(ansi).doesNotContain(Glyphs.SEGMENT_END_NERD);
             // Non-nerd chip ends with two spaces on the success chip bg (before the message).
             String body = Theme.colorize(
-                    " " + Glyphs.CHECK + " Clean  ", Theme.active().pipelineSuccessChip());
+                    " " + Glyphs.CHECK + " Clean  ", Theme.active().planSuccessChip());
             assertThat(ansi).contains(body);
         }
         assertThat(nerd).contains("Clean").contains("ok");
@@ -78,7 +78,7 @@ class CommandWedgeTest {
     void cancelled_job_line_remote_vs_by_user() {
         String remote = BuildPlanWedge.cancelledJobLine("Build", false, false, "took 1.6s")
                 .replaceAll("\u001B\\[[0-9;]*m", "");
-        // The chip names the pipeline; the body must not repeat it ("Build Build job…",.
+        // The chip names the plan; the body must not repeat it ("Build Build job…",.
         assertThat(remote).contains("Build").contains("job was cancelled");
         assertThat(remote).containsOnlyOnce("Build");
         assertThat(remote).contains("took 1.6s");

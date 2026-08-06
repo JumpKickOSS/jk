@@ -171,7 +171,7 @@ public record BuildRecord(
     public record CacheBenefit(long estimatedUncachedMillis, long savedMillis, long coveredSkips, long totalSkips) {}
 
     /**
-     * One module's outcome in a workspace build (the {@code modules} list is empty for a single-pipeline
+     * One module's outcome in a workspace build (the {@code modules} list is empty for a single-plan
      * build/test, whose steps sit in the record's top-level {@code steps}). {@code steps} is this
      * module's own step chain, so the dashboard shows a chain per module.
      */
@@ -183,7 +183,7 @@ public record BuildRecord(
 
     /**
      * One step's aggregate outcome: {@code status} is {@code SUCCESS} / {@code FAIL} /
-     * {@code CANCELLED} / {@code SKIPPED}; {@code phase} is the coarse pipeline phase's wire-name
+     * {@code CANCELLED} / {@code SKIPPED}; {@code phase} is the coarse plan phase's wire-name
      * ({@code ""} when unphased) so the dashboard can fold reloaded/finished cards into the same
      * phase-chain the live cards render.
      */
@@ -195,7 +195,7 @@ public record BuildRecord(
 
     /**
      * One diagnostic: {@code severity} is {@code "error"} or {@code "warning"}; {@code dir} is the
-     * module the failure belongs to ({@code ""} for a single-pipeline build), so the dashboard can nest
+     * module the failure belongs to ({@code ""} for a single-plan build), so the dashboard can nest
      * the failure output under the failed module inside its "failure details" roll-up.
      */
     public record Diag(

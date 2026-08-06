@@ -21,18 +21,18 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * Tool-resolution pipeline for {@code jk tool install/run} and {@code jk install <g:a:v>}.
+ * Tool-resolution plan for {@code jk tool install/run} and {@code jk install <g:a:v>}.
  * Launcher write and exec of the resolved {@link ToolEnv} stay client-side.
  */
-public final class ToolPipelines {
+public final class ToolPlans {
 
-    private ToolPipelines() {}
+    private ToolPlans() {}
 
     /** The resolved tool env, populated by the {@code resolve-coord} step. */
     public static final BuildPlanKey<ToolEnv> TOOL_ENV = BuildPlanKey.of("tool-env", ToolEnv.class);
 
     /**
-     * Build the single-step resolve pipeline for {@code spec}.
+     * Build the single-step resolve plan for {@code spec}.
      *
      * @param spec the tool coordinate — pinned {@code g:a:v} or floating {@code g:a[@selector]}
      *     (the floating pick against maven-metadata happens inside the step)

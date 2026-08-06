@@ -19,11 +19,11 @@ import java.nio.file.Path;
 /**
  * Compat-bridge drivers: {@code jk import} conversion and {@code jk mvn}/{@code jk gradle}
  * distribution provisioning. Import streams notes via {@link NoteObserver}; exit code is a result
- * on {@link #EXIT}, not a pipeline failure. Tool exec stays client-side.
+ * on {@link #EXIT}, not a plan failure. Tool exec stays client-side.
  */
-public final class CompatPipelines {
+public final class CompatPlans {
 
-    private CompatPipelines() {}
+    private CompatPlans() {}
 
     /** Receives each import progress note ({@code kind} = {@code wrote}/{@code note}) as the plugin streams it. */
     public interface NoteObserver {
@@ -43,9 +43,9 @@ public final class CompatPipelines {
     public static final BuildPlanKey<String> DIAG = BuildPlanKey.of("import-diag", String.class);
 
     /**
-     * Build the import pipeline. All paths arrive absolute (the command pre-flighted source detection
+     * Build the import plan. All paths arrive absolute (the command pre-flighted source detection
      * and overwrite checks); {@code report} may be {@code null}. Locates the plugin jar eagerly, so
-     * a missing plugin fails here with side-load instructions rather than mid-pipeline.
+     * a missing plugin fails here with side-load instructions rather than mid-plan.
      */
     public static BuildPlan importBuildPlan(
             Path source,

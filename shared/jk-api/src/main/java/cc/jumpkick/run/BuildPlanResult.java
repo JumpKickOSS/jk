@@ -10,7 +10,7 @@ import java.util.Objects;
  * the accumulated warnings and errors emitted across all steps.
  */
 public record BuildPlanResult(
-        String pipelineName,
+        String planName,
         boolean success,
         Duration duration,
         List<StepReport> steps,
@@ -20,7 +20,7 @@ public record BuildPlanResult(
         boolean userCancelled) {
 
     public BuildPlanResult {
-        Objects.requireNonNull(pipelineName, "pipelineName");
+        Objects.requireNonNull(planName, "planName");
         Objects.requireNonNull(duration, "duration");
         steps = List.copyOf(steps);
         warnings = List.copyOf(warnings);
@@ -32,14 +32,14 @@ public record BuildPlanResult(
      * separate flag is supplied — the older callers all came from the SIGINT bridge.
      */
     public BuildPlanResult(
-            String pipelineName,
+            String planName,
             boolean success,
             Duration duration,
             List<StepReport> steps,
             List<Diagnostic> warnings,
             List<Diagnostic> errors,
             boolean cancelled) {
-        this(pipelineName, success, duration, steps, warnings, errors, cancelled, cancelled);
+        this(planName, success, duration, steps, warnings, errors, cancelled, cancelled);
     }
 
     /**

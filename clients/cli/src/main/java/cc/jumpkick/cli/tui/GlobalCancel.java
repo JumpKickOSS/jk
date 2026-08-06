@@ -15,7 +15,7 @@ import org.jline.utils.Signals;
  * <ol>
  * <li>Cooperative session cancel + engine {@code cancel-request} (jid / project dir) — same
  * kill path as the web UI and {@code jk cancel}
- * <li>Settle the active pipeline region ("Build job was cancelled by user took …")
+ * <li>Settle the active plan region ("Build job was cancelled by user took …")
  * <li>{@code halt(2)} — guaranteed process death if anything above is stuck
  * </ol>
  *
@@ -58,7 +58,7 @@ public final class GlobalCancel {
                     .name("jk-sigint-cancel")
                     .start(() -> cc.jumpkick.cli.engine.EngineClient.cancelBestEffortForInterrupt(dir));
 
-            // 2) Settle the live region (pipeline → cancelled job line) or a one-line notice.
+            // 2) Settle the live region (plan → cancelled job line) or a one-line notice.
             LiveRegion active = LiveRegion.active();
             boolean handled = false;
             String message = "Build job was cancelled";

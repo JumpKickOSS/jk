@@ -19,7 +19,7 @@ On a Graal **project/toolchain** JDK:
 - no `-J-XX:AOTCache=` on the worker  
 - `JK_WORKER_AOT=on` vs `off` are **the same cold fork**  
 
-So any “AOT-on vs AOT-off” numbers collected while the **compiler JDK** was Graal (common when Graal is `active` for native-image / dogfood) are **not** measuring AOT. They only measure pipeline noise.
+So any “AOT-on vs AOT-off” numbers collected while the **compiler JDK** was Graal (common when Graal is `active` for native-image / dogfood) are **not** measuring AOT. They only measure plan noise.
 
 **Default clean-host story:** `project.jdk = 25` resolves to **Eclipse Temurin** (or similar HotSpot) via `jk jdk` — that is the right arm for AOT and for warm-pool go/no-go.
 
@@ -75,7 +75,7 @@ Chrome `compile-kotlin` duration, 3× `--redo --jdk temurin-25` after train:
 | AOT-on | **486–497 ms** |
 | AOT-off | **495–509 ms** |
 
-**Modest / noise** on this tiny project (full pipeline ~500–600 ms). Larger Kotlin modules may show more; re-run with a fatter corpus if needed.
+**Modest / noise** on this tiny project (full plan ~500–600 ms). Larger Kotlin modules may show more; re-run with a fatter corpus if needed.
 
 ### Earlier invalid Graal bare-javac runs
 

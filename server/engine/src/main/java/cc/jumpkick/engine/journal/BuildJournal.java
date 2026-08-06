@@ -17,6 +17,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
 
@@ -318,21 +319,55 @@ public final class BuildJournal {
                 }
             }
         }
+        // Test-class walls buffered during run-tests (FQCN → ms); train harvest without recounting methods.
+        appendTestClassWalls(sb, finished.dir());
+        if (finished.modules() != null) {
+            for (BuildRecord.Module m : finished.modules()) {
+                if (m != null) appendTestClassWalls(sb, m.dir());
+            }
+        }
         if (sb.length() > 40) {
             Files.writeString(dir.resolve(ProjectBuilds.METRICS), sb.toString(), StandardCharsets.UTF_8);
+        }
+    }
+
+    private static void appendTestClassWalls(StringBuilder sb, String moduleDir) {
+        if (moduleDir == null || moduleDir.isBlank()) return;
+        Map<String, Long> walls = cc.jumpkick.runtime.TestClassWalls.take(moduleDir);
+        if (walls.isEmpty()) return;
+        String mod = sanitize(moduleDir);
+        for (var e : walls.entrySet()) {
+            if (e.getKey() == null || e.getValue() == null || e.getValue() <= 0) continue;
+            sb.append("module.")
+                    .append(mod)
+                    .append(".test-class.")
+                    .append(sanitize(e.getKey()))
+                    .append(".wall-ms = ")
+                    .append(e.getValue())
+                    .append('\n');
         }
     }
 
     private static void appendStepMetrics(StringBuilder sb, BuildRecord.Task s, String moduleDir) {
         if (s == null || s.millis() <= 0) return;
         if (s.status() == null || !"SUCCESS".equalsIgnoreCase(s.status())) return;
-        String step = sanitize(s.name());
-        sb.append("step.").append(step).append(".wall-ms = ").append(s.millis()).append('\n');
+        String task = sanitize(s.name());
+        String phase = sanitize(cc.jumpkick.runtime.TaskPhases.of(s.name()));
+        sb.append("task.").append(task).append(".wall-ms = ").append(s.millis()).append('\n');
+        sb.append("phase.").append(phase).append(".wall-ms = ").append(s.millis()).append('\n');
         if (moduleDir != null && !moduleDir.isBlank()) {
+            String mod = sanitize(moduleDir);
             sb.append("module.")
-                    .append(sanitize(moduleDir))
-                    .append(".step.")
-                    .append(step)
+                    .append(mod)
+                    .append(".task.")
+                    .append(task)
+                    .append(".wall-ms = ")
+                    .append(s.millis())
+                    .append('\n');
+            sb.append("module.")
+                    .append(mod)
+                    .append(".phase.")
+                    .append(phase)
                     .append(".wall-ms = ")
                     .append(s.millis())
                     .append('\n');

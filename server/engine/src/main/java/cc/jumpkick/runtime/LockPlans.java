@@ -45,13 +45,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 
 /**
- * Resolve → write {@code jk-lock.toml} for {@code jk lock}/{@code jk update}. Progress via pipeline
+ * Resolve → write {@code jk-lock.toml} for {@code jk lock}/{@code jk update}. Progress via plan
  * listeners and {@link ResolveObserver}; diagnostics are plain (client themes). Engine passes
  * {@code coordLabel=null} and streams structured package events.
  */
-public final class LockPipelines {
+public final class LockPlans {
 
-    private LockPipelines() {}
+    private LockPlans() {}
 
     /** Cross-step key: the effective (workspace-merged) manifest the resolve step reads. */
     public static final BuildPlanKey<JkBuild> EFFECTIVE = BuildPlanKey.of("effective-build", JkBuild.class);
@@ -67,7 +67,7 @@ public final class LockPipelines {
     public static final BuildPlanKey<String> MANIFESTS_SHA = BuildPlanKey.of("manifests-sha", String.class);
 
     /**
-     * Build the {@code jk lock} pipeline for one project directory: {@code parse-build} → {@code
+     * Build the {@code jk lock} plan for one project directory: {@code parse-build} → {@code
      * resolve} (offline-aware, git-source materialization, PubGrub solve, kotlin pin) → {@code
      * lock-plugins} → {@code write-lockfile}. The offline flag is read off the ambient {@link
      * SessionContext} at step-run time, so both the CLI (which installs the session from its
@@ -220,27 +220,33 @@ public final class LockPipelines {
                     };
                     try {
                         boolean keepPins = conservative && !sources && existing != null;
-                        Lockfile lock = sources
-                                ? orchestrator.lockWithSources(
-                                        pathPrep.project(),
-                                        JkVersion.VERSION,
-                                        features,
-                                        withDefaultFeatures,
-                                        wrappedObserver)
-                                : keepPins
-                                        ? orchestrator.lockConservative(
-                                                pathPrep.project(),
-                                                existing,
-                                                JkVersion.VERSION,
-                                                features,
-                                                withDefaultFeatures,
-                                                wrappedObserver)
-                                        : orchestrator.lock(
-                                                pathPrep.project(),
-                                                JkVersion.VERSION,
-                                                features,
-                                                withDefaultFeatures,
-                                                wrappedObserver);
+                        Lockfile lock;
+                        if (sources) {
+                            lock = orchestrator.lockWithSources(
+                                    pathPrep.project(),
+                                    JkVersion.VERSION,
+                                    features,
+                                    withDefaultFeatures,
+                                    wrappedObserver);
+                        } else if (keepPins) {
+                            lock = orchestrator.lockConservative(
+                                    pathPrep.project(),
+                                    existing,
+                                    JkVersion.VERSION,
+                                    features,
+                                    withDefaultFeatures,
+                                    wrappedObserver);
+                        } else {
+                            // Explicit re-lock must revalidate maven-metadata (same-URL TTL would
+                            // hide newly published versions until --force / next day).
+                            lock = cc.jumpkick.repo.MavenMetadataCache.withForceRevalidate(
+                                    () -> orchestrator.lock(
+                                            pathPrep.project(),
+                                            JkVersion.VERSION,
+                                            features,
+                                            withDefaultFeatures,
+                                            wrappedObserver));
+                        }
                         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
                         String kotlinVersion = keepPins && existing.kotlin() != null
                                 ? existing.kotlin()
@@ -442,7 +448,7 @@ public final class LockPipelines {
                                 .lock(pathPrep.project(), JkVersion.VERSION, features, withDefaultFeatures);
                         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
                         // jk update floats everything — including the Kotlin compiler pin, which
-                        // this pipeline used to drop from the lock entirely (JK-1371).
+                        // this plan used to drop from the lock entirely (JK-1371).
                         String kotlinVersion = resolveKotlinVersion(eff, pathPrep.repos());
                         if (kotlinVersion != null) {
                             ctx.label("resolved kotlin " + kotlinVersion);
@@ -542,7 +548,7 @@ public final class LockPipelines {
     }
 
     /**
-     * Re-resolve {@code effective}'s full dependency set (the normal pipeline — every git dep
+     * Re-resolve {@code effective}'s full dependency set (the normal plan — every git dep
      * accepts upstream movement, no tag-rewrite check), then splice the result against the existing
      * lock so only {@code targeted}'s git artifact(s) actually change; every other artifact keeps
      * its previously-locked value. Returns how many of {@code targeted} were actually refreshed.
@@ -642,7 +648,7 @@ public final class LockPipelines {
     // ---- shared helpers ------------------------------------------------------
 
     /**
-     * Map a failed lock/update pipeline to its exit code: a failed {@code resolve} step (unsatisfiable
+     * Map a failed lock/update plan to its exit code: a failed {@code resolve} step (unsatisfiable
      * deps, unreachable repos) exits 6; anything else is a config problem ({@link Exit#CONFIG}).
      */
     public static int failureExitCode(BuildPlanResult result) {
@@ -744,7 +750,7 @@ public final class LockPipelines {
     /**
      * Resolve the project's {@code kotlin} version selector to a concrete Kotlin compiler release.
      * Returns {@code null} for a Java project or when resolution can't complete. Shared with
-     * {@link LockFlow} and the update pipeline so every lock-write path stamps the pin (JK-1371).
+     * {@link LockFlow} and the update plan so every lock-write path stamps the pin (JK-1371).
      */
     static String resolveKotlinVersion(JkBuild effective, RepoGroup repos) {
         if (!effective.project().isKotlin()) return null;

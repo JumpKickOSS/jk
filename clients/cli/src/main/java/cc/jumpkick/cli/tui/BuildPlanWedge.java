@@ -7,8 +7,8 @@ import java.util.Locale;
 import org.jline.utils.AttributedStyle;
 
 /**
- * Shared chrome for the build pipeline line and its settled result lines, so the live header ({@link
- * CommandManager#pipelineHeader}) and the buffered plain-scheduler println render identically.
+ * Shared chrome for the build plan line and its settled result lines, so the live header ({@link
+ * CommandManager#planHeader}) and the buffered plain-scheduler println render identically.
  *
  * <h2>Chip shapes</h2>
  *
@@ -85,8 +85,8 @@ public final class BuildPlanWedge {
         }
         // ✓ (done) and ▶ (running) read as positive → green chip; everything else uses blue.
         boolean green = Glyphs.CHECK.equals(glyph) || Glyphs.PLAY.equals(glyph);
-        var chipStyle = green ? t.pipelineSuccessChip() : t.pipelineChip();
-        var capColor = green ? t.pipelineChipColor() : t.planBadgeColor();
+        var chipStyle = green ? t.planSuccessChip() : t.planChip();
+        var capColor = green ? t.planChipColor() : t.planBadgeColor();
         String msg = message == null ? "" : message;
         return chip(glyph, command, chipStyle, nerdfont) + cap(capColor, nerdfont) + " " + msg;
     }
@@ -116,8 +116,8 @@ public final class BuildPlanWedge {
             String plainBody = "Failed" + (name.isEmpty() ? "" : " to " + name.toLowerCase(Locale.ROOT)) + " " + tail;
             return plainWedge(Glyphs.CROSS_PLAIN, name, plainBody);
         }
-        return chip(Glyphs.CROSS, name, t.pipelineFailureChip(), nerdfont)
-                + cap(t.pipelineFailColor(), nerdfont)
+        return chip(Glyphs.CROSS, name, t.planFailureChip(), nerdfont)
+                + cap(t.planFailColor(), nerdfont)
                 + " "
                 + body;
     }
@@ -132,8 +132,8 @@ public final class BuildPlanWedge {
         if (!t.isAnsi()) {
             return plainWedge(Glyphs.CROSS_PLAIN, name, sentence);
         }
-        return chip(Glyphs.CROSS, name, t.pipelineFailureChip(), nerdfont)
-                + cap(t.pipelineFailColor(), nerdfont)
+        return chip(Glyphs.CROSS, name, t.planFailureChip(), nerdfont)
+                + cap(t.planFailColor(), nerdfont)
                 + " "
                 + sentence;
     }
@@ -150,8 +150,8 @@ public final class BuildPlanWedge {
             return plainWedge(Glyphs.CROSS_PLAIN, name, "job was cancelled" + (byUser ? " by user" : "") + took);
         }
         String body = "job was " + Theme.colorize("cancelled", t.warning()) + (byUser ? " by user" : "") + took;
-        return chip(Glyphs.CROSS, name, t.pipelineFailureChip(), nerdfont)
-                + cap(t.pipelineFailColor(), nerdfont)
+        return chip(Glyphs.CROSS, name, t.planFailureChip(), nerdfont)
+                + cap(t.planFailColor(), nerdfont)
                 + " "
                 + body;
     }

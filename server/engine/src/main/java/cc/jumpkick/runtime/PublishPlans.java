@@ -27,16 +27,16 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
 
 /**
- * {@code jk publish} pipeline: validate, then assemble/sign/upload via {@code jk-publisher}.
+ * {@code jk publish} plan: validate, then assemble/sign/upload via {@code jk-publisher}.
  * Credentials and GPG passphrase arrive client-resolved in {@link Request} (engine env is not
  * this invocation's); secrets go through a 0600 spec file only.
  */
-public final class PublishPipelines {
+public final class PublishPlans {
 
-    private PublishPipelines() {}
+    private PublishPlans() {}
 
     /**
-     * Everything the publish pipeline needs beyond the project directory — the command's validated
+     * Everything the publish plan needs beyond the project directory — the command's validated
      * flags plus the client-resolved credential/passphrase. {@code keyFile} is non-null only when
      * {@code --sign} was set (the command already enforced {@code --sign} ⇒ {@code --key-file}).
      */
@@ -60,7 +60,7 @@ public final class PublishPipelines {
     /** The plugin's uploaded-file count (0 for {@code --dry-run}), populated by the publish step. */
     public static final BuildPlanKey<Integer> FILES = BuildPlanKey.of("pub-files", Integer.class);
 
-    /** Build the publish pipeline for {@code projectDir}. Locates the plugin jar eagerly (fail fast, with side-load hints). */
+    /** Build the publish plan for {@code projectDir}. Locates the plugin jar eagerly (fail fast, with side-load hints). */
     public static BuildPlan publishBuildPlan(Path projectDir, Path cache, Request req) {
         Path workerJar = PluginJar.PUBLISHER.locate(JkStores.cas(cache));
         Path jkBuildPath = projectDir.resolve("jk.toml");

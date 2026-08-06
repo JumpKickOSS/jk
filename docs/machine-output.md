@@ -24,9 +24,9 @@ All machine surfaces should carry **the same conceptual events**. Framing differ
 
 | Concept | CLI JSONL (`type`) | Web SSE (`event` + `data`) | Verbose (human) | MCP (tools / SSE) |
 |---------|--------------------|----------------------------|-----------------|-------------------|
-| Request / session start | `buildplan-start` (per pipeline); workspace: `workspace-start` | `request-start` | `▶ pipeline (N steps)` | tool result / `notifications/jk/event` |
+| Request / session start | `buildplan-start` (per plan); workspace: `workspace-start` | `request-start` | `▶ plan (N steps)` | tool result / `notifications/jk/event` |
 | Step start | `task-start` | `task-start` | `· phase/step (ticks: N)` | notification |
-| Progress ticks (fine) | `progress`, `tick-update` | `pipeline-progress` | (bar / quiet) | notification |
+| Progress ticks (fine) | `progress`, `tick-update` | `plan-progress` | (bar / quiet) | notification |
 | **Whole-job % (aggregate)** | **`workspace-progress`** | **`workspace-progress`** | TUI bar | filter `type=workspace-progress` |
 | Label (current work) | `label` | (via progress / output) | last label on finish line | notification |
 | User/compiler output | `output` | `output` | printed lines | notification |
@@ -55,10 +55,10 @@ export JK_OUTPUT=json         # or jsonl
 
 - **One JSON object per line**, flushed promptly (live).
 - Every object includes at least: `schema` (int), `ts` (epoch ms), `type` (string).
-- Most lines also carry **`progress`**: aggregate workspace/pipeline percent **0–100** (or
+- Most lines also carry **`progress`**: aggregate workspace/plan percent **0–100** (or
   `null` until known) from the **engine** tracker — **not** `progress_num`/`progress_den`
   (JK-1117/1120). Per-step `numerator`/`denominator` on `progress` / `tick-update` events stay
-  **pipeline-local** (one module). For whole-job % without step spam, subscribe to
+  **plan-local** (one module). For whole-job % without step spam, subscribe to
   **`type=workspace-progress`** (fields: `progress`, `numerator`, `denominator`, `phase`,
   `modulesComplete`, `modulesTotal`).
 - Schema version: **`1`** forever until **jk 1.0** (see [architecture.md — Schema freeze](architecture.md#schema-freeze-until-10)).
@@ -68,11 +68,11 @@ export JK_OUTPUT=json         # or jsonl
 Example lines (illustrative):
 
 ```json
-{"schema":1,"ts":1721664000123,"type":"buildplan-start","pipeline":"test","denominator":42,"steps":3,"progress":12.5}
+{"schema":1,"ts":1721664000123,"type":"buildplan-start","plan":"test","denominator":42,"steps":3,"progress":12.5}
 {"schema":1,"ts":1721664000456,"type":"task-start","step":"run-tests","phase":"test","ticks":10,"progress":45}
 {"schema":1,"ts":1721664000789,"type":"label","step":"run-tests","label":"cc.jumpkick:jk-core :: FooTest > bar()  [w2]","progress":67.3}
 {"schema":1,"ts":1721664000901,"type":"error","step":"run-tests","code":"test-failure","message":"…","test":"cc.jumpkick:jk-core :: FooTest > bar()  [w2]","exceptionClass":"org.opentest4j.AssertionFailedError","progress":67.3}
-{"schema":1,"ts":1721664001000,"type":"buildplan-finish","pipeline":"test","success":false,"duration_ms":880,"warnings":0,"errors":1,"progress":100}
+{"schema":1,"ts":1721664001000,"type":"buildplan-finish","plan":"test","success":false,"duration_ms":880,"warnings":0,"errors":1,"progress":100}
 ```
 
 Implementation: `JsonlListener` + `JsonlShape` (stdout); `EventLogListener` and
@@ -99,9 +99,9 @@ Live model updates on every meaningful event; sinks materialize under one policy
 
 | Rule | Trigger | TTY paint | JSONL append (`--jsonl` + `details.jsonl`) |
 |------|---------|-----------|---------------------------------------------|
-| **M1** | Phase finish (preflight stage / pipeline phase) | next frame | **append + flush** |
+| **M1** | Phase finish (preflight stage / plan phase) | next frame | **append + flush** |
 | **M2** | Test class finish (when wired) | optional | **append + flush** |
-| **M3** | Module / pipeline / command finish | yes | **append + flush** |
+| **M3** | Module / plan / command finish | yes | **append + flush** |
 | **M4** | Dirty heartbeat | **80 ms** (`TTY_FRAME_MS`) | **2 s** if dirty (`DISK_HEARTBEAT_MS`) |
 | **M5** | Hot ticks (`progress` / `tick-update` / `label` / `output`) | model + next frame | append line; flush ≤ M4 |
 
@@ -127,7 +127,7 @@ Disable: `--no-timeline` / `JK_CHROME_PROFILE=off`. Linked from docs; not duplic
 Engine hosts HTTP (loopback) with:
 
 - `GET /api/status`, `GET /api/events` (SSE), `POST /api/build`, …
-- SSE: `event: <type>` + `data: <json>` — types include `request-start`, `task-start`, `task-finish`, `pipeline-progress`, `eta`, `diagnostic`, module events, …
+- SSE: `event: <type>` + `data: <json>` — types include `request-start`, `task-start`, `task-finish`, `plan-progress`, `eta`, `diagnostic`, module events, …
 
 **Convergence (one conceptual model):** SSE `data`, MCP `notifications/jk/event` params, CLI
 JSONL, and (additively) the client↔engine wire all carry the same facts where they describe the
@@ -142,7 +142,7 @@ same work:
 | `numerator` / `denominator` | Step-scoped weights (progress events); optional beside the % rider |
 | `test` / `exceptionClass` | Structured failure fields |
 
-The SSE *event* name may stay SPA-oriented (`pipeline-progress`, `diagnostic`); agents should
+The SSE *event* name may stay SPA-oriented (`plan-progress, `diagnostic`); agents should
 prefer `data.type`. The client↔engine wire uses the same `type` discriminator (and additive
 `schema` / `progress` on progress events) — one vocabulary across JSONL, SSE, MCP, and wire.
 
@@ -160,7 +160,7 @@ Same HTTP server and lifecycle as the web UI:
 MCP can be disabled machine-wide with `[mcp] enabled = false` in `~/.config/jk/config.toml`
 (404s `/mcp`; web dashboard unaffected — `mcpUrl` reports `null`).
 
-**Tools:** `jk_status`, `jk_build`, `jk_test` (true test-only pipelines — no package), `jk_lock`
+**Tools:** `jk_status`, `jk_build`, `jk_test` (true test-only plans — no package), `jk_lock`
 (async → `requestId`), `jk_cancel`, `jk_project`, `jk_history`.
 
 **Live progress (MCP SSE):** `GET {httpUrl}/mcp` with `Accept: text/event-stream` and bearer

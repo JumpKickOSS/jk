@@ -9,7 +9,7 @@ import java.time.Duration;
 import java.time.Instant;
 
 /**
- * Stable wire format for pipeline events as one-JSON-object-per-line text. Shared by {@link
+ * Stable wire format for plan events as one-JSON-object-per-line text. Shared by {@link
  * JsonlListener} (stdout for {@code --output json}/{@code jsonl}), {@link EventLogListener}
  * (always-on under the cache run log), and {@link CliSessionTranscript} ({@code details.jsonl}).
  * Centralising the shape here means agents, CI, and future MCP tools share one schema — see
@@ -144,10 +144,10 @@ public final class JsonlShape {
         return sb.append('}').toString();
     }
 
-    static String pipelineStart(BuildPlanView v) {
+    static String planStart(BuildPlanView v) {
         return open("buildplan-start")
-                .append(",\"pipeline\":")
-                .append(js(v.pipelineName()))
+                .append(",\"plan\":")
+                .append(js(v.planName()))
                 .append(",\"denominator\":")
                 .append(v.denominator())
                 .append(",\"steps\":")
@@ -263,10 +263,10 @@ public final class JsonlShape {
                 .toString();
     }
 
-    static String pipelineFinish(BuildPlanResult r) {
+    static String planFinish(BuildPlanResult r) {
         return open("buildplan-finish")
-                .append(",\"pipeline\":")
-                .append(js(r.pipelineName()))
+                .append(",\"plan\":")
+                .append(js(r.planName()))
                 .append(",\"success\":")
                 .append(r.success())
                 .append(",\"duration_ms\":")
@@ -323,7 +323,7 @@ public final class JsonlShape {
                 .toString();
     }
 
-    /** A workspace module is about to run its pipeline (brackets nested step events). */
+    /** A workspace module is about to run its plan (brackets nested step events). */
     public static String moduleStart(String dir, String coord) {
         return open("module-start")
                 .append(",\"dir\":")

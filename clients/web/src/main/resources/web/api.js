@@ -122,7 +122,7 @@ const EVENT_TYPES = [
   'task-start',
   'task-finish',
   'label',
-  'pipeline-progress',
+  'plan-progress',
   'workspace-progress',
   'eta',
   'output',

@@ -7,7 +7,7 @@ import java.io.PrintStream;
 
 /**
  * Quietest console listener: prints only the final pass/fail summary line and any structured
- * errors. Used when the user pipes output, passes {@code --quiet}, or when the pipeline is marked
+ * errors. Used when the user pipes output, passes {@code --quiet}, or when the plan is marked
  * {@link cc.jumpkick.run.BuildPlan#interactive interactive}.
  */
 public final class SilentListener implements BuildPlanListener {
@@ -27,7 +27,7 @@ public final class SilentListener implements BuildPlanListener {
     }
 
     @Override
-    public void pipelineFinish(BuildPlanResult result) {
+    public void planFinish(BuildPlanResult result) {
         if (suppressDiagnostics) return;
         for (BuildPlanResult.Diagnostic d : result.errors()) {
             err.println(ConsoleSpec.renderError(d));

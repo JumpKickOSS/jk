@@ -35,13 +35,13 @@ import java.util.Set;
 /**
  * {@code jk test} — compile main + test sources and run JUnit Platform tests.
  *
- * <p>Runs the same core pipeline ({@code BuildPipelines.coreBuilder}) as {@code jk build}, in
+ * <p>Runs the same core plan ({@code BuildPlanner.coreBuilder}) as {@code jk build}, in
  * {@code testOnly} mode: parse → sync → jdk → compile (Kotlin and/or Java, main and test) →
- * resources → compile-test → run-tests, stopping short of packaging a jar. Sharing the pipeline
+ * resources → compile-test → run-tests, stopping short of packaging a jar. Sharing the plan
  * means Kotlin test sources compile and run exactly as they do under {@code jk build} — no
  * separate, Java-only test path to keep in sync.
  *
- * <p>The test-runner's JSONL event stream bridges into the pipeline's progress bar (the same live
+ * <p>The test-runner's JSONL event stream bridges into the plan's progress bar (the same live
  * console {@code jk compile}/{@code jk build} use): each completion ticks the numerator, each
  * failure becomes a {@code ctx.error}, discovery grows the denominator.
  */
@@ -117,7 +117,7 @@ public final class TestCommand implements CliCommand {
         Path buildFile = proj.buildFile();
         this.session = CliSessionTranscript.open(dir, "test", testArgv(in));
         if (session != null) session.announceIf(global != null && global.verbose);
-        // No jk-lock.toml guard: the pipeline's parse-build step resolves the lock on
+        // No jk-lock.toml guard: the plan's parse-build step resolves the lock on
         // first run and re-locks when jk.toml changed — same as `jk build`/`run`.
 
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
@@ -184,8 +184,8 @@ public final class TestCommand implements CliCommand {
         // Engine-hosted (Task 3): the wire has no real BuildPlan to attach a console listener to
         // ahead of time, so the listener is chosen once the step list arrives over the socket
         // see EngineBuildListenerAdapter.runTest. testResultHolder is populated (if the run-tests
-        // step actually ran) before the terminal pipeline-finish reaches that listener, exactly
-        // mirroring how pipeline.get(TEST_RESULT) is already populated by the in-process path above.
+        // step actually ran) before the terminal plan-finish reaches that listener, exactly
+        // mirroring how plan.get(TEST_RESULT) is already populated by the in-process path above.
         TestSummary[] testResultHolder = new TestSummary[1];
         ConsoleSpec spec = new ConsoleSpec(
                 "Test", r -> testSummary(testResultHolder[0], r), r -> testFailureMessage(testResultHolder[0], r));
@@ -295,7 +295,7 @@ public final class TestCommand implements CliCommand {
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
         cc.jumpkick.cli.engine.EnginePrewarm.ensure();
         long start = System.nanoTime();
-        CommandManager view = CommandManager.pipeline(CliOutput.stdout(), "Test", animate);
+        CommandManager view = CommandManager.plan(CliOutput.stdout(), "Test", animate);
         view.setWindowTitle("JumpKick - Testing " + BuildCommand.projectGavLabel(entryDir, entryBuild) + "...");
         AggregateContext agg = new AggregateContext(view);
         Map<Path, List<String>> buffers = new java.util.concurrent.ConcurrentHashMap<>();
@@ -341,11 +341,11 @@ public final class TestCommand implements CliCommand {
 
                         @Override
                         public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
-                            var log = EventLogListener.open(m.cache(), m.pipeline().name());
+                            var log = EventLogListener.open(m.cache(), m.plan().name());
                             List<String> buf = java.util.Collections.synchronizedList(new ArrayList<>());
                             buffers.put(m.dir(), buf);
                             var lis = new AggregateModuleListener(
-                                    agg, m.coord(), m.pipeline().steps(), m.weight());
+                                    agg, m.coord(), m.plan().steps(), m.weight());
                             lis.bufferOutputInto(buf);
                             JsonlShape.emitJsonl(
                                     JsonlShape.moduleStart(m.dir().toString(), m.coord()), false);
@@ -465,7 +465,7 @@ public final class TestCommand implements CliCommand {
 
                         @Override
                         public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
-                            var log = EventLogListener.open(m.cache(), m.pipeline().name());
+                            var log = EventLogListener.open(m.cache(), m.plan().name());
                             JsonlShape.emitJsonl(
                                     JsonlShape.moduleStart(m.dir().toString(), m.coord()), json);
                             if (json) {
@@ -568,7 +568,7 @@ public final class TestCommand implements CliCommand {
      * Success result line (sans the leading ✓): {@code Passed N tests in 32s}, or {@code No tests in
      * <t>} for a project with no test sources. Takes the resolved {@link TestSummary}
      * directly (rather than a {@code BuildPlan} to look it up from) so both the in-process path (which
-     * reads it off {@code pipeline.get(TEST_RESULT)}) and the engine-hosted path (which has no real
+     * reads it off {@code plan.get(TEST_RESULT)}) and the engine-hosted path (which has no real
      * {@code BuildPlan}, only a wire-populated holder) share this one rendering method.
      */
     static String testSummary(TestSummary testResult, BuildPlanResult result) {

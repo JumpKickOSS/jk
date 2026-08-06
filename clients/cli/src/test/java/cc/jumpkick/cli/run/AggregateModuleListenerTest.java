@@ -22,18 +22,18 @@ class AggregateModuleListenerTest {
     void modules_drive_phase_tree_not_the_bar() {
         var buf = new ByteArrayOutputStream();
         CommandManager view =
-                CommandManager.pipeline(new PrintStream(buf, true, StandardCharsets.UTF_8), "Building", false);
+                CommandManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Building", false);
         var agg = new AggregateContext(view);
 
         var a = new AggregateModuleListener(agg, "g:api", List.of(step("compile", "Compile")));
-        a.pipelineStart(new BuildPlanView("build", 0, 10, 1, 0, false));
+        a.planStart(new BuildPlanView("build", 0, 10, 1, 0, false));
         a.stepStart("compile", "compile", 10);
         a.progress("compile", 10, new BuildPlanView("build", 10, 10, 1, 1, false));
         a.stepFinish("compile", "compile", TaskStatus.SUCCESS, Duration.ZERO);
-        a.pipelineFinish(result(true));
+        a.planFinish(result(true));
 
         var b = new AggregateModuleListener(agg, "g:web", List.of(step("test", "Test")));
-        b.pipelineStart(new BuildPlanView("build", 0, 10, 1, 0, false));
+        b.planStart(new BuildPlanView("build", 0, 10, 1, 0, false));
         b.stepStart("test", "test", 10);
 
         // Engine snapshot paints the bar (not module progress callbacks).
@@ -54,15 +54,15 @@ class AggregateModuleListenerTest {
     void concurrent_modules_show_in_phase_tree() {
         var buf = new ByteArrayOutputStream();
         CommandManager view =
-                CommandManager.pipeline(new PrintStream(buf, true, StandardCharsets.UTF_8), "Building", false);
+                CommandManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Building", false);
         var agg = new AggregateContext(view);
 
         var a = new AggregateModuleListener(agg, "g:api", List.of(step("compile", "Compile")), 10);
-        a.pipelineStart(new BuildPlanView("build", 0, 10, 1, 0, false));
+        a.planStart(new BuildPlanView("build", 0, 10, 1, 0, false));
         a.stepStart("compile", "compile", 10);
 
         var b = new AggregateModuleListener(agg, "g:web", List.of(step("test", "Test")), 10);
-        b.pipelineStart(new BuildPlanView("build", 0, 10, 1, 0, false));
+        b.planStart(new BuildPlanView("build", 0, 10, 1, 0, false));
         b.stepStart("test", "test", 10);
 
         // 110/120 → ProgressBar.percent rounds to 92
@@ -83,11 +83,11 @@ class AggregateModuleListenerTest {
         // Cache-hit steps terminate SKIPPED; the live tree must not show ✘ Failed.
         var buf = new ByteArrayOutputStream();
         CommandManager view =
-                CommandManager.pipeline(new PrintStream(buf, true, StandardCharsets.UTF_8), "Build", false);
+                CommandManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Build", false);
         var agg = new AggregateContext(view);
 
         var a = new AggregateModuleListener(agg, "cc.jumpkick:jk-engine", List.of(step("run-tests", "Testing")));
-        a.pipelineStart(new BuildPlanView("build", 0, 10, 1, 0, false));
+        a.planStart(new BuildPlanView("build", 0, 10, 1, 0, false));
         a.stepStart("run-tests", "test", 10);
         a.stepFinish("run-tests", "test", TaskStatus.SKIPPED, Duration.ZERO);
 
@@ -106,11 +106,11 @@ class AggregateModuleListenerTest {
     void real_fail_still_paints_phase_failed() {
         var buf = new ByteArrayOutputStream();
         CommandManager view =
-                CommandManager.pipeline(new PrintStream(buf, true, StandardCharsets.UTF_8), "Build", false);
+                CommandManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Build", false);
         var agg = new AggregateContext(view);
 
         var a = new AggregateModuleListener(agg, "g:api", List.of(step("compile-java", "Compile")));
-        a.pipelineStart(new BuildPlanView("build", 0, 10, 1, 0, false));
+        a.planStart(new BuildPlanView("build", 0, 10, 1, 0, false));
         a.stepStart("compile-java", "compile", 10);
         a.error("compile-java", "javac", "cannot find symbol");
         a.stepFinish("compile-java", "compile", TaskStatus.FAIL, Duration.ZERO);

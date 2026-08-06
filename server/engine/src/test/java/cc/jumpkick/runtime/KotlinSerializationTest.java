@@ -80,12 +80,12 @@ class KotlinSerializationTest {
         assertThat(build.build().kotlinPlugins().getFirst().id())
                 .isEqualTo("kotlin-serialization-compiler-plugin-embeddable");
 
-        BuildPlan lock = LockPipelines.lockBuildPlan(
+        BuildPlan lock = LockPlans.lockBuildPlan(
                 project, build, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
         BuildPlanResult lockResult = lock.run();
         assertThat(lockResult.errors()).isEmpty();
 
-        BuildPipelines.Inputs in = new BuildPipelines.Inputs(
+        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                 project,
                 cache,
                 project.resolve("jk.toml"),
@@ -101,10 +101,10 @@ class KotlinSerializationTest {
                 false,
                 java.util.Set.of(),
                 SessionContext.current());
-        BuildPlan pipeline = BuildPipelines.coreBuilder(in).build();
-        BuildPlanResult result = pipeline.run();
+        BuildPlan plan = BuildPlanner.coreBuilder(in).build();
+        BuildPlanResult result = plan.run();
         System.out.println(
-                "STEPS: " + pipeline.steps().stream().map(ph -> ph.name()).toList());
+                "STEPS: " + plan.steps().stream().map(ph -> ph.name()).toList());
         try (var w = Files.walk(project.resolve("target"))) {
             w.forEach(f -> System.out.println("TREE: " + project.relativize(f)));
         } catch (java.io.IOException ignored) {

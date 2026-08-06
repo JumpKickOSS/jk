@@ -277,11 +277,11 @@ public final class JdkUninstallCommand implements CliCommand {
         }
     }
 
-    // --- pipeline-wrapped delete + reconcile ------------------------------------
+    // --- plan-wrapped delete + reconcile ------------------------------------
 
     /**
-     * One pipeline per command invocation. The wizard or single-arg path has already settled which hits
-     * are victims; the pipeline does the actual disk work + default-pointer reconciliation.
+     * One plan per command invocation. The wizard or single-arg path has already settled which hits
+     * are victims; the plan does the actual disk work + default-pointer reconciliation.
      * Interactive=true keeps the {@link Spinner} from competing with the framework's bar.
      */
     private Integer runDeleteBuildPlan(List<JdkHit> victims, JdkRegistry registry, GlobalDefaultJdk defaults) {
@@ -320,13 +320,13 @@ public final class JdkUninstallCommand implements CliCommand {
                 })
                 .build();
 
-        BuildPlan pipeline = BuildPlan.builder("jdk-uninstall")
+        BuildPlan plan = BuildPlan.builder("jdk-uninstall")
                 .interactive(true)
                 .addTask(deleteStep)
                 .addTask(reconcile)
                 .build();
 
-        BuildPlanResult result = BuildPlanConsole.run(pipeline, BuildPlanConsole.modeFor(global), cache);
+        BuildPlanResult result = BuildPlanConsole.run(plan, BuildPlanConsole.modeFor(global), cache);
         if (!result.success()) return 1;
         return 0;
     }
@@ -363,7 +363,7 @@ public final class JdkUninstallCommand implements CliCommand {
         } catch (IOException e) {
             // The spinner has already cleared its line; print the failure where
             // the confirmation prompt was (confirmDeletion wiped it for us), then
-            // rethrow so the pipeline records the failure and the exit code is 1.
+            // rethrow so the plan records the failure and the exit code is 1.
             CliOutput.out(Theme.colorize(Glyphs.CROSS, Theme.active().error())
                     + " Failed to remove "
                     + Theme.colorize(label, Theme.active().warning())

@@ -14,7 +14,7 @@ import java.io.PrintStream;
  * spinner but still prints the result line, so non-interactive consumers keep a summary.
  *
  * <p>Diagnostics are read from the final {@link BuildPlanResult} and printed once, at {@code
- * pipelineFinish}, <em>after</em> the spinner has been stopped — never mid-run — so nothing interleaves
+ * planFinish}, <em>after</em> the spinner has been stopped — never mid-run — so nothing interleaves
  * with the live animation.
  */
 public final class SimpleTaskListener implements BuildPlanListener {
@@ -34,7 +34,7 @@ public final class SimpleTaskListener implements BuildPlanListener {
     }
 
     @Override
-    public void pipelineStart(BuildPlanView view) {
+    public void planStart(BuildPlanView view) {
         cm = CommandManager.simple(out, spec.command(), animate);
     }
 
@@ -47,7 +47,7 @@ public final class SimpleTaskListener implements BuildPlanListener {
     }
 
     @Override
-    public void pipelineFinish(BuildPlanResult result) {
+    public void planFinish(BuildPlanResult result) {
         if (cm == null) cm = CommandManager.simple(out, spec.command(), animate);
         String suffix = " " + ConsoleSpec.took(result.duration());
         if (result.success()) {

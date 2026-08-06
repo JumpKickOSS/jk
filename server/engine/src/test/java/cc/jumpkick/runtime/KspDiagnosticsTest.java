@@ -19,8 +19,8 @@ class KspDiagnosticsTest {
                 w: [ksp] [KNEST-W021] Task.title has no @Length; defaulting to varchar(255)
                 w: [ksp] generated 3 tables
                 """;
-        assertThat(BuildPipelines.kspDiagnostics(output))
-                .extracting(BuildPipelines.KspDiagnostic::severity, BuildPipelines.KspDiagnostic::message)
+        assertThat(BuildPlanner.kspDiagnostics(output))
+                .extracting(BuildPlanner.KspDiagnostic::severity, BuildPlanner.KspDiagnostic::message)
                 .containsExactly(
                         tuple("warn", "[KNEST-W021] Task.title has no @Length; defaulting to varchar(255)"),
                         tuple("warn", "generated 3 tables"));
@@ -30,7 +30,7 @@ class KspDiagnosticsTest {
     void the_severity_and_ksp_prefixes_are_stripped_from_the_message() {
         // The reporter renders step + severity itself; keeping them would print
         // `Warning [ksp/ksp]: w: [ksp] …`.
-        var diagnostics = BuildPipelines.kspDiagnostics("w: [ksp] plain text\n");
+        var diagnostics = BuildPlanner.kspDiagnostics("w: [ksp] plain text\n");
         assertThat(diagnostics).singleElement().satisfies(d -> {
             assertThat(d.severity()).isEqualTo("warn");
             assertThat(d.message()).isEqualTo("plain text");
@@ -47,32 +47,32 @@ class KspDiagnosticsTest {
                 WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
                 w: [ksp] a real diagnostic
                 """;
-        assertThat(BuildPipelines.kspDiagnostics(output))
-                .extracting(BuildPipelines.KspDiagnostic::message)
+        assertThat(BuildPlanner.kspDiagnostics(output))
+                .extracting(BuildPlanner.KspDiagnostic::message)
                 .containsExactly("a real diagnostic");
     }
 
     @Test
     void kotlinc_warnings_without_the_ksp_tag_are_left_to_the_compile_step() {
         String output = "w: file:///p/Foo.kt:3:9 variable is never used\nw: [ksp] mine\n";
-        assertThat(BuildPipelines.kspDiagnostics(output))
-                .extracting(BuildPipelines.KspDiagnostic::message)
+        assertThat(BuildPlanner.kspDiagnostics(output))
+                .extracting(BuildPlanner.KspDiagnostic::message)
                 .containsExactly("mine");
     }
 
     @Test
     void info_and_verbose_levels_are_carried_with_distinct_severities() {
         String output = "i: [ksp] loaded 2 providers\nv: [ksp] round 1\n";
-        assertThat(BuildPipelines.kspDiagnostics(output))
-                .extracting(BuildPipelines.KspDiagnostic::severity, BuildPipelines.KspDiagnostic::message)
+        assertThat(BuildPlanner.kspDiagnostics(output))
+                .extracting(BuildPlanner.KspDiagnostic::severity, BuildPlanner.KspDiagnostic::message)
                 .containsExactly(tuple("info", "loaded 2 providers"), tuple("verbose", "round 1"));
     }
 
     @Test
     void blank_untagged_and_empty_message_output_yields_nothing() {
-        assertThat(BuildPipelines.kspDiagnostics("")).isEmpty();
-        assertThat(BuildPipelines.kspDiagnostics("\n\n   \n")).isEmpty();
-        assertThat(BuildPipelines.kspDiagnostics("Note: some javac chatter\n")).isEmpty();
-        assertThat(BuildPipelines.kspDiagnostics("w: [ksp]   \n")).isEmpty();
+        assertThat(BuildPlanner.kspDiagnostics("")).isEmpty();
+        assertThat(BuildPlanner.kspDiagnostics("\n\n   \n")).isEmpty();
+        assertThat(BuildPlanner.kspDiagnostics("Note: some javac chatter\n")).isEmpty();
+        assertThat(BuildPlanner.kspDiagnostics("w: [ksp]   \n")).isEmpty();
     }
 }

@@ -38,7 +38,7 @@ class ProcessorClasspathTest {
         WorkspaceClasspath.Result siblings = WorkspaceClasspath.resolve(consumer, build, Set.of(Scope.PROCESSOR));
         assertThat(siblings.missingSiblingJars()).isEmpty();
 
-        List<Path> cp = BuildPipelines.processorClasspath(
+        List<Path> cp = BuildPlanner.processorClasspath(
                 Lockfile.empty("test"), new ClasspathResolver(new Cas(tmp.resolve("cas"))), siblings);
 
         // Workspace layout: <ws>/target/<module-rel>/lib/… (not module/target/).
@@ -73,7 +73,7 @@ class ProcessorClasspathTest {
                 """);
         JkBuild build = JkBuildParser.parse(dir.resolve("jk.toml"));
 
-        assertThat(BuildPipelines.unresolvedProcessorDeps(build, Lockfile.empty("test")))
+        assertThat(BuildPlanner.unresolvedProcessorDeps(build, Lockfile.empty("test")))
                 .containsExactly("com.example:nope");
     }
 
@@ -85,7 +85,7 @@ class ProcessorClasspathTest {
         WorkspaceClasspath.Result siblings =
                 WorkspaceClasspath.resolve(consumer, build, java.util.Set.of(Scope.PROCESSOR));
 
-        assertThat(BuildPipelines.unresolvedProcessorDeps(build, Lockfile.empty("test"), siblings))
+        assertThat(BuildPlanner.unresolvedProcessorDeps(build, Lockfile.empty("test"), siblings))
                 .isEmpty();
     }
 

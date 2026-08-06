@@ -138,7 +138,7 @@ public final class UpdateCommand implements CliCommand {
         return outcome.exitCode();
     }
 
-    /** Hosted {@code --git} splice: no pipeline events — the terminal carries the refreshed count. */
+    /** Hosted {@code --git} splice: no plan events — the terminal carries the refreshed count. */
     private int runHostedGitOnly(Path dir, Path cache, String gitTarget) {
         EngineClient.LockOutcome outcome;
         try {

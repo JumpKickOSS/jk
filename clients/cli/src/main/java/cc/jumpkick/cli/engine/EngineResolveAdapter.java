@@ -24,7 +24,7 @@ import java.util.function.Function;
 
 /**
  * Engine-hosted lock/update/sync: decode wire events into the command's listeners/handlers.
- * Lock/update cascade per module; sync is a single pipeline. Output is unthemed structured text.
+ * Lock/update cascade per module; sync is a single plan. Output is unthemed structured text.
  */
 final class EngineResolveAdapter {
 
@@ -33,7 +33,7 @@ final class EngineResolveAdapter {
     /**
      * Run {@code jk outdated} against the engine: one synchronous request, one {@code outdated-ack}
      * carrying the {@link cc.jumpkick.engine.protocol.OutdatedReport} back. Read-only — no cascade,
-     * no pipeline stream.
+     * no plan stream.
      */
     static cc.jumpkick.engine.protocol.OutdatedReport runOutdated(
             EnginePaths.Paths paths, EngineClient.OutdatedRequest req) throws IOException {
@@ -79,7 +79,7 @@ final class EngineResolveAdapter {
     }
 
     /**
-     * Run {@code jk update --git [<name>]} against the engine. No pipeline events stream — the engine
+     * Run {@code jk update --git [<name>]} against the engine. No plan events stream — the engine
      * splices the lock and replies with just the terminal, whose {@code refreshed} count and plain
      * {@code errors} the command renders.
      */
@@ -104,11 +104,11 @@ final class EngineResolveAdapter {
     }
 
     /**
-     * Run {@code jk sync}'s single pipeline against the engine — the same listener-factory contract as
+     * Run {@code jk sync}'s single plan against the engine — the same listener-factory contract as
      * {@link EngineBuildListenerAdapter#runTest}. {@code fetchedOut}/{@code upToDateOut} (single-slot
-     * holders) are populated from the terminal pipeline-finish <em>before</em> it reaches the factory's
+     * holders) are populated from the terminal plan-finish <em>before</em> it reaches the factory's
      * listener, exactly mirroring how the in-process path's counters are already settled by the time
-     * the console listener's own {@code pipelineFinish} renders the summary line.
+     * the console listener's own {@code planFinish} renders the summary line.
      */
     static BuildPlanResult runSync(
             EnginePaths.Paths paths,
@@ -164,7 +164,7 @@ final class EngineResolveAdapter {
                                 diagnostics,
                                 false,
                                 false);
-                        if (listener != null) listener.pipelineFinish(result);
+                        if (listener != null) listener.planFinish(result);
                         return result;
                     }
                     case EngineProtocol.ERROR ->
@@ -178,7 +178,7 @@ final class EngineResolveAdapter {
 
     /** Send a cascade request and replay its stream into {@code handler} until the terminal arrives. */
     private static EngineClient.LockOutcome streamCascade(
-            EnginePaths.Paths paths, String requestLine, EngineClient.LockHandler handler, String pipelineName)
+            EnginePaths.Paths paths, String requestLine, EngineClient.LockHandler handler, String planName)
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
 
@@ -222,7 +222,7 @@ final class EngineResolveAdapter {
                                 Jsonl.intValue(line, "total", -1));
                     case EngineProtocol.BUILDPLAN_FINISH -> {
                         BuildPlanResult result = new BuildPlanResult(
-                                pipelineName,
+                                planName,
                                 Jsonl.bool(line, "success", false),
                                 Duration.ZERO,
                                 List.of(),
@@ -230,7 +230,7 @@ final class EngineResolveAdapter {
                                 diagnostics,
                                 false,
                                 false);
-                        if (listener != null) listener.pipelineFinish(result);
+                        if (listener != null) listener.planFinish(result);
                         handler.onModuleFinish(
                                 currentDir,
                                 result,
@@ -256,21 +256,21 @@ final class EngineResolveAdapter {
     }
 
     /**
-     * Replay one standard single-pipeline wire event into {@code listener} (accumulating {@code
-     * pipeline-diagnostic}s aside, like {@link EngineBuildListenerAdapter} does) — the shared tail of
+     * Replay one standard single-plan wire event into {@code listener} (accumulating {@code
+     * plan-diagnostic}s aside, like {@link EngineBuildListenerAdapter} does) — the shared tail of
      * both stream loops. Unknown types are forward-compatible no-ops.
      */
     private static void dispatchBuildPlanEvent(
             String type, String line, BuildPlanListener listener, List<BuildPlanResult.Diagnostic> diagnostics) {
         if (listener == null) {
-            // pipeline-diagnostics can still matter pre-listener; everything else needs one.
+            // plan-diagnostics can still matter pre-listener; everything else needs one.
             if (EngineProtocol.BUILDPLAN_DIAGNOSTIC.equals(type)) {
                 diagnostics.add(readDiagnostic(line));
             }
             return;
         }
         switch (type) {
-            case EngineProtocol.BUILDPLAN_START -> listener.pipelineStart(readBuildPlanView(line));
+            case EngineProtocol.BUILDPLAN_START -> listener.planStart(readBuildPlanView(line));
             case EngineProtocol.TASK_START ->
                 listener.stepStart(
                         Jsonl.str(line, "step"),
@@ -315,7 +315,7 @@ final class EngineResolveAdapter {
 
     private static BuildPlanView readBuildPlanView(String line) {
         return new BuildPlanView(
-                Jsonl.str(line, "pipelineName"),
+                Jsonl.str(line, "planName"),
                 Jsonl.longValue(line, "numerator", 0),
                 Jsonl.longValue(line, "denominator", 0),
                 Jsonl.intValue(line, "stepsTotal", 0),

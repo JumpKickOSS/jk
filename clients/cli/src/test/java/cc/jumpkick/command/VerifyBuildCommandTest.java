@@ -14,7 +14,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * End-to-end tests for {@code jk verify}: build a project, then re-build it through the real
- * pipeline into a scratch copy and compare artifact hashes. Reproducible-by-default packaging means
+ * plan into a scratch copy and compare artifact hashes. Reproducible-by-default packaging means
  * an unchanged project must verify clean — including Kotlin, which the old javac-only verify never
  * covered.
  */
@@ -59,7 +59,7 @@ class VerifyBuildCommandTest {
     @Test
     void verify_passes_for_kotlin_project(@TempDir Path tempDir) throws IOException {
         // The old verify compiled src/main/java with javac only — a Kotlin project silently
-        // verified an empty jar. Through the real pipeline, kotlinc runs in the scratch rebuild.
+        // verified an empty jar. Through the real plan, kotlinc runs in the scratch rebuild.
         run("new", "--name", "widget", "--lang", "kotlin", tempDir.toString());
         Path src = tempDir.resolve("src/main/kotlin/example/Hello.kt");
         Files.createDirectories(src.getParent());

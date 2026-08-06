@@ -105,7 +105,7 @@ public final class TreeCommand implements CliCommand {
         boolean ansi = t.isAnsi();
         CommandWedge.envelopeStart();
         if (ansi) {
-            CliOutput.out(BuildPlanWedge.chip(Glyphs.MENU, "Dependencies Tree", t.pipelineChip(), nerdfont)
+            CliOutput.out(BuildPlanWedge.chip(Glyphs.MENU, "Dependencies Tree", t.planChip(), nerdfont)
                     + BuildPlanWedge.cap(t.planBadgeColor(), nerdfont));
         } else {
             CliOutput.out(BuildPlanWedge.plainWedge(Glyphs.MENU_PLAIN, "Dependencies Tree", null));

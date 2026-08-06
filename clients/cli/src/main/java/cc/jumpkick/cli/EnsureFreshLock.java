@@ -23,7 +23,7 @@ import java.util.List;
  * <p>Users should never have to think about the lock: clones arrive with matching
  * {@code jk.toml}/{@code jk-lock.toml}, and any local manifest edit (or rare out-of-sync pair)
  * is repaired automatically the next time a lock-dependent command runs. When the lock is
- * missing or stale ({@link LockFreshness}), this runs the engine lock pipeline under a live
+ * missing or stale ({@link LockFreshness}), this runs the engine lock plan under a live
  * CommandWedge spinner ({@code Locking g:n…}). Fresh locks are a no-op.
  *
  * <p>Call sites: explain, tree, why, audit, deny, outdated, jshell, status, export, ide, sync,

@@ -214,7 +214,7 @@ public final class IdeSupport {
     /**
      * One hosted {@code jk sync} against the workspace root, rendered with the standard Sync chip.
      * Best-effort by design (mirroring the old in-line {@code CacheSync} call): any failure — the
-     * engine unreachable, offline, a pinned-but-uninstalled JDK failing the pipeline's resolve-only
+     * engine unreachable, offline, a pinned-but-uninstalled JDK failing the plan's resolve-only
      * ensure-jdk step — warns and returns; the model build skips whatever is still missing.
      */
     /**

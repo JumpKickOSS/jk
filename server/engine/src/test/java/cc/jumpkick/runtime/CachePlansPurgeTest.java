@@ -13,7 +13,7 @@ import org.junit.jupiter.api.io.TempDir;
  * {@code jk cache purge} wipes the cache tier ({@code actions/}, {@code format-stamps/}, cache
  * {@code sha256/}) and must keep collocated store-ish trees ({@code repos/}, {@code runs/}).
  */
-class CachePipelinesPurgeTest {
+class CachePlansPurgeTest {
 
     @Test
     void purge_deletes_cache_tier_trees(@TempDir Path root) throws IOException {
@@ -24,7 +24,7 @@ class CachePipelinesPurgeTest {
         Path repoJar = seed(root.resolve("repos/central/com/example/lib/1.0/lib-1.0.jar"));
         Path runLog = seed(root.resolve("runs/build-1.jsonl"));
 
-        CachePipelines.purgeActionCache(root);
+        CachePlans.purgeActionCache(root);
 
         assertThat(actionKey).doesNotExist();
         assertThat(actionTask).doesNotExist();
@@ -39,7 +39,7 @@ class CachePipelinesPurgeTest {
     void purge_with_only_cache_cas_clears_blobs(@TempDir Path root) throws IOException {
         Path casBlob = seed(root.resolve("sha256/ab/cd/deadbeef"));
 
-        CachePipelines.purgeActionCache(root);
+        CachePlans.purgeActionCache(root);
 
         assertThat(casBlob).doesNotExist();
     }
@@ -47,7 +47,7 @@ class CachePipelinesPurgeTest {
     @Test
     void purge_tolerates_a_missing_root() {
         Path root = Path.of("/nonexistent/jk-test-cache-root");
-        org.assertj.core.api.Assertions.assertThatCode(() -> CachePipelines.purgeActionCache(root))
+        org.assertj.core.api.Assertions.assertThatCode(() -> CachePlans.purgeActionCache(root))
                 .doesNotThrowAnyException();
     }
 

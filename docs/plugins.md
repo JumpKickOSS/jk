@@ -119,7 +119,7 @@ Workers speak the same JSONL style as compiler plugins. Prefer the harness in `p
 
 ## Steps and transforms
 
-Plugins contribute **steps** into the build pipeline (codegen before compile, class transforms
+Plugins contribute **steps** into the build plan (codegen before compile, class transforms
 after compile, custom packagers). Important SPI notes:
 
 - **`transformsClasses`** — at most one classes transform per build (e.g. Hilt weaving); runs

@@ -17,7 +17,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** Local dirty-set, graph rebuild, and pipeline shape memos. */
+/** Local dirty-set, graph rebuild, and plan shape memos. */
 class PreflightMemoTest {
 
     @AfterEach
@@ -365,7 +365,7 @@ class PreflightMemoTest {
 
     @Test
     void costOf_from_shape_weights_matches_schedule_inputs(@TempDir Path tmp) {
-        // ETA path builds ModuleCost without assembling a pipeline.
+        // ETA path builds ModuleCost without assembling a plan.
         var cost = EffortWeights.costOf(tmp, Set.of(), 100, 15);
         assertThat(cost.weight()).isEqualTo(100);
         assertThat(cost.testWeight()).isEqualTo(15);
@@ -374,7 +374,7 @@ class PreflightMemoTest {
 
     @Test
     void provisionalModulePlan_carries_shape_weight_and_step_names(@TempDir Path tmp) throws Exception {
-        // early onPlan uses wire-only pipelines (no-op steps) + memo weight.
+        // early onPlan uses wire-only plans (no-op steps) + memo weight.
         writeProject(tmp);
         var entry = JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml")));
         BuildGraph.Result graph = BuildGraph.resolve(tmp, entry);
@@ -388,10 +388,10 @@ class PreflightMemoTest {
         ModulePlan plan = PreflightMemo.provisionalModulePlan(u, shape, tmp.resolve("cache"));
         assertThat(plan.weight()).isEqualTo(77);
         assertThat(plan.coord()).isEqualTo(u.coord());
-        assertThat(plan.pipeline().steps()).hasSize(2);
-        assertThat(plan.pipeline().steps().getFirst().name()).isEqualTo("compile-java");
+        assertThat(plan.plan().steps()).hasSize(2);
+        assertThat(plan.plan().steps().getFirst().name()).isEqualTo("compile-java");
         // Must not do real work if accidentally run.
-        assertThat(plan.pipeline().run().success()).isTrue();
+        assertThat(plan.plan().run().success()).isTrue();
     }
 
     @Test

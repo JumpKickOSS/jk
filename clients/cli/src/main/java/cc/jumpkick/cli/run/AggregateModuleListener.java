@@ -46,7 +46,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
     }
 
     @Override
-    public void pipelineStart(BuildPlanView view) {
+    public void planStart(BuildPlanView view) {
         cm.target(module);
         for (Task p : steps) {
             String display = p.label() != null && !p.label().isEmpty() ? p.label() : p.name();
@@ -163,7 +163,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
     }
 
     @Override
-    public void pipelineFinish(BuildPlanResult result) {
+    public void planFinish(BuildPlanResult result) {
         if (!result.success()) {
             agg.notifyErrors(result.errors());
         }

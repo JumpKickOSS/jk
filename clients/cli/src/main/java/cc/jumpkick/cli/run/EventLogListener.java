@@ -13,15 +13,15 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 
 /**
- * Always-on pipeline-event recorder. Writes the same JSONL shape as {@link JsonlListener} but to
- * {@code <cacheRoot>/runs/<ts>-<pipeline>.jsonl} — one file per invocation. The cache prune sweep
+ * Always-on plan-event recorder. Writes the same JSONL shape as {@link JsonlListener} but to
+ * {@code <cacheRoot>/runs/<ts>-<plan>.jsonl} — one file per invocation. The cache prune sweep
  * collects files older than 7 days (see {@link cc.jumpkick.task.RunLogGc}).
  *
  * <p>Purpose: post-hoc debugging ({@code jk debug last}), usage analytics, CI traces, future "what
  * was slow in this build" tooling.
  *
  * <p>Writes are best-effort: an IO failure during a single event silently drops that event. A
- * failure opening the file makes the whole listener a no-op for the pipeline's lifetime.
+ * failure opening the file makes the whole listener a no-op for the plan's lifetime.
  */
 public final class EventLogListener extends JsonlEmittingListener {
 
@@ -38,15 +38,15 @@ public final class EventLogListener extends JsonlEmittingListener {
     }
 
     /**
-     * Open a fresh log under {@code cacheRoot/runs/}. {@code pipelineName} is folded into the filename
+     * Open a fresh log under {@code cacheRoot/runs/}. {@code planName} is folded into the filename
      * for human scanning. Returns {@code null} on failure — caller can simply skip adding the
      * listener.
      */
-    public static EventLogListener open(Path cacheRoot, String pipelineName) {
+    public static EventLogListener open(Path cacheRoot, String planName) {
         try {
             Path dir = cacheRoot.resolve("runs");
             Files.createDirectories(dir);
-            String safeBuildPlan = pipelineName.replaceAll("[^A-Za-z0-9_.-]", "_");
+            String safeBuildPlan = planName.replaceAll("[^A-Za-z0-9_.-]", "_");
             Path file = dir.resolve(TS_FORMAT.format(Instant.now()) + "-" + safeBuildPlan + ".jsonl");
             PrintStream stream = new PrintStream(
                     Files.newOutputStream(file, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE),
@@ -72,8 +72,8 @@ public final class EventLogListener extends JsonlEmittingListener {
     }
 
     @Override
-    public void pipelineFinish(BuildPlanResult r) {
-        super.pipelineFinish(r);
+    public void planFinish(BuildPlanResult r) {
+        super.planFinish(r);
         try {
             stream.close();
         } catch (RuntimeException ignored) {

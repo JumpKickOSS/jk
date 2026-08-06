@@ -16,7 +16,7 @@ export const MAX_DIAGNOSTICS = 12;
  * An event is `{type, data, at}` where `data` is the parsed flat JSON payload the engine
  * publishes and `at` is the client-clock receipt time (fold stays clock-free and pure):
  * request-start/finish carry requestId/kind/dir (+ coord on start when the project's jk.toml
- * parses; + success/cancelled/millis on finish); module/step/output/pipeline events carry
+ * parses; + success/cancelled/millis on finish); module/step/output/plan events carry
  * requestId/dir plus their specifics.
  */
 export function foldEvent(cards, event) {
@@ -54,7 +54,7 @@ export function foldEvent(cards, event) {
         // SINGLE_GOAL_DIR); each row carries its OWN step chain, so the card shows a chain per
         // module rather than one merged strip.
         modules: [],
-        // Fine-grained per-module pipeline ticks (detail only). Request-level bar uses
+        // Fine-grained per-module plan ticks (detail only). Request-level bar uses
         // progressPercent from engine workspace-progress (JK-1120) — dumb client, no re-sum.
         mods: {},
         planWeight: 0,
@@ -109,7 +109,7 @@ export function foldEvent(cards, event) {
       if (card) card.planWeight = d.weight || 0;
       break;
     }
-    case 'pipeline-progress': {
+    case 'plan-progress': {
       const card = resolveCard(cards, d);
       // Fine-grained only — do not drive the request bar from module-local fractions.
       if (card) {
@@ -510,7 +510,7 @@ export function outcomeOf(card) {
 
 /**
  * Group a module's step rows into a coarse **phase-chain**, in first-encounter order (which is
- * pipeline order): the first step of a not-yet-seen phase appends a phase node; later steps of that
+ * plan order): the first step of a not-yet-seen phase appends a phase node; later steps of that
  * phase attach to it. The client stays "dumb" — it keys on whatever `phase` wire-string the steps
  * carry, so a future/plugin phase just appears as its own node with no code change here. A step with
  * no phase (`''`) forms a node keyed by its own name so it is never dropped (shouldn't happen once
@@ -619,8 +619,8 @@ function byId(cards, requestId) {
 }
 
 /**
- * The card's row for a module dir, created on first sight. A single-pipeline (single-project) build
- * emits its step/pipeline events under the empty SINGLE_GOAL_DIR, so it gets exactly one row keyed by
+ * The card's row for a module dir, created on first sight. A single-plan (single-project) build
+ * emits its step/plan events under the empty SINGLE_GOAL_DIR, so it gets exactly one row keyed by
  * `''`. Each row owns its step chain (`steps`). {@code at} is the event receipt time — bumps
  * {@code lastActivity} so the UI can float active modules (CLI newest-at-top).
  */
@@ -647,7 +647,7 @@ function moduleRow(card, dir, at) {
 /**
  * The chain entry for a step name WITHIN its module (keyed by the event's dir), created in arrival
  * order. Unlike the old global-by-name folding, each module keeps its own chain, so the dashboard
- * shows one lock→compile→test→build strip per module. `phase` (the step's pipeline phase wire-name,
+ * shows one lock→compile→test→build strip per module. `phase` (the step's plan phase wire-name,
  * or '' when unset) rides the row so the UI can render the phase/step hierarchy.
  */
 function stepRow(card, dir, step, phase, at) {

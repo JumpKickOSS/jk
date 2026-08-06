@@ -84,12 +84,12 @@ class ProtobufPluginTest {
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
         assertThat(build.pluginConfig("protobuf")).isPresent();
 
-        BuildPlan lock = LockPipelines.lockBuildPlan(
+        BuildPlan lock = LockPlans.lockBuildPlan(
                 project, build, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
         BuildPlanResult lockResult = lock.run();
         assertThat(lockResult.errors()).isEmpty();
 
-        BuildPipelines.Inputs in = new BuildPipelines.Inputs(
+        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                 project,
                 cache,
                 project.resolve("jk.toml"),
@@ -105,8 +105,8 @@ class ProtobufPluginTest {
                 false,
                 java.util.Set.of(),
                 SessionContext.current());
-        BuildPlan pipeline = BuildPipelines.coreBuilder(in).build();
-        BuildPlanResult result = pipeline.run();
+        BuildPlan plan = BuildPlanner.coreBuilder(in).build();
+        BuildPlanResult result = plan.run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
         assertThat(anyFile(project.resolve("target"), "Greeting.class"))
@@ -120,7 +120,7 @@ class ProtobufPluginTest {
     /**
      * The Kotlin-DSL shape (NiA's datastore-proto): {@code kotlin = true} emits
      * {@code --kotlin_out} alongside {@code --java_out}; the generated .kt wraps the generated
-     * Java message, so a Kotlin-only module must route through the mixed pipeline (javac compiles
+     * Java message, so a Kotlin-only module must route through the mixed plan (javac compiles
      * the contributed Java, kotlinc reads it from source via -Xjava-source-roots).
      */
     @Test
@@ -176,11 +176,11 @@ class ProtobufPluginTest {
                 """);
 
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
-        BuildPlan lock = LockPipelines.lockBuildPlan(
+        BuildPlan lock = LockPlans.lockBuildPlan(
                 project, build, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().errors()).isEmpty();
 
-        BuildPipelines.Inputs in = new BuildPipelines.Inputs(
+        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                 project,
                 cache,
                 project.resolve("jk.toml"),
@@ -196,7 +196,7 @@ class ProtobufPluginTest {
                 false,
                 java.util.Set.of(),
                 SessionContext.current());
-        BuildPlanResult result = BuildPipelines.coreBuilder(in).build().run();
+        BuildPlanResult result = BuildPlanner.coreBuilder(in).build().run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
         assertThat(anyFile(project.resolve("target"), "GreetingKt.class"))

@@ -15,7 +15,7 @@ import java.util.Map;
 import org.jline.utils.AttributedStyle;
 
 /**
- * Live console for long-running commands: simple pulse-circle task mode, or pipeline mode (header
+ * Live console for long-running commands: simple pulse-circle task mode, or plan mode (header
  * with pulse + {@link ProgressBar} + compact module/phase tree). Animates on a TTY; under pipes/{@code
  * --quiet}/{@code --no-progress} only prints the final result. Active {@link LiveRegion} for Ctrl-C.
  */
@@ -40,7 +40,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
 
     private final PrintStream out;
     private final boolean animate;
-    private final boolean pipelineMode;
+    private final boolean planMode;
     private final int width;
 
     /**
@@ -65,7 +65,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     /** Open pulse (blue↔dark blue) — tree rows and simple spinner lines, no chip background. */
     private final AttributedStyle[] openPulseColors = Spinner.buildOpenPulseStyles(PULSE_FRAMES);
 
-    /** Chip pulse (white↔chip blue) — pipeline header pill only; FG sits on solid chip BG. */
+    /** Chip pulse (white↔chip blue) — plan header pill only; FG sits on solid chip BG. */
     private final AttributedStyle[] chipPulseColors =
             Spinner.buildChipPulseStyles(PULSE_FRAMES, Theme.active().planBadgeColor());
 
@@ -75,8 +75,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     private volatile boolean stopped; // animator should stop
     private boolean done; // a terminal render already happened
     private int frame;
-    private int linesDrawn; // pipeline mode: lines in the live region
-    private List<String> lastLines = List.of(); // pipeline mode: last painted lines, for diffing
+    private int linesDrawn; // plan mode: lines in the live region
+    private List<String> lastLines = List.of(); // plan mode: last painted lines, for diffing
     /** JK-1373: true after the leading blank of the human chrome envelope was printed. */
     private boolean leadingBlankPrinted;
 
@@ -95,7 +95,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     // simple mode
     private String label = "";
 
-    // pipeline mode
+    // plan mode
     private String name = "";
     private String target = "";
     private long startNanos;
@@ -109,7 +109,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
 
     private final Map<String, Row> rows = new LinkedHashMap<>();
 
-    /** Coarse pipeline phases in first-seen order (render newest-first). Key = wire phase name. */
+    /** Coarse plan phases in first-seen order (render newest-first). Key = wire phase name. */
     private final List<String> phaseOrder = new ArrayList<>();
 
     private final Map<String, PhaseNode> phases = new LinkedHashMap<>();
@@ -141,11 +141,11 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     private volatile LineSink sink; // read by the animator thread for stale flushing
     private boolean capturing;
 
-    CommandManager(PrintStream out, boolean animate, boolean pipelineMode, int width) {
+    CommandManager(PrintStream out, boolean animate, boolean planMode, int width) {
         // PlainAscii.wrap is identity under ANSI; under --no-ansi rewrites …/•/● in messages.
         this.out = PlainAscii.wrap(out);
         this.animate = animate;
-        this.pipelineMode = pipelineMode;
+        this.planMode = planMode;
         this.width = width <= 0 ? DEFAULT_WIDTH : width;
     }
 
@@ -180,13 +180,13 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         }
     }
 
-    // --- pipeline-oriented mode -----------------------------------------------
+    // --- plan-oriented mode -----------------------------------------------
 
     /**
-     * Start pipeline-oriented mode. {@code name} is the command shown in the header (e.g. {@code
+     * Start plan-oriented mode. {@code name} is the command shown in the header (e.g. {@code
      * "Building"}); set the active module with {@link #target}.
      */
-    public static CommandManager pipeline(PrintStream out, String name, boolean animate) {
+    public static CommandManager plan(PrintStream out, String name, boolean animate) {
         int[] size = animate ? detectSize() : new int[] {DEFAULT_HEIGHT, DEFAULT_WIDTH};
         CommandManager cm = new CommandManager(out, animate, true, size[1]);
         cm.height = size[0];
@@ -199,7 +199,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             out.flush();
             cm.startAnimator();
         }
-        // Plain pipeline: no start line until progress() or settle (message may not exist yet).
+        // Plain plan: no start line until progress() or settle (message may not exist yet).
         return cm;
     }
 
@@ -328,7 +328,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
 
     /**
      * Seed the header clock with the total predicted build wall-clock from command start. The clock
-     * is <em>run-wide</em> pure wall-clock from {@link #pipeline(PrintStream, String, boolean)
+     * is <em>run-wide</em> pure wall-clock from {@link #plan(PrintStream, String, boolean)
      * construction}:
      *
      * <ul>
@@ -511,7 +511,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
 
     // --- completion -------------------------------------------------------
 
-    /** Settle with {@code ✔ <pipeline> Successful: <message>} (the head in green). */
+    /** Settle with {@code ✔ <plan> Successful: <message>} (the head in green). */
     public void finishSuccess(String message) {
         finishSuccess(message, List.of());
     }
@@ -523,17 +523,17 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      * wiped, under one lock, so they never interleave with the bar.
      */
     public void finishSuccess(String message, List<String> above) {
-        String head = Glyphs.CHECK + (pipelineName().isEmpty() ? "" : " " + pipelineName()) + " Successful";
+        String head = Glyphs.CHECK + (planName().isEmpty() ? "" : " " + planName()) + " Successful";
         settle(Theme.colorize(head, Theme.active().success()) + ": " + message, above);
     }
 
     /**
-     * Settle the build pipeline with the green chip: {@code ✓ Build ▶ Successfully <tail>}. The {@code
+     * Settle the build plan with the green chip: {@code ✓ Build ▶ Successfully <tail>}. The {@code
      * tail} (e.g. "built 17 modules took 1.4s") is pre-styled by the caller; this owns only the chip
      * + cap + command. See {@link BuildPlanWedge}.
      */
     public void finishBuildPlanSuccess(String tail, List<String> above) {
-        settle(BuildPlanWedge.chipLine(Glyphs.CHECK, pipelineName(), nerdfont, tail), above);
+        settle(BuildPlanWedge.chipLine(Glyphs.CHECK, planName(), nerdfont, tail), above);
     }
 
     /** {@link #finishBuildPlanSuccess(String, List)} with no buffered output above. */
@@ -543,14 +543,14 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
 
     /**
      * Settle with the play chip: {@code ▶ Run Executing `java …`} — for commands that hand off to a
-     * subprocess after the pipeline settles (e.g. {@code jk run}). {@code pipelineName} is the
+     * subprocess after the plan settles (e.g. {@code jk run}). {@code planName} is the
      * command label (typically {@code Run}); {@code tail} is the pre-styled message.
      *
      * <p>{@code jk run} prints its own single separator before {@code inheritIO} (no settle
      * trailing blank — settles never add one; see {@link #settle}).
      */
     public void finishBuildPlanExec(String tail, List<String> above) {
-        settle(BuildPlanWedge.chipLine(Glyphs.PLAY, pipelineName(), nerdfont, tail), above);
+        settle(BuildPlanWedge.chipLine(Glyphs.PLAY, planName(), nerdfont, tail), above);
     }
 
     /** {@link #finishBuildPlanExec(String, List)} with no buffered output above. */
@@ -558,9 +558,9 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         finishBuildPlanExec(tail, List.of());
     }
 
-    /** Settle the build pipeline with the red chip: {@code ‼ Build ▶ Failure <tail>}. */
+    /** Settle the build plan with the red chip: {@code ‼ Build ▶ Failure <tail>}. */
     public void finishBuildPlanFailure(String tail, List<String> above) {
-        settle(BuildPlanWedge.failureLine(pipelineName(), nerdfont, tail), above);
+        settle(BuildPlanWedge.failureLine(planName(), nerdfont, tail), above);
     }
 
     /** {@link #finishBuildPlanFailure(String, List)} with no buffered output above. */
@@ -574,7 +574,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      */
     public void finishBuildPlanCancelled(List<String> above) {
         String took = cc.jumpkick.cli.run.ConsoleSpec.took(java.time.Duration.ofMillis(elapsedMillis()));
-        settle(BuildPlanWedge.cancelledJobLine(pipelineName(), nerdfont, false, took), above);
+        settle(BuildPlanWedge.cancelledJobLine(planName(), nerdfont, false, took), above);
     }
 
     /** {@link #finishBuildPlanCancelled(List)} with no buffered output above. */
@@ -583,12 +583,12 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     /**
-     * Settle the build pipeline with the red chip, but a fully caller-composed sentence instead of the
-     * "Failed to &lt;pipeline&gt;" derivation {@link #finishBuildPlanFailure} applies — see {@link
+     * Settle the build plan with the red chip, but a fully caller-composed sentence instead of the
+     * "Failed to &lt;plan&gt;" derivation {@link #finishBuildPlanFailure} applies — see {@link
      * BuildPlanWedge#failureLineCustom}.
      */
     public void finishBuildPlanFailureCustom(String sentence, List<String> above) {
-        settle(BuildPlanWedge.failureLineCustom(pipelineName(), nerdfont, sentence), above);
+        settle(BuildPlanWedge.failureLineCustom(planName(), nerdfont, sentence), above);
     }
 
     /** Settle with a red cross and a failure message. */
@@ -602,8 +602,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     /**
-     * Clear the live region without printing any result line — used when the pipeline's outcome is
-     * communicated externally (e.g. via a post-pipeline chipLine printed by the caller). Same cleanup
+     * Clear the live region without printing any result line — used when the plan's outcome is
+     * communicated externally (e.g. via a post-plan chipLine printed by the caller). Same cleanup
      * as {@link #settle} but outputs nothing.
      */
     public void dismiss() {
@@ -615,7 +615,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             LiveRegion.clearActive(this);
             clearWindowTitle();
             if (animate && Theme.active().isAnsi()) {
-                if (pipelineMode) wipeRegion();
+                if (planMode) wipeRegion();
                 else freezeSpinnerLine();
                 out.print(Ansi.taskbarClear());
                 out.print(Ansi.SHOW_CURSOR);
@@ -629,9 +629,9 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         }
     }
 
-    /** The pipeline/command name shown in the header ("Building", "Locking", …). */
-    private String pipelineName() {
-        String n = pipelineMode ? name : label;
+    /** The plan/command name shown in the header ("Building", "Locking", …). */
+    private String planName() {
+        String n = planMode ? name : label;
         return n == null ? "" : n;
     }
 
@@ -655,8 +655,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             clearWindowTitle();
             if (animate && Theme.active().isAnsi()) {
                 // Simple mode keeps the settled spinner line and prints the
-                // result below it; pipeline mode replaces the whole region.
-                if (pipelineMode) wipeRegion();
+                // result below it; plan mode replaces the whole region.
+                if (planMode) wipeRegion();
                 else freezeSpinnerLine();
                 out.print(Ansi.taskbarClear());
                 out.print(Ansi.SHOW_CURSOR);
@@ -702,7 +702,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         }
     }
 
-    /** Indeterminate plain start/heartbeat (simple mode open, or pipeline without progress). */
+    /** Indeterminate plain start/heartbeat (simple mode open, or plan without progress). */
     private void printPlainIndeterminate(boolean forceStart) {
         synchronized (lock) {
             if (done) return;
@@ -731,8 +731,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             out.flush();
             return;
         }
-        if (plainChromeStarted || !pipelineMode) {
-            // Simple mode always had a start; pipeline without progress prints done only if started.
+        if (plainChromeStarted || !planMode) {
+            // Simple mode always had a start; plan without progress prints done only if started.
             if (!plainChromeStarted) {
                 out.println(plainIndeterminateLine(false));
             }
@@ -752,7 +752,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     private String plainProgressLine(int percent, boolean doneLine) {
-        return plainProgressLine(pipelineName(), plainWorkMessage(), percent, doneLine);
+        return plainProgressLine(planName(), plainWorkMessage(), percent, doneLine);
     }
 
     /** {@code " * Format > Examining source files - working..."} / {@code … - done.}. */
@@ -766,14 +766,14 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     private String plainIndeterminateLine(boolean doneLine) {
-        if (pipelineMode) {
-            return plainIndeterminateLine(pipelineName(), plainWorkMessage(), doneLine);
+        if (planMode) {
+            return plainIndeterminateLine(planName(), plainWorkMessage(), doneLine);
         }
         // Simple mode: the label is the whole message (no command chip name beyond label).
         return plainIndeterminateLine(null, label, doneLine);
     }
 
-    /** Best-effort work description for plain lines: solve label, active step, or pipeline name. */
+    /** Best-effort work description for plain lines: solve label, active step, or plan name. */
     private String plainWorkMessage() {
         String sl = solveLabel;
         if (sl != null && !sl.isEmpty()) return sl;
@@ -786,7 +786,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         for (Row r : rows.values()) {
             if (r.step != null && !r.step.isEmpty()) return r.step;
         }
-        String n = pipelineName();
+        String n = planName();
         return n == null || n.isEmpty() ? "working" : n;
     }
 
@@ -823,7 +823,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             LiveRegion.clearActive(this);
             clearWindowTitle();
             if (!animate) return false;
-            if (pipelineMode) {
+            if (planMode) {
                 if (Theme.active().isAnsi()) {
                     wipeRegion();
                     out.print(Ansi.taskbarClear());
@@ -833,7 +833,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 }
                 // Ctrl-C: "by user" + took duration.
                 String took = cc.jumpkick.cli.run.ConsoleSpec.took(java.time.Duration.ofMillis(elapsedMillis()));
-                out.println(BuildPlanWedge.cancelledJobLine(pipelineName(), nerdfont, true, took));
+                out.println(BuildPlanWedge.cancelledJobLine(planName(), nerdfont, true, took));
                 out.flush();
                 return true;
             }
@@ -886,7 +886,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
 
     /** Erase the live region and park the cursor at its top-left. */
     private void wipeRegion() {
-        if (pipelineMode) {
+        if (planMode) {
             if (linesDrawn > 0) out.print(Ansi.cursorUp(linesDrawn));
             // Return to column 0 first: cursorUp preserves the column, and on a
             // Ctrl-C the tty has just echoed "^C" at the cursor (two columns in),
@@ -907,7 +907,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     void tick() {
         synchronized (lock) {
             if (done || !animate) return;
-            if (pipelineMode) paintBuildPlan();
+            if (planMode) paintBuildPlan();
             else paintSimple();
             // OSC title tracks the fill-circle phase (○→◎→◉→◎), not every chip-pulse frame.
             emitWindowTitleIfGlyphChanged();
@@ -941,7 +941,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 return;
             }
             // Erase the live region back to its top.
-            if (pipelineMode) {
+            if (planMode) {
                 if (linesDrawn > 0) out.print(Ansi.cursorUp(linesDrawn));
                 out.print(Ansi.ERASE_DISPLAY_TO_END);
             } else {
@@ -951,7 +951,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             out.print(text);
             out.print('\n');
             // Repaint the region fresh, immediately below the emitted text.
-            if (pipelineMode) {
+            if (planMode) {
                 lastLines = List.of();
                 linesDrawn = 0;
                 paintBuildPlan();
@@ -963,7 +963,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     /**
-     * Repaint the multi-line pipeline region (must hold {@link #lock}), rewriting only the lines that
+     * Repaint the multi-line plan region (must hold {@link #lock}), rewriting only the lines that
      * changed since the last paint to avoid flicker. The spinner header changes every frame; the bar
      * and step rows only on real updates, so a steady region mostly just rewrites its top line.
      *
@@ -993,7 +993,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     /**
-     * Build the pipeline region's lines (header-with-bar, compact module/phase tree, completed
+     * Build the plan region's lines (header-with-bar, compact module/phase tree, completed
      * tail). Pure — no cursor control. Package-private for tests.
      *
      * <p>Tree (newest at top): only <em>running</em> and <em>failed</em> work — successful steps drop
@@ -1007,7 +1007,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         List<String> lines = new ArrayList<>();
 
         // 1. Header: pulse circle + name + bar + clock
-        lines.add(pipelineHeader(elapsedMillis));
+        lines.add(planHeader(elapsedMillis));
 
         // 2. Active work: prefer per-module step rows; fall back to phase-only (preflight).
         // Budget leaves the header line and one margin so the region stays inside the viewport.
@@ -1551,14 +1551,14 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      * BuildPlan header: pulse circle + name on the chip, powerline (or plain) cap, bar, clock.
      * The circle FG breathes white↔chip-blue while sitting on the chip background.
      */
-    private String pipelineHeader(long elapsedMillis) {
+    private String planHeader(long elapsedMillis) {
         Theme t = Theme.active();
         AttributedStyle dim = t.darkGray();
         String barStr = bar.render(numerator, denominator);
         StringBuilder h = new StringBuilder();
         String sl = solveLabel;
         boolean phase1 = denominator == 0 && !sl.isEmpty();
-        AttributedStyle chip = t.pipelineChip();
+        AttributedStyle chip = t.planChip();
         // Pulse glyph: FG lerps white→chip blue; BG stays chip blue so it sits in the pill.
         AttributedStyle pulse =
                 t.withBackground(chipPulseColors[Math.floorMod(frame, chipPulseColors.length)], t.planBadgeColor());
@@ -1698,7 +1698,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     /**
-     * {@code group:artifact} → cyan group + bold bright-cyan artifact (pipeline tree / failure
+     * {@code group:artifact} → cyan group + bold bright-cyan artifact (plan tree / failure
      * tails). Plain settled style if no colon.
      */
     public static String coloredModule(String module) {
@@ -1923,7 +1923,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     /**
      * Restore the real {@code System.out}/{@code System.err} and flush any trailing partial line
      * above the region. Idempotent — called by the {@link OutputScope}, and defensively when the
-     * region settles (so a Ctrl-C mid-pipeline hands the streams back before {@link GlobalCancel}
+     * region settles (so a Ctrl-C mid-plan hands the streams back before {@link GlobalCancel}
      * prints).
      */
     private void restoreStreams() {

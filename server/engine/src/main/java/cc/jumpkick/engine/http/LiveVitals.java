@@ -90,7 +90,7 @@ public final class LiveVitals implements AutoCloseable {
     }
 
     /**
-     * Force-publish current status (connect hydrate or pipeline edge). Always attempts a sample;
+     * Force-publish current status (connect hydrate or plan edge). Always attempts a sample;
      * still change-gates unless {@code force}.
      */
     public void publishStatus(boolean force) {

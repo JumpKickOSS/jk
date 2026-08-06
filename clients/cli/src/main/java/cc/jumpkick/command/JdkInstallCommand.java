@@ -130,11 +130,11 @@ public final class JdkInstallCommand implements CliCommand {
         // Reclaim any partial archive left by a previously canceled download
         // (Ctrl-C halts the JVM mid-download, skipping the inline cleanup).
         // Kept in the CLI so every path — including the wizard and non-TTY
-        // early-outs below — sweeps once, before any pipeline runs.
+        // early-outs below — sweeps once, before any plan runs.
         JdkInstaller.sweepStaleDownloads(registry.jdksRoot());
         JdkService service = new JdkService();
 
-        // Pre-pipeline sanity: when no spec and no TTY, we can't go further.
+        // Pre-plan sanity: when no spec and no TTY, we can't go further.
         boolean haveSpec = spec != null && !spec.isBlank();
         if (!haveSpec && !isInteractiveTerminal()) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
@@ -222,7 +222,7 @@ public final class JdkInstallCommand implements CliCommand {
         // the presentation — an InstallView that drives the download bar and the
         // installing spinner off the facade's listener events, plus the done
         // lines. Merged into one step because install() is a single atomic call;
-        // interactive pipelines render via SilentListener, so step labels aren't
+        // interactive plans render via SilentListener, so step labels aren't
         // shown and the bars/done-lines are the only visible output.
         Task install = Task.builder(TaskNames.INSTALL)
                 .kind(TaskKind.IO)
@@ -279,7 +279,7 @@ public final class JdkInstallCommand implements CliCommand {
                 })
                 .build();
 
-        BuildPlan pipeline = BuildPlan.builder("jdk-install")
+        BuildPlan plan = BuildPlan.builder("jdk-install")
                 .interactive(true)
                 .addTask(fetchCatalog)
                 .addTask(select)
@@ -287,25 +287,25 @@ public final class JdkInstallCommand implements CliCommand {
                 .addTask(setDefault)
                 .build();
 
-        BuildPlanResult result = BuildPlanConsole.run(pipeline, BuildPlanConsole.modeFor(global), cache);
+        BuildPlanResult result = BuildPlanConsole.run(plan, BuildPlanConsole.modeFor(global), cache);
         if (!result.success()) return 1;
 
         // Offer to adopt the new install as the default JDK / default GraalVM.
-        // Runs AFTER the pipeline console closes, so the prompt never lands inside a
+        // Runs AFTER the plan console closes, so the prompt never lands inside a
         // captured-output region. Skipped on a non-TTY (and when --make-default
         // already set the java default).
         //
         // Skipped entirely when the wizard ran: it already asked "Make this the
         // default JDK?", so re-asking here would be a duplicate prompt — and the
         // wizard's own terminal has been closed (taking System.in with it), so a
-        // fresh Confirm would fail with "Stream Closed". The post-pipeline offer is
+        // fresh Confirm would fail with "Stream Closed". The post-plan offer is
         // for the non-interactive spec path (e.g. `jk jdk install 25`), which
         // never opened a terminal and never asked about the default.
-        boolean wizardRan = Boolean.TRUE.equals(pipeline.get(WIZARD_RAN).orElse(false));
+        boolean wizardRan = Boolean.TRUE.equals(plan.get(WIZARD_RAN).orElse(false));
         if (!wizardRan && Confirm.isInteractiveTerminal()) {
             boolean wantedDefault =
-                    Boolean.TRUE.equals(pipeline.get(WANT_DEFAULT).orElse(false));
-            pipeline.get(INSTALLED).ifPresent(jdk -> offerDefaults(jdk, wantedDefault));
+                    Boolean.TRUE.equals(plan.get(WANT_DEFAULT).orElse(false));
+            plan.get(INSTALLED).ifPresent(jdk -> offerDefaults(jdk, wantedDefault));
         }
         return 0;
     }
@@ -438,7 +438,7 @@ public final class JdkInstallCommand implements CliCommand {
     }
 
     /**
-     * CLI presentation for {@link JdkService}'s install pipeline: turns the facade's listener events
+     * CLI presentation for {@link JdkService}'s install plan: turns the facade's listener events
      * into the animated {@link cc.jumpkick.cli.tui.JdkDownloadBar} (download then installing spinner)
      * and the {@code doneLine} summaries. {@link AutoCloseable} so a mid-install failure still wipes
      * the active bar (via the step's try-with-resources), matching the old per-step cleanup.

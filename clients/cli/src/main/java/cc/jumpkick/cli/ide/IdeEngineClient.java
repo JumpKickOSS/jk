@@ -170,9 +170,9 @@ public class IdeEngineClient {
                 @Override
                 public BuildPlanListener onModuleStart(ModulePlan module) {
                     progress.onModuleStart(module.coord(), module.dir());
-                    List<Task> steps = module.pipeline() == null
+                    List<Task> steps = module.plan() == null
                             ? List.of()
-                            : module.pipeline().steps();
+                            : module.plan().steps();
                     return progressListener(progress, steps);
                 }
 
@@ -228,7 +228,7 @@ public class IdeEngineClient {
     }
 
     /**
-     * Run the test pipeline for a module BSP {@code buildTarget/test}). When
+     * Run the test plan for a module BSP {@code buildTarget/test}). When
      * {@code moduleDir} is null on a workspace root, cascades every module (mirrors {@link
      * #build(BuildListener)}). When null on a single project, tests that project. Uses the same
      * engine path as {@code jk test}.
@@ -330,7 +330,7 @@ public class IdeEngineClient {
     private static BuildPlanListener progressListener(ProgressListener progress, List<Task> steps) {
         return new BuildPlanListener() {
             @Override
-            public void pipelineStart(BuildPlanView view) {
+            public void planStart(BuildPlanView view) {
                 int n = steps == null ? 0 : steps.size();
                 progress.onPlan(n);
             }

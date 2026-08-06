@@ -164,7 +164,7 @@ public final class RepoCommand extends GroupCommand {
             cc.jumpkick.cli.GlobalOptions global = cc.jumpkick.cli.GlobalOptions.from(in);
             Path root = CacheCommand.resolveCacheRoot(cacheDir);
 
-            // Counts settle from the terminal pipeline-finish before the console listener renders.
+            // Counts settle from the terminal plan-finish before the console listener renders.
             var summary = new cc.jumpkick.cli.engine.EngineClient.CacheMaintSummary[1];
             cc.jumpkick.cli.run.ConsoleSpec spec = sweepSpec(
                     dryRun,
@@ -173,7 +173,7 @@ public final class RepoCommand extends GroupCommand {
             cc.jumpkick.cli.run.BuildPlanConsole.Mode mode = cc.jumpkick.cli.run.BuildPlanConsole.modeFor(global);
             cc.jumpkick.run.BuildPlanResult result;
             try {
-                // olderThanDays = MAX_VALUE: a pre-"sweep" engine falls back to its prune pipeline;
+                // olderThanDays = MAX_VALUE: a pre-"sweep" engine falls back to its prune plan;
                 // the huge cutoff keeps action entries untouched while sweep=true still runs the GC.
                 result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
                         cc.jumpkick.engine.EnginePaths.current(),

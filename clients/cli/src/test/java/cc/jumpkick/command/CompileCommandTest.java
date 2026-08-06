@@ -85,7 +85,7 @@ class CompileCommandTest {
     }
 
     // (Removed check_without_lockfile_errors: `jk compile`/`check` no longer
-    // requires a pre-existing jk-lock.toml — it runs the shared pipeline in
+    // requires a pre-existing jk-lock.toml — it runs the shared plan in
     // compile-only mode, which auto-locks like `jk build`/`run`.)
 
     // --- helpers -----------------------------------------------------------

@@ -19,12 +19,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * {@code jk audit} pipeline: scan {@code jk-lock.toml} against OSV via {@code jk-auditor}. Findings
+ * {@code jk audit} plan: scan {@code jk-lock.toml} against OSV via {@code jk-auditor}. Findings
  * stream plain via {@link FindingObserver}; threshold/exit-code handling stays client-side.
  */
-public final class AuditPipelines {
+public final class AuditPlans {
 
-    private AuditPipelines() {}
+    private AuditPlans() {}
 
     /** Receives each finding as the plugin streams it (raw plugin fields; any may be {@code null}). */
     public interface FindingObserver {
@@ -32,9 +32,9 @@ public final class AuditPipelines {
     }
 
     /**
-     * Build the audit pipeline for {@code lockPath}. Locates the plugin jar eagerly, so a missing plugin
+     * Build the audit plan for {@code lockPath}. Locates the plugin jar eagerly, so a missing plugin
      * fails here (with {@link cc.jumpkick.engine.plugin.PluginJarNotFoundException}'s side-load
-     * instructions) rather than mid-pipeline. {@code thresholdLabel} only feeds the evaluate step's
+     * instructions) rather than mid-plan. {@code thresholdLabel} only feeds the evaluate step's
      * label; {@code osvBatchUrl}/{@code osvVulnsUrl} are the hidden test overrides ({@code null} =
      * the real OSV endpoints).
      */

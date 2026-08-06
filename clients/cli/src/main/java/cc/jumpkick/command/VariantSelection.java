@@ -14,8 +14,8 @@ import java.util.Map;
  * selection (`release|contentType=demo`), {@link #install} additionally resolves the client-side
  * {@code env:} values (signing secrets — the engine names them via ProjectInfo.envRefs) and
  * parks both on the ambient {@link cc.jumpkick.config.SessionContext} session. Engine request
- * writers attach the session's selection to their request lines, and in-process pipeline factories
- * inherit it through {@code BuildPipelines.Inputs}' session default — so a command opts in with
+ * writers attach the session's selection to their request lines, and in-process plan factories
+ * inherit it through {@code BuildPlanner.Inputs}' session default — so a command opts in with
  * two lines: options() in its flag list, install() before it builds.
  */
 final class VariantSelection {

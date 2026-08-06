@@ -29,6 +29,13 @@ public final class MavenMetadataCache {
     /** Maven's own default release-metadata update policy is daily; match it. */
     public static final Duration DEFAULT_TTL = Duration.ofHours(24);
 
+    /**
+     * When true on the calling thread, {@link #fetch} skips the TTL short-circuit and revalidates
+     * (conditional GET when validators exist). Used by explicit {@code jk lock} so a same-URL
+     * re-resolve sees newly published versions; conservative freshen leaves the TTL alone.
+     */
+    private static final ThreadLocal<Boolean> FORCE_REVALIDATE = ThreadLocal.withInitial(() -> Boolean.FALSE);
+
     private final Http http;
     private final Path dir;
     private final Duration ttl;
@@ -39,14 +46,34 @@ public final class MavenMetadataCache {
         this.ttl = Objects.requireNonNull(ttl, "ttl");
     }
 
+    /**
+     * Run {@code body} with metadata TTL bypassed on this thread (conditional GET still applies).
+     * Nested calls keep the outer flag.
+     */
+    public static <T> T withForceRevalidate(java.util.concurrent.Callable<T> body) throws Exception {
+        Boolean prev = FORCE_REVALIDATE.get();
+        FORCE_REVALIDATE.set(Boolean.TRUE);
+        try {
+            return body.call();
+        } finally {
+            FORCE_REVALIDATE.set(prev);
+        }
+    }
+
+    /** True when this thread is inside {@link #withForceRevalidate}. */
+    static boolean forceRevalidate() {
+        return Boolean.TRUE.equals(FORCE_REVALIDATE.get());
+    }
+
     /** Metadata bytes for {@code uri}; 404 → {@link MavenRepo.ArtifactNotFoundException}. */
     public byte[] fetch(URI uri, RepoCredential credential) throws IOException, InterruptedException {
         Path body = dir.resolve(Hashing.sha256Hex(uri.toString()));
         Path meta = body.resolveSibling(body.getFileName() + ".h");
 
-        // --force skips the freshness window: the conditional GET below still makes an
-        // unchanged index cheap (304), but a moved `latest` is picked up immediately.
-        boolean force = cc.jumpkick.config.SessionContext.current().config().forceOr(false);
+        // --force / explicit lock revalidation skip the TTL window: the conditional GET below
+        // still makes an unchanged index cheap (304), but a moved `latest` is picked up now.
+        boolean force = cc.jumpkick.config.SessionContext.current().config().forceOr(false)
+                || forceRevalidate();
         if (!force && fresh(body)) {
             return Files.readAllBytes(body);
         }

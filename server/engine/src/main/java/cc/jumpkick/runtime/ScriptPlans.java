@@ -49,9 +49,9 @@ import java.util.Set;
  * inspect a jar). Exec stays client-side; terminal state carries {@link #MAIN_CLASS}/{@link
  * #CLASSPATH}/etc.
  */
-public final class ScriptPipelines {
+public final class ScriptPlans {
 
-    private ScriptPipelines() {}
+    private ScriptPlans() {}
 
     // Cross-step keys (mode-specific, but all live in the same record).
     static final BuildPlanKey<ScriptHeader> HEADER = BuildPlanKey.of("script-header", ScriptHeader.class);
@@ -70,10 +70,10 @@ public final class ScriptPipelines {
     @SuppressWarnings("rawtypes")
     private static final BuildPlanKey<List> JAR_DECLARED_DEPS = BuildPlanKey.of("jar-declared-deps", List.class);
 
-    /** The finished pipeline's classpath, as the typed list the raw {@link #CLASSPATH} key stores. */
+    /** The finished plan's classpath, as the typed list the raw {@link #CLASSPATH} key stores. */
     @SuppressWarnings("unchecked")
-    public static List<Path> classpathOf(BuildPlan pipeline) {
-        return (List<Path>) pipeline.get(CLASSPATH).orElse(List.of());
+    public static List<Path> classpathOf(BuildPlan plan) {
+        return (List<Path>) plan.get(CLASSPATH).orElse(List.of());
     }
 
     /** {@code classes/} for compiled output, under the state dir, keyed by the source bytes' hash. */

@@ -98,7 +98,7 @@ public final class TaskForecaster {
     }
 
     /**
-     * The {@link BuildPipelines.Inputs} a real {@code jk build} constructs for one module — the
+     * The {@link BuildPlanner.Inputs} a real {@code jk build} constructs for one module — the
      * single factory both {@code jk build} ({@code BuildCommand.prepareModule}) and {@code jk
      * explain}'s ETA use, so the two can't drift in what they feed the effort-weight prediction.
      * The {@code jdksDir} default of {@code null} is load-bearing: it routes {@link
@@ -106,7 +106,7 @@ public final class TaskForecaster {
      * JAVA_HOME / GraalVM / SDKMAN / …) instead of the empty {@code the managed JDK root}, so an
      * already-installed JDK predicts a zero-cost {@code ensure-jdk} rather than a phantom download.
      */
-    public static BuildPipelines.Inputs inputsFor(
+    public static BuildPlanner.Inputs inputsFor(
             Path dir, Path cache, int workers, Path jdksDir, String profile, boolean skipTests, boolean verbose) {
         return inputsFor(dir, cache, workers, jdksDir, profile, skipTests, verbose, Set.of());
     }
@@ -116,7 +116,7 @@ public final class TaskForecaster {
      * module dirs of the build graph, so the effort-weight prediction can borrow a project-tier learned
      * rate for a not-yet-built module (see {@link cc.jumpkick.runtime.EffortWeights#learned}).
      */
-    public static BuildPipelines.Inputs inputsFor(
+    public static BuildPlanner.Inputs inputsFor(
             Path dir,
             Path cache,
             int workers,
@@ -130,9 +130,9 @@ public final class TaskForecaster {
 
     /**
      * As {@link #inputsFor(Path, Path, int, Path, String, boolean, boolean, Set)} with {@code
-     * testOnly} — when true, pipelines stop before packaging ({@code jk test} / MCP {@code jk_test}).
+     * testOnly} — when true, plans stop before packaging ({@code jk test} / MCP {@code jk_test}).
      */
-    public static BuildPipelines.Inputs inputsFor(
+    public static BuildPlanner.Inputs inputsFor(
             Path dir,
             Path cache,
             int workers,
@@ -156,7 +156,7 @@ public final class TaskForecaster {
             compactEst = !Files.isDirectory(dir.resolve("src/main/java"));
         }
         int estimatedTestCount = skip ? 0 : TestSupport.estimateAllSuiteTestCount(dir, compactEst);
-        return new BuildPipelines.Inputs(
+        return new BuildPlanner.Inputs(
                         dir,
                         cache,
                         buildFile,
@@ -213,12 +213,12 @@ public final class TaskForecaster {
             List<String> javacArgs = JavacLint.effectiveArgs(
                     project.build().lint(),
                     cc.jumpkick.plugin.manifest.PluginContributions.javacArgs(
-                            project, dir, BuildPipelines.lockModules(lock)),
+                            project, dir, BuildPlanner.lockModules(lock)),
                     List.of());
-            // Must mirror BuildPipelines' processor classpath exactly — workspace siblings
+            // Must mirror BuildPlanner' processor classpath exactly — workspace siblings
             // included — or the forecast hashes a different -processorpath than the
             // build and every KSP module forecasts a phantom rebuild.
-            List<Path> processorCp = BuildPipelines.processorClasspath(
+            List<Path> processorCp = BuildPlanner.processorClasspath(
                     lock, resolver, WorkspaceClasspath.resolve(dir, project, Set.of(Scope.PROCESSOR)));
 
             boolean compileDirty = depDirty || force;
@@ -241,9 +241,9 @@ public final class TaskForecaster {
             if (!mainSrc.isEmpty()) {
                 WorkspaceClasspath.Result sib =
                         WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN));
-                List<Path> cp = BuildPipelines.mainCompileClasspath(lock, resolver, sib);
+                List<Path> cp = BuildPlanner.mainCompileClasspath(lock, resolver, sib);
                 Path out = layout.classesDir();
-                // Same stamp gate as BuildPipelines compile-main: a post-rebuild tree with a
+                // Same stamp gate as BuildPlanner compile-main: a post-rebuild tree with a
                 // fresh.jstamp is cached even when action-cache keys were not rewritten
                 // (historical --rebuild skipped store). The input recipe is SHARED with the live
                 // check and write-stamp — mixed modules previously hashed different
@@ -263,7 +263,7 @@ public final class TaskForecaster {
                     }
                 }
                 List<Path> stampInputs =
-                        BuildPipelines.mainStampClasspath(cp, processorCp, mixedKotlin, mixedGroovy, layout, groovyJar);
+                        BuildPlanner.mainStampClasspath(cp, processorCp, mixedKotlin, mixedGroovy, layout, groovyJar);
                 boolean stampFresh = false;
                 if (!depDirty && !force && !groovyJarUnavailable) {
                     try {
@@ -299,7 +299,7 @@ public final class TaskForecaster {
 
             // ---- compile-kotlin (best-effort: freshness stamp; no content key yet) ----
             if (!ktSrc.isEmpty()) {
-                // The stamp lives with the MERGED classes (BuildPipelines writes it to
+                // The stamp lives with the MERGED classes (BuildPlanner writes it to
                 // MAIN_CLASSES), not in kotlinc's incremental workspace under target/kotlin/main.
                 // Reading the wrong directory never found a stamp, so every Kotlin module
                 // forecast a full compile no matter how cached the build actually was.
@@ -410,7 +410,7 @@ public final class TaskForecaster {
                     // stored green marker.
                     List<Path> testRt = testRuntimeClasspath(dir, project, lock, resolver);
                     long ts = Perf.start();
-                    String stampKey = BuildPipelines.runTestsStampKey(
+                    String stampKey = BuildPlanner.runTestsStampKey(
                             dir, project, compact, layout.classesDir(), lockFile, testRt);
                     Perf.end("  test-stamp-key", ts);
                     boolean hit = stampKey != null && present(actionCache, stampKey);
@@ -423,7 +423,7 @@ public final class TaskForecaster {
             }
 
             // ---- package-jar ----
-            // Tokens MUST match BuildPipelines.packageJarStep (classes/main/sbom/manifest).
+            // Tokens MUST match BuildPlanner.packageJarStep (classes/main/sbom/manifest).
             // After jk clean the classes tree is gone: reconstruct the classes: token from the
             // compile action record + resource roots (same merge the live build produces) so we
             // still hit the packaging action cache instead of forecasting perpetual "repackage".
@@ -438,7 +438,7 @@ public final class TaskForecaster {
                 byte[] sbom = null;
                 if (project.isApplication()) {
                     try {
-                        sbom = BuildPipelines.applicationSbom(project, lock, cas);
+                        sbom = BuildPlanner.applicationSbom(project, lock, cas);
                     } catch (Exception ignored) {
                         // best-effort: missing SBOM → key still includes empty sbom: like a null sbom
                     }
@@ -471,7 +471,7 @@ public final class TaskForecaster {
             }
 
             // ---- package-assembly (fat jar) — only when configured ----
-            // Same action-key recipe as BuildPipelines.assemblyStep (not "jar exists on disk").
+            // Same action-key recipe as BuildPlanner.assemblyStep (not "jar exists on disk").
             if (project.assembly() && !(mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty())) {
                 if (compileDirty) {
                     steps.add(new TaskForecast.Task(
@@ -626,7 +626,7 @@ public final class TaskForecaster {
     /**
      * Whether {@code package-assembly}'s action cache holds a hit for the same key the live step
      * computes (classes + module runtime-closure deps + main + manifest + packaging:fat). Dep jars
-     * must come from {@link BuildPipelines#assemblyDependencyJars} (JK-1345) — never the whole
+     * must come from {@link BuildPlanner#assemblyDependencyJars} (JK-1345) — never the whole
      * workspace lock RUNTIME set, or explain permanently shows "repackage" after a warm assembly.
      * Sibling jars missing after clean are fingerprinted via CAS shas recovered from each sibling's
      * package record.
@@ -649,8 +649,8 @@ public final class TaskForecaster {
                 project,
                 actionCache,
                 compileMainKey);
-        // Same jar set as BuildPipelines.assemblyStep (ModuleRuntimeClasspath / JK-1345).
-        List<Path> depJars = BuildPipelines.assemblyDependencyJars(dir, project, lockFile, cache);
+        // Same jar set as BuildPlanner.assemblyStep (ModuleRuntimeClasspath / JK-1345).
+        List<Path> depJars = BuildPlanner.assemblyDependencyJars(dir, project, lockFile, cache);
         String depsTok = fingerprintDepJars(depJars, actionCache, restoredJarShas);
         List<String> tokens = List.of(
                 "classes:" + classesTok,

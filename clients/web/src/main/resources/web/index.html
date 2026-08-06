@@ -335,7 +335,7 @@
           <div class="tile"><span class="lbl">pid</span><span class="kpi">{{ status.pid }}</span></div>
           <div class="tile"><span class="lbl">uptime</span><span class="kpi">{{ uptime() }}</span></div>
           <div class="tile"><span class="lbl">connections</span><span class="kpi">{{ status.activeRequests }}</span></div>
-          <div class="tile"><span class="lbl">pipelines</span><span class="kpi" :class="{ ok: status.activePipelines > 0 }">{{ status.activePipelines }}</span></div>
+          <div class="tile"><span class="lbl">build plans</span><span class="kpi" :class="{ ok: status.activeBuildPlans > 0 }">{{ status.activeBuildPlans }}</span></div>
         </div>
 
         <div class="panels">

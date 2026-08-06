@@ -8,16 +8,16 @@ import cc.jumpkick.run.TaskStatus;
 import java.time.Duration;
 
 /**
- * Base for listeners that render pipeline events as {@link JsonlShape} lines (progress rider
+ * Base for listeners that render plan events as {@link JsonlShape} lines (progress rider
  * applied). Subclasses supply only the sink via {@link #emit}. {@code immediate} marks semantic
  * boundaries (per-line flush); hot ticks ({@link JsonlShape#HOT_TYPES}) use the heartbeat.
  */
 abstract class JsonlEmittingListener implements BuildPlanListener {
 
     /**
-     * True when this listener owns the aggregate {@code progress} rider (single-pipeline stdout).
+     * True when this listener owns the aggregate {@code progress} rider (single-plan stdout).
      * False for a member of a multi-module workspace run: the engine's {@code workspace-progress}
-     * snapshot is the only aggregate truth there — pipeline-local fractions must not reach {@link
+     * snapshot is the only aggregate truth there — plan-local fractions must not reach {@link
      * LiveProgress}.
      */
     private final boolean aggregateRider;
@@ -30,8 +30,8 @@ abstract class JsonlEmittingListener implements BuildPlanListener {
     protected abstract void emit(String line, boolean immediate);
 
     @Override
-    public void pipelineStart(BuildPlanView v) {
-        line(JsonlShape.pipelineStart(v), "buildplan-start");
+    public void planStart(BuildPlanView v) {
+        line(JsonlShape.planStart(v), "buildplan-start");
     }
 
     @Override
@@ -83,8 +83,8 @@ abstract class JsonlEmittingListener implements BuildPlanListener {
     }
 
     @Override
-    public void pipelineFinish(BuildPlanResult r) {
-        line(JsonlShape.pipelineFinish(r), "buildplan-finish");
+    public void planFinish(BuildPlanResult r) {
+        line(JsonlShape.planFinish(r), "buildplan-finish");
     }
 
     private void line(String raw, String type) {

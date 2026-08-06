@@ -2,21 +2,35 @@
 package cc.jumpkick.run;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Aggregate test outcome: counts plus failures for exit codes and UI. {@code classes} is the
- * distinct executed test-class count when the runner could derive it, else 0 (unknown) — it
- * feeds the hierarchical class-rate ETA prior, never user-facing totals.
+ * distinct executed test-class count when the runner could derive it, else 0 (unknown).
+ * {@code classWallMs} maps FQCN → wall-ms for successfully finished class containers (ETA training).
  */
-public record TestSummary(long total, long succeeded, long failed, long skipped, long classes, List<Failure> failures) {
+public record TestSummary(
+        long total,
+        long succeeded,
+        long failed,
+        long skipped,
+        long classes,
+        List<Failure> failures,
+        Map<String, Long> classWallMs) {
 
     public TestSummary {
         failures = List.copyOf(failures);
+        classWallMs = classWallMs == null || classWallMs.isEmpty() ? Map.of() : Map.copyOf(classWallMs);
     }
 
-    /** Classes unknown (client-side reconstructions, crash synthetics). */
+    /** Classes unknown; no class walls. */
     public TestSummary(long total, long succeeded, long failed, long skipped, List<Failure> failures) {
-        this(total, succeeded, failed, skipped, 0, failures);
+        this(total, succeeded, failed, skipped, 0, failures, Map.of());
+    }
+
+    /** Class count known; no class walls. */
+    public TestSummary(long total, long succeeded, long failed, long skipped, long classes, List<Failure> failures) {
+        this(total, succeeded, failed, skipped, classes, failures, Map.of());
     }
 
     public boolean allPassed() {

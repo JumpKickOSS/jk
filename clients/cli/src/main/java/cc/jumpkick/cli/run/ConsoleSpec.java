@@ -11,7 +11,7 @@ import java.util.function.Function;
 /**
  * Console presentation for a simple-task command: spinner label plus success/failure tails from
  * {@link BuildPlanResult}. Optional {@code softFailure} forces a failure chip after a successful
- * pipeline (e.g. {@code jk run} with nothing executable). Duration suffix is appended by the framework.
+ * plan (e.g. {@code jk run} with nothing executable). Duration suffix is appended by the framework.
  */
 public record ConsoleSpec(
         String command,

@@ -168,13 +168,13 @@ public final class CacheCommand extends GroupCommand {
      * EngineProtocol.PRUNE_WAIT}). No-op when nothing is blocking (0 in-flight and no external prune)
      * so we never print "Waiting for 0 in-flight builds…".
      */
-    static void printWait(Boolean external, int pipelines) {
+    static void printWait(Boolean external, int plans) {
         if (Boolean.TRUE.equals(external)) {
             CliOutput.out("Waiting for another jk process's cache prune to finish…");
             return;
         }
-        if (pipelines <= 0) return;
-        CliOutput.out("Waiting for " + pipelines + " in-flight build" + (pipelines == 1 ? "" : "s") + " to finish…");
+        if (plans <= 0) return;
+        CliOutput.out("Waiting for " + plans + " in-flight build" + (plans == 1 ? "" : "s") + " to finish…");
     }
 
     static String fmtBytes(long bytes) {
@@ -368,7 +368,7 @@ public final class CacheCommand extends GroupCommand {
 
             BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
 
-            // Counts settle from the terminal pipeline-finish before the console listener renders.
+            // Counts settle from the terminal plan-finish before the console listener renders.
             var summary = new cc.jumpkick.cli.engine.EngineClient.CacheMaintSummary[1];
             ConsoleSpec spec = clearSpec(
                     dryRun,
@@ -425,7 +425,7 @@ public final class CacheCommand extends GroupCommand {
     }
 
     /**
-     * {@code jk cache prune} — engine-hosted idle-boundary job (waits for in-flight pipelines;
+     * {@code jk cache prune} — engine-hosted idle-boundary job (waits for in-flight plans;
      * holds {@code .prune.lock}). Detached {@code --background} child is for engine-less tests.
      */
     public static final class CachePruneCommand implements CliCommand {
@@ -485,7 +485,7 @@ public final class CacheCommand extends GroupCommand {
                 boolean sweep,
                 String maxSize,
                 GlobalOptions global) {
-            // Settled from the terminal pipeline-finish before the console listener renders the line.
+            // Settled from the terminal plan-finish before the console listener renders the line.
             var summary = new cc.jumpkick.cli.engine.EngineClient.CacheMaintSummary[1];
             ConsoleSpec spec = pruneSpec(
                     dryRun,
@@ -600,9 +600,9 @@ public final class CacheCommand extends GroupCommand {
                     true);
             BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
 
-            cc.jumpkick.run.BuildPlanResult pipelineResult;
+            cc.jumpkick.run.BuildPlanResult planResult;
             try {
-                pipelineResult = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
+                planResult = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
                         cc.jumpkick.engine.EnginePaths.current(),
                         new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest(
                                 "purge", root, 0, false, false, null, false),
@@ -613,12 +613,12 @@ public final class CacheCommand extends GroupCommand {
                 CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Cache", e.getMessage()));
                 return cc.jumpkick.model.command.Exit.SOFTWARE;
             }
-            return pipelineResult.success() ? 0 : 1;
+            return planResult.success() ? 0 : 1;
         }
 
         /**
          * Cache-tier footprint the purge will delete: {@code actions/}, {@code format-stamps/}, and
-         * cache {@code sha256/} (mirrors {@code CachePipelines.purgeActionCache}). Collocated
+         * cache {@code sha256/} (mirrors {@code CachePlans.purgeActionCache}). Collocated
          * {@code repos/} and {@code runs/} are excluded — artifact store stays under {@code
          * JK_STORE_DIR}.
          */

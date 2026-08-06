@@ -10,7 +10,7 @@ import java.time.Duration;
 /**
  * Fans every {@link BuildPlanListener} callback out to two delegates. Needed because an engine-hosted
  * module's {@code BuildPlan} is a client-side, never-{@code run()} reconstruction (see {@code
- * EngineBuildListenerAdapter}) — a listener attached via {@code pipeline.addListener(...)} is never
+ * EngineBuildListenerAdapter}) — a listener attached via {@code plan.addListener(...)} is never
  * driven. The listener a caller <em>returns</em> from {@code onModuleStart}, by contrast, is driven
  * by both the in-process and engine-hosted paths alike, so composing extra listeners (e.g. {@link
  * EventLogListener}) into the returned listener is the one place that works either way.
@@ -31,9 +31,9 @@ public final class CompositeBuildPlanListener implements BuildPlanListener {
     }
 
     @Override
-    public void pipelineStart(BuildPlanView view) {
-        a.pipelineStart(view);
-        b.pipelineStart(view);
+    public void planStart(BuildPlanView view) {
+        a.planStart(view);
+        b.planStart(view);
     }
 
     @Override
@@ -91,8 +91,8 @@ public final class CompositeBuildPlanListener implements BuildPlanListener {
     }
 
     @Override
-    public void pipelineFinish(BuildPlanResult result) {
-        a.pipelineFinish(result);
-        b.pipelineFinish(result);
+    public void planFinish(BuildPlanResult result) {
+        a.planFinish(result);
+        b.planFinish(result);
     }
 }

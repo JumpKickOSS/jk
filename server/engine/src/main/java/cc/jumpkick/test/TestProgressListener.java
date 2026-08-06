@@ -60,7 +60,7 @@ public interface TestProgressListener {
 
     /**
      * Soft advisory from the launcher (e.g. W&gt;1 stacked with Jupiter in-process parallel). Does
-     * not fail the run; surfaces as a pipeline warn when bridged.
+     * not fail the run; surfaces as a plan warn when bridged.
      */
     default void onWarning(String code, String message) {}
 

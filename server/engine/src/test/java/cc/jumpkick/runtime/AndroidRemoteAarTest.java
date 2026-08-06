@@ -19,7 +19,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * android-plan Step 2 acceptance, remote half: a real androidx dependency — published as an AAR —
- * resolves through the ordinary lock pipeline (the effective POM's {@code packaging} decides the
+ * resolves through the ordinary lock plan (the effective POM's {@code packaging} decides the
  * fetch extension; the lock's {@code path} records it), materializes as an exploded container, and
  * flows into compile (classes.jar), the app link (its {@code R.txt} regenerates a final-id
  * {@code R} under its namespace), and the dex closure.
@@ -41,7 +41,7 @@ class AndroidRemoteAarTest {
 
         // ---- 1. jk lock: packaging-aware resolution ----
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
-        BuildPlan lock = LockPipelines.lockBuildPlan(
+        BuildPlan lock = LockPlans.lockBuildPlan(
                 project, build, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
         BuildPlanResult lockResult = lock.run();
         assertThat(lockResult.errors()).isEmpty();
@@ -63,7 +63,7 @@ class AndroidRemoteAarTest {
         assertThat(sync.errors()).isEmpty();
 
         // ---- 3. jk build: compile against classes.jar, R from R.txt, dex the closure ----
-        BuildPipelines.Inputs in = new BuildPipelines.Inputs(
+        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                 project,
                 cache,
                 project.resolve("jk.toml"),
@@ -79,7 +79,7 @@ class AndroidRemoteAarTest {
                 false,
                 java.util.Set.of(),
                 SessionContext.current());
-        BuildPlanResult result = BuildPipelines.coreBuilder(in).build().run();
+        BuildPlanResult result = BuildPlanner.coreBuilder(in).build().run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
 

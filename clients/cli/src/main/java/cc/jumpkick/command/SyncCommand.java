@@ -95,8 +95,8 @@ public final class SyncCommand implements CliCommand {
             return 1;
         }
 
-        // Summary counts arrive on the terminal pipeline-finish, before the console listener's own
-        // pipelineFinish renders the line — so these holders are settled exactly like the in-process
+        // Summary counts arrive on the terminal plan-finish, before the console listener's own
+        // planFinish renders the line — so these holders are settled exactly like the in-process
         // path's counters.
         long[] fetched = new long[1];
         long[] upToDate = new long[1];

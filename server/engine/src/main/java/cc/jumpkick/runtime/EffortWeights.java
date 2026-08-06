@@ -14,10 +14,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
- * Predicts each build step's progress-bar weight from on-disk state at pipeline start. Skip
+ * Predicts each build step's progress-bar weight from on-disk state at plan start. Skip
  * detection uses {@link FreshnessStamp#looksFresh}; compile→test→package are correlated (if compile
  * will run, consumers are reserved too). Fresh/cached steps reserve {@link #TOKEN} (not zero) so
  * the aggregate bar keeps a denominator. Mispredictions only mis-size a slice — closed
@@ -28,7 +29,7 @@ public final class EffortWeights {
     private EffortWeights() {}
 
     /**
-     * Plan/runtime weight when a step is known skip/cache-hit but still appears in the pipeline
+     * Plan/runtime weight when a step is known skip/cache-hit but still appears in the plan
      * . Keeps a non-zero phase tick so the aggregate bar has a denominator without
      * inventing full compile/test cost.
      */
@@ -135,8 +136,8 @@ public final class EffortWeights {
     static final int MIN_METRICS_SAMPLES = 3;
 
     /**
-     * Forecast/plan step names → {@link BuildMetrics} / pipeline step names. Explain uses
-     * {@code compile-main}; the live pipeline and metrics store {@code compile-java}.
+     * Forecast/plan step names → {@link BuildMetrics} / plan step names. Explain uses
+     * {@code compile-main}; the live plan and metrics store {@code compile-java}.
      */
     public static String metricsStepName(String step) {
         if (step == null || step.isBlank()) return "";
@@ -275,16 +276,16 @@ public final class EffortWeights {
     }
 
     /**
-     * Unit counts for cold/residual pricing from a prepared pipeline's declared ticks. Matches what
+     * Unit counts for cold/residual pricing from a prepared plan's declared ticks. Matches what
      * {@code jk explain} gets from the forecast ({@code sourceCount}/{@code testCount}): compile
      * steps expose source counts as ticks; {@code run-tests} exposes the method estimate. Used by
      * the build countdown so it shares {@link #costFromRunningSteps} with explain rather than
      * re-pricing with empty counts (which collapses cold test ETA to suite-startup only).
      */
-    public static java.util.Map<String, Integer> stepCountsFromBuildPlan(cc.jumpkick.run.BuildPlan pipeline) {
+    public static java.util.Map<String, Integer> stepCountsFromBuildPlan(cc.jumpkick.run.BuildPlan plan) {
         java.util.Map<String, Integer> counts = new java.util.HashMap<>();
-        if (pipeline == null) return counts;
-        for (cc.jumpkick.run.Task s : pipeline.steps()) {
+        if (plan == null) return counts;
+        for (cc.jumpkick.run.Task s : plan.steps()) {
             String key = metricsStepName(s.name());
             if (key.isEmpty()) continue;
             int ticks;
@@ -299,13 +300,13 @@ public final class EffortWeights {
     }
 
     /**
-     * Steps that will do real work in a prepared pipeline (weight &gt; {@link #TOKEN}). Cached/skip
+     * Steps that will do real work in a prepared plan (weight &gt; {@link #TOKEN}). Cached/skip
      * checks stay as tokens and are omitted — same idea as forecast {@code !step.cached}.
      */
-    public static java.util.List<String> runningStepsFromBuildPlan(cc.jumpkick.run.BuildPlan pipeline) {
+    public static java.util.List<String> runningStepsFromBuildPlan(cc.jumpkick.run.BuildPlan plan) {
         java.util.List<String> running = new java.util.ArrayList<>();
-        if (pipeline == null) return running;
-        for (cc.jumpkick.run.Task s : pipeline.steps()) {
+        if (plan == null) return running;
+        for (cc.jumpkick.run.Task s : plan.steps()) {
             try {
                 if (s.estimateWeight() > TOKEN) running.add(s.name());
             } catch (RuntimeException e) {
@@ -360,30 +361,64 @@ public final class EffortWeights {
         for (String raw : runningSteps) {
             String step = metricsStepName(raw);
             if (step.isEmpty()) continue;
-            // Prefer this module's own measured whole-step wall; count-scaled/host/static tiers
-            // (via learned) only when the module is cold here.
-            long ownMs = stepOkAvgMillisOwn(metrics, mod, step);
             int w;
-            if (ownMs > 0) {
-                w = flatWeight(ownMs);
+            if ("run-tests".equals(step)) {
+                // Class walls when complete; else method product only if count known (never invent).
+                int methods = stepCounts.getOrDefault(step, stepCounts.getOrDefault(raw, 0));
+                Map<String, Long> walls = loadClassWalls(mod);
+                // classesToRun unknown at plan time → empty; TestEffort falls through to walls-own/method path
+                w = TestEffort.weight(mod, walls, List.of(), methods, timings, projectDirs, metrics, wWorkers);
             } else {
-                // run-tests defaults to 0 (unknown count) so the ms/method prior never fires on a
-                // fake count of 1; other steps keep the old floor of one unit.
-                int defaultCount = "run-tests".equals(step) ? 0 : 1;
-                int count = stepCounts.getOrDefault(step, stepCounts.getOrDefault(raw, defaultCount));
-                int staticW = coldStaticWeight(step, count, wWorkers);
-                if (staticW <= 0) continue; // unknown tiny step with no history
-                if (timings != null) {
-                    w = learned(timings, metrics, mod, step, count, staticW, projectDirs);
+                // Prefer this module's own measured whole-task wall; count-scaled/host/static tiers
+                // (via learned) only when the module is cold here.
+                long ownMs = stepOkAvgMillisOwn(metrics, mod, step);
+                if (ownMs > 0) {
+                    w = flatWeight(ownMs);
                 } else {
-                    long hostMs = stepOkAvgMillisHost(metrics, step);
-                    w = hostMs > 0 ? flatWeight(hostMs) : staticW;
+                    int defaultCount = 1;
+                    int count = stepCounts.getOrDefault(step, stepCounts.getOrDefault(raw, defaultCount));
+                    int staticW = coldStaticWeight(step, count, wWorkers);
+                    if (staticW <= 0) continue; // unknown tiny task with no history
+                    if (timings != null) {
+                        w = learned(timings, metrics, mod, step, count, staticW, projectDirs);
+                    } else {
+                        long hostMs = stepOkAvgMillisHost(metrics, step);
+                        w = hostMs > 0 ? flatWeight(hostMs) : staticW;
+                    }
                 }
             }
             weight += w;
             if ("run-tests".equals(step)) testWeight += w;
         }
         return new ModuleCost(dir, prereqs, weight, testWeight);
+    }
+
+    /** Class walls from this process buffer or harvested project metrics (no class-file scan). */
+    static Map<String, Long> loadClassWalls(String moduleDir) {
+        Map<String, Long> live = TestClassWalls.get(moduleDir);
+        if (!live.isEmpty()) return live;
+        if (moduleDir == null || moduleDir.isBlank()) return Map.of();
+        try {
+            var agg = cc.jumpkick.builds.AggregatedMetrics.loadAll(cc.jumpkick.util.JkDirs.builds());
+            String prefix = "module." + cc.jumpkick.builds.AggregatedMetrics.sanitize(moduleDir) + ".test-class.";
+            String suffix = ".wall-ms";
+            Map<String, Long> out = new java.util.LinkedHashMap<>();
+            for (var e : agg.meanMap().entrySet()) {
+                String k = e.getKey();
+                if (!k.startsWith(prefix) || !k.endsWith(suffix)) continue;
+                String fqcn = k.substring(prefix.length(), k.length() - suffix.length());
+                if (!fqcn.isEmpty() && e.getValue() > 0) out.put(fqcn, Math.round(e.getValue()));
+            }
+            for (var e : agg.lastMap().entrySet()) {
+                String k = e.getKey();
+                if (!k.startsWith(prefix) || !k.endsWith(suffix)) continue;
+                String fqcn = k.substring(prefix.length(), k.length() - suffix.length());
+                if (!fqcn.isEmpty() && e.getValue() > 0) out.putIfAbsent(fqcn, Math.round(e.getValue()));
+            }
+            return out;
+        } catch (RuntimeException e) {
+            return Map.of();
+        }
     }
 
     /**
@@ -458,7 +493,7 @@ public final class EffortWeights {
     }
 
     /** Within-module workers for plan-time test weights (matches runtime {@link TestWorkers}). */
-    private static int resolveTestWorkersForPredict(BuildPipelines.Inputs in, int classCount) {
+    private static int resolveTestWorkersForPredict(BuildPlanner.Inputs in, int classCount) {
         int requested = in != null ? in.workerCount() : 0;
         int jobs = TestWorkers.effectiveJobs();
         return TestWorkers.resolve(requested, classCount, jobs);
@@ -480,7 +515,7 @@ public final class EffortWeights {
      * look fresh (upstream dirty). Over-reserves only — runtime reweight can shrink, never grow.
      */
     public static Plan predict(
-            BuildPipelines.Inputs in,
+            BuildPlanner.Inputs in,
             Cas cas,
             boolean compact,
             boolean useJava,
@@ -618,7 +653,7 @@ public final class EffortWeights {
             // Unparseable project / layout — parse-build will surface the real
             // error; skip-ish weights + auto-fill keep the bar honest meanwhile.
         }
-        // Fresh steps still sit in the pipeline for a stamp check — reserve a token so the
+        // Fresh steps still sit in the plan for a stamp check — reserve a token so the
         // workspace bar never calibrates to a pure-zero execute band.
         if (useJava && compileJava == SKIP) compileJava = TOKEN;
         if (useKotlin && compileKotlin == SKIP) compileKotlin = TOKEN;
@@ -722,7 +757,7 @@ public final class EffortWeights {
     }
 
     /** Fetch weight: 8 per artifact not already in the CAS (all of them under {@code  --force}). */
-    private static int predictSync(BuildPipelines.Inputs in, Cas cas) {
+    private static int predictSync(BuildPlanner.Inputs in, Cas cas) {
         try {
             int perFetch = artifactFetchWeight();
             if (!Files.exists(in.lockFile())) return perFetch; // first run resolves+fetches
@@ -762,30 +797,30 @@ public final class EffortWeights {
     public record ModuleCost(Path dir, Set<Path> prereqs, int weight, int testWeight) {}
 
     /**
-     * The {@link ModuleCost} of a prepared module pipeline: its total estimated bar weight, plus the
+     * The {@link ModuleCost} of a prepared module plan: its total estimated bar weight, plus the
      * serialized {@code run-tests} slice pulled out on its own (the schedule estimate treats that
      * step as a cross-module serial bound). Shared by {@code jk build} and {@code jk explain} so
-     * their wall-clock estimates are computed from the pipeline identically.
+     * their wall-clock estimates are computed from the plan identically.
      */
-    public static ModuleCost costOf(Path dir, Set<Path> prereqs, cc.jumpkick.run.BuildPlan pipeline) {
-        return costOf(dir, prereqs, pipeline, Set.of());
+    public static ModuleCost costOf(Path dir, Set<Path> prereqs, cc.jumpkick.run.BuildPlan plan) {
+        return costOf(dir, prereqs, plan, Set.of());
     }
 
     /**
      * As {@link #costOf(Path, Set, cc.jumpkick.run.BuildPlan)}, but charging {@link #SKIP} for steps
      * the forecast already determined are cached.
      *
-     * <p>A pipeline's estimated weight is what the steps would cost if they all ran. Estimating a
+     * <p>A plan's estimated weight is what the steps would cost if they all ran. Estimating a
      * build from that alone ignores the plan sitting right next to it: a workspace whose every
      * module was reported "Fully Cached" still advertised a full-build ETA — ~2s for a 1ms no-op on
      * two modules, ~11s on five. A single-module project looked fine only because one module's full
      * cost rounds to "&lt;1s".
      */
     public static ModuleCost costOf(
-            Path dir, Set<Path> prereqs, cc.jumpkick.run.BuildPlan pipeline, Set<String> cachedSteps) {
+            Path dir, Set<Path> prereqs, cc.jumpkick.run.BuildPlan plan, Set<String> cachedSteps) {
         int weight = 0;
         int testWeight = 0;
-        for (cc.jumpkick.run.Task step : pipeline.steps()) {
+        for (cc.jumpkick.run.Task step : plan.steps()) {
             int stepWeight;
             if (cachedSteps.contains(step.name())) {
                 stepWeight = SKIP;
@@ -803,7 +838,7 @@ public final class EffortWeights {
     }
 
     /**
-     * Module cost from pre-computed weights shape memo / ETA-only path) — no pipeline
+     * Module cost from pre-computed weights shape memo / ETA-only path) — no plan
      * assembly. {@code testWeight} is the serial {@code run-tests} slice; 0 when unknown.
      */
     public static ModuleCost costOf(Path dir, Set<Path> prereqs, int weight, int testWeight) {

@@ -32,7 +32,7 @@ public final class StepTimingsRecorder implements BuildPlanListener {
     private final List<StepTimings.Sample> sink;
     private final Map<String, Integer> ticksByStep = new ConcurrentHashMap<>();
     private final Map<String, Long> durationByStep = new ConcurrentHashMap<>();
-    /** Optional supplier of the pipeline's test summary after run-tests (may be null). */
+    /** Optional supplier of the plan's test summary after run-tests (may be null). */
     private final Supplier<TestSummary> testSummary;
     /** Optional continuous host calibration samples (may be null). */
     private final List<HostLearnedRates.HostSample> hostSink;
@@ -67,13 +67,13 @@ public final class StepTimingsRecorder implements BuildPlanListener {
         if (status != TaskStatus.SUCCESS || !learnable(step)) return;
         long ms = duration == null ? 0 : duration.toMillis();
         durationByStep.put(step, ms);
-        // Defer all samples until pipelineFinish so a later cancel/fail drops the whole module's
-        // mid-run SUCCESS ticks (estimator hygiene: only successful pipelines train rates).
+        // Defer all samples until planFinish so a later cancel/fail drops the whole module's
+        // mid-run SUCCESS ticks (estimator hygiene: only successful plans train rates).
     }
 
     @Override
-    public void pipelineFinish(BuildPlanResult result) {
-        // Cancelled or failed pipelines must not train rates — truncated walls poison ETA.
+    public void planFinish(BuildPlanResult result) {
+        // Cancelled or failed plans must not train rates — truncated walls poison ETA.
         if (result == null || !result.success() || result.cancelled() || result.userCancelled()) return;
         // Compile / other count-scaled steps: deferred from stepFinish.
         for (var e : durationByStep.entrySet()) {
@@ -131,6 +131,10 @@ public final class StepTimingsRecorder implements BuildPlanListener {
             if (perClass > 0) {
                 sink.add(new StepTimings.Sample(moduleKey, "run-tests-class", perClass));
             }
+        }
+        // Per-class walls for next ETA (no method counting). Buffer for journal metrics.toml.
+        if (sum != null && !sum.classWallMs().isEmpty()) {
+            TestClassWalls.put(moduleKey, sum.classWallMs());
         }
     }
 

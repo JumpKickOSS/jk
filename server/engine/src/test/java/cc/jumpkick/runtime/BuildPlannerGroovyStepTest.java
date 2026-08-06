@@ -15,9 +15,9 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * Groovy lane composition{@code jdk}+{@code groovy} ⇒ Groovy only; {@code jdk}+{@code
  * java}+{@code groovy} ⇒ both, compile-groovy first (joint mode), then javac, then the assembler.
- * Groovy+Kotlin in one module is rejected at pipeline construction.
+ * Groovy+Kotlin in one module is rejected at plan construction.
  */
-class BuildPipelinesGroovyStepTest {
+class BuildPlannerGroovyStepTest {
 
     @Test
     void jdk_plus_groovy_is_groovy_only(@TempDir Path dir) throws Exception {
@@ -31,8 +31,8 @@ class BuildPipelinesGroovyStepTest {
     @Test
     void jdk_plus_java_plus_groovy_enables_both(@TempDir Path dir) throws Exception {
         writeManifest(dir, "group=\"com.example\"\nname=\"b\"\nversion=\"0.1.0\"\njdk=25\njava=25\ngroovy=\"5.0.4\"\n");
-        BuildPlan pipeline = pipeline(dir);
-        assertThat(pipeline.steps().stream().map(Task::name))
+        BuildPlan plan = plan(dir);
+        assertThat(plan.steps().stream().map(Task::name))
                 .contains(
                         "compile-groovy",
                         "compile-java",
@@ -41,12 +41,12 @@ class BuildPipelinesGroovyStepTest {
                         // mixed modules add the assembler that merges both outputs
                         "assemble-classes");
         // Joint mode: groovyc first, javac against its output.
-        Task compileJava = pipeline.steps().stream()
+        Task compileJava = plan.steps().stream()
                 .filter(s -> s.name().equals("compile-java"))
                 .findFirst()
                 .orElseThrow();
         assertThat(compileJava.requires()).contains("compile-groovy");
-        Task assemble = pipeline.steps().stream()
+        Task assemble = plan.steps().stream()
                 .filter(s -> s.name().equals("assemble-classes"))
                 .findFirst()
                 .orElseThrow();
@@ -86,7 +86,7 @@ class BuildPipelinesGroovyStepTest {
         writeManifest(
                 dir,
                 "group=\"com.example\"\nname=\"x\"\nversion=\"0.1.0\"\njdk=25\nkotlin=\"2.3.21\"\ngroovy=\"5.0.4\"\n");
-        assertThatThrownBy(() -> pipeline(dir))
+        assertThatThrownBy(() -> plan(dir))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("groovy+kotlin in one module is not supported yet");
     }
@@ -97,7 +97,7 @@ class BuildPipelinesGroovyStepTest {
         Path src = Files.createDirectories(dir.resolve("src/app"));
         Files.writeString(src.resolve("A.kt"), "class A");
         Files.writeString(src.resolve("B.groovy"), "class B {}");
-        assertThatThrownBy(() -> pipeline(dir))
+        assertThatThrownBy(() -> plan(dir))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("groovy+kotlin in one module is not supported yet");
     }
@@ -107,11 +107,11 @@ class BuildPipelinesGroovyStepTest {
     }
 
     private static List<String> stepNames(Path dir) {
-        return pipeline(dir).steps().stream().map(Task::name).toList();
+        return plan(dir).steps().stream().map(Task::name).toList();
     }
 
-    private static BuildPlan pipeline(Path dir) {
-        BuildPipelines.Inputs in = new BuildPipelines.Inputs(
+    private static BuildPlan plan(Path dir) {
+        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                 dir,
                 dir.resolve("cache"),
                 dir.resolve("jk.toml"),
@@ -127,6 +127,6 @@ class BuildPipelinesGroovyStepTest {
                 false,
                 java.util.Set.of(),
                 cc.jumpkick.config.SessionContext.current());
-        return BuildPipelines.coreBuilder(in).build();
+        return BuildPlanner.coreBuilder(in).build();
     }
 }

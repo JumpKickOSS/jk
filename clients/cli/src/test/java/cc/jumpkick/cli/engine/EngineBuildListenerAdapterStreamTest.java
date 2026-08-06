@@ -11,7 +11,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Single-pipeline stream decoding: the {@link EngineClient.ActiveJobs} note must not outlive the
+ * Single-plan stream decoding: the {@link EngineClient.ActiveJobs} note must not outlive the
  * stream (a stale jid adds a 2s cancel RPC to every later Ctrl-C in a watch loop —, and
  * a cancel terminal injected before {@code plan-done} must settle, not NPE.
  */
@@ -31,7 +31,7 @@ class EngineBuildListenerAdapterStreamTest {
         BufferedReader reader = stream(
                 EngineProtocol.jobStart(41, "build", "/proj", 7),
                 EngineProtocol.planDone(0),
-                EngineProtocol.pipelineFinish("/proj", true, false));
+                EngineProtocol.planFinish("/proj", true, false));
 
         BuildPlanResult result = EngineBuildListenerAdapter.streamSingleBuildPlanEvents(
                 reader, steps -> new cc.jumpkick.run.BuildPlanListener() {}, null, null);
@@ -45,7 +45,7 @@ class EngineBuildListenerAdapterStreamTest {
         BufferedReader reader = stream(
                 EngineProtocol.jobStart(42, "build", "/proj", 8),
                 // Remote cancel injected before the plan burst ever created the listener.
-                EngineProtocol.pipelineFinish("/proj", false, true));
+                EngineProtocol.planFinish("/proj", false, true));
 
         BuildPlanResult result = EngineBuildListenerAdapter.streamSingleBuildPlanEvents(
                 reader, steps -> new cc.jumpkick.run.BuildPlanListener() {}, null, null);

@@ -60,7 +60,7 @@ final class UrlToolSource {
     /**
      * Fetch {@code url} (post-rewrite) into the tool-src cache and return the local file. A cached
      * copy is reused unless {@code refresh}; sibling {@code //SOURCES}/{@code //FILES} of a source
-     * script are fetched alongside it, so the local-file pipeline sees the same layout the remote
+     * script are fetched alongside it, so the local-file plan sees the same layout the remote
      * had.
      */
     static Path fetch(String url, Path cacheDir, boolean refresh) throws IOException, InterruptedException {

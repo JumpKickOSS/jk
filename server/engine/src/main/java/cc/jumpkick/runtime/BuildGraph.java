@@ -18,8 +18,8 @@ import java.util.Set;
  * topologically-sorted list of build units. The single source of truth that both the build driver
  * and {@code jk explain} consume, so they agree on exactly what builds and in what order.
  *
- * <p>Every unit is a real {@code jk.toml} project built by the normal pipeline ({@code
- * BuildPipelines.coreBuilder}). There is no separate "dependency unit" concept: a local sibling is
+ * <p>Every unit is a real {@code jk.toml} project built by the normal plan ({@code
+ * BuildPlanner.coreBuilder}). There is no separate "dependency unit" concept: a local sibling is
  * always a workspace module, and a git dependency (any ref type) is always a lock-pinned
  * coordinate resolved by {@link GitSourceResolution} — neither needs its own build unit here.
  * Edges point from a unit to the units that must build before it (prereqs): sibling deps plus

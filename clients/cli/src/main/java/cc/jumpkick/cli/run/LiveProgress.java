@@ -2,10 +2,10 @@
 package cc.jumpkick.cli.run;
 
 /**
- * Workspace/pipeline aggregate progress snapshot for JSONL riders.
+ * Workspace/plan aggregate progress snapshot for JSONL riders.
  *
  * <p>For multi-module builds, updated only from engine {@code workspace-progress} (via {@link
- * AggregateContext#applySnapshot}). Single-pipeline paths still update from {@link
+ * AggregateContext#applySnapshot}). Single-plan paths still update from {@link
  * CommandManagerListener}. Machine output attaches a single {@code progress} percent (0–100)
  * never raw numerator/denominator on the rider.
  *

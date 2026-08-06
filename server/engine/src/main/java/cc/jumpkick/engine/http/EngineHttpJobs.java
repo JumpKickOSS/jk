@@ -17,7 +17,7 @@ public interface EngineHttpJobs extends BuildTrigger {
     long triggerBuild(String dir);
 
     /**
-     * True test-only workspace job ({@code testOnly} pipelines — compile + run tests, no package);
+     * True test-only workspace job ({@code testOnly} plans — compile + run tests, no package);
      * journal kind {@code test}. Prefer for agents that mean “run the suite” (same shape as {@code
      * jk test}).
      */

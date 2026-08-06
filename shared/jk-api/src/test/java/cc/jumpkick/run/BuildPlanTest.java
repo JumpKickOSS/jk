@@ -17,7 +17,7 @@ class BuildPlanTest {
     @Test
     void single_phase_succeeds_and_collects_progress() {
         AtomicInteger ran = new AtomicInteger();
-        var pipeline = BuildPlan.builder("test")
+        var plan = BuildPlan.builder("test")
                 .addTask(Task.builder("step")
                         .ticks(5)
                         .execute(ctx -> {
@@ -27,34 +27,34 @@ class BuildPlanTest {
                         .build())
                 .build();
 
-        var result = pipeline.run();
+        var result = plan.run();
         assertThat(ran).hasValue(1);
         assertThat(result.success()).isTrue();
         assertThat(result.steps()).hasSize(1);
         assertThat(result.steps().getFirst().status()).isEqualTo(TaskStatus.SUCCESS);
-        assertThat(pipeline.snapshot().percent()).isEqualTo(100);
+        assertThat(plan.snapshot().percent()).isEqualTo(100);
     }
 
     @Test
     void scope_sums_across_phases() {
-        var pipeline = BuildPlan.builder("multi")
+        var plan = BuildPlan.builder("multi")
                 .addTask(Task.builder("a").ticks(3).execute(ctx -> {}).build())
                 .addTask(Task.builder("b").ticks(7).execute(ctx -> {}).build())
                 .addTask(Task.builder("c").ticks(2).execute(ctx -> {}).build())
                 .build();
 
-        var result = pipeline.run();
+        var result = plan.run();
         assertThat(result.success()).isTrue();
         // Auto-fill: steps reported zero progress but each succeeded, so
         // the numerator climbs to the denominator (3+7+2 = 12).
-        assertThat(pipeline.snapshot().numerator()).isEqualTo(12);
-        assertThat(pipeline.snapshot().denominator()).isEqualTo(12);
+        assertThat(plan.snapshot().numerator()).isEqualTo(12);
+        assertThat(plan.snapshot().denominator()).isEqualTo(12);
     }
 
     @Test
     void estimated_total_weight_sums_phase_estimates_without_running() {
         AtomicInteger ran = new AtomicInteger();
-        var pipeline = BuildPlan.builder("estimate")
+        var plan = BuildPlan.builder("estimate")
                 .addTask(Task.builder("a")
                         .ticks(3)
                         .execute(ctx -> ran.incrementAndGet())
@@ -67,11 +67,11 @@ class BuildPlanTest {
                 .build();
 
         // No explicit weights → weight tracks ticks, so the total is unchanged.
-        assertThat(pipeline.estimatedTotalWeight()).isEqualTo(11); // 3 + 7 + 1
+        assertThat(plan.estimatedTotalWeight()).isEqualTo(11); // 3 + 7 + 1
         // Pure estimate: no step executed, no progress accrued.
         assertThat(ran).hasValue(0);
-        assertThat(pipeline.snapshot().numerator()).isZero();
-        assertThat(pipeline.snapshot().denominator()).isZero();
+        assertThat(plan.snapshot().numerator()).isZero();
+        assertThat(plan.snapshot().denominator()).isZero();
     }
 
     @Test
@@ -83,7 +83,7 @@ class BuildPlanTest {
         // proportionally inside updateTicks to "preserve the fraction,"
         // which compounded into a 2× overshoot.
         AtomicInteger maxNumOverDen = new AtomicInteger(0);
-        var pipeline = BuildPlan.builder("interleaved")
+        var plan = BuildPlan.builder("interleaved")
                 .addListener(new BuildPlanListener() {
                     @Override
                     public void progress(String step, int delta, BuildPlanView view) {
@@ -112,17 +112,17 @@ class BuildPlanTest {
                         .build())
                 .build();
 
-        var result = pipeline.run();
+        var result = plan.run();
         assertThat(result.success()).isTrue();
         assertThat(maxNumOverDen).hasValue(0);
-        assertThat(pipeline.snapshot().numerator()).isEqualTo(100);
-        assertThat(pipeline.snapshot().denominator()).isEqualTo(100);
+        assertThat(plan.snapshot().numerator()).isEqualTo(100);
+        assertThat(plan.snapshot().denominator()).isEqualTo(100);
     }
 
     @Test
     void update_scope_grows_denominator() {
         var listener = new RecordingListener();
-        var pipeline = BuildPlan.builder("growing")
+        var plan = BuildPlan.builder("growing")
                 .addListener(listener)
                 .addTask(Task.builder("expand")
                         .ticks(2)
@@ -134,18 +134,18 @@ class BuildPlanTest {
                         .build())
                 .build();
 
-        var result = pipeline.run();
+        var result = plan.run();
         assertThat(result.success()).isTrue();
         assertThat(listener.scopeUpdates).contains(5);
         // Auto-fill closes the gap: 1 + 4 reported + 2 auto-filled = 7.
-        assertThat(pipeline.snapshot().numerator()).isEqualTo(7);
-        assertThat(pipeline.snapshot().denominator()).isEqualTo(7);
+        assertThat(plan.snapshot().numerator()).isEqualTo(7);
+        assertThat(plan.snapshot().denominator()).isEqualTo(7);
     }
 
     @Test
     void dag_respects_requires_ordering() {
         List<String> order = new ArrayList<>();
-        var pipeline = BuildPlan.builder("dag")
+        var plan = BuildPlan.builder("dag")
                 .addTask(
                         Task.builder("setup").execute(ctx -> order.add("setup")).build())
                 .addTask(Task.builder("middle")
@@ -158,7 +158,7 @@ class BuildPlanTest {
                         .build())
                 .build();
 
-        pipeline.run();
+        plan.run();
         assertThat(order).containsExactly("setup", "middle", "end");
     }
 
@@ -166,7 +166,7 @@ class BuildPlanTest {
     void independent_async_phases_run_in_parallel() throws InterruptedException {
         CountDownLatch sawBothRunning = new CountDownLatch(2);
         CountDownLatch release = new CountDownLatch(1);
-        var pipeline = BuildPlan.builder("parallel")
+        var plan = BuildPlan.builder("parallel")
                 .addTask(Task.builder("a")
                         .kind(TaskKind.IO)
                         .execute(ctx -> {
@@ -183,7 +183,7 @@ class BuildPlanTest {
                         .build())
                 .build();
 
-        Thread runner = new Thread(pipeline::run);
+        Thread runner = new Thread(plan::run);
         runner.start();
         // Both steps must have entered execute() concurrently — proves
         // the IO pool dispatched them in parallel, not sequentially.
@@ -195,7 +195,7 @@ class BuildPlanTest {
     @Test
     void failed_phase_cancels_dependent_phases() {
         var ran = new AtomicInteger();
-        var pipeline = BuildPlan.builder("fail")
+        var plan = BuildPlan.builder("fail")
                 .addTask(Task.builder("ok").execute(ctx -> {}).build())
                 .addTask(Task.builder("boom")
                         .requires("ok")
@@ -209,7 +209,7 @@ class BuildPlanTest {
                         .build())
                 .build();
 
-        var result = pipeline.run();
+        var result = plan.run();
         assertThat(result.success()).isFalse();
         assertThat(ran).hasValue(0); // downstream never ran
         assertThat(result.steps())
@@ -227,7 +227,7 @@ class BuildPlanTest {
 
     @Test
     void warnings_accumulate_and_dont_fail_the_goal() {
-        var pipeline = BuildPlan.builder("nags")
+        var plan = BuildPlan.builder("nags")
                 .addTask(Task.builder("one")
                         .execute(ctx -> {
                             ctx.warn("dep.unverified", "no checksum for X");
@@ -235,7 +235,7 @@ class BuildPlanTest {
                         })
                         .build())
                 .build();
-        var result = pipeline.run();
+        var result = plan.run();
         assertThat(result.success()).isTrue();
         assertThat(result.warnings()).hasSize(2);
     }
@@ -284,7 +284,7 @@ class BuildPlanTest {
         BuildPlanKey<Integer> COUNT = BuildPlanKey.of("count", Integer.class);
         List<String> consumed = new ArrayList<>();
 
-        var pipeline = BuildPlan.builder("flow")
+        var plan = BuildPlan.builder("flow")
                 .addTask(Task.builder("producer")
                         .execute(ctx -> {
                             ctx.put(NAME, "widget");
@@ -300,22 +300,22 @@ class BuildPlanTest {
                         .build())
                 .build();
 
-        var result = pipeline.run();
+        var result = plan.run();
         assertThat(result.success()).isTrue();
         assertThat(consumed).containsExactly("widget", "42");
         // Command body can read state back too.
-        assertThat(pipeline.get(NAME)).hasValue("widget");
+        assertThat(plan.get(NAME)).hasValue("widget");
     }
 
     @Test
     void require_throws_when_key_missing() {
         BuildPlanKey<String> MISSING = BuildPlanKey.of("missing", String.class);
-        var pipeline = BuildPlan.builder("oops")
+        var plan = BuildPlan.builder("oops")
                 .addTask(Task.builder("reader")
                         .execute(ctx -> ctx.require(MISSING))
                         .build())
                 .build();
-        var result = pipeline.run();
+        var result = plan.run();
         assertThat(result.success()).isFalse();
         assertThat(result.errors()).hasSize(1);
         assertThat(result.errors().getFirst().message()).contains("required key 'missing'");
@@ -325,7 +325,7 @@ class BuildPlanTest {
     void cancellation_propagates_to_running_phases() throws InterruptedException {
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch sawCancelled = new CountDownLatch(1);
-        var pipeline = BuildPlan.builder("cancellable")
+        var plan = BuildPlan.builder("cancellable")
                 .addTask(Task.builder("worker")
                         .kind(TaskKind.IO)
                         .execute(ctx -> {
@@ -338,13 +338,13 @@ class BuildPlanTest {
                         .build())
                 .build();
 
-        Thread runner = new Thread(pipeline::run);
+        Thread runner = new Thread(plan::run);
         runner.start();
         assertThat(started.await(2, TimeUnit.SECONDS)).isTrue();
-        pipeline.requestCancel();
+        plan.requestCancel();
         assertThat(sawCancelled.await(2, TimeUnit.SECONDS)).isTrue();
         runner.join(2000);
-        assertThat(pipeline.snapshot().cancelled()).isTrue();
+        assertThat(plan.snapshot().cancelled()).isTrue();
     }
 
     @Test
@@ -354,7 +354,7 @@ class BuildPlanTest {
         // not ok (ETA prior).
         SessionCancel.bind(() -> true);
         try {
-            var pipeline = BuildPlan.builder("session-cancel")
+            var plan = BuildPlan.builder("session-cancel")
                     .addTask(Task.builder("worker")
                             .kind(TaskKind.SYNC)
                             .execute(ctx -> {
@@ -362,7 +362,7 @@ class BuildPlanTest {
                             })
                             .build())
                     .build();
-            BuildPlanResult r = pipeline.run();
+            BuildPlanResult r = plan.run();
             assertThat(r.success()).isFalse();
             assertThat(r.userCancelled()).isTrue();
             assertThat(r.cancelled()).isTrue();
@@ -395,7 +395,7 @@ class BuildPlanTest {
         }
 
         @Override
-        public void pipelineFinish(BuildPlanResult result) {
+        public void planFinish(BuildPlanResult result) {
             finalResult = result;
         }
     }

@@ -26,15 +26,15 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 
 /**
- * {@code jk sync} pipeline: align the local JDK and dependency CAS with {@code jk-lock.toml}. Engine
+ * {@code jk sync} plan: align the local JDK and dependency CAS with {@code jk-lock.toml}. Engine
  * builds pass {@code allowJdkInstall=false} so JDK downloads stay client-side; {@code coordLabel}
  * is null in the engine (plain {@code name:version}, no themed text on the wire).
  */
-public final class SyncPipelines {
+public final class SyncPlans {
 
-    private SyncPipelines() {}
+    private SyncPlans() {}
 
-    /** Cross-step pipeline keys. */
+    /** Cross-step plan keys. */
     public static final BuildPlanKey<Lockfile> LOCKFILE = BuildPlanKey.of("lockfile", Lockfile.class);
 
     public static final BuildPlanKey<JkBuild> BUILD = BuildPlanKey.of("build", JkBuild.class);
@@ -47,7 +47,7 @@ public final class SyncPipelines {
     public static final BuildPlanKey<Boolean> LOCKFILE_CREATED = BuildPlanKey.of("lockfile-created", Boolean.class);
 
     /**
-     * Sync pipeline for {@code dir}. {@code refresh} comes from ambient {@link SessionContext}.
+     * Sync plan for {@code dir}. {@code refresh} comes from ambient {@link SessionContext}.
      * {@code allowJdkInstall} is true only for in-process paths.
      */
     public static BuildPlan syncBuildPlan(

@@ -37,12 +37,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * {@code jk image} pipeline: full build plus OCI tail (Jib plugin or docker/podman Dockerfile
+ * {@code jk image} plan: full build plus OCI tail (Jib plugin or docker/podman Dockerfile
  * mode). Success details ride structured keys ({@link #IMAGE_REF}/{@link #TARBALL_PATH}/…).
  */
-public final class ImagePipelines {
+public final class ImagePlans {
 
-    private ImagePipelines() {}
+    private ImagePlans() {}
 
     public static final BuildPlanKey<ImageConfig> CONFIG = BuildPlanKey.of("image-config", ImageConfig.class);
     public static final BuildPlanKey<Path> TARBALL_PATH = BuildPlanKey.of("tarball-path", Path.class);
@@ -63,8 +63,8 @@ public final class ImagePipelines {
             "bellsoft/liberica-runtime-container:jre-{java-major-version}-slim-glibc";
 
     /**
-     * Build the image pipeline for {@code projectDir}: the core pipeline (via {@link
-     * BuildPipelines#coreBuilder}) plus the image-plan/write-image tail. {@code tarballArg} is
+     * Build the image plan for {@code projectDir}: the core plan (via {@link
+     * BuildPlanner#coreBuilder}) plus the image-plan/write-image tail. {@code tarballArg} is
      * tri-state exactly like {@code --tarball}'s optional value: {@code null} (no tarball), {@code
      * ""} (default layout path), or an explicit path.
      */
@@ -83,7 +83,7 @@ public final class ImagePipelines {
         Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
         boolean compact = cc.jumpkick.layout.ModuleLayout.isCompact(projectDir);
         int estimatedTestCount = TestSupport.estimateAllSuiteTestCount(projectDir, compact);
-        BuildPipelines.Inputs inputs = new BuildPipelines.Inputs(
+        BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
                 projectDir,
                 cache,
                 jkBuildPath,
@@ -106,8 +106,8 @@ public final class ImagePipelines {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("resolve image config");
-                    JkBuild project = ctx.require(BuildPipelines.PROJECT);
-                    BuildLayout layout = ctx.require(BuildPipelines.LAYOUT);
+                    JkBuild project = ctx.require(BuildPlanner.PROJECT);
+                    BuildLayout layout = ctx.require(BuildPlanner.LAYOUT);
                     Path tarballPath = resolveTarballPath(tarballArg, layout);
                     if (tarballPath != null) ctx.put(TARBALL_PATH, tarballPath);
                     ImageConfig config = buildConfig(jkBuildPath, project, registry, tag, dockerExecutableArg);
@@ -148,8 +148,8 @@ public final class ImagePipelines {
                 .weight(() -> EffortWeights.ociWeight(projectDir))
                 .ticks(1)
                 .execute(ctx -> {
-                    JkBuild project = ctx.require(BuildPipelines.PROJECT);
-                    BuildLayout layout = ctx.require(BuildPipelines.LAYOUT);
+                    JkBuild project = ctx.require(BuildPlanner.PROJECT);
+                    BuildLayout layout = ctx.require(BuildPlanner.LAYOUT);
                     ImageConfig config = ctx.require(CONFIG);
                     Path tarballPath = ctx.get(TARBALL_PATH).orElse(null);
 
@@ -244,7 +244,7 @@ public final class ImagePipelines {
                 })
                 .build();
 
-        BuildPlan.Builder builder = BuildPipelines.coreBuilder(inputs);
+        BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs);
         builder.addTask(imagePlan).addTask(writeImage);
         return builder.terminal(TaskNames.WRITE_IMAGE).build();
     }

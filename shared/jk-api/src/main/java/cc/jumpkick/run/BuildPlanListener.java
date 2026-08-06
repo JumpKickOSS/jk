@@ -17,7 +17,7 @@ import java.time.Duration;
  */
 public interface BuildPlanListener {
 
-    default void pipelineStart(BuildPlanView view) {}
+    default void planStart(BuildPlanView view) {}
 
     /**
      * A task began. {@code group} is an optional free-form UI label (e.g. {@code compile}); null when
@@ -43,5 +43,5 @@ public interface BuildPlanListener {
 
     default void stepFinish(String step, String group, TaskStatus status, Duration duration) {}
 
-    default void pipelineFinish(BuildPlanResult result) {}
+    default void planFinish(BuildPlanResult result) {}
 }

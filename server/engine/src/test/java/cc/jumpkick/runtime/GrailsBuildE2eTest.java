@@ -17,7 +17,7 @@ import org.objectweb.asm.ClassReader;
 
 /**
  * acceptance: the [grails] plugin drives a scaffold-shaped Grails 8 app through the real
- * pipeline — grails-app sources compile over the groovy lane (manifest source-roots), grails-app/
+ * plan — grails-app sources compile over the groovy lane (manifest source-roots), grails-app/
  * conf lands in resources, and the grails-jar packager produces a Boot-launcher jar.
  *
  * <p>Network test (Maven Central for the grails-bom closure — large on a cold cache); the CAS
@@ -180,12 +180,12 @@ class GrailsBuildE2eTest {
 
     private static BuildPlanResult build(Path project, Path cache) throws Exception {
         var build = cc.jumpkick.config.JkBuildParser.parse(project.resolve("jk.toml"));
-        BuildPlan lock = LockPipelines.lockBuildPlan(
+        BuildPlan lock = LockPlans.lockBuildPlan(
                 project, build, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
         BuildPlanResult lockResult = lock.run();
         assertThat(lockResult.errors()).isEmpty();
 
-        BuildPipelines.Inputs in = new BuildPipelines.Inputs(
+        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                 project,
                 cache,
                 project.resolve("jk.toml"),
@@ -201,6 +201,6 @@ class GrailsBuildE2eTest {
                 false,
                 java.util.Set.of(),
                 SessionContext.current());
-        return BuildPipelines.coreBuilder(in).build().run();
+        return BuildPlanner.coreBuilder(in).build().run();
     }
 }

@@ -19,7 +19,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Project run pipeline (not a {@code CliCommand}): build then exec. {@link ToolRunCommand}
+ * Project run plan (not a {@code CliCommand}): build then exec. {@link ToolRunCommand}
  * delegates here via {@link #runProject}. Preference: <strong>native &gt; assembly jar &gt; plain
  * jar</strong>.
  *
@@ -44,9 +44,9 @@ public final class RunCommand {
 
         String coord = BuildCommand.buildTarget(projectDir.resolve("jk.toml"), projectDir);
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
-        // In chip modes (AUTO/QUIET) the build pipeline settles as the ▶ Run CommandWedge with
+        // In chip modes (AUTO/QUIET) the build plan settles as the ▶ Run CommandWedge with
         // "Executing `java …`" — no second banner line. In VERBOSE/JSON no chip is printed, so
-        // printExecBanner runs after the pipeline as before.
+        // printExecBanner runs after the plan as before.
         ConsoleSpec spec = new ConsoleSpec(
                 "Run",
                 r -> {
@@ -324,7 +324,7 @@ public final class RunCommand {
     }
 
     /**
-     * Prints the play {@link CommandWedge} to stderr (verbose/JSON modes, where no pipeline chip is
+     * Prints the play {@link CommandWedge} to stderr (verbose/JSON modes, where no plan chip is
      * rendered). Same shape as the chip-mode settle: {@code ▶ Run Executing `java …`}.
      */
     private static void printExecBanner(Path projectDir, cc.jumpkick.engine.protocol.ExecPlan plan) {
@@ -345,7 +345,7 @@ public final class RunCommand {
      * region settles to an exec-style chip so the run banner follows cleanly.
      */
     private cc.jumpkick.runtime.WorkspaceResult runWorkspaceLive(cc.jumpkick.runtime.WorkspaceRequest request) {
-        var view = cc.jumpkick.cli.tui.CommandManager.pipeline(CliOutput.stdout(), "Run", true);
+        var view = cc.jumpkick.cli.tui.CommandManager.plan(CliOutput.stdout(), "Run", true);
         var agg = new cc.jumpkick.cli.run.AggregateContext(view);
         java.util.Map<Path, List<String>> buffers = new java.util.concurrent.ConcurrentHashMap<>();
         List<String> deferredOutput = java.util.Collections.synchronizedList(new ArrayList<>());
@@ -375,11 +375,11 @@ public final class RunCommand {
             @Override
             public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
                 var log = cc.jumpkick.cli.run.EventLogListener.open(
-                        m.cache(), m.pipeline().name());
+                        m.cache(), m.plan().name());
                 List<String> buf = java.util.Collections.synchronizedList(new ArrayList<String>());
                 buffers.put(m.dir(), buf);
                 var lis = new cc.jumpkick.cli.run.AggregateModuleListener(
-                        agg, m.coord(), m.pipeline().steps(), m.weight());
+                        agg, m.coord(), m.plan().steps(), m.weight());
                 lis.bufferOutputInto(buf);
                 return cc.jumpkick.cli.run.CompositeBuildPlanListener.of(lis, log);
             }

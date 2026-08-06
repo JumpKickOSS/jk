@@ -111,7 +111,7 @@ test('didWork false marks module checked; summary says checked not built (JK-129
   assert.equal(moduleSummary(cards[0]), 'checked 2 modules, all up to date');
 });
 
-test('pipeline-finish creates a module row when module-start never fired (single-pipeline requests)', () => {
+test('buildplan-finish creates a module row when module-start never fired (single-plan requests)', () => {
   const cards = [];
   foldEvent(cards, start(1, '/w'));
   foldEvent(cards, { type: 'buildplan-finish', data: { requestId: 1, dir: '/w', success: false } });
@@ -200,7 +200,7 @@ test('orderedModules puts running first (newest activity), finished last', () =>
   );
 });
 
-test('single-pipeline step events (empty dir) become one module with a chain', () => {
+test('single-plan step events (empty dir) become one module with a chain', () => {
   const cards = [];
   foldEvent(cards, start(1, '/proj'));
   foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '', task: 'compile-java', phase: 'compile' } });
@@ -472,8 +472,8 @@ test('weight progress aggregates numerator/denominator across modules', async ()
   const cards = [];
   foldEvent(cards, start(1, '/w'));
   foldEvent(cards, { type: 'plan', data: { requestId: 1, weight: 300 } });
-  foldEvent(cards, { type: 'pipeline-progress', data: { requestId: 1, dir: '/w/a', numerator: 50, denominator: 100 } });
-  foldEvent(cards, { type: 'pipeline-progress', data: { requestId: 1, dir: '/w/b', numerator: 20, denominator: 100 } });
+  foldEvent(cards, { type: 'plan-progress', data: { requestId: 1, dir: '/w/a', numerator: 50, denominator: 100 } });
+  foldEvent(cards, { type: 'plan-progress', data: { requestId: 1, dir: '/w/b', numerator: 20, denominator: 100 } });
   assert.equal(weightNumerator(cards[0]), 70);
   // denominator = max(planWeight 300, sum of module dens 200) = 300 — stable, no backward jump
   assert.equal(weightDenominator(cards[0]), 300);
@@ -483,16 +483,16 @@ test('weight denominator falls back to summed module dens when no plan (single b
   const { weightDenominator } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
   const cards = [];
   foldEvent(cards, start(1, '/w'));
-  foldEvent(cards, { type: 'pipeline-progress', data: { requestId: 1, dir: '', numerator: 4, denominator: 12 } });
+  foldEvent(cards, { type: 'plan-progress', data: { requestId: 1, dir: '', numerator: 4, denominator: 12 } });
   assert.equal(weightDenominator(cards[0]), 12);
 });
 
-test('pipeline-progress updates latest per dir (no double count on repeat)', async () => {
+test('plan-progress updates latest per dir (no double count on repeat)', async () => {
   const { weightNumerator } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
   const cards = [];
   foldEvent(cards, start(1, '/w'));
-  foldEvent(cards, { type: 'pipeline-progress', data: { requestId: 1, dir: '/w/a', numerator: 10, denominator: 100 } });
-  foldEvent(cards, { type: 'pipeline-progress', data: { requestId: 1, dir: '/w/a', numerator: 80, denominator: 100 } });
+  foldEvent(cards, { type: 'plan-progress', data: { requestId: 1, dir: '/w/a', numerator: 10, denominator: 100 } });
+  foldEvent(cards, { type: 'plan-progress', data: { requestId: 1, dir: '/w/a', numerator: 80, denominator: 100 } });
   assert.equal(weightNumerator(cards[0]), 80); // latest wins, not 10+80
 });
 

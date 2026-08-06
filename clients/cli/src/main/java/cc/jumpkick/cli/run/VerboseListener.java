@@ -28,10 +28,10 @@ public final class VerboseListener implements BuildPlanListener {
     }
 
     @Override
-    public void pipelineStart(BuildPlanView view) {
+    public void planStart(BuildPlanView view) {
         out.println(Theme.colorize("▶", Theme.active().activeStep())
                 + " "
-                + Theme.colorize(view.pipelineName(), Theme.active().focused())
+                + Theme.colorize(view.planName(), Theme.active().focused())
                 + " ("
                 + view.stepsTotal()
                 + " step"
@@ -100,7 +100,7 @@ public final class VerboseListener implements BuildPlanListener {
     }
 
     @Override
-    public void pipelineFinish(BuildPlanResult result) {
+    public void planFinish(BuildPlanResult result) {
         String summary = result.success()
                 ? Theme.colorize(Glyphs.CHECK + " done", Theme.active().completedStep())
                 : Theme.colorize(Glyphs.CROSS + " failed", Theme.active().error());

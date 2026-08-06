@@ -134,7 +134,7 @@ work when `hasSubscribers()` is false.
 
 | Kind | Events | When published |
 | --- | --- | --- |
-| **Inflicted** (realtime) | `request-start` / `plan` / `module-*` / `step-*` / `label` / `pipeline-progress` / `workspace-progress` / `eta` / `output` / `diagnostic` / `*-finish` / `request-finish` | As the pipeline mutates state — never batched on a timer |
+| **Inflicted** (realtime) | `request-start` / `plan` / `module-*` / `step-*` / `label` / `plan-progress` / `workspace-progress` / `eta` / `output` / `diagnostic` / `*-finish` / `request-finish` | As the plan mutates state — never batched on a timer |
 | **Sampled** (change-gated) | `status` | ~every 2 s while any client is subscribed, **and** only when presentation-quantized vitals change (CPU ~1 pp, RAM/heap ~1 MiB, counters exact). Also forced on stream connect and nudged on request start/finish |
 | **Sampled** (change-gated, IO) | `cache` | Slow tick (~30 s) while subscribed, plus after request finish; **not** on the 2 s status sampler. Live frames are **thin** (dual surface totals + budgets, `"thin": true`); full section breakdown is REST-only |
 
@@ -149,7 +149,7 @@ async — a first-ever connect may briefly carry no `cache` frame until the asyn
 
 ### `event: status`
 
-Core engine/host vitals (same facts as `GET /api/status` heap/load/pipelines fields). Config knobs
+Core engine/host vitals (same facts as `GET /api/status` heap/load/plans fields). Config knobs
 (`httpUrl`, `maxConcurrentRequests`, …) stay REST-only; the SPA merges SSE into the last REST
 hydrate.
 
@@ -185,11 +185,11 @@ fold type has a site; progress is coalesced only by the intentional ≥0.1% / TT
 | `request-start` | `publishRequestStart` | CLI admit + HTTP workspace/lock |
 | `plan` | `publishPlan` | Total weight for bar denominator |
 | `module-start` / `module-finish` | workspace listener | Per-module rows |
-| `task-start` / `task-finish` | pipeline listener | Phase-tagged steps |
-| `label` | pipeline listener | Live step detail (test class.method, “shrinking jar”, …); SPA paints after the running phase node |
-| `pipeline-progress` | pipeline ticks | Single-module / per-module detail |
+| `task-start` / `task-finish` | plan listener | Phase-tagged steps |
+| `label` | plan listener | Live step detail (test class.method, “shrinking jar”, …); SPA paints after the running phase node |
+| `plan-progress` | plan ticks | Single-module / per-module detail |
 | `workspace-progress` | `emitWorkspaceProgress` | Aggregate %; peak-hold + 0.1% / frame filter |
 | `eta` | `publishEta` | Seed + re-projections |
 | `output` / `diagnostic` | step output / failures | Bounded diagnostics |
-| `buildplan-finish` | pipeline end | Module-level success |
+| `buildplan-finish` | plan end | Module-level success |
 | `request-finish` | request finally | Always includes `success` + `cancelled` (CLI + HTTP) |

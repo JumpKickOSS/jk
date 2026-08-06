@@ -20,7 +20,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * Test-step building blocks shared by the build pipeline and the {@code test} command. Coupled only
+ * Test-step building blocks shared by the build plan and the {@code test} command. Coupled only
  * to {@link TaskContext} (the view-agnostic progress callback), so it lives in {@code:runtime}
  * and embedders can drive it without the CLI/TUI.
  */
@@ -189,7 +189,7 @@ public final class TestSupport {
      * Adapt the JUnit runner's events onto a {@link TaskContext}.
      *
      * <p>The runTests step is built with its scope baked in from an upfront lexical scan, so the
-     * pipeline's denominator is fixed before any step runs. We don't react to the runner's {@code
+     * plan's denominator is fixed before any step runs. We don't react to the runner's {@code
      * discovery_total} (that would reshape the bar after early steps moved). The numerator ticks
      * only for tests that were in the static plan ({@code wasStatic=true}); dynamic invocations run
      * and are counted in the pass/fail tally but never advance the bar — for parameterized-heavy

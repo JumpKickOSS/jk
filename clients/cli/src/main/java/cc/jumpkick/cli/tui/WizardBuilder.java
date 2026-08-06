@@ -13,7 +13,7 @@ public final class WizardBuilder {
     WizardBuilder() {}
 
     /**
-     * Short action command displayed in the pipeline chip, e.g. {@code "New"} or {@code "Import"}.
+     * Short action command displayed in the plan chip, e.g. {@code "New"} or {@code "Import"}.
      */
     public WizardBuilder command(String command) {
         this.command = command;

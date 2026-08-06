@@ -129,7 +129,7 @@ class AndroidWorkspaceTest {
                         List.of(),
                         List.of()),
                 module.resolve("jk-lock.toml"));
-        BuildPipelines.Inputs in = new BuildPipelines.Inputs(
+        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                 module,
                 cache,
                 module.resolve("jk.toml"),
@@ -145,8 +145,8 @@ class AndroidWorkspaceTest {
                 false,
                 java.util.Set.of(),
                 cc.jumpkick.config.SessionContext.current());
-        BuildPlan pipeline = BuildPipelines.coreBuilder(in).build();
-        return pipeline.run();
+        BuildPlan plan = BuildPlanner.coreBuilder(in).build();
+        return plan.run();
     }
 
     private static void acceptLicenses() throws Exception {

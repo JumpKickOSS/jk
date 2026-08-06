@@ -69,7 +69,7 @@ class RebuildPackageStoreParityTest {
         Session session = Session.defaults().withConfig(rebuildConfig()).withCacheDir(cache);
         SessionContext.where(session, () -> {
             // Same store path the package step uses (must not no-op under rebuild).
-            BuildPipelines.storePackagedForTest(cache, task, key, tokens, jarDir, List.of(jar), true);
+            BuildPlanner.storePackagedForTest(cache, task, key, tokens, jarDir, List.of(jar), true);
             return null;
         });
 
@@ -94,7 +94,7 @@ class RebuildPackageStoreParityTest {
 
         Session session = Session.defaults().withCacheDir(cache);
         SessionContext.where(session, () -> {
-            BuildPipelines.storePackagedForTest(cache, task, key, tokens, jarDir, List.of(jar), false);
+            BuildPlanner.storePackagedForTest(cache, task, key, tokens, jarDir, List.of(jar), false);
             return null;
         });
 

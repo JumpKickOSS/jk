@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * End-to-end tests for the jk install <file> → jk lock → jk build/check pipeline. Verifies that
+ * End-to-end tests for the jk install <file> → jk lock → jk build/check plan. Verifies that
  * locally-installed JARs are usable as compile-time dependencies and that incremental compilation
  * behaves correctly against them.
  */

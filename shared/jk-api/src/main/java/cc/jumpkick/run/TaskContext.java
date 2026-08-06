@@ -7,10 +7,10 @@ package cc.jumpkick.run;
  */
 public interface TaskContext {
 
-    /** Add {@code delta} to the pipeline's progress numerator. */
+    /** Add {@code delta} to the plan's progress numerator. */
     void progress(int delta);
 
-    /** Grow this step's ticks (and the pipeline denominator) when the estimate was too low. */
+    /** Grow this step's ticks (and the plan denominator) when the estimate was too low. */
     void updateTicks(int additional);
 
     /**

@@ -98,11 +98,11 @@ class RebuildRunTestsMarkerTest {
         Session rebuild = Session.defaults().withConfig(rebuildConfig()).withCacheDir(cache);
         SessionContext.runWhere(rebuild, () -> {
             try {
-                BuildPlan lock = LockPipelines.lockBuildPlan(
+                BuildPlan lock = LockPlans.lockBuildPlan(
                         project, parsed, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
                 assertThat(lock.run().errors()).isEmpty();
 
-                BuildPlanResult result = BuildPipelines.coreBuilder(new BuildPipelines.Inputs(
+                BuildPlanResult result = BuildPlanner.coreBuilder(new BuildPlanner.Inputs(
                                 project,
                                 cache,
                                 project.resolve("jk.toml"),

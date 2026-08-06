@@ -193,8 +193,8 @@ final class ScriptRunner {
     // --- shared helpers --------------------------------------------------
 
     /**
-     * Run one mode's preparation pipeline — engine-hosted normally, in-process through the {@link
-     * standard single-pipeline progress either way.
+     * Run one mode's preparation plan — engine-hosted normally, in-process through the {@link
+     * standard single-plan progress either way.
      */
     private EngineClient.ScriptPrepareOutcome prepare(String mode, Path file) throws IOException, InterruptedException {
         BuildPlanConsole.Mode consoleMode = BuildPlanConsole.modeFor(global);
@@ -212,7 +212,7 @@ final class ScriptRunner {
     }
 
     /**
-     * Map a failed pipeline to exit code 1. The listener already painted the diagnostic and the "Failed"
+     * Map a failed plan to exit code 1. The listener already painted the diagnostic and the "Failed"
      * bar; we don't repeat ourselves.
      */
     private int failureExitCode(BuildPlanResult result) {

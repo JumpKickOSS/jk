@@ -2,7 +2,7 @@
 package cc.jumpkick.run;
 
 /**
- * Canonical step-name constants (the {@code {phase}-{step}} step names (their place in the run hierarchy is {@code pipeline/phase/step}) used by {@link
+ * Canonical step-name constants (the {@code {phase}-{step}} step names (their place in the run hierarchy is {@code plan/phase/step}) used by {@link
  * Step#builder} producers and their {@code.requires(...)} consumers). Naming a step in one
  * place kills the stringly-typed producer/consumer duplication where a typo would otherwise be a
  * silent missing-dependency edge rather than a compile error.

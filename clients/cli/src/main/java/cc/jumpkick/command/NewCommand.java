@@ -380,7 +380,7 @@ public final class NewCommand implements CliCommand {
     }
 
     /**
-     * Interactive wizard pipeline (prewarm → wizard → optional install-jdk → scaffold). The terminal
+     * Interactive wizard plan (prewarm → wizard → optional install-jdk → scaffold). The terminal
      * lives across steps via a {@link BuildPlanKey} and is closed in a {@code finally}.
      */
     private int runWizardBuildPlan(Path cwd) throws IOException {
@@ -506,7 +506,7 @@ public final class NewCommand implements CliCommand {
                 })
                 .build();
 
-        BuildPlan pipeline = BuildPlan.builder("new")
+        BuildPlan plan = BuildPlan.builder("new")
                 .interactive(true)
                 .addTask(prewarm)
                 .addTask(wizardStep)
@@ -514,13 +514,13 @@ public final class NewCommand implements CliCommand {
                 .addTask(scaffold)
                 .build();
 
-        // Single try/finally wrapping the whole pipeline lifecycle plus the
+        // Single try/finally wrapping the whole plan lifecycle plus the
         // success-emit path: emitSuccessOnTerminal writes through the
         // wizard's JLine terminal handle, so the terminal has to stay
         // open until after that call. The finally closes it on the way
         // out whether scaffold succeeded, failed, or threw.
         try {
-            BuildPlanResult result = BuildPlanConsole.run(pipeline, BuildPlanConsole.modeFor(global), cache);
+            BuildPlanResult result = BuildPlanConsole.run(plan, BuildPlanConsole.modeFor(global), cache);
 
             if (!result.success()) {
                 for (BuildPlanResult.Diagnostic d : result.errors()) {
@@ -529,10 +529,10 @@ public final class NewCommand implements CliCommand {
                         return Exit.CONFIG;
                     }
                     if ("exists".equals(d.code())) {
-                        NewInputs partial = pipeline.get(INPUTS).orElse(null);
+                        NewInputs partial = plan.get(INPUTS).orElse(null);
                         String coord = partial != null ? partial.group() + ":" + partial.name() : "project";
                         boolean isInit = directory != null && isCurrentDirArg(directory);
-                        Terminal term = pipeline.get(TERMINAL).orElse(null);
+                        Terminal term = plan.get(TERMINAL).orElse(null);
                         emitProjectExistsError(coord, parent != null, isInit, term);
                         return Exit.CONFIG;
                     }
@@ -540,15 +540,15 @@ public final class NewCommand implements CliCommand {
                 return Exit.CONFIG;
             }
 
-            NewInputs inputs = pipeline.get(INPUTS).orElseThrow();
+            NewInputs inputs = plan.get(INPUTS).orElseThrow();
             boolean isInit = directory != null && isCurrentDirArg(directory);
-            pipeline.get(TERMINAL)
+            plan.get(TERMINAL)
                     .ifPresentOrElse(
                             t -> emitSuccessOnTerminal(inputs, t, registered, isInit),
                             () -> emitSuccessPlain(inputs, registered, isInit));
             return 0;
         } finally {
-            pipeline.get(TERMINAL).ifPresent(t -> {
+            plan.get(TERMINAL).ifPresent(t -> {
                 try {
                     t.close();
                 } catch (IOException ignored) {
@@ -559,7 +559,7 @@ public final class NewCommand implements CliCommand {
 
     /**
      * Flag mode: validate inputs, scaffold. Not interactive (no wizard, no progress widgets in the
-     * command's own output). Wrapping it in a pipeline still gives us a run-log entry for `jk new
+     * command's own output). Wrapping it in a plan still gives us a run-log entry for `jk new
      * --name=X` etc.
      */
     private int runFlagBuildPlan(Path cwd) {
@@ -594,9 +594,9 @@ public final class NewCommand implements CliCommand {
                 })
                 .build();
 
-        BuildPlan pipeline = BuildPlan.builder("new").addTask(scaffold).build();
+        BuildPlan plan = BuildPlan.builder("new").addTask(scaffold).build();
 
-        BuildPlanResult result = BuildPlanConsole.run(pipeline, BuildPlanConsole.modeFor(global), cache);
+        BuildPlanResult result = BuildPlanConsole.run(plan, BuildPlanConsole.modeFor(global), cache);
         if (!result.success()) return 1;
         if (!global.outputIsJson())
             emitSuccessPlain(inputs, registered, directory != null && isCurrentDirArg(directory));

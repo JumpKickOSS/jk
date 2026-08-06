@@ -5,7 +5,7 @@ How jk is structured today. For day-to-day usage see [guide.md](guide.md).
 ## Design tenets
 
 1. **Declarative core** — `jk.toml` is data; logic lives in plugins and task scripts, not the manifest.
-2. **Fast client, hosted build** — native CLI for UX; resident engine for resolution, BuildPlans, and memory coordination.
+2. **Fast client, hosted build** — native CLI for UX; resident engine for resolution, BuildPlanner, and memory coordination.
 3. **Reproducibility by default** — lockfile, content-addressed cache, deterministic packaging.
 4. **Diagnostics as product** — PubGrub prose, `jk why` / `jk explain`, machine-readable output.
 5. **Adoption first** — `jk mvn` / `jk gradle`, import/export, Maven Central semantics.
@@ -171,7 +171,7 @@ Bootstrap build: **Java 25 + Gradle** (until self-hosting CI is complete). Runti
 | Area | Modules | Role |
 |---|---|---|
 | `shared/` | `jk-api`, `plugin-sdk`, `core`, `client-io`, `toolchain-jdk`, `wire` | Client-safe contracts, config/lock, CLI I/O, JDK tools, wire codec |
-| `server/` | `io`, `resolver`, `toolchain`, `engine` | Repo fetch, PubGrub, import/export tools, build pipeline; `EngineMain` + fat jar packaging (never links CLI) |
+| `server/` | `io`, `resolver`, `toolchain`, `engine` | Repo fetch, PubGrub, import/export tools, build plan; `EngineMain` + fat jar packaging (never links CLI) |
 | `clients/` | `cli`, `web` | Slim wire client (native/JVM), dashboard SPA |
 | `plugins/` | `java-compiler`, `kotlin-compiler`, `groovy-compiler`, `test-runner`, `auditor`, `publisher`, `image-builder`, `formatter`, `compat-bridge`, `spring-boot`, `quarkus`, `grails`, `android`, `protobuf`, `shrink` | First-party workers / build plugins |
 

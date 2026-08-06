@@ -30,7 +30,7 @@ public record StatusSnapshot(
         double systemCpuLoad,
         /** High-water mark of concurrent client connections since engine start. */
         int peakActiveRequests,
-        /** High-water mark of concurrent pipelines since engine start. */
+        /** High-water mark of concurrent plans since engine start. */
         int peakActiveBuildPlans) {
 
     /** Back-compat constructor without free/load/peak counters (tests). */

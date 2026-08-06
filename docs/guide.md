@@ -639,7 +639,7 @@ export JK_OUTPUT=json        # same for any command that uses BuildPlanConsole
 ```
 
 - **`json` and `jsonl` are the same mode:** a **live** event stream (phases, progress ticks, labels,
-  errors with structured test fields, step/pipeline finish). Not a single end-of-run blob.
+  errors with structured test fields, step/plan finish). Not a single end-of-run blob.
 - Every line includes `"schema":1`, `"ts"`, `"type"`. Schema stays **1** until jk 1.0 (no pre-release
   version churn). See [machine-output.md](machine-output.md) for the event table and how it aligns
   with web SSE and **MCP** (`POST /mcp`; `jk engine status` prints **MCP**).
@@ -824,6 +824,7 @@ rebuild questions.
 jk explain                   # full plan: cached vs rebuild sections + ETA
 jk explain --verbose         # expand every step
 jk explain --redo            # global flag: forecast full rebuild ETA (same as `jk build --redo`)
+# The ETA seed matches bare `jk build` bit-for-bit (same -w auto, -j, flags). See docs/perf/progress-contract.md.
 
 # Module dependency DAG (no engine)
 jk explain --graph dot > modules.dot

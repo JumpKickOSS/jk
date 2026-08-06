@@ -24,7 +24,7 @@ public interface WorkspaceBuildListener {
      */
     default void onPreflight(String stage, int done, int total, String label) {}
 
-    /** The resolved modules in dependency order, each with its assembled pipeline + estimated weight. */
+    /** The resolved modules in dependency order, each with its assembled plan + estimated weight. */
     default void onPlan(List<ModulePlan> plan) {}
 
     /**
@@ -35,7 +35,7 @@ public interface WorkspaceBuildListener {
     default void onModuleGraph(Map<Path, Set<Path>> prereqs) {}
 
     /**
-     * A module is about to build. Return the {@link BuildPlanListener} to attach to its pipeline (its
+     * A module is about to build. Return the {@link BuildPlanListener} to attach to its plan (its
      * step/progress/output events), or {@code null} / a no-op listener to ignore them.
      */
     default BuildPlanListener onModuleStart(ModulePlan module) {
@@ -55,7 +55,7 @@ public interface WorkspaceBuildListener {
 
     /**
      * Workspace aggregate progress from the engine tracker. Clients must paint this for
-     * the bar / {@code progress} rider — do not re-aggregate from per-module pipeline ticks.
+     * the bar / {@code progress} rider — do not re-aggregate from per-module plan ticks.
      */
     default void onWorkspaceProgress(WorkspaceProgressTracker.Snapshot snapshot) {}
 

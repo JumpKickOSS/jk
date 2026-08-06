@@ -25,7 +25,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Machine-local preflight memo+): dirty-set, graph structure, and pipeline shape caches
+ * Machine-local preflight memo+): dirty-set, graph structure, and plan shape caches
  * under {@code <entry>/target/.jk/preflight/}. Never git-committed; miss or corrupt → full recompute
  * (fail-open).
  *
@@ -393,8 +393,8 @@ public final class PreflightMemo {
     // BuildPlan shape (layer B)
 
     /**
-     * Static pipeline outline for one module: total weight, serial test-step weight, and step
-     * names/phases. Used to skip pipeline assembly on ETA-only paths and to skip
+     * Static plan outline for one module: total weight, serial test-step weight, and step
+     * names/phases. Used to skip plan assembly on ETA-only paths and to skip
      * {@link cc.jumpkick.run.BuildPlan#estimatedTotalWeight} on prepare. Never trusted
      * under force/rebuild.
      */
@@ -403,7 +403,7 @@ public final class PreflightMemo {
     }
 
     /**
-     * Shape key: toml + lock + skipTests + engine version — not sources (static pipeline outline).
+     * Shape key: toml + lock + skipTests + engine version — not sources (static plan outline).
      */
     public static String shapeFingerprint(Path moduleDir, boolean skipTests) {
         try {
@@ -472,7 +472,7 @@ public final class PreflightMemo {
         return rel + "\0" + fingerprint;
     }
 
-    /** Upsert one module's pipeline shape into the shape memo. Best-effort. */
+    /** Upsert one module's plan shape into the shape memo. Best-effort. */
     public static void storeShape(Path entryDir, Path moduleDir, boolean skipTests, BuildPlanShape shape) {
         if (shape == null) return;
         Path root = entryDir.toAbsolutePath().normalize();
@@ -528,11 +528,11 @@ public final class PreflightMemo {
         }
     }
 
-    /** Build a {@link BuildPlanShape} from an assembled pipeline (weights + step outline). */
-    public static BuildPlanShape shapeOf(cc.jumpkick.run.BuildPlan pipeline, int weight) {
+    /** Build a {@link BuildPlanShape} from an assembled plan (weights + step outline). */
+    public static BuildPlanShape shapeOf(cc.jumpkick.run.BuildPlan plan, int weight) {
         List<BuildPlanShape.StepShape> steps = new ArrayList<>();
         int testWeight = 0;
-        for (var s : pipeline.steps()) {
+        for (var s : plan.steps()) {
             String phase = s.group().orElse("");
             steps.add(new BuildPlanShape.StepShape(s.name(), phase));
             if ("run-tests".equals(s.name())) {
@@ -564,7 +564,7 @@ public final class PreflightMemo {
                     .weight(0)
                     .build());
         }
-        // Empty-step pipeline is fine; ModulePlan.weight carries the bar share.
+        // Empty-step plan is fine; ModulePlan.weight carries the bar share.
         return new ModulePlan(unit.dir(), unit.coord(), b.build(), shape.weight(), false, cache);
     }
 

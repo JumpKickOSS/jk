@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@link LockPipelines#lockScope}: every lock entry point (JSONL cascade, HTTP/MCP job) must
+ * {@link LockPlans#lockScope}: every lock entry point (JSONL cascade, HTTP/MCP job) must
  * resolve the same single scope — workspace root with the merged union — so a module-scoped lock
  * can never overwrite the root {@code jk-lock.toml} with one module's closure.
  */
@@ -64,7 +64,7 @@ class LockScopeTest {
     void workspace_root_locks_the_merged_union(@TempDir Path tmp) throws Exception {
         workspace(tmp);
 
-        var scope = LockPipelines.lockScope(tmp);
+        var scope = LockPlans.lockScope(tmp);
 
         assertThat(scope.lockDir()).isEqualTo(tmp);
         // The merged model carries a dependency declared only in a member.
@@ -75,7 +75,7 @@ class LockScopeTest {
     void workspace_member_redirects_to_the_root_scope(@TempDir Path tmp) throws Exception {
         workspace(tmp);
 
-        var scope = LockPipelines.lockScope(tmp.resolve("app"));
+        var scope = LockPlans.lockScope(tmp.resolve("app"));
 
         // Never the member dir: a module-scoped resolution over the root lock truncates it.
         assertThat(scope.lockDir()).isEqualTo(tmp);
@@ -94,7 +94,7 @@ class LockScopeTest {
                 java = 25
                 """);
 
-        var scope = LockPipelines.lockScope(tmp);
+        var scope = LockPlans.lockScope(tmp);
 
         assertThat(scope.lockDir()).isEqualTo(tmp);
     }

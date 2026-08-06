@@ -17,11 +17,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Human-paced wire progress: coalesces high-frequency {@link #progress}, {@link #tickUpdate}, and
  * {@link #label} events to at most one emit per cadence (default {@value #DEFAULT_CADENCE_MS} ms).
  *
- * <p>Structural events ({@code pipelineStart/Finish}, {@code stepStart/Finish}, {@code output},
+ * <p>Structural events ({@code planStart/Finish}, {@code stepStart/Finish}, {@code output},
  * {@code warn}, {@code error}) flush pending progress immediately then pass through — humans need
  * those, and agents need them for correctness.
  *
- * <p>Applies to <em>all</em> engine-hosted pipelines (lock, build, test, plugins), not only resolve:
+ * <p>Applies to <em>all</em> engine-hosted plans (lock, build, test, plugins), not only resolve:
  * anything that hammers {@code ctx.progress(1)} benefits. Cadence is for eyeballs; sending faster
  * than a human can read is pure wire cost.
  *
@@ -53,7 +53,7 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
     private final AtomicBoolean closed = new AtomicBoolean();
 
     /**
-     * Timer only — every pipeline in the engine shares this one thread, so it must never perform a
+     * Timer only — every plan in the engine shares this one thread, so it must never perform a
      * wire write. {@link #emitPendingLocked} calls the delegate, which is a socket send under the
      * connection's write monitor: a client that stops draining its socket (SIGSTOP'd, wedged
      * terminal) would park this thread and every other build's coalesced progress would go silent
@@ -68,7 +68,7 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
 
     /**
      * Where a timed flush actually runs: one virtual thread per flush, so blocking in a wire write
-     * costs no platform thread and isolates pipelines from each other. Per-listener ordering is
+     * costs no platform thread and isolates plans from each other. Per-listener ordering is
      * still guaranteed by {@link #lock}.
      */
     private static final java.util.concurrent.ExecutorService FLUSHERS =
@@ -96,9 +96,9 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
     }
 
     @Override
-    public void pipelineStart(BuildPlanView view) {
+    public void planStart(BuildPlanView view) {
         flush();
-        delegate.pipelineStart(view);
+        delegate.planStart(view);
     }
 
     @Override
@@ -179,9 +179,9 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
     }
 
     @Override
-    public void pipelineFinish(BuildPlanResult result) {
+    public void planFinish(BuildPlanResult result) {
         flush();
-        delegate.pipelineFinish(result);
+        delegate.planFinish(result);
         close();
     }
 

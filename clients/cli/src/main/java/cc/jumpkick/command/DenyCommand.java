@@ -70,11 +70,11 @@ public final class DenyCommand implements CliCommand {
                 })
                 .build();
 
-        BuildPlan pipeline = BuildPlan.builder("deny").addTask(check).build();
-        BuildPlanResult result = BuildPlanConsole.run(pipeline, BuildPlanConsole.modeFor(global), cache);
+        BuildPlan plan = BuildPlan.builder("deny").addTask(check).build();
+        BuildPlanResult result = BuildPlanConsole.run(plan, BuildPlanConsole.modeFor(global), cache);
         if (!result.success()) return 1;
 
-        DenyReport report = pipeline.get(REPORT).orElseThrow();
+        DenyReport report = plan.get(REPORT).orElseThrow();
         if (report.violationCount() == 0) {
             if (!global.outputIsJson())
                 cc.jumpkick.cli.tui.CommandWedge.printOk(

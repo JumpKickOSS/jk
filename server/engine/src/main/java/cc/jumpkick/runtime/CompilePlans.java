@@ -5,16 +5,16 @@ import cc.jumpkick.run.BuildPlan;
 import java.nio.file.Path;
 import java.util.Set;
 
-/** {@code jk compile}: {@link BuildPipelines} in compile-only mode (no resources/tests/package). */
-public final class CompilePipelines {
+/** {@code jk compile}: {@link BuildPlanner} in compile-only mode (no resources/tests/package). */
+public final class CompilePlans {
 
-    private CompilePipelines() {}
+    private CompilePlans() {}
 
-    /** Compile-only pipeline for {@code dir} (auto-locks like {@code jk build}). */
+    /** Compile-only plan for {@code dir} (auto-locks like {@code jk build}). */
     public static BuildPlan compileBuildPlan(Path dir, Path cache, String profileName, boolean verbose) {
         Path buildFile = dir.resolve("jk.toml");
         Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
-        BuildPipelines.Inputs inputs = new BuildPipelines.Inputs(
+        BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
                 dir,
                 cache,
                 buildFile,
@@ -30,6 +30,6 @@ public final class CompilePipelines {
                 true,
                 Set.of(),
                 cc.jumpkick.config.SessionContext.current());
-        return BuildPipelines.coreBuilder(inputs).build();
+        return BuildPlanner.coreBuilder(inputs).build();
     }
 }

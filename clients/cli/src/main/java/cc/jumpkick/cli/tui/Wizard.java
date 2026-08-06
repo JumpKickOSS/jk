@@ -393,7 +393,7 @@ public final class Wizard {
         }
         boolean nerd = GlobalConfig.nerdfont();
         // Nerd: " ≡ New " + powerline; ansi: " ≡ New  " (two trailing chip spaces).
-        return BuildPlanWedge.chip(Glyphs.MENU, command, t.pipelineChip(), nerd)
+        return BuildPlanWedge.chip(Glyphs.MENU, command, t.planChip(), nerd)
                 + BuildPlanWedge.cap(t.planBadgeColor(), nerd)
                 + " "
                 + Theme.colorize(subtitle, t.focused());

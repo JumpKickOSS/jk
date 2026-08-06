@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.run;
 
-/** Read-only pipeline snapshot for listeners ({@code numerator}/{@code denominator} may grow). */
+/** Read-only plan snapshot for listeners ({@code numerator}/{@code denominator} may grow). */
 public record BuildPlanView(
-        String pipelineName, long numerator, long denominator, int stepsTotal, int stepsComplete, boolean cancelled) {
+        String planName, long numerator, long denominator, int stepsTotal, int stepsComplete, boolean cancelled) {
 
     public double fraction() {
         if (denominator <= 0) return 0.0;

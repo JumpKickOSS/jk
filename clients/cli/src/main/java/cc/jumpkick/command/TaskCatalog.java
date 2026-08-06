@@ -13,7 +13,7 @@ import java.util.Optional;
 import java.util.function.Function;
 
 /**
- * First-party build pipeline tasks for {@code jk tasks} / {@code jk show} / {@code jk inspect}
+ * First-party build plan tasks for {@code jk tasks} / {@code jk show} / {@code jk inspect}
  * . Names align with {@link TaskNames} where possible; a few Mill-friendly aliases
  * ({@code compile-main}, {@code package}) resolve to the same entry.
  */
