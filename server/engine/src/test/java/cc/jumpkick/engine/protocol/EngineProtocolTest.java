@@ -174,6 +174,23 @@ class EngineProtocolTest {
                 .isTrue();
     }
 
+    /**
+     * Regression (JK-1588): invocation-phase wire names come from the enum, and every enum
+     * value's wire name round-trips through {@code fromWire} — no hardcoded producer strings
+     * that a future consumer's parse would miss.
+     */
+    @Test
+    void invocation_phase_wire_names_round_trip_the_enum() {
+        for (var p : cc.jumpkick.plugin.build.InvocationPhase.values()) {
+            assertThat(cc.jumpkick.plugin.build.InvocationPhase.fromWire(p.wireName())).isEqualTo(p);
+        }
+        String line = EngineProtocol.invocationPhase(
+                cc.jumpkick.plugin.build.InvocationPhase.RESOLVE.wireName(), "start");
+        assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.INVOCATION_PHASE);
+        assertThat(Jsonl.str(line, "phase")).isEqualTo("resolve");
+        assertThat(Jsonl.str(line, "status")).isEqualTo("start");
+    }
+
     @Test
     void build_request_carries_test_only_and_dirty_hint() {
         String on = EngineProtocol.buildRequest(

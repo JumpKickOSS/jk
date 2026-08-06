@@ -4086,15 +4086,16 @@ public final class EngineServer implements AutoCloseable {
             @Override
             public void onPreflight(String stage, int done, int total, String label) {
                 sendQuiet(writer, EngineProtocol.preflight(stage, done, total, label));
-                // Map coarse preflight stages onto user-visible InvocationPhases.
-                String inv = switch (stage == null ? "" : stage) {
-                    case "lock", "graph" -> "resolve";
-                    case "checking", "plan", "prepare", "calibrate" -> "plan";
+                // Map coarse preflight stages onto user-visible InvocationPhases. Wire names
+                // come from the enum — the one vocabulary a future consumer's fromWire parses.
+                cc.jumpkick.plugin.build.InvocationPhase inv = switch (stage == null ? "" : stage) {
+                    case "lock", "graph" -> cc.jumpkick.plugin.build.InvocationPhase.RESOLVE;
+                    case "checking", "plan", "prepare", "calibrate" -> cc.jumpkick.plugin.build.InvocationPhase.PLAN;
                     default -> null;
                 };
                 if (inv != null) {
                     String status = (total > 0 && done >= total) ? "finish" : "start";
-                    sendQuiet(writer, EngineProtocol.invocationPhase(inv, status));
+                    sendQuiet(writer, EngineProtocol.invocationPhase(inv.wireName(), status));
                 }
                 if (eventRequestId > 0) {
                     progressTracker(eventRequestId).preflight(stage, done, total);
