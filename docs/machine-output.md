@@ -57,8 +57,8 @@ export JK_OUTPUT=json         # or jsonl
 - Every object includes at least: `schema` (int), `ts` (epoch ms), `type` (string).
 - Most lines also carry **`progress`**: aggregate workspace/plan percent **0–100** (or
   `null` until known) from the **engine** tracker — **not** `progress_num`/`progress_den`
-  (JK-1117/1120). Per-step `numerator`/`denominator` on `progress` / `tick-update` events stay
-  **plan-local** (one module). For whole-job % without step spam, subscribe to
+  (JK-1117/1120). Per-task `numerator`/`denominator` on `progress` / `tick-update` events stay
+  **plan-local** (one module). For whole-job % without task spam, subscribe to
   **`type=workspace-progress`** (fields: `progress`, `numerator`, `denominator`, `phase`,
   `modulesComplete`, `modulesTotal`).
 - Schema version: **`1`** forever until **jk 1.0** (see [architecture.md — Schema freeze](architecture.md#schema-freeze-until-10)).
@@ -69,9 +69,9 @@ Example lines (illustrative):
 
 ```json
 {"schema":1,"ts":1721664000123,"type":"buildplan-start","plan":"test","denominator":42,"steps":3,"progress":12.5}
-{"schema":1,"ts":1721664000456,"type":"task-start","step":"run-tests","phase":"test","ticks":10,"progress":45}
-{"schema":1,"ts":1721664000789,"type":"label","step":"run-tests","label":"cc.jumpkick:jk-core :: FooTest > bar()  [w2]","progress":67.3}
-{"schema":1,"ts":1721664000901,"type":"error","step":"run-tests","code":"test-failure","message":"…","test":"cc.jumpkick:jk-core :: FooTest > bar()  [w2]","exceptionClass":"org.opentest4j.AssertionFailedError","progress":67.3}
+{"schema":1,"ts":1721664000456,"type":"task-start","task":"run-tests","phase":"test","ticks":10,"progress":45}
+{"schema":1,"ts":1721664000789,"type":"label","task":"run-tests","label":"cc.jumpkick:jk-core :: FooTest > bar()  [w2]","progress":67.3}
+{"schema":1,"ts":1721664000901,"type":"error","task":"run-tests","code":"test-failure","message":"…","test":"cc.jumpkick:jk-core :: FooTest > bar()  [w2]","exceptionClass":"org.opentest4j.AssertionFailedError","progress":67.3}
 {"schema":1,"ts":1721664001000,"type":"buildplan-finish","plan":"test","success":false,"duration_ms":880,"warnings":0,"errors":1,"progress":100}
 ```
 
@@ -138,8 +138,8 @@ same work:
 | `schema` | Always `1` until jk 1.0 |
 | `type` | Conceptual event name (`task-start`, `progress`, `error`, …) |
 | `progress` | Aggregate % 0–100 or `null` (JK-1117/1119) — **not** `progress_num`/`progress_den` |
-| `step` / `phase` / `status` / `dir` / `coord` | Same names across surfaces |
-| `numerator` / `denominator` | Step-scoped weights (progress events); optional beside the % rider |
+| `task` / `phase` / `status` / `dir` / `coord` | Same names across surfaces |
+| `numerator` / `denominator` | Task-scoped weights (progress events); optional beside the % rider |
 | `test` / `exceptionClass` | Structured failure fields |
 
 The SSE *event* name may stay SPA-oriented (`plan-progress, `diagnostic`); agents should

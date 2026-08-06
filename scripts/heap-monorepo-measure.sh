@@ -156,8 +156,8 @@ read -r peak_u peak_c peak_r <"$peak_file" || true
 final_used=$(field "$final_json" heapUsedBytes)
 final_commit=$(field "$final_json" heapCommittedBytes)
 final_rss=$(field "$final_json" rssBytes)
-peak_pipe=$(field "$final_json" peakActivePipelines)
-# peakActivePipelines may not be in CLI json — ignore if empty
+peak_plans=$(field "$final_json" peakActiveBuildPlans)
+# peakActiveBuildPlans may not be in CLI json — ignore if empty
 
 echo
 echo "## During / after build ($MODULES modules, exit=$build_ec)"
