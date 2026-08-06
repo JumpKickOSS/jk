@@ -5,7 +5,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
-import cc.jumpkick.model.WorkspaceProduct;
+import cc.jumpkick.model.DependencyKind;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,10 +20,10 @@ import java.util.Queue;
 import java.util.Set;
 
 /**
- * Resolves workspace-sibling dependency jars (and test products) for one module's build. Workspace
+ * Resolves workspace-sibling dependency jars (and tests kinds) for one module's build. Workspace
  * coords are not in the lockfile; matching siblings contribute their main jar under the shared
  * {@link BuildLayout} {@code target/}, and optionally their test classes when an edge selects
- * {@link WorkspaceProduct#TESTS} (Mill {@code testModuleDeps} / Maven test-jar).
+ * {@link DependencyKind#TESTS} (Mill {@code testModuleDeps} / Maven test-jar).
  */
 public final class WorkspaceClasspath {
 
@@ -95,17 +95,17 @@ public final class WorkspaceClasspath {
         // seed the queue; each discovered sibling's own workspace deps are then
         // enqueued so that e.g. io→core→model are all on the classpath even
         // though the module's jk.toml only declares the direct dep (core).
-        // Modules requested with product=tests also contribute their test
-        // classes (direct edges only — tests product does not ride transitively).
+        // Modules requested with kind=tests also contribute their test
+        // classes (direct edges only — tests kind does not ride transitively).
         LinkedHashSet<String> visited = new LinkedHashSet<>();
-        Set<String> testsProducts = new HashSet<>();
+        Set<String> testsKinds = new HashSet<>();
         Queue<String> queue = new ArrayDeque<>();
         for (Scope scope : scopes) {
             for (Dependency dep : project.dependencies().of(scope)) {
                 String module = resolveWorkspaceRef(dep.module(), siblingCoordByName);
                 if (!siblingJarByModule.containsKey(module)) continue;
-                if (dep.product() == WorkspaceProduct.TESTS) {
-                    testsProducts.add(module);
+                if (dep.kind() == DependencyKind.TESTS) {
+                    testsKinds.add(module);
                 }
                 if (visited.add(module)) {
                     queue.add(module);
@@ -119,7 +119,7 @@ public final class WorkspaceClasspath {
             // MAIN and EXPORT propagate transitively: a sibling's exported deps
             // (api semantics) ride along to anything that depends on it, and MAIN
             // deps stay visible down the workspace chain (io→core→model).
-            // Tests product never propagates transitively.
+            // Tests kind never propagates transitively.
             for (Scope scope : Set.of(Scope.EXPORT, Scope.MAIN)) {
                 for (Dependency dep : sibBuild.dependencies().of(scope)) {
                     String depModule = resolveWorkspaceRef(dep.module(), siblingCoordByName);
@@ -144,8 +144,8 @@ public final class WorkspaceClasspath {
             closureJars.add(siblingJar);
             addIfPresent(jars, seenPaths, siblingJar, missing, module + " (expected at " + siblingJar + ")");
 
-            if (testsProducts.contains(module)) {
-                // Main jar is always required for a tests product (test classes
+            if (testsKinds.contains(module)) {
+                // Main jar is always required for a tests kind (test classes
                 // reference main). Test classes dir is the monorepo stand-in for
                 // a Maven test-jar; test resources ride along when present.
                 Path testClasses = siblingTestClassesByModule.get(module);
@@ -156,7 +156,7 @@ public final class WorkspaceClasspath {
                             seenPaths,
                             testClasses,
                             missing,
-                            module + " tests product (expected test classes at " + testClasses + ")");
+                            module + " tests kind (expected test classes at " + testClasses + ")");
                 }
                 Path testResources = siblingTestResourcesByModule.get(module);
                 if (testResources != null && Files.isDirectory(testResources)) {

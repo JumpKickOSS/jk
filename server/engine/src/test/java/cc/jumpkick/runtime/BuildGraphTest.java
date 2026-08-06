@@ -91,8 +91,8 @@ class BuildGraphTest {
     }
 
     @Test
-    void test_only_product_tests_edge_orders_sibling_before_consumer(@TempDir Path tmp) throws Exception {
-        // Mill testModuleDeps: app has no main dep on lib, only product=tests under test-deps.
+    void test_only_kind_tests_edge_orders_sibling_before_consumer(@TempDir Path tmp) throws Exception {
+        // Mill testModuleDeps: app has no main dep on lib, only kind=tests under test-deps.
         // ModuleOrder must still schedule lib before app so lib's test classes exist.
         Files.writeString(tmp.resolve("jk.toml"), """
                 [project]
@@ -124,7 +124,7 @@ class BuildGraphTest {
                 java = 25
 
                 [test-dependencies]
-                lib = { workspace = true, product = "tests" }
+                lib = { workspace = true, kind = "tests" }
                 """);
 
         BuildGraph.Result r = resolve(tmp);

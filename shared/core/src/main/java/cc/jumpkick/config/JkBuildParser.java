@@ -21,7 +21,7 @@ import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.Workspace;
 import cc.jumpkick.model.Workspace.WorkspaceDependency;
-import cc.jumpkick.model.WorkspaceProduct;
+import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
@@ -946,7 +946,7 @@ public final class JkBuildParser {
         boolean optional = Boolean.TRUE.equals(entry.getBoolean("optional"));
         Dependency dep =
                 parseDepEntryForm(name, entry, scope, workspace, catalog).withOptional(optional);
-        dep = applyWorkspaceProduct(dep, entry, scope, name);
+        dep = applyDependencyKind(dep, entry, scope, name);
         // Cross-package features: only when the consumer set `features` and/or
         // `default-features` — absent keys leave prior resolve behavior unchanged.
         boolean hasFeaturesKey = entry.contains("features");
@@ -960,25 +960,25 @@ public final class JkBuildParser {
     }
 
     /**
-     * {@code product = "main"|"tests"} — workspace sibling test product (Mill {@code testModuleDeps})
-     * or external Maven test-jar. Tests product is only legal in test scopes so helpers never leak
-     * into main jars. External (non-workspace) product=tests is only legal on Maven GAs.
+     * {@code kind = "main"|"tests"} — workspace sibling tests kind (Mill {@code testModuleDeps})
+     * or external Maven test-jar. Tests kind is only legal in test scopes so helpers never leak
+     * into main jars. External (non-workspace) kind=tests is only legal on Maven GAs.
      */
-    private static Dependency applyWorkspaceProduct(Dependency dep, TomlTable entry, Scope scope, String name) {
-        if (!entry.contains("product")) return dep;
+    private static Dependency applyDependencyKind(Dependency dep, TomlTable entry, Scope scope, String name) {
+        if (!entry.contains("kind")) return dep;
         String displayPath = scope.tomlSection() + "." + name;
-        String raw = entry.getString("product");
-        WorkspaceProduct product;
+        String raw = entry.getString("kind");
+        DependencyKind kind;
         try {
-            product = WorkspaceProduct.parse(raw);
+            kind = DependencyKind.parse(raw);
         } catch (IllegalArgumentException e) {
-            throw new JkBuildParseException(displayPath + ".product: " + e.getMessage());
+            throw new JkBuildParseException(displayPath + ".kind: " + e.getMessage());
         }
-        if (product == WorkspaceProduct.MAIN) return dep.withProduct(product);
-        // product = "tests"
+        if (kind == DependencyKind.MAIN) return dep.withKind(kind);
+        // kind = "tests"
         if (scope != Scope.TEST && scope != Scope.TEST_DEV) {
             throw new JkBuildParseException(displayPath
-                    + ".product = \"tests\" is only legal under [test-dependencies] or"
+                    + ".kind = \"tests\" is only legal under [test-dependencies] or"
                     + " [test-dev-dependencies] (got ["
                     + scope.tomlSection()
                     + "])");
@@ -986,18 +986,18 @@ public final class JkBuildParser {
         if (!dep.isWorkspace()) {
             if (dep.isGit() || dep.isPath() || dep.isFile()) {
                 throw new JkBuildParseException(displayPath
-                        + ".product = \"tests\" requires `workspace = true` or a Maven"
+                        + ".kind = \"tests\" requires `workspace = true` or a Maven"
                         + " coordinate (got git/path/file source)");
             }
             // Maven GA only (group:artifact). packageKey maps this to g:a:test-jar:tests.
             String mod = dep.module();
             if (mod == null || mod.indexOf(':') <= 0 || mod.indexOf(':') != mod.lastIndexOf(':')) {
                 throw new JkBuildParseException(displayPath
-                        + ".product = \"tests\" on an external dep requires a Maven"
+                        + ".kind = \"tests\" on an external dep requires a Maven"
                         + " group:artifact module");
             }
         }
-        return dep.withProduct(product);
+        return dep.withKind(kind);
     }
 
     private static Dependency parseDepEntryForm(
@@ -1042,7 +1042,7 @@ public final class JkBuildParser {
                 throw new JkBuildParseException(
                         displayPath + " with `workspace = true` must not set `group` or `name`");
             }
-            // product is applied in parseDepEntry after this form returns.
+            // kind is applied in parseDepEntry after this form returns.
             return resolveWorkspaceDep(name, displayPath, workspace);
         }
 

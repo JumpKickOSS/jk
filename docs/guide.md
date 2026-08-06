@@ -1081,19 +1081,19 @@ widget-core.workspace = true        # sibling module (matches [project].name)
 
 # Sibling *test* output (Mill testModuleDeps / Maven test-jar) — test scope only:
 [test-dependencies]
-widget-core = { workspace = true, product = "tests" }
+widget-core = { workspace = true, kind = "tests" }
 ```
 
-`product = "tests"` puts the sibling’s `target/.../classes/test` (and test resources) on this
+`kind = "tests"` puts the sibling’s `target/.../classes/test` (and test resources) on this
 module’s test classpath. Use it for shared test helpers that live under another module’s
 `src/test` (e.g. Netty’s `ChannelHandlerMetadataUtil` in `transport`). Illegal outside
-`[test-dependencies]` / `[test-dev-dependencies]`. Default product is `main` (omit the key).
+`[test-dependencies]` / `[test-dev-dependencies]`. Default kind is `main` (omit the key).
 
 The same key works on **external** Maven coordinates (imports a published test-jar):
 
 ```toml
 [test-dependencies]
-helpers = { group = "com.acme", name = "helpers", version = "1.2.3", product = "tests" }
+helpers = { group = "com.acme", name = "helpers", version = "1.2.3", kind = "tests" }
 ```
 
 That resolves as Maven `{type=test-jar, classifier=tests}` and exports the same shape via

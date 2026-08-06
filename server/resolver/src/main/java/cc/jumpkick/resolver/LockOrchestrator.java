@@ -748,7 +748,7 @@ public final class LockOrchestrator {
                 }
                 roots.add(Dependency.of(d.library(), d.module(), VersionSelector.parse("=" + managed))
                         .withOptional(d.optional())
-                        .withProduct(d.product())
+                        .withKind(d.kind())
                         .withFeatures(d.requestedFeatures(), d.defaultFeatures()));
             } else {
                 roots.add(d);
@@ -764,7 +764,7 @@ public final class LockOrchestrator {
         for (Scope scope : scopes) {
             Set<String> rootModules = new HashSet<>();
             for (Dependency d : project.dependencies().of(scope)) {
-                // packageKey: product=tests → g:a:test-jar:tests; else g:a:jar:
+                // packageKey: kind=tests → g:a:test-jar:tests; else g:a:jar:
                 rootModules.add(d.packageKey());
             }
             if (includeJunitSeeds && scope == Scope.TEST) {

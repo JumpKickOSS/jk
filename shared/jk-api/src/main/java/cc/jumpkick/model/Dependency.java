@@ -10,8 +10,8 @@ import java.util.Objects;
  * {@link #isPath()}, {@link #isFile()}, {@link #isWorkspace()} — never by sniffing {@code module}.
  * {@code pinned} is derived (exact / git / path / file → pinned; floating selectors → not).
  * Cross-package feature selection: {@link #requestedFeatures()} / {@link #defaultFeatures()}.
- * Workspace edges may select a {@link #product()} ({@link WorkspaceProduct#MAIN} default, or
- * {@link WorkspaceProduct#TESTS} for Mill-style test-module deps / Maven test-jar).
+ * Edges may select a {@link #kind()} ({@link DependencyKind#MAIN} default, or
+ * {@link DependencyKind#TESTS} for Mill-style test-module deps / Maven test-jar).
  */
 public record Dependency(
         String library,
@@ -26,8 +26,8 @@ public record Dependency(
         List<String> requestedFeatures,
         /** When true, the library's {@code features.default} list is included. */
         boolean defaultFeatures,
-        /** Workspace product selection; always {@link WorkspaceProduct#MAIN} for non-workspace deps. */
-        WorkspaceProduct product) {
+        /** Output kind; always {@link DependencyKind#MAIN} unless {@code kind = "tests"}. */
+        DependencyKind kind) {
 
     /** Synthetic {@code module} for an unresolved workspace sibling; rewritten by {@code WorkspaceMerge}. */
     public static final String WORKSPACE_PREFIX = "workspace:";
@@ -51,10 +51,10 @@ public record Dependency(
         }
         pinned = derivePinned(version, gitSource, sha256, pathSource);
         requestedFeatures = requestedFeatures == null ? List.of() : List.copyOf(requestedFeatures);
-        product = product == null ? WorkspaceProduct.MAIN : product;
+        kind = kind == null ? DependencyKind.MAIN : kind;
     }
 
-    /** Defaults pathSource null, no feature selection, default-features true, product main. */
+    /** Defaults pathSource null, no feature selection, default-features true, kind main. */
     public Dependency(
             String library,
             String module,
@@ -63,10 +63,10 @@ public record Dependency(
             String sha256,
             boolean pinned,
             boolean optional) {
-        this(library, module, version, gitSource, sha256, pinned, optional, null, List.of(), true, WorkspaceProduct.MAIN);
+        this(library, module, version, gitSource, sha256, pinned, optional, null, List.of(), true, DependencyKind.MAIN);
     }
 
-    /** Defaults optional false, pathSource null, no feature selection, product main. */
+    /** Defaults optional false, pathSource null, no feature selection, kind main. */
     public Dependency(
             String library,
             String module,
@@ -74,10 +74,10 @@ public record Dependency(
             GitSource gitSource,
             String sha256,
             boolean pinned) {
-        this(library, module, version, gitSource, sha256, pinned, false, null, List.of(), true, WorkspaceProduct.MAIN);
+        this(library, module, version, gitSource, sha256, pinned, false, null, List.of(), true, DependencyKind.MAIN);
     }
 
-    /** Defaults feature selection empty / default-features true, product main. */
+    /** Defaults feature selection empty / default-features true, kind main. */
     public Dependency(
             String library,
             String module,
@@ -87,7 +87,7 @@ public record Dependency(
             boolean pinned,
             boolean optional,
             PathSource pathSource) {
-        this(library, module, version, gitSource, sha256, pinned, optional, pathSource, List.of(), true, WorkspaceProduct.MAIN);
+        this(library, module, version, gitSource, sha256, pinned, optional, pathSource, List.of(), true, DependencyKind.MAIN);
     }
 
     public Dependency withOptional(boolean optional) {
@@ -102,7 +102,7 @@ public record Dependency(
                 pathSource,
                 requestedFeatures,
                 defaultFeatures,
-                product);
+                kind);
     }
 
     public Dependency withFeatures(List<String> features, boolean defaultFeatures) {
@@ -117,10 +117,10 @@ public record Dependency(
                 pathSource,
                 features == null ? List.of() : features,
                 defaultFeatures,
-                product);
+                kind);
     }
 
-    public Dependency withProduct(WorkspaceProduct product) {
+    public Dependency withKind(DependencyKind kind) {
         return new Dependency(
                 library,
                 module,
@@ -132,7 +132,7 @@ public record Dependency(
                 pathSource,
                 requestedFeatures,
                 defaultFeatures,
-                product == null ? WorkspaceProduct.MAIN : product);
+                kind == null ? DependencyKind.MAIN : kind);
     }
 
     /**
@@ -144,18 +144,18 @@ public record Dependency(
         return !requestedFeatures.isEmpty() || !defaultFeatures;
     }
 
-    /** True when this edge requests a sibling's test product (Mill {@code *.test} / Maven test-jar). */
-    public boolean isTestsProduct() {
-        return product == WorkspaceProduct.TESTS;
+    /** True when this edge requests a dependency's tests kind (Mill {@code *.test} / Maven test-jar). */
+    public boolean isTestsKind() {
+        return kind == DependencyKind.TESTS;
     }
 
     /**
      * Solver / lock package key for this edge. Workspace/git/path/file deps return {@link #module()}
-     * unchanged. Maven GAs with {@link #isTestsProduct()} map to {@code g:a:test-jar:tests}.
+     * unchanged. Maven GAs with {@link #isTestsKind()} map to {@code g:a:test-jar:tests}.
      */
     public String packageKey() {
         if (isWorkspace() || isGit() || isPath() || isFile()) return module;
-        if (isTestsProduct() && PackageId.isMavenPackageKey(module) && module.indexOf(':') == module.lastIndexOf(':')) {
+        if (isTestsKind() && PackageId.isMavenPackageKey(module) && module.indexOf(':') == module.lastIndexOf(':')) {
             return PackageId.of(group(), name(), "test-jar", "tests").key();
         }
         if (PackageId.isMavenPackageKey(module) && module.indexOf(':') == module.lastIndexOf(':')) {
@@ -194,8 +194,8 @@ public record Dependency(
         return new Dependency(name, workspaceRef(name), new VersionSelector.Latest("workspace"), null, null, false);
     }
 
-    public static Dependency workspace(String name, WorkspaceProduct product) {
-        return workspace(name).withProduct(product);
+    public static Dependency workspace(String name, DependencyKind kind) {
+        return workspace(name).withKind(kind);
     }
 
     public static Dependency file(String library, String module, String version, String sha256) {

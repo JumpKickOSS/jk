@@ -89,12 +89,12 @@ class WorkspaceMergeTest {
     }
 
     @Test
-    void resolve_sibling_coordinates_preserves_tests_product() {
+    void resolve_sibling_coordinates_preserves_tests_kind() {
         // applyToModule drops sibling edges (lock path). resolveSiblingCoordinates keeps them
-        // (publish/POM path) and must retain product so test-jar edges survive rewrite.
+        // (publish/POM path) and must retain kind so test-jar edges survive rewrite.
         JkBuild root = workspaceRoot("jk", List.of("lib", "app"));
         JkBuild lib = newProject("lib", Map.of());
-        Dependency testsEdge = workspacePlaceholder("lib").withProduct(WorkspaceProduct.TESTS);
+        Dependency testsEdge = workspacePlaceholder("lib").withKind(DependencyKind.TESTS);
         JkBuild app = newProject(
                 "app",
                 Map.of(
@@ -103,10 +103,10 @@ class WorkspaceMergeTest {
 
         JkBuild rewritten = WorkspaceMerge.resolveSiblingCoordinates(root, app, List.of(lib, app));
         assertThat(rewritten.dependencies().of(Scope.TEST))
-                .anyMatch(d -> d.isTestsProduct() && d.module().equals("cc.jumpkick:lib"));
+                .anyMatch(d -> d.isTestsKind() && d.module().equals("cc.jumpkick:lib"));
         assertThat(rewritten.dependencies().of(Scope.MAIN))
                 .filteredOn(d -> d.module().equals("cc.jumpkick:lib"))
-                .allMatch(d -> d.product() == WorkspaceProduct.MAIN);
+                .allMatch(d -> d.kind() == DependencyKind.MAIN);
     }
 
     @Test

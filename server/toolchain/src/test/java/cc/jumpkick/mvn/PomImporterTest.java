@@ -6,14 +6,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
-import cc.jumpkick.model.WorkspaceProduct;
+import cc.jumpkick.model.DependencyKind;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** Multi-module POM import: sibling edges and test-jar → product=tests. */
+/** Multi-module POM import: sibling edges and test-jar → kind=tests. */
 class PomImporterTest {
 
     @Test
@@ -93,16 +93,16 @@ class PomImporterTest {
         assertThat(main).hasSize(1);
         assertThat(main.getFirst().isWorkspace()).isTrue();
         assertThat(main.getFirst().library()).isEqualTo("lib");
-        assertThat(main.getFirst().product()).isEqualTo(WorkspaceProduct.MAIN);
+        assertThat(main.getFirst().kind()).isEqualTo(DependencyKind.MAIN);
 
         List<Dependency> test = app.dependencies().of(Scope.TEST);
-        assertThat(test).anyMatch(d -> d.isWorkspace() && d.isTestsProduct() && "lib".equals(d.library()));
+        assertThat(test).anyMatch(d -> d.isWorkspace() && d.isTestsKind() && "lib".equals(d.library()));
         assertThat(test)
                 .anyMatch(d -> !d.isWorkspace() && d.module().equals("org.junit.jupiter:junit-jupiter"));
     }
 
     @Test
-    void external_test_jar_keeps_product_tests(@TempDir Path root) throws Exception {
+    void external_test_jar_keeps_kind_tests(@TempDir Path root) throws Exception {
         Files.writeString(
                 root.resolve("pom.xml"),
                 """
@@ -126,7 +126,7 @@ class PomImporterTest {
         // Single-module import path (not workspace rewrite).
         JkBuild app = PomImporter.importFrom(root.resolve("pom.xml")).jkBuild();
         assertThat(app.dependencies().of(Scope.TEST))
-                .anyMatch(d -> d.isTestsProduct()
+                .anyMatch(d -> d.isTestsKind()
                         && d.module().equals("com.acme:helpers")
                         && d.packageKey().equals("com.acme:helpers:test-jar:tests"));
     }

@@ -77,7 +77,7 @@ class WorkspaceClasspathTest {
     }
 
     @Test
-    void tests_product_puts_sibling_test_classes_on_the_test_classpath(@TempDir Path root) throws Exception {
+    void tests_kind_puts_sibling_test_classes_on_the_test_classpath(@TempDir Path root) throws Exception {
         Files.writeString(
                 root.resolve("jk.toml"),
                 """
@@ -99,7 +99,7 @@ class WorkspaceClasspathTest {
                 lib = { workspace = true }
 
                 [test-dependencies]
-                lib = { workspace = true, product = "tests" }
+                lib = { workspace = true, kind = "tests" }
                 """);
         // Materialize the products WorkspaceClasspath looks for.
         Path libMain = root.resolve("target/lib/lib/lib-0.1.0.jar");
@@ -121,7 +121,7 @@ class WorkspaceClasspathTest {
     }
 
     @Test
-    void product_tests_outside_test_scope_is_rejected(@TempDir Path root) throws Exception {
+    void kind_tests_outside_test_scope_is_rejected(@TempDir Path root) throws Exception {
         Files.writeString(
                 root.resolve("jk.toml"),
                 """
@@ -147,7 +147,7 @@ class WorkspaceClasspathTest {
                 jdk = "25"
 
                 [dependencies]
-                lib = { workspace = true, product = "tests" }
+                lib = { workspace = true, kind = "tests" }
                 """);
         org.junit.jupiter.api.Assertions.assertThrows(
                 JkBuildParseException.class, () -> JkBuildParser.parse(appToml));

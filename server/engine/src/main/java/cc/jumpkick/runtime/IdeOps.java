@@ -375,8 +375,8 @@ public final class IdeOps {
     // =========================================================================
 
     /**
-     * Workspace siblings this module directly depends on, as {@code {name, COMPILE|TEST|TEST_PRODUCT}}.
-     * {@code TEST_PRODUCT} is Mill testModuleDeps / Maven test-jar ({@code product = "tests"}) — IDE
+     * Workspace siblings this module directly depends on, as {@code {name, COMPILE|TEST|TEST_KIND}}.
+     * {@code TEST_KIND} is Mill testModuleDeps / Maven test-jar ({@code kind = "tests"}) — IDE
      * generators must also put the sibling's test classes on the test classpath.
      */
     private static List<String[]> siblingModuleRefs(Path moduleDir, JkBuild module, Map<Path, JkBuild> modules)
@@ -410,33 +410,33 @@ public final class IdeOps {
             String name = jarToModule.get(sj);
             if (name != null && added.add(name)) result.add(new String[] {name, "TEST"});
         }
-        // product=tests edges: upgrade/add TEST_PRODUCT so generators expose sibling test output.
-        Set<String> testsProducts = new LinkedHashSet<>();
+        // kind=tests edges: upgrade/add TEST_KIND so generators expose sibling test output.
+        Set<String> testsKinds = new LinkedHashSet<>();
         for (Scope scope : EnumSet.of(Scope.TEST, Scope.TEST_DEV)) {
             for (Dependency d : module.dependencies().of(scope)) {
-                if (!d.isTestsProduct()) continue;
+                if (!d.isTestsKind()) continue;
                 String name = siblingNameForDep(d, nameToDir, modules);
-                if (name != null) testsProducts.add(name);
+                if (name != null) testsKinds.add(name);
             }
         }
-        for (String name : testsProducts) {
-            // Replace plain TEST with TEST_PRODUCT when present; else append.
+        for (String name : testsKinds) {
+            // Replace plain TEST with TEST_KIND when present; else append.
             boolean replaced = false;
             for (int i = 0; i < result.size(); i++) {
                 if (name.equals(result.get(i)[0]) && "TEST".equals(result.get(i)[1])) {
-                    result.set(i, new String[] {name, "TEST_PRODUCT"});
+                    result.set(i, new String[] {name, "TEST_KIND"});
                     replaced = true;
                     break;
                 }
             }
-            if (!replaced && added.add(name + "|TEST_PRODUCT")) {
-                result.add(new String[] {name, "TEST_PRODUCT"});
+            if (!replaced && added.add(name + "|TEST_KIND")) {
+                result.add(new String[] {name, "TEST_KIND"});
             }
         }
         return result;
     }
 
-    /** Resolve a workspace/test-product edge to the sibling project name. */
+    /** Resolve a workspace/tests-kind edge to the sibling project name. */
     private static String siblingNameForDep(Dependency d, Map<String, Path> nameToDir, Map<Path, JkBuild> modules) {
         if (d.isWorkspace()) {
             String n = d.workspaceName();

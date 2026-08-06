@@ -66,7 +66,7 @@ public final class PomXml {
 
     /**
      * As {@link #appendDependency(StringBuilder, String, String, String, String)} with optional Maven
-     * {@code <type>} / {@code <classifier>} (e.g. test-jar / tests for {@code product = "tests"}).
+     * {@code <type>} / {@code <classifier>} (e.g. test-jar / tests for {@code kind = "tests"}).
      */
     public static void appendDependency(
             StringBuilder sb,
@@ -92,9 +92,9 @@ public final class PomXml {
         sb.append("    </dependency>\n");
     }
 
-    /** Emit type/classifier for a tests-product edge (Maven test-jar). */
+    /** Emit type/classifier for a tests-kind edge (Maven test-jar). */
     public static void appendDependency(StringBuilder sb, Dependency d, String version, String mavenScope) {
-        if (d.isTestsProduct()) {
+        if (d.isTestsKind()) {
             appendDependency(sb, d.group(), d.name(), version, mavenScope, "test-jar", "tests");
         } else {
             appendDependency(sb, d.group(), d.name(), version, mavenScope);

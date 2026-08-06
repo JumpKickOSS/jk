@@ -8,7 +8,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
-import cc.jumpkick.model.WorkspaceProduct;
+import cc.jumpkick.model.DependencyKind;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -194,13 +194,13 @@ public final class JkBuildRenderer {
     /** One dependency line: workspace flag, git table, or versioned table. */
     private static String renderEntry(Dependency d) {
         if (d.isWorkspace()) {
-            // Shorthand only for the default main product; product=tests needs a table form.
-            if (d.product() == WorkspaceProduct.MAIN) {
+            // Shorthand only for the default main kind; kind=tests needs a table form.
+            if (d.kind() == DependencyKind.MAIN) {
                 return safeKey(d.library()) + ".workspace = true";
             }
             return safeKey(d.library())
-                    + " = { workspace = true, product = "
-                    + quote(d.product().toml())
+                    + " = { workspace = true, kind = "
+                    + quote(d.kind().toml())
                     + " }";
         }
         StringBuilder sb = new StringBuilder();
@@ -228,8 +228,8 @@ public final class JkBuildRenderer {
             if (!d.isPlatformManaged()) {
                 sb.append(", version = ").append(quote(versionLiteral(d.version())));
             }
-            if (d.isTestsProduct()) {
-                sb.append(", product = ").append(quote(d.product().toml()));
+            if (d.isTestsKind()) {
+                sb.append(", kind = ").append(quote(d.kind().toml()));
             }
         }
         sb.append(" }");

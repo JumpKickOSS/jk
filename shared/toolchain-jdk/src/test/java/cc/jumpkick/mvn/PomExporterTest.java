@@ -15,7 +15,7 @@ class PomExporterTest {
     }
 
     @Test
-    void tests_product_exports_maven_test_jar() {
+    void tests_kind_exports_maven_test_jar() {
         JkBuild b = parse("""
                 [project]
                 group = "com.example"
@@ -24,7 +24,7 @@ class PomExporterTest {
                 java = 25
 
                 [test-dependencies]
-                helpers = { group = "com.acme", name = "helpers", version = "1.2.3", product = "tests" }
+                helpers = { group = "com.acme", name = "helpers", version = "1.2.3", kind = "tests" }
                 """);
 
         String xml = PomExporter.export(b).xml();

@@ -18,16 +18,16 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * End-to-end: Mill {@code testModuleDeps} / Maven test-jar via {@code product = "tests"}.
+ * End-to-end: Mill {@code testModuleDeps} / Maven test-jar via {@code kind = "tests"}.
  *
  * <p>Lib ships a test helper under {@code src/test}; app's test scope selects the sibling's tests
- * product. After building lib (with tests), app's test classpath must include lib's test classes,
+ * kind. After building lib (with tests), app's test classpath must include lib's test classes,
  * and app's test that references the helper must pass.
  */
-class WorkspaceTestsProductE2eTest {
+class WorkspaceTestsKindE2eTest {
 
     @Test
-    void app_tests_can_use_sibling_test_helpers_via_product_tests(@TempDir Path tmp) throws Exception {
+    void app_tests_can_use_sibling_test_helpers_via_kind_tests(@TempDir Path tmp) throws Exception {
         Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
         Path ws = Files.createDirectories(tmp.resolve("ws"));
 
@@ -76,7 +76,7 @@ class WorkspaceTestsProductE2eTest {
                 lib.resolve("test/src/com/example/LibTestHelper.java"),
                 """
                 package com.example;
-                /** Shared test helper — only visible via product=tests. */
+                /** Shared test helper — only visible via kind=tests. */
                 public final class LibTestHelper {
                     public static int expectedTwice(int n) { return Lib.twice(n); }
                 }
@@ -107,7 +107,7 @@ class WorkspaceTestsProductE2eTest {
                 lib = { workspace = true }
 
                 [test-dependencies]
-                lib = { workspace = true, product = "tests" }
+                lib = { workspace = true, kind = "tests" }
                 junit-jupiter           = { group = "org.junit.jupiter", name = "junit-jupiter", version = "=6.1.1" }
                 junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "=6.1.1" }
 
@@ -133,16 +133,16 @@ class WorkspaceTestsProductE2eTest {
                 class AppTest {
                     @Test
                     void uses_sibling_test_helper() {
-                        // LibTestHelper lives only in lib's test output — product=tests is required.
+                        // LibTestHelper lives only in lib's test output — kind=tests is required.
                         assertEquals(LibTestHelper.expectedTwice(3), App.useLib(3));
                     }
                 }
                 """);
 
-        // Parse surface: product on the test edge, not on main.
+        // Parse surface: kind on the test edge, not on main.
         JkBuild appManifest = JkBuildParser.parse(app.resolve("jk.toml"));
-        assertThat(appManifest.dependencies().of(Scope.MAIN)).allMatch(d -> !d.isTestsProduct());
-        assertThat(appManifest.dependencies().of(Scope.TEST)).anyMatch(d -> d.isTestsProduct());
+        assertThat(appManifest.dependencies().of(Scope.MAIN)).allMatch(d -> !d.isTestsKind());
+        assertThat(appManifest.dependencies().of(Scope.TEST)).anyMatch(d -> d.isTestsKind());
 
         // Lock at workspace root (union).
         JkBuild root = JkBuildParser.parse(ws.resolve("jk.toml"));
@@ -153,7 +153,7 @@ class WorkspaceTestsProductE2eTest {
         Files.copy(ws.resolve("jk-lock.toml"), lib.resolve("jk-lock.toml"));
         Files.copy(ws.resolve("jk-lock.toml"), app.resolve("jk-lock.toml"));
 
-        // Build lib first (incl. tests) so classes/test exists for the product edge.
+        // Build lib first (incl. tests) so classes/test exists for the kind=tests edge.
         assertThat(build(lib, cache).success()).as("lib build+test").isTrue();
         Path libTestClasses = ws.resolve("target/lib/classes/test");
         assertThat(libTestClasses).isDirectory();
@@ -171,9 +171,9 @@ class WorkspaceTestsProductE2eTest {
         assertThat(mainCp.jars().stream().map(Object::toString).toList())
                 .noneMatch(p -> p.contains("classes/test"));
 
-        // App tests must pass only if product=tests put the helper on the test CP.
+        // App tests must pass only if kind=tests put the helper on the test CP.
         assertThat(build(app, cache).success())
-                .as("app build+test uses sibling product=tests helpers")
+                .as("app build+test uses sibling kind=tests helpers")
                 .isTrue();
     }
 

@@ -341,14 +341,14 @@ public final class IntellijIdeGenerator implements IdeGenerator {
         for (IdeModule m : allModules.values()) byName.put(m.name(), m);
 
         for (ModuleRef mr : modRefs) {
-            boolean testScope = "TEST".equals(mr.scope()) || "TEST_PRODUCT".equals(mr.scope());
+            boolean testScope = "TEST".equals(mr.scope()) || "TEST_KIND".equals(mr.scope());
             sb.append("    <orderEntry type=\"module\" module-name=\"")
                     .append(esc(mr.name()))
                     .append("\"");
             if (testScope) sb.append(" scope=\"TEST\"");
             sb.append(" />\n");
-            // product=tests: sibling test classes as a module-library (Maven test-jar parity).
-            if ("TEST_PRODUCT".equals(mr.scope())) {
+            // kind=tests: sibling test classes as a module-library (Maven test-jar parity).
+            if ("TEST_KIND".equals(mr.scope())) {
                 IdeModule sib = byName.get(mr.name());
                 if (sib != null) {
                     appendTestProductLibrary(sb, moduleDir, sib);
@@ -444,7 +444,7 @@ public final class IntellijIdeGenerator implements IdeGenerator {
     // =========================================================================
 
     /**
-     * Sibling test product (product=tests): attach the sibling's test classes dir as a TEST-scoped
+     * Sibling tests kind (kind=tests): attach the sibling's test classes dir as a TEST-scoped
      * module-library so IDE test compile sees Mill testModuleDeps / Maven test-jar helpers.
      */
     private static void appendTestProductLibrary(StringBuilder sb, Path moduleDir, IdeModule sibling) {

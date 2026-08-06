@@ -13,7 +13,7 @@ import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.Workspace;
-import cc.jumpkick.model.WorkspaceProduct;
+import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.PomParseException;
 import cc.jumpkick.repo.PomParser;
@@ -162,7 +162,7 @@ public final class PomImporter {
                 }
             }
         }
-        // Rewrite inter-module Maven deps to workspace edges (and test-jar → product=tests).
+        // Rewrite inter-module Maven deps to workspace edges (and test-jar → kind=tests).
         Map<String, String> siblingByGa = siblingGaIndex(rootJkBuild, moduleBuilds.values());
         Map<String, JkBuild> rewritten = new LinkedHashMap<>();
         for (var e : moduleBuilds.entrySet()) {
@@ -186,7 +186,7 @@ public final class PomImporter {
 
     /**
      * Convert deps whose GA matches a workspace sibling into workspace edges. Maven
-     * {@code <type>test-jar</type>} becomes {@code product = "tests"} (Mill testModuleDeps).
+     * {@code <type>test-jar</type>} becomes {@code kind = "tests"} (Mill testModuleDeps).
      */
     private static JkBuild rewriteSiblingDeps(
             JkBuild module, Map<String, String> siblingByGa, ImportReport.Builder report, String modulePath) {
@@ -199,9 +199,9 @@ public final class PomImporter {
             for (Dependency d : in) {
                 String siblingName = siblingByGa.get(d.module());
                 if (siblingName == null) {
-                    // External test-jar keeps product=tests (lock/resolve map to g:a:test-jar:tests).
+                    // External test-jar keeps kind=tests (lock/resolve map to g:a:test-jar:tests).
                     out.add(d);
-                    if (d.isTestsProduct()) changed = true;
+                    if (d.isTestsKind()) changed = true;
                     continue;
                 }
                 changed = true;
@@ -209,8 +209,8 @@ public final class PomImporter {
                 Dependency ws = Dependency.workspace(siblingName);
                 // test-jar type is carried only until rewrite; we detect it via a side channel —
                 // toDependency already dropped type. Re-detect from library suffix isn't reliable.
-                // Import marks tests product via mapDependencies → toDependency when type=test-jar.
-                if (d.isTestsProduct()) {
+                // Import marks tests kind via mapDependencies → toDependency when type=test-jar.
+                if (d.isTestsKind()) {
                     if (scope != Scope.TEST && scope != Scope.TEST_DEV) {
                         report.warning("["
                                 + modulePath
@@ -218,9 +218,9 @@ public final class PomImporter {
                                 + d.module()
                                 + " is in scope "
                                 + scope.canonical()
-                                + "; emitting product=tests under [test-dependencies] semantics");
+                                + "; emitting kind=tests under [test-dependencies] semantics");
                     }
-                    ws = ws.withProduct(WorkspaceProduct.TESTS);
+                    ws = ws.withKind(DependencyKind.TESTS);
                 }
                 out.add(ws);
             }
@@ -485,9 +485,9 @@ public final class PomImporter {
         // the v0.7 `name` field to the artifactId, matching the manifest's
         // own `artifact`-defaults-to-key rule.
         Dependency d = Dependency.of(dep.artifactId(), dep.module(), selector);
-        // Stash test-jar as product=tests so workspace rewrite can emit product = "tests".
+        // Stash test-jar as kind=tests so workspace rewrite can emit kind = "tests".
         if (isTestJar(dep)) {
-            d = d.withProduct(WorkspaceProduct.TESTS);
+            d = d.withKind(DependencyKind.TESTS);
         }
         return d;
     }

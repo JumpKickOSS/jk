@@ -175,14 +175,14 @@ public final class VscodeIdeGenerator implements IdeGenerator {
         Map<String, IdeModule> byName = new LinkedHashMap<>();
         for (IdeModule m : model.allModules().values()) byName.put(m.name(), m);
         for (ModuleRef mr : model.siblingRefs().getOrDefault(moduleDir, List.of())) {
-            boolean testScope = "TEST".equals(mr.scope()) || "TEST_PRODUCT".equals(mr.scope());
+            boolean testScope = "TEST".equals(mr.scope()) || "TEST_KIND".equals(mr.scope());
             sb.append("  <classpathentry combineaccessrules=\"false\" kind=\"src\" path=\"/")
                     .append(esc(mr.name()))
                     .append("\"");
             if (testScope) sb.append(" ").append(testAttr());
             sb.append("/>\n");
-            // product=tests: sibling test classes on the test classpath (Maven test-jar parity).
-            if ("TEST_PRODUCT".equals(mr.scope())) {
+            // kind=tests: sibling test classes on the test classpath (Maven test-jar parity).
+            if ("TEST_KIND".equals(mr.scope())) {
                 IdeModule sib = byName.get(mr.name());
                 if (sib != null) {
                     String abs = abs(sib.testClassesDir());
