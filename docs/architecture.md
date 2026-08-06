@@ -331,12 +331,14 @@ Two fixed taxonomies (do not collapse them):
 
 ### Project build logic (`.jk-build/`, ticket-1037)
 
-Convention directory **`.jk-build/`** (hidden) next to `jk.toml` holds project-local Java build
-logic (overridable via `[build].logic`). The engine compiles and runs mains (`--project` /
-`--out`) during `copy-resources`, action-caches outputs, and merges generated files into the
-classes tree. No scripts in TOML. Anchors: `BEFORE_COMPILE` (codegen), `AFTER_COMPILE`,
-`AFTER_RESOURCES`, `BEFORE_PACKAGE` — each carries a stage wire name aligned with `BuildStage`.
-See [features/project-build-logic.md](features/project-build-logic.md).
+Convention directory **`.jk-build/`** (hidden) next to `jk.toml` holds project-local build logic
+(overridable via `[build].logic`): **stem scripts** (`before-compile.groovy` / `.kts`, …) and/or
+**compiled Java/Kotlin** SPI / `*Build` mains under e.g. `.jk-build/src/`. Scripts-only trees are
+valid. The
+engine action-caches each task’s `outDir` and merges into the classes tree. No scripts in TOML.
+Anchors: `BEFORE_COMPILE` (codegen), `AFTER_COMPILE`, `AFTER_RESOURCES`, `BEFORE_PACKAGE` — each
+carries a stage wire name aligned with `BuildStage`. See
+[features/project-build-logic.md](features/project-build-logic.md).
 
 ## Status
 

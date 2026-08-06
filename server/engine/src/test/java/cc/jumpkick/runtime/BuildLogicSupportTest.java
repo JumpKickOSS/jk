@@ -198,6 +198,164 @@ class BuildLogicSupportTest {
         assertTrue(BuildLogicSupport.config(project).isEmpty());
     }
 
+    @Test
+    void groovy_stem_script_before_compile_and_cache_hit(@TempDir Path dir) throws Exception {
+        Path project = dir.resolve("proj");
+        Files.createDirectories(project.resolve("src/main/java/demo"));
+        Files.writeString(project.resolve("jk.toml"), """
+                [project]
+                group = "t"
+                name = "t"
+                version = "0.0.1"
+                jdk = 25
+                """);
+        Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
+        Files.createDirectories(project.resolve(".jk-build"));
+        Files.writeString(
+                project.resolve(".jk-build/before-compile.groovy"),
+                """
+                def stamp = outDir.resolve("from-groovy.txt")
+                stamp.toFile().parentFile.mkdirs()
+                stamp.toFile().text = "hello-from-script\\n"
+                """);
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
+        Path classes = layout.classesDir();
+        Files.createDirectories(classes);
+
+        StringBuilder labels = new StringBuilder();
+        assertTrue(BuildLogicSupport.run(
+                project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s).append(';')));
+        assertTrue(Files.isRegularFile(classes.resolve("from-groovy.txt")), labels.toString());
+        assertEquals("hello-from-script", Files.readString(classes.resolve("from-groovy.txt")).trim());
+        assertTrue(labels.toString().contains("before-compile"), labels.toString());
+
+        Files.delete(classes.resolve("from-groovy.txt"));
+        labels.setLength(0);
+        assertTrue(BuildLogicSupport.run(
+                project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s).append(';')));
+        assertTrue(labels.toString().contains("cache hit"), labels.toString());
+        assertTrue(Files.isRegularFile(classes.resolve("from-groovy.txt")));
+    }
+
+    @Test
+    void kotlin_spi_contributor_before_compile(@TempDir Path dir) throws Exception {
+        Path project = dir.resolve("proj");
+        Files.createDirectories(project.resolve("src/main/java/demo"));
+        Files.writeString(project.resolve("jk.toml"), """
+                [project]
+                group = "t"
+                name = "t"
+                version = "0.0.1"
+                jdk = 25
+                """);
+        Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
+
+        Path logicSrc = project.resolve(".jk-build/src/demo");
+        Files.createDirectories(logicSrc);
+        Files.writeString(
+                logicSrc.resolve("KtMarkerLogic.kt"),
+                """
+                package demo
+                import cc.jumpkick.plugin.buildlogic.*
+                import java.nio.file.Files
+
+                class KtMarkerLogic : BuildLogicContributor {
+                  override fun register(g: BuildLogicGraph) {
+                    g.task("kt-before-compile", BuildLogicAnchor.BEFORE_COMPILE) { ctx ->
+                      Files.writeString(ctx.outDir().resolve("kt-before.txt"), "from-kt")
+                    }
+                  }
+                }
+                """);
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
+        Path classes = layout.classesDir();
+        Files.createDirectories(classes);
+
+        StringBuilder labels = new StringBuilder();
+        assertTrue(BuildLogicSupport.run(
+                project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s).append(';')));
+        assertTrue(Files.isRegularFile(classes.resolve("kt-before.txt")), labels.toString());
+        assertEquals("from-kt", Files.readString(classes.resolve("kt-before.txt")).trim());
+        assertTrue(labels.toString().contains("kt-before-compile"), labels.toString());
+
+        Files.delete(classes.resolve("kt-before.txt"));
+        labels.setLength(0);
+        assertTrue(BuildLogicSupport.run(
+                project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s).append(';')));
+        assertTrue(labels.toString().contains("cache hit"), labels.toString());
+        assertTrue(Files.isRegularFile(classes.resolve("kt-before.txt")));
+    }
+
+    @Test
+    void scripts_only_jk_build_no_java_ok(@TempDir Path dir) throws Exception {
+        Path project = dir.resolve("proj");
+        Files.createDirectories(project.resolve(".jk-build"));
+        Files.writeString(project.resolve("jk.toml"), """
+                [project]
+                group = "t"
+                name = "t"
+                version = "0.0.1"
+                jdk = 25
+                """);
+        Files.writeString(
+                project.resolve(".jk-build/after-resources.groovy"),
+                "outDir.resolve('script-only.txt').toFile().text = 'ok\\n'\n");
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
+        Path classes = layout.classesDir();
+        Files.createDirectories(classes);
+
+        assertTrue(BuildLogicSupport.run(
+                project, layout, ac, classes, BuildLogicAnchor.AFTER_RESOURCES, s -> {}));
+        assertTrue(Files.isRegularFile(classes.resolve("script-only.txt")));
+    }
+
+    @Test
+    void kts_stem_script_before_compile_and_cache_hit(@TempDir Path dir) throws Exception {
+        Path project = dir.resolve("proj");
+        Files.createDirectories(project.resolve("src/main/java/demo"));
+        Files.writeString(project.resolve("jk.toml"), """
+                [project]
+                group = "t"
+                name = "t"
+                version = "0.0.1"
+                jdk = 25
+                """);
+        Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
+        Files.createDirectories(project.resolve(".jk-build"));
+        Files.writeString(
+                project.resolve(".jk-build/before-compile.kts"),
+                """
+                import java.nio.file.Files
+                Files.createDirectories(outDir)
+                Files.writeString(outDir.resolve("from-kts.txt"), "hello-from-kts")
+                """);
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
+        Path classes = layout.classesDir();
+        Files.createDirectories(classes);
+
+        StringBuilder labels = new StringBuilder();
+        assertTrue(BuildLogicSupport.run(
+                project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s).append(';')));
+        assertTrue(Files.isRegularFile(classes.resolve("from-kts.txt")), labels.toString());
+        assertEquals("hello-from-kts", Files.readString(classes.resolve("from-kts.txt")).trim());
+        assertTrue(labels.toString().contains("before-compile"), labels.toString());
+
+        Files.delete(classes.resolve("from-kts.txt"));
+        labels.setLength(0);
+        assertTrue(BuildLogicSupport.run(
+                project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s).append(';')));
+        assertTrue(labels.toString().contains("cache hit"), labels.toString());
+        assertTrue(Files.isRegularFile(classes.resolve("from-kts.txt")));
+    }
+
     private static void writeStamp(Path file, String fqcn) throws Exception {
         String simple = fqcn.substring(fqcn.lastIndexOf('.') + 1);
         String pkg = fqcn.contains(".") ? fqcn.substring(0, fqcn.lastIndexOf('.')) : "";

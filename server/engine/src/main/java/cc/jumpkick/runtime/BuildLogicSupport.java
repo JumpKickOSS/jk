@@ -1,14 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.compile.KotlincDriver;
+import cc.jumpkick.compile.KotlincRequest;
+import cc.jumpkick.compile.KotlincResult;
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TomlValues;
+import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.BuildIdentity;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.buildlogic.BuildLogicAnchor;
 import cc.jumpkick.plugin.buildlogic.BuildLogicContext;
 import cc.jumpkick.plugin.buildlogic.BuildLogicContributor;
 import cc.jumpkick.plugin.buildlogic.BuildLogicGraph;
 import cc.jumpkick.plugin.buildlogic.BuildLogicTask;
+import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.util.Hashing;
@@ -37,6 +44,11 @@ import org.tomlj.TomlTable;
  * <p>Supports:
  *
  * <ul>
+ *   <li><strong>Scripts</strong> — top-level {@code before-compile.groovy} / {@code .kts} (and
+ *       sibling stems); Groovy via reflective shell, Kotlin via {@code kotlinc -script}; scripts-only
+ *       trees need no compiled sources
+ *   <li><strong>Compiled Java / Kotlin</strong> — {@code .java} and {@code .kt} under the logic tree
+ *       (typically {@code .jk-build/src/...}); Kotlin uses the product kotlinc worker
  *   <li><strong>SPI</strong> — classes implementing {@link BuildLogicContributor} register named
  *       tasks at {@link BuildLogicAnchor}s
  *   <li><strong>Legacy mains</strong> — {@code *Build} / {@code *BuildMain} with {@code main}
@@ -102,28 +114,50 @@ public final class BuildLogicSupport {
         if (cfg.isEmpty()) return false;
         Config c = cfg.get();
 
-        List<Path> sources = listJava(c.logicDir());
-        if (sources.isEmpty()) {
+        List<Path> javaSources = listJava(c.logicDir());
+        List<Path> ktSources = listKotlin(c.logicDir());
+        List<BuildLogicScripts.ScriptTask> scripts = BuildLogicScripts.discover(c.logicDir());
+        if (javaSources.isEmpty() && ktSources.isEmpty() && scripts.isEmpty()) {
             if (anchor == BuildLogicAnchor.AFTER_RESOURCES) {
-                label.accept("build-logic: no .java sources in " + c.logicDir().getFileName());
+                label.accept("build-logic: no sources/scripts in " + c.logicDir().getFileName());
             }
             return true;
         }
 
-        Path logicClasses = layout.generatedSourcesDir("jk-build-classes");
-        deleteContents(logicClasses);
-        Files.createDirectories(logicClasses);
-        Path apiCp = apiClasspath();
-        compile(sources, logicClasses, apiCp);
+        Map<BuildLogicAnchor, List<RegisteredTask>> byAnchor;
+        Path kotlinStdlib = null;
+        if (!javaSources.isEmpty() || !ktSources.isEmpty()) {
+            Path logicClasses = layout.generatedSourcesDir("jk-build-classes");
+            deleteContents(logicClasses);
+            Files.createDirectories(logicClasses);
+            Path apiCp = apiClasspath();
+            if (!javaSources.isEmpty()) {
+                compileJava(javaSources, logicClasses, apiCp);
+            }
+            if (!ktSources.isEmpty()) {
+                kotlinStdlib = compileKotlin(ktSources, logicClasses, apiCp, projectDir, actionCache);
+            }
+            byAnchor = discoverTasks(
+                    c, logicClasses, apiCp, kotlinStdlib, /* allowEmpty */ !scripts.isEmpty());
+        } else {
+            byAnchor = emptyByAnchor();
+        }
+        registerScripts(byAnchor, scripts);
 
-        Map<BuildLogicAnchor, List<RegisteredTask>> byAnchor = discoverTasks(c, logicClasses, apiCp);
         List<RegisteredTask> tasks = byAnchor.getOrDefault(anchor, List.of());
         if (tasks.isEmpty()) return true;
 
         List<String> sourceTokens = new ArrayList<>();
         sourceTokens.add("dir:" + projectDir.relativize(c.logicDir()));
-        for (Path src : sources) {
+        for (Path src : javaSources) {
             sourceTokens.add("src:" + c.logicDir().relativize(src) + ":" + Hashing.sha256Hex(Files.readAllBytes(src)));
+        }
+        for (Path src : ktSources) {
+            sourceTokens.add("kt:" + c.logicDir().relativize(src) + ":" + Hashing.sha256Hex(Files.readAllBytes(src)));
+        }
+        for (BuildLogicScripts.ScriptTask s : scripts) {
+            sourceTokens.add(
+                    "script:" + c.logicDir().relativize(s.file()) + ":" + Hashing.sha256Hex(Files.readAllBytes(s.file())));
         }
         sourceTokens.add("anchor:" + anchor.name());
 
@@ -137,7 +171,9 @@ public final class BuildLogicSupport {
             tokens.add("kind:" + task.kind());
             String key = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);
 
-            Optional<ActionCache.ActionRecord> hit = actionCache.lookup(key);
+            boolean useCache = !cc.jumpkick.config.SessionContext.current().config().forceOr(false)
+                    && !cc.jumpkick.config.SessionContext.current().config().rebuildOr(false);
+            Optional<ActionCache.ActionRecord> hit = useCache ? actionCache.lookup(key) : Optional.empty();
             if (hit.isPresent() && !hit.get().outputs().isEmpty()) {
                 deleteContents(outDir);
                 Files.createDirectories(outDir);
@@ -182,12 +218,58 @@ public final class BuildLogicSupport {
 
     private record RegisteredTask(String name, String kind, BuildLogicTask task) {}
 
-    private static Map<BuildLogicAnchor, List<RegisteredTask>> discoverTasks(Config c, Path logicClasses, Path apiCp)
-            throws IOException {
+    private static Map<BuildLogicAnchor, List<RegisteredTask>> emptyByAnchor() {
         Map<BuildLogicAnchor, List<RegisteredTask>> out = new EnumMap<>(BuildLogicAnchor.class);
         for (BuildLogicAnchor a : BuildLogicAnchor.values()) {
             out.put(a, new ArrayList<>());
         }
+        return out;
+    }
+
+    private static void registerScripts(
+            Map<BuildLogicAnchor, List<RegisteredTask>> byAnchor, List<BuildLogicScripts.ScriptTask> scripts) {
+        Map<String, BuildLogicAnchor> claimed = new LinkedHashMap<>();
+        for (List<RegisteredTask> list : byAnchor.values()) {
+            for (RegisteredTask t : list) {
+                claimed.put(t.name(), null);
+            }
+        }
+        for (BuildLogicScripts.ScriptTask s : scripts) {
+            if (claimed.containsKey(s.name())) {
+                throw new IllegalStateException("duplicate build-logic task name: " + s.name()
+                        + " (script " + s.file().getFileName() + ")");
+            }
+            claimed.put(s.name(), s.anchor());
+            Path scriptFile = s.file();
+            BuildLogicScripts.ScriptKind kind = s.kind();
+            BuildLogicTask task = ctx -> {
+                try {
+                    if (kind == BuildLogicScripts.ScriptKind.KTS) {
+                        BuildLogicKtsHost.evaluate(scriptFile, ctx.projectDir(), ctx.outDir(), ctx.classesDir());
+                    } else {
+                        BuildLogicGroovyHost.evaluate(scriptFile, ctx.projectDir(), ctx.outDir(), ctx.classesDir());
+                    }
+                } catch (Exception e) {
+                    Throwable root = e;
+                    while (root instanceof java.lang.reflect.InvocationTargetException ite
+                            && ite.getCause() != null) {
+                        root = ite.getCause();
+                    }
+                    if (root instanceof InterruptedException ie) throw ie;
+                    if (root instanceof IOException ioe) throw ioe;
+                    String msg = root.getMessage() != null ? root.getMessage() : root.getClass().getSimpleName();
+                    throw new IllegalStateException(
+                            "[build] logic script " + scriptFile.getFileName() + " failed: " + msg, root);
+                }
+            };
+            String kindLabel = kind == BuildLogicScripts.ScriptKind.KTS ? "script-kts" : "script";
+            byAnchor.get(s.anchor()).add(new RegisteredTask(s.name(), kindLabel, task));
+        }
+    }
+
+    private static Map<BuildLogicAnchor, List<RegisteredTask>> discoverTasks(
+            Config c, Path logicClasses, Path apiCp, Path kotlinStdlib, boolean allowEmpty) throws IOException {
+        Map<BuildLogicAnchor, List<RegisteredTask>> out = emptyByAnchor();
 
         // Graph collector
         Map<String, BuildLogicAnchor> nameAnchors = new LinkedHashMap<>();
@@ -203,7 +285,7 @@ public final class BuildLogicSupport {
             out.get(anchor).add(new RegisteredTask(n, "spi", task));
         };
 
-        URL[] urls = toUrls(logicClasses, apiCp);
+        URL[] urls = toUrls(logicClasses, apiCp, kotlinStdlib);
         try (URLClassLoader cl = new URLClassLoader(urls, BuildLogicContributor.class.getClassLoader())) {
             // SPI contributors
             for (String binary : listClassNames(logicClasses)) {
@@ -238,8 +320,9 @@ public final class BuildLogicSupport {
                 if (nameAnchors.containsKey(simple) || nameAnchors.containsKey(main)) continue;
                 String name = simple;
                 final String mainClass = main;
+                final Path stdlib = kotlinStdlib;
                 BuildLogicTask task = ctx -> {
-                    int exit = runMain(logicClasses, apiCp, mainClass, ctx.projectDir(), ctx.outDir());
+                    int exit = runMain(logicClasses, apiCp, stdlib, mainClass, ctx.projectDir(), ctx.outDir());
                     if (exit != 0) {
                         throw new IllegalStateException("[build] logic " + mainClass + " exited " + exit);
                     }
@@ -249,10 +332,11 @@ public final class BuildLogicSupport {
             }
         }
 
-        if (nameAnchors.isEmpty()) {
-            throw new IllegalStateException("[build] logic has no tasks — implement "
+        if (nameAnchors.isEmpty() && !allowEmpty) {
+            throw new IllegalStateException("[build] logic has no tasks — add a stem script "
+                    + "(e.g. before-compile.groovy / before-compile.kts), implement "
                     + BuildLogicContributor.class.getName()
-                    + " or provide a *Build / *BuildMain with public static void main"
+                    + " in .java/.kt, or provide a *Build / *BuildMain with public static void main"
                     + " (or set [build].logic-main)");
         }
         return out;
@@ -322,7 +406,25 @@ public final class BuildLogicSupport {
         return out;
     }
 
-    private static void compile(List<Path> sources, Path classes, Path apiCp) throws IOException {
+    /**
+     * Compiled Kotlin sources under the logic tree. Excludes {@code .kts} (script stems are a
+     * separate path — {@code "foo.kts".endsWith(".kt")} is true in Java).
+     */
+    private static List<Path> listKotlin(Path root) throws IOException {
+        List<Path> out = new ArrayList<>();
+        try (Stream<Path> s = Files.walk(root)) {
+            s.filter(Files::isRegularFile).forEach(p -> {
+                String name = p.getFileName().toString();
+                if (name.endsWith(".kt") && !name.endsWith(".kts")) {
+                    out.add(p);
+                }
+            });
+        }
+        out.sort(Comparator.comparing(Path::toString));
+        return out;
+    }
+
+    private static void compileJava(List<Path> sources, Path classes, Path apiCp) throws IOException {
         JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
         if (javac == null) throw new IllegalStateException("[build] logic: no system javac");
         List<String> args = new ArrayList<>();
@@ -335,6 +437,60 @@ public final class BuildLogicSupport {
         for (Path s : sources) args.add(s.toString());
         int rc = javac.run(null, null, null, args.toArray(String[]::new));
         if (rc != 0) throw new IllegalStateException("[build] logic: javac failed (exit " + rc + ")");
+    }
+
+    /**
+     * Compile {@code .kt} build-logic sources into {@code classes}. Returns the kotlin-stdlib jar
+     * (must ride the SPI/main classpath). Uses the product kotlin-compiler worker + default Kotlin
+     * version; non-incremental (build-logic trees are small).
+     */
+    private static Path compileKotlin(
+            List<Path> sources, Path classes, Path apiCp, Path projectDir, ActionCache actionCache)
+            throws IOException, InterruptedException {
+        JkBuild project;
+        try {
+            project = JkBuildParser.parse(projectDir.resolve("jk.toml"));
+        } catch (Exception e) {
+            throw new IllegalStateException("[build] logic: cannot parse jk.toml for Kotlin compile: " + e.getMessage(), e);
+        }
+        RepoGroup repos = RepoGroupBuilder.buildFor(project, null, actionCache.cas());
+        KotlinPluginSetup.Prepared prep;
+        try {
+            prep = KotlinPluginSetup.prepare(repos, actionCache.cas(), null);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw e;
+        }
+        List<Path> compileCp = new ArrayList<>();
+        if (apiCp != null && Files.exists(apiCp)) {
+            compileCp.add(apiCp);
+        }
+        // Already-compiled Java build-logic (if any) so Kotlin can call it. Do not put an empty
+        // output dir on the classpath (and avoid self-output-as-input when Kotlin-only).
+        if (hasClassFiles(classes)) {
+            compileCp.add(classes);
+        }
+        compileCp.add(prep.stdlib());
+
+        int jvmTarget = CompileSupport.kotlinJvmTarget(Runtime.version().feature());
+        KotlincRequest req = KotlincRequest.builder()
+                .sources(sources)
+                .classpath(compileCp)
+                .outputDir(classes)
+                .jvmTarget(jvmTarget)
+                .workerClasspath(prep.workerClasspath())
+                .javaHome(JavaHomes.runningJavaHome())
+                .workingDir(null) // non-incremental (build-logic trees are small)
+                .extraArgs(List.of("-no-stdlib"))
+                .moduleName("jk-build-logic")
+                .build();
+        KotlincResult result = new KotlincDriver().compile(req);
+        if (!result.success()) {
+            String out = result.output() == null ? "" : result.output().strip();
+            throw new IllegalStateException("[build] logic: kotlinc failed"
+                    + (out.isEmpty() ? "" : ":\n" + out));
+        }
+        return prep.stdlib();
     }
 
     /** Location of the plugin-sdk jar / classes dir that hosts the build-logic API. */
@@ -354,24 +510,32 @@ public final class BuildLogicSupport {
         }
     }
 
-    private static URL[] toUrls(Path logicClasses, Path apiCp) throws IOException {
+    private static URL[] toUrls(Path logicClasses, Path apiCp, Path kotlinStdlib) throws IOException {
         List<URL> urls = new ArrayList<>();
         urls.add(logicClasses.toUri().toURL());
         if (apiCp != null && Files.exists(apiCp)) {
             urls.add(apiCp.toUri().toURL());
         }
+        if (kotlinStdlib != null && Files.exists(kotlinStdlib)) {
+            urls.add(kotlinStdlib.toUri().toURL());
+        }
         return urls.toArray(URL[]::new);
     }
 
-    private static int runMain(Path classes, Path apiCp, String main, Path projectDir, Path outDir)
+    private static int runMain(
+            Path classes, Path apiCp, Path kotlinStdlib, String main, Path projectDir, Path outDir)
             throws IOException, InterruptedException {
         String javaBin = Path.of(System.getProperty("java.home"), "bin", "java").toString();
-        String cp = classes.toString();
+        String sep = java.io.File.pathSeparator;
+        StringBuilder cp = new StringBuilder(classes.toString());
         if (apiCp != null && Files.exists(apiCp)) {
-            cp = cp + java.io.File.pathSeparator + apiCp;
+            cp.append(sep).append(apiCp);
+        }
+        if (kotlinStdlib != null && Files.exists(kotlinStdlib)) {
+            cp.append(sep).append(kotlinStdlib);
         }
         ProcessBuilder pb = new ProcessBuilder(
-                javaBin, "-cp", cp, main, "--project", projectDir.toString(), "--out", outDir.toString());
+                javaBin, "-cp", cp.toString(), main, "--project", projectDir.toString(), "--out", outDir.toString());
         pb.redirectErrorStream(true);
         Process p = pb.start();
         String log = new String(p.getInputStream().readAllBytes());
@@ -399,6 +563,13 @@ public final class BuildLogicSupport {
             for (Path p : s.sorted(Comparator.reverseOrder()).toList()) {
                 if (!p.equals(dir)) Files.deleteIfExists(p);
             }
+        }
+    }
+
+    private static boolean hasClassFiles(Path dir) throws IOException {
+        if (!Files.isDirectory(dir)) return false;
+        try (Stream<Path> s = Files.walk(dir)) {
+            return s.anyMatch(p -> p.toString().endsWith(".class"));
         }
     }
 }
