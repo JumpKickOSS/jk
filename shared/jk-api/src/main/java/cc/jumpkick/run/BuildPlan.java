@@ -583,10 +583,6 @@ public final class BuildPlan {
             return this;
         }
 
-        public Builder terminal(Target target) {
-            return terminal(target.taskName());
-        }
-
         public BuildPlan build() {
             List<Task> selected = terminal == null ? steps : pruneToTerminal(steps, terminal);
             return new BuildPlan(name, interactive, selected, listeners);
