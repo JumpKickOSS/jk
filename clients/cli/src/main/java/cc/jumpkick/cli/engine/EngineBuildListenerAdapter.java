@@ -664,6 +664,24 @@ final class EngineBuildListenerAdapter {
                     bindTranscript(line);
                     continue;
                 }
+                // Same pre-listener contract as EnginePluginAdapter/EngineResolveAdapter: until
+                // plan-done constructs the listener, keep diagnostics and drop everything else —
+                // a cancel injected from another thread can land events out of order.
+                if (listener == null
+                        && !EngineProtocol.PLAN_TASK.equals(type)
+                        && !EngineProtocol.PLAN_DONE.equals(type)
+                        && !EngineProtocol.BUILDPLAN_FINISH.equals(type)
+                        && !EngineProtocol.ERROR.equals(type)) {
+                    if (EngineProtocol.BUILDPLAN_DIAGNOSTIC.equals(type)) {
+                        diagnostics.add(new BuildPlanResult.Diagnostic(
+                                Jsonl.str(line, "task"),
+                                Jsonl.str(line, "code"),
+                                Jsonl.str(line, "message"),
+                                Jsonl.str(line, "test"),
+                                Jsonl.str(line, "exceptionClass")));
+                    }
+                    continue;
+                }
                 switch (type) {
                     case EngineProtocol.PLAN_TASK ->
                         steps.add(Task.builder(Jsonl.str(line, "name"))
