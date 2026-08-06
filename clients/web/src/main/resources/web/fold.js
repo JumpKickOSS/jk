@@ -51,7 +51,7 @@ export function foldEvent(cards, event) {
         cancelled: false,
         success: null, // tri-state: null = engine didn't say (socket requests) — derive from modules
         // Every build is a list of module rows (a single-project build has one, keyed by the empty
-        // SINGLE_GOAL_DIR); each row carries its OWN step chain, so the card shows a chain per
+        // SINGLE_PLAN_DIR); each row carries its OWN step chain, so the card shows a chain per
         // module rather than one merged strip.
         modules: [],
         // Fine-grained per-module plan ticks (detail only). Request-level bar uses
@@ -82,7 +82,7 @@ export function foldEvent(cards, event) {
     case 'task-start': {
       const card = resolveCard(cards, d);
       if (card) {
-        const row = stepRow(card, d.dir, (d.task || d.step), d.phase, event.at);
+        const row = stepRow(card, d.dir, (d.task || d.step), d.group, event.at);
         row.state = 'running';
         row.message = ''; // new step — clear previous tick text
       }
@@ -91,7 +91,7 @@ export function foldEvent(cards, event) {
     case 'task-finish': {
       const card = resolveCard(cards, d);
       if (card) {
-        const row = stepRow(card, d.dir, (d.task || d.step), d.phase, event.at);
+        const row = stepRow(card, d.dir, (d.task || d.step), d.group, event.at);
         row.state = stepState(d.status);
         // Keep last message for a moment of context only while running rows use it; finished
         // phases do not surface live detail.
@@ -101,7 +101,7 @@ export function foldEvent(cards, event) {
     case 'label': {
       // Live step detail (test class.method, "shrinking jar", …) — CLI tree-row parity.
       const card = resolveCard(cards, d);
-      if (card) stepRow(card, d.dir, (d.task || d.step), d.phase, event.at).message = d.label || '';
+      if (card) stepRow(card, d.dir, (d.task || d.step), d.group, event.at).message = d.label || '';
       break;
     }
     case 'plan': {
@@ -418,12 +418,12 @@ function historyDiags(diags, dir) {
  * and its steps at the top level — synthesize one row from them so backfilled cards match live.
  */
 function historyModules(rec) {
-  const toSteps = (ps) => (ps || []).map((p) => ({ name: p.name || '?', state: stepState(p.status), phase: p.phase || '' }));
+  const toSteps = (ps) => (ps || []).map((p) => ({ name: p.name || '?', state: stepState(p.status), phase: p.group || p.phase || '' }));
   // finishedAt / startedAt give a stable lastActivity for display order after backfill.
   const activity = rec.finishedAt || rec.startedAt || 0;
   if ((rec.modules || []).length > 0) {
     return rec.modules.map((m, i) => {
-      const steps = toSteps(m.steps);
+      const steps = toSteps(m.tasks || m.steps);
       return {
         dir: m.dir || '',
         coord: m.coord || null,
@@ -445,7 +445,7 @@ function historyModules(rec) {
   }
   // Single-project: no modules, steps at top level. Its diagnostics live in the "" bucket, so take
   // every error the record carries (there is only one module to own them).
-  const steps = toSteps(rec.steps);
+  const steps = toSteps(rec.tasks || rec.steps);
   return [{
     dir: rec.dir || '',
     coord: rec.coord || null,
@@ -620,7 +620,7 @@ function byId(cards, requestId) {
 
 /**
  * The card's row for a module dir, created on first sight. A single-plan (single-project) build
- * emits its step/plan events under the empty SINGLE_GOAL_DIR, so it gets exactly one row keyed by
+ * emits its step/plan events under the empty SINGLE_PLAN_DIR, so it gets exactly one row keyed by
  * `''`. Each row owns its step chain (`steps`). {@code at} is the event receipt time — bumps
  * {@code lastActivity} so the UI can float active modules (CLI newest-at-top).
  */

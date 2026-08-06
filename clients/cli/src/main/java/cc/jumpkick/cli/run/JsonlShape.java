@@ -150,18 +150,18 @@ public final class JsonlShape {
                 .append(js(v.planName()))
                 .append(",\"denominator\":")
                 .append(v.denominator())
-                .append(",\"steps\":")
+                .append(",\"tasks\":")
                 .append(v.stepsTotal())
                 .append('}')
                 .toString();
     }
 
-    static String stepStart(String step, String phase, int ticks) {
+    static String stepStart(String step, String group, int ticks) {
         return open("task-start")
                 .append(",\"task\":")
                 .append(js(step))
-                .append(",\"phase\":")
-                .append(js(phase))
+                .append(",\"group\":")
+                .append(js(group))
                 .append(",\"ticks\":")
                 .append(ticks)
                 .append('}')
@@ -249,12 +249,12 @@ public final class JsonlShape {
         return sb.append('}').toString();
     }
 
-    static String stepFinish(String step, String phase, TaskStatus status, Duration duration) {
+    static String stepFinish(String step, String group, TaskStatus status, Duration duration) {
         return open("task-finish")
                 .append(",\"task\":")
                 .append(js(step))
-                .append(",\"phase\":")
-                .append(js(phase))
+                .append(",\"group\":")
+                .append(js(group))
                 .append(",\"status\":")
                 .append(js(status.name()))
                 .append(",\"duration_ms\":")

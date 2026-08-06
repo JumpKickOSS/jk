@@ -194,11 +194,11 @@ public final class EngineProtocol {
     public static final String SINGLE_BUILD_REQUEST = "single-build-request";
 
     /** The {@code dir} tag {@link #TEST_REQUEST}/{@link #SINGLE_BUILD_REQUEST}'s single plan events carry. */
-    public static final String SINGLE_PIPELINE_DIR = "";
+    public static final String SINGLE_PLAN_DIR = "";
 
     /**
      * Client → server: build forecast ({@code jk explain}). Synchronous inline burst of
-     * {@link #EXPLAIN_MODULE}/{@link #EXPLAIN_STEP}/{@link #EXPLAIN_EDGE} then {@link #EXPLAIN_DONE}.
+     * {@link #EXPLAIN_MODULE}/{@link #EXPLAIN_TASK}/{@link #EXPLAIN_EDGE} then {@link #EXPLAIN_DONE}.
      */
     public static final String EXPLAIN_REQUEST = "explain-request";
 
@@ -206,7 +206,7 @@ public final class EngineProtocol {
     public static final String EXPLAIN_MODULE = "explain-module";
 
     /** Server → client, repeated once per (module, step): a {@code TaskForecast.Module}'s step list entry. */
-    public static final String EXPLAIN_STEP = "explain-step";
+    public static final String EXPLAIN_TASK = "explain-task";
 
     /** Server → client, repeated once per dependency edge. */
     public static final String EXPLAIN_EDGE = "explain-edge";
@@ -401,7 +401,7 @@ public final class EngineProtocol {
     public static final String HISTORY_MODULE = "history-module";
 
     /** Server → client, repeated for {@code HISTORY_SHOW}: one step row. */
-    public static final String HISTORY_STEP = "history-step";
+    public static final String HISTORY_TASK = "history-task";
 
     /** Server → client, repeated for {@code HISTORY_SHOW}: one diagnostic row. */
     public static final String HISTORY_DIAG = "history-diag";
@@ -1679,7 +1679,7 @@ public final class EngineProtocol {
 
     public static String explainStep(String dir, String name, String status, String text, String key) {
         return "{\"type\":\""
-                + EXPLAIN_STEP
+                + EXPLAIN_TASK
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
                 + ",\"name\":"
@@ -1899,7 +1899,7 @@ public final class EngineProtocol {
                 + Jsonl.quote(name)
                 + ",\"label\":"
                 + Jsonl.quote(label)
-                + ",\"phase\":"
+                + ",\"group\":"
                 + Jsonl.quote(phase)
                 + "}";
     }
@@ -1947,8 +1947,8 @@ public final class EngineProtocol {
             String planName,
             long numerator,
             long denominator,
-            int stepsTotal,
-            int stepsComplete,
+            int tasksTotal,
+            int tasksComplete,
             boolean cancelled) {
         return "{\"schema\":1,\"type\":\""
                 + BUILDPLAN_START
@@ -1962,10 +1962,10 @@ public final class EngineProtocol {
                 + denominator
                 + ",\"progress\":"
                 + progressPercent(numerator, denominator)
-                + ",\"stepsTotal\":"
-                + stepsTotal
-                + ",\"stepsComplete\":"
-                + stepsComplete
+                + ",\"tasksTotal\":"
+                + tasksTotal
+                + ",\"tasksComplete\":"
+                + tasksComplete
                 + ",\"cancelled\":"
                 + cancelled
                 + "}";
@@ -1976,9 +1976,9 @@ public final class EngineProtocol {
                 + TASK_START
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
-                + ",\"step\":"
+                + ",\"task\":"
                 + Jsonl.quote(step)
-                + ",\"phase\":"
+                + ",\"group\":"
                 + Jsonl.quote(phase)
                 + ",\"ticks\":"
                 + ticks
@@ -1992,14 +1992,14 @@ public final class EngineProtocol {
             int delta,
             long numerator,
             long denominator,
-            int stepsTotal,
-            int stepsComplete,
+            int tasksTotal,
+            int tasksComplete,
             boolean cancelled) {
         return "{\"schema\":1,\"type\":\""
                 + type
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
-                + ",\"step\":"
+                + ",\"task\":"
                 + Jsonl.quote(step)
                 + ",\"delta\":"
                 + delta
@@ -2009,10 +2009,10 @@ public final class EngineProtocol {
                 + denominator
                 + ",\"progress\":"
                 + progressPercent(numerator, denominator)
-                + ",\"stepsTotal\":"
-                + stepsTotal
-                + ",\"stepsComplete\":"
-                + stepsComplete
+                + ",\"tasksTotal\":"
+                + tasksTotal
+                + ",\"tasksComplete\":"
+                + tasksComplete
                 + ",\"cancelled\":"
                 + cancelled
                 + "}";
@@ -2033,10 +2033,10 @@ public final class EngineProtocol {
             int delta,
             long numerator,
             long denominator,
-            int stepsTotal,
-            int stepsComplete,
+            int tasksTotal,
+            int tasksComplete,
             boolean cancelled) {
-        return progressLike(PROGRESS, dir, step, delta, numerator, denominator, stepsTotal, stepsComplete, cancelled);
+        return progressLike(PROGRESS, dir, step, delta, numerator, denominator, tasksTotal, tasksComplete, cancelled);
     }
 
     public static String tickUpdate(
@@ -2045,11 +2045,11 @@ public final class EngineProtocol {
             int delta,
             long numerator,
             long denominator,
-            int stepsTotal,
-            int stepsComplete,
+            int tasksTotal,
+            int tasksComplete,
             boolean cancelled) {
         return progressLike(
-                TICK_UPDATE, dir, step, delta, numerator, denominator, stepsTotal, stepsComplete, cancelled);
+                TICK_UPDATE, dir, step, delta, numerator, denominator, tasksTotal, tasksComplete, cancelled);
     }
 
     public static String label(String dir, String step, String label) {
@@ -2057,7 +2057,7 @@ public final class EngineProtocol {
                 + LABEL
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
-                + ",\"step\":"
+                + ",\"task\":"
                 + Jsonl.quote(step)
                 + ",\"label\":"
                 + Jsonl.quote(label)
@@ -2069,7 +2069,7 @@ public final class EngineProtocol {
                 + OUTPUT
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
-                + ",\"step\":"
+                + ",\"task\":"
                 + Jsonl.quote(step)
                 + ",\"line\":"
                 + Jsonl.quote(line)
@@ -2082,7 +2082,7 @@ public final class EngineProtocol {
                 + type
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
-                + ",\"step\":"
+                + ",\"task\":"
                 + Jsonl.quote(step)
                 + ",\"code\":"
                 + Jsonl.quote(code)
@@ -2114,9 +2114,9 @@ public final class EngineProtocol {
                 + TASK_FINISH
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
-                + ",\"step\":"
+                + ",\"task\":"
                 + Jsonl.quote(step)
-                + ",\"phase\":"
+                + ",\"group\":"
                 + Jsonl.quote(phase)
                 + ",\"status\":"
                 + Jsonl.quote(status)

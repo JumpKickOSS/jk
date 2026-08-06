@@ -149,7 +149,7 @@ final class EngineResolveAdapter {
                     case EngineProtocol.PLAN_TASK ->
                         steps.add(Task.builder(Jsonl.str(line, "name"))
                                 .label(Jsonl.str(line, "label"))
-                                .phase(wireGroup(Jsonl.str(line, "phase")))
+                                .phase(wireGroup(Jsonl.str(line, "group")))
                                 .build());
                     case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
                     case EngineProtocol.BUILDPLAN_FINISH -> {
@@ -211,7 +211,7 @@ final class EngineResolveAdapter {
                     case EngineProtocol.PLAN_TASK ->
                         steps.add(Task.builder(Jsonl.str(line, "name"))
                                 .label(Jsonl.str(line, "label"))
-                                .phase(wireGroup(Jsonl.str(line, "phase")))
+                                .phase(wireGroup(Jsonl.str(line, "group")))
                                 .build());
                     case EngineProtocol.PLAN_DONE -> listener = handler.onModuleStart(currentDir, currentCoord, steps);
                     case EngineProtocol.LOCK_PACKAGE ->
@@ -273,20 +273,20 @@ final class EngineResolveAdapter {
             case EngineProtocol.BUILDPLAN_START -> listener.planStart(readBuildPlanView(line));
             case EngineProtocol.TASK_START ->
                 listener.stepStart(
-                        Jsonl.str(line, "step"),
-                        wireGroup(Jsonl.str(line, "phase")),
+                        Jsonl.str(line, "task"),
+                        wireGroup(Jsonl.str(line, "group")),
                         Jsonl.intValue(line, "ticks", 0));
             case EngineProtocol.PROGRESS ->
-                listener.progress(Jsonl.str(line, "step"), Jsonl.intValue(line, "delta", 0), readBuildPlanView(line));
+                listener.progress(Jsonl.str(line, "task"), Jsonl.intValue(line, "delta", 0), readBuildPlanView(line));
             case EngineProtocol.TICK_UPDATE ->
-                listener.tickUpdate(Jsonl.str(line, "step"), Jsonl.intValue(line, "delta", 0), readBuildPlanView(line));
-            case EngineProtocol.LABEL -> listener.label(Jsonl.str(line, "step"), Jsonl.str(line, "label"));
-            case EngineProtocol.OUTPUT -> listener.output(Jsonl.str(line, "step"), Jsonl.str(line, "line"));
+                listener.tickUpdate(Jsonl.str(line, "task"), Jsonl.intValue(line, "delta", 0), readBuildPlanView(line));
+            case EngineProtocol.LABEL -> listener.label(Jsonl.str(line, "task"), Jsonl.str(line, "label"));
+            case EngineProtocol.OUTPUT -> listener.output(Jsonl.str(line, "task"), Jsonl.str(line, "line"));
             case EngineProtocol.WARN ->
-                listener.warn(Jsonl.str(line, "step"), Jsonl.str(line, "code"), Jsonl.str(line, "message"));
+                listener.warn(Jsonl.str(line, "task"), Jsonl.str(line, "code"), Jsonl.str(line, "message"));
             case EngineProtocol.ERROR_LINE ->
                 listener.error(
-                        Jsonl.str(line, "step"),
+                        Jsonl.str(line, "task"),
                         Jsonl.str(line, "code"),
                         Jsonl.str(line, "message"),
                         Jsonl.str(line, "test"),
@@ -294,8 +294,8 @@ final class EngineResolveAdapter {
             case EngineProtocol.BUILDPLAN_DIAGNOSTIC -> diagnostics.add(readDiagnostic(line));
             case EngineProtocol.TASK_FINISH ->
                 listener.stepFinish(
-                        Jsonl.str(line, "step"),
-                        wireGroup(Jsonl.str(line, "phase")),
+                        Jsonl.str(line, "task"),
+                        wireGroup(Jsonl.str(line, "group")),
                         TaskStatus.valueOf(Jsonl.str(line, "status")),
                         Duration.ZERO);
             default -> {
@@ -306,7 +306,7 @@ final class EngineResolveAdapter {
 
     private static BuildPlanResult.Diagnostic readDiagnostic(String line) {
         return new BuildPlanResult.Diagnostic(
-                Jsonl.str(line, "step"),
+                Jsonl.str(line, "task"),
                 Jsonl.str(line, "code"),
                 Jsonl.str(line, "message"),
                 Jsonl.str(line, "test"),
@@ -318,8 +318,8 @@ final class EngineResolveAdapter {
                 Jsonl.str(line, "planName"),
                 Jsonl.longValue(line, "numerator", 0),
                 Jsonl.longValue(line, "denominator", 0),
-                Jsonl.intValue(line, "stepsTotal", 0),
-                Jsonl.intValue(line, "stepsComplete", 0),
+                Jsonl.intValue(line, "tasksTotal", 0),
+                Jsonl.intValue(line, "tasksComplete", 0),
                 Jsonl.bool(line, "cancelled", false));
     }
 

@@ -134,7 +134,9 @@ Compile / test / package are **task names** (or groups of tasks), not invocation
 | `task-start` / `task-finish` | Task lifecycle (`task`, optional module `dir`) |
 | `buildplan-start` / `buildplan-finish` | One module BuildPlan start/end |
 | `progress` / `label` / `output` / … | Unchanged roles; field `step` → `task` where present |
-| Status | `activeBuildPlans` (was `activeBuildPlans`) |
+| `explain-task` / `history-task` | Explain/history bursts (were `explain-step` / `history-step`) |
+| Task events' group | Field `group` (was `phase`) — the free-form task group; `phase` now means only InvocationPhase and the metrics taxonomy |
+| Status | `activeBuildPlans` (was `activePipelines`) |
 
 Protocol version stays **1** (pre-1.0 freeze); names replace in place — no dual-read.
 

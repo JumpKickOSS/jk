@@ -525,7 +525,9 @@ public final class BuildMetrics {
                     Entry e = readEntry(row, true);
                     if (e != null) inv.put(e.kind() + SEP + e.dir(), e);
                 }
-                for (Object row : list(root.get("steps"))) {
+                Object taskRows = root.get("tasks");
+                if (taskRows == null) taskRows = root.get("steps"); // pre-rename store files
+                for (Object row : list(taskRows)) {
                     Entry e = readEntry(row, false);
                     if (e != null) ph.put(e.dir() + SEP + e.step(), e);
                 }
@@ -568,7 +570,7 @@ public final class BuildMetrics {
         root.put("invocations", invRows);
         List<Object> phRows = new ArrayList<>(ph.size());
         new TreeMap<>(ph).values().forEach(e -> phRows.add(renderEntry(e)));
-        root.put("steps", phRows);
+        root.put("tasks", phRows);
         return root;
     }
 
@@ -579,7 +581,6 @@ public final class BuildMetrics {
         if (e.coord() != null) o.put("coord", e.coord());
         if (e.step() != null) {
             o.put("task", e.step());
-            o.put("step", e.step()); // alias during vocabulary settle
         }
         o.put("ok", renderStats(e.ok()));
         o.put("failed", renderStats(e.failed()));

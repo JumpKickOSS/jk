@@ -1827,7 +1827,7 @@ public final class EngineServer implements AutoCloseable {
 
     private void publishStepStart(long requestId, String dir, String step, String phase) {
         if (!eventsWanted()) return;
-        // Field names align with CLI JsonlShape (schema + type + step + phase).
+        // Field names align with CLI JsonlShape (schema + type + task + group).
         publishEvent(
                 "task-start",
                 withProgress(
@@ -1837,7 +1837,7 @@ public final class EngineServer implements AutoCloseable {
                                 .put("requestId", requestId)
                                 .put("dir", dir)
                                 .put("task", step)
-                                .put("phase", phase),
+                                .put("group", phase),
                         requestId));
     }
 
@@ -1852,7 +1852,7 @@ public final class EngineServer implements AutoCloseable {
                                 .put("requestId", requestId)
                                 .put("dir", dir)
                                 .put("task", step)
-                                .put("phase", phase)
+                                .put("group", phase)
                                 .put("status", status),
                         requestId));
     }
@@ -2722,7 +2722,7 @@ public final class EngineServer implements AutoCloseable {
      * Build and run the test-only {@code BuildPlan} exactly as {@code TestCommand} does in-process, but
      * streaming its {@link BuildPlanListener} events over the wire via {@link #wireBuildPlanListener} — the
      * same single-plan event vocabulary {@link #runBuild} already speaks per module, here tagged with
-     * the fixed {@link EngineProtocol#SINGLE_PIPELINE_DIR} sentinel since there's only one plan.
+     * the fixed {@link EngineProtocol#SINGLE_PLAN_DIR} sentinel since there's only one plan.
      */
     private void runTest(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
         try {
@@ -2800,7 +2800,7 @@ public final class EngineServer implements AutoCloseable {
             cc.jumpkick.run.BuildPlan plan =
                     cc.jumpkick.runtime.BuildPlanner.coreBuilder(inputs).build();
 
-            String dir = EngineProtocol.SINGLE_PIPELINE_DIR;
+            String dir = EngineProtocol.SINGLE_PLAN_DIR;
             for (Task p : plan.steps()) {
                 sendQuiet(
                         writer,
@@ -2886,7 +2886,7 @@ public final class EngineServer implements AutoCloseable {
             });
             long barWeight = plan.estimatedTotalWeight();
 
-            String dir = EngineProtocol.SINGLE_PIPELINE_DIR;
+            String dir = EngineProtocol.SINGLE_PLAN_DIR;
             for (Task p : plan.steps()) {
                 sendQuiet(
                         writer,
@@ -3058,7 +3058,7 @@ public final class EngineServer implements AutoCloseable {
                 java.util.concurrent.atomic.AtomicInteger upToDate = new java.util.concurrent.atomic.AtomicInteger();
                 cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.SyncPlans.syncBuildPlan(
                         entryDir, cache, jdksDir, repoUrl, sources, fetched, upToDate, null, false);
-                String dir = EngineProtocol.SINGLE_PIPELINE_DIR;
+                String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 for (Task p : plan.steps()) {
                     sendQuiet(
                             writer,
@@ -3088,7 +3088,7 @@ public final class EngineServer implements AutoCloseable {
 
     /**
      * Stream one single-plan command over the wire — the shared tail of every Wave-2 handler: the
-     * {@link EngineProtocol#SINGLE_PIPELINE_DIR}-tagged plan-step burst, the standard plan events via
+     * {@link EngineProtocol#SINGLE_PLAN_DIR}-tagged plan-step burst, the standard plan events via
      * {@link #wireBuildPlanListener}, and {@code finishEncoder}'s terminal {@code plan-finish} variant.
      */
     private void streamSingleBuildPlan(
@@ -3097,7 +3097,7 @@ public final class EngineServer implements AutoCloseable {
             BufferedWriter writer,
             java.util.function.Function<BuildPlanResult, String> finishEncoder)
             throws Exception {
-        String dir = EngineProtocol.SINGLE_PIPELINE_DIR;
+        String dir = EngineProtocol.SINGLE_PLAN_DIR;
         for (Task p : plan.steps()) {
             sendQuiet(
                     writer,
@@ -3127,7 +3127,7 @@ public final class EngineServer implements AutoCloseable {
                     .withCacheDir(cache)
                     .withCancel(cancelToken)
                     .withJvm(EngineProtocol.jvmTuning(requestLine));
-            String dir = EngineProtocol.SINGLE_PIPELINE_DIR;
+            String dir = EngineProtocol.SINGLE_PLAN_DIR;
             cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.AuditPlans.auditBuildPlan(
                     cc.jumpkick.lock.LockPaths.lockFile(entryDir),
                     cache,
@@ -3157,7 +3157,7 @@ public final class EngineServer implements AutoCloseable {
             boolean optimizeImports = Jsonl.bool(requestLine, "optimizeImports", true);
             String rewriteConfig = Jsonl.str(requestLine, "rewriteConfig");
             Session session = resolveSession(requestLine, cancelToken, false);
-            String dir = EngineProtocol.SINGLE_PIPELINE_DIR;
+            String dir = EngineProtocol.SINGLE_PLAN_DIR;
             cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.FormatPlans.formatBuildPlan(
                     session.workingDir(),
                     session.cacheDir(),
@@ -3228,7 +3228,7 @@ public final class EngineServer implements AutoCloseable {
                     .withWorkingDir(entryDir)
                     .withCacheDir(cache)
                     .withCancel(cancelToken);
-            String dir = EngineProtocol.SINGLE_PIPELINE_DIR;
+            String dir = EngineProtocol.SINGLE_PLAN_DIR;
             cc.jumpkick.run.BuildPlan plan =
                     cc.jumpkick.runtime.PublishPlans.publishBuildPlan(entryDir, cache, req);
             streamSingleBuildPlan(
@@ -3278,7 +3278,7 @@ public final class EngineServer implements AutoCloseable {
                     .withJdksDir(jdksDir)
                     .withCancel(cancelToken)
                     .withVariant(EngineProtocol.variantOf(requestLine), EngineProtocol.clientEnvOf(requestLine));
-            String dir = EngineProtocol.SINGLE_PIPELINE_DIR;
+            String dir = EngineProtocol.SINGLE_PLAN_DIR;
             // Constructed in-session: the plan factory's BuildPlanner.Inputs captures the
             // ambient SessionContext at construction, so building it outside where would
             // silently pin this request to the engine's default config (dropping --force et al).
@@ -3345,7 +3345,7 @@ public final class EngineServer implements AutoCloseable {
                     .withWorkingDir(baseDir)
                     .withCacheDir(cache)
                     .withCancel(cancelToken);
-            String dir = EngineProtocol.SINGLE_PIPELINE_DIR;
+            String dir = EngineProtocol.SINGLE_PLAN_DIR;
             cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.CompatPlans.importBuildPlan(
                     Path.of(Jsonl.str(requestLine, "source")),
                     Path.of(Jsonl.str(requestLine, "out")),
@@ -3414,7 +3414,7 @@ public final class EngineServer implements AutoCloseable {
             String profile = Jsonl.str(requestLine, "profile");
             boolean verbose = Jsonl.bool(requestLine, "verbose", false);
             Session session = resolveSession(requestLine, cancelToken, false);
-            String dir = EngineProtocol.SINGLE_PIPELINE_DIR;
+            String dir = EngineProtocol.SINGLE_PLAN_DIR;
             // Constructed in-session — see runImage's note on ambient-session capture.
             cc.jumpkick.run.BuildPlan plan = SessionContext.where(
                     session,
@@ -3440,7 +3440,7 @@ public final class EngineServer implements AutoCloseable {
             String m2DirStr = Jsonl.str(requestLine, "m2Dir");
             String graalHomeStr = Jsonl.str(requestLine, "graalHome");
             Session session = resolveSession(requestLine, cancelToken, false);
-            String dir = EngineProtocol.SINGLE_PIPELINE_DIR;
+            String dir = EngineProtocol.SINGLE_PLAN_DIR;
             // Constructed in-session — see runImage's note on ambient-session capture.
             cc.jumpkick.run.BuildPlan plan = SessionContext.where(
                     session,
@@ -3493,7 +3493,7 @@ public final class EngineServer implements AutoCloseable {
                     Optional.empty());
             Session session =
                     Session.defaults().withConfig(config).withCacheDir(cache).withCancel(cancelToken);
-            String dir = EngineProtocol.SINGLE_PIPELINE_DIR;
+            String dir = EngineProtocol.SINGLE_PLAN_DIR;
             cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.InstallPlans.gitFetchBuildPlan(
                     Jsonl.str(requestLine, "url"),
                     Jsonl.str(requestLine, "canonicalUrl"),
@@ -3552,7 +3552,7 @@ public final class EngineServer implements AutoCloseable {
                         case "jar" -> cc.jumpkick.runtime.ScriptPlans.jarBuildPlan(script, cache, repoUrl);
                         default -> throw new IllegalArgumentException("unknown script mode: " + mode);
                     };
-            String dir = EngineProtocol.SINGLE_PIPELINE_DIR;
+            String dir = EngineProtocol.SINGLE_PLAN_DIR;
             streamSingleBuildPlan(plan, session, writer, result -> {
                 Path classesDir = plan.get(cc.jumpkick.runtime.ScriptPlans.CLASSES_DIR)
                         .orElse(null);
@@ -3596,7 +3596,7 @@ public final class EngineServer implements AutoCloseable {
                     .map(cc.jumpkick.model.ToolCoordSpec::parse)
                     .toList();
             Session session = Session.defaults().withCacheDir(cache).withCancel(cancelToken);
-            String dir = EngineProtocol.SINGLE_PIPELINE_DIR;
+            String dir = EngineProtocol.SINGLE_PLAN_DIR;
             // Plain g:a[:v] label — coordinate colorization is a client-side concern.
             cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.ToolPlans.resolveBuildPlan(
                     spec, with, bin, mainClass, repoUrl, cache, coord);
@@ -3666,7 +3666,7 @@ public final class EngineServer implements AutoCloseable {
                                                 Jsonl.bool(requestLine, "includeJkTmp", false));
                                 };
                         Session session = Session.defaults().withCacheDir(cache).withCancel(cancelToken);
-                        String dir = EngineProtocol.SINGLE_PIPELINE_DIR;
+                        String dir = EngineProtocol.SINGLE_PLAN_DIR;
                         streamSingleBuildPlan(
                                 plan,
                                 session,
@@ -4740,7 +4740,7 @@ public final class EngineServer implements AutoCloseable {
     /** One aggregate row as a flat wire object; avg is pre-computed so clients stay arithmetic-free. */
     private static String metricsEntryJson(BuildMetrics.Entry e) {
         boolean global = e.dir().isEmpty();
-        String scope = e.step() == null ? (global ? "global" : "project") : (global ? "step" : "project/step");
+        String scope = e.step() == null ? (global ? "global" : "project") : (global ? "task" : "project/task");
         return JsonOut.object()
                 .put("type", EngineProtocol.METRICS_ENTRY)
                 .put("scope", scope)
@@ -4923,10 +4923,10 @@ public final class EngineServer implements AutoCloseable {
                         .toString());
     }
 
-    /** A {@code history-step} line, optionally tagged with its module label (null for single-plan). */
+    /** A {@code history-task} line, optionally tagged with its module label (null for single-plan). */
     private static String stepLine(BuildRecord.Task p, String module) {
         return JsonOut.object()
-                .put("type", EngineProtocol.HISTORY_STEP)
+                .put("type", EngineProtocol.HISTORY_TASK)
                 .put("module", module)
                 .put("name", p.name())
                 .put("status", p.status())
@@ -6053,7 +6053,7 @@ public final class EngineServer implements AutoCloseable {
 
         private final java.util.List<ModuleOutcome> modules = new java.util.concurrent.CopyOnWriteArrayList<>();
         // Steps per module dir (name → Step, arrival order, last status wins). The single-plan path
-        // uses the "" (SINGLE_PIPELINE_DIR) bucket; workspace modules use their real dir. Rendered as a
+        // uses the "" (SINGLE_PLAN_DIR) bucket; workspace modules use their real dir. Rendered as a
         // chain per module (the dashboard shows one chain per module, not one merged strip).
         private final java.util.Map<String, java.util.Map<String, BuildRecord.Task>> stepsByDir =
                 new java.util.concurrent.ConcurrentHashMap<>();

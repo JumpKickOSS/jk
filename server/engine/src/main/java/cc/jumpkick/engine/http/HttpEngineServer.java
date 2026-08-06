@@ -1117,13 +1117,13 @@ public final class HttpEngineServer implements AutoCloseable {
             if (dirFilter != null && !e.dir().isEmpty() && !e.dir().equals(dirFilter)) continue;
             if (body.length() > 1) body.append(',');
             boolean global = e.dir().isEmpty();
-            String scope = e.step() == null ? (global ? "global" : "project") : (global ? "step" : "project/step");
+            String scope = e.step() == null ? (global ? "global" : "project") : (global ? "task" : "project/task");
             body.append(JsonOut.object()
                     .put("scope", scope)
                     .put("kind", e.kind())
                     .put("dir", e.dir())
                     .put("coord", e.coord())
-                    .put("step", e.step())
+                    .put("task", e.step())
                     .put("okCount", e.ok().count())
                     .put("okTotalMillis", e.ok().totalMillis())
                     .put("okMinMillis", e.ok().minMillis())
