@@ -44,7 +44,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -643,11 +645,35 @@ public final class BuildPlanner {
             b.addTask(compileTest).addTask(runTests);
         }
         // `jk test` stops at run-tests — it never packages a jar. Plugin steps run only
-        // when packaging does: they exist to feed the packaged/native artifact.
+        // when packaging does: they exist to feed the packaged/native artifact. The exception
+        // is plugin tasks run-tests itself requires (test-only or test-classpath contributors,
+        // mirroring runTestsStep's requires) plus any plugin tasks those transitively require —
+        // without them the plan fails validation before anything runs.
         if (!in.testOnly()) {
             for (Task p : pluginSteps) b.addTask(p);
             b.addTask(buildLogicBeforePackageStep(cx));
             b.addTask(packageJar);
+        } else if (pluginDeclsF != null) {
+            Map<String, Task> pluginByName = new LinkedHashMap<>();
+            for (Task p : pluginSteps) pluginByName.put(p.name(), p);
+            ArrayDeque<String> want = new ArrayDeque<>();
+            for (PluginBuild.TaskDecl step : pluginDeclsF.steps()) {
+                if (step.testOnly() || !step.contributesTestClasspath().isEmpty()) {
+                    want.add("plugin-" + step.name());
+                }
+            }
+            Set<String> testPlugins = new HashSet<>();
+            while (!want.isEmpty()) {
+                String name = want.poll();
+                Task p = pluginByName.get(name);
+                if (p == null || !testPlugins.add(name)) continue;
+                for (String r : p.requires()) {
+                    if (pluginByName.containsKey(r)) want.add(r);
+                }
+            }
+            for (Map.Entry<String, Task> e : pluginByName.entrySet()) {
+                if (testPlugins.contains(e.getKey())) b.addTask(e.getValue());
+            }
         }
         // write-stamp is the Java-compile freshness companion; only when Java ran.
         if (useJava) {
@@ -3335,6 +3361,10 @@ public final class BuildPlanner {
      * and fat jars / native images never run on {@code jk build}.
      */
     public static void appendDeclaredTails(BuildPlan.Builder b, Inputs in, Path graalHome, boolean allowNative) {
+        // Test and compile plans stop at run-tests / write-stamp: package-jar is not in the
+        // plan for tails to hang off, and re-rooting the terminal would run packaging (or
+        // fail validation) under `jk test` / `jk compile`.
+        if (in.testOnly() || in.compileOnly()) return;
         try {
             JkBuild project = applyAssemblyOverride(JkBuildParser.parse(in.buildFile()), in.session());
             List<String> leaves = new ArrayList<>();

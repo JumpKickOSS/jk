@@ -220,7 +220,8 @@ public final class PluginBuild {
         return new Declarations(steps, packager, commands);
     }
 
-    private static String describeKey(Active active, JkBuild project) {
+    /** Package-visible so tests can pre-seed the describe cache without forking a worker. */
+    static String describeKey(Active active, JkBuild project) {
         StringBuilder b = new StringBuilder();
         b.append(cc.jumpkick.model.BuildIdentity.cacheKeyVersion())
                 .append('|')
