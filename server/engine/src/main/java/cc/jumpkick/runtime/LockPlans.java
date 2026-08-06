@@ -33,6 +33,7 @@ import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
+import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
 import java.net.URI;
@@ -125,7 +126,7 @@ public final class LockPlans {
                 .build();
 
         Task resolve = Task.builder(TaskNames.RESOLVE_DEPS)
-                .group("resolve")
+                .stage(BuildStage.RESOLVE)
                 .label("Resolving")
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_BUILD)
@@ -423,7 +424,7 @@ public final class LockPlans {
                 .build();
 
         Task resolve = Task.builder(TaskNames.RESOLVE_DEPS)
-                .group("resolve")
+                .stage(BuildStage.RESOLVE)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_BUILD)
                 .ticks(1)

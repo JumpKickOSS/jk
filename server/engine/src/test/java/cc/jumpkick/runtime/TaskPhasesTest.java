@@ -16,6 +16,8 @@ class TaskPhasesTest {
         assertThat(TaskPhases.of("package-jar")).isEqualTo(TaskPhases.PACKAGE);
         assertThat(TaskPhases.of("native-image")).isEqualTo(TaskPhases.NATIVE);
         assertThat(TaskPhases.of("write-image")).isEqualTo(TaskPhases.IMAGE);
+        // Typed API (BuildStage is the source of truth)
+        assertThat(TaskPhases.stageOf("compile-java").wireName()).isEqualTo(TaskPhases.COMPILE);
     }
 
     @Test

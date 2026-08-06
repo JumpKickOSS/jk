@@ -23,6 +23,7 @@ import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
+import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
@@ -101,7 +102,7 @@ public final class ImagePlans {
                 cc.jumpkick.config.SessionContext.current());
 
         Task imagePlan = Task.builder(TaskNames.IMAGE_PLAN)
-                .group("image")
+                .stage(BuildStage.IMAGE)
                 .requires(TaskNames.PACKAGE_JAR)
                 .ticks(1)
                 .execute(ctx -> {
@@ -142,7 +143,7 @@ public final class ImagePlans {
                 .build();
 
         Task writeImage = Task.builder(TaskNames.WRITE_IMAGE)
-                .group("image")
+                .stage(BuildStage.IMAGE)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.IMAGE_PLAN)
                 .weight(() -> EffortWeights.ociWeight(projectDir))

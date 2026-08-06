@@ -12,6 +12,8 @@ import java.util.function.IntSupplier;
  * their prerequisites finish.
  *
  * <p>Tasks are immutable after construction. Use {@link Task#builder} to assemble one.
+ *
+ * <p>{@link #stage()} is the product bucket (UI fold / ETA); ordering is solely {@link #requires()}.
  */
 public final class Task {
 
@@ -22,8 +24,8 @@ public final class Task {
     private final IntSupplier ticks;
     private final IntSupplier weight; // null → weight tracks ticks
     private final boolean interpolated;
-    /** Optional UI/group label (e.g. {@code compile}); not a lifecycle slot. */
-    private final String group;
+    /** Product taxonomy bucket; never null (defaults via {@link BuildStage#ofTaskName}). */
+    private final BuildStage stage;
     private final Body body;
 
     Task(
@@ -34,7 +36,7 @@ public final class Task {
             IntSupplier ticks,
             IntSupplier weight,
             boolean interpolated,
-            String group,
+            BuildStage stage,
             Body body) {
         this.name = Objects.requireNonNull(name);
         this.label = label != null ? label : name;
@@ -43,19 +45,27 @@ public final class Task {
         this.ticks = Objects.requireNonNull(ticks);
         this.weight = weight;
         this.interpolated = interpolated;
-        this.group = (group == null || group.isBlank()) ? null : group;
+        this.stage = stage != null ? stage : BuildStage.ofTaskName(name);
         this.body = Objects.requireNonNull(body);
     }
 
     /**
-     * Optional free-form group label for UI folding (e.g. {@code compile}, {@code test}). Not a
-     * build lifecycle slot — ordering is solely {@link #requires()}.
+     * Product stage for UI fold and ETA ({@link BuildStage#COMPILE}, …). Not a lifecycle slot —
+     * ordering is solely {@link #requires()}.
      */
-    public Optional<String> group() {
-        return Optional.ofNullable(group);
+    public BuildStage stage() {
+        return stage;
     }
 
-    /** @deprecated use {@link #group()}; kept for call-site migration */
+    /**
+     * Wire group label for UI folding ({@code compile}, {@code test}). Same as
+     * {@link BuildStage#wireName() stage().wireName()}.
+     */
+    public Optional<String> group() {
+        return Optional.of(stage.wireName());
+    }
+
+    /** @deprecated use {@link #group()} or {@link #stage()}; kept for call-site migration */
     @Deprecated
     public Optional<String> phase() {
         return group();
@@ -119,7 +129,8 @@ public final class Task {
         private IntSupplier ticks = () -> 1;
         private IntSupplier weight = null;
         private boolean interpolated = false;
-        private String group = null;
+        private BuildStage stage = null;
+        private boolean stageExplicit = false;
         private Body body = ctx -> {};
 
         Builder(String name) {
@@ -167,15 +178,33 @@ public final class Task {
             return this;
         }
 
-        /** Optional free-form UI group label (e.g. {@code compile}). Not a lifecycle slot. */
+        /**
+         * Product stage (UI fold / ETA). Preferred over {@link #group(String)}.
+         */
+        public Builder stage(BuildStage stage) {
+            this.stage = Objects.requireNonNull(stage, "stage");
+            this.stageExplicit = true;
+            return this;
+        }
+
+        /**
+         * Wire group label (e.g. {@code compile}). Maps to {@link BuildStage#fromWire}; unknown
+         * non-blank names become {@link BuildStage#OTHER}. Prefer {@link #stage(BuildStage)}.
+         */
         public Builder group(String group) {
-            this.group = group;
+            if (group == null || group.isBlank()) {
+                this.stage = null;
+                this.stageExplicit = false;
+                return this;
+            }
+            this.stage = BuildStage.fromWire(group);
+            this.stageExplicit = true;
             return this;
         }
 
         /**
          * Same as {@link #group(String)}; retained so existing call sites and wire adapters keep
-         * compiling while the vocabulary settles on "group".
+         * compiling while the vocabulary settles on stage/group.
          */
         public Builder phase(String group) {
             return group(group);
@@ -187,7 +216,9 @@ public final class Task {
         }
 
         public Task build() {
-            return new Task(name, label, kind, requires, ticks, weight, interpolated, group, body);
+            BuildStage resolved =
+                    stageExplicit && stage != null ? stage : BuildStage.ofTaskName(name);
+            return new Task(name, label, kind, requires, ticks, weight, interpolated, resolved, body);
         }
     }
 }

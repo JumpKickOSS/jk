@@ -312,12 +312,27 @@ There is no third-party marketplace yet; first-party plugins ship with jk and ve
   `jk.toml` is present. No engine jars on the plugin classpath. BSP (JK-1552): run, cancel,
   outputPaths, sources jars, publishDiagnostics.
 
+### Request phases vs build stages
+
+Two fixed taxonomies (do not collapse them):
+
+| Layer | Type | Scope |
+|-------|------|--------|
+| **Request** | `InvocationPhase` | Whole engine call: `initialize → resolve → plan → toolchain → build → finalize` |
+| **Module plan** | `BuildStage` | Inside a module `BuildPlan` (usually during `InvocationPhase.BUILD`): `resolve → generate → compile → test → package → native → image → other` |
+
+- **Task DAG** (`TaskNames` + `requires`) is the scheduler; stages are product buckets for UI fold, ETA, and future pre/post hooks — not a second scheduler.
+- In-plan stage **`resolve`** (parse / lock classpath / ensure JDK) ≠ request phase **`RESOLVE`** (lock/graph for the command).
+- Prefer `Task.builder(…).stage(BuildStage.COMPILE)`; free-form `group("…")` maps unknown strings to `OTHER`.
+- `TaskPhases` remains a string facade over `BuildStage` for metrics call sites.
+
 ### Project build logic (`.jk-build/`, ticket-1037)
 
 Convention directory **`.jk-build/`** (hidden) next to `jk.toml` holds project-local Java build
 logic (overridable via `[build].logic`). The engine compiles and runs mains (`--project` /
 `--out`) during `copy-resources`, action-caches outputs, and merges generated files into the
-classes tree. No scripts in TOML. See [features/project-build-logic.md](features/project-build-logic.md).
+classes tree. No scripts in TOML. Anchors (`AFTER_COMPILE`, …) will align to `BuildStage` cut
+points. See [features/project-build-logic.md](features/project-build-logic.md).
 
 ## Status
 

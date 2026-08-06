@@ -13,6 +13,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
+import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.tool.ToolResolver;
 import java.io.IOException;
@@ -97,7 +98,7 @@ public final class FormatPlans {
                 .build();
 
         Task resolve = Task.builder(TaskNames.RESOLVE_FORMATTERS)
-                .group("resolve")
+                .stage(BuildStage.RESOLVE)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.COLLECT_SOURCES)
                 .ticks(1)

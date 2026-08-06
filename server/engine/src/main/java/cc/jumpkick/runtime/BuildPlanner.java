@@ -34,6 +34,7 @@ import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
+import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
@@ -654,7 +655,7 @@ public final class BuildPlanner {
                 stamps.add(TaskNames.ASSEMBLE_CLASSES);
             }
             b.addTask(Task.builder(COMPILE_JOIN)
-                    .group("compile")
+                    .stage(BuildStage.COMPILE)
                     .requires(stamps.toArray(String[]::new))
                     .weight(0)
                     .ticks(0)
@@ -756,7 +757,7 @@ public final class BuildPlanner {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.PARSE_BUILD)
-                .group("resolve")
+                .stage(BuildStage.RESOLVE)
                 .label("Parsing")
                 .weight(() -> plan.get().fullyCached() ? W_CACHED_TOUCH : W_PARSE)
                 .ticks(() -> {
@@ -977,7 +978,7 @@ public final class BuildPlanner {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.RESOLVE_DEPS)
-                .group("resolve")
+                .stage(BuildStage.RESOLVE)
                 .label("Syncing")
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_BUILD)
@@ -1039,7 +1040,7 @@ public final class BuildPlanner {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.ENSURE_JDK)
-                .group("resolve")
+                .stage(BuildStage.RESOLVE)
                 .label("JDK")
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_BUILD)
@@ -1210,7 +1211,7 @@ public final class BuildPlanner {
                 new ArrayList<>(List.of(TaskNames.PARSE_BUILD, TaskNames.RESOLVE_DEPS, TaskNames.ENSURE_JDK));
         requires.addAll(sourceGenStepSteps(pluginDecls));
         return Task.builder("ksp")
-                .group("compile")
+                .stage(BuildStage.COMPILE)
                 .label("KSP")
                 .kind(TaskKind.CPU)
                 .requires(requires.toArray(new String[0]))
@@ -1452,7 +1453,7 @@ public final class BuildPlanner {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.COMPILE_JAVA)
-                .group("compile")
+                .stage(BuildStage.COMPILE)
                 .label("Compiling")
                 .kind(TaskKind.CPU)
                 .requires(javaCompileRequires(mixed, cx.mixedGroovy(), pluginDecls, cx.ksp()))
@@ -1704,7 +1705,7 @@ public final class BuildPlanner {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.COMPILE_KOTLIN)
-                .group("compile")
+                .stage(BuildStage.COMPILE)
                 .label("Kotlin")
                 .kind(TaskKind.CPU)
                 // Kotlin compiles first (reads Java declarations from source), so it
@@ -1837,7 +1838,7 @@ public final class BuildPlanner {
         boolean compact = cx.compact();
         boolean mixedGroovy = cx.mixedGroovy();
         return Task.builder(TaskNames.COMPILE_GROOVY)
-                .group("compile")
+                .stage(BuildStage.COMPILE)
                 .label("Groovy")
                 .kind(TaskKind.CPU)
                 // Groovy compiles first (joint mode reads Java *declarations* by sweeping the
@@ -1961,7 +1962,7 @@ public final class BuildPlanner {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.COPY_RESOURCES)
-                .group("compile")
+                .stage(BuildStage.COMPILE)
                 .label("Resources")
                 .kind(TaskKind.CPU)
                 // After AFTER_COMPILE SPI so generated classes land before resource merge.
@@ -2020,7 +2021,7 @@ public final class BuildPlanner {
         java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.BUILD_LOGIC_AFTER_COMPILE)
-                .group("compile")
+                .stage(BuildStage.COMPILE)
                 .label("Build logic (after compile)")
                 .kind(TaskKind.CPU)
                 .requires(mainCompile)
@@ -2051,7 +2052,7 @@ public final class BuildPlanner {
         ActionCache actionCache = cx.actionCache();
         java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
         return Task.builder(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE)
-                .group("package")
+                .stage(BuildStage.PACKAGE)
                 .label("Build logic (before package)")
                 .kind(TaskKind.CPU)
                 .requires(beforePackageRequires(in))
@@ -2098,7 +2099,7 @@ public final class BuildPlanner {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.COMPILE_TEST)
-                .group("test")
+                .stage(BuildStage.TEST)
                 .label("Test Compile")
                 .kind(TaskKind.CPU)
                 // AFTER_COMPILE SPI may generate types tests import. copy-resources is a real
@@ -2344,7 +2345,7 @@ public final class BuildPlanner {
             }
         }
         return Task.builder(TaskNames.RUN_TESTS)
-                .group("test")
+                .stage(BuildStage.TEST)
                 .label("Testing")
                 .kind(TaskKind.IO)
                 .requires(testRequires.toArray(new String[0]))
@@ -2583,7 +2584,7 @@ public final class BuildPlanner {
                 || TaskNames.COMPILE_JAVA.equals(mainCompile)
                 || (!kotlinModule && !groovyModule);
         return Task.builder(TaskNames.PACKAGE_JAR)
-                .group("package")
+                .stage(BuildStage.PACKAGE)
                 .label("Packaging")
                 .kind(TaskKind.CPU)
                 .requires(packageRequires(in, pluginDecls, javaStamp, kotlinModule, groovyModule))
@@ -3180,7 +3181,7 @@ public final class BuildPlanner {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.WRITE_STAMP)
-                .group("compile")
+                .stage(BuildStage.COMPILE)
                 .requires(TaskNames.COMPILE_JAVA)
                 .weight(() -> plan.get().fullyCached() ? 0 : W_STAMP)
                 .ticks(1)
@@ -3239,7 +3240,7 @@ public final class BuildPlanner {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.WRITE_STAMP_KOTLIN)
-                .group("compile")
+                .stage(BuildStage.COMPILE)
                 .requires(TaskNames.COMPILE_KOTLIN)
                 .weight(() -> plan.get().fullyCached() ? 0 : W_STAMP)
                 .ticks(1)
@@ -3274,7 +3275,7 @@ public final class BuildPlanner {
         java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
         boolean mixedGroovy = cx.mixedGroovy();
         return Task.builder(TaskNames.WRITE_STAMP_GROOVY)
-                .group("compile")
+                .stage(BuildStage.COMPILE)
                 .requires(TaskNames.COMPILE_GROOVY)
                 .weight(() -> plan.get().fullyCached() ? 0 : W_STAMP)
                 .ticks(1)
@@ -3323,7 +3324,7 @@ public final class BuildPlanner {
         if (mixed) requires.add(TaskNames.COMPILE_KOTLIN);
         if (mixedGroovy) requires.add(TaskNames.COMPILE_GROOVY);
         return Task.builder(TaskNames.ASSEMBLE_CLASSES)
-                .group("compile")
+                .stage(BuildStage.COMPILE)
                 .label("Assembling")
                 .kind(TaskKind.CPU)
                 .requires(requires.toArray(new String[0]))
@@ -3426,7 +3427,7 @@ public final class BuildPlanner {
             }
             // Multiple independent tails of package-jar — join them so prune keeps every branch.
             b.addTask(Task.builder(DELIVER_JOIN)
-                    .group("package")
+                    .stage(BuildStage.PACKAGE)
                     .requires(leaves.toArray(String[]::new))
                     .weight(0)
                     .ticks(0)
@@ -3475,7 +3476,7 @@ public final class BuildPlanner {
     /** As {@link #assemblyStep(Path, Path)}; {@code persist=false} keeps verify-scratch keys out of the cache. */
     public static Task assemblyStep(Path cache, Path lockFile, boolean persist) {
         return Task.builder(TaskNames.PACKAGE_ASSEMBLY)
-                .group("package")
+                .stage(BuildStage.PACKAGE)
                 .label("Assembly")
                 .kind(TaskKind.CPU)
                 .requires(TaskNames.PACKAGE_JAR)
@@ -3537,7 +3538,7 @@ public final class BuildPlanner {
     /** As {@link #sourcesStep(Path)}; {@code persist=false} keeps verify-scratch keys out of the cache. */
     public static Task sourcesStep(Path cache, boolean persist) {
         return Task.builder(TaskNames.PACKAGE_SOURCES)
-                .group("package")
+                .stage(BuildStage.PACKAGE)
                 .label("Sources")
                 .kind(TaskKind.CPU)
                 .requires(TaskNames.PACKAGE_JAR)
@@ -3607,7 +3608,7 @@ public final class BuildPlanner {
         final boolean persist = true;
         List<String> extra = extraArgs == null ? List.of() : extraArgs;
         return Task.builder(TaskNames.NATIVE_IMAGE)
-                .group("package")
+                .stage(BuildStage.PACKAGE)
                 .label("Native")
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PACKAGE_JAR)

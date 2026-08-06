@@ -15,6 +15,7 @@ import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
@@ -110,7 +111,7 @@ public final class PublishPlans {
                 .build();
 
         Task publish = Task.builder("publish")
-                .group("publish")
+                .stage(BuildStage.OTHER)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_BUILD)
                 .ticks(1)
