@@ -172,12 +172,27 @@ public final class VscodeIdeGenerator implements IdeGenerator {
         }
 
         // Live cross-module source dependencies.
+        Map<String, IdeModule> byName = new LinkedHashMap<>();
+        for (IdeModule m : model.allModules().values()) byName.put(m.name(), m);
         for (ModuleRef mr : model.siblingRefs().getOrDefault(moduleDir, List.of())) {
+            boolean testScope = "TEST".equals(mr.scope()) || "TEST_PRODUCT".equals(mr.scope());
             sb.append("  <classpathentry combineaccessrules=\"false\" kind=\"src\" path=\"/")
                     .append(esc(mr.name()))
                     .append("\"");
-            if ("TEST".equals(mr.scope())) sb.append(" ").append(testAttr());
+            if (testScope) sb.append(" ").append(testAttr());
             sb.append("/>\n");
+            // product=tests: sibling test classes on the test classpath (Maven test-jar parity).
+            if ("TEST_PRODUCT".equals(mr.scope())) {
+                IdeModule sib = byName.get(mr.name());
+                if (sib != null) {
+                    String abs = abs(sib.testClassesDir());
+                    sb.append("  <classpathentry kind=\"lib\" path=\"")
+                            .append(esc(abs))
+                            .append("\" ")
+                            .append(testAttr())
+                            .append("/>\n");
+                }
+            }
         }
 
         // JRE container bound to the module's execution environment.

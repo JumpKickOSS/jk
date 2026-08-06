@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -93,6 +94,7 @@ public final class IntellijIdeGenerator implements IdeGenerator {
                             module,
                             modRefs,
                             libRefs,
+                            allModules,
                             sdkRefs.get(moduleDir),
                             defaultSdk,
                             processorJars.getOrDefault(moduleDir, List.of())));
@@ -276,6 +278,7 @@ public final class IntellijIdeGenerator implements IdeGenerator {
             IdeModule module,
             List<ModuleRef> modRefs,
             List<LibRef> libRefs,
+            Map<Path, IdeModule> allModules,
             SdkRef moduleSdk,
             SdkRef defaultSdk,
             List<Path> processorFiles) {
@@ -334,12 +337,23 @@ public final class IntellijIdeGenerator implements IdeGenerator {
         }
         sb.append("    <orderEntry type=\"sourceFolder\" forTests=\"false\" />\n");
 
+        Map<String, IdeModule> byName = new LinkedHashMap<>();
+        for (IdeModule m : allModules.values()) byName.put(m.name(), m);
+
         for (ModuleRef mr : modRefs) {
+            boolean testScope = "TEST".equals(mr.scope()) || "TEST_PRODUCT".equals(mr.scope());
             sb.append("    <orderEntry type=\"module\" module-name=\"")
                     .append(esc(mr.name()))
                     .append("\"");
-            if ("TEST".equals(mr.scope())) sb.append(" scope=\"TEST\"");
+            if (testScope) sb.append(" scope=\"TEST\"");
             sb.append(" />\n");
+            // product=tests: sibling test classes as a module-library (Maven test-jar parity).
+            if ("TEST_PRODUCT".equals(mr.scope())) {
+                IdeModule sib = byName.get(mr.name());
+                if (sib != null) {
+                    appendTestProductLibrary(sb, moduleDir, sib);
+                }
+            }
         }
 
         for (LibRef lr : libRefs) {
@@ -428,6 +442,24 @@ public final class IntellijIdeGenerator implements IdeGenerator {
     // =========================================================================
     // Helpers
     // =========================================================================
+
+    /**
+     * Sibling test product (product=tests): attach the sibling's test classes dir as a TEST-scoped
+     * module-library so IDE test compile sees Mill testModuleDeps / Maven test-jar helpers.
+     */
+    private static void appendTestProductLibrary(StringBuilder sb, Path moduleDir, IdeModule sibling) {
+        Path testClasses = sibling.testClassesDir();
+        String classesUrl = "file://" + testClasses.toAbsolutePath().normalize().toString().replace('\\', '/');
+        sb.append("    <orderEntry type=\"module-library\" scope=\"TEST\">\n");
+        sb.append("      <library name=\"").append(esc(sibling.name() + " (tests)")).append("\">\n");
+        sb.append("        <CLASSES>\n");
+        sb.append("          <root url=\"").append(esc(classesUrl)).append("\" />\n");
+        sb.append("        </CLASSES>\n");
+        sb.append("        <JAVADOC />\n");
+        sb.append("        <SOURCES />\n");
+        sb.append("      </library>\n");
+        sb.append("    </orderEntry>\n");
+    }
 
     private static void addSourceFolder(StringBuilder sb, Path moduleDir, String relative, boolean test) {
         Path dir = moduleDir.resolve(relative);

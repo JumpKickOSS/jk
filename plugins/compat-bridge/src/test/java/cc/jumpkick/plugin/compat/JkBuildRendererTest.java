@@ -220,6 +220,20 @@ class JkBuildRendererTest {
     }
 
     @Test
+    void external_tests_product_renders_product_key() {
+        Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.put(
+                Scope.TEST,
+                List.of(Dependency.of("helpers", "com.acme:helpers", VersionSelector.parse("=1.2.3"))
+                        .withProduct(WorkspaceProduct.TESTS)));
+        JkBuild model = new JkBuild(
+                new JkBuild.Project("com.example", "app", "1.0.0", 21), new JkBuild.Dependencies(byScope));
+        String out = JkBuildRenderer.render(model);
+        assertThat(out).contains("product = \"tests\"");
+        assertThat(out).contains("com.acme");
+    }
+
+    @Test
     void pinned_and_floating_deps_render_with_distinct_version_literals() {
         Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
         // Exact pin via `=` prefix; caret-floating via leading `^`.

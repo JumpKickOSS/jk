@@ -888,8 +888,10 @@ public final class BuildPlanner {
                     }
                     ctx.put(PROCESSOR_CP, processorClasspath(lock, resolver, processorSiblings));
 
-                    WorkspaceClasspath.Result testSiblings =
-                            WorkspaceClasspath.resolve(in.dir(), project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST));
+                    WorkspaceClasspath.Result testSiblings = WorkspaceClasspath.resolve(
+                            in.dir(),
+                            project,
+                            Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
                     List<Path> compileTestCp =
                             new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_TEST));
                     compileTestCp.addAll(testSiblings.jars());

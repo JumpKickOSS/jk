@@ -149,6 +149,21 @@ public record Dependency(
         return product == WorkspaceProduct.TESTS;
     }
 
+    /**
+     * Solver / lock package key for this edge. Workspace/git/path/file deps return {@link #module()}
+     * unchanged. Maven GAs with {@link #isTestsProduct()} map to {@code g:a:test-jar:tests}.
+     */
+    public String packageKey() {
+        if (isWorkspace() || isGit() || isPath() || isFile()) return module;
+        if (isTestsProduct() && PackageId.isMavenPackageKey(module) && module.indexOf(':') == module.lastIndexOf(':')) {
+            return PackageId.of(group(), name(), "test-jar", "tests").key();
+        }
+        if (PackageId.isMavenPackageKey(module) && module.indexOf(':') == module.lastIndexOf(':')) {
+            return PackageId.ofGa(module).key();
+        }
+        return module;
+    }
+
     public Dependency(String module, VersionSelector version) {
         this(artifactOf(module), module, version, null, null, false);
     }

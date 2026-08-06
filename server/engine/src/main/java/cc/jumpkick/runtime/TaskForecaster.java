@@ -771,7 +771,8 @@ public final class TaskForecaster {
     private static List<Path> testCompileClasspath(Path dir, JkBuild project, Lockfile lock, ClasspathResolver resolver)
             throws java.io.IOException {
         WorkspaceClasspath.Result sib =
-                WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST));
+                WorkspaceClasspath.resolve(
+                        dir, project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
         List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_TEST));
         cp.addAll(sib.jars());
         for (Path sl : sib.siblingLockfiles()) {
@@ -787,8 +788,8 @@ public final class TaskForecaster {
 
     private static List<Path> testRuntimeClasspath(Path dir, JkBuild project, Lockfile lock, ClasspathResolver resolver)
             throws java.io.IOException {
-        WorkspaceClasspath.Result sib =
-                WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST));
+        WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(
+                dir, project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
         List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.TEST));
         cp.addAll(sib.jars());
         for (Path sl : sib.siblingLockfiles()) {

@@ -1089,6 +1089,16 @@ module’s test classpath. Use it for shared test helpers that live under anothe
 `src/test` (e.g. Netty’s `ChannelHandlerMetadataUtil` in `transport`). Illegal outside
 `[test-dependencies]` / `[test-dev-dependencies]`. Default product is `main` (omit the key).
 
+The same key works on **external** Maven coordinates (imports a published test-jar):
+
+```toml
+[test-dependencies]
+helpers = { group = "com.acme", name = "helpers", version = "1.2.3", product = "tests" }
+```
+
+That resolves as Maven `{type=test-jar, classifier=tests}` and exports the same shape via
+`jk generate pom` / publish.
+
 - **One `jk-lock.toml` at the workspace root** (never per-module; members redirect to the root lock)
 - Module build output lands under **`target/<module-rel>/`** at the workspace root (not `module/target/`)
 - `jk new path/to/mod` and `jk add ./path` register modules for you

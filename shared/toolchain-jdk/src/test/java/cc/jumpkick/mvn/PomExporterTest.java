@@ -15,6 +15,28 @@ class PomExporterTest {
     }
 
     @Test
+    void tests_product_exports_maven_test_jar() {
+        JkBuild b = parse("""
+                [project]
+                group = "com.example"
+                name  = "app"
+                version = "1.0.0"
+                java = 25
+
+                [test-dependencies]
+                helpers = { group = "com.acme", name = "helpers", version = "1.2.3", product = "tests" }
+                """);
+
+        String xml = PomExporter.export(b).xml();
+
+        assertThat(xml)
+                .contains("<artifactId>helpers</artifactId>")
+                .contains("<type>test-jar</type>")
+                .contains("<classifier>tests</classifier>")
+                .contains("<scope>test</scope>");
+    }
+
+    @Test
     void coords_release_and_dependency() {
         JkBuild b = parse("""
                 [project]

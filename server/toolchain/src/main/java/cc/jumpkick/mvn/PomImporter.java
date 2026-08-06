@@ -199,15 +199,9 @@ public final class PomImporter {
             for (Dependency d : in) {
                 String siblingName = siblingByGa.get(d.module());
                 if (siblingName == null) {
-                    if (d.isTestsProduct()) {
-                        report.warning("["
-                                + modulePath
-                                + "] external test-jar "
-                                + d.module()
-                                + " — workspace product=tests only applies to sibling modules;"
-                                + " external test-jar classifier support is a later slice");
-                    }
-                    out.add(d.withProduct(WorkspaceProduct.MAIN));
+                    // External test-jar keeps product=tests (lock/resolve map to g:a:test-jar:tests).
+                    out.add(d);
+                    if (d.isTestsProduct()) changed = true;
                     continue;
                 }
                 changed = true;

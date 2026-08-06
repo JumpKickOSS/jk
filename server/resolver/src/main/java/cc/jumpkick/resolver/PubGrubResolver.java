@@ -123,8 +123,8 @@ public final class PubGrubResolver implements Resolver {
         List<Term> rootTerms = new ArrayList<>(roots.size());
         Map<String, String> rootDepNames = new HashMap<>();
         for (Dependency dep : roots) {
-            // Declared modules are GA; solver keys are g:a:type:classifier (default jar).
-            String pkg = PackageId.ofGa(dep.module()).key();
+            // Declared GAs → g:a:jar:; product=tests → g:a:test-jar:tests.
+            String pkg = dep.packageKey();
             rootTerms.add(Term.positive(pkg, VersionSelectors.toVersionSet(dep.version())));
             // Skip workspace placeholders — they never hit the network so
             // the artifact-defaulting hint would be misleading there.

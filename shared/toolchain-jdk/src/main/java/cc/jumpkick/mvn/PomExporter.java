@@ -136,7 +136,7 @@ public final class PomExporter {
             Map<String, String> locked,
             ImportReport.Builder report) {
         if (warnIfUnmappable(d, report)) return;
-        PomXml.appendDependency(sb, d.group(), d.name(), resolveVersion(d, locked, report), mavenScope);
+        PomXml.appendDependency(sb, d, resolveVersion(d, locked, report), mavenScope);
     }
 
     /** Git / content-addressed deps have no Maven equivalent — warn and skip. */

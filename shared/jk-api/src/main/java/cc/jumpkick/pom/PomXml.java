@@ -61,14 +61,44 @@ public final class PomXml {
     /** One {@code <dependency>} under {@code <dependencies>}; {@code mavenScope} null → no scope element. */
     public static void appendDependency(
             StringBuilder sb, String group, String artifact, String version, String mavenScope) {
+        appendDependency(sb, group, artifact, version, mavenScope, null, null);
+    }
+
+    /**
+     * As {@link #appendDependency(StringBuilder, String, String, String, String)} with optional Maven
+     * {@code <type>} / {@code <classifier>} (e.g. test-jar / tests for {@code product = "tests"}).
+     */
+    public static void appendDependency(
+            StringBuilder sb,
+            String group,
+            String artifact,
+            String version,
+            String mavenScope,
+            String type,
+            String classifier) {
         sb.append("    <dependency>\n");
         sb.append("      <groupId>").append(escape(group)).append("</groupId>\n");
         sb.append("      <artifactId>").append(escape(artifact)).append("</artifactId>\n");
         sb.append("      <version>").append(escape(version)).append("</version>\n");
+        if (type != null && !type.isBlank() && !"jar".equalsIgnoreCase(type)) {
+            sb.append("      <type>").append(escape(type)).append("</type>\n");
+        }
+        if (classifier != null && !classifier.isBlank()) {
+            sb.append("      <classifier>").append(escape(classifier)).append("</classifier>\n");
+        }
         if (mavenScope != null) {
             sb.append("      <scope>").append(mavenScope).append("</scope>\n");
         }
         sb.append("    </dependency>\n");
+    }
+
+    /** Emit type/classifier for a tests-product edge (Maven test-jar). */
+    public static void appendDependency(StringBuilder sb, Dependency d, String version, String mavenScope) {
+        if (d.isTestsProduct()) {
+            appendDependency(sb, d.group(), d.name(), version, mavenScope, "test-jar", "tests");
+        } else {
+            appendDependency(sb, d.group(), d.name(), version, mavenScope);
+        }
     }
 
     /**

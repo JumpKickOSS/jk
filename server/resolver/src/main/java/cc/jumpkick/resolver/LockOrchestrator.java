@@ -266,10 +266,11 @@ public final class LockOrchestrator {
                     optionalByLib.putIfAbsent(dep.library(), dep);
                     optionalScopeByLib.putIfAbsent(dep.library(), scope);
                 } else {
+                    // packageKey so main jar and test-jar of the same GA can both root.
                     switch (graphGroup(scope)) {
-                        case PROCESSOR -> processorDeduped.putIfAbsent(dep.module(), dep);
-                        case TEST -> testDeduped.putIfAbsent(dep.module(), dep);
-                        case MAIN -> mainDeduped.putIfAbsent(dep.module(), dep);
+                        case PROCESSOR -> processorDeduped.putIfAbsent(dep.packageKey(), dep);
+                        case TEST -> testDeduped.putIfAbsent(dep.packageKey(), dep);
+                        case MAIN -> mainDeduped.putIfAbsent(dep.packageKey(), dep);
                     }
                 }
             }
@@ -284,21 +285,21 @@ public final class LockOrchestrator {
             }
             Scope optScope = optionalScopeByLib.getOrDefault(depName, Scope.MAIN);
             switch (graphGroup(optScope)) {
-                case PROCESSOR -> processorDeduped.putIfAbsent(opt.module(), opt);
-                case TEST -> testDeduped.putIfAbsent(opt.module(), opt);
-                case MAIN -> mainDeduped.putIfAbsent(opt.module(), opt);
+                case PROCESSOR -> processorDeduped.putIfAbsent(opt.packageKey(), opt);
+                case TEST -> testDeduped.putIfAbsent(opt.packageKey(), opt);
+                case MAIN -> mainDeduped.putIfAbsent(opt.packageKey(), opt);
             }
         }
         // Cross-package features on path= libraries: pull their optional deps.
         CrossPackageFeatures.Result cross = CrossPackageFeatures.expand(projectDir, mainDeduped.values());
         this.crossPackageActivatedFeatures = cross.activatedFeaturesByModule();
         for (Dependency extra : cross.extrasList()) {
-            mainDeduped.putIfAbsent(extra.module(), extra);
+            mainDeduped.putIfAbsent(extra.packageKey(), extra);
         }
         // junit infrastructure rides the test graph only.
-        testDeduped.putIfAbsent(JUNIT_LAUNCHER.module(), JUNIT_LAUNCHER);
+        testDeduped.putIfAbsent(JUNIT_LAUNCHER.packageKey(), JUNIT_LAUNCHER);
         if (project.dependencies().of(Scope.TEST).isEmpty()) {
-            testDeduped.putIfAbsent(JUNIT_JUPITER.module(), JUNIT_JUPITER);
+            testDeduped.putIfAbsent(JUNIT_JUPITER.packageKey(), JUNIT_JUPITER);
         }
         Map<String, String> bomConstraints = new LinkedHashMap<>();
         Map<String, String> constraintProvenance = new LinkedHashMap<>();
@@ -745,8 +746,10 @@ public final class LockOrchestrator {
                             + "` is declared without a version, but no [platform-dependencies] BOM manages it"
                             + " — add a `version`, or import the BOM that pins it.");
                 }
-                roots.add(new Dependency(
-                        d.library(), d.module(), VersionSelector.parse("=" + managed), null, null, true, d.optional()));
+                roots.add(Dependency.of(d.library(), d.module(), VersionSelector.parse("=" + managed))
+                        .withOptional(d.optional())
+                        .withProduct(d.product())
+                        .withFeatures(d.requestedFeatures(), d.defaultFeatures()));
             } else {
                 roots.add(d);
             }
@@ -761,13 +764,13 @@ public final class LockOrchestrator {
         for (Scope scope : scopes) {
             Set<String> rootModules = new HashSet<>();
             for (Dependency d : project.dependencies().of(scope)) {
-                // Resolution keys are package ids (g:a:type:classifier); declared modules are GA.
-                rootModules.add(PackageId.ofGa(d.module()).key());
+                // packageKey: product=tests → g:a:test-jar:tests; else g:a:jar:
+                rootModules.add(d.packageKey());
             }
             if (includeJunitSeeds && scope == Scope.TEST) {
-                rootModules.add(PackageId.ofGa(JUNIT_LAUNCHER.module()).key());
+                rootModules.add(JUNIT_LAUNCHER.packageKey());
                 if (project.dependencies().of(Scope.TEST).isEmpty()) {
-                    rootModules.add(PackageId.ofGa(JUNIT_JUPITER.module()).key());
+                    rootModules.add(JUNIT_JUPITER.packageKey());
                 }
             }
             if (rootModules.isEmpty()) continue;

@@ -49,4 +49,13 @@ class DependencyTest {
         assertThat(d.isTestsProduct()).isTrue();
         assertThat(d.product()).isEqualTo(WorkspaceProduct.TESTS);
     }
+
+    @Test
+    void package_key_maps_external_tests_product_to_test_jar() {
+        Dependency main = Dependency.of("lib", "com.acme:lib", VersionSelector.parse("=1.0.0"));
+        assertThat(main.packageKey()).isEqualTo("com.acme:lib:jar:");
+
+        Dependency tests = main.withProduct(WorkspaceProduct.TESTS);
+        assertThat(tests.packageKey()).isEqualTo("com.acme:lib:test-jar:tests");
+    }
 }

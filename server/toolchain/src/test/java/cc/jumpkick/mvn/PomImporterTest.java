@@ -100,4 +100,34 @@ class PomImporterTest {
         assertThat(test)
                 .anyMatch(d -> !d.isWorkspace() && d.module().equals("org.junit.jupiter:junit-jupiter"));
     }
+
+    @Test
+    void external_test_jar_keeps_product_tests(@TempDir Path root) throws Exception {
+        Files.writeString(
+                root.resolve("pom.xml"),
+                """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>app</artifactId>
+                  <version>1.0.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.acme</groupId>
+                      <artifactId>helpers</artifactId>
+                      <version>1.2.3</version>
+                      <type>test-jar</type>
+                      <scope>test</scope>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+
+        // Single-module import path (not workspace rewrite).
+        JkBuild app = PomImporter.importFrom(root.resolve("pom.xml")).jkBuild();
+        assertThat(app.dependencies().of(Scope.TEST))
+                .anyMatch(d -> d.isTestsProduct()
+                        && d.module().equals("com.acme:helpers")
+                        && d.packageKey().equals("com.acme:helpers:test-jar:tests"));
+    }
 }

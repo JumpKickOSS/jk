@@ -228,6 +228,9 @@ public final class JkBuildRenderer {
             if (!d.isPlatformManaged()) {
                 sb.append(", version = ").append(quote(versionLiteral(d.version())));
             }
+            if (d.isTestsProduct()) {
+                sb.append(", product = ").append(quote(d.product().toml()));
+            }
         }
         sb.append(" }");
         return sb.toString();

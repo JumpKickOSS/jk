@@ -960,16 +960,13 @@ public final class JkBuildParser {
     }
 
     /**
-     * {@code product = "main"|"tests"} on a workspace edge (Mill {@code testModuleDeps} / Maven
-     * test-jar). Tests product is only legal in test scopes so helpers never leak into main jars.
+     * {@code product = "main"|"tests"} — workspace sibling test product (Mill {@code testModuleDeps})
+     * or external Maven test-jar. Tests product is only legal in test scopes so helpers never leak
+     * into main jars. External (non-workspace) product=tests is only legal on Maven GAs.
      */
     private static Dependency applyWorkspaceProduct(Dependency dep, TomlTable entry, Scope scope, String name) {
         if (!entry.contains("product")) return dep;
         String displayPath = scope.tomlSection() + "." + name;
-        if (!dep.isWorkspace()) {
-            throw new JkBuildParseException(
-                    displayPath + ".product is only valid with `workspace = true`");
-        }
         String raw = entry.getString("product");
         WorkspaceProduct product;
         try {
@@ -977,14 +974,28 @@ public final class JkBuildParser {
         } catch (IllegalArgumentException e) {
             throw new JkBuildParseException(displayPath + ".product: " + e.getMessage());
         }
-        if (product == WorkspaceProduct.TESTS
-                && scope != Scope.TEST
-                && scope != Scope.TEST_DEV) {
+        if (product == WorkspaceProduct.MAIN) return dep.withProduct(product);
+        // product = "tests"
+        if (scope != Scope.TEST && scope != Scope.TEST_DEV) {
             throw new JkBuildParseException(displayPath
                     + ".product = \"tests\" is only legal under [test-dependencies] or"
                     + " [test-dev-dependencies] (got ["
                     + scope.tomlSection()
                     + "])");
+        }
+        if (!dep.isWorkspace()) {
+            if (dep.isGit() || dep.isPath() || dep.isFile()) {
+                throw new JkBuildParseException(displayPath
+                        + ".product = \"tests\" requires `workspace = true` or a Maven"
+                        + " coordinate (got git/path/file source)");
+            }
+            // Maven GA only (group:artifact). packageKey maps this to g:a:test-jar:tests.
+            String mod = dep.module();
+            if (mod == null || mod.indexOf(':') <= 0 || mod.indexOf(':') != mod.lastIndexOf(':')) {
+                throw new JkBuildParseException(displayPath
+                        + ".product = \"tests\" on an external dep requires a Maven"
+                        + " group:artifact module");
+            }
         }
         return dep.withProduct(product);
     }
