@@ -2242,6 +2242,10 @@ public final class EngineServer implements AutoCloseable {
             boolean freshenLock = Jsonl.bool(requestLine, "freshenLock", false);
             // jk verify only: scratch-salted action keys never recur — tasks must not persist them.
             boolean ephemeralActions = Jsonl.bool(requestLine, "ephemeralActions", false);
+            // Workspace jk test: every module plan stops at run-tests (no package/native tails).
+            boolean testOnly = Jsonl.bool(requestLine, "testOnly", false);
+            // -m / --affected-since: the client's module selection; null = engine forecasts.
+            java.util.List<String> dirtyHintDirs = EngineProtocol.dirtyHintOf(requestLine);
 
             Path entryDir = Path.of(entryDirStr);
             Path cache = Path.of(cacheStr);
@@ -2258,9 +2262,14 @@ public final class EngineServer implements AutoCloseable {
                             skipTests,
                             verbose,
                             maxModuleConcurrency,
-                            null, // engine forecasts dirty modules
+                            dirtyHintDirs == null
+                                    ? null // engine forecasts dirty modules
+                                    : dirtyHintDirs.stream()
+                                            .map(Path::of)
+                                            .collect(java.util.stream.Collectors.toUnmodifiableSet()),
                             false, // this engine plans memory once at startup, not per request
                             freshenLock)
+                    .withTestOnly(testOnly)
                     .withEphemeralActions(ephemeralActions)
                     .withVariant(EngineProtocol.variantOf(requestLine), EngineProtocol.clientEnvOf(requestLine));
 

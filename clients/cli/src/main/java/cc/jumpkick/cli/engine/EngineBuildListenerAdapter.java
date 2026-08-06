@@ -104,7 +104,17 @@ final class EngineBuildListenerAdapter {
                             req.freshenLock(),
                             // verify's scratch rebuild: never persist action records under
                             // scratch-salted keys that can never recur.
-                            req.ephemeralActions()),
+                            req.ephemeralActions(),
+                            // workspace jk test: every module plan stops at run-tests.
+                            req.testOnly(),
+                            // -m / --affected-since module selection — the engine schedules
+                            // exactly these dirs instead of forecasting dirtiness itself.
+                            req.dirtyHint() == null
+                                    ? null
+                                    : req.dirtyHint().stream()
+                                            .map(Object::toString)
+                                            .sorted()
+                                            .toList()),
                     req.variant(),
                     req.clientEnv(),
                     SessionContext.current().jvm(),

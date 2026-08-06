@@ -175,6 +175,26 @@ class EngineProtocolTest {
     }
 
     @Test
+    void build_request_carries_test_only_and_dirty_hint() {
+        String on = EngineProtocol.buildRequest(
+                "/w", "/c", null, 1, null, false, false, 0, false, false, false, true, false, true,
+                List.of("/w/api", "/w/core"));
+        assertThat(Jsonl.bool(on, "testOnly", false)).isTrue();
+        assertThat(EngineProtocol.dirtyHintOf(on)).containsExactly("/w/api", "/w/core");
+
+        // Unset controls stay off the wire entirely.
+        String off = EngineProtocol.buildRequest(
+                "/w", "/c", null, 1, null, false, false, 0, false, false, false, true, false, false, null);
+        assertThat(off).doesNotContain("testOnly").doesNotContain("dirtyHint");
+        assertThat(EngineProtocol.dirtyHintOf(off)).isNull();
+
+        // An empty selection is not a selection.
+        String empty = EngineProtocol.buildRequest(
+                "/w", "/c", null, 1, null, false, false, 0, false, false, false, true, false, false, List.of());
+        assertThat(EngineProtocol.dirtyHintOf(empty)).isNull();
+    }
+
+    @Test
     void lock_request_round_trips_all_fields() {
         String json = EngineProtocol.lockRequest(
                 "/work", "/cache", List.of("a", "b"), true, true, "http://repo", true, false, true, true);
