@@ -724,7 +724,7 @@ final class EngineBuildListenerAdapter {
                                 Jsonl.str(line, "task"),
                                 wireGroup(Jsonl.str(line, "group")),
                                 TaskStatus.valueOf(Jsonl.str(line, "status")),
-                                Duration.ZERO);
+                                Duration.ofMillis(Jsonl.longValue(line, "millis", 0)));
                     case EngineProtocol.BUILDPLAN_FINISH -> {
                         boolean success = Jsonl.bool(line, "success", false);
                         long total = Jsonl.longValue(line, "testTotal", -1);
@@ -909,7 +909,7 @@ final class EngineBuildListenerAdapter {
                                         Jsonl.str(line, "task"),
                                         wireGroup(Jsonl.str(line, "group")),
                                         TaskStatus.valueOf(Jsonl.str(line, "status")),
-                                        Duration.ZERO);
+                                        Duration.ofMillis(Jsonl.longValue(line, "millis", 0)));
                     case EngineProtocol.BUILDPLAN_FINISH -> {
                         ModuleMeta meta = planByDir.get(dir);
                         String planName = meta != null ? meta.planName : dir;

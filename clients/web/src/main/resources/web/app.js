@@ -29,6 +29,7 @@ import {
   detailSegments,
   orderedModules,
   etaTotalMillis,
+  stepTimingLabel,
 } from './fold.js';
 
 bootstrapToken();
@@ -130,7 +131,7 @@ const PhaseChain = {
       <div v-if="openPhase" class="phase-steps">
         <template v-for="(s, i) in openPhase.steps" :key="s.name">
           <span v-if="i > 0" class="step-edge" :class="openPhase.steps[i - 1].state"></span>
-          <span class="step-node" :class="s.state" :title="s.message || s.name">
+          <span class="step-node" :class="s.state" :title="stepTitle(s)">
             <span v-if="s.state === 'running'" class="spin small"></span>
             <jk-icon v-else-if="s.state === 'success'" name="check" class="step-glyph ok"></jk-icon>
             <jk-icon v-else-if="s.state === 'failed'" name="x" class="step-glyph err"></jk-icon>
@@ -185,9 +186,16 @@ const PhaseChain = {
       const prefix = (s.phase || '') + '-';
       return s.phase && s.name.startsWith(prefix) ? s.name.slice(prefix.length) : s.name;
     },
-    // Tooltip: the phase plus the raw step names it collapses, so the detail is recoverable on hover.
+    // Tooltip: raw step name + duration when known (e.g. "compile-tests (212ms)"); live message wins
+    // while the step is still running and has tick text.
+    stepTitle(s) {
+      if (s.state === 'running' && s.message) return s.message;
+      return stepTimingLabel(s);
+    },
+    // Tooltip: the phase plus each collapsed step with its duration, e.g.
+    // "resolve: ensure-jdk (360ms), resolve-deps (1.2s)".
     phaseTitle(p) {
-      const names = p.steps.map((s) => s.name).join(', ');
+      const names = p.steps.map((s) => stepTimingLabel(s)).join(', ');
       return p.phase ? p.phase + ': ' + names : names;
     },
     reflow() {

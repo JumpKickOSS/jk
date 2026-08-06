@@ -1841,7 +1841,8 @@ public final class EngineServer implements AutoCloseable {
                         requestId));
     }
 
-    private void publishStepFinish(long requestId, String dir, String step, String phase, String status) {
+    private void publishStepFinish(
+            long requestId, String dir, String step, String phase, String status, long millis) {
         if (!eventsWanted()) return;
         publishEvent(
                 "task-finish",
@@ -1853,7 +1854,8 @@ public final class EngineServer implements AutoCloseable {
                                 .put("dir", dir)
                                 .put("task", step)
                                 .put("group", phase)
-                                .put("status", status),
+                                .put("status", status)
+                                .put("millis", millis),
                         requestId));
     }
 
@@ -5103,9 +5105,10 @@ public final class EngineServer implements AutoCloseable {
                     String group,
                     cc.jumpkick.run.TaskStatus status,
                     Duration duration) {
-                sendQuiet(writer, EngineProtocol.stepFinish(dir, step, phaseWire(group), status.name()));
-                publishStepFinish(eventRequestId, dir, step, phaseWire(group), status.name());
-                accStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), duration.toMillis());
+                long millis = duration.toMillis();
+                sendQuiet(writer, EngineProtocol.stepFinish(dir, step, phaseWire(group), status.name(), millis));
+                publishStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), millis);
+                accStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), millis);
             }
 
             @Override
@@ -5645,7 +5648,8 @@ public final class EngineServer implements AutoCloseable {
                     String group,
                     cc.jumpkick.run.TaskStatus status,
                     Duration duration) {
-                publishStepFinish(eventRequestId, dir, step, phaseWire(group), status.name());
+                publishStepFinish(
+                        eventRequestId, dir, step, phaseWire(group), status.name(), duration.toMillis());
             }
 
             @Override
@@ -5742,8 +5746,10 @@ public final class EngineServer implements AutoCloseable {
                             String group,
                             cc.jumpkick.run.TaskStatus status,
                             Duration duration) {
-                        publishStepFinish(eventRequestId, dir, step, phaseWire(group), status.name());
-                        accStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), duration.toMillis());
+                        long millis = duration.toMillis();
+                        publishStepFinish(
+                                eventRequestId, dir, step, phaseWire(group), status.name(), millis);
+                        accStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), millis);
                     }
 
                     @Override

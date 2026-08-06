@@ -14,6 +14,8 @@ const {
   seedFromHistory,
   ioLines,
   fmtBytes,
+  fmtStepMillis,
+  stepTimingLabel,
   detailForDisplay,
   liveStepDetail,
   detailSegments,
@@ -540,6 +542,66 @@ test('phaseChainOf collapses steps into coarse phase nodes in encounter order', 
   assert.deepEqual(chain.map((p) => p.label), ['Resolve', 'Compile', 'Test']); // one node per phase, in order
   assert.deepEqual(chain.map((p) => p.state), ['success', 'success', 'success']);
   assert.deepEqual(chain[1].steps.map((s) => s.name), ['compile-java', 'compile-kotlin']); // Compile collapses both
+});
+
+test('task-finish stores engine millis on the step row', () => {
+  const cards = [];
+  foldEvent(cards, start(1, '/proj'));
+  foldEvent(cards, {
+    type: 'task-start',
+    data: { requestId: 1, dir: '', task: 'ensure-jdk', group: 'resolve' },
+    at: 1000,
+  });
+  foldEvent(cards, {
+    type: 'task-finish',
+    data: { requestId: 1, dir: '', task: 'ensure-jdk', group: 'resolve', status: 'SUCCESS', millis: 360 },
+    at: 1500,
+  });
+  assert.equal(cards[0].modules[0].steps[0].millis, 360);
+});
+
+test('task-finish falls back to receipt delta when millis is absent', () => {
+  const cards = [];
+  foldEvent(cards, start(1, '/proj'));
+  foldEvent(cards, {
+    type: 'task-start',
+    data: { requestId: 1, dir: '', task: 'compile-tests', group: 'compile' },
+    at: 1000,
+  });
+  foldEvent(cards, {
+    type: 'task-finish',
+    data: { requestId: 1, dir: '', task: 'compile-tests', group: 'compile', status: 'SUCCESS' },
+    at: 1212,
+  });
+  assert.equal(cards[0].modules[0].steps[0].millis, 212);
+});
+
+test('history seed preserves per-step millis for tooltips', () => {
+  const cards = [];
+  seedFromHistory(cards, [
+    historyRecord('h1', '/w', {
+      steps: [
+        { name: 'ensure-jdk', group: 'resolve', status: 'SUCCESS', millis: 360 },
+        { name: 'resolve-deps', group: 'resolve', status: 'SUCCESS', millis: 1200 },
+      ],
+    }),
+  ]);
+  const steps = cards[0].modules[0].steps;
+  assert.equal(steps[0].millis, 360);
+  assert.equal(steps[1].millis, 1200);
+  assert.equal(stepTimingLabel(steps[0]), 'ensure-jdk (360ms)');
+  assert.equal(stepTimingLabel(steps[1]), 'resolve-deps (1.2s)');
+});
+
+test('fmtStepMillis is compact for tooltips', () => {
+  assert.equal(fmtStepMillis(null), '');
+  assert.equal(fmtStepMillis(0), '0ms');
+  assert.equal(fmtStepMillis(360), '360ms');
+  assert.equal(fmtStepMillis(1200), '1.2s');
+  assert.equal(fmtStepMillis(12_000), '12s');
+  assert.equal(fmtStepMillis(65_000), '1m 5s');
+  assert.equal(stepTimingLabel({ name: 'compile-tests', millis: 212 }), 'compile-tests (212ms)');
+  assert.equal(stepTimingLabel({ name: 'compile-tests', millis: null }), 'compile-tests');
 });
 
 test('phaseChainOf state precedence: failed > running > success', () => {

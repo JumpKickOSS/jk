@@ -2109,7 +2109,16 @@ public final class EngineProtocol {
         return diagnosticLike(BUILDPLAN_DIAGNOSTIC, dir, step, code, message, test, exceptionClass);
     }
 
+    /** @see #stepFinish(String, String, String, String, long) */
     public static String stepFinish(String dir, String step, String phase, String status) {
+        return stepFinish(dir, step, phase, status, 0L);
+    }
+
+    /**
+     * Server → client: step terminal. {@code millis} is wall-clock duration (additive schema field;
+     * pre-1.0 clients may ignore it).
+     */
+    public static String stepFinish(String dir, String step, String phase, String status, long millis) {
         return "{\"type\":\""
                 + TASK_FINISH
                 + "\",\"dir\":"
@@ -2120,6 +2129,8 @@ public final class EngineProtocol {
                 + Jsonl.quote(phase)
                 + ",\"status\":"
                 + Jsonl.quote(status)
+                + ",\"millis\":"
+                + millis
                 + "}";
     }
 
