@@ -53,6 +53,20 @@ class WebClientFoldTest {
     }
 
     /**
+     * Regression (JK-1579): the fold layer normalizes the wire's {@code task} vocabulary back to
+     * {@code step}/{@code steps} — app.js templates reading the FOLDED model must use the folded
+     * names or they silently render empty (Vue resolves unknown fields to undefined).
+     */
+    @Test
+    void app_templates_read_the_folded_vocabulary() throws Exception {
+        String app = Files.readString(moduleRoot().resolve("src/main/resources/web/app.js"));
+        assertThat(app)
+                .doesNotContain("openPhase.tasks")
+                .doesNotContain("mod.tasks")
+                .doesNotContain("d.task)");
+    }
+
+    /**
      * Module root containing {@code src/main/resources/web/fold.js}. Prefers cwd when already in
      * the module; otherwise {@code clients/web} under a workspace root; else maps classpath output
      * under {@code target/<module-rel>/} back to the source module, then walks ancestors.

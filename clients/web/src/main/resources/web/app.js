@@ -128,8 +128,8 @@ const PhaseChain = {
         </span>
       </div>
       <div v-if="openPhase" class="phase-steps">
-        <template v-for="(s, i) in openPhase.tasks" :key="s.name">
-          <span v-if="i > 0" class="step-edge" :class="openPhase.tasks[i - 1].state"></span>
+        <template v-for="(s, i) in openPhase.steps" :key="s.name">
+          <span v-if="i > 0" class="step-edge" :class="openPhase.steps[i - 1].state"></span>
           <span class="step-node" :class="s.state" :title="s.message || s.name">
             <span v-if="s.state === 'running'" class="spin small"></span>
             <jk-icon v-else-if="s.state === 'success'" name="check" class="step-glyph ok"></jk-icon>
@@ -447,7 +447,9 @@ const ModuleDepGraph = {
           position: 'right',
           color: bright,
           fontSize: 11,
-          fontFamily: 'var(--mono)',
+          // Canvas renderer: ctx.font cannot resolve CSS custom properties — read the
+          // computed value or the labels silently fall back to the default sans.
+          fontFamily: cssVar('--mono', 'monospace'),
         },
       }));
       const links = (g.edges || []).map((e) => ({
@@ -1244,7 +1246,7 @@ Vue.createApp({
     // the phase) by matching the diagnostic's step name. '' when the step has no phase or isn't found
     // — the failure line then reads step › … without a phase prefix.
     diagPhase(mod, d) {
-      const st = ((mod && mod.tasks) || []).find((s) => s.name === d.task);
+      const st = ((mod && mod.steps) || []).find((s) => s.name === d.step);
       const wire = st && st.phase ? st.phase : '';
       return wire ? wire.charAt(0).toUpperCase() + wire.slice(1) : '';
     },

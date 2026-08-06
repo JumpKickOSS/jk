@@ -153,7 +153,7 @@ export function foldEvent(cards, event) {
         const mod = moduleRow(card, d.dir, event.at);
         if (mod.diagnostics.length < MAX_DIAGNOSTICS) {
           mod.diagnostics.push({
-            step: d.task || d.step || d.step || '',
+            step: d.task || d.step || '',
             code: d.code || '',
             message: d.message || '',
             test: d.test || '',
@@ -404,7 +404,7 @@ function historyDiags(diags, dir) {
   return (diags || [])
     .filter((d) => d.severity !== 'warning' && (d.dir || '') === (dir || ''))
     .map((d) => ({
-      step: d.task || d.step || d.step || '',
+      step: d.task || d.step || '',
       code: d.code || '',
       message: d.message || '',
       test: d.test || '',
@@ -462,7 +462,7 @@ function historyModules(rec) {
     diagnostics: (rec.diagnostics || [])
       .filter((d) => d.severity !== 'warning')
       .map((d) => ({
-        step: d.task || d.step || d.step || '',
+        step: d.task || d.step || '',
         code: d.code || '',
         message: d.message || '',
         test: d.test || '',
