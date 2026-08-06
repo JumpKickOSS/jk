@@ -4,35 +4,44 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
+import cc.jumpkick.cli.run.AggregateContext;
+import cc.jumpkick.cli.run.AggregateModuleListener;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.CliSessionTranscript;
-import cc.jumpkick.cli.run.CompositePipelineListener;
+import cc.jumpkick.cli.run.CompositeBuildPlanListener;
 import cc.jumpkick.cli.run.ConsoleSpec;
+import cc.jumpkick.cli.run.EventLogListener;
 import cc.jumpkick.cli.run.JsonlShape;
-import cc.jumpkick.cli.run.PipelineConsole;
 import cc.jumpkick.cli.run.SessionMirrorListener;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandManager;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.runtime.WorkspaceRequest;
+import cc.jumpkick.runtime.WorkspaceResult;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code jk test} — compile main + test sources and run JUnit Platform tests.
  *
- * <p>Runs the same core pipeline ({@code BuildPipelines.coreBuilder}) as {@code jk build}, in
+ * <p>Runs the same core plan ({@code BuildPlanner.coreBuilder}) as {@code jk build}, in
  * {@code testOnly} mode: parse → sync → jdk → compile (Kotlin and/or Java, main and test) →
- * resources → compile-test → run-tests, stopping short of packaging a jar. Sharing the pipeline
+ * resources → compile-test → run-tests, stopping short of packaging a jar. Sharing the plan
  * means Kotlin test sources compile and run exactly as they do under {@code jk build} — no
  * separate, Java-only test path to keep in sync.
  *
- * <p>The test-runner's JSONL event stream bridges into the pipeline's progress bar (the same live
+ * <p>The test-runner's JSONL event stream bridges into the plan's progress bar (the same live
  * console {@code jk compile}/{@code jk build} use): each completion ticks the numerator, each
  * failure becomes a {@code ctx.error}, discovery grows the denominator.
  */
@@ -108,7 +117,7 @@ public final class TestCommand implements CliCommand {
         Path buildFile = proj.buildFile();
         this.session = CliSessionTranscript.open(dir, "test", testArgv(in));
         if (session != null) session.announceIf(global != null && global.verbose);
-        // No jk-lock.toml guard: the pipeline's parse-build step resolves the lock on
+        // No jk-lock.toml guard: the plan's parse-build step resolves the lock on
         // first run and re-locks when jk.toml changed — same as `jk build`/`run`.
 
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
@@ -170,18 +179,18 @@ public final class TestCommand implements CliCommand {
             }
         }
 
-        PipelineResult result;
+        BuildPlanResult result;
         TestSummary testResult;
-        // Engine-hosted (Step 3): the wire has no real Pipeline to attach a console listener to
+        // Engine-hosted (Task 3): the wire has no real BuildPlan to attach a console listener to
         // ahead of time, so the listener is chosen once the step list arrives over the socket
         // see EngineBuildListenerAdapter.runTest. testResultHolder is populated (if the run-tests
-        // step actually ran) before the terminal pipeline-finish reaches that listener, exactly
-        // mirroring how pipeline.get(TEST_RESULT) is already populated by the in-process path above.
+        // step actually ran) before the terminal plan-finish reaches that listener, exactly
+        // mirroring how plan.get(TEST_RESULT) is already populated by the in-process path above.
         TestSummary[] testResultHolder = new TestSummary[1];
         ConsoleSpec spec = new ConsoleSpec(
                 "Test", r -> testSummary(testResultHolder[0], r), r -> testFailureMessage(testResultHolder[0], r));
         String module = BuildCommand.buildTarget(buildFile, dir);
-        PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         try {
             result = cc.jumpkick.cli.engine.EngineClient.runTest(
                     cc.jumpkick.engine.EnginePaths.current(),
@@ -199,7 +208,7 @@ public final class TestCommand implements CliCommand {
                             cc.jumpkick.config.SessionContext.current().force(),
                             parallelTests,
                             testSelection),
-                    steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, module),
+                    steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, module),
                     testResultHolder);
         } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", e.getMessage()));
@@ -263,134 +272,346 @@ public final class TestCommand implements CliCommand {
     }
 
     /**
-     * Workspace tests: one engine {@code runTest} per selected module (only those dirs, not the
-     * whole graph). Default parallel (C2) with a {@code -j}-bounded pool; {@code --serial-tests}
-     * runs modules one at a time.
-     *
-     * <p>With {@code --output json}/{@code jsonl}, emits {@code workspace-start} / {@code
-     * module-start} / {@code module-finish} / {@code workspace-finish} around each module's pipeline
-     * JSONL (same envelope as multi-module {@code jk build --output json}).
+     * Workspace tests: one engine {@code buildWorkspace} RPC with {@code testOnly=true} — same
+     * live aggregate TUI as {@code jk build} (single {@link CommandManager} header + bar + module
+     * tree), terminal target {@code run-tests} per module instead of package.
      */
     private int runWorkspaceTests(
-            Path entryDir,
-            cc.jumpkick.model.JkBuild entryBuild,
-            Path cache,
-            int workerCount,
-            java.util.Set<Path> dirtyDirs)
+            Path entryDir, JkBuild entryBuild, Path cache, int workerCount, Set<Path> dirtyDirs)
             throws IOException, InterruptedException {
-        List<Path> modules = new ArrayList<>(dirtyDirs);
-        if (modules.isEmpty()) return 0;
-        boolean json = global != null && global.outputIsJson();
-        long start = System.nanoTime();
-        JsonlShape.emitJsonl(JsonlShape.workspaceStart(modules.size()), json);
-        int worst = 0;
-        try {
-            if (!parallelTests || modules.size() == 1) {
-                for (Path mod : modules) {
-                    int code = runOneModuleTest(mod, cache, workerCount, json);
-                    if (code != 0) worst = worst == 0 ? code : Math.max(worst, code);
-                }
-            } else {
-                int width = Math.max(
-                        1, Math.min(jobs > 0 ? jobs : Runtime.getRuntime().availableProcessors(), modules.size()));
-                var pool = java.util.concurrent.Executors.newFixedThreadPool(width, r -> {
-                    Thread t = new Thread(r, "jk-test-module");
-                    t.setDaemon(true);
-                    return t;
-                });
-                try {
-                    List<java.util.concurrent.Future<Integer>> futures = new ArrayList<>();
-                    for (Path mod : modules) {
-                        futures.add(pool.submit(() -> runOneModuleTest(mod, cache, workerCount, json)));
-                    }
-                    for (var f : futures) {
-                        int code = f.get();
-                        if (code != 0) worst = worst == 0 ? code : Math.max(worst, code);
-                    }
-                } catch (java.util.concurrent.ExecutionException e) {
-                    Throwable c = e.getCause() != null ? e.getCause() : e;
-                    if (!json) {
-                        CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", c.getMessage()));
-                    }
-                    if (session != null) session.error(String.valueOf(c.getMessage()));
-                    worst = Exit.SOFTWARE;
-                } finally {
-                    pool.shutdown();
-                }
-            }
-        } finally {
-            long ms = (System.nanoTime() - start) / 1_000_000;
-            JsonlShape.emitJsonl(JsonlShape.workspaceFinish(worst == 0, ms, modules.size()), json);
+        if (dirtyDirs == null || dirtyDirs.isEmpty()) return 0;
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
+        boolean live = mode == BuildPlanConsole.Mode.AUTO || mode == BuildPlanConsole.Mode.QUIET;
+        if (!live) {
+            return runWorkspaceTestsHeadless(entryDir, entryBuild, cache, workerCount, dirtyDirs);
         }
-        return worst;
+        return runWorkspaceTestsLive(entryDir, entryBuild, cache, workerCount, dirtyDirs);
     }
 
-    private int runOneModuleTest(Path mod, Path cache, int workerCount, boolean json) {
-        TestSummary[] testResultHolder = new TestSummary[1];
-        ConsoleSpec spec = new ConsoleSpec(
-                "Test", r -> testSummary(testResultHolder[0], r), r -> testFailureMessage(testResultHolder[0], r));
-        String module = BuildCommand.buildTarget(mod.resolve("jk.toml"), mod);
-        PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
-        JsonlShape.emitJsonl(JsonlShape.moduleStart(mod.toString(), module), json);
-        long t0 = System.nanoTime();
-        PipelineResult result;
-        int code;
+    /** Live TTY: one CommandManager "Test" region — mirrors {@link BuildCommand} workspace live path. */
+    private int runWorkspaceTestsLive(
+            Path entryDir, JkBuild entryBuild, Path cache, int workerCount, Set<Path> dirtyDirs) {
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
+        boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
+        cc.jumpkick.cli.engine.EnginePrewarm.ensure();
+        long start = System.nanoTime();
+        CommandManager view = CommandManager.plan(CliOutput.stdout(), "Test", animate);
+        view.setWindowTitle("JumpKick - Testing " + BuildCommand.projectGavLabel(entryDir, entryBuild) + "...");
+        AggregateContext agg = new AggregateContext(view);
+        Map<Path, List<String>> buffers = new java.util.concurrent.ConcurrentHashMap<>();
+        List<String> deferredOutput = java.util.Collections.synchronizedList(new ArrayList<>());
+        java.util.concurrent.atomic.AtomicInteger completed = new java.util.concurrent.atomic.AtomicInteger();
+        int[] total = {0};
+        var request = workspaceTestRequest(entryDir, entryBuild, cache, workerCount, dirtyDirs);
+        WorkspaceResult result;
         try {
-            result = cc.jumpkick.cli.engine.EngineClient.runTest(
+            result = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
                     cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineClient.TestRequest(
-                            mod,
-                            cache,
-                            jdksDir,
-                            workerCount,
-                            profileName,
-                            global.verbose,
-                            cc.jumpkick.config.SessionContext.current().offline(),
-                            cc.jumpkick.config.SessionContext.current().force(),
-                            parallelTests,
-                            testSelection),
-                    steps -> {
-                        // Workspace member: no aggregate-rider writes from pipeline-local fractions.
-                        var console = PipelineConsole.chooseWorkspaceMemberListener(steps, mode, spec, module);
-                        if (mode == PipelineConsole.Mode.JSON || session == null) return console;
-                        return CompositePipelineListener.of(new SessionMirrorListener(session), console);
-                    },
-                    testResultHolder);
-            if (session != null) {
-                session.module(module).absorb(result);
+                    request,
+                    new cc.jumpkick.runtime.WorkspaceBuildListener() {
+                        @Override
+                        public void onPreflight(String stage, int done, int totalUnits, String label) {
+                            agg.preflight(stage, done, totalUnits, label);
+                        }
+
+                        @Override
+                        public void onWorkspaceProgress(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
+                            agg.applySnapshot(snap);
+                            JsonlShape.emitJsonl(
+                                    JsonlShape.workspaceProgress(
+                                            entryDir.toString(),
+                                            snap.numerator(),
+                                            snap.denominator(),
+                                            snap.phase(),
+                                            snap.modulesComplete(),
+                                            snap.modulesTotal()),
+                                    false);
+                        }
+
+                        @Override
+                        public void onPlan(List<cc.jumpkick.runtime.ModulePlan> plan) {
+                            total[0] = plan.size();
+                            JsonlShape.emitJsonl(JsonlShape.workspaceStart(plan.size()), false);
+                        }
+
+                        @Override
+                        public void onEtaEstimate(long millis) {
+                            view.setRemainingWorkEstimate(millis);
+                        }
+
+                        @Override
+                        public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
+                            var log = EventLogListener.open(m.cache(), m.plan().name());
+                            List<String> buf = java.util.Collections.synchronizedList(new ArrayList<>());
+                            buffers.put(m.dir(), buf);
+                            var lis = new AggregateModuleListener(
+                                    agg, m.coord(), m.plan().steps(), m.weight());
+                            lis.bufferOutputInto(buf);
+                            JsonlShape.emitJsonl(
+                                    JsonlShape.moduleStart(m.dir().toString(), m.coord()), false);
+                            SessionMirrorListener mirror =
+                                    session == null ? null : new SessionMirrorListener(session);
+                            return CompositeBuildPlanListener.of(
+                                    CompositeBuildPlanListener.of(lis, mirror), log);
+                        }
+
+                        @Override
+                        public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
+                            JsonlShape.emitJsonl(
+                                    JsonlShape.moduleFinish(
+                                            o.dir().toString(), o.coord(), o.success(), o.millis()),
+                                    false);
+                            List<String> buf = buffers.getOrDefault(o.dir(), List.of());
+                            String completion = BuildCommand.completionLine(
+                                    o.success(), completed.incrementAndGet(), total[0], o.coord(), o.millis());
+                            if (view.animating()) {
+                                view.addCompletion(completion);
+                                synchronized (buf) {
+                                    if (!buf.isEmpty()) deferredOutput.addAll(buf);
+                                }
+                            } else {
+                                StringBuilder block = new StringBuilder();
+                                synchronized (buf) {
+                                    for (String l : buf) block.append(l).append('\n');
+                                }
+                                block.append(completion);
+                                view.writeAbove(block.toString());
+                            }
+                        }
+                    });
+        } catch (cc.jumpkick.cli.engine.JobCancelledException e) {
+            view.finishBuildPlanCancelled(List.of());
+            if (session != null) session.wedge("Test job was cancelled");
+            return 1;
+        } catch (IOException e) {
+            view.finishBuildPlanFailure(String.valueOf(e.getMessage()), List.of());
+            if (session != null) session.error(String.valueOf(e.getMessage()));
+            return Exit.SOFTWARE;
+        }
+        if (session != null) {
+            for (var m : result.modules()) session.module(m.coord());
+            for (String err : result.errors()) session.error(err);
+            for (BuildPlanResult.Diagnostic d : agg.lastErrors()) {
+                session.error(d.step(), d.code(), d.message());
             }
-            if (result.success()) code = 0;
-            else if (testResultHolder[0] != null && !testResultHolder[0].allPassed()) code = 4;
-            else code = 1;
+        }
+        long elapsedMs = (System.nanoTime() - start) / 1_000_000;
+        List<String> above = snapshot(deferredOutput);
+        if (result.cancelled()) {
+            view.finishBuildPlanCancelled(above);
+            if (session != null) session.wedge("Test job was cancelled");
+            JsonlShape.emitJsonl(JsonlShape.workspaceFinish(false, elapsedMs, total[0]), false);
+            return 1;
+        }
+        if (!result.errors().isEmpty()) {
+            List<String> errs = new ArrayList<>(above);
+            for (String err : result.errors()) errs.add(ConsoleSpec.errorLine("composite", err));
+            view.finishBuildPlanFailure("dependency resolution failed", errs);
+            if (session != null) session.wedge("dependency resolution failed");
+            JsonlShape.emitJsonl(JsonlShape.workspaceFinish(false, elapsedMs, total[0]), false);
+            return result.exitCode();
+        }
+        if (!result.success()) {
+            List<String> failAbove = new ArrayList<>(above);
+            for (BuildPlanResult.Diagnostic d : agg.lastErrors()) {
+                if ("test-failure".equals(d.code())) continue;
+                failAbove.add(ConsoleSpec.renderError(d));
+            }
+            String failTail = workspaceTestFailureTail(result, elapsedMs);
+            view.finishBuildPlanFailure(failTail, failAbove);
+            if (session != null) session.wedge(failTail);
+            JsonlShape.emitJsonl(JsonlShape.workspaceFinish(false, elapsedMs, total[0]), false);
+            return result.exitCode();
+        }
+        String okTail = workspaceTestSuccessTail(result, total[0], elapsedMs);
+        view.finishBuildPlanSuccess(okTail, above);
+        if (session != null) session.wedge(okTail);
+        JsonlShape.emitJsonl(JsonlShape.workspaceFinish(true, elapsedMs, total[0]), false);
+        return 0;
+    }
+
+    /** Headless / JSON: same workspace RPC as live, no CommandManager chrome. */
+    private int runWorkspaceTestsHeadless(
+            Path entryDir, JkBuild entryBuild, Path cache, int workerCount, Set<Path> dirtyDirs) {
+        boolean json = global != null && global.outputIsJson();
+        long start = System.nanoTime();
+        int[] total = {0};
+        // Per-module console buffers (BuildCommand's headless pattern): modules stream
+        // concurrently, so output is buffered and printed as one block per module finish.
+        var buffers = new java.util.concurrent.ConcurrentHashMap<Path, List<String>>();
+        var done = new java.util.concurrent.atomic.AtomicInteger();
+        var request = workspaceTestRequest(entryDir, entryBuild, cache, workerCount, dirtyDirs);
+        WorkspaceResult result;
+        try {
+            result = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
+                    cc.jumpkick.engine.EnginePaths.current(),
+                    request,
+                    new cc.jumpkick.runtime.WorkspaceBuildListener() {
+                        @Override
+                        public void onWorkspaceProgress(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
+                            cc.jumpkick.cli.run.LiveProgress.get().apply(snap);
+                            JsonlShape.emitJsonl(
+                                    JsonlShape.workspaceProgress(
+                                            entryDir.toString(),
+                                            snap.numerator(),
+                                            snap.denominator(),
+                                            snap.phase(),
+                                            snap.modulesComplete(),
+                                            snap.modulesTotal()),
+                                    json);
+                        }
+
+                        @Override
+                        public void onPlan(List<cc.jumpkick.runtime.ModulePlan> plan) {
+                            total[0] = plan.size();
+                            JsonlShape.emitJsonl(JsonlShape.workspaceStart(plan.size()), json);
+                        }
+
+                        @Override
+                        public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
+                            var log = EventLogListener.open(m.cache(), m.plan().name());
+                            JsonlShape.emitJsonl(
+                                    JsonlShape.moduleStart(m.dir().toString(), m.coord()), json);
+                            if (json) {
+                                return CompositeBuildPlanListener.of(
+                                        new cc.jumpkick.cli.run.JsonlListener(System.out, false), log);
+                            }
+                            List<String> buf = java.util.Collections.synchronizedList(new ArrayList<>());
+                            buffers.put(m.dir(), buf);
+                            var outLis = new cc.jumpkick.run.BuildPlanListener() {
+                                @Override
+                                public synchronized void output(String step, String line) {
+                                    buf.add(line);
+                                }
+
+                                @Override
+                                public synchronized void warn(String step, String code, String message) {
+                                    buf.add("  " + cc.jumpkick.cli.tui.Glyphs.BANG + " " + step + ": " + message);
+                                }
+
+                                @Override
+                                public synchronized void error(String step, String code, String message) {
+                                    buf.add("  " + cc.jumpkick.cli.tui.Glyphs.CROSS + " " + step + ": " + message);
+                                }
+                            };
+                            SessionMirrorListener mirror =
+                                    session == null ? null : new SessionMirrorListener(session);
+                            return CompositeBuildPlanListener.of(
+                                    CompositeBuildPlanListener.of(outLis, mirror), log);
+                        }
+
+                        @Override
+                        public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
+                            JsonlShape.emitJsonl(
+                                    JsonlShape.moduleFinish(
+                                            o.dir().toString(), o.coord(), o.success(), o.millis()),
+                                    json);
+                            if (json) return;
+                            List<String> buf = buffers.getOrDefault(o.dir(), List.of());
+                            synchronized (BuildCommand.OUT_LOCK) {
+                                for (String line : buf) CliOutput.out(line);
+                                CliOutput.out(BuildCommand.completionLine(
+                                        o.success(), done.incrementAndGet(), total[0], o.coord(), o.millis()));
+                            }
+                        }
+                    });
         } catch (IOException e) {
             if (!json) {
-                synchronized (TestCommand.class) {
-                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", mod + ": " + e.getMessage()));
-                }
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", e.getMessage()));
             }
-            if (session != null) session.error(mod + ": " + e.getMessage());
-            code = Exit.SOFTWARE;
+            if (session != null) session.error(String.valueOf(e.getMessage()));
+            return Exit.SOFTWARE;
         }
-        long ms = (System.nanoTime() - t0) / 1_000_000;
-        JsonlShape.emitJsonl(JsonlShape.moduleFinish(mod.toString(), module, code == 0, ms), json);
-        return code;
+        long ms = (System.nanoTime() - start) / 1_000_000;
+        JsonlShape.emitJsonl(JsonlShape.workspaceFinish(result.success(), ms, total[0]), json);
+        if (session != null) {
+            for (var m : result.modules()) session.module(m.coord());
+            for (String err : result.errors()) session.error(err);
+        }
+        if (result.success()) {
+            if (!json) {
+                cc.jumpkick.cli.tui.CommandWedge.printOk(
+                        "Test", workspaceTestSuccessTail(result, total[0], ms));
+            }
+            return 0;
+        }
+        if (!json) {
+            // Workspace-level errors (graph/lock problems) never reach a module listener —
+            // print them before the wedge or a failing run shows no diagnostic at all.
+            for (String err : result.errors()) CliOutput.err(ConsoleSpec.errorLine("composite", err));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Test", workspaceTestFailureTail(result, ms)));
+        }
+        return result.exitCode();
+    }
+
+    private WorkspaceRequest workspaceTestRequest(
+            Path entryDir, JkBuild entryBuild, Path cache, int workerCount, Set<Path> dirtyDirs) {
+        String variant = cc.jumpkick.config.SessionContext.current().variant();
+        if (variant == null) variant = "";
+        Map<String, String> clientEnv = cc.jumpkick.config.SessionContext.current().clientEnv();
+        int concurrency = parallelTests ? jobs : 1;
+        return new WorkspaceRequest(
+                        entryDir,
+                        entryBuild,
+                        cache,
+                        jdksDir,
+                        workerCount,
+                        profileName,
+                        /* skipTests */ false,
+                        global.verbose,
+                        concurrency,
+                        dirtyDirs,
+                        true,
+                        true)
+                .withTestOnly(true)
+                .withVariant(variant, clientEnv);
+    }
+
+    private static List<String> snapshot(List<String> deferred) {
+        synchronized (deferred) {
+            return new ArrayList<>(deferred);
+        }
+    }
+
+    private static String workspaceTestSuccessTail(WorkspaceResult result, int planned, long elapsedMs) {
+        int n = result.modules() == null ? 0 : result.modules().size();
+        if (n == 0 || planned == 0) {
+            return "No tests to run";
+        }
+        String took = ConsoleSpec.took(java.time.Duration.ofMillis(elapsedMs));
+        if (n == 1) {
+            return "Tests passed " + took;
+        }
+        return "Tests passed for " + n + " modules " + took;
+    }
+
+    private static String workspaceTestFailureTail(WorkspaceResult result, long elapsedMs) {
+        String failed = result.modules() == null
+                ? "tests"
+                : result.modules().stream()
+                        .filter(m -> !m.success())
+                        .map(cc.jumpkick.runtime.ModuleOutcome::coord)
+                        .findFirst()
+                        .orElse("tests");
+        return failed + " — failed " + ConsoleSpec.took(java.time.Duration.ofMillis(elapsedMs));
     }
 
     /**
      * Success result line (sans the leading ✓): {@code Passed N tests in 32s}, or {@code No tests in
      * <t>} for a project with no test sources. Takes the resolved {@link TestSummary}
-     * directly (rather than a {@code Pipeline} to look it up from) so both the in-process path (which
-     * reads it off {@code pipeline.get(TEST_RESULT)}) and the engine-hosted path (which has no real
-     * {@code Pipeline}, only a wire-populated holder) share this one rendering method.
+     * directly (rather than a {@code BuildPlan} to look it up from) so both the in-process path (which
+     * reads it off {@code plan.get(TEST_RESULT)}) and the engine-hosted path (which has no real
+     * {@code BuildPlan}, only a wire-populated holder) share this one rendering method.
      */
-    static String testSummary(TestSummary testResult, PipelineResult result) {
+    static String testSummary(TestSummary testResult, BuildPlanResult result) {
         if (testResult == null || testResult.total() == 0) return "No tests";
         long total = testResult.total();
         String passed = Theme.colorize("Passed", Theme.active().focused());
         return passed + " " + total + " test" + (total == 1 ? "" : "s");
     }
 
-    static String testFailureMessage(TestSummary testResult, PipelineResult result) {
+    static String testFailureMessage(TestSummary testResult, BuildPlanResult result) {
         return (testResult != null && !testResult.allPassed()) ? "Tests failed" : "Build failed";
     }
 

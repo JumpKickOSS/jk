@@ -5,7 +5,7 @@ package cc.jumpkick.runtime;
  * Dev-only wall-clock probe, enabled by {@code JK_PERF=1} in the environment; writes {@code
  * [jk-perf] <label> <ms>} lines to stderr. Zero overhead when disabled (a single static boolean).
  * Temporary diagnostic scaffolding for build-latency work — keep call sites coarse (one per
- * pipeline stage), never per-file.
+ * plan stage), never per-file.
  */
 final class Perf {
 

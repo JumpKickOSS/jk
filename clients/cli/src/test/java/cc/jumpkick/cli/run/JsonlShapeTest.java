@@ -4,7 +4,7 @@ package cc.jumpkick.cli.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.run.StepStatus;
+import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.runtime.WorkspaceProgressTracker;
 import java.time.Duration;
 import java.util.List;
@@ -21,11 +21,11 @@ class JsonlShapeTest {
 
     @Test
     void events_include_schema_ts_and_type() {
-        String line = JsonlShape.stepFinish("run-tests", "test", StepStatus.SUCCESS, Duration.ofMillis(12));
+        String line = JsonlShape.stepFinish("run-tests", "test", TaskStatus.SUCCESS, Duration.ofMillis(12));
         assertThat(line).startsWith("{\"schema\":" + JsonlShape.SCHEMA);
-        assertThat(line).contains("\"type\":\"step-finish\"");
+        assertThat(line).contains("\"type\":\"task-finish\"");
         assertThat(line).contains("\"ts\":");
-        assertThat(line).contains("\"step\":\"run-tests\"");
+        assertThat(line).contains("\"task\":\"run-tests\"");
         assertThat(line).contains("\"duration_ms\":12");
     }
 
@@ -99,8 +99,8 @@ class JsonlShapeTest {
         assertThat(optsWithOutput("JSONL").outputIsJson()).isTrue();
         assertThat(optsWithOutput("text").outputIsJson()).isFalse();
         assertThat(optsWithOutput(null).outputIsJson()).isFalse();
-        assertThat(PipelineConsole.modeFor(optsWithOutput("jsonl"))).isEqualTo(PipelineConsole.Mode.JSON);
-        assertThat(PipelineConsole.modeFor(optsWithOutput("json"))).isEqualTo(PipelineConsole.Mode.JSON);
+        assertThat(BuildPlanConsole.modeFor(optsWithOutput("jsonl"))).isEqualTo(BuildPlanConsole.Mode.JSON);
+        assertThat(BuildPlanConsole.modeFor(optsWithOutput("json"))).isEqualTo(BuildPlanConsole.Mode.JSON);
     }
 
     @Test

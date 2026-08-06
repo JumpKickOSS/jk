@@ -24,6 +24,81 @@ class BuildServiceEtaParityTest {
 
     private static final Path MOD = Path.of("/ws/cli");
 
+    /**
+     * Regression (JK-1585): under --force/--redo the ETA seed comes from a shape-only plan (no
+     * TaskForecaster content-prediction walk); the distrust fallback in etaCostsFromExplainPlan
+     * prices each module from its full plan shape, so the seed is still non-zero.
+     */
+    @org.junit.jupiter.api.Test
+    void force_prices_shape_only_plan_without_forecast_walk(@org.junit.jupiter.api.io.TempDir Path tmp)
+            throws Exception {
+        Path dir = java.nio.file.Files.createDirectories(tmp.resolve("mod"));
+        java.nio.file.Files.createDirectories(dir.resolve("src/main/java"));
+        java.nio.file.Files.writeString(dir.resolve("jk.toml"), """
+                [project]
+                group = "ex"
+                name = "m"
+                version = "1.0"
+                java = 25
+                """);
+        var shapeOnly = new cc.jumpkick.runtime.TaskForecast.Module(dir, "ex:m", List.of(), 0, 0, true, false);
+        var plan = new ExplainPlan(List.of(shapeOnly), java.util.Map.of(dir, Set.of()), 1, List.of());
+
+        var forced = cc.jumpkick.config.Session.defaults()
+                .withConfig(new cc.jumpkick.config.JkConfig(
+                        java.util.Optional.empty(),
+                        java.util.Optional.empty(),
+                        java.util.Optional.of(true), // rebuild — same distrust lever as force
+                        java.util.Optional.empty(),
+                        java.util.Optional.empty(),
+                        java.util.Optional.empty(),
+                        java.util.Optional.empty(),
+                        java.util.Optional.empty(),
+                        java.util.Optional.empty(),
+                        java.util.Optional.empty(),
+                        java.util.Optional.empty()))
+                .withCacheDir(tmp.resolve("cache"));
+        List<EffortWeights.ModuleCost> costs = cc.jumpkick.config.SessionContext.where(
+                forced,
+                () -> BuildService.etaCostsFromExplainPlan(
+                        plan, tmp.resolve("cache"), 1, null, null, false, false));
+        assertThat(costs).hasSize(1);
+        assertThat(costs.get(0).weight()).isGreaterThan(0);
+    }
+
+    /**
+     * Regression (JK-1584): a selection build's ETA seed must price only the hinted modules —
+     * the whole-graph forecast would bill dirty modules the build will never schedule.
+     */
+    @Test
+    void restrict_to_selection_keeps_only_hinted_modules_and_edges() {
+        Path a = Path.of("/ws/a");
+        Path b = Path.of("/ws/b");
+        Path c = Path.of("/ws/c");
+        var run = new cc.jumpkick.runtime.TaskForecast.Task(
+                "compile-java", cc.jumpkick.runtime.TaskForecast.Status.RUN, "", null);
+        var cached = new cc.jumpkick.runtime.TaskForecast.Task(
+                "compile-java", cc.jumpkick.runtime.TaskForecast.Status.CACHED, "", "k");
+        var ma = new cc.jumpkick.runtime.TaskForecast.Module(a, "g:a", List.of(run), 1, 0, true, false);
+        var mb = new cc.jumpkick.runtime.TaskForecast.Module(b, "g:b", List.of(run), 1, 0, true, false);
+        var mc = new cc.jumpkick.runtime.TaskForecast.Module(c, "g:c", List.of(cached), 1, 0, true, false);
+        var plan = new ExplainPlan(
+                List.of(ma, mb, mc),
+                java.util.Map.of(a, Set.of(b, c), b, Set.of(), c, Set.of()),
+                2,
+                List.of());
+
+        ExplainPlan restricted = BuildService.restrictToSelection(plan, Set.of(a, c));
+
+        assertThat(restricted.modules()).extracting(m -> m.dir()).containsExactly(a, c);
+        // Edges intersect the selection: a→{b,c} loses the unselected b.
+        assertThat(restricted.edges().get(a)).containsExactly(c);
+        assertThat(restricted.edges()).doesNotContainKey(b);
+        // The hinted-but-clean module keeps its cache verdicts (prices ~0, not full RUN).
+        assertThat(restricted.modules().get(1).dirty()).isFalse();
+        assertThat(restricted.maxReadyWidth()).isEqualTo(plan.maxReadyWidth());
+    }
+
     @Test
     void shape_style_cost_keeps_weight_and_test_weight_coupled() {
         // Shape row: total 869, tests 841 (matches monorepo jk-cli shape-memo).
@@ -56,34 +131,18 @@ class BuildServiceEtaParityTest {
 
     @Test
     void pipeline_cost_of_derives_test_weight_from_the_same_walk() {
-        var pipeline = cc.jumpkick.run.Pipeline.builder("m")
-                .addStep(cc.jumpkick.run.Step.builder("compile-java")
+        var plan = cc.jumpkick.run.BuildPlan.builder("m")
+                .addTask(cc.jumpkick.run.Task.builder("compile-java")
                         .weight(20)
                         .execute(ctx -> {})
                         .build())
-                .addStep(cc.jumpkick.run.Step.builder("run-tests")
+                .addTask(cc.jumpkick.run.Task.builder("run-tests")
                         .weight(100)
                         .execute(ctx -> {})
                         .build())
                 .build();
-        var cost = EffortWeights.costOf(MOD, Set.of(), pipeline);
+        var cost = EffortWeights.costOf(MOD, Set.of(), plan);
         assertThat(cost.weight()).isEqualTo(120);
         assertThat(cost.testWeight()).isEqualTo(100);
-    }
-
-    @Test
-    void mixed_history_floors_cold_tests_with_the_shape_test_weight() {
-        // Compile-warm / test-cold: costFromRunningSteps with no counts priced run-tests as
-        // suite startup only (testWeight 3) while the shape's coupled count-aware pair says
-        // 841 — the collapsed cold test ETA the full-work floor forbids.
-        var repriced = new EffortWeights.ModuleCost(MOD, Set.of(), 50, 3);
-        var floored = BuildService.floorColdTests(repriced, /* runTestsOwnMillis */ 0, /* shape */ 841);
-        assertThat(floored.testWeight()).isEqualTo(841);
-        assertThat(floored.weight()).isEqualTo(50 - 3 + 841); // non-test share preserved
-
-        // Own run-tests history wins over the shape floor (measured beats estimated).
-        assertThat(BuildService.floorColdTests(repriced, 12_000, 841)).isSameAs(repriced);
-        // Skip-tests shapes carry testWeight 0 — never floor.
-        assertThat(BuildService.floorColdTests(repriced, 0, 0)).isSameAs(repriced);
     }
 }

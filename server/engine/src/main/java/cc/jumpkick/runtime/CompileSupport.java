@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.stream.Stream;
 
 /**
- * Pure source-set helpers shared by the build pipeline and the git-source builder. Extracted out of
+ * Pure source-set helpers shared by the build plan and the git-source builder. Extracted out of
  * the CLI's {@code CompileCommand} so embedders can drive compilation inputs without depending on
  * {@code:cli}.
  */

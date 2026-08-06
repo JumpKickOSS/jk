@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Disable with request {@code noTimeline=true} or env {@code JK_CHROME_PROFILE=off}. Override path
  * with {@code JK_CHROME_PROFILE=<file>}.
  *
- * <p>Spans use the pipeline's measured {@link java.time.Duration} (same numbers as {@link
+ * <p>Spans use the plan's measured {@link java.time.Duration} (same numbers as {@link
  * BuildMetrics}), placed with {@link System#nanoTime} at step finish so concurrent modules
  * align on one clock.
  */
@@ -81,12 +81,12 @@ public final class ChromeTimeline {
     }
 
     /**
-     * Record a complete span ({@code ph:X}) using the pipeline duration and finish-time nano clock.
+     * Record a complete span ({@code ph:X}) using the plan duration and finish-time nano clock.
      *
      * @param module track label (coord or module path)
      * @param step step name
      * @param status SUCCESS / SKIPPED / FAIL / …
-     * @param durationMillis pipeline wall time for this step (same as metrics)
+     * @param durationMillis plan wall time for this step (same as metrics)
      */
     public void complete(String module, String step, String status, long durationMillis) {
         long end = System.nanoTime();

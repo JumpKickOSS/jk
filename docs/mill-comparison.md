@@ -11,7 +11,7 @@
 > `show` / `inspect` (1047), BSP server + compile/test (1028/1041/1048), VS Code + IntelliJ
 > wire-only plugins (1017/1054), selective prepare/run + content-hash (1040/1045), project
 > build-logic + SPI anchors (1037/1039/1044). **Still open / gated:** warm pool (1049), Zinc
-> (deferred 1046), cosign (1019), dependency-confusion namespace pins (1064), release pipeline
+> (deferred 1046), cosign (1019), dependency-confusion namespace pins (1064), release plan
 > (1066).
 
 This is **not** a marketing comparison. JumpKick and Mill occupy overlapping “better JVM build tool” space but make different bets. Mill is production-mature with a broad language/feature surface. JumpKick is early, lockfile-first, and **convention-over-configuration by default**—with a Mill-style programmable escape hatch as an intentional product goal (scripts live *outside* TOML, never *inside* it). Treat Mill as a high bar, not as an enemy to copy blindly.
@@ -43,7 +43,7 @@ This is **not** a marketing comparison. JumpKick and Mill occupy overlapping “
 | | Mill | JumpKick |
 |---|---|---|
 | Config default | Declarative YAML *or* programmable Scala `build.mill` | Declarative `jk.toml` (data) by convention |
-| Mental model | Object hierarchy of modules; tasks are methods | Workspace + verbs (`build`/`test`/`lock`); plugins own steps |
+| Mental model | Object hierarchy of modules; tasks are methods | Workspace + targets; BuildPlan of tasks with requires; plugins contribute tasks |
 | Resolve | Coursier; no committed lockfile as law | PubGrub + **`jk-lock.toml` is law**; builds do not re-resolve |
 | Extension | Override `Task`s in-process; publish Mill plugins | Out-of-process workers today; **Mill-like escape hatch planned** |
 | Process model | Launcher + long-lived Mill daemon | Native CLI + memory-capped engine (JSONL wire) |
@@ -146,7 +146,7 @@ That covers **git-diff → module set** for builds. Gaps:
 
 **Improvement to capture**
 
-- Generalize `--affected-since` into a **selective plan** reusable for `test`, `publish`, custom pipelines.  
+- Generalize `--affected-since` into a **selective plan** reusable for `test`, `publish`, custom plans.  
 - Add dry-run (`jk explain --affected-since=…` / `jk selective resolve`) with a machine-readable tree.  
 - Document CI determinism rules (same as Mill’s reproducibility section).
 
@@ -230,7 +230,7 @@ Mill’s decisive advantage over Gradle is **object-oriented builds**:
 That model is a **Mill steal**, not a reject. JumpKick’s constraint is narrower: **never put that code in `jk.toml`**. Today extension is out-of-process plugins and first-party TOML tables—enough for convention, weak for:
 
 - codegen into resources  
-- custom packaging pipelines  
+- custom packaging plans  
 - ad-hoc repo tooling as named tasks  
 - monorepo-wide shared traits (`MyModule extends JavaModule`)
 
@@ -245,7 +245,7 @@ That model is a **Mill steal**, not a reject. JumpKick’s constraint is narrowe
 
 **Improvement to capture (without becoming Gradle)**
 
-- Design a **programmable escape hatch** inspired by Mill: tasks as first-class graph nodes (inputs/outputs, CAS, inspectable), override/splice into compile–resource–package pipelines, share traits across workspace modules.  
+- Design a **programmable escape hatch** inspired by Mill: tasks as first-class graph nodes (inputs/outputs, CAS, inspectable), override/splice into compile–resource–package plans, share traits across workspace modules.  
 - Prefer **JVM-language** source (Java/Kotlin/Groovy — same stack as application code; IDE-friendly) over inventing a TOML DSL or embedding scripts in the manifest.  
 - `jk.toml` may *point at* hatch modules (e.g. path / coordinate / feature flag) but must not *contain* executable code.  
 - Richer first-party hooks remain valuable so most projects never open the hatch.  
@@ -404,7 +404,7 @@ Mill proves programmable builds can stay *understandable* if tasks are pure, gra
 | Steal from Mill | JumpKick constraint |
 |---|---|
 | Tasks as pure nodes (inputs → outputs, dedicated dest) | Same; CAS / action-cache keyed like engine steps |
-| Override / super to splice into pipelines | Splice into first-party verb graphs without rewriting core |
+| Override / super to splice into plans | Splice into first-party verb graphs without rewriting core |
 | Shared traits for monorepo module presets | Workspace-level reuse without copy-paste TOML |
 | Free caching, parallelism, inspect/show | Hatch tasks appear in `jk explain`, profiles, selective plans |
 | Real language + IDE navigation | Prefer **Java/Kotlin/Groovy** source beside the project, not Scala-required |
@@ -414,14 +414,14 @@ Default UX stays Cargo-like: most projects never open a hatch file. Escape hatch
 
 ---
 
-## Design tension: Mill’s “tasks are methods” vs JumpKick’s “TOML + pipeline + hatch”
+## Design tension: Mill’s “tasks are methods” vs JumpKick’s “TOML + plan + hatch”
 
 Mill collapses “what is a module / task / cache key / CLI path” into one hierarchy. That is why IDE support and custom tasks feel free.
 
 JumpKick’s intended split:
 
 - **`jk.toml`** — declarative product intent (data only; convention-over-configuration)  
-- **engine pipeline** — verbs → steps → CAS  
+- **engine plan** — verbs → steps → CAS  
 - **plugins** — isolated workers for heavy/third-party work  
 - **programmable escape hatch** (planned) — Mill-like graph surgery in real JVM source when convention is not enough  
 

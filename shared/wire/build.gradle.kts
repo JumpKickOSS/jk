@@ -9,7 +9,7 @@ description = "jk engine API: the client<->engine wire contract — protocol cod
         "surface a front-end links to talk to the engine; the engine implementation lives in :engine."
 
 dependencies {
-    // The DTOs speak the jk-api vocabulary (Pipeline/Step/PipelineListener, JkBuild, TestSummary).
+    // The DTOs speak the jk-api vocabulary (BuildPlan/Step/BuildPlanListener, JkBuild, TestSummary).
     api(project(":jk-api"))
     // CachePruneScheduler consults JkCacheConfig (~/.config/jk/config.toml [cache]).
     api(project(":core"))

@@ -85,12 +85,12 @@ public final class CompileToolchain {
     /**
      * As {@link #resolveKotlinHome(Path, String)}, but reports a one-line provisioning notice
      * ("Linked/Installed Kotlin …") to {@code notice} instead of a stream — the caller (the CLI view,
-     * or a step's {@code StepContext::output}) decides how to surface it.
+     * or a step's {@code TaskContext::output}) decides how to surface it.
      */
     public static Path resolveKotlinHome(Path cacheDir, String versionOverride, Consumer<String> notice) {
         // ToolProvisioning already runs the EnvVarProbe (which reads
         // KOTLIN_HOME), so we don't need a separate fast-path. Going
-        // through the full pipeline guarantees we leave a symlink under
+        // through the full plan guarantees we leave a symlink under
         // $JK_CACHE_DIR/tools/kotlin/<version>/ — subsequent invocations
         // don't depend on the env var still being set.
         Path toolsRoot = JkDirs.cache().resolve("tools");

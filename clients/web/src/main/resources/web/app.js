@@ -3,12 +3,37 @@
 // build from the CDN — see docs/webclient.md). The in-DOM template lives in index.html; Vue's
 // runtime compiler turns it into render functions at load (the CSP 'unsafe-eval' grant).
 
-import { bootstrapToken, get, getText, post, del, events } from './api.js';
-import { foldEvent, outcomeOf, moduleSummary, phaseChainOf, seedFromHistory, weightNumerator, weightDenominator, ioLines, fmtBytes } from './fold.js';
+import {
+  bootstrapToken,
+  token,
+  applyToken,
+  clearToken,
+  get,
+  getText,
+  post,
+  del,
+  events,
+  loopback,
+} from './api.js';
+import {
+  foldEvent,
+  outcomeOf,
+  moduleSummary,
+  phaseChainOf,
+  seedFromHistory,
+  weightNumerator,
+  weightDenominator,
+  ioLines,
+  fmtBytes,
+  liveStepDetail,
+  detailSegments,
+  orderedModules,
+  etaTotalMillis,
+} from './fold.js';
 
 bootstrapToken();
 
-// The build **phase-chain**: a single horizontal strip of coarse pipeline phases (Resolve →
+// The build **phase-chain**: a single horizontal strip of coarse plan phases (Resolve →
 // Compile → Test → …), never wrapping. New phases advance rightward and push earlier ones off the
 // left; when phases are hidden a ◂ / ▸ nav button pages the view (no scrollbar). Anchored to the
 // newest phase on mount and whenever the chain grows. Each phase node is a click-to-expand toggle
@@ -62,37 +87,50 @@ const JkIcon = {
 };
 
 const PhaseChain = {
-  props: { steps: { type: Array, required: true } },
+  // `module` is the coord used to strip redundant "g:a :: " prefixes from test labels (CLI parity).
+  props: {
+    steps: { type: Array, required: true },
+    module: { type: String, default: '' },
+  },
   // `follow` = keep pinned to the newest phase (re-armed when the user pages back to the end).
   // `manualKey` = the user's single-open accordion choice: `undefined` until they click (failed
   // phase auto-opens), then a phase key, or `null` when they've closed all.
   data: () => ({ atStart: true, atEnd: true, follow: true, manualKey: undefined }),
   template: `
     <div class="phase-chain-outer">
-      <div class="step-chain-wrap">
-        <button v-show="!atStart" type="button" class="chain-nav left" @click="page(-1)"
-                aria-label="show earlier phases" title="earlier phases"><jk-icon name="chevron-left"></jk-icon></button>
-        <span v-show="!atStart" class="chain-fade left" aria-hidden="true"></span>
-        <div class="step-chain" ref="track">
-          <template v-for="(p, i) in phases" :key="p.key">
-            <span v-if="i > 0" class="step-edge" :class="phases[i - 1].state"></span>
-            <button type="button" class="step-node phase-node" :class="[p.state, { open: openKey === p.key }]"
-                    :title="phaseTitle(p)" :aria-expanded="String(openKey === p.key)" @click="toggle(p.key)">
-              <span v-if="p.state === 'running'" class="spin small"></span>
-              <jk-icon v-else-if="p.state === 'success'" name="check" class="step-glyph ok"></jk-icon>
-              <jk-icon v-else-if="p.state === 'failed'" name="x" class="step-glyph err"></jk-icon>
-              {{ p.label }}
-            </button>
-          </template>
+      <div class="phase-live-row">
+        <div class="step-chain-wrap">
+          <button v-show="!atStart" type="button" class="chain-nav left" @click="page(-1)"
+                  aria-label="show earlier phases" title="earlier phases"><jk-icon name="chevron-left"></jk-icon></button>
+          <span v-show="!atStart" class="chain-fade left" aria-hidden="true"></span>
+          <div class="step-chain" ref="track">
+            <template v-for="(p, i) in phases" :key="p.key">
+              <span v-if="i > 0" class="step-edge" :class="phases[i - 1].state"></span>
+              <button type="button" class="step-node phase-node" :class="[p.state, { open: openKey === p.key }]"
+                      :title="phaseTitle(p)" :aria-expanded="String(openKey === p.key)" @click="toggle(p.key)">
+                <span v-if="p.state === 'running'" class="spin small"></span>
+                <jk-icon v-else-if="p.state === 'success'" name="check" class="step-glyph ok"></jk-icon>
+                <jk-icon v-else-if="p.state === 'failed'" name="x" class="step-glyph err"></jk-icon>
+                {{ p.label }}
+              </button>
+            </template>
+          </div>
+          <span v-show="!atEnd" class="chain-fade right" aria-hidden="true"></span>
+          <button v-show="!atEnd" type="button" class="chain-nav right" @click="page(1)"
+                  aria-label="show later phases" title="later phases"><jk-icon name="chevron-right"></jk-icon></button>
         </div>
-        <span v-show="!atEnd" class="chain-fade right" aria-hidden="true"></span>
-        <button v-show="!atEnd" type="button" class="chain-nav right" @click="page(1)"
-                aria-label="show later phases" title="later phases"><jk-icon name="chevron-right"></jk-icon></button>
+        <!-- Live tick/label after the (blue) running phase — CLI "· detail" segment. -->
+        <span v-if="liveDetail" class="phase-detail" :title="liveDetail">
+          <span class="phase-detail-sep" aria-hidden="true">·</span>
+          <span class="phase-detail-text">
+            <span v-for="(seg, i) in liveDetailSegs" :key="i" :class="seg.cls">{{ seg.text }}</span>
+          </span>
+        </span>
       </div>
       <div v-if="openPhase" class="phase-steps">
         <template v-for="(s, i) in openPhase.steps" :key="s.name">
           <span v-if="i > 0" class="step-edge" :class="openPhase.steps[i - 1].state"></span>
-          <span class="step-node" :class="s.state" :title="s.name">
+          <span class="step-node" :class="s.state" :title="s.message || s.name">
             <span v-if="s.state === 'running'" class="spin small"></span>
             <jk-icon v-else-if="s.state === 'success'" name="check" class="step-glyph ok"></jk-icon>
             <jk-icon v-else-if="s.state === 'failed'" name="x" class="step-glyph err"></jk-icon>
@@ -114,6 +152,13 @@ const PhaseChain = {
     },
     openPhase() {
       return this.phases.find((p) => p.key === this.openKey) || null;
+    },
+    // Rightmost running phase's current tick text (test class.method, "shrinking jar", …).
+    liveDetail() {
+      return liveStepDetail(this.module, this.steps);
+    },
+    liveDetailSegs() {
+      return detailSegments(this.liveDetail);
     },
   },
   mounted() {
@@ -276,6 +321,202 @@ const BuildBars = {
 };
 
 /**
+ * Lazy module dependency DAG (JK-1542): mounted only when the Project-page Dependencies panel is
+ * open. Fetches {@code GET /api/project/graph} on mount, aborts on unmount, and only then calls
+ * {@code echarts.init} — opening the project page alone must not pay graph cost.
+ */
+const ModuleDepGraph = {
+  props: { dir: { type: String, required: true } },
+  data: () => ({
+    loading: true,
+    error: null,
+    graph: null,
+  }),
+  template: `
+    <div class="dep-graph-body">
+      <p v-if="loading" class="dep-graph-status dim small">Loading dependency graph…</p>
+      <p v-else-if="error" class="dep-graph-status err small">{{ error }}</p>
+      <p v-else-if="graph && !(graph.nodes || []).length" class="dep-graph-status dim small">
+        No modules to graph (missing or empty workspace).
+      </p>
+      <div v-show="graph && (graph.nodes || []).length" class="dep-graph-canvas" ref="el"></div>
+      <p v-if="graph && (graph.nodes || []).length" class="dep-graph-hint dim small mono">
+        {{ graph.nodes.length }} module{{ graph.nodes.length === 1 ? '' : 's' }}
+        · {{ (graph.edges || []).length }} edge{{ (graph.edges || []).length === 1 ? '' : 's' }}
+        · pan / zoom · dependent → prereq
+      </p>
+    </div>
+  `,
+  mounted() {
+    this.load();
+  },
+  beforeUnmount() {
+    this.teardown();
+  },
+  watch: {
+    dir() {
+      this.load();
+    },
+  },
+  methods: {
+    teardown() {
+      if (this._abort) {
+        this._abort.abort();
+        this._abort = null;
+      }
+      if (this._ro) {
+        this._ro.disconnect();
+        this._ro = null;
+      }
+      if (this._chart) {
+        this._chart.dispose();
+        this._chart = null;
+      }
+    },
+    async load() {
+      this.teardown();
+      this.loading = true;
+      this.error = null;
+      this.graph = null;
+      if (!this.dir) {
+        this.loading = false;
+        this.error = 'No project directory';
+        return;
+      }
+      const ac = new AbortController();
+      this._abort = ac;
+      try {
+        const data = await get('/api/project/graph?dir=' + encodeURIComponent(this.dir), {
+          signal: ac.signal,
+        });
+        if (ac.signal.aborted) return;
+        this.graph = data;
+        this.loading = false;
+        // Paint after the canvas is in the DOM (v-show true on next tick).
+        await this.$nextTick();
+        if (ac.signal.aborted) return;
+        this.renderChart();
+      } catch (e) {
+        if (e && e.name === 'AbortError') return;
+        if (ac.signal.aborted) return;
+        this.loading = false;
+        if (e && e.status === 401) {
+          this.error = 'Authorization required to load the graph';
+        } else if (e && e.status) {
+          this.error = 'Failed to load graph (HTTP ' + e.status + ')';
+        } else {
+          this.error = 'Failed to load graph';
+        }
+      }
+    },
+    renderChart() {
+      const el = this.$refs.el;
+      const g = this.graph;
+      if (!el || !g || !(g.nodes || []).length) return;
+      if (!window.echarts) {
+        this.error = 'ECharts failed to load';
+        return;
+      }
+      if (this._chart) {
+        this._chart.dispose();
+        this._chart = null;
+      }
+      this._chart = echarts.init(el, null, { renderer: 'canvas' });
+      this._ro = new ResizeObserver(() => this._chart && this._chart.resize());
+      this._ro.observe(el);
+
+      const tx = cssVar('--tx', '#cfd8dc');
+      const dim = cssVar('--dim', '#5c6d78');
+      const cn = cssVar('--cn', '#00f0ff');
+      const s1 = cssVar('--s1', '#161d25');
+      const bd = cssVar('--bd', '#2a3742');
+      const bright = cssVar('--bright', '#eceff1');
+
+      const nodes = (g.nodes || []).map((n) => ({
+        id: n.id,
+        name: n.label,
+        path: n.path,
+        symbolSize: Math.max(28, Math.min(48, 56 - (g.nodes.length > 20 ? 12 : 0))),
+        itemStyle: {
+          color: s1,
+          borderColor: cn,
+          borderWidth: 1.5,
+        },
+        label: {
+          show: true,
+          position: 'right',
+          color: bright,
+          fontSize: 11,
+          // Canvas renderer: ctx.font cannot resolve CSS custom properties — read the
+          // computed value or the labels silently fall back to the default sans.
+          fontFamily: cssVar('--mono', 'monospace'),
+        },
+      }));
+      const links = (g.edges || []).map((e) => ({
+        source: e.from,
+        target: e.to,
+        lineStyle: { color: dim, curveness: 0.12, width: 1.2 },
+      }));
+      const n = nodes.length;
+      // Force layout is fine for small graphs; damp motion for large monorepos.
+      const repulsion = n > 40 ? 80 : n > 15 ? 140 : 220;
+      const edgeLength = n > 40 ? 40 : n > 15 ? 70 : 100;
+
+      this._chart.setOption(
+        {
+          animationDuration: n > 30 ? 200 : 400,
+          tooltip: {
+            show: true,
+            appendToBody: true,
+            backgroundColor: s1,
+            borderColor: bd,
+            borderWidth: 1,
+            padding: [6, 10],
+            textStyle: { color: tx, fontSize: 11, fontFamily: 'var(--mono)' },
+            formatter: (p) => {
+              if (p.dataType === 'edge') {
+                const s = p.data.source;
+                const t = p.data.target;
+                const sn = nodes.find((x) => x.id === s);
+                const tn = nodes.find((x) => x.id === t);
+                return (sn ? sn.name : s) + ' → ' + (tn ? tn.name : t);
+              }
+              const d = p.data || {};
+              const path = d.path ? '<br/><span style="opacity:.7">' + d.path + '</span>' : '';
+              return (d.name || p.name || '') + path;
+            },
+          },
+          series: [
+            {
+              type: 'graph',
+              layout: 'force',
+              roam: true,
+              draggable: true,
+              data: nodes,
+              links,
+              edgeSymbol: ['none', 'arrow'],
+              edgeSymbolSize: [0, 8],
+              force: {
+                repulsion,
+                edgeLength,
+                gravity: 0.08,
+                friction: 0.6,
+              },
+              emphasis: {
+                focus: 'adjacency',
+                lineStyle: { width: 2, color: cn },
+                itemStyle: { borderColor: cn, borderWidth: 2 },
+              },
+            },
+          ],
+        },
+        true,
+      );
+    },
+  },
+};
+
+/**
  * A finished record's outcome for the Projects tab.
  * FAIL steps / error diagnostics beat a cancel bit (same rule as fold.outcomeOf).
  */
@@ -336,7 +577,9 @@ function fmtMillis(millis) {
   if (millis == null) return '';
   if (millis < 1000) return millis + ' ms';
   if (millis < 60_000) return (millis / 1000).toFixed(1) + ' s';
-  return Math.floor(millis / 60_000) + 'm ' + String(Math.round((millis % 60_000) / 1000)).padStart(2, '0') + 's';
+  // Floor whole seconds — rounding the remainder reached "1m 60s" (JK-1530).
+  const totalSec = Math.floor(millis / 1000);
+  return Math.floor(totalSec / 60) + 'm ' + String(totalSec % 60).padStart(2, '0') + 's';
 }
 
 Vue.createApp({
@@ -344,6 +587,9 @@ Vue.createApp({
     view: routeFromHash().view, // 'activity' | 'projects' | 'project' | 'status'
     selectedProjectDir: routeFromHash().dir, // the project whose detail page is open (#project/<dir>)
     projectMeta: null, // live /api/project payload (coord + description) for the open project
+    // JK-1542: Dependencies panel on the Project page — closed by default; graph fetch + echarts
+    // only when opened (ModuleDepGraph mounts lazily).
+    projectGraphOpen: false,
     connection: 'connecting', // 'connecting' | 'live' | 'offline' | 'unauthorized'
     status: null, // the /api/status payload
     metrics: null, // the /api/metrics payload (running build aggregates), shown on the Status view
@@ -358,6 +604,11 @@ Vue.createApp({
     browser: null, // the /api/fs payload while the workspace picker is open, else null
     browserMode: 'workspace', // 'workspace' | 'parent' (new-project parent dir)
     help: false, // the header Help/About modal
+    // Blocking gate when a required token is missing/invalid — no partial dashboard (docs/webclient.md).
+    authModal: false,
+    authTokenInput: '',
+    authError: null,
+    authBusy: false,
     newProjectOpen: false,
     newProjectBusy: false,
     newProjectError: null,
@@ -378,66 +629,25 @@ Vue.createApp({
     _offlineStatusTimer: null,
   }),
 
-  mounted() {
-    events(
-      (event) => {
-        // Live chrome vitals (JK-1495+): change-gated on the server; apply without folding cards.
-        if (event.type === 'status') {
-          this.applyStatusEvent(event.data);
-          return;
-        }
-        if (event.type === 'cache') {
-          this.applyCacheEvent(event.data);
-          return;
-        }
-        foldEvent(this.cards, { ...event, at: Date.now() });
-        // The build number + journal record are written just after request-finish (writeJournal),
-        // so re-pull history a beat later: it reconciles the live card (tagging its #number) and
-        // refreshes the Projects tab. Debounced so a burst of finishes triggers one reload.
-        if (event.type === 'request-finish') {
-          clearTimeout(this._reconcileTimer);
-          this._reconcileTimer = setTimeout(() => {
-            this.loadHistory();
-            this.loadProjectHistory();
-            // Metrics are view-scoped (JK-1503); refresh them only where they paint.
-            if (this.view === 'status' || this.view === 'projects' || this.view === 'project') {
-              this.refreshMetrics();
-            }
-          }, 500);
-        }
-      },
-      (state) => {
-        const wasOffline = this.connection === 'offline';
-        if (this.connection !== 'unauthorized' || state === 'live') this.connection = state;
-        if (state === 'live') {
-          this._offlineStatusBackoffMs = 5_000;
-          this.clearOfflineStatusFallback();
-          if (wasOffline) {
-            this.refresh(); // resync after an engine restart
-            this.loadHistory(); // re-seed persisted runs (dedupe keeps this idempotent)
-            this.loadProjectHistory();
-          } else if (this.cards.length === 0) {
-            // First open / hard-refresh: mount also loads history; re-try once the stream is live
-            // in case the earlier GET raced a cold engine or a missing token that is now present.
-            this.loadHistory();
-            this.loadProjectHistory();
-          }
-        } else if (state === 'offline') {
-          this.scheduleOfflineStatusFallback();
-        }
-      },
-    );
-    this.refresh();
-    this.loadHistory(); // backfill past builds so a reload/restart doesn't start from an empty feed
-    this.loadProjectHistory(); // so the Projects tab is populated the moment it's opened
+  async mounted() {
+    // Gate before hydrating: a missing/invalid token must not leave a half-working UI.
+    const authed = await this.checkAuth();
+    if (authed) {
+      this.connectEvents();
+      this.refresh();
+      this.loadHistory(); // backfill past builds so a reload/restart doesn't start from an empty feed
+      this.loadProjectHistory(); // so the Projects tab is populated the moment it's opened
+      if (this.view === 'project' && this.selectedProjectDir) this.loadProjectMeta(this.selectedProjectDir);
+    }
     // Back/forward and any hash change re-derive the route (openProject sets the hash, which lands here).
     window.addEventListener('hashchange', () => this.applyRoute());
     // JK-1500: pause offline REST polling while the tab is hidden; keep SSE open (orphan engine).
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) this.clearOfflineStatusFallback();
-      else if (this.connection !== 'live') this.scheduleOfflineStatusFallback();
+      else if (this.connection !== 'live' && this.connection !== 'unauthorized') {
+        this.scheduleOfflineStatusFallback();
+      }
     });
-    if (this.view === 'project' && this.selectedProjectDir) this.loadProjectMeta(this.selectedProjectDir);
     // Local clock only — no network (relative "ago" labels).
     setInterval(() => (this.now = Date.now()), 1_000);
   },
@@ -630,7 +840,202 @@ Vue.createApp({
   },
 
   methods: {
+    /**
+     * Open the blocking auth dialog and freeze live updates. When {@code clear} is true, drop a
+     * stored token that the engine just rejected.
+     */
+    markUnauthorized({ clear = false } = {}) {
+      if (clear) clearToken();
+      this.connection = 'unauthorized';
+      this.authModal = true;
+      this.clearOfflineStatusFallback();
+      if (this._eventSource) {
+        try {
+          this._eventSource.close();
+        } catch {
+          // already closed
+        }
+        this._eventSource = null;
+      }
+      // Drop partial chrome so the gated shell does not look "live" under the dialog.
+      this.status = null;
+      this.cache = null;
+      this.metrics = null;
+      this.engineLog = '';
+      this.configRows = [];
+      this.configPath = null;
+      this.cards = [];
+      this.projectHistory = [];
+      this.browser = null;
+      this.help = false;
+      this.newProjectOpen = false;
+    },
+
+    /** True when {@code e} is a 401 — marks unauthorized and returns true so callers can stop. */
+    handleHttpError(e) {
+      if (e && e.status === 401) {
+        // Tokenless loopback is deliberately open for watch-only (checkAuth's contract): a 401
+        // from a gated panel (metrics/log/config) is expected there, not a session failure —
+        // degrade that panel instead of wiping the cards and throwing the blocking gate
+        // (JK-1530). With a token present, a 401 means the token was rejected — gate as before.
+        if (!token() && loopback()) return true;
+        this.markUnauthorized({ clear: !!token() });
+        return true;
+      }
+      return false;
+    },
+
+    /**
+     * Session gate on load (and after a pasted token). Fails closed when:
+     * <ul>
+     *   <li>{@code GET /api/status} is 401 — bind requires a token for all reads (non-loopback)</li>
+     *   <li>a stored token is present but a always-gated probe rejects it</li>
+     * </ul>
+     * Loopback with no token remains open for watch-only (history/events/status).
+     */
+    async checkAuth() {
+      try {
+        await get('/api/status');
+      } catch (e) {
+        if (e.status === 401) {
+          this.markUnauthorized({ clear: !!token() });
+          return false;
+        }
+        // engine down / network — not an auth failure
+        return true;
+      }
+      if (!token()) return true;
+      // Prove a stored token still works (stale localStorage after rotate-token is the common case).
+      try {
+        await getText('/api/log?lines=1');
+      } catch (e) {
+        if (e.status === 401) {
+          this.markUnauthorized({ clear: true });
+          return false;
+        }
+      }
+      return true;
+    },
+
+    /** (Re)open the SSE stream — closed while unauthorized so a half-authed tab cannot look live. */
+    connectEvents() {
+      if (this._eventSource) {
+        try {
+          this._eventSource.close();
+        } catch {
+          // already closed
+        }
+        this._eventSource = null;
+      }
+      this._eventSource = events(
+        (event) => {
+          if (this.authModal || this.connection === 'unauthorized') return;
+          // Live chrome vitals (JK-1495+): change-gated on the server; apply without folding cards.
+          if (event.type === 'status') {
+            this.applyStatusEvent(event.data);
+            return;
+          }
+          if (event.type === 'cache') {
+            this.applyCacheEvent(event.data);
+            return;
+          }
+          foldEvent(this.cards, { ...event, at: Date.now() });
+          // The build number + journal record are written just after request-finish (writeJournal),
+          // so re-pull history a beat later: it reconciles the live card (tagging its #number) and
+          // refreshes the Projects tab. Debounced so a burst of finishes triggers one reload.
+          if (event.type === 'request-finish') {
+            clearTimeout(this._reconcileTimer);
+            this._reconcileTimer = setTimeout(() => {
+              this.loadHistory();
+              this.loadProjectHistory();
+              // Metrics are view-scoped (JK-1503); refresh them only where they paint.
+              if (this.view === 'status' || this.view === 'projects' || this.view === 'project') {
+                this.refreshMetrics();
+              }
+            }, 500);
+          }
+        },
+        (state) => {
+          // Unauthorized is sticky until a token is accepted — open loopback reads / SSE must not
+          // clear the gate and leave a half-working UI.
+          if (this.authModal || this.connection === 'unauthorized') return;
+          const wasOffline = this.connection === 'offline';
+          this.connection = state;
+          if (state === 'live') {
+            this._offlineStatusBackoffMs = 5_000;
+            this.clearOfflineStatusFallback();
+            if (wasOffline) {
+              this.refresh(); // resync after an engine restart
+              this.loadHistory(); // re-seed persisted runs (dedupe keeps this idempotent)
+              this.loadProjectHistory();
+            } else if (this.cards.length === 0) {
+              // First open / hard-refresh: mount also loads history; re-try once the stream is live
+              // in case the earlier GET raced a cold engine.
+              this.loadHistory();
+              this.loadProjectHistory();
+            }
+          } else if (state === 'offline') {
+            // EventSource's own retry cadence (~3s on refused connections) is shorter than the
+            // poll delay — re-arming on every onerror would perpetually reset the pending timer
+            // and the fallback poll would never actually run (JK-1518).
+            if (this._offlineStatusTimer == null) this.scheduleOfflineStatusFallback();
+          }
+        },
+      );
+    },
+
+    /** Accept a raw token or a full dashboard URL ending in {@code #t=…}. */
+    parseTokenInput(raw) {
+      const s = (raw || '').trim();
+      if (!s) return null;
+      const fromHash = /#t=([A-Za-z0-9_=-]+)/.exec(s);
+      if (fromHash) return fromHash[1];
+      if (/^[A-Za-z0-9_=-]+$/.test(s)) return s;
+      return null;
+    },
+
+    async submitAuthToken() {
+      const t = this.parseTokenInput(this.authTokenInput);
+      if (!t) {
+        this.authError =
+          'Paste the token or the full URL from `jk web` (it ends with #t=…).';
+        return;
+      }
+      this.authBusy = true;
+      this.authError = null;
+      applyToken(t);
+      try {
+        await get('/api/status');
+        // Status may be open without a token on loopback — prove the bearer is accepted.
+        try {
+          await getText('/api/log?lines=1');
+        } catch (e) {
+          if (e.status === 401) throw e;
+        }
+        this.authModal = false;
+        this.authTokenInput = '';
+        this.connection = 'connecting';
+        this.connectEvents();
+        // Re-derive the route from the hash: URL changes made while the gate was up were
+        // dropped by applyRoute's authModal guard (JK-1530). This also loads the route's data
+        // (project meta / metrics / status refresh).
+        this.applyRoute();
+        this.refresh();
+        this.loadHistory();
+        this.loadProjectHistory();
+      } catch (e) {
+        clearToken();
+        this.authError =
+          e.status === 401
+            ? 'That token was rejected. Run `jk web` for a fresh dashboard URL.'
+            : 'Could not reach the engine.';
+      } finally {
+        this.authBusy = false;
+      }
+    },
+
     setView(view) {
+      if (this.authModal) return;
       this.view = view;
       history.replaceState(null, '', '#' + view);
       if (view === 'status') this.refresh(); // full cache + metrics + log
@@ -644,10 +1049,11 @@ Vue.createApp({
 
     // Pull the raw journal (newest-first, up to 200 records); projectsList groups it per project.
     async loadProjectHistory() {
+      if (this.authModal) return;
       try {
         this.projectHistory = await get('/api/history');
       } catch (e) {
-        if (e.status === 401) this.connection = 'unauthorized';
+        this.handleHttpError(e);
       }
     },
 
@@ -707,9 +1113,13 @@ Vue.createApp({
 
     // Re-derive view + selected project from the hash, loading whatever that route needs.
     applyRoute() {
+      if (this.authModal) return;
       const r = routeFromHash();
+      const dirChanged = r.dir !== this.selectedProjectDir;
       this.view = r.view;
       this.selectedProjectDir = r.dir;
+      // Collapse the expensive graph panel when leaving project view or switching projects.
+      if (r.view !== 'project' || dirChanged) this.projectGraphOpen = false;
       if (r.view === 'project' && r.dir) this.loadProjectMeta(r.dir);
       if (r.view === 'projects') {
         this.loadProjectHistory();
@@ -718,13 +1128,19 @@ Vue.createApp({
       if (r.view === 'status') this.refresh();
     },
 
+    /** Toggle the Project-page Dependencies accordion (lazy graph load on open). */
+    toggleProjectGraph() {
+      this.projectGraphOpen = !this.projectGraphOpen;
+    },
+
     // Live coord + description for the open project, straight from its jk.toml on disk.
     async loadProjectMeta(dir) {
+      if (this.authModal) return;
       this.projectMeta = null;
       try {
         this.projectMeta = await get('/api/project?dir=' + encodeURIComponent(dir));
       } catch (e) {
-        if (e.status === 401) this.connection = 'unauthorized';
+        this.handleHttpError(e);
       }
       if (!this.projectHistory.length) this.loadProjectHistory(); // detail rows come from history
     },
@@ -768,7 +1184,9 @@ Vue.createApp({
       return Math.max(0, Math.floor((this.now - card.startedAt) / 1000));
     },
     etaSeconds(card) {
-      return Math.max(0, Math.floor(card.etaMillis / 1000));
+      // Run-wide total from the remaining-work etaMillis (see fold.etaTotalMillis, JK-1517).
+      const total = etaTotalMillis(card);
+      return total == null ? 0 : Math.max(0, Math.floor(total / 1000));
     },
     etaOverdue(card) {
       return this.hasEta(card) && this.elapsedSeconds(card) >= this.etaSeconds(card);
@@ -815,10 +1233,8 @@ Vue.createApp({
       try {
         await post('/api/cancel', { jid: card.id });
       } catch (e) {
-        this.buildError =
-          e.status === 401
-            ? 'Unauthorized — open the tokenized URL printed by `jk engine status`'
-            : e.error || 'Cancel failed';
+        if (this.handleHttpError(e)) return;
+        this.buildError = e.error || 'Cancel failed';
       }
     },
 
@@ -857,11 +1273,16 @@ Vue.createApp({
     // up under a "success details" accordion that is open while running and collapsed once done. A
     // module carrying failure output counts as failed even if its state was never marked (covers
     // request-level errors that land on a synthetic row).
+    // Order (CLI parity): active first (most recently updated), finished last.
     failedModules(card) {
-      return card.modules.filter((m) => m.state === 'failed' || m.diagnostics.length > 0);
+      return orderedModules(
+        card.modules.filter((m) => m.state === 'failed' || m.diagnostics.length > 0),
+      );
     },
     okModules(card) {
-      return card.modules.filter((m) => m.state !== 'failed' && m.diagnostics.length === 0);
+      return orderedModules(
+        card.modules.filter((m) => m.state !== 'failed' && m.diagnostics.length === 0),
+      );
     },
 
     // A module row's label: the artifact name from its coord (e.g. "core"), else the dir's tail.
@@ -904,11 +1325,18 @@ Vue.createApp({
      */
     scheduleOfflineStatusFallback() {
       this.clearOfflineStatusFallback();
-      if (document.hidden || this.connection === 'live') return;
+      if (document.hidden || this.connection === 'live' || this.connection === 'unauthorized') return;
       const delay = this._offlineStatusBackoffMs || 5_000;
       this._offlineStatusTimer = setTimeout(async () => {
         this._offlineStatusTimer = null;
-        if (document.hidden || this.connection === 'live') return;
+        if (document.hidden || this.connection === 'live' || this.connection === 'unauthorized') return;
+        // A non-200 answer (503 during an engine respawn, exhausted SSE budget, 421) kills
+        // EventSource for good — it only auto-reconnects after network errors. The offline poll
+        // doubles as the reconnect probe so the stream comes back once the engine is healthy
+        // (JK-1518).
+        if (this._eventSource && this._eventSource.readyState === EventSource.CLOSED) {
+          this.connectEvents();
+        }
         await this.refreshStatus();
         this._offlineStatusBackoffMs = Math.min(30_000, Math.round((this._offlineStatusBackoffMs || 5_000) * 1.5));
         this.scheduleOfflineStatusFallback();
@@ -918,13 +1346,14 @@ Vue.createApp({
     // Merge a live `status` SSE frame into this.status. Frames carry core vitals only (not httpUrl
     // / config knobs from GET /api/status) — keep REST fields when present.
     applyStatusEvent(data) {
+      if (this.authModal || this.connection === 'unauthorized') return;
       if (!data || typeof data !== 'object') return;
       this.status = this.status ? { ...this.status, ...data } : { ...data };
-      if (this.connection === 'unauthorized') this.connection = 'live';
     },
 
     // Thin live `cache` frames (JK-1502) merge into the last full REST snapshot; full frames replace.
     applyCacheEvent(data) {
+      if (this.authModal || this.connection === 'unauthorized') return;
       if (!data || typeof data !== 'object') return;
       if (data.thin) {
         const prev = this.cache || {};
@@ -936,23 +1365,24 @@ Vue.createApp({
 
     // REST hydrate / offline fallback for header sysbox + footer heap / builds-running.
     async refreshStatus() {
+      if (this.authModal) return;
       return this.fetchOnce('status', async () => {
         try {
           this.status = await get('/api/status');
-          if (this.connection === 'unauthorized') this.connection = 'live';
         } catch (e) {
-          if (e.status === 401) this.connection = 'unauthorized';
+          this.handleHttpError(e);
         }
       });
     },
 
     /** Full cache breakdown for Status panels (REST). Footer uses thin SSE while live. */
     async refreshCache() {
+      if (this.authModal) return;
       return this.fetchOnce('cache', async () => {
         try {
           this.cache = await get('/api/cache');
         } catch (e) {
-          if (e.status === 401) this.connection = 'unauthorized';
+          this.handleHttpError(e);
         }
       });
     },
@@ -962,36 +1392,37 @@ Vue.createApp({
      * opening Status/Projects or after a finished build while those views are visible.
      */
     async refreshMetrics() {
+      if (this.authModal) return;
       return this.fetchOnce('metrics', async () => {
         try {
           this.metrics = await get('/api/metrics');
         } catch (e) {
-          if (e.status === 401) this.connection = 'unauthorized';
+          this.handleHttpError(e);
         }
       });
     },
 
     async refreshLog() {
+      if (this.authModal) return;
       return this.fetchOnce('log', async () => {
         try {
           this.engineLog = await getText('/api/log?lines=100');
         } catch (e) {
-          if (e.status === 401) {
-            this.engineLog = '(engine log requires the tokened dashboard URL — reopen via `jk web`)';
-          }
+          if (this.handleHttpError(e)) return;
         }
       });
     },
 
     /** Effective machine config.toml (key / default / override) for the Status Configuration panel. */
     async refreshConfig() {
+      if (this.authModal) return;
       return this.fetchOnce('config', async () => {
         try {
           const payload = await get('/api/config');
           this.configPath = payload.path || null;
           this.configRows = Array.isArray(payload.rows) ? payload.rows : [];
         } catch (e) {
-          if (e.status === 401) this.connection = 'unauthorized';
+          this.handleHttpError(e);
         }
       });
     },
@@ -1001,6 +1432,7 @@ Vue.createApp({
      * Projects pulls metrics; Activity only needs status/cache hydrate when offline or first paint.
      */
     async refresh(opts) {
+      if (this.authModal) return;
       const sseLive = this.connection === 'live';
       const wantStatus = !opts || opts.status !== false;
       if (wantStatus) await this.refreshStatus();
@@ -1113,6 +1545,7 @@ Vue.createApp({
     // Always reassign `this.cards` so a bulk seed after a hard-refresh repaints (Vue tracks the
     // array identity as well as mutations).
     async loadHistory() {
+      if (this.authModal) return;
       return this.fetchOnce('history', async () => {
         try {
           const records = await get('/api/history');
@@ -1120,7 +1553,7 @@ Vue.createApp({
           seedFromHistory(next, records);
           this.cards = next;
         } catch (e) {
-          if (e.status === 401) this.connection = 'unauthorized';
+          this.handleHttpError(e);
         }
       });
     },
@@ -1133,15 +1566,14 @@ Vue.createApp({
         const i = this.cards.indexOf(card);
         if (i >= 0) this.cards.splice(i, 1);
       } catch (e) {
-        this.buildError =
-          e.status === 401
-            ? 'Unauthorized — open the tokenized URL printed by `jk engine status`'
-            : 'Could not delete this run';
+        if (this.handleHttpError(e)) return;
+        this.buildError = 'Could not delete this run';
       }
     },
 
     // ---- the workspace picker (Browse…) ----
     async openBrowser() {
+      if (this.authModal) return;
       // Start from the typed path when it looks absolute; the server defaults to $HOME otherwise.
       this.browserMode = 'workspace';
       const seed = this.buildDir.trim().startsWith('/') ? this.buildDir.trim() : null;
@@ -1149,6 +1581,7 @@ Vue.createApp({
     },
 
     async openParentBrowser() {
+      if (this.authModal) return;
       this.browserMode = 'parent';
       const seed =
         this.newProject.parentDir && this.newProject.parentDir.trim().startsWith('/')
@@ -1162,12 +1595,11 @@ Vue.createApp({
       try {
         this.browser = await get('/api/fs' + (dir ? '?dir=' + encodeURIComponent(dir) : ''));
       } catch (e) {
-        if (e.status === 401) {
-          const msg = 'Unauthorized — open the tokenized URL printed by `jk engine status`';
-          this.buildError = msg;
-          if (this.browserMode === 'parent') this.newProjectError = msg;
+        if (this.handleHttpError(e)) {
           this.browser = null;
-        } else if (this.browser) {
+          return;
+        }
+        if (this.browser) {
           // an unreadable subdir: stay where we are
         } else {
           const msg = 'Could not list that directory';
@@ -1194,15 +1626,31 @@ Vue.createApp({
 
     // ---- New project (JK-1193 → POST /api/projects) ----
     async openNewProject() {
+      if (this.authModal) return;
       this.newProjectOpen = true;
       this.newProjectError = null;
       this.newProjectBusy = false;
       // Defaults (group from git email like `jk new`, parent from history / well-known roots)
       // and the short-name catalog — load in parallel so the modal fills quickly.
-      const [defaults, templates] = await Promise.all([
-        get('/api/projects/defaults').catch(() => null),
-        get('/api/templates').catch(() => null),
-      ]);
+      let defaults = null;
+      let templates = null;
+      try {
+        [defaults, templates] = await Promise.all([
+          get('/api/projects/defaults').catch((e) => {
+            if (e.status === 401) throw e;
+            return null;
+          }),
+          get('/api/templates').catch((e) => {
+            if (e.status === 401) throw e;
+            return null;
+          }),
+        ]);
+      } catch (e) {
+        if (this.handleHttpError(e)) {
+          this.newProjectOpen = false;
+          return;
+        }
+      }
       if (defaults) {
         if (defaults.group && !this.newProject.group) this.newProject.group = defaults.group;
         if (defaults.parentDir && !this.newProject.parentDir) this.newProject.parentDir = defaults.parentDir;
@@ -1211,8 +1659,11 @@ Vue.createApp({
         try {
           const fs = await get('/api/fs');
           this.newProject.parentDir = fs.dir || '';
-        } catch (_) {
-          /* leave blank */
+        } catch (e) {
+          if (this.handleHttpError(e)) {
+            this.newProjectOpen = false;
+            return;
+          }
         }
       }
       if (!this.newProject.group) this.newProject.group = 'com.example';
@@ -1290,10 +1741,8 @@ Vue.createApp({
           this.setView('activity');
         }
       } catch (e) {
-        this.newProjectError =
-          e.status === 401
-            ? 'Unauthorized — open the tokenized URL printed by `jk engine status`'
-            : e.error || 'Could not create project';
+        if (this.handleHttpError(e)) return;
+        this.newProjectError = e.error || 'Could not create project';
       } finally {
         this.newProjectBusy = false;
       }
@@ -1304,6 +1753,7 @@ Vue.createApp({
     },
 
     async triggerBuild(dir) {
+      if (this.authModal) return;
       this.buildError = null;
       const target = (dir ?? this.buildDir).trim();
       if (!target) return;
@@ -1311,10 +1761,8 @@ Vue.createApp({
         await post('/api/build', { dir: target });
         if (dir == null) this.buildDir = '';
       } catch (e) {
-        this.buildError =
-          e.status === 401
-            ? 'Unauthorized — open the tokenized URL printed by `jk engine status`'
-            : e.error || 'Build request failed';
+        if (this.handleHttpError(e)) return;
+        this.buildError = e.error || 'Build request failed';
       }
     },
 
@@ -1329,7 +1777,9 @@ Vue.createApp({
       return { group: null, name: parts.length ? parts[parts.length - 1] : card.dir };
     },
     mib(bytes) {
-      return bytes < 0 ? '—' : Math.round(bytes / 1048576) + ' MiB';
+      // Null guard: a thin cache SSE frame can land before the full REST snapshot on a hard load
+      // to #status — section fields are absent and rendered "NaN MiB" without it (JK-1530).
+      return bytes == null || bytes < 0 ? '—' : Math.round(bytes / 1048576) + ' MiB';
     },
     // System RAM reads naturally in GiB (total / free physical memory the engine's OS reports).
     gib(bytes) {
@@ -1346,9 +1796,9 @@ Vue.createApp({
     versionPill() {
       return this.status ? 'v' + String(this.status.version).replace(/-SNAPSHOT$/, '') : '';
     },
-    // Footer "Builds Running": the engine's live pipeline count (authoritative, always in /api/status).
+    // Footer "Builds Running": the engine's live plan count (authoritative, always in /api/status).
     buildsRunning() {
-      return this.status ? this.status.activePipelines : 0;
+      return this.status ? this.status.activeBuildPlans : 0;
     },
     heapUsedPercent() {
       return this.percentOfMax(this.status?.heapUsedBytes);
@@ -1385,7 +1835,9 @@ Vue.createApp({
       if (millis == null) return '';
       if (millis < 1000) return millis + ' ms';
       if (millis < 60_000) return (millis / 1000).toFixed(1) + ' s';
-      return Math.floor(millis / 60_000) + 'm ' + Math.round((millis % 60_000) / 1000) + 's';
+      // Floor whole seconds — rounding the remainder reached "1m 60s" at e.g. 119,600ms (JK-1530).
+      const totalSec = Math.floor(millis / 1000);
+      return Math.floor(totalSec / 60) + 'm ' + (totalSec % 60) + 's';
     },
     // The run's byte counters, one row per scope (remote = network, local = build cache). Both the
     // rows and the size formatting are pure functions in fold.js so they're covered headlessly.
@@ -1414,7 +1866,7 @@ Vue.createApp({
         connecting: 'Connecting…',
         live: 'Live',
         offline: 'Engine stopped — run any jk command to restart it',
-        unauthorized: 'Unauthorized — open the URL printed by `jk engine status`',
+        unauthorized: 'Authorization required — run `jk web` or paste the tokenized URL',
       }[this.connection];
     },
   },
@@ -1422,4 +1874,5 @@ Vue.createApp({
   .component('jk-icon', JkIcon)
   .component('phase-chain', PhaseChain)
   .component('build-bars', BuildBars)
+  .component('module-dep-graph', ModuleDepGraph)
   .mount('#app');

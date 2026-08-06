@@ -132,7 +132,7 @@ class EngineClientTest {
     }
 
     @Test
-    void a_normal_engine_reports_not_draining_and_zero_pipelines() throws Exception {
+    void a_normal_engine_reports_not_draining_and_zero_plans() throws Exception {
         EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
         startInBackground(server);
@@ -144,7 +144,7 @@ class EngineClientTest {
                 .isFalse();
         var s = EngineClient.status(EnginePaths.activeSocket(p)).orElseThrow();
         assertThat(s.draining()).isFalse();
-        assertThat(s.activePipelines()).isZero();
+        assertThat(s.activeBuildPlans()).isZero();
 
         server.close();
     }

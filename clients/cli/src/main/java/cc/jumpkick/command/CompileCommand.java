@@ -5,13 +5,13 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.run.ConsoleSpec;
-import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -19,7 +19,7 @@ import java.util.List;
 
 /**
  * {@code jk compile} — lock, sync, then compile this project's sources to {@code target/classes}
- * (no resources, tests, or packaging). It runs the shared engine pipeline in compile-only
+ * (no resources, tests, or packaging). It runs the shared engine plan in compile-only
  * mode, so it auto-locks and syncs on first run, re-locks when {@code jk.toml} changed, and reuses
  * the same incremental compile cache as {@code jk build}/{@code jk test}.
  *
@@ -80,21 +80,21 @@ public final class CompileCommand implements CliCommand {
             }
         }
 
-        PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
-        // Engine-hosted: same pipeline as CompilePipelines; listener chosen when the step list
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
+        // Engine-hosted: same plan as CompilePlans; listener chosen when the step list
         // arrives over the socket.
         var session = cc.jumpkick.config.SessionContext.current();
         for (Path moduleDir : dirs) {
             ConsoleSpec spec = new ConsoleSpec(
                     "Compile", r -> Theme.colorize("Compiled", Theme.active().focused()), r -> "Compilation failed");
             String target = BuildCommand.buildTarget(moduleDir.resolve("jk.toml"), moduleDir);
-            PipelineResult result;
+            BuildPlanResult result;
             try {
                 result = cc.jumpkick.cli.engine.EngineClient.runCompile(
                         cc.jumpkick.engine.EnginePaths.current(),
                         new cc.jumpkick.cli.engine.EngineClient.CompileRequest(
                                 moduleDir, cache, profileName, session.offline(), session.force(), global.verbose),
-                        steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, target));
+                        steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, target));
             } catch (IOException e) {
                 CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Compile", e.getMessage()));
                 return Exit.SOFTWARE;

@@ -48,7 +48,7 @@ public final class BuildPluginHarness {
     /**
      * Adapt a capability plugin to the low-level {@link BuildPlugin} substrate: a {@code register()}
      * that drives each implemented capability against a phase-scoped context, recording the same
-     * {@link StepSpec}/{@link PackagerSpec} declarations. A plugin that implements {@link BuildPlugin}
+     * {@link TaskSpec}/{@link PackagerSpec} declarations. A plugin that implements {@link BuildPlugin}
      * directly is returned unchanged.
      */
     static BuildPlugin asBuildPlugin(cc.jumpkick.plugin.Plugin plugin) {
@@ -59,13 +59,13 @@ public final class BuildPluginHarness {
             String id = plugin.id();
             try {
                 if (plugin instanceof ResolveExtension e) {
-                    e.resolve(new DefaultStepContext(ctx, id, Phase.RESOLVE, Phase.COMPILE));
+                    e.resolve(new DefaultTaskContext(ctx, id));
                 }
                 if (plugin instanceof BuildExtension e) {
-                    e.build(new DefaultStepContext(ctx, id, Phase.COMPILE, Phase.PACKAGE));
+                    e.build(new DefaultTaskContext(ctx, id));
                 }
                 if (plugin instanceof TestExtension e) {
-                    e.test(new DefaultStepContext(ctx, id, Phase.COMPILE, Phase.TEST));
+                    e.test(new DefaultTaskContext(ctx, id));
                 }
                 if (plugin instanceof PackageExtension e) {
                     e.pack(new DefaultPackageContext(ctx));
@@ -77,7 +77,7 @@ public final class BuildPluginHarness {
             }
             if (plugin instanceof RunExtension || plugin instanceof ImageExtension
                     || plugin instanceof PublishExtension) {
-                throw new IllegalStateException("terminal-goal capability (run/image/publish) on plugin `" + id
+                throw new IllegalStateException("terminal-target capability (run/image/publish) on plugin `" + id
                         + "` runs via its own worker entry, not the build harness");
             }
         };
@@ -103,14 +103,14 @@ public final class BuildPluginHarness {
         switch (spec.op()) {
             case "describe" -> describe(recorder, out);
             case "run-step" -> {
-                StepSpec step = recorder.step(spec.stepName());
+                TaskSpec step = recorder.step(spec.stepName());
                 if (step == null || step.body() == null) {
                     out.emit("{\"t\":\"error\",\"code\":\"unknown-step\",\"message\":"
                             + Jsonl.quote("no registered step named " + spec.stepName()) + "}");
                     return 65;
                 }
                 try {
-                    step.body().run(new SpecStepExec(spec, out));
+                    step.body().run(new SpecTaskExec(spec, out));
                 } catch (Exception e) {
                     out.emit("{\"t\":\"error\",\"code\":\"step-failed\",\"message\":"
                             + Jsonl.quote(String.valueOf(e.getMessage())) + "}");
@@ -159,13 +159,11 @@ public final class BuildPluginHarness {
     }
 
     private static void describe(Recorder recorder, ProtocolWriter out) {
-        for (StepSpec step : recorder.steps()) {
-            StringBuilder b = new StringBuilder("{\"t\":\"step\",\"name\":")
+        for (TaskSpec step : recorder.steps()) {
+            StringBuilder b = new StringBuilder("{\"t\":\"task\",\"name\":")
                     .append(Jsonl.quote(step.name()))
-                    .append(",\"after\":")
-                    .append(Jsonl.quote(step.afterPhase().wireName()))
-                    .append(",\"before\":")
-                    .append(Jsonl.quote(step.beforePhase().wireName()))
+                    .append(",\"requires\":")
+                    .append(quoteArray(step.requires()))
                     .append(",\"inputs\":")
                     .append(quoteArray(step.declaredInputs().stream().map(In::wireName).toList()))
                     .append(",\"outputs\":")
@@ -208,7 +206,7 @@ public final class BuildPluginHarness {
     private static final class Recorder implements BuildPluginContext {
         private final PluginConfig config;
         private final ProjectFacts project;
-        private final List<StepSpec> steps = new ArrayList<>();
+        private final List<TaskSpec> steps = new ArrayList<>();
         private final List<PluginCommandSpec> commands = new ArrayList<>();
         private PackagerSpec packager;
 
@@ -228,7 +226,7 @@ public final class BuildPluginHarness {
         }
 
         @Override
-        public void step(StepSpec spec) {
+        public void task(TaskSpec spec) {
             steps.add(spec);
         }
 
@@ -241,12 +239,12 @@ public final class BuildPluginHarness {
             packager = spec;
         }
 
-        List<StepSpec> steps() {
+        List<TaskSpec> steps() {
             return steps;
         }
 
-        StepSpec step(String name) {
-            for (StepSpec s : steps) if (s.name().equals(name)) return s;
+        TaskSpec step(String name) {
+            for (TaskSpec s : steps) if (s.name().equals(name)) return s;
             return null;
         }
 
@@ -318,7 +316,8 @@ public final class BuildPluginHarness {
                 switch (String.valueOf(Jsonl.str(line, "t"))) {
                     case "op" -> {
                         op = String.valueOf(Jsonl.str(line, "op"));
-                        stepName = Jsonl.str(line, "step");
+                        stepName = Jsonl.str(line, "task");
+                        if (stepName == null || stepName.isBlank()) stepName = Jsonl.str(line, "step");
                         pluginId = String.valueOf(Jsonl.str(line, "plugin"));
                     }
                     case "config" -> {
@@ -392,7 +391,7 @@ public final class BuildPluginHarness {
 
     // ---- exec facades over the spec ---------------------------------------------------------
 
-    private record SpecStepExec(Spec spec, ProtocolWriter out) implements StepExec {
+    private record SpecTaskExec(Spec spec, ProtocolWriter out) implements TaskExec {
         @Override
         public Path classesDir() {
             return spec.classesDir();

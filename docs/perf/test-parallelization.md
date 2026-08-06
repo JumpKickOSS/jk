@@ -26,7 +26,7 @@ jk’s gap is **(2)** product quality + **(3)** policy — not inventing a secon
 
 | Layer | Behavior | Code |
 |-------|----------|------|
-| Cross-module test gate | Serial unless `Session.parallelTests` | `BuildPipelines` test gate; CLI `--parallel-tests` |
+| Cross-module test gate | Serial unless `Session.parallelTests` | `BuildPlanner` test gate; CLI `--parallel-tests` |
 | Module concurrency | `-j` / `Jobs` / cgroup cores | `Jobs`, `AvailableCpus`, scheduler width |
 | Per-module workers | `-w` default **0 (auto)**; explicit `≥1`; pull-queue when W>1 | `TestWorkers` + `JUnitLauncher` |
 | Class distribution | Concurrent deque of FQCNs (pull); min(workers, classCount) | `JUnitLauncher.runParallel` |
@@ -150,7 +150,7 @@ MODULES='shared/*,server/io,server/resolver,server/toolchain,server/engine,clien
 ## Refs
 
 - CLI: `BuildCommand` / `TestCommand` `--parallel-tests`, `-w`  
-- Engine: `JUnitLauncher`, `BuildPipelines` test gate, `HeapPlan.requestedJvms`  
+- Engine: `JUnitLauncher`, `BuildPlanner` test gate, `HeapPlan.requestedJvms`  
 - Jobs: `Jobs`, `AvailableCpus` (JK-1082 / 1084)  
 - Mill: https://mill-build.org/blog/11-jvm-test-parallelism.html  
 - **JUnit vs `-w`:** [junit-parallel-vs-jk-workers.md](junit-parallel-vs-jk-workers.md) (JK-1092)

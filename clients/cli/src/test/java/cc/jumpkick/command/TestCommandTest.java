@@ -60,7 +60,7 @@ class TestCommandTest {
     }
 
     // (Removed test_without_lockfile_errors: `jk test` no longer requires a
-    // pre-existing jk-lock.toml — the pipeline auto-locks like `jk build`/`run`.
+    // pre-existing jk-lock.toml — the plan auto-locks like `jk build`/`run`.
     // That auto-lock path is covered by the build/run integration tests.)
 
     // A genuinely test-source-free project: bare manifest, no sources. (`jk new`

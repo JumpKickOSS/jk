@@ -39,7 +39,7 @@ Companion: [test-parallelization.md](test-parallelization.md), [within-module-te
 
 | Layer | Behavior | Code |
 |-------|----------|------|
-| Cross-module test overlap | Default on; `--serial-tests` opts out | `Session.parallelTests`, `BuildPipelines` TEST_GATE, CLI `ParallelTestsOpts` |
+| Cross-module test overlap | Default on; `--serial-tests` opts out | `Session.parallelTests`, `BuildPlanner` TEST_GATE, CLI `ParallelTestsOpts` |
 | Within-module class shards | Default `-w0` auto; forks + pull queue | `TestWorkers`, `JUnitLauncher` |
 | Heap / neighborliness | Shrinks W / module peak JVMs | `HeapPlan`, `PluginSlots` |
 | In-process Jupiter parallel | **Not configured by jk** | Project may still enable via JUnit config on the test classpath |
@@ -96,11 +96,11 @@ jk test -w1
 
 When resolved workers are **&gt; 1** and Jupiter parallel is enabled on the test classpath
 (`junit-platform.properties` or system property `junit.jupiter.execution.parallel.enabled=true`),
-`JUnitLauncher` emits a pipeline **warn** (`code=jupiter-parallel`) describing the double-parallelism
+`JUnitLauncher` emits a plan **warn** (`code=jupiter-parallel`) describing the double-parallelism
 risk. Detection: `JupiterParallelDetect`. Does not fail the run.
 
 ## Refs
 
-- `TestWorkers`, `JUnitLauncher`, `BuildPipelines` TEST_GATE  
+- `TestWorkers`, `JUnitLauncher`, `BuildPlanner` TEST_GATE  
 - [JUnit 5 User Guide — Parallel Execution](https://junit.org/junit5/docs/current/user-guide/#writing-tests-parallel-execution)  
 - JK-1086 / JK-1087  

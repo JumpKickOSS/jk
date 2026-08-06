@@ -67,6 +67,7 @@ import cc.jumpkick.command.UpdateCommand;
 import cc.jumpkick.command.VerifyBuildCommand;
 import cc.jumpkick.command.VscodeCommand;
 import cc.jumpkick.command.WatchCommand;
+import cc.jumpkick.command.WebCommand;
 import cc.jumpkick.command.WhyCommand;
 import cc.jumpkick.command.WrapperCommand;
 import cc.jumpkick.config.JkConfig;
@@ -157,7 +158,8 @@ public final class CommandDispatch {
             new ActivateCommand(),
             new CompletionCommand(),
             new NewCommand(),
-            new InitCommand());
+            new InitCommand(),
+            new WebCommand());
 
     private static final Map<String, CliCommand> BY_NAME = index();
 

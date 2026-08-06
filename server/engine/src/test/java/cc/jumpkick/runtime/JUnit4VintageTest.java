@@ -7,8 +7,8 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -68,11 +68,11 @@ class JUnit4VintageTest {
                 """);
 
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
-        Pipeline lock = LockPipelines.lockPipeline(
+        BuildPlan lock = LockPlans.lockBuildPlan(
                 project, build, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).isTrue();
 
-        BuildPipelines.Inputs in = new BuildPipelines.Inputs(
+        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                 project,
                 cache,
                 project.resolve("jk.toml"),
@@ -88,7 +88,7 @@ class JUnit4VintageTest {
                 false,
                 java.util.Set.of(),
                 SessionContext.current());
-        PipelineResult result = BuildPipelines.coreBuilder(in).build().run();
+        BuildPlanResult result = BuildPlanner.coreBuilder(in).build().run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success())
                 .as("JUnit4 test discovered and passed via vintage")

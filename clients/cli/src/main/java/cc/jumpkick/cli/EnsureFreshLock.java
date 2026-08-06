@@ -11,7 +11,7 @@ import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
-import cc.jumpkick.run.PipelineListener;
+import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -23,7 +23,7 @@ import java.util.List;
  * <p>Users should never have to think about the lock: clones arrive with matching
  * {@code jk.toml}/{@code jk-lock.toml}, and any local manifest edit (or rare out-of-sync pair)
  * is repaired automatically the next time a lock-dependent command runs. When the lock is
- * missing or stale ({@link LockFreshness}), this runs the engine lock pipeline under a live
+ * missing or stale ({@link LockFreshness}), this runs the engine lock plan under a live
  * CommandWedge spinner ({@code Locking g:n…}). Fresh locks are a no-op.
  *
  * <p>Call sites: explain, tree, why, audit, deny, outdated, jshell, status, export, ide, sync,
@@ -89,9 +89,9 @@ public final class EnsureFreshLock {
 
             EngineClient.LockHandler quiet = new EngineClient.LockHandler() {
                 @Override
-                public PipelineListener onModuleStart(
-                        String moduleDir, String moduleCoord, List<cc.jumpkick.run.Step> steps) {
-                    return new PipelineListener() {};
+                public BuildPlanListener onModuleStart(
+                        String moduleDir, String moduleCoord, List<cc.jumpkick.run.Task> steps) {
+                    return new BuildPlanListener() {};
                 }
             };
 
@@ -150,9 +150,9 @@ public final class EnsureFreshLock {
     /** True when interactive AUTO mode (live spinners allowed). */
     public static boolean isInteractiveAuto(GlobalOptions global) {
         try {
-            return cc.jumpkick.cli.run.PipelineConsole.isInteractiveTerminal()
-                    && cc.jumpkick.cli.run.PipelineConsole.modeFor(global)
-                            == cc.jumpkick.cli.run.PipelineConsole.Mode.AUTO;
+            return cc.jumpkick.cli.run.BuildPlanConsole.isInteractiveTerminal()
+                    && cc.jumpkick.cli.run.BuildPlanConsole.modeFor(global)
+                            == cc.jumpkick.cli.run.BuildPlanConsole.Mode.AUTO;
         } catch (RuntimeException e) {
             return false;
         }

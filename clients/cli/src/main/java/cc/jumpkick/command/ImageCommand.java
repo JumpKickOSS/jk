@@ -4,14 +4,14 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.run.ConsoleSpec;
-import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -19,8 +19,8 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * {@code jk image} — build an OCI image (full build pipeline + Jib worker, engine-hosted). This
- * command renders streamed pipeline events.
+ * {@code jk image} — build an OCI image (full build plan + Jib worker, engine-hosted). This
+ * command renders streamed plan events.
  */
 public final class ImageCommand implements CliCommand {
 
@@ -109,14 +109,14 @@ public final class ImageCommand implements CliCommand {
             }
         }
         Path cache = cacheDirOverride != null ? cacheDirOverride : JkDirs.cache();
-        PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         String module = BuildCommand.buildTarget(jkBuildPath, projectDir);
 
-        PipelineResult result;
+        BuildPlanResult result;
         cc.jumpkick.run.TestSummary testResult;
-        // The wire has no real Pipeline, so the success tail renders from the structured fields the
-        // terminal pipeline-finish carries — the summary holder is populated before the console
-        // listener's own pipelineFinish fires, same holder pattern as TestCommand's hosted path.
+        // The wire has no real BuildPlan, so the success tail renders from the structured fields the
+        // terminal plan-finish carries — the summary holder is populated before the console
+        // listener's own planFinish fires, same holder pattern as TestCommand's hosted path.
         var session = cc.jumpkick.config.SessionContext.current();
         cc.jumpkick.cli.engine.EngineClient.ImageSummary[] summary =
                 new cc.jumpkick.cli.engine.EngineClient.ImageSummary[1];
@@ -149,7 +149,7 @@ public final class ImageCommand implements CliCommand {
                             session.force(),
                             session.config().rebuildOr(false),
                             global.verbose),
-                    steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, module),
+                    steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, module),
                     summary);
         } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Image", e.getMessage()));
@@ -158,7 +158,7 @@ public final class ImageCommand implements CliCommand {
         testResult = summary[0] != null ? summary[0].testResult() : null;
 
         if (!result.success()) {
-            for (PipelineResult.Diagnostic d : result.errors()) {
+            for (BuildPlanResult.Diagnostic d : result.errors()) {
                 if ("no-main".equals(d.code())) return Exit.USAGE;
             }
             if (testResult != null && !testResult.allPassed()) return 4;

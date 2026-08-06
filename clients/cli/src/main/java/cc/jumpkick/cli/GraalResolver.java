@@ -41,7 +41,7 @@ public final class GraalResolver {
     /**
      * The GraalVM home to use for {@code projectDir}, or empty when it couldn't be resolved (an
      * actionable message has already been printed — the caller should abort the native build). A
-     * non-empty result is suitable to pass as {@code graalHome} to {@code BuildPipelines.nativeStep}.
+     * non-empty result is suitable to pass as {@code graalHome} to {@code BuildPlanner.nativeStep}.
      */
     public Optional<Path> resolve(Path projectDir, String graalSpec) {
         String key = graalSpec == null ? "" : graalSpec;

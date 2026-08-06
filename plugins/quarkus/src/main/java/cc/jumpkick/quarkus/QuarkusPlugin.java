@@ -10,8 +10,7 @@ import cc.jumpkick.plugin.build.In;
 import cc.jumpkick.plugin.build.PackageContext;
 import cc.jumpkick.plugin.build.PackageExtension;
 import cc.jumpkick.plugin.build.PackageIo;
-import cc.jumpkick.plugin.build.Phase;
-import cc.jumpkick.plugin.build.StepExec;
+import cc.jumpkick.plugin.build.TaskExec;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.IOException;
 import java.net.URI;
@@ -53,8 +52,6 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
     @Override
     public void build(BuildContext ctx) {
         ctx.named(AUGMENT_STEP)
-                .after(Phase.COMPILE)
-                .before(Phase.PACKAGE)
                 .inputs(In.classes(), In.runtimeEntries(), In.config())
                 .outputs("quarkus-app")
                 .run(QuarkusPlugin::runAugment);
@@ -66,7 +63,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
                 .produce("quarkus-fast-jar", QuarkusPlugin::produceFastJar);
     }
 
-    private static void runAugment(StepExec exec) throws Exception {
+    private static void runAugment(TaskExec exec) throws Exception {
         Path classes = exec.classesDir();
         if (!Files.isDirectory(classes)) {
             throw new IOException("no classes to augment at " + classes);
@@ -107,7 +104,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         String quarkusVersion = exec.config().string("version");
         String packageType =
                 normalizePackageType(exec.config().stringOpt("package").orElse("fast-jar"));
-        StepExec.ToolRun.Result run = exec.java()
+        TaskExec.ToolRun.Result run = exec.java()
                 .classpath(cp)
                 .arg("-Djava.util.logging.manager=org.jboss.logmanager.LogManager")
                 .arg("-Djk.quarkus.package.type=" + packageType)

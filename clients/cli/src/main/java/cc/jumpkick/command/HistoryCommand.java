@@ -229,7 +229,7 @@ public final class HistoryCommand extends GroupCommand {
                             + "  " + duration(Jsonl.longValue(m, "millis", -1)));
             printRows(
                     lines,
-                    EngineProtocol.HISTORY_STEP,
+                    EngineProtocol.HISTORY_TASK,
                     "Steps",
                     p -> "  "
                             + Jsonl.str(p, "status") + "  " + Jsonl.str(p, "name")
@@ -238,7 +238,7 @@ public final class HistoryCommand extends GroupCommand {
                 StringBuilder b = new StringBuilder("  [")
                         .append(Jsonl.str(d, "severity"))
                         .append("] ");
-                appendIf(b, Jsonl.str(d, "step"), ": ");
+                appendIf(b, Jsonl.str(d, "task"), ": ");
                 appendIf(b, Jsonl.str(d, "test"), " — ");
                 String exc = Jsonl.str(d, "exceptionClass");
                 if (exc != null && !exc.isBlank()) b.append('(').append(exc).append(") ");

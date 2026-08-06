@@ -70,7 +70,7 @@ public final class EngineClient {
             long pid,
             long startedAtMillis,
             int activeRequests,
-            int activePipelines,
+            int activeBuildPlans,
             boolean draining,
             long heapUsedBytes,
             long heapCommittedBytes,
@@ -140,7 +140,7 @@ public final class EngineClient {
                     Jsonl.longValue(ack, "pid", -1),
                     Jsonl.longValue(ack, "startedAt", -1),
                     Jsonl.intValue(ack, "activeRequests", -1),
-                    Jsonl.intValue(ack, "activePipelines", 0),
+                    Jsonl.intValue(ack, "activeBuildPlans", 0),
                     Jsonl.bool(ack, "draining", false),
                     Jsonl.longValue(ack, "heapUsedBytes", -1),
                     Jsonl.longValue(ack, "heapCommittedBytes", -1),
@@ -184,7 +184,7 @@ public final class EngineClient {
         try (SocketChannel ch = connect(socket)) {
             String bye = exchange(ch, EngineProtocol.shutdown(false));
             if (!EngineProtocol.BYE.equals(EngineProtocol.typeOf(bye))) return -1;
-            return Jsonl.intValue(bye, "pipelines", 0);
+            return Jsonl.intValue(bye, "plans", 0);
         } catch (IOException e) {
             return -1;
         }
@@ -559,13 +559,13 @@ public final class EngineClient {
     }
 
     /**
-     * Run a single project's test pipeline against the engine (Step 3) — see {@link
+     * Run a single project's test plan against the engine (Task 3) — see {@link
      * EngineBuildListenerAdapter#runTest} for the exact contract.
      */
-    public static cc.jumpkick.run.PipelineResult runTest(
+    public static cc.jumpkick.run.BuildPlanResult runTest(
             EnginePaths.Paths paths,
             TestRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Step>, cc.jumpkick.run.PipelineListener> listenerFactory,
+            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
             cc.jumpkick.run.TestSummary[] testResultOut)
             throws IOException {
         return EngineBuildListenerAdapter.runTest(paths, req, listenerFactory, testResultOut);
@@ -616,10 +616,10 @@ public final class EngineClient {
      * {@code BuildCommand.runForDir}'s {@code agg == null} branch — see {@link
      * EngineBuildListenerAdapter#runSingleBuild} for the exact contract.
      */
-    public static cc.jumpkick.run.PipelineResult runSingleBuild(
+    public static cc.jumpkick.run.BuildPlanResult runSingleBuild(
             EnginePaths.Paths paths,
             SingleBuildRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Step>, cc.jumpkick.run.PipelineListener> listenerFactory,
+            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
             cc.jumpkick.run.TestSummary[] testResultOut,
             String[] buildOutcomeOut)
             throws IOException {
@@ -747,8 +747,10 @@ public final class EngineClient {
             boolean serial,
             boolean parallelTests,
             boolean verbose,
-            boolean rebuild) {
-        /** Backward-compatible ctor (rebuild=false). */
+            boolean rebuild,
+            /** Module-concurrency cap from {@code -j} — same as workspace build. */
+            int maxModuleConcurrency) {
+        /** Backward-compatible ctor (rebuild=false, maxModuleConcurrency from serial). */
         public ExplainRequest(
                 Path entryDir,
                 Path cache,
@@ -759,7 +761,44 @@ public final class EngineClient {
                 boolean serial,
                 boolean parallelTests,
                 boolean verbose) {
-            this(entryDir, cache, workers, skipTests, profile, jdksDir, serial, parallelTests, verbose, false);
+            this(
+                    entryDir,
+                    cache,
+                    workers,
+                    skipTests,
+                    profile,
+                    jdksDir,
+                    serial,
+                    parallelTests,
+                    verbose,
+                    false,
+                    serial ? 1 : 0);
+        }
+
+        /** Backward-compatible ctor with rebuild, no jobs clamp beyond serial. */
+        public ExplainRequest(
+                Path entryDir,
+                Path cache,
+                int workers,
+                boolean skipTests,
+                String profile,
+                Path jdksDir,
+                boolean serial,
+                boolean parallelTests,
+                boolean verbose,
+                boolean rebuild) {
+            this(
+                    entryDir,
+                    cache,
+                    workers,
+                    skipTests,
+                    profile,
+                    jdksDir,
+                    serial,
+                    parallelTests,
+                    verbose,
+                    rebuild,
+                    serial ? 1 : 0);
         }
     }
 
@@ -857,13 +896,13 @@ public final class EngineClient {
      * A lock/update cascade's client-side renderer contract — see {@link EngineResolveAdapter} for
      * the wire mechanics. {@code onModuleStart} is invoked once per module (entry project first,
      * then workspace modules in declaration order), after its step list has arrived, and returns
-     * the {@link cc.jumpkick.run.PipelineListener} the module's wire events should drive — the same
-     * listener the in-process path would attach to the live pipeline. {@code onPackage} fires per
+     * the {@link cc.jumpkick.run.BuildPlanListener} the module's wire events should drive — the same
+     * listener the in-process path would attach to the live plan. {@code onPackage} fires per
      * resolved package (plain, unthemed — the renderer colorizes); {@code onModuleFinish} fires
-     * after that listener's own {@code pipelineFinish} has been dispatched.
+     * after that listener's own {@code planFinish} has been dispatched.
      */
     public interface LockHandler {
-        cc.jumpkick.run.PipelineListener onModuleStart(String dir, String coord, List<cc.jumpkick.run.Step> steps);
+        cc.jumpkick.run.BuildPlanListener onModuleStart(String dir, String coord, List<cc.jumpkick.run.Task> steps);
 
         default void onPackage(String dir, String name, String version) {}
 
@@ -876,14 +915,14 @@ public final class EngineClient {
             onPackage(dir, name, version);
         }
 
-        default void onModuleFinish(String dir, cc.jumpkick.run.PipelineResult result, LockCounts counts) {}
+        default void onModuleFinish(String dir, cc.jumpkick.run.BuildPlanResult result, LockCounts counts) {}
     }
 
-    /** A finished lock/update module's written-lockfile counts ({@code -1} when the pipeline failed before writing). */
+    /** A finished lock/update module's written-lockfile counts ({@code -1} when the plan failed before writing). */
     public record LockCounts(long packages, long sources, long plugins) {}
 
     /**
-     * A lock/update request's terminal outcome. {@code errors} carries pre-pipeline failures (manifest
+     * A lock/update request's terminal outcome. {@code errors} carries pre-plan failures (manifest
      * parse, workspace module load) as plain text; {@code refreshed} is {@code jk update --git}'s
      * refreshed count ({@code -1} otherwise). {@code exitCode} is authoritative — computed
      * engine-side from the step statuses (resolve failure exits 6, config problems 2).
@@ -919,14 +958,14 @@ public final class EngineClient {
     }
 
     /**
-     * Run {@code jk sync}'s single pipeline against the engine — see {@link
+     * Run {@code jk sync}'s single plan against the engine — see {@link
      * EngineResolveAdapter#runSync} for the exact contract (the {@code jk test} listener-factory
      * shape, plus fetched/up-to-date count holders for the summary line).
      */
-    public static cc.jumpkick.run.PipelineResult runSync(
+    public static cc.jumpkick.run.BuildPlanResult runSync(
             EnginePaths.Paths paths,
             SyncRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Step>, cc.jumpkick.run.PipelineListener> listenerFactory,
+            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
             long[] fetchedOut,
             long[] upToDateOut)
             throws IOException {
@@ -953,14 +992,14 @@ public final class EngineClient {
             Path entryDir, Path cache, String severity, java.net.URI osvBatchUrl, java.net.URI osvVulnsUrl) {}
 
     /**
-     * Run {@code jk audit}'s pipeline against the engine (the worker forks engine-side). Findings
+     * Run {@code jk audit}'s plan against the engine (the worker forks engine-side). Findings
      * stream to {@code findings} as plain structured strings — the command assembles/renders the
      * report and applies the severity threshold itself.
      */
-    public static cc.jumpkick.run.PipelineResult runAudit(
+    public static cc.jumpkick.run.BuildPlanResult runAudit(
             EnginePaths.Paths paths,
             AuditRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Step>, cc.jumpkick.run.PipelineListener> listenerFactory,
+            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
             cc.jumpkick.runtime.HostedEvents.FindingObserver findings)
             throws IOException {
         return EnginePluginAdapter.stream(
@@ -994,19 +1033,19 @@ public final class EngineClient {
             boolean offline,
             boolean verbose) {}
 
-    /** A hosted {@code jk format} run's summary, decoded from the terminal pipeline-finish. */
+    /** A hosted {@code jk format} run's summary, decoded from the terminal plan-finish. */
     public record FormatOutcome(
-            cc.jumpkick.run.PipelineResult result, int changed, int clean, int errors, int total, int workerExit) {}
+            cc.jumpkick.run.BuildPlanResult result, int changed, int clean, int errors, int total, int workerExit) {}
 
     /**
-     * Run {@code jk format}'s pipeline against the engine (source collection, formatter-jar resolution,
+     * Run {@code jk format}'s plan against the engine (source collection, formatter-jar resolution,
      * and the worker fork all engine-side). Per-file results stream to {@code files}; the counts
      * (and the worker's check-mode exit code) ride the returned outcome.
      */
     public static FormatOutcome runFormat(
             EnginePaths.Paths paths,
             FormatRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Step>, cc.jumpkick.run.PipelineListener> listenerFactory,
+            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
             cc.jumpkick.runtime.HostedEvents.FileObserver files)
             throws IOException {
         EnginePluginAdapter.HostedFinish finish = EnginePluginAdapter.stream(
@@ -1060,14 +1099,14 @@ public final class EngineClient {
             cc.jumpkick.credential.RepoCredential credential,
             boolean verbose) {}
 
-    /** A hosted {@code jk publish} run's summary, decoded from the terminal pipeline-finish. */
-    public record PublishOutcome(cc.jumpkick.run.PipelineResult result, int files) {}
+    /** A hosted {@code jk publish} run's summary, decoded from the terminal plan-finish. */
+    public record PublishOutcome(cc.jumpkick.run.BuildPlanResult result, int files) {}
 
-    /** Run {@code jk publish}'s pipeline against the engine (the publisher worker forks engine-side). */
+    /** Run {@code jk publish}'s plan against the engine (the publisher worker forks engine-side). */
     public static PublishOutcome runPublish(
             EnginePaths.Paths paths,
             PublishRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Step>, cc.jumpkick.run.PipelineListener> listenerFactory)
+            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
             throws IOException {
         String authType;
         String user = null;
@@ -1129,7 +1168,7 @@ public final class EngineClient {
     /**
      * A hosted {@code jk image} run's structured summary. Exactly one of {@code tarball} (tarball
      * mode) or {@code daemonExe} (daemon-load mode) is non-null, or neither (registry push — render
-     * {@code ref}); {@code testResult} is non-null when the pipeline's run-tests step reported
+     * {@code ref}); {@code testResult} is non-null when the plan's run-tests step reported
      * counts.
      */
     public record ImageSummary(
@@ -1141,16 +1180,16 @@ public final class EngineClient {
             String daemonExe) {}
 
     /**
-     * Run {@code jk image}'s pipeline against the engine (full pipeline + image tail engine-side).
-     * {@code summaryOut} (a single-slot holder) is populated from the terminal pipeline-finish
-     * <em>before</em> it reaches {@code listenerFactory}'s listener — whose own {@code pipelineFinish}
+     * Run {@code jk image}'s plan against the engine (full plan + image tail engine-side).
+     * {@code summaryOut} (a single-slot holder) is populated from the terminal plan-finish
+     * <em>before</em> it reaches {@code listenerFactory}'s listener — whose own {@code planFinish}
      * handler renders the success tail from those fields, exactly the {@code runTest} holder
      * pattern.
      */
-    public static cc.jumpkick.run.PipelineResult runImage(
+    public static cc.jumpkick.run.BuildPlanResult runImage(
             EnginePaths.Paths paths,
             ImageRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Step>, cc.jumpkick.run.PipelineListener> listenerFactory,
+            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
             ImageSummary[] summaryOut)
             throws IOException {
         return EnginePluginAdapter.stream(
@@ -1196,15 +1235,15 @@ public final class EngineClient {
     public record ImportRequest(
             Path source, Path out, Path baseDir, Path tmpDir, boolean force, Path report, Path cache) {}
 
-    /** A hosted {@code jk import} run's summary, decoded from the terminal pipeline-finish. */
+    /** A hosted {@code jk import} run's summary, decoded from the terminal plan-finish. */
     public record ImportOutcome(
-            cc.jumpkick.run.PipelineResult result, int exitCode, int warnings, String error, String diag) {}
+            cc.jumpkick.run.BuildPlanResult result, int exitCode, int warnings, String error, String diag) {}
 
-    /** Run {@code jk import}'s pipeline against the engine, streaming progress notes to {@code notes}. */
+    /** Run {@code jk import}'s plan against the engine, streaming progress notes to {@code notes}. */
     public static ImportOutcome runImport(
             EnginePaths.Paths paths,
             ImportRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Step>, cc.jumpkick.run.PipelineListener> listenerFactory,
+            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
             cc.jumpkick.runtime.HostedEvents.NoteObserver notes)
             throws IOException {
         EnginePluginAdapter.HostedFinish finish = EnginePluginAdapter.stream(
@@ -1243,20 +1282,20 @@ public final class EngineClient {
                         cache.toString(), projectDir.toString(), toolsRoot.toString(), noDiscover, gradle));
     }
 
-    // ---- hosted pipeline commands ----------------------------------------------------------------
+    // ---- hosted plan commands ----------------------------------------------------------------
 
     /** Everything an engine-hosted {@code jk compile} needs — mirrors {@code CompileCommand}'s local fields. */
     public record CompileRequest(
             Path entryDir, Path cache, String profile, boolean offline, boolean force, boolean verbose) {}
 
     /**
-     * Run {@code jk compile}'s compile-only pipeline against the engine — {@code jk test}'s
-     * listener-factory shape, plain terminal pipeline-finish.
+     * Run {@code jk compile}'s compile-only plan against the engine — {@code jk test}'s
+     * listener-factory shape, plain terminal plan-finish.
      */
-    public static cc.jumpkick.run.PipelineResult runCompile(
+    public static cc.jumpkick.run.BuildPlanResult runCompile(
             EnginePaths.Paths paths,
             CompileRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Step>, cc.jumpkick.run.PipelineListener> listenerFactory)
+            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
             throws IOException {
         return EnginePluginAdapter.stream(
                         paths,
@@ -1320,14 +1359,14 @@ public final class EngineClient {
             boolean verbose) {}
 
     /**
-     * Run {@code jk install}'s build + cache-install pipeline against the engine — {@link #runTest}'s
-     * exact contract ({@code testResultOut} settles before the terminal pipeline-finish reaches the
+     * Run {@code jk install}'s build + cache-install plan against the engine — {@link #runTest}'s
+     * exact contract ({@code testResultOut} settles before the terminal plan-finish reaches the
      * listener). The launcher-writing "make install" half stays in the calling command.
      */
-    public static cc.jumpkick.run.PipelineResult runInstall(
+    public static cc.jumpkick.run.BuildPlanResult runInstall(
             EnginePaths.Paths paths,
             InstallRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Step>, cc.jumpkick.run.PipelineListener> listenerFactory,
+            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
             cc.jumpkick.run.TestSummary[] testResultOut)
             throws IOException {
         return EngineBuildListenerAdapter.runInstall(paths, req, listenerFactory, testResultOut);
@@ -1341,18 +1380,18 @@ public final class EngineClient {
         }
     }
 
-    /** A hosted git fetch's outcome: the pipeline result plus the materialized checkout + sha (null on failure). */
-    public record GitFetchOutcome(cc.jumpkick.run.PipelineResult result, Path checkout, String sha) {}
+    /** A hosted git fetch's outcome: the plan result plus the materialized checkout + sha (null on failure). */
+    public record GitFetchOutcome(cc.jumpkick.run.BuildPlanResult result, Path checkout, String sha) {}
 
     /**
      * Materialize a git checkout via the engine ({@code jk install <git-url>}'s clone half; git
      * runs in-process in the engine). The checkout path + resolved sha ride the terminal
-     * pipeline-finish and feed the follow-up {@link #runInstall}.
+     * plan-finish and feed the follow-up {@link #runInstall}.
      */
     public static GitFetchOutcome runGitFetch(
             EnginePaths.Paths paths,
             GitFetchRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Step>, cc.jumpkick.run.PipelineListener> listenerFactory)
+            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
             throws IOException {
         EnginePluginAdapter.HostedFinish finish = EnginePluginAdapter.stream(
                 paths,
@@ -1382,22 +1421,22 @@ public final class EngineClient {
             String coord, List<String> with, String bin, String mainClass, java.net.URI repoUrl, Path cache) {}
 
     /**
-     * A hosted tool resolution's outcome: the pipeline result plus the pinned {@code g:a:v} the engine
+     * A hosted tool resolution's outcome: the plan result plus the pinned {@code g:a:v} the engine
      * landed on, the resolved main class, and the classpath (null/empty on failure) — the
      * ingredients of a client-side {@code ToolEnv}.
      */
     public record ToolResolveOutcome(
-            cc.jumpkick.run.PipelineResult result, String coord, String mainClass, List<Path> classpath) {}
+            cc.jumpkick.run.BuildPlanResult result, String coord, String mainClass, List<Path> classpath) {}
 
     /**
      * Resolve a Maven-published CLI tool against the engine (the POM walk + jar fetches run
-     * engine-side; see {@code ToolPipelines}). The launcher write / inheritIO exec stays in the calling
+     * engine-side; see {@code ToolPlans}). The launcher write / inheritIO exec stays in the calling
      * command — it owns the user's {@code ~/.local/bin} and terminal.
      */
     public static ToolResolveOutcome runToolResolve(
             EnginePaths.Paths paths,
             ToolResolveRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Step>, cc.jumpkick.run.PipelineListener> listenerFactory)
+            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
             throws IOException {
         EnginePluginAdapter.HostedFinish finish = EnginePluginAdapter.stream(
                 paths,
@@ -1440,11 +1479,11 @@ public final class EngineClient {
     }
 
     /**
-     * A hosted script preparation's outcome: the pipeline result plus the exec ingredients — fields not
+     * A hosted script preparation's outcome: the plan result plus the exec ingredients — fields not
      * applicable to the mode (and everything on failure) are {@code null}/empty.
      */
     public record ScriptPrepareOutcome(
-            cc.jumpkick.run.PipelineResult result,
+            cc.jumpkick.run.BuildPlanResult result,
             String mainClass,
             List<Path> classpath,
             Path classesDir,
@@ -1454,13 +1493,13 @@ public final class EngineClient {
     /**
      * Prepare a loose script/jar against the engine ({@code jk tool run <file>}: header parse, dep
      * resolution, compile / kotlinc provision / manifest inspection all engine-side — see {@code
-     * ScriptPipelines}). The exec of the prepared program stays in the calling command — it owns this
+     * ScriptPlans}). The exec of the prepared program stays in the calling command — it owns this
      * terminal.
      */
     public static ScriptPrepareOutcome runScriptPrepare(
             EnginePaths.Paths paths,
             ScriptPrepareRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Step>, cc.jumpkick.run.PipelineListener> listenerFactory)
+            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
             throws IOException {
         EnginePluginAdapter.HostedFinish finish = EnginePluginAdapter.stream(
                 paths,
@@ -1517,23 +1556,23 @@ public final class EngineClient {
         }
     }
 
-    /** A hosted cache maintenance op's summary, decoded from the terminal pipeline-finish ({@code -1} = n/a). */
+    /** A hosted cache maintenance op's summary, decoded from the terminal plan-finish ({@code -1} = n/a). */
     public record CacheMaintSummary(long files, long bytes, long reachableEvicted, long repoLinks) {}
 
     /**
      * Run a cache maintenance op against the engine, which executes it as an idle-boundary job: the
-     * mutation waits until no pipeline is in flight (and blocks new ones while it runs), holding the
+     * mutation waits until no plan is in flight (and blocks new ones while it runs), holding the
      * cross-process {@code.prune.lock} throughout. {@code onWait} fires when the engine reports the
-     * job is queued — {@code pipelines} in-flight builds ({@code external=true}: another process's
+     * job is queued — {@code plans} in-flight builds ({@code external=true}: another process's
      * prune) — so the command can explain the pause before the progress UI starts. {@code
-     * summaryOut} (a single-slot holder) is populated from the terminal pipeline-finish <em>before</em>
-     * it reaches {@code listenerFactory}'s listener, whose own {@code pipelineFinish} handler renders
+     * summaryOut} (a single-slot holder) is populated from the terminal plan-finish <em>before</em>
+     * it reaches {@code listenerFactory}'s listener, whose own {@code planFinish} handler renders
      * the summary line from those fields — the {@code runImage} holder pattern.
      */
-    public static cc.jumpkick.run.PipelineResult runCacheMaintenance(
+    public static cc.jumpkick.run.BuildPlanResult runCacheMaintenance(
             EnginePaths.Paths paths,
             CacheMaintRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Step>, cc.jumpkick.run.PipelineListener> listenerFactory,
+            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
             java.util.function.ObjIntConsumer<Boolean> onWait,
             CacheMaintSummary[] summaryOut)
             throws IOException {
@@ -1554,7 +1593,7 @@ public final class EngineClient {
                         "cache-" + req.op(),
                         listenerFactory,
                         (type, line) -> onWait.accept(
-                                Jsonl.bool(line, "external", false), Jsonl.intValue(line, "pipelines", 0)),
+                                Jsonl.bool(line, "external", false), Jsonl.intValue(line, "plans", 0)),
                         line -> summaryOut[0] = new CacheMaintSummary(
                                 Jsonl.longValue(line, "cacheFiles", -1),
                                 Jsonl.longValue(line, "cacheBytes", -1),

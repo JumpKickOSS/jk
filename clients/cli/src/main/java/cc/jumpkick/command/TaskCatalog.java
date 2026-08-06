@@ -2,7 +2,7 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.run.StepNames;
+import cc.jumpkick.run.TaskNames;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -13,8 +13,8 @@ import java.util.Optional;
 import java.util.function.Function;
 
 /**
- * First-party build pipeline tasks for {@code jk tasks} / {@code jk show} / {@code jk inspect}
- * . Names align with {@link StepNames} where possible; a few Mill-friendly aliases
+ * First-party build plan tasks for {@code jk tasks} / {@code jk show} / {@code jk inspect}
+ * . Names align with {@link TaskNames} where possible; a few Mill-friendly aliases
  * ({@code compile-main}, {@code package}) resolve to the same entry.
  */
 final class TaskCatalog {
@@ -33,20 +33,20 @@ final class TaskCatalog {
     }
 
     private static final List<TaskDef> BUILD_TASKS = List.of(
-            def(StepNames.PARSE_BUILD, "setup", "Parse jk.toml / workspace modules", null),
-            def(StepNames.RESOLVE_DEPS, "setup", "Resolve dependencies / lock materialize", null),
-            def(StepNames.ENSURE_JDK, "setup", "Ensure configured JDK is available", null),
+            def(TaskNames.PARSE_BUILD, "setup", "Parse jk.toml / workspace modules", null),
+            def(TaskNames.RESOLVE_DEPS, "setup", "Resolve dependencies / lock materialize", null),
+            def(TaskNames.ENSURE_JDK, "setup", "Ensure configured JDK is available", null),
             def(
-                    StepNames.COMPILE_JAVA,
+                    TaskNames.COMPILE_JAVA,
                     "compile",
                     "Compile main Java sources",
                     BuildLayout::classesDir,
                     "compile-main",
                     "compile"),
-            def(StepNames.COMPILE_KOTLIN, "compile", "Compile main Kotlin sources", BuildLayout::kotlinClassesDir),
-            def(StepNames.COMPILE_GROOVY, "compile", "Compile main Groovy sources", BuildLayout::groovyClassesDir),
+            def(TaskNames.COMPILE_KOTLIN, "compile", "Compile main Kotlin sources", BuildLayout::kotlinClassesDir),
+            def(TaskNames.COMPILE_GROOVY, "compile", "Compile main Groovy sources", BuildLayout::groovyClassesDir),
             def(
-                    StepNames.ASSEMBLE_CLASSES,
+                    TaskNames.ASSEMBLE_CLASSES,
                     "compile",
                     "Merge language outputs into classes/main",
                     BuildLayout::classesDir),
@@ -56,28 +56,28 @@ final class TaskCatalog {
                     "Project build-logic SPI (AFTER_COMPILE)",
                     BuildLayout::classesDir),
             def(
-                    StepNames.COPY_RESOURCES,
+                    TaskNames.COPY_RESOURCES,
                     "compile",
                     "Copy main resources + AFTER_RESOURCES build-logic",
                     BuildLayout::classesDir,
                     "resources"),
-            def(StepNames.COMPILE_TEST, "test", "Compile test sources", BuildLayout::testClassesDir),
-            def(StepNames.RUN_TESTS, "test", "Run tests", BuildLayout::testResultsDir, "test"),
+            def(TaskNames.COMPILE_TEST, "test", "Compile test sources", BuildLayout::testClassesDir),
+            def(TaskNames.RUN_TESTS, "test", "Run tests", BuildLayout::testResultsDir, "test"),
             def(
                     "build-logic-before-package",
                     "package",
                     "Project build-logic SPI (BEFORE_PACKAGE)",
                     BuildLayout::classesDir),
-            def(StepNames.PACKAGE_JAR, "package", "Package main jar", BuildLayout::mainJar, "package", "jar"),
+            def(TaskNames.PACKAGE_JAR, "package", "Package main jar", BuildLayout::mainJar, "package", "jar"),
             def(
-                    StepNames.PACKAGE_ASSEMBLY,
+                    TaskNames.PACKAGE_ASSEMBLY,
                     "package",
                     "Package assembly (fat) jar",
                     BuildLayout::assemblyJar,
                     "assembly"),
-            def(StepNames.WRITE_STAMP, "package", "Write Java compile freshness stamp", null),
-            def(StepNames.WRITE_STAMP_KOTLIN, "package", "Write Kotlin compile freshness stamp", null),
-            def(StepNames.WRITE_STAMP_GROOVY, "package", "Write Groovy compile freshness stamp", null));
+            def(TaskNames.WRITE_STAMP, "package", "Write Java compile freshness stamp", null),
+            def(TaskNames.WRITE_STAMP_KOTLIN, "package", "Write Kotlin compile freshness stamp", null),
+            def(TaskNames.WRITE_STAMP_GROOVY, "package", "Write Groovy compile freshness stamp", null));
 
     private static final Map<String, TaskDef> BY_NAME = index();
 

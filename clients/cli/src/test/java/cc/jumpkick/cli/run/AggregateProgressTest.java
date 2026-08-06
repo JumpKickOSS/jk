@@ -24,7 +24,7 @@ class AggregateProgressTest {
     @Test
     void apply_snapshot_paints_bar_and_live_progress() {
         LiveProgress.get().clear();
-        CommandManager cm = CommandManager.pipeline(new PrintStream(new ByteArrayOutputStream()), "Build", false);
+        CommandManager cm = CommandManager.plan(new PrintStream(new ByteArrayOutputStream()), "Build", false);
         AggregateContext agg = new AggregateContext(cm);
         var snap = new WorkspaceProgressTracker.Snapshot(150, 200, 75.0, "execute", 1, 2);
         agg.applySnapshot(snap);
@@ -43,11 +43,11 @@ class AggregateProgressTest {
                 java.util.List.of(),
                 false,
                 false);
-        lis.pipelineStart(new cc.jumpkick.run.PipelineView("build", 1, 10, 1, 0, false));
-        lis.progress("compile", 1, new cc.jumpkick.run.PipelineView("build", 2, 10, 1, 0, false));
-        lis.tickUpdate("compile", 1, new cc.jumpkick.run.PipelineView("build", 3, 10, 1, 0, false));
+        lis.planStart(new cc.jumpkick.run.BuildPlanView("build", 1, 10, 1, 0, false));
+        lis.progress("compile", 1, new cc.jumpkick.run.BuildPlanView("build", 2, 10, 1, 0, false));
+        lis.tickUpdate("compile", 1, new cc.jumpkick.run.BuildPlanView("build", 3, 10, 1, 0, false));
         assertThat(LiveProgress.get().percent()).isEqualTo(70.0);
-        lis.pipelineFinish(new cc.jumpkick.run.PipelineResult(
+        lis.planFinish(new cc.jumpkick.run.BuildPlanResult(
                 "build",
                 true,
                 java.time.Duration.ZERO,
@@ -60,7 +60,7 @@ class AggregateProgressTest {
     @Test
     void preflight_only_sets_labels_not_percent() {
         LiveProgress.get().clear();
-        CommandManager cm = CommandManager.pipeline(new PrintStream(new ByteArrayOutputStream()), "Build", false);
+        CommandManager cm = CommandManager.plan(new PrintStream(new ByteArrayOutputStream()), "Build", false);
         AggregateContext agg = new AggregateContext(cm);
         agg.preflight("plan", 0, 10, "Preparing…");
         // No snapshot yet → LiveProgress stays unset; bar den may still be 0.

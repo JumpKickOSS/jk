@@ -1,0 +1,137 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.runtime;
+
+import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.engine.plugin.PluginClient;
+import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.plugin.protocol.PluginProtocol;
+import cc.jumpkick.plugin.protocol.SpecWriter;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskKind;
+import cc.jumpkick.run.TaskNames;
+import java.io.IOException;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+/**
+ * {@code jk audit} plan: scan {@code jk-lock.toml} against OSV via {@code jk-auditor}. Findings
+ * stream plain via {@link FindingObserver}; threshold/exit-code handling stays client-side.
+ */
+public final class AuditPlans {
+
+    private AuditPlans() {}
+
+    /** Receives each finding as the plugin streams it (raw plugin fields; any may be {@code null}). */
+    public interface FindingObserver {
+        void onFinding(String module, String version, String vulnId, String severity, String summary);
+    }
+
+    /**
+     * Build the audit plan for {@code lockPath}. Locates the plugin jar eagerly, so a missing plugin
+     * fails here (with {@link cc.jumpkick.engine.plugin.PluginJarNotFoundException}'s side-load
+     * instructions) rather than mid-plan. {@code thresholdLabel} only feeds the evaluate step's
+     * label; {@code osvBatchUrl}/{@code osvVulnsUrl} are the hidden test overrides ({@code null} =
+     * the real OSV endpoints).
+     */
+    public static BuildPlan auditBuildPlan(
+            Path lockPath,
+            Path cache,
+            String thresholdLabel,
+            URI osvBatchUrl,
+            URI osvVulnsUrl,
+            FindingObserver observer) {
+        Path workerJar = PluginJar.AUDITOR.locate(JkStores.cas(cache));
+
+        Task readLock = Task.builder(TaskNames.READ_LOCK)
+                .ticks(1)
+                .execute(ctx -> {
+                    ctx.label("read jk-lock.toml");
+                    // Validates the lockfile is readable; the plugin re-reads it.
+                    LockfileReader.read(lockPath);
+                    ctx.progress(1);
+                })
+                .build();
+
+        Task queryOsv = Task.builder(TaskNames.QUERY_OSV)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.READ_LOCK)
+                .ticks(1)
+                .execute(ctx -> {
+                    ctx.label("query OSV via audit worker");
+                    try {
+                        runWorker(workerJar, lockPath, osvBatchUrl, osvVulnsUrl, observer);
+                    } catch (RuntimeException e) {
+                        ctx.error("osv", e.getMessage());
+                        throw e;
+                    }
+                    ctx.progress(1);
+                })
+                .build();
+
+        Task evaluate = Task.builder("evaluate")
+                .requires(TaskNames.QUERY_OSV)
+                .ticks(1)
+                .execute(ctx -> {
+                    ctx.label("apply " + thresholdLabel + " threshold");
+                    ctx.progress(1);
+                })
+                .build();
+
+        return BuildPlan.builder("audit")
+                .addTask(readLock)
+                .addTask(queryOsv)
+                .addTask(evaluate)
+                .build();
+    }
+
+    /** Fork the {@code jk-auditor} plugin and stream its JSONL findings to {@code observer}. */
+    private static void runWorker(
+            Path workerJar, Path lockPath, URI osvBatchUrl, URI osvVulnsUrl, FindingObserver observer) {
+        try {
+            Path spec = writeSpec(lockPath, osvBatchUrl, osvVulnsUrl);
+            try {
+                String[] error = {null};
+                int exit = new PluginClient("##JKAU:")
+                        .on(
+                                PluginProtocol.FINDING,
+                                json -> observer.onFinding(
+                                        Jsonl.str(json, "module"),
+                                        Jsonl.str(json, "version"),
+                                        Jsonl.str(json, "id"),
+                                        Jsonl.str(json, "severity"),
+                                        Jsonl.str(json, "summary")))
+                        .on(PluginProtocol.ERROR, json -> error[0] = Jsonl.str(json, PluginProtocol.MESSAGE))
+                        .run(PluginLaunch.javaCommand(workerJar, spec));
+                if (error[0] != null) {
+                    throw new RuntimeException("audit worker: " + error[0]);
+                }
+                if (exit != 0) {
+                    throw new RuntimeException("audit worker exited with code " + exit);
+                }
+            } finally {
+                Files.deleteIfExists(spec);
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e.getMessage(), e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("audit worker interrupted", e);
+        }
+    }
+
+    private static Path writeSpec(Path lockPath, URI osvBatchUrl, URI osvVulnsUrl) throws IOException {
+        SpecWriter spec = new SpecWriter()
+                .op(PluginProtocol.OP_COMMAND, "audit", "jk-auditor")
+                .configString("lockfile", lockPath.toAbsolutePath().toString());
+        if (osvBatchUrl != null) spec.configString("batchUrl", osvBatchUrl.toString());
+        if (osvVulnsUrl != null) spec.configString("vulnsUrl", osvVulnsUrl.toString());
+        Path file = Files.createTempFile("jk-audit-", ".spec");
+        Files.write(file, spec.lines(), StandardCharsets.UTF_8);
+        return file;
+    }
+}

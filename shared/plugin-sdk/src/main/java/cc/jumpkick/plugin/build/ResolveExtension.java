@@ -4,7 +4,7 @@ package cc.jumpkick.plugin.build;
 /**
  * A plugin capability: participate in the {@link Phase#RESOLVE} phase. The engine invokes {@link
  * #resolve} at {@code describe} time to record the plugin's RESOLVE-window step(s); the declared
- * {@link StepSpec.Body} runs later with resolved inputs. Implemented alongside {@link
+ * {@link TaskSpec.Body} runs later with resolved inputs. Implemented alongside {@link
  * cc.jumpkick.plugin.Plugin}.
  */
 @FunctionalInterface

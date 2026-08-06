@@ -25,7 +25,7 @@ public record WorkspaceRequest(
         // True: freshen workspace lock before build; false: use pin verbatim (e.g. jk verify).
         boolean freshenLock,
         /**
-         * When true, each module's pipeline is {@code testOnly} (parse → sync → compile main/test →
+         * When true, each module's plan is {@code testOnly} (parse → sync → compile main/test →
          * run-tests, no package) — same shape as {@code jk test}. HTTP/MCP {@code jk_test} uses this.
          */
         boolean testOnly,

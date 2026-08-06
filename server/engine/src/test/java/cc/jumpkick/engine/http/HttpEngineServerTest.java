@@ -400,7 +400,7 @@ class HttpEngineServerTest {
     void api_status_carries_config_and_pipeline_fields() throws Exception {
         String body = get("/api/status").body();
         assertThat(body)
-                .contains("\"activePipelines\":0")
+                .contains("\"activeBuildPlans\":0")
                 .contains("\"maxConcurrentRequests\":16")
                 .contains("\"webRoot\":\"" + webRoot + "\"");
     }
@@ -486,6 +486,15 @@ class HttpEngineServerTest {
     }
 
     @Test
+    void api_config_requires_the_token_even_on_loopback() throws Exception {
+        // Payload names the owner's config path and verbatim values (templates.official can embed
+        // credentials) — same class as /api/projects/defaults (JK-1524).
+        assertThat(get("/api/config").statusCode()).isEqualTo(401);
+        assertThat(get("/api/config", "Authorization", "Bearer " + token()).statusCode())
+                .isEqualTo(200);
+    }
+
+    @Test
     void api_history_list_is_open_on_loopback_but_artifacts_and_project_need_token() throws Exception {
         // Journal list rehydrates the Activity feed after refresh (same openness as /api/events).
         // Full artifacts and path-oracle GETs stay token-gated even on loopback.
@@ -493,6 +502,79 @@ class HttpEngineServerTest {
         assertThat(get("/api/history/artifact?id=1&name=diagnostics.txt").statusCode())
                 .isEqualTo(401);
         assertThat(get("/api/project?dir=" + stateDir).statusCode()).isEqualTo(401);
+        assertThat(get("/api/project/graph?dir=" + stateDir).statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void api_project_graph_returns_module_dag_with_token() throws Exception {
+        Path ws = stateDir.resolve("graph-ws");
+        Files.createDirectories(ws.resolve("lib"));
+        Files.createDirectories(ws.resolve("app"));
+        Files.writeString(
+                ws.resolve("jk.toml"),
+                """
+                [project]
+                group = "com.example"
+                name = "ws"
+                version = "1.0.0"
+
+                [workspace]
+                modules = ["lib", "app"]
+                """);
+        Files.writeString(
+                ws.resolve("lib").resolve("jk.toml"),
+                """
+                [project]
+                group = "com.example"
+                name = "lib"
+                version = "1.0.0"
+                """);
+        Files.writeString(
+                ws.resolve("app").resolve("jk.toml"),
+                """
+                [project]
+                group = "com.example"
+                name = "app"
+                version = "1.0.0"
+
+                [dependencies]
+                lib = { group = "com.example", name = "lib", version = "1.0.0" }
+                """);
+
+        HttpResponse<String> missing = get("/api/project/graph", "Authorization", "Bearer " + token());
+        assertThat(missing.statusCode()).isEqualTo(400);
+        assertThat(missing.body()).contains("missing");
+
+        HttpResponse<String> resp =
+                get("/api/project/graph?dir=" + ws, "Authorization", "Bearer " + token());
+        assertThat(resp.statusCode()).isEqualTo(200);
+        assertThat(resp.headers().firstValue("Content-Type")).contains("application/json; charset=utf-8");
+        assertThat(resp.body())
+                .contains("\"workspace\":true")
+                .contains("\"label\":\"com.example:lib\"")
+                .contains("\"label\":\"com.example:app\"")
+                .contains("\"from\":")
+                .contains("\"to\":")
+                .contains("\"nodes\":")
+                .contains("\"edges\":");
+
+        // Standalone project → one node, no edges.
+        Path solo = stateDir.resolve("solo");
+        Files.createDirectories(solo);
+        Files.writeString(
+                solo.resolve("jk.toml"),
+                """
+                [project]
+                group = "g"
+                name = "n"
+                version = "1"
+                """);
+        String soloBody =
+                get("/api/project/graph?dir=" + solo, "Authorization", "Bearer " + token()).body();
+        assertThat(soloBody)
+                .contains("\"workspace\":false")
+                .contains("\"label\":\"g:n\"")
+                .contains("\"edges\":[]");
     }
 
     @Test
@@ -1136,5 +1218,20 @@ class HttpEngineServerTest {
 
         assertThat(nextLine(lines)).isNotNull(); // connected
         assertThat(server.liveEventStreams()).isEqualTo(1);
+    }
+
+    @Test
+    void matchLiveRun_dir_fallback_applies_only_without_a_buildNumber() {
+        // JK-1522: a stale running record with a real buildNumber that fails the strict match is a
+        // DIFFERENT run (crashed-engine stub) — it must not rebind to the current run's stream.
+        var run = new HttpEngineServer.LiveRun(42, 6, "build", "/w", "g:w", 0, Double.NaN, "j6");
+        server.setLiveRunSupport(() -> java.util.List.of(run), null);
+
+        assertThat(server.matchLiveRun(java.util.Map.of("dir", "/w", "buildNumber", 6L)))
+                .isEqualTo(run); // strict (dir, buildNumber)
+        assertThat(server.matchLiveRun(java.util.Map.of("id", "j6"))).isEqualTo(run); // journal id
+        assertThat(server.matchLiveRun(java.util.Map.of("dir", "/w"))).isEqualTo(run); // legacy stub
+        assertThat(server.matchLiveRun(java.util.Map.of("dir", "/w", "buildNumber", 5L)))
+                .isNull(); // stale record, wrong build — no dir-only rebind
     }
 }

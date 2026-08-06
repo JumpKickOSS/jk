@@ -89,9 +89,9 @@ class TestEnvTest {
         JkBuild before = project(tmp, "[test]\nenv = { MODE = \"a\" }\n");
         JkBuild after = project(tmp, "[test]\nenv = { MODE = \"b\" }\n");
 
-        assertThat(BuildPipelines.testStampExtras(tmp, before))
-                .isNotEqualTo(BuildPipelines.testStampExtras(tmp, after));
-        assertThat(BuildPipelines.testStampExtras(tmp, before)).contains("test-env:MODE=a");
+        assertThat(BuildPlanner.testStampExtras(tmp, before))
+                .isNotEqualTo(BuildPlanner.testStampExtras(tmp, after));
+        assertThat(BuildPlanner.testStampExtras(tmp, before)).contains("test-env:MODE=a");
     }
 
     @Test
@@ -103,7 +103,7 @@ class TestEnvTest {
         String home = System.getenv("HOME");
         org.junit.jupiter.api.Assumptions.assumeTrue(home != null && !home.isBlank());
 
-        List<String> extras = BuildPipelines.testStampExtras(tmp, project);
+        List<String> extras = BuildPlanner.testStampExtras(tmp, project);
 
         assertThat(extras).noneMatch(s -> s.contains(home));
         assertThat(extras)
@@ -117,14 +117,14 @@ class TestEnvTest {
         Files.writeString(tmp.resolve(".env"), "TOKEN=" + secret + "\n");
         JkBuild project = project(tmp, "[test]\nenv = { API_KEY = \"${TOKEN}\" }\n");
 
-        List<String> extras = BuildPipelines.testStampExtras(tmp, project);
+        List<String> extras = BuildPlanner.testStampExtras(tmp, project);
         assertThat(extras).noneMatch(s -> s.contains(secret));
         assertThat(extras)
                 .anyMatch(s -> s.startsWith("test-env:API_KEY=" + cc.jumpkick.config.SecretRedactor.KEY_PREFIX));
 
         // A different secret must retest (different digest).
         Files.writeString(tmp.resolve(".env"), "TOKEN=other-secret-value\n");
-        List<String> after = BuildPipelines.testStampExtras(tmp, project);
+        List<String> after = BuildPlanner.testStampExtras(tmp, project);
         assertThat(after).isNotEqualTo(extras);
         assertThat(after).noneMatch(s -> s.contains("other-secret-value"));
     }

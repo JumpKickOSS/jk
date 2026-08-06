@@ -153,7 +153,7 @@ public final class McpHandler {
                 "JumpKick engine MCP. Prefer tools for multi-turn agent work. Live build progress: "
                         + "GET /mcp with Accept: text/event-stream (notifications/jk/event); "
                         + "each event params object carries aggregate progress (0–100 or null) plus "
-                        + "step/module/error fields aligned with CLI JSONL. "
+                        + "task/module/error fields aligned with CLI JSONL. "
                         + "filter with ?requestId=N or ?progressToken=T (pass _meta.progressToken on "
                         + "tools/call). Or GET /api/events (dashboard SSE). One-shot CLI: jk … "
                         + "--output json. See docs/machine-output.md.");
@@ -261,7 +261,7 @@ public final class McpHandler {
         m.put("startedAt", s.startedAtMillis());
         m.put("uptimeSeconds", Math.max(0, (System.currentTimeMillis() - s.startedAtMillis()) / 1000));
         m.put("activeRequests", s.activeRequests());
-        m.put("activePipelines", s.activePipelines());
+        m.put("activeBuildPlans", s.activeBuildPlans());
         m.put("heapUsedBytes", s.heapUsedBytes());
         m.put("heapCommittedBytes", s.heapCommittedBytes());
         m.put("heapMaxBytes", s.heapMaxBytes());

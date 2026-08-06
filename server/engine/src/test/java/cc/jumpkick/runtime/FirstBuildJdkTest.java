@@ -6,8 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.resolver.ResolveObserver;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Tag;
@@ -70,14 +70,14 @@ import org.junit.jupiter.api.Tag;
 
         var parsed = cc.jumpkick.config.JkBuildParser.parse(project.resolve("jk.toml"));
         // Isolated session: under `jk test` the ambient SessionContext is the monorepo (jdk 25).
-        // Nested fixture pipelines must not inherit that pin or they skip the first-install path.
+        // Nested fixture plans must not inherit that pin or they skip the first-install path.
         Session nested = Session.defaults().withCacheDir(cache).withJdksDir(freshJdks);
         SessionContext.runWhere(nested, () -> {
-            Pipeline lock = LockPipelines.lockPipeline(
+            BuildPlan lock = LockPlans.lockBuildPlan(
                     project, parsed, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
             assertThat(lock.run().errors()).isEmpty();
 
-            BuildPipelines.Inputs in = new BuildPipelines.Inputs(
+            BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                     project,
                     cache,
                     project.resolve("jk.toml"),
@@ -93,17 +93,17 @@ import org.junit.jupiter.api.Tag;
                     false,
                     java.util.Set.of(),
                     nested);
-            Pipeline pipeline = BuildPipelines.coreBuilder(in).build();
-            PipelineResult result = pipeline.run();
+            BuildPlan plan = BuildPlanner.coreBuilder(in).build();
+            BuildPlanResult result = plan.run();
             StringBuilder dump = new StringBuilder();
-            for (PipelineResult.Diagnostic d : result.errors()) {
+            for (BuildPlanResult.Diagnostic d : result.errors()) {
                 dump.append("DIAG [")
                         .append(d.step())
                         .append("]: ")
                         .append(d.message())
                         .append('\n');
             }
-            pipeline.get(BuildPipelines.TEST_RESULT).ifPresent(ts -> {
+            plan.get(BuildPlanner.TEST_RESULT).ifPresent(ts -> {
                 dump.append("NESTED-SUMMARY total=")
                         .append(ts.total())
                         .append(" fail=")

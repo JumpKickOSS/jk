@@ -4,41 +4,41 @@ package cc.jumpkick.cli.run;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Glyphs;
 // Theme used for ANSI styling of took / errors
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlanResult;
 import java.time.Duration;
 import java.util.function.Function;
 
 /**
  * Console presentation for a simple-task command: spinner label plus success/failure tails from
- * {@link PipelineResult}. Optional {@code softFailure} forces a failure chip after a successful
- * pipeline (e.g. {@code jk run} with nothing executable). Duration suffix is appended by the framework.
+ * {@link BuildPlanResult}. Optional {@code softFailure} forces a failure chip after a successful
+ * plan (e.g. {@code jk run} with nothing executable). Duration suffix is appended by the framework.
  */
 public record ConsoleSpec(
         String command,
-        Function<PipelineResult, String> onSuccess,
-        Function<PipelineResult, String> onFailure,
+        Function<BuildPlanResult, String> onSuccess,
+        Function<BuildPlanResult, String> onFailure,
         boolean chip,
         boolean exec,
-        Function<PipelineResult, String> softFailure) {
+        Function<BuildPlanResult, String> softFailure) {
 
     /** Default generic success/failure finish ({@code chip}/{@code exec} false). */
     public ConsoleSpec(
-            String command, Function<PipelineResult, String> onSuccess, Function<PipelineResult, String> onFailure) {
+            String command, Function<BuildPlanResult, String> onSuccess, Function<BuildPlanResult, String> onFailure) {
         this(command, onSuccess, onFailure, false, false);
     }
 
     public ConsoleSpec(
             String command,
-            Function<PipelineResult, String> onSuccess,
-            Function<PipelineResult, String> onFailure,
+            Function<BuildPlanResult, String> onSuccess,
+            Function<BuildPlanResult, String> onFailure,
             boolean chip) {
         this(command, onSuccess, onFailure, chip, false);
     }
 
     public ConsoleSpec(
             String command,
-            Function<PipelineResult, String> onSuccess,
-            Function<PipelineResult, String> onFailure,
+            Function<BuildPlanResult, String> onSuccess,
+            Function<BuildPlanResult, String> onFailure,
             boolean chip,
             boolean exec) {
         this(command, onSuccess, onFailure, chip, exec, null);
@@ -74,7 +74,7 @@ public record ConsoleSpec(
     }
 
     /** Render an error diagnostic for the console, per its {@code code}. */
-    public static String renderError(PipelineResult.Diagnostic d) {
+    public static String renderError(BuildPlanResult.Diagnostic d) {
         return renderError(d.step(), d.code(), d.message());
     }
 
@@ -86,7 +86,7 @@ public record ConsoleSpec(
     }
 
     /** Render a warning diagnostic for the console, per its {@code code}. */
-    public static String renderWarning(PipelineResult.Diagnostic d) {
+    public static String renderWarning(BuildPlanResult.Diagnostic d) {
         if (isCompilerCode(d.code())) return compilerWarning(d.step(), d.message());
         return Theme.colorize(Glyphs.BANG + " Warning", Theme.active().warning()) + " [" + d.step() + "]: "
                 + d.message();

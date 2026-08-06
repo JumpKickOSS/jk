@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.plugin.build.Phase;
-import cc.jumpkick.run.PipelineListener;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.StepStatus;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestSummary;
 import java.time.Duration;
 import java.util.List;
@@ -21,7 +20,7 @@ import java.util.function.Supplier;
  * count when available via display names) over planned ticks so the next plan's learned rate
  * matches real suite size.
  */
-public final class StepTimingsRecorder implements PipelineListener {
+public final class StepTimingsRecorder implements BuildPlanListener {
 
     /** Cap a single hung suite from poisoning host method averages (~5 min/method). */
     private static final double MAX_METHOD_MS = 300_000;
@@ -33,7 +32,7 @@ public final class StepTimingsRecorder implements PipelineListener {
     private final List<StepTimings.Sample> sink;
     private final Map<String, Integer> ticksByStep = new ConcurrentHashMap<>();
     private final Map<String, Long> durationByStep = new ConcurrentHashMap<>();
-    /** Optional supplier of the pipeline's test summary after run-tests (may be null). */
+    /** Optional supplier of the plan's test summary after run-tests (may be null). */
     private final Supplier<TestSummary> testSummary;
     /** Optional continuous host calibration samples (may be null). */
     private final List<HostLearnedRates.HostSample> hostSink;
@@ -58,23 +57,23 @@ public final class StepTimingsRecorder implements PipelineListener {
     }
 
     @Override
-    public void stepStart(String step, Phase phase, int ticks) {
+    public void stepStart(String step, String group, int ticks) {
         ticksByStep.put(step, ticks);
     }
 
     @Override
-    public void stepFinish(String step, Phase phase, StepStatus status, Duration duration) {
+    public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
         // Only successful real work teaches the ledger — CANCELLED / FAIL / SKIPPED never do.
-        if (status != StepStatus.SUCCESS || !learnable(step)) return;
+        if (status != TaskStatus.SUCCESS || !learnable(step)) return;
         long ms = duration == null ? 0 : duration.toMillis();
         durationByStep.put(step, ms);
-        // Defer all samples until pipelineFinish so a later cancel/fail drops the whole module's
-        // mid-run SUCCESS ticks (estimator hygiene: only successful pipelines train rates).
+        // Defer all samples until planFinish so a later cancel/fail drops the whole module's
+        // mid-run SUCCESS ticks (estimator hygiene: only successful plans train rates).
     }
 
     @Override
-    public void pipelineFinish(PipelineResult result) {
-        // Cancelled or failed pipelines must not train rates — truncated walls poison ETA.
+    public void planFinish(BuildPlanResult result) {
+        // Cancelled or failed plans must not train rates — truncated walls poison ETA.
         if (result == null || !result.success() || result.cancelled() || result.userCancelled()) return;
         // Compile / other count-scaled steps: deferred from stepFinish.
         for (var e : durationByStep.entrySet()) {
@@ -132,6 +131,10 @@ public final class StepTimingsRecorder implements PipelineListener {
             if (perClass > 0) {
                 sink.add(new StepTimings.Sample(moduleKey, "run-tests-class", perClass));
             }
+        }
+        // Per-class walls for next ETA (no method counting). Buffer for journal metrics.toml.
+        if (sum != null && !sum.classWallMs().isEmpty()) {
+            TestClassWalls.put(moduleKey, sum.classWallMs());
         }
     }
 

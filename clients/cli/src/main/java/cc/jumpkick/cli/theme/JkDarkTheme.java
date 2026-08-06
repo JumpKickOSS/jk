@@ -297,27 +297,27 @@ public final class JkDarkTheme implements Theme {
     private static final Rgb CHIP_FG = Rgb.hex(0xFFFFFF);
 
     @Override
-    public AttributedStyle pipelineChip() {
+    public AttributedStyle planChip() {
         return withBg(withColor(AttributedStyle.DEFAULT, CHIP_FG), HEADER_BLUE);
     }
 
     @Override
-    public AttributedStyle pipelineSuccessChip() {
+    public AttributedStyle planSuccessChip() {
         return withBg(withColor(AttributedStyle.DEFAULT, CHIP_FG), PIPELINE_GREEN);
     }
 
     @Override
-    public AttributedStyle pipelineFailureChip() {
+    public AttributedStyle planFailureChip() {
         return withBg(withColor(AttributedStyle.DEFAULT, CHIP_FG), NORMAL_RED);
     }
 
     @Override
-    public Rgb pipelineChipColor() {
+    public Rgb planChipColor() {
         return PIPELINE_GREEN;
     }
 
     @Override
-    public Rgb pipelineFailColor() {
+    public Rgb planFailColor() {
         return NORMAL_RED;
     }
 

@@ -2,32 +2,31 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.tui.CommandManager;
-import cc.jumpkick.plugin.build.Phase;
-import cc.jumpkick.run.PipelineListener;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.PipelineView;
-import cc.jumpkick.run.Step;
-import cc.jumpkick.run.StepStatus;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.BuildPlanView;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskStatus;
 import java.io.PrintStream;
 import java.time.Duration;
 import java.util.List;
 
 /**
- * Console listener for pipeline-oriented commands ({@code jk build} and friends): drives a {@link
- * CommandManager} in pipeline mode — a spinner header, an aggregate progress bar, and a dynamic step
+ * Console listener for plan-oriented commands ({@code jk build} and friends): drives a {@link
+ * CommandManager} in plan mode — a spinner header, an aggregate progress bar, and a dynamic step
  * list. On completion the live region is replaced by a {@code ✓}/{@code ✗} result line built from
  * the {@link ConsoleSpec} mappers.
  *
  * <p>When constructed with a {@code null} {@link ConsoleSpec} the listener uses {@code command} as the
  * display name and calls {@link CommandManager#dismiss} on completion (the caller owns the result
- * line). This is used by {@link PipelineConsole#run(cc.jumpkick.run.Pipeline, PipelineConsole.Mode,
- * java.nio.file.Path)} to drive the CommandManager spinner for simple pipelines.
+ * line). This is used by {@link BuildPlanConsole#run(cc.jumpkick.run.BuildPlan, BuildPlanConsole.Mode,
+ * java.nio.file.Path)} to drive the CommandManager spinner for simple plans.
  *
- * <p>All steps of this pipeline are attributed to a single {@code module} (the project's {@code
+ * <p>All steps of this plan are attributed to a single {@code module} (the project's {@code
  * group:artifact}). Workspace aggregation across modules feeds one shared {@link CommandManager}
- * from several pipelines; that path is built on the same component.
+ * from several plans; that path is built on the same component.
  */
-public final class CommandManagerListener implements PipelineListener {
+public final class CommandManagerListener implements BuildPlanListener {
 
     private final PrintStream out;
     /** May be {@code null} — use {@link #command} as the display name and dismiss on completion. */
@@ -35,18 +34,18 @@ public final class CommandManagerListener implements PipelineListener {
 
     private final String command;
     private final String module;
-    private final List<Step> steps;
+    private final List<Task> steps;
     private final boolean animate;
     /**
      * False for one member of a multi-module workspace run: engine {@code workspace-progress} is the
-     * only aggregate truth — pipeline-local fractions must not reach {@link LiveProgress}.
+     * only aggregate truth — plan-local fractions must not reach {@link LiveProgress}.
      */
     private final boolean aggregateRider;
 
     private CommandManager cm;
     private CommandManager.OutputScope capture;
 
-    public CommandManagerListener(PrintStream out, ConsoleSpec spec, String module, List<Step> steps, boolean animate) {
+    public CommandManagerListener(PrintStream out, ConsoleSpec spec, String module, List<Task> steps, boolean animate) {
         this(out, spec, module, steps, animate, true);
     }
 
@@ -54,7 +53,7 @@ public final class CommandManagerListener implements PipelineListener {
             PrintStream out,
             ConsoleSpec spec,
             String module,
-            List<Step> steps,
+            List<Task> steps,
             boolean animate,
             boolean aggregateRider) {
         this.out = out;
@@ -70,7 +69,7 @@ public final class CommandManagerListener implements PipelineListener {
      * No-spec constructor: uses {@code command} as the spinner display name and calls {@link
      * CommandManager#dismiss} on completion so the caller can print its own result line.
      */
-    public CommandManagerListener(PrintStream out, String command, String module, List<Step> steps, boolean animate) {
+    public CommandManagerListener(PrintStream out, String command, String module, List<Task> steps, boolean animate) {
         this.out = out;
         this.spec = null;
         this.command = command;
@@ -81,21 +80,21 @@ public final class CommandManagerListener implements PipelineListener {
     }
 
     @Override
-    public void pipelineStart(PipelineView view) {
-        cm = CommandManager.pipeline(out, command, animate);
+    public void planStart(BuildPlanView view) {
+        cm = CommandManager.plan(out, command, animate);
         cm.target(module);
-        for (Step p : steps) {
-            cm.addStepLabeled(module, p.name(), display(p));
+        for (Task p : steps) {
+            cm.addTaskLabeled(module, p.name(), display(p));
         }
         cm.progress(view.numerator(), view.denominator());
         if (aggregateRider) LiveProgress.get().update(view.numerator(), view.denominator());
-        // Route step/process output above the pinned region for the pipeline's lifetime.
+        // Route step/process output above the pinned region for the plan's lifetime.
         capture = cm.captureOutput();
     }
 
     @Override
-    public void stepStart(String step, Phase phase, int ticks) {
-        cm.stepRunning(module, step, phase == null ? "" : phase.wireName());
+    public void stepStart(String step, String group, int ticks) {
+        cm.stepRunning(module, step, group == null ? "" : group);
     }
 
     @Override
@@ -116,30 +115,30 @@ public final class CommandManagerListener implements PipelineListener {
     }
 
     @Override
-    public void progress(String step, int delta, PipelineView view) {
+    public void progress(String step, int delta, BuildPlanView view) {
         cm.progress(view.numerator(), view.denominator());
         if (aggregateRider) LiveProgress.get().update(view.numerator(), view.denominator());
     }
 
     @Override
-    public void tickUpdate(String step, int delta, PipelineView view) {
+    public void tickUpdate(String step, int delta, BuildPlanView view) {
         cm.progress(view.numerator(), view.denominator());
         if (aggregateRider) LiveProgress.get().update(view.numerator(), view.denominator());
     }
 
     @Override
-    public void stepFinish(String step, Phase phase, StepStatus status, Duration duration) {
+    public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
         // SKIPPED = cache hit / up-to-date — green terminal, same as SUCCESS.
-        boolean ok = status == StepStatus.SUCCESS || status == StepStatus.SKIPPED;
-        cm.stepDone(module, step, ok, phase == null ? "" : phase.wireName());
+        boolean ok = status == TaskStatus.SUCCESS || status == TaskStatus.SKIPPED;
+        cm.stepDone(module, step, ok, group == null ? "" : group);
     }
 
     @Override
-    public void pipelineFinish(PipelineResult result) {
+    public void planFinish(BuildPlanResult result) {
         // Restore the real streams before settling so the result line isn't
         // itself routed back above the (closing) region.
         if (capture != null) capture.close();
-        if (cm == null) cm = CommandManager.pipeline(out, command, animate);
+        if (cm == null) cm = CommandManager.plan(out, command, animate);
         // No-spec path: the caller owns the result line — just clean up the live region.
         if (spec == null) {
             cm.dismiss();
@@ -151,17 +150,17 @@ public final class CommandManagerListener implements PipelineListener {
         // first, then errors nearest the line — so the failure route reads just like
         // the success route and the outcome is the last thing on screen.
         List<String> above = new java.util.ArrayList<>();
-        for (PipelineResult.Diagnostic d : result.warnings()) {
+        for (BuildPlanResult.Diagnostic d : result.warnings()) {
             above.add(ConsoleSpec.renderWarning(d));
         }
-        for (PipelineResult.Diagnostic d : result.errors()) {
+        for (BuildPlanResult.Diagnostic d : result.errors()) {
             above.add(ConsoleSpec.renderError(d));
         }
-        // A soft failure overrides an otherwise-successful result: the pipeline itself is fine, but the
+        // A soft failure overrides an otherwise-successful result: the plan itself is fine, but the
         // command discovered afterward that it can't proceed (e.g. jk run found no runnable entry
         // point). Rendered as the red failure chip with the caller's exact sentence — no "Failed to
         // <command>" derivation — so a genuine build failure (below) keeps its normal phrasing.
-        // Only probe softFailure when the build succeeded (JK-1162): on a failed pipeline, execPlan
+        // Only probe softFailure when the build succeeded (JK-1162): on a failed plan, execPlan
         // / entry-point scans can emit red diagnostics that flash under the live region before the
         // real failure settle.
         String soft = null;
@@ -169,19 +168,19 @@ public final class CommandManagerListener implements PipelineListener {
             soft = spec.softFailure().apply(result);
         }
         if (soft != null) {
-            cm.finishPipelineFailureCustom(soft + suffix, above);
+            cm.finishBuildPlanFailureCustom(soft + suffix, above);
         } else if (result.success()) {
             String tail = spec.onSuccess().apply(result) + suffix;
-            if (spec.chip() && spec.exec()) cm.finishPipelineExec(tail, above);
-            else if (spec.chip()) cm.finishPipelineSuccess(tail, above);
+            if (spec.chip() && spec.exec()) cm.finishBuildPlanExec(tail, above);
+            else if (spec.chip()) cm.finishBuildPlanSuccess(tail, above);
             else cm.finishSuccess(tail, above);
         } else {
-            if (spec.chip()) cm.finishPipelineFailure(spec.onFailure().apply(result) + suffix, above);
+            if (spec.chip()) cm.finishBuildPlanFailure(spec.onFailure().apply(result) + suffix, above);
             else cm.finishFailure(spec.onFailure().apply(result) + suffix, above);
         }
     }
 
-    private static String display(Step p) {
+    private static String display(Task p) {
         return p.label() != null && !p.label().isEmpty() ? p.label() : p.name();
     }
 }

@@ -466,12 +466,12 @@ public final class RepoArtifactStore {
     }
     /**
      * Write a file directly into {@code repos/local/} as a full-store entry (actual JAR on disk) —
-     * the local-install write path shared by the engine's install pipeline and the client's
+     * the local-install write path shared by the engine's install plan and the client's
      * {@code jk install <file.jar>} mode (a local, content-addressed write, like {@code
      * Cas.putByLink} — no network).
      */
     public static void writeToLocalStore(Path artifactRoot, String relativePath, Path source) throws IOException {
-        // The caller picks the root deliberately (JK-1445): the engine install pipeline passes the
+        // The caller picks the root deliberately (JK-1445): the engine install plan passes the
         // store (where resolvers read since the cache/store split); plugin install-local may pass
         // an isolated --cache-dir root on purpose.
         Path target = artifactRoot.resolve("repos/local/" + relativePath);

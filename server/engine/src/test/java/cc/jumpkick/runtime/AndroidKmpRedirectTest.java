@@ -8,8 +8,8 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Tag;
@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * android-plan Step 5, blocker 1: a Kotlin-Multiplatform root module (androidx compose
+ * android-plan Task 5, blocker 1: a Kotlin-Multiplatform root module (androidx compose
  * runtime-annotation — the exact artifact Now-in-Android trips over via androidx.activity)
  * resolves Gradle-style. The root locks as a POM-only alias (no artifact — checksum-null rows are
  * classpath-inert), the GMM-selected platform artifact carries the classes, and the un-selected
@@ -104,9 +104,9 @@ class AndroidKmpRedirectTest {
         Files.writeString(project.resolve("jk.toml"), jkToml);
 
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
-        Pipeline lock = LockPipelines.lockPipeline(
+        BuildPlan lock = LockPlans.lockBuildPlan(
                 project, build, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
-        PipelineResult result = lock.run();
+        BuildPlanResult result = lock.run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
         return LockfileReader.read(project.resolve("jk-lock.toml"));

@@ -52,7 +52,8 @@ echo "date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "runs: $RUNS"
 echo
 
-# Prefer Temurin for engine process
+# Prefer Temurin for engine process. Intentionally frozen at 25.0.3-tem: the published
+# baselines in docs/perf/warm-pool-bench.md were measured on it — bump both together.
 export JAVA_HOME="${JAVA_HOME:-$HOME/.sdkman/candidates/java/25.0.3-tem}"
 if [[ ! -x "$JAVA_HOME/bin/java" ]]; then
   echo "warn: JAVA_HOME=$JAVA_HOME missing; engine may run on Graal (AOT ineligible)" >&2

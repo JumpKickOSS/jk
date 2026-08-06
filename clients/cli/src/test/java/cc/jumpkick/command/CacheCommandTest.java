@@ -9,7 +9,6 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -56,26 +55,32 @@ class CacheCommandTest {
     }
 
     @Test
-    void prune_removes_stale_action_entries_and_tmp_files(@TempDir Path tempDir) throws Exception {
+    void prune_removes_stale_action_entries_and_cache_tier_tmp_files(@TempDir Path tempDir) throws Exception {
+        // JK-1531: post-split, plain `jk cache prune` is CACHE-tier only. Its temp janitor runs
+        // on the cache root's sha256/ (the cache CAS); the artifact store's temps belong to the
+        // store sweep (`jk repo prune` / scheduled --sweep) and must survive a plain prune.
         Path cache = tempDir.resolve("cache");
         Path stale = writeBlob(cache.resolve("actions/keys/old"), new byte[256]);
         Path fresh = writeBlob(cache.resolve("actions/keys/new"), new byte[256]);
-        // CAS janitor runs on the artifact store (JkStores), not the action-cache root.
+        Path cacheTmp = writeBlob(cache.resolve("sha256/ab/cd/.put-abc.tmp"), new byte[128]);
         Path storeCas = cc.jumpkick.cache.JkStores.resolve(cache, "sha256");
-        Path leftoverTmp = writeBlob(storeCas.resolve("ab/cd/.put-abc.tmp"), new byte[128]);
-        Path keptBlob = writeBlob(storeCas.resolve("ab/cd/realblob"), new byte[128]);
+        Path storeTmp = writeBlob(storeCas.resolve("ab/cd/.put-jk1531.tmp"), new byte[128]);
+        try {
+            // Backdate the stale entry by 60 days.
+            Files.setLastModifiedTime(stale, FileTime.from(Instant.now().minus(60, ChronoUnit.DAYS)));
 
-        // Backdate the stale entry by 60 days.
-        Files.setLastModifiedTime(stale, FileTime.from(Instant.now().minus(60, ChronoUnit.DAYS)));
+            String stdout =
+                    capture(() -> run("cache", "prune", "--cache-dir", cache.toString(), "--older-than", "30"));
 
-        String stdout = capture(() -> run("cache", "prune", "--cache-dir", cache.toString(), "--older-than", "30"));
-
-        assertThat(Files.exists(stale)).isFalse();
-        assertThat(Files.exists(fresh)).isTrue();
-        assertThat(Files.exists(leftoverTmp)).isFalse();
-        assertThat(Files.exists(keptBlob)).isTrue();
-        // New summary format breaks the count out by step.
-        assertThat(stdout).contains("Finished pruning cache").contains("removed");
+            assertThat(Files.exists(stale)).isFalse();
+            assertThat(Files.exists(fresh)).isTrue();
+            assertThat(Files.exists(cacheTmp)).isFalse(); // cache-tier temp: cleaned
+            assertThat(Files.exists(storeTmp)).isTrue(); // store-tier temp: not this command's job
+            // New summary format breaks the count out by step.
+            assertThat(stdout).contains("Finished pruning cache").contains("removed");
+        } finally {
+            Files.deleteIfExists(storeTmp); // do not pollute the module-shared store
+        }
     }
 
     @Test
@@ -203,18 +208,12 @@ class CacheCommandTest {
 
     @Test
     void repo_storage_reports_cas_and_repos_without_action_cache(@TempDir Path tempDir) throws Exception {
+        // JK-1531: since the CAS split, `jk repo storage` measures the AMBIENT artifact store —
+        // `--cache-dir` moves only the cache tier — so exact byte totals depend on whatever the
+        // module-shared store holds and cannot be asserted here. Structural shape only; the
+        // hard-link no-double-count arithmetic is covered hermetically by
+        // DiskUsageTest.exclusive_does_not_double_count_hardlinked_cas_and_repos.
         Path cache = tempDir.resolve("cache");
-        Path casBlob = cache.resolve("sha256/ab/cd/sharedblob");
-        byte[] payload = new byte[8192];
-        writeBlob(casBlob, payload);
-        Path repoJar = cache.resolve("repos/central/com/example/lib/1.0/lib-1.0.jar");
-        Files.createDirectories(repoJar.getParent());
-        try {
-            Files.createLink(repoJar, casBlob);
-        } catch (UnsupportedOperationException | FileSystemException e) {
-            org.junit.jupiter.api.Assumptions.assumeTrue(false, "hard links required");
-        }
-        Files.writeString(Path.of(repoJar + ".sha256"), "d".repeat(64));
         writeBlob(cache.resolve("actions/keys/task"), new byte[4096]);
 
         String plain =
@@ -226,9 +225,6 @@ class CacheCommandTest {
         assertThat(plain).contains("Total");
         assertThat(plain).contains("Utilization");
         assertThat(plain).doesNotContain("Action Cache");
-        // Hard-linked jar must not double-count: Total ≈ 8.1K not 16K.
-        assertThat(plain).containsPattern("Total\\s+.*8\\.1K");
-        assertThat(plain).doesNotContain("16.0K");
     }
 
     @Test

@@ -3,9 +3,7 @@ package cc.jumpkick.git;
 
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.plugin.Extension;
-import cc.jumpkick.plugin.build.Phase;
 import java.io.IOException;
-import java.util.Set;
 
 /**
  * In-process git SPI: {@link GitCliExtension} preferred, {@link JGitExtension} fallback.
@@ -13,11 +11,7 @@ import java.util.Set;
  */
 public interface GitBackend extends Extension {
 
-    /** Git backends participate in the {@link Phase#RESOLVE} phase (fetching git-sourced deps). */
-    @Override
-    default Set<Phase> phases() {
-        return Set.of(Phase.RESOLVE);
-    }
+    
 
     /** Enumerate the remote's tags + {@code HEAD} sha via {@code ls-remote} — no clone. */
     GitFetcher.RemoteRefs listRefs(GitSource source) throws IOException;

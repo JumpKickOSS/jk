@@ -88,7 +88,7 @@ class JvmOptionsTest {
 
     @org.junit.jupiter.api.BeforeEach
     void resetSharedPlan() {
-        // Earlier tests in this JVM run real pipelines whose test step may size the shared heap
+        // Earlier tests in this JVM run real plans whose test step may size the shared heap
         // plan (JvmOptions.planAndApply); these assertions compare against unplanned defaults.
         JvmOptions.resetSharedPlanForTests();
     }

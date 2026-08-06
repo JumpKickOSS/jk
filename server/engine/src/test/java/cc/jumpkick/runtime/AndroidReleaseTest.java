@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -63,7 +63,7 @@ class AndroidReleaseTest {
                         List.of(),
                         List.of()),
                 app.resolve("jk-lock.toml"));
-        BuildPipelines.Inputs in = new BuildPipelines.Inputs(
+        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                         app,
                         cache,
                         app.resolve("jk.toml"),
@@ -85,14 +85,14 @@ class AndroidReleaseTest {
                                 "RELEASE_KEYSTORE", keystore.toAbsolutePath().toString(),
                                 "RELEASE_STORE_PASSWORD", "rel-store-pass",
                                 "RELEASE_KEY_PASSWORD", "rel-key-pass"));
-        Pipeline pipeline = BuildPipelines.coreBuilder(in).build();
-        PipelineResult result = pipeline.run();
+        BuildPlan plan = BuildPlanner.coreBuilder(in).build();
+        BuildPlanResult result = plan.run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
 
         // The release steps ran: R8 (not d8) fed the aab packager.
         List<String> stepNames = new ArrayList<>();
-        for (var step : pipeline.steps()) stepNames.add(step.name());
+        for (var step : plan.steps()) stepNames.add(step.name());
         assertThat(stepNames).contains("plugin-android-r8").doesNotContain("plugin-android-dex");
 
         // The artifact is the AAB, in bundletool's base-module layout.

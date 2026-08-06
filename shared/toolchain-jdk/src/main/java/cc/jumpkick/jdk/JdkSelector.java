@@ -34,7 +34,7 @@ public final class JdkSelector {
      *
      * <p>This is the entry point every <em>install</em> path should use so the preference is
      * consistent across {@code jk jdk install <ver>}, {@code jk jdk ensure <ver>}, and the build
-     * pipeline's auto-install — the keyword path ({@code lts}/{@code latest}) is already
+     * plan's auto-install — the keyword path ({@code lts}/{@code latest}) is already
      * Temurin-biased via {@link JdkKeywords#resolveToMajorSpec}. Range specs ({@code >=21}) skip the
      * bias and resolve via {@link #selectFlexible}'s vendor-ranked tie-break.
      */

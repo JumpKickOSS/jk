@@ -74,16 +74,16 @@ class HttpEventsTest {
         HttpEvents hub = new HttpEvents();
         try (HttpEvents.Subscription s = hub.subscribe(HttpEvents.FrameStyle.MCP)) {
             hub.publish(
-                    "step-start",
+                    "task-start",
                     JsonOut.object()
                             .put("schema", 1)
-                            .put("type", "step-start")
+                            .put("type", "task-start")
                             .put("step", "compile")
                             .put("progress", 42.5));
             String frame = s.next(1000);
             assertThat(frame).contains("event: message");
             assertThat(frame).contains("notifications/jk/event");
-            assertThat(frame).contains("\"event\":\"step-start\"");
+            assertThat(frame).contains("\"event\":\"task-start\"");
             assertThat(frame).contains("\"step\":\"compile\"");
             // agents read aggregate percent without parsing TTY bars.
             assertThat(frame).contains("\"progress\":42.5");
@@ -108,8 +108,8 @@ class HttpEventsTest {
         HttpEvents hub = new HttpEvents();
         try (HttpEvents.Subscription only2 = hub.subscribe(HttpEvents.FrameStyle.MCP, 2L);
                 HttpEvents.Subscription all = hub.subscribe(HttpEvents.FrameStyle.MCP, null)) {
-            hub.publish("step-start", JsonOut.object().put("requestId", 1).put("step", "a"));
-            hub.publish("step-start", JsonOut.object().put("requestId", 2).put("step", "b"));
+            hub.publish("task-start", JsonOut.object().put("requestId", 1).put("step", "a"));
+            hub.publish("task-start", JsonOut.object().put("requestId", 2).put("step", "b"));
             assertThat(only2.next(1000)).contains("\"requestId\":2");
             assertThat(only2.next(50)).isNull(); // job 1 never arrives
             assertThat(all.next(1000)).contains("\"requestId\":1");

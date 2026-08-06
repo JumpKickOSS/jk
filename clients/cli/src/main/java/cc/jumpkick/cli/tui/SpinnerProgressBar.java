@@ -117,7 +117,7 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         LiveRegion.clearActive(this);
         if (silent) return;
         // Wipe the bar line entirely on the way out. Without the
-        // CR + erase-line, a partial bar (e.g. a pipeline that failed
+        // CR + erase-line, a partial bar (e.g. a plan that failed
         // before any progress) would stay in the transcript next to
         // the failure summary that follows.
         if (drawn) out.print(Ansi.CLEAR_LINE);
@@ -198,7 +198,7 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         out.print(" ");
         // Every segment painted with the dark-red→bright-red gradient.
         // We don't care about filled vs empty here — the bar's role at
-        // this point is to mark *where* the pipeline stopped, not to
+        // this point is to mark *where* the plan stopped, not to
         // continue showing in-flight progress.
         char empty = emptyChar();
         for (int i = 0; i < SEGMENTS; i++) {

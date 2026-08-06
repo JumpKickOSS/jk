@@ -37,7 +37,7 @@ class LanguageRuntimeInjectTest {
 
     @Test
     void explicit_java_release_disables_inference_like_the_lanes(@TempDir Path dir) throws IOException {
-        // Mirrors BuildPipelines: java = 25 declared → groovy sources are ignored, no lane,
+        // Mirrors BuildPlanner: java = 25 declared → groovy sources are ignored, no lane,
         // so no runtime inject either.
         Files.createDirectories(dir.resolve("src/main/groovy"));
         JkBuild p = project("[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njava=25\n");

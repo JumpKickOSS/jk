@@ -4,13 +4,12 @@ package cc.jumpkick.cli.engine;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.plugin.build.Phase;
 import cc.jumpkick.plugin.protocol.Jsonl;
-import cc.jumpkick.run.PipelineListener;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.PipelineView;
-import cc.jumpkick.run.Step;
-import cc.jumpkick.run.StepStatus;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.BuildPlanView;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskStatus;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -25,7 +24,7 @@ import java.util.function.Function;
 
 /**
  * Engine-hosted lock/update/sync: decode wire events into the command's listeners/handlers.
- * Lock/update cascade per module; sync is a single pipeline. Output is unthemed structured text.
+ * Lock/update cascade per module; sync is a single plan. Output is unthemed structured text.
  */
 final class EngineResolveAdapter {
 
@@ -34,7 +33,7 @@ final class EngineResolveAdapter {
     /**
      * Run {@code jk outdated} against the engine: one synchronous request, one {@code outdated-ack}
      * carrying the {@link cc.jumpkick.engine.protocol.OutdatedReport} back. Read-only — no cascade,
-     * no pipeline stream.
+     * no plan stream.
      */
     static cc.jumpkick.engine.protocol.OutdatedReport runOutdated(
             EnginePaths.Paths paths, EngineClient.OutdatedRequest req) throws IOException {
@@ -80,7 +79,7 @@ final class EngineResolveAdapter {
     }
 
     /**
-     * Run {@code jk update --git [<name>]} against the engine. No pipeline events stream — the engine
+     * Run {@code jk update --git [<name>]} against the engine. No plan events stream — the engine
      * splices the lock and replies with just the terminal, whose {@code refreshed} count and plain
      * {@code errors} the command renders.
      */
@@ -105,16 +104,16 @@ final class EngineResolveAdapter {
     }
 
     /**
-     * Run {@code jk sync}'s single pipeline against the engine — the same listener-factory contract as
+     * Run {@code jk sync}'s single plan against the engine — the same listener-factory contract as
      * {@link EngineBuildListenerAdapter#runTest}. {@code fetchedOut}/{@code upToDateOut} (single-slot
-     * holders) are populated from the terminal pipeline-finish <em>before</em> it reaches the factory's
+     * holders) are populated from the terminal plan-finish <em>before</em> it reaches the factory's
      * listener, exactly mirroring how the in-process path's counters are already settled by the time
-     * the console listener's own {@code pipelineFinish} renders the summary line.
+     * the console listener's own {@code planFinish} renders the summary line.
      */
-    static PipelineResult runSync(
+    static BuildPlanResult runSync(
             EnginePaths.Paths paths,
             EngineClient.SyncRequest req,
-            Function<List<Step>, PipelineListener> listenerFactory,
+            Function<List<Task>, BuildPlanListener> listenerFactory,
             long[] fetchedOut,
             long[] upToDateOut)
             throws IOException {
@@ -138,25 +137,25 @@ final class EngineResolveAdapter {
                             req.refresh(),
                             req.verbose()));
 
-            List<Step> steps = new ArrayList<>();
-            List<PipelineResult.Diagnostic> diagnostics = new ArrayList<>();
-            PipelineListener listener = null;
+            List<Task> steps = new ArrayList<>();
+            List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
+            BuildPlanListener listener = null;
 
             String line;
             while ((line = reader.readLine()) != null) {
                 String type = EngineProtocol.typeOf(line);
                 if (type == null) continue;
                 switch (type) {
-                    case EngineProtocol.PLAN_STEP ->
-                        steps.add(Step.builder(Jsonl.str(line, "name"))
+                    case EngineProtocol.PLAN_TASK ->
+                        steps.add(Task.builder(Jsonl.str(line, "name"))
                                 .label(Jsonl.str(line, "label"))
-                                .phase(Phase.fromWireOrNull(Jsonl.str(line, "phase")))
+                                .phase(wireGroup(Jsonl.str(line, "group")))
                                 .build());
                     case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
-                    case EngineProtocol.PIPELINE_FINISH -> {
+                    case EngineProtocol.BUILDPLAN_FINISH -> {
                         if (fetchedOut != null) fetchedOut[0] = Jsonl.longValue(line, "syncFetched", 0);
                         if (upToDateOut != null) upToDateOut[0] = Jsonl.longValue(line, "syncUpToDate", 0);
-                        PipelineResult result = new PipelineResult(
+                        BuildPlanResult result = new BuildPlanResult(
                                 "sync",
                                 Jsonl.bool(line, "success", false),
                                 Duration.ZERO,
@@ -165,12 +164,12 @@ final class EngineResolveAdapter {
                                 diagnostics,
                                 false,
                                 false);
-                        if (listener != null) listener.pipelineFinish(result);
+                        if (listener != null) listener.planFinish(result);
                         return result;
                     }
                     case EngineProtocol.ERROR ->
                         throw new IOException("jk engine: run failed: " + Jsonl.str(line, "message"));
-                    default -> dispatchPipelineEvent(type, line, listener, diagnostics);
+                    default -> dispatchBuildPlanEvent(type, line, listener, diagnostics);
                 }
             }
             throw disconnected();
@@ -179,7 +178,7 @@ final class EngineResolveAdapter {
 
     /** Send a cascade request and replay its stream into {@code handler} until the terminal arrives. */
     private static EngineClient.LockOutcome streamCascade(
-            EnginePaths.Paths paths, String requestLine, EngineClient.LockHandler handler, String pipelineName)
+            EnginePaths.Paths paths, String requestLine, EngineClient.LockHandler handler, String planName)
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
 
@@ -193,9 +192,9 @@ final class EngineResolveAdapter {
             // wire (the engine locks them one at a time), so one slot suffices.
             String currentDir = null;
             String currentCoord = null;
-            List<Step> steps = new ArrayList<>();
-            List<PipelineResult.Diagnostic> diagnostics = new ArrayList<>();
-            PipelineListener listener = null;
+            List<Task> steps = new ArrayList<>();
+            List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
+            BuildPlanListener listener = null;
 
             String line;
             while ((line = reader.readLine()) != null) {
@@ -209,10 +208,10 @@ final class EngineResolveAdapter {
                         diagnostics = new ArrayList<>();
                         listener = null;
                     }
-                    case EngineProtocol.PLAN_STEP ->
-                        steps.add(Step.builder(Jsonl.str(line, "name"))
+                    case EngineProtocol.PLAN_TASK ->
+                        steps.add(Task.builder(Jsonl.str(line, "name"))
                                 .label(Jsonl.str(line, "label"))
-                                .phase(Phase.fromWireOrNull(Jsonl.str(line, "phase")))
+                                .phase(wireGroup(Jsonl.str(line, "group")))
                                 .build());
                     case EngineProtocol.PLAN_DONE -> listener = handler.onModuleStart(currentDir, currentCoord, steps);
                     case EngineProtocol.LOCK_PACKAGE ->
@@ -221,9 +220,9 @@ final class EngineResolveAdapter {
                                 Jsonl.str(line, "name"),
                                 Jsonl.str(line, "version"),
                                 Jsonl.intValue(line, "total", -1));
-                    case EngineProtocol.PIPELINE_FINISH -> {
-                        PipelineResult result = new PipelineResult(
-                                pipelineName,
+                    case EngineProtocol.BUILDPLAN_FINISH -> {
+                        BuildPlanResult result = new BuildPlanResult(
+                                planName,
                                 Jsonl.bool(line, "success", false),
                                 Duration.ZERO,
                                 List.of(),
@@ -231,7 +230,7 @@ final class EngineResolveAdapter {
                                 diagnostics,
                                 false,
                                 false);
-                        if (listener != null) listener.pipelineFinish(result);
+                        if (listener != null) listener.planFinish(result);
                         handler.onModuleFinish(
                                 currentDir,
                                 result,
@@ -249,7 +248,7 @@ final class EngineResolveAdapter {
                     }
                     case EngineProtocol.ERROR ->
                         throw new IOException("jk engine: run failed: " + Jsonl.str(line, "message"));
-                    default -> dispatchPipelineEvent(type, line, listener, diagnostics);
+                    default -> dispatchBuildPlanEvent(type, line, listener, diagnostics);
                 }
             }
             throw disconnected();
@@ -257,47 +256,47 @@ final class EngineResolveAdapter {
     }
 
     /**
-     * Replay one standard single-pipeline wire event into {@code listener} (accumulating {@code
-     * pipeline-diagnostic}s aside, like {@link EngineBuildListenerAdapter} does) — the shared tail of
+     * Replay one standard single-plan wire event into {@code listener} (accumulating {@code
+     * plan-diagnostic}s aside, like {@link EngineBuildListenerAdapter} does) — the shared tail of
      * both stream loops. Unknown types are forward-compatible no-ops.
      */
-    private static void dispatchPipelineEvent(
-            String type, String line, PipelineListener listener, List<PipelineResult.Diagnostic> diagnostics) {
+    private static void dispatchBuildPlanEvent(
+            String type, String line, BuildPlanListener listener, List<BuildPlanResult.Diagnostic> diagnostics) {
         if (listener == null) {
-            // pipeline-diagnostics can still matter pre-listener; everything else needs one.
-            if (EngineProtocol.PIPELINE_DIAGNOSTIC.equals(type)) {
+            // plan-diagnostics can still matter pre-listener; everything else needs one.
+            if (EngineProtocol.BUILDPLAN_DIAGNOSTIC.equals(type)) {
                 diagnostics.add(readDiagnostic(line));
             }
             return;
         }
         switch (type) {
-            case EngineProtocol.PIPELINE_START -> listener.pipelineStart(readPipelineView(line));
-            case EngineProtocol.STEP_START ->
+            case EngineProtocol.BUILDPLAN_START -> listener.planStart(readBuildPlanView(line));
+            case EngineProtocol.TASK_START ->
                 listener.stepStart(
-                        Jsonl.str(line, "step"),
-                        Phase.fromWireOrNull(Jsonl.str(line, "phase")),
+                        Jsonl.str(line, "task"),
+                        wireGroup(Jsonl.str(line, "group")),
                         Jsonl.intValue(line, "ticks", 0));
             case EngineProtocol.PROGRESS ->
-                listener.progress(Jsonl.str(line, "step"), Jsonl.intValue(line, "delta", 0), readPipelineView(line));
+                listener.progress(Jsonl.str(line, "task"), Jsonl.intValue(line, "delta", 0), readBuildPlanView(line));
             case EngineProtocol.TICK_UPDATE ->
-                listener.tickUpdate(Jsonl.str(line, "step"), Jsonl.intValue(line, "delta", 0), readPipelineView(line));
-            case EngineProtocol.LABEL -> listener.label(Jsonl.str(line, "step"), Jsonl.str(line, "label"));
-            case EngineProtocol.OUTPUT -> listener.output(Jsonl.str(line, "step"), Jsonl.str(line, "line"));
+                listener.tickUpdate(Jsonl.str(line, "task"), Jsonl.intValue(line, "delta", 0), readBuildPlanView(line));
+            case EngineProtocol.LABEL -> listener.label(Jsonl.str(line, "task"), Jsonl.str(line, "label"));
+            case EngineProtocol.OUTPUT -> listener.output(Jsonl.str(line, "task"), Jsonl.str(line, "line"));
             case EngineProtocol.WARN ->
-                listener.warn(Jsonl.str(line, "step"), Jsonl.str(line, "code"), Jsonl.str(line, "message"));
+                listener.warn(Jsonl.str(line, "task"), Jsonl.str(line, "code"), Jsonl.str(line, "message"));
             case EngineProtocol.ERROR_LINE ->
                 listener.error(
-                        Jsonl.str(line, "step"),
+                        Jsonl.str(line, "task"),
                         Jsonl.str(line, "code"),
                         Jsonl.str(line, "message"),
                         Jsonl.str(line, "test"),
                         Jsonl.str(line, "exceptionClass"));
-            case EngineProtocol.PIPELINE_DIAGNOSTIC -> diagnostics.add(readDiagnostic(line));
-            case EngineProtocol.STEP_FINISH ->
+            case EngineProtocol.BUILDPLAN_DIAGNOSTIC -> diagnostics.add(readDiagnostic(line));
+            case EngineProtocol.TASK_FINISH ->
                 listener.stepFinish(
-                        Jsonl.str(line, "step"),
-                        Phase.fromWireOrNull(Jsonl.str(line, "phase")),
-                        StepStatus.valueOf(Jsonl.str(line, "status")),
+                        Jsonl.str(line, "task"),
+                        wireGroup(Jsonl.str(line, "group")),
+                        TaskStatus.valueOf(Jsonl.str(line, "status")),
                         Duration.ZERO);
             default -> {
                 /* forward-compatible no-op */
@@ -305,22 +304,22 @@ final class EngineResolveAdapter {
         }
     }
 
-    private static PipelineResult.Diagnostic readDiagnostic(String line) {
-        return new PipelineResult.Diagnostic(
-                Jsonl.str(line, "step"),
+    private static BuildPlanResult.Diagnostic readDiagnostic(String line) {
+        return new BuildPlanResult.Diagnostic(
+                Jsonl.str(line, "task"),
                 Jsonl.str(line, "code"),
                 Jsonl.str(line, "message"),
                 Jsonl.str(line, "test"),
                 Jsonl.str(line, "exceptionClass"));
     }
 
-    private static PipelineView readPipelineView(String line) {
-        return new PipelineView(
-                Jsonl.str(line, "pipelineName"),
+    private static BuildPlanView readBuildPlanView(String line) {
+        return new BuildPlanView(
+                Jsonl.str(line, "planName"),
                 Jsonl.longValue(line, "numerator", 0),
                 Jsonl.longValue(line, "denominator", 0),
-                Jsonl.intValue(line, "stepsTotal", 0),
-                Jsonl.intValue(line, "stepsComplete", 0),
+                Jsonl.intValue(line, "tasksTotal", 0),
+                Jsonl.intValue(line, "tasksComplete", 0),
                 Jsonl.bool(line, "cancelled", false));
     }
 
@@ -335,5 +334,9 @@ final class EngineResolveAdapter {
                 + "(it may have crashed); run `jk engine status` for details");
     }
 
-    private static final EngineClient.LockHandler NOOP_HANDLER = (dir, coord, steps) -> new PipelineListener() {};
+    private static final EngineClient.LockHandler NOOP_HANDLER = (dir, coord, steps) -> new BuildPlanListener() {};
+
+    private static String wireGroup(String raw) {
+        return raw == null || raw.isBlank() ? null : raw;
+    }
 }

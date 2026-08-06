@@ -51,7 +51,7 @@ public final class JdkCatalogClient {
     /**
      * Where the "feed unreachable, using cached" degradation notice goes. No-op by default — only the
      * CLI view layer owns the streams, so callers there install {@code System.err::println} via
-     * {@link #onWarning}, and in-step callers route it to {@code StepContext::warn}.
+     * {@link #onWarning}, and in-step callers route it to {@code TaskContext::warn}.
      */
     private java.util.function.Consumer<String> warn = s -> {};
 

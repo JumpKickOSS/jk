@@ -4,7 +4,7 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Confirm;
@@ -24,12 +24,12 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineKey;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.Step;
-import cc.jumpkick.run.StepKind;
-import cc.jumpkick.run.StepNames;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskKind;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -49,7 +49,7 @@ import org.jline.terminal.Terminal;
  * <p>After all deletions, if the global default JDK was among the victims, delegate to {@link
  * JdkDefaultCommand#applyLts} so the next-best LTS on disk becomes the new default automatically.
  *
- * <p>The Pipeline wraps the actual delete loop + default reconciliation so we get a run-log entry per
+ * <p>The BuildPlan wraps the actual delete loop + default reconciliation so we get a run-log entry per
  * uninstall. Marked interactive so the progress widget stays out of the way of the spinner + wizard
  * UI.
  */
@@ -121,7 +121,7 @@ public final class JdkUninstallCommand implements CliCommand {
     GlobalOptions global;
 
     @SuppressWarnings("rawtypes")
-    private static final PipelineKey<List> VICTIMS = PipelineKey.of("victims", List.class);
+    private static final BuildPlanKey<List> VICTIMS = BuildPlanKey.of("victims", List.class);
 
     @Override
     public int run(Invocation in) throws Exception {
@@ -226,7 +226,7 @@ public final class JdkUninstallCommand implements CliCommand {
             CliOutput.out("Aborted.");
             return 0;
         }
-        return runDeletePipeline(List.of(hit), registry, defaults);
+        return runDeleteBuildPlan(List.of(hit), registry, defaults);
     }
 
     // --- wizard path --------------------------------------------------------
@@ -273,22 +273,22 @@ public final class JdkUninstallCommand implements CliCommand {
                 CliOutput.out("Aborted.");
                 return 0;
             }
-            return runDeletePipeline(List.of(victim), registry, defaults);
+            return runDeleteBuildPlan(List.of(victim), registry, defaults);
         }
     }
 
-    // --- pipeline-wrapped delete + reconcile ------------------------------------
+    // --- plan-wrapped delete + reconcile ------------------------------------
 
     /**
-     * One pipeline per command invocation. The wizard or single-arg path has already settled which hits
-     * are victims; the pipeline does the actual disk work + default-pointer reconciliation.
+     * One plan per command invocation. The wizard or single-arg path has already settled which hits
+     * are victims; the plan does the actual disk work + default-pointer reconciliation.
      * Interactive=true keeps the {@link Spinner} from competing with the framework's bar.
      */
-    private Integer runDeletePipeline(List<JdkHit> victims, JdkRegistry registry, GlobalDefaultJdk defaults) {
+    private Integer runDeleteBuildPlan(List<JdkHit> victims, JdkRegistry registry, GlobalDefaultJdk defaults) {
         Path cache = JkDirs.cache();
 
-        Step deleteStep = Step.builder(StepNames.DELETE)
-                .kind(StepKind.IO)
+        Task deleteStep = Task.builder(TaskNames.DELETE)
+                .kind(TaskKind.IO)
                 .ticks(victims.size())
                 .execute(ctx -> {
                     ctx.label("delete " + victims.size() + " install" + (victims.size() == 1 ? "" : "s"));
@@ -305,8 +305,8 @@ public final class JdkUninstallCommand implements CliCommand {
                 })
                 .build();
 
-        Step reconcile = Step.builder(StepNames.RECONCILE_DEFAULT)
-                .requires(StepNames.DELETE)
+        Task reconcile = Task.builder(TaskNames.RECONCILE_DEFAULT)
+                .requires(TaskNames.DELETE)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("reconcile default JDK pointer");
@@ -320,13 +320,13 @@ public final class JdkUninstallCommand implements CliCommand {
                 })
                 .build();
 
-        Pipeline pipeline = Pipeline.builder("jdk-uninstall")
+        BuildPlan plan = BuildPlan.builder("jdk-uninstall")
                 .interactive(true)
-                .addStep(deleteStep)
-                .addStep(reconcile)
+                .addTask(deleteStep)
+                .addTask(reconcile)
                 .build();
 
-        PipelineResult result = PipelineConsole.run(pipeline, PipelineConsole.modeFor(global), cache);
+        BuildPlanResult result = BuildPlanConsole.run(plan, BuildPlanConsole.modeFor(global), cache);
         if (!result.success()) return 1;
         return 0;
     }
@@ -363,7 +363,7 @@ public final class JdkUninstallCommand implements CliCommand {
         } catch (IOException e) {
             // The spinner has already cleared its line; print the failure where
             // the confirmation prompt was (confirmDeletion wiped it for us), then
-            // rethrow so the pipeline records the failure and the exit code is 1.
+            // rethrow so the plan records the failure and the exit code is 1.
             CliOutput.out(Theme.colorize(Glyphs.CROSS, Theme.active().error())
                     + " Failed to remove "
                     + Theme.colorize(label, Theme.active().warning())

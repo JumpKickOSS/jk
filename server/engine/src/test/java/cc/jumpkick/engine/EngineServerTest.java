@@ -284,7 +284,9 @@ class EngineServerTest {
                     .filter(r -> "project/step".equals(Jsonl.str(r, "scope")))
                     .findFirst()
                     .orElseThrow();
-            assertThat(Jsonl.str(stepRow, "step")).isEqualTo("compile-java");
+            String stepName = Jsonl.str(stepRow, "task");
+            if (stepName == null || stepName.isBlank()) stepName = Jsonl.str(stepRow, "step");
+            assertThat(stepName).isEqualTo("compile-java");
             assertThat(Jsonl.longValue(stepRow, "okTotalMillis", -1)).isEqualTo(700);
         }
         server.close();
@@ -387,7 +389,7 @@ class EngineServerTest {
      * Engine-hosted {@code jk lock} round-trip (Wave 1 of the slim-client migration): a real server
      * over the socket, a tiny fixture project, and a mock Maven repo standing in for every remote
      * (the request's {@code repoUrl} override). Asserts the full wire conversation — {@code
-     * lock-module} → plan burst → {@code lock-package} stream → count-carrying {@code pipeline-finish}
+     * lock-module} → plan burst → {@code lock-package} stream → count-carrying {@code plan-finish}
      * → {@code lock-finish} — and that the engine actually wrote {@code jk-lock.toml}.
      */
     @Test
@@ -437,7 +439,7 @@ class EngineServerTest {
 
             List<String> types = new ArrayList<>();
             String lockModule = null;
-            String pipelineFinish = null;
+            String planFinish = null;
             String lockFinish = null;
             String buildError = null;
             boolean sawAnyPackage = false;
@@ -466,9 +468,9 @@ class EngineServerTest {
                             sawAnyPackage = true;
                             lastPackageTotal = Jsonl.intValue(line, "total", -1);
                         }
-                        case EngineProtocol.PIPELINE_FINISH -> pipelineFinish = line;
+                        case EngineProtocol.BUILDPLAN_FINISH -> planFinish = line;
                         case EngineProtocol.LOCK_FINISH -> lockFinish = line;
-                        // Terminal too (a pre-pipeline failure): break instead of waiting forever for a
+                        // Terminal too (a pre-plan failure): break instead of waiting forever for a
                         // lock-finish that will never come — otherwise the server (reading this
                         // connection for a cancel/EOF) and this loop mutually wait, and the test
                         // hangs to timeout. The real client (EngineResolveAdapter) does the same.
@@ -482,12 +484,12 @@ class EngineServerTest {
             }
 
             assertThat(buildError)
-                    .as("engine reported a pre-pipeline error instead of hosting the lock")
+                    .as("engine reported a pre-plan error instead of hosting the lock")
                     .isNull();
             assertThat(lockModule).isNotNull();
             assertThat(Jsonl.str(lockModule, "dir")).isEqualTo(project.toString());
             assertThat(Jsonl.str(lockModule, "coord")).isEqualTo("com.example:app");
-            assertThat(types).contains(EngineProtocol.PLAN_STEP, EngineProtocol.PLAN_DONE);
+            assertThat(types).contains(EngineProtocol.PLAN_TASK, EngineProtocol.PLAN_DONE);
             assertThat(sawAnyPackage)
                     .as("at least one coalesced lock-package event")
                     .isTrue();
@@ -495,9 +497,9 @@ class EngineServerTest {
                     .as("running total covers every locked package")
                     .isEqualTo(3); // leaf + 2 junit defaults
 
-            assertThat(pipelineFinish).isNotNull();
-            assertThat(Jsonl.bool(pipelineFinish, "success", false)).isTrue();
-            assertThat(Jsonl.longValue(pipelineFinish, "lockPackages", -1)).isEqualTo(3); // leaf + 2 junit defaults
+            assertThat(planFinish).isNotNull();
+            assertThat(Jsonl.bool(planFinish, "success", false)).isTrue();
+            assertThat(Jsonl.longValue(planFinish, "lockPackages", -1)).isEqualTo(3); // leaf + 2 junit defaults
 
             assertThat(lockFinish).isNotNull();
             assertThat(Jsonl.bool(lockFinish, "success", false)).isTrue();
@@ -524,8 +526,8 @@ class EngineServerTest {
      * Engine-hosted {@code jk audit} round-trip (Wave 2 of the slim-client migration — the hosted
      * worker commands): a real server over the socket forks a real {@code jk-auditor} worker JVM
      * (located via {@code -Djk.auditor.plugin.jar}, wired by the Gradle build) against a mock OSV
-     * API. Asserts the single-pipeline wire conversation — plan burst → pipeline events → structured
-     * {@code audit-finding} stream → terminal {@code pipeline-finish} — carrying the mock vulnerability.
+     * API. Asserts the single-plan wire conversation — plan burst → plan events → structured
+     * {@code audit-finding} stream → terminal {@code plan-finish} — carrying the mock vulnerability.
      */
     @Test
     void audit_request_forks_the_worker_and_streams_findings_over_the_socket() throws Exception {
@@ -570,7 +572,7 @@ class EngineServerTest {
 
             List<String> types = new ArrayList<>();
             String finding = null;
-            String pipelineFinish = null;
+            String planFinish = null;
             String buildError = null;
             try (Client c = new Client(EnginePaths.activeSocket(p))) {
                 c.sendLine(EngineProtocol.auditRequest(
@@ -581,23 +583,23 @@ class EngineServerTest {
                     types.add(type);
                     switch (type) {
                         case EngineProtocol.AUDIT_FINDING -> finding = line;
-                        case EngineProtocol.PIPELINE_FINISH -> pipelineFinish = line;
+                        case EngineProtocol.BUILDPLAN_FINISH -> planFinish = line;
                         // Terminal too (e.g. the worker jar wasn't locatable): break instead of
-                        // waiting for a pipeline-finish that will never come — the real client
+                        // waiting for a plan-finish that will never come — the real client
                         // (EnginePluginAdapter) treats build-error the same way.
                         case EngineProtocol.ERROR -> buildError = line;
                         default -> {
                             /* plan/progress events — presence asserted via `types` below */
                         }
                     }
-                    if (pipelineFinish != null || buildError != null) break;
+                    if (planFinish != null || buildError != null) break;
                 }
             }
 
             assertThat(buildError)
-                    .as("engine reported a pre-pipeline error instead of hosting the audit")
+                    .as("engine reported a pre-plan error instead of hosting the audit")
                     .isNull();
-            assertThat(types).contains(EngineProtocol.PLAN_STEP, EngineProtocol.PLAN_DONE);
+            assertThat(types).contains(EngineProtocol.PLAN_TASK, EngineProtocol.PLAN_DONE);
             assertThat(finding)
                     .as("audit-finding event for the mock vulnerability")
                     .isNotNull();
@@ -606,8 +608,8 @@ class EngineServerTest {
             assertThat(Jsonl.str(finding, "vulnId")).isEqualTo("GHSA-test-1");
             assertThat(Jsonl.str(finding, "summary")).isEqualTo("Stub vulnerability");
 
-            assertThat(pipelineFinish).isNotNull();
-            assertThat(Jsonl.bool(pipelineFinish, "success", false)).isTrue();
+            assertThat(planFinish).isNotNull();
+            assertThat(Jsonl.bool(planFinish, "success", false)).isTrue();
 
             server.close();
             serverThread.join(5_000);
@@ -619,10 +621,10 @@ class EngineServerTest {
 
     /**
      * Engine-hosted {@code jk compile} round-trip (Wave 3 of the slim-client migration — the
-     * in-process {@code BuildPipelines} stragglers): a real server over the socket runs the shared
-     * pipeline in compile-only mode against a tiny dependency-free fixture (a fresh empty {@code
-     * jk-lock.toml}, so no network resolve). Asserts the single-pipeline wire conversation — plan burst →
-     * pipeline events → terminal {@code pipeline-finish} — and that the engine actually compiled the class.
+     * in-process {@code BuildPlanner} stragglers): a real server over the socket runs the shared
+     * plan in compile-only mode against a tiny dependency-free fixture (a fresh empty {@code
+     * jk-lock.toml}, so no network resolve). Asserts the single-plan wire conversation — plan burst →
+     * plan events → terminal {@code plan-finish} — and that the engine actually compiled the class.
      */
     /**
      * The session envelope's {@code rebuild} flag must defeat every engine-side freshness fast
@@ -669,12 +671,12 @@ class EngineServerTest {
                     project.toString(), cache.toString(), null, 1, null, true, false, false, false);
 
             // First build: real compile, stamps + caches populated.
-            assertThat(runToPipelineFinish(p, plain)).doesNotContain("\"buildOutcome\":\"up-to-date\"");
+            assertThat(runToBuildPlanFinish(p, plain)).doesNotContain("\"buildOutcome\":\"up-to-date\"");
             // Sanity: a plain second build IS the fast path.
-            assertThat(runToPipelineFinish(p, plain)).contains("\"buildOutcome\":\"up-to-date\"");
+            assertThat(runToBuildPlanFinish(p, plain)).contains("\"buildOutcome\":\"up-to-date\"");
             // The envelope's rebuild defeats it.
             String distrust = EngineProtocol.withSession(plain, null, null, null, true);
-            assertThat(runToPipelineFinish(p, distrust))
+            assertThat(runToBuildPlanFinish(p, distrust))
                     .as("rebuild must reach the engine's stamp checks")
                     .doesNotContain("\"buildOutcome\":\"up-to-date\"");
         } finally {
@@ -683,18 +685,18 @@ class EngineServerTest {
         }
     }
 
-    /** Drive one request to its pipeline-finish and return that terminal line. */
-    private static String runToPipelineFinish(EnginePaths.Paths p, String request) throws IOException {
+    /** Drive one request to its plan-finish and return that terminal line. */
+    private static String runToBuildPlanFinish(EnginePaths.Paths p, String request) throws IOException {
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
             c.sendLine(request);
             String line;
             while ((line = c.readLine()) != null) {
                 String type = EngineProtocol.typeOf(line);
-                if (EngineProtocol.PIPELINE_FINISH.equals(type)) return line;
+                if (EngineProtocol.BUILDPLAN_FINISH.equals(type)) return line;
                 if (EngineProtocol.ERROR.equals(type)) throw new IOException("request failed: " + line);
             }
         }
-        throw new IOException("disconnected before pipeline-finish");
+        throw new IOException("disconnected before plan-finish");
     }
 
     @Test
@@ -717,7 +719,7 @@ class EngineServerTest {
                     }
                 }
                 """);
-        // A fresh empty lock (newer than jk.toml) stands in for "already locked" — the pipeline's
+        // A fresh empty lock (newer than jk.toml) stands in for "already locked" — the plan's
         // parse-build then uses it verbatim instead of resolving over the network.
         Files.writeString(project.resolve("jk-lock.toml"), """
                 version = 1
@@ -733,7 +735,7 @@ class EngineServerTest {
 
         List<String> types = new ArrayList<>();
         List<String> diagnostics = new ArrayList<>();
-        String pipelineFinish = null;
+        String planFinish = null;
         String buildError = null;
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
             c.sendLine(EngineProtocol.compileRequest(project.toString(), cache.toString(), null, false, false, false));
@@ -742,25 +744,25 @@ class EngineServerTest {
                 String type = EngineProtocol.typeOf(line);
                 types.add(type);
                 switch (type) {
-                    case EngineProtocol.PIPELINE_FINISH -> pipelineFinish = line;
-                    case EngineProtocol.PIPELINE_DIAGNOSTIC -> diagnostics.add(line);
-                    // Terminal too — break instead of waiting for a pipeline-finish that will never
+                    case EngineProtocol.BUILDPLAN_FINISH -> planFinish = line;
+                    case EngineProtocol.BUILDPLAN_DIAGNOSTIC -> diagnostics.add(line);
+                    // Terminal too — break instead of waiting for a plan-finish that will never
                     // come (the mutual-wait shape the audit test also guards against).
                     case EngineProtocol.ERROR -> buildError = line;
                     default -> {
                         /* plan/progress events — presence asserted via `types` below */
                     }
                 }
-                if (pipelineFinish != null || buildError != null) break;
+                if (planFinish != null || buildError != null) break;
             }
         }
 
         assertThat(buildError)
-                .as("engine reported a pre-pipeline error instead of hosting the compile")
+                .as("engine reported a pre-plan error instead of hosting the compile")
                 .isNull();
-        assertThat(types).contains(EngineProtocol.PLAN_STEP, EngineProtocol.PLAN_DONE);
-        assertThat(pipelineFinish).isNotNull();
-        assertThat(Jsonl.bool(pipelineFinish, "success", false))
+        assertThat(types).contains(EngineProtocol.PLAN_TASK, EngineProtocol.PLAN_DONE);
+        assertThat(planFinish).isNotNull();
+        assertThat(Jsonl.bool(planFinish, "success", false))
                 .as("hosted compile succeeded; diagnostics: " + diagnostics)
                 .isTrue();
         // The engine (not the client) ran the compile.
@@ -776,7 +778,7 @@ class EngineServerTest {
      * Engine-hosted {@code jk tool install}/{@code tool run} resolution round-trip (Wave 4 of the
      * slim-client migration): a real server over the socket resolves a Maven-published tool against
      * a mock repo (the {@code --main} override skips manifest reading — the served jar is a stub).
-     * Asserts the single-pipeline wire conversation ends in a {@code pipeline-finish} carrying the resolved
+     * Asserts the single-plan wire conversation ends in a {@code plan-finish} carrying the resolved
      * main class + classpath, and that the engine actually fetched the jar into the CAS.
      */
     @Test
@@ -808,7 +810,7 @@ class EngineServerTest {
             waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
 
             List<String> types = new ArrayList<>();
-            String pipelineFinish = null;
+            String planFinish = null;
             String buildError = null;
             try (Client c = new Client(EnginePaths.activeSocket(p))) {
                 c.sendLine(EngineProtocol.toolResolveRequest(
@@ -823,24 +825,24 @@ class EngineServerTest {
                     String type = EngineProtocol.typeOf(line);
                     types.add(type);
                     switch (type) {
-                        case EngineProtocol.PIPELINE_FINISH -> pipelineFinish = line;
+                        case EngineProtocol.BUILDPLAN_FINISH -> planFinish = line;
                         case EngineProtocol.ERROR -> buildError = line;
                         default -> {
                             /* plan/progress events — presence asserted via `types` below */
                         }
                     }
-                    if (pipelineFinish != null || buildError != null) break;
+                    if (planFinish != null || buildError != null) break;
                 }
             }
 
             assertThat(buildError)
-                    .as("engine reported a pre-pipeline error instead of hosting the resolve")
+                    .as("engine reported a pre-plan error instead of hosting the resolve")
                     .isNull();
-            assertThat(types).contains(EngineProtocol.PLAN_STEP, EngineProtocol.PLAN_DONE);
-            assertThat(pipelineFinish).isNotNull();
-            assertThat(Jsonl.bool(pipelineFinish, "success", false)).isTrue();
-            assertThat(Jsonl.str(pipelineFinish, "toolMainClass")).isEqualTo("com.example.Main");
-            List<String> classpath = Jsonl.strArray(pipelineFinish, "toolClasspath");
+            assertThat(types).contains(EngineProtocol.PLAN_TASK, EngineProtocol.PLAN_DONE);
+            assertThat(planFinish).isNotNull();
+            assertThat(Jsonl.bool(planFinish, "success", false)).isTrue();
+            assertThat(Jsonl.str(planFinish, "toolMainClass")).isEqualTo("com.example.Main");
+            List<String> classpath = Jsonl.strArray(planFinish, "toolClasspath");
             assertThat(classpath).hasSize(1);
             // The engine (not the client) fetched the jar — the classpath entry exists on disk.
             assertThat(Files.isRegularFile(Path.of(classpath.get(0)))).isTrue();
@@ -857,8 +859,8 @@ class EngineServerTest {
     /**
      * Engine-hosted {@code jk cache prune} round-trip (Wave 4 — the idle-boundary cache job): a
      * real server over the socket sweeps a fixture cache holding a stale action key and a leftover
-     * CAS temp file. Asserts the single-pipeline wire conversation ends in a summary-carrying {@code
-     * pipeline-finish}, that the stale files are gone, and that the {@code.prune.lock} cross-process
+     * CAS temp file. Asserts the single-plan wire conversation ends in a summary-carrying {@code
+     * plan-finish}, that the stale files are gone, and that the {@code.prune.lock} cross-process
      * guard was created (the hosted path always takes it — the Wave-3 finding's fix).
      */
     @Test
@@ -883,7 +885,7 @@ class EngineServerTest {
         waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
 
         List<String> types = new ArrayList<>();
-        String pipelineFinish = null;
+        String planFinish = null;
         String buildError = null;
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
             c.sendLine(EngineProtocol.cachePruneRequest("prune", cache.toString(), 30, false, false, null, false));
@@ -892,24 +894,24 @@ class EngineServerTest {
                 String type = EngineProtocol.typeOf(line);
                 types.add(type);
                 switch (type) {
-                    case EngineProtocol.PIPELINE_FINISH -> pipelineFinish = line;
+                    case EngineProtocol.BUILDPLAN_FINISH -> planFinish = line;
                     case EngineProtocol.ERROR -> buildError = line;
                     default -> {
                         /* plan/progress events — presence asserted via `types` below */
                     }
                 }
-                if (pipelineFinish != null || buildError != null) break;
+                if (planFinish != null || buildError != null) break;
             }
         }
 
         assertThat(buildError)
-                .as("engine reported a pre-pipeline error instead of hosting the prune")
+                .as("engine reported a pre-plan error instead of hosting the prune")
                 .isNull();
-        assertThat(types).contains(EngineProtocol.PLAN_STEP, EngineProtocol.PLAN_DONE);
-        assertThat(pipelineFinish).isNotNull();
-        assertThat(Jsonl.bool(pipelineFinish, "success", false)).isTrue();
-        assertThat(Jsonl.longValue(pipelineFinish, "cacheFiles", -1)).isEqualTo(2);
-        assertThat(Jsonl.longValue(pipelineFinish, "cacheBytes", -1)).isPositive();
+        assertThat(types).contains(EngineProtocol.PLAN_TASK, EngineProtocol.PLAN_DONE);
+        assertThat(planFinish).isNotNull();
+        assertThat(Jsonl.bool(planFinish, "success", false)).isTrue();
+        assertThat(Jsonl.longValue(planFinish, "cacheFiles", -1)).isEqualTo(2);
+        assertThat(Jsonl.longValue(planFinish, "cacheBytes", -1)).isPositive();
         // The engine (not the client) swept the cache.
         assertThat(Files.exists(staleKey)).isFalse();
         assertThat(Files.exists(putTmp)).isFalse();
@@ -954,7 +956,7 @@ class EngineServerTest {
         Thread serverThread = runInBackground(server);
         waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
 
-        String pipelineFinish = null;
+        String planFinish = null;
         String buildError = null;
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
             c.sendLine(EngineProtocol.cacheClearRequest(cache.toString(), project.toString(), false));
@@ -962,20 +964,20 @@ class EngineServerTest {
             while ((line = c.readLine()) != null) {
                 String type = EngineProtocol.typeOf(line);
                 switch (type) {
-                    case EngineProtocol.PIPELINE_FINISH -> pipelineFinish = line;
+                    case EngineProtocol.BUILDPLAN_FINISH -> planFinish = line;
                     case EngineProtocol.ERROR -> buildError = line;
                     default -> {
                         /* plan/progress events */
                     }
                 }
-                if (pipelineFinish != null || buildError != null) break;
+                if (planFinish != null || buildError != null) break;
             }
         }
 
         assertThat(buildError).isNull();
-        assertThat(pipelineFinish).isNotNull();
-        assertThat(Jsonl.bool(pipelineFinish, "success", false)).isTrue();
-        assertThat(Jsonl.longValue(pipelineFinish, "cacheFiles", -1)).isEqualTo(2); // record + pointer
+        assertThat(planFinish).isNotNull();
+        assertThat(Jsonl.bool(planFinish, "success", false)).isTrue();
+        assertThat(Jsonl.longValue(planFinish, "cacheFiles", -1)).isEqualTo(2); // record + pointer
         assertThat(Files.exists(mine)).isFalse();
         assertThat(Files.exists(cache.resolve("actions/tasks/compile-main@" + tag)))
                 .isFalse();

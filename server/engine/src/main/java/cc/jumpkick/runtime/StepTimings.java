@@ -116,18 +116,29 @@ public final class StepTimings {
             String k = e.getKey();
             double v = e.getValue();
             if (!(v > 0)) continue;
-            if (k.endsWith(".per-unit-ms") && k.startsWith("module.") && k.contains(".step.")) {
-                // module.<dir>.step.<step>.per-unit-ms
+            if (k.endsWith(".per-unit-ms") && k.startsWith("module.") && k.contains(".task.")) {
+                String body = k.substring("module.".length(), k.length() - ".per-unit-ms".length());
+                int taskAt = body.indexOf(".task.");
+                if (taskAt > 0) {
+                    String dir = body.substring(0, taskAt);
+                    String task = body.substring(taskAt + ".task.".length());
+                    m.put(key(dir, task), new Entry(v, now));
+                }
+            } else if (k.endsWith(".per-unit-ms") && k.startsWith("module.") && k.contains(".step.")) {
+                // legacy step keys
                 String body = k.substring("module.".length(), k.length() - ".per-unit-ms".length());
                 int stepAt = body.indexOf(".step.");
                 if (stepAt > 0) {
                     String dir = body.substring(0, stepAt);
                     String step = body.substring(stepAt + ".step.".length());
-                    m.put(key(dir, step), new Entry(v, now));
+                    m.putIfAbsent(key(dir, step), new Entry(v, now));
                 }
+            } else if (k.startsWith("task.") && k.endsWith(".per-unit-ms")) {
+                String task = k.substring("task.".length(), k.length() - ".per-unit-ms".length());
+                m.put(key(HOST_METHOD_MS_DIR, task), new Entry(v, now));
             } else if (k.startsWith("step.") && k.endsWith(".per-unit-ms")) {
                 String step = k.substring("step.".length(), k.length() - ".per-unit-ms".length());
-                m.put(key(HOST_METHOD_MS_DIR, step), new Entry(v, now));
+                m.putIfAbsent(key(HOST_METHOD_MS_DIR, step), new Entry(v, now));
             } else if (k.startsWith("host.") || k.endsWith("-per-method-ms") || k.endsWith("-per-source-ms")) {
                 m.put(key(HOST_METHOD_MS_DIR, k), new Entry(v, now));
             }

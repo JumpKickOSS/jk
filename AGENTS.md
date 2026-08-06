@@ -117,7 +117,7 @@ Needs a GraalVM-capable JDK for `dist` (see [CONTRIBUTING.md](CONTRIBUTING.md) /
 ### Claim and ship a ticket
 
 ```bash
-# in kanartist
+# in KanArtist
 git pull --rebase
 ka next --project jk          # or: ka ls --status ready --project jk
 ka claim JK-1044              # commits + pushes; push is the lock
@@ -135,7 +135,7 @@ Prefer a small WIP limit (a few claimed tickets). If blocked: `ka set-status JK-
 | Command | What runs | When |
 |---------|-----------|------|
 | `./gradlew test` | **Unit/fast** — excludes `@Tag("integration"\|"slow"\|"bench")` | Every ticket, PR, mid-work |
-| `./gradlew integrationTest` | Engine/CLI e2e, Android, workers, network | When the ticket touches wire/engine/pipelines/CLI spawn paths |
+| `./gradlew integrationTest` | Engine/CLI e2e, Android, workers, network | When the ticket touches wire/engine/plans/CLI spawn paths |
 | `./gradlew checkAll` | Both tiers for the whole repo | Nightly / pre-merge confidence |
 
 Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not** put multi-minute e2e in the default `test` task.
@@ -146,7 +146,7 @@ Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not**
 
 1. **Tests (required, non-negotiable)** — prove the change did not break the build:
    - **Always:** green `./gradlew test` (unit/fast tier) for the modules you touched (or full monorepo unit if unsure).
-   - **Also** green `./gradlew :cli:integrationTest` and/or `:engine:integrationTest` (or full `./gradlew integrationTest`) when the ticket touches CLI↔engine wire, engine pipelines/workers, plugin forks, lock/resolve/fetch, or install/materialize.
+   - **Also** green `./gradlew :cli:integrationTest` and/or `:engine:integrationTest` (or full `./gradlew integrationTest`) when the ticket touches CLI↔engine wire, engine plans/workers, plugin forks, lock/resolve/fetch, or install/materialize.
    - Nightly / main confidence: `./gradlew checkAll` (unit + integration). Do not treat a 20+ minute full e2e as the only mid-ticket loop.
    - Do not land on `main` with a red or un-run test suite for areas you changed. A broken main is a stop-the-line defect: fix tests first, then resume tickets.
 2. **Reinstall** — `./gradlew clean dist installLocal && ./install.sh build/dist/jk` succeeds (for code that ships client/engine).

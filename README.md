@@ -1,4 +1,4 @@
-<img width="1024" height="274" alt="JumpKick" src="https://github.com/user-attachments/assets/5cf7e056-1eed-43f7-9c6f-67bbb8d1e807" />
+<img width="1760" height="576" alt="jumpkick-banner" src="https://github.com/user-attachments/assets/10226663-2e29-420e-b604-654eee16ffa9" />
 
 # JumpKick — the best damn build tool for the JVM
 
@@ -7,16 +7,26 @@
 [![GraalVM](https://img.shields.io/badge/native--image-GraalVM%2025-yellow.svg)](https://www.graalvm.org/)
 [![Status](https://img.shields.io/badge/status-alpha-red.svg)](docs/architecture.md)
 
-**JumpKick** (CLI: **`jk`**) is Cargo for the JVM — Java, Kotlin, and Groovy. One native binary. One TOML file.
-A real lockfile. Conflicts you can read. Builds that skip work they can prove is already done.
+**JumpKick** (CLI: **`jk`**) is an elegant, powerful build system for the JVM — Java, Kotlin, and
+Groovy. A fast native binary. One simple TOML build definition. A real version lockfile. Dependency
+conflicts you can read. And best of all: builds that _skip work they can prove is already done_.
 
-> The fastest way to run your existing Maven or Gradle build — and a better tool
-> you can switch to when you're ready.
+JumpKick is _batteries included_ — a superior replacement for many tools you already juggle:
+
+- Maven
+- Gradle
+- SDKMAN!
+- JBang
+- and more…
+
+> When you're ready to upgrade your JVM development experience, import your Maven or Gradle
+> projects and see what you've been missing.
 
 ```bash
-jk init my-app && cd my-app
-jk add com.fasterxml.jackson.core:jackson-databind:2.18.2
-jk build && jk test
+jk new my-app
+cd my-app
+jk add jackson3-databind   # catalog short name (or group:artifact[:version], path, …)
+jk build
 ```
 
 ```toml
@@ -25,15 +35,12 @@ jk build && jk test
 group   = "com.example"
 name    = "my-app"
 version = "0.1.0"
-java    = 25                 # language + bytecode; jk already requires JDK 25+ to run
+java    = 25
 
 [dependencies]
-jackson3-databind = "3.0.0"   # means ^3.0.0 (caret by default)
+jackson3-databind = "latest"   # SemVer ranges, exact pins, or "latest"
 
-[test-dependencies]
-junit-jupiter = "6.0.0"
-
-[platform-dependencies]       # BOMs — enforced platforms (Maven depMgmt contract)
+[platform-dependencies]   # BOMs — enforced platforms (Maven depMgmt contract)
 spring-boot-dependencies = "4.1.0"
 ```
 
@@ -56,7 +63,7 @@ That's it. No `build.gradle.kts` that is itself a software project. No 200-line 
 | **Supply chain built in** | `audit` (OSV), `deny`, signing, Sigstore, SLSA, CycloneDX/SPDX SBOM |
 | **JDK management included** | `jk jdk install/pin` + shell activation — SDKMAN/jenv/toolchains in one place |
 
-Coming from **Maven**: think “Cargo-shaped UX on top of Central.”  
+Coming from **Maven**: think “Cargo-shaped UX on top of Central.”
 Coming from **Gradle**: think “declarative TOML + real lockfile, without the configuration graph.”
 
 ### Stay on the newest versions (core value)
@@ -196,7 +203,7 @@ jk engine stop
 ### Day one
 
 ```bash
-jk init payments-api && cd payments-api
+jk new payments-api && cd payments-api
 
 jk add org.springframework.boot:spring-boot-starter-web:3.4.0
 jk add --test org.springframework.boot:spring-boot-starter-test:3.4.0
@@ -302,7 +309,7 @@ jk --help
 Developer setup: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ```bash
-jk init hello && cd hello
+jk new hello && cd hello
 jk build
 ```
 

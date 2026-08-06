@@ -1,8 +1,8 @@
 version = 1
 generated-by = "jk 0.11.0"
 resolution-algorithm = "pubgrub-v1"
-jk = { version = "0.11.0", sha256 = "4ae80055da1fe159bc155bcd042bd960b7569bef7a62137e7305fe7f41663e99" }
-manifests-sha256 = "8bb0ffa51e050a835ee7c386864eb70f7cddfb691b03bb451c9ae098ca00e7f6"
+jk = { version = "0.11.0", sha256 = "b41f44542e0a5ff207de7067cc0e550998cad503aee1d83eccc9a0da95dd23c5" }
+manifests-sha256 = "f5f0dd2a743e259c626da5f6218fa9986a01156abb723cce2e832e922338b829"
 
 [[artifact]]
 name     = "aopalliance:aopalliance:jar:"
@@ -2064,7 +2064,7 @@ name    = "jk-engine"
 version = "0.11.0"
 jdk     = "25"
 java    = 25
-description = "jk build engine: BuildPipelines, plugin dispatch, action cache, compile/test machinery."
+description = "jk build engine: BuildPlanner, plugin dispatch, action cache, compile/test machinery."
 
 [[module]]
 path    = "server/io"
@@ -2117,7 +2117,7 @@ name    = "jk-model"
 version = "0.11.0"
 jdk     = "25"
 java    = 25
-description = "jk domain model: Pipeline/Step/PipelineListener, Dependency/Coordinate; depends on plugin-sdk (PluginConfig/Phase)."
+description = "jk domain model: BuildPlan/Task/BuildPlanListener, Dependency/Coordinate; depends on plugin-sdk (PluginConfig)."
 
 [[module]]
 path    = "shared/plugin-sdk"

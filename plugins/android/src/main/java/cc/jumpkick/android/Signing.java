@@ -2,7 +2,7 @@
 package cc.jumpkick.android;
 
 import cc.jumpkick.plugin.build.PackageIo;
-import cc.jumpkick.plugin.build.StepExec;
+import cc.jumpkick.plugin.build.TaskExec;
 import com.android.apksig.ApkSigner;
 import com.android.apksig.KeyConfig;
 import java.io.InputStream;
@@ -74,7 +74,7 @@ final class Signing {
     static Path debugKeystore(PackageIo io, Path work) throws Exception {
         Path keystore = work.resolve("debug.keystore");
         if (Files.isRegularFile(keystore)) return keystore;
-        StepExec.ToolRun.Result keygen = io.tool("keytool")
+        TaskExec.ToolRun.Result keygen = io.tool("keytool")
                 .arg("-genkeypair")
                 .arg("-keystore")
                 .arg(keystore.toAbsolutePath().toString())

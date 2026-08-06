@@ -23,12 +23,12 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** Exercises the full pipeline: init -> add -> lock -> tree / why / sync. */
+/** Exercises the full plan: init -> add -> lock -> tree / why / sync. */
 @cc.jumpkick.cli.engine.IsolatedStore
 @Tag("integration")
 class ReadSideIntegrationTest {
 
-    // These tests drive the real fetch pipeline against a mock Maven server; fetched
+    // These tests drive the real fetch plan against a mock Maven server; fetched
     // artifacts mirror into the Maven local repo. Point that at a throwaway dir (see
     // M2Dirs) so stub artifacts never overwrite the developer's real ~/.m2 — the
     // fixture reuses real coordinates (junit-jupiter et al).

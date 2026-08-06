@@ -6,8 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.resolver.ResolveObserver;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -89,11 +89,11 @@ class JdkFloorTest {
         // Isolated session — see FirstBuildJdkTest (do not inherit monorepo jdk pin from jk test).
         Session nested = Session.defaults().withCacheDir(cache);
         SessionContext.runWhere(nested, () -> {
-            Pipeline lock = LockPipelines.lockPipeline(
+            BuildPlan lock = LockPlans.lockBuildPlan(
                     project, parsed, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
             assertThat(lock.run().errors()).isEmpty();
 
-            BuildPipelines.Inputs in = new BuildPipelines.Inputs(
+            BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                     project,
                     cache,
                     project.resolve("jk.toml"),
@@ -109,9 +109,9 @@ class JdkFloorTest {
                     false,
                     java.util.Set.of(),
                     nested);
-            Pipeline pipeline = BuildPipelines.coreBuilder(in).build();
-            PipelineResult result = pipeline.run();
-            for (PipelineResult.Diagnostic d : result.errors()) {
+            BuildPlan plan = BuildPlanner.coreBuilder(in).build();
+            BuildPlanResult result = plan.run();
+            for (BuildPlanResult.Diagnostic d : result.errors()) {
                 System.out.println("DIAG [" + d.step() + "]: " + d.message());
             }
             assertThat(result.errors()).isEmpty();

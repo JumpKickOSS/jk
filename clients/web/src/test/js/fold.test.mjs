@@ -14,6 +14,11 @@ const {
   seedFromHistory,
   ioLines,
   fmtBytes,
+  detailForDisplay,
+  liveStepDetail,
+  detailSegments,
+  looksLikeJavaMember,
+  orderedModules,
   MAX_CARDS,
   MAX_OUTPUT_LINES,
 } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
@@ -71,7 +76,7 @@ test('socket finish without success derives the outcome from module rows', () =>
 test('all-success module rows derive success; no rows stay neutral', () => {
   const cards = [];
   foldEvent(cards, start(1, '/w'));
-  foldEvent(cards, { type: 'pipeline-finish', data: { requestId: 1, dir: '/w', success: true } });
+  foldEvent(cards, { type: 'buildplan-finish', data: { requestId: 1, dir: '/w', success: true } });
   foldEvent(cards, finish(1, {}));
   assert.equal(outcomeOf(cards[0]), 'success');
 
@@ -83,7 +88,7 @@ test('all-success module rows derive success; no rows stay neutral', () => {
 test('cancelled wins over derived outcomes', () => {
   const cards = [];
   foldEvent(cards, start(1, '/w'));
-  foldEvent(cards, { type: 'pipeline-finish', data: { requestId: 1, dir: '/w', success: true } });
+  foldEvent(cards, { type: 'buildplan-finish', data: { requestId: 1, dir: '/w', success: true } });
   foldEvent(cards, finish(1, { cancelled: true }));
   assert.equal(outcomeOf(cards[0]), 'cancelled');
 });
@@ -106,10 +111,10 @@ test('didWork false marks module checked; summary says checked not built (JK-129
   assert.equal(moduleSummary(cards[0]), 'checked 2 modules, all up to date');
 });
 
-test('pipeline-finish creates a module row when module-start never fired (single-pipeline requests)', () => {
+test('buildplan-finish creates a module row when module-start never fired (single-plan requests)', () => {
   const cards = [];
   foldEvent(cards, start(1, '/w'));
-  foldEvent(cards, { type: 'pipeline-finish', data: { requestId: 1, dir: '/w', success: false } });
+  foldEvent(cards, { type: 'buildplan-finish', data: { requestId: 1, dir: '/w', success: false } });
   assert.equal(cards[0].modules.length, 1);
   assert.equal(cards[0].modules[0].state, 'failed');
 });
@@ -152,11 +157,11 @@ test('coord and client timestamps ride the card', () => {
 test('steps fold per module, each module keeping its own chain', () => {
   const cards = [];
   foldEvent(cards, start(1, '/w'));
-  foldEvent(cards, { type: 'step-start', data: { requestId: 1, dir: '/w/a', step: 'compile', phase: 'compile' } });
-  foldEvent(cards, { type: 'step-start', data: { requestId: 1, dir: '/w/b', step: 'compile', phase: 'compile' } });
-  foldEvent(cards, { type: 'step-finish', data: { requestId: 1, dir: '/w/a', step: 'compile', phase: 'compile', status: 'SUCCESS' } });
-  foldEvent(cards, { type: 'step-start', data: { requestId: 1, dir: '/w/a', step: 'test', phase: 'test' } });
-  foldEvent(cards, { type: 'step-finish', data: { requestId: 1, dir: '/w/a', step: 'test', phase: 'test', status: 'FAIL' } });
+  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '/w/a', task: 'compile', phase: 'compile' } });
+  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '/w/b', task: 'compile', phase: 'compile' } });
+  foldEvent(cards, { type: 'task-finish', data: { requestId: 1, dir: '/w/a', task: 'compile', phase: 'compile', status: 'SUCCESS' } });
+  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '/w/a', task: 'test', phase: 'test' } });
+  foldEvent(cards, { type: 'task-finish', data: { requestId: 1, dir: '/w/a', task: 'test', phase: 'test', status: 'FAIL' } });
   const byDir = (dir) => cards[0].modules.find((m) => m.dir === dir);
   assert.equal(cards[0].modules.length, 2); // two modules, not one merged chain
   assert.deepEqual(
@@ -171,11 +176,35 @@ test('steps fold per module, each module keeping its own chain', () => {
   assert.deepEqual(byDir('/w/a').steps.map((p) => p.phase), ['compile', 'test']);
 });
 
-test('single-pipeline step events (empty dir) become one module with a chain', () => {
+test('orderedModules puts running first (newest activity), finished last', () => {
+  const cards = [];
+  foldEvent(cards, start(1, '/w'));
+  // a starts first, finishes; b starts later and stays running; c fails.
+  foldEvent(cards, { type: 'module-start', data: { requestId: 1, dir: '/w/a' }, at: 100 });
+  foldEvent(cards, { type: 'module-finish', data: { requestId: 1, dir: '/w/a', success: true, millis: 10 }, at: 200 });
+  foldEvent(cards, { type: 'module-start', data: { requestId: 1, dir: '/w/b' }, at: 300 });
+  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '/w/b', task: 'compile', phase: 'compile' }, at: 400 });
+  foldEvent(cards, { type: 'module-start', data: { requestId: 1, dir: '/w/c' }, at: 350 });
+  foldEvent(cards, { type: 'module-finish', data: { requestId: 1, dir: '/w/c', success: false, millis: 5 }, at: 360 });
+  // Later tick on b → b is the most recently active runner.
+  foldEvent(cards, {
+    type: 'label',
+    data: { requestId: 1, dir: '/w/b', task: 'compile', label: 'compiling' },
+    at: 500,
+  });
+
+  const ordered = orderedModules(cards[0].modules);
+  assert.deepEqual(
+    ordered.map((m) => m.dir + ':' + m.state),
+    ['/w/b:running', '/w/c:failed', '/w/a:success'],
+  );
+});
+
+test('single-plan step events (empty dir) become one module with a chain', () => {
   const cards = [];
   foldEvent(cards, start(1, '/proj'));
-  foldEvent(cards, { type: 'step-start', data: { requestId: 1, dir: '', step: 'compile-java', phase: 'compile' } });
-  foldEvent(cards, { type: 'step-finish', data: { requestId: 1, dir: '', step: 'compile-java', phase: 'compile', status: 'SUCCESS' } });
+  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '', task: 'compile-java', phase: 'compile' } });
+  foldEvent(cards, { type: 'task-finish', data: { requestId: 1, dir: '', task: 'compile-java', phase: 'compile', status: 'SUCCESS' } });
   assert.equal(cards[0].modules.length, 1);
   assert.equal(cards[0].modules[0].dir, '');
   assert.deepEqual(cards[0].modules[0].steps.map((p) => p.name + ':' + p.state), ['compile-java:success']);
@@ -187,8 +216,38 @@ test('single-pipeline step events (empty dir) become one module with a chain', (
 test('a step-start without a phase stores an empty phase', () => {
   const cards = [];
   foldEvent(cards, start(1, '/w'));
-  foldEvent(cards, { type: 'step-start', data: { requestId: 1, dir: '', step: 'lock' } });
+  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '', task: 'lock' } });
   assert.equal(cards[0].modules[0].steps[0].phase, ''); // default, never undefined
+});
+
+test('finished live cards reconcile by (dir, buildNumber) despite clock skew (JK-1519)', async () => {
+  const { seedFromHistory } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const cards = [];
+  foldEvent(cards, { ...start(1, '/w', { buildNumber: 6 }), at: 100_000 });
+  foldEvent(cards, { ...finish(1, { success: true, millis: 400 }), at: 100_400 });
+  // The journal record carries ENGINE time — 10s of clock skew vs the browser receipt stamps.
+  seedFromHistory(cards, [
+    { id: 'r6', dir: '/w', buildNumber: 6, kind: 'build', finishedAt: 110_400, startedAt: 110_000,
+      success: true, millis: 400, modules: [], steps: [], diagnostics: [] },
+  ]);
+  assert.equal(cards.length, 1); // no duplicate h:r6 card
+  assert.equal(cards[0].historyId, 'r6');
+});
+
+test('a stale running stub does not flip a finished live card back to running (JK-1519)', async () => {
+  const { seedFromHistory } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const cards = [];
+  foldEvent(cards, { ...start(1, '/w', { buildNumber: 6 }), at: 100_000 });
+  foldEvent(cards, { ...finish(1, { success: true, millis: 400 }), at: 100_400 });
+  // Reconcile raced the journal write: the record still says running.
+  seedFromHistory(cards, [
+    { id: 'r6', dir: '/w', buildNumber: 6, kind: 'build', running: true, startedAt: 110_000,
+      modules: [], steps: [], diagnostics: [] },
+  ]);
+  const live = cards.find((c) => c.id === 1);
+  assert.equal(live.state, 'finished'); // untouched by the stale stub
+  assert.equal(live.historyId, undefined);
+  assert.equal(cards.length, 1); // and the stub is not seeded as a phantom running row
 });
 
 test('history backfill maps per-module steps; single-project synthesizes one module', async () => {
@@ -231,7 +290,7 @@ test('output keeps a bounded tail and clears on finish', () => {
   const cards = [];
   foldEvent(cards, start(1, '/w'));
   for (let i = 1; i <= MAX_OUTPUT_LINES + 5; i++) {
-    foldEvent(cards, { type: 'output', data: { requestId: 1, dir: '/w/m', step: 'test', line: 'line ' + i } });
+    foldEvent(cards, { type: 'output', data: { requestId: 1, dir: '/w/m', task: 'test', line: 'line ' + i } });
   }
   assert.equal(cards[0].output.length, MAX_OUTPUT_LINES);
   assert.equal(cards[0].output.at(-1).line, 'line ' + (MAX_OUTPUT_LINES + 5));
@@ -245,12 +304,12 @@ test('diagnostics attach to their module by dir, survive finish, and are capped 
   foldEvent(cards, start(1, '/w'));
   foldEvent(cards, {
     type: 'diagnostic',
-    data: { requestId: 1, dir: '/w/core', step: 'test', code: 'fail', message: 'expected 3 but was 4',
+    data: { requestId: 1, dir: '/w/core', task: 'test', code: 'fail', message: 'expected 3 but was 4',
             test: 'adds()', exceptionClass: 'AssertionFailedError' },
   });
   foldEvent(cards, {
     type: 'diagnostic',
-    data: { requestId: 1, dir: '/w/api', step: 'lock', code: 'resolve', message: 'no versions for com.foo:bar' },
+    data: { requestId: 1, dir: '/w/api', task: 'lock', code: 'resolve', message: 'no versions for com.foo:bar' },
   });
   foldEvent(cards, finish(1, { success: false }));
   const core = cards[0].modules.find((m) => m.dir === '/w/core');
@@ -260,7 +319,7 @@ test('diagnostics attach to their module by dir, survive finish, and are capped 
   assert.equal(api.diagnostics.length, 1);
   assert.equal(api.diagnostics[0].step, 'lock');
   for (let i = 0; i < MAX_DIAGNOSTICS + 5; i++) {
-    foldEvent(cards, { type: 'diagnostic', data: { requestId: 1, dir: '/w/core', step: 'p', message: 'm' + i } });
+    foldEvent(cards, { type: 'diagnostic', data: { requestId: 1, dir: '/w/core', task: 'p', message: 'm' + i } });
   }
   assert.equal(core.diagnostics.length, MAX_DIAGNOSTICS); // capped per module
 });
@@ -310,6 +369,64 @@ test('seedFromHistory seeds a running in-flight journal row', () => {
   assert.equal(cards[0].state, 'running');
   assert.equal(cards[0].buildNumber, 27);
   assert.equal(outcomeOf(cards[0]), 'running');
+  assert.equal(cards[0].id, 'h:20260101T000000000-run1'); // no live requestId yet
+});
+
+test('seedFromHistory uses live requestId when history is enriched', () => {
+  const cards = [];
+  seedFromHistory(cards, [
+    historyRecord('20260101T000000000-run1', '/w/a', {
+      finishedAt: 0,
+      millis: 0,
+      running: true,
+      buildNumber: 27,
+      requestId: 42,
+      progress: 61,
+    }),
+  ]);
+  assert.equal(cards[0].id, 42);
+  assert.equal(cards[0].progressPercent, 61);
+});
+
+test('mid-build refresh: history stub rebinds on workspace-progress and finishes', () => {
+  // Hard refresh while a build is streaming: journal seeds h:… then SSE events use numeric requestId.
+  const cards = [];
+  seedFromHistory(cards, [
+    historyRecord('20260101T000000000-run1', '/w/a', {
+      finishedAt: 0,
+      millis: 0,
+      running: true,
+      buildNumber: 27,
+      startedAt: 1000,
+    }),
+  ]);
+  assert.equal(cards[0].id, 'h:20260101T000000000-run1');
+
+  foldEvent(cards, {
+    type: 'workspace-progress',
+    data: { requestId: 99, dir: '/w/a', numerator: 50, denominator: 100, progress: 50 },
+  });
+  assert.equal(cards[0].id, 99); // rebind
+  assert.equal(cards[0].progressPercent, 50);
+
+  foldEvent(cards, {
+    type: 'task-start',
+    data: { requestId: 99, dir: '/w/a', task: 'compile-java', phase: 'compile' },
+  });
+  assert.equal(cards[0].modules[0].steps[0].name, 'compile-java');
+  assert.equal(cards[0].modules[0].steps[0].state, 'running');
+
+  foldEvent(cards, finish(99, { success: true, millis: 8000 }));
+  assert.equal(outcomeOf(cards[0]), 'success');
+  assert.equal(cards[0].millis, 8000);
+});
+
+test('request-start rehydrate is idempotent when card already has requestId', () => {
+  const cards = [];
+  foldEvent(cards, start(5, '/w/a', { buildNumber: 3 }));
+  foldEvent(cards, start(5, '/w/a', { buildNumber: 3 })); // SSE connect rehydrate
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].id, 5);
 });
 
 test('seedFromHistory reconciles running SSE card with durable in-flight row', () => {
@@ -355,8 +472,8 @@ test('weight progress aggregates numerator/denominator across modules', async ()
   const cards = [];
   foldEvent(cards, start(1, '/w'));
   foldEvent(cards, { type: 'plan', data: { requestId: 1, weight: 300 } });
-  foldEvent(cards, { type: 'pipeline-progress', data: { requestId: 1, dir: '/w/a', numerator: 50, denominator: 100 } });
-  foldEvent(cards, { type: 'pipeline-progress', data: { requestId: 1, dir: '/w/b', numerator: 20, denominator: 100 } });
+  foldEvent(cards, { type: 'plan-progress', data: { requestId: 1, dir: '/w/a', numerator: 50, denominator: 100 } });
+  foldEvent(cards, { type: 'plan-progress', data: { requestId: 1, dir: '/w/b', numerator: 20, denominator: 100 } });
   assert.equal(weightNumerator(cards[0]), 70);
   // denominator = max(planWeight 300, sum of module dens 200) = 300 — stable, no backward jump
   assert.equal(weightDenominator(cards[0]), 300);
@@ -366,16 +483,16 @@ test('weight denominator falls back to summed module dens when no plan (single b
   const { weightDenominator } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
   const cards = [];
   foldEvent(cards, start(1, '/w'));
-  foldEvent(cards, { type: 'pipeline-progress', data: { requestId: 1, dir: '', numerator: 4, denominator: 12 } });
+  foldEvent(cards, { type: 'plan-progress', data: { requestId: 1, dir: '', numerator: 4, denominator: 12 } });
   assert.equal(weightDenominator(cards[0]), 12);
 });
 
-test('pipeline-progress updates latest per dir (no double count on repeat)', async () => {
+test('plan-progress updates latest per dir (no double count on repeat)', async () => {
   const { weightNumerator } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
   const cards = [];
   foldEvent(cards, start(1, '/w'));
-  foldEvent(cards, { type: 'pipeline-progress', data: { requestId: 1, dir: '/w/a', numerator: 10, denominator: 100 } });
-  foldEvent(cards, { type: 'pipeline-progress', data: { requestId: 1, dir: '/w/a', numerator: 80, denominator: 100 } });
+  foldEvent(cards, { type: 'plan-progress', data: { requestId: 1, dir: '/w/a', numerator: 10, denominator: 100 } });
+  foldEvent(cards, { type: 'plan-progress', data: { requestId: 1, dir: '/w/a', numerator: 80, denominator: 100 } });
   assert.equal(weightNumerator(cards[0]), 80); // latest wins, not 10+80
 });
 
@@ -389,12 +506,31 @@ test('eta is captured and cleared on finish', () => {
   assert.equal(cards[0].etaMillis, null); // countdown stops on finish
 });
 
+test('etaTotalMillis anchors remaining work at the emission time, not request-start (JK-1517)', async () => {
+  const { etaTotalMillis } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const cards = [];
+  foldEvent(cards, { ...start(1, '/w'), at: 1000 });
+  // 10s into the run (slow lock/prepare), the engine projects 30s of REMAINING work.
+  foldEvent(cards, { ...{ type: 'eta', data: { requestId: 1, millis: 30_000 } }, at: 11_000 });
+  // Run-wide total = elapsed-at-emission (10s) + remaining (30s), not 30s.
+  assert.equal(etaTotalMillis(cards[0]), 40_000);
+
+  // A later re-projection replaces the anchor — still no double count.
+  foldEvent(cards, { ...{ type: 'eta', data: { requestId: 1, millis: 25_000 } }, at: 21_000 });
+  assert.equal(etaTotalMillis(cards[0]), 45_000);
+
+  // Journal-seeded shape (no etaAt): millis is treated as the total.
+  assert.equal(etaTotalMillis({ etaMillis: 30_000, etaAt: null, startedAt: 1000 }), 30_000);
+  assert.equal(etaTotalMillis({ etaMillis: null }), null);
+  assert.equal(etaTotalMillis({ etaMillis: 0 }), null);
+});
+
 test('phaseChainOf collapses steps into coarse phase nodes in encounter order', () => {
   const cards = [];
   foldEvent(cards, start(1, '/proj'));
   const step = (name, phase, status) => {
-    foldEvent(cards, { type: 'step-start', data: { requestId: 1, dir: '', step: name, phase } });
-    if (status) foldEvent(cards, { type: 'step-finish', data: { requestId: 1, dir: '', step: name, phase, status } });
+    foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '', task: name, phase } });
+    if (status) foldEvent(cards, { type: 'task-finish', data: { requestId: 1, dir: '', task: name, phase, status } });
   };
   step('resolve-deps', 'resolve', 'SUCCESS');
   step('compile-java', 'compile', 'SUCCESS');
@@ -433,6 +569,48 @@ test('phaseChainOf keeps an unphased step as its own node, keyed by name', () =>
   assert.equal(chain[0].phase, '');
   assert.equal(chain[0].key, 'lock'); // last-resort: keyed by the step name so it is never dropped
   assert.equal(chain[0].label, 'Lock');
+});
+
+test('label event stores live tick text on the running step', () => {
+  const cards = [];
+  foldEvent(cards, start(1, '/w'));
+  foldEvent(cards, {
+    type: 'task-start',
+    data: { requestId: 1, dir: '', task: 'run-tests', phase: 'test' },
+  });
+  foldEvent(cards, {
+    type: 'label',
+    data: { requestId: 1, dir: '', task: 'run-tests', label: 'g:a :: FooTest.bar()  [w2]' },
+  });
+  const step = cards[0].modules[0].steps[0];
+  assert.equal(step.message, 'g:a :: FooTest.bar()  [w2]');
+  assert.equal(liveStepDetail('g:a', cards[0].modules[0].steps), 'FooTest.bar()  [w2]');
+});
+
+test('detailForDisplay strips a leading module :: prefix', () => {
+  assert.equal(detailForDisplay('g:a', 'g:a :: FooTest.t()'), 'FooTest.t()');
+  assert.equal(detailForDisplay('g:a', 'shrinking jar'), 'shrinking jar');
+  assert.equal(detailForDisplay('g:a', ''), '');
+});
+
+test('looksLikeJavaMember detects Class.method form', () => {
+  assert.equal(looksLikeJavaMember('FooTest.bar(Path)'), true);
+  assert.equal(looksLikeJavaMember('FooTest'), true);
+  assert.equal(looksLikeJavaMember('shrinking jar'), false);
+});
+
+test('detailSegments syntax-highlights test members and mid-grays prose', () => {
+  const java = detailSegments('VariantSwitchTest.switching_variants(Path)');
+  assert.ok(java.some((s) => s.cls === 'det-type' && s.text === 'VariantSwitchTest'));
+  assert.ok(java.some((s) => s.cls === 'det-fn' && s.text === 'switching_variants'));
+  assert.ok(java.some((s) => s.cls === 'det-type' && s.text === 'Path'));
+
+  const prose = detailSegments('compiling 12 Groovy test sources');
+  assert.ok(prose.some((s) => s.cls === 'det-num' && s.text === '12'));
+  assert.ok(prose.some((s) => s.cls === 'det-mid' && s.text === 'compiling'));
+
+  const withWorker = detailSegments('FooTest.bar()  [w2]');
+  assert.ok(withWorker.some((s) => s.cls === 'det-mid' && s.text === '  [w2]'));
 });
 
 test('request-finish folds the run\'s byte counters onto the card', () => {

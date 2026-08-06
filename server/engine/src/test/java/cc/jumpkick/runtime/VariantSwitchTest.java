@@ -4,8 +4,8 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.resolver.ResolveObserver;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -66,18 +66,18 @@ class VariantSwitchTest {
                 """);
 
         var parsed = cc.jumpkick.config.JkBuildParser.parse(project.resolve("jk.toml"));
-        Pipeline lock = LockPipelines.lockPipeline(
+        BuildPlan lock = LockPlans.lockBuildPlan(
                 project, parsed, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().errors()).isEmpty();
 
         Path classes = project.resolve("target/classes/main/com/example/sw");
-        PipelineResult a = buildVariant(project, cache, "mode=a");
+        BuildPlanResult a = buildVariant(project, cache, "mode=a");
         assertThat(a.errors()).isEmpty();
         assertThat(a.success()).as("variant a builds").isTrue();
         assertThat(classes.resolve("OnlyA.class")).exists();
         assertThat(classes.resolve("OnlyB.class")).doesNotExist();
 
-        PipelineResult b = buildVariant(project, cache, "mode=b");
+        BuildPlanResult b = buildVariant(project, cache, "mode=b");
         assertThat(b.errors()).isEmpty();
         assertThat(b.success()).as("variant b builds after a").isTrue();
         assertThat(classes.resolve("OnlyB.class")).exists();
@@ -86,7 +86,7 @@ class VariantSwitchTest {
                 .doesNotExist();
 
         // And back again — both directions stay clean.
-        PipelineResult a2 = buildVariant(project, cache, "mode=a");
+        BuildPlanResult a2 = buildVariant(project, cache, "mode=a");
         assertThat(a2.success()).as("variant a builds after b").isTrue();
         assertThat(classes.resolve("OnlyA.class")).exists();
         assertThat(classes.resolve("OnlyB.class")).doesNotExist();
@@ -94,18 +94,18 @@ class VariantSwitchTest {
         // The daemon-observed failing shape: clean, restore a from the action cache, then
         // switch to b — the switch after a RESTORED (not compiled) tree must also work.
         cc.jumpkick.util.PathUtil.deleteRecursively(project.resolve("target"));
-        PipelineResult a3 = buildVariant(project, cache, "mode=a");
+        BuildPlanResult a3 = buildVariant(project, cache, "mode=a");
         assertThat(a3.success()).as("variant a restores after clean").isTrue();
         assertThat(classes.resolve("OnlyA.class")).exists();
-        PipelineResult b2 = buildVariant(project, cache, "mode=b");
+        BuildPlanResult b2 = buildVariant(project, cache, "mode=b");
         assertThat(b2.errors()).isEmpty();
         assertThat(b2.success()).as("variant b builds after a cache-restored a").isTrue();
         assertThat(classes.resolve("OnlyB.class")).exists();
         assertThat(classes.resolve("OnlyA.class")).doesNotExist();
     }
 
-    private static PipelineResult buildVariant(Path project, Path cache, String selection) {
-        BuildPipelines.Inputs in = new BuildPipelines.Inputs(
+    private static BuildPlanResult buildVariant(Path project, Path cache, String selection) {
+        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                         project,
                         cache,
                         project.resolve("jk.toml"),
@@ -122,9 +122,9 @@ class VariantSwitchTest {
                         java.util.Set.of(),
                         cc.jumpkick.config.SessionContext.current())
                 .withVariant(selection, java.util.Map.of());
-        Pipeline pipeline = BuildPipelines.coreBuilder(in).build();
-        PipelineResult result = pipeline.run();
-        for (PipelineResult.Diagnostic d : result.errors()) {
+        BuildPlan plan = BuildPlanner.coreBuilder(in).build();
+        BuildPlanResult result = plan.run();
+        for (BuildPlanResult.Diagnostic d : result.errors()) {
             System.out.println("DIAG [" + d.step() + "]: " + d.message());
         }
         return result;

@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Human-facing settled command result chrome.
  *
- * <p>Preferred name for what historically lived as {@link PipelineWedge}: every interactive
+ * <p>Preferred name for what historically lived as {@link BuildPlanWedge}: every interactive
  * command should settle with a wedge (or a tree / table / wizard substitute). Agents should use
  * {@code --json} / wire / BSP — not scrape these lines.
  *
@@ -63,17 +63,17 @@ public final class CommandWedge {
 
     /** Green check chip + message (done successfully). */
     public static String ok(String command, String message) {
-        return PipelineWedge.chipLine(Glyphs.CHECK, command, GlobalConfig.nerdfont(), message);
+        return BuildPlanWedge.chipLine(Glyphs.CHECK, command, GlobalConfig.nerdfont(), message);
     }
 
     /** Red cross chip + message (done with error). Prefer this over {@code "jk cmd: …"} prefixes. */
     public static String fail(String command, String message) {
-        return PipelineWedge.failureLineCustom(command, GlobalConfig.nerdfont(), message);
+        return BuildPlanWedge.failureLineCustom(command, GlobalConfig.nerdfont(), message);
     }
 
     /** Blue / neutral working chip (play glyph) + message. */
     public static String working(String command, String message) {
-        return PipelineWedge.chipLine(Glyphs.PLAY, command, GlobalConfig.nerdfont(), message);
+        return BuildPlanWedge.chipLine(Glyphs.PLAY, command, GlobalConfig.nerdfont(), message);
     }
 
     /**
@@ -88,29 +88,29 @@ public final class CommandWedge {
 
     /**
      * Blue menu chip used as the left half of a box-table title ({@link BoxTable#titleBar}): {@code
-     * ≡ Title} on the pipeline-blue chip. Prefer {@link BoxTable#titleBar} for full table chrome.
+     * ≡ Title} on the plan-blue chip. Prefer {@link BoxTable#titleBar} for full table chrome.
      */
     public static String menu(String title) {
-        return PipelineWedge.planChip(Glyphs.MENU, title == null ? "" : title, GlobalConfig.nerdfont());
+        return BuildPlanWedge.planChip(Glyphs.MENU, title == null ? "" : title, GlobalConfig.nerdfont());
     }
 
     /** Generic chip with caller-chosen glyph. */
     public static String chip(String glyph, String command, String message) {
-        return PipelineWedge.chipLine(glyph, command, GlobalConfig.nerdfont(), message);
+        return BuildPlanWedge.chipLine(glyph, command, GlobalConfig.nerdfont(), message);
     }
 
     /** Settled failure with "Failed to &lt;command&gt;" phrasing. */
     public static String failedTo(String command, String tail) {
-        return PipelineWedge.failureLine(command, GlobalConfig.nerdfont(), tail);
+        return BuildPlanWedge.failureLine(command, GlobalConfig.nerdfont(), tail);
     }
 
     /** Explicit nerdfont flag for tests / custom rendering. */
     public static String ok(String command, String message, boolean nerdfont) {
-        return PipelineWedge.chipLine(Glyphs.CHECK, command, nerdfont, message);
+        return BuildPlanWedge.chipLine(Glyphs.CHECK, command, nerdfont, message);
     }
 
     public static String fail(String command, String message, boolean nerdfont) {
-        return PipelineWedge.failureLineCustom(command, nerdfont, message);
+        return BuildPlanWedge.failureLineCustom(command, nerdfont, message);
     }
 
     /**

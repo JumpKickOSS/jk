@@ -1,6 +1,6 @@
 [project]
 name     = "jk-model"
-description = "jk domain model: Pipeline/Step/PipelineListener, Dependency/Coordinate; depends on plugin-sdk (PluginConfig/Phase)."
+description = "jk domain model: BuildPlan/Task/BuildPlanListener, Dependency/Coordinate; depends on plugin-sdk (PluginConfig)."
 
 [dependencies]
 jk-plugin-sdk.workspace = true

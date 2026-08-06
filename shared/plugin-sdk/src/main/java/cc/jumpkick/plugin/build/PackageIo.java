@@ -59,17 +59,17 @@ public interface PackageIo {
     Path javaHome();
 
     /** A {@code bin/<name>} fork off {@link #javaHome()}. */
-    default StepExec.ToolRun tool(String bin) {
-        return new StepExec.ToolRun(javaHome(), bin);
+    default TaskExec.ToolRun tool(String bin) {
+        return new TaskExec.ToolRun(javaHome(), bin);
     }
 
     /** A fork of an arbitrary executable (a fetched native tool). */
-    default StepExec.ToolRun tool(Path executable) {
-        return new StepExec.ToolRun(executable);
+    default TaskExec.ToolRun tool(Path executable) {
+        return new TaskExec.ToolRun(executable);
     }
 
     /** Convenience for the common case. */
-    default StepExec.ToolRun java() {
+    default TaskExec.ToolRun java() {
         return tool("java");
     }
 

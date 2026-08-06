@@ -66,6 +66,53 @@ class BuildJournalTest {
                 .isPresent();
     }
 
+    /**
+     * Regression (JK-1587): {@code phase.*.wall-ms} is one summed key per run — duplicate
+     * per-task keys would be folded as a MEAN by MetricsHarvest, deflating the phase priors.
+     */
+    @Test
+    void metrics_toml_sums_phase_walls_per_run() throws Exception {
+        BuildJournal j = new BuildJournal(dir);
+        var tasks = List.of(
+                new BuildRecord.Task("compile-java", "compile", "SUCCESS", 2000),
+                new BuildRecord.Task("copy-resources", "compile", "SUCCESS", 1000),
+                new BuildRecord.Task("write-stamp", "compile", "SUCCESS", 500),
+                new BuildRecord.Task("run-tests", "test", "SUCCESS", 4000));
+        BuildRecord base = record(1_700_000_000_000L, true, "g:a");
+        BuildRecord withTasks = new BuildRecord(
+                base.id(),
+                base.buildNumber(),
+                BuildRecord.SCHEMA,
+                base.kind(),
+                base.dir(),
+                base.coord(),
+                base.startedAt(),
+                base.finishedAt(),
+                base.millis(),
+                base.success(),
+                base.cancelled(),
+                base.exitCode(),
+                base.jkVersion(),
+                base.tests(),
+                base.modules(),
+                tasks,
+                base.diagnostics(),
+                base.trigger(),
+                base.commit(),
+                base.benefit(),
+                base.running(),
+                base.io());
+        String locator = j.append(withTasks, BuildJournal.Snapshot.NONE);
+        Path metrics = j.runDir(locator).orElseThrow().resolve("metrics.toml");
+        String toml = Files.readString(metrics);
+        // One key per phase, summed: compile-java + copy-resources + write-stamp.
+        assertThat(toml).contains("phase.compile.wall-ms = 3500");
+        assertThat(toml).contains("phase.test.wall-ms = 4000");
+        assertThat(toml.lines().filter(l -> l.startsWith("phase.compile.wall-ms")).count()).isEqualTo(1);
+        // Per-task keys stay per task.
+        assertThat(toml).contains("task.compile-java.wall-ms = 2000");
+    }
+
     @Test
     void append_then_get_and_list_roundtrip() {
         BuildJournal j = new BuildJournal(dir);

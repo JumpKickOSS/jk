@@ -84,6 +84,11 @@ jk lock --cache-dir "$COLD"          # or: JK_CACHE_DIR="$COLD" jk lock
 The engine process is keyed by state directory + store; isolating only the action
 cache leaves CAS reuse intact.
 
+Since the two-tier split, everything under a cache root — including its `sha256/` blob pool — is
+**cache tier**: rebuildable, prunable to the cache budget, and wiped by `jk cache purge`. A
+pre-split custom `--cache-dir` whose `sha256/` still holds store blobs should be recreated fresh
+(the old contents re-fetch on demand); jk does not special-case legacy collocated layouts.
+
 ### `jk env` — where values come from
 
 Build-visible environment is layered (lowest → highest): workspace `.env`, module `.env`, then
@@ -179,6 +184,14 @@ max-store-size-mb = 4096    # artifact store CAS + repos/ (long-lived deps)
 
 `0` (or a negative value) for either size — file key or env var — means **unset**: the default
 above applies. Both storage reports use the same rule.
+
+The two budgets differ in what they *enforce*. The cache tier is rebuildable, so scheduled prunes
+LRU-evict it to its budget (default 1 GiB); the evictor targets the blob pool at the budget net
+of the action-index + stamp overhead, so a prune can bring the utilization bar back under 100%. The artifact store holds long-lived downloads: its
+4 GiB default drives the utilization bar **only** — reachable store blobs are LRU-evicted solely
+when you set `max-store-size-mb` (or `JK_MAX_STORE_SIZE_MB`) explicitly, or pass
+`--max-size` to `jk repo prune`. The pre-split knobs (`max-size-gb`, `action-max-size-mb`,
+`JK_MAX_SIZE_GB`, `JK_ACTION_MAX_SIZE_MB`) are no longer read; prune warns if one is still set.
 
 Preflight dirty memo fingerprints use **source content hashes** by default (CI-safe). Opt into
 faster path/size/mtime fingerprints with `JK_PREFLIGHT_MEMO_MTIME=1` if needed.
@@ -622,11 +635,11 @@ Human TTY mode stays terse and visual. **Agents, scripts, and CI should not scra
 ```bash
 jk build --output json …     # live JSONL on stdout (one object per line)
 jk test  --output jsonl …    # identical to json — both mean live events
-export JK_OUTPUT=json        # same for any command that uses PipelineConsole
+export JK_OUTPUT=json        # same for any command that uses BuildPlanConsole
 ```
 
 - **`json` and `jsonl` are the same mode:** a **live** event stream (phases, progress ticks, labels,
-  errors with structured test fields, step/pipeline finish). Not a single end-of-run blob.
+  errors with structured test fields, step/plan finish). Not a single end-of-run blob.
 - Every line includes `"schema":1`, `"ts"`, `"type"`. Schema stays **1** until jk 1.0 (no pre-release
   version churn). See [machine-output.md](machine-output.md) for the event table and how it aligns
   with web SSE and **MCP** (`POST /mcp`; `jk engine status` prints **MCP**).
@@ -811,6 +824,7 @@ rebuild questions.
 jk explain                   # full plan: cached vs rebuild sections + ETA
 jk explain --verbose         # expand every step
 jk explain --redo            # global flag: forecast full rebuild ETA (same as `jk build --redo`)
+# The ETA seed matches bare `jk build` bit-for-bit (same -w auto, -j, flags). See docs/perf/progress-contract.md.
 
 # Module dependency DAG (no engine)
 jk explain --graph dot > modules.dot
@@ -818,9 +832,10 @@ dot -Tsvg modules.dot -o modules.svg
 jk explain --graph mermaid > build.mmd
 jk explain --graph mermaid --modules 'libs/*' --graph-out filtered.mmd
 jk explain --graph dot --modules 'libs/*' --graph-out filtered.dot
+# Interactive DAG: engine dashboard → Project → Dependencies (loads on demand; Apache ECharts)
 
-# Pipeline tasks (Mill resolve-lite)
-jk tasks                         # list first-party steps
+# BuildPlan tasks (Mill resolve-lite)
+jk tasks                         # list first-party tasks
 jk show package-jar              # primary jar path for this module
 jk inspect compile-java          # phase + path + on-disk status
 jk tasks show package-jar --modules 'libs/*'

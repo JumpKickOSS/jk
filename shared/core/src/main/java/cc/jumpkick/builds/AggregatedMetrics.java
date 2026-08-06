@@ -98,12 +98,42 @@ public final class AggregatedMetrics {
     }
 
     public OptionalLong stepWallMs(String dir, String step) {
-        if (step == null || step.isBlank()) return OptionalLong.empty();
+        return taskWallMs(dir, step);
+    }
+
+    /** Prefer {@code task.*} keys; fall back to legacy {@code step.*} for existing local state. */
+    public OptionalLong taskWallMs(String dir, String task) {
+        if (task == null || task.isBlank()) return OptionalLong.empty();
+        String t = sanitize(task);
         if (dir != null && !dir.isBlank()) {
-            OptionalDouble v = value("module." + sanitize(dir) + ".step." + sanitize(step) + ".wall-ms");
+            String mod = sanitize(dir);
+            OptionalDouble v = value("module." + mod + ".task." + t + ".wall-ms");
+            if (v.isPresent()) return OptionalLong.of(Math.round(v.getAsDouble()));
+            v = value("module." + mod + ".step." + t + ".wall-ms");
             if (v.isPresent()) return OptionalLong.of(Math.round(v.getAsDouble()));
         }
-        OptionalDouble v = value("step." + sanitize(step) + ".wall-ms");
+        OptionalDouble v = value("task." + t + ".wall-ms");
+        if (v.isPresent()) return OptionalLong.of(Math.round(v.getAsDouble()));
+        v = value("step." + t + ".wall-ms");
+        return v.isPresent() ? OptionalLong.of(Math.round(v.getAsDouble())) : OptionalLong.empty();
+    }
+
+    public OptionalLong phaseWallMs(String dir, String phase) {
+        if (phase == null || phase.isBlank()) return OptionalLong.empty();
+        String p = sanitize(phase);
+        if (dir != null && !dir.isBlank()) {
+            OptionalDouble v = value("module." + sanitize(dir) + ".phase." + p + ".wall-ms");
+            if (v.isPresent()) return OptionalLong.of(Math.round(v.getAsDouble()));
+        }
+        OptionalDouble v = value("phase." + p + ".wall-ms");
+        return v.isPresent() ? OptionalLong.of(Math.round(v.getAsDouble())) : OptionalLong.empty();
+    }
+
+    /** Measured class wall for {@code fqcn} under module {@code dir}, if any. */
+    public OptionalLong testClassWallMs(String dir, String fqcn) {
+        if (dir == null || dir.isBlank() || fqcn == null || fqcn.isBlank()) return OptionalLong.empty();
+        OptionalDouble v =
+                value("module." + sanitize(dir) + ".test-class." + sanitize(fqcn) + ".wall-ms");
         return v.isPresent() ? OptionalLong.of(Math.round(v.getAsDouble())) : OptionalLong.empty();
     }
 
@@ -129,11 +159,17 @@ public final class AggregatedMetrics {
 
     public OptionalDouble perUnitMs(String dir, String step) {
         if (step == null) return OptionalDouble.empty();
+        String t = sanitize(step);
         if (dir != null && !dir.isBlank()) {
-            OptionalDouble v = value("module." + sanitize(dir) + ".step." + sanitize(step) + ".per-unit-ms");
+            String mod = sanitize(dir);
+            OptionalDouble v = value("module." + mod + ".task." + t + ".per-unit-ms");
+            if (v.isPresent()) return v;
+            v = value("module." + mod + ".step." + t + ".per-unit-ms");
             if (v.isPresent()) return v;
         }
-        return value("step." + sanitize(step) + ".per-unit-ms");
+        OptionalDouble v = value("task." + t + ".per-unit-ms");
+        if (v.isPresent()) return v;
+        return value("step." + t + ".per-unit-ms");
     }
 
     public OptionalDouble hostRate(String key) {

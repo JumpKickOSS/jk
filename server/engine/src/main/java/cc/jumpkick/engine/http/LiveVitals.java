@@ -13,9 +13,11 @@ import java.util.function.Supplier;
  * Change-gated live vitals on the dashboard SSE bus ({@link HttpEvents}).
  *
  * <p><strong>Sampled</strong> host/engine status (~2s) and optional cache (slow) run only while
- * {@link HttpEvents#hasSubscribers()} is true. A tiny last-published fingerprint suppresses no-op
- * frames (e.g. free RAM still presents as the same MiB). This is <em>not</em> a server-side UI
- * model — only the last telegram we put on the wire (~tens of bytes).
+ * {@link HttpEvents#hasDashboardSubscribers()} is true — an MCP progress stream alone neither
+ * starts nor sustains the samplers, and chrome frames go to dashboard subscriptions only
+ * (JK-1512). A tiny last-published fingerprint suppresses no-op frames (e.g. free RAM still
+ * presents as the same MiB). This is <em>not</em> a server-side UI model — only the last telegram
+ * we put on the wire (~tens of bytes).
  *
  * <p><strong>Inflicted</strong> build progress stays on the engine's direct {@code publish} path;
  * never batched through this sampler.
@@ -40,6 +42,9 @@ public final class LiveVitals implements AutoCloseable {
 
     /** Last published dual-surface cache totals (MiB quanta); null until first publish. */
     private final AtomicReference<PresentCache> lastCache = new AtomicReference<>();
+
+    /** Last captured full snapshot — serves connect hydrate without a fresh store walk (JK-1513). */
+    private final AtomicReference<CacheSnapshot> lastCacheSnapshot = new AtomicReference<>();
 
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "jk-live-vitals");
@@ -71,11 +76,11 @@ public final class LiveVitals implements AutoCloseable {
         }
     }
 
-    /** Stop samplers when the last subscriber leaves. */
+    /** Stop samplers when the last dashboard subscriber leaves (MCP streams don't count). */
     public void onSubscriberLeft() {
-        if (events.hasSubscribers()) return;
+        if (events.hasDashboardSubscribers()) return;
         synchronized (scheduleLock) {
-            if (!events.hasSubscribers()) {
+            if (!events.hasDashboardSubscribers()) {
                 cancel(statusTask);
                 cancel(cacheTask);
                 statusTask = null;
@@ -85,11 +90,11 @@ public final class LiveVitals implements AutoCloseable {
     }
 
     /**
-     * Force-publish current status (connect hydrate or pipeline edge). Always attempts a sample;
+     * Force-publish current status (connect hydrate or plan edge). Always attempts a sample;
      * still change-gates unless {@code force}.
      */
     public void publishStatus(boolean force) {
-        if (!force && !events.hasSubscribers()) return;
+        if (!force && !events.hasDashboardSubscribers()) return;
         try {
             StatusSnapshot s = status.get();
             if (s == null) return;
@@ -101,7 +106,7 @@ public final class LiveVitals implements AutoCloseable {
             lastStatus.set(present);
             // SSE status payload matches GET /api/status core vitals (see StatusSnapshot fields).
             // httpUrl / config knobs stay REST-only — they do not change on a 2s tick.
-            events.publish("status", statusJson(s));
+            events.publishDashboard("status", statusJson(s));
         } catch (RuntimeException ignored) {
             // Sampler must never kill the schedule thread
         }
@@ -113,24 +118,69 @@ public final class LiveVitals implements AutoCloseable {
      * dual-surface payload (JK-1502); full section breakdown stays on {@code GET /api/cache}.
      */
     public void publishCache(boolean force) {
-        if (!force && !events.hasSubscribers()) return;
+        if (!force && !events.hasDashboardSubscribers()) return;
         try {
             CacheSnapshot c = cache.get();
             if (c == null) return;
+            lastCacheSnapshot.set(c);
             PresentCache present = PresentCache.of(c);
             if (!force) {
                 PresentCache prev = lastCache.get();
                 if (present.equals(prev)) return;
             }
             lastCache.set(present);
-            events.publish("cache", c.toThinJson());
+            events.publishDashboard("cache", c.toThinJson());
         } catch (RuntimeException ignored) {
             // disk walk failures are best-effort
         }
     }
 
+    /**
+     * Post-build nudge: run the change-gated cache publish on the sampler thread instead of the
+     * caller's. The capture walks the store; it must never sit on a request-finish path where it
+     * delays the journal write and the terminal frame (JK-1513).
+     */
+    public void nudgeCache() {
+        if (!events.hasDashboardSubscribers()) return;
+        try {
+            scheduler.execute(() -> publishCache(false));
+        } catch (java.util.concurrent.RejectedExecutionException ignored) {
+            // closing — nothing left to notify
+        }
+    }
+
+    /**
+     * Connect hydrate for one new subscription: current status plus the last captured cache
+     * snapshot, delivered to <em>that subscription only</em> — existing tabs already hold these
+     * facts, and re-broadcasting them duplicated chrome on every new tab (JK-1523). The cache side
+     * never walks the disk on the connect path: it re-sends the stored snapshot and schedules an
+     * async refresh on the sampler thread (forced when no snapshot exists yet — the SPA's REST
+     * hydrate covers that brief first-connect gap, JK-1513).
+     */
+    public void hydrateFor(HttpEvents.Subscription sub) {
+        try {
+            StatusSnapshot s = status.get();
+            if (s != null) {
+                lastStatus.set(PresentStatus.of(s));
+                events.deliverTo(sub, "status", statusJson(s));
+            }
+        } catch (RuntimeException ignored) {
+            // status sampling is best-effort on the connect path
+        }
+        CacheSnapshot last = lastCacheSnapshot.get();
+        if (last != null) {
+            lastCache.set(PresentCache.of(last));
+            events.deliverTo(sub, "cache", last.toThinJson());
+        }
+        try {
+            scheduler.execute(() -> publishCache(last == null));
+        } catch (java.util.concurrent.RejectedExecutionException ignored) {
+            // closing — nothing left to notify
+        }
+    }
+
     private void tickStatusSafe() {
-        if (!events.hasSubscribers()) {
+        if (!events.hasDashboardSubscribers()) {
             onSubscriberLeft();
             return;
         }
@@ -138,7 +188,7 @@ public final class LiveVitals implements AutoCloseable {
     }
 
     private void tickCacheSafe() {
-        if (!events.hasSubscribers()) {
+        if (!events.hasDashboardSubscribers()) {
             onSubscriberLeft();
             return;
         }
@@ -170,9 +220,9 @@ public final class LiveVitals implements AutoCloseable {
                         "uptimeSeconds",
                         Math.max(0, (System.currentTimeMillis() - s.startedAtMillis()) / 1000))
                 .put("activeRequests", s.activeRequests())
-                .put("activePipelines", s.activePipelines())
+                .put("activeBuildPlans", s.activeBuildPlans())
                 .put("peakActiveRequests", s.peakActiveRequests())
-                .put("peakActivePipelines", s.peakActivePipelines())
+                .put("peakActiveBuildPlans", s.peakActiveBuildPlans())
                 .put("heapUsedBytes", s.heapUsedBytes())
                 .put("heapCommittedBytes", s.heapCommittedBytes())
                 .put("heapMaxBytes", s.heapMaxBytes())
@@ -189,7 +239,7 @@ public final class LiveVitals implements AutoCloseable {
      * counters exact. Keeps "still 5.0 GiB available" from spamming the wire.
      */
     record PresentStatus(
-            int activePipelines,
+            int activeBuildPlans,
             int activeRequests,
             int loadPp,
             long freeMib,
@@ -204,7 +254,7 @@ public final class LiveVitals implements AutoCloseable {
         static PresentStatus of(StatusSnapshot s) {
             int loadPp = s.systemCpuLoad() < 0 ? -1 : (int) Math.round(s.systemCpuLoad() * 100);
             return new PresentStatus(
-                    s.activePipelines(),
+                    s.activeBuildPlans(),
                     s.activeRequests(),
                     loadPp,
                     mib(s.freeMemoryBytes()),

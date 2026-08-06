@@ -9,7 +9,7 @@ Audit date: **2026-08-02**. Web tokens: `clients/web` CSS (`--run`, success/erro
 |---------|-----|-----|
 | Success | green chip / `Glyphs.CHECK` | success badge green |
 | Failure | red chip / cross | error red |
-| Running / work | blue pulse / pipeline chip | run blue `#3D9BFF` |
+| Running / work | blue pulse / plan chip | run blue `#3D9BFF` |
 | Identity / plan | cyan accents | brand cyan |
 | Plain `--no-ansi` | `PlainAscii` + ASCII glyphs | N/A |
 

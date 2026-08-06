@@ -78,7 +78,7 @@ public final class WorkspaceScheduler {
                                 .allMatch(done::contains))
                         .toList();
                 // Cycle / filtered-dep hole: remaining units but none are ready → spin forever
-                // without this guard (Pipeline.topoSort detects cycles; this path did not).
+                // without this guard (BuildPlan.topoSort detects cycles; this path did not).
                 if (ready.isEmpty()) {
                     throw unsatisfiable(remaining, dirOf, edges, unitDirs, done);
                 }

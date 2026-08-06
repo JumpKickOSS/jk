@@ -3,7 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Answers;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -17,12 +17,12 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.run.JkThreads;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineKey;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.Step;
-import cc.jumpkick.run.StepKind;
-import cc.jumpkick.run.StepNames;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskKind;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -116,14 +116,14 @@ public final class NewCommand implements CliCommand {
     GlobalOptions global;
 
     @SuppressWarnings("rawtypes")
-    private static final PipelineKey<List> CANDIDATES = PipelineKey.of("candidates", List.class);
+    private static final BuildPlanKey<List> CANDIDATES = BuildPlanKey.of("candidates", List.class);
 
-    private static final PipelineKey<Terminal> TERMINAL = PipelineKey.of("terminal", Terminal.class);
-    private static final PipelineKey<cc.jumpkick.jdk.JdkCatalog> CATALOG =
-            PipelineKey.of("catalog", cc.jumpkick.jdk.JdkCatalog.class);
-    private static final PipelineKey<Answers> ANSWERS = PipelineKey.of("answers", Answers.class);
-    private static final PipelineKey<NewJdkCandidate> PICKED = PipelineKey.of("picked", NewJdkCandidate.class);
-    private static final PipelineKey<NewInputs> INPUTS = PipelineKey.of("inputs", NewInputs.class);
+    private static final BuildPlanKey<Terminal> TERMINAL = BuildPlanKey.of("terminal", Terminal.class);
+    private static final BuildPlanKey<cc.jumpkick.jdk.JdkCatalog> CATALOG =
+            BuildPlanKey.of("catalog", cc.jumpkick.jdk.JdkCatalog.class);
+    private static final BuildPlanKey<Answers> ANSWERS = BuildPlanKey.of("answers", Answers.class);
+    private static final BuildPlanKey<NewJdkCandidate> PICKED = BuildPlanKey.of("picked", NewJdkCandidate.class);
+    private static final BuildPlanKey<NewInputs> INPUTS = BuildPlanKey.of("inputs", NewInputs.class);
 
     /** Set during scaffold when the new project was registered as a workspace module. */
     private record Module(Path root, String rel, String projectName) {}
@@ -263,20 +263,20 @@ public final class NewCommand implements CliCommand {
         this.defaultJdk = readDefaultJdk();
 
         if (templateRef != null && !templateRef.isBlank()) {
-            return runTemplatePipeline(cwd);
+            return runTemplateBuildPlan(cwd);
         }
 
         if (shouldRunWizard()) {
-            return runWizardPipeline(cwd);
+            return runWizardBuildPlan(cwd);
         }
-        return runFlagPipeline(cwd);
+        return runFlagBuildPlan(cwd);
     }
 
     /**
      * {@code jk new --template <local-path|short-name|git-uri|owner/repo>} (JK-1182 / JK-1203 /
      * JK-1380).
      */
-    private int runTemplatePipeline(Path cwd) {
+    private int runTemplateBuildPlan(Path cwd) {
         if (spring || grails || quarkus || plugin) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
                     "New", "--template cannot be combined with --spring, --grails, --quarkus, or --plugin"));
@@ -359,7 +359,7 @@ public final class NewCommand implements CliCommand {
         try {
             int n = Giter8LocalApply.apply(template, target, params);
             cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
-            CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
+            CliOutput.out(cc.jumpkick.cli.tui.BuildPlanWedge.chipLine(
                     cc.jumpkick.cli.tui.Glyphs.CHECK,
                     "New Project",
                     cc.jumpkick.config.GlobalConfig.nerdfont(),
@@ -380,14 +380,14 @@ public final class NewCommand implements CliCommand {
     }
 
     /**
-     * Interactive wizard pipeline (prewarm → wizard → optional install-jdk → scaffold). The terminal
-     * lives across steps via a {@link PipelineKey} and is closed in a {@code finally}.
+     * Interactive wizard plan (prewarm → wizard → optional install-jdk → scaffold). The terminal
+     * lives across steps via a {@link BuildPlanKey} and is closed in a {@code finally}.
      */
-    private int runWizardPipeline(Path cwd) throws IOException {
+    private int runWizardBuildPlan(Path cwd) throws IOException {
         Path cache = JkDirs.cache();
 
-        Step prewarm = Step.builder(StepNames.PREWARM)
-                .kind(StepKind.IO)
+        Task prewarm = Task.builder(TaskNames.PREWARM)
+                .kind(TaskKind.IO)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("discover JDKs + fetch catalog + open terminal");
@@ -421,8 +421,8 @@ public final class NewCommand implements CliCommand {
                 })
                 .build();
 
-        Step wizardStep = Step.builder(StepNames.WIZARD)
-                .requires(StepNames.PREWARM)
+        Task wizardStep = Task.builder(TaskNames.WIZARD)
+                .requires(TaskNames.PREWARM)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("run wizard");
@@ -462,9 +462,9 @@ public final class NewCommand implements CliCommand {
                 })
                 .build();
 
-        Step installJdk = Step.builder(StepNames.INSTALL_JDK)
-                .kind(StepKind.IO)
-                .requires(StepNames.WIZARD)
+        Task installJdk = Task.builder(TaskNames.INSTALL_JDK)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.WIZARD)
                 .ticks(1)
                 .execute(ctx -> {
                     NewJdkCandidate picked = ctx.require(PICKED);
@@ -484,8 +484,8 @@ public final class NewCommand implements CliCommand {
                 })
                 .build();
 
-        Step scaffold = Step.builder(StepNames.SCAFFOLD)
-                .requires(StepNames.INSTALL_JDK)
+        Task scaffold = Task.builder(TaskNames.SCAFFOLD)
+                .requires(TaskNames.INSTALL_JDK)
                 .ticks(1)
                 .execute(ctx -> {
                     NewJdkCandidate resolved = ctx.require(PICKED);
@@ -506,33 +506,33 @@ public final class NewCommand implements CliCommand {
                 })
                 .build();
 
-        Pipeline pipeline = Pipeline.builder("new")
+        BuildPlan plan = BuildPlan.builder("new")
                 .interactive(true)
-                .addStep(prewarm)
-                .addStep(wizardStep)
-                .addStep(installJdk)
-                .addStep(scaffold)
+                .addTask(prewarm)
+                .addTask(wizardStep)
+                .addTask(installJdk)
+                .addTask(scaffold)
                 .build();
 
-        // Single try/finally wrapping the whole pipeline lifecycle plus the
+        // Single try/finally wrapping the whole plan lifecycle plus the
         // success-emit path: emitSuccessOnTerminal writes through the
         // wizard's JLine terminal handle, so the terminal has to stay
         // open until after that call. The finally closes it on the way
         // out whether scaffold succeeded, failed, or threw.
         try {
-            PipelineResult result = PipelineConsole.run(pipeline, PipelineConsole.modeFor(global), cache);
+            BuildPlanResult result = BuildPlanConsole.run(plan, BuildPlanConsole.modeFor(global), cache);
 
             if (!result.success()) {
-                for (PipelineResult.Diagnostic d : result.errors()) {
+                for (BuildPlanResult.Diagnostic d : result.errors()) {
                     if ("no-jdks".equals(d.code())) {
                         emitNoJdksError();
                         return Exit.CONFIG;
                     }
                     if ("exists".equals(d.code())) {
-                        NewInputs partial = pipeline.get(INPUTS).orElse(null);
+                        NewInputs partial = plan.get(INPUTS).orElse(null);
                         String coord = partial != null ? partial.group() + ":" + partial.name() : "project";
                         boolean isInit = directory != null && isCurrentDirArg(directory);
-                        Terminal term = pipeline.get(TERMINAL).orElse(null);
+                        Terminal term = plan.get(TERMINAL).orElse(null);
                         emitProjectExistsError(coord, parent != null, isInit, term);
                         return Exit.CONFIG;
                     }
@@ -540,15 +540,15 @@ public final class NewCommand implements CliCommand {
                 return Exit.CONFIG;
             }
 
-            NewInputs inputs = pipeline.get(INPUTS).orElseThrow();
+            NewInputs inputs = plan.get(INPUTS).orElseThrow();
             boolean isInit = directory != null && isCurrentDirArg(directory);
-            pipeline.get(TERMINAL)
+            plan.get(TERMINAL)
                     .ifPresentOrElse(
                             t -> emitSuccessOnTerminal(inputs, t, registered, isInit),
                             () -> emitSuccessPlain(inputs, registered, isInit));
             return 0;
         } finally {
-            pipeline.get(TERMINAL).ifPresent(t -> {
+            plan.get(TERMINAL).ifPresent(t -> {
                 try {
                     t.close();
                 } catch (IOException ignored) {
@@ -559,10 +559,10 @@ public final class NewCommand implements CliCommand {
 
     /**
      * Flag mode: validate inputs, scaffold. Not interactive (no wizard, no progress widgets in the
-     * command's own output). Wrapping it in a pipeline still gives us a run-log entry for `jk new
+     * command's own output). Wrapping it in a plan still gives us a run-log entry for `jk new
      * --name=X` etc.
      */
-    private int runFlagPipeline(Path cwd) {
+    private int runFlagBuildPlan(Path cwd) {
         NewInputs inputs;
         try {
             inputs = fromFlags(cwd);
@@ -584,7 +584,7 @@ public final class NewCommand implements CliCommand {
         }
         Path cache = JkDirs.cache();
 
-        Step scaffold = Step.builder(StepNames.SCAFFOLD)
+        Task scaffold = Task.builder(TaskNames.SCAFFOLD)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("scaffold " + inputs.name());
@@ -594,9 +594,9 @@ public final class NewCommand implements CliCommand {
                 })
                 .build();
 
-        Pipeline pipeline = Pipeline.builder("new").addStep(scaffold).build();
+        BuildPlan plan = BuildPlan.builder("new").addTask(scaffold).build();
 
-        PipelineResult result = PipelineConsole.run(pipeline, PipelineConsole.modeFor(global), cache);
+        BuildPlanResult result = BuildPlanConsole.run(plan, BuildPlanConsole.modeFor(global), cache);
         if (!result.success()) return 1;
         if (!global.outputIsJson())
             emitSuccessPlain(inputs, registered, directory != null && isCurrentDirArg(directory));
@@ -833,7 +833,7 @@ public final class NewCommand implements CliCommand {
         String bareName = colon > 0 ? coord.substring(colon + 1) : coord;
         String failTail = "Failed to " + (isInit ? "initialize" : "create") + " " + noun + " " + bareName
                 + ". Project already exists.";
-        String chipLine = cc.jumpkick.cli.tui.PipelineWedge.chipLine(Glyphs.CROSS, chipCommand, nerdfont, failTail);
+        String chipLine = cc.jumpkick.cli.tui.BuildPlanWedge.chipLine(Glyphs.CROSS, chipCommand, nerdfont, failTail);
 
         if (terminal != null) {
             var writer = terminal.writer();
@@ -1367,13 +1367,13 @@ public final class NewCommand implements CliCommand {
                     + Theme.colorize(inputs.name(), accent)
                     + Theme.colorize(" added to project ", Theme.active().normalGray())
                     + Theme.colorize(module.projectName(), accent);
-            return cc.jumpkick.cli.tui.PipelineWedge.chipLine(
+            return cc.jumpkick.cli.tui.BuildPlanWedge.chipLine(
                     cc.jumpkick.cli.tui.Glyphs.CHECK, "New Module", nerdfont, message);
         }
         String chipCommand = isInit ? "Init" : "New Project";
         String action = isInit ? "Initialized" : "Created new";
         String message = action + " project " + Theme.colorize(inputs.name(), accent);
-        return cc.jumpkick.cli.tui.PipelineWedge.chipLine(
+        return cc.jumpkick.cli.tui.BuildPlanWedge.chipLine(
                 cc.jumpkick.cli.tui.Glyphs.CHECK, chipCommand, nerdfont, message);
     }
 

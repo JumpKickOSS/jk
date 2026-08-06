@@ -21,7 +21,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * Shared "resolve jk.toml → write jk-lock.toml" pipeline used by both {@code jk lock} and {@code
+ * Shared "resolve jk.toml → write jk-lock.toml" plan used by both {@code jk lock} and {@code
  * jk sync} (the latter delegating here when no lockfile exists yet). This is pure logic: failures
  * are returned in {@link Result#error} for the caller to surface — nothing is written to {@code
  * stderr} here, so only the CLI view layer touches the streams.
@@ -55,14 +55,14 @@ public final class LockFlow {
         }
     }
 
-    /** Run the lock pipeline against {@code dir} with explicit-lock (latest versions) semantics. */
+    /** Run the lock plan against {@code dir} with explicit-lock (latest versions) semantics. */
     public static Result run(Path dir, Path cache, List<String> features, boolean noDefaultFeatures, URI repoUrl)
             throws Exception {
         return run(dir, cache, features, noDefaultFeatures, repoUrl, false);
     }
 
     /**
-     * Run the lock pipeline against {@code dir}. {@code conservative} marks an invisible freshen
+     * Run the lock plan against {@code dir}. {@code conservative} marks an invisible freshen
      * (pre-build workspace guard): pins from the existing lock are fed to the solver as soft
      * preferences, so only coordinates a new or changed constraint rules out move. With no readable
      * existing lock the flag is a no-op (fresh resolve either way).
@@ -196,16 +196,25 @@ public final class LockFlow {
         }
         Lockfile lock;
         try {
-            lock = existing != null
-                    ? orchestrator.lockConservative(
-                            pathPrep.project(),
-                            existing,
-                            cc.jumpkick.model.JkVersion.VERSION,
-                            features,
-                            !noDefaultFeatures,
-                            cc.jumpkick.resolver.ResolveObserver.NOOP)
-                    : orchestrator.lock(
-                            pathPrep.project(), cc.jumpkick.model.JkVersion.VERSION, features, !noDefaultFeatures);
+            if (existing != null) {
+                // Invisible freshen: soft-prefer existing pins; metadata TTL is fine (pins win).
+                lock = orchestrator.lockConservative(
+                        pathPrep.project(),
+                        existing,
+                        cc.jumpkick.model.JkVersion.VERSION,
+                        features,
+                        !noDefaultFeatures,
+                        cc.jumpkick.resolver.ResolveObserver.NOOP);
+            } else {
+                // Explicit jk lock: revalidate maven-metadata so same-URL re-resolves see newly
+                // published versions (TTL alone would hide them until the next day / --force).
+                lock = cc.jumpkick.repo.MavenMetadataCache.withForceRevalidate(
+                        () -> orchestrator.lock(
+                                pathPrep.project(),
+                                cc.jumpkick.model.JkVersion.VERSION,
+                                features,
+                                !noDefaultFeatures));
+            }
         } catch (IOException e) {
             return new Result(
                     6,
@@ -215,16 +224,38 @@ public final class LockFlow {
                     moduleCount,
                     workspaceLock,
                     lockDir);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return new Result(6, "interrupted", null, effective, moduleCount, workspaceLock, lockDir);
+        } catch (Exception e) {
+            // withForceRevalidate declares throws Exception; unwrap lock failures.
+            Throwable c = e.getCause() != null ? e.getCause() : e;
+            if (c instanceof IOException io) {
+                return new Result(
+                        6,
+                        io.getMessage() + variantUnionHint(lockDir, parsed),
+                        null,
+                        effective,
+                        moduleCount,
+                        workspaceLock,
+                        lockDir);
+            }
+            if (c instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+                return new Result(6, "interrupted", null, effective, moduleCount, workspaceLock, lockDir);
+            }
+            if (c instanceof RuntimeException re) throw re;
+            throw new RuntimeException(c);
         }
         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
         // Conservative freshen: carry the existing Kotlin pin — bumping the compiler is `jk lock`'s job.
         if (existing != null && lock.kotlin() == null && existing.kotlin() != null) {
             lock = lock.withKotlin(existing.kotlin());
         }
-        // First lock of a Kotlin project (nothing to carry): resolve the pin like lockPipeline
+        // First lock of a Kotlin project (nothing to carry): resolve the pin like lockBuildPlan
         // does — a lock written without it loses compiler provisioning (JK-1371).
         if (lock.kotlin() == null) {
-            String kotlinVersion = LockPipelines.resolveKotlinVersion(effective, pathPrep.repos());
+            String kotlinVersion = LockPlans.resolveKotlinVersion(effective, pathPrep.repos());
             if (kotlinVersion != null) lock = lock.withKotlin(kotlinVersion);
         }
         // Freeze resolved first-party [project] identity (incl. workspace-inherited fields).

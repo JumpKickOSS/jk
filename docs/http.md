@@ -86,7 +86,8 @@ Task Manager.
 
 Loopback binds serve the dashboard without a token; mutations are token-gated. Non-loopback origins
 carry the token — `EventSource` cannot send headers, so streams pass it as an `access_token` query
-parameter, and the SPA bootstraps from a `#t=` fragment.
+parameter, and the SPA bootstraps from a `#t=` fragment. **`jk web`** starts the engine if needed,
+prints the tokenized URL, and opens a browser (`$BROWSER` or the platform default).
 
 **Sensitive reads need the token even on loopback**, because on a shared machine another local
 account must not have the engine owner's filesystem and identity for free:
@@ -97,19 +98,30 @@ account must not have the engine owner's filesystem and identity for free:
 | `GET /api/log` | engine log tail |
 | `GET /api/history/artifact` | full on-disk diagnostics / lock snapshots |
 | `GET /api/project` | path-existence oracle |
+| `GET /api/project/graph` | module dependency DAG (workspace layout / module paths) |
 | `GET /api/metrics` | every project dir and coordinate ever built |
 | `GET /api/projects/defaults` | derives from the owner's git identity and home layout |
+| `GET /api/config` | config file path (home layout) + verbatim values (`templates.official` may embed credentials) |
 
-Aggregate-only reads (`GET /api/status`, `GET /api/cache`, `GET /api/config`), the activity stream
+Aggregate-only reads (`GET /api/status`, `GET /api/cache`), the activity stream
 (`GET /api/events`), and the **journal list** (`GET /api/history`) stay open on loopback so a
 tokenless dashboard can show live builds **and** rehydrate them after a hard refresh. History
 **artifacts** remain token-gated.
+
+### `GET /api/project/graph`
+
+Module dependency DAG for the Project page (JK-1542): `GET /api/project/graph?dir=<path>` →
+`{ dir, workspace, nodes: [{ id, label, path }], edges: [{ from, to }] }`. Same edges as
+`jk explain --graph` / `ModuleDotGraph` (dependent → prereq). Workspace roots expand all modules;
+standalone projects return one node. Token-gated like `/api/project`. The SPA loads this **only**
+when the user opens the Dependencies panel — not on project page mount.
 
 ### `GET /api/config`
 
 Effective machine `~/.config/jk/config.toml` (plus env) as `{ path, rows: [{ key, default, value,
 overridden }] }` for the Status Configuration panel — every known scalar key with its default and
-whether the effective value differs.
+whether the effective value differs. Token-gated even on loopback (JK-1524): the payload names the
+owner's config path and raw values, the same class as `/api/projects/defaults`.
 
 The token file persists across restarts precisely so an open tab survives an upgrade or crash
 respawn. `jk engine rotate-token` is the explicit way to invalidate it.
@@ -122,13 +134,22 @@ work when `hasSubscribers()` is false.
 
 | Kind | Events | When published |
 | --- | --- | --- |
-| **Inflicted** (realtime) | `request-start` / `plan` / `module-*` / `step-*` / `pipeline-progress` / `workspace-progress` / `eta` / `output` / `diagnostic` / `*-finish` / `request-finish` | As the pipeline mutates state — never batched on a timer |
+| **Inflicted** (realtime) | `request-start` / `plan` / `module-*` / `step-*` / `label` / `plan-progress` / `workspace-progress` / `eta` / `output` / `diagnostic` / `*-finish` / `request-finish` | As the plan mutates state — never batched on a timer |
 | **Sampled** (change-gated) | `status` | ~every 2 s while any client is subscribed, **and** only when presentation-quantized vitals change (CPU ~1 pp, RAM/heap ~1 MiB, counters exact). Also forced on stream connect and nudged on request start/finish |
 | **Sampled** (change-gated, IO) | `cache` | Slow tick (~30 s) while subscribed, plus after request finish; **not** on the 2 s status sampler. Live frames are **thin** (dual surface totals + budgets, `"thin": true`); full section breakdown is REST-only |
 
+The sampled `status`/`cache` frames are **dashboard-stream chrome**: MCP SSE subscriptions
+(`GET /mcp`) never receive them, and an MCP stream alone neither starts nor sustains the samplers
+— "while subscribed" above means dashboard (`/api/events`) subscribers.
+
+The `cache` storage walk never runs on a request thread: connect hydrate re-sends the last
+captured snapshot (refreshing async on the sampler thread), and the post-build nudge is likewise
+async — a first-ever connect may briefly carry no `cache` frame until the async capture lands
+(the SPA's REST hydrate covers that gap).
+
 ### `event: status`
 
-Core engine/host vitals (same facts as `GET /api/status` heap/load/pipelines fields). Config knobs
+Core engine/host vitals (same facts as `GET /api/status` heap/load/plans fields). Config knobs
 (`httpUrl`, `maxConcurrentRequests`, …) stay REST-only; the SPA merges SSE into the last REST
 hydrate.
 
@@ -164,10 +185,11 @@ fold type has a site; progress is coalesced only by the intentional ≥0.1% / TT
 | `request-start` | `publishRequestStart` | CLI admit + HTTP workspace/lock |
 | `plan` | `publishPlan` | Total weight for bar denominator |
 | `module-start` / `module-finish` | workspace listener | Per-module rows |
-| `step-start` / `step-finish` | pipeline listener | Phase-tagged steps |
-| `pipeline-progress` | pipeline ticks | Single-module / per-module detail |
+| `task-start` / `task-finish` | plan listener | Phase-tagged steps |
+| `label` | plan listener | Live step detail (test class.method, “shrinking jar”, …); SPA paints after the running phase node |
+| `plan-progress` | plan ticks | Single-module / per-module detail |
 | `workspace-progress` | `emitWorkspaceProgress` | Aggregate %; peak-hold + 0.1% / frame filter |
 | `eta` | `publishEta` | Seed + re-projections |
 | `output` / `diagnostic` | step output / failures | Bounded diagnostics |
-| `pipeline-finish` | pipeline end | Module-level success |
+| `buildplan-finish` | plan end | Module-level success |
 | `request-finish` | request finally | Always includes `success` + `cancelled` (CLI + HTTP) |

@@ -16,8 +16,12 @@ public interface BuildPluginContext {
     /** Read-only project facts (coords, resolved main, capability flags). */
     ProjectFacts project();
 
-    /** Register a generated-artifact step (plan §3.2). */
-    void step(StepSpec spec);
+    /** Register a generated-artifact task. */
+    void task(TaskSpec spec);
+
+    /** @deprecated use {@link #task(TaskSpec)} */
+    @Deprecated
+    default void step(TaskSpec spec) { task(spec); }
 
     /** Register the main-artifact packager (plan §3.3) — at most one per project. */
     void packaging(PackagerSpec spec);

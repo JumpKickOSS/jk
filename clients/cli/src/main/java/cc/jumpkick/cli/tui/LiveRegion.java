@@ -5,7 +5,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * A live, in-place terminal region — a {@link SpinnerProgressBar}, a {@link Spinner}-backed
- * display, or the multi-line pipeline view — that owns part of the screen between "show" and "close".
+ * display, or the multi-line plan view — that owns part of the screen between "show" and "close".
  *
  * <p>At most one region is on screen at a time; it registers itself via {@link #setActive} and
  * clears via {@link #clearActive}. The app-level SIGINT handler ({@link GlobalCancel}) repaints
@@ -27,7 +27,7 @@ public interface LiveRegion {
 
     /**
      * The message {@link GlobalCancel} prints after wiping this region on Ctrl-C (it prefixes {@code
-     * ‼ }). Defaults to the generic notice; the pipeline/simple view overrides it to name the pipeline
+     * ‼ }). Defaults to the generic notice; the plan/simple view overrides it to name the plan
      * ({@code "Building canceled by user"}).
      */
     default String canceledMessage() {

@@ -22,10 +22,10 @@ class CachedEtaTest {
 
     @Test
     void a_cached_step_costs_nothing() {
-        var pipeline = pipelineOf("compile-kotlin", "package-jar");
+        var plan = planOf("compile-kotlin", "package-jar");
 
-        int full = EffortWeights.costOf(A, Set.of(), pipeline).weight();
-        int cached = EffortWeights.costOf(A, Set.of(), pipeline, Set.of("compile-kotlin", "package-jar"))
+        int full = EffortWeights.costOf(A, Set.of(), plan).weight();
+        int cached = EffortWeights.costOf(A, Set.of(), plan, Set.of("compile-kotlin", "package-jar"))
                 .weight();
 
         assertThat(full).isGreaterThan(0);
@@ -34,10 +34,10 @@ class CachedEtaTest {
 
     @Test
     void an_uncached_step_still_costs_its_weight() {
-        var pipeline = pipelineOf("compile-kotlin", "package-jar");
+        var plan = planOf("compile-kotlin", "package-jar");
 
-        int full = EffortWeights.costOf(A, Set.of(), pipeline).weight();
-        int partial = EffortWeights.costOf(A, Set.of(), pipeline, Set.of("package-jar"))
+        int full = EffortWeights.costOf(A, Set.of(), plan).weight();
+        int partial = EffortWeights.costOf(A, Set.of(), plan, Set.of("package-jar"))
                 .weight();
 
         assertThat(partial).isGreaterThan(0).isLessThan(full);
@@ -45,10 +45,10 @@ class CachedEtaTest {
 
     @Test
     void a_cached_run_tests_step_drops_out_of_the_serial_test_bound() {
-        var pipeline = pipelineOf("compile-kotlin", "run-tests");
+        var plan = planOf("compile-kotlin", "run-tests");
 
-        assertThat(EffortWeights.costOf(A, Set.of(), pipeline).testWeight()).isGreaterThan(0);
-        assertThat(EffortWeights.costOf(A, Set.of(), pipeline, Set.of("run-tests"))
+        assertThat(EffortWeights.costOf(A, Set.of(), plan).testWeight()).isGreaterThan(0);
+        assertThat(EffortWeights.costOf(A, Set.of(), plan, Set.of("run-tests"))
                         .testWeight())
                 .isZero();
     }
@@ -66,11 +66,11 @@ class CachedEtaTest {
         assertThat(BuildService.applyHistoryPrior(1_500, history)).isEqualTo(1_500);
     }
 
-    /** A pipeline of no-op steps, each carrying a non-trivial estimated weight. */
-    private static cc.jumpkick.run.Pipeline pipelineOf(String... names) {
-        cc.jumpkick.run.Pipeline.Builder b = cc.jumpkick.run.Pipeline.builder("test");
+    /** A plan of no-op steps, each carrying a non-trivial estimated weight. */
+    private static cc.jumpkick.run.BuildPlan planOf(String... names) {
+        cc.jumpkick.run.BuildPlan.Builder b = cc.jumpkick.run.BuildPlan.builder("test");
         for (String name : names) {
-            b.addStep(cc.jumpkick.run.Step.builder(name)
+            b.addTask(cc.jumpkick.run.Task.builder(name)
                     .weight(10)
                     .execute(ctx -> {})
                     .build());

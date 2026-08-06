@@ -3,7 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -23,12 +23,12 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineKey;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.Step;
-import cc.jumpkick.run.StepKind;
-import cc.jumpkick.run.StepNames;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskKind;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
@@ -40,7 +40,7 @@ import org.jline.terminal.Terminal;
  * {@code jk jdk install [<spec>]} — pull a JDK from the JetBrains JDK feed and unpack it into the
  * IntelliJ JDK directory ({@code ~/.jdks/} or {@code ~/Library/Java/JavaVirtualMachines/}).
  *
- * <p>Pipeline shape: {@code fetch-catalog} (IO) → {@code select} (SYNC; runs the wizard when no spec
+ * <p>BuildPlan shape: {@code fetch-catalog} (IO) → {@code select} (SYNC; runs the wizard when no spec
  * was given) → {@code download} (IO; uses the inline progress bar) → {@code extract} (IO; uses the
  * inline spinner) → {@code set-default} (SYNC; only when {@code --make-default}).
  *
@@ -95,13 +95,13 @@ public final class JdkInstallCommand implements CliCommand {
     URI feedUrl;
     Path cacheFile;
 
-    private static final PipelineKey<JdkCatalog> CATALOG = PipelineKey.of("catalog", JdkCatalog.class);
-    private static final PipelineKey<JdkCatalog.Entry> ENTRY = PipelineKey.of("entry", JdkCatalog.Entry.class);
-    private static final PipelineKey<InstalledJdk> INSTALLED = PipelineKey.of("installed", InstalledJdk.class);
-    private static final PipelineKey<Boolean> WANT_DEFAULT = PipelineKey.of("want-default", Boolean.class);
+    private static final BuildPlanKey<JdkCatalog> CATALOG = BuildPlanKey.of("catalog", JdkCatalog.class);
+    private static final BuildPlanKey<JdkCatalog.Entry> ENTRY = BuildPlanKey.of("entry", JdkCatalog.Entry.class);
+    private static final BuildPlanKey<InstalledJdk> INSTALLED = BuildPlanKey.of("installed", InstalledJdk.class);
+    private static final BuildPlanKey<Boolean> WANT_DEFAULT = BuildPlanKey.of("want-default", Boolean.class);
 
     /** True when the interactive wizard ran — it already settled the default decision. */
-    private static final PipelineKey<Boolean> WIZARD_RAN = PipelineKey.of("wizard-ran", Boolean.class);
+    private static final BuildPlanKey<Boolean> WIZARD_RAN = BuildPlanKey.of("wizard-ran", Boolean.class);
 
     @Override
     public int run(Invocation in) throws Exception {
@@ -130,11 +130,11 @@ public final class JdkInstallCommand implements CliCommand {
         // Reclaim any partial archive left by a previously canceled download
         // (Ctrl-C halts the JVM mid-download, skipping the inline cleanup).
         // Kept in the CLI so every path — including the wizard and non-TTY
-        // early-outs below — sweeps once, before any pipeline runs.
+        // early-outs below — sweeps once, before any plan runs.
         JdkInstaller.sweepStaleDownloads(registry.jdksRoot());
         JdkService service = new JdkService();
 
-        // Pre-pipeline sanity: when no spec and no TTY, we can't go further.
+        // Pre-plan sanity: when no spec and no TTY, we can't go further.
         boolean haveSpec = spec != null && !spec.isBlank();
         if (!haveSpec && !isInteractiveTerminal()) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
@@ -144,8 +144,8 @@ public final class JdkInstallCommand implements CliCommand {
             return Exit.USAGE;
         }
 
-        Step fetchCatalog = Step.builder(StepNames.FETCH_CATALOG)
-                .kind(StepKind.IO)
+        Task fetchCatalog = Task.builder(TaskNames.FETCH_CATALOG)
+                .kind(TaskKind.IO)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("fetch JetBrains JDK feed");
@@ -161,8 +161,8 @@ public final class JdkInstallCommand implements CliCommand {
                 })
                 .build();
 
-        Step select = Step.builder(StepNames.SELECT)
-                .requires(StepNames.FETCH_CATALOG)
+        Task select = Task.builder(TaskNames.SELECT)
+                .requires(TaskNames.FETCH_CATALOG)
                 .ticks(1)
                 .execute(ctx -> {
                     JdkCatalog catalog = ctx.require(CATALOG);
@@ -222,11 +222,11 @@ public final class JdkInstallCommand implements CliCommand {
         // the presentation — an InstallView that drives the download bar and the
         // installing spinner off the facade's listener events, plus the done
         // lines. Merged into one step because install() is a single atomic call;
-        // interactive pipelines render via SilentListener, so step labels aren't
+        // interactive plans render via SilentListener, so step labels aren't
         // shown and the bars/done-lines are the only visible output.
-        Step install = Step.builder(StepNames.INSTALL)
-                .kind(StepKind.IO)
-                .requires(StepNames.SELECT)
+        Task install = Task.builder(TaskNames.INSTALL)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.SELECT)
                 .ticks(1)
                 .execute(ctx -> {
                     JdkCatalog.Entry entry = ctx.require(ENTRY);
@@ -246,8 +246,8 @@ public final class JdkInstallCommand implements CliCommand {
                 })
                 .build();
 
-        Step setDefault = Step.builder(StepNames.SET_DEFAULT)
-                .requires(StepNames.INSTALL)
+        Task setDefault = Task.builder(TaskNames.SET_DEFAULT)
+                .requires(TaskNames.INSTALL)
                 .ticks(1)
                 .execute(ctx -> {
                     if (!Boolean.TRUE.equals(ctx.get(WANT_DEFAULT).orElse(false))) {
@@ -279,33 +279,33 @@ public final class JdkInstallCommand implements CliCommand {
                 })
                 .build();
 
-        Pipeline pipeline = Pipeline.builder("jdk-install")
+        BuildPlan plan = BuildPlan.builder("jdk-install")
                 .interactive(true)
-                .addStep(fetchCatalog)
-                .addStep(select)
-                .addStep(install)
-                .addStep(setDefault)
+                .addTask(fetchCatalog)
+                .addTask(select)
+                .addTask(install)
+                .addTask(setDefault)
                 .build();
 
-        PipelineResult result = PipelineConsole.run(pipeline, PipelineConsole.modeFor(global), cache);
+        BuildPlanResult result = BuildPlanConsole.run(plan, BuildPlanConsole.modeFor(global), cache);
         if (!result.success()) return 1;
 
         // Offer to adopt the new install as the default JDK / default GraalVM.
-        // Runs AFTER the pipeline console closes, so the prompt never lands inside a
+        // Runs AFTER the plan console closes, so the prompt never lands inside a
         // captured-output region. Skipped on a non-TTY (and when --make-default
         // already set the java default).
         //
         // Skipped entirely when the wizard ran: it already asked "Make this the
         // default JDK?", so re-asking here would be a duplicate prompt — and the
         // wizard's own terminal has been closed (taking System.in with it), so a
-        // fresh Confirm would fail with "Stream Closed". The post-pipeline offer is
+        // fresh Confirm would fail with "Stream Closed". The post-plan offer is
         // for the non-interactive spec path (e.g. `jk jdk install 25`), which
         // never opened a terminal and never asked about the default.
-        boolean wizardRan = Boolean.TRUE.equals(pipeline.get(WIZARD_RAN).orElse(false));
+        boolean wizardRan = Boolean.TRUE.equals(plan.get(WIZARD_RAN).orElse(false));
         if (!wizardRan && Confirm.isInteractiveTerminal()) {
             boolean wantedDefault =
-                    Boolean.TRUE.equals(pipeline.get(WANT_DEFAULT).orElse(false));
-            pipeline.get(INSTALLED).ifPresent(jdk -> offerDefaults(jdk, wantedDefault));
+                    Boolean.TRUE.equals(plan.get(WANT_DEFAULT).orElse(false));
+            plan.get(INSTALLED).ifPresent(jdk -> offerDefaults(jdk, wantedDefault));
         }
         return 0;
     }
@@ -395,7 +395,7 @@ public final class JdkInstallCommand implements CliCommand {
         String msg = Theme.colorize(label, t.focused())
                 + Theme.colorize(" " + command + " ", t.normalGray())
                 + Theme.colorize(tildeCollapse(home), t.path());
-        return cc.jumpkick.cli.tui.PipelineWedge.chipLine(Glyphs.CHECK, "JDK", nerdfont, msg);
+        return cc.jumpkick.cli.tui.BuildPlanWedge.chipLine(Glyphs.CHECK, "JDK", nerdfont, msg);
     }
 
     /** Render an absolute path with {@code $HOME} collapsed to {@code ~}. */
@@ -438,7 +438,7 @@ public final class JdkInstallCommand implements CliCommand {
     }
 
     /**
-     * CLI presentation for {@link JdkService}'s install pipeline: turns the facade's listener events
+     * CLI presentation for {@link JdkService}'s install plan: turns the facade's listener events
      * into the animated {@link cc.jumpkick.cli.tui.JdkDownloadBar} (download then installing spinner)
      * and the {@code doneLine} summaries. {@link AutoCloseable} so a mid-install failure still wipes
      * the active bar (via the step's try-with-resources), matching the old per-step cleanup.

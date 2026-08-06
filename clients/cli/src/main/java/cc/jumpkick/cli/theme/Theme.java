@@ -9,7 +9,7 @@ import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStyle;
 
 /**
- * Color/style provider for TUI, pipeline, and help renderers. Access via {@link #active()};
+ * Color/style provider for TUI, plan, and help renderers. Access via {@link #active()};
  * emission follows {@code --color} ({@link JkConfig.ColorChoice}): ALWAYS, NEVER (attributes kept),
  * or AUTO (respects {@code NO_COLOR} and TTY).
  */
@@ -130,24 +130,24 @@ public interface Theme {
     /** The deep blue behind {@link #indigoBadge()} — for the powerline cap. */
     Rgb indigoBadgeColor();
 
-    /** The live build pipeline chip (spinner + command) — white on dark royal blue ({@code #0F4786}). */
-    AttributedStyle pipelineChip();
+    /** The live build plan chip (spinner + command) — white on dark royal blue ({@code #0F4786}). */
+    AttributedStyle planChip();
 
     /** The settled success chip ({@code ✓ Build}) — white on green. */
-    AttributedStyle pipelineSuccessChip();
+    AttributedStyle planSuccessChip();
 
     /** The settled failure chip ({@code ‼ Build}) — white on red. */
-    AttributedStyle pipelineFailureChip();
+    AttributedStyle planFailureChip();
 
-    /** The green behind {@link #pipelineSuccessChip()} — foreground of the powerline cap. */
-    Rgb pipelineChipColor();
+    /** The green behind {@link #planSuccessChip()} — foreground of the powerline cap. */
+    Rgb planChipColor();
 
     /** The failure chip's red — the foreground of the powerline cap that closes the red chip. */
-    Rgb pipelineFailColor();
+    Rgb planFailColor();
 
     /**
      * Layer {@code bg} as the background of {@code base}, keeping its foreground and attributes
-     * (unless {@code --color} disables color). Used to build the pipeline-header pill: the spinner and
+     * (unless {@code --color} disables color). Used to build the plan-header pill: the spinner and
      * name sit on the bar gradient's left-most color, and the U+E0B0 cap pairs that same color (as
      * foreground) with the bar's lead color (as background) so it tapers the pill into the bar.
      */

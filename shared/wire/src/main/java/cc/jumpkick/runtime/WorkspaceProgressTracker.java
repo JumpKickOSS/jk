@@ -10,11 +10,11 @@ import java.util.Map;
  *
  * <p><b>Smart engine / dumb clients:</b> all aggregate tuning lives here (or in call sites that only
  * feed this tracker). Wire, SSE, MCP, CLI, and session JSONL must render {@link Snapshot} values
- * never re-derive workspace % from per-module pipeline ticks.
+ * never re-derive workspace % from per-module plan ticks.
  */
 public final class WorkspaceProgressTracker {
 
-    /** Reserved progress units for all preflight work (before module pipelines run). */
+    /** Reserved progress units for all preflight work (before module plans run). */
     public static final long PREFLIGHT_UNITS = 100;
 
     /**
@@ -81,7 +81,7 @@ public final class WorkspaceProgressTracker {
     }
 
     /**
-     * Pin execute weight after plan. {@code executeWeight} is Σ module pipeline weights (ticks).
+     * Pin execute weight after plan. {@code executeWeight} is Σ module plan weights (ticks).
      * {@code modulesTotal} is the planned module count (0 if unknown).
      *
      * <p>/1154: when modules are planned but execute weight is still 0 (every step token
@@ -105,7 +105,7 @@ public final class WorkspaceProgressTracker {
     }
 
     /**
-     * In-flight (or starting) module pipeline view. {@code sliceHint} is the plan weight for first
+     * In-flight (or starting) module plan view. {@code sliceHint} is the plan weight for first
      * registration; later reweights follow {@code denominator} deltas when calibrated.
      */
     public synchronized Snapshot moduleProgress(String key, long sliceHint, long numerator, long denominator) {

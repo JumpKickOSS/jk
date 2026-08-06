@@ -8,9 +8,8 @@ import cc.jumpkick.plugin.build.BuildPluginContext;
 import cc.jumpkick.plugin.build.BuildPluginHarness;
 import cc.jumpkick.plugin.build.In;
 import cc.jumpkick.plugin.build.PackagerSpec;
-import cc.jumpkick.plugin.build.Phase;
 import cc.jumpkick.plugin.build.PluginCommandSpec;
-import cc.jumpkick.plugin.build.StepSpec;
+import cc.jumpkick.plugin.build.TaskSpec;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.util.List;
 
@@ -39,9 +38,7 @@ public final class AndroidPlugin implements Plugin, BuildPlugin {
         boolean minify = ctx.config().bool("minify").orElse(release && !library);
         // Both manifest/res locations are declared inputs: jk's simple layout at the module
         // root, and the AGP/traditional src/main/ home — the steps read whichever exists.
-        ctx.step(StepSpec.named("android-manifest")
-                .after(Phase.RESOLVE)
-                .before(Phase.COMPILE)
+        ctx.task(TaskSpec.named("android-manifest")
                 .inputs(
                         In.projectFiles("AndroidManifest.xml"),
                         In.projectFiles("src/main/AndroidManifest.xml"),
@@ -49,9 +46,7 @@ public final class AndroidPlugin implements Plugin, BuildPlugin {
                         In.config())
                 .outputs("merged")
                 .run(ManifestStep::run));
-        ctx.step(StepSpec.named("android-res")
-                .after(Phase.RESOLVE)
-                .before(Phase.COMPILE)
+        ctx.task(TaskSpec.named("android-res")
                 .inputs(
                         In.projectFiles("res"),
                         In.projectFiles("src/main/res"),
@@ -63,17 +58,13 @@ public final class AndroidPlugin implements Plugin, BuildPlugin {
                 .run(ResourceStep::run));
         // Robolectric wiring: a test_config.properties dir on the module's
         // test runtime classpath, pointing at the merged manifest + linked resources.
-        ctx.step(StepSpec.named("android-test-config")
-                .after(Phase.RESOLVE)
-                .before(Phase.TEST)
+        ctx.task(TaskSpec.named("android-test-config")
                 .inputs(In.stepOutput("android-manifest"), In.stepOutput("android-res"), In.config())
                 .outputs("cp")
                 .contributesTestClasspath("cp")
                 .run(TestConfigStep::run));
         if (ctx.config().bool("build-config", false)) {
-            ctx.step(StepSpec.named("android-buildconfig")
-                    .after(Phase.RESOLVE)
-                    .before(Phase.COMPILE)
+            ctx.task(TaskSpec.named("android-buildconfig")
                     .inputs(In.config())
                     .outputs("gen")
                     .contributesSources("gen")
@@ -82,9 +73,7 @@ public final class AndroidPlugin implements Plugin, BuildPlugin {
         if (ctx.config().bool("hilt", false) && !library) {
             // Hilt: rewrite @AndroidEntryPoint/@HiltAndroidApp superclasses to KSP-generated
             // Hilt_* bases (classes-transform SPI). Dex consumes the transformed dir.
-            ctx.step(StepSpec.named("android-hilt-transform")
-                    .after(Phase.COMPILE)
-                    .before(Phase.PACKAGE)
+            ctx.task(TaskSpec.named("android-hilt-transform")
                     .inputs(In.classes(), In.config())
                     .outputs("classes")
                     .transformsClasses("classes")
@@ -108,17 +97,13 @@ public final class AndroidPlugin implements Plugin, BuildPlugin {
                 for (String rel : ctx.config().stringList("proguard-files")) {
                     r8Inputs.add(In.projectFiles(rel));
                 }
-                ctx.step(StepSpec.named("android-r8")
-                        .after(Phase.COMPILE)
-                        .before(Phase.PACKAGE)
+                ctx.task(TaskSpec.named("android-r8")
                         .inputs(r8Inputs.toArray(new In[0]))
                         .outputs("dex", "mapping")
                         .run(R8Step::run));
             } else {
                 dexStep = "android-dex";
-                ctx.step(StepSpec.named("android-dex")
-                        .after(Phase.COMPILE)
-                        .before(Phase.PACKAGE)
+                ctx.task(TaskSpec.named("android-dex")
                         .inputs(In.classes(), In.runtimeEntries(), In.config())
                         .outputs("dex")
                         .run(DexStep::run));

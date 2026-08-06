@@ -4,10 +4,10 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineFleet;
-import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.tui.DrainView;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.PipelineWedge;
+import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.model.command.CliCommand;
@@ -74,7 +74,7 @@ public final class EngineStopCommand implements CliCommand {
             // Idle (or already gone): the engine should exit immediately — verify, and escalate if not.
             return confirmGone(before.get().pid(), started);
         }
-        if (!PipelineConsole.isInteractiveTerminal()) {
+        if (!BuildPlanConsole.isInteractiveTerminal()) {
             cc.jumpkick.cli.tui.CommandWedge.printOk(
                     "Engine", "shutdown scheduled (" + jobs + " job" + (jobs == 1 ? "" : "s") + " will finish first)");
             return Exit.SUCCESS;
@@ -188,7 +188,7 @@ public final class EngineStopCommand implements CliCommand {
                             && !EngineClient.ping(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) break;
                     continue;
                 }
-                view.setJobs(Math.max(0, s.get().activePipelines()));
+                view.setJobs(Math.max(0, s.get().activeBuildPlans()));
                 sleep(200);
             }
             view.settleStopped(stoppedWedge(elapsed(started)));
@@ -203,7 +203,7 @@ public final class EngineStopCommand implements CliCommand {
     }
 
     private static String stoppedWedge(long ranMs) {
-        return PipelineWedge.chipLine(
+        return BuildPlanWedge.chipLine(
                 Glyphs.STOP, "Engine", GlobalConfig.nerdfont(), "Engine stopped. Ran for " + uptime(ranMs) + ".");
     }
 

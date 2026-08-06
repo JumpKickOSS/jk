@@ -17,7 +17,7 @@ import org.junit.jupiter.api.io.TempDir;
  * {@code jk explain} must read the Kotlin freshness stamp from the directory the build
  * writes it to.
  *
- * <p>{@code BuildPipelines} writes {@code.kstamp} beside the merged classes ({@link
+ * <p>{@code BuildPlanner} writes {@code.kstamp} beside the merged classes ({@link
  * BuildLayout#classesDir}); the forecast read {@link BuildLayout#kotlinClassesDir} — kotlinc's
  * incremental workspace — where no stamp is ever written. It therefore never found one, and every
  * Kotlin module forecast a full compile regardless of how cached the build actually was.
@@ -41,7 +41,7 @@ class KotlinForecastStampTest {
         assertThat(FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.KOTLIN_STAMP, sources))
                 .isFalse();
 
-        // Exactly what compile-kotlin's stamp step does (BuildPipelines: MAIN_CLASSES).
+        // Exactly what compile-kotlin's stamp step does (BuildPlanner: MAIN_CLASSES).
         Files.createDirectories(layout.classesDir());
         FreshnessStamp.write(
                 layout.classesDir(), FreshnessStamp.KOTLIN_STAMP, "compile-kotlin", "", sources, List.of(), 25);

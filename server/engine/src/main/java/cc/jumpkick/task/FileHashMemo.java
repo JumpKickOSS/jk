@@ -27,7 +27,7 @@ public final class FileHashMemo {
     /** Distrust stat-identity for files modified within this window (mtime-granularity guard). */
     private static final long SETTLE_MS = 2_000;
 
-    /** Absolute-path → hex for the current thread (request / pipeline worker). */
+    /** Absolute-path → hex for the current thread (request / plan worker). */
     private static final ThreadLocal<Map<String, String>> THREAD_CACHE = ThreadLocal.withInitial(HashMap::new);
 
     private static final AtomicLong CONTENT_HASH_INVOCATIONS = new AtomicLong();

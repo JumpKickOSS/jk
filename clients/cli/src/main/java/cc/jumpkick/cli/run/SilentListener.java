@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.run;
 
-import cc.jumpkick.run.PipelineListener;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
 import java.io.PrintStream;
 
 /**
  * Quietest console listener: prints only the final pass/fail summary line and any structured
- * errors. Used when the user pipes output, passes {@code --quiet}, or when the pipeline is marked
- * {@link cc.jumpkick.run.Pipeline#interactive interactive}.
+ * errors. Used when the user pipes output, passes {@code --quiet}, or when the plan is marked
+ * {@link cc.jumpkick.run.BuildPlan#interactive interactive}.
  */
-public final class SilentListener implements PipelineListener {
+public final class SilentListener implements BuildPlanListener {
 
     private final PrintStream out;
     private final PrintStream err;
@@ -27,12 +27,12 @@ public final class SilentListener implements PipelineListener {
     }
 
     @Override
-    public void pipelineFinish(PipelineResult result) {
+    public void planFinish(BuildPlanResult result) {
         if (suppressDiagnostics) return;
-        for (PipelineResult.Diagnostic d : result.errors()) {
+        for (BuildPlanResult.Diagnostic d : result.errors()) {
             err.println(ConsoleSpec.renderError(d));
         }
-        for (PipelineResult.Diagnostic d : result.warnings()) {
+        for (BuildPlanResult.Diagnostic d : result.warnings()) {
             err.println(ConsoleSpec.renderWarning(d));
         }
         // The command body owns the success summary — we don't want to

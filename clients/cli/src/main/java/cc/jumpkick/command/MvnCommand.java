@@ -92,7 +92,7 @@ public final class MvnCommand implements CliCommand {
     /**
      * Provision a Maven/Gradle distribution and return its launcher path, or {@code null} (with the
      * error already rendered) on failure. Engine-hosted; the test-only in-process path runs the
-     * identical {@code CompatPipelines.provision} code.
+     * identical {@code CompatPlans.provision} code.
      */
     static Path provision(Path cache, Path projectDir, Path toolsRoot, boolean noDiscover, boolean isGradle)
             throws IOException, InterruptedException {

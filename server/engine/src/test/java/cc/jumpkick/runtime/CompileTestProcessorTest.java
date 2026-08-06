@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.cache.Cas;
-import cc.jumpkick.run.PipelineKey;
-import cc.jumpkick.run.StepContext;
+import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.TaskContext;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -158,8 +158,8 @@ class CompileTestProcessorTest {
         if (rc != 0) throw new IllegalStateException("fixture javac failed, rc=" + rc);
     }
 
-    /** Minimal StepContext — compileWithCache only labels / warns / errors / reweights. */
-    private static final class NoopContext implements StepContext {
+    /** Minimal TaskContext — compileWithCache only labels / warns / errors / reweights. */
+    private static final class NoopContext implements TaskContext {
         @Override
         public void progress(int delta) {}
 
@@ -184,15 +184,15 @@ class CompileTestProcessorTest {
         }
 
         @Override
-        public <T> void put(PipelineKey<T> key, T value) {}
+        public <T> void put(BuildPlanKey<T> key, T value) {}
 
         @Override
-        public <T> Optional<T> get(PipelineKey<T> key) {
+        public <T> Optional<T> get(BuildPlanKey<T> key) {
             return Optional.empty();
         }
 
         @Override
-        public <T> T require(PipelineKey<T> key) {
+        public <T> T require(BuildPlanKey<T> key) {
             throw new IllegalStateException("no " + key);
         }
     }

@@ -18,12 +18,15 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * {@code jk remove &lt;name&gt;} — remove a dependency from {@code jk.toml} by its short name (the
- * manifest key).
+ * {@code jk remove &lt;spec&gt;} — remove a dependency from {@code jk.toml} by library short name,
+ * Maven coord, or local module path (same disambiguation as {@code jk add}).
  *
- * <p>A Maven-coord shorthand ({@code group:artifact} or {@code group:artifact:version}) is also
- * accepted as a migration aid: the artifactId is extracted and used as the short name. The
- * recommended form is the bare short name.
+ * <pre>
+ *   jk remove n           # library short name, or path if ./n is a directory
+ *   jk remove g:n[:v]     # Maven coord (version ignored; uses artifactId)
+ *   jk remove n@1.2.3     # library; @version ignored
+ *   jk remove ./n  | n/   # path → module's project name (artifactId)
+ * </pre>
  */
 public final class RemoveCommand implements CliCommand {
 
@@ -49,10 +52,10 @@ public final class RemoveCommand implements CliCommand {
     @Override
     public List<Param> parameters() {
         return List.of(Param.of(
-                "name",
+                "name|path",
                 Arity.ONE,
-                "Short name (manifest key) of the dependency to remove.\n"
-                        + "A group:artifact[:version] coord works too (uses artifactId)."));
+                "Library short name, group:artifact[:ver], name@ver, or path.\n"
+                        + "Version is ignored; a path resolves to the module name."));
     }
 
     @Override
@@ -79,43 +82,146 @@ public final class RemoveCommand implements CliCommand {
         Scope scope = test
                 ? Scope.TEST
                 : runtime ? Scope.RUNTIME : provided ? Scope.PROVIDED : processor ? Scope.PROCESSOR : Scope.MAIN;
-        String name;
+        // Candidate manifest keys, most-literal first: for a bare name the manifest key wins over
+        // a shadowing directory — an unrelated checkout ./jackson must not redirect
+        // `jk remove jackson` to that module's project name (JK-1516). Explicit path syntax
+        // (:m, ./m, m/) is unambiguous and resolves via the module only.
+        boolean explicitPath = AddCommand.isExplicitPathSyntax(nameArg);
+        java.util.List<String> candidates = new java.util.ArrayList<>(2);
+        boolean pathCandidate = false;
         try {
-            name = shortNameOf(nameArg);
+            if (explicitPath) {
+                candidates.add(shortNameOf(nameArg, dir));
+                pathCandidate = true;
+            } else {
+                candidates.add(literalNameOf(nameArg));
+                if (AddCommand.isLocalPathArg(nameArg, dir)) {
+                    String viaPath = shortNameOf(nameArg, dir);
+                    if (!candidates.contains(viaPath)) {
+                        candidates.add(viaPath);
+                        pathCandidate = true;
+                    }
+                }
+            }
         } catch (IllegalArgumentException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Remove", e.getMessage()));
             return Exit.USAGE;
         }
 
-        try {
-            EngineEdits.apply(file, "remove-dependency", java.util.List.of(scope.canonical(), name));
-        } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Remove", e.getMessage()));
+        String removed = null;
+        IOException firstError = null;
+        for (String candidate : candidates) {
+            try {
+                EngineEdits.apply(file, "remove-dependency", java.util.List.of(scope.canonical(), candidate));
+                removed = candidate;
+                break;
+            } catch (IOException e) {
+                if (firstError == null) firstError = e;
+            }
+        }
+        if (removed == null) {
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Remove", firstError.getMessage()));
             return 1;
         }
         CommandWedge.printOk(
                 "Remove",
                 "Removed "
-                        + Theme.colorize(name, Theme.active().activeStep())
+                        + Theme.colorize(removed, Theme.active().activeStep())
                         + " from "
                         + Theme.colorize("dependencies", Theme.active().cyan())
                         + "."
                         + Theme.colorize(scope.canonical(), Theme.active().cyan()));
+
+        // Path form: also drop the module from the enclosing workspace root's [workspace].modules
+        // (symmetry with `jk add <path>`, which registers it). Bare-name removals that matched the
+        // literal manifest key leave module registration alone.
+        boolean removedViaPath = explicitPath || (pathCandidate && removed.equals(candidates.get(candidates.size() - 1)));
+        if (removedViaPath) {
+            unregisterWorkspaceModule(dir, nameArg);
+        }
         return 0;
     }
 
+    /** Best-effort removal of the path's module registration from the enclosing workspace root. */
+    private static void unregisterWorkspaceModule(Path cwd, String arg) {
+        String raw = arg.charAt(0) == ':' ? arg.substring(1) : arg;
+        raw = raw.replace('\\', '/');
+        while (raw.endsWith("/") && raw.length() > 1) {
+            raw = raw.substring(0, raw.length() - 1);
+        }
+        Path target = cwd.resolve(raw).normalize();
+        Path root = cc.jumpkick.config.WorkspaceScan.findEnclosingWorkspace(cwd).orElse(cwd);
+        Path rootToml = root.resolve("jk.toml");
+        if (!Files.exists(rootToml) || !target.startsWith(root)) return;
+        String rel = root.relativize(target).toString().replace('\\', '/');
+        if (rel.isBlank()) return;
+        try {
+            if (EngineEdits.apply(rootToml, "remove-workspace-module", java.util.List.of(rel))) {
+                CliOutput.out("Unregistered module '"
+                        + rel
+                        + "' from workspace "
+                        + cc.jumpkick.cli.PathDisplay.styledRaw(root));
+            }
+        } catch (IOException | RuntimeException e) {
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Remove", "could not unregister workspace module: " + e.getMessage()));
+        }
+    }
+
     /**
-     * Extract the short name from the user's argument. A bare token is returned unchanged; a {@code
-     * group:artifact[:version]} coord collapses to its artifactId.
+     * Manifest key (library short name) for {@code remove-dependency}. Path forms resolve to the
+     * target module's project name; Maven coords use artifactId; {@code @version} is stripped.
      */
-    private static String shortNameOf(String arg) {
+    static String shortNameOf(String arg, Path cwd) {
         if (arg == null || arg.isBlank()) {
             throw new IllegalArgumentException("name must not be blank");
         }
-        int first = arg.indexOf(':');
-        if (first < 0) return arg;
-        int second = arg.indexOf(':', first + 1);
-        String artifact = second < 0 ? arg.substring(first + 1) : arg.substring(first + 1, second);
+        // Path / local module (same rules as jk add).
+        if (AddCommand.isLocalPathArg(arg, cwd)) {
+            String raw = arg.charAt(0) == ':' ? arg.substring(1) : arg;
+            raw = raw.replace('\\', '/');
+            while (raw.endsWith("/") && raw.length() > 1) {
+                raw = raw.substring(0, raw.length() - 1);
+            }
+            if (raw.isBlank()) {
+                throw new IllegalArgumentException("empty module path");
+            }
+            Path target = cwd.resolve(raw).normalize();
+            var info = BuildCommand.projectInfoOrNull(target);
+            if (info != null && info.name() != null && !info.name().isBlank()) {
+                return info.name();
+            }
+            Path leaf = target.getFileName();
+            if (leaf == null || leaf.toString().isBlank()) {
+                throw new IllegalArgumentException("could not derive dependency name from path: " + arg);
+            }
+            return leaf.toString();
+        }
+
+        return literalNameOf(arg);
+    }
+
+    /**
+     * The non-path interpretation of {@code arg}: optional {@code @version} stripped
+     * ({@code library@1.2.3}), Maven coords reduced to the artifactId.
+     */
+    static String literalNameOf(String arg) {
+        if (arg == null || arg.isBlank()) {
+            throw new IllegalArgumentException("name must not be blank");
+        }
+        String core = arg;
+        int at = arg.indexOf('@');
+        if (at >= 0) {
+            core = arg.substring(0, at);
+            if (core.isBlank()) {
+                throw new IllegalArgumentException("empty name before '@' in: " + arg);
+            }
+        }
+
+        int first = core.indexOf(':');
+        if (first < 0) return core; // bare library short name
+        int second = core.indexOf(':', first + 1);
+        String artifact = second < 0 ? core.substring(first + 1) : core.substring(first + 1, second);
         if (artifact.isBlank()) {
             throw new IllegalArgumentException("could not extract artifactId from: " + arg);
         }

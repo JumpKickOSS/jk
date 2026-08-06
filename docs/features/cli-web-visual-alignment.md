@@ -17,7 +17,7 @@
 | **identity / chrome** | brand accents, coords, nav | cyan (`--cg` / `--cn`), violet gradient (`--prog-*`) |
 
 Chips and wedges use the same vocabulary: **status on a chip**, not rainbow decoration.
-Command wedges (`CommandWedge`): working → blue pipeline chip; success → green chip; fail → red chip.
+Command wedges (`CommandWedge`): working → blue plan chip; success → green chip; fail → red chip.
 
 ## Token map (web CSS → CLI)
 
@@ -40,7 +40,7 @@ Command wedges (`CommandWedge`): working → blue pipeline chip; success → gre
 | `--path` | `#969DD4` | `PATH`, `path()` | Paths |
 | `--bg` | `#090C11` | *(web canvas; CLI has no page bg)* | Dashboard surface |
 
-Pipeline chips (CLI):
+BuildPlan chips (CLI):
 
 | Chip | Fill | Maps to |
 |------|------|---------|
@@ -73,5 +73,5 @@ Gradients (CLI title / spinner / progress): blue → violet (`PRIMARY`/`BRIGHT_B
 
 1. Change hex in **web `style.css` `:root` first**.
 2. Mirror named hues in **`JkDarkTheme`** (and any `cssVar` fallbacks in `app.js`).
-3. Prefer semantic slots (`error()`, `pipelineSuccessChip()`) over raw RGB at call sites.
+3. Prefer semantic slots (`error()`, `planSuccessChip()`) over raw RGB at call sites.
 4. Golden ANSI / theme tests catch accidental CLI drift.

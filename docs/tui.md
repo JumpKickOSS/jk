@@ -20,16 +20,16 @@
 Almost every human command settles with a **CommandWedge** (green ok / red fail / blue work chip), or embeds wedge chrome inside:
 
 - **BoxTable** title bar (`≡ Title` chip + box fill)
-- **Tree** / pipeline step list under a wedge+progress header
+- **Tree** / plan step list under a wedge+progress header
 - **Wizard** steps with indigo/title chips
 
-API: `cc.jumpkick.cli.tui.CommandWedge` (delegates to `PipelineWedge`).
+API: `cc.jumpkick.cli.tui.CommandWedge` (delegates to `BuildPlanWedge`).
 
 ### Progress variants
 
 | Work shape | Chrome |
 |------------|--------|
-| Bounded known progress | CommandWedge + progress bar (pipeline `CommandManager`, or `SpinnerProgressBar`) |
+| Bounded known progress | CommandWedge + progress bar (plan `CommandManager`, or `SpinnerProgressBar`) |
 | Indeterminate / short | Spinner-only wedge (`CommandWedge.analyzing` / `Spinner.showWedge`) |
 | Settled | Static icon — `CommandWedge.ok` / `fail` / `chip` (never leave a spinner running) |
 
@@ -47,14 +47,14 @@ Helpers:
 - One-shot success: `CommandWedge.printOk(command, message)`  
 - One-shot failure: `CommandWedge.printFail(command, message)`  
 - Multi-line chrome: `envelopeStart()` then body lines  
-- Live pipelines: `CommandManager` opens the leading blank if prep has not already  
+- Live plans: `CommandManager` opens the leading blank if prep has not already  
 - **Exec handoff** (`jk run`): command may print a single separator before `inheritIO`  
 
 Optional blank lines **between** chrome and follow-up tips (e.g. after `jk add`) are fine — that is content spacing, not a trailing envelope.
 
 **Script-mode** commands must **not** use the envelope (paths, tokens, shell hooks, `jk --version`).
 
-**Do not** print raw `PipelineWedge.chipLine` / `CommandWedge.ok` without `printOk` or `envelopeStart` — that is how the fully-cached `jk build` fast path skipped the blank.
+**Do not** print raw `BuildPlanWedge.chipLine` / `CommandWedge.ok` without `printOk` or `envelopeStart` — that is how the fully-cached `jk build` fast path skipped the blank.
 
 ## Script-mode allowlist (no wedge)
 
@@ -71,7 +71,7 @@ These commands intentionally emit only machine-consumable stdout:
 | `jk tool dir` | Tools root path | installers |
 | `jk --version` / `-V` | `jk <version>` | CI |
 | `jk explain --graph dot\|mermaid` | Graph source | `dot` / editors |
-| `jk selective resolve` (+ `--json`) | Paths or JSON | CI selective pipelines |
+| `jk selective resolve` (+ `--json`) | Paths or JSON | CI selective plans |
 | `jk bsp serve` | JSON-RPC on stdio | IDE BSP client |
 
 Adding a new exception requires updating this table.
@@ -116,7 +116,7 @@ via the caller's `CommandWedge.envelopeStart()` and degrades to ASCII under `--n
 | `jk format` (quiet/check) | already wedge-settled (wave 1) |
 | `jk selective prepare` | already wedge-settled |
 | `jk jdk ensure` / `graal` | settles via `JdkRender.available` under the envelope |
-| `jk repo prune` | pipeline console (`Repo` chip); settles with the sweep summary (`Finished sweeping store …`), like `jk cache prune` |
+| `jk repo prune` | plan console (`Repo` chip); settles with the sweep summary (`Finished sweeping store …`), like `jk cache prune` |
 
 ### Documented exceptions (deliberately plain)
 
@@ -139,15 +139,15 @@ via the caller's `CommandWedge.envelopeStart()` and degrades to ASCII under `--n
 Rules:
 
 - Prefer `Glyphs.check()` / `cross()` / `pulse()` (and friends) over hardcoding `✓` when emitting markers outside wedges.
-- Nerd PUA only via `PipelineWedge.cap(..., nerdfont)` / `GlobalConfig.nerdfont()`.
+- Nerd PUA only via `BuildPlanWedge.cap(..., nerdfont)` / `GlobalConfig.nerdfont()`.
 - Plain mode: no CSI color, no spinner animation frames, no OSC taskbar required for correctness.
 
-## One-shot vs pipeline
+## One-shot vs plan
 
 | Kind | Example | Pattern |
 |------|---------|---------|
 | One-shot settle | `jk add`, `jk export`, `jk jdk pin` | `CommandWedge.printOk` / `printFail` |
-| Live pipeline | `jk build`, `jk test`, `jk lock` | `CommandManager` + settle wedge |
+| Live plan | `jk build`, `jk test`, `jk lock` | `CommandManager` + settle wedge |
 | List / table | `jk library list`, `jk doctor` | BoxTable + title wedge (wave 2: JK-1375) |
 
 ## JSONL / quiet
@@ -167,9 +167,9 @@ Under `--output json` / `jsonl`, suppress human chrome (no envelope, no wedge). 
 
 | Concern | Location |
 |---------|----------|
-| Settled wedge | `cli/tui/CommandWedge.java`, `PipelineWedge.java` |
+| Settled wedge | `cli/tui/CommandWedge.java`, `BuildPlanWedge.java` |
 | Glyphs | `cli/tui/Glyphs.java` |
-| Live pipeline | `cli/tui/CommandManager.java` |
+| Live plan | `cli/tui/CommandManager.java` |
 | Spinner / bar | `Spinner.java`, `ProgressBar.java`, `SpinnerProgressBar.java` |
 | Tables | `BoxTable.java` |
 | Theme / ANSI gate | `cli/theme/Theme.java` |

@@ -533,7 +533,7 @@ public final class JdkListCommand implements CliCommand {
 
         // The │ rails always stay. On a Nerd-Font banded row, pill-cap glyphs replace
         // the single padding space immediately inside each rail, so the background band
-        // tapers into the terminal background with rounded edges — same as PipelineWedge.cap().
+        // tapers into the terminal background with rounded edges — same as BuildPlanWedge.cap().
         boolean nerdfont = cc.jumpkick.config.GlobalConfig.nerdfont();
         boolean ansi = Theme.active().isAnsi();
         String outerBar = ansi ? Theme.colorize("│", Theme.active().darkGray()) : "|";

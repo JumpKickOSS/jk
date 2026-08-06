@@ -89,7 +89,7 @@ public final class BuildMetrics {
             Stats cancelled,
             long updatedMillis) {}
 
-    /** One step's outcome within a finished run; {@code status} is a {@code StepStatus} name. */
+    /** One step's outcome within a finished run; {@code status} is a {@code TaskStatus} name. */
     public record StepSample(String dir, String step, String status, long millis) {}
 
     /** What the engine maps a finished build record into — the store's only input shape. */
@@ -147,16 +147,35 @@ public final class BuildMetrics {
         }
     }
 
-    /** Hydrate invocation/step stats from {@code project-metrics.toml} / {@code host-metrics.toml}. */
+    /** Hydrate invocation/task stats from {@code project-metrics.toml} / {@code host-metrics.toml}. */
     static BuildMetrics fromAggregates() {
         cc.jumpkick.builds.AggregatedMetrics agg = cc.jumpkick.builds.AggregatedMetrics.loadAll(JkDirs.builds());
         Map<String, Entry> inv = new LinkedHashMap<>();
         Map<String, Entry> steps = new LinkedHashMap<>();
         long now = System.currentTimeMillis();
-        for (var e : agg.meanMap().entrySet()) {
+        // Project means first, then host means (fill host-tier gaps only).
+        foldAggregateEntries(agg.meanMap(), agg, inv, steps, now, false);
+        foldAggregateEntries(agg.hostMeanMap(), agg, inv, steps, now, true);
+        return new BuildMetrics(inv, steps);
+    }
+
+    /**
+     * Fold harvested scalars into invocation/task maps. Prefer {@code task.*} over legacy {@code
+     * step.*}. When {@code hostOnly}, only fill keys not already present (host tier / missing
+     * modules).
+     */
+    private static void foldAggregateEntries(
+            Map<String, Double> source,
+            cc.jumpkick.builds.AggregatedMetrics agg,
+            Map<String, Entry> inv,
+            Map<String, Entry> steps,
+            long now,
+            boolean hostOnly) {
+        if (source == null || source.isEmpty()) return;
+        for (var e : source.entrySet()) {
             String key = e.getKey();
             double ms = e.getValue();
-            if (!(ms > 0)) continue;
+            if (key == null || !(ms > 0)) continue;
             long count = Math.max(1, agg.count(key));
             long avg = Math.round(ms);
             Stats ok = new Stats(count, avg * count, avg, avg);
@@ -166,30 +185,52 @@ public final class BuildMetrics {
                 ok = new Stats(count, avg * count, Math.min(avg, l), Math.max(avg, l));
             }
             if (key.startsWith("invocation.") && key.endsWith(".wall-ms")) {
-                // invocation.<kind>[.<dirKey>].wall-ms
                 String body = key.substring("invocation.".length(), key.length() - ".wall-ms".length());
                 int dot = body.indexOf('.');
                 String kind = dot < 0 ? body : body.substring(0, dot);
                 String dir = dot < 0 ? "" : body.substring(dot + 1);
-                inv.put(kind + SEP + dir, new Entry(kind, dir, null, null, ok, Stats.EMPTY, Stats.EMPTY, now));
+                String ik = kind + SEP + dir;
+                if (!hostOnly || !inv.containsKey(ik)) {
+                    inv.put(ik, new Entry(kind, dir, null, null, ok, Stats.EMPTY, Stats.EMPTY, now));
+                }
             } else if (key.equals("workspace.wall-ms")) {
                 inv.putIfAbsent(
                         "build" + SEP + "", new Entry("build", "", null, null, ok, Stats.EMPTY, Stats.EMPTY, now));
+            } else if (key.startsWith("module.") && key.contains(".task.") && key.endsWith(".wall-ms")) {
+                // module.<dir>.task.<name>.wall-ms
+                putModuleTask(steps, key, "task", ok, now, hostOnly);
             } else if (key.startsWith("module.") && key.contains(".step.") && key.endsWith(".wall-ms")) {
-                // module.<dir>.step.<step>.wall-ms
-                String body = key.substring("module.".length(), key.length() - ".wall-ms".length());
-                int stepAt = body.indexOf(".step.");
-                if (stepAt > 0) {
-                    String dir = body.substring(0, stepAt);
-                    String step = body.substring(stepAt + ".step.".length());
-                    steps.put(dir + SEP + step, new Entry(null, dir, null, step, ok, Stats.EMPTY, Stats.EMPTY, now));
+                // legacy module.<dir>.step.<name>.wall-ms
+                putModuleTask(steps, key, "step", ok, now, /*hostOnly*/ true);
+            } else if (key.startsWith("task.") && key.endsWith(".wall-ms") && !key.contains("module.")) {
+                String task = key.substring("task.".length(), key.length() - ".wall-ms".length());
+                String sk = "" + SEP + task;
+                if (!hostOnly || !steps.containsKey(sk)) {
+                    steps.put(sk, new Entry(null, "", null, task, ok, Stats.EMPTY, Stats.EMPTY, now));
                 }
             } else if (key.startsWith("step.") && key.endsWith(".wall-ms") && !key.contains("module.")) {
-                String step = key.substring("step.".length(), key.length() - ".wall-ms".length());
-                steps.put("" + SEP + step, new Entry(null, "", null, step, ok, Stats.EMPTY, Stats.EMPTY, now));
+                String task = key.substring("step.".length(), key.length() - ".wall-ms".length());
+                String sk = "" + SEP + task;
+                if (!steps.containsKey(sk)) {
+                    steps.put(sk, new Entry(null, "", null, task, ok, Stats.EMPTY, Stats.EMPTY, now));
+                }
             }
         }
-        return new BuildMetrics(inv, steps);
+    }
+
+    private static void putModuleTask(
+            Map<String, Entry> steps, String key, String kind, Stats ok, long now, boolean onlyIfAbsent) {
+        // module.<dir>.(task|step).<name>.wall-ms
+        String marker = "." + kind + ".";
+        String body = key.substring("module.".length(), key.length() - ".wall-ms".length());
+        int at = body.indexOf(marker);
+        if (at <= 0) return;
+        String dir = body.substring(0, at);
+        String task = body.substring(at + marker.length());
+        if (task.isEmpty()) return;
+        String sk = dir + SEP + task;
+        if (onlyIfAbsent && steps.containsKey(sk)) return;
+        steps.put(sk, new Entry(null, dir, null, task, ok, Stats.EMPTY, Stats.EMPTY, now));
     }
 
     /** True when nothing has been recorded yet. */
@@ -369,7 +410,7 @@ public final class BuildMetrics {
         ph.put(k, new Entry(null, dir, null, step, ok, failed, cancelled, nowMillis));
     }
 
-    /** Maps a {@code StepStatus} name to a stats bucket; null = don't record (SKIPPED, non-terminal). */
+    /** Maps a {@code TaskStatus} name to a stats bucket; null = don't record (SKIPPED, non-terminal). */
     private static String bucketOf(String status) {
         if (status == null) return null;
         return switch (status) {
@@ -484,7 +525,9 @@ public final class BuildMetrics {
                     Entry e = readEntry(row, true);
                     if (e != null) inv.put(e.kind() + SEP + e.dir(), e);
                 }
-                for (Object row : list(root.get("steps"))) {
+                Object taskRows = root.get("tasks");
+                if (taskRows == null) taskRows = root.get("steps"); // pre-rename store files
+                for (Object row : list(taskRows)) {
                     Entry e = readEntry(row, false);
                     if (e != null) ph.put(e.dir() + SEP + e.step(), e);
                 }
@@ -499,7 +542,8 @@ public final class BuildMetrics {
         if (!(row instanceof Map<?, ?> o)) return null;
         String kind = str(o.get("kind"));
         String dir = str(o.get("dir"));
-        String step = str(o.get("step"));
+        String step = str(o.get("task"));
+        if (step == null) step = str(o.get("step"));
         if (dir == null || (invocation ? kind == null : step == null)) return null;
         return new Entry(
                 invocation ? kind : null,
@@ -526,7 +570,7 @@ public final class BuildMetrics {
         root.put("invocations", invRows);
         List<Object> phRows = new ArrayList<>(ph.size());
         new TreeMap<>(ph).values().forEach(e -> phRows.add(renderEntry(e)));
-        root.put("steps", phRows);
+        root.put("tasks", phRows);
         return root;
     }
 
@@ -535,7 +579,9 @@ public final class BuildMetrics {
         if (e.kind() != null) o.put("kind", e.kind());
         o.put("dir", e.dir());
         if (e.coord() != null) o.put("coord", e.coord());
-        if (e.step() != null) o.put("step", e.step());
+        if (e.step() != null) {
+            o.put("task", e.step());
+        }
         o.put("ok", renderStats(e.ok()));
         o.put("failed", renderStats(e.failed()));
         o.put("cancelled", renderStats(e.cancelled()));

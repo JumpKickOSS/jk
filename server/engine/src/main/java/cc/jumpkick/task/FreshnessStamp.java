@@ -60,9 +60,25 @@ public final class FreshnessStamp {
             if (newerThan(src, stamp.stampMillis())) return false;
         }
         for (Path cp : currentCp) {
+            // Content-addressed store jars encode their payload in the path
+            // (…/store/sha256/ab/cd/<hex>). Set equality already proved the locked
+            // identity is unchanged; mtime on an immutable CAS blob is not an
+            // input — re-materialize / hardlink reclaim / FS churn must not force
+            // a recompile after a green build (build→jk run stamp thrash).
+            if (isContentAddressed(cp)) continue;
             if (newerThan(cp, stamp.stampMillis())) return false;
         }
         return true;
+    }
+
+    /**
+     * True when {@code p} is a CAS object path whose identity is the content hash
+     * (not a mutable local file or classes directory).
+     */
+    static boolean isContentAddressed(Path p) {
+        if (p == null) return false;
+        String s = p.toString().replace('\\', '/');
+        return s.contains("/sha256/");
     }
 
     /**

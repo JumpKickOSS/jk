@@ -119,6 +119,45 @@ class PomExporterTest {
         assertThat(xml).contains("<artifactId>native-maven-plugin</artifactId>");
     }
 
+    /**
+     * Regression (JK-1580): plugin executions must use Maven's OWN element vocabulary —
+     * {@code <phase>}/{@code <goals>}/{@code <goal>}. A domain-vocabulary rename once rewrote
+     * these literals to {@code <step>}/{@code <pipelines>}, producing poms Maven rejects with
+     * "Unrecognised tag".
+     */
+    @Test
+    void executions_use_maven_element_vocabulary_and_parse_as_xml() throws Exception {
+        JkBuild b = parse("""
+                [project]
+                group = "com.example"
+                name  = "app"
+                version = "1.0.0"
+                jdk = 25
+                java = 25
+                kotlin = "2.3.21"
+
+                [application]
+                main       = "com.example.Main"
+                assembly = true
+                """);
+
+        String xml = PomExporter.export(b).xml();
+
+        assertThat(xml)
+                .contains("<phase>compile</phase>", "<goals><goal>compile</goal></goals>")
+                .contains("<goals><goal>toolchain</goal></goals>")
+                .contains("<phase>package</phase>", "<goals><goal>shade</goal></goals>")
+                .doesNotContain("<step>", "<pipelines>", "<pipeline>");
+
+        // The whole document must be well-formed XML (what mvn's parser sees first).
+        javax.xml.parsers.DocumentBuilderFactory dbf = javax.xml.parsers.DocumentBuilderFactory.newInstance();
+        dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        org.w3c.dom.Document doc = dbf.newDocumentBuilder()
+                .parse(new java.io.ByteArrayInputStream(xml.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        assertThat(doc.getElementsByTagName("goals").getLength()).isGreaterThanOrEqualTo(3);
+        assertThat(doc.getElementsByTagName("step").getLength()).isZero();
+    }
+
     @Test
     void processor_scope_becomes_annotation_processor_path() {
         JkBuild b = parse("""

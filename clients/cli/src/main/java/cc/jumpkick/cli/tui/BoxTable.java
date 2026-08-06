@@ -38,7 +38,7 @@ public final class BoxTable {
      * the outer {@code │} rails — i.e. {@code inner + 2} for the usual box layout where {@code
      * inner} is the span between the rails).
      *
-     * <p>ANSI: blue pipeline chip with {@link Glyphs#MENU} + {@code title}, powerline/plain cap,
+     * <p>ANSI: blue plan chip with {@link Glyphs#MENU} + {@code title}, powerline/plain cap,
      * then {@code ─…╮}. No-ANSI: {@code = Title ----+}.
      */
     public static String titleBar(String title, int totalWidth) {
@@ -60,7 +60,7 @@ public final class BoxTable {
         String glyph = warning ? Glyphs.BANG : Glyphs.MENU;
         String plainGlyph = warning ? Glyphs.BANG_PLAIN : Glyphs.MENU_PLAIN;
         if (!t.isAnsi()) {
-            String head = PipelineWedge.plainWedge(plainGlyph, name, null) + " ";
+            String head = BuildPlanWedge.plainWedge(plainGlyph, name, null) + " ";
             int fill = Math.max(1, totalWidth - head.length() - 1);
             return head + "-".repeat(fill) + "+";
         }
@@ -71,10 +71,10 @@ public final class BoxTable {
             capColor = cc.jumpkick.cli.theme.JkDarkTheme.NORMAL_YELLOW;
             chipStyle = t.withBackground(t.bright(0, 0, 0), capColor);
         } else {
-            chipStyle = t.pipelineChip();
+            chipStyle = t.planChip();
             capColor = t.planBadgeColor();
         }
-        String wedge = PipelineWedge.chip(glyph, name, chipStyle, nerdfont) + PipelineWedge.cap(capColor, nerdfont);
+        String wedge = BuildPlanWedge.chip(glyph, name, chipStyle, nerdfont) + BuildPlanWedge.cap(capColor, nerdfont);
         // " ≡/‼ name " + PUA (nerd) or " ≡/‼ name  " (ansi) — name columns + 5 visible cols
         int wedgeVisible = visibleWidth(name) + 5;
         int fill = Math.max(1, totalWidth - wedgeVisible - 1); // -1 for the closing ╮
@@ -164,7 +164,7 @@ public final class BoxTable {
         String name = title == null ? "" : title;
         if (plain) {
             // " = Title > " + at least one '-' + closing '+'
-            return PipelineWedge.plainWedge(Glyphs.MENU_PLAIN, name, null).length() + 3;
+            return BuildPlanWedge.plainWedge(Glyphs.MENU_PLAIN, name, null).length() + 3;
         }
         return visibleWidth(name) + 7; // chip (name + 5 cols) + one '─' + '╮'
     }

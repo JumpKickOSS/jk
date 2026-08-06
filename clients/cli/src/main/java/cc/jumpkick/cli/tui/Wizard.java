@@ -383,18 +383,18 @@ public final class Wizard {
      * auto-size to the content's visible (print-column) width.
      */
     /**
-     * Header line: PipelineWedge chip followed by the subtitle in bold-white. The {@code ╭──} opener
+     * Header line: BuildPlanWedge chip followed by the subtitle in bold-white. The {@code ╭──} opener
      * is printed separately in {@link #loop} to match this line's visual width.
      */
     private String headerLine(Terminal terminal) {
         Theme t = Theme.active();
         if (!t.isAnsi()) {
-            return PipelineWedge.plainWedge(Glyphs.MENU_PLAIN, command, subtitle);
+            return BuildPlanWedge.plainWedge(Glyphs.MENU_PLAIN, command, subtitle);
         }
         boolean nerd = GlobalConfig.nerdfont();
         // Nerd: " ≡ New " + powerline; ansi: " ≡ New  " (two trailing chip spaces).
-        return PipelineWedge.chip(Glyphs.MENU, command, t.pipelineChip(), nerd)
-                + PipelineWedge.cap(t.planBadgeColor(), nerd)
+        return BuildPlanWedge.chip(Glyphs.MENU, command, t.planChip(), nerd)
+                + BuildPlanWedge.cap(t.planBadgeColor(), nerd)
                 + " "
                 + Theme.colorize(subtitle, t.focused());
     }

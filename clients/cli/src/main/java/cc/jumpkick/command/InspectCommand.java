@@ -14,8 +14,8 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * {@code jk inspect &lt;step&gt;} — describe a pipeline step. Equivalent to {@code jk
- * tasks inspect &lt;step&gt;}.
+ * {@code jk inspect &lt;task&gt;} — describe a plan task. Equivalent to {@code jk
+ * tasks inspect &lt;task&gt;}.
  */
 public final class InspectCommand implements CliCommand {
 
@@ -26,7 +26,7 @@ public final class InspectCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Describe a pipeline step (phase, output path, on-disk status)";
+        return "Describe a plan task (path and on-disk status)";
     }
 
     @Override
@@ -39,7 +39,7 @@ public final class InspectCommand implements CliCommand {
 
     @Override
     public List<Param> parameters() {
-        return List.of(Param.of("step", Arity.ONE, "Step name (compile-java, package-jar, …)"));
+        return List.of(Param.of("task", Arity.ONE, "Task name (compile-java, package-jar, …)"));
     }
 
     @Override
@@ -49,7 +49,7 @@ public final class InspectCommand implements CliCommand {
         var proj = ProjectContext.require(startDir, "inspect").orElse(null);
         if (proj == null) return Exit.CONFIG;
         if (in.positionals().isEmpty()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Inspect", "expected a step name (try `jk tasks`)"));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Inspect", "expected a task name (try `jk tasks`)"));
             return Exit.USAGE;
         }
         try {

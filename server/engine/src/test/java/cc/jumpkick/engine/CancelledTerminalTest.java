@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 /**
  * a remote cancel must push the terminal the stream's client loop actually ends on.
  * Single-project builds register kind "build" like workspace builds, but their loop only
- * terminates on {@code pipeline-finish} — a {@code workspace-finish} there is a forward-compat
+ * terminates on {@code plan-finish} — a {@code workspace-finish} there is a forward-compat
  * no-op, so the CLI would only see the socket close and report an engine crash.
  */
 class CancelledTerminalTest {
@@ -26,7 +26,7 @@ class CancelledTerminalTest {
     @Test
     void single_pipeline_stream_gets_a_cancelled_pipeline_finish() {
         String line = EngineServer.cancelledTerminalLine(false, "/proj");
-        assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.PIPELINE_FINISH);
+        assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.BUILDPLAN_FINISH);
         assertThat(Jsonl.bool(line, "cancelled", false)).isTrue();
         assertThat(Jsonl.str(line, "dir")).isEqualTo("/proj");
     }
@@ -34,6 +34,6 @@ class CancelledTerminalTest {
     @Test
     void a_null_dir_still_encodes() {
         String line = EngineServer.cancelledTerminalLine(false, null);
-        assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.PIPELINE_FINISH);
+        assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.BUILDPLAN_FINISH);
     }
 }

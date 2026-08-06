@@ -5,7 +5,7 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.run.ConsoleSpec;
-import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandManager;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -13,8 +13,8 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.run.PipelineListener;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.HostedEvents;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -52,8 +52,8 @@ public final class FormatCommand implements CliCommand {
                 Opt.value("<file>", "OpenRewrite YAML config for recipes", "--rewrite-config"));
     }
 
-    /** A format run's summary — the same fields whichever transport ran the pipeline. */
-    private record Outcome(PipelineResult result, int changed, int clean, int errors, int total, int workerExit) {}
+    /** A format run's summary — the same fields whichever transport ran the plan. */
+    private record Outcome(BuildPlanResult result, int changed, int clean, int errors, int total, int workerExit) {}
 
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
@@ -101,13 +101,13 @@ public final class FormatCommand implements CliCommand {
             return Exit.USAGE;
         }
         // Supplying --rewrite-config implicitly enables optimize-imports when neither
-        // flag nor env var said otherwise (so the OpenRewrite pipeline actually runs).
+        // flag nor env var said otherwise (so the OpenRewrite plan actually runs).
         boolean optimizeImports = styles.optimizeImports()
                 || (rewriteConfig != null && cliOptimize == null && envBool("JK_FORMAT_OPTIMIZE_IMPORTS") == null);
 
         Path cache = JkDirs.cache();
         boolean animate =
-                !check && !global.outputIsJson() && !global.noProgress && PipelineConsole.isInteractiveTerminal();
+                !check && !global.outputIsJson() && !global.noProgress && BuildPlanConsole.isInteractiveTerminal();
 
         if (!animate) {
             // Plain path: --check, piped output, CI, --no-progress.
@@ -135,7 +135,7 @@ public final class FormatCommand implements CliCommand {
             };
             Outcome o;
             try {
-                o = runFormatPipeline(
+                o = runFormatBuildPlan(
                         projectDir,
                         cache,
                         check,
@@ -150,7 +150,7 @@ public final class FormatCommand implements CliCommand {
                 return Exit.SOFTWARE;
             }
             if (!o.result().success()) {
-                for (PipelineResult.Diagnostic d : o.result().errors()) {
+                for (BuildPlanResult.Diagnostic d : o.result().errors()) {
                     CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Format", d.message()));
                 }
                 return 1;
@@ -184,11 +184,11 @@ public final class FormatCommand implements CliCommand {
             return o.workerExit();
         }
 
-        // Animated path — start the TUI *first*, so the spinner is already visible while the pipeline's
+        // Animated path — start the TUI *first*, so the spinner is already visible while the plan's
         // collect/resolve steps (I/O) run behind it.
         String subtitle = optimizeImports ? "Examining source files & optimizing imports" : "Examining source files";
-        try (CommandManager cm = CommandManager.pipeline(CliOutput.stdout(), "Format", true)) {
-            cm.addStepLabeled("", "fmt", subtitle);
+        try (CommandManager cm = CommandManager.plan(CliOutput.stdout(), "Format", true)) {
+            cm.addTaskLabeled("", "fmt", subtitle);
             cm.stepRunning("", "fmt");
 
             int[] counts = {0, 0, 0}; // changed, clean, errors
@@ -207,7 +207,7 @@ public final class FormatCommand implements CliCommand {
             };
             Outcome o;
             try {
-                o = runFormatPipeline(
+                o = runFormatBuildPlan(
                         projectDir,
                         cache,
                         false,
@@ -218,19 +218,19 @@ public final class FormatCommand implements CliCommand {
                         observer,
                         chatterListener(global, line -> cm.writeAbove("  [formatter] " + line)));
             } catch (IOException e) {
-                cm.finishPipelineFailure(String.valueOf(e.getMessage()));
+                cm.finishBuildPlanFailure(String.valueOf(e.getMessage()));
                 return Exit.SOFTWARE;
             }
             if (!o.result().success()) {
-                for (PipelineResult.Diagnostic d : o.result().errors()) {
+                for (BuildPlanResult.Diagnostic d : o.result().errors()) {
                     cm.writeAbove(Theme.colorize("  error", Theme.active().error()) + "  " + d.message());
                 }
-                cm.finishPipelineFailure("format failed");
+                cm.finishBuildPlanFailure("format failed");
                 return 1;
             }
             if (o.total() == 0) {
                 cm.stepDone("", "fmt", true);
-                cm.finishPipelineSuccess("no sources found");
+                cm.finishBuildPlanSuccess("no sources found");
                 return 0;
             }
 
@@ -238,10 +238,10 @@ public final class FormatCommand implements CliCommand {
             String took = ConsoleSpec.took(Duration.ofMillis(System.currentTimeMillis() - startMs));
             if (counts[2] > 0) {
                 String errTail = counts[2] + " error" + (counts[2] == 1 ? "" : "s");
-                cm.finishPipelineFailure(errTail);
+                cm.finishBuildPlanFailure(errTail);
             } else if (counts[0] == 0) {
                 // Nothing needed formatting.
-                cm.finishPipelineSuccess(
+                cm.finishBuildPlanSuccess(
                         Theme.colorize("Already formatted", Theme.active().success()) + " " + took);
             } else {
                 // N formatted, M already clean.
@@ -251,18 +251,18 @@ public final class FormatCommand implements CliCommand {
                         + " file"
                         + (counts[0] == 1 ? "" : "s");
                 String clean = counts[1] > 0 ? ", " + counts[1] + " already clean" : "";
-                cm.finishPipelineSuccess(formatted + clean + " " + took);
+                cm.finishBuildPlanSuccess(formatted + clean + " " + took);
             }
             return o.workerExit();
         }
     }
 
     /**
-     * Run the shared {@code FormatPipelines} pipeline — engine-hosted normally, in-process under {@link
+     * Run the shared {@code FormatPlans} plan — engine-hosted normally, in-process under {@link
      * Engine-hosted format — driving the same {@code observer}. {@code listener}
-     * receives the standard pipeline events (only worker passthrough chatter is rendered from it).
+     * receives the standard plan events (only worker passthrough chatter is rendered from it).
      */
-    private static Outcome runFormatPipeline(
+    private static Outcome runFormatBuildPlan(
             Path projectDir,
             Path cache,
             boolean check,
@@ -271,7 +271,7 @@ public final class FormatCommand implements CliCommand {
             Path rewriteConfig,
             GlobalOptions global,
             HostedEvents.FileObserver observer,
-            PipelineListener listener)
+            BuildPlanListener listener)
             throws IOException {
 
         var session = cc.jumpkick.config.SessionContext.current();
@@ -298,9 +298,9 @@ public final class FormatCommand implements CliCommand {
                 outcome.workerExit());
     }
 
-    /** A pipeline listener that surfaces the worker's passthrough chatter under {@code --verbose}. */
-    private static PipelineListener chatterListener(GlobalOptions global, Consumer<String> sink) {
-        return new PipelineListener() {
+    /** A plan listener that surfaces the worker's passthrough chatter under {@code --verbose}. */
+    private static BuildPlanListener chatterListener(GlobalOptions global, Consumer<String> sink) {
+        return new BuildPlanListener() {
             @Override
             public void output(String step, String line) {
                 if (global.verbose) sink.accept(line);

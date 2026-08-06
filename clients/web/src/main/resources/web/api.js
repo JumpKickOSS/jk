@@ -38,6 +38,24 @@ function storeToken(value) {
   }
 }
 
+/** Persist a bearer token (paste dialog / tests). Scrubs surrounding whitespace. */
+export function applyToken(value) {
+  const t = (value || '').trim();
+  if (!t) return false;
+  storeToken(t);
+  return true;
+}
+
+/** Drop a missing/invalid token so we stop sending a bad Authorization header. */
+export function clearToken() {
+  sessionStorage.removeItem(TOKEN_KEY);
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // private mode
+  }
+}
+
 export function token() {
   return sessionStorage.getItem(TOKEN_KEY) || (() => {
     try {
@@ -48,7 +66,7 @@ export function token() {
   })();
 }
 
-function loopback() {
+export function loopback() {
   return ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(location.hostname);
 }
 
@@ -57,9 +75,12 @@ function headers() {
   return t ? { Authorization: 'Bearer ' + t } : {};
 }
 
-/** GET an /api path as parsed JSON. Throws {status} on any non-2xx so callers can branch on 401. */
-export async function get(path) {
-  const resp = await fetch(path, { headers: headers() });
+/**
+ * GET an /api path as parsed JSON. Throws {status} on any non-2xx so callers can branch on 401.
+ * Optional {@code opts.signal} (AbortSignal) cancels the fetch when a lazy panel is closed.
+ */
+export async function get(path, opts = {}) {
+  const resp = await fetch(path, { headers: headers(), signal: opts.signal });
   if (!resp.ok) throw { status: resp.status };
   return resp.json();
 }
@@ -98,14 +119,15 @@ const EVENT_TYPES = [
   'request-start',
   'plan',
   'module-start',
-  'step-start',
-  'step-finish',
-  'pipeline-progress',
+  'task-start',
+  'task-finish',
+  'label',
+  'plan-progress',
   'workspace-progress',
   'eta',
   'output',
   'diagnostic',
-  'pipeline-finish',
+  'buildplan-finish',
   'module-finish',
   'request-finish',
   'status',
@@ -114,9 +136,12 @@ const EVENT_TYPES = [
 
 /**
  * Open the SSE stream. `onEvent({type, data})` per engine event; `onState('live'|'offline')` as the
- * connection comes and goes. EventSource reconnects on its own; an HTTP-enabled engine never idles
- * out (docs/http.md), so 'offline' only ever means an explicit stop, an upgrade respawn, or a crash.
- * EventSource cannot send headers, so non-loopback origins carry the token as a query parameter.
+ * connection comes and goes. EventSource reconnects on its own after NETWORK errors only — any
+ * non-200 response (503 while the engine respawns or the SSE budget is exhausted, 421 bad Host)
+ * closes it permanently, so the caller's offline poll re-creates the source when it finds
+ * readyState CLOSED (JK-1518). An HTTP-enabled engine never idles out (docs/http.md), so
+ * 'offline' only ever means an explicit stop, an upgrade respawn, or a crash. EventSource cannot
+ * send headers, so non-loopback origins carry the token as a query parameter.
  */
 export function events(onEvent, onState) {
   const query = !loopback() && token() ? '?access_token=' + encodeURIComponent(token()) : '';

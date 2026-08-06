@@ -7,14 +7,13 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
-import cc.jumpkick.plugin.build.Phase;
 import cc.jumpkick.plugin.protocol.Jsonl;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineListener;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.PipelineView;
-import cc.jumpkick.run.Step;
-import cc.jumpkick.run.StepStatus;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.BuildPlanView;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.runtime.ExplainPlan;
 import cc.jumpkick.runtime.ModuleOutcome;
 import cc.jumpkick.runtime.ModulePlan;
@@ -37,7 +36,7 @@ import java.util.Map;
 
 /**
  * Engine-hosted workspace build: send {@link EngineProtocol#BUILD_REQUEST}, decode wire events into
- * the caller's {@link WorkspaceBuildListener}/{@link PipelineListener}. Client {@link ModulePlan}
+ * the caller's {@link WorkspaceBuildListener}/{@link BuildPlanListener}. Client {@link ModulePlan}
  * uses inert steps for name/steps only.
  */
 final class EngineBuildListenerAdapter {
@@ -58,14 +57,14 @@ final class EngineBuildListenerAdapter {
     /** One module's identity/sizing, accumulated from the {@code plan-module}/{@code plan-step} burst. */
     private static final class ModuleMeta {
         final String coord;
-        final String pipelineName;
+        final String planName;
         final int weight;
         final boolean fullyCached;
-        final List<Step> steps = new ArrayList<>();
+        final List<Task> steps = new ArrayList<>();
 
-        ModuleMeta(String coord, String pipelineName, int weight, boolean fullyCached) {
+        ModuleMeta(String coord, String planName, int weight, boolean fullyCached) {
             this.coord = coord;
-            this.pipelineName = pipelineName;
+            this.planName = planName;
             this.weight = weight;
             this.fullyCached = fullyCached;
         }
@@ -105,7 +104,17 @@ final class EngineBuildListenerAdapter {
                             req.freshenLock(),
                             // verify's scratch rebuild: never persist action records under
                             // scratch-salted keys that can never recur.
-                            req.ephemeralActions()),
+                            req.ephemeralActions(),
+                            // workspace jk test: every module plan stops at run-tests.
+                            req.testOnly(),
+                            // -m / --affected-since module selection — the engine schedules
+                            // exactly these dirs instead of forecasting dirtiness itself.
+                            req.dirtyHint() == null
+                                    ? null
+                                    : req.dirtyHint().stream()
+                                            .map(Object::toString)
+                                            .sorted()
+                                            .toList()),
                     req.variant(),
                     req.clientEnv(),
                     SessionContext.current().jvm(),
@@ -122,20 +131,20 @@ final class EngineBuildListenerAdapter {
     }
 
     /**
-     * Run a single project's test pipeline against the engine (Step 3). {@code listenerFactory} builds
-     * the actual console {@link PipelineListener} once the pipeline's step list is known (mirroring {@code
-     * PipelineConsole.runPipeline}'s own mode-based listener choice, which also needs {@code pipeline.steps}
+     * Run a single project's test plan against the engine (Task 3). {@code listenerFactory} builds
+     * the actual console {@link BuildPlanListener} once the plan's step list is known (mirroring {@code
+     * BuildPlanConsole.runBuildPlan}'s own mode-based listener choice, which also needs {@code plan.steps}
      * before it can construct a {@code CommandManagerListener}) — the wire doesn't have a real {@code
-     * Pipeline} to ask, so the steps arrive as their own small event burst first. {@code testResultOut},
+     * BuildPlan} to ask, so the steps arrive as their own small event burst first. {@code testResultOut},
      * if non-null, is populated with the test-run counts (for exit-code/summary logic) before the
-     * terminal {@code pipeline-finish} event reaches {@code listenerFactory}'s listener, exactly mirroring
-     * how the in-process path's {@code pipeline.get(TEST_RESULT)} is already populated by the time the
-     * console listener's own {@code pipelineFinish} fires.
+     * terminal {@code plan-finish} event reaches {@code listenerFactory}'s listener, exactly mirroring
+     * how the in-process path's {@code plan.get(TEST_RESULT)} is already populated by the time the
+     * console listener's own {@code planFinish} fires.
      */
-    static PipelineResult runTest(
+    static BuildPlanResult runTest(
             EnginePaths.Paths paths,
             EngineClient.TestRequest req,
-            java.util.function.Function<List<Step>, PipelineListener> listenerFactory,
+            java.util.function.Function<List<Task>, BuildPlanListener> listenerFactory,
             cc.jumpkick.run.TestSummary[] testResultOut)
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
@@ -168,21 +177,21 @@ final class EngineBuildListenerAdapter {
             writer.write('\n');
             writer.flush();
 
-            return streamSinglePipelineEvents(reader, listenerFactory, testResultOut, null);
+            return streamSingleBuildPlanEvents(reader, listenerFactory, testResultOut, null);
         }
     }
 
     /**
-     * Run a single (non-workspace) project's real build pipeline against the engine — the counterpart of
+     * Run a single (non-workspace) project's real build plan against the engine — the counterpart of
      * {@code BuildCommand.runForDir}. Same shape as {@link #runTest}, plus {@code buildOutcomeOut}
-     * (populated with {@code BuildPipelines.BUILD_OUTCOME}, if the pipeline reported one, before the
-     * terminal {@code pipeline-finish} reaches {@code listenerFactory}'s listener) so the caller's
+     * (populated with {@code BuildPlanner.BUILD_OUTCOME}, if the plan reported one, before the
+     * terminal {@code plan-finish} reaches {@code listenerFactory}'s listener) so the caller's
      * summary line (e.g. "project up to date" vs "project built") can match the in-process path.
      */
-    static PipelineResult runSingleBuild(
+    static BuildPlanResult runSingleBuild(
             EnginePaths.Paths paths,
             EngineClient.SingleBuildRequest req,
-            java.util.function.Function<List<Step>, PipelineListener> listenerFactory,
+            java.util.function.Function<List<Task>, BuildPlanListener> listenerFactory,
             cc.jumpkick.run.TestSummary[] testResultOut,
             String[] buildOutcomeOut)
             throws IOException {
@@ -213,7 +222,7 @@ final class EngineBuildListenerAdapter {
             writer.write('\n');
             writer.flush();
 
-            return streamSinglePipelineEvents(reader, listenerFactory, testResultOut, buildOutcomeOut);
+            return streamSingleBuildPlanEvents(reader, listenerFactory, testResultOut, buildOutcomeOut);
         }
     }
 
@@ -270,15 +279,15 @@ final class EngineBuildListenerAdapter {
     }
 
     /**
-     * Run {@code jk install}'s hosted build + cache-install pipeline against the engine — {@link
+     * Run {@code jk install}'s hosted build + cache-install plan against the engine — {@link
      * #runTest}'s exact shape ({@code testResultOut} settles before the terminal {@code
-     * pipeline-finish} reaches the listener); the launcher-writing "make install" half runs in the
+     * plan-finish} reaches the listener); the launcher-writing "make install" half runs in the
      * caller afterwards.
      */
-    static PipelineResult runInstall(
+    static BuildPlanResult runInstall(
             EnginePaths.Paths paths,
             EngineClient.InstallRequest req,
-            java.util.function.Function<List<Step>, PipelineListener> listenerFactory,
+            java.util.function.Function<List<Task>, BuildPlanListener> listenerFactory,
             cc.jumpkick.run.TestSummary[] testResultOut)
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
@@ -306,7 +315,7 @@ final class EngineBuildListenerAdapter {
             writer.write('\n');
             writer.flush();
 
-            return streamSinglePipelineEvents(reader, listenerFactory, testResultOut, null);
+            return streamSingleBuildPlanEvents(reader, listenerFactory, testResultOut, null);
         }
     }
 
@@ -315,7 +324,7 @@ final class EngineBuildListenerAdapter {
      * BuildService.explain} call. Synchronous: sends {@link EngineProtocol#EXPLAIN_REQUEST} and reads
      * the module/step/edge burst to completion, reconstructing a real {@link ExplainPlan}.
      * Unlike {@link #buildModulePlan}, no inert-object trickery is needed here — {@link
-     * cc.jumpkick.runtime.BuildPlan.Module}/{@code Step} are pure public data, reconstructed
+     * cc.jumpkick.runtime.TaskForecast.Module}/{@code Task} are pure public data, reconstructed
      * via {@code Module.fromWire}, exactly as {@link #buildModulePlan} does with {@code
      * ModulePlan.fromWire} ({@code Module.unit} is package-private and never read here).
      *
@@ -341,12 +350,13 @@ final class EngineBuildListenerAdapter {
                     req.serial(),
                     req.parallelTests(),
                     req.verbose(),
-                    req.rebuild()));
+                    req.rebuild(),
+                    req.maxModuleConcurrency()));
             writer.write('\n');
             writer.flush();
 
-            List<cc.jumpkick.runtime.BuildPlan.Module> modules = new ArrayList<>();
-            Map<String, List<cc.jumpkick.runtime.BuildPlan.Step>> stepsByDir = new LinkedHashMap<>();
+            List<cc.jumpkick.runtime.TaskForecast.Module> modules = new ArrayList<>();
+            Map<String, List<cc.jumpkick.runtime.TaskForecast.Task>> stepsByDir = new LinkedHashMap<>();
             Map<String, String> coordByDir = new LinkedHashMap<>();
             Map<String, int[]> countsByDir = new LinkedHashMap<>(); // [sourceCount, testCount]
             Map<String, boolean[]> flagsByDir = new LinkedHashMap<>(); // [producesJar, producesImage]
@@ -379,13 +389,13 @@ final class EngineBuildListenerAdapter {
                             });
                             stepsByDir.put(dir, new ArrayList<>());
                         }
-                        case EngineProtocol.EXPLAIN_STEP -> {
+                        case EngineProtocol.EXPLAIN_TASK -> {
                             String dir = Jsonl.str(line, "dir");
                             stepsByDir
                                     .get(dir)
-                                    .add(new cc.jumpkick.runtime.BuildPlan.Step(
+                                    .add(new cc.jumpkick.runtime.TaskForecast.Task(
                                             Jsonl.str(line, "name"),
-                                            cc.jumpkick.runtime.BuildPlan.Status.valueOf(Jsonl.str(line, "status")),
+                                            cc.jumpkick.runtime.TaskForecast.Status.valueOf(Jsonl.str(line, "status")),
                                             Jsonl.str(line, "text"),
                                             Jsonl.str(line, "key")));
                         }
@@ -403,7 +413,7 @@ final class EngineBuildListenerAdapter {
                             for (String dir : order) {
                                 int[] counts = countsByDir.get(dir);
                                 boolean[] flags = flagsByDir.get(dir);
-                                modules.add(cc.jumpkick.runtime.BuildPlan.Module.fromWire(
+                                modules.add(cc.jumpkick.runtime.TaskForecast.Module.fromWire(
                                         Path.of(dir),
                                         coordByDir.get(dir),
                                         stepsByDir.get(dir),
@@ -628,15 +638,15 @@ final class EngineBuildListenerAdapter {
     }
 
     // Package-visible for tests (ActiveJobs lifecycle, cancel terminals —.
-    static PipelineResult streamSinglePipelineEvents(
+    static BuildPlanResult streamSingleBuildPlanEvents(
             BufferedReader reader,
-            java.util.function.Function<List<Step>, PipelineListener> listenerFactory,
+            java.util.function.Function<List<Task>, BuildPlanListener> listenerFactory,
             cc.jumpkick.run.TestSummary[] testResultOut,
             String[] buildOutcomeOut)
             throws IOException {
-        List<Step> steps = new ArrayList<>();
-        List<PipelineResult.Diagnostic> diagnostics = new ArrayList<>();
-        PipelineListener listener = null;
+        List<Task> steps = new ArrayList<>();
+        List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
+        BuildPlanListener listener = null;
         // The wire carries no duration; the summary's "took …" is this client-side
         // wall clock over the whole stream (spawn latency excluded — ensureRunning
         // already returned before the request was written).
@@ -654,50 +664,68 @@ final class EngineBuildListenerAdapter {
                     bindTranscript(line);
                     continue;
                 }
-                switch (type) {
-                    case EngineProtocol.PLAN_STEP ->
-                        steps.add(Step.builder(Jsonl.str(line, "name"))
-                                .label(Jsonl.str(line, "label"))
-                                .phase(Phase.fromWireOrNull(Jsonl.str(line, "phase")))
-                                .build());
-                    case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
-                    case EngineProtocol.PIPELINE_START -> listener.pipelineStart(readPipelineView(line));
-                    case EngineProtocol.STEP_START ->
-                        listener.stepStart(
-                                Jsonl.str(line, "step"),
-                                Phase.fromWireOrNull(Jsonl.str(line, "phase")),
-                                Jsonl.intValue(line, "ticks", 0));
-                    case EngineProtocol.PROGRESS ->
-                        listener.progress(
-                                Jsonl.str(line, "step"), Jsonl.intValue(line, "delta", 0), readPipelineView(line));
-                    case EngineProtocol.TICK_UPDATE ->
-                        listener.tickUpdate(
-                                Jsonl.str(line, "step"), Jsonl.intValue(line, "delta", 0), readPipelineView(line));
-                    case EngineProtocol.LABEL -> listener.label(Jsonl.str(line, "step"), Jsonl.str(line, "label"));
-                    case EngineProtocol.OUTPUT -> listener.output(Jsonl.str(line, "step"), Jsonl.str(line, "line"));
-                    case EngineProtocol.WARN ->
-                        listener.warn(Jsonl.str(line, "step"), Jsonl.str(line, "code"), Jsonl.str(line, "message"));
-                    case EngineProtocol.ERROR_LINE ->
-                        listener.error(
-                                Jsonl.str(line, "step"),
-                                Jsonl.str(line, "code"),
-                                Jsonl.str(line, "message"),
-                                Jsonl.str(line, "test"),
-                                Jsonl.str(line, "exceptionClass"));
-                    case EngineProtocol.PIPELINE_DIAGNOSTIC ->
-                        diagnostics.add(new PipelineResult.Diagnostic(
-                                Jsonl.str(line, "step"),
+                // Same pre-listener contract as EnginePluginAdapter/EngineResolveAdapter: until
+                // plan-done constructs the listener, keep diagnostics and drop everything else —
+                // a cancel injected from another thread can land events out of order.
+                if (listener == null
+                        && !EngineProtocol.PLAN_TASK.equals(type)
+                        && !EngineProtocol.PLAN_DONE.equals(type)
+                        && !EngineProtocol.BUILDPLAN_FINISH.equals(type)
+                        && !EngineProtocol.ERROR.equals(type)) {
+                    if (EngineProtocol.BUILDPLAN_DIAGNOSTIC.equals(type)) {
+                        diagnostics.add(new BuildPlanResult.Diagnostic(
+                                Jsonl.str(line, "task"),
                                 Jsonl.str(line, "code"),
                                 Jsonl.str(line, "message"),
                                 Jsonl.str(line, "test"),
                                 Jsonl.str(line, "exceptionClass")));
-                    case EngineProtocol.STEP_FINISH ->
+                    }
+                    continue;
+                }
+                switch (type) {
+                    case EngineProtocol.PLAN_TASK ->
+                        steps.add(Task.builder(Jsonl.str(line, "name"))
+                                .label(Jsonl.str(line, "label"))
+                                .phase(wireGroup(Jsonl.str(line, "group")))
+                                .build());
+                    case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
+                    case EngineProtocol.BUILDPLAN_START -> listener.planStart(readBuildPlanView(line));
+                    case EngineProtocol.TASK_START ->
+                        listener.stepStart(
+                                Jsonl.str(line, "task"),
+                                wireGroup(Jsonl.str(line, "group")),
+                                Jsonl.intValue(line, "ticks", 0));
+                    case EngineProtocol.PROGRESS ->
+                        listener.progress(
+                                Jsonl.str(line, "task"), Jsonl.intValue(line, "delta", 0), readBuildPlanView(line));
+                    case EngineProtocol.TICK_UPDATE ->
+                        listener.tickUpdate(
+                                Jsonl.str(line, "task"), Jsonl.intValue(line, "delta", 0), readBuildPlanView(line));
+                    case EngineProtocol.LABEL -> listener.label(Jsonl.str(line, "task"), Jsonl.str(line, "label"));
+                    case EngineProtocol.OUTPUT -> listener.output(Jsonl.str(line, "task"), Jsonl.str(line, "line"));
+                    case EngineProtocol.WARN ->
+                        listener.warn(Jsonl.str(line, "task"), Jsonl.str(line, "code"), Jsonl.str(line, "message"));
+                    case EngineProtocol.ERROR_LINE ->
+                        listener.error(
+                                Jsonl.str(line, "task"),
+                                Jsonl.str(line, "code"),
+                                Jsonl.str(line, "message"),
+                                Jsonl.str(line, "test"),
+                                Jsonl.str(line, "exceptionClass"));
+                    case EngineProtocol.BUILDPLAN_DIAGNOSTIC ->
+                        diagnostics.add(new BuildPlanResult.Diagnostic(
+                                Jsonl.str(line, "task"),
+                                Jsonl.str(line, "code"),
+                                Jsonl.str(line, "message"),
+                                Jsonl.str(line, "test"),
+                                Jsonl.str(line, "exceptionClass")));
+                    case EngineProtocol.TASK_FINISH ->
                         listener.stepFinish(
-                                Jsonl.str(line, "step"),
-                                Phase.fromWireOrNull(Jsonl.str(line, "phase")),
-                                StepStatus.valueOf(Jsonl.str(line, "status")),
+                                Jsonl.str(line, "task"),
+                                wireGroup(Jsonl.str(line, "group")),
+                                TaskStatus.valueOf(Jsonl.str(line, "status")),
                                 Duration.ZERO);
-                    case EngineProtocol.PIPELINE_FINISH -> {
+                    case EngineProtocol.BUILDPLAN_FINISH -> {
                         boolean success = Jsonl.bool(line, "success", false);
                         long total = Jsonl.longValue(line, "testTotal", -1);
                         if (total >= 0 && testResultOut != null) {
@@ -712,7 +740,7 @@ final class EngineBuildListenerAdapter {
                             buildOutcomeOut[0] = Jsonl.str(line, "buildOutcome");
                         }
                         boolean cancelled = Jsonl.bool(line, "cancelled", false);
-                        PipelineResult result = new PipelineResult(
+                        BuildPlanResult result = new BuildPlanResult(
                                 "test",
                                 success,
                                 Duration.ofNanos(System.nanoTime() - startNanos),
@@ -723,7 +751,7 @@ final class EngineBuildListenerAdapter {
                                 cancelled);
                         // A remote cancel injects this terminal from another thread — it can land
                         // before plan-done ever created the listener.
-                        if (listener != null) listener.pipelineFinish(result);
+                        if (listener != null) listener.planFinish(result);
                         return result;
                     }
                     case EngineProtocol.ERROR ->
@@ -759,8 +787,8 @@ final class EngineBuildListenerAdapter {
     private static WorkspaceResult streamEvents(BufferedReader reader, WorkspaceBuildListener listener, Path cache)
             throws IOException {
         Map<String, ModuleMeta> planByDir = new LinkedHashMap<>();
-        Map<String, PipelineListener> pipelineListenersByDir = new LinkedHashMap<>();
-        Map<String, List<PipelineResult.Diagnostic>> diagnosticsByDir = new LinkedHashMap<>();
+        Map<String, BuildPlanListener> planListenersByDir = new LinkedHashMap<>();
+        Map<String, List<BuildPlanResult.Diagnostic>> diagnosticsByDir = new LinkedHashMap<>();
         List<ModuleOutcome> outcomes = new ArrayList<>();
         String pendingPlanDir = null; // the dir most recently opened by plan-module, for plan-step lines
 
@@ -783,17 +811,17 @@ final class EngineBuildListenerAdapter {
                                 dir,
                                 new ModuleMeta(
                                         Jsonl.str(line, "coord"),
-                                        Jsonl.str(line, "pipelineName"),
+                                        Jsonl.str(line, "planName"),
                                         Jsonl.intValue(line, "weight", 0),
                                         Jsonl.bool(line, "fullyCached", false)));
                         pendingPlanDir = dir;
                     }
-                    case EngineProtocol.PLAN_STEP -> {
+                    case EngineProtocol.PLAN_TASK -> {
                         ModuleMeta m = planByDir.get(dir != null ? dir : pendingPlanDir);
                         if (m != null) {
-                            m.steps.add(Step.builder(Jsonl.str(line, "name"))
+                            m.steps.add(Task.builder(Jsonl.str(line, "name"))
                                     .label(Jsonl.str(line, "label"))
-                                    .phase(Phase.fromWireOrNull(Jsonl.str(line, "phase")))
+                                    .phase(wireGroup(Jsonl.str(line, "group")))
                                     .build());
                         }
                     }
@@ -818,77 +846,77 @@ final class EngineBuildListenerAdapter {
                     case EngineProtocol.ETA -> listener.onEtaEstimate(Jsonl.longValue(line, "millis", 0));
                     case EngineProtocol.MODULE_START -> {
                         ModulePlan plan = buildModulePlan(dir, planByDir.get(dir), cache);
-                        PipelineListener gl = listener.onModuleStart(plan);
-                        pipelineListenersByDir.put(dir, gl != null ? gl : new PipelineListener() {});
+                        BuildPlanListener gl = listener.onModuleStart(plan);
+                        planListenersByDir.put(dir, gl != null ? gl : new BuildPlanListener() {});
                     }
-                    case EngineProtocol.PIPELINE_START ->
-                        pipelineListenersByDir.getOrDefault(dir, NOOP).pipelineStart(readPipelineView(line));
-                    case EngineProtocol.STEP_START ->
-                        pipelineListenersByDir
+                    case EngineProtocol.BUILDPLAN_START ->
+                        planListenersByDir.getOrDefault(dir, NOOP).planStart(readBuildPlanView(line));
+                    case EngineProtocol.TASK_START ->
+                        planListenersByDir
                                 .getOrDefault(dir, NOOP)
                                 .stepStart(
-                                        Jsonl.str(line, "step"),
-                                        Phase.fromWireOrNull(Jsonl.str(line, "phase")),
+                                        Jsonl.str(line, "task"),
+                                        wireGroup(Jsonl.str(line, "group")),
                                         Jsonl.intValue(line, "ticks", 0));
                     case EngineProtocol.PROGRESS ->
-                        pipelineListenersByDir
+                        planListenersByDir
                                 .getOrDefault(dir, NOOP)
                                 .progress(
-                                        Jsonl.str(line, "step"),
+                                        Jsonl.str(line, "task"),
                                         Jsonl.intValue(line, "delta", 0),
-                                        readPipelineView(line));
+                                        readBuildPlanView(line));
                     case EngineProtocol.TICK_UPDATE ->
-                        pipelineListenersByDir
+                        planListenersByDir
                                 .getOrDefault(dir, NOOP)
                                 .tickUpdate(
-                                        Jsonl.str(line, "step"),
+                                        Jsonl.str(line, "task"),
                                         Jsonl.intValue(line, "delta", 0),
-                                        readPipelineView(line));
+                                        readBuildPlanView(line));
                     case EngineProtocol.LABEL ->
-                        pipelineListenersByDir
+                        planListenersByDir
                                 .getOrDefault(dir, NOOP)
-                                .label(Jsonl.str(line, "step"), Jsonl.str(line, "label"));
+                                .label(Jsonl.str(line, "task"), Jsonl.str(line, "label"));
                     case EngineProtocol.OUTPUT ->
-                        pipelineListenersByDir
+                        planListenersByDir
                                 .getOrDefault(dir, NOOP)
-                                .output(Jsonl.str(line, "step"), Jsonl.str(line, "line"));
+                                .output(Jsonl.str(line, "task"), Jsonl.str(line, "line"));
                     case EngineProtocol.WARN ->
-                        pipelineListenersByDir
+                        planListenersByDir
                                 .getOrDefault(dir, NOOP)
-                                .warn(Jsonl.str(line, "step"), Jsonl.str(line, "code"), Jsonl.str(line, "message"));
+                                .warn(Jsonl.str(line, "task"), Jsonl.str(line, "code"), Jsonl.str(line, "message"));
                     case EngineProtocol.ERROR_LINE ->
-                        pipelineListenersByDir
+                        planListenersByDir
                                 .getOrDefault(dir, NOOP)
                                 .error(
-                                        Jsonl.str(line, "step"),
+                                        Jsonl.str(line, "task"),
                                         Jsonl.str(line, "code"),
                                         Jsonl.str(line, "message"),
                                         Jsonl.str(line, "test"),
                                         Jsonl.str(line, "exceptionClass"));
-                    case EngineProtocol.PIPELINE_DIAGNOSTIC ->
+                    case EngineProtocol.BUILDPLAN_DIAGNOSTIC ->
                         diagnosticsByDir
                                 .computeIfAbsent(dir, d -> new ArrayList<>())
-                                .add(new PipelineResult.Diagnostic(
-                                        Jsonl.str(line, "step"),
+                                .add(new BuildPlanResult.Diagnostic(
+                                        Jsonl.str(line, "task"),
                                         Jsonl.str(line, "code"),
                                         Jsonl.str(line, "message"),
                                         Jsonl.str(line, "test"),
                                         Jsonl.str(line, "exceptionClass")));
-                    case EngineProtocol.STEP_FINISH ->
-                        pipelineListenersByDir
+                    case EngineProtocol.TASK_FINISH ->
+                        planListenersByDir
                                 .getOrDefault(dir, NOOP)
                                 .stepFinish(
-                                        Jsonl.str(line, "step"),
-                                        Phase.fromWireOrNull(Jsonl.str(line, "phase")),
-                                        StepStatus.valueOf(Jsonl.str(line, "status")),
+                                        Jsonl.str(line, "task"),
+                                        wireGroup(Jsonl.str(line, "group")),
+                                        TaskStatus.valueOf(Jsonl.str(line, "status")),
                                         Duration.ZERO);
-                    case EngineProtocol.PIPELINE_FINISH -> {
+                    case EngineProtocol.BUILDPLAN_FINISH -> {
                         ModuleMeta meta = planByDir.get(dir);
-                        String pipelineName = meta != null ? meta.pipelineName : dir;
-                        List<PipelineResult.Diagnostic> diags = diagnosticsByDir.remove(dir);
+                        String planName = meta != null ? meta.planName : dir;
+                        List<BuildPlanResult.Diagnostic> diags = diagnosticsByDir.remove(dir);
                         boolean cancelled = Jsonl.bool(line, "cancelled", false);
-                        PipelineResult result = new PipelineResult(
-                                pipelineName,
+                        BuildPlanResult result = new BuildPlanResult(
+                                planName,
                                 Jsonl.bool(line, "success", false),
                                 Duration.ZERO,
                                 List.of(),
@@ -896,7 +924,7 @@ final class EngineBuildListenerAdapter {
                                 diags != null ? diags : List.of(),
                                 cancelled,
                                 cancelled);
-                        pipelineListenersByDir.getOrDefault(dir, NOOP).pipelineFinish(result);
+                        planListenersByDir.getOrDefault(dir, NOOP).planFinish(result);
                     }
                     case EngineProtocol.MODULE_FINISH -> {
                         // didWork defaults true for older engines that omit the field (fail-open "built").
@@ -950,20 +978,24 @@ final class EngineBuildListenerAdapter {
     }
 
     private static ModulePlan buildModulePlan(String dir, ModuleMeta m, Path cache) {
-        Pipeline inertPipeline =
-                Pipeline.builder(m.pipelineName).addAllSteps(m.steps).build();
-        return ModulePlan.fromWire(Path.of(dir), m.coord, inertPipeline, m.weight, m.fullyCached, cache);
+        BuildPlan inertBuildPlan =
+                BuildPlan.builder(m.planName).addAllTasks(m.steps).build();
+        return ModulePlan.fromWire(Path.of(dir), m.coord, inertBuildPlan, m.weight, m.fullyCached, cache);
     }
 
-    private static PipelineView readPipelineView(String line) {
-        return new PipelineView(
-                Jsonl.str(line, "pipelineName"),
+    private static BuildPlanView readBuildPlanView(String line) {
+        return new BuildPlanView(
+                Jsonl.str(line, "planName"),
                 Jsonl.longValue(line, "numerator", 0),
                 Jsonl.longValue(line, "denominator", 0),
-                Jsonl.intValue(line, "stepsTotal", 0),
-                Jsonl.intValue(line, "stepsComplete", 0),
+                Jsonl.intValue(line, "tasksTotal", 0),
+                Jsonl.intValue(line, "tasksComplete", 0),
                 Jsonl.bool(line, "cancelled", false));
     }
 
-    private static final PipelineListener NOOP = new PipelineListener() {};
+    private static final BuildPlanListener NOOP = new BuildPlanListener() {};
+
+    private static String wireGroup(String raw) {
+        return raw == null || raw.isBlank() ? null : raw;
+    }
 }

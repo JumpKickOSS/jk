@@ -17,7 +17,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
-import cc.jumpkick.runtime.BuildPlan;
+import cc.jumpkick.runtime.TaskForecast;
 import cc.jumpkick.runtime.ExplainPlan;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
@@ -50,7 +50,7 @@ public final class TasksCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "List tasks, output paths, or inspect a step";
+        return "List tasks, output paths, or inspect a task";
     }
 
     @Override
@@ -65,7 +65,7 @@ public final class TasksCommand implements CliCommand {
     public List<Param> parameters() {
         return List.of(
                 Param.of("action", Arity.ZERO_OR_ONE, "show | inspect (default: list)"),
-                Param.of("step", Arity.ZERO_OR_ONE, "Step name for show/inspect (e.g. package-jar)"));
+                Param.of("task", Arity.ZERO_OR_ONE, "Task name for show/inspect (e.g. package-jar)"));
     }
 
     @Override
@@ -78,7 +78,7 @@ public final class TasksCommand implements CliCommand {
         try {
             List<String> pos = in.positionals();
             String action = pos.isEmpty() ? "list" : pos.getFirst().trim().toLowerCase(Locale.ROOT);
-            // Allow `jk tasks package-jar` as shorthand for show when first token is a known step.
+            // Allow `jk tasks package-jar` as shorthand for show when first token is a known task.
             if (!action.equals("list") && !action.equals("show") && !action.equals("inspect") && !action.equals("ls")) {
                 if (TaskCatalog.find(action).isPresent()) {
                     return showOrInspect("show", action, in, startDir, proj.buildFile());
@@ -94,7 +94,7 @@ public final class TasksCommand implements CliCommand {
                 case "show", "inspect" -> {
                     if (pos.size() < 2) {
                         CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                                "Tasks", action + " expects a step name (e.g. package-jar)"));
+                                "Tasks", action + " expects a task name (e.g. package-jar)"));
                         yield Exit.USAGE;
                     }
                     yield showOrInspect(action, pos.get(1), in, startDir, proj.buildFile());
@@ -144,7 +144,7 @@ public final class TasksCommand implements CliCommand {
             }
         }
         // Table is the wedge substitute; tip is post-table detail.
-        CliOutput.err("tip: jk show package-jar · jk inspect compile-java · jk tasks show <step>");
+        CliOutput.err("tip: jk show package-jar · jk inspect compile-java · jk tasks show <task>");
         return 0;
     }
 
@@ -153,7 +153,7 @@ public final class TasksCommand implements CliCommand {
         Optional<TaskCatalog.TaskDef> def = TaskCatalog.find(stepName);
         if (def.isEmpty()) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Tasks", "unknown step `" + stepName + "` — run `jk tasks` for names"));
+                    "Tasks", "unknown task `" + stepName + "` — run `jk tasks` for names"));
             return Exit.CONFIG;
         }
         TaskCatalog.TaskDef task = def.get();
@@ -166,7 +166,7 @@ public final class TasksCommand implements CliCommand {
         GlobalOptions global = GlobalOptions.from(in);
         Path cache = in.value("cache-dir").map(Path::of).orElse(null);
         if (cache == null) cache = JkDirs.cache();
-        // One explain forecast for the entry project — maps steps to hit/miss.
+        // One explain forecast for the entry project — maps tasks to hit/miss.
         ExplainPlan forecast = inspect ? explainBestEffort(startDir, cache, global) : null;
         for (var e : modules.entrySet()) {
             Path modDir = e.getKey();
@@ -177,7 +177,7 @@ public final class TasksCommand implements CliCommand {
             boolean exists = out.isPresent() && Files.exists(out.get());
 
             if (inspect) {
-                CliOutput.out("step:        " + task.name());
+                CliOutput.out("task:        " + task.name());
                 if (!task.aliases().isEmpty()) {
                     CliOutput.out("aliases:     " + String.join(", ", task.aliases()));
                 }
@@ -189,7 +189,7 @@ public final class TasksCommand implements CliCommand {
                     CliOutput.out("output:      " + out.get());
                     CliOutput.out("on-disk:     " + (exists ? "yes" : "no (not built yet)"));
                 } else {
-                    CliOutput.out("output:      (no primary path — intermediate / side-effect step)");
+                    CliOutput.out("output:      (no primary path — intermediate / side-effect task)");
                 }
                 CliOutput.out("cache:       " + cacheLine(forecast, modDir, task.name()));
                 if (modules.size() > 1) CliOutput.out("");
@@ -197,7 +197,7 @@ public final class TasksCommand implements CliCommand {
                 // show: path only (Mill-like), one line per module
                 if (out.isEmpty()) {
                     CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                            "Show", "step `" + task.name() + "` has no primary output path"));
+                            "Show", "task `" + task.name() + "` has no primary output path"));
                     return Exit.CONFIG;
                 }
                 if (modules.size() > 1) {
@@ -305,8 +305,8 @@ public final class TasksCommand implements CliCommand {
             return "unknown (engine offline or forecast failed — try `jk explain`)";
         }
         Path abs = modDir.toAbsolutePath().normalize();
-        BuildPlan.Module mod = null;
-        for (BuildPlan.Module m : plan.modules()) {
+        TaskForecast.Module mod = null;
+        for (TaskForecast.Module m : plan.modules()) {
             if (m.dir() != null && m.dir().toAbsolutePath().normalize().equals(abs)) {
                 mod = m;
                 break;
@@ -318,8 +318,8 @@ public final class TasksCommand implements CliCommand {
         if (mod == null) {
             return "unknown (module not in forecast)";
         }
-        BuildPlan.Step step = null;
-        for (BuildPlan.Step s : mod.steps()) {
+        TaskForecast.Task step = null;
+        for (TaskForecast.Task s : mod.steps()) {
             if (s.name() != null && s.name().equals(stepName)) {
                 step = s;
                 break;

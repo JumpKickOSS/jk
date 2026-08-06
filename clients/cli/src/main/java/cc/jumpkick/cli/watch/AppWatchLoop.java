@@ -4,11 +4,11 @@ package cc.jumpkick.cli.watch;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.run.ConsoleSpec;
-import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.command.BuildCommand;
 import cc.jumpkick.model.command.Exit;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -171,9 +171,9 @@ public final class AppWatchLoop {
         String target = BuildCommand.buildTarget(projectDir.resolve("jk.toml"), projectDir);
         ConsoleSpec spec = new ConsoleSpec(
                 "Watch", r -> Theme.colorize("Built", Theme.active().focused()), r -> "Build failed");
-        PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         var session = cc.jumpkick.config.SessionContext.current();
-        PipelineResult result = cc.jumpkick.cli.engine.EngineClient.runSingleBuild(
+        BuildPlanResult result = cc.jumpkick.cli.engine.EngineClient.runSingleBuild(
                 cc.jumpkick.engine.EnginePaths.current(),
                 new cc.jumpkick.cli.engine.EngineClient.SingleBuildRequest(
                         projectDir,
@@ -187,7 +187,7 @@ public final class AppWatchLoop {
                         session.force(),
                         session.variant(),
                         session.clientEnv()),
-                steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, target),
+                steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, target),
                 new cc.jumpkick.run.TestSummary[1],
                 new String[1]);
         return result.success();
@@ -197,13 +197,13 @@ public final class AppWatchLoop {
         String target = BuildCommand.buildTarget(projectDir.resolve("jk.toml"), projectDir);
         ConsoleSpec spec = new ConsoleSpec(
                 "Watch", r -> Theme.colorize("Recompiled", Theme.active().focused()), r -> "Compile failed");
-        PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         var session = cc.jumpkick.config.SessionContext.current();
-        PipelineResult result = cc.jumpkick.cli.engine.EngineClient.runCompile(
+        BuildPlanResult result = cc.jumpkick.cli.engine.EngineClient.runCompile(
                 cc.jumpkick.engine.EnginePaths.current(),
                 new cc.jumpkick.cli.engine.EngineClient.CompileRequest(
                         projectDir, cache, null, session.offline(), session.force(), global.verbose),
-                steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, target));
+                steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, target));
         return result.success();
     }
 

@@ -3,21 +3,20 @@ package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.plugin.build.Phase;
-import cc.jumpkick.run.PipelineListener;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.PipelineView;
-import cc.jumpkick.run.StepStatus;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.BuildPlanView;
+import cc.jumpkick.run.TaskStatus;
 import java.io.PrintStream;
 import java.time.Duration;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 /**
- * Per-step progress with one line per step, like Cargo / uv. Activated by {@code --verbose}.
- * Steps scroll up as they complete; the active step shows its current label.
+ * Per-task progress with one line per task, like Cargo / uv. Activated by {@code --verbose}.
+ * Tasks scroll up as they complete; the active task shows its current label.
  */
-public final class VerboseListener implements PipelineListener {
+public final class VerboseListener implements BuildPlanListener {
 
     private final PrintStream out;
     private final PrintStream err;
@@ -29,30 +28,30 @@ public final class VerboseListener implements PipelineListener {
     }
 
     @Override
-    public void pipelineStart(PipelineView view) {
+    public void planStart(BuildPlanView view) {
         out.println(Theme.colorize("▶", Theme.active().activeStep())
                 + " "
-                + Theme.colorize(view.pipelineName(), Theme.active().focused())
+                + Theme.colorize(view.planName(), Theme.active().focused())
                 + " ("
                 + view.stepsTotal()
-                + " step"
+                + " task"
                 + (view.stepsTotal() == 1 ? "" : "s")
                 + ")");
     }
 
-    /** Renders a step's place in the run hierarchy as {@code phase/step} (a redundant {@code phase-}
-     * prefix on the step name is dropped, so phase {@code compile} + step {@code compile-java} →
-     * {@code compile/java}); the bare step name when it has no phase. */
-    static String qualified(String step, Phase phase) {
-        if (phase == null) return step;
-        String pw = phase.wireName();
+    /** Renders a task's place in the run hierarchy as {@code group/task} (a redundant {@code group-}
+     * prefix on the task name is dropped, so group {@code compile} + task {@code compile-java} →
+     * {@code compile/java}); the bare task name when it has no group. */
+    static String qualified(String step, String group) {
+        if (group == null) return step;
+        String pw = group;
         String shortName = step.startsWith(pw + "-") ? step.substring(pw.length() + 1) : step;
         return pw + "/" + shortName;
     }
 
     @Override
-    public void stepStart(String step, Phase phase, int ticks) {
-        out.println("  " + Theme.colorize("·", Theme.active().normalGray()) + " " + qualified(step, phase) + " (ticks: "
+    public void stepStart(String step, String group, int ticks) {
+        out.println("  " + Theme.colorize("·", Theme.active().normalGray()) + " " + qualified(step, group) + " (ticks: "
                 + ticks + ")");
     }
 
@@ -67,7 +66,7 @@ public final class VerboseListener implements PipelineListener {
     }
 
     @Override
-    public void stepFinish(String step, Phase phase, StepStatus status, Duration duration) {
+    public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
         String glyph =
                 switch (status) {
                     case SUCCESS -> Theme.colorize(Glyphs.CHECK, Theme.active().completedStep());
@@ -78,7 +77,7 @@ public final class VerboseListener implements PipelineListener {
         out.println("  "
                 + glyph
                 + " "
-                + qualified(step, phase)
+                + qualified(step, group)
                 + "  "
                 + Theme.colorize(
                         ConsoleSpec.fmtDuration(duration), Theme.active().darkGray()));
@@ -101,7 +100,7 @@ public final class VerboseListener implements PipelineListener {
     }
 
     @Override
-    public void pipelineFinish(PipelineResult result) {
+    public void planFinish(BuildPlanResult result) {
         String summary = result.success()
                 ? Theme.colorize(Glyphs.CHECK + " done", Theme.active().completedStep())
                 : Theme.colorize(Glyphs.CROSS + " failed", Theme.active().error());

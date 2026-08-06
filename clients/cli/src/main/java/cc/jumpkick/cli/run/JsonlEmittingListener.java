@@ -1,24 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.run;
 
-import cc.jumpkick.plugin.build.Phase;
-import cc.jumpkick.run.PipelineListener;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.PipelineView;
-import cc.jumpkick.run.StepStatus;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.BuildPlanView;
+import cc.jumpkick.run.TaskStatus;
 import java.time.Duration;
 
 /**
- * Base for listeners that render pipeline events as {@link JsonlShape} lines (progress rider
+ * Base for listeners that render plan events as {@link JsonlShape} lines (progress rider
  * applied). Subclasses supply only the sink via {@link #emit}. {@code immediate} marks semantic
  * boundaries (per-line flush); hot ticks ({@link JsonlShape#HOT_TYPES}) use the heartbeat.
  */
-abstract class JsonlEmittingListener implements PipelineListener {
+abstract class JsonlEmittingListener implements BuildPlanListener {
 
     /**
-     * True when this listener owns the aggregate {@code progress} rider (single-pipeline stdout).
+     * True when this listener owns the aggregate {@code progress} rider (single-plan stdout).
      * False for a member of a multi-module workspace run: the engine's {@code workspace-progress}
-     * snapshot is the only aggregate truth there — pipeline-local fractions must not reach {@link
+     * snapshot is the only aggregate truth there — plan-local fractions must not reach {@link
      * LiveProgress}.
      */
     private final boolean aggregateRider;
@@ -31,24 +30,24 @@ abstract class JsonlEmittingListener implements PipelineListener {
     protected abstract void emit(String line, boolean immediate);
 
     @Override
-    public void pipelineStart(PipelineView v) {
-        line(JsonlShape.pipelineStart(v), "pipeline-start");
+    public void planStart(BuildPlanView v) {
+        line(JsonlShape.planStart(v), "buildplan-start");
     }
 
     @Override
-    public void stepStart(String step, Phase phase, int ticks) {
-        line(JsonlShape.stepStart(step, wire(phase), ticks), "step-start");
+    public void stepStart(String step, String group, int ticks) {
+        line(JsonlShape.stepStart(step, wire(group), ticks), "task-start");
     }
 
     @Override
-    public void progress(String step, int delta, PipelineView v) {
+    public void progress(String step, int delta, BuildPlanView v) {
         // Per-step numerator/denominator on the event; aggregate % via LiveProgress rider.
         if (aggregateRider) LiveProgress.get().update(v.numerator(), v.denominator());
         line(JsonlShape.progress(step, delta, v), "progress");
     }
 
     @Override
-    public void tickUpdate(String step, int delta, PipelineView v) {
+    public void tickUpdate(String step, int delta, BuildPlanView v) {
         if (aggregateRider) LiveProgress.get().update(v.numerator(), v.denominator());
         line(JsonlShape.tickUpdate(step, delta, v), "tick-update");
     }
@@ -79,20 +78,20 @@ abstract class JsonlEmittingListener implements PipelineListener {
     }
 
     @Override
-    public void stepFinish(String step, Phase phase, StepStatus s, Duration d) {
-        line(JsonlShape.stepFinish(step, wire(phase), s, d), "step-finish");
+    public void stepFinish(String step, String group, TaskStatus s, Duration d) {
+        line(JsonlShape.stepFinish(step, wire(group), s, d), "task-finish");
     }
 
     @Override
-    public void pipelineFinish(PipelineResult r) {
-        line(JsonlShape.pipelineFinish(r), "pipeline-finish");
+    public void planFinish(BuildPlanResult r) {
+        line(JsonlShape.planFinish(r), "buildplan-finish");
     }
 
     private void line(String raw, String type) {
         emit(JsonlShape.withProgress(raw), !JsonlShape.HOT_TYPES.contains(type));
     }
 
-    private static String wire(Phase phase) {
-        return phase == null ? "" : phase.wireName();
+    private static String wire(String group) {
+        return group == null ? "" : group;
     }
 }

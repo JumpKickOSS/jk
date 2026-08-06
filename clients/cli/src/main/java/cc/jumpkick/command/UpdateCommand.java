@@ -5,16 +5,16 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
-import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.run.PipelineListener;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.Step;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.Task;
 import cc.jumpkick.util.JkDirs;
 import java.net.URI;
 import java.nio.file.Files;
@@ -106,15 +106,15 @@ public final class UpdateCommand implements CliCommand {
 
     /** Hosted full re-resolve: one console listener per cascade module, summary line per lockfile. */
     private int runHosted(Path dir, Path cache) {
-        PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         EngineClient.LockHandler handler = new EngineClient.LockHandler() {
             @Override
-            public PipelineListener onModuleStart(String moduleDir, String coord, List<Step> steps) {
-                return PipelineConsole.chooseConsoleListener("update", steps, mode);
+            public BuildPlanListener onModuleStart(String moduleDir, String coord, List<Task> steps) {
+                return BuildPlanConsole.chooseConsoleListener("update", steps, mode);
             }
 
             @Override
-            public void onModuleFinish(String moduleDir, PipelineResult result, EngineClient.LockCounts counts) {
+            public void onModuleFinish(String moduleDir, BuildPlanResult result, EngineClient.LockCounts counts) {
                 if (result.success() && !global.outputIsJson()) {
                     printUpdatedLine(
                             cc.jumpkick.lock.LockPaths.lockFile(Path.of(moduleDir)),
@@ -138,7 +138,7 @@ public final class UpdateCommand implements CliCommand {
         return outcome.exitCode();
     }
 
-    /** Hosted {@code --git} splice: no pipeline events — the terminal carries the refreshed count. */
+    /** Hosted {@code --git} splice: no plan events — the terminal carries the refreshed count. */
     private int runHostedGitOnly(Path dir, Path cache, String gitTarget) {
         EngineClient.LockOutcome outcome;
         try {

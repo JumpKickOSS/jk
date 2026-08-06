@@ -1,6 +1,6 @@
 [project]
 name        = "jk-engine"
-description = "jk build engine: BuildPipelines, plugin dispatch, action cache, compile/test machinery."
+description = "jk build engine: BuildPlanner, plugin dispatch, action cache, compile/test machinery."
 
 [application]
 main     = "cc.jumpkick.engine.EngineMain"

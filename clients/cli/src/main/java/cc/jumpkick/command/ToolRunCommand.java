@@ -3,7 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.command.Arity;
@@ -255,7 +255,7 @@ public final class ToolRunCommand implements CliCommand {
         Path cacheDir = cacheDirOverride != null ? cacheDirOverride : JkDirs.cache();
         Files.createDirectories(cacheDir);
         boolean refresh = cc.jumpkick.config.SessionContext.current().config().forceOr(false);
-        PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
 
         Path checkout;
         cc.jumpkick.cli.engine.EngineClient.GitFetchOutcome outcome;
@@ -264,7 +264,7 @@ public final class ToolRunCommand implements CliCommand {
                     cc.jumpkick.engine.EnginePaths.current(),
                     new cc.jumpkick.cli.engine.EngineClient.GitFetchRequest(
                             expanded, canonical, refStr, cacheDir, refresh, /* requireJkToml */ false),
-                    steps -> PipelineConsole.chooseConsoleListener("tool-git-fetch", steps, mode));
+                    steps -> BuildPlanConsole.chooseConsoleListener("tool-git-fetch", steps, mode));
         } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", e.getMessage()));
             return Exit.SOFTWARE;
@@ -434,7 +434,7 @@ public final class ToolRunCommand implements CliCommand {
                     cc.jumpkick.engine.EnginePaths.current(),
                     new cc.jumpkick.cli.engine.EngineClient.ToolResolveRequest(
                             resolved.coordSpec(), with, bin, mainClass, repoUrl, cacheDir),
-                    steps -> PipelineConsole.chooseConsoleListener("tool-run", steps, PipelineConsole.modeFor(global)));
+                    steps -> BuildPlanConsole.chooseConsoleListener("tool-run", steps, BuildPlanConsole.modeFor(global)));
         } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", e.getMessage()));
             return Exit.SOFTWARE;

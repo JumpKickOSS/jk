@@ -3,7 +3,7 @@ package cc.jumpkick.cli;
 
 /**
  * Flags shared by the build-family commands — {@code build}, {@code run}, {@code install}, {@code
- * native}, {@code image} — all of which drive the same {@link cc.jumpkick.runtime.BuildPipelines}.
+ * native}, {@code image} — all of which drive the same {@link cc.jumpkick.runtime.BuildPlanner}.
  */
 public final class BuildOptions {
 

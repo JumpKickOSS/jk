@@ -19,7 +19,7 @@ import org.jline.utils.AttributedStyle;
  *   <li><b>Open</b> ({@link #show}) — brand blue ↔ almost-black blue on the terminal background:
  *       {@code ● message}.
  *   <li><b>Wedge / chip</b> ({@link #showWedge}) — white ↔ chip blue on the CommandWedge pill
- *       (same chrome as {@link CommandManager}'s pipeline header): {@code ● Status  message}.
+ *       (same chrome as {@link CommandManager}'s plan header): {@code ● Status  message}.
  * </ul>
  *
  * <p>Cursor hidden between {@link #show}/{@link #showWedge} and {@link #close()}. Thread-safe
@@ -35,7 +35,7 @@ public final class Spinner implements AutoCloseable {
      * Filling-circle phases for tree rows under the progress bar (not the CommandWedge). Cycle:
      * white circle → bullseye → fisheye → bullseye, each held for {@link #FILL_HOLD} animator frames,
      * constant blue. Distinct glyphs only — hold is applied in {@link #fillGlyph(int)}, not by
-     * repeating entries (the pipeline painter also skips rewriting a tree line when its text is
+     * repeating entries (the plan painter also skips rewriting a tree line when its text is
      * unchanged, so held frames are free).
      *
      * <ul>
@@ -270,14 +270,14 @@ public final class Spinner implements AutoCloseable {
         String msg = (message == null || message.isBlank()) ? "working" : message;
         String tail = msg + " - working...";
         if (command == null) return " " + Glyphs.PULSE_PLAIN + " " + tail;
-        return PipelineWedge.plainWedge(Glyphs.PULSE_PLAIN, command, tail);
+        return BuildPlanWedge.plainWedge(Glyphs.PULSE_PLAIN, command, tail);
     }
 
     static String plainDoneLine(String command, String message) {
         String msg = (message == null || message.isBlank()) ? "working" : message;
         String tail = msg + " - done.";
         if (command == null) return " " + Glyphs.PULSE_PLAIN + " " + tail;
-        return PipelineWedge.plainWedge(Glyphs.PULSE_PLAIN, command, tail);
+        return BuildPlanWedge.plainWedge(Glyphs.PULSE_PLAIN, command, tail);
     }
 
     /**
@@ -291,16 +291,16 @@ public final class Spinner implements AutoCloseable {
         String msg = message == null ? "" : message;
         if (!t.isAnsi()) {
             // " * Status > Analyzing…"
-            return PipelineWedge.plainWedge(Glyphs.PULSE_PLAIN, name, msg);
+            return BuildPlanWedge.plainWedge(Glyphs.PULSE_PLAIN, name, msg);
         }
-        AttributedStyle chip = t.pipelineChip();
+        AttributedStyle chip = t.planChip();
         AttributedStyle pulse = t.withBackground(pulseFg[Math.floorMod(frame, pulseFg.length)], t.planBadgeColor());
         // Nerd: " {●} {name} " + powerline; ansi-no-nerd: " {●} {name}  " (two trailing bg spaces).
         StringBuilder h = new StringBuilder();
         h.append(Theme.colorize(" ", chip)).append(Theme.colorize(PULSE_GLYPH, pulse));
         if (nerdfont) {
             h.append(Theme.colorize(name.isEmpty() ? " " : " " + name + " ", chip));
-            h.append(PipelineWedge.cap(t.planBadgeColor(), true));
+            h.append(BuildPlanWedge.cap(t.planBadgeColor(), true));
         } else {
             h.append(Theme.colorize(name.isEmpty() ? "  " : " " + name + "  ", chip));
         }

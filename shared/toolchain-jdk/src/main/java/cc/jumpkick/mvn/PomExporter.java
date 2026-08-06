@@ -229,10 +229,10 @@ public final class PomExporter {
         sb.append("        <artifactId>kotlin-maven-plugin</artifactId>\n");
         sb.append("        <version>").append(PomXml.escape(ver)).append("</version>\n");
         sb.append("        <executions>\n");
-        sb.append("          <execution><id>compile</id><step>compile</step>")
-                .append("<pipelines><pipeline>compile</pipeline></pipelines></execution>\n");
-        sb.append("          <execution><id>test-compile</id><step>test-compile</step>")
-                .append("<pipelines><pipeline>test-compile</pipeline></pipelines></execution>\n");
+        sb.append("          <execution><id>compile</id><phase>compile</phase>")
+                .append("<goals><goal>compile</goal></goals></execution>\n");
+        sb.append("          <execution><id>test-compile</id><phase>test-compile</phase>")
+                .append("<goals><goal>test-compile</goal></goals></execution>\n");
         sb.append("        </executions>\n");
         sb.append("      </plugin>\n");
     }
@@ -279,7 +279,7 @@ public final class PomExporter {
         sb.append("        <artifactId>toolchains-maven-plugin</artifactId>\n");
         sb.append("        <version>").append(TOOLCHAINS_PLUGIN).append("</version>\n");
         sb.append(
-                "        <executions><execution><pipelines><pipeline>toolchain</pipeline></pipelines></execution></executions>\n");
+                "        <executions><execution><goals><goal>toolchain</goal></goals></execution></executions>\n");
         sb.append("        <configuration>\n          <toolchains>\n            <jdk>\n");
         sb.append("              <version>")
                 .append(major > 0 ? major : p.javaRelease())
@@ -323,8 +323,8 @@ public final class PomExporter {
         sb.append("        <groupId>org.apache.maven.plugins</groupId>\n");
         sb.append("        <artifactId>maven-shade-plugin</artifactId>\n");
         sb.append("        <version>").append(SHADE_PLUGIN).append("</version>\n");
-        sb.append("        <executions><execution><step>package</step>")
-                .append("<pipelines><pipeline>shade</pipeline></pipelines></execution></executions>\n");
+        sb.append("        <executions><execution><phase>package</phase>")
+                .append("<goals><goal>shade</goal></goals></execution></executions>\n");
         sb.append("      </plugin>\n");
     }
 

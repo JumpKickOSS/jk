@@ -2,14 +2,14 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.plugin.protocol.Jsonl;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.PipelineView;
-import cc.jumpkick.run.StepStatus;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.BuildPlanView;
+import cc.jumpkick.run.TaskStatus;
 import java.time.Duration;
 import java.time.Instant;
 
 /**
- * Stable wire format for pipeline events as one-JSON-object-per-line text. Shared by {@link
+ * Stable wire format for plan events as one-JSON-object-per-line text. Shared by {@link
  * JsonlListener} (stdout for {@code --output json}/{@code jsonl}), {@link EventLogListener}
  * (always-on under the cache run log), and {@link CliSessionTranscript} ({@code details.jsonl}).
  * Centralising the shape here means agents, CI, and future MCP tools share one schema — see
@@ -144,33 +144,33 @@ public final class JsonlShape {
         return sb.append('}').toString();
     }
 
-    static String pipelineStart(PipelineView v) {
-        return open("pipeline-start")
-                .append(",\"pipeline\":")
-                .append(js(v.pipelineName()))
+    static String planStart(BuildPlanView v) {
+        return open("buildplan-start")
+                .append(",\"plan\":")
+                .append(js(v.planName()))
                 .append(",\"denominator\":")
                 .append(v.denominator())
-                .append(",\"steps\":")
+                .append(",\"tasks\":")
                 .append(v.stepsTotal())
                 .append('}')
                 .toString();
     }
 
-    static String stepStart(String step, String phase, int ticks) {
-        return open("step-start")
-                .append(",\"step\":")
+    static String stepStart(String step, String group, int ticks) {
+        return open("task-start")
+                .append(",\"task\":")
                 .append(js(step))
-                .append(",\"phase\":")
-                .append(js(phase))
+                .append(",\"group\":")
+                .append(js(group))
                 .append(",\"ticks\":")
                 .append(ticks)
                 .append('}')
                 .toString();
     }
 
-    static String progress(String step, int delta, PipelineView v) {
+    static String progress(String step, int delta, BuildPlanView v) {
         return open("progress")
-                .append(",\"step\":")
+                .append(",\"task\":")
                 .append(js(step))
                 .append(",\"delta\":")
                 .append(delta)
@@ -182,9 +182,9 @@ public final class JsonlShape {
                 .toString();
     }
 
-    static String tickUpdate(String step, int delta, PipelineView v) {
+    static String tickUpdate(String step, int delta, BuildPlanView v) {
         return open("tick-update")
-                .append(",\"step\":")
+                .append(",\"task\":")
                 .append(js(step))
                 .append(",\"delta\":")
                 .append(delta)
@@ -196,7 +196,7 @@ public final class JsonlShape {
 
     static String label(String step, String label) {
         return open("label")
-                .append(",\"step\":")
+                .append(",\"task\":")
                 .append(js(step))
                 .append(",\"label\":")
                 .append(js(label))
@@ -206,7 +206,7 @@ public final class JsonlShape {
 
     static String output(String step, String line) {
         return open("output")
-                .append(",\"step\":")
+                .append(",\"task\":")
                 .append(js(step))
                 .append(",\"line\":")
                 .append(js(line))
@@ -216,7 +216,7 @@ public final class JsonlShape {
 
     static String warn(String step, String code, String msg) {
         return open("warn")
-                .append(",\"step\":")
+                .append(",\"task\":")
                 .append(js(step))
                 .append(",\"code\":")
                 .append(js(code))
@@ -237,7 +237,7 @@ public final class JsonlShape {
      */
     static String error(String step, String code, String msg, String test, String exceptionClass) {
         StringBuilder sb = open("error")
-                .append(",\"step\":")
+                .append(",\"task\":")
                 .append(js(step))
                 .append(",\"code\":")
                 .append(js(code))
@@ -249,12 +249,12 @@ public final class JsonlShape {
         return sb.append('}').toString();
     }
 
-    static String stepFinish(String step, String phase, StepStatus status, Duration duration) {
-        return open("step-finish")
-                .append(",\"step\":")
+    static String stepFinish(String step, String group, TaskStatus status, Duration duration) {
+        return open("task-finish")
+                .append(",\"task\":")
                 .append(js(step))
-                .append(",\"phase\":")
-                .append(js(phase))
+                .append(",\"group\":")
+                .append(js(group))
                 .append(",\"status\":")
                 .append(js(status.name()))
                 .append(",\"duration_ms\":")
@@ -263,10 +263,10 @@ public final class JsonlShape {
                 .toString();
     }
 
-    static String pipelineFinish(PipelineResult r) {
-        return open("pipeline-finish")
-                .append(",\"pipeline\":")
-                .append(js(r.pipelineName()))
+    static String planFinish(BuildPlanResult r) {
+        return open("buildplan-finish")
+                .append(",\"plan\":")
+                .append(js(r.planName()))
                 .append(",\"success\":")
                 .append(r.success())
                 .append(",\"duration_ms\":")
@@ -323,7 +323,7 @@ public final class JsonlShape {
                 .toString();
     }
 
-    /** A workspace module is about to run its pipeline (brackets nested step events). */
+    /** A workspace module is about to run its plan (brackets nested step events). */
     public static String moduleStart(String dir, String coord) {
         return open("module-start")
                 .append(",\"dir\":")

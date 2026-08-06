@@ -502,6 +502,7 @@ public final class JUnitLauncher {
         // Merge per-worker aggregators into one TestSummary.
         long total = 0, succeeded = 0, failed = 0, skipped = 0, classCount = 0;
         var allFailures = new ArrayList<TestSummary.Failure>();
+        var walls = new LinkedHashMap<String, Long>();
         for (var agg : aggregators) {
             var r = agg.snapshot();
             total += r.total();
@@ -510,6 +511,7 @@ public final class JUnitLauncher {
             skipped += r.skipped();
             classCount += r.classes();
             allFailures.addAll(r.failures());
+            r.classWallMs().forEach((k, v) -> walls.merge(k, v, Long::sum));
         }
         if (total == 0 && worstExit != 0) {
             // No test events but a worker died — surface what the crashed worker(s)
@@ -543,7 +545,7 @@ public final class JUnitLauncher {
                 /* non-fatal */
             }
         }
-        return new TestSummary(total, succeeded, failed, skipped, classCount, allFailures);
+        return new TestSummary(total, succeeded, failed, skipped, classCount, allFailures, walls);
     }
 
     /**
@@ -720,6 +722,8 @@ public final class JUnitLauncher {
         // class-rate ETA prior's denominator. Workers partition by class, so
         // per-worker counts sum without overlap.
         private final java.util.Set<String> executedClasses = new java.util.HashSet<>();
+        /** FQCN → wall-ms for CONTAINER finished events (class-level timing for ETA). */
+        private final java.util.Map<String, Long> classWallMs = new java.util.LinkedHashMap<>();
 
         /** Test-friendly ctor: no listener, no worker id, no reports. */
         ResultAggregator() {
@@ -800,11 +804,18 @@ public final class JUnitLauncher {
                     case "ABORTED" -> skipped++;
                     default -> {}
                 }
-            } else if ("FAILED".equals(status)) {
-                // A container-level failure (class initializer / @BeforeAll / engine):
-                // no per-test event follows, so without capturing it the run would
-                // surface only as a bare "runner exited N". Record it with its stack.
-                captureFailure(id, display + " (container)", json);
+            } else {
+                // Class (or suite) container wall — free duration_ms from the runner; no method walk.
+                String cls = classFromUniqueId(id);
+                if (!cls.isEmpty() && duration > 0 && "SUCCESSFUL".equals(status)) {
+                    classWallMs.merge(cls, duration, Long::sum);
+                }
+                if ("FAILED".equals(status)) {
+                    // A container-level failure (class initializer / @BeforeAll / engine):
+                    // no per-test event follows, so without capturing it the run would
+                    // surface only as a bare "runner exited N". Record it with its stack.
+                    captureFailure(id, display + " (container)", json);
+                }
             }
             listener.onTestFinished(id, display, status, isTest, wasStatic, duration, workerId);
             if (isTest) {
@@ -881,13 +892,32 @@ public final class JUnitLauncher {
                                 "",
                                 workerId)));
             }
-            return new TestSummary(total, succeeded, failed, skipped, executedClasses.size(), List.copyOf(failures));
+            return new TestSummary(
+                    total,
+                    succeeded,
+                    failed,
+                    skipped,
+                    executedClasses.size(),
+                    List.copyOf(failures),
+                    Map.copyOf(classWallMs));
         }
 
         /** Snapshot of just the counters — used by the parallel-merge path. */
         synchronized TestSummary snapshot() {
             long total = succeeded + failed + skipped;
-            return new TestSummary(total, succeeded, failed, skipped, executedClasses.size(), List.copyOf(failures));
+            return new TestSummary(
+                    total,
+                    succeeded,
+                    failed,
+                    skipped,
+                    executedClasses.size(),
+                    List.copyOf(failures),
+                    Map.copyOf(classWallMs));
+        }
+
+        /** Class walls collected this worker (for parallel merge). */
+        synchronized Map<String, Long> classWallMs() {
+            return Map.copyOf(classWallMs);
         }
     }
 

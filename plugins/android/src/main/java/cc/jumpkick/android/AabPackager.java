@@ -2,7 +2,7 @@
 package cc.jumpkick.android;
 
 import cc.jumpkick.plugin.build.PackageIo;
-import cc.jumpkick.plugin.build.StepExec;
+import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -41,7 +41,7 @@ final class AabPackager {
 
         io.label("bundletool build-bundle");
         Path unsigned = work.resolve("unsigned.aab");
-        StepExec.ToolRun.Result bundle = io.java()
+        TaskExec.ToolRun.Result bundle = io.java()
                 .classpath(ManifestStep.jarsIn(bundletool))
                 .mainClass("com.android.tools.build.bundletool.BundleToolMain")
                 .arg("build-bundle")
@@ -117,7 +117,7 @@ final class AabPackager {
             keyPass = "android";
         }
         Files.copy(unsigned, out, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-        StepExec.ToolRun.Result signed = io.tool("jarsigner")
+        TaskExec.ToolRun.Result signed = io.tool("jarsigner")
                 .arg("-keystore")
                 .arg(keystore.toAbsolutePath().toString())
                 .arg("-storepass")

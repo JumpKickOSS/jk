@@ -61,7 +61,7 @@ logic = "off"   # also: false, none, disable
      call `register(BuildLogicGraph)` and may attach named tasks to anchors.  
    - **Legacy mains:** every public class named `*Build` / `*BuildMain` with
      `public static void main` (or `[build].logic-main`) runs at **`AFTER_RESOURCES`**.  
-4. Pipeline anchors invoke matching tasks as **independently action-cached** steps:
+4. BuildPlan anchors invoke matching tasks as **independently action-cached** steps:
    - `AFTER_COMPILE` — after main compile / assemble  
    - `AFTER_RESOURCES` — after static resources copy (default for legacy mains)  
    - `BEFORE_PACKAGE` — immediately before jar/image packaging  

@@ -7,8 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import cc.jumpkick.plugin.protocol.MiniJson;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.StepStatus;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.TaskStatus;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -61,11 +61,11 @@ class CliSessionTranscriptTest {
         session.append(JsonlShape.stepStart("compile-main", "compile", 10), true);
         session.module("demo:app");
 
-        PipelineResult result = new PipelineResult(
+        BuildPlanResult result = new BuildPlanResult(
                 "build",
                 true,
                 Duration.ofMillis(42),
-                List.of(new PipelineResult.StepReport("compile-main", StepStatus.SUCCESS, Duration.ofMillis(12))),
+                List.of(new BuildPlanResult.StepReport("compile-main", TaskStatus.SUCCESS, Duration.ofMillis(12))),
                 List.of(),
                 List.of(),
                 false);
@@ -86,7 +86,7 @@ class CliSessionTranscriptTest {
         assertTrue(finish.contains("\"jid\":42"));
 
         String step =
-                lines.stream().filter(l -> l.contains("step-start")).findFirst().orElseThrow();
+                lines.stream().filter(l -> l.contains("task-start")).findFirst().orElseThrow();
         assertTrue(step.contains("\"progress\":50") || step.contains("\"progress\":50.0"));
     }
 
@@ -172,10 +172,10 @@ class CliSessionTranscriptTest {
         assertEquals(before, still.size(), "lazy line must not partial-flush mid-record");
         assertFalse(Files.readString(file).contains("buffered-only"));
 
-        session.append(JsonlShape.stepFinish("compile", "compile", StepStatus.SUCCESS, Duration.ofMillis(1)), true);
+        session.append(JsonlShape.stepFinish("compile", "compile", TaskStatus.SUCCESS, Duration.ofMillis(1)), true);
         String after = Files.readString(file);
         assertTrue(after.contains("buffered-only"));
-        assertTrue(after.contains("step-finish"));
+        assertTrue(after.contains("task-finish"));
         for (String line : Files.readAllLines(file)) {
             MiniJson.parse(line);
         }

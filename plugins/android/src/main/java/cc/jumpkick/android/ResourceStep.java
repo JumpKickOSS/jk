@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
-import cc.jumpkick.plugin.build.StepExec;
+import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,7 +20,7 @@ final class ResourceStep {
 
     private ResourceStep() {}
 
-    static void run(StepExec exec) throws Exception {
+    static void run(TaskExec exec) throws Exception {
         Path aapt2 = extractAapt2(exec);
         Path platformJar = exec.requireExtra("android-jar");
         Path res = AndroidDeps.androidFile(exec.moduleDir(), "res");
@@ -66,7 +66,7 @@ final class ResourceStep {
         // generated keep rules (manifest components) R8 consumes on release.
         exec.label("aapt2 link");
         Path rTxt = packaged.resolve("R.txt");
-        StepExec.ToolRun.Result linked = link(
+        TaskExec.ToolRun.Result linked = link(
                         exec,
                         aapt2,
                         platformJar,
@@ -92,7 +92,7 @@ final class ResourceStep {
         boolean release = "release".equals(exec.config().stringOpt("build-type").orElse("debug"));
         if (release && !library) {
             exec.label("aapt2 link (proto)");
-            StepExec.ToolRun.Result proto = link(
+            TaskExec.ToolRun.Result proto = link(
                             exec,
                             aapt2,
                             platformJar,
@@ -131,8 +131,8 @@ final class ResourceStep {
     }
 
     /** One aapt2 link invocation — binary (R.java + symbols + keep rules) or proto (AAB). */
-    private static StepExec.ToolRun link(
-            StepExec exec,
+    private static TaskExec.ToolRun link(
+            TaskExec exec,
             Path aapt2,
             Path platformJar,
             Path manifest,
@@ -147,7 +147,7 @@ final class ResourceStep {
             Path rTxt,
             Path keepRules,
             boolean proto) {
-        StepExec.ToolRun link = exec.tool(aapt2)
+        TaskExec.ToolRun link = exec.tool(aapt2)
                 .arg("link")
                 .arg("-o")
                 .arg(out.toAbsolutePath().toString())
@@ -180,8 +180,8 @@ final class ResourceStep {
         return link;
     }
 
-    private static Path compileRes(StepExec exec, Path aapt2, Path resDir, Path out) throws Exception {
-        StepExec.ToolRun.Result compile = exec.tool(aapt2)
+    private static Path compileRes(TaskExec exec, Path aapt2, Path resDir, Path out) throws Exception {
+        TaskExec.ToolRun.Result compile = exec.tool(aapt2)
                 .arg("compile")
                 .arg("--dir")
                 .arg(resDir.toAbsolutePath().toString())
@@ -261,7 +261,7 @@ final class ResourceStep {
     }
 
     /** Extract the per-OS aapt2 binary from its Maven wrapper jar into the step scratch. */
-    private static Path extractAapt2(StepExec exec) throws IOException {
+    private static Path extractAapt2(TaskExec exec) throws IOException {
         return AndroidDeps.extractAapt2(
                 exec.requireExtra("aapt2"), exec.scratch().resolve("tools"));
     }

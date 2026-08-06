@@ -54,19 +54,19 @@ final class Json {
             mm.put("success", m.success());
             mm.put("exitCode", m.exitCode());
             mm.put("millis", m.millis());
-            mm.put("steps", stepList(m.steps()));
+            mm.put("tasks", stepList(m.steps()));
             modules.add(mm);
         }
         o.put("modules", modules);
 
-        o.put("steps", stepList(r.steps()));
+        o.put("tasks", stepList(r.steps()));
 
         List<Object> diagnostics = new ArrayList<>();
         for (BuildRecord.Diag d : r.diagnostics()) {
             Map<String, Object> dm = new LinkedHashMap<>();
             dm.put("severity", d.severity());
             dm.put("dir", d.dir());
-            dm.put("step", d.step());
+            dm.put("task", d.step());
             dm.put("code", d.code());
             dm.put("message", d.message());
             dm.put("test", d.test());
@@ -104,12 +104,12 @@ final class Json {
         return MiniJson.writePretty(o);
     }
 
-    private static List<Object> stepList(List<BuildRecord.Step> steps) {
+    private static List<Object> stepList(List<BuildRecord.Task> steps) {
         List<Object> out = new ArrayList<>(steps.size());
-        for (BuildRecord.Step p : steps) {
+        for (BuildRecord.Task p : steps) {
             Map<String, Object> pm = new LinkedHashMap<>();
             pm.put("name", p.name());
-            pm.put("phase", p.phase());
+            pm.put("group", p.phase());
             pm.put("status", p.status());
             pm.put("millis", p.millis());
             out.add(pm);
@@ -145,7 +145,7 @@ final class Json {
                     readSteps(mm)));
         }
 
-        List<BuildRecord.Step> steps = readSteps(o);
+        List<BuildRecord.Task> steps = readSteps(o);
 
         BuildRecord.CacheBenefit benefit = null;
         if (o.get("benefit") instanceof Map<?, ?> bm) {
@@ -167,7 +167,7 @@ final class Json {
             diagnostics.add(new BuildRecord.Diag(
                     str(dm, "severity"),
                     str(dm, "dir"),
-                    str(dm, "step"),
+                    strOr(dm, "task", "step"),
                     str(dm, "code"),
                     str(dm, "message"),
                     str(dm, "test"),
@@ -216,13 +216,21 @@ final class Json {
         return o.get(key) instanceof List<?> l ? (List<Object>) l : List.of();
     }
 
-    /** Read a {@code "steps"} array from a record or a module object. */
+    /** First key present wins — dual-read for journal records written before the task/group rename. */
+    private static String strOr(Map<String, Object> o, String key, String legacy) {
+        String v = str(o, key);
+        return v != null ? v : str(o, legacy);
+    }
+
+    /** Read a {@code "tasks"} array from a record or a module object ({@code "steps"} pre-rename). */
     @SuppressWarnings("unchecked")
-    private static List<BuildRecord.Step> readSteps(Map<String, Object> o) {
-        List<BuildRecord.Step> steps = new ArrayList<>();
-        for (Object e : arr(o, "steps")) {
+    private static List<BuildRecord.Task> readSteps(Map<String, Object> o) {
+        List<BuildRecord.Task> steps = new ArrayList<>();
+        List<Object> rows = arr(o, "tasks");
+        if (rows.isEmpty()) rows = arr(o, "steps");
+        for (Object e : rows) {
             Map<String, Object> pm = (Map<String, Object>) e;
-            steps.add(new BuildRecord.Step(str(pm, "name"), str(pm, "phase"), str(pm, "status"), lng(pm, "millis")));
+            steps.add(new BuildRecord.Task(str(pm, "name"), strOr(pm, "group", "phase"), str(pm, "status"), lng(pm, "millis")));
         }
         return steps;
     }

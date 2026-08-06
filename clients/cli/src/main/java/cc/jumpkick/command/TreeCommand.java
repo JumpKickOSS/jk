@@ -8,7 +8,7 @@ import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.PipelineWedge;
+import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.command.CliCommand;
@@ -105,10 +105,10 @@ public final class TreeCommand implements CliCommand {
         boolean ansi = t.isAnsi();
         CommandWedge.envelopeStart();
         if (ansi) {
-            CliOutput.out(PipelineWedge.chip(Glyphs.MENU, "Dependencies Tree", t.pipelineChip(), nerdfont)
-                    + PipelineWedge.cap(t.planBadgeColor(), nerdfont));
+            CliOutput.out(BuildPlanWedge.chip(Glyphs.MENU, "Dependencies Tree", t.planChip(), nerdfont)
+                    + BuildPlanWedge.cap(t.planBadgeColor(), nerdfont));
         } else {
-            CliOutput.out(PipelineWedge.plainWedge(Glyphs.MENU_PLAIN, "Dependencies Tree", null));
+            CliOutput.out(BuildPlanWedge.plainWedge(Glyphs.MENU_PLAIN, "Dependencies Tree", null));
         }
 
         // Composite-aware: walks path deps' own trees too (anchored at `dir`). The walk runs

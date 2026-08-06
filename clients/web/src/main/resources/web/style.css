@@ -50,6 +50,11 @@
   --on-fill: #1d2026;               /* near-black text on bright success/err/warn fills (not on deep --runc) */
   --prog-a: #4d8bff;                /* neon progress gradient: electric blue … */
   --prog-b: #c04dff;                /* … → neon violet */
+  /* Live step detail (CLI colorDetail / SyntaxHighlight roles) */
+  --det-mid: #a0a0a0;               /* mid-gray prose body (JkDark MID_GRAY) */
+  --det-type: #ffa657;              /* Java type / class (GH_TYPE) */
+  --det-fn: #d2a8ff;                /* method name (GH_FUNCTION) */
+  --det-num: var(--warn);           /* counts / sizes — CLI warning yellow */
   --modal-scrim: rgba(4, 8, 11, 0.66);
   --modal-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.7);
 
@@ -466,7 +471,7 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
   border-bottom: 1px dotted var(--dim);
 }
 .ago { color: var(--dim); font-size: 11.5px; }
-/* ETA dual-clock: italic/dim "ETA" label + blue ~remaining (dim frozen 0s on overrun). */
+/* ETA dual-clock: italic/dim "ETA" label + mid-gray ~remaining (dim frozen 0s on overrun). */
 .eta {
   display: inline-flex;
   align-items: baseline;
@@ -480,7 +485,7 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
   font-style: italic;
   font-weight: 400;
 }
-.eta-cd { color: var(--run); }
+.eta-cd { color: var(--det-mid); }
 .eta-cd.zero { color: var(--dim); }
 
 /* Per-run byte counters as a hover tooltip on `.millis`: one row per scope, `scope  N ↑ / N ↓`.
@@ -530,20 +535,35 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 
 /* Running-card progress bar: same indigo→magenta gradient as the CLI progress bars
  * (Theme PROGRESS_GRADIENT: PRIMARY #3F51B5 → BRIGHT_MAGENTA #E040FB). The width transition
- * glides smoothly as the engine's weight numerator/denominator advance (app.js progress()). */
+ * glides smoothly as the engine's weight numerator/denominator advance (app.js progress()).
+ * Bold white % lives inside the fill and updates with the same progress() binding. */
 .cardbar {
-  height: 8px;
+  height: 18px;
   margin: 10px 0 2px;
-  border-radius: 4px;
+  border-radius: 6px;
   background: var(--s2);
   overflow: hidden;
 }
 .cardbar-fill {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
   height: 100%;
-  border-radius: 4px;
+  min-width: 0;
+  border-radius: 6px;
   background: linear-gradient(90deg, var(--prog-a), var(--prog-b));
   transition: width var(--dur-slow) var(--ease-smooth);
+  overflow: hidden;
+}
+.cardbar-pct {
+  color: #fff;
+  font: 700 11px/1 var(--mono);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  /* Keep digits readable on both ends of the indigo→magenta gradient. */
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.45), 0 1px 1px rgba(0, 0, 0, 0.35);
+  padding: 0 6px;
 }
 
 /* The step strip never wraps: it's one horizontal chain that scrolls under ◂ / ▸ nav buttons.
@@ -619,9 +639,53 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 
 /* ---- phase-chain: coarse phases with click-to-expand step detail ----
  * Phase nodes reuse .step-node styling but are <button> toggles; the open phase's steps render as a
- * secondary sub-chain beneath. Single-open accordion; the failed phase auto-opens. */
+ * secondary sub-chain beneath. Single-open accordion; the failed phase auto-opens.
+ * Live tick/label text sits after the phase strip (CLI tree-row "· detail" segment). */
+.phase-live-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 11px; /* same as bare .step-chain-wrap */
+}
+.module .phase-live-row { margin-top: 6px; }
+/* Chain sizes to its phase nodes — do not grow, or the detail is shoved to the right edge. */
+.phase-live-row .step-chain-wrap {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-top: 0; /* spacing lives on the row */
+}
 .phase-node { cursor: pointer; }
 .phase-node.open { border-color: var(--mu); color: var(--bright); }
+/* Live detail immediately after the running (blue) phase — left of free space, CLI "· detail". */
+.phase-detail {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  font: 500 11.5px/1.2 var(--mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+.phase-detail-sep { color: var(--dim); flex: none; }
+.phase-detail-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  text-align: left;
+}
+.det-mid { color: var(--det-mid); }
+.det-type { color: var(--det-type); }
+.det-fn { color: var(--det-fn); }
+.det-num { color: var(--det-num); }
+.det-path { color: var(--path); }
+.det-coord { color: var(--cn); }
+.det-dim { color: var(--dim); }
 .phase-steps {
   display: flex;
   align-items: center;
@@ -801,7 +865,27 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 }
 .detail-actions button.ghost { background: var(--s1); color: var(--mu); border: 1px solid var(--bd); }
 .detail-actions button.ghost:hover:not(:disabled) { color: var(--cn); }
+.detail-actions button.ghost.active {
+  color: var(--cn);
+  border-color: rgba(var(--cn-rgb), 0.45);
+  box-shadow: 0 0 12px rgba(var(--cn-rgb), 0.12);
+}
 .detail-actions button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Project-page module dependency graph (JK-1542) — lazy panel under Dependencies. */
+.dep-graph-panel { margin-top: 14px; grid-column: 1 / -1; }
+.dep-graph-body { min-height: 2.5rem; }
+.dep-graph-status { margin: 0 0 8px; }
+.dep-graph-status.err { color: var(--err); }
+.dep-graph-canvas {
+  width: 100%;
+  height: min(480px, 55vh);
+  min-height: 280px;
+  border-radius: var(--r-md);
+  background: var(--console-bg);
+  border: 1px solid var(--bd2);
+}
+.dep-graph-hint { margin: 8px 0 0; font-size: 11px; }
 .proj-desc { color: var(--tx); margin: 2px 0 16px; max-width: 74ch; }
 
 /* min/max and last-built carry longer strings than a single KPI number */
@@ -1267,6 +1351,69 @@ button.browse:hover::before {
 .conn.unauthorized .live-dot { background: var(--warn); }
 .conn.offline .live-label,
 .conn.unauthorized .live-label { color: var(--warn); }
+
+/* ---- Auth gate (missing/invalid token) ---- */
+.auth-modal-bg {
+  z-index: 100; /* above help / new-project / browser */
+  /* no click-to-dismiss — authorization is required */
+}
+.auth-modal .auth-icon {
+  color: var(--warn);
+  font-size: 1.4rem;
+  flex: none;
+}
+.auth-body {
+  padding: 14px 16px 4px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--tx);
+}
+.auth-body p { margin: 0 0 10px; }
+.auth-steps {
+  margin: 0 0 14px;
+  padding-left: 1.25rem;
+  color: var(--mu);
+}
+.auth-steps li { margin: 4px 0; }
+.auth-steps code,
+.auth-body code {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--cg);
+}
+.auth-paste {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.auth-paste > span {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--dim);
+}
+.auth-paste input {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--bd);
+  background: var(--s2);
+  color: var(--tx);
+}
+.auth-paste input:focus {
+  outline: none;
+  border-color: rgba(var(--cg-rgb), 0.55);
+}
+.auth-actions {
+  justify-content: flex-end;
+}
+.auth-actions .use-folder:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
 
 /* ---- Help / About modal ---- */
 .modal.about { width: 460px; }

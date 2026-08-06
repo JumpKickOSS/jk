@@ -4,12 +4,12 @@ package cc.jumpkick.command;
 import cc.jumpkick.audit.AuditReport;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.HostedEvents;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -77,7 +77,7 @@ public final class AuditCommand implements CliCommand {
         }
         Path cache = JkDirs.cache();
         AuditReport.Severity threshold = AuditReport.Severity.parse(severity);
-        PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
 
         // Findings accumulate here from either transport — raw worker fields in, typed report rows
         // out — so the report/threshold tail below is transport-agnostic.
@@ -89,13 +89,13 @@ public final class AuditCommand implements CliCommand {
             }
         };
 
-        PipelineResult result;
+        BuildPlanResult result;
         try {
             result = cc.jumpkick.cli.engine.EngineClient.runAudit(
                     cc.jumpkick.engine.EnginePaths.current(),
                     new cc.jumpkick.cli.engine.EngineClient.AuditRequest(
                             projectDir, cache, threshold.toString(), osvBatchUrl, osvVulnsUrl),
-                    steps -> PipelineConsole.chooseConsoleListener("audit", steps, mode),
+                    steps -> BuildPlanConsole.chooseConsoleListener("audit", steps, mode),
                     observer);
         } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Audit", e.getMessage()));

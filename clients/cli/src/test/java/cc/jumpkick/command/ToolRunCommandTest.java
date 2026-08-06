@@ -32,7 +32,7 @@ import org.junit.jupiter.api.io.TempDir;
 @Tag("integration")
 class ToolRunCommandTest {
 
-    // These tests drive the real fetch pipeline against a mock Maven server; fetched
+    // These tests drive the real fetch plan against a mock Maven server; fetched
     // artifacts mirror into the Maven local repo. Point that at a throwaway dir (see
     // M2Dirs) so stub artifacts never overwrite the developer's real ~/.m2 — the
     // fixture reuses real coordinates (junit-jupiter et al).

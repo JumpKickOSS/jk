@@ -39,8 +39,6 @@ class CapabilityHarnessTest {
         @Override
         public void build(BuildContext ctx) {
             ctx.named("gen-thing")
-                    .after(Phase.RESOLVE)
-                    .before(Phase.COMPILE)
                     .inputs(In.projectFiles("src"), In.config())
                     .outputs("gen")
                     .contributesSources("gen")
@@ -60,11 +58,9 @@ class CapabilityHarnessTest {
         int exit = BuildPluginHarness.run(new FixturePlugin(), List.of(describeSpec(dir).toString()), out.writer);
         assertThat(exit).isZero();
         List<String> lines = out.lines();
-        // The BuildExtension's implicit step, translated to the same StepSpec describe line register() would emit.
-        assertThat(lines).anyMatch(l -> l.contains("\"t\":\"step\"")
+        // The BuildExtension's implicit step, translated to the same TaskSpec describe line register() would emit.
+        assertThat(lines).anyMatch(l -> l.contains("\"t\":\"task\"")
                 && l.contains("\"name\":\"gen-thing\"")
-                && l.contains("\"after\":\"resolve\"")
-                && l.contains("\"before\":\"compile\"")
                 && l.contains("\"contributesSources\":[\"gen\"]")
                 && l.contains("\"outputs\":[\"gen\"]"));
         // The PackageExtension's packager.

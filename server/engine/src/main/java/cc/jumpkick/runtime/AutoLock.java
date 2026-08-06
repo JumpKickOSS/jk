@@ -106,7 +106,7 @@ public final class AutoLock {
             // member (or root) resolves the merged union at the root — a module-scoped
             // conservative relock must never overwrite the root jk-lock.toml with one module's
             // closure.
-            LockPipelines.LockScope scope = LockPipelines.lockScope(dir);
+            LockPlans.LockScope scope = LockPlans.lockScope(dir);
             JkBuild effective = scope.effective();
             Path scopeDir = scope.lockDir();
 

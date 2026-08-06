@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.resolver.ResolveObserver;
-import cc.jumpkick.run.Pipeline;
-import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.jar.JarFile;
@@ -17,7 +17,7 @@ import org.objectweb.asm.ClassReader;
 
 /**
  * acceptance: the [grails] plugin drives a scaffold-shaped Grails 8 app through the real
- * pipeline — grails-app sources compile over the groovy lane (manifest source-roots), grails-app/
+ * plan — grails-app sources compile over the groovy lane (manifest source-roots), grails-app/
  * conf lands in resources, and the grails-jar packager produces a Boot-launcher jar.
  *
  * <p>Network test (Maven Central for the grails-bom closure — large on a cold cache); the CAS
@@ -135,7 +135,7 @@ class GrailsBuildE2eTest {
                     url: jdbc:h2:mem:devDb;LOCK_TIMEOUT=10000;DB_CLOSE_ON_EXIT=FALSE
                 """);
 
-        PipelineResult result = build(project, cache);
+        BuildPlanResult result = build(project, cache);
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
 
@@ -178,14 +178,14 @@ class GrailsBuildE2eTest {
         return Path.of(System.getProperty("user.dir"), "build", "grails-e2e-cache");
     }
 
-    private static PipelineResult build(Path project, Path cache) throws Exception {
+    private static BuildPlanResult build(Path project, Path cache) throws Exception {
         var build = cc.jumpkick.config.JkBuildParser.parse(project.resolve("jk.toml"));
-        Pipeline lock = LockPipelines.lockPipeline(
+        BuildPlan lock = LockPlans.lockBuildPlan(
                 project, build, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
-        PipelineResult lockResult = lock.run();
+        BuildPlanResult lockResult = lock.run();
         assertThat(lockResult.errors()).isEmpty();
 
-        BuildPipelines.Inputs in = new BuildPipelines.Inputs(
+        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                 project,
                 cache,
                 project.resolve("jk.toml"),
@@ -201,6 +201,6 @@ class GrailsBuildE2eTest {
                 false,
                 java.util.Set.of(),
                 SessionContext.current());
-        return BuildPipelines.coreBuilder(in).build().run();
+        return BuildPlanner.coreBuilder(in).build().run();
     }
 }

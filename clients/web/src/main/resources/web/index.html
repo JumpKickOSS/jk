@@ -17,8 +17,8 @@
   <script src="https://unpkg.com/vue@3.5.39/dist/vue.global.prod.js"
           integrity="sha384-yrrm1s9PCS0I4n39ldjMqQlTorYls89GAS3wXVJooje/BSWnC2vTgky2LIyzRLEo"
           crossorigin="anonymous" defer></script>
-  <!-- Apache ECharts powers the Projects tab's per-project build-history spark bars + trend line.
-       Version-pinned + SRI, same discipline as Vue above; update the hash whenever the pin moves. -->
+  <!-- Apache ECharts: Projects tab build-history sparks + Project-page module dependency graph
+       (lazy-loaded). Version-pinned + SRI; update the hash whenever the pin moves. -->
   <script src="https://unpkg.com/echarts@5.5.1/dist/echarts.min.js"
           integrity="sha384-Mx5lkUEQPM1pOJCwFtUICyX45KNojXbkWdYhkKUKsbv391mavbfoAmONbzkgYPzR"
           crossorigin="anonymous" defer></script>
@@ -38,7 +38,7 @@
 
       <span class="hdiv"></span>
 
-      <div class="sysbox" title="Engine host resources (refreshed every 5s)">
+      <div class="sysbox" title="Engine host resources (live over SSE — sampled ~2s, updates on change)">
         <div class="sysrow">
           <span class="sk">CORES</span><span class="sv">{{ status ? status.cores : '—' }}</span>
           <span class="sk">LOAD</span><span class="sv">{{ loadPercent() }}</span>
@@ -78,11 +78,7 @@
       </div>
       <p v-if="buildError" class="error">{{ buildError }}</p>
 
-      <p v-if="cards.length === 0 && connection === 'unauthorized'" class="empty">
-        Authorize this tab with the tokenized URL from <code>jk engine status</code> (or
-        <code>jk web</code>) to load build history.
-      </p>
-      <p v-else-if="cards.length === 0" class="empty">
+      <p v-if="cards.length === 0 && !authModal" class="empty">
         No activity yet — run a <code>jk build</code> (or any hosted command) and it appears here live.
       </p>
 
@@ -113,7 +109,7 @@
                   @click="triggerBuild(card.dir)" aria-label="Rebuild" title="Build this directory again"><jk-icon name="refresh"></jk-icon></button>
           <button v-if="outcome(card) !== 'running' && card.historyId" class="rebuild icon danger"
                   @click="deleteCard(card)" aria-label="Delete" title="Delete this run from history"><jk-icon name="trash"></jk-icon></button>
-          <!-- Dual clock (CLI parity): italic/dim "ETA" + blue ~remaining (freezes dim at 0s on
+          <!-- Dual clock (CLI parity): italic/dim "ETA" + mid-gray ~remaining (freezes dim at 0s on
                overrun). Count-up sits next to it; dim while remaining > 0, yellow after. -->
           <span v-if="outcome(card) === 'running' && hasEta(card)" class="eta" title="estimated time remaining">
             <span class="eta-label">ETA</span>
@@ -142,8 +138,11 @@
           <span v-if="outcome(card) !== 'running'" class="ago">{{ ago(card) }}</span>
         </div>
 
-        <div v-if="outcome(card) === 'running'" class="cardbar" role="progressbar">
-          <span class="cardbar-fill" :style="{ width: progress(card) + '%' }"></span>
+        <div v-if="outcome(card) === 'running'" class="cardbar" role="progressbar"
+             :aria-valuenow="progress(card)" aria-valuemin="0" aria-valuemax="100">
+          <span class="cardbar-fill" :style="{ width: progress(card) + '%' }">
+            <span class="cardbar-pct">{{ progress(card) }}%</span>
+          </span>
         </div>
 
         <!-- Compact (single-module): the step chain rolls up under a "success details" accordion
@@ -152,10 +151,10 @@
         <template v-if="compact(card)">
           <details v-if="okModules(card).length && singleChain(card).length" class="module-group" :open="outcome(card) === 'running'">
             <summary>success details</summary>
-            <phase-chain :steps="singleChain(card)"></phase-chain>
+            <phase-chain :steps="singleChain(card)" :module="card.coord || ''"></phase-chain>
           </details>
           <template v-if="failedModules(card).length">
-            <phase-chain v-if="singleChain(card).length" :steps="singleChain(card)"></phase-chain>
+            <phase-chain v-if="singleChain(card).length" :steps="singleChain(card)" :module="card.coord || ''"></phase-chain>
             <div v-if="singleModule(card) && singleModule(card).diagnostics.length" class="diag">
               <div class="console">
                 <div v-for="(d, i) in singleModule(card).diagnostics" :key="i" class="diag-line">
@@ -183,7 +182,7 @@
                 <span class="spacer"></span>
                 <span class="millis">{{ duration(m.millis) }}</span>
               </div>
-              <phase-chain v-if="m.steps.length" :steps="m.steps"></phase-chain>
+              <phase-chain v-if="m.steps.length" :steps="m.steps" :module="m.coord || card.coord || ''"></phase-chain>
             </div>
           </details>
           <details v-if="failedModules(card).length" class="module-group fail" open>
@@ -195,7 +194,7 @@
                 <span class="spacer"></span>
                 <span class="millis">{{ duration(m.millis) }}</span>
               </div>
-              <phase-chain v-if="m.steps.length" :steps="m.steps"></phase-chain>
+              <phase-chain v-if="m.steps.length" :steps="m.steps" :module="m.coord || card.coord || ''"></phase-chain>
               <div v-if="m.diagnostics.length" class="diag">
                 <div class="console">
                   <div v-for="(d, i) in m.diagnostics" :key="i" class="diag-line">
@@ -272,7 +271,13 @@
         </span>
         <span class="spacer"></span>
         <div class="detail-actions">
-          <button class="ghost" title="Coming soon" disabled>Dependencies</button>
+          <button
+            class="ghost"
+            :class="{ active: projectGraphOpen }"
+            :disabled="!selectedProjectDir"
+            @click="toggleProjectGraph"
+            :title="projectGraphOpen ? 'Hide module dependency graph' : 'Show module dependency graph (loads on demand)'"
+          >Dependencies</button>
           <button class="ghost" title="Coming soon" disabled>Trends</button>
           <button v-if="projectDetail" @click="buildProject(projectDetail.dir)" title="Build this project now"><jk-icon name="bolt"></jk-icon>Build</button>
         </div>
@@ -310,6 +315,16 @@
         </div>
       </template>
       <p v-else-if="projectDetail && projectDetail.empty" class="empty">No build history retained for this project yet.</p>
+
+      <!-- JK-1542: module DAG under Dependencies — closed by default; fetch + echarts only when open. -->
+      <section v-if="projectGraphOpen && selectedProjectDir" class="panel wide dep-graph-panel">
+        <div class="panel-head">
+          <span class="lbl">dependency graph</span>
+          <span class="spacer"></span>
+          <span class="mono dim">module DAG · on demand</span>
+        </div>
+        <module-dep-graph :dir="selectedProjectDir" :key="selectedProjectDir"></module-dep-graph>
+      </section>
     </main>
 
     <main v-if="view === 'status'">
@@ -320,7 +335,7 @@
           <div class="tile"><span class="lbl">pid</span><span class="kpi">{{ status.pid }}</span></div>
           <div class="tile"><span class="lbl">uptime</span><span class="kpi">{{ uptime() }}</span></div>
           <div class="tile"><span class="lbl">connections</span><span class="kpi">{{ status.activeRequests }}</span></div>
-          <div class="tile"><span class="lbl">pipelines</span><span class="kpi" :class="{ ok: status.activePipelines > 0 }">{{ status.activePipelines }}</span></div>
+          <div class="tile"><span class="lbl">build plans</span><span class="kpi" :class="{ ok: status.activeBuildPlans > 0 }">{{ status.activeBuildPlans }}</span></div>
         </div>
 
         <div class="panels">
@@ -366,7 +381,7 @@
                 <dt>cache CAS</dt><dd>{{ count(cache.cacheCasCount != null ? cache.cacheCasCount : 0) }} · {{ mib(cache.cacheCasBytes != null ? cache.cacheCasBytes : 0) }}</dd>
                 <dt>format stamps</dt><dd>{{ count(cache.formatStampsCount) }} · {{ mib(cache.formatStampsBytes) }}</dd>
               </dl>
-              <p class="dim small" style="margin:8px 0 0">Rebuildable action outputs under the cache dir — safe to wipe without losing deps. <span class="mono">jk cache storage</span></p>
+              <p class="dim small" style="margin:8px 0 0">Rebuildable action outputs under the cache dir</p>
             </template>
             <div v-else class="dim small">Cache tier loading…</div>
           </div>
@@ -596,6 +611,47 @@
         </dl>
         <div class="modal-foot">
           <span class="dim small">Live build activity streams over SSE. Run <code>jk build</code> in any workspace to see it here.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Blocking auth gate: missing/invalid token — no dismiss via scrim (docs/webclient.md). -->
+    <div v-if="authModal" class="modal-bg auth-modal-bg" role="presentation">
+      <div class="modal about auth-modal" role="alertdialog" aria-modal="true" aria-labelledby="auth-title" aria-describedby="auth-desc">
+        <div class="modal-head">
+          <jk-icon name="alert" class="auth-icon"></jk-icon>
+          <div>
+            <div id="auth-title" class="about-title">Authorization required</div>
+            <div class="about-sub">Engine token missing or invalid</div>
+          </div>
+        </div>
+        <div id="auth-desc" class="auth-body">
+          <p>
+            This dashboard needs a valid bearer token. Without it the page cannot load engine
+            data or run builds.
+          </p>
+          <ol class="auth-steps">
+            <li>Run <code>jk web</code> — opens a new authenticated browser tab</li>
+            <li>Or open the URL it prints (ends with <code>#t=…</code>)</li>
+            <li>Or paste that URL or token below</li>
+          </ol>
+          <label class="auth-paste">
+            <span>Token or dashboard URL</span>
+            <input
+              v-model="authTokenInput"
+              type="password"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="paste #t=… URL or bare token"
+              @keydown.enter.prevent="submitAuthToken()">
+          </label>
+          <p v-if="authError" class="error">{{ authError }}</p>
+        </div>
+        <div class="modal-foot auth-actions">
+          <button type="button" class="use-folder" :disabled="authBusy" @click="submitAuthToken()">
+            <jk-icon name="check"></jk-icon>
+            {{ authBusy ? 'Checking…' : 'Authorize' }}
+          </button>
         </div>
       </div>
     </div>

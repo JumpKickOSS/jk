@@ -7,12 +7,11 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.IdeWireModel;
 import cc.jumpkick.engine.protocol.ProjectInfo;
-import cc.jumpkick.plugin.build.Phase;
-import cc.jumpkick.run.PipelineListener;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.PipelineView;
-import cc.jumpkick.run.Step;
-import cc.jumpkick.run.StepStatus;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.BuildPlanView;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.runtime.ModuleOutcome;
 import cc.jumpkick.runtime.ModulePlan;
 import cc.jumpkick.runtime.WorkspaceBuildListener;
@@ -123,7 +122,7 @@ public class IdeEngineClient {
         var session = SessionContext.current();
         List<String> errors = new ArrayList<>();
         boolean success;
-        PipelineResult result = EngineClient.runSync(
+        BuildPlanResult result = EngineClient.runSync(
                 EnginePaths.current(),
                 new EngineClient.SyncRequest(
                         syncRoot,
@@ -169,11 +168,11 @@ public class IdeEngineClient {
                 }
 
                 @Override
-                public PipelineListener onModuleStart(ModulePlan module) {
+                public BuildPlanListener onModuleStart(ModulePlan module) {
                     progress.onModuleStart(module.coord(), module.dir());
-                    List<Step> steps = module.pipeline() == null
+                    List<Task> steps = module.plan() == null
                             ? List.of()
-                            : module.pipeline().steps();
+                            : module.plan().steps();
                     return progressListener(progress, steps);
                 }
 
@@ -195,7 +194,7 @@ public class IdeEngineClient {
         String coord =
                 info.coord() != null && !info.coord().isBlank() ? info.coord() : info.group() + ":" + info.name();
         progress.onModuleStart(coord, projectDir);
-        PipelineResult r = EngineClient.runSingleBuild(
+        BuildPlanResult r = EngineClient.runSingleBuild(
                 EnginePaths.current(),
                 new EngineClient.SingleBuildRequest(projectDir, cacheDir, jdksDir, 1, null, false, false, false, false),
                 steps -> progressListener(progress, steps),
@@ -217,7 +216,7 @@ public class IdeEngineClient {
         String coord = mod.getFileName() != null ? mod.getFileName().toString() : mod.toString();
         progress.onModuleStart(coord, mod);
         List<String> errors = new ArrayList<>();
-        PipelineResult r = EngineClient.runSingleBuild(
+        BuildPlanResult r = EngineClient.runSingleBuild(
                 EnginePaths.current(),
                 new EngineClient.SingleBuildRequest(mod, cacheDir, jdksDir, 1, null, false, false, false, false),
                 steps -> progressListener(progress, steps),
@@ -229,7 +228,7 @@ public class IdeEngineClient {
     }
 
     /**
-     * Run the test pipeline for a module BSP {@code buildTarget/test}). When
+     * Run the test plan for a module BSP {@code buildTarget/test}). When
      * {@code moduleDir} is null on a workspace root, cascades every module (mirrors {@link
      * #build(BuildListener)}). When null on a single project, tests that project. Uses the same
      * engine path as {@code jk test}.
@@ -291,7 +290,7 @@ public class IdeEngineClient {
         cc.jumpkick.run.TestSummary[] testOut = new cc.jumpkick.run.TestSummary[1];
         var session = SessionContext.current();
         var sel = selection != null ? selection : session.testSelection();
-        PipelineResult r = EngineClient.runTest(
+        BuildPlanResult r = EngineClient.runTest(
                 EnginePaths.current(),
                 new EngineClient.TestRequest(
                         mod,
@@ -328,21 +327,21 @@ public class IdeEngineClient {
         return projectDir;
     }
 
-    private static PipelineListener progressListener(ProgressListener progress, List<Step> steps) {
-        return new PipelineListener() {
+    private static BuildPlanListener progressListener(ProgressListener progress, List<Task> steps) {
+        return new BuildPlanListener() {
             @Override
-            public void pipelineStart(PipelineView view) {
+            public void planStart(BuildPlanView view) {
                 int n = steps == null ? 0 : steps.size();
                 progress.onPlan(n);
             }
 
             @Override
-            public void stepStart(String step, Phase phase, int ticks) {
-                progress.onStepStart(step, phase == null ? "" : phase.name());
+            public void stepStart(String step, String group, int ticks) {
+                progress.onStepStart(step, group == null ? "" : group);
             }
 
             @Override
-            public void progress(String step, int delta, PipelineView view) {
+            public void progress(String step, int delta, BuildPlanView view) {
                 long done = view == null ? delta : view.numerator();
                 long total = view == null ? 0 : view.denominator();
                 progress.onStepProgress(step, done, total);
@@ -354,8 +353,8 @@ public class IdeEngineClient {
             }
 
             @Override
-            public void stepFinish(String step, Phase phase, StepStatus status, Duration duration) {
-                boolean ok = status == StepStatus.SUCCESS || status == StepStatus.SKIPPED;
+            public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
+                boolean ok = status == TaskStatus.SUCCESS || status == TaskStatus.SKIPPED;
                 progress.onStepFinish(step, ok, status == null ? "" : status.name());
             }
         };

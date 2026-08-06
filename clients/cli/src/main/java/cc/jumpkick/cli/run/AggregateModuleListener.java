@@ -3,12 +3,11 @@ package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.tui.CommandManager;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.plugin.build.Phase;
-import cc.jumpkick.run.PipelineListener;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.PipelineView;
-import cc.jumpkick.run.Step;
-import cc.jumpkick.run.StepStatus;
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.BuildPlanView;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskStatus;
 import java.time.Duration;
 import java.util.List;
 
@@ -17,12 +16,12 @@ import java.util.List;
  * CommandManager}. Aggregate bar math is engine-owned — this listener does not update
  * {@link LiveProgress} or workspace percent.
  */
-public final class AggregateModuleListener implements PipelineListener {
+public final class AggregateModuleListener implements BuildPlanListener {
 
     private final AggregateContext agg;
     private final CommandManager cm;
     private final String module;
-    private final List<Step> steps;
+    private final List<Task> steps;
 
     /** Parallel-build output buffer; caller flushes when the module finishes. */
     private List<String> outBuffer;
@@ -32,14 +31,14 @@ public final class AggregateModuleListener implements PipelineListener {
         this.outBuffer = buffer;
     }
 
-    public AggregateModuleListener(AggregateContext agg, String module, List<Step> steps) {
+    public AggregateModuleListener(AggregateContext agg, String module, List<Task> steps) {
         this(agg, module, steps, 0);
     }
 
     /**
      * {@code slice} is ignored (engine owns weights); kept for call-site compatibility.
      */
-    public AggregateModuleListener(AggregateContext agg, String module, List<Step> steps, long slice) {
+    public AggregateModuleListener(AggregateContext agg, String module, List<Task> steps, long slice) {
         this.agg = agg;
         this.cm = agg.view();
         this.module = module;
@@ -47,17 +46,17 @@ public final class AggregateModuleListener implements PipelineListener {
     }
 
     @Override
-    public void pipelineStart(PipelineView view) {
+    public void planStart(BuildPlanView view) {
         cm.target(module);
-        for (Step p : steps) {
+        for (Task p : steps) {
             String display = p.label() != null && !p.label().isEmpty() ? p.label() : p.name();
-            cm.addStepLabeled(module, p.name(), display);
+            cm.addTaskLabeled(module, p.name(), display);
         }
     }
 
     @Override
-    public void stepStart(String step, Phase phase, int ticks) {
-        cm.stepRunning(module, step, phase == null ? "" : phase.wireName());
+    public void stepStart(String step, String group, int ticks) {
+        cm.stepRunning(module, step, group == null ? "" : group);
     }
 
     @Override
@@ -145,26 +144,26 @@ public final class AggregateModuleListener implements PipelineListener {
     }
 
     @Override
-    public void progress(String step, int delta, PipelineView view) {
+    public void progress(String step, int delta, BuildPlanView view) {
         // Aggregate % comes from engine workspace-progress only.
     }
 
     @Override
-    public void tickUpdate(String step, int delta, PipelineView view) {
+    public void tickUpdate(String step, int delta, BuildPlanView view) {
         // Aggregate % comes from engine workspace-progress only.
     }
 
     @Override
-    public void stepFinish(String step, Phase phase, StepStatus status, Duration duration) {
-        // SKIPPED = cache hit / up-to-date — still a green terminal (matches Pipeline.isOk).
+    public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
+        // SKIPPED = cache hit / up-to-date — still a green terminal (matches BuildPlan.isOk).
         // Treating it as failure painted the live tree red with "Failed" while the build
         // succeeded.
-        boolean ok = status == StepStatus.SUCCESS || status == StepStatus.SKIPPED;
-        cm.stepDone(module, step, ok, phase == null ? "" : phase.wireName());
+        boolean ok = status == TaskStatus.SUCCESS || status == TaskStatus.SKIPPED;
+        cm.stepDone(module, step, ok, group == null ? "" : group);
     }
 
     @Override
-    public void pipelineFinish(PipelineResult result) {
+    public void planFinish(BuildPlanResult result) {
         if (!result.success()) {
             agg.notifyErrors(result.errors());
         }
