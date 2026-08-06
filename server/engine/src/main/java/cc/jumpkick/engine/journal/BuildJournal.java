@@ -16,6 +16,7 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -306,17 +307,36 @@ public final class BuildJournal {
                 sb.append(key).append(".wall-ms = ").append(m.millis()).append('\n');
             }
         }
+        // Phase walls are summed per run — one key per phase. Per-task emission would fold as a
+        // MEAN in MetricsHarvest (duplicate keys), deflating the phase dimension the taxonomy
+        // exists to calibrate (4×2s compile tasks must read 8s, not 2s).
+        Map<String, Long> phaseTotals = new LinkedHashMap<>();
+        Map<String, Map<String, Long>> modulePhaseTotals = new LinkedHashMap<>();
         if (finished.steps() != null) {
             for (BuildRecord.Task s : finished.steps()) {
-                appendStepMetrics(sb, s, finished.dir());
+                appendStepMetrics(sb, s, finished.dir(), phaseTotals, modulePhaseTotals);
             }
         }
         if (finished.modules() != null) {
             for (BuildRecord.Module m : finished.modules()) {
                 if (m == null || m.steps() == null) continue;
                 for (BuildRecord.Task s : m.steps()) {
-                    appendStepMetrics(sb, s, m.dir());
+                    appendStepMetrics(sb, s, m.dir(), phaseTotals, modulePhaseTotals);
                 }
+            }
+        }
+        for (Map.Entry<String, Long> e : phaseTotals.entrySet()) {
+            sb.append("phase.").append(e.getKey()).append(".wall-ms = ").append(e.getValue()).append('\n');
+        }
+        for (Map.Entry<String, Map<String, Long>> me : modulePhaseTotals.entrySet()) {
+            for (Map.Entry<String, Long> e : me.getValue().entrySet()) {
+                sb.append("module.")
+                        .append(me.getKey())
+                        .append(".phase.")
+                        .append(e.getKey())
+                        .append(".wall-ms = ")
+                        .append(e.getValue())
+                        .append('\n');
             }
         }
         // Test-class walls buffered during run-tests (FQCN → ms); train harvest without recounting methods.
@@ -348,13 +368,18 @@ public final class BuildJournal {
         }
     }
 
-    private static void appendStepMetrics(StringBuilder sb, BuildRecord.Task s, String moduleDir) {
+    private static void appendStepMetrics(
+            StringBuilder sb,
+            BuildRecord.Task s,
+            String moduleDir,
+            Map<String, Long> phaseTotals,
+            Map<String, Map<String, Long>> modulePhaseTotals) {
         if (s == null || s.millis() <= 0) return;
         if (s.status() == null || !"SUCCESS".equalsIgnoreCase(s.status())) return;
         String task = sanitize(s.name());
         String phase = sanitize(cc.jumpkick.runtime.TaskPhases.of(s.name()));
         sb.append("task.").append(task).append(".wall-ms = ").append(s.millis()).append('\n');
-        sb.append("phase.").append(phase).append(".wall-ms = ").append(s.millis()).append('\n');
+        phaseTotals.merge(phase, s.millis(), Long::sum);
         if (moduleDir != null && !moduleDir.isBlank()) {
             String mod = sanitize(moduleDir);
             sb.append("module.")
@@ -364,13 +389,9 @@ public final class BuildJournal {
                     .append(".wall-ms = ")
                     .append(s.millis())
                     .append('\n');
-            sb.append("module.")
-                    .append(mod)
-                    .append(".phase.")
-                    .append(phase)
-                    .append(".wall-ms = ")
-                    .append(s.millis())
-                    .append('\n');
+            modulePhaseTotals
+                    .computeIfAbsent(mod, k -> new LinkedHashMap<>())
+                    .merge(phase, s.millis(), Long::sum);
         }
     }
 

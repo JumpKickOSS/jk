@@ -43,16 +43,20 @@ public final class TaskPhases {
                     "write-stamp-kotlin",
                     "write-stamp-groovy",
                     "build-logic-after-compile",
-                    "build-logic-before-package",
                     "ksp",
                     "protoc" -> COMPILE;
             case "compile-test", "run-tests" -> TEST;
-            case "package-jar", "package-assembly", "embed-sha" -> PACKAGE;
+            // build-logic-before-package files under PACKAGE to match its wire group ("package") —
+            // the dashboard and the metrics dimension must agree on one phase per task.
+            case "package-jar", "package-assembly", "embed-sha", "build-logic-before-package" -> PACKAGE;
             case "native-image", "native-shared" -> NATIVE;
             case "write-image", "image-plan" -> IMAGE;
             default -> {
                 if (t.startsWith("compile")) yield COMPILE;
-                if (t.startsWith("package") || t.startsWith("write-stamp")) yield PACKAGE;
+                // Stamps are compile-freshness companions — a future write-stamp-<lang> must
+                // calibrate with its explicit siblings above, not under PACKAGE.
+                if (t.startsWith("write-stamp")) yield COMPILE;
+                if (t.startsWith("package")) yield PACKAGE;
                 if (t.startsWith("native")) yield NATIVE;
                 if (t.startsWith("image") || t.startsWith("write-image")) yield IMAGE;
                 if (t.contains("test")) yield TEST;

@@ -108,14 +108,16 @@ public final class TestEffort {
             if (own.isPresent() && own.getAsDouble() > 0) {
                 return own.getAsDouble() * EffortWeights.MS_PER_WEIGHT;
             }
-            OptionalDouble hostAbs = timings.hostAvgTestMethodMs();
-            if (hostAbs.isPresent()) return hostAbs.getAsDouble();
+            // Project median before host absolute: sibling modules share frameworks/fixtures, a
+            // strictly closer prior than a host-wide average that may come from other projects.
             if (projectDirs != null && !projectDirs.isEmpty()) {
                 var proj = timings.medianPerUnit("run-tests", projectDirs);
                 if (proj.isPresent() && proj.getAsDouble() > 0) {
                     return proj.getAsDouble() * EffortWeights.MS_PER_WEIGHT;
                 }
             }
+            OptionalDouble hostAbs = timings.hostAvgTestMethodMs();
+            if (hostAbs.isPresent()) return hostAbs.getAsDouble();
             var hostRate = timings.medianPerUnit("run-tests");
             if (hostRate.isPresent() && hostRate.getAsDouble() > 0) {
                 return hostRate.getAsDouble() * EffortWeights.MS_PER_WEIGHT;

@@ -25,4 +25,20 @@ class TaskPhasesTest {
         assertThat(TaskPhases.of("")).isEqualTo(TaskPhases.OTHER);
         assertThat(TaskPhases.of(null)).isEqualTo(TaskPhases.OTHER);
     }
+
+    /** Regression (JK-1587): stamps calibrate with their compiles — explicit AND fallback. */
+    @Test
+    void write_stamps_are_compile_phase_in_both_arms() {
+        assertThat(TaskPhases.of("write-stamp")).isEqualTo(TaskPhases.COMPILE);
+        assertThat(TaskPhases.of("write-stamp-kotlin")).isEqualTo(TaskPhases.COMPILE);
+        // Fallback arm: a future language's stamp must not drift to PACKAGE.
+        assertThat(TaskPhases.of("write-stamp-scala")).isEqualTo(TaskPhases.COMPILE);
+    }
+
+    /** Regression (JK-1587): metrics phase agrees with the task's wire group ("package"). */
+    @Test
+    void build_logic_before_package_files_under_package() {
+        assertThat(TaskPhases.of("build-logic-before-package")).isEqualTo(TaskPhases.PACKAGE);
+        assertThat(TaskPhases.of("build-logic-after-compile")).isEqualTo(TaskPhases.COMPILE);
+    }
 }

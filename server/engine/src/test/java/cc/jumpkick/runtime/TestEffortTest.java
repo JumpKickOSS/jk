@@ -34,4 +34,30 @@ class TestEffortTest {
         long ms = TestEffort.wallMillis("/m", Map.of(), List.of(), 0, null, List.of(), null, 1);
         assertThat(ms).isPositive();
     }
+
+    /**
+     * Regression (JK-1587): the documented specificity ladder is module residual → project
+     * median → host absolute. Sibling-module rates must win over a host-wide average that may
+     * have been trained by unrelated projects.
+     */
+    @Test
+    void project_median_beats_host_absolute(@org.junit.jupiter.api.io.TempDir java.nio.file.Path tmp) {
+        StepTimings.record(
+                tmp,
+                List.of(
+                        // Sibling modules trained a run-tests rate (units are residual weight;
+                        // methodMs converts × MS_PER_WEIGHT).
+                        new StepTimings.Sample("/ws/a", "run-tests", 2.0),
+                        new StepTimings.Sample("/ws/b", "run-tests", 4.0),
+                        // Host absolute prior says something very different.
+                        new StepTimings.Sample(StepTimings.HOST_METHOD_MS_DIR, "test-method-ms", 999.0)),
+                1.0,
+                System.currentTimeMillis());
+        StepTimings timings = StepTimings.load(tmp);
+        assertThat(timings.hostAvgTestMethodMs()).isPresent();
+
+        double ms = TestEffort.methodMs("/ws/untrained", timings, List.of("/ws/a", "/ws/b"));
+        // Median(2.0, 4.0) = 3.0 × MS_PER_WEIGHT — not the 999 host absolute.
+        assertThat(ms).isEqualTo(3.0 * EffortWeights.MS_PER_WEIGHT);
+    }
 }
