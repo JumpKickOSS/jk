@@ -5,12 +5,14 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.WorkspaceProduct;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -18,9 +20,10 @@ import java.util.Queue;
 import java.util.Set;
 
 /**
- * Resolves workspace-sibling dependency jars for one module's build. Workspace coords are not in
- * the lockfile; matching siblings contribute their main jar under the shared {@link BuildLayout}
- * {@code target/}.
+ * Resolves workspace-sibling dependency jars (and test products) for one module's build. Workspace
+ * coords are not in the lockfile; matching siblings contribute their main jar under the shared
+ * {@link BuildLayout} {@code target/}, and optionally their test classes when an edge selects
+ * {@link WorkspaceProduct#TESTS} (Mill {@code testModuleDeps} / Maven test-jar).
  */
 public final class WorkspaceClasspath {
 
@@ -59,6 +62,8 @@ public final class WorkspaceClasspath {
         Path self = projectDir.toAbsolutePath().normalize();
         Map<String, Path> siblingDirByModule = new HashMap<>();
         Map<String, Path> siblingJarByModule = new HashMap<>();
+        Map<String, Path> siblingTestClassesByModule = new HashMap<>();
+        Map<String, Path> siblingTestResourcesByModule = new HashMap<>();
         Map<String, JkBuild> siblingManifestByCoord = new HashMap<>();
         Map<String, String> siblingCoordByName = new HashMap<>(); // name → full coord
         List<Path> unitDirs = new ArrayList<>();
@@ -77,8 +82,11 @@ public final class WorkspaceClasspath {
                 continue;
             }
             String coord = unit.project().group() + ":" + unit.project().name();
+            BuildLayout layout = BuildLayout.of(unitDir, unit);
             siblingDirByModule.put(coord, unitDir);
-            siblingJarByModule.put(coord, BuildLayout.of(unitDir, unit).mainJar());
+            siblingJarByModule.put(coord, layout.mainJar());
+            siblingTestClassesByModule.put(coord, layout.testClassesDir());
+            siblingTestResourcesByModule.put(coord, layout.testResourcesDir());
             siblingManifestByCoord.put(coord, unit);
             siblingCoordByName.put(unit.project().name(), coord);
         }
@@ -87,12 +95,19 @@ public final class WorkspaceClasspath {
         // seed the queue; each discovered sibling's own workspace deps are then
         // enqueued so that e.g. io→core→model are all on the classpath even
         // though the module's jk.toml only declares the direct dep (core).
+        // Modules requested with product=tests also contribute their test
+        // classes (direct edges only — tests product does not ride transitively).
         LinkedHashSet<String> visited = new LinkedHashSet<>();
+        Set<String> testsProducts = new HashSet<>();
         Queue<String> queue = new ArrayDeque<>();
         for (Scope scope : scopes) {
             for (Dependency dep : project.dependencies().of(scope)) {
                 String module = resolveWorkspaceRef(dep.module(), siblingCoordByName);
-                if (siblingJarByModule.containsKey(module) && visited.add(module)) {
+                if (!siblingJarByModule.containsKey(module)) continue;
+                if (dep.product() == WorkspaceProduct.TESTS) {
+                    testsProducts.add(module);
+                }
+                if (visited.add(module)) {
                     queue.add(module);
                 }
             }
@@ -104,6 +119,7 @@ public final class WorkspaceClasspath {
             // MAIN and EXPORT propagate transitively: a sibling's exported deps
             // (api semantics) ride along to anything that depends on it, and MAIN
             // deps stay visible down the workspace chain (io→core→model).
+            // Tests product never propagates transitively.
             for (Scope scope : Set.of(Scope.EXPORT, Scope.MAIN)) {
                 for (Dependency dep : sibBuild.dependencies().of(scope)) {
                     String depModule = resolveWorkspaceRef(dep.module(), siblingCoordByName);
@@ -118,6 +134,7 @@ public final class WorkspaceClasspath {
         List<Path> closureJars = new ArrayList<>();
         List<String> missing = new ArrayList<>();
         List<Path> siblingLockfiles = new ArrayList<>();
+        LinkedHashSet<Path> seenPaths = new LinkedHashSet<>();
         for (String module : visited) {
             Path siblingJar = siblingJarByModule.get(module);
             if (siblingJar == null) continue;
@@ -125,11 +142,31 @@ public final class WorkspaceClasspath {
             // an IDE module graph depends on declared edges, not on compiled
             // artifacts (IntelliJ compiles the modules itself).
             closureJars.add(siblingJar);
-            if (Files.exists(siblingJar)) {
-                jars.add(siblingJar);
-            } else {
-                missing.add(module + " (expected at " + siblingJar + ")");
+            addIfPresent(jars, seenPaths, siblingJar, missing, module + " (expected at " + siblingJar + ")");
+
+            if (testsProducts.contains(module)) {
+                // Main jar is always required for a tests product (test classes
+                // reference main). Test classes dir is the monorepo stand-in for
+                // a Maven test-jar; test resources ride along when present.
+                Path testClasses = siblingTestClassesByModule.get(module);
+                if (testClasses != null) {
+                    closureJars.add(testClasses);
+                    addIfPresent(
+                            jars,
+                            seenPaths,
+                            testClasses,
+                            missing,
+                            module + " tests product (expected test classes at " + testClasses + ")");
+                }
+                Path testResources = siblingTestResourcesByModule.get(module);
+                if (testResources != null && Files.isDirectory(testResources)) {
+                    if (seenPaths.add(testResources)) {
+                        jars.add(testResources);
+                        closureJars.add(testResources);
+                    }
+                }
             }
+
             // Collect the sibling's lockfile so the caller can include its
             // external transitive deps on the compile classpath (e.g. tomlj
             // declared in jk-core is needed by jk-io via the transitive chain).
@@ -140,6 +177,17 @@ public final class WorkspaceClasspath {
             }
         }
         return new Result(jars, missing, siblingLockfiles, closureJars, List.copyOf(visited));
+    }
+
+    private static void addIfPresent(
+            List<Path> jars, Set<Path> seen, Path path, List<String> missing, String missingLabel) {
+        if (path == null) return;
+        if (!seen.add(path)) return;
+        if (Files.exists(path)) {
+            jars.add(path);
+        } else {
+            missing.add(missingLabel);
+        }
     }
 
     /** Resolve a {@code workspace:<name>} dep reference to its full {@code group:name} coord. */

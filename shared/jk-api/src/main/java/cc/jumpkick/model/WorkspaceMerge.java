@@ -239,14 +239,17 @@ public final class WorkspaceMerge {
         if (sibling != null) {
             JkBuild.Project p = sibling.project();
             String module = p.group() + ":" + p.name();
-            return Dependency.of(name, module, VersionSelector.parse("=" + p.version()));
+            // Preserve product so a tests-product edge stays distinguishable until classpath
+            // resolution (WorkspaceClasspath keys off product). For lock, siblings are dropped.
+            return Dependency.of(name, module, VersionSelector.parse("=" + p.version()))
+                    .withProduct(d.product());
         }
         Workspace.WorkspaceDependency ws = wsDeps.get(name);
         if (ws != null) {
             if (ws.gitSource() != null) {
-                return Dependency.git(name, ws.module(), ws.gitSource());
+                return Dependency.git(name, ws.module(), ws.gitSource()).withProduct(d.product());
             }
-            return Dependency.of(name, ws.module(), ws.version());
+            return Dependency.of(name, ws.module(), ws.version()).withProduct(d.product());
         }
         throw new IllegalStateException("no workspace dependency or sibling named `" + name + "`");
     }

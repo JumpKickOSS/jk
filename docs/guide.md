@@ -1078,7 +1078,16 @@ name = "api"
 [dependencies]
 jackson-databind.workspace = true   # shared external
 widget-core.workspace = true        # sibling module (matches [project].name)
+
+# Sibling *test* output (Mill testModuleDeps / Maven test-jar) — test scope only:
+[test-dependencies]
+widget-core = { workspace = true, product = "tests" }
 ```
+
+`product = "tests"` puts the sibling’s `target/.../classes/test` (and test resources) on this
+module’s test classpath. Use it for shared test helpers that live under another module’s
+`src/test` (e.g. Netty’s `ChannelHandlerMetadataUtil` in `transport`). Illegal outside
+`[test-dependencies]` / `[test-dev-dependencies]`. Default product is `main` (omit the key).
 
 - **One `jk-lock.toml` at the workspace root** (never per-module; members redirect to the root lock)
 - Module build output lands under **`target/<module-rel>/`** at the workspace root (not `module/target/`)

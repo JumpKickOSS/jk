@@ -91,6 +91,51 @@ class BuildGraphTest {
     }
 
     @Test
+    void test_only_product_tests_edge_orders_sibling_before_consumer(@TempDir Path tmp) throws Exception {
+        // Mill testModuleDeps: app has no main dep on lib, only product=tests under test-deps.
+        // ModuleOrder must still schedule lib before app so lib's test classes exist.
+        Files.writeString(tmp.resolve("jk.toml"), """
+                [project]
+                group = "com.example"
+                name  = "root"
+                version = "1.0.0"
+                jdk = 25
+                java = 25
+
+                [workspace]
+                modules = ["lib", "app"]
+                """);
+        Files.createDirectories(tmp.resolve("lib"));
+        Files.writeString(tmp.resolve("lib/jk.toml"), """
+                [project]
+                group = "com.example"
+                name  = "lib"
+                version = "1.0.0"
+                jdk = 25
+                java = 25
+                """);
+        Files.createDirectories(tmp.resolve("app"));
+        Files.writeString(tmp.resolve("app/jk.toml"), """
+                [project]
+                group = "com.example"
+                name  = "app"
+                version = "1.0.0"
+                jdk = 25
+                java = 25
+
+                [test-dependencies]
+                lib = { workspace = true, product = "tests" }
+                """);
+
+        BuildGraph.Result r = resolve(tmp);
+
+        assertThat(r.errors()).isEmpty();
+        List<String> order = coords(r);
+        assertThat(order).containsExactlyInAnyOrder("com.example:lib", "com.example:app");
+        assertThat(order.indexOf("com.example:lib")).isLessThan(order.indexOf("com.example:app"));
+    }
+
+    @Test
     void coordinator_workspace_root_without_sources_is_not_a_unit(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """
                 [project]

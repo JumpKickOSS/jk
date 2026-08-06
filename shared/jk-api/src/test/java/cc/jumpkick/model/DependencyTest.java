@@ -34,4 +34,19 @@ class DependencyTest {
         assertThat(d.isPath()).isFalse();
         assertThat(d.pathSource()).isNull();
     }
+
+    @Test
+    void workspace_dep_defaults_to_main_product() {
+        Dependency d = Dependency.workspace("transport");
+        assertThat(d.isWorkspace()).isTrue();
+        assertThat(d.product()).isEqualTo(WorkspaceProduct.MAIN);
+        assertThat(d.isTestsProduct()).isFalse();
+    }
+
+    @Test
+    void workspace_dep_can_select_tests_product() {
+        Dependency d = Dependency.workspace("transport", WorkspaceProduct.TESTS);
+        assertThat(d.isTestsProduct()).isTrue();
+        assertThat(d.product()).isEqualTo(WorkspaceProduct.TESTS);
+    }
 }

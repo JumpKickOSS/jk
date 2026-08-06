@@ -10,6 +10,8 @@ import java.util.Objects;
  * {@link #isPath()}, {@link #isFile()}, {@link #isWorkspace()} — never by sniffing {@code module}.
  * {@code pinned} is derived (exact / git / path / file → pinned; floating selectors → not).
  * Cross-package feature selection: {@link #requestedFeatures()} / {@link #defaultFeatures()}.
+ * Workspace edges may select a {@link #product()} ({@link WorkspaceProduct#MAIN} default, or
+ * {@link WorkspaceProduct#TESTS} for Mill-style test-module deps / Maven test-jar).
  */
 public record Dependency(
         String library,
@@ -23,7 +25,9 @@ public record Dependency(
         /** Feature names requested of a path/workspace/git library's {@code [features]} table. */
         List<String> requestedFeatures,
         /** When true, the library's {@code features.default} list is included. */
-        boolean defaultFeatures) {
+        boolean defaultFeatures,
+        /** Workspace product selection; always {@link WorkspaceProduct#MAIN} for non-workspace deps. */
+        WorkspaceProduct product) {
 
     /** Synthetic {@code module} for an unresolved workspace sibling; rewritten by {@code WorkspaceMerge}. */
     public static final String WORKSPACE_PREFIX = "workspace:";
@@ -47,9 +51,10 @@ public record Dependency(
         }
         pinned = derivePinned(version, gitSource, sha256, pathSource);
         requestedFeatures = requestedFeatures == null ? List.of() : List.copyOf(requestedFeatures);
+        product = product == null ? WorkspaceProduct.MAIN : product;
     }
 
-    /** Defaults pathSource null, no feature selection, default-features true. */
+    /** Defaults pathSource null, no feature selection, default-features true, product main. */
     public Dependency(
             String library,
             String module,
@@ -58,10 +63,10 @@ public record Dependency(
             String sha256,
             boolean pinned,
             boolean optional) {
-        this(library, module, version, gitSource, sha256, pinned, optional, null, List.of(), true);
+        this(library, module, version, gitSource, sha256, pinned, optional, null, List.of(), true, WorkspaceProduct.MAIN);
     }
 
-    /** Defaults optional false, pathSource null, no feature selection. */
+    /** Defaults optional false, pathSource null, no feature selection, product main. */
     public Dependency(
             String library,
             String module,
@@ -69,10 +74,10 @@ public record Dependency(
             GitSource gitSource,
             String sha256,
             boolean pinned) {
-        this(library, module, version, gitSource, sha256, pinned, false, null, List.of(), true);
+        this(library, module, version, gitSource, sha256, pinned, false, null, List.of(), true, WorkspaceProduct.MAIN);
     }
 
-    /** Defaults feature selection empty / default-features true. */
+    /** Defaults feature selection empty / default-features true, product main. */
     public Dependency(
             String library,
             String module,
@@ -82,7 +87,7 @@ public record Dependency(
             boolean pinned,
             boolean optional,
             PathSource pathSource) {
-        this(library, module, version, gitSource, sha256, pinned, optional, pathSource, List.of(), true);
+        this(library, module, version, gitSource, sha256, pinned, optional, pathSource, List.of(), true, WorkspaceProduct.MAIN);
     }
 
     public Dependency withOptional(boolean optional) {
@@ -96,7 +101,8 @@ public record Dependency(
                 optional,
                 pathSource,
                 requestedFeatures,
-                defaultFeatures);
+                defaultFeatures,
+                product);
     }
 
     public Dependency withFeatures(List<String> features, boolean defaultFeatures) {
@@ -110,7 +116,23 @@ public record Dependency(
                 optional,
                 pathSource,
                 features == null ? List.of() : features,
-                defaultFeatures);
+                defaultFeatures,
+                product);
+    }
+
+    public Dependency withProduct(WorkspaceProduct product) {
+        return new Dependency(
+                library,
+                module,
+                version,
+                gitSource,
+                sha256,
+                pinned,
+                optional,
+                pathSource,
+                requestedFeatures,
+                defaultFeatures,
+                product == null ? WorkspaceProduct.MAIN : product);
     }
 
     /**
@@ -120,6 +142,11 @@ public record Dependency(
      */
     public boolean hasFeatureSelection() {
         return !requestedFeatures.isEmpty() || !defaultFeatures;
+    }
+
+    /** True when this edge requests a sibling's test product (Mill {@code *.test} / Maven test-jar). */
+    public boolean isTestsProduct() {
+        return product == WorkspaceProduct.TESTS;
     }
 
     public Dependency(String module, VersionSelector version) {
@@ -150,6 +177,10 @@ public record Dependency(
 
     public static Dependency workspace(String name) {
         return new Dependency(name, workspaceRef(name), new VersionSelector.Latest("workspace"), null, null, false);
+    }
+
+    public static Dependency workspace(String name, WorkspaceProduct product) {
+        return workspace(name).withProduct(product);
     }
 
     public static Dependency file(String library, String module, String version, String sha256) {

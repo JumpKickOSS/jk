@@ -21,6 +21,7 @@ import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.Workspace;
 import cc.jumpkick.model.Workspace.WorkspaceDependency;
+import cc.jumpkick.model.WorkspaceProduct;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
@@ -945,6 +946,7 @@ public final class JkBuildParser {
         boolean optional = Boolean.TRUE.equals(entry.getBoolean("optional"));
         Dependency dep =
                 parseDepEntryForm(name, entry, scope, workspace, catalog).withOptional(optional);
+        dep = applyWorkspaceProduct(dep, entry, scope, name);
         // Cross-package features: only when the consumer set `features` and/or
         // `default-features` — absent keys leave prior resolve behavior unchanged.
         boolean hasFeaturesKey = entry.contains("features");
@@ -955,6 +957,36 @@ public final class JkBuildParser {
                 : List.of();
         boolean defaultFeatures = !hasDefaultFeaturesKey || !Boolean.FALSE.equals(entry.getBoolean("default-features"));
         return dep.withFeatures(features, defaultFeatures);
+    }
+
+    /**
+     * {@code product = "main"|"tests"} on a workspace edge (Mill {@code testModuleDeps} / Maven
+     * test-jar). Tests product is only legal in test scopes so helpers never leak into main jars.
+     */
+    private static Dependency applyWorkspaceProduct(Dependency dep, TomlTable entry, Scope scope, String name) {
+        if (!entry.contains("product")) return dep;
+        String displayPath = scope.tomlSection() + "." + name;
+        if (!dep.isWorkspace()) {
+            throw new JkBuildParseException(
+                    displayPath + ".product is only valid with `workspace = true`");
+        }
+        String raw = entry.getString("product");
+        WorkspaceProduct product;
+        try {
+            product = WorkspaceProduct.parse(raw);
+        } catch (IllegalArgumentException e) {
+            throw new JkBuildParseException(displayPath + ".product: " + e.getMessage());
+        }
+        if (product == WorkspaceProduct.TESTS
+                && scope != Scope.TEST
+                && scope != Scope.TEST_DEV) {
+            throw new JkBuildParseException(displayPath
+                    + ".product = \"tests\" is only legal under [test-dependencies] or"
+                    + " [test-dev-dependencies] (got ["
+                    + scope.tomlSection()
+                    + "])");
+        }
+        return dep.withProduct(product);
     }
 
     private static Dependency parseDepEntryForm(
@@ -999,6 +1031,7 @@ public final class JkBuildParser {
                 throw new JkBuildParseException(
                         displayPath + " with `workspace = true` must not set `group` or `name`");
             }
+            // product is applied in parseDepEntry after this form returns.
             return resolveWorkspaceDep(name, displayPath, workspace);
         }
 

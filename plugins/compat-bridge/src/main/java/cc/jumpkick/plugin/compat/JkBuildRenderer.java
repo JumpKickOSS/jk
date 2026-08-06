@@ -8,6 +8,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.model.WorkspaceProduct;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -193,7 +194,14 @@ public final class JkBuildRenderer {
     /** One dependency line: workspace flag, git table, or versioned table. */
     private static String renderEntry(Dependency d) {
         if (d.isWorkspace()) {
-            return safeKey(d.library()) + ".workspace = true";
+            // Shorthand only for the default main product; product=tests needs a table form.
+            if (d.product() == WorkspaceProduct.MAIN) {
+                return safeKey(d.library()) + ".workspace = true";
+            }
+            return safeKey(d.library())
+                    + " = { workspace = true, product = "
+                    + quote(d.product().toml())
+                    + " }";
         }
         StringBuilder sb = new StringBuilder();
         sb.append(safeKey(d.library())).append(" = { ");

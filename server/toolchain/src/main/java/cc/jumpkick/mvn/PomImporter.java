@@ -13,6 +13,7 @@ import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.Workspace;
+import cc.jumpkick.model.WorkspaceProduct;
 import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.PomParseException;
 import cc.jumpkick.repo.PomParser;
@@ -23,6 +24,7 @@ import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -160,7 +162,94 @@ public final class PomImporter {
                 }
             }
         }
-        return new WorkspaceImportResult(rootJkBuild, moduleBuilds, report.build());
+        // Rewrite inter-module Maven deps to workspace edges (and test-jar → product=tests).
+        Map<String, String> siblingByGa = siblingGaIndex(rootJkBuild, moduleBuilds.values());
+        Map<String, JkBuild> rewritten = new LinkedHashMap<>();
+        for (var e : moduleBuilds.entrySet()) {
+            rewritten.put(e.getKey(), rewriteSiblingDeps(e.getValue(), siblingByGa, report, e.getKey()));
+        }
+        return new WorkspaceImportResult(rootJkBuild, rewritten, report.build());
+    }
+
+    /**
+     * Map {@code group:artifact} → sibling {@link JkBuild.Project#name()} for every unit in the
+     * workspace (root + members) so inter-module deps become {@code workspace = true}.
+     */
+    private static Map<String, String> siblingGaIndex(JkBuild root, Collection<JkBuild> modules) {
+        Map<String, String> ga = new LinkedHashMap<>();
+        ga.put(root.project().group() + ":" + root.project().name(), root.project().name());
+        for (JkBuild m : modules) {
+            ga.put(m.project().group() + ":" + m.project().name(), m.project().name());
+        }
+        return ga;
+    }
+
+    /**
+     * Convert deps whose GA matches a workspace sibling into workspace edges. Maven
+     * {@code <type>test-jar</type>} becomes {@code product = "tests"} (Mill testModuleDeps).
+     */
+    private static JkBuild rewriteSiblingDeps(
+            JkBuild module, Map<String, String> siblingByGa, ImportReport.Builder report, String modulePath) {
+        Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        boolean changed = false;
+        for (Scope scope : Scope.values()) {
+            List<Dependency> in = module.dependencies().of(scope);
+            if (in.isEmpty()) continue;
+            List<Dependency> out = new ArrayList<>(in.size());
+            for (Dependency d : in) {
+                String siblingName = siblingByGa.get(d.module());
+                if (siblingName == null) {
+                    if (d.isTestsProduct()) {
+                        report.warning("["
+                                + modulePath
+                                + "] external test-jar "
+                                + d.module()
+                                + " — workspace product=tests only applies to sibling modules;"
+                                + " external test-jar classifier support is a later slice");
+                    }
+                    out.add(d.withProduct(WorkspaceProduct.MAIN));
+                    continue;
+                }
+                changed = true;
+                // Library handle matches the sibling project name so `{ workspace = true }` resolves.
+                Dependency ws = Dependency.workspace(siblingName);
+                // test-jar type is carried only until rewrite; we detect it via a side channel —
+                // toDependency already dropped type. Re-detect from library suffix isn't reliable.
+                // Import marks tests product via mapDependencies → toDependency when type=test-jar.
+                if (d.isTestsProduct()) {
+                    if (scope != Scope.TEST && scope != Scope.TEST_DEV) {
+                        report.warning("["
+                                + modulePath
+                                + "] sibling test-jar dep "
+                                + d.module()
+                                + " is in scope "
+                                + scope.canonical()
+                                + "; emitting product=tests under [test-dependencies] semantics");
+                    }
+                    ws = ws.withProduct(WorkspaceProduct.TESTS);
+                }
+                out.add(ws);
+            }
+            byScope.put(scope, out);
+        }
+        if (!changed) return module;
+        JkBuild.Builder out = JkBuild.builder(module.project())
+                .dependencies(new JkBuild.Dependencies(byScope))
+                .repositories(module.repositories())
+                .profiles(module.profiles())
+                .features(module.features())
+                .workspace(module.workspace())
+                .manifest(module.manifest())
+                .plugins(module.plugins())
+                .application(module.application().orElse(null))
+                .nativeConfig(module.nativeConfig().orElse(null))
+                .build(module.build())
+                .format(module.format())
+                .variants(module.variants());
+        for (var config : module.pluginConfigs().values()) {
+            out.pluginConfig(config);
+        }
+        return out.build();
     }
 
     private static List<String> readModules(Document doc) {
@@ -337,7 +426,10 @@ public final class PomImporter {
                         + " — jk has no `<optional>`; emitted as a normal dep."
                         + " Use a feature flag if it should be opt-in.");
             }
-            if (dep.classifier() != null && !dep.classifier().isBlank()) {
+            boolean testJar = isTestJar(dep);
+            if (dep.classifier() != null
+                    && !dep.classifier().isBlank()
+                    && !(testJar && "tests".equalsIgnoreCase(dep.classifier()))) {
                 report.warning("`<classifier>"
                         + dep.classifier()
                         + "</classifier>` on "
@@ -398,7 +490,18 @@ public final class PomImporter {
         // Maven coordinates have no notion of a manifest "short name"; default
         // the v0.7 `name` field to the artifactId, matching the manifest's
         // own `artifact`-defaults-to-key rule.
-        return Dependency.of(dep.artifactId(), dep.module(), selector);
+        Dependency d = Dependency.of(dep.artifactId(), dep.module(), selector);
+        // Stash test-jar as product=tests so workspace rewrite can emit product = "tests".
+        if (isTestJar(dep)) {
+            d = d.withProduct(WorkspaceProduct.TESTS);
+        }
+        return d;
+    }
+
+    /** Maven {@code <type>test-jar</type>} or the conventional {@code tests} classifier. */
+    private static boolean isTestJar(Pom.Dep dep) {
+        if (dep.type() != null && "test-jar".equalsIgnoreCase(dep.type())) return true;
+        return dep.classifier() != null && "tests".equalsIgnoreCase(dep.classifier());
     }
 
     // --- repositories -------------------------------------------------------

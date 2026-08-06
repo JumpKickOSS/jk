@@ -10,6 +10,7 @@ import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.Workspace;
+import cc.jumpkick.model.WorkspaceProduct;
 import java.net.URI;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
@@ -204,6 +205,18 @@ class JkBuildRendererTest {
         JkBuild reparsed = JkBuildParser.parse(out);
         assertThat(reparsed.isWorkspaceRoot()).isTrue();
         assertThat(reparsed.workspace().modules()).containsExactly("core", "app");
+    }
+
+    @Test
+    void workspace_tests_product_renders_as_table() {
+        Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.put(Scope.MAIN, List.of(Dependency.workspace("lib")));
+        byScope.put(Scope.TEST, List.of(Dependency.workspace("lib", WorkspaceProduct.TESTS)));
+        JkBuild model = new JkBuild(
+                new JkBuild.Project("com.example", "app", "1.0.0", 21), new JkBuild.Dependencies(byScope));
+        String out = JkBuildRenderer.render(model);
+        assertThat(out).contains("lib.workspace = true");
+        assertThat(out).contains("lib = { workspace = true, product = \"tests\" }");
     }
 
     @Test
