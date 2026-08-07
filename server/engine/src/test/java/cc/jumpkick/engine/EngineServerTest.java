@@ -257,7 +257,7 @@ class EngineServerTest {
             assertThat(rows).hasSize(5);
 
             String global = rows.stream()
-                    .filter(r -> "global".equals(Jsonl.str(r, "scope")))
+                    .filter(r -> cc.jumpkick.runtime.BuildMetrics.SCOPE_GLOBAL.equals(Jsonl.str(r, "scope")))
                     .findFirst()
                     .orElseThrow();
             assertThat(Jsonl.longValue(global, "okCount", -1)).isEqualTo(1);
@@ -280,14 +280,12 @@ class EngineServerTest {
             assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.METRICS_DONE);
             assertThat(filtered).hasSize(4);
             assertThat(filtered).noneMatch(r -> "/proj/b".equals(Jsonl.str(r, "dir")));
-            String stepRow = filtered.stream()
-                    .filter(r -> "project/step".equals(Jsonl.str(r, "scope")))
+            String taskRow = filtered.stream()
+                    .filter(r -> cc.jumpkick.runtime.BuildMetrics.SCOPE_PROJECT_TASK.equals(Jsonl.str(r, "scope")))
                     .findFirst()
                     .orElseThrow();
-            String stepName = Jsonl.str(stepRow, "task");
-            if (stepName == null || stepName.isBlank()) stepName = Jsonl.str(stepRow, "step");
-            assertThat(stepName).isEqualTo("compile-java");
-            assertThat(Jsonl.longValue(stepRow, "okTotalMillis", -1)).isEqualTo(700);
+            assertThat(Jsonl.str(taskRow, "task")).isEqualTo("compile-java");
+            assertThat(Jsonl.longValue(taskRow, "okTotalMillis", -1)).isEqualTo(700);
         }
         server.close();
     }

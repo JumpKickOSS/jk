@@ -128,6 +128,21 @@ Response:
 `transitive` (lockfile-only). Edges are dependent → prereq. Token-gated like `/api/project`. The
 SPA loads this **only** when the Dependencies panel opens.
 
+### `GET /api/metrics`
+
+Aggregate build history as a flat array, one object per row, averages pre-computed so clients stay
+arithmetic-free. `?dir=<path>` keeps that project's rows plus the always-included machine tiers.
+
+| `scope` | Row is | `kind` | `task` |
+| --- | --- | --- | --- |
+| `global` | every build on this machine | `build` / `test` | null |
+| `project` | every build of one `dir` | `build` / `test` | null |
+| `task` | one task across every project | null | task name |
+| `project/task` | one task in one `dir` | null | task name |
+
+The tier names come from `BuildMetrics.SCOPE_*`; the socket `metrics-entry` frame carries the same
+`scope` values.
+
 ### `GET /api/config`
 
 Effective machine `~/.config/jk/config.toml` (plus env) as `{ path, rows: [{ key, default, value,

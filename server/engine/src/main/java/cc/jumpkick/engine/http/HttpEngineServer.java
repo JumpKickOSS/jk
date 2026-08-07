@@ -1116,10 +1116,8 @@ public final class HttpEngineServer implements AutoCloseable {
         for (cc.jumpkick.runtime.BuildMetrics.Entry e : metrics.get()) {
             if (dirFilter != null && !e.dir().isEmpty() && !e.dir().equals(dirFilter)) continue;
             if (body.length() > 1) body.append(',');
-            boolean global = e.dir().isEmpty();
-            String scope = e.step() == null ? (global ? "global" : "project") : (global ? "task" : "project/task");
             body.append(JsonOut.object()
-                    .put("scope", scope)
+                    .put("scope", e.scope())
                     .put("kind", e.kind())
                     .put("dir", e.dir())
                     .put("coord", e.coord())

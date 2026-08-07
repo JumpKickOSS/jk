@@ -4742,11 +4742,9 @@ public final class EngineServer implements AutoCloseable {
 
     /** One aggregate row as a flat wire object; avg is pre-computed so clients stay arithmetic-free. */
     private static String metricsEntryJson(BuildMetrics.Entry e) {
-        boolean global = e.dir().isEmpty();
-        String scope = e.step() == null ? (global ? "global" : "project") : (global ? "task" : "project/task");
         return JsonOut.object()
                 .put("type", EngineProtocol.METRICS_ENTRY)
-                .put("scope", scope)
+                .put("scope", e.scope())
                 .put("kind", e.kind())
                 .put("dir", e.dir())
                 .put("coord", e.coord())

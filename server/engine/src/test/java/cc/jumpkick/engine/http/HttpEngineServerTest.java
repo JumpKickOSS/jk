@@ -598,9 +598,9 @@ class HttpEngineServerTest {
         assertThat(resp.statusCode()).isEqualTo(200);
         assertThat(resp.headers().firstValue("Content-Type")).contains("application/json; charset=utf-8");
         assertThat(resp.body())
-                .contains("\"scope\":\"global\"")
-                .contains("\"scope\":\"project\"")
-                .contains("\"scope\":\"project/step\"")
+                .contains(scopeJson(cc.jumpkick.runtime.BuildMetrics.SCOPE_GLOBAL))
+                .contains(scopeJson(cc.jumpkick.runtime.BuildMetrics.SCOPE_PROJECT))
+                .contains(scopeJson(cc.jumpkick.runtime.BuildMetrics.SCOPE_PROJECT_TASK))
                 .contains("\"okCount\":3")
                 .contains("\"okAvgMillis\":2000")
                 .contains("\"coord\":\"g:n\"");
@@ -608,8 +608,14 @@ class HttpEngineServerTest {
         // ?dir= keeps the global tiers but drops other projects' rows.
         String filtered =
                 get("/api/metrics?dir=/p", "Authorization", "Bearer " + token()).body();
-        assertThat(filtered).contains("\"scope\":\"global\"").contains("\"dir\":\"/p\"");
+        assertThat(filtered)
+                .contains(scopeJson(cc.jumpkick.runtime.BuildMetrics.SCOPE_GLOBAL))
+                .contains("\"dir\":\"/p\"");
         assertThat(filtered).doesNotContain("/other");
+    }
+
+    private static String scopeJson(String scope) {
+        return "\"scope\":\"" + scope + "\"";
     }
 
     @Test
