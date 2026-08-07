@@ -101,14 +101,14 @@ logic = "off"   # also: false, none, disable
      non-incremental). Kotlin may call already-compiled Java in the same tree.  
    - Discover:
      - **SPI:** classes implementing `cc.jumpkick.plugin.buildlogic.BuildLogicContributor`
-       call `register(BuildLogicGraph)` and may attach named tasks to anchors.  
-     - **Legacy mains:** every public class named `*Build` / `*BuildMain` with
+       call `register(BuildLogicGraph)` and may attach named tasks to anchors.
+     - **Mains:** every public class named `*Build` / `*BuildMain` with
        `public static void main` (or `[build].logic-main`) runs at **`AFTER_RESOURCES`**.  
 4. BuildPlan anchors invoke matching tasks as **independently action-cached** steps
    (each maps to a [`BuildStage`](../architecture.md#request-phases-vs-build-stages) wire name):
    - `BEFORE_COMPILE` — before main language compile (**stage `generate`**) — codegen home  
    - `AFTER_COMPILE` — after main compile / assemble (**stage `compile`**)  
-   - `AFTER_RESOURCES` — after static resources copy (default for legacy mains; **stage `compile`**)  
+   - `AFTER_RESOURCES` — after static resources copy (**stage `compile`**)  
    - `BEFORE_PACKAGE` — immediately before jar/image packaging (**stage `package`**)  
 5. Deliver each task’s `outDir`, and **where it goes depends on the anchor**:
    - `BEFORE_COMPILE` writes a **generated-source root** under

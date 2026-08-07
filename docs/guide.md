@@ -84,10 +84,7 @@ jk lock --cache-dir "$COLD"          # or: JK_CACHE_DIR="$COLD" jk lock
 The engine process is keyed by state directory + store; isolating only the action
 cache leaves CAS reuse intact.
 
-Since the two-tier split, everything under a cache root — including its `sha256/` blob pool — is
-**cache tier**: rebuildable, prunable to the cache budget, and wiped by `jk cache purge`. A
-pre-split custom `--cache-dir` whose `sha256/` still holds store blobs should be recreated fresh
-(the old contents re-fetch on demand); jk does not special-case legacy collocated layouts.
+Everything under a cache root — including its `sha256/` blob pool — is **cache tier**: rebuildable, prunable to the cache budget, and wiped by `jk cache purge`.
 
 ### `jk env` — where values come from
 
@@ -145,7 +142,7 @@ cache, a normal `jk build` should hit action cache for unchanged modules.
 | **`jk cache storage`** | Cache tier: action index + cache CAS (`sha256/` under the cache dir) + format stamps |
 | **`jk cache clear` / `prune` / `purge`** | Invalidate, expire, or wipe the **cache tier** (actions + cache CAS + format stamps). Artifact store CAS and repo mirrors survive |
 | **`jk repo storage`** | Artifact store CAS + `repos/` mirrors + run logs |
-| **`jk repo prune`** | Sweep unreferenced store CAS blobs + expired run logs; `--max-size <size>` LRU-evicts to the store budget |
+| **`jk repo prune`** | Sweep unreferenced store CAS blobs + expired run logs |
 | **`jk repo search`** | Offline search of locally mirrored coordinates |
 | **`jk repo refresh <coord>`** | Evict a coordinate from the mirror so it re-fetches. The mirror is first-write-wins (Maven Central's immutability contract); this is the escape hatch for an upstream that genuinely republished — see [mirror-verification-decision.md](mirror-verification-decision.md) |
 | **`jk repo login` / `logout`** | Artifact-repository credentials |
@@ -188,10 +185,7 @@ above applies. Both storage reports use the same rule.
 The two budgets differ in what they *enforce*. The cache tier is rebuildable, so scheduled prunes
 LRU-evict it to its budget (default 1 GiB); the evictor targets the blob pool at the budget net
 of the action-index + stamp overhead, so a prune can bring the utilization bar back under 100%. The artifact store holds long-lived downloads: its
-4 GiB default drives the utilization bar **only** — reachable store blobs are LRU-evicted solely
-when you set `max-store-size-mb` (or `JK_MAX_STORE_SIZE_MB`) explicitly, or pass
-`--max-size` to `jk repo prune`. The pre-split knobs (`max-size-gb`, `action-max-size-mb`,
-`JK_MAX_SIZE_GB`, `JK_ACTION_MAX_SIZE_MB`) are no longer read; prune warns if one is still set.
+4 GiB default is display-only — `jk repo prune` never evicts reachable store blobs (even when the store exceeds the display budget). GC only reclaims garbage: leftover `.put-` temps, expired run logs, and unreferenced CAS blobs.
 
 Preflight dirty memo fingerprints use **source content hashes** by default (CI-safe). Opt into
 faster path/size/mtime fingerprints with `JK_PREFLIGHT_MEMO_MTIME=1` if needed.
@@ -562,7 +556,7 @@ assembly = true       # fat jar — jk assemble (or jk build)
 # assembly = "shrink" # R8 small fat jar — same commands
 ```
 
-R8 is **opt-in** via `assembly = "shrink"` (or a legacy `[shrink]` table) — never the default.
+R8 is **opt-in** via `assembly = "shrink"` — never the default.
 
 ### Grails (`[grails]`)
 
@@ -860,10 +854,9 @@ Custom generate / prep steps live in a **hidden project-local directory**, not i
 (unlike Gradle’s visible `buildSrc/`).
 
 **Convention:** if `.jk-build/` exists next to `jk.toml`, its Java sources compile and run on
-build (action-cached; outputs merge onto the classpath as resources). Prefer a
-`BuildLogicContributor` SPI for **named tasks** at anchors (`AFTER_COMPILE`,
-`AFTER_RESOURCES`, `BEFORE_PACKAGE`); legacy `*Build` mains still run at
-`AFTER_RESOURCES`. `jk.toml` stays data-only (`logic` path / `logic-main` only).
+build (action-cached; outputs merge onto the classpath as resources). `*Build` mains and
+`BuildLogicContributor` SPI provide named tasks at anchors (`AFTER_COMPILE`, `AFTER_RESOURCES`,
+`BEFORE_PACKAGE`). `jk.toml` stays data-only (`logic` path / `logic-main` only).
 
 ```toml
 # optional override — only when you do not want the .jk-build/ convention
@@ -877,7 +870,7 @@ logic-main = "demo.LineCountBuild" # optional public static void main(String[])
 my-app/
   jk.toml
   src/…
-  .jk-build/src/demo/LineCountBuild.java   # legacy main, or BuildLogicContributor
+  .jk-build/src/demo/LineCountBuild.java   # *Build main or BuildLogicContributor
 ```
 
 Sample: `docs/features/examples/line-count-build/`. Prefer plugins for heavy/reusable tools; use

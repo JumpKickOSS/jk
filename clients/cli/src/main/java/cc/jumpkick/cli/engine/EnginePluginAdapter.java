@@ -4,6 +4,7 @@ package cc.jumpkick.cli.engine;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.EngineWireException;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
@@ -124,8 +125,7 @@ final class EnginePluginAdapter {
                         if (listener != null) listener.planFinish(result);
                         return new HostedFinish(result, line);
                     }
-                    case EngineProtocol.ERROR ->
-                        throw new IOException("jk engine: run failed: " + Jsonl.str(line, "message"));
+                    case EngineProtocol.ERROR -> throw EngineWireException.fromJsonLine(line);
                     default -> dispatchBuildPlanEvent(type, line, listener, diagnostics);
                 }
             }
@@ -173,8 +173,7 @@ final class EnginePluginAdapter {
                                 Jsonl.intValue(line, "exit", 1),
                                 Jsonl.str(line, "diag"));
                     }
-                    case EngineProtocol.ERROR ->
-                        throw new IOException("jk engine: run failed: " + Jsonl.str(line, "message"));
+                    case EngineProtocol.ERROR -> throw EngineWireException.fromJsonLine(line);
                     default -> {
                         /* forward-compatible no-op */
                     }

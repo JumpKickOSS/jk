@@ -2190,12 +2190,7 @@ public final class EngineServer implements AutoCloseable {
             try {
                 var config = cc.jumpkick.config.JkCacheConfig.resolve();
                 cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.CachePlans.pruneBuildPlan(
-                        cache,
-                        config.recordTtlDays(),
-                        false,
-                        true,
-                        config.storeBudgetConfigured() ? config.maxStoreSizeMb() + "M" : null,
-                        false);
+                        cache, config.recordTtlDays(), false, false, null, false);
                 cc.jumpkick.run.BuildPlanResult result = plan.run();
                 if (result.success()) {
                     Files.writeString(

@@ -2,13 +2,18 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.InstalledTool;
+import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.discovery.SymlinkProvisioner;
+import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.TreeFingerprint;
 import java.io.IOException;
@@ -16,12 +21,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Stream;
 
 /**
- * {@code jk doctor} — repair the build-tool install tree under {@code $JK_CACHE_DIR/tools/<slug>/}
- * (mvn, gradle, kotlin). Walks every registered build tool, prunes broken symlinks, and optionally
- * fingerprints linked installs with {@code --verify-linked}.
+ * {@code jk doctor} — host health checklist. Prints a wedge header plus one row per subsystem
+ * (engine, dirs, jdk, lock, tools) and a summary. {@code --output json} emits machine output.
  */
 public final class DoctorCommand implements CliCommand {
 
@@ -32,7 +37,7 @@ public final class DoctorCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Repair discovered mvn/gradle/kotlin installs";
+        return "Check host health (engine, cache, JDKs, lock)";
     }
 
     @Override
@@ -45,15 +50,48 @@ public final class DoctorCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws IOException {
+        GlobalOptions global = GlobalOptions.from(in);
         Path toolsDir = in.value("tools-dir").map(Path::of).orElse(null);
         boolean verifyLinked = in.isSet("verify-linked");
         Path root = toolsDir != null ? toolsDir : JkDirs.cache().resolve("tools");
 
-        int healthy = 0, pruned = 0, verified = 0;
+        // Collect checks first so JSON and human share the same facts.
+        Check engine = checkEngine();
+        Check cache = checkDirs();
+        Check jdk = checkJdk();
+        Check lock = checkLock();
+        ToolsResult tools = checkTools(root, verifyLinked);
+
+        boolean hasFail = engine.status == Status.FAIL
+                || cache.status == Status.FAIL
+                || jdk.status == Status.FAIL
+                || lock.status == Status.FAIL
+                || tools.pruned < 0; // never fail on tools alone, but keep shape
+
+        if (global.outputIsJson()) {
+            String json = "{"
+                    + "\"engine\":" + checkJson(engine) + ","
+                    + "\"cache\":" + checkJson(cache) + ","
+                    + "\"jdk\":" + checkJson(jdk) + ","
+                    + "\"lock\":" + checkJson(lock) + ","
+                    + "\"tools\":{\"healthy\":" + tools.healthy + ",\"pruned\":" + tools.pruned
+                    + ",\"verified\":" + tools.verified + "}"
+                    + "}";
+            CliOutput.out(json);
+            return hasFail ? 1 : 0;
+        }
+
         Theme t = Theme.active();
-        // Wedge header + checklist rows (JK-1375).
         cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
         CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.menu("Doctor"));
+
+        printCheck(engine, t);
+        printCheck(cache, t);
+        printCheck(jdk, t);
+        printCheck(lock, t);
+
+        // Tools section — preserve legacy row format for existing tests.
+        int healthy = 0, pruned = 0, verified = 0;
         for (BuildTool tool : BuildTool.values()) {
             for (InstalledTool installed : listIncludingBrokenLinks(root, tool)) {
                 Path home = installed.home();
@@ -84,14 +122,125 @@ public final class DoctorCommand implements CliCommand {
                 healthy++;
             }
         }
+        // If no tools at all, emit a row so the checklist looks complete.
+        if (healthy == 0 && pruned == 0) {
+            CliOutput.out(Theme.colorize("ok:      ", t.completedStep()) + " tools — no installs found");
+        }
+
         CliOutput.out(Theme.colorize("---", t.darkGray()));
-        CliOutput.out(Theme.colorize(String.valueOf(healthy), t.focused())
+        String summary = Theme.colorize(String.valueOf(healthy), t.focused())
                 + " healthy"
                 + (pruned > 0 ? ", " + Theme.colorize(String.valueOf(pruned), t.focused()) + " pruned" : "")
                 + (verified > 0
                         ? ", " + Theme.colorize(String.valueOf(verified), t.focused()) + " fingerprinted"
-                        : ""));
-        return 0;
+                        : "");
+        // Append subsystem warnings to summary when any check failed.
+        if (hasFail) {
+            summary += Theme.colorize(" — issues found", t.warning());
+        }
+        CliOutput.out(summary);
+        return hasFail ? 1 : 0;
+    }
+
+    // ---- checks ----
+
+    private enum Status { OK, WARN, FAIL }
+
+    private record Check(Status status, String label, String detail) {}
+
+    private record ToolsResult(int healthy, int pruned, int verified) {}
+
+    private static Check checkEngine() {
+        EnginePaths.Paths paths = EnginePaths.current();
+        Optional<EngineClient.Status> st = EngineClient.status(EnginePaths.activeSocket(paths));
+        if (st.isEmpty()) return new Check(Status.WARN, "engine", "not running (lazy start on next build)");
+        EngineClient.Status s = st.get();
+        String detail = "running pid " + s.pid() + " · " + s.version() + " · up "
+                + formatUptime((System.currentTimeMillis() - s.startedAtMillis()) / 1000);
+        if (s.httpError() != null && !s.httpError().isBlank()) {
+            return new Check(Status.WARN, "engine", detail + " · http: " + s.httpError());
+        }
+        return new Check(Status.OK, "engine", detail);
+    }
+
+    private static Check checkDirs() {
+        Path cache = JkDirs.cache();
+        Path store = JkDirs.store();
+        Path state = JkDirs.state();
+        JkCacheConfig cfg = JkCacheConfig.resolve();
+        List<String> problems = new ArrayList<>();
+        if (!Files.isDirectory(cache)) problems.add("cache missing: " + cache);
+        if (!Files.isDirectory(store.getParent())) problems.add("store parent missing");
+        if (!Files.isDirectory(state.getParent())) problems.add("state parent missing");
+        if (!problems.isEmpty()) return new Check(Status.FAIL, "dirs", String.join("; ", problems));
+        String detail = "cache " + cache + " · store " + store + " · "
+                + cfg.maxCacheSizeMb() + "M cache / " + cfg.maxStoreSizeMb() + "M store (display)";
+        return new Check(Status.OK, "dirs", detail);
+    }
+
+    private static Check checkJdk() {
+        try {
+            Path jdksDir = JkDirs.jdks();
+            long count = Files.isDirectory(jdksDir) ? Files.list(jdksDir).count() : 0;
+            String javaHome = System.getenv("JAVA_HOME");
+            String detail = count + " installs under " + jdksDir + (javaHome != null ? " · JAVA_HOME=" + javaHome : "");
+            return new Check(Status.OK, "jdk", detail);
+        } catch (IOException e) {
+            return new Check(Status.WARN, "jdk", "probe failed: " + e.getMessage());
+        }
+    }
+
+    private static Check checkLock() {
+        try {
+            Path cwd = Path.of(System.getProperty("user.dir", "."));
+            Path lock = cc.jumpkick.lock.LockPaths.lockFile(cwd);
+            Path proj = lock.getParent();
+            if (!Files.isRegularFile(lock)) return new Check(Status.WARN, "lock", "no jk-lock.toml at " + proj + " (run jk lock)");
+            String text = Files.readString(lock);
+            if (!text.contains("version = 1")) return new Check(Status.WARN, "lock", "unexpected lock version");
+            long artifacts = text.lines().filter(l -> l.trim().startsWith("[[artifact]]")).count();
+            return new Check(Status.OK, "lock", artifacts + " artifacts · " + lock);
+        } catch (IOException e) {
+            return new Check(Status.WARN, "lock", "check failed: " + e.getMessage());
+        }
+    }
+
+    private static ToolsResult checkTools(Path root, boolean verifyLinked) throws IOException {
+        // Actual counting is done in run() for output fidelity; this helper just for JSON.
+        int h = 0, p = 0, v = 0;
+        for (BuildTool tool : BuildTool.values()) {
+            for (InstalledTool installed : listIncludingBrokenLinks(root, tool)) {
+                Path home = installed.home();
+                if (SymlinkProvisioner.isBrokenLink(home)) p++;
+                else {
+                    h++;
+                    if (Files.isSymbolicLink(home) && verifyLinked) v++;
+                }
+            }
+        }
+        return new ToolsResult(h, p, v);
+    }
+
+    private static void printCheck(Check c, Theme t) {
+        String prefix;
+        switch (c.status) {
+            case OK -> prefix = Theme.colorize("ok:      ", t.completedStep());
+            case WARN -> prefix = Theme.colorize("warn:    ", t.warning());
+            case FAIL -> prefix = Theme.colorize("fail:    ", t.error());
+            default -> prefix = "";
+        }
+        CliOutput.out(prefix + Theme.colorize(c.label, t.cyan()) + " — " + c.detail);
+    }
+
+    private static String checkJson(Check c) {
+        return "{\"status\":" + Jsonl.quote(c.status.name().toLowerCase()) + ",\"detail\":"
+                + Jsonl.quote(c.detail) + "}";
+    }
+
+    private static String formatUptime(long secs) {
+        if (secs < 60) return secs + "s";
+        if (secs < 3600) return (secs / 60) + "m";
+        return (secs / 3600) + "h" + ((secs % 3600) / 60) + "m";
     }
 
     private static List<InstalledTool> listIncludingBrokenLinks(Path root, BuildTool tool) throws IOException {

@@ -68,9 +68,6 @@ public final class CachePlans {
                     }
 
                     ctx.label("Pruning cache…");
-                    for (String w : cc.jumpkick.config.JkCacheConfig.legacyKnobWarnings()) {
-                        ctx.warn("prune", w);
-                    }
                     long cutoffMillis = System.currentTimeMillis() - (long) olderThanDays * 24L * 60L * 60L * 1000L;
                     long totalFiles = 0;
                     long totalBytes = 0;
@@ -194,9 +191,6 @@ public final class CachePlans {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("Sweeping store…");
-                    for (String w : cc.jumpkick.config.JkCacheConfig.legacyKnobWarnings()) {
-                        ctx.warn("sweep", w);
-                    }
                     SweepReport report = sweepStore(root, dryRun, maxSize);
                     ctx.put(FILES, report.files());
                     ctx.put(BYTES, report.bytes());
@@ -210,26 +204,10 @@ public final class CachePlans {
     /** Totals for one store sweep ({@link #sweepStore}). */
     public record SweepReport(long files, long bytes, long reachableEvicted) {}
 
-    /**
-     * Store LRU-eviction budget: an explicit {@code --max-size} wins; otherwise only an
-     * <em>explicitly configured</em> {@code max-store-size-mb} counts. {@code 0} = no eviction —
-     * the 4 GiB display default must never delete reachable store blobs (JK-1510).
-     */
-    static long storeEvictionBudgetBytes(String maxSize, cc.jumpkick.config.JkCacheConfig config) {
-        return maxSize != null
-                ? cc.jumpkick.task.LruEvictor.parseSize(maxSize)
-                : config.configuredStoreSizeBytes();
-    }
-
-    /**
-     * Artifact-store reclamation: leftover store CAS {@code .put-} temps, expired run logs,
-     * unreferenced store blobs, and (when {@code maxSize} is set, else an <em>explicitly
-     * configured</em> {@code max-store-size-mb}) LRU eviction.
-     */
+    /** Artifact-store GC: reclaims temps, expired run logs, and unreferenced store blobs only. Never evicts reachable blobs. */
     public static SweepReport sweepStore(Path root, boolean dryRun, String maxSize) throws IOException {
         long totalFiles = 0;
         long totalBytes = 0;
-        long reachableEvicted = 0;
 
         TempSweep temps = sweepCasTemps(cc.jumpkick.cache.JkStores.resolve(root, "sha256"), dryRun);
         totalFiles += temps.files();
@@ -239,30 +217,13 @@ public final class CachePlans {
         totalFiles += runLogReport.deleted();
         totalBytes += runLogReport.freedBytes();
 
-        // Artifact CAS; roots include action INPUT digests + sync REFs + tools + repos/local.
         cc.jumpkick.cache.Cas cas = cc.jumpkick.cache.JkStores.cas(root);
         Path toolsDir = cc.jumpkick.cache.JkStores.resolve(root, "tools");
         var liveRefs = cc.jumpkick.task.CacheRoots.collect(cas, root.resolve("actions"), toolsDir);
         var sweepReport = cc.jumpkick.task.CasSweep.sweep(cas, liveRefs, dryRun);
         totalFiles += sweepReport.deleted();
         totalBytes += sweepReport.freedBytes();
-
-        long budgetBytes = storeEvictionBudgetBytes(maxSize, cc.jumpkick.config.JkCacheConfig.resolve());
-        if (budgetBytes > 0) {
-            var ledger = cc.jumpkick.task.AccessLedger.atDefaultPath();
-            var evictReport = cc.jumpkick.task.LruEvictor.evictDownTo(
-                    cas, budgetBytes, liveRefs, ledger, dryRun, sweepReport.deletedShas());
-            totalFiles += evictReport.deleted();
-            totalBytes += evictReport.freedBytes();
-            reachableEvicted = evictReport.reachableEvicted();
-            if (!dryRun) {
-                try {
-                    ledger.compactIfLarge();
-                } catch (IOException ignored) {
-                }
-            }
-        }
-        return new SweepReport(totalFiles, totalBytes, reachableEvicted);
+        return new SweepReport(totalFiles, totalBytes, 0L);
     }
 
     /** Build the GC plan ({@code jk clean --cache}): purge CAS blobs idle 90+ days via {@link CacheGc}. */

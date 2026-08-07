@@ -195,8 +195,7 @@ Full REST also exposes `actionsCount`/`actionsBytes` (index), `cacheCasCount`/`c
 cacheMaxBytes, actionCacheBytes, actionMaxBytes, artifactStorageBytes, maxBytes,
 lastPrunedMillis }` — enough for the footer; change-gated on MiB quanta.
 
-**REST (full):** section counts (`casCount`, `actionsCount`, …) for the Status panels. `totalBytes`
-is a legacy combined sum; prefer the two surfaces for UI.
+**REST (full):** section counts (`casCount`, `actionsCount`, …) for the Status panels. Prefer the two surfaces for UI; `totalBytes` is the combined sum.
 
 REST `GET /api/status` and `GET /api/cache` remain for hydrate, offline fallback, CLI/MCP tools,
 and curl. Metrics (`GET /api/metrics`) stay **REST-only / view-scoped** — not on the vitals SSE bus.

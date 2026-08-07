@@ -7,6 +7,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.EngineWireException;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
@@ -755,7 +756,7 @@ final class EngineBuildListenerAdapter {
                         return result;
                     }
                     case EngineProtocol.ERROR ->
-                        throw new IOException("jk engine: run failed: " + Jsonl.str(line, "message"));
+                        throw EngineWireException.fromJsonLine(line);
                     default -> {
                         /* forward-compatible no-op */
                     }
@@ -948,15 +949,7 @@ final class EngineBuildListenerAdapter {
                         listener.onWorkspaceFinish(result);
                         return result;
                     }
-                    case EngineProtocol.ERROR -> {
-                        String code = Jsonl.str(line, "code");
-                        String msg = Jsonl.str(line, "message");
-                        // surface as the wedge message body without engine noise.
-                        if (EngineProtocol.ERR_ALREADY_RUNNING.equals(code)) {
-                            throw new IOException(msg == null || msg.isBlank() ? "Build is already running" : msg);
-                        }
-                        throw new IOException("jk engine: build failed: " + msg);
-                    }
+                    case EngineProtocol.ERROR -> throw EngineWireException.fromJsonLine(line);
                     default -> {
                         /* forward-compatible no-op */
                     }
