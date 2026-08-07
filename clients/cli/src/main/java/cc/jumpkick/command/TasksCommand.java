@@ -128,7 +128,7 @@ public final class TasksCommand implements CliCommand {
             first = false;
             List<List<String>> rows = new java.util.ArrayList<>();
             for (TaskCatalog.TaskDef t : TaskCatalog.buildTasks()) {
-                rows.add(List.of(t.name(), t.phase(), t.description()));
+                rows.add(List.of(t.name(), t.stage(), t.description()));
             }
             // Project build logic (.jk-build SPI / *Build — offline scan) rides the same table.
             for (String name : BuildLogicTaskScan.discoverNames(e.getKey())) {
@@ -139,7 +139,7 @@ public final class TasksCommand implements CliCommand {
             }
             cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
             for (String line :
-                    cc.jumpkick.cli.tui.BoxTable.render(title, List.of("Name", "Phase", "Description"), rows)) {
+                    cc.jumpkick.cli.tui.BoxTable.render(title, List.of("Name", "Stage", "Description"), rows)) {
                 CliOutput.out(line);
             }
         }
@@ -181,7 +181,7 @@ public final class TasksCommand implements CliCommand {
                 if (!task.aliases().isEmpty()) {
                     CliOutput.out("aliases:     " + String.join(", ", task.aliases()));
                 }
-                CliOutput.out("phase:       " + task.phase());
+                CliOutput.out("stage:       " + task.stage());
                 CliOutput.out("description: " + task.description());
                 CliOutput.out("module:      " + coord);
                 CliOutput.out("module-dir:  " + modDir);
