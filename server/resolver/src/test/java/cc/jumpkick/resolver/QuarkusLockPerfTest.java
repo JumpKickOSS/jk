@@ -24,17 +24,25 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Quarkus platform + rest/arc must lock under the default engine budget (≪ 2 minutes).
- * Requires network (Maven Central); skipped offline. Warm metadata lives in the developer's
- * artifact store (not the action-cache tier, and not hermetic {@code JK_HOME} from Gradle).
+ * Quarkus platform + rest/arc must <em>resolve</em> fast. Requires network (Maven Central);
+ * skipped offline.
+ *
+ * <p>The budget is asserted on a <strong>second</strong> lock, after a first one has warmed
+ * metadata into the developer's artifact store. The first lock's wall time is dominated by
+ * hundreds of Central round trips, so timing it measures the network, not PubGrub — and on a cold
+ * or partial store it blew the old 30s deadline and reported a resolve regression that was not
+ * one (JK-1597).
  */
 @Tag("network")
 @Tag("slow")
 class QuarkusLockPerfTest {
 
+    /** Resolve budget for a warm store. Cold fetching is deliberately outside the assertion. */
+    private static final long WARM_BUDGET_MS = 5_000L;
+
     @Test
-    @Timeout(value = 30, unit = TimeUnit.SECONDS)
-    void quarkus_rest_arc_locks_under_30s(@TempDir Path tmp) throws Exception {
+    @Timeout(value = 5, unit = TimeUnit.MINUTES)
+    void quarkus_rest_arc_resolves_under_the_warm_budget(@TempDir Path tmp) throws Exception {
         assumeTrue(networkOk(), "Maven Central unreachable");
         Files.writeString(tmp.resolve("jk.toml"), """
                 [project]
@@ -59,14 +67,27 @@ class QuarkusLockPerfTest {
         assumeTrue(Files.isDirectory(store), "local jk store helps warm metadata");
         Cas cas = new Cas(store);
         MavenRepo central = new MavenRepo("central", URI.create("https://repo1.maven.org/maven2/"), new Http(), cas);
+
+        // Warm: whatever metadata this store is missing is fetched here, untimed.
+        long coldT0 = System.nanoTime();
+        Lockfile warmUp = lock(central, tmp, project);
+        long coldMs = (System.nanoTime() - coldT0) / 1_000_000L;
+
         long t0 = System.nanoTime();
-        Lockfile lock =
-                new LockOrchestrator(RepoGroup.of(central)).withProjectDir(tmp).lock(project, "0.11.0-test");
+        Lockfile lock = lock(central, tmp, project);
         long ms = (System.nanoTime() - t0) / 1_000_000L;
-        System.out.println(
-                "quarkus-rest lock ms=" + ms + " packages=" + lock.artifacts().size());
+
+        System.out.println("quarkus-rest lock: cold=" + coldMs + "ms warm=" + ms + "ms packages="
+                + lock.artifacts().size());
         assertThat(lock.artifacts()).isNotEmpty();
-        assertThat(ms).as("lock wall time %d ms", ms).isLessThan(30_000L);
+        // Resolution shape, not just wall time: a lost dedup or a duplicated root shows up here
+        // even on a machine too slow or too loaded for the timing assertion to mean much.
+        assertThat(lock.artifacts()).hasSameSizeAs(warmUp.artifacts());
+        assertThat(ms).as("warm resolve wall time %d ms", ms).isLessThan(WARM_BUDGET_MS);
+    }
+
+    private static Lockfile lock(MavenRepo central, Path dir, JkBuild project) throws Exception {
+        return new LockOrchestrator(RepoGroup.of(central)).withProjectDir(dir).lock(project, "0.11.0-test");
     }
 
     /**
