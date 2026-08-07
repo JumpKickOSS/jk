@@ -980,7 +980,11 @@ public final class LockOrchestrator {
         String pinLit = declared != null ? versionLiteral(declared) : null;
         boolean pinned = pinLit != null && !pinLit.isBlank();
         Dependency dep = new Dependency(module, runtimeSelector(bomConstraints, module, declared, fallbackMajor));
-        if (mainDeduped.putIfAbsent(module, dep) == null && !pinned) {
+        // mainDeduped is keyed by packageKey (so a jar and a test-jar of one GA can both root), so
+        // probe with the same key — a bare-GA probe never sees the user's own dep and injects a
+        // second root for the same solver package. `added` stays GA-keyed: stripBomForExactRoots
+        // matches it against Dependency.module().
+        if (mainDeduped.putIfAbsent(dep.packageKey(), dep) == null && !pinned) {
             added.add(module);
         }
     }

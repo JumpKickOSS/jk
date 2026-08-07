@@ -24,6 +24,14 @@ class LanguageRuntimeInjectTest {
         return JkBuildParser.parse(toml);
     }
 
+    /** `deps` is keyed the way LockOrchestrator keys it: by packageKey, not by bare GA. */
+    private static String key(String ga) {
+        return new Dependency(ga, cc.jumpkick.model.VersionSelector.parse("*")).packageKey();
+    }
+
+    private static final String GROOVY = "org.apache.groovy:groovy";
+    private static final String KOTLIN_STDLIB = "org.jetbrains.kotlin:kotlin-stdlib";
+
     @Test
     void inferred_groovy_without_pin_injects_the_runtime(@TempDir Path dir) throws IOException {
         Files.createDirectories(dir.resolve("src/main/groovy"));
@@ -31,8 +39,8 @@ class LanguageRuntimeInjectTest {
         JkBuild p = project("[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
         LockOrchestrator.injectLanguageRuntimes(p, dir, java.util.Map.of(), deps);
-        assertThat(deps).containsKey("org.apache.groovy:groovy");
-        assertThat(deps).doesNotContainKey("org.jetbrains.kotlin:kotlin-stdlib");
+        assertThat(deps).containsKey(key(GROOVY));
+        assertThat(deps).doesNotContainKey(key(KOTLIN_STDLIB));
     }
 
     @Test
@@ -56,7 +64,7 @@ class LanguageRuntimeInjectTest {
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
         var skipStrip = LockOrchestrator.injectLanguageRuntimes(
                 p, dir, java.util.Map.of("org.apache.groovy:groovy", "5.0.6"), deps);
-        assertThat(deps.get("org.apache.groovy:groovy").version().raw()).contains("5.0.7");
+        assertThat(deps.get(key(GROOVY)).version().raw()).contains("5.0.7");
         assertThat(skipStrip).isEmpty();
     }
 
@@ -68,7 +76,7 @@ class LanguageRuntimeInjectTest {
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
         var skipStrip = LockOrchestrator.injectLanguageRuntimes(
                 p, dir, java.util.Map.of("org.apache.groovy:groovy", "5.0.6"), deps);
-        assertThat(deps.get("org.apache.groovy:groovy").version().raw()).contains("5.0.6");
+        assertThat(deps.get(key(GROOVY)).version().raw()).contains("5.0.6");
         assertThat(skipStrip).containsExactly("org.apache.groovy:groovy");
     }
 
@@ -89,8 +97,47 @@ class LanguageRuntimeInjectTest {
         JkBuild p = project("[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\ngroovy=\"5.0.4\"\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
         Dependency user = new Dependency("org.apache.groovy:groovy", cc.jumpkick.model.VersionSelector.parse("=5.0.7"));
-        deps.put("org.apache.groovy:groovy", user);
+        deps.put(user.packageKey(), user);
         LockOrchestrator.injectLanguageRuntimes(p, dir, java.util.Map.of(), deps);
-        assertThat(deps.get("org.apache.groovy:groovy")).isSameAs(user);
+        assertThat(deps).hasSize(1);
+        assertThat(deps.get(user.packageKey())).isSameAs(user);
+    }
+
+    /**
+     * The map the production caller passes is keyed by {@code packageKey}, so the inject must probe
+     * with the same key. A bare-GA probe never sees the user's dep and adds a second root for one
+     * solver package — two positive root terms with disjoint version sets, i.e. UNSAT on a
+     * dependency declared exactly once.
+     */
+    @Test
+    void unpinned_groovy_does_not_double_root_a_user_declared_dep(@TempDir Path dir) throws IOException {
+        Files.createDirectories(dir.resolve("src/main/groovy"));
+        Files.writeString(dir.resolve("src/main/groovy/A.groovy"), "class A {}");
+        // No [project] groovy pin — the inject would otherwise float to the fallback major.
+        JkBuild p = project("[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\n");
+        LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
+        Dependency user = new Dependency("org.apache.groovy:groovy", cc.jumpkick.model.VersionSelector.parse("=4.0.21"));
+        deps.put(user.packageKey(), user);
+
+        LockOrchestrator.injectLanguageRuntimes(p, dir, java.util.Map.of(), deps);
+
+        assertThat(deps).hasSize(1);
+        assertThat(deps.get(user.packageKey())).isSameAs(user);
+    }
+
+    @Test
+    void unpinned_kotlin_does_not_double_root_a_user_declared_stdlib(@TempDir Path dir) throws IOException {
+        Files.createDirectories(dir.resolve("src/main/kotlin"));
+        Files.writeString(dir.resolve("src/main/kotlin/A.kt"), "class A");
+        JkBuild p = project("[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\n");
+        LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
+        Dependency user = new Dependency(
+                "org.jetbrains.kotlin:kotlin-stdlib", cc.jumpkick.model.VersionSelector.parse("=2.1.0"));
+        deps.put(user.packageKey(), user);
+
+        LockOrchestrator.injectLanguageRuntimes(p, dir, java.util.Map.of(), deps);
+
+        assertThat(deps).hasSize(1);
+        assertThat(deps.get(user.packageKey())).isSameAs(user);
     }
 }
