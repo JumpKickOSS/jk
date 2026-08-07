@@ -23,7 +23,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 
 /**
- * Best-effort machine build history (engine/project/step tiers) at {@code ~/.local/state/jk/builds/metrics.json}.
+ * Best-effort machine build history (global/project/task tiers) at {@code ~/.local/state/jk/builds/metrics.json}.
  * Outcome buckets stay separate so estimators only learn from {@link Entry#ok}; {@link #record} is
  * locked atomic replace.
  */

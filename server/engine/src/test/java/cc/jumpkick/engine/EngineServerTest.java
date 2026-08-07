@@ -857,9 +857,13 @@ class EngineServerTest {
     /**
      * Engine-hosted {@code jk cache prune} round-trip (Wave 4 — the idle-boundary cache job): a
      * real server over the socket sweeps a fixture cache holding a stale action key and a leftover
-     * CAS temp file. Asserts the single-plan wire conversation ends in a summary-carrying {@code
-     * plan-finish}, that the stale files are gone, and that the {@code.prune.lock} cross-process
-     * guard was created (the hosted path always takes it — the Wave-3 finding's fix).
+     * cache-CAS temp file. Asserts the single-plan wire conversation ends in a summary-carrying
+     * {@code plan-finish}, that the stale files are gone, and that the {@code.prune.lock}
+     * cross-process guard was created (the hosted path always takes it — the Wave-3 finding's fix).
+     *
+     * <p>Both planted files are <strong>cache</strong> tier. Since the JK-1531 split a plain prune
+     * owns the cache root only; store temps belong to `jk repo prune`, and `CacheCommandTest`
+     * pins that half.
      */
     @Test
     void cache_prune_request_sweeps_the_cache_over_the_socket() throws Exception {
@@ -871,9 +875,7 @@ class EngineServerTest {
                 staleKey,
                 java.nio.file.attribute.FileTime.fromMillis(
                         System.currentTimeMillis() - Duration.ofDays(90).toMillis()));
-        // CAS blobs (and their.put-* temps) live in the store, not under the request's cache
-        // root, sincethe sweep resolves sha256/ through JkStores.
-        Path putTmp = cc.jumpkick.cache.JkStores.resolve(cache, "sha256").resolve(".put-1234");
+        Path putTmp = cache.resolve("sha256").resolve(".put-1234");
         Files.createDirectories(putTmp.getParent());
         Files.writeString(putTmp, "partial");
 

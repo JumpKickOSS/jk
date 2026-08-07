@@ -77,15 +77,9 @@ public final class CachePlans {
                     long reachableEvicted = 0;
 
                     // Cache-tier CAS temps under <cacheRoot>/sha256/
-                    Path cacheShaDir = root.resolve("sha256");
-                    if (Files.isDirectory(cacheShaDir)) {
-                        for (Path file : tempFiles(cacheShaDir)) {
-                            long sz = Files.size(file);
-                            if (!dryRun) Files.deleteIfExists(file);
-                            totalFiles++;
-                            totalBytes += sz;
-                        }
-                    }
+                    TempSweep cacheTemps = sweepCasTemps(root.resolve("sha256"), dryRun);
+                    totalFiles += cacheTemps.files();
+                    totalBytes += cacheTemps.bytes();
                     Path actionsDir = root.resolve("actions");
                     if (Files.isDirectory(actionsDir)) {
                         Path keysDir = actionsDir.resolve("keys");
@@ -237,15 +231,9 @@ public final class CachePlans {
         long totalBytes = 0;
         long reachableEvicted = 0;
 
-        Path shaDir = cc.jumpkick.cache.JkStores.resolve(root, "sha256");
-        if (Files.isDirectory(shaDir)) {
-            for (Path file : tempFiles(shaDir)) {
-                long sz = Files.size(file);
-                if (!dryRun) Files.deleteIfExists(file);
-                totalFiles++;
-                totalBytes += sz;
-            }
-        }
+        TempSweep temps = sweepCasTemps(cc.jumpkick.cache.JkStores.resolve(root, "sha256"), dryRun);
+        totalFiles += temps.files();
+        totalBytes += temps.bytes();
 
         var runLogReport = cc.jumpkick.task.RunLogGc.sweep(root, cc.jumpkick.task.RunLogGc.DEFAULT_TTL, dryRun);
         totalFiles += runLogReport.deleted();
@@ -522,6 +510,25 @@ public final class CachePlans {
                     })
                     .toList();
         }
+    }
+
+    /** What one {@code .put-} temp sweep reclaimed. */
+    record TempSweep(long files, long bytes) {}
+
+    /**
+     * Delete leftover {@code .put-} temps under one CAS {@code sha256/} tree. Same shape for the
+     * cache tier and the artifact store — the only difference is which root resolves the dir.
+     */
+    static TempSweep sweepCasTemps(Path shaDir, boolean dryRun) throws IOException {
+        if (!Files.isDirectory(shaDir)) return new TempSweep(0, 0);
+        long files = 0;
+        long bytes = 0;
+        for (Path file : tempFiles(shaDir)) {
+            bytes += Files.size(file);
+            if (!dryRun) Files.deleteIfExists(file);
+            files++;
+        }
+        return new TempSweep(files, bytes);
     }
 
     private static List<Path> tempFiles(Path dir) throws IOException {
