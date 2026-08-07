@@ -65,7 +65,13 @@ class MemoryProbeTest {
         // On a typical busy host MemAvailable ≫ MemFree; probe must not report idle free alone.
         // Allow cgroup clamping: available ≤ MemAvailable and much closer to it than to MemFree
         // when the host is cache-heavy (MemAvailable > 2× MemFree).
-        assertThat(m.availableBytes()).isLessThanOrEqualTo(memAvail + 1024L * 1024L);
+        // The probe re-reads /proc/meminfo, so this compares two samples of a counter that moves
+        // with system activity. A fixed 1 MiB epsilon failed whenever a build was running on the
+        // same machine (JK-1650); scale the slack to the host instead. The property under test is
+        // qualitative — "available tracks MemAvailable, not MemFree" — and the midpoint assertion
+        // below is what actually pins it.
+        long drift = Math.max(64L * 1024 * 1024, m.totalBytes() / 100);
+        assertThat(m.availableBytes()).isLessThanOrEqualTo(memAvail + drift);
         if (memAvail > memFree * 2) {
             long mid = memFree + (memAvail - memFree) / 2;
             assertThat(m.availableBytes()).isGreaterThan(mid);
