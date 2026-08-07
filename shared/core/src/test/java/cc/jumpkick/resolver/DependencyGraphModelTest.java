@@ -20,7 +20,11 @@ class DependencyGraphModelTest {
         assertThat(DependencyGraphModel.parseScopes("")).containsExactly(Scope.MAIN);
         assertThat(DependencyGraphModel.parseScopes("test,main"))
                 .containsExactly(Scope.MAIN, Scope.TEST);
-        assertThat(DependencyGraphModel.parseScopes("bogus")).containsExactly(Scope.MAIN);
+        // An unknown token is an error, not a silent fallback: swallowing it hid the endpoint's
+        // missing percent-decode for a whole release (JK-1607).
+        org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class, () -> DependencyGraphModel.parseScopes("bogus"));
+        assertThat(DependencyGraphModel.validScopes()).contains("main").contains("test");
     }
 
     @Test

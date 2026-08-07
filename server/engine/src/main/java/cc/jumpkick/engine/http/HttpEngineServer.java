@@ -1195,8 +1195,20 @@ public final class HttpEngineServer implements AutoCloseable {
                     JsonOut.object().put("error", "missing \"dir\"").toString());
             return;
         }
-        Path projectDir = Path.of(dir);
-        var scopes = cc.jumpkick.resolver.DependencyGraphModel.parseScopes(queryParam(query, "scopes"));
+        Path projectDir;
+        List<cc.jumpkick.model.Scope> scopes;
+        try {
+            projectDir = Path.of(dir);
+            // decode, like `dir` above: the SPA sends encodeURIComponent, which spells `,` as %2C,
+            // so a raw read turns every multi-scope selection into one unknown token (JK-1607).
+            scopes = cc.jumpkick.resolver.DependencyGraphModel.parseScopes(decode(queryParam(query, "scopes")));
+        } catch (IllegalArgumentException e) { // includes InvalidPathException from Path.of
+            sendJson(
+                    exchange,
+                    400,
+                    JsonOut.object().put("error", e.getMessage()).toString());
+            return;
+        }
         boolean transitive = parseTruthy(queryParam(query, "transitive"));
         var data = cc.jumpkick.resolver.DependencyGraphModel.forProjectDir(projectDir, scopes, transitive);
         List<Map<String, Object>> nodes = new ArrayList<>(data.nodes().size());

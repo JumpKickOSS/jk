@@ -93,9 +93,20 @@ public final class DependencyGraphModel {
         return SCOPE_ORDER.stream().map(Scope::canonical).toList();
     }
 
+    /** Every canonical scope name, comma-joined — for "valid: …" diagnostics. */
+    public static String validScopes() {
+        List<String> names = new ArrayList<>();
+        for (Scope s : SCOPE_ORDER) names.add(s.canonical());
+        return String.join(", ", names);
+    }
+
     /**
      * Parse a comma-separated scopes query (canonical names). Empty/null → {@code main} only.
-     * Unknown tokens are ignored.
+     *
+     * <p>An unrecognized token <strong>throws</strong>. Silently dropping it and falling back to
+     * {@code main} made a whole class of caller bug invisible: the endpoint forgot to
+     * percent-decode this parameter, so {@code main%2Ctest} parsed as one unknown token and the
+     * user got a main-only graph with both boxes still ticked (JK-1607).
      */
     public static List<Scope> parseScopes(String scopesQuery) {
         if (scopesQuery == null || scopesQuery.isBlank()) {
@@ -107,8 +118,8 @@ public final class DependencyGraphModel {
             if (t.isEmpty()) continue;
             try {
                 out.add(Scope.fromCanonical(t));
-            } catch (IllegalArgumentException ignored) {
-                // drop unknown
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("unknown scope '" + raw.trim() + "' (valid: " + validScopes() + ")");
             }
         }
         if (out.isEmpty()) return List.of(Scope.MAIN);

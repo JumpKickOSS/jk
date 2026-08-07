@@ -585,6 +585,52 @@ class HttpEngineServerTest {
                 .contains("\"kind\":\"declared\"");
     }
 
+    /**
+     * The SPA sends encodeURIComponent, which spells `,` as %2C. Reading the parameter raw turned
+     * every multi-scope selection into one unknown token and silently fell back to main, with both
+     * checkboxes still ticked (JK-1607). Single-scope requests worked, which is why this was never
+     * caught.
+     */
+    @Test
+    void api_project_graph_decodes_a_multi_scope_selection(@TempDir Path stateDir) throws Exception {
+        Path solo = stateDir.resolve("solo");
+        Files.createDirectories(solo);
+        Files.writeString(
+                solo.resolve("jk.toml"),
+                """
+                [project]
+                group = "g"
+                name = "n"
+                version = "1"
+
+                [dependencies]
+                leaf = { group = "com.foo", name = "leaf", version = "1.0" }
+
+                [test-dependencies]
+                harness = { group = "com.foo", name = "harness", version = "1.0" }
+                """);
+
+        String body = get(
+                        "/api/project/graph?dir=" + solo + "&scopes=" + java.net.URLEncoder.encode(
+                                "main,test", java.nio.charset.StandardCharsets.UTF_8),
+                        "Authorization",
+                        "Bearer " + token())
+                .body();
+
+        // Both scopes are echoed, and the test-scope dependency is actually in the graph.
+        assertThat(body).contains("\"main\"").contains("\"test\"");
+        assertThat(body).contains("\"label\":\"com.foo:leaf\"");
+        assertThat(body).contains("\"label\":\"com.foo:harness\"");
+    }
+
+    @Test
+    void api_project_graph_rejects_an_unknown_scope_instead_of_falling_back_to_main() throws Exception {
+        var resp = get("/api/project/graph?dir=/tmp&scopes=bogus", "Authorization", "Bearer " + token());
+
+        assertThat(resp.statusCode()).isEqualTo(400);
+        assertThat(resp.body()).contains("bogus").contains("valid:");
+    }
+
     @Test
     void api_metrics_reports_aggregate_rows_with_the_token() throws Exception {
         var ok = new cc.jumpkick.runtime.BuildMetrics.Stats(3, 6000, 1000, 3000);

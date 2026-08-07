@@ -117,7 +117,7 @@ Dependency graph for the Project page (JK-1542), same idea as `jk tree`:
 | Query | Default | Meaning |
 | --- | --- | --- |
 | `dir` | required | Project or workspace root |
-| `scopes` | `main` | Comma-separated canonical scopes (`main`, `test`, `provided`, …) |
+| `scopes` | `main` | Comma-separated canonical scopes (`main`, `test`, `provided`, …). Percent-encoded like any query value; an unknown name is a **400** naming the valid set |
 | `transitive` | `false` | When true, expand lockfile transitive deps under each declared root |
 
 Response:
