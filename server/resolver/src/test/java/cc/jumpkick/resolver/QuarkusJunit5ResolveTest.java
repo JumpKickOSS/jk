@@ -31,7 +31,7 @@ import org.junit.jupiter.api.io.TempDir;
 class QuarkusJunit5ResolveTest {
 
     @Test
-    @Timeout(value = 20, unit = TimeUnit.SECONDS)
+    @Timeout(value = QuarkusLockPerfTest.NETWORK_TIMEOUT_SECONDS, unit = TimeUnit.SECONDS)
     void quarkus_junit5_alone_solves_fast(@TempDir Path tmp) throws Exception {
         Cas cas = new Cas(QuarkusLockPerfTest.developerStore());
         RepoGroup repos =

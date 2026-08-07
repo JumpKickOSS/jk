@@ -37,11 +37,21 @@ import org.junit.jupiter.api.io.TempDir;
 @Tag("slow")
 class QuarkusLockPerfTest {
 
+    /**
+     * Kill switch for any Quarkus-graph test that talks to Maven Central. It is not a budget —
+     * the budget is {@link #WARM_BUDGET_MS}, asserted separately. This only has to outlast a cold
+     * store's download burst, so it is generous on purpose: a deadline tight enough to trip on a
+     * slow link reports a resolve regression that is not one, which is how JK-1597 happened.
+     *
+     * <p>Shared by every test in this family so the three of them cannot drift apart again.
+     */
+    static final int NETWORK_TIMEOUT_SECONDS = 120;
+
     /** Resolve budget for a warm store. Cold fetching is deliberately outside the assertion. */
     private static final long WARM_BUDGET_MS = 5_000L;
 
     @Test
-    @Timeout(value = 5, unit = TimeUnit.MINUTES)
+    @Timeout(value = NETWORK_TIMEOUT_SECONDS, unit = TimeUnit.SECONDS)
     void quarkus_rest_arc_resolves_under_the_warm_budget(@TempDir Path tmp) throws Exception {
         assumeTrue(networkOk(), "Maven Central unreachable");
         Files.writeString(tmp.resolve("jk.toml"), """
