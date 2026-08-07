@@ -134,15 +134,18 @@ class JobWorkersTest {
             Long seen = cc.jumpkick.run.JkThreads.cpu()
                     .submit(JobWorkers::currentScope)
                     .get(10, TimeUnit.SECONDS);
-            assertThat(seen).as("pool task must see the submitting request's scope").isEqualTo(222L);
+            assertThat(seen)
+                    .as("pool task must see the submitting request's scope")
+                    .isEqualTo(222L);
         } finally {
             JobWorkers.close();
         }
 
         // With no scope open, a pool task must not inherit a stale one either.
-        Long unscoped = cc.jumpkick.run.JkThreads.cpu()
-                .submit(JobWorkers::currentScope)
-                .get(10, TimeUnit.SECONDS);
-        assertThat(unscoped).as("no ambient scope must not leak a stale request").isNull();
+        Long unscoped =
+                cc.jumpkick.run.JkThreads.cpu().submit(JobWorkers::currentScope).get(10, TimeUnit.SECONDS);
+        assertThat(unscoped)
+                .as("no ambient scope must not leak a stale request")
+                .isNull();
     }
 }

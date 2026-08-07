@@ -31,9 +31,9 @@ import cc.jumpkick.resolver.pubgrub.VersionSet;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
-import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
 import java.net.URI;
@@ -240,13 +240,12 @@ public final class LockPlans {
                         } else {
                             // Explicit re-lock must revalidate maven-metadata (same-URL TTL would
                             // hide newly published versions until --force / next day).
-                            lock = cc.jumpkick.repo.MavenMetadataCache.withForceRevalidate(
-                                    () -> orchestrator.lock(
-                                            pathPrep.project(),
-                                            JkVersion.VERSION,
-                                            features,
-                                            withDefaultFeatures,
-                                            wrappedObserver));
+                            lock = cc.jumpkick.repo.MavenMetadataCache.withForceRevalidate(() -> orchestrator.lock(
+                                    pathPrep.project(),
+                                    JkVersion.VERSION,
+                                    features,
+                                    withDefaultFeatures,
+                                    wrappedObserver));
                         }
                         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
                         String kotlinVersion = keepPins && existing.kotlin() != null

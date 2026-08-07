@@ -22,19 +22,20 @@ import org.jetbrains.annotations.Nullable;
 public final class JkSyncService {
 
     public record SyncResult(
-            boolean success, @Nullable String message, @Nullable JkWireModel model, int exitCode) {}
+            boolean success,
+            @Nullable String message,
+            @Nullable JkWireModel model,
+            int exitCode) {}
 
     private JkSyncService() {}
 
     public static @NotNull SyncResult sync(
-            @NotNull Project project, @NotNull File projectDir, @NotNull ProgressIndicator indicator)
-            throws Exception {
+            @NotNull Project project, @NotNull File projectDir, @NotNull ProgressIndicator indicator) throws Exception {
         indicator.setIndeterminate(true);
         indicator.setText("JumpKick: resolving model (lock + sync)");
 
         // 1) Machine model — proves engine handshake + gives module counts for UI.
-        JkCliRunner.Result modelRun =
-                JkCliRunner.run(projectDir, List.of("ide", "--print-model"), indicator);
+        JkCliRunner.Result modelRun = JkCliRunner.run(projectDir, List.of("ide", "--print-model"), indicator);
         if (indicator.isCanceled()) {
             return new SyncResult(false, "cancelled", null, 130);
         }
@@ -55,8 +56,7 @@ public final class JkSyncService {
 
         // 2) Apply IntelliJ project structure from the same engine model (generator path).
         indicator.setText("JumpKick: applying IntelliJ project structure");
-        JkCliRunner.Result ideaRun =
-                JkCliRunner.run(projectDir, List.of("ide", "--idea"), indicator);
+        JkCliRunner.Result ideaRun = JkCliRunner.run(projectDir, List.of("ide", "--idea"), indicator);
         if (!ideaRun.ok()) {
             String err = firstNonBlank(ideaRun.stderr(), ideaRun.stdout(), "jk ide --idea failed");
             return new SyncResult(false, err + " (exit " + ideaRun.exitCode() + ")", model, ideaRun.exitCode());
@@ -68,8 +68,7 @@ public final class JkSyncService {
 
         // 3) Ensure BSP connection (ide --idea also writes it; refresh is cheap/idempotent).
         indicator.setText("JumpKick: refreshing BSP connection");
-        JkCliRunner.Result bspRun =
-                JkCliRunner.run(projectDir, List.of("bsp", "install"), indicator);
+        JkCliRunner.Result bspRun = JkCliRunner.run(projectDir, List.of("bsp", "install"), indicator);
         if (!bspRun.ok()) {
             String err = firstNonBlank(bspRun.stderr(), bspRun.stdout(), "jk bsp install failed");
             return new SyncResult(false, err + " (exit " + bspRun.exitCode() + ")", model, bspRun.exitCode());

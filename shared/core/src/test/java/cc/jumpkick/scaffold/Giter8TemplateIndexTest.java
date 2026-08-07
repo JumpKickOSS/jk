@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -34,15 +36,14 @@ class Giter8TemplateIndexTest {
     void disk_props_overlay_catalog(@TempDir Path temp) throws Exception {
         Path g8 = temp.resolve("ktor-3.g8");
         Files.createDirectories(g8);
-        Files.writeString(
-                g8.resolve("default.properties"),
-                """
+        Files.writeString(g8.resolve("default.properties"), """
                 name=my-ktor
                 jk_languages=kotlin
                 jk_layout=simple
                 """);
         var list = Giter8TemplateIndex.build(List.of(temp));
-        var ktor = list.stream().filter(e -> e.id().equals("ktor-3")).findFirst().orElseThrow();
+        var ktor =
+                list.stream().filter(e -> e.id().equals("ktor-3")).findFirst().orElseThrow();
         assertThat(ktor.languages()).containsExactly("kotlin");
         assertThat(ktor.layout()).isEqualTo(Giter8ShortNames.LAYOUT_SIMPLE);
     }
@@ -51,9 +52,7 @@ class Giter8TemplateIndexTest {
     void unknown_short_name_from_disk_is_appended(@TempDir Path temp) throws Exception {
         Path g8 = temp.resolve("acme-lib.g8");
         Files.createDirectories(g8.resolve("src/main/g8"));
-        Files.writeString(
-                g8.resolve("default.properties"),
-                """
+        Files.writeString(g8.resolve("default.properties"), """
                 name=Acme Lib
                 jk_languages=java
                 jk_layout=traditional
@@ -98,9 +97,9 @@ class Giter8TemplateIndexTest {
         Path g8 = temp.resolve("ktor-3.g8");
         Files.createDirectories(g8);
         Files.writeString(g8.resolve("default.properties"), "jk_languages=kotlin\njk_layout=simple\n");
-        var byId = new java.util.LinkedHashMap<String, Giter8ShortNames.Entry>();
+        var byId = new LinkedHashMap<String, Giter8ShortNames.Entry>();
         for (var e : Giter8ShortNames.entries()) byId.put(e.id(), e);
-        var overlaid = new java.util.HashSet<String>();
+        var overlaid = new HashSet<String>();
         Giter8TemplateIndex.scanRoot(temp, byId, overlaid);
         assertThat(overlaid).containsExactly("ktor-3");
         var probe = Giter8TemplateIndex.idsNeedingProbe(byId.values(), overlaid);

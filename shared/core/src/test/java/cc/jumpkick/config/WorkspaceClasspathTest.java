@@ -78,9 +78,7 @@ class WorkspaceClasspathTest {
 
     @Test
     void tests_kind_puts_sibling_test_classes_on_the_test_classpath(@TempDir Path root) throws Exception {
-        Files.writeString(
-                root.resolve("jk.toml"),
-                """
+        Files.writeString(root.resolve("jk.toml"), """
                 [project]
                 group = "com.ex"
                 name = "ws"
@@ -91,10 +89,7 @@ class WorkspaceClasspathTest {
                 modules = ["lib", "app"]
                 """);
         module(root, "lib", "");
-        module(
-                root,
-                "app",
-                """
+        module(root, "app", """
                 [dependencies]
                 lib = { workspace = true }
 
@@ -111,8 +106,7 @@ class WorkspaceClasspathTest {
 
         JkBuild app = JkBuildParser.parse(root.resolve("app/jk.toml"));
         var mainOnly = WorkspaceClasspath.resolve(root.resolve("app"), app, Set.of(Scope.EXPORT, Scope.MAIN));
-        assertThat(mainOnly.jars().stream().map(Object::toString).toList())
-                .noneMatch(p -> p.contains("classes/test"));
+        assertThat(mainOnly.jars().stream().map(Object::toString).toList()).noneMatch(p -> p.contains("classes/test"));
 
         var withTests =
                 WorkspaceClasspath.resolve(root.resolve("app"), app, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST));
@@ -122,9 +116,7 @@ class WorkspaceClasspathTest {
 
     @Test
     void kind_tests_outside_test_scope_is_rejected(@TempDir Path root) throws Exception {
-        Files.writeString(
-                root.resolve("jk.toml"),
-                """
+        Files.writeString(root.resolve("jk.toml"), """
                 [project]
                 group = "com.ex"
                 name = "ws"
@@ -137,9 +129,7 @@ class WorkspaceClasspathTest {
         module(root, "lib", "");
         Path appToml = root.resolve("app/jk.toml");
         Files.createDirectories(appToml.getParent());
-        Files.writeString(
-                appToml,
-                """
+        Files.writeString(appToml, """
                 [project]
                 group = "com.ex"
                 name = "app"
@@ -149,8 +139,7 @@ class WorkspaceClasspathTest {
                 [dependencies]
                 lib = { workspace = true, kind = "tests" }
                 """);
-        org.junit.jupiter.api.Assertions.assertThrows(
-                JkBuildParseException.class, () -> JkBuildParser.parse(appToml));
+        org.junit.jupiter.api.Assertions.assertThrows(JkBuildParseException.class, () -> JkBuildParser.parse(appToml));
     }
 
     private static List<String> jarNames(WorkspaceClasspath.Result result) {

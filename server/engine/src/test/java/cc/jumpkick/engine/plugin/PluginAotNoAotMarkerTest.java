@@ -34,8 +34,7 @@ class PluginAotNoAotMarkerTest {
         Path cache = tmp.resolve("kotlinc-0123456789abcdef.aot");
         Path marker = Files.createFile(PluginAot.noaotMarker(cache));
         Files.setLastModifiedTime(
-                marker,
-                FileTime.fromMillis(System.currentTimeMillis() - PluginAot.NOAOT_RETRY_MILLIS - 60_000));
+                marker, FileTime.fromMillis(System.currentTimeMillis() - PluginAot.NOAOT_RETRY_MILLIS - 60_000));
 
         assertThat(PluginAot.noAotBlocked(cache)).isFalse(); // the key retrains
         assertThat(marker).doesNotExist(); // expired marker is gone, not consulted again
@@ -43,6 +42,7 @@ class PluginAotNoAotMarkerTest {
 
     @Test
     void no_marker_means_not_blocked() {
-        assertThat(PluginAot.noAotBlocked(tmp.resolve("kotlinc-0123456789abcdef.aot"))).isFalse();
+        assertThat(PluginAot.noAotBlocked(tmp.resolve("kotlinc-0123456789abcdef.aot")))
+                .isFalse();
     }
 }

@@ -182,10 +182,11 @@ class EngineProtocolTest {
     @Test
     void invocation_phase_wire_names_round_trip_the_enum() {
         for (var p : cc.jumpkick.plugin.build.InvocationPhase.values()) {
-            assertThat(cc.jumpkick.plugin.build.InvocationPhase.fromWire(p.wireName())).isEqualTo(p);
+            assertThat(cc.jumpkick.plugin.build.InvocationPhase.fromWire(p.wireName()))
+                    .isEqualTo(p);
         }
-        String line = EngineProtocol.invocationPhase(
-                cc.jumpkick.plugin.build.InvocationPhase.RESOLVE.wireName(), "start");
+        String line =
+                EngineProtocol.invocationPhase(cc.jumpkick.plugin.build.InvocationPhase.RESOLVE.wireName(), "start");
         assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.INVOCATION_PHASE);
         assertThat(Jsonl.str(line, "phase")).isEqualTo("resolve");
         assertThat(Jsonl.str(line, "status")).isEqualTo("start");
@@ -194,7 +195,20 @@ class EngineProtocolTest {
     @Test
     void build_request_carries_test_only_and_dirty_hint() {
         String on = EngineProtocol.buildRequest(
-                "/w", "/c", null, 1, null, false, false, 0, false, false, false, true, false, true,
+                "/w",
+                "/c",
+                null,
+                1,
+                null,
+                false,
+                false,
+                0,
+                false,
+                false,
+                false,
+                true,
+                false,
+                true,
                 List.of("/w/api", "/w/core"));
         assertThat(Jsonl.bool(on, "testOnly", false)).isTrue();
         assertThat(EngineProtocol.dirtyHintOf(on)).containsExactly("/w/api", "/w/core");

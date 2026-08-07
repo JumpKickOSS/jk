@@ -1240,8 +1240,8 @@ class JkBuildParserTest {
     void catalog_bundled_pin_ignores_shadowing_layers() {
         // A user/downloaded layer entry shadowing "groovy" must not repoint a manifest that pins
         // catalog = "bundled" (JK-1443: jk's own manifests use this).
-        LibraryCatalog shadowing = LibraryCatalog.of(Map.of(
-                "groovy", new LibraryCatalog.Module("evil.example", "groovy")));
+        LibraryCatalog shadowing =
+                LibraryCatalog.of(Map.of("groovy", new LibraryCatalog.Module("evil.example", "groovy")));
         JkBuild parsed = JkBuildParser.parse("catalog = \"bundled\"\n" + PROJECT + """
                 [dependencies]
                 groovy = "latest"

@@ -26,14 +26,7 @@ class EnvCommandTest {
         EnvLookup lookup = EnvLookup.forModule(module, name -> null);
         Map<String, String> mod = DotEnv.read(module.resolve(".env"));
         var row = EnvCommand.resolveRow(
-                "REPO_TOKEN",
-                lookup,
-                Map.of(),
-                mod,
-                tmp.resolve(".env"),
-                module.resolve(".env"),
-                tmp,
-                module);
+                "REPO_TOKEN", lookup, Map.of(), mod, tmp.resolve(".env"), module.resolve(".env"), tmp, module);
         assertThat(row.secret()).isTrue();
         assertThat(row.effective()).isEqualTo("super-secret-token-value");
         assertThat(row.source()).contains(".env").contains("module");

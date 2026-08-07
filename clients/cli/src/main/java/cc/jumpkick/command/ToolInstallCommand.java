@@ -45,7 +45,8 @@ public final class ToolInstallCommand implements CliCommand {
         return List.of(
                 Opt.value("<name>", "Launcher name under $JK_BIN_DIR. Default: the artifact id.", "--bin"),
                 Opt.value("<class>", "Override Main-Class (from jar manifest)", "--main"),
-                Opt.value("<coord>", "Extra dependency on tool classpath", "--with").repeat(),
+                Opt.value("<coord>", "Extra dependency on tool classpath", "--with")
+                        .repeat(),
                 Opt.value("<group>", "Maven groupId (local-cache install mode)", "--group"),
                 Opt.value("<name>", "Maven artifactId for a local-cache file install.", "--name"),
                 Opt.value("<ver>", "Version for a local-cache file install.", "--ver"),
@@ -229,7 +230,8 @@ public final class ToolInstallCommand implements CliCommand {
                 aliasJavaOptions);
 
         if (!global.outputIsJson()) {
-            cc.jumpkick.cli.tui.CommandWedge.printOk("Tool", "Installed " + Coords.gav(env.primary()) + " → " + launcher);
+            cc.jumpkick.cli.tui.CommandWedge.printOk(
+                    "Tool", "Installed " + Coords.gav(env.primary()) + " → " + launcher);
             CliOutput.out("Add to PATH if needed:");
             CliOutput.out("  export PATH=\"" + binDir + ":$PATH\"");
         }
@@ -347,7 +349,8 @@ public final class ToolInstallCommand implements CliCommand {
             Path ktsLauncher = ToolLauncher.installKotlinScript(
                     envsRoot, binDir, JavaHomes.runningJavaHome(), prep.kotlincBin(), scriptCopy, ktsEnv, provenance);
             if (!global.outputIsJson()) {
-                cc.jumpkick.cli.tui.CommandWedge.printOk("Tool", "Installed " + file.getFileName() + " → " + ktsLauncher);
+                cc.jumpkick.cli.tui.CommandWedge.printOk(
+                        "Tool", "Installed " + file.getFileName() + " → " + ktsLauncher);
                 CliOutput.out("Add to PATH if needed:");
                 CliOutput.out("  export PATH=\"" + binDir + ":$PATH\"");
             }

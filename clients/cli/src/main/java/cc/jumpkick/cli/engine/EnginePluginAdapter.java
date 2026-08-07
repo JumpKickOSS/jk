@@ -201,9 +201,7 @@ final class EnginePluginAdapter {
             case EngineProtocol.BUILDPLAN_START -> listener.planStart(readBuildPlanView(line));
             case EngineProtocol.TASK_START ->
                 listener.stepStart(
-                        Jsonl.str(line, "task"),
-                        wireGroup(Jsonl.str(line, "stage")),
-                        Jsonl.intValue(line, "ticks", 0));
+                        Jsonl.str(line, "task"), wireGroup(Jsonl.str(line, "stage")), Jsonl.intValue(line, "ticks", 0));
             case EngineProtocol.PROGRESS ->
                 listener.progress(Jsonl.str(line, "task"), Jsonl.intValue(line, "delta", 0), readBuildPlanView(line));
             case EngineProtocol.TICK_UPDATE ->

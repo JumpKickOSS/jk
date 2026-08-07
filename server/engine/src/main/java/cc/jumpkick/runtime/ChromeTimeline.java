@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -39,6 +38,7 @@ public final class ChromeTimeline {
      * O(n²) — a 50-module × 10-step build costs ~125k element copies (JK-1484).
      */
     private final List<Event> events = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+
     private final Map<String, Integer> tids = new ConcurrentHashMap<>();
     private final AtomicInteger nextTid = new AtomicInteger(1);
 

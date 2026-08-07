@@ -8,12 +8,12 @@ import static cc.jumpkick.repo.DomXml.childText;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.Workspace;
-import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.PomParseException;
 import cc.jumpkick.repo.PomParser;
@@ -177,7 +177,9 @@ public final class PomImporter {
      */
     private static Map<String, String> siblingGaIndex(JkBuild root, Collection<JkBuild> modules) {
         Map<String, String> ga = new LinkedHashMap<>();
-        ga.put(root.project().group() + ":" + root.project().name(), root.project().name());
+        ga.put(
+                root.project().group() + ":" + root.project().name(),
+                root.project().name());
         for (JkBuild m : modules) {
             ga.put(m.project().group() + ":" + m.project().name(), m.project().name());
         }

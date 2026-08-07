@@ -242,9 +242,8 @@ public final class RepoCommand extends GroupCommand {
                     in.value("cache-dir").map(Path::of).orElse(null));
             Path storeRoot = JkStores.storeRootFor(cacheRoot);
             if (!Files.isDirectory(cacheRoot) && !Files.isDirectory(storeRoot)) {
-                CliOutput.out("Store directory: "
-                        + cc.jumpkick.cli.PathDisplay.styledRaw(storeRoot)
-                        + " (not yet created)");
+                CliOutput.out(
+                        "Store directory: " + cc.jumpkick.cli.PathDisplay.styledRaw(storeRoot) + " (not yet created)");
                 return 0;
             }
             CacheCommand.SectionStats s = CacheCommand.sectionStats(cacheRoot);
@@ -253,13 +252,7 @@ public final class RepoCommand extends GroupCommand {
             // Last-pruned stamp still lives under the cache root (prune job).
             String lastPruned = CacheCommand.lastPrunedLabel(cacheRoot);
             for (String line : CacheCommand.renderRepoStorageTable(
-                    s.cas(),
-                    s.repos(),
-                    s.runs(),
-                    s.repoFiles(),
-                    s.repoBytes(),
-                    maxBytes,
-                    lastPruned)) {
+                    s.cas(), s.repos(), s.runs(), s.repoFiles(), s.repoBytes(), maxBytes, lastPruned)) {
                 CliOutput.out(line);
             }
             return 0;

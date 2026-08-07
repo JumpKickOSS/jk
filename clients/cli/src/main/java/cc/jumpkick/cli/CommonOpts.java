@@ -40,11 +40,7 @@ public final class CommonOpts {
      */
     public static List<Opt> moduleSelection() {
         return List.of(
-                Opt.value(
-                        "<sel>",
-                        "Only selected modules (paths/globs)",
-                        "-m",
-                        "--modules"),
+                Opt.value("<sel>", "Only selected modules (paths/globs)", "-m", "--modules"),
                 Opt.value("<git-ref>", "Modules changed since this git ref", "--affected-since"));
     }
 

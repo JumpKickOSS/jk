@@ -3,9 +3,9 @@ package cc.jumpkick.command.ide;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.Scope;
@@ -449,9 +449,12 @@ public final class IntellijIdeGenerator implements IdeGenerator {
      */
     private static void appendTestProductLibrary(StringBuilder sb, Path moduleDir, IdeModule sibling) {
         Path testClasses = sibling.testClassesDir();
-        String classesUrl = "file://" + testClasses.toAbsolutePath().normalize().toString().replace('\\', '/');
+        String classesUrl =
+                "file://" + testClasses.toAbsolutePath().normalize().toString().replace('\\', '/');
         sb.append("    <orderEntry type=\"module-library\" scope=\"TEST\">\n");
-        sb.append("      <library name=\"").append(esc(sibling.name() + " (tests)")).append("\">\n");
+        sb.append("      <library name=\"")
+                .append(esc(sibling.name() + " (tests)"))
+                .append("\">\n");
         sb.append("        <CLASSES>\n");
         sb.append("          <root url=\"").append(esc(classesUrl)).append("\" />\n");
         sb.append("        </CLASSES>\n");

@@ -5,8 +5,8 @@ import cc.jumpkick.cache.DiskUsage;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.BuildPlanConsole;
+import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -93,8 +93,8 @@ public final class CacheCommand extends GroupCommand {
         // Store CAS first so hard-linked repos/ do not double-count; cache trees are exclusive of store.
         DiskUsage.Stats[] parts = DiskUsage.exclusive(storeCas, repos, actions, runs, stamps);
         DiskUsage.Stats cacheCasStats = DiskUsage.of(cacheCas);
-        Stats actionsPlusCacheCas = new Stats(
-                parts[2].files() + cacheCasStats.files(), parts[2].bytes() + cacheCasStats.bytes());
+        Stats actionsPlusCacheCas =
+                new Stats(parts[2].files() + cacheCasStats.files(), parts[2].bytes() + cacheCasStats.bytes());
         return new SectionStats(
                 Stats.from(parts[0]),
                 actionsPlusCacheCas,
@@ -115,8 +115,7 @@ public final class CacheCommand extends GroupCommand {
         DiskUsage.Stats cacheCas = DiskUsage.of(cacheRoot.resolve("sha256"));
         DiskUsage.Stats stamps = DiskUsage.of(cacheRoot.resolve("format-stamps"));
         return new CacheTierStats(
-                new Stats(actions.files() + cacheCas.files(), actions.bytes() + cacheCas.bytes()),
-                Stats.from(stamps));
+                new Stats(actions.files() + cacheCas.files(), actions.bytes() + cacheCas.bytes()), Stats.from(stamps));
     }
 
     /** Cache-tier breakdown for {@code jk cache storage} ({@code actions} includes the cache CAS). */
@@ -268,9 +267,7 @@ public final class CacheCommand extends GroupCommand {
             Path root = resolveCacheRoot(in.value("cache-dir").map(Path::of).orElse(null));
             Path actions = root.resolve("actions");
             Path cacheCas = root.resolve("sha256");
-            if (!Files.isDirectory(root)
-                    && !Files.isDirectory(actions)
-                    && !Files.isDirectory(cacheCas)) {
+            if (!Files.isDirectory(root) && !Files.isDirectory(actions) && !Files.isDirectory(cacheCas)) {
                 CliOutput.out("Cache: " + cc.jumpkick.cli.PathDisplay.styledRaw(root) + " (not yet created)");
                 return 0;
             }
@@ -443,10 +440,7 @@ public final class CacheCommand extends GroupCommand {
         public List<Opt> options() {
             return List.of(
                     cc.jumpkick.cli.CommonOpts.cacheDir(),
-                    Opt.value(
-                            "<days>",
-                            "Drop action-cache entries older than N days",
-                            "--older-than"),
+                    Opt.value("<days>", "Drop action-cache entries older than N days", "--older-than"),
                     Opt.flag("Print what would be removed; touch nothing.", "--dry-run"),
                     // Store-side flags moved to `jk repo prune` (JK-1435); kept hidden for
                     // back-compat — see docs/aliases.md.
@@ -640,9 +634,8 @@ public final class CacheCommand extends GroupCommand {
             Theme t = Theme.active();
             String bang = Theme.colorize(Glyphs.BANG, t.warning());
             CliOutput.out();
-            CliOutput.out(bang
-                    + " "
-                    + Theme.colorize("This permanently deletes the ENTIRE cache tier.", t.errorLabel()));
+            CliOutput.out(
+                    bang + " " + Theme.colorize("This permanently deletes the ENTIRE cache tier.", t.errorLabel()));
             CliOutput.out("  " + root);
             CliOutput.stdout()
                     .printf(
@@ -650,7 +643,8 @@ public final class CacheCommand extends GroupCommand {
                             fmtCount(stats.files), fmtBytes(stats.bytes));
             CliOutput.out(
                     "  Artifact store (deps under JK_STORE_DIR) is kept. Rebuildable — the next build re-runs work.");
-            return cc.jumpkick.cli.tui.Confirm.of(bang + " Purge the cache tier?", false).ask();
+            return cc.jumpkick.cli.tui.Confirm.of(bang + " Purge the cache tier?", false)
+                    .ask();
         }
     }
 
@@ -690,7 +684,8 @@ public final class CacheCommand extends GroupCommand {
         @Override
         public int run(Invocation in) throws Exception {
             CliOutput.err(Theme.colorize(
-                    "note: jk cache search moved to jk repo search", Theme.active().dim()));
+                    "note: jk cache search moved to jk repo search",
+                    Theme.active().dim()));
             return target.run(in);
         }
     }

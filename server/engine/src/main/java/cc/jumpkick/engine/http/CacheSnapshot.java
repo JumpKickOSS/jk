@@ -38,12 +38,7 @@ public record CacheSnapshot(
 
     /** All section file counts (debug / legacy combined total). */
     public long totalCount() {
-        return casCount
-                + actionsCount
-                + cacheCasCount
-                + workerJarsCount
-                + runLogsCount
-                + formatStampsCount;
+        return casCount + actionsCount + cacheCasCount + workerJarsCount + runLogsCount + formatStampsCount;
     }
 
     /** All section bytes (debug / legacy combined total — prefer the two surfaces below). */

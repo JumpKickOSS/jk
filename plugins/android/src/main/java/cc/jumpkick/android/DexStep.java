@@ -52,5 +52,4 @@ final class DexStep {
             throw new IllegalStateException("d8 failed:\n" + result.output());
         }
     }
-
 }

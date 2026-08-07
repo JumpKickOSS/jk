@@ -148,8 +148,7 @@ public final class DependencyGraphModel {
         try {
             JkBuild entry = JkBuildParser.parse(toml);
             Lockfile lock = readLock(root);
-            Map<String, Lockfile.Artifact> byModule =
-                    lock == null ? Map.of() : DependencyTree.indexByModule(lock);
+            Map<String, Lockfile.Artifact> byModule = lock == null ? Map.of() : DependencyTree.indexByModule(lock);
 
             if (entry.isWorkspaceRoot()) {
                 Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(root, entry);
@@ -172,11 +171,7 @@ public final class DependencyGraphModel {
     }
 
     private static Graph buildStandalone(
-            Path dir,
-            JkBuild build,
-            List<Scope> scopes,
-            boolean transitive,
-            Map<String, Lockfile.Artifact> byModule) {
+            Path dir, JkBuild build, List<Scope> scopes, boolean transitive, Map<String, Lockfile.Artifact> byModule) {
         Builder b = new Builder(scopes, transitive, byModule);
         String rootId = b.moduleNode(dir, build, ".");
         b.addDeclaredDeps(rootId, build, scopes);
@@ -300,8 +295,7 @@ public final class DependencyGraphModel {
             }
         }
 
-        private String resolveWorkspaceId(
-                Dependency d, Map<String, String> idByCoord, Map<String, String> idByName) {
+        private String resolveWorkspaceId(Dependency d, Map<String, String> idByCoord, Map<String, String> idByName) {
             if (idByCoord.isEmpty() && idByName.isEmpty()) return null;
             String id = idByCoord.get(d.module());
             if (id != null) return id;

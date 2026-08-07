@@ -101,7 +101,9 @@ class BuildCleanRestoreTest {
             if (plan.get(0).steps().stream()
                     .filter(s -> !s.name().equals("restore-outputs"))
                     .allMatch(TaskForecast.Task::cached)) {
-                assertThat(plan.get(0).steps()).extracting(TaskForecast.Task::name).contains("restore-outputs");
+                assertThat(plan.get(0).steps())
+                        .extracting(TaskForecast.Task::name)
+                        .contains("restore-outputs");
             }
 
             // The scheduled build restores the outputs from cache.

@@ -68,8 +68,7 @@ public final class PluginAot {
     static final long LAST_USED_REFRESH_MILLIS = 60L * 60 * 1_000;
 
     /** When this JVM last rewrote a cache's manifest {@code last_used} (throttle memory). */
-    private static final java.util.concurrent.ConcurrentMap<Path, Long> LAST_USED_WRITTEN =
-            new ConcurrentHashMap<>();
+    private static final java.util.concurrent.ConcurrentMap<Path, Long> LAST_USED_WRITTEN = new ConcurrentHashMap<>();
 
     /** In-JVM double-spawn guard (the claim file guards across processes). */
     private static final Set<Path> TRAINING = ConcurrentHashMap.newKeySet();
@@ -126,8 +125,7 @@ public final class PluginAot {
             }
             deleteIfEmpty(cache); // truncated leftover: treat as missing so it can retrain
             if (eligible(id) && trainingEnabled() && !noAotBlocked(cache)) {
-                trainAsync(
-                        prefix + " worker (" + id.vendor() + " " + id.version() + ")", cache, trainer, meta);
+                trainAsync(prefix + " worker (" + id.vendor() + " " + id.version() + ")", cache, trainer, meta);
             }
         } catch (RuntimeException e) {
             // AOT is an accelerator, never a dependency — never fail the build.
@@ -203,12 +201,7 @@ public final class PluginAot {
      * {@code force} retrain (delete existing cache / noaot marker first).
      */
     public static boolean ensureTrained(
-            String tool,
-            Path javaHome,
-            String workerClasspath,
-            TrainerCommand trainer,
-            long timeoutMs,
-            boolean force) {
+            String tool, Path javaHome, String workerClasspath, TrainerCommand trainer, long timeoutMs, boolean force) {
         if (!enabled() || javaHome == null || trainer == null) return false;
         try {
             JdkId id = jdkId(javaHome);
@@ -339,8 +332,7 @@ public final class PluginAot {
     // ---- training -------------------------------------------------------------------------
 
     /** Inputs that identify a worker cache key — recorded in {@link AotManifest}. */
-    record CacheMeta(
-            String tool, String key, JdkId id, String gc, String classpath, List<String> jvmFlags) {
+    record CacheMeta(String tool, String key, JdkId id, String gc, String classpath, List<String> jvmFlags) {
         CacheMeta {
             jvmFlags = jvmFlags == null ? List.of() : List.copyOf(jvmFlags);
         }
@@ -377,8 +369,7 @@ public final class PluginAot {
     }
 
     /** Synchronous train for {@link #ensureTrained} (install optimize). */
-    private static void trainBlocking(
-            String what, Path cache, TrainerCommand trainer, long timeoutMs, CacheMeta meta) {
+    private static void trainBlocking(String what, Path cache, TrainerCommand trainer, long timeoutMs, CacheMeta meta) {
         if (trainer == null || !TRAINING.add(cache)) {
             // Another train in flight — wait for the cache file.
             waitForCache(cache, timeoutMs);
@@ -427,8 +418,7 @@ public final class PluginAot {
         }
     }
 
-    private static void runTrainer(
-            String what, Path cache, Path claim, TrainerCommand trainer, CacheMeta meta) {
+    private static void runTrainer(String what, Path cache, Path claim, TrainerCommand trainer, CacheMeta meta) {
         Path scratch = null;
         boolean keepClaim = false;
         Path tmp = cache.resolveSibling(
@@ -637,7 +627,8 @@ public final class PluginAot {
         Path aotDir = cache.getParent();
         if (aotDir == null) return;
         String now = AotManifest.nowIso();
-        AotManifest.Entry.Builder b = AotManifest.Entry.builder(cache.getFileName().toString())
+        AotManifest.Entry.Builder b = AotManifest.Entry.builder(
+                        cache.getFileName().toString())
                 .tool(meta.tool())
                 .key(meta.key())
                 .jkVersion(JkVersion.VERSION)

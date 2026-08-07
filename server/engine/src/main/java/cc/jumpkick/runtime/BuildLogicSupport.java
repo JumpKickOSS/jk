@@ -119,7 +119,8 @@ public final class BuildLogicSupport {
         List<BuildLogicScripts.ScriptTask> scripts = BuildLogicScripts.discover(c.logicDir());
         if (javaSources.isEmpty() && ktSources.isEmpty() && scripts.isEmpty()) {
             if (anchor == BuildLogicAnchor.AFTER_RESOURCES) {
-                label.accept("build-logic: no sources/scripts in " + c.logicDir().getFileName());
+                label.accept(
+                        "build-logic: no sources/scripts in " + c.logicDir().getFileName());
             }
             return true;
         }
@@ -164,8 +165,17 @@ public final class BuildLogicSupport {
             }
             registerScripts(byAnchor, scripts);
             return runAnchor(
-                    projectDir, layout, actionCache, classesDir, anchor, label, c,
-                    javaSources, ktSources, scripts, byAnchor);
+                    projectDir,
+                    layout,
+                    actionCache,
+                    classesDir,
+                    anchor,
+                    label,
+                    c,
+                    javaSources,
+                    ktSources,
+                    scripts,
+                    byAnchor);
         } finally {
             if (logicLoader != null) logicLoader.close();
         }
@@ -198,8 +208,8 @@ public final class BuildLogicSupport {
             sourceTokens.add("kt:" + c.logicDir().relativize(src) + ":" + Hashing.sha256Hex(Files.readAllBytes(src)));
         }
         for (BuildLogicScripts.ScriptTask s : scripts) {
-            sourceTokens.add(
-                    "script:" + c.logicDir().relativize(s.file()) + ":" + Hashing.sha256Hex(Files.readAllBytes(s.file())));
+            sourceTokens.add("script:" + c.logicDir().relativize(s.file()) + ":"
+                    + Hashing.sha256Hex(Files.readAllBytes(s.file())));
         }
         sourceTokens.add("anchor:" + anchor.name());
         // A build-logic task reads the project, not only itself: BuildLogicContext hands it
@@ -225,7 +235,9 @@ public final class BuildLogicSupport {
             tokens.add("kind:" + task.kind());
             String key = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);
 
-            boolean useCache = !cc.jumpkick.config.SessionContext.current().config().forceOr(false)
+            boolean useCache = !cc.jumpkick.config.SessionContext.current()
+                            .config()
+                            .forceOr(false)
                     && !cc.jumpkick.config.SessionContext.current().config().rebuildOr(false);
             Optional<ActionCache.ActionRecord> hit = useCache ? actionCache.lookup(key) : Optional.empty();
             if (hit.isPresent() && !hit.get().outputs().isEmpty()) {
@@ -290,8 +302,8 @@ public final class BuildLogicSupport {
         }
         for (BuildLogicScripts.ScriptTask s : scripts) {
             if (claimed.containsKey(s.name())) {
-                throw new IllegalStateException("duplicate build-logic task name: " + s.name()
-                        + " (script " + s.file().getFileName() + ")");
+                throw new IllegalStateException("duplicate build-logic task name: " + s.name() + " (script "
+                        + s.file().getFileName() + ")");
             }
             claimed.put(s.name(), s.anchor());
             Path scriptFile = s.file();
@@ -305,13 +317,14 @@ public final class BuildLogicSupport {
                     }
                 } catch (Exception e) {
                     Throwable root = e;
-                    while (root instanceof java.lang.reflect.InvocationTargetException ite
-                            && ite.getCause() != null) {
+                    while (root instanceof java.lang.reflect.InvocationTargetException ite && ite.getCause() != null) {
                         root = ite.getCause();
                     }
                     if (root instanceof InterruptedException ie) throw ie;
                     if (root instanceof IOException ioe) throw ioe;
-                    String msg = root.getMessage() != null ? root.getMessage() : root.getClass().getSimpleName();
+                    String msg = root.getMessage() != null
+                            ? root.getMessage()
+                            : root.getClass().getSimpleName();
                     throw new IllegalStateException(
                             "[build] logic script " + scriptFile.getFileName() + " failed: " + msg, root);
                 }
@@ -322,12 +335,7 @@ public final class BuildLogicSupport {
     }
 
     private static Map<BuildLogicAnchor, List<RegisteredTask>> discoverTasks(
-            Config c,
-            Path logicClasses,
-            Path apiCp,
-            Path kotlinStdlib,
-            boolean allowEmpty,
-            URLClassLoader cl)
+            Config c, Path logicClasses, Path apiCp, Path kotlinStdlib, boolean allowEmpty, URLClassLoader cl)
             throws IOException {
         Map<BuildLogicAnchor, List<RegisteredTask>> out = emptyByAnchor();
 
@@ -551,7 +559,8 @@ public final class BuildLogicSupport {
         try {
             project = JkBuildParser.parse(projectDir.resolve("jk.toml"));
         } catch (Exception e) {
-            throw new IllegalStateException("[build] logic: cannot parse jk.toml for Kotlin compile: " + e.getMessage(), e);
+            throw new IllegalStateException(
+                    "[build] logic: cannot parse jk.toml for Kotlin compile: " + e.getMessage(), e);
         }
         RepoGroup repos = RepoGroupBuilder.buildFor(project, null, actionCache.cas());
         KotlinPluginSetup.Prepared prep;
@@ -587,8 +596,7 @@ public final class BuildLogicSupport {
         KotlincResult result = new KotlincDriver().compile(req);
         if (!result.success()) {
             String out = result.output() == null ? "" : result.output().strip();
-            throw new IllegalStateException("[build] logic: kotlinc failed"
-                    + (out.isEmpty() ? "" : ":\n" + out));
+            throw new IllegalStateException("[build] logic: kotlinc failed" + (out.isEmpty() ? "" : ":\n" + out));
         }
         return prep.stdlib();
     }
@@ -622,8 +630,7 @@ public final class BuildLogicSupport {
         return urls.toArray(URL[]::new);
     }
 
-    private static int runMain(
-            Path classes, Path apiCp, Path kotlinStdlib, String main, Path projectDir, Path outDir)
+    private static int runMain(Path classes, Path apiCp, Path kotlinStdlib, String main, Path projectDir, Path outDir)
             throws IOException, InterruptedException {
         String javaBin = Path.of(System.getProperty("java.home"), "bin", "java").toString();
         String sep = java.io.File.pathSeparator;

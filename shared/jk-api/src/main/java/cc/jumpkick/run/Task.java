@@ -26,6 +26,7 @@ public final class Task {
     private final boolean interpolated;
     /** Product taxonomy bucket; never null (defaults via {@link BuildStage#ofTaskName}). */
     private final BuildStage stage;
+
     private final Body body;
 
     Task(
@@ -216,8 +217,7 @@ public final class Task {
         }
 
         public Task build() {
-            BuildStage resolved =
-                    stageExplicit && stage != null ? stage : BuildStage.ofTaskName(name);
+            BuildStage resolved = stageExplicit && stage != null ? stage : BuildStage.ofTaskName(name);
             return new Task(name, label, kind, requires, ticks, weight, interpolated, resolved, body);
         }
     }

@@ -47,8 +47,7 @@ public final class EditOps {
                         case "add-workspace-module" -> JkBuildEditor.addWorkspaceModule(original, args.get(0));
                         case "register-workspace-module" ->
                             JkBuildEditor.registerWorkspaceModule(original, args.get(0));
-                        case "remove-workspace-module" ->
-                            JkBuildEditor.removeWorkspaceModule(original, args.get(0));
+                        case "remove-workspace-module" -> JkBuildEditor.removeWorkspaceModule(original, args.get(0));
                         default -> throw new IllegalArgumentException("unknown edit op: " + op);
                     };
             if (updated.equals(original)) return new Result(false, null);

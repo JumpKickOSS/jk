@@ -1610,7 +1610,17 @@ public final class EngineProtocol {
             boolean verbose,
             boolean rebuild) {
         return explainRequest(
-                dir, cache, workers, skipTests, profile, jdksDir, serial, parallelTests, verbose, rebuild, serial ? 1 : 0);
+                dir,
+                cache,
+                workers,
+                skipTests,
+                profile,
+                jdksDir,
+                serial,
+                parallelTests,
+                verbose,
+                rebuild,
+                serial ? 1 : 0);
     }
 
     /**
@@ -1872,7 +1882,6 @@ public final class EngineProtocol {
                 + Jsonl.quote(status == null ? "" : status)
                 + "}";
     }
-
 
     public static String planModule(String dir, String coord, String planName, int weight, boolean fullyCached) {
         return "{\"type\":\""

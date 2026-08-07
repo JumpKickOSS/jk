@@ -97,29 +97,32 @@ class AddRemoveCommandTest {
     void remove_accepts_coord_with_version_and_at_version(@TempDir Path tempDir) throws Exception {
         run("new", tempDir.toString());
         run("add", "com.foo.addrm:bar:1.0", "-C", tempDir.toString());
-        assertThat(run("remove", "com.foo.addrm:bar:9.9.9", "-C", tempDir.toString())).isEqualTo(0);
-        assertThat(JkBuildParser.parse(tempDir.resolve("jk.toml")).dependencies().of(Scope.MAIN)).isEmpty();
+        assertThat(run("remove", "com.foo.addrm:bar:9.9.9", "-C", tempDir.toString()))
+                .isEqualTo(0);
+        assertThat(JkBuildParser.parse(tempDir.resolve("jk.toml"))
+                        .dependencies()
+                        .of(Scope.MAIN))
+                .isEmpty();
 
         run("add", "com.foo.addrm:baz:1.0", "-C", tempDir.toString());
         assertThat(run("remove", "baz@1.0.0", "-C", tempDir.toString())).isEqualTo(0);
-        assertThat(JkBuildParser.parse(tempDir.resolve("jk.toml")).dependencies().of(Scope.MAIN)).isEmpty();
+        assertThat(JkBuildParser.parse(tempDir.resolve("jk.toml"))
+                        .dependencies()
+                        .of(Scope.MAIN))
+                .isEmpty();
     }
 
     @Test
     void remove_path_form_uses_module_project_name(@TempDir Path tempDir) throws Exception {
         Path lib = tempDir.resolve("libb");
         Files.createDirectories(lib);
-        Files.writeString(
-                lib.resolve("jk.toml"),
-                """
+        Files.writeString(lib.resolve("jk.toml"), """
                 [project]
                 group = "cc.jumpkick"
                 name = "libb"
                 version = "0.2.0"
                 """);
-        Files.writeString(
-                tempDir.resolve("jk.toml"),
-                """
+        Files.writeString(tempDir.resolve("jk.toml"), """
                 [project]
                 group = "cc.jumpkick"
                 name = "app"
@@ -133,7 +136,10 @@ class AddRemoveCommandTest {
                 """);
 
         assertThat(run("remove", "./libb", "-C", tempDir.toString())).isEqualTo(0);
-        assertThat(JkBuildParser.parse(tempDir.resolve("jk.toml")).dependencies().of(Scope.MAIN)).isEmpty();
+        assertThat(JkBuildParser.parse(tempDir.resolve("jk.toml"))
+                        .dependencies()
+                        .of(Scope.MAIN))
+                .isEmpty();
     }
 
     @Test
@@ -183,9 +189,7 @@ class AddRemoveCommandTest {
         run("add", "com.foo.addrm:jackson:1.0", "-C", tempDir.toString());
         Path shadow = tempDir.resolve("jackson");
         Files.createDirectories(shadow);
-        Files.writeString(
-                shadow.resolve("jk.toml"),
-                """
+        Files.writeString(shadow.resolve("jk.toml"), """
                 [project]
                 group = "g"
                 name = "jackson-core"
@@ -194,7 +198,9 @@ class AddRemoveCommandTest {
 
         int exit = run("remove", "jackson", "-C", tempDir.toString());
         assertThat(exit).isEqualTo(0);
-        assertThat(JkBuildParser.parse(tempDir.resolve("jk.toml")).dependencies().of(Scope.MAIN))
+        assertThat(JkBuildParser.parse(tempDir.resolve("jk.toml"))
+                        .dependencies()
+                        .of(Scope.MAIN))
                 .isEmpty();
     }
 
@@ -205,9 +211,7 @@ class AddRemoveCommandTest {
         run("new", tempDir.toString());
         Path lib = tempDir.resolve("libb");
         Files.createDirectories(lib);
-        Files.writeString(
-                lib.resolve("jk.toml"),
-                """
+        Files.writeString(lib.resolve("jk.toml"), """
                 [project]
                 group = "cc.jumpkick"
                 name = "libb"
@@ -230,9 +234,7 @@ class AddRemoveCommandTest {
         run("new", tempDir.toString());
         Path lib = tempDir.resolve("libb");
         Files.createDirectories(lib);
-        Files.writeString(
-                lib.resolve("jk.toml"),
-                """
+        Files.writeString(lib.resolve("jk.toml"), """
                 [project]
                 group = "cc.jumpkick"
                 name = "libb"

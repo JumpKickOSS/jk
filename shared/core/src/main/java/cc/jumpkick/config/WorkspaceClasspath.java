@@ -3,9 +3,9 @@ package cc.jumpkick.config;
 
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
-import cc.jumpkick.model.DependencyKind;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

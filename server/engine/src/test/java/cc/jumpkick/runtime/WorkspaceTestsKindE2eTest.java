@@ -31,9 +31,7 @@ class WorkspaceTestsKindE2eTest {
         Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
         Path ws = Files.createDirectories(tmp.resolve("ws"));
 
-        Files.writeString(
-                ws.resolve("jk.toml"),
-                """
+        Files.writeString(ws.resolve("jk.toml"), """
                 [project]
                 group   = "com.example"
                 name    = "ws"
@@ -45,9 +43,7 @@ class WorkspaceTestsKindE2eTest {
                 """);
 
         Path lib = Files.createDirectories(ws.resolve("lib"));
-        Files.writeString(
-                lib.resolve("jk.toml"),
-                """
+        Files.writeString(lib.resolve("jk.toml"), """
                 [project]
                 group   = "com.example"
                 name    = "lib"
@@ -63,27 +59,21 @@ class WorkspaceTestsKindE2eTest {
                 central = "https://repo.maven.apache.org/maven2/"
                 """);
         Files.createDirectories(lib.resolve("src/com/example"));
-        Files.writeString(
-                lib.resolve("src/com/example/Lib.java"),
-                """
+        Files.writeString(lib.resolve("src/com/example/Lib.java"), """
                 package com.example;
                 public final class Lib {
                     public static int twice(int n) { return n * 2; }
                 }
                 """);
         Files.createDirectories(lib.resolve("test/src/com/example"));
-        Files.writeString(
-                lib.resolve("test/src/com/example/LibTestHelper.java"),
-                """
+        Files.writeString(lib.resolve("test/src/com/example/LibTestHelper.java"), """
                 package com.example;
                 /** Shared test helper — only visible via kind=tests. */
                 public final class LibTestHelper {
                     public static int expectedTwice(int n) { return Lib.twice(n); }
                 }
                 """);
-        Files.writeString(
-                lib.resolve("test/src/com/example/LibTest.java"),
-                """
+        Files.writeString(lib.resolve("test/src/com/example/LibTest.java"), """
                 package com.example;
                 import org.junit.jupiter.api.Test;
                 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -93,9 +83,7 @@ class WorkspaceTestsKindE2eTest {
                 """);
 
         Path app = Files.createDirectories(ws.resolve("app"));
-        Files.writeString(
-                app.resolve("jk.toml"),
-                """
+        Files.writeString(app.resolve("jk.toml"), """
                 [project]
                 group   = "com.example"
                 name    = "app"
@@ -115,18 +103,14 @@ class WorkspaceTestsKindE2eTest {
                 central = "https://repo.maven.apache.org/maven2/"
                 """);
         Files.createDirectories(app.resolve("src/com/example"));
-        Files.writeString(
-                app.resolve("src/com/example/App.java"),
-                """
+        Files.writeString(app.resolve("src/com/example/App.java"), """
                 package com.example;
                 public final class App {
                     public static int useLib(int n) { return Lib.twice(n); }
                 }
                 """);
         Files.createDirectories(app.resolve("test/src/com/example"));
-        Files.writeString(
-                app.resolve("test/src/com/example/AppTest.java"),
-                """
+        Files.writeString(app.resolve("test/src/com/example/AppTest.java"), """
                 package com.example;
                 import org.junit.jupiter.api.Test;
                 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -157,19 +141,18 @@ class WorkspaceTestsKindE2eTest {
         assertThat(build(lib, cache).success()).as("lib build+test").isTrue();
         Path libTestClasses = ws.resolve("target/lib/classes/test");
         assertThat(libTestClasses).isDirectory();
-        assertThat(Files.walk(libTestClasses).anyMatch(p -> p.getFileName().toString().endsWith("LibTestHelper.class")))
+        assertThat(Files.walk(libTestClasses)
+                        .anyMatch(p -> p.getFileName().toString().endsWith("LibTestHelper.class")))
                 .as("lib test helper compiled")
                 .isTrue();
 
         // Classpath contract before app tests run.
-        var testCp = WorkspaceClasspath.resolve(
-                app, appManifest, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST));
+        var testCp = WorkspaceClasspath.resolve(app, appManifest, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST));
         assertThat(testCp.jars()).anyMatch(p -> p.endsWith(Path.of("classes/test")));
         assertThat(testCp.missingSiblingJars()).isEmpty();
 
         var mainCp = WorkspaceClasspath.resolve(app, appManifest, Set.of(Scope.EXPORT, Scope.MAIN));
-        assertThat(mainCp.jars().stream().map(Object::toString).toList())
-                .noneMatch(p -> p.contains("classes/test"));
+        assertThat(mainCp.jars().stream().map(Object::toString).toList()).noneMatch(p -> p.contains("classes/test"));
 
         // App tests must pass only if kind=tests put the helper on the test CP.
         assertThat(build(app, cache).success())

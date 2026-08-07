@@ -86,12 +86,7 @@ public final class PluginLoader {
         // One-shot: close the child's stdin immediately so suite tests that hit Confirm /
         // System.in.readLine() see EOF instead of hanging on an open protocol pipe.
         return PluginProcess.run(
-                command(javaExe, classpath, jvmFlags, args),
-                extraEnv,
-                workDir,
-                prefix,
-                onProtocol,
-                onPassthrough);
+                command(javaExe, classpath, jvmFlags, args), extraEnv, workDir, prefix, onProtocol, onPassthrough);
     }
 
     /**

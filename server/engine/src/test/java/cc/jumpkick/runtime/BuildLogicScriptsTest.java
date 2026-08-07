@@ -15,12 +15,18 @@ class BuildLogicScriptsTest {
 
     @Test
     void matchAnchor_stems_and_suffixes() {
-        assertEquals(BuildLogicAnchor.BEFORE_COMPILE, BuildLogicScripts.matchAnchor("before-compile").orElseThrow());
-        assertEquals(BuildLogicAnchor.BEFORE_COMPILE, BuildLogicScripts.matchAnchor("before_compile").orElseThrow());
+        assertEquals(
+                BuildLogicAnchor.BEFORE_COMPILE,
+                BuildLogicScripts.matchAnchor("before-compile").orElseThrow());
+        assertEquals(
+                BuildLogicAnchor.BEFORE_COMPILE,
+                BuildLogicScripts.matchAnchor("before_compile").orElseThrow());
         assertEquals(
                 BuildLogicAnchor.BEFORE_COMPILE,
                 BuildLogicScripts.matchAnchor("before-compile-collections").orElseThrow());
-        assertEquals(BuildLogicAnchor.AFTER_RESOURCES, BuildLogicScripts.matchAnchor("after-resources").orElseThrow());
+        assertEquals(
+                BuildLogicAnchor.AFTER_RESOURCES,
+                BuildLogicScripts.matchAnchor("after-resources").orElseThrow());
         assertTrue(BuildLogicScripts.matchAnchor("compile.groovy").isEmpty());
         assertTrue(BuildLogicScripts.matchAnchor("random").isEmpty());
     }

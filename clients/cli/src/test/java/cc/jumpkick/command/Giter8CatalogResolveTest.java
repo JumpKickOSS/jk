@@ -21,7 +21,8 @@ class Giter8CatalogResolveTest {
         Files.createDirectories(g8.resolve("src/main/g8"));
         Files.writeString(g8.resolve("default.properties"), "name=hello\n");
         assertThat(Giter8Git.findNamedTemplate(mono, "java-cli")).isPresent();
-        assertThat(Giter8Git.findNamedTemplate(mono, "java-cli").get()).isEqualTo(g8.toAbsolutePath().normalize());
+        assertThat(Giter8Git.findNamedTemplate(mono, "java-cli").get())
+                .isEqualTo(g8.toAbsolutePath().normalize());
         assertThat(Giter8Git.findNamedTemplate(mono, "missing")).isEmpty();
     }
 
@@ -31,7 +32,8 @@ class Giter8CatalogResolveTest {
         Path g8 = mono.resolve("templates").resolve("kotlin-cli.g8");
         Files.createDirectories(g8.resolve("src/main/g8"));
         Files.writeString(g8.resolve("default.properties"), "name=kt\n");
-        assertThat(Giter8Git.findNamedTemplate(mono, "kotlin-cli")).contains(g8.toAbsolutePath().normalize());
+        assertThat(Giter8Git.findNamedTemplate(mono, "kotlin-cli"))
+                .contains(g8.toAbsolutePath().normalize());
     }
 
     @Test
@@ -45,19 +47,16 @@ class Giter8CatalogResolveTest {
         Path extract = tmp.resolve("extract");
         // No network: offline config with bogus official URL
         var cfg = new JkTemplatesConfig("https://example.invalid/nope", List.of());
-        Optional<Path> hit =
-                Giter8Catalog.resolveShortName("quarkus", cwd, extract, cfg, List.of());
+        Optional<Path> hit = Giter8Catalog.resolveShortName("quarkus", cwd, extract, cfg, List.of());
         assertThat(hit).isPresent();
         assertThat(hit.get()).isEqualTo(g8.toAbsolutePath().normalize());
     }
 
     @Test
     void single_template_matches_url_stem() {
-        assertThat(Giter8Catalog.singleTemplateMatches(
-                        Path.of("."), "https://github.com/acme/cool-cli.g8", "cool-cli"))
+        assertThat(Giter8Catalog.singleTemplateMatches(Path.of("."), "https://github.com/acme/cool-cli.g8", "cool-cli"))
                 .isTrue();
-        assertThat(Giter8Catalog.singleTemplateMatches(
-                        Path.of("."), "https://github.com/acme/other.git", "cool-cli"))
+        assertThat(Giter8Catalog.singleTemplateMatches(Path.of("."), "https://github.com/acme/other.git", "cool-cli"))
                 .isFalse();
     }
 

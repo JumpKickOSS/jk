@@ -434,7 +434,8 @@ public final class ToolRunCommand implements CliCommand {
                     cc.jumpkick.engine.EnginePaths.current(),
                     new cc.jumpkick.cli.engine.EngineClient.ToolResolveRequest(
                             resolved.coordSpec(), with, bin, mainClass, repoUrl, cacheDir),
-                    steps -> BuildPlanConsole.chooseConsoleListener("tool-run", steps, BuildPlanConsole.modeFor(global)));
+                    steps -> BuildPlanConsole.chooseConsoleListener(
+                            "tool-run", steps, BuildPlanConsole.modeFor(global)));
         } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", e.getMessage()));
             return Exit.SOFTWARE;

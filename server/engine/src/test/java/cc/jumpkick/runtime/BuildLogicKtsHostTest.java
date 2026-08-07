@@ -15,9 +15,7 @@ class BuildLogicKtsHostTest {
     @Test
     void wrap_injects_bindings_and_hoists_imports(@TempDir Path dir) throws Exception {
         Path script = dir.resolve("after-resources.kts");
-        Files.writeString(
-                script,
-                """
+        Files.writeString(script, """
                 import java.nio.file.Files
                 // write stamp
                 Files.writeString(outDir.resolve("kts.txt"), "ok")
@@ -43,9 +41,7 @@ class BuildLogicKtsHostTest {
     @Test
     void a_leading_comment_does_not_strand_the_imports_below_the_bindings(@TempDir Path dir) throws Exception {
         Path script = dir.resolve("before-compile.kts");
-        Files.writeString(
-                script,
-                """
+        Files.writeString(script, """
                 // SPDX-License-Identifier: Apache-2.0
                 import java.nio.file.Files
                 // and one more between imports
@@ -63,9 +59,7 @@ class BuildLogicKtsHostTest {
     @Test
     void file_annotations_precede_every_import_including_the_injected_one(@TempDir Path dir) throws Exception {
         Path script = dir.resolve("before-compile.kts");
-        Files.writeString(
-                script,
-                """
+        Files.writeString(script, """
                 // a comment first, to be awkward
                 @file:JvmName("Gen")
                 import java.nio.file.Files
@@ -82,8 +76,9 @@ class BuildLogicKtsHostTest {
     void wrap_rejects_package_declaration(@TempDir Path dir) throws Exception {
         Path script = dir.resolve("before-compile.kts");
         Files.writeString(script, "package demo\nval x = 1\n");
-        assertThrows(IllegalStateException.class, () -> BuildLogicKtsHost.wrap(
-                script, dir, dir.resolve("o"), dir.resolve("c")));
+        assertThrows(
+                IllegalStateException.class,
+                () -> BuildLogicKtsHost.wrap(script, dir, dir.resolve("o"), dir.resolve("c")));
     }
 
     @Test

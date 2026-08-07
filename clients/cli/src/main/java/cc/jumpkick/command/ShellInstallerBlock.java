@@ -14,8 +14,8 @@ public final class ShellInstallerBlock {
     public static final String BEGIN = "# >>> jk installer >>>";
     public static final String END = "# <<< jk installer <<<";
 
-    private static final Pattern BLOCK = Pattern.compile(
-            Pattern.quote(BEGIN) + "[\\s\\S]*?" + Pattern.quote(END), Pattern.MULTILINE);
+    private static final Pattern BLOCK =
+            Pattern.compile(Pattern.quote(BEGIN) + "[\\s\\S]*?" + Pattern.quote(END), Pattern.MULTILINE);
 
     private ShellInstallerBlock() {}
 

@@ -72,8 +72,7 @@ public final class MavenMetadataCache {
 
         // --force / explicit lock revalidation skip the TTL window: the conditional GET below
         // still makes an unchanged index cheap (304), but a moved `latest` is picked up now.
-        boolean force = cc.jumpkick.config.SessionContext.current().config().forceOr(false)
-                || forceRevalidate();
+        boolean force = cc.jumpkick.config.SessionContext.current().config().forceOr(false) || forceRevalidate();
         if (!force && fresh(body)) {
             return Files.readAllBytes(body);
         }

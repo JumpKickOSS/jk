@@ -28,7 +28,9 @@ class ShellCompletionsTest {
         assertThat(root.resolve("zsh/_jk")).exists();
         assertThat(root.resolve("fish/jk.fish")).exists();
         assertThat(root.resolve("pwsh/jk.ps1")).exists();
-        assertThat(Files.readString(root.resolve("zsh/_jk"))).contains("compdef").contains("build");
+        assertThat(Files.readString(root.resolve("zsh/_jk")))
+                .contains("compdef")
+                .contains("build");
         assertThat(Files.readString(root.resolve("bash/jk"))).contains("complete -F _jk jk");
     }
 }

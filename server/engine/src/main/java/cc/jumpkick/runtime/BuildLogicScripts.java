@@ -77,7 +77,8 @@ final class BuildLogicScripts {
                 out.add(new ScriptTask(name, anchor.get(), p, kind));
             }
         }
-        out.sort(Comparator.comparing(ScriptTask::name).thenComparing(t -> t.kind().name()));
+        out.sort(Comparator.comparing(ScriptTask::name)
+                .thenComparing(t -> t.kind().name()));
         return out;
     }
 

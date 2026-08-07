@@ -170,9 +170,8 @@ public class IdeEngineClient {
                 @Override
                 public BuildPlanListener onModuleStart(ModulePlan module) {
                     progress.onModuleStart(module.coord(), module.dir());
-                    List<Task> steps = module.plan() == null
-                            ? List.of()
-                            : module.plan().steps();
+                    List<Task> steps =
+                            module.plan() == null ? List.of() : module.plan().steps();
                     return progressListener(progress, steps);
                 }
 
@@ -336,17 +335,14 @@ public class IdeEngineClient {
                 progress.onModuleFinish(coord + " (run)", false);
                 return new BuildOutcome(false, 1, 1, List.of("exec plan has empty argv"));
             }
-            Path cwd = plan.workingDir() != null && !plan.workingDir().isBlank()
-                    ? Path.of(plan.workingDir())
-                    : mod;
+            Path cwd = plan.workingDir() != null && !plan.workingDir().isBlank() ? Path.of(plan.workingDir()) : mod;
             ProcessBuilder pb = new ProcessBuilder(argv);
             pb.directory(cwd.toFile());
             pb.inheritIO();
             int code = pb.start().waitFor();
             boolean ok = code == 0;
             progress.onModuleFinish(coord + " (run)", ok);
-            return new BuildOutcome(
-                    ok, 1, ok ? 0 : 1, ok ? List.of() : List.of("run exited with code " + code));
+            return new BuildOutcome(ok, 1, ok ? 0 : 1, ok ? List.of() : List.of("run exited with code " + code));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             progress.onModuleFinish(coord + " (run)", false);

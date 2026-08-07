@@ -37,8 +37,8 @@ class CachedEtaTest {
         var plan = planOf("compile-kotlin", "package-jar");
 
         int full = EffortWeights.costOf(A, Set.of(), plan).weight();
-        int partial = EffortWeights.costOf(A, Set.of(), plan, Set.of("package-jar"))
-                .weight();
+        int partial =
+                EffortWeights.costOf(A, Set.of(), plan, Set.of("package-jar")).weight();
 
         assertThat(partial).isGreaterThan(0).isLessThan(full);
     }
@@ -48,8 +48,7 @@ class CachedEtaTest {
         var plan = planOf("compile-kotlin", "run-tests");
 
         assertThat(EffortWeights.costOf(A, Set.of(), plan).testWeight()).isGreaterThan(0);
-        assertThat(EffortWeights.costOf(A, Set.of(), plan, Set.of("run-tests"))
-                        .testWeight())
+        assertThat(EffortWeights.costOf(A, Set.of(), plan, Set.of("run-tests")).testWeight())
                 .isZero();
     }
 

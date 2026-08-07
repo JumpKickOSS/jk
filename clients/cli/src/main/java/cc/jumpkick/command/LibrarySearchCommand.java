@@ -3,8 +3,6 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.cli.theme.Coords;
-import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -116,12 +114,12 @@ public final class LibrarySearchCommand implements CliCommand {
     }
 
     private void printTable(String title, List<Hit> visible) {
-        List<String> headers = new java.util.ArrayList<>(List.of("Name", "Coordinates"));
+        List<String> headers = new ArrayList<>(List.of("Name", "Coordinates"));
         if (showLayer && !groupByLayer) headers.add("Layer");
         headers.add("Cached");
-        List<List<String>> rows = new java.util.ArrayList<>();
+        List<List<String>> rows = new ArrayList<>();
         for (Hit h : visible) {
-            List<String> cells = new java.util.ArrayList<>(List.of(h.name, h.src.module().moduleKey()));
+            List<String> cells = new ArrayList<>(List.of(h.name, h.src.module().moduleKey()));
             if (showLayer && !groupByLayer) cells.add(h.src.layer());
             cells.add(String.join(", ", h.cached));
             rows.add(cells);

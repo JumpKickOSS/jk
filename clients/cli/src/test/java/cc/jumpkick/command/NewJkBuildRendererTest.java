@@ -3,12 +3,12 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.scaffold.NewInputs;
+import cc.jumpkick.scaffold.NewJkBuildRenderer;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
-import cc.jumpkick.scaffold.NewInputs;
-import cc.jumpkick.scaffold.NewJkBuildRenderer;
 
 class NewJkBuildRendererTest {
 

@@ -45,12 +45,11 @@ public final class BspServer {
     private final IdeEngineClient ide;
     private final BufferedReader in;
     private final BufferedWriter out;
-    private final ExecutorService worker =
-            Executors.newSingleThreadExecutor(r -> {
-                Thread t = new Thread(r, "jk-bsp-worker");
-                t.setDaemon(true);
-                return t;
-            });
+    private final ExecutorService worker = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "jk-bsp-worker");
+        t.setDaemon(true);
+        return t;
+    });
     private final AtomicReference<Future<?>> activeJob = new AtomicReference<>();
     private final AtomicReference<Path> activeDir = new AtomicReference<>();
 
@@ -156,7 +155,10 @@ public final class BspServer {
             moduleDir = resolveTargetModule(requestJson);
         } catch (IOException e) {
             try {
-                error(id, -32000, e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+                error(
+                        id,
+                        -32000,
+                        e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
             } catch (IOException ignored) {
                 // best-effort
             }
@@ -179,7 +181,9 @@ public final class BspServer {
             } catch (Exception e) {
                 try {
                     invalidateModel();
-                    String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                    String msg = e.getMessage() != null
+                            ? e.getMessage()
+                            : e.getClass().getSimpleName();
                     error(id, -32000, msg);
                 } catch (IOException ignored) {
                     // best-effort
@@ -238,7 +242,9 @@ public final class BspServer {
                         ? names.get(i)
                         : Path.of(dirs.get(i)).getFileName().toString();
                 String id = rootUri + "#" + name;
-                boolean canRun = i < mains.size() && mains.get(i) != null && !mains.get(i).isBlank();
+                boolean canRun = i < mains.size()
+                        && mains.get(i) != null
+                        && !mains.get(i).isBlank();
                 targets.add(targetJson(id, name, pathUri(Path.of(dirs.get(i))), canRun));
             }
         } else {
@@ -364,19 +370,17 @@ public final class BspServer {
             if (jar == null || jar.isBlank()) continue;
             String path = jar.contains("|") ? jar.substring(jar.lastIndexOf('|') + 1) : jar;
             Path p = Path.of(path);
-            String name = i < names.size() && names.get(i) != null && !names.get(i).isBlank()
-                    ? names.get(i)
-                    : p.getFileName().toString();
+            String name =
+                    i < names.size() && names.get(i) != null && !names.get(i).isBlank()
+                            ? names.get(i)
+                            : p.getFileName().toString();
             StringBuilder artifacts = new StringBuilder();
             artifacts.append("{\"uri\":").append(q(pathUri(p))).append(",\"classifier\":\"\"}");
             if (i < sources.size()) {
                 String src = sources.get(i);
                 if (src != null && !src.isBlank()) {
                     Path sp = Path.of(src);
-                    artifacts
-                            .append(",{\"uri\":")
-                            .append(q(pathUri(sp)))
-                            .append(",\"classifier\":\"sources\"}");
+                    artifacts.append(",{\"uri\":").append(q(pathUri(sp))).append(",\"classifier\":\"sources\"}");
                 }
             }
             modules.add("{\"name\":"
@@ -491,21 +495,25 @@ public final class BspServer {
                 byFile.computeIfAbsent(pathUri(file), k -> new ArrayList<>()).add(diag);
             } else {
                 // No path — attach to a synthetic project-level diagnostic via first source root.
-                String diag = "{\"range\":{\"start\":{\"line\":0,\"character\":0},\"end\":{\"line\":0,\"character\":0}},"
-                        + "\"severity\":1,\"message\":"
-                        + q(err)
-                        + "}";
-                byFile.computeIfAbsent(pathUri(ide.projectDir()), k -> new ArrayList<>()).add(diag);
+                String diag =
+                        "{\"range\":{\"start\":{\"line\":0,\"character\":0},\"end\":{\"line\":0,\"character\":0}},"
+                                + "\"severity\":1,\"message\":"
+                                + q(err)
+                                + "}";
+                byFile.computeIfAbsent(pathUri(ide.projectDir()), k -> new ArrayList<>())
+                        .add(diag);
             }
         }
         for (Map.Entry<String, List<String>> e : byFile.entrySet()) {
-            notify("build/publishDiagnostics", "{\"textDocument\":{\"uri\":"
-                    + q(e.getKey())
-                    + "},\"buildTarget\":{\"uri\":"
-                    + q(targetUri)
-                    + "},\"diagnostics\":["
-                    + String.join(",", e.getValue())
-                    + "]}");
+            notify(
+                    "build/publishDiagnostics",
+                    "{\"textDocument\":{\"uri\":"
+                            + q(e.getKey())
+                            + "},\"buildTarget\":{\"uri\":"
+                            + q(targetUri)
+                            + "},\"diagnostics\":["
+                            + String.join(",", e.getValue())
+                            + "]}");
         }
     }
 

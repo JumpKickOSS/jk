@@ -6,6 +6,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -105,7 +109,9 @@ class AotManifestTest {
                         .build());
 
         AotManifest.remove(dir, "java-compiler-cccccccccccccccc.aot");
-        assertThat(AotManifest.load(dir)).extracting(AotManifest.Entry::file).containsExactly(cache.getFileName().toString());
+        assertThat(AotManifest.load(dir))
+                .extracting(AotManifest.Entry::file)
+                .containsExactly(cache.getFileName().toString());
 
         Files.delete(cache);
         AotManifest.reconcile(dir);
@@ -122,8 +128,7 @@ class AotManifestTest {
         assertThat(e.jkVersion()).isEqualTo("0.11.0");
 
         // Versioned worker (JK-1452): java-compiler-<jk-version>-<16hex>
-        AotManifest.Entry.Builder w =
-                AotManifest.Entry.builder("java-compiler-0.11.0-0ce11dbb0a66be53.aot");
+        AotManifest.Entry.Builder w = AotManifest.Entry.builder("java-compiler-0.11.0-0ce11dbb0a66be53.aot");
         AotManifest.fillToolKey(w, "java-compiler-0.11.0-0ce11dbb0a66be53.aot");
         AotManifest.Entry we = w.build();
         assertThat(we.tool()).isEqualTo("java-compiler");
@@ -131,8 +136,7 @@ class AotManifestTest {
         assertThat(we.jkVersion()).isEqualTo("0.11.0");
 
         // Legacy unversioned worker name still parses tool+key
-        AotManifest.Entry.Builder legacy =
-                AotManifest.Entry.builder("java-compiler-0ce11dbb0a66be53.aot");
+        AotManifest.Entry.Builder legacy = AotManifest.Entry.builder("java-compiler-0ce11dbb0a66be53.aot");
         AotManifest.fillToolKey(legacy, "java-compiler-0ce11dbb0a66be53.aot");
         assertThat(legacy.build().tool()).isEqualTo("java-compiler");
         assertThat(legacy.build().key()).isEqualTo("0ce11dbb0a66be53");
@@ -167,7 +171,8 @@ class AotManifestTest {
         Files.writeString(dir.resolve("engine-0.11.0-aaaaaaaaaaaaaaaa.aot"), "engine-bytes");
 
         List<AotManifest.Entry> listed = AotManifest.list(dir);
-        assertThat(listed).extracting(AotManifest.Entry::file)
+        assertThat(listed)
+                .extracting(AotManifest.Entry::file)
                 .containsExactlyInAnyOrder(
                         "engine-0.11.0-aaaaaaaaaaaaaaaa.aot",
                         "java-compiler-eeeeeeeeeeeeeeee.aot",
@@ -207,12 +212,16 @@ class AotManifestTest {
                 status = "ready"
                 """);
 
-        AotManifest.upsert(dir, AotManifest.Entry.builder("kotlinc-def.aot").tool("kotlinc").build());
+        AotManifest.upsert(
+                dir,
+                AotManifest.Entry.builder("kotlinc-def.aot").tool("kotlinc").build());
 
         var listed = AotManifest.load(dir);
         assertThat(listed).extracting(AotManifest.Entry::file).contains("kotlinc-def.aot");
         // The bad escape parses as literal text rather than wedging every future write.
-        var recovered = listed.stream().filter(e -> e.file().startsWith("java-compiler")).findFirst();
+        var recovered = listed.stream()
+                .filter(e -> e.file().startsWith("java-compiler"))
+                .findFirst();
         assertThat(recovered).isPresent();
         assertThat(recovered.orElseThrow().jdkHome()).contains("upgrade");
     }
@@ -228,8 +237,7 @@ class AotManifestTest {
                 classpath = ["/a.jar", "/b.jar"]
                 """);
 
-        var byFile = AotManifest.load(dir).stream()
-                .collect(java.util.stream.Collectors.toMap(AotManifest.Entry::file, e -> e));
+        var byFile = AotManifest.load(dir).stream().collect(Collectors.toMap(AotManifest.Entry::file, e -> e));
         AotManifest.Entry e = byFile.get("javac-1.aot");
         assertThat(e).isNotNull();
         assertThat(e.status()).isEqualTo("ready");
@@ -239,12 +247,13 @@ class AotManifestTest {
     @Test
     void concurrent_upserts_from_many_threads_all_land() throws Exception {
         int n = 16;
-        var pool = java.util.concurrent.Executors.newFixedThreadPool(8);
+        var pool = Executors.newFixedThreadPool(8);
         try {
-            var start = new java.util.concurrent.CountDownLatch(1);
-            var done = new java.util.concurrent.CountDownLatch(n);
+            var start = new CountDownLatch(1);
+            var done = new CountDownLatch(n);
             for (int i = 0; i < n; i++) {
-                AotManifest.upsert(dir, AotManifest.Entry.builder("doomed-" + i + ".aot").build());
+                AotManifest.upsert(
+                        dir, AotManifest.Entry.builder("doomed-" + i + ".aot").build());
             }
             for (int i = 0; i < n; i++) {
                 final int id = i;
@@ -252,10 +261,12 @@ class AotManifestTest {
                     try {
                         start.await();
                         // Interleave upserts with removes: both must serialize losslessly.
-                        AotManifest.upsert(dir, AotManifest.Entry.builder("tool-" + id + ".aot")
-                                .tool("tool-" + id)
-                                .status("ready")
-                                .build());
+                        AotManifest.upsert(
+                                dir,
+                                AotManifest.Entry.builder("tool-" + id + ".aot")
+                                        .tool("tool-" + id)
+                                        .status("ready")
+                                        .build());
                         AotManifest.remove(dir, "doomed-" + id + ".aot");
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
@@ -265,7 +276,7 @@ class AotManifestTest {
                 });
             }
             start.countDown();
-            assertThat(done.await(30, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            assertThat(done.await(30, TimeUnit.SECONDS)).isTrue();
         } finally {
             pool.shutdownNow();
         }
@@ -281,13 +292,15 @@ class AotManifestTest {
 
     @Test
     void engine_noaot_row_keeps_recorded_manifest_details() throws Exception {
-        AotManifest.upsert(dir, AotManifest.Entry.builder("engine-0.11.0-ab12.aot")
-                .status("pending")
-                .jdkHome("/opt/jdk-25")
-                .jdkVendor("TEMURIN")
-                .jdkVersion("25.0.3")
-                .gc("serial")
-                .build());
+        AotManifest.upsert(
+                dir,
+                AotManifest.Entry.builder("engine-0.11.0-ab12.aot")
+                        .status("pending")
+                        .jdkHome("/opt/jdk-25")
+                        .jdkVendor("TEMURIN")
+                        .jdkVersion("25.0.3")
+                        .gc("serial")
+                        .build());
         // Sticky marker present, .aot file absent — the exact state after a failed engine train.
         Files.writeString(dir.resolve("engine-0.11.0-ab12.noaot"), "");
 
@@ -305,8 +318,13 @@ class AotManifestTest {
     @Test
     void reconcile_keeps_pending_rows_and_drops_dead_ones() throws Exception {
         // Pending = train in flight; its .aot deliberately doesn't exist yet.
-        AotManifest.upsert(dir, AotManifest.Entry.builder("engine-0.11.0-cd34.aot").status("pending").build());
-        AotManifest.upsert(dir, AotManifest.Entry.builder("stale.aot").status("ready").build());
+        AotManifest.upsert(
+                dir,
+                AotManifest.Entry.builder("engine-0.11.0-cd34.aot")
+                        .status("pending")
+                        .build());
+        AotManifest.upsert(
+                dir, AotManifest.Entry.builder("stale.aot").status("ready").build());
 
         AotManifest.reconcile(dir);
 

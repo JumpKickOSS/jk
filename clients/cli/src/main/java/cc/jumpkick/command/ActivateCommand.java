@@ -4,9 +4,9 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Answers;
+import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.cli.tui.Wizard;
 import cc.jumpkick.cli.tui.WizardStep;
 import cc.jumpkick.config.GlobalConfig;
@@ -139,7 +139,8 @@ public final class ActivateCommand implements CliCommand {
                 "Shell integration configured in " + Theme.colorize(rcDisplay, t.path())));
         CliOutput.out("  PATH ← " + Theme.colorize(binDir.toString(), t.path()) + "  (real jk / jkx)");
         CliOutput.out("  hooks ← directory JAVA_HOME via hook-env");
-        CliOutput.out("  completions ← " + Theme.colorize(dataDir.resolve("completions").toString(), t.path()));
+        CliOutput.out("  completions ← "
+                + Theme.colorize(dataDir.resolve("completions").toString(), t.path()));
         if (jkx.status() == JkxLink.Status.CREATED) {
             CliOutput.out("Installed " + Theme.colorize("jkx", t.shell()) + " → "
                     + Theme.colorize(jkx.path().toString(), t.path()));

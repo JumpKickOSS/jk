@@ -126,7 +126,8 @@ public final class BuildJournal {
                     deleteTreeQuietly(target);
                 }
                 move(tmp, target);
-                if (!record.running() && !record.synthetic()) MetricsHarvest.get().request();
+                if (!record.running() && !record.synthetic())
+                    MetricsHarvest.get().request();
                 return dirName;
             } catch (IOException e) {
                 deleteTreeQuietly(tmp);
@@ -326,7 +327,11 @@ public final class BuildJournal {
             }
         }
         for (Map.Entry<String, Long> e : phaseTotals.entrySet()) {
-            sb.append("phase.").append(e.getKey()).append(".wall-ms = ").append(e.getValue()).append('\n');
+            sb.append("phase.")
+                    .append(e.getKey())
+                    .append(".wall-ms = ")
+                    .append(e.getValue())
+                    .append('\n');
         }
         for (Map.Entry<String, Map<String, Long>> me : modulePhaseTotals.entrySet()) {
             for (Map.Entry<String, Long> e : me.getValue().entrySet()) {
@@ -396,9 +401,7 @@ public final class BuildJournal {
                     .append(".wall-ms = ")
                     .append(s.millis())
                     .append('\n');
-            modulePhaseTotals
-                    .computeIfAbsent(mod, k -> new LinkedHashMap<>())
-                    .merge(phase, s.millis(), Long::sum);
+            modulePhaseTotals.computeIfAbsent(mod, k -> new LinkedHashMap<>()).merge(phase, s.millis(), Long::sum);
         }
     }
 
@@ -491,8 +494,9 @@ public final class BuildJournal {
             if (parsed != null && !parsed.synthetic()) out.add(new Loaded(parsed, json, dir));
         }
         // Newest first by startedAt / finishedAt
-        out.sort(Comparator.comparingLong((Loaded l) ->
-                        l.record().finishedAt() > 0 ? l.record().finishedAt() : l.record().startedAt())
+        out.sort(Comparator.comparingLong((Loaded l) -> l.record().finishedAt() > 0
+                        ? l.record().finishedAt()
+                        : l.record().startedAt())
                 .reversed());
         return out;
     }

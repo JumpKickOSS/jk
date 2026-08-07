@@ -920,8 +920,8 @@ public final class HttpEngineServer implements AutoCloseable {
         }
         // Same roots the short-name resolver uses (JK-1458) — the picker must never list a
         // template that then resolves differently, or miss one that would resolve.
-        var entries = cc.jumpkick.scaffold.Giter8TemplateIndex.build(
-                cc.jumpkick.scaffold.Giter8TemplateIndex.searchRoots());
+        var entries =
+                cc.jumpkick.scaffold.Giter8TemplateIndex.build(cc.jumpkick.scaffold.Giter8TemplateIndex.searchRoots());
         var arr = new StringBuilder("[");
         boolean first = true;
         for (var e : entries) {
@@ -1075,10 +1075,7 @@ public final class HttpEngineServer implements AutoCloseable {
         String dir = rec.get("dir") instanceof String s ? s : null;
         String id = rec.get("id") instanceof String s ? s : null;
         for (LiveRun h : live) {
-            boolean sameRun = buildNumber > 0
-                    && buildNumber == h.buildNumber()
-                    && dir != null
-                    && dir.equals(h.dir());
+            boolean sameRun = buildNumber > 0 && buildNumber == h.buildNumber() && dir != null && dir.equals(h.dir());
             boolean sameJournal = id != null && h.journalId() != null && id.equals(h.journalId());
             if (sameRun || sameJournal) return h;
         }
@@ -1204,9 +1201,7 @@ public final class HttpEngineServer implements AutoCloseable {
             scopes = cc.jumpkick.resolver.DependencyGraphModel.parseScopes(decode(queryParam(query, "scopes")));
         } catch (IllegalArgumentException e) { // includes InvalidPathException from Path.of
             sendJson(
-                    exchange,
-                    400,
-                    JsonOut.object().put("error", e.getMessage()).toString());
+                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
             return;
         }
         boolean transitive = parseTruthy(queryParam(query, "transitive"));

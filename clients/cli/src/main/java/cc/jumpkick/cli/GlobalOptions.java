@@ -264,7 +264,8 @@ public final class GlobalOptions {
                         .repeat(),
                 Opt.flag("Disable network access for this run", "--offline"),
                 // Hidden: assume-yes for every Confirm prompt (also covers former per-command -y/--yes).
-                Opt.flag("Assume yes for all confirmation prompts", "-y", "--yes").hide(),
+                Opt.flag("Assume yes for all confirmation prompts", "-y", "--yes")
+                        .hide(),
                 Opt.flag("Print version information and exit", "-V", "--version"),
                 Opt.flag("Show this help message and exit", "-h", "--help"));
     }

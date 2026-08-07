@@ -7,7 +7,7 @@ import cc.jumpkick.scaffold.NewJkBuildRenderer;
 import cc.jumpkick.scaffold.NewScaffolder.FrameworkScaffoldSource;
 import cc.jumpkick.scaffold.NewScaffolder.ScaffoldFiles;
 import java.io.IOException;
-import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -41,7 +41,7 @@ public final class NewScaffolder {
     private static final FrameworkScaffoldSource CLI_FRAMEWORK = NewScaffolder::pluginScaffold;
 
     private static ScaffoldFiles pluginScaffold(NewInputs inputs) throws IOException {
-        var params = new java.util.LinkedHashMap<String, String>();
+        var params = new LinkedHashMap<String, String>();
         params.put("plugin", inputs.frameworkPluginFlag());
         params.put(
                 "lang",

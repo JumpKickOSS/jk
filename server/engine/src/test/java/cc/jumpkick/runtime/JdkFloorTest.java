@@ -38,9 +38,7 @@ class JdkFloorTest {
         Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
         String majorStr = Integer.toString(major);
 
-        Files.writeString(
-                project.resolve("jk.toml"),
-                """
+        Files.writeString(project.resolve("jk.toml"), """
                 [project]
                 name    = "floor%s"
                 group   = "com.example"
@@ -55,21 +53,16 @@ class JdkFloorTest {
 
                 [repositories]
                 central = "https://repo.maven.apache.org/maven2/"
-                """
-                        .formatted(majorStr, majorStr));
+                """.formatted(majorStr, majorStr));
         Files.createDirectories(project.resolve("src"));
-        Files.writeString(
-                project.resolve("src/Floor.kt"),
-                """
+        Files.writeString(project.resolve("src/Floor.kt"), """
                 package com.example.floor
                 class Floor {
                     fun jvm(): String = System.getProperty("java.specification.version")
                 }
                 """);
         Files.createDirectories(project.resolve("test").resolve("src"));
-        Files.writeString(
-                project.resolve("test/src/FloorTest.kt"),
-                """
+        Files.writeString(project.resolve("test/src/FloorTest.kt"), """
                 package com.example.floor
 
                 import org.junit.jupiter.api.Assertions.assertEquals
@@ -82,8 +75,7 @@ class JdkFloorTest {
                         assertEquals("%s", Floor().jvm())
                     }
                 }
-                """
-                        .formatted(majorStr));
+                """.formatted(majorStr));
 
         var parsed = cc.jumpkick.config.JkBuildParser.parse(project.resolve("jk.toml"));
         // Isolated session — see FirstBuildJdkTest (do not inherit monorepo jdk pin from jk test).

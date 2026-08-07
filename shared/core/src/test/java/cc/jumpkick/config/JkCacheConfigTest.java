@@ -19,9 +19,7 @@ class JkCacheConfigTest {
     @Test
     void parses_size_knobs(@TempDir Path tempDir) throws Exception {
         Path toml = tempDir.resolve("config.toml");
-        Files.writeString(
-                toml,
-                """
+        Files.writeString(toml, """
                 [cache]
                 max-store-size-mb   = 8192
                 prune-interval-days = 3
@@ -53,9 +51,7 @@ class JkCacheConfigTest {
     @Test
     void malformed_values_fall_back_to_defaults(@TempDir Path tempDir) throws Exception {
         Path toml = tempDir.resolve("config.toml");
-        Files.writeString(
-                toml,
-                """
+        Files.writeString(toml, """
                 [cache]
                 max-store-size-mb = not-a-number
                 max-cache-size-mb = nope
@@ -66,9 +62,7 @@ class JkCacheConfigTest {
     @Test
     void env_overrides_file(@TempDir Path tempDir) throws Exception {
         Path toml = tempDir.resolve("config.toml");
-        Files.writeString(
-                toml,
-                """
+        Files.writeString(toml, """
                 [cache]
                 max-store-size-mb   = 8192
                 max-cache-size-mb   = 512
@@ -89,9 +83,7 @@ class JkCacheConfigTest {
     @Test
     void zero_size_means_unset_default(@TempDir Path tempDir) throws Exception {
         Path toml = tempDir.resolve("config.toml");
-        Files.writeString(
-                toml,
-                """
+        Files.writeString(toml, """
                 [cache]
                 max-store-size-mb  = 0
                 max-cache-size-mb  = 0

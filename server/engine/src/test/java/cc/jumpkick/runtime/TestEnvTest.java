@@ -89,8 +89,7 @@ class TestEnvTest {
         JkBuild before = project(tmp, "[test]\nenv = { MODE = \"a\" }\n");
         JkBuild after = project(tmp, "[test]\nenv = { MODE = \"b\" }\n");
 
-        assertThat(BuildPlanner.testStampExtras(tmp, before))
-                .isNotEqualTo(BuildPlanner.testStampExtras(tmp, after));
+        assertThat(BuildPlanner.testStampExtras(tmp, before)).isNotEqualTo(BuildPlanner.testStampExtras(tmp, after));
         assertThat(BuildPlanner.testStampExtras(tmp, before)).contains("test-env:MODE=a");
     }
 

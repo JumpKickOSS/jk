@@ -78,18 +78,10 @@ final class BuildLogicGroovyHost {
         Files.createDirectories(cache);
         return new Path[] {
             fetch(cache, "org/apache/groovy/groovy/" + GROOVY_VER + "/groovy-" + GROOVY_VER + ".jar"),
-            fetch(
-                    cache,
-                    "org/apache/groovy/groovy-ant/"
-                            + GROOVY_VER
-                            + "/groovy-ant-"
-                            + GROOVY_VER
-                            + ".jar"),
+            fetch(cache, "org/apache/groovy/groovy-ant/" + GROOVY_VER + "/groovy-ant-" + GROOVY_VER + ".jar"),
             fetch(cache, "org/apache/ant/ant/" + ANT_VER + "/ant-" + ANT_VER + ".jar"),
             fetch(cache, "org/apache/ant/ant-launcher/" + ANT_VER + "/ant-launcher-" + ANT_VER + ".jar"),
-            fetch(
-                    cache,
-                    "ant/ant-optional/" + ANT_OPTIONAL_VER + "/ant-optional-" + ANT_OPTIONAL_VER + ".jar"),
+            fetch(cache, "ant/ant-optional/" + ANT_OPTIONAL_VER + "/ant-optional-" + ANT_OPTIONAL_VER + ".jar"),
         };
     }
 

@@ -136,10 +136,8 @@ class ShellTest {
 
     @Test
     void activation_lines_use_command_jk_path_idioms() {
-        assertThat(new BashShell().activationLine("ignored"))
-                .isEqualTo("eval \"$(command jk activate bash)\"");
-        assertThat(new ZshShell().activationLine("ignored"))
-                .isEqualTo("eval \"$(command jk activate zsh)\"");
+        assertThat(new BashShell().activationLine("ignored")).isEqualTo("eval \"$(command jk activate bash)\"");
+        assertThat(new ZshShell().activationLine("ignored")).isEqualTo("eval \"$(command jk activate zsh)\"");
         assertThat(new FishShell().activationLine("ignored")).isEqualTo("command jk activate fish | source");
         assertThat(new PwshShell().activationLine("ignored"))
                 .contains("Invoke-Expression")
@@ -158,8 +156,7 @@ class ShellTest {
 
     @Test
     void installer_block_upsert_is_idempotent() {
-        String block = ShellInstallerBlock.render(
-                new BashShell(), Path.of("/b"), Path.of("/d"));
+        String block = ShellInstallerBlock.render(new BashShell(), Path.of("/b"), Path.of("/d"));
         String once = ShellInstallerBlock.upsert("", block);
         String twice = ShellInstallerBlock.upsert(once, block);
         assertThat(twice.split(ShellInstallerBlock.BEGIN, -1)).hasSize(2);

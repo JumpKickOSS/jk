@@ -81,7 +81,8 @@ class BuildJournalTest {
                 new BuildRecord.Task("plugin-android-res", "generate", "SUCCESS", 700),
                 // ofTaskName has no case for this name at all and would bucket it `other`.
                 new BuildRecord.Task("resolve-kotlinc", "resolve", "SUCCESS", 300));
-        String locator = j.append(withTasks(record(1_700_000_000_000L, true, "g:a"), tasks), BuildJournal.Snapshot.NONE);
+        String locator =
+                j.append(withTasks(record(1_700_000_000_000L, true, "g:a"), tasks), BuildJournal.Snapshot.NONE);
         String toml = Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
 
         assertThat(toml).contains("phase.generate.wall-ms = 700");
@@ -108,7 +109,10 @@ class BuildJournalTest {
         // One key per phase, summed: compile-java + copy-resources + write-stamp.
         assertThat(toml).contains("phase.compile.wall-ms = 3500");
         assertThat(toml).contains("phase.test.wall-ms = 4000");
-        assertThat(toml.lines().filter(l -> l.startsWith("phase.compile.wall-ms")).count()).isEqualTo(1);
+        assertThat(toml.lines()
+                        .filter(l -> l.startsWith("phase.compile.wall-ms"))
+                        .count())
+                .isEqualTo(1);
         // Per-task keys stay per task.
         assertThat(toml).contains("task.compile-java.wall-ms = 2000");
     }
@@ -315,5 +319,4 @@ class BuildJournalTest {
                 base.running(),
                 base.io());
     }
-
 }

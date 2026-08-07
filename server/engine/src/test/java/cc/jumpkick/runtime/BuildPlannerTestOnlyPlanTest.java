@@ -108,8 +108,7 @@ class BuildPlannerTestOnlyPlanTest {
         BuildPlanner.Inputs testOnly = inputs(dir, true, false);
         BuildPlan.Builder tb = BuildPlanner.coreBuilder(testOnly);
         BuildPlanner.appendDeclaredTails(tb, testOnly);
-        Set<String> testNames =
-                tb.build().steps().stream().map(s -> s.name()).collect(Collectors.toSet());
+        Set<String> testNames = tb.build().steps().stream().map(s -> s.name()).collect(Collectors.toSet());
         assertThat(testNames)
                 .as("test plan terminates at run-tests; no assembly tail, no package-jar")
                 .contains(TaskNames.RUN_TESTS)
@@ -242,7 +241,8 @@ class BuildPlannerTestOnlyPlanTest {
 
                 [fake]
                 enabled = true
-                """.formatted(dir.relativize(jar).toString().replace('\\', '/'), hex));
+                """.formatted(
+                        dir.relativize(jar).toString().replace('\\', '/'), hex));
 
         Cas cas = new Cas(tmp.resolve("cache"));
         Path casJar = cas.putFile(jar, hex);
@@ -262,8 +262,7 @@ class BuildPlannerTestOnlyPlanTest {
 
     /** Pre-seed the content-keyed describe cache so coreBuilder never forks a plugin worker. */
     private static void seedDescribeCache(Path dir, JkBuild build, List<String> declLines) throws Exception {
-        PluginBuild.Active active =
-                PluginBuild.activeCodePlugin(build, dir).orElseThrow();
+        PluginBuild.Active active = PluginBuild.activeCodePlugin(build, dir).orElseThrow();
         Path target = BuildLayout.of(dir, build).moduleTargetDir();
         String key = PluginBuild.describeKey(active, build);
         Path cacheFile = target.resolve("plugin").resolve("fake-describe-" + key + ".jsonl");

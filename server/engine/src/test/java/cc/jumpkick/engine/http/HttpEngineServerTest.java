@@ -30,22 +30,7 @@ import org.junit.jupiter.api.io.TempDir;
 class HttpEngineServerTest {
 
     private static final StatusSnapshot SNAPSHOT = new StatusSnapshot(
-            "9.9.9-test",
-            42,
-            1_000,
-            1,
-            0,
-            1_000,
-            2_000,
-            3_000,
-            -1,
-            -1,
-            8,
-            16_000_000_000L,
-            8_000_000_000L,
-            0.18,
-            1,
-            0);
+            "9.9.9-test", 42, 1_000, 1, 0, 1_000, 2_000, 3_000, -1, -1, 8, 16_000_000_000L, 8_000_000_000L, 0.18, 1, 0);
 
     @TempDir
     Path webRoot;
@@ -62,8 +47,7 @@ class HttpEngineServerTest {
     private final java.util.List<cc.jumpkick.runtime.BuildMetrics.Entry> metricsRows = new java.util.ArrayList<>();
 
     /** The snapshot served by {@code GET /api/cache} — tests reassign the field directly. */
-    private static final CacheSnapshot EMPTY_CACHE =
-            new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    private static final CacheSnapshot EMPTY_CACHE = new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
     private CacheSnapshot cacheSnapshot = EMPTY_CACHE;
     private HttpEngineServer server;
@@ -510,9 +494,7 @@ class HttpEngineServerTest {
         Path ws = stateDir.resolve("graph-ws");
         Files.createDirectories(ws.resolve("lib"));
         Files.createDirectories(ws.resolve("app"));
-        Files.writeString(
-                ws.resolve("jk.toml"),
-                """
+        Files.writeString(ws.resolve("jk.toml"), """
                 [project]
                 group = "com.example"
                 name = "ws"
@@ -521,17 +503,13 @@ class HttpEngineServerTest {
                 [workspace]
                 modules = ["lib", "app"]
                 """);
-        Files.writeString(
-                ws.resolve("lib").resolve("jk.toml"),
-                """
+        Files.writeString(ws.resolve("lib").resolve("jk.toml"), """
                 [project]
                 group = "com.example"
                 name = "lib"
                 version = "1.0.0"
                 """);
-        Files.writeString(
-                ws.resolve("app").resolve("jk.toml"),
-                """
+        Files.writeString(ws.resolve("app").resolve("jk.toml"), """
                 [project]
                 group = "com.example"
                 name = "app"
@@ -545,8 +523,7 @@ class HttpEngineServerTest {
         assertThat(missing.statusCode()).isEqualTo(400);
         assertThat(missing.body()).contains("missing");
 
-        HttpResponse<String> resp =
-                get("/api/project/graph?dir=" + ws, "Authorization", "Bearer " + token());
+        HttpResponse<String> resp = get("/api/project/graph?dir=" + ws, "Authorization", "Bearer " + token());
         assertThat(resp.statusCode()).isEqualTo(200);
         assertThat(resp.headers().firstValue("Content-Type")).contains("application/json; charset=utf-8");
         assertThat(resp.body())
@@ -565,9 +542,7 @@ class HttpEngineServerTest {
         // Standalone project with an external direct dep (no lock → declared node, no transitive).
         Path solo = stateDir.resolve("solo");
         Files.createDirectories(solo);
-        Files.writeString(
-                solo.resolve("jk.toml"),
-                """
+        Files.writeString(solo.resolve("jk.toml"), """
                 [project]
                 group = "g"
                 name = "n"
@@ -576,8 +551,8 @@ class HttpEngineServerTest {
                 [dependencies]
                 leaf = { group = "com.foo", name = "leaf", version = "1.0" }
                 """);
-        String soloBody =
-                get("/api/project/graph?dir=" + solo, "Authorization", "Bearer " + token()).body();
+        String soloBody = get("/api/project/graph?dir=" + solo, "Authorization", "Bearer " + token())
+                .body();
         assertThat(soloBody)
                 .contains("\"workspace\":false")
                 .contains("\"label\":\"g:n\"")
@@ -595,9 +570,7 @@ class HttpEngineServerTest {
     void api_project_graph_decodes_a_multi_scope_selection(@TempDir Path stateDir) throws Exception {
         Path solo = stateDir.resolve("solo");
         Files.createDirectories(solo);
-        Files.writeString(
-                solo.resolve("jk.toml"),
-                """
+        Files.writeString(solo.resolve("jk.toml"), """
                 [project]
                 group = "g"
                 name = "n"
@@ -611,8 +584,8 @@ class HttpEngineServerTest {
                 """);
 
         String body = get(
-                        "/api/project/graph?dir=" + solo + "&scopes=" + java.net.URLEncoder.encode(
-                                "main,test", java.nio.charset.StandardCharsets.UTF_8),
+                        "/api/project/graph?dir=" + solo + "&scopes="
+                                + java.net.URLEncoder.encode("main,test", java.nio.charset.StandardCharsets.UTF_8),
                         "Authorization",
                         "Bearer " + token())
                 .body();
@@ -1115,8 +1088,7 @@ class HttpEngineServerTest {
         assertThat(nextLine(lines)).isEqualTo(""); // blank line terminating the connected comment
         // Connect hydrate may publish status/cache before our frame (JK-1495 LiveVitals).
         events.publish("request-start", JsonOut.object().put("requestId", 1).put("kind", "build"));
-        assertThat(awaitSseEvent(lines, "request-start"))
-                .isEqualTo("data: {\"requestId\":1,\"kind\":\"build\"}");
+        assertThat(awaitSseEvent(lines, "request-start")).isEqualTo("data: {\"requestId\":1,\"kind\":\"build\"}");
     }
 
     @Test

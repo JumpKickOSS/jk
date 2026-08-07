@@ -5,12 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.Workspace;
-import cc.jumpkick.model.DependencyKind;
 import java.net.URI;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
@@ -212,8 +212,8 @@ class JkBuildRendererTest {
         Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
         byScope.put(Scope.MAIN, List.of(Dependency.workspace("lib")));
         byScope.put(Scope.TEST, List.of(Dependency.workspace("lib", DependencyKind.TESTS)));
-        JkBuild model = new JkBuild(
-                new JkBuild.Project("com.example", "app", "1.0.0", 21), new JkBuild.Dependencies(byScope));
+        JkBuild model =
+                new JkBuild(new JkBuild.Project("com.example", "app", "1.0.0", 21), new JkBuild.Dependencies(byScope));
         String out = JkBuildRenderer.render(model);
         assertThat(out).contains("lib.workspace = true");
         assertThat(out).contains("lib = { workspace = true, kind = \"tests\" }");
@@ -226,8 +226,8 @@ class JkBuildRendererTest {
                 Scope.TEST,
                 List.of(Dependency.of("helpers", "com.acme:helpers", VersionSelector.parse("=1.2.3"))
                         .withKind(DependencyKind.TESTS)));
-        JkBuild model = new JkBuild(
-                new JkBuild.Project("com.example", "app", "1.0.0", 21), new JkBuild.Dependencies(byScope));
+        JkBuild model =
+                new JkBuild(new JkBuild.Project("com.example", "app", "1.0.0", 21), new JkBuild.Dependencies(byScope));
         String out = JkBuildRenderer.render(model);
         assertThat(out).contains("kind = \"tests\"");
         assertThat(out).contains("com.acme");

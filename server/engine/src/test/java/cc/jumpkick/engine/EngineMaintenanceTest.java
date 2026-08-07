@@ -17,8 +17,8 @@ class EngineMaintenanceTest {
     void config_delete_and_recreate_both_count_as_changes(@TempDir Path dir) throws Exception {
         Path cfg = dir.resolve("config.toml");
         List<String> log = new ArrayList<>();
-        try (EngineMaintenance m = new EngineMaintenance(
-                log::add, new StoreFeedRefresh(s -> {}), () -> {}, dir.resolve("stamp"), cfg)) {
+        try (EngineMaintenance m =
+                new EngineMaintenance(log::add, new StoreFeedRefresh(s -> {}), () -> {}, dir.resolve("stamp"), cfg)) {
 
             Files.writeString(cfg, "[engine]\n");
             m.maybeReloadConfig(); // first tick: baseline, no log

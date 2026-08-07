@@ -2,13 +2,13 @@
 package cc.jumpkick.plugin.compat;
 
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
-import cc.jumpkick.model.DependencyKind;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;

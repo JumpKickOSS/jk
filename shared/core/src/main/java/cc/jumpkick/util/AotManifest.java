@@ -33,8 +33,7 @@ public final class AotManifest {
     public static final String FILE_NAME = "aot.toml";
     public static final int SCHEMA = 1;
 
-    private static final DateTimeFormatter ISO =
-            DateTimeFormatter.ISO_OFFSET_DATE_TIME.withZone(ZoneOffset.UTC);
+    private static final DateTimeFormatter ISO = DateTimeFormatter.ISO_OFFSET_DATE_TIME.withZone(ZoneOffset.UTC);
 
     private AotManifest() {}
 
@@ -347,8 +346,10 @@ public final class AotManifest {
         try (var stream = Files.list(aotDir)) {
             for (Path p : stream.toList()) {
                 String name = p.getFileName().toString();
-                if (name.equals(FILE_NAME) || name.endsWith(".lock") || name.contains(".tmp-") || name.endsWith(".training"))
-                    continue;
+                if (name.equals(FILE_NAME)
+                        || name.endsWith(".lock")
+                        || name.contains(".tmp-")
+                        || name.endsWith(".training")) continue;
                 if (name.endsWith(".aot") && Files.isRegularFile(p)) {
                     Entry prev = map.get(name);
                     String status = usableSize(p) > 0 ? "ready" : "empty";
@@ -435,10 +436,7 @@ public final class AotManifest {
             ReentrantLock jvmLock = DIR_LOCKS.computeIfAbsent(lockPath, k -> new ReentrantLock());
             jvmLock.lock();
             try (FileChannel ch = FileChannel.open(
-                            lockPath,
-                            StandardOpenOption.CREATE,
-                            StandardOpenOption.WRITE,
-                            StandardOpenOption.READ);
+                            lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ);
                     FileLock lock = ch.lock()) {
                 body.run();
             } finally {
@@ -450,8 +448,7 @@ public final class AotManifest {
         } catch (Exception e) {
             // AOT is an accelerator; a bad manifest must never break builds — but don't lose the
             // trail entirely when diagnosing why an update vanished.
-            System.getLogger(AotManifest.class.getName())
-                    .log(System.Logger.Level.DEBUG, "aot.toml update skipped", e);
+            System.getLogger(AotManifest.class.getName()).log(System.Logger.Level.DEBUG, "aot.toml update skipped", e);
         }
     }
 
@@ -715,22 +712,40 @@ public final class AotManifest {
         for (Entry e : ordered) {
             sb.append("[[cache]]\n");
             sb.append("file = ").append(MinimalToml.quote(e.file())).append('\n');
-            if (!blank(e.tool())) sb.append("tool = ").append(MinimalToml.quote(e.tool())).append('\n');
-            if (!blank(e.key())) sb.append("key = ").append(MinimalToml.quote(e.key())).append('\n');
-            if (!blank(e.status())) sb.append("status = ").append(MinimalToml.quote(e.status())).append('\n');
-            if (e.sizeBytes() != null) sb.append("size_bytes = ").append(e.sizeBytes()).append('\n');
-            if (!blank(e.created())) sb.append("created = ").append(MinimalToml.quote(e.created())).append('\n');
-            if (!blank(e.lastUsed())) sb.append("last_used = ").append(MinimalToml.quote(e.lastUsed())).append('\n');
-            if (!blank(e.jdkHome())) sb.append("jdk_home = ").append(MinimalToml.quote(e.jdkHome())).append('\n');
+            if (!blank(e.tool()))
+                sb.append("tool = ").append(MinimalToml.quote(e.tool())).append('\n');
+            if (!blank(e.key()))
+                sb.append("key = ").append(MinimalToml.quote(e.key())).append('\n');
+            if (!blank(e.status()))
+                sb.append("status = ").append(MinimalToml.quote(e.status())).append('\n');
+            if (e.sizeBytes() != null)
+                sb.append("size_bytes = ").append(e.sizeBytes()).append('\n');
+            if (!blank(e.created()))
+                sb.append("created = ").append(MinimalToml.quote(e.created())).append('\n');
+            if (!blank(e.lastUsed()))
+                sb.append("last_used = ")
+                        .append(MinimalToml.quote(e.lastUsed()))
+                        .append('\n');
+            if (!blank(e.jdkHome()))
+                sb.append("jdk_home = ").append(MinimalToml.quote(e.jdkHome())).append('\n');
             if (!blank(e.jdkVendor()))
-                sb.append("jdk_vendor = ").append(MinimalToml.quote(e.jdkVendor())).append('\n');
+                sb.append("jdk_vendor = ")
+                        .append(MinimalToml.quote(e.jdkVendor()))
+                        .append('\n');
             if (!blank(e.jdkVersion()))
-                sb.append("jdk_version = ").append(MinimalToml.quote(e.jdkVersion())).append('\n');
-            if (!blank(e.gc())) sb.append("gc = ").append(MinimalToml.quote(e.gc())).append('\n');
+                sb.append("jdk_version = ")
+                        .append(MinimalToml.quote(e.jdkVersion()))
+                        .append('\n');
+            if (!blank(e.gc()))
+                sb.append("gc = ").append(MinimalToml.quote(e.gc())).append('\n');
             if (!blank(e.jkVersion()))
-                sb.append("jk_version = ").append(MinimalToml.quote(e.jkVersion())).append('\n');
+                sb.append("jk_version = ")
+                        .append(MinimalToml.quote(e.jkVersion()))
+                        .append('\n');
             if (!blank(e.engineJar()))
-                sb.append("engine_jar = ").append(MinimalToml.quote(e.engineJar())).append('\n');
+                sb.append("engine_jar = ")
+                        .append(MinimalToml.quote(e.engineJar()))
+                        .append('\n');
             if (e.engineJarSize() != null)
                 sb.append("engine_jar_size = ").append(e.engineJarSize()).append('\n');
             if (e.engineJarMtimeMs() != null)
@@ -759,8 +774,7 @@ public final class AotManifest {
      * Known worker tool tags (may contain hyphens). Used to split
      * {@code <tool>-<jk-version>-<16hex>.aot} for the human index.
      */
-    private static final List<String> WORKER_TOOLS =
-            List.of("java-compiler", "kotlinc", "groovy", "plugin");
+    private static final List<String> WORKER_TOOLS = List.of("java-compiler", "kotlinc", "groovy", "plugin");
 
     public static void fillToolKey(Entry.Builder b, String fileName) {
         if (fileName == null || !fileName.endsWith(".aot")) return;

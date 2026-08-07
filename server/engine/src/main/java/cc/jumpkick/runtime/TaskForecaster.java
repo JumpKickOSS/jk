@@ -189,8 +189,8 @@ public final class TaskForecaster {
         List<TaskForecast.Task> steps = new ArrayList<>();
         Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
         if (!Files.isRegularFile(lockFile)) {
-            steps.add(
-                    new TaskForecast.Task("compile-main", TaskForecast.Status.RUN, "not locked yet (run `jk build`)", null));
+            steps.add(new TaskForecast.Task(
+                    "compile-main", TaskForecast.Status.RUN, "not locked yet (run `jk build`)", null));
             return new TaskForecast.Module(u.dir(), u.coord(), steps, 0, 0, false, false);
         }
         // Digest-only staleness — the same predicate the build's freshen uses (JK-1358), so the
@@ -362,8 +362,8 @@ public final class TaskForecaster {
             // (or content-hash the inputs of) steps the build will not run.
             if (haveTests && !skipTests) {
                 if (compileDirty) {
-                    steps.add(
-                            new TaskForecast.Task("compile-test", TaskForecast.Status.RUN, "recompile · main changed", null));
+                    steps.add(new TaskForecast.Task(
+                            "compile-test", TaskForecast.Status.RUN, "recompile · main changed", null));
                     testDirty = true;
                 } else if (!javaTest.isEmpty()) {
                     List<Path> baseCp = new ArrayList<>();
@@ -403,15 +403,16 @@ public final class TaskForecaster {
                 testCount = estimated;
                 String tests = estimated > 0 ? "~" + count(estimated, "test") : "tests";
                 if (compileDirty || testDirty) {
-                    steps.add(new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · " + tests, null));
+                    steps.add(
+                            new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · " + tests, null));
                 } else {
                     // Same factory as live run-testsdefault selection sources +
                     // worker/engine jar extras (nested-engine CLI included) so the key matches the
                     // stored green marker.
                     List<Path> testRt = testRuntimeClasspath(dir, project, lock, resolver);
                     long ts = Perf.start();
-                    String stampKey = BuildPlanner.runTestsStampKey(
-                            dir, project, compact, layout.classesDir(), lockFile, testRt);
+                    String stampKey =
+                            BuildPlanner.runTestsStampKey(dir, project, compact, layout.classesDir(), lockFile, testRt);
                     Perf.end("  test-stamp-key", ts);
                     boolean hit = stampKey != null && present(actionCache, stampKey);
                     steps.add(
@@ -430,7 +431,8 @@ public final class TaskForecaster {
             if (mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty()) {
                 // Source-less aggregator module — nothing to package.
             } else if (compileDirty) {
-                steps.add(new TaskForecast.Task("package-jar", TaskForecast.Status.RUN, "repackage · compile changed", null));
+                steps.add(new TaskForecast.Task(
+                        "package-jar", TaskForecast.Status.RUN, "repackage · compile changed", null));
             } else {
                 Path jar = layout.mainJar();
                 String mainClass = project.mainClass();
@@ -482,7 +484,8 @@ public final class TaskForecaster {
                     steps.add(
                             hit
                                     ? new TaskForecast.Task("package-assembly", TaskForecast.Status.CACHED, "", null)
-                                    : new TaskForecast.Task("package-assembly", TaskForecast.Status.RUN, "repackage", null));
+                                    : new TaskForecast.Task(
+                                            "package-assembly", TaskForecast.Status.RUN, "repackage", null));
                 }
             }
 
@@ -490,8 +493,7 @@ public final class TaskForecaster {
             if (project.nativeMode() == cc.jumpkick.model.JkBuild.NativeMode.ALWAYS
                     && !(mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty())) {
                 Path nativeOut = layout.nativeBinary();
-                boolean hit = Files.isRegularFile(nativeOut)
-                        || Files.isRegularFile(layout.nativeLibrary());
+                boolean hit = Files.isRegularFile(nativeOut) || Files.isRegularFile(layout.nativeLibrary());
                 // Forecast is intentionally coarse: a present binary is treated as cached; a
                 // full native action-key match needs the Graal home the live step resolved.
                 if (compileDirty || !hit) {
@@ -514,7 +516,8 @@ public final class TaskForecaster {
             if (!compileDirty && Files.isDirectory(layout.classesDir())) {
                 if (resourcesOutOfSync(
                         cc.jumpkick.layout.ModuleLayout.mainResourcesDir(dir, compact), layout.classesDir())) {
-                    steps.add(new TaskForecast.Task("copy-resources", TaskForecast.Status.RUN, "resources changed", null));
+                    steps.add(new TaskForecast.Task(
+                            "copy-resources", TaskForecast.Status.RUN, "resources changed", null));
                 } else if (extraResourcesOutOfSync(project, dir, layout.classesDir())) {
                     // extra-resources come from OUTSIDE the module, so the resource-root walk above
                     // cannot see them. Editing a plugin's jk-plugin.toml must still rebuild
@@ -550,7 +553,8 @@ public final class TaskForecaster {
                     outputsAbsent = !classesDirHasContent(layout.classesDir());
                 }
                 if (outputsAbsent) {
-                    steps.add(new TaskForecast.Task("restore-outputs", TaskForecast.Status.RUN, "restore from cache", null));
+                    steps.add(new TaskForecast.Task(
+                            "restore-outputs", TaskForecast.Status.RUN, "restore from cache", null));
                 }
             }
         } catch (Exception e) {
@@ -740,7 +744,8 @@ public final class TaskForecaster {
     }
 
     /** Map a {@link JavaIncrementalCompile.Prediction} to a step, honoring upstream dirtiness. */
-    private static TaskForecast.Task compileStep(String name, JavaIncrementalCompile.Prediction pred, boolean depDirty) {
+    private static TaskForecast.Task compileStep(
+            String name, JavaIncrementalCompile.Prediction pred, boolean depDirty) {
         return switch (pred.outcome()) {
             case CACHE_HIT ->
                 depDirty
@@ -771,8 +776,7 @@ public final class TaskForecaster {
     private static List<Path> testCompileClasspath(Path dir, JkBuild project, Lockfile lock, ClasspathResolver resolver)
             throws java.io.IOException {
         WorkspaceClasspath.Result sib =
-                WorkspaceClasspath.resolve(
-                        dir, project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
+                WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
         List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_TEST));
         cp.addAll(sib.jars());
         for (Path sl : sib.siblingLockfiles()) {
@@ -788,8 +792,8 @@ public final class TaskForecaster {
 
     private static List<Path> testRuntimeClasspath(Path dir, JkBuild project, Lockfile lock, ClasspathResolver resolver)
             throws java.io.IOException {
-        WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(
-                dir, project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
+        WorkspaceClasspath.Result sib =
+                WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
         List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.TEST));
         cp.addAll(sib.jars());
         for (Path sl : sib.siblingLockfiles()) {

@@ -168,8 +168,7 @@ final class EngineResolveAdapter {
                         if (listener != null) listener.planFinish(result);
                         return result;
                     }
-                    case EngineProtocol.ERROR ->
-                        throw EngineWireException.fromJsonLine(line);
+                    case EngineProtocol.ERROR -> throw EngineWireException.fromJsonLine(line);
                     default -> dispatchBuildPlanEvent(type, line, listener, diagnostics);
                 }
             }
@@ -247,8 +246,7 @@ final class EngineResolveAdapter {
                                 Jsonl.strArray(line, "errors"),
                                 Jsonl.intValue(line, "refreshed", -1));
                     }
-                    case EngineProtocol.ERROR ->
-                        throw EngineWireException.fromJsonLine(line);
+                    case EngineProtocol.ERROR -> throw EngineWireException.fromJsonLine(line);
                     default -> dispatchBuildPlanEvent(type, line, listener, diagnostics);
                 }
             }
@@ -274,9 +272,7 @@ final class EngineResolveAdapter {
             case EngineProtocol.BUILDPLAN_START -> listener.planStart(readBuildPlanView(line));
             case EngineProtocol.TASK_START ->
                 listener.stepStart(
-                        Jsonl.str(line, "task"),
-                        wireGroup(Jsonl.str(line, "stage")),
-                        Jsonl.intValue(line, "ticks", 0));
+                        Jsonl.str(line, "task"), wireGroup(Jsonl.str(line, "stage")), Jsonl.intValue(line, "ticks", 0));
             case EngineProtocol.PROGRESS ->
                 listener.progress(Jsonl.str(line, "task"), Jsonl.intValue(line, "delta", 0), readBuildPlanView(line));
             case EngineProtocol.TICK_UPDATE ->

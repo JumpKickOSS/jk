@@ -65,8 +65,7 @@ class HiltTransformTest {
                 SessionContext.current());
         BuildPlanResult result = BuildPlanner.coreBuilder(in).build().run();
         assertThat(result.errors().stream()
-                        .filter(d -> d.message() == null
-                                || !d.message().contains("sun.misc.Unsafe"))
+                        .filter(d -> d.message() == null || !d.message().contains("sun.misc.Unsafe"))
                         .toList())
                 .as("errors: %s steps: %s", result.errors(), result.steps())
                 .isEmpty();

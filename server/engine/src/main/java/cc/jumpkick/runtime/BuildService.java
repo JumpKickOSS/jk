@@ -11,11 +11,11 @@ import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
-import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
@@ -362,8 +362,7 @@ public final class BuildService {
      * unchanged, skip the multi-second {@link TaskForecaster} walk (same shortcut as fully-cached
      * {@code jk build}). ETA is 0; the plan is "Fully Cached" for every module.
      */
-    public static ExplainPlan explainFromGraph(
-            BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
+    public static ExplainPlan explainFromGraph(BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
         if (graph.hasErrors()) {
             return new ExplainPlan(List.of(), Map.of(), 1, List.copyOf(graph.errors()));
         }
@@ -771,8 +770,7 @@ public final class BuildService {
             boolean distrust = SessionContext.current().config().forceOr(false)
                     || SessionContext.current().config().rebuildOr(false);
             if (preflight != null && !preflight.modules().isEmpty()) {
-                etaPlan = new ExplainPlan(
-                        preflight.modules(), graph.edges(), graph.maxReadyWidth(), List.of());
+                etaPlan = new ExplainPlan(preflight.modules(), graph.edges(), graph.maxReadyWidth(), List.of());
             } else {
                 if (distrust) {
                     // --force/--redo: every step runs by definition — the TaskForecaster walk's
@@ -1257,8 +1255,7 @@ public final class BuildService {
             // Failures always count as work; successes count only when a productive step ran
             // (not pure cache hits / no-ops —.
             boolean didWork = !r.success() || moduleDidWork(r);
-            ModuleOutcome o =
-                    new ModuleOutcome(module.coord(), module.dir(), r.success(), exit, ms, didWork);
+            ModuleOutcome o = new ModuleOutcome(module.coord(), module.dir(), r.success(), exit, ms, didWork);
             listener.onModuleFinish(o);
             return o;
         } catch (RuntimeException e) {

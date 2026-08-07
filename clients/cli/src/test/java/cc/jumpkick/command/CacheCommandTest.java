@@ -69,8 +69,7 @@ class CacheCommandTest {
             // Backdate the stale entry by 60 days.
             Files.setLastModifiedTime(stale, FileTime.from(Instant.now().minus(60, ChronoUnit.DAYS)));
 
-            String stdout =
-                    capture(() -> run("cache", "prune", "--cache-dir", cache.toString(), "--older-than", "30"));
+            String stdout = capture(() -> run("cache", "prune", "--cache-dir", cache.toString(), "--older-than", "30"));
 
             assertThat(Files.exists(stale)).isFalse();
             assertThat(Files.exists(fresh)).isTrue();
@@ -216,8 +215,7 @@ class CacheCommandTest {
         Path cache = tempDir.resolve("cache");
         writeBlob(cache.resolve("actions/keys/task"), new byte[4096]);
 
-        String plain =
-                TestAnsi.strip(capture(() -> run("repo", "storage", "--cache-dir", cache.toString())));
+        String plain = TestAnsi.strip(capture(() -> run("repo", "storage", "--cache-dir", cache.toString())));
         assertThat(plain).contains("Repo Storage");
         assertThat(plain).contains("CAS Blobs");
         assertThat(plain).contains("Worker JARs");

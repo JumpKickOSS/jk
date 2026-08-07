@@ -208,8 +208,7 @@ class DependencyTreeTest {
 
         assertThat(rendered).contains("main").contains("com.foo:lib");
         assertThat(rendered).doesNotContain("test").doesNotContain("org.junit:junit");
-        assertThat(DependencyTree.defaultScopeOrder())
-                .containsExactly(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME);
+        assertThat(DependencyTree.defaultScopeOrder()).containsExactly(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME);
     }
 
     @Test

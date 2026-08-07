@@ -127,7 +127,8 @@ public final class BuildPlanConsole {
      * events; see {@code EngineBuildListenerAdapter}) can choose the same listener from just {@code
      * steps} once it knows them, instead of duplicating this switch.
      */
-    public static BuildPlanListener chooseConsoleListener(List<Task> steps, Mode mode, ConsoleSpec spec, String module) {
+    public static BuildPlanListener chooseConsoleListener(
+            List<Task> steps, Mode mode, ConsoleSpec spec, String module) {
         return switch (mode) {
             case JSON -> new JsonlListener(System.out);
             case VERBOSE -> new VerboseListener(System.out, System.err);

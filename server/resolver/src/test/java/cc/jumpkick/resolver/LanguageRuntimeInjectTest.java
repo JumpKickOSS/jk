@@ -116,7 +116,8 @@ class LanguageRuntimeInjectTest {
         // No [project] groovy pin — the inject would otherwise float to the fallback major.
         JkBuild p = project("[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
-        Dependency user = new Dependency("org.apache.groovy:groovy", cc.jumpkick.model.VersionSelector.parse("=4.0.21"));
+        Dependency user =
+                new Dependency("org.apache.groovy:groovy", cc.jumpkick.model.VersionSelector.parse("=4.0.21"));
         deps.put(user.packageKey(), user);
 
         LockOrchestrator.injectLanguageRuntimes(p, dir, java.util.Map.of(), deps);
@@ -131,8 +132,8 @@ class LanguageRuntimeInjectTest {
         Files.writeString(dir.resolve("src/main/kotlin/A.kt"), "class A");
         JkBuild p = project("[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
-        Dependency user = new Dependency(
-                "org.jetbrains.kotlin:kotlin-stdlib", cc.jumpkick.model.VersionSelector.parse("=2.1.0"));
+        Dependency user =
+                new Dependency("org.jetbrains.kotlin:kotlin-stdlib", cc.jumpkick.model.VersionSelector.parse("=2.1.0"));
         deps.put(user.packageKey(), user);
 
         LockOrchestrator.injectLanguageRuntimes(p, dir, java.util.Map.of(), deps);

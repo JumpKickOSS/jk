@@ -67,15 +67,11 @@ class JdkAccessLedgerTest {
         Path old = tempDir.resolve("old").toAbsolutePath().normalize();
         Path mid = tempDir.resolve("mid").toAbsolutePath().normalize();
         Path neu = tempDir.resolve("new").toAbsolutePath().normalize();
-        Files.writeString(
-                file,
-                """
+        Files.writeString(file, """
                 100|1|17.0.1|Eclipse|%s
                 500|2|25.0.1|Amazon|%s
                 300|1|21.0.5|Azul|%s
-                """
-                        .formatted(old, neu, mid),
-                StandardCharsets.UTF_8);
+                """.formatted(old, neu, mid), StandardCharsets.UTF_8);
 
         var ordered = new JdkAccessLedger(file).mostRecentFirst();
         assertThat(ordered)
@@ -124,16 +120,14 @@ class JdkAccessLedgerTest {
             CountDownLatch start = new CountDownLatch(1);
             List<Future<?>> futures = new ArrayList<>();
             for (Path home : homes) {
-                futures.add(
-                        pool.submit(
-                                () -> {
-                                    start.await();
-                                    // Fresh instance per touch — same file, no shared state.
-                                    for (int t = 0; t < touchesPerJdk; t++) {
-                                        new JdkAccessLedger(file).touch(home, "21.0.5", "Eclipse Temurin");
-                                    }
-                                    return null;
-                                }));
+                futures.add(pool.submit(() -> {
+                    start.await();
+                    // Fresh instance per touch — same file, no shared state.
+                    for (int t = 0; t < touchesPerJdk; t++) {
+                        new JdkAccessLedger(file).touch(home, "21.0.5", "Eclipse Temurin");
+                    }
+                    return null;
+                }));
             }
             start.countDown();
             for (Future<?> f : futures) f.get();
@@ -172,14 +166,11 @@ class JdkAccessLedgerTest {
         Path old = tempDir.resolve(".access.log");
         Path existing = Files.createDirectories(tempDir.resolve("temurin-21.0.5"));
         // Old TSV journal: two events for a still-installed JDK, one for a gone JDK.
-        Files.writeString(
-                old,
-                """
+        Files.writeString(old, """
                 100\tinstall\ttemurin-21.0.5
                 300\tresolve\ttemurin-21.0.5
                 200\tresolve\tcorretto-17.0.9
-                """,
-                StandardCharsets.UTF_8);
+                """, StandardCharsets.UTF_8);
 
         Path other = Files.createDirectories(tempDir.resolve("zulu-25.0.1"));
         new JdkAccessLedger(file).touch(other, "25.0.1", "Azul Zulu");

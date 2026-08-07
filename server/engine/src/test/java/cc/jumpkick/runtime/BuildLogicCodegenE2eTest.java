@@ -25,8 +25,7 @@ import org.junit.jupiter.api.io.TempDir;
 @Tag("slow")
 class BuildLogicCodegenE2eTest {
 
-    private static final String REPOS =
-            """
+    private static final String REPOS = """
             [repositories]
             central = "https://repo.maven.apache.org/maven2/"
 

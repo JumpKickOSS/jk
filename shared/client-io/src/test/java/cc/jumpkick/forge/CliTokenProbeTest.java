@@ -57,7 +57,8 @@ class CliTokenProbeTest {
 
     @Test
     void missing_binary_yields_empty() {
-        assertThat(CliTokenProbe.REAL.token(List.of(tmp.resolve("no-such-binary").toString())))
+        assertThat(CliTokenProbe.REAL.token(
+                        List.of(tmp.resolve("no-such-binary").toString())))
                 .isEmpty();
     }
 

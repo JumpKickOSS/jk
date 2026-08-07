@@ -375,8 +375,7 @@ public final class TestSupport {
                 .processorPath(processorPath)
                 .build();
         // Action payloads live in the cache CAS; callers may pass the artifact CAS for classpath.
-        ActionCache actionCache =
-                new ActionCache(JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"));
+        ActionCache actionCache = new ActionCache(JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"));
         boolean useCache = !cc.jumpkick.config.SessionContext.current().config().rebuildOr(false);
         java.nio.file.Path stateDir =
                 cacheRoot.resolve("actions").resolve("incremental-java").resolve(cacheTaskId);

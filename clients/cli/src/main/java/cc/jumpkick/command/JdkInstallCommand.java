@@ -303,8 +303,7 @@ public final class JdkInstallCommand implements CliCommand {
         // never opened a terminal and never asked about the default.
         boolean wizardRan = Boolean.TRUE.equals(plan.get(WIZARD_RAN).orElse(false));
         if (!wizardRan && Confirm.isInteractiveTerminal()) {
-            boolean wantedDefault =
-                    Boolean.TRUE.equals(plan.get(WANT_DEFAULT).orElse(false));
+            boolean wantedDefault = Boolean.TRUE.equals(plan.get(WANT_DEFAULT).orElse(false));
             plan.get(INSTALLED).ifPresent(jdk -> offerDefaults(jdk, wantedDefault));
         }
         return 0;

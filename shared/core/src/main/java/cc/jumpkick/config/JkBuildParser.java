@@ -4,6 +4,7 @@ package cc.jumpkick.config;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.Feature;
 import cc.jumpkick.model.Features;
 import cc.jumpkick.model.GitRefSpec;
@@ -21,7 +22,6 @@ import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.Workspace;
 import cc.jumpkick.model.Workspace.WorkspaceDependency;
-import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
@@ -167,8 +167,7 @@ public final class JkBuildParser {
         // Workspace roots keep concrete [project] defaults; members may omit fields and inherit.
         boolean workspaceRoot = hasWorkspaceModules(result);
         JkBuild.Project project = parseProject(result, workspaceRoot);
-        LibraryCatalog effective =
-                catalogBase(result, catalog).withProjectOverrides(parseProjectLibraries(result));
+        LibraryCatalog effective = catalogBase(result, catalog).withProjectOverrides(parseProjectLibraries(result));
         Workspace workspace = parseWorkspace(result, effective);
         JkBuild.Dependencies deps = parseDependencies(result, workspace, effective);
         List<RepositorySpec> repos = parseRepositories(result);
@@ -918,8 +917,8 @@ public final class JkBuildParser {
         return switch (mode) {
             case "bundled" -> LibraryCatalog.bundled();
             case "layered" -> fallback;
-            default -> throw new JkBuildParseException(
-                    "catalog must be \"bundled\" or \"layered\", got \"" + mode + "\"");
+            default ->
+                throw new JkBuildParseException("catalog must be \"bundled\" or \"layered\", got \"" + mode + "\"");
         };
     }
 

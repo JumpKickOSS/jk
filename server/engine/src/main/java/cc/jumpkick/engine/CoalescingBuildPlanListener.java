@@ -71,8 +71,8 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
      * costs no platform thread and isolates plans from each other. Per-listener ordering is
      * still guaranteed by {@link #lock}.
      */
-    private static final java.util.concurrent.ExecutorService FLUSHERS =
-            Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("jk-wire-flush-", 0).factory());
+    private static final java.util.concurrent.ExecutorService FLUSHERS = Executors.newThreadPerTaskExecutor(
+            Thread.ofVirtual().name("jk-wire-flush-", 0).factory());
 
     public CoalescingBuildPlanListener(BuildPlanListener delegate) {
         this(delegate, cadenceFromEnv());

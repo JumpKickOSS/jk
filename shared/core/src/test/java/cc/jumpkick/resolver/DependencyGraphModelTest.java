@@ -7,6 +7,7 @@ import cc.jumpkick.model.Scope;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
@@ -18,8 +19,7 @@ class DependencyGraphModelTest {
     void parseScopes_defaults_to_main() {
         assertThat(DependencyGraphModel.parseScopes(null)).containsExactly(Scope.MAIN);
         assertThat(DependencyGraphModel.parseScopes("")).containsExactly(Scope.MAIN);
-        assertThat(DependencyGraphModel.parseScopes("test,main"))
-                .containsExactly(Scope.MAIN, Scope.TEST);
+        assertThat(DependencyGraphModel.parseScopes("test,main")).containsExactly(Scope.MAIN, Scope.TEST);
         // An unknown token is an error, not a silent fallback: swallowing it hid the endpoint's
         // missing percent-decode for a whole release (JK-1607).
         org.junit.jupiter.api.Assertions.assertThrows(
@@ -29,9 +29,7 @@ class DependencyGraphModelTest {
 
     @Test
     void standalone_declared_only_omits_transitive(@TempDir Path dir) throws Exception {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "com.example"
                 name = "app"
@@ -40,9 +38,7 @@ class DependencyGraphModelTest {
                 [dependencies]
                 root = { group = "com.foo", name = "root", version = "1.0" }
                 """);
-        Files.writeString(
-                dir.resolve("jk-lock.toml"),
-                """
+        Files.writeString(dir.resolve("jk-lock.toml"), """
                 version = 1
                 generated-by = "jk test"
                 resolution-algorithm = "pubgrub-v1"
@@ -79,9 +75,7 @@ class DependencyGraphModelTest {
 
     @Test
     void test_scope_only_when_selected(@TempDir Path dir) throws Exception {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "com.example"
                 name = "app"
@@ -105,9 +99,7 @@ class DependencyGraphModelTest {
 
     @Test
     void workspace_modules_and_external_declared(@TempDir Path root) throws Exception {
-        Files.writeString(
-                root.resolve("jk.toml"),
-                """
+        Files.writeString(root.resolve("jk.toml"), """
                 [project]
                 group = "com.acme"
                 name = "ws"
@@ -117,18 +109,14 @@ class DependencyGraphModelTest {
                 modules = ["lib", "app"]
                 """);
         Files.createDirectories(root.resolve("lib"));
-        Files.writeString(
-                root.resolve("lib").resolve("jk.toml"),
-                """
+        Files.writeString(root.resolve("lib").resolve("jk.toml"), """
                 [project]
                 group = "com.acme"
                 name = "lib"
                 version = "1"
                 """);
         Files.createDirectories(root.resolve("app"));
-        Files.writeString(
-                root.resolve("app").resolve("jk.toml"),
-                """
+        Files.writeString(root.resolve("app").resolve("jk.toml"), """
                 [project]
                 group = "com.acme"
                 name = "app"
@@ -158,7 +146,7 @@ class DependencyGraphModelTest {
         return g.nodes().stream().map(DependencyGraphModel.Node::label).collect(Collectors.toSet());
     }
 
-    private static java.util.Map<String, String> kinds(DependencyGraphModel.Graph g) {
+    private static Map<String, String> kinds(DependencyGraphModel.Graph g) {
         return g.nodes().stream()
                 .collect(Collectors.toMap(DependencyGraphModel.Node::label, DependencyGraphModel.Node::kind));
     }

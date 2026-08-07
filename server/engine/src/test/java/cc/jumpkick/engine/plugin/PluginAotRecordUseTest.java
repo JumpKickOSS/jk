@@ -21,15 +21,13 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class PluginAotRecordUseTest {
 
-    private static final DateTimeFormatter ISO =
-            DateTimeFormatter.ISO_OFFSET_DATE_TIME.withZone(ZoneOffset.UTC);
+    private static final DateTimeFormatter ISO = DateTimeFormatter.ISO_OFFSET_DATE_TIME.withZone(ZoneOffset.UTC);
 
     @TempDir
     Path tmp;
 
     private static PluginAot.CacheMeta meta(String tool, String key) {
-        PluginAot.JdkId id =
-                new PluginAot.JdkId(Path.of("/opt/jdk"), cc.jumpkick.jdk.JdkVendor.TEMURIN, "25.0.3");
+        PluginAot.JdkId id = new PluginAot.JdkId(Path.of("/opt/jdk"), cc.jumpkick.jdk.JdkVendor.TEMURIN, "25.0.3");
         return new PluginAot.CacheMeta(tool, key, id, "serialgc", "a.jar", List.of());
     }
 

@@ -131,9 +131,7 @@ public final class DoctorCommand implements CliCommand {
         String summary = Theme.colorize(String.valueOf(healthy), t.focused())
                 + " healthy"
                 + (pruned > 0 ? ", " + Theme.colorize(String.valueOf(pruned), t.focused()) + " pruned" : "")
-                + (verified > 0
-                        ? ", " + Theme.colorize(String.valueOf(verified), t.focused()) + " fingerprinted"
-                        : "");
+                + (verified > 0 ? ", " + Theme.colorize(String.valueOf(verified), t.focused()) + " fingerprinted" : "");
         // Append subsystem warnings to summary when any check failed.
         if (hasFail) {
             summary += Theme.colorize(" — issues found", t.warning());
@@ -144,7 +142,11 @@ public final class DoctorCommand implements CliCommand {
 
     // ---- checks ----
 
-    private enum Status { OK, WARN, FAIL }
+    private enum Status {
+        OK,
+        WARN,
+        FAIL
+    }
 
     private record Check(Status status, String label, String detail) {}
 
@@ -173,8 +175,8 @@ public final class DoctorCommand implements CliCommand {
         if (!Files.isDirectory(store.getParent())) problems.add("store parent missing");
         if (!Files.isDirectory(state.getParent())) problems.add("state parent missing");
         if (!problems.isEmpty()) return new Check(Status.FAIL, "dirs", String.join("; ", problems));
-        String detail = "cache " + cache + " · store " + store + " · "
-                + cfg.maxCacheSizeMb() + "M cache / " + cfg.maxStoreSizeMb() + "M store (display)";
+        String detail = "cache " + cache + " · store " + store + " · " + cfg.maxCacheSizeMb() + "M cache / "
+                + cfg.maxStoreSizeMb() + "M store (display)";
         return new Check(Status.OK, "dirs", detail);
     }
 
@@ -195,10 +197,13 @@ public final class DoctorCommand implements CliCommand {
             Path cwd = Path.of(System.getProperty("user.dir", "."));
             Path lock = cc.jumpkick.lock.LockPaths.lockFile(cwd);
             Path proj = lock.getParent();
-            if (!Files.isRegularFile(lock)) return new Check(Status.WARN, "lock", "no jk-lock.toml at " + proj + " (run jk lock)");
+            if (!Files.isRegularFile(lock))
+                return new Check(Status.WARN, "lock", "no jk-lock.toml at " + proj + " (run jk lock)");
             String text = Files.readString(lock);
             if (!text.contains("version = 1")) return new Check(Status.WARN, "lock", "unexpected lock version");
-            long artifacts = text.lines().filter(l -> l.trim().startsWith("[[artifact]]")).count();
+            long artifacts = text.lines()
+                    .filter(l -> l.trim().startsWith("[[artifact]]"))
+                    .count();
             return new Check(Status.OK, "lock", artifacts + " artifacts · " + lock);
         } catch (IOException e) {
             return new Check(Status.WARN, "lock", "check failed: " + e.getMessage());
@@ -233,8 +238,8 @@ public final class DoctorCommand implements CliCommand {
     }
 
     private static String checkJson(Check c) {
-        return "{\"status\":" + Jsonl.quote(c.status.name().toLowerCase()) + ",\"detail\":"
-                + Jsonl.quote(c.detail) + "}";
+        return "{\"status\":" + Jsonl.quote(c.status.name().toLowerCase()) + ",\"detail\":" + Jsonl.quote(c.detail)
+                + "}";
     }
 
     private static String formatUptime(long secs) {

@@ -93,9 +93,7 @@ class TestStampWorkerJarsParityTest {
             } catch (Exception e) {
                 continue; // non-path values (TERM, CI, …)
             }
-            assertThat(p)
-                    .as("nested env must not equal host action-cache root")
-                    .isNotEqualTo(hostCache);
+            assertThat(p).as("nested env must not equal host action-cache root").isNotEqualTo(hostCache);
             assertThat(p)
                     .as("nested env must not equal host artifact store root")
                     .isNotEqualTo(hostStore);

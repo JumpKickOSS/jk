@@ -295,8 +295,7 @@ public final class AddCommand implements CliCommand {
                 // Adding the first local module promotes a plain project into a workspace root
                 // (Cargo/uv semantics) — without the registration the dependency names a
                 // coordinate that was never published and `jk lock` cannot resolve it.
-                boolean alreadyWorkspace =
-                        BuildCommand.projectInfoOrNull(root).workspaceRoot();
+                boolean alreadyWorkspace = BuildCommand.projectInfoOrNull(root).workspaceRoot();
                 String rel = root.relativize(target).toString().replace('\\', '/');
                 String op = alreadyWorkspace ? "add-workspace-module" : "register-workspace-module";
                 if (EngineEdits.apply(rootToml, op, java.util.List.of(rel))) {

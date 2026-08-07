@@ -1592,8 +1592,8 @@ public final class EngineClient {
                         requestLine,
                         "cache-" + req.op(),
                         listenerFactory,
-                        (type, line) -> onWait.accept(
-                                Jsonl.bool(line, "external", false), Jsonl.intValue(line, "plans", 0)),
+                        (type, line) ->
+                                onWait.accept(Jsonl.bool(line, "external", false), Jsonl.intValue(line, "plans", 0)),
                         line -> summaryOut[0] = new CacheMaintSummary(
                                 Jsonl.longValue(line, "cacheFiles", -1),
                                 Jsonl.longValue(line, "cacheBytes", -1),
@@ -2074,8 +2074,7 @@ public final class EngineClient {
      * marker is present. {@code ready} means size &gt; 0 — the same predicate {@link
      * #chooseAotMode} maps by, so the manifest and the engine never disagree about one file.
      */
-    static void recordEngineAotManifest(
-            Path cache, Path engineJar, EngineJdk jdk, String version, String hash) {
+    static void recordEngineAotManifest(Path cache, Path engineJar, EngineJdk jdk, String version, String hash) {
         if (cache == null) return;
         Path aotDir = cache.getParent();
         if (aotDir == null) return;
@@ -2089,9 +2088,7 @@ public final class EngineClient {
                     .key(hash)
                     .jkVersion(version)
                     .status(status)
-                    .jvmFlags(List.of(
-                            "-XX:+UseSerialGC",
-                            "--enable-native-access=ALL-UNNAMED"));
+                    .jvmFlags(List.of("-XX:+UseSerialGC", "--enable-native-access=ALL-UNNAMED"));
             if (ready) {
                 b.sizeBytes(Files.size(cache)).lastUsed(cc.jumpkick.util.AotManifest.nowIso());
             }
@@ -2105,7 +2102,8 @@ public final class EngineClient {
                 b.engineJar(engineJar.getFileName().toString());
                 try {
                     b.engineJarSize(Files.size(engineJar))
-                            .engineJarMtimeMs(Files.getLastModifiedTime(engineJar).toMillis());
+                            .engineJarMtimeMs(
+                                    Files.getLastModifiedTime(engineJar).toMillis());
                 } catch (IOException ignored) {
                     // identity without size/mtime still documents the name
                 }

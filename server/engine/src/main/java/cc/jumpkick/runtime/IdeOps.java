@@ -384,8 +384,8 @@ public final class IdeOps {
         List<String[]> result = new ArrayList<>();
         WorkspaceClasspath.Result mainCp =
                 WorkspaceClasspath.resolve(moduleDir, module, EnumSet.of(Scope.EXPORT, Scope.MAIN));
-        WorkspaceClasspath.Result testCp = WorkspaceClasspath.resolve(
-                moduleDir, module, EnumSet.of(Scope.TEST, Scope.TEST_DEV));
+        WorkspaceClasspath.Result testCp =
+                WorkspaceClasspath.resolve(moduleDir, module, EnumSet.of(Scope.TEST, Scope.TEST_DEV));
 
         // Map jar → module name for all workspace siblings.
         Map<Path, String> jarToModule = new LinkedHashMap<>();
@@ -445,7 +445,8 @@ public final class IdeOps {
         // After resolveSiblingCoordinates, module is group:artifact.
         String mod = d.module();
         for (Map.Entry<Path, JkBuild> e : modules.entrySet()) {
-            String coord = e.getValue().project().group() + ":" + e.getValue().project().name();
+            String coord = e.getValue().project().group() + ":"
+                    + e.getValue().project().name();
             if (coord.equals(mod) || e.getValue().project().name().equals(mod)) {
                 return e.getValue().project().name();
             }

@@ -216,9 +216,7 @@ public final class LiveVitals implements AutoCloseable {
                 .put("version", s.version())
                 .put("pid", s.pid())
                 .put("startedAt", s.startedAtMillis())
-                .put(
-                        "uptimeSeconds",
-                        Math.max(0, (System.currentTimeMillis() - s.startedAtMillis()) / 1000))
+                .put("uptimeSeconds", Math.max(0, (System.currentTimeMillis() - s.startedAtMillis()) / 1000))
                 .put("activeRequests", s.activeRequests())
                 .put("activeBuildPlans", s.activeBuildPlans())
                 .put("peakActiveRequests", s.peakActiveRequests())

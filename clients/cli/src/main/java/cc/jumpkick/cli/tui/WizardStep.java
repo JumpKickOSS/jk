@@ -338,7 +338,15 @@ public sealed interface WizardStep
 
             public MultiSelectStep build() {
                 return new MultiSelectStep(
-                        key, prompt, choices, choicesFn, defaults, orientation, customPlaceholder, filterable, shouldRun);
+                        key,
+                        prompt,
+                        choices,
+                        choicesFn,
+                        defaults,
+                        orientation,
+                        customPlaceholder,
+                        filterable,
+                        shouldRun);
             }
         }
     }

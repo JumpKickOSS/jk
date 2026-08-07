@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import cc.jumpkick.cache.Cas;
@@ -167,7 +167,6 @@ class BuildLogicSupportTest {
         assertTrue(labels.toString().contains("before-compile-marker"), labels.toString());
         assertEquals("generate", BuildLogicAnchor.BEFORE_COMPILE.stageWireName());
 
-
         labels.setLength(0);
         assertTrue(BuildLogicSupport.run(
                 project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> labels.append(s)
@@ -243,15 +242,15 @@ class BuildLogicSupportTest {
         String first = Files.readString(classes.resolve("line-count.txt")).trim();
 
         // Same logic, more product source: the count must change.
-        Files.writeString(
-                project.resolve("src/main/java/demo/More.java"),
-                "package demo;\npublic class More {\n}\n");
+        Files.writeString(project.resolve("src/main/java/demo/More.java"), "package demo;\npublic class More {\n}\n");
         StringBuilder labels = new StringBuilder();
         assertTrue(BuildLogicSupport.run(
-                project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> labels.append(s).append(';')));
+                project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> labels.append(s)
+                        .append(';')));
 
         assertFalse(labels.toString().contains("cache hit"), labels.toString());
-        assertNotEquals(first, Files.readString(classes.resolve("line-count.txt")).trim());
+        assertNotEquals(
+                first, Files.readString(classes.resolve("line-count.txt")).trim());
     }
 
     /**
@@ -306,7 +305,8 @@ class BuildLogicSupportTest {
 
         assertTrue(BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> {}));
 
-        assertEquals("from-helper", Files.readString(classes.resolve("late.txt")).trim());
+        assertEquals(
+                "from-helper", Files.readString(classes.resolve("late.txt")).trim());
     }
 
     /**
@@ -399,9 +399,7 @@ class BuildLogicSupportTest {
                 """);
         Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
         Files.createDirectories(project.resolve(".jk-build"));
-        Files.writeString(
-                project.resolve(".jk-build/before-compile.groovy"),
-                """
+        Files.writeString(project.resolve(".jk-build/before-compile.groovy"), """
                 def stamp = outDir.resolve("from-groovy.txt")
                 stamp.toFile().parentFile.mkdirs()
                 stamp.toFile().text = "hello-from-script\\n"
@@ -414,7 +412,8 @@ class BuildLogicSupportTest {
 
         StringBuilder labels = new StringBuilder();
         assertTrue(BuildLogicSupport.run(
-                project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s).append(';')));
+                project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s)
+                        .append(';')));
         Path groovyOut = generated(layout, "before-compile", "from-groovy.txt");
         assertTrue(Files.isRegularFile(groovyOut), labels.toString());
         assertEquals("hello-from-script", Files.readString(groovyOut).trim());
@@ -423,7 +422,8 @@ class BuildLogicSupportTest {
         Files.delete(groovyOut);
         labels.setLength(0);
         assertTrue(BuildLogicSupport.run(
-                project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s).append(';')));
+                project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s)
+                        .append(';')));
         assertTrue(labels.toString().contains("cache hit"), labels.toString());
         assertTrue(Files.isRegularFile(groovyOut), "a cache hit must restore the source root");
     }
@@ -443,9 +443,7 @@ class BuildLogicSupportTest {
 
         Path logicSrc = project.resolve(".jk-build/src/demo");
         Files.createDirectories(logicSrc);
-        Files.writeString(
-                logicSrc.resolve("KtMarkerLogic.kt"),
-                """
+        Files.writeString(logicSrc.resolve("KtMarkerLogic.kt"), """
                 package demo
                 import cc.jumpkick.plugin.buildlogic.*
                 import java.nio.file.Files
@@ -470,7 +468,8 @@ class BuildLogicSupportTest {
 
         StringBuilder labels = new StringBuilder();
         assertTrue(BuildLogicSupport.run(
-                project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s).append(';')));
+                project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s)
+                        .append(';')));
         Path ktOut = generated(layout, "kt-before-compile", "kt-before.txt");
         assertTrue(Files.isRegularFile(ktOut), labels.toString());
         assertEquals("from-kt", Files.readString(ktOut).trim());
@@ -479,7 +478,8 @@ class BuildLogicSupportTest {
         Files.delete(ktOut);
         labels.setLength(0);
         assertTrue(BuildLogicSupport.run(
-                project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s).append(';')));
+                project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s)
+                        .append(';')));
         assertTrue(labels.toString().contains("cache hit"), labels.toString());
         assertTrue(Files.isRegularFile(ktOut), "a cache hit must restore the source root");
     }
@@ -504,8 +504,7 @@ class BuildLogicSupportTest {
         Path classes = layout.classesDir();
         Files.createDirectories(classes);
 
-        assertTrue(BuildLogicSupport.run(
-                project, layout, ac, classes, BuildLogicAnchor.AFTER_RESOURCES, s -> {}));
+        assertTrue(BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_RESOURCES, s -> {}));
         assertTrue(Files.isRegularFile(classes.resolve("script-only.txt")));
     }
 
@@ -522,9 +521,7 @@ class BuildLogicSupportTest {
                 """);
         Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
         Files.createDirectories(project.resolve(".jk-build"));
-        Files.writeString(
-                project.resolve(".jk-build/before-compile.kts"),
-                """
+        Files.writeString(project.resolve(".jk-build/before-compile.kts"), """
                 // SPDX-License-Identifier: Apache-2.0
                 import java.nio.file.Files
                 Files.createDirectories(outDir)
@@ -538,7 +535,8 @@ class BuildLogicSupportTest {
 
         StringBuilder labels = new StringBuilder();
         assertTrue(BuildLogicSupport.run(
-                project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s).append(';')));
+                project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s)
+                        .append(';')));
         Path ktsOut = generated(layout, "before-compile", "from-kts.txt");
         assertTrue(Files.isRegularFile(ktsOut), labels.toString());
         assertEquals("hello-from-kts", Files.readString(ktsOut).trim());
@@ -547,7 +545,8 @@ class BuildLogicSupportTest {
         Files.delete(ktsOut);
         labels.setLength(0);
         assertTrue(BuildLogicSupport.run(
-                project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s).append(';')));
+                project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s)
+                        .append(';')));
         assertTrue(labels.toString().contains("cache hit"), labels.toString());
         assertTrue(Files.isRegularFile(ktsOut), "a cache hit must restore the source root");
     }

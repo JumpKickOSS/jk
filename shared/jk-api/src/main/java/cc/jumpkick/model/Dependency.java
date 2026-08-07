@@ -87,7 +87,18 @@ public record Dependency(
             boolean pinned,
             boolean optional,
             PathSource pathSource) {
-        this(library, module, version, gitSource, sha256, pinned, optional, pathSource, List.of(), true, DependencyKind.MAIN);
+        this(
+                library,
+                module,
+                version,
+                gitSource,
+                sha256,
+                pinned,
+                optional,
+                pathSource,
+                List.of(),
+                true,
+                DependencyKind.MAIN);
     }
 
     public Dependency withOptional(boolean optional) {

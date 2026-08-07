@@ -118,9 +118,15 @@ final class BuildLogicKtsHost {
         }
         out.append('\n');
         out.append("// Bindings injected by JumpKick build-logic (do not redefine)\n");
-        out.append("val projectDir: Path = Path.of(").append(ktString(projectDir.toString())).append(")\n");
-        out.append("val outDir: Path = Path.of(").append(ktString(outDir.toString())).append(")\n");
-        out.append("val classesDir: Path = Path.of(").append(ktString(classesDir.toString())).append(")\n");
+        out.append("val projectDir: Path = Path.of(")
+                .append(ktString(projectDir.toString()))
+                .append(")\n");
+        out.append("val outDir: Path = Path.of(")
+                .append(ktString(outDir.toString()))
+                .append(")\n");
+        out.append("val classesDir: Path = Path.of(")
+                .append(ktString(classesDir.toString()))
+                .append(")\n");
         out.append('\n');
         out.append(body);
         return out.toString();
@@ -128,8 +134,6 @@ final class BuildLogicKtsHost {
 
     /** Kotlin double-quoted string literal. */
     static String ktString(String s) {
-        return "\""
-                + s.replace("\\", "\\\\").replace("\"", "\\\"").replace("$", "\\$")
-                + "\"";
+        return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"").replace("$", "\\$") + "\"";
     }
 }

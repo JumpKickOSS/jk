@@ -112,8 +112,9 @@ public final class SelfPurgeCommand implements CliCommand {
         JkDirs dirs = JkDirs.current();
 
         List<PurgeRow> rows = plan(dirs, selected);
-        List<PurgeRow> existing =
-                rows.stream().filter(r -> Files.exists(r.path(), LinkOption.NOFOLLOW_LINKS)).toList();
+        List<PurgeRow> existing = rows.stream()
+                .filter(r -> Files.exists(r.path(), LinkOption.NOFOLLOW_LINKS))
+                .toList();
         if (existing.isEmpty()) {
             CommandWedge.printOk("Self", "Nothing to purge — selected JumpKick data not found.");
             return Exit.SUCCESS;
@@ -299,9 +300,7 @@ public final class SelfPurgeCommand implements CliCommand {
                     // jk forge logout territory, never implied by "CAS/repos and old engines".
                     if ("credentials".equals(name) || "repo-credentials".equals(name)) continue;
                     String what =
-                            "completions".equals(name)
-                                    ? "Shell completions (re-run jk activate)"
-                                    : "Data: " + name;
+                            "completions".equals(name) ? "Shell completions (re-run jk activate)" : "Data: " + name;
                     addRow(byPath, p, what, Target.STORE, guards);
                 }
             } catch (IOException ignored) {
@@ -321,8 +320,7 @@ public final class SelfPurgeCommand implements CliCommand {
         Path configDir = abs(dirs.configDir());
         Path home = abs(dirs.homeDir());
         Path data = abs(dirs.dataDir());
-        boolean dirIsUmbrella =
-                configDir == null || configDir.equals(home) || configDir.equals(data);
+        boolean dirIsUmbrella = configDir == null || configDir.equals(home) || configDir.equals(data);
         if (!dirIsUmbrella && addRow(byPath, configDir, Target.CONFIG.what, Target.CONFIG, guards)) {
             return;
         }
@@ -331,7 +329,9 @@ public final class SelfPurgeCommand implements CliCommand {
 
     /** Absolute paths selected for deletion (for tests). */
     static List<Path> wipeRoots(JkDirs dirs) {
-        return plan(dirs, EnumSet.allOf(Target.class)).stream().map(PurgeRow::path).toList();
+        return plan(dirs, EnumSet.allOf(Target.class)).stream()
+                .map(PurgeRow::path)
+                .toList();
     }
 
     static List<Path> wipeRoots(JkDirs dirs, Set<Target> selected) {
@@ -345,8 +345,7 @@ public final class SelfPurgeCommand implements CliCommand {
      *
      * @return whether the row was scheduled
      */
-    private static boolean addRow(
-            Map<Path, PurgeRow> byPath, Path path, String what, Target target, Guards guards) {
+    private static boolean addRow(Map<Path, PurgeRow> byPath, Path path, String what, Target target, Guards guards) {
         if (path == null) return false;
         Path norm = path.toAbsolutePath().normalize();
         if (conflicts(norm, guards.bin())
@@ -372,11 +371,7 @@ public final class SelfPurgeCommand implements CliCommand {
         if (selected.contains(Target.STORE)) {
             Path active = dirs.versionsDir().resolve(Jk.VERSION);
             Path lib = dirs.libDir();
-            CliOutput.out("  Kept:  "
-                    + pathStyled(active)
-                    + "  and  "
-                    + pathStyled(lib)
-                    + "  (latest plugins)");
+            CliOutput.out("  Kept:  " + pathStyled(active) + "  and  " + pathStyled(lib) + "  (latest plugins)");
             CliOutput.out("  Kept:  forge/repo credentials  (remove via jk repo logout)");
         }
         CliOutput.out("  Kept:  " + pathStyled(dirs.binDirectory()) + "  (PATH binaries)");

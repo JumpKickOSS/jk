@@ -827,14 +827,14 @@ public final class PluginBuild {
                     if (tail.size() >= 20) tail.removeFirst();
                     tail.addLast(line);
                 });
-        int exit = client.run(PluginLaunch.javaCommand(jar, spec, active.manifest().code().protocolPrefix()));
+        int exit = client.run(
+                PluginLaunch.javaCommand(jar, spec, active.manifest().code().protocolPrefix()));
         if (error[0] != null) {
             throw new IOException(error[0]);
         }
         if (exit != 0) {
             String detail = tail.isEmpty() ? "" : "\n" + String.join("\n", tail);
-            throw new IOException(
-                    "plugin worker " + active.manifest().id() + " failed (exit " + exit + ")" + detail);
+            throw new IOException("plugin worker " + active.manifest().id() + " failed (exit " + exit + ")" + detail);
         }
         return collected;
     }

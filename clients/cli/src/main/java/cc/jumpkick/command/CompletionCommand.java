@@ -3,9 +3,9 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -30,10 +30,7 @@ public final class CompletionCommand implements CliCommand {
 
     @Override
     public List<Param> parameters() {
-        return List.of(Param.of(
-                "shell",
-                Arity.ZERO_OR_ONE,
-                "Optional: bash | zsh | fish | pwsh (default: all)."));
+        return List.of(Param.of("shell", Arity.ZERO_OR_ONE, "Optional: bash | zsh | fish | pwsh (default: all)."));
     }
 
     @Override

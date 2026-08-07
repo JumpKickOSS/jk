@@ -36,10 +36,17 @@ class PluginTaskStageTest {
     /** The Android plugin's declared task set — the shape that regressed. */
     private static Map<String, PluginBuild.TaskDecl> androidDecls() {
         Map<String, PluginBuild.TaskDecl> m = new LinkedHashMap<>();
-        m.put("android-manifest", decl("android-manifest", List.of("project-files", "config"), List.of(), List.of(), null));
+        m.put(
+                "android-manifest",
+                decl("android-manifest", List.of("project-files", "config"), List.of(), List.of(), null));
         m.put(
                 "android-res",
-                decl("android-res", List.of("project-files", "step:android-manifest"), List.of("gen"), List.of(), null));
+                decl(
+                        "android-res",
+                        List.of("project-files", "step:android-manifest"),
+                        List.of("gen"),
+                        List.of(),
+                        null));
         m.put(
                 "android-test-config",
                 decl(
@@ -60,7 +67,9 @@ class PluginTaskStageTest {
                 BuildStage upstream = req.startsWith("plugin-")
                         ? BuildPlanner.pluginStage(decls.get(req.substring("plugin-".length())))
                         : ENGINE_STAGES.get(req);
-                assertThat(upstream).as("stage of %s (required by %s)", req, step.name()).isNotNull();
+                assertThat(upstream)
+                        .as("stage of %s (required by %s)", req, step.name())
+                        .isNotNull();
                 assertThat(from.mayRequire(upstream))
                         .as("plugin-%s (%s) requires %s (%s)", step.name(), from.wireName(), req, upstream.wireName())
                         .isTrue();

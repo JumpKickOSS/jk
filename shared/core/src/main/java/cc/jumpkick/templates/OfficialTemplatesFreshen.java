@@ -49,7 +49,8 @@ public final class OfficialTemplatesFreshen {
             // Quiet: one short line only when something unexpected is worth a breadcrumb.
             String m = t.getMessage();
             if (m != null && !m.isBlank() && m.length() < 120) {
-                log.accept("jk engine: templates freshen skipped (" + t.getClass().getSimpleName() + ")");
+                log.accept(
+                        "jk engine: templates freshen skipped (" + t.getClass().getSimpleName() + ")");
             }
         }
     }
@@ -192,8 +193,7 @@ public final class OfficialTemplatesFreshen {
             url = r.substring(0, hash);
             rev = r.substring(hash + 1);
         }
-        if (!url.endsWith(".git")
-                && (url.startsWith("https://github.com/") || url.startsWith("http://github.com/"))) {
+        if (!url.endsWith(".git") && (url.startsWith("https://github.com/") || url.startsWith("http://github.com/"))) {
             url = url + ".git";
         }
         return new Parsed(url, rev, cacheKeyForUrl(url, rev));

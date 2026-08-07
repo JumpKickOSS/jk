@@ -6,9 +6,9 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.model.command.CliCommand;
@@ -214,11 +214,7 @@ public final class EngineStatusCommand implements CliCommand {
         String val = value == null ? "—" : value;
         // Pre-styled values (hyperlinks) keep their own sequences; plain text is bright white.
         String styledVal = val.indexOf('\u001B') >= 0 ? val : Theme.colorize(val, t.brightWhite());
-        CliOutput.out(" "
-                + Theme.colorize(name, t.settled())
-                + Theme.colorize(leader, t.darkGray())
-                + " "
-                + styledVal);
+        CliOutput.out(" " + Theme.colorize(name, t.settled()) + Theme.colorize(leader, t.darkGray()) + " " + styledVal);
     }
 
     /** The engine pid in yellow on an ANSI terminal (matching the start/stop wedges). */

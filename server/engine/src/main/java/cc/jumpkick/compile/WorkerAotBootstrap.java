@@ -4,7 +4,6 @@ package cc.jumpkick.compile;
 import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.jdk.JavaHomes;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -65,12 +64,7 @@ public final class WorkerAotBootstrap {
     }
 
     private static void trainJavaCompiler(
-            Path host,
-            long timeoutMs,
-            boolean force,
-            List<String> trained,
-            List<String> skipped,
-            List<String> notes) {
+            Path host, long timeoutMs, boolean force, List<String> trained, List<String> skipped, List<String> notes) {
         try {
             Path workerJar = PluginJar.JAVA_COMPILER.locate();
             String cp = WorkerClasspath.resolve(workerJar);
@@ -102,5 +96,4 @@ public final class WorkerAotBootstrap {
             notes.add("java-compiler: " + e.getMessage());
         }
     }
-
 }

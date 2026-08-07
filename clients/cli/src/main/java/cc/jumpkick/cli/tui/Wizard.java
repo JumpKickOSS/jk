@@ -469,6 +469,7 @@ public final class Wizard {
         private final StringBuilder input;
         /** Type-to-filter buffer for filterable multi-select steps (JK-1197). */
         private final StringBuilder filter = new StringBuilder();
+
         private int focus;
         private final LinkedHashSet<String> selected;
         private final Answers snapshot;
@@ -653,7 +654,8 @@ public final class Wizard {
                     if (input.length() > 0) input.deleteCharAt(input.length() - 1);
                     yield false;
                 }
-                case KeyReader.Key.Backspace b when ms.filterable() && !onCustom && filter.length() > 0 -> {
+                case KeyReader.Key.Backspace b
+                when ms.filterable() && !onCustom && filter.length() > 0 -> {
                     filter.deleteCharAt(filter.length() - 1);
                     focus = 0;
                     yield false;
@@ -857,7 +859,9 @@ public final class Wizard {
                                         : Theme.active().focused());
                 if (!selected.isEmpty()) {
                     fsb.append("  ·  ", Theme.active().darkGray())
-                            .append(selected.size() + " selected", Theme.active().completedStep());
+                            .append(
+                                    selected.size() + " selected",
+                                    Theme.active().completedStep());
                 }
                 lines.add(fsb.toAttributedString());
             }

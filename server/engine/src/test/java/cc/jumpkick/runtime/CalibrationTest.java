@@ -78,9 +78,7 @@ class CalibrationTest {
     @Test
     void language_buckets_seed_compile_priors_when_mean_is_cold(@TempDir Path dir) throws Exception {
         Path f = dir.resolve("host-metrics.toml");
-        Files.writeString(
-                f,
-                """
+        Files.writeString(f, """
                 # host-metrics
                 [calibration]
                 schema = 4
@@ -95,8 +93,7 @@ class CalibrationTest {
                 [mean.by_language.kotlin]
                 fixture_wall_ms = 4000
                 compile_per_source_ms = 40
-                """
-                        .formatted(JkVersion.VERSION, NOW));
+                """.formatted(JkVersion.VERSION, NOW));
         Calibration read = Calibration.readFrom(f, NOW);
         assertThat(read.compilePerSourceMs("compile-java")).isEqualTo(22L);
         assertThat(read.compilePerSourceMs("compile-kotlin")).isEqualTo(40L);
@@ -105,9 +102,7 @@ class CalibrationTest {
     @Test
     void language_bucket_poison_values_are_rejected(@TempDir Path dir) throws Exception {
         Path f = dir.resolve("host-metrics.toml");
-        Files.writeString(
-                f,
-                """
+        Files.writeString(f, """
                 [calibration]
                 schema = 4
                 ms-per-weight = 150
@@ -117,8 +112,7 @@ class CalibrationTest {
 
                 [mean.by_language.java]
                 compile_per_source_ms = 5291
-                """
-                        .formatted(JkVersion.VERSION, NOW));
+                """.formatted(JkVersion.VERSION, NOW));
         Calibration read = Calibration.readFrom(f, NOW);
         // Falls back to product baseline × scale (not the multi-second poison).
         assertThat(read.compilePerSourceMs("compile-java")).isLessThan(500L);
@@ -129,9 +123,7 @@ class CalibrationTest {
         Path f = dir.resolve("host-metrics.toml");
         // Float and string values in by_language buckets (tomlj getLong throws on both):
         // the bad bucket is skipped, the float bucket folds, and calibration stays present.
-        Files.writeString(
-                f,
-                """
+        Files.writeString(f, """
                 [calibration]
                 schema = 4
                 ms-per-weight = 150
@@ -143,8 +135,7 @@ class CalibrationTest {
                 compile_per_source_ms = 22.5
                 [mean.by_language.kotlin]
                 compile_per_source_ms = "oops"
-                """
-                        .formatted(JkVersion.VERSION, NOW));
+                """.formatted(JkVersion.VERSION, NOW));
         Calibration read = Calibration.readFrom(f, NOW);
         assertThat(read.present()).isTrue();
         assertThat(read.measured()).isTrue();

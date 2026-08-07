@@ -19,8 +19,7 @@ class MavenLayoutTest {
 
     @Test
     void plain_jar_path() {
-        assertThat(MavenLayout.artifactPath(coord("jar", null)))
-                .isEqualTo("com/acme/helpers/1.2.3/helpers-1.2.3.jar");
+        assertThat(MavenLayout.artifactPath(coord("jar", null))).isEqualTo("com/acme/helpers/1.2.3/helpers-1.2.3.jar");
     }
 
     @Test
@@ -31,10 +30,8 @@ class MavenLayoutTest {
 
     @Test
     void bundle_and_maven_plugin_packaging_are_jars() {
-        assertThat(MavenLayout.artifactPath(coord("bundle", null)))
-                .endsWith("helpers-1.2.3.jar");
-        assertThat(MavenLayout.artifactPath(coord("maven-plugin", null)))
-                .endsWith("helpers-1.2.3.jar");
+        assertThat(MavenLayout.artifactPath(coord("bundle", null))).endsWith("helpers-1.2.3.jar");
+        assertThat(MavenLayout.artifactPath(coord("maven-plugin", null))).endsWith("helpers-1.2.3.jar");
     }
 
     @Test
@@ -45,8 +42,7 @@ class MavenLayoutTest {
 
     @Test
     void a_classifier_rides_the_name_but_never_the_pom() {
-        assertThat(MavenLayout.artifactPath(coord("jar", "linux-x86_64")))
-                .endsWith("helpers-1.2.3-linux-x86_64.jar");
+        assertThat(MavenLayout.artifactPath(coord("jar", "linux-x86_64"))).endsWith("helpers-1.2.3-linux-x86_64.jar");
         // Maven POMs are never classified — secondary artifacts share the main GAV's pom.
         assertThat(MavenLayout.pomPath(coord("test-jar", "tests")))
                 .isEqualTo("com/acme/helpers/1.2.3/helpers-1.2.3.pom");

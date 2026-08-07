@@ -113,21 +113,22 @@ public final class CachePlans {
 
                     // Always reclaim unreferenced action payloads from the cache CAS.
                     var cacheCas = cc.jumpkick.cache.JkStores.cacheCas(root);
-                    var cacheLive =
-                            cc.jumpkick.task.CacheRoots.collect(cacheCas, root.resolve("actions"), root.resolve("tools"));
+                    var cacheLive = cc.jumpkick.task.CacheRoots.collect(
+                            cacheCas, root.resolve("actions"), root.resolve("tools"));
                     var cacheSweep = cc.jumpkick.task.CasSweep.sweep(cacheCas, cacheLive, dryRun);
                     totalFiles += cacheSweep.deleted();
                     totalBytes += cacheSweep.freedBytes();
-                    long cacheBudget = cc.jumpkick.config.JkCacheConfig.resolve().maxCacheSizeBytes();
+                    long cacheBudget =
+                            cc.jumpkick.config.JkCacheConfig.resolve().maxCacheSizeBytes();
                     if (cacheBudget > 0) {
                         // Utilization surfaces (jk cache storage, /api/cache) measure index +
                         // stamps + blobs against this budget, but eviction can only shrink blobs.
                         // Aim the blob pool at what remains after the index overhead so a prune
                         // can actually bring utilization back under 100% (JK-1526).
-                        long overheadBytes = cc.jumpkick.cache.DiskUsage.of(actionsDir)
-                                        .bytes()
-                                + cc.jumpkick.cache.DiskUsage.of(root.resolve("format-stamps"))
-                                        .bytes();
+                        long overheadBytes =
+                                cc.jumpkick.cache.DiskUsage.of(actionsDir).bytes()
+                                        + cc.jumpkick.cache.DiskUsage.of(root.resolve("format-stamps"))
+                                                .bytes();
                         long blobBudget = Math.max(0, cacheBudget - overheadBytes);
                         var ledger = cc.jumpkick.task.AccessLedger.atDefaultPath();
                         var evict = cc.jumpkick.task.LruEvictor.evictDownTo(

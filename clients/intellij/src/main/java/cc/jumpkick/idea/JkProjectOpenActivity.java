@@ -73,20 +73,17 @@ public final class JkProjectOpenActivity implements StartupActivity.DumbAware, D
             public void run(@NotNull ProgressIndicator indicator) {
                 try {
                     JkSyncService.SyncResult result = JkSyncService.sync(project, base, indicator);
-                    ApplicationManager.getApplication().invokeLater(() -> JkCliAction.balloon(
-                            project,
-                            result.message() != null
-                                    ? result.message()
-                                    : (result.success() ? "Sync succeeded" : "Sync failed"),
-                            result.success()
-                                    ? NotificationType.INFORMATION
-                                    : NotificationType.ERROR));
-                } catch (Exception ex) {
                     ApplicationManager.getApplication()
                             .invokeLater(() -> JkCliAction.balloon(
                                     project,
-                                    "Sync failed: " + ex.getMessage(),
-                                    NotificationType.ERROR));
+                                    result.message() != null
+                                            ? result.message()
+                                            : (result.success() ? "Sync succeeded" : "Sync failed"),
+                                    result.success() ? NotificationType.INFORMATION : NotificationType.ERROR));
+                } catch (Exception ex) {
+                    ApplicationManager.getApplication()
+                            .invokeLater(() -> JkCliAction.balloon(
+                                    project, "Sync failed: " + ex.getMessage(), NotificationType.ERROR));
                 }
             }
         });

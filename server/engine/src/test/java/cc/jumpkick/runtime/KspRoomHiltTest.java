@@ -69,8 +69,7 @@ class KspRoomHiltTest {
                 SessionContext.current());
         BuildPlanResult result = BuildPlanner.coreBuilder(in).build().run();
         assertThat(result.errors().stream()
-                        .filter(d -> d.message() == null
-                                || !d.message().contains("sun.misc.Unsafe"))
+                        .filter(d -> d.message() == null || !d.message().contains("sun.misc.Unsafe"))
                         .toList())
                 .isEmpty();
         assertThat(result.success()).isTrue();

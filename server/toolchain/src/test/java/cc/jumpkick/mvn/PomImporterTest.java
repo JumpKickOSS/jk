@@ -4,9 +4,9 @@ package cc.jumpkick.mvn;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
-import cc.jumpkick.model.DependencyKind;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -18,9 +18,7 @@ class PomImporterTest {
 
     @Test
     void multi_module_rewrites_siblings_and_test_jars(@TempDir Path root) throws Exception {
-        Files.writeString(
-                root.resolve("pom.xml"),
-                """
+        Files.writeString(root.resolve("pom.xml"), """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
                   <groupId>com.ex</groupId>
@@ -34,9 +32,7 @@ class PomImporterTest {
                 </project>
                 """);
         Files.createDirectories(root.resolve("lib"));
-        Files.writeString(
-                root.resolve("lib/pom.xml"),
-                """
+        Files.writeString(root.resolve("lib/pom.xml"), """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
                   <parent>
@@ -48,9 +44,7 @@ class PomImporterTest {
                 </project>
                 """);
         Files.createDirectories(root.resolve("app"));
-        Files.writeString(
-                root.resolve("app/pom.xml"),
-                """
+        Files.writeString(root.resolve("app/pom.xml"), """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
                   <parent>
@@ -97,15 +91,12 @@ class PomImporterTest {
 
         List<Dependency> test = app.dependencies().of(Scope.TEST);
         assertThat(test).anyMatch(d -> d.isWorkspace() && d.isTestsKind() && "lib".equals(d.library()));
-        assertThat(test)
-                .anyMatch(d -> !d.isWorkspace() && d.module().equals("org.junit.jupiter:junit-jupiter"));
+        assertThat(test).anyMatch(d -> !d.isWorkspace() && d.module().equals("org.junit.jupiter:junit-jupiter"));
     }
 
     @Test
     void external_test_jar_keeps_kind_tests(@TempDir Path root) throws Exception {
-        Files.writeString(
-                root.resolve("pom.xml"),
-                """
+        Files.writeString(root.resolve("pom.xml"), """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
                   <groupId>com.ex</groupId>

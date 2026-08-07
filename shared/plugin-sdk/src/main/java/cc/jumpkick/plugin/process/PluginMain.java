@@ -84,8 +84,8 @@ public final class PluginMain {
             for (Plugin p : plugins) {
                 if (prefix.equals(p.manifest().protocolPrefix())) return p;
             }
-            System.err.println("jk-plugin-host: no plugin with protocol prefix " + prefix + " among "
-                    + classNames(plugins));
+            System.err.println(
+                    "jk-plugin-host: no plugin with protocol prefix " + prefix + " among " + classNames(plugins));
             return null;
         }
         if (plugins.size() == 1) return plugins.get(0);

@@ -19,8 +19,8 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.runtime.TaskForecast;
 import cc.jumpkick.runtime.ExplainPlan;
+import cc.jumpkick.runtime.TaskForecast;
 import cc.jumpkick.util.HostCalibrationStatus;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
@@ -236,11 +236,12 @@ public final class ExplainCommand implements CliCommand {
         int totalModules = modules.size();
         int totalSources =
                 modules.stream().mapToInt(TaskForecast.Module::sourceCount).sum();
-        int totalTests = modules.stream().mapToInt(TaskForecast.Module::testCount).sum();
+        int totalTests =
+                modules.stream().mapToInt(TaskForecast.Module::testCount).sum();
         int totalJars =
                 (int) modules.stream().filter(TaskForecast.Module::producesJar).count();
-        int totalImages =
-                (int) modules.stream().filter(TaskForecast.Module::producesImage).count();
+        int totalImages = (int)
+                modules.stream().filter(TaskForecast.Module::producesImage).count();
         String rootPfx = ansi ? " " + Theme.colorize("│", t.darkGray()) + " · " : " | - ";
         if (totalModules > 1) CliOutput.out(rootPfx + "Modules: " + String.format("%,d", totalModules));
         CliOutput.out(rootPfx + "Sources: " + fmtCount(totalSources, "file", "files"));

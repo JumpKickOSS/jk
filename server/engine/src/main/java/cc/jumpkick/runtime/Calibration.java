@@ -1138,16 +1138,14 @@ public final class Calibration {
      */
     static HostLearnedRates foldLanguageBuckets(TomlParseResult t, HostLearnedRates learned) {
         if (t == null) return learned == null ? new HostLearnedRates() : learned;
-        Map<String, List<Double>> rings = new java.util.LinkedHashMap<>(
-                learned == null ? Map.of() : learned.samples());
+        Map<String, List<Double>> rings = new java.util.LinkedHashMap<>(learned == null ? Map.of() : learned.samples());
         foldLang(t, "java", HostLearnedRates.COMPILE_JAVA_PER_SOURCE_MS, rings);
         foldLang(t, "kotlin", HostLearnedRates.COMPILE_KOTLIN_PER_SOURCE_MS, rings);
         foldLang(t, "groovy", HostLearnedRates.COMPILE_GROOVY_PER_SOURCE_MS, rings);
         return rings.isEmpty() ? (learned == null ? new HostLearnedRates() : learned) : new HostLearnedRates(rings);
     }
 
-    private static void foldLang(
-            TomlParseResult t, String lang, String rateKey, Map<String, List<Double>> rings) {
+    private static void foldLang(TomlParseResult t, String lang, String rateKey, Map<String, List<Double>> rings) {
         if (rings.containsKey(rateKey)) return;
         // Nested table [mean.by_language.<lang>] — prefer dotted path (tomlj), then table walk.
         // Reads are type-tolerant per key: a mistyped value skips this bucket only, never the
@@ -1166,7 +1164,6 @@ public final class Calibration {
         if (!(ms >= 1 && ms <= 500)) return;
         rings.put(rateKey, List.of(ms));
     }
-
 
     static void writeTo(Path file, Calibration c) throws IOException {
         // Merge [calibration] into host-metrics.toml; preserve [mean]/ [lock], [fetch], language buckets.

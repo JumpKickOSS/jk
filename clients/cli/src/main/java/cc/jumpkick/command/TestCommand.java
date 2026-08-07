@@ -68,9 +68,11 @@ public final class TestCommand implements CliCommand {
         opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                 .hide());
         opts.addAll(cc.jumpkick.cli.CommonOpts.moduleSelection());
-        opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite").repeat());
+        opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite")
+                .repeat());
         opts.add(Opt.flag("Run every discovered test suite", "--all"));
-        opts.add(Opt.value("<tag>", "JUnit tag to include (repeatable)", "--include-tag").repeat());
+        opts.add(Opt.value("<tag>", "JUnit tag to include (repeatable)", "--include-tag")
+                .repeat());
         opts.add(Opt.value("<tag>", "JUnit tag to exclude (repeatable).", "--exclude-tag")
                 .repeat());
         opts.addAll(VariantSelection.options());
@@ -159,8 +161,7 @@ public final class TestCommand implements CliCommand {
 
         // Single-module selective: --modules / --affected-since may exclude this dir.
         if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
-            var selected =
-                    cc.jumpkick.config.ModuleSelection.resolveOptional(dir, entry, modulesSpec, affectedSince);
+            var selected = cc.jumpkick.config.ModuleSelection.resolveOptional(dir, entry, modulesSpec, affectedSince);
             if (selected != null && !selected.ok()) {
                 CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", selected.errorMessage()));
                 if (session != null) session.error(selected.errorMessage());
@@ -276,8 +277,7 @@ public final class TestCommand implements CliCommand {
      * live aggregate TUI as {@code jk build} (single {@link CommandManager} header + bar + module
      * tree), terminal target {@code run-tests} per module instead of package.
      */
-    private int runWorkspaceTests(
-            Path entryDir, JkBuild entryBuild, Path cache, int workerCount, Set<Path> dirtyDirs)
+    private int runWorkspaceTests(Path entryDir, JkBuild entryBuild, Path cache, int workerCount, Set<Path> dirtyDirs)
             throws IOException, InterruptedException {
         if (dirtyDirs == null || dirtyDirs.isEmpty()) return 0;
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
@@ -347,19 +347,15 @@ public final class TestCommand implements CliCommand {
                             var lis = new AggregateModuleListener(
                                     agg, m.coord(), m.plan().steps(), m.weight());
                             lis.bufferOutputInto(buf);
-                            JsonlShape.emitJsonl(
-                                    JsonlShape.moduleStart(m.dir().toString(), m.coord()), false);
-                            SessionMirrorListener mirror =
-                                    session == null ? null : new SessionMirrorListener(session);
-                            return CompositeBuildPlanListener.of(
-                                    CompositeBuildPlanListener.of(lis, mirror), log);
+                            JsonlShape.emitJsonl(JsonlShape.moduleStart(m.dir().toString(), m.coord()), false);
+                            SessionMirrorListener mirror = session == null ? null : new SessionMirrorListener(session);
+                            return CompositeBuildPlanListener.of(CompositeBuildPlanListener.of(lis, mirror), log);
                         }
 
                         @Override
                         public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
                             JsonlShape.emitJsonl(
-                                    JsonlShape.moduleFinish(
-                                            o.dir().toString(), o.coord(), o.success(), o.millis()),
+                                    JsonlShape.moduleFinish(o.dir().toString(), o.coord(), o.success(), o.millis()),
                                     false);
                             List<String> buf = buffers.getOrDefault(o.dir(), List.of());
                             String completion = BuildCommand.completionLine(
@@ -470,8 +466,7 @@ public final class TestCommand implements CliCommand {
                         @Override
                         public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
                             var log = EventLogListener.open(m.cache(), m.plan().name());
-                            JsonlShape.emitJsonl(
-                                    JsonlShape.moduleStart(m.dir().toString(), m.coord()), json);
+                            JsonlShape.emitJsonl(JsonlShape.moduleStart(m.dir().toString(), m.coord()), json);
                             if (json) {
                                 return CompositeBuildPlanListener.of(
                                         new cc.jumpkick.cli.run.JsonlListener(System.out, false), log);
@@ -494,17 +489,14 @@ public final class TestCommand implements CliCommand {
                                     buf.add("  " + cc.jumpkick.cli.tui.Glyphs.CROSS + " " + step + ": " + message);
                                 }
                             };
-                            SessionMirrorListener mirror =
-                                    session == null ? null : new SessionMirrorListener(session);
-                            return CompositeBuildPlanListener.of(
-                                    CompositeBuildPlanListener.of(outLis, mirror), log);
+                            SessionMirrorListener mirror = session == null ? null : new SessionMirrorListener(session);
+                            return CompositeBuildPlanListener.of(CompositeBuildPlanListener.of(outLis, mirror), log);
                         }
 
                         @Override
                         public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
                             JsonlShape.emitJsonl(
-                                    JsonlShape.moduleFinish(
-                                            o.dir().toString(), o.coord(), o.success(), o.millis()),
+                                    JsonlShape.moduleFinish(o.dir().toString(), o.coord(), o.success(), o.millis()),
                                     json);
                             if (json) return;
                             List<String> buf = buffers.getOrDefault(o.dir(), List.of());
@@ -530,8 +522,7 @@ public final class TestCommand implements CliCommand {
         }
         if (result.success()) {
             if (!json) {
-                cc.jumpkick.cli.tui.CommandWedge.printOk(
-                        "Test", workspaceTestSuccessTail(result, total[0], ms));
+                cc.jumpkick.cli.tui.CommandWedge.printOk("Test", workspaceTestSuccessTail(result, total[0], ms));
             }
             return 0;
         }
@@ -539,8 +530,7 @@ public final class TestCommand implements CliCommand {
             // Workspace-level errors (graph/lock problems) never reach a module listener —
             // print them before the wedge or a failing run shows no diagnostic at all.
             for (String err : result.errors()) CliOutput.err(ConsoleSpec.errorLine("composite", err));
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Test", workspaceTestFailureTail(result, ms)));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", workspaceTestFailureTail(result, ms)));
         }
         return result.exitCode();
     }
@@ -549,7 +539,8 @@ public final class TestCommand implements CliCommand {
             Path entryDir, JkBuild entryBuild, Path cache, int workerCount, Set<Path> dirtyDirs) {
         String variant = cc.jumpkick.config.SessionContext.current().variant();
         if (variant == null) variant = "";
-        Map<String, String> clientEnv = cc.jumpkick.config.SessionContext.current().clientEnv();
+        Map<String, String> clientEnv =
+                cc.jumpkick.config.SessionContext.current().clientEnv();
         int concurrency = parallelTests ? jobs : 1;
         return new WorkspaceRequest(
                         entryDir,

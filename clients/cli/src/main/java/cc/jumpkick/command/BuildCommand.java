@@ -4,14 +4,14 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.run.AggregateContext;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.CliSessionTranscript;
 import cc.jumpkick.cli.run.ConsoleSpec;
-import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.BuildNotify;
+import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.cli.tui.CommandManager;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
@@ -19,10 +19,10 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
@@ -995,8 +995,7 @@ public final class BuildCommand implements CliCommand {
      * duration — the framework appends it.
      */
     static String projectTail(BuildPlan plan) {
-        return projectTail(
-                plan.get(BUILD_OUTCOME).orElse(""), plan.get(LAYOUT).orElse(null));
+        return projectTail(plan.get(BUILD_OUTCOME).orElse(""), plan.get(LAYOUT).orElse(null));
     }
 
     /**

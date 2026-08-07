@@ -138,9 +138,7 @@ public final class HistoryCommand extends GroupCommand {
             }
             cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
             for (String line : cc.jumpkick.cli.tui.BoxTable.render(
-                    "Build history",
-                    List.of("", "Id", "Project", "Kind", "Took", "When", "Saved", "Notes"),
-                    rows)) {
+                    "Build history", List.of("", "Id", "Project", "Kind", "Took", "When", "Saved", "Notes"), rows)) {
                 CliOutput.out(line);
             }
             return 0;

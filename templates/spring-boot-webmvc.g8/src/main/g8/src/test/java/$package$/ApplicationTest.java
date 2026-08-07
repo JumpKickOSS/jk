@@ -18,7 +18,7 @@ class ApplicationTest {
     void contextLoadsAndPersists() {
         Note saved = notes.save(new Note("hello"));
         assertThat(saved.getId()).isNotNull();
-        assertThat(notes.findById(saved.getId())).hasValueSatisfying(n ->
-                assertThat(n.getText()).isEqualTo("hello"));
+        assertThat(notes.findById(saved.getId()))
+                .hasValueSatisfying(n -> assertThat(n.getText()).isEqualTo("hello"));
     }
 }

@@ -44,8 +44,7 @@ class BuildLogicAnchorGatingTest {
         Task compileJava = byName.get(TaskNames.COMPILE_JAVA);
 
         // BEFORE_COMPILE sits after setup and before language compile.
-        assertThat(preCompile.requires())
-                .contains(TaskNames.PARSE_BUILD, TaskNames.RESOLVE_DEPS, TaskNames.ENSURE_JDK);
+        assertThat(preCompile.requires()).contains(TaskNames.PARSE_BUILD, TaskNames.RESOLVE_DEPS, TaskNames.ENSURE_JDK);
         assertThat(compileJava.requires()).contains(TaskNames.BUILD_LOGIC_BEFORE_COMPILE);
         assertThat(preCompile.stage().wireName()).isEqualTo("generate");
 

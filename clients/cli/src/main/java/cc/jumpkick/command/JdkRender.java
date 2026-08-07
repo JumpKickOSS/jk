@@ -2,8 +2,8 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.BuildPlanWedge;
+import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkVendor;
 import java.nio.file.Path;

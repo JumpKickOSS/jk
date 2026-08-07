@@ -104,7 +104,8 @@ public final class IdeCommand implements CliCommand {
             cc.jumpkick.cli.tui.CommandWedge.printOk("BSP", "Wrote " + bsp);
         } catch (Exception e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "BSP", e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()));
+                    "BSP",
+                    e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()));
             return 1;
         }
         return 0;

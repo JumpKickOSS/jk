@@ -33,7 +33,6 @@ public enum DependencyKind {
         for (DependencyKind k : values()) {
             if (k.toml.equals(s)) return k;
         }
-        throw new IllegalArgumentException(
-                "unknown dependency kind `" + raw + "` — expected `main` or `tests`");
+        throw new IllegalArgumentException("unknown dependency kind `" + raw + "` — expected `main` or `tests`");
     }
 }

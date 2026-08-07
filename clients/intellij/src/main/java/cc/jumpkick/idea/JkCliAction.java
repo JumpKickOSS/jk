@@ -101,10 +101,7 @@ public abstract class JkCliAction extends AnAction implements DumbAware {
             }
             File base = projectBase(project);
             if (!JkBin.isJumpKickRoot(base)) {
-                balloon(
-                        project,
-                        "No jk.toml in project base — open a JumpKick project root",
-                        NotificationType.ERROR);
+                balloon(project, "No jk.toml in project base — open a JumpKick project root", NotificationType.ERROR);
                 return;
             }
             ProgressManager.getInstance().run(new Task.Backgroundable(project, "JumpKick: Sync", true) {
@@ -129,8 +126,7 @@ public abstract class JkCliAction extends AnAction implements DumbAware {
                         ApplicationManager.getApplication()
                                 .invokeLater(() -> balloon(
                                         project,
-                                        "Sync failed: " + ex.getMessage()
-                                                + " — install jk and ensure PATH / JK_BIN",
+                                        "Sync failed: " + ex.getMessage() + " — install jk and ensure PATH / JK_BIN",
                                         NotificationType.ERROR));
                     }
                 }

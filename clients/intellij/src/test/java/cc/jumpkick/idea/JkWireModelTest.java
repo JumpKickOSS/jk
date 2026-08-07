@@ -11,8 +11,7 @@ public class JkWireModelTest {
 
     @Test
     public void parses_module_list_and_libs() {
-        String json =
-                """
+        String json = """
                 {"type":"ide-model-ack","error":null,"wsRoot":"/tmp/ws","rootName":"demo","workspace":true,\
                 "moduleDirs":["/tmp/ws/api","/tmp/ws/app"],"names":["api","app"],\
                 "javaReleases":["25","25"],"mainClasses":["","demo.Main"],\

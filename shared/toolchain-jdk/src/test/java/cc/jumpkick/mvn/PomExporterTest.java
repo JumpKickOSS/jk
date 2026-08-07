@@ -68,8 +68,7 @@ class PomExporterTest {
                     name  = "app"
                     version = "1.0.0"
                     java = %d
-                    """
-                    .formatted(release));
+                    """.formatted(release));
             assertThat(PomExporter.export(b).xml())
                     .contains("<maven.compiler.release>" + release + "</maven.compiler.release>");
         }

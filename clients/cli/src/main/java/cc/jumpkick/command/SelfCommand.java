@@ -228,8 +228,7 @@ public final class SelfCommand extends GroupCommand {
         public List<Opt> options() {
             // No --version option: the global -V/--version flag owns that name (the dispatcher
             // rejects duplicates), so the target rides as a positional.
-            return List.of(
-                    Opt.flag("Stop the engine immediately (no drain)", "--now"));
+            return List.of(Opt.flag("Stop the engine immediately (no drain)", "--now"));
         }
 
         @Override

@@ -26,10 +26,7 @@ public final class JkCliRunner {
 
     private JkCliRunner() {}
 
-    public static Result run(
-            @NotNull File cwd,
-            @NotNull List<String> args,
-            @Nullable ProgressIndicator indicator)
+    public static Result run(@NotNull File cwd, @NotNull List<String> args, @Nullable ProgressIndicator indicator)
             throws Exception {
         GeneralCommandLine cmd = new GeneralCommandLine();
         cmd.setExePath(JkBin.path());

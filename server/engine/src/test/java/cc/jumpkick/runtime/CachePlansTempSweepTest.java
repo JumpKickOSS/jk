@@ -7,6 +7,8 @@ import cc.jumpkick.run.BuildPlan;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -56,8 +58,8 @@ class CachePlansTempSweepTest {
         Path staleKey = seed(root.resolve("actions/keys/stale"), "INPUT deadbeef /x");
         Files.setLastModifiedTime(
                 staleKey,
-                java.nio.file.attribute.FileTime.fromMillis(
-                        System.currentTimeMillis() - java.time.Duration.ofDays(90).toMillis()));
+                FileTime.fromMillis(
+                        System.currentTimeMillis() - Duration.ofDays(90).toMillis()));
         Path cacheTemp = seed(root.resolve("sha256/ab/.put-1234"), "partial");
 
         BuildPlan plan = CachePlans.pruneBuildPlan(root, 30, false, false, null, false);

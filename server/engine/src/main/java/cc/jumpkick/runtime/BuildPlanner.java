@@ -26,15 +26,14 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Scope;
-
 import cc.jumpkick.resolver.CacheSync;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
-import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
@@ -892,9 +891,7 @@ public final class BuildPlanner {
                     ctx.put(PROCESSOR_CP, processorClasspath(lock, resolver, processorSiblings));
 
                     WorkspaceClasspath.Result testSiblings = WorkspaceClasspath.resolve(
-                            in.dir(),
-                            project,
-                            Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
+                            in.dir(), project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
                     List<Path> compileTestCp =
                             new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_TEST));
                     compileTestCp.addAll(testSiblings.jars());
@@ -2634,9 +2631,8 @@ public final class BuildPlanner {
         boolean groovyModule = cx.groovyModule();
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
-        boolean javaStamp = mixedWithJava
-                || TaskNames.COMPILE_JAVA.equals(mainCompile)
-                || (!kotlinModule && !groovyModule);
+        boolean javaStamp =
+                mixedWithJava || TaskNames.COMPILE_JAVA.equals(mainCompile) || (!kotlinModule && !groovyModule);
         return Task.builder(TaskNames.PACKAGE_JAR)
                 .stage(BuildStage.PACKAGE)
                 .label("Packaging")
@@ -2842,8 +2838,9 @@ public final class BuildPlanner {
      * test-classpath contributor, so those may not sit downstream of TEST.
      */
     private static BuildStage pluginCeiling(PluginBuild.TaskDecl step) {
-        boolean requiredByTests =
-                step.testOnly() || (step.contributesTestClasspath() != null && !step.contributesTestClasspath().isEmpty());
+        boolean requiredByTests = step.testOnly()
+                || (step.contributesTestClasspath() != null
+                        && !step.contributesTestClasspath().isEmpty());
         return requiredByTests ? BuildStage.TEST : BuildStage.IMAGE;
     }
 
@@ -3519,14 +3516,7 @@ public final class BuildPlanner {
                 leaves.add(TaskNames.PACKAGE_ASSEMBLY);
             }
             if (allowNative && project.nativeMode() == JkBuild.NativeMode.ALWAYS) {
-                b.addTask(nativeStep(
-                        in.dir(),
-                        in.cache(),
-                        in.lockFile(),
-                        in.jdksDir(),
-                        graalHome,
-                        null,
-                        List.of()));
+                b.addTask(nativeStep(in.dir(), in.cache(), in.lockFile(), in.jdksDir(), graalHome, null, List.of()));
                 leaves.add(TaskNames.NATIVE_IMAGE);
             }
             if (project.project().sourcesMode() == JkBuild.SourcesMode.ALWAYS) {
@@ -4600,8 +4590,7 @@ public final class BuildPlanner {
             }
         }
         try {
-            var mat = cc.jumpkick.cache.VersionStore.current()
-                    .resolve(cc.jumpkick.model.JkVersion.VERSION);
+            var mat = cc.jumpkick.cache.VersionStore.current().resolve(cc.jumpkick.model.JkVersion.VERSION);
             if (mat.isPresent() && Files.isRegularFile(mat.get().engineJar())) {
                 return mat.get().engineJar().toAbsolutePath().normalize();
             }
@@ -4611,7 +4600,8 @@ public final class BuildPlanner {
         // Last resort: monorepo product outputs relative to user.dir (and parents). Pure-jk
         // nested isolation runs with user.dir = clients/cli; host run-tests has monorepo root
         // or server/engine as cwd under Gradle.
-        return findMonorepoEngineJar(Path.of(System.getProperty("user.dir", ".")).toAbsolutePath().normalize());
+        return findMonorepoEngineJar(
+                Path.of(System.getProperty("user.dir", ".")).toAbsolutePath().normalize());
     }
 
     /** Prefer fat assembly, then dist/shadow, then thin main jar under known layout roots. */

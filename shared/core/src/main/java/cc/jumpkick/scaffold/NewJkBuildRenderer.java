@@ -135,7 +135,8 @@ public final class NewJkBuildRenderer {
             if (curated != null) {
                 for (var e : curated) {
                     String shortName = e.coord().substring(e.coord().indexOf(':') + 1);
-                    byScope.computeIfAbsent(e.scope(), _ -> new LinkedHashMap<>()).putIfAbsent(shortName, e);
+                    byScope.computeIfAbsent(e.scope(), _ -> new LinkedHashMap<>())
+                            .putIfAbsent(shortName, e);
                 }
                 continue;
             }

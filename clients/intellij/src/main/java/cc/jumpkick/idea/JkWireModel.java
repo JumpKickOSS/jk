@@ -105,6 +105,9 @@ public final class JkWireModel {
     private static String unquote(String quoted) {
         if (quoted == null || quoted.length() < 2) return "";
         String s = quoted.substring(1, quoted.length() - 1);
-        return s.replace("\\\"", "\"").replace("\\\\", "\\").replace("\\n", "\n").replace("\\t", "\t");
+        return s.replace("\\\"", "\"")
+                .replace("\\\\", "\\")
+                .replace("\\n", "\n")
+                .replace("\\t", "\t");
     }
 }

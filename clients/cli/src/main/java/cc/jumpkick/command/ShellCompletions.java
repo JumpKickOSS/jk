@@ -108,7 +108,8 @@ public final class ShellCompletions {
         sb.append("Register-ArgumentCompleter -Native -CommandName jk,jkx -ScriptBlock {\n");
         sb.append("  param($wordToComplete, $commandAst, $cursorPosition)\n");
         sb.append("  $script:__jkCommands | Where-Object { $_ -like \"$wordToComplete*\" } |\n");
-        sb.append("    ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }\n");
+        sb.append(
+                "    ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }\n");
         sb.append("}\n");
         Files.writeString(dir.resolve("jk.ps1"), sb.toString(), StandardCharsets.UTF_8);
     }
