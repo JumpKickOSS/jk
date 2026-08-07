@@ -126,23 +126,53 @@ public final class BuildLogicSupport {
 
         Map<BuildLogicAnchor, List<RegisteredTask>> byAnchor;
         Path kotlinStdlib = null;
-        if (!javaSources.isEmpty() || !ktSources.isEmpty()) {
-            Path logicClasses = layout.generatedSourcesDir("jk-build-classes");
-            deleteContents(logicClasses);
-            Files.createDirectories(logicClasses);
-            Path apiCp = apiClasspath();
-            if (!javaSources.isEmpty()) {
-                compileJava(javaSources, logicClasses, apiCp);
+        // The loader must outlive discovery: a task body first-touches classes (a helper in
+        // .jk-build/src, a kotlin.collections type, a lambda class in the stdlib jar) long after
+        // registration, and a closed URLClassLoader can define none of them (JK-1604). run() owns
+        // the lifetime and closes it once every task for this anchor has run.
+        URLClassLoader logicLoader = null;
+        try {
+            if (!javaSources.isEmpty() || !ktSources.isEmpty()) {
+                Path logicClasses = layout.generatedSourcesDir("jk-build-classes");
+                deleteContents(logicClasses);
+                Files.createDirectories(logicClasses);
+                Path apiCp = apiClasspath();
+                if (!javaSources.isEmpty()) {
+                    compileJava(javaSources, logicClasses, apiCp);
+                }
+                if (!ktSources.isEmpty()) {
+                    kotlinStdlib = compileKotlin(ktSources, logicClasses, apiCp, projectDir, actionCache);
+                }
+                logicLoader = new URLClassLoader(
+                        toUrls(logicClasses, apiCp, kotlinStdlib), BuildLogicContributor.class.getClassLoader());
+                byAnchor = discoverTasks(
+                        c, logicClasses, apiCp, kotlinStdlib, /* allowEmpty */ !scripts.isEmpty(), logicLoader);
+            } else {
+                byAnchor = emptyByAnchor();
             }
-            if (!ktSources.isEmpty()) {
-                kotlinStdlib = compileKotlin(ktSources, logicClasses, apiCp, projectDir, actionCache);
-            }
-            byAnchor = discoverTasks(
-                    c, logicClasses, apiCp, kotlinStdlib, /* allowEmpty */ !scripts.isEmpty());
-        } else {
-            byAnchor = emptyByAnchor();
+            registerScripts(byAnchor, scripts);
+            return runAnchor(
+                    projectDir, layout, actionCache, classesDir, anchor, label, c,
+                    javaSources, ktSources, scripts, byAnchor);
+        } finally {
+            if (logicLoader != null) logicLoader.close();
         }
-        registerScripts(byAnchor, scripts);
+    }
+
+    /** Run (or restore) every task registered at {@code anchor}. */
+    private static boolean runAnchor(
+            Path projectDir,
+            BuildLayout layout,
+            ActionCache actionCache,
+            Path classesDir,
+            BuildLogicAnchor anchor,
+            java.util.function.Consumer<String> label,
+            Config c,
+            List<Path> javaSources,
+            List<Path> ktSources,
+            List<BuildLogicScripts.ScriptTask> scripts,
+            Map<BuildLogicAnchor, List<RegisteredTask>> byAnchor)
+            throws IOException, InterruptedException {
 
         List<RegisteredTask> tasks = byAnchor.getOrDefault(anchor, List.of());
         if (tasks.isEmpty()) return true;
@@ -280,7 +310,13 @@ public final class BuildLogicSupport {
     }
 
     private static Map<BuildLogicAnchor, List<RegisteredTask>> discoverTasks(
-            Config c, Path logicClasses, Path apiCp, Path kotlinStdlib, boolean allowEmpty) throws IOException {
+            Config c,
+            Path logicClasses,
+            Path apiCp,
+            Path kotlinStdlib,
+            boolean allowEmpty,
+            URLClassLoader cl)
+            throws IOException {
         Map<BuildLogicAnchor, List<RegisteredTask>> out = emptyByAnchor();
 
         // Graph collector
@@ -297,8 +333,7 @@ public final class BuildLogicSupport {
             out.get(anchor).add(new RegisteredTask(n, "spi", task));
         };
 
-        URL[] urls = toUrls(logicClasses, apiCp, kotlinStdlib);
-        try (URLClassLoader cl = new URLClassLoader(urls, BuildLogicContributor.class.getClassLoader())) {
+        {
             // SPI contributors
             for (String binary : listClassNames(logicClasses)) {
                 Class<?> clazz;

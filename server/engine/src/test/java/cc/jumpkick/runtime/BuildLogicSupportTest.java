@@ -254,6 +254,61 @@ class BuildLogicSupportTest {
         assertNotEquals(first, Files.readString(classes.resolve("line-count.txt")).trim());
     }
 
+    /**
+     * The loader that defined a task must still be open when the task runs — registration and
+     * execution are far apart, and a task body routinely first-touches a class then.
+     *
+     * <p>This case uses a directory-backed helper, which is the benign half: closing a
+     * URLClassLoader shuts its <em>jar</em> handles, so directory entries survive. The failing half
+     * is jar-backed and is pinned by {@code kotlin_spi_contributor_before_compile}, whose task body
+     * first touches kotlin-stdlib (JK-1604).
+     */
+    @Test
+    void a_task_body_may_first_touch_a_helper_class_at_run_time(@TempDir Path dir) throws Exception {
+        Path project = dir.resolve("proj");
+        Files.createDirectories(project.resolve("src/main/java/demo"));
+        Files.writeString(project.resolve("jk.toml"), """
+                [project]
+                group = "t"
+                name = "t"
+                version = "0.0.1"
+                jdk = 25
+                """);
+        Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
+
+        Path logicSrc = project.resolve(".jk-build/src/demo");
+        Files.createDirectories(logicSrc);
+        // Helper is referenced ONLY from inside the task body, so it is first loaded at run time.
+        Files.writeString(logicSrc.resolve("Helper.java"), """
+                package demo;
+                public final class Helper {
+                  public static String text() { return "from-helper"; }
+                }
+                """);
+        Files.writeString(logicSrc.resolve("LateLoadLogic.java"), """
+                package demo;
+                import cc.jumpkick.plugin.buildlogic.*;
+                import java.nio.file.*;
+                public class LateLoadLogic implements BuildLogicContributor {
+                  @Override
+                  public void register(BuildLogicGraph g) {
+                    g.task("late-load", BuildLogicAnchor.AFTER_COMPILE, ctx -> {
+                      Files.writeString(ctx.outDir().resolve("late.txt"), Helper.text());
+                    });
+                  }
+                }
+                """);
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
+        Path classes = layout.classesDir();
+        Files.createDirectories(classes);
+
+        assertTrue(BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> {}));
+
+        assertEquals("from-helper", Files.readString(classes.resolve("late.txt")).trim());
+    }
+
     @Test
     void logic_off_skips_even_if_jk_build_exists(@TempDir Path dir) throws Exception {
         Path project = dir.resolve("proj");
@@ -338,7 +393,11 @@ class BuildLogicSupportTest {
                 class KtMarkerLogic : BuildLogicContributor {
                   override fun register(g: BuildLogicGraph) {
                     g.task("kt-before-compile", BuildLogicAnchor.BEFORE_COMPILE) { ctx ->
-                      Files.writeString(ctx.outDir().resolve("kt-before.txt"), "from-kt")
+                      // joinToString is kotlin-stdlib, first touched HERE — inside the task body,
+                      // long after registration. It resolves out of the stdlib jar, so it fails if
+                      // the defining loader was closed at the end of discovery (JK-1604).
+                      val text = listOf("from", "kt").joinToString("-")
+                      Files.writeString(ctx.outDir().resolve("kt-before.txt"), text)
                     }
                   }
                 }
