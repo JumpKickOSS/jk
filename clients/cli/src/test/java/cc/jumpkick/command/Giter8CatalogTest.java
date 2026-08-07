@@ -5,10 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import cc.jumpkick.scaffold.Giter8LocalApply;
 
 class Giter8CatalogTest {
 
@@ -38,20 +36,13 @@ class Giter8CatalogTest {
     }
 
     @Test
-    void classpath_or_checkout_template_applies(@TempDir Path tmp) throws Exception {
-        // Prefer classpath bundle when no local templates/ tree.
+    void classpath_bundle_removed_templates_via_cache_or_checkout(@TempDir Path tmp) throws Exception {
+        // Classpath giter8 resources removed – resolution now requires a checkout walk-up
+        // templates/ tree or a cached git clone. Use a unique name not in any catalog.
         Path extract = tmp.resolve("extract");
         Path cwd = tmp.resolve("empty-cwd");
         Files.createDirectories(cwd);
-        var resolved = Giter8Catalog.resolveShortName("quarkus", cwd, extract);
-        // May be empty if resources not on test classpath yet; apply when present.
-        if (resolved.isEmpty()) {
-            return;
-        }
-        Path dest = tmp.resolve("out");
-        int n = Giter8LocalApply.apply(resolved.get(), dest, Map.of("name", "widget", "package", "com.w"));
-        assertThat(n).isGreaterThan(0);
-        assertThat(dest.resolve("jk.toml")).exists();
-        assertThat(Files.readString(dest.resolve("jk.toml"))).contains("widget");
+        var resolved = Giter8Catalog.resolveShortName("no-such-template-xyz", cwd, extract);
+        assertThat(resolved).isEmpty();
     }
 }

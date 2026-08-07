@@ -11,9 +11,9 @@ import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
-import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.tool.ToolResolver;
 import java.io.IOException;
@@ -292,9 +292,21 @@ public final class FormatPlans {
                     || s.equals("build")
                     || s.equals(".jk")
                     || s.equals(".git")
-                    || s.equals("node_modules")) {
+                    || s.equals("node_modules")
+                    || s.equals("templates")
+                    || s.equals("giter8")
+                    || s.endsWith(".g8")
+                    || s.contains("$")) {
                 return false;
             }
+            // giter8 placeholder sources live under src/main/g8 – skip entire tree
+            if (s.equals("g8")) {
+                return false;
+            }
+        }
+        String pathStr = p.toString();
+        if (pathStr.contains("/src/main/g8/") || pathStr.contains("/src/test/g8/")) {
+            return false;
         }
         return true;
     }

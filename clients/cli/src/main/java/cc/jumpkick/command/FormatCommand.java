@@ -4,8 +4,8 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
-import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.BuildPlanConsole;
+import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandManager;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -186,10 +186,10 @@ public final class FormatCommand implements CliCommand {
 
         // Animated path — start the TUI *first*, so the spinner is already visible while the plan's
         // collect/resolve steps (I/O) run behind it.
-        String subtitle = optimizeImports ? "Examining source files & optimizing imports" : "Examining source files";
+        String subtitle = "Formatting files…";
         try (CommandManager cm = CommandManager.plan(CliOutput.stdout(), "Format", true)) {
             cm.addTaskLabeled("", "fmt", subtitle);
-            cm.stepRunning("", "fmt");
+            cm.stepRunning("", "fmt", "Formatting files…");
 
             int[] counts = {0, 0, 0}; // changed, clean, errors
             HostedEvents.FileObserver observer = (path, status, msg, index, total) -> {
@@ -229,12 +229,12 @@ public final class FormatCommand implements CliCommand {
                 return 1;
             }
             if (o.total() == 0) {
-                cm.stepDone("", "fmt", true);
+                cm.stepDone("", "fmt", true, "Formatting files…");
                 cm.finishBuildPlanSuccess("no sources found");
                 return 0;
             }
 
-            cm.stepDone("", "fmt", counts[2] == 0);
+            cm.stepDone("", "fmt", counts[2] == 0, "Formatting files…");
             String took = ConsoleSpec.took(Duration.ofMillis(System.currentTimeMillis() - startMs));
             if (counts[2] > 0) {
                 String errTail = counts[2] + " error" + (counts[2] == 1 ? "" : "s");

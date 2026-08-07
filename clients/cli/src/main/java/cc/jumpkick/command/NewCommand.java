@@ -16,13 +16,15 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
-import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.scaffold.Giter8LocalApply;
+import cc.jumpkick.scaffold.NewInputs;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -33,9 +35,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import org.jline.terminal.Terminal;
-import cc.jumpkick.scaffold.NewInputs;
-import cc.jumpkick.scaffold.NewJkBuildRenderer;
-import cc.jumpkick.scaffold.Giter8LocalApply;
 
 /**
  * {@code jk new} — scaffold a project or workspace module (aliases: {@code init}, {@code create}).
@@ -77,7 +76,8 @@ public final class NewCommand implements CliCommand {
                 Opt.flag("Quarkus application (implies --executable).", "--quarkus"),
                 Opt.flag("Scaffold a jk build-plugin authoring project.", "--plugin"),
                 Opt.value("<ref>", "Giter8 template path, short name, or URL", "--template"),
-                Opt.value("<k=v>", "Template property k=v (repeatable)", "--param").repeat(),
+                Opt.value("<k=v>", "Template property k=v (repeatable)", "--param")
+                        .repeat(),
                 Opt.value("<url>", "Extra git template source (repeatable)", "--template-source")
                         .repeat(),
                 Opt.value("<deps>", "Curated deps, comma-separated.", "--deps"),
@@ -108,6 +108,7 @@ public final class NewCommand implements CliCommand {
     java.util.List<String> templateParams = java.util.List.of();
     /** One-shot third-party git sources for short-name lookup (JK-1380). */
     java.util.List<String> templateSources = java.util.List.of();
+
     String depsCsv;
     String layoutFlag;
     String kotlinModule;
@@ -295,8 +296,18 @@ public final class NewCommand implements CliCommand {
             try {
                 extractScratch = Files.createTempDirectory("jk-g8-");
                 var cfg = cc.jumpkick.config.JkTemplatesConfig.resolve();
-                var shortResolved = Giter8Catalog.resolveShortName(
-                        templateRef, cwd, extractScratch, cfg, templateSources);
+                // Lazy JIT for jk-templates: ensure official cache is present / fresh for built-in names.
+                if (Giter8Catalog.isShortName(templateRef)
+                        && cc.jumpkick.scaffold.Giter8ShortNames.find(templateRef)
+                                .isPresent()) {
+                    try {
+                        cc.jumpkick.templates.OfficialTemplatesFreshen.refreshQuiet(s -> {});
+                    } catch (Throwable ignored) {
+                        // best-effort
+                    }
+                }
+                var shortResolved =
+                        Giter8Catalog.resolveShortName(templateRef, cwd, extractScratch, cfg, templateSources);
                 if (shortResolved.isPresent()) {
                     template = shortResolved.get();
                 } else if (Giter8Git.looksRemote(templateRef)) {
@@ -1201,7 +1212,8 @@ public final class NewCommand implements CliCommand {
         var out = new ArrayList<cc.jumpkick.cli.tui.Choice>();
         // Prefer curated scaffold ids first (stable defaults for new projects).
         for (String id : CURATED_IDS) {
-            if (NewScaffolder.CURATED_DEPS.containsKey(id) || LibraryCatalog.bundled().lookup(id).isPresent()) {
+            if (NewScaffolder.CURATED_DEPS.containsKey(id)
+                    || LibraryCatalog.bundled().lookup(id).isPresent()) {
                 out.add(new cc.jumpkick.cli.tui.Choice(id, id, "curated"));
             }
         }
