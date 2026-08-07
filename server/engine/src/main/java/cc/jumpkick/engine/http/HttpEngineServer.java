@@ -1182,14 +1182,14 @@ public final class HttpEngineServer implements AutoCloseable {
     }
 
     /**
-     * {@code GET /api/project/graph?dir=…} — module dependency DAG as JSON for the Project page
-     * ECharts panel (JK-1542). Same edges as {@code jk explain --graph} / {@link
-     * cc.jumpkick.config.ModuleDotGraph}. On-demand only (SPA lazy-loads); not on status/history
-     * polls. Token-gated like {@code /api/project}. Empty nodes when the dir has no usable
-     * {@code jk.toml}.
+     * {@code GET /api/project/graph?dir=…[&scopes=main,test][&transitive=0|1]} — dependency graph
+     * for the Project page ECharts panel (JK-1542). Workspace modules plus declared external deps
+     * for the selected scopes (default {@code main}); optional lockfile transitive expansion.
+     * On-demand only (SPA lazy-loads). Token-gated like {@code /api/project}.
      */
     private void handleProjectGraph(HttpExchange exchange) throws IOException {
-        String dir = decode(queryParam(exchange.getRequestURI().getQuery(), "dir"));
+        String query = exchange.getRequestURI().getQuery();
+        String dir = decode(queryParam(query, "dir"));
         if (dir == null || dir.isBlank()) {
             sendJson(
                     exchange,
@@ -1198,13 +1198,17 @@ public final class HttpEngineServer implements AutoCloseable {
             return;
         }
         Path projectDir = Path.of(dir);
-        var data = cc.jumpkick.config.ModuleDotGraph.forProjectDir(projectDir);
+        var scopes = cc.jumpkick.resolver.DependencyGraphModel.parseScopes(queryParam(query, "scopes"));
+        boolean transitive = parseTruthy(queryParam(query, "transitive"));
+        var data = cc.jumpkick.resolver.DependencyGraphModel.forProjectDir(projectDir, scopes, transitive);
         List<Map<String, Object>> nodes = new ArrayList<>(data.nodes().size());
         for (var n : data.nodes()) {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("id", n.id());
             row.put("label", n.label());
-            row.put("path", n.path());
+            row.put("kind", n.kind());
+            if (n.version() != null) row.put("version", n.version());
+            if (n.path() != null) row.put("path", n.path());
             nodes.add(row);
         }
         List<Map<String, Object>> edges = new ArrayList<>(data.edges().size());
@@ -1212,14 +1216,25 @@ public final class HttpEngineServer implements AutoCloseable {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("from", e.from());
             row.put("to", e.to());
+            if (e.scope() != null) row.put("scope", e.scope());
             edges.add(row);
         }
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("dir", projectDir.toAbsolutePath().normalize().toString());
         body.put("workspace", data.workspace());
+        body.put("scopes", data.scopes());
+        body.put("transitive", data.transitive());
+        body.put("availableScopes", data.availableScopes());
         body.put("nodes", nodes);
         body.put("edges", edges);
         sendJson(exchange, 200, cc.jumpkick.plugin.protocol.MiniJson.write(body));
+    }
+
+    /** Query flag: true for {@code 1}/{@code true}/{@code yes}/{@code on} (case-insensitive). */
+    private static boolean parseTruthy(String raw) {
+        if (raw == null || raw.isBlank()) return false;
+        String t = raw.trim().toLowerCase(java.util.Locale.ROOT);
+        return t.equals("1") || t.equals("true") || t.equals("yes") || t.equals("on");
     }
 
     /**

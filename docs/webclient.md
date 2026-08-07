@@ -55,6 +55,8 @@ ECharts (`series-graph`). Complex graphs are expensive server- and client-side, 
 
 - the panel is **closed by default**;
 - `GET /api/project/graph` runs **only** when the panel opens (`module-dep-graph` mounts then);
+  scope checkboxes (default `main`) and a **Transitive** toggle (off by default) re-fetch with
+  `scopes=` / `transitive=`;
 - `echarts.init` runs only after that payload lands;
 - closing the panel (or leaving the project) unmounts the component (aborts in-flight fetch,
   disposes the chart).

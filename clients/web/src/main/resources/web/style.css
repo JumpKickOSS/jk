@@ -24,6 +24,7 @@
   --warn: #ffb800;       /* WSLUI neon amber */
   --cg: #00d4e0;         /* neon cyan (secondary) */
   --cn: #00f0ff;         /* WSLUI neon cyan (accent) */
+  --indigo: #3f51b5;     /* Material indigo — transitive-only deps on the module graph */
   --path: #969dd4;
   --console-bg: #0b1116;
 
@@ -38,8 +39,10 @@
   --warn-rgb: 255, 184, 0;
   --cg-rgb: 0, 212, 224;
   --cn-rgb: 0, 240, 255;   /* the neon accent (bright cyan) — drives chrome glows/outlines */
+  --indigo-rgb: 63, 81, 181;
   --bright-rgb: 236, 239, 241;
   --mu-rgb: 144, 164, 174;
+  --dim-rgb: 92, 109, 120;   /* muted terminal (cancelled) — pairs with --dim */
 
   /* Named chrome/state values that used to be inlined as raw hex — centralised so the palette has
    * one home (color still means state, never decoration). */
@@ -204,23 +207,48 @@ header {
 /* faint vertical divider between header groups */
 .hdiv { width: 1px; align-self: stretch; margin: 15px 2px; background: rgba(var(--cn-rgb), 0.14); flex: none; }
 
-/* outlined system box: CORES + LOAD / RAM + AVAIL (engine host resources; 5s poll) */
+/* outlined system box: CPU / RAM meters (engine host; live SSE ~2s) */
 .sysbox {
-  display: grid;
-  /* two label/value pairs per row: CORES n  LOAD p%  /  RAM n  AVAIL n */
-  grid-template-columns: auto auto auto auto;
-  column-gap: 10px;
-  row-gap: 2px;
-  padding: 5px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 5px 11px;
   border: 1px solid var(--bd);
   border-radius: var(--r-md);
   background: rgba(var(--cn-rgb), 0.03);
+  min-width: 11.5rem;
 }
-.sysrow { display: contents; }
-.sk { font: 600 9px var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); text-align: right; align-self: center; }
-/* A little extra air between the two pairs on a row (after CORES value / after RAM value). */
-.sysbox .sv:nth-child(4n+2) { padding-right: 6px; }
-.sv { font: 600 11.5px var(--mono); color: var(--bright); text-align: left; align-self: center; white-space: nowrap; }
+.sysrow {
+  display: grid;
+  grid-template-columns: 2.4em 1fr auto;
+  column-gap: 8px;
+  align-items: center;
+}
+.sk {
+  font: 600 9px var(--mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+  text-align: right;
+}
+/* Compact track: reuses Status-page .meter / .meter-fill.used (cyan). */
+.sysbox .meter {
+  display: block;
+  height: 7px;
+  min-width: 4.5rem;
+}
+.sysrow.warn .meter-fill.used { background: var(--warn); }
+.sysrow.crit .meter-fill.used { background: var(--err); }
+.sysrow.warn .sv { color: var(--warn); }
+.sysrow.crit .sv { color: var(--err); }
+.sv {
+  font: 600 11.5px var(--mono);
+  color: var(--bright);
+  text-align: left;
+  white-space: nowrap;
+  /* Fits "100%" (or "—"); no wider than the longest value. */
+  width: 4ch;
+}
 
 nav { display: flex; gap: 4px; }
 
@@ -406,7 +434,8 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 .card.running { --glow-rgb: var(--run-rgb); }
 .card.success { --glow-rgb: var(--ok-rgb); }
 .card.failed { --glow-rgb: var(--err-rgb); }
-.card.cancelled, .card.finished { --glow-rgb: var(--warn-rgb); }
+.card.cancelled { --glow-rgb: var(--dim-rgb); }
+.card.finished { --glow-rgb: var(--warn-rgb); }
 
 /* Hover = a neon state-coloured OUTLINE + glow, NO motion (lights up like WSLUI's cards); the left
  * inward glow intensifies too. z-index lifts the card so its millis I/O tooltip paints above the
@@ -429,14 +458,15 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
   font: 600 11px/1 var(--mono);
   border-radius: var(--r-sm);
   padding: 3px 9px;
-  color: #fff;
+  color: #000;
   background: var(--runc);
   white-space: nowrap;
 }
 
-.badge.success { background: var(--okc); color: var(--on-fill); }
-.badge.failed { background: var(--err); color: var(--on-fill); }
-.badge.cancelled, .badge.finished { background: var(--warn); color: var(--on-fill); }
+.badge.success { background: var(--okc); color: #000; }
+.badge.failed { background: var(--err); color: #000; }
+.badge.cancelled { background: var(--dim); color: #000; }
+.badge.finished { background: var(--warn); color: #000; }
 
 .coord { font-size: 12.5px; font-weight: 500; }
 .coord .cg { color: var(--cg); }
@@ -733,7 +763,7 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 /* Pure cache check (JK-1296) — same green family, slightly muted */
 .dot.checked { background: rgba(var(--ok-rgb), 0.55); }
 .dot.failed { background: var(--err); }
-.dot.cancelled, .dot.skipped { background: var(--warn); }
+.dot.cancelled, .dot.skipped { background: var(--dim); }
 
 /* ---- projects view ----
  * One row per project: {orb}{coords} left · {ECharts spark} centre · {pill #NNN}{reliability} right.
@@ -755,7 +785,8 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 .project.running { --glow-rgb: var(--run-rgb); }
 .project.success { --glow-rgb: var(--ok-rgb); }
 .project.failed { --glow-rgb: var(--err-rgb); }
-.project.cancelled, .project.issue { --glow-rgb: var(--warn-rgb); }
+.project.cancelled { --glow-rgb: var(--dim-rgb); }
+.project.issue { --glow-rgb: var(--warn-rgb); }
 
 /* left group: the state orb + the coord (name at 16px) over a muted meta line */
 .proj-id { display: flex; align-items: center; gap: 12px; flex: 0 0 auto; min-width: 210px; max-width: 34%; }
@@ -770,7 +801,8 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 .orb.running { background: var(--run); box-shadow: 0 0 8px 0 rgba(var(--run-rgb), 0.75); }
 .orb.success { background: var(--ok); box-shadow: 0 0 8px 0 rgba(var(--ok-rgb), 0.45); }
 .orb.failed { background: var(--err); box-shadow: 0 0 8px 0 rgba(var(--err-rgb), 0.5); }
-.orb.cancelled, .orb.issue { background: var(--warn); box-shadow: 0 0 8px 0 rgba(var(--warn-rgb), 0.5); }
+.orb.cancelled { background: var(--dim); box-shadow: 0 0 8px 0 rgba(var(--dim-rgb), 0.45); }
+.orb.issue { background: var(--warn); box-shadow: 0 0 8px 0 rgba(var(--warn-rgb), 0.5); }
 
 /* ---- pulsing status ring ----
  * The "live" signal: a running dot emits a soft ring that expands and fades, forever. Only the
@@ -806,8 +838,8 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 
 /* right group: the outcome pill (#buildNumber) and the reliability readout */
 .proj-stats { display: flex; align-items: center; gap: 16px; flex: 0 0 auto; }
-.badge.running { background: var(--runc); } /* deep blue: keep default white badge text */
-.badge.issue { background: var(--warn); color: var(--on-fill); }
+.badge.running { background: var(--runc); color: #000; }
+.badge.issue { background: var(--warn); color: #000; }
 
 .reliability {
   display: flex;
@@ -872,20 +904,59 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 }
 .detail-actions button:disabled { opacity: 0.45; cursor: not-allowed; }
 
-/* Project-page module dependency graph (JK-1542) — lazy panel under Dependencies. */
-.dep-graph-panel { margin-top: 14px; grid-column: 1 / -1; }
+/* Project-page dependency graph (JK-1542) — lazy panel under Dependencies. */
+.dep-graph-panel { margin: 14px 0; grid-column: 1 / -1; }
 .dep-graph-body { min-height: 2.5rem; }
+.dep-graph-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+  margin: 0 0 10px;
+}
+.dep-graph-scopes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: center;
+}
+.dep-graph-scopes label.check {
+  font-size: 11.5px;
+  gap: 7px;
+}
+.dep-transitive {
+  margin-left: auto;
+  padding-left: 12px;
+  border-left: 1px solid var(--bd);
+}
 .dep-graph-status { margin: 0 0 8px; }
 .dep-graph-status.err { color: var(--err); }
 .dep-graph-canvas {
   width: 100%;
-  height: min(480px, 55vh);
-  min-height: 280px;
+  height: min(560px, 60vh);
+  min-height: 320px;
   border-radius: var(--r-md);
   background: var(--console-bg);
   border: 1px solid var(--bd2);
 }
 .dep-graph-hint { margin: 8px 0 0; font-size: 11px; }
+.dep-graph-hint .swatch {
+  display: inline-block;
+  width: 0.65em;
+  height: 0.65em;
+  border-radius: 2px;
+  margin: 0 0.2em 0 0.55em;
+  vertical-align: 0.05em;
+  border: 1px solid transparent;
+}
+.dep-graph-hint .swatch.declared {
+  background: rgba(var(--cn-rgb), 0.35);
+  border-color: var(--cn);
+}
+.dep-graph-hint .swatch.transitive {
+  background: rgba(var(--indigo-rgb), 0.4);
+  border-color: var(--indigo);
+}
 .proj-desc { color: var(--tx); margin: 2px 0 16px; max-width: 74ch; }
 
 /* min/max and last-built carry longer strings than a single KPI number */
@@ -1485,8 +1556,10 @@ button.browse:hover::before {
 .new-project-form .parent-row input { flex: 1; min-width: 0; }
 .new-project-form .parent-row .browse { align-self: stretch; height: auto; min-height: 36px; }
 
-/* Themed checkbox — hide the native control, paint a square that tracks :checked. */
-.new-project-form label.check {
+/* Themed checkbox — hide the native control, paint a square that tracks :checked.
+ * Used by New Project and the dependency-graph scope filters (label.check + .check-box). */
+label.check {
+  display: inline-flex;
   flex-direction: row;
   align-items: center;
   gap: 10px;
@@ -1497,7 +1570,7 @@ button.browse:hover::before {
   cursor: pointer;
   user-select: none;
 }
-.new-project-form label.check input[type="checkbox"] {
+label.check input[type="checkbox"] {
   position: absolute;
   opacity: 0;
   width: 1px;
@@ -1505,7 +1578,7 @@ button.browse:hover::before {
   margin: 0;
   pointer-events: none;
 }
-.new-project-form label.check .check-box {
+label.check .check-box {
   flex: none;
   width: 16px;
   height: 16px;
@@ -1517,7 +1590,7 @@ button.browse:hover::before {
     box-shadow var(--dur-fast) var(--ease);
   position: relative;
 }
-.new-project-form label.check .check-box::after {
+label.check .check-box::after {
   content: '';
   position: absolute;
   left: 4px;
@@ -1529,20 +1602,24 @@ button.browse:hover::before {
   transform: rotate(45deg) scale(0);
   transition: transform var(--dur-fast) var(--ease);
 }
-.new-project-form label.check input:checked + .check-box {
+label.check input:checked + .check-box {
   background: rgba(var(--cn-rgb), 0.18);
   border-color: rgba(var(--cn-rgb), 0.7);
   box-shadow: 0 0 10px rgba(var(--cn-rgb), 0.2);
 }
-.new-project-form label.check input:checked + .check-box::after {
+label.check input:checked + .check-box::after {
   transform: rotate(45deg) scale(1);
 }
-.new-project-form label.check input:focus-visible + .check-box {
+label.check input:focus-visible + .check-box {
   box-shadow: 0 0 0 3px rgba(var(--cn-rgb), 0.22);
 }
-.new-project-form label.check:hover .check-box {
+label.check:hover .check-box {
   border-color: rgba(var(--cn-rgb), 0.65);
   background: rgba(var(--cn-rgb), 0.12);
+}
+/* New Project labels are column-stacked by default; .check must stay a row. */
+.new-project-form label.check {
+  display: flex;
 }
 .new-project-form .form-actions {
   display: flex;

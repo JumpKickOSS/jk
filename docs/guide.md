@@ -435,7 +435,7 @@ jk outdated                      # Current / Compatible / Latest table
 jk outdated --exclude-up-to-date # only rows that can move
 jk outdated --output json        # machine-readable array of rows
 jk why com.foo:bar               # why a pin is there
-jk tree                          # full graph
+jk tree                          # export/main/runtime graph (see -s for scopes)
 jk update                        # re-resolve on purpose, then commit jk-lock.toml
 ```
 
@@ -508,7 +508,7 @@ Platform BOMs (`[platform-dependencies]` / `[spring-boot] version` / `[quarkus] 
 **enforced platforms** by default: GAs listed in the BOM map use the BOM pin on transitive
 edges. Explicit Maven ranges on a POM edge remain open ranges. Use an exact or caret/tilde
 version on the BOM itself — not `latest`. The BOM is a **pin source** (recorded on managed
-lock rows as `pinned-by`), not a runtime jar; `jk tree` shows it under the platform section
+lock rows as `pinned-by`), not a runtime jar; `jk tree -s platform` shows it under the platform section
 with its version and a `(platform)` tag, not as missing.
 
 | Policy | Config / flag | BOM-map pin |

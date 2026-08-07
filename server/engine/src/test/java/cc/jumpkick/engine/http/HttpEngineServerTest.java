@@ -553,12 +553,16 @@ class HttpEngineServerTest {
                 .contains("\"workspace\":true")
                 .contains("\"label\":\"com.example:lib\"")
                 .contains("\"label\":\"com.example:app\"")
+                .contains("\"kind\":\"module\"")
+                .contains("\"scopes\":")
+                .contains("\"availableScopes\":")
+                .contains("\"transitive\":false")
                 .contains("\"from\":")
                 .contains("\"to\":")
                 .contains("\"nodes\":")
                 .contains("\"edges\":");
 
-        // Standalone project → one node, no edges.
+        // Standalone project with an external direct dep (no lock → declared node, no transitive).
         Path solo = stateDir.resolve("solo");
         Files.createDirectories(solo);
         Files.writeString(
@@ -568,13 +572,17 @@ class HttpEngineServerTest {
                 group = "g"
                 name = "n"
                 version = "1"
+
+                [dependencies]
+                leaf = { group = "com.foo", name = "leaf", version = "1.0" }
                 """);
         String soloBody =
                 get("/api/project/graph?dir=" + solo, "Authorization", "Bearer " + token()).body();
         assertThat(soloBody)
                 .contains("\"workspace\":false")
                 .contains("\"label\":\"g:n\"")
-                .contains("\"edges\":[]");
+                .contains("\"label\":\"com.foo:leaf\"")
+                .contains("\"kind\":\"declared\"");
     }
 
     @Test

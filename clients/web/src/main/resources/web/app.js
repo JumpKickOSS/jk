@@ -251,7 +251,7 @@ function cssVar(name, fallback) {
 const buildColors = () => ({
   success: cssVar('--ok', '#00ff87'),
   failed: cssVar('--err', '#ff3366'),
-  cancelled: cssVar('--warn', '#ffb800'),
+  cancelled: cssVar('--dim', '#5c6d78'),
   running: cssVar('--run', '#3d9bff'),
 });
 
@@ -329,9 +329,9 @@ const BuildBars = {
 };
 
 /**
- * Lazy module dependency DAG (JK-1542): mounted only when the Project-page Dependencies panel is
- * open. Fetches {@code GET /api/project/graph} on mount, aborts on unmount, and only then calls
- * {@code echarts.init} — opening the project page alone must not pay graph cost.
+ * Lazy dependency graph (JK-1542): mounted only when the Project-page Dependencies panel is open.
+ * Fetches {@code GET /api/project/graph} with scope + transitive filters (same idea as
+ * {@code jk tree --scopes}), aborts on unmount, and only then calls {@code echarts.init}.
  */
 const ModuleDepGraph = {
   props: { dir: { type: String, required: true } },
@@ -339,19 +339,50 @@ const ModuleDepGraph = {
     loading: true,
     error: null,
     graph: null,
+    // Default: main only, no lockfile transitive expansion (matches "direct deps" first look).
+    selectedScopes: { main: true },
+    transitive: false,
+    // Filled from the first successful response (server lists all Scope.canonical values).
+    availableScopes: [
+      'export',
+      'main',
+      'runtime',
+      'provided',
+      'processor',
+      'platform',
+      'test',
+      'dev',
+      'test-dev',
+    ],
   }),
   template: `
     <div class="dep-graph-body">
+      <div class="dep-graph-controls">
+        <div class="dep-graph-scopes" role="group" aria-label="Dependency scopes">
+          <label v-for="sc in availableScopes" :key="sc" class="check">
+            <input type="checkbox" :checked="!!selectedScopes[sc]" @change="toggleScope(sc, $event)">
+            <span class="check-box" aria-hidden="true"></span>
+            <span>{{ sc }}</span>
+          </label>
+        </div>
+        <label class="check dep-transitive" title="Include lockfile transitive dependencies (off by default)">
+          <input type="checkbox" :checked="transitive" @change="setTransitive($event)">
+          <span class="check-box" aria-hidden="true"></span>
+          <span>Transitive</span>
+        </label>
+      </div>
       <p v-if="loading" class="dep-graph-status dim small">Loading dependency graph…</p>
       <p v-else-if="error" class="dep-graph-status err small">{{ error }}</p>
       <p v-else-if="graph && !(graph.nodes || []).length" class="dep-graph-status dim small">
-        No modules to graph (missing or empty workspace).
+        No dependencies for the selected scopes.
       </p>
       <div v-show="graph && (graph.nodes || []).length" class="dep-graph-canvas" ref="el"></div>
       <p v-if="graph && (graph.nodes || []).length" class="dep-graph-hint dim small mono">
-        {{ graph.nodes.length }} module{{ graph.nodes.length === 1 ? '' : 's' }}
+        {{ graph.nodes.length }} node{{ graph.nodes.length === 1 ? '' : 's' }}
         · {{ (graph.edges || []).length }} edge{{ (graph.edges || []).length === 1 ? '' : 's' }}
         · pan / zoom · dependent → prereq
+        <span class="swatch declared" title="Workspace module or listed in a selected-scope jk.toml"></span>declared
+        <span class="swatch transitive" title="Transitive only — not listed in any selected-scope jk.toml"></span>transitive
       </p>
     </div>
   `,
@@ -367,6 +398,23 @@ const ModuleDepGraph = {
     },
   },
   methods: {
+    scopesQuery() {
+      const order = this.availableScopes;
+      const picked = order.filter((s) => this.selectedScopes[s]);
+      return picked.length ? picked.join(',') : 'main';
+    },
+    toggleScope(sc, ev) {
+      const on = !!(ev && ev.target && ev.target.checked);
+      // Keep at least one scope selected (re-check main if the user clears the last box).
+      const next = { ...this.selectedScopes, [sc]: on };
+      if (!Object.values(next).some(Boolean)) next.main = true;
+      this.selectedScopes = next;
+      this.load();
+    },
+    setTransitive(ev) {
+      this.transitive = !!(ev && ev.target && ev.target.checked);
+      this.load();
+    },
     teardown() {
       if (this._abort) {
         this._abort.abort();
@@ -382,10 +430,13 @@ const ModuleDepGraph = {
       }
     },
     async load() {
-      this.teardown();
+      // Abort in-flight only — keep the chart DOM until the next payload paints.
+      if (this._abort) {
+        this._abort.abort();
+        this._abort = null;
+      }
       this.loading = true;
       this.error = null;
-      this.graph = null;
       if (!this.dir) {
         this.loading = false;
         this.error = 'No project directory';
@@ -393,14 +444,21 @@ const ModuleDepGraph = {
       }
       const ac = new AbortController();
       this._abort = ac;
+      const q =
+        '/api/project/graph?dir=' +
+        encodeURIComponent(this.dir) +
+        '&scopes=' +
+        encodeURIComponent(this.scopesQuery()) +
+        '&transitive=' +
+        (this.transitive ? '1' : '0');
       try {
-        const data = await get('/api/project/graph?dir=' + encodeURIComponent(this.dir), {
-          signal: ac.signal,
-        });
+        const data = await get(q, { signal: ac.signal });
         if (ac.signal.aborted) return;
         this.graph = data;
+        if (Array.isArray(data.availableScopes) && data.availableScopes.length) {
+          this.availableScopes = data.availableScopes;
+        }
         this.loading = false;
-        // Paint after the canvas is in the DOM (v-show true on next tick).
         await this.$nextTick();
         if (ac.signal.aborted) return;
         this.renderChart();
@@ -420,7 +478,13 @@ const ModuleDepGraph = {
     renderChart() {
       const el = this.$refs.el;
       const g = this.graph;
-      if (!el || !g || !(g.nodes || []).length) return;
+      if (!el || !g || !(g.nodes || []).length) {
+        if (this._chart) {
+          this._chart.dispose();
+          this._chart = null;
+        }
+        return;
+      }
       if (!window.echarts) {
         this.error = 'ECharts failed to load';
         return;
@@ -429,6 +493,10 @@ const ModuleDepGraph = {
         this._chart.dispose();
         this._chart = null;
       }
+      if (this._ro) {
+        this._ro.disconnect();
+        this._ro = null;
+      }
       this._chart = echarts.init(el, null, { renderer: 'canvas' });
       this._ro = new ResizeObserver(() => this._chart && this._chart.resize());
       this._ro.observe(el);
@@ -436,39 +504,50 @@ const ModuleDepGraph = {
       const tx = cssVar('--tx', '#cfd8dc');
       const dim = cssVar('--dim', '#5c6d78');
       const cn = cssVar('--cn', '#00f0ff');
+      const indigo = cssVar('--indigo', '#3f51b5');
       const s1 = cssVar('--s1', '#161d25');
       const bd = cssVar('--bd', '#2a3742');
       const bright = cssVar('--bright', '#eceff1');
+      const mono = cssVar('--mono', 'monospace');
 
-      const nodes = (g.nodes || []).map((n) => ({
-        id: n.id,
-        name: n.label,
-        path: n.path,
-        symbolSize: Math.max(28, Math.min(48, 56 - (g.nodes.length > 20 ? 12 : 0))),
-        itemStyle: {
-          color: s1,
-          borderColor: cn,
-          borderWidth: 1.5,
-        },
-        label: {
-          show: true,
-          position: 'right',
-          color: bright,
-          fontSize: 11,
-          // Canvas renderer: ctx.font cannot resolve CSS custom properties — read the
-          // computed value or the labels silently fall back to the default sans.
-          fontFamily: cssVar('--mono', 'monospace'),
-        },
-      }));
+      // Cyan: workspace module or declared in a selected-scope jk.toml. Indigo: transitive only.
+      const nodes = (g.nodes || []).map((n) => {
+        const kind = n.kind === 'transitive' ? 'transitive' : n.kind === 'module' ? 'module' : 'declared';
+        const isTransitive = kind === 'transitive';
+        const accent = isTransitive ? indigo : cn;
+        return {
+          id: n.id,
+          name: n.label,
+          path: n.path,
+          version: n.version,
+          kind,
+          symbolSize: Math.max(
+            kind === 'module' || n.path ? 34 : 26,
+            Math.min(52, 60 - (g.nodes.length > 40 ? 14 : g.nodes.length > 20 ? 8 : 0)),
+          ),
+          itemStyle: {
+            color: isTransitive ? 'rgba(63, 81, 181, 0.28)' : 'rgba(0, 240, 255, 0.16)',
+            borderColor: accent,
+            borderWidth: 1.75,
+          },
+          label: {
+            show: true,
+            position: 'right',
+            color: bright,
+            fontSize: g.nodes.length > 50 ? 10 : 11,
+            fontFamily: mono,
+          },
+        };
+      });
       const links = (g.edges || []).map((e) => ({
         source: e.from,
         target: e.to,
+        scope: e.scope,
         lineStyle: { color: dim, curveness: 0.12, width: 1.2 },
       }));
       const n = nodes.length;
-      // Force layout is fine for small graphs; damp motion for large monorepos.
-      const repulsion = n > 40 ? 80 : n > 15 ? 140 : 220;
-      const edgeLength = n > 40 ? 40 : n > 15 ? 70 : 100;
+      const repulsion = n > 80 ? 180 : n > 40 ? 320 : n > 15 ? 720 : 1100;
+      const edgeLength = n > 80 ? 70 : n > 40 ? 110 : n > 15 ? 220 : 300;
 
       this._chart.setOption(
         {
@@ -480,18 +559,26 @@ const ModuleDepGraph = {
             borderColor: bd,
             borderWidth: 1,
             padding: [6, 10],
-            textStyle: { color: tx, fontSize: 11, fontFamily: 'var(--mono)' },
+            textStyle: { color: tx, fontSize: 11, fontFamily: mono },
             formatter: (p) => {
               if (p.dataType === 'edge') {
                 const s = p.data.source;
                 const t = p.data.target;
                 const sn = nodes.find((x) => x.id === s);
                 const tn = nodes.find((x) => x.id === t);
-                return (sn ? sn.name : s) + ' → ' + (tn ? tn.name : t);
+                const sc = p.data.scope ? ' <span style="opacity:.65">[' + p.data.scope + ']</span>' : '';
+                return (sn ? sn.name : s) + ' → ' + (tn ? tn.name : t) + sc;
               }
               const d = p.data || {};
+              const role =
+                d.kind === 'transitive'
+                  ? '<br/><span style="opacity:.75">transitive</span>'
+                  : d.kind === 'module' || d.path
+                    ? '<br/><span style="opacity:.75">workspace module</span>'
+                    : '<br/><span style="opacity:.75">declared</span>';
+              const ver = d.version ? '<br/><span style="opacity:.7">' + d.version + '</span>' : '';
               const path = d.path ? '<br/><span style="opacity:.7">' + d.path + '</span>' : '';
-              return (d.name || p.name || '') + path;
+              return (d.name || p.name || '') + role + ver + path;
             },
           },
           series: [
@@ -507,13 +594,13 @@ const ModuleDepGraph = {
               force: {
                 repulsion,
                 edgeLength,
-                gravity: 0.08,
-                friction: 0.6,
+                gravity: 0.03,
+                friction: 0.65,
               },
               emphasis: {
                 focus: 'adjacency',
                 lineStyle: { width: 2, color: cn },
-                itemStyle: { borderColor: cn, borderWidth: 2 },
+                itemStyle: { borderWidth: 2.5 },
               },
             },
           ],
@@ -1793,12 +1880,38 @@ Vue.createApp({
     gib(bytes) {
       return bytes == null || bytes < 0 ? '—' : (bytes / 1073741824).toFixed(1) + ' GiB';
     },
-    // Header sysbox LOAD: whole-host CPU utilisation from /api/status systemCpuLoad ∈ [0,1].
+    // Header / about: whole-host CPU utilisation from /api/status systemCpuLoad ∈ [0,1].
     // The bean returns -1 until the first sample; show an em-dash rather than "0%".
     loadPercent() {
+      const n = this.cpuPercent();
+      return n == null ? '—' : n + '%';
+    },
+    /** Whole-host CPU % for the header sysbox meter, or null when not yet sampled. */
+    cpuPercent() {
       const load = this.status?.systemCpuLoad;
-      if (load == null || load < 0) return '—';
-      return Math.min(100, Math.round(load * 100)) + '%';
+      if (load == null || load < 0) return null;
+      return Math.min(100, Math.round(load * 100));
+    },
+    /**
+     * Host RAM used % for the header sysbox: (total − available) / total.
+     * freeMemoryBytes is available headroom (see StatusSnapshot), not raw free.
+     */
+    ramPercent() {
+      const s = this.status;
+      if (!s || s.totalMemoryBytes == null || s.totalMemoryBytes <= 0) return null;
+      if (s.freeMemoryBytes == null || s.freeMemoryBytes < 0) return null;
+      const used = Math.max(0, s.totalMemoryBytes - s.freeMemoryBytes);
+      return Math.min(100, Math.round((100 * used) / s.totalMemoryBytes));
+    },
+    sysMeterPct(pct) {
+      return pct == null ? '—' : pct + '%';
+    },
+    /** CSS level on a sysrow: cyan default, warn >90%, crit >97%. */
+    sysMeterLevel(pct) {
+      if (pct == null) return '';
+      if (pct > 97) return 'crit';
+      if (pct > 90) return 'warn';
+      return '';
     },
     // Header version pill: "v0.10.0" — the build-metadata suffix (-SNAPSHOT) is dropped for the chip.
     versionPill() {
