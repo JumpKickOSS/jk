@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -17,6 +18,14 @@ import org.junit.jupiter.api.io.TempDir;
 
 @Tag("integration")
 class BuildLogicSupportTest {
+
+    /**
+     * BEFORE_COMPILE output is codegen: it lands in the generated-source root the compilers read,
+     * not in classes/ (JK-1602). One dir per task.
+     */
+    private static Path generated(BuildLayout layout, String task, String file) {
+        return BuildLogicSupport.generatedSourceRoot(layout).resolve(task).resolve(file);
+    }
 
     @Test
     void convention_jk_build_dir_runs_and_cache_hits(@TempDir Path dir) throws Exception {
@@ -152,7 +161,8 @@ class BuildLogicSupportTest {
         assertTrue(BuildLogicSupport.run(
                 project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s)
                         .append(';')));
-        assertTrue(Files.isRegularFile(classes.resolve("before-compile.txt")));
+        assertTrue(Files.isRegularFile(generated(layout, "before-compile-marker", "before-compile.txt")));
+        assertFalse(Files.exists(classes.resolve("before-compile.txt")), "codegen must not land in classes/");
         assertTrue(labels.toString().contains("before-compile-marker"), labels.toString());
         assertEquals("generate", BuildLogicAnchor.BEFORE_COMPILE.stageWireName());
 
@@ -227,16 +237,17 @@ class BuildLogicSupportTest {
         StringBuilder labels = new StringBuilder();
         assertTrue(BuildLogicSupport.run(
                 project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s).append(';')));
-        assertTrue(Files.isRegularFile(classes.resolve("from-groovy.txt")), labels.toString());
-        assertEquals("hello-from-script", Files.readString(classes.resolve("from-groovy.txt")).trim());
+        Path groovyOut = generated(layout, "before-compile", "from-groovy.txt");
+        assertTrue(Files.isRegularFile(groovyOut), labels.toString());
+        assertEquals("hello-from-script", Files.readString(groovyOut).trim());
         assertTrue(labels.toString().contains("before-compile"), labels.toString());
 
-        Files.delete(classes.resolve("from-groovy.txt"));
+        Files.delete(groovyOut);
         labels.setLength(0);
         assertTrue(BuildLogicSupport.run(
                 project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s).append(';')));
         assertTrue(labels.toString().contains("cache hit"), labels.toString());
-        assertTrue(Files.isRegularFile(classes.resolve("from-groovy.txt")));
+        assertTrue(Files.isRegularFile(groovyOut), "a cache hit must restore the source root");
     }
 
     @Test
@@ -278,16 +289,17 @@ class BuildLogicSupportTest {
         StringBuilder labels = new StringBuilder();
         assertTrue(BuildLogicSupport.run(
                 project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s).append(';')));
-        assertTrue(Files.isRegularFile(classes.resolve("kt-before.txt")), labels.toString());
-        assertEquals("from-kt", Files.readString(classes.resolve("kt-before.txt")).trim());
+        Path ktOut = generated(layout, "kt-before-compile", "kt-before.txt");
+        assertTrue(Files.isRegularFile(ktOut), labels.toString());
+        assertEquals("from-kt", Files.readString(ktOut).trim());
         assertTrue(labels.toString().contains("kt-before-compile"), labels.toString());
 
-        Files.delete(classes.resolve("kt-before.txt"));
+        Files.delete(ktOut);
         labels.setLength(0);
         assertTrue(BuildLogicSupport.run(
                 project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s).append(';')));
         assertTrue(labels.toString().contains("cache hit"), labels.toString());
-        assertTrue(Files.isRegularFile(classes.resolve("kt-before.txt")));
+        assertTrue(Files.isRegularFile(ktOut), "a cache hit must restore the source root");
     }
 
     @Test
@@ -344,16 +356,17 @@ class BuildLogicSupportTest {
         StringBuilder labels = new StringBuilder();
         assertTrue(BuildLogicSupport.run(
                 project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s).append(';')));
-        assertTrue(Files.isRegularFile(classes.resolve("from-kts.txt")), labels.toString());
-        assertEquals("hello-from-kts", Files.readString(classes.resolve("from-kts.txt")).trim());
+        Path ktsOut = generated(layout, "before-compile", "from-kts.txt");
+        assertTrue(Files.isRegularFile(ktsOut), labels.toString());
+        assertEquals("hello-from-kts", Files.readString(ktsOut).trim());
         assertTrue(labels.toString().contains("before-compile"), labels.toString());
 
-        Files.delete(classes.resolve("from-kts.txt"));
+        Files.delete(ktsOut);
         labels.setLength(0);
         assertTrue(BuildLogicSupport.run(
                 project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> labels.append(s).append(';')));
         assertTrue(labels.toString().contains("cache hit"), labels.toString());
-        assertTrue(Files.isRegularFile(classes.resolve("from-kts.txt")));
+        assertTrue(Files.isRegularFile(ktsOut), "a cache hit must restore the source root");
     }
 
     private static void writeStamp(Path file, String fqcn) throws Exception {

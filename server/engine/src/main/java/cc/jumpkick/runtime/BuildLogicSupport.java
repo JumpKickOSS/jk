@@ -161,9 +161,16 @@ public final class BuildLogicSupport {
         }
         sourceTokens.add("anchor:" + anchor.name());
 
+        // BEFORE_COMPILE is codegen: its output joins the compile source set (like KSP), it is
+        // never merged into classes/. Merging there compiled nothing — a generated .java was
+        // packaged verbatim as a data file — and any .class it staged was deleted by javac's
+        // full-compile sweep moments later (JK-1602).
+        boolean generatesSources = anchor == BuildLogicAnchor.BEFORE_COMPILE;
         for (RegisteredTask task : tasks) {
             String simple = task.name();
-            Path outDir = layout.generatedSourcesDir("jk-build-out-" + simple);
+            Path outDir = generatesSources
+                    ? generatedSourceRoot(layout).resolve(simple)
+                    : layout.generatedSourcesDir("jk-build-out-" + simple);
             Files.createDirectories(outDir);
             String taskId = ActionKey.qualifiedTaskId("build-logic-" + simple, projectDir);
             List<String> tokens = new ArrayList<>(sourceTokens);
@@ -180,7 +187,7 @@ public final class BuildLogicSupport {
                 // A failed restore (missing/corrupt blob) falls through to the real run below.
                 if (actionCache.restore(hit.get(), outDir)) {
                     label.accept("build-logic:" + simple + ": cache hit");
-                    mergeIntoClasses(outDir, classesDir);
+                    if (!generatesSources) mergeIntoClasses(outDir, classesDir);
                     continue;
                 }
             }
@@ -200,7 +207,7 @@ public final class BuildLogicSupport {
                 throw new IllegalStateException("[build] logic task " + simple + " failed: " + e.getMessage(), e);
             }
             actionCache.store(taskId, key, java.util.Map.of("build-logic", key), outDir);
-            mergeIntoClasses(outDir, classesDir);
+            if (!generatesSources) mergeIntoClasses(outDir, classesDir);
         }
         return true;
     }
@@ -542,6 +549,25 @@ public final class BuildLogicSupport {
         int exit = p.waitFor();
         if (exit != 0 && !log.isBlank()) System.err.println(log);
         return exit;
+    }
+
+    /**
+     * Root holding every {@link BuildLogicAnchor#BEFORE_COMPILE} task's output, one subdirectory per
+     * task. The compilers read it as a generated-source root, the same way KSP output is read.
+     */
+    public static Path generatedSourceRoot(BuildLayout layout) {
+        return layout.generatedSourcesDir("jk-build");
+    }
+
+    /** Generated build-logic sources with {@code suffix}, in a stable order. */
+    public static List<Path> generatedSources(BuildLayout layout, String suffix) throws IOException {
+        Path root = generatedSourceRoot(layout);
+        if (!Files.isDirectory(root)) return List.of();
+        try (Stream<Path> walk = Files.walk(root)) {
+            return walk.filter(f -> Files.isRegularFile(f) && f.toString().endsWith(suffix))
+                    .sorted()
+                    .toList();
+        }
     }
 
     private static void mergeIntoClasses(Path generated, Path classesDir) throws IOException {

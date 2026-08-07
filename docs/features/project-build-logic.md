@@ -57,7 +57,7 @@ are aliases (`before_compile.kts`). A `.groovy` and `.kts` with the same stem na
 | Name | Type | Meaning | Groovy | `.kts` |
 |------|------|---------|--------|--------|
 | `projectDir` | `java.nio.file.Path` | Project root (`jk.toml`) | yes | yes |
-| `outDir` | `Path` | Per-task output (action-cached; merged into classes) | yes | yes |
+| `outDir` | `Path` | Per-task output (action-cached). A **generated-source root** at `BEFORE_COMPILE`; merged into classes at every other anchor | yes | yes |
 | `classesDir` | `Path` | Module classes tree | yes | yes |
 | `properties` | `Map<String,Object>` | Mutable bag (e.g. nested `evaluate`) | yes | — |
 | `ant` | `groovy.ant.AntBuilder` | When Ant jars resolve | yes | — |
@@ -105,12 +105,21 @@ logic = "off"   # also: false, none, disable
      - **Legacy mains:** every public class named `*Build` / `*BuildMain` with
        `public static void main` (or `[build].logic-main`) runs at **`AFTER_RESOURCES`**.  
 4. BuildPlan anchors invoke matching tasks as **independently action-cached** steps
-   (each maps to a [`BuildStage`](../../architecture.md#request-phases-vs-build-stages) wire name):
+   (each maps to a [`BuildStage`](../architecture.md#request-phases-vs-build-stages) wire name):
    - `BEFORE_COMPILE` — before main language compile (**stage `generate`**) — codegen home  
    - `AFTER_COMPILE` — after main compile / assemble (**stage `compile`**)  
    - `AFTER_RESOURCES` — after static resources copy (default for legacy mains; **stage `compile`**)  
    - `BEFORE_PACKAGE` — immediately before jar/image packaging (**stage `package`**)  
-5. Merge each task’s `outDir` into the classes tree.  
+5. Deliver each task’s `outDir`, and **where it goes depends on the anchor**:
+   - `BEFORE_COMPILE` writes a **generated-source root** under
+     `target/generated/sources/jk-build/<task>/`, which javac / kotlinc / groovyc read exactly the
+     way they read KSP output. Write `.java` / `.kt` / `.groovy` here and it is compiled and lands
+     in the jar as a class.
+   - Every other anchor **merges into the classes tree**, which is what you want for a resource, a
+     manifest, or a stamp — compilation has already happened.
+
+   Do not write `.class` files from `BEFORE_COMPILE`: javac's full-compile sweep clears the classes
+   dir after this anchor runs. Emit sources and let the compiler own the output.  
 6. Labels: `build-logic:<name>: cache hit` or `build-logic:<name>: <anchor>`.
 
 Scripts and Java may coexist; task names must be unique across both.
@@ -125,9 +134,12 @@ import java.nio.file.*;
 public class CodegenLogic implements BuildLogicContributor {
   @Override
   public void register(BuildLogicGraph g) {
-    // Sources that must exist before javac/kotlinc:
+    // Sources that must exist before javac/kotlinc. outDir is a generated-source
+    // root — package directories and all, as the compiler expects them.
     g.task("gen-collections", BuildLogicAnchor.BEFORE_COMPILE, ctx -> {
-      // write into projectDir source or generated roots
+      Path pkg = Files.createDirectories(ctx.outDir().resolve("com/example"));
+      Files.writeString(pkg.resolve("Generated.java"),
+          "package com.example; public final class Generated {}");
     });
     g.task("gen-tokens", BuildLogicAnchor.AFTER_COMPILE, ctx -> {
       Files.writeString(ctx.outDir().resolve("tokens.txt"), "ok");

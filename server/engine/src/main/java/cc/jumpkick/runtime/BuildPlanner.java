@@ -1491,10 +1491,12 @@ public final class BuildPlanner {
                     List<Path> sources = javaSources(ctx);
                     List<Path> generated = pluginContributedSources(ctx.require(LAYOUT), pluginDecls, ".java");
                     List<Path> kspGenerated = kspGeneratedSources(ctx.require(LAYOUT), ".java");
-                    if (!generated.isEmpty() || !kspGenerated.isEmpty()) {
+                    List<Path> logicGenerated = BuildLogicSupport.generatedSources(ctx.require(LAYOUT), ".java");
+                    if (!generated.isEmpty() || !kspGenerated.isEmpty() || !logicGenerated.isEmpty()) {
                         sources = new ArrayList<>(sources);
                         sources.addAll(generated);
                         sources.addAll(kspGenerated);
+                        sources.addAll(logicGenerated);
                         // Re-publish the union so write-stamp records the same input set
                         // this compile checked (else the fast freshness path never holds).
                         ctx.put(JAVA_SOURCES, sources);
@@ -1752,10 +1754,12 @@ public final class BuildPlanner {
                     // see generated files as ordinary sources.
                     List<Path> generatedKt = pluginContributedSources(ctx.require(LAYOUT), pluginDecls, ".kt");
                     List<Path> kspKt = kspGeneratedSources(ctx.require(LAYOUT), ".kt");
-                    if (!generatedKt.isEmpty() || !kspKt.isEmpty()) {
+                    List<Path> logicKt = BuildLogicSupport.generatedSources(ctx.require(LAYOUT), ".kt");
+                    if (!generatedKt.isEmpty() || !kspKt.isEmpty() || !logicKt.isEmpty()) {
                         ktSources = new ArrayList<>(ktSources);
                         ktSources.addAll(generatedKt);
                         ktSources.addAll(kspKt);
+                        ktSources.addAll(logicKt);
                         // Re-publish so write-stamp-kotlin records what this compile checked.
                         ctx.put(KOTLIN_SOURCES, ktSources);
                     }
@@ -1882,9 +1886,11 @@ public final class BuildPlanner {
                     // Kotlin side — the freshness stamp and the worker see generated files as
                     // ordinary sources.
                     List<Path> generatedGv = pluginContributedSources(ctx.require(LAYOUT), pluginDecls, ".groovy");
-                    if (!generatedGv.isEmpty()) {
+                    List<Path> logicGv = BuildLogicSupport.generatedSources(ctx.require(LAYOUT), ".groovy");
+                    if (!generatedGv.isEmpty() || !logicGv.isEmpty()) {
                         gvSources = new ArrayList<>(gvSources);
                         gvSources.addAll(generatedGv);
+                        gvSources.addAll(logicGv);
                         // Re-publish so write-stamp-groovy records what this compile checked.
                         ctx.put(GROOVY_SOURCES, gvSources);
                     }
