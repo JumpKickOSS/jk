@@ -686,14 +686,14 @@ final class EngineBuildListenerAdapter {
                     case EngineProtocol.PLAN_TASK ->
                         steps.add(Task.builder(Jsonl.str(line, "name"))
                                 .label(Jsonl.str(line, "label"))
-                                .phase(wireGroup(Jsonl.str(line, "group")))
+                                .phase(wireGroup(Jsonl.str(line, "stage")))
                                 .build());
                     case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
                     case EngineProtocol.BUILDPLAN_START -> listener.planStart(readBuildPlanView(line));
                     case EngineProtocol.TASK_START ->
                         listener.stepStart(
                                 Jsonl.str(line, "task"),
-                                wireGroup(Jsonl.str(line, "group")),
+                                wireGroup(Jsonl.str(line, "stage")),
                                 Jsonl.intValue(line, "ticks", 0));
                     case EngineProtocol.PROGRESS ->
                         listener.progress(
@@ -722,7 +722,7 @@ final class EngineBuildListenerAdapter {
                     case EngineProtocol.TASK_FINISH ->
                         listener.stepFinish(
                                 Jsonl.str(line, "task"),
-                                wireGroup(Jsonl.str(line, "group")),
+                                wireGroup(Jsonl.str(line, "stage")),
                                 TaskStatus.valueOf(Jsonl.str(line, "status")),
                                 Duration.ofMillis(Jsonl.longValue(line, "millis", 0)));
                     case EngineProtocol.BUILDPLAN_FINISH -> {
@@ -821,7 +821,7 @@ final class EngineBuildListenerAdapter {
                         if (m != null) {
                             m.steps.add(Task.builder(Jsonl.str(line, "name"))
                                     .label(Jsonl.str(line, "label"))
-                                    .phase(wireGroup(Jsonl.str(line, "group")))
+                                    .phase(wireGroup(Jsonl.str(line, "stage")))
                                     .build());
                         }
                     }
@@ -856,7 +856,7 @@ final class EngineBuildListenerAdapter {
                                 .getOrDefault(dir, NOOP)
                                 .stepStart(
                                         Jsonl.str(line, "task"),
-                                        wireGroup(Jsonl.str(line, "group")),
+                                        wireGroup(Jsonl.str(line, "stage")),
                                         Jsonl.intValue(line, "ticks", 0));
                     case EngineProtocol.PROGRESS ->
                         planListenersByDir
@@ -907,7 +907,7 @@ final class EngineBuildListenerAdapter {
                                 .getOrDefault(dir, NOOP)
                                 .stepFinish(
                                         Jsonl.str(line, "task"),
-                                        wireGroup(Jsonl.str(line, "group")),
+                                        wireGroup(Jsonl.str(line, "stage")),
                                         TaskStatus.valueOf(Jsonl.str(line, "status")),
                                         Duration.ofMillis(Jsonl.longValue(line, "millis", 0)));
                     case EngineProtocol.BUILDPLAN_FINISH -> {

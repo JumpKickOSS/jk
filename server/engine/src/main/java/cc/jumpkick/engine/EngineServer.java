@@ -1837,7 +1837,7 @@ public final class EngineServer implements AutoCloseable {
                                 .put("requestId", requestId)
                                 .put("dir", dir)
                                 .put("task", step)
-                                .put("group", phase),
+                                .put("stage", phase),
                         requestId));
     }
 
@@ -1853,7 +1853,7 @@ public final class EngineServer implements AutoCloseable {
                                 .put("requestId", requestId)
                                 .put("dir", dir)
                                 .put("task", step)
-                                .put("group", phase)
+                                .put("stage", phase)
                                 .put("status", status)
                                 .put("millis", millis),
                         requestId));

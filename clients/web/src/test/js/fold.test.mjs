@@ -159,11 +159,11 @@ test('coord and client timestamps ride the card', () => {
 test('steps fold per module, each module keeping its own chain', () => {
   const cards = [];
   foldEvent(cards, start(1, '/w'));
-  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '/w/a', task: 'compile', group: 'compile' } });
-  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '/w/b', task: 'compile', group: 'compile' } });
-  foldEvent(cards, { type: 'task-finish', data: { requestId: 1, dir: '/w/a', task: 'compile', group: 'compile', status: 'SUCCESS' } });
-  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '/w/a', task: 'test', group: 'test' } });
-  foldEvent(cards, { type: 'task-finish', data: { requestId: 1, dir: '/w/a', task: 'test', group: 'test', status: 'FAIL' } });
+  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '/w/a', task: 'compile', stage: 'compile' } });
+  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '/w/b', task: 'compile', stage: 'compile' } });
+  foldEvent(cards, { type: 'task-finish', data: { requestId: 1, dir: '/w/a', task: 'compile', stage: 'compile', status: 'SUCCESS' } });
+  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '/w/a', task: 'test', stage: 'test' } });
+  foldEvent(cards, { type: 'task-finish', data: { requestId: 1, dir: '/w/a', task: 'test', stage: 'test', status: 'FAIL' } });
   const byDir = (dir) => cards[0].modules.find((m) => m.dir === dir);
   assert.equal(cards[0].modules.length, 2); // two modules, not one merged chain
   assert.deepEqual(
@@ -185,7 +185,7 @@ test('orderedModules puts running first (newest activity), finished last', () =>
   foldEvent(cards, { type: 'module-start', data: { requestId: 1, dir: '/w/a' }, at: 100 });
   foldEvent(cards, { type: 'module-finish', data: { requestId: 1, dir: '/w/a', success: true, millis: 10 }, at: 200 });
   foldEvent(cards, { type: 'module-start', data: { requestId: 1, dir: '/w/b' }, at: 300 });
-  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '/w/b', task: 'compile', group: 'compile' }, at: 400 });
+  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '/w/b', task: 'compile', stage: 'compile' }, at: 400 });
   foldEvent(cards, { type: 'module-start', data: { requestId: 1, dir: '/w/c' }, at: 350 });
   foldEvent(cards, { type: 'module-finish', data: { requestId: 1, dir: '/w/c', success: false, millis: 5 }, at: 360 });
   // Later tick on b → b is the most recently active runner.
@@ -205,8 +205,8 @@ test('orderedModules puts running first (newest activity), finished last', () =>
 test('single-plan step events (empty dir) become one module with a chain', () => {
   const cards = [];
   foldEvent(cards, start(1, '/proj'));
-  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '', task: 'compile-java', group: 'compile' } });
-  foldEvent(cards, { type: 'task-finish', data: { requestId: 1, dir: '', task: 'compile-java', group: 'compile', status: 'SUCCESS' } });
+  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '', task: 'compile-java', stage: 'compile' } });
+  foldEvent(cards, { type: 'task-finish', data: { requestId: 1, dir: '', task: 'compile-java', stage: 'compile', status: 'SUCCESS' } });
   assert.equal(cards[0].modules.length, 1);
   assert.equal(cards[0].modules[0].dir, '');
   assert.deepEqual(cards[0].modules[0].steps.map((p) => p.name + ':' + p.state), ['compile-java:success']);
@@ -531,8 +531,8 @@ test('phaseChainOf collapses steps into coarse phase nodes in encounter order', 
   const cards = [];
   foldEvent(cards, start(1, '/proj'));
   const step = (name, phase, status) => {
-    foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '', task: name, group: phase } });
-    if (status) foldEvent(cards, { type: 'task-finish', data: { requestId: 1, dir: '', task: name, group: phase, status } });
+    foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '', task: name, stage: phase } });
+    if (status) foldEvent(cards, { type: 'task-finish', data: { requestId: 1, dir: '', task: name, stage: phase, status } });
   };
   step('resolve-deps', 'resolve', 'SUCCESS');
   step('compile-java', 'compile', 'SUCCESS');
@@ -549,12 +549,12 @@ test('task-finish stores engine millis on the step row', () => {
   foldEvent(cards, start(1, '/proj'));
   foldEvent(cards, {
     type: 'task-start',
-    data: { requestId: 1, dir: '', task: 'ensure-jdk', group: 'resolve' },
+    data: { requestId: 1, dir: '', task: 'ensure-jdk', stage: 'resolve' },
     at: 1000,
   });
   foldEvent(cards, {
     type: 'task-finish',
-    data: { requestId: 1, dir: '', task: 'ensure-jdk', group: 'resolve', status: 'SUCCESS', millis: 360 },
+    data: { requestId: 1, dir: '', task: 'ensure-jdk', stage: 'resolve', status: 'SUCCESS', millis: 360 },
     at: 1500,
   });
   assert.equal(cards[0].modules[0].steps[0].millis, 360);
@@ -565,12 +565,12 @@ test('task-finish falls back to receipt delta when millis is absent', () => {
   foldEvent(cards, start(1, '/proj'));
   foldEvent(cards, {
     type: 'task-start',
-    data: { requestId: 1, dir: '', task: 'compile-tests', group: 'compile' },
+    data: { requestId: 1, dir: '', task: 'compile-tests', stage: 'compile' },
     at: 1000,
   });
   foldEvent(cards, {
     type: 'task-finish',
-    data: { requestId: 1, dir: '', task: 'compile-tests', group: 'compile', status: 'SUCCESS' },
+    data: { requestId: 1, dir: '', task: 'compile-tests', stage: 'compile', status: 'SUCCESS' },
     at: 1212,
   });
   assert.equal(cards[0].modules[0].steps[0].millis, 212);
@@ -581,8 +581,8 @@ test('history seed preserves per-step millis for tooltips', () => {
   seedFromHistory(cards, [
     historyRecord('h1', '/w', {
       steps: [
-        { name: 'ensure-jdk', group: 'resolve', status: 'SUCCESS', millis: 360 },
-        { name: 'resolve-deps', group: 'resolve', status: 'SUCCESS', millis: 1200 },
+        { name: 'ensure-jdk', stage: 'resolve', status: 'SUCCESS', millis: 360 },
+        { name: 'resolve-deps', stage: 'resolve', status: 'SUCCESS', millis: 1200 },
       ],
     }),
   ]);

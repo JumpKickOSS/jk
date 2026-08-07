@@ -103,7 +103,7 @@ final class EnginePluginAdapter {
                     case EngineProtocol.PLAN_TASK ->
                         steps.add(Task.builder(Jsonl.str(line, "name"))
                                 .label(Jsonl.str(line, "label"))
-                                .phase(wireGroup(Jsonl.str(line, "group")))
+                                .phase(wireGroup(Jsonl.str(line, "stage")))
                                 .build());
                     case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
                     case EngineProtocol.AUDIT_FINDING,
@@ -203,7 +203,7 @@ final class EnginePluginAdapter {
             case EngineProtocol.TASK_START ->
                 listener.stepStart(
                         Jsonl.str(line, "task"),
-                        wireGroup(Jsonl.str(line, "group")),
+                        wireGroup(Jsonl.str(line, "stage")),
                         Jsonl.intValue(line, "ticks", 0));
             case EngineProtocol.PROGRESS ->
                 listener.progress(Jsonl.str(line, "task"), Jsonl.intValue(line, "delta", 0), readBuildPlanView(line));
@@ -224,7 +224,7 @@ final class EnginePluginAdapter {
             case EngineProtocol.TASK_FINISH ->
                 listener.stepFinish(
                         Jsonl.str(line, "task"),
-                        wireGroup(Jsonl.str(line, "group")),
+                        wireGroup(Jsonl.str(line, "stage")),
                         TaskStatus.valueOf(Jsonl.str(line, "status")),
                         Duration.ZERO);
             default -> {

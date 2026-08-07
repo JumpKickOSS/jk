@@ -1899,7 +1899,7 @@ public final class EngineProtocol {
                 + Jsonl.quote(name)
                 + ",\"label\":"
                 + Jsonl.quote(label)
-                + ",\"group\":"
+                + ",\"stage\":"
                 + Jsonl.quote(phase)
                 + "}";
     }
@@ -1978,7 +1978,7 @@ public final class EngineProtocol {
                 + Jsonl.quote(dir)
                 + ",\"task\":"
                 + Jsonl.quote(step)
-                + ",\"group\":"
+                + ",\"stage\":"
                 + Jsonl.quote(phase)
                 + ",\"ticks\":"
                 + ticks
@@ -2125,7 +2125,7 @@ public final class EngineProtocol {
                 + Jsonl.quote(dir)
                 + ",\"task\":"
                 + Jsonl.quote(step)
-                + ",\"group\":"
+                + ",\"stage\":"
                 + Jsonl.quote(phase)
                 + ",\"status\":"
                 + Jsonl.quote(status)

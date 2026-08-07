@@ -82,7 +82,7 @@ export function foldEvent(cards, event) {
     case 'task-start': {
       const card = resolveCard(cards, d);
       if (card) {
-        const row = stepRow(card, d.dir, (d.task || d.step), d.group, event.at);
+        const row = stepRow(card, d.dir, (d.task || d.step), d.stage, event.at);
         row.state = 'running';
         row.message = ''; // new step — clear previous tick text
         row.startedAt = event.at ?? row.startedAt ?? null; // wall receipt for duration fallback
@@ -92,7 +92,7 @@ export function foldEvent(cards, event) {
     case 'task-finish': {
       const card = resolveCard(cards, d);
       if (card) {
-        const row = stepRow(card, d.dir, (d.task || d.step), d.group, event.at);
+        const row = stepRow(card, d.dir, (d.task || d.step), d.stage, event.at);
         row.state = stepState(d.status);
         // Engine carries millis (additive); duration_ms is the CLI jsonl alias; else receipt delta.
         row.millis = stepMillisOf(d, row, event.at);
@@ -104,7 +104,7 @@ export function foldEvent(cards, event) {
     case 'label': {
       // Live step detail (test class.method, "shrinking jar", …) — CLI tree-row parity.
       const card = resolveCard(cards, d);
-      if (card) stepRow(card, d.dir, (d.task || d.step), d.group, event.at).message = d.label || '';
+      if (card) stepRow(card, d.dir, (d.task || d.step), d.stage, event.at).message = d.label || '';
       break;
     }
     case 'plan': {
@@ -425,7 +425,7 @@ function historyModules(rec) {
     (ps || []).map((p) => ({
       name: p.name || '?',
       state: stepState(p.status),
-      phase: p.group || p.phase || '',
+      phase: p.stage || p.group || p.phase || '',
       // Journal tasks always carry millis (0 when unknown); keep null only if the field is absent.
       millis: typeof p.millis === 'number' ? p.millis : null,
       message: '',

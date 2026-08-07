@@ -180,7 +180,7 @@ Compile / test / package are **task names** (or groups of tasks), not invocation
 | `buildplan-start` / `buildplan-finish` | One module BuildPlan start/end |
 | `progress` / `label` / `output` / … | Unchanged roles; field `step` → `task` where present |
 | `explain-task` / `history-task` | Explain/history bursts (were `explain-step` / `history-step`) |
-| Task events' stage | Field `group` (was `phase`) carries the task's `BuildStage` wire name; `phase` means only InvocationPhase and the workspace-progress tracker |
+| Task events' stage | Field `stage` (was `group`, before that `phase`) carries the task's `BuildStage` wire name; `phase` means only InvocationPhase and the workspace-progress tracker |
 | Status | `activeBuildPlans` (was `activePipelines`) |
 
 Protocol version stays **1** (pre-1.0 freeze); names replace in place — no dual-read.
