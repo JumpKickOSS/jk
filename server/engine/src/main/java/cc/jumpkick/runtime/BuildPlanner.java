@@ -2821,21 +2821,55 @@ public final class BuildPlanner {
     }
 
     /**
-     * One declared build-plugin task: engine fingerprints inputs, restores on hit, forks on miss.
+     * The stage a plugin task is scheduled in, from the same predicates {@link
+     * #pluginTask} uses to build its {@code requires} — inference must never contradict the
+     * edges, or {@link BuildPlan} rejects a plan the planner itself produced.
      */
-    /** Resolve product stage for a plugin task: explicit wire, else contribution-based inference. */
-    private static BuildStage pluginStage(PluginBuild.TaskDecl step) {
-        if (step.stage() != null && !step.stage().isBlank()) {
-            return BuildStage.fromWire(step.stage());
-        }
-        if (step.sourceGenerating()) return BuildStage.GENERATE;
+    static BuildStage pluginWindow(PluginBuild.TaskDecl step) {
+        if (beforeCompile(step)) return BuildStage.GENERATE;
         if (step.testOnly()) return BuildStage.TEST;
-        return BuildStage.ofTaskName("plugin-" + step.name());
+        return BuildStage.COMPILE;
     }
 
-    private static Task pluginTask(
-            Ctx cx, PluginBuild.Active active, PluginBuild.TaskDecl step, PluginBuild.TaskDecl transform) {
-        Inputs in = cx.in();
+    /**
+     * The latest stage a plugin task may claim. {@code run-tests} (TEST) requires every
+     * test-classpath contributor, so those may not sit downstream of TEST.
+     */
+    private static BuildStage pluginCeiling(PluginBuild.TaskDecl step) {
+        boolean requiredByTests =
+                step.testOnly() || (step.contributesTestClasspath() != null && !step.contributesTestClasspath().isEmpty());
+        return requiredByTests ? BuildStage.TEST : BuildStage.IMAGE;
+    }
+
+    /**
+     * Product stage for a plugin task. A plugin may declare one to sharpen the UI fold (dex is
+     * {@code package}, not {@code compile}), but only within the window its scheduling allows —
+     * a contradiction is the plugin's error and says so.
+     */
+    static BuildStage pluginStage(PluginBuild.TaskDecl step) {
+        BuildStage window = pluginWindow(step);
+        String declared = step.stage();
+        if (declared == null || declared.isBlank()) return window;
+        BuildStage stage = BuildStage.fromWireExact(declared)
+                .orElseThrow(() -> new IllegalStateException("plugin task " + step.name() + " declares stage `"
+                        + declared + "` — expected one of " + BuildStage.wireNames()));
+        BuildStage ceiling = pluginCeiling(step);
+        if (stage.pipelineOrder() < window.pipelineOrder() || stage.pipelineOrder() > ceiling.pipelineOrder()) {
+            throw new IllegalStateException("plugin task " + step.name() + " declares stage `" + stage.wireName()
+                    + "` but is scheduled in the " + window.wireName() + " window"
+                    + (ceiling == BuildStage.TEST ? " and is required by run-tests" : "")
+                    + " — declare a stage between `" + window.wireName() + "` and `" + ceiling.wireName() + "`");
+        }
+        return stage;
+    }
+
+    /**
+     * The DAG edges a declared plugin task rides: its own declarations, the window anchors, and
+     * the peer/transform outputs its inputs name. Shares the {@link #beforeCompile} /
+     * {@link PluginBuild.TaskDecl#testOnly()} split with {@link #pluginWindow} so stage and edges
+     * cannot disagree.
+     */
+    static List<String> pluginRequires(PluginBuild.TaskDecl step, PluginBuild.TaskDecl transform) {
         boolean beforeCompile = beforeCompile(step);
         if (beforeCompile && step.inputs().contains("classes")) {
             throw new IllegalStateException("plugin task " + step.name()
@@ -2872,6 +2906,17 @@ public final class BuildPlanner {
                 && step.inputs().contains("classes")) {
             requires.add("plugin-" + transform.name());
         }
+        return requires;
+    }
+
+    /**
+     * One declared build-plugin task: engine fingerprints inputs, restores on hit, forks on miss.
+     */
+    private static Task pluginTask(
+            Ctx cx, PluginBuild.Active active, PluginBuild.TaskDecl step, PluginBuild.TaskDecl transform) {
+        Inputs in = cx.in();
+        boolean beforeCompile = beforeCompile(step);
+        List<String> requires = pluginRequires(step, transform);
         return Task.builder("plugin-" + step.name())
                 .label(step.name())
                 .kind(TaskKind.CPU)

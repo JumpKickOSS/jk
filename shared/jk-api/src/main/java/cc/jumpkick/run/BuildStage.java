@@ -94,6 +94,10 @@ public enum BuildStage {
         return OTHER;
     }
 
+    /**
+     * Strict parse for surfaces where a typo must not silently become {@link #OTHER} — a
+     * plugin-declared stage, say. {@link #fromWire} stays lenient for UI fold keys.
+     */
     public static Optional<BuildStage> fromWireExact(String name) {
         if (name == null || name.isBlank()) return Optional.empty();
         String key = name.trim().toLowerCase(Locale.ROOT);
@@ -101,6 +105,16 @@ public enum BuildStage {
             if (s.wire.equals(key)) return Optional.of(s);
         }
         return Optional.empty();
+    }
+
+    /** Every wire spelling, comma-joined — for "expected one of …" diagnostics. */
+    public static String wireNames() {
+        StringBuilder sb = new StringBuilder();
+        for (BuildStage s : values()) {
+            if (!sb.isEmpty()) sb.append(", ");
+            sb.append('`').append(s.wire).append('`');
+        }
+        return sb.toString();
     }
 
     /**

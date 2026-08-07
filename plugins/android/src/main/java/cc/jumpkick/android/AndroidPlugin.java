@@ -98,12 +98,14 @@ public final class AndroidPlugin implements Plugin, BuildPlugin {
                     r8Inputs.add(In.projectFiles(rel));
                 }
                 ctx.task(TaskSpec.named("android-r8")
+                        .stage("package")
                         .inputs(r8Inputs.toArray(new In[0]))
                         .outputs("dex", "mapping")
                         .run(R8Step::run));
             } else {
                 dexStep = "android-dex";
                 ctx.task(TaskSpec.named("android-dex")
+                        .stage("package")
                         .inputs(In.classes(), In.runtimeEntries(), In.config())
                         .outputs("dex")
                         .run(DexStep::run));
