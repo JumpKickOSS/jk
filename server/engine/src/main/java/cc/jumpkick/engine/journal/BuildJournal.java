@@ -377,7 +377,14 @@ public final class BuildJournal {
         if (s == null || s.millis() <= 0) return;
         if (s.status() == null || !"SUCCESS".equalsIgnoreCase(s.status())) return;
         String task = sanitize(s.name());
-        String phase = sanitize(cc.jumpkick.runtime.TaskPhases.of(s.name()));
+        // The record already carries the stage the plan declared (wire `stage`). Re-deriving it
+        // from the task name put the metrics rollup on a different taxonomy than the UI fold —
+        // plugin-android-res reported `generate` on the wire and landed in `phase.compile` here,
+        // and every stage(RESOLVE) task in ScriptPlans landed in `other` (JK-1610). Name inference
+        // stays as the fallback for records that carry no stage.
+        String declared = s.stage();
+        String phase = sanitize(
+                declared != null && !declared.isBlank() ? declared : cc.jumpkick.runtime.TaskPhases.of(s.name()));
         sb.append("task.").append(task).append(".wall-ms = ").append(s.millis()).append('\n');
         phaseTotals.merge(phase, s.millis(), Long::sum);
         if (moduleDir != null && !moduleDir.isBlank()) {

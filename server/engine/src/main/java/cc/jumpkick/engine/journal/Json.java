@@ -109,7 +109,7 @@ final class Json {
         for (BuildRecord.Task p : steps) {
             Map<String, Object> pm = new LinkedHashMap<>();
             pm.put("name", p.name());
-            pm.put("stage", p.phase());
+            pm.put("stage", p.stage());
             pm.put("status", p.status());
             pm.put("millis", p.millis());
             out.add(pm);

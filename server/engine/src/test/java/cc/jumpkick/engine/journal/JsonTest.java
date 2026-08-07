@@ -71,7 +71,7 @@ class JsonTest {
                 .extracting(BuildRecord.Task::name)
                 .containsExactly("compile", "test");
         assertThat(back.steps()).extracting(BuildRecord.Task::status).containsExactly("SUCCESS", "FAIL");
-        assertThat(back.steps()).extracting(BuildRecord.Task::phase).containsExactly("compile", "test");
+        assertThat(back.steps()).extracting(BuildRecord.Task::stage).containsExactly("compile", "test");
         assertThat(back.diagnostics()).hasSize(1);
         assertThat(back.diagnostics().get(0).dir()).isEqualTo("/proj");
         assertThat(back.diagnostics().get(0).message()).isEqualTo("expected 1 but was 2\nline two");
