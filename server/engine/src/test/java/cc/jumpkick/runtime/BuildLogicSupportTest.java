@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -189,6 +190,68 @@ class BuildLogicSupportTest {
                         .append(';')));
         assertTrue(labels.toString().contains("cache hit"), labels.toString());
         assertTrue(Files.isRegularFile(classes.resolve("after-compile.txt")));
+    }
+
+    /**
+     * A task reads the project through {@code BuildLogicContext}, so the key must cover it. Keying
+     * on the logic sources alone reported `cache hit` after a product edit and replayed the stale
+     * output (JK-1603).
+     */
+    @Test
+    void a_product_source_edit_invalidates_a_task_that_reads_the_project(@TempDir Path dir) throws Exception {
+        Path project = dir.resolve("proj");
+        Files.createDirectories(project.resolve("src/main/java/demo"));
+        Files.writeString(project.resolve("jk.toml"), """
+                [project]
+                group = "t"
+                name = "t"
+                version = "0.0.1"
+                jdk = 25
+                """);
+        Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
+
+        // Counts the lines of the project's own sources — the shape of the shipped example.
+        Path logicSrc = project.resolve(".jk-build/src/demo");
+        Files.createDirectories(logicSrc);
+        Files.writeString(logicSrc.resolve("CountLogic.java"), """
+                package demo;
+                import cc.jumpkick.plugin.buildlogic.*;
+                import java.nio.file.*;
+                import java.util.stream.Stream;
+                public class CountLogic implements BuildLogicContributor {
+                  @Override
+                  public void register(BuildLogicGraph g) {
+                    g.task("line-count", BuildLogicAnchor.AFTER_COMPILE, ctx -> {
+                      long n = 0;
+                      try (Stream<Path> w = Files.walk(ctx.projectDir().resolve("src"))) {
+                        for (Path f : w.filter(Files::isRegularFile).toList()) {
+                          n += Files.readAllLines(f).size();
+                        }
+                      }
+                      Files.writeString(ctx.outDir().resolve("line-count.txt"), String.valueOf(n));
+                    });
+                  }
+                }
+                """);
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
+        Path classes = layout.classesDir();
+        Files.createDirectories(classes);
+
+        assertTrue(BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> {}));
+        String first = Files.readString(classes.resolve("line-count.txt")).trim();
+
+        // Same logic, more product source: the count must change.
+        Files.writeString(
+                project.resolve("src/main/java/demo/More.java"),
+                "package demo;\npublic class More {\n}\n");
+        StringBuilder labels = new StringBuilder();
+        assertTrue(BuildLogicSupport.run(
+                project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> labels.append(s).append(';')));
+
+        assertFalse(labels.toString().contains("cache hit"), labels.toString());
+        assertNotEquals(first, Files.readString(classes.resolve("line-count.txt")).trim());
     }
 
     @Test

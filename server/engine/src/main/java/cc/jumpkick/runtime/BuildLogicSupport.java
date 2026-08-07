@@ -160,6 +160,11 @@ public final class BuildLogicSupport {
                     "script:" + c.logicDir().relativize(s.file()) + ":" + Hashing.sha256Hex(Files.readAllBytes(s.file())));
         }
         sourceTokens.add("anchor:" + anchor.name());
+        // A build-logic task reads the project, not only itself: BuildLogicContext hands it
+        // projectDir and classesDir. Keying on the logic sources alone made an edit to the
+        // product invisible, so the task reported `cache hit` and replayed a stale output —
+        // the shipped line-count example re-merged the old count into the jar (JK-1603).
+        sourceTokens.addAll(projectInputTokens(projectDir));
 
         // BEFORE_COMPILE is codegen: its output joins the compile source set (like KSP), it is
         // never merged into classes/. Merging there compiled nothing — a generated .java was
@@ -549,6 +554,37 @@ public final class BuildLogicSupport {
         int exit = p.waitFor();
         if (exit != 0 && !log.isBlank()) System.err.println(log);
         return exit;
+    }
+
+    /**
+     * What a build-logic task can read through {@link BuildLogicContext}, as cache-key tokens: the
+     * module's source roots.
+     *
+     * <p>Conservative on purpose — a task declares no inputs, so the key covers every input it
+     * <em>could</em> consume. Narrowing it needs a declared-input surface on the SPI.
+     *
+     * <p>The key is the <strong>sources</strong>, not {@code classesDir}, even for the anchors that
+     * read classes. Classes are a function of these sources, and hashing the classes tree would be
+     * self-referential: post-compile anchors merge their own output into it, so every run would
+     * perturb its own next key and a cache hit could never happen.
+     */
+    private static List<String> projectInputTokens(Path projectDir) throws IOException {
+        List<String> tokens = new ArrayList<>();
+        for (Path dir : cc.jumpkick.layout.ModuleLayout.fingerprintDirs(projectDir, /* skipTests */ false)) {
+            hashTree(projectDir, dir, "in", tokens);
+        }
+        java.util.Collections.sort(tokens);
+        return tokens;
+    }
+
+    /** Path+content tokens for one tree, relative to {@code base}; missing trees contribute none. */
+    private static void hashTree(Path base, Path dir, String prefix, List<String> out) throws IOException {
+        if (!Files.isDirectory(dir)) return;
+        try (Stream<Path> walk = Files.walk(dir)) {
+            for (Path f : walk.filter(Files::isRegularFile).toList()) {
+                out.add(prefix + ":" + base.relativize(f) + ":" + Hashing.sha256Hex(Files.readAllBytes(f)));
+            }
+        }
     }
 
     /**
