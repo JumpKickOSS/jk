@@ -465,6 +465,7 @@ class BuildLogicSupportTest {
         Files.writeString(
                 project.resolve(".jk-build/before-compile.kts"),
                 """
+                // SPDX-License-Identifier: Apache-2.0
                 import java.nio.file.Files
                 Files.createDirectories(outDir)
                 Files.writeString(outDir.resolve("from-kts.txt"), "hello-from-kts")

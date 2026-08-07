@@ -76,23 +76,28 @@ final class BuildLogicKtsHost {
                     "[build] logic: .kts stem scripts must not declare a package (" + script.getFileName() + ")");
         }
 
+        // Kotlin's file order is fixed: @file: annotations, then imports, then declarations. The
+        // injected bindings are declarations, so every user import has to be hoisted above them —
+        // including imports that sit after a comment. A comment must not end the header scan: this
+        // repo's own convention puts `// SPDX-License-Identifier` on line 1, which would have
+        // pushed every following import below the bindings and made the script uncompilable
+        // (JK-1605).
+        List<String> fileAnnotations = new ArrayList<>();
         List<String> userImports = new ArrayList<>();
         StringBuilder body = new StringBuilder();
         boolean inHeader = true;
         for (String line : user.split("\n", -1)) {
             String t = line.stripLeading();
             if (inHeader) {
-                if (t.isEmpty()) {
-                    continue; // skip leading blank lines
+                if (t.isEmpty() || t.startsWith("//")) {
+                    continue; // blank lines and comments never end the header
                 }
-                if (t.startsWith("import ") || t.startsWith("@file:")) {
-                    userImports.add(line);
+                if (t.startsWith("@file:")) {
+                    fileAnnotations.add(line);
                     continue;
                 }
-                if (t.startsWith("//")) {
-                    // leading file comments stay in body after bindings
-                    inHeader = false;
-                    body.append(line).append('\n');
+                if (t.startsWith("import ")) {
+                    userImports.add(line);
                     continue;
                 }
                 inHeader = false;
@@ -101,6 +106,10 @@ final class BuildLogicKtsHost {
         }
 
         StringBuilder out = new StringBuilder();
+        // @file: annotations must precede every import, including the injected one.
+        for (String ann : fileAnnotations) {
+            out.append(ann).append('\n');
+        }
         out.append("import java.nio.file.Path\n");
         for (String imp : userImports) {
             // Avoid duplicate Path import from the user script.
