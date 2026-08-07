@@ -309,6 +309,66 @@ class BuildLogicSupportTest {
         assertEquals("from-helper", Files.readString(classes.resolve("late.txt")).trim());
     }
 
+    /**
+     * BuildPlanner calls run() once per anchor — four times per module per build — and each call
+     * used to delete and recompile the whole logic tree, re-resolving the Kotlin toolchain with it.
+     * A sentinel dropped into the classes dir survives a second anchor if no recompile happened,
+     * and must not survive a logic-source edit (JK-1606).
+     */
+    @Test
+    void logic_is_compiled_once_per_change_not_once_per_anchor(@TempDir Path dir) throws Exception {
+        Path project = dir.resolve("proj");
+        Files.createDirectories(project.resolve("src/main/java/demo"));
+        Files.writeString(project.resolve("jk.toml"), """
+                [project]
+                group = "t"
+                name = "t"
+                version = "0.0.1"
+                jdk = 25
+                """);
+        Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
+
+        Path logicSrc = project.resolve(".jk-build/src/demo");
+        Files.createDirectories(logicSrc);
+        Path contributor = logicSrc.resolve("TwoAnchorLogic.java");
+        Files.writeString(contributor, """
+                package demo;
+                import cc.jumpkick.plugin.buildlogic.*;
+                import java.nio.file.*;
+                public class TwoAnchorLogic implements BuildLogicContributor {
+                  @Override
+                  public void register(BuildLogicGraph g) {
+                    g.task("a", BuildLogicAnchor.AFTER_COMPILE, ctx ->
+                        Files.writeString(ctx.outDir().resolve("a.txt"), "a"));
+                    g.task("b", BuildLogicAnchor.BEFORE_PACKAGE, ctx ->
+                        Files.writeString(ctx.outDir().resolve("b.txt"), "b"));
+                  }
+                }
+                """);
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
+        Path classes = layout.classesDir();
+        Files.createDirectories(classes);
+        Path logicClasses = layout.generatedSourcesDir("jk-build-classes");
+
+        assertTrue(BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> {}));
+
+        // A recompile deletes the classes dir, so this sentinel is the observation.
+        Path sentinel = logicClasses.resolve("sentinel.marker");
+        Files.writeString(sentinel, "1");
+
+        assertTrue(BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.BEFORE_PACKAGE, s -> {}));
+        assertTrue(Files.exists(sentinel), "second anchor must reuse the compiled logic");
+        assertTrue(Files.isRegularFile(classes.resolve("b.txt")), "the anchor still ran");
+
+        // Editing the logic must still recompile.
+        Files.writeString(contributor, Files.readString(contributor).replace("\"a\"))", "\"a2\"))"));
+        assertTrue(BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> {}));
+        assertFalse(Files.exists(sentinel), "a logic edit must recompile");
+        assertEquals("a2", Files.readString(classes.resolve("a.txt")).trim());
+    }
+
     @Test
     void logic_off_skips_even_if_jk_build_exists(@TempDir Path dir) throws Exception {
         Path project = dir.resolve("proj");

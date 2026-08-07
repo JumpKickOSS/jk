@@ -134,14 +134,26 @@ public final class BuildLogicSupport {
         try {
             if (!javaSources.isEmpty() || !ktSources.isEmpty()) {
                 Path logicClasses = layout.generatedSourcesDir("jk-build-classes");
-                deleteContents(logicClasses);
-                Files.createDirectories(logicClasses);
                 Path apiCp = apiClasspath();
-                if (!javaSources.isEmpty()) {
-                    compileJava(javaSources, logicClasses, apiCp);
-                }
-                if (!ktSources.isEmpty()) {
-                    kotlinStdlib = compileKotlin(ktSources, logicClasses, apiCp, projectDir, actionCache);
+                // BuildPlanner calls run() once per anchor — four times per module per build — and
+                // this used to delete and recompile the whole logic tree every time, re-parsing
+                // jk.toml and re-resolving the Kotlin toolchain with it. Three of the four produce
+                // classes for anchors that register nothing. A stamp beside the classes makes the
+                // compile happen once per change instead (JK-1606).
+                String stamp = logicStamp(c.logicDir(), javaSources, ktSources, apiCp);
+                Compiled compiled = readStamp(logicClasses);
+                if (compiled != null && compiled.stamp().equals(stamp)) {
+                    kotlinStdlib = compiled.kotlinStdlib();
+                } else {
+                    deleteContents(logicClasses);
+                    Files.createDirectories(logicClasses);
+                    if (!javaSources.isEmpty()) {
+                        compileJava(javaSources, logicClasses, apiCp);
+                    }
+                    if (!ktSources.isEmpty()) {
+                        kotlinStdlib = compileKotlin(ktSources, logicClasses, apiCp, projectDir, actionCache);
+                    }
+                    writeStamp(logicClasses, stamp, kotlinStdlib);
                 }
                 logicLoader = new URLClassLoader(
                         toUrls(logicClasses, apiCp, kotlinStdlib), BuildLogicContributor.class.getClassLoader());
@@ -469,6 +481,47 @@ public final class BuildLogicSupport {
         }
         out.sort(Comparator.comparing(Path::toString));
         return out;
+    }
+
+    /** What a completed build-logic compile left behind, as recorded beside the classes. */
+    private record Compiled(String stamp, Path kotlinStdlib) {}
+
+    /** Marker naming the sources the classes in this directory were built from. */
+    private static final String STAMP_FILE = ".jk-logic-stamp";
+
+    /** Identity of one build-logic compile: every source's content, plus the API classpath. */
+    private static String logicStamp(Path logicDir, List<Path> javaSources, List<Path> ktSources, Path apiCp)
+            throws IOException {
+        List<String> tokens = new ArrayList<>();
+        for (Path src : javaSources) {
+            tokens.add("j:" + logicDir.relativize(src) + ":" + Hashing.sha256Hex(Files.readAllBytes(src)));
+        }
+        for (Path src : ktSources) {
+            tokens.add("k:" + logicDir.relativize(src) + ":" + Hashing.sha256Hex(Files.readAllBytes(src)));
+        }
+        java.util.Collections.sort(tokens);
+        tokens.add("api:" + (apiCp == null ? "" : apiCp));
+        tokens.add("v:" + BuildIdentity.cacheKeyVersion());
+        return Hashing.sha256Hex(String.join("\n", tokens).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    private static Compiled readStamp(Path logicClasses) {
+        Path file = logicClasses.resolve(STAMP_FILE);
+        try {
+            if (!Files.isRegularFile(file)) return null;
+            List<String> lines = Files.readAllLines(file);
+            if (lines.isEmpty() || lines.get(0).isBlank()) return null;
+            Path stdlib = lines.size() > 1 && !lines.get(1).isBlank() ? Path.of(lines.get(1)) : null;
+            // A recorded stdlib that has since been swept from the store means recompile.
+            if (stdlib != null && !Files.exists(stdlib)) return null;
+            return new Compiled(lines.get(0), stdlib);
+        } catch (IOException | RuntimeException e) {
+            return null; // unreadable stamp is a miss, never a failure
+        }
+    }
+
+    private static void writeStamp(Path logicClasses, String stamp, Path kotlinStdlib) throws IOException {
+        Files.writeString(logicClasses.resolve(STAMP_FILE), stamp + "\n" + (kotlinStdlib == null ? "" : kotlinStdlib));
     }
 
     private static void compileJava(List<Path> sources, Path classes, Path apiCp) throws IOException {
