@@ -199,6 +199,32 @@ class AddRemoveCommandTest {
     }
 
     @Test
+    void add_path_form_promotes_a_plain_project_into_a_workspace(@TempDir Path tempDir) throws Exception {
+        // Without the registration the dependency names a coordinate nobody published, so
+        // `jk add ./libb` would leave a project that cannot lock.
+        run("new", tempDir.toString());
+        Path lib = tempDir.resolve("libb");
+        Files.createDirectories(lib);
+        Files.writeString(
+                lib.resolve("jk.toml"),
+                """
+                [project]
+                group = "cc.jumpkick"
+                name = "libb"
+                version = "0.2.0"
+                """);
+        assertThat(JkBuildParser.parse(tempDir.resolve("jk.toml")).isWorkspaceRoot())
+                .isFalse();
+
+        assertThat(run("add", "./libb", "-C", tempDir.toString())).isEqualTo(0);
+
+        JkBuild parsed = JkBuildParser.parse(tempDir.resolve("jk.toml"));
+        assertThat(parsed.isWorkspaceRoot()).isTrue();
+        assertThat(parsed.workspace().modules()).containsExactly("libb");
+        assertThat(parsed.dependencies().of(Scope.MAIN)).isNotEmpty();
+    }
+
+    @Test
     void remove_path_form_unregisters_the_workspace_module(@TempDir Path tempDir) throws Exception {
         // JK-1516: `jk add ./libb` registers [workspace].modules; `jk remove ./libb` must undo it.
         run("new", tempDir.toString());
