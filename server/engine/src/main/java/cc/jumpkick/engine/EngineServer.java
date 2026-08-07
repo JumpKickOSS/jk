@@ -901,6 +901,7 @@ public final class EngineServer implements AutoCloseable {
                     case EngineProtocol.OUTDATED_REQUEST -> handleOutdatedRequest(line, writer);
                     case EngineProtocol.EXEC_PLAN_REQUEST -> handleExecPlanRequest(line, writer);
                     case EngineProtocol.EDIT_REQUEST -> handleEditRequest(line, writer);
+                    case EngineProtocol.FRESHEN_CATALOG_REQUEST -> handleFreshenCatalogRequest(line, writer);
                     case EngineProtocol.DENY_CHECK_REQUEST -> handleDenyCheckRequest(line, writer);
                     case EngineProtocol.TREE_REQUEST -> handleTreeRequest(line, writer);
                     case EngineProtocol.WHY_REQUEST -> handleWhyRequest(line, writer);
@@ -2182,7 +2183,7 @@ public final class EngineServer implements AutoCloseable {
             try {
                 var config = cc.jumpkick.config.JkCacheConfig.resolve();
                 cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.CachePlans.pruneBuildPlan(
-                        cache, config.recordTtlDays(), false, false, null, false);
+                        cache, config.recordTtlDays(), false, false, false);
                 cc.jumpkick.run.BuildPlanResult result = plan.run();
                 if (result.success()) {
                     Files.writeString(
@@ -2535,6 +2536,61 @@ public final class EngineServer implements AutoCloseable {
             result = new cc.jumpkick.runtime.EditOps.Result(false, String.valueOf(e.getMessage()));
         }
         sendQuiet(writer, EngineProtocol.editAck(result.changed(), result.error()));
+    }
+
+    /**
+     * {@link EngineProtocol#FRESHEN_CATALOG_REQUEST}: on-demand, TTL-free freshen of a
+     * network-backed catalog ({@code templates}, {@code libraries}, or {@code jdks}) — the network
+     * fetch itself always happens here, never client-side. Every client that is already talking to
+     * an engine (the web dashboard and MCP are always engine-hosted; the CLI once a healthy engine
+     * is running) delegates here, including for {@code jdks} — that lets those non-CLI clients
+     * install JDKs too. The one caller that does <em>not</em> require a reachable engine first is
+     * {@code jk jdk install}/{@code update} when no engine is running yet: the engine is a JVM
+     * process that needs a JDK to run, so it cannot be the sole path to provisioning the first JDK
+     * on a bare machine. That CLI path only calls this when an engine already answers, and fetches
+     * {@code jdks.json} directly itself otherwise ({@code JdkCatalogClient}) — see {@link
+     * cc.jumpkick.cli.engine.EngineClient#freshenCatalogIfRunning}.
+     */
+    private void handleFreshenCatalogRequest(String requestLine, BufferedWriter writer) {
+        String catalog = Jsonl.str(requestLine, "catalog");
+        boolean offline = Jsonl.bool(requestLine, "offline", false);
+        String url = Jsonl.str(requestLine, "url");
+        String cacheFile = Jsonl.str(requestLine, "cacheFile");
+        String error = null;
+        try {
+            switch (String.valueOf(catalog)) {
+                case "templates" -> {
+                    if (!offline) cc.jumpkick.templates.OfficialTemplatesFreshen.refreshNow(msg -> {});
+                }
+                case "libraries" ->
+                    cc.jumpkick.repo.LibraryRegistrySync.ensurePresent(
+                            offline,
+                            url != null
+                                    ? java.net.URI.create(url)
+                                    : cc.jumpkick.repo.LibraryRegistryClient.DEFAULT_SOURCE,
+                            cacheFile != null
+                                    ? Path.of(cacheFile)
+                                    : cc.jumpkick.library.LibraryCatalog.downloadedFile());
+                case "jdks" -> {
+                    if (!offline) {
+                        cc.jumpkick.jdk.JdkCatalogClient client = url != null
+                                ? new cc.jumpkick.jdk.JdkCatalogClient(
+                                        new cc.jumpkick.http.Http(),
+                                        java.net.URI.create(url),
+                                        cacheFile != null
+                                                ? Path.of(cacheFile)
+                                                : cc.jumpkick.jdk.JdkCatalogClient.defaultCachePath(),
+                                        java.time.Duration.ZERO)
+                                : new cc.jumpkick.jdk.JdkCatalogClient();
+                        client.onWarning(msg -> {}).fetch(true);
+                    }
+                }
+                default -> error = "unknown catalog: " + catalog;
+            }
+        } catch (Exception e) {
+            error = String.valueOf(e.getMessage());
+        }
+        sendQuiet(writer, EngineProtocol.freshenCatalogAck(error == null, error));
     }
 
     private void handleExecPlanRequest(String requestLine, BufferedWriter writer) {
@@ -3620,9 +3676,7 @@ public final class EngineServer implements AutoCloseable {
                         cc.jumpkick.run.BuildPlan plan =
                                 switch (op) {
                                     case "purge" -> cc.jumpkick.runtime.CachePlans.purgeBuildPlan(cache);
-                                    case "sweep" ->
-                                        cc.jumpkick.runtime.CachePlans.sweepBuildPlan(
-                                                cache, dryRun, Jsonl.str(requestLine, "maxSize"));
+                                    case "sweep" -> cc.jumpkick.runtime.CachePlans.sweepBuildPlan(cache, dryRun);
                                     case "gc" -> cc.jumpkick.runtime.CachePlans.gcBuildPlan(cache);
                                     case "clear" ->
                                         cc.jumpkick.runtime.CachePlans.clearBuildPlan(
@@ -3633,7 +3687,6 @@ public final class EngineServer implements AutoCloseable {
                                                 Jsonl.intValue(requestLine, "olderThanDays", 30),
                                                 dryRun,
                                                 Jsonl.bool(requestLine, "sweep", false),
-                                                Jsonl.str(requestLine, "maxSize"),
                                                 Jsonl.bool(requestLine, "includeJkTmp", false));
                                 };
                         Session session = Session.defaults().withCacheDir(cache).withCancel(cancelToken);

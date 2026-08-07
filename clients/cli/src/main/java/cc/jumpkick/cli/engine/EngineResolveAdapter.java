@@ -168,7 +168,7 @@ final class EngineResolveAdapter {
                         if (listener != null) listener.planFinish(result);
                         return result;
                     }
-                    case EngineProtocol.ERROR -> throw EngineWireException.fromJsonLine(line);
+                    case EngineProtocol.ERROR -> throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
                     default -> dispatchBuildPlanEvent(type, line, listener, diagnostics);
                 }
             }
@@ -246,7 +246,7 @@ final class EngineResolveAdapter {
                                 Jsonl.strArray(line, "errors"),
                                 Jsonl.intValue(line, "refreshed", -1));
                     }
-                    case EngineProtocol.ERROR -> throw EngineWireException.fromJsonLine(line);
+                    case EngineProtocol.ERROR -> throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
                     default -> dispatchBuildPlanEvent(type, line, listener, diagnostics);
                 }
             }

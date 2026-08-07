@@ -71,7 +71,7 @@ panel rather than the global auth dialog.
 | Path | Handler |
 | --- | --- |
 | Build activity | `fold.js` → activity cards (hard bounds: `MAX_CARDS`, `MAX_OUTPUT_LINES`, `MAX_DIAGNOSTICS`); `label` events drive the live detail after the running phase node (CLI tree-row parity) |
-| `status` | Header sysbox (CORES/LOAD/RAM/AVAIL) + footer Builds Running / Engine Heap |
+| `status` | Header sysbox (CPU / RAM meters) + footer Builds Running / Engine Heap |
 | `cache` | Footer **Cache** + **Store** (thin dual-surface frames); Status panels load full breakdown via REST on view entry |
 
 While the stream is **live**, the SPA does **not** poll `/api/status` or `/api/cache` on a timer.

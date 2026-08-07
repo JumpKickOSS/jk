@@ -1184,17 +1184,20 @@ public final class HttpEngineServer implements AutoCloseable {
      */
     private void handleProjectGraph(HttpExchange exchange) throws IOException {
         String query = exchange.getRequestURI().getQuery();
-        String dir = decode(queryParam(query, "dir"));
-        if (dir == null || dir.isBlank()) {
-            sendJson(
-                    exchange,
-                    400,
-                    JsonOut.object().put("error", "missing \"dir\"").toString());
-            return;
-        }
         Path projectDir;
         List<cc.jumpkick.model.Scope> scopes;
         try {
+            // decode can throw IllegalArgumentException on malformed percent-encoding — keep it (and
+            // the missing-dir check) inside the try so a bad `dir`/`scopes` query always gets the 400
+            // path below, not an uncaught exception turned into a generic 500.
+            String dir = decode(queryParam(query, "dir"));
+            if (dir == null || dir.isBlank()) {
+                sendJson(
+                        exchange,
+                        400,
+                        JsonOut.object().put("error", "missing \"dir\"").toString());
+                return;
+            }
             projectDir = Path.of(dir);
             // decode, like `dir` above: the SPA sends encodeURIComponent, which spells `,` as %2C,
             // so a raw read turns every multi-scope selection into one unknown token (JK-1607).

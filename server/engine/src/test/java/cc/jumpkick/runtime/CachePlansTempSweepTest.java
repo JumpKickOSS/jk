@@ -62,7 +62,7 @@ class CachePlansTempSweepTest {
                         System.currentTimeMillis() - Duration.ofDays(90).toMillis()));
         Path cacheTemp = seed(root.resolve("sha256/ab/.put-1234"), "partial");
 
-        BuildPlan plan = CachePlans.pruneBuildPlan(root, 30, false, false, null, false);
+        BuildPlan plan = CachePlans.pruneBuildPlan(root, 30, false, false, false);
         plan.run();
 
         assertThat(cacheTemp).doesNotExist();
@@ -77,7 +77,7 @@ class CachePlansTempSweepTest {
         Path storeTemp = cc.jumpkick.cache.JkStores.resolve(root, "sha256").resolve("ab/.put-jk1531");
         seed(storeTemp, "partial");
         try {
-            CachePlans.pruneBuildPlan(root, 30, false, false, null, false).run();
+            CachePlans.pruneBuildPlan(root, 30, false, false, false).run();
 
             assertThat(storeTemp).exists();
         } finally {

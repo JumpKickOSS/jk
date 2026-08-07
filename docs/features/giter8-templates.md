@@ -16,7 +16,11 @@ is an alternate G8 shape of the same single-module app (not a multi-module works
 First-party Giter8 content lives in **[jkbuild/jk-templates](https://github.com/jkbuild/jk-templates)**
 (overridable via config). Layout: monorepo with nested `*.g8` directories (or `templates/*.g8`).
 
-In-tree `templates/*.g8` is **dev dogfood** (walk-up from cwd, not bundled). Production templates come from the shallow-cloned `jk-templates` cache populated at install time and lazily on `jk new`/`jk init`.
+In-tree `templates/*.g8` is **dev dogfood** (walk-up from cwd, not bundled). Production templates
+come from the shallow-cloned `jk-templates` cache: `install.sh` clones it preemptively, and the
+**engine** re-freshens it (fetch + hard reset, or a clean re-clone if that fails) on every `jk
+new`/`jk init` that resolves a built-in short name — the CLI never touches the network for this
+itself, it only reads the cache the engine just refreshed.
 
 ### Third-party sources (`~/.config/jk/config.toml`)
 
@@ -54,7 +58,7 @@ jk new --template <ref> --param key=value   # non-interactive props (repeatable)
 | Order | Form | Status |
 |------:|------|--------|
 | 1 | **Local path** — directory or `…/template.g8` with `src/main/g8/` (or G8 root layout) | **Shipped** (JK-1182) |
-| 2 | **Short name** — `$JK_TEMPLATES`, `~/.local/share/jk/templates`, walk-up dogfood, **config sources**, **official [jk-templates](https://github.com/jkbuild/jk-templates)** (shallow clone) | **Shipped** (JK-1380; requires `git` for remote) |
+| 2 | **Short name** — `$JK_TEMPLATES`, `~/.jk/templates`, walk-up dogfood, **config sources**, **official [jk-templates](https://github.com/jkbuild/jk-templates)** (engine-refreshed shallow clone) | **Shipped** (JK-1380; requires `git` for remote) |
 | 3 | **GitHub shorthand** — `owner/repo` or `owner/repo.g8` | **Shipped** (JK-1203; requires `git`) |
 | 4 | **Full git/HTTPS URI** — optional `#branch` or `@tag` | **Shipped** (JK-1203; requires `git`) |
 
@@ -65,9 +69,10 @@ Invalid refs fail before any files are written.
 When `<ref>` is a known short name (not a path):
 
 1. `$JK_TEMPLATES/<name>.g8`
-2. `~/.local/share/jk/templates/<name>.g8`
+2. `~/.jk/templates/<name>.g8`
 3. Walk up from cwd for `templates/<name>.g8` (monorepo dogfood)
-4. Official `jk-templates` shallow clone cache
+4. Official `jk-templates` shallow clone cache — the engine freshens this on-demand before the
+   CLI reads it (see [Official templates repo](#official-templates-repo))
 
 | Name | Intent |
 |------|--------|
@@ -126,8 +131,8 @@ Maven traditional.
 | Template apply | Local + short name (official monorepo + `[templates.sources]` + `--template-source`) + git URI | Full Giter8 conditionals/includes |
 | Conditionals / includes | Not supported | If/when full Giter8 worker lands |
 
-Monorepo sources: `templates/<name>.g8/` (dogfood) and
-`clients/cli/src/main/resources/giter8/<name>/` (install bundle).
+Monorepo sources: `templates/<name>.g8/` (dogfood). There is no bundled classpath copy — every
+non-local, non-dogfood short name resolves through the engine-refreshed `jk-templates` cache.
 
 ## Coexistence with plugin scaffolds
 

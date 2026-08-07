@@ -36,7 +36,11 @@ public final class CachePlans {
     /** Bytes freed (or reclaimable, on a dry run). */
     public static final BuildPlanKey<Long> BYTES = BuildPlanKey.of("cache-bytes", Long.class);
 
-    /** Reachable CAS objects the LRU evictor removed to fit {@code --max-size} (prune only). */
+    /**
+     * Reachable cache-tier CAS objects the LRU evictor removed to fit {@code cache.max-cache-size-mb}
+     * ({@code jk cache prune} only — {@code jk repo prune}'s store-tier sweep never evicts reachable
+     * blobs).
+     */
     public static final BuildPlanKey<Long> REACHABLE_EVICTED = BuildPlanKey.of("cache-reachable-evicted", Long.class);
 
     /** Repo-mirror links removed ({@code gc} only). */
@@ -44,11 +48,11 @@ public final class CachePlans {
 
     /**
      * Prune plan for the cache at {@code root}: expire stale entries, GC sidecar files, optional
-     * CAS sweep + LRU eviction. {@code includeJkTmp} sweeps {@code state/tmp} only for the default
-     * cache dir.
+     * CAS sweep, and cache-tier LRU eviction against {@code cache.max-cache-size-mb} (config, not a
+     * CLI flag). {@code includeJkTmp} sweeps {@code state/tmp} only for the default cache dir.
      */
     public static BuildPlan pruneBuildPlan(
-            Path root, int olderThanDays, boolean dryRun, boolean sweep, String maxSize, boolean includeJkTmp) {
+            Path root, int olderThanDays, boolean dryRun, boolean sweep, boolean includeJkTmp) {
         Task pruneStep = Task.builder("prune")
                 .ticks(1)
                 .execute(ctx -> {
@@ -138,10 +142,9 @@ public final class CachePlans {
                         reachableEvicted += evict.reachableEvicted();
                     }
 
-                    // Optional store-tier sweep (legacy --sweep / --max-size on cache prune).
-                    boolean doStoreSweep = sweep || maxSize != null;
-                    if (doStoreSweep) {
-                        SweepReport storeReport = sweepStore(root, dryRun, maxSize);
+                    // Optional store-tier sweep (legacy --sweep on cache prune).
+                    if (sweep) {
+                        SweepReport storeReport = sweepStore(root, dryRun);
                         totalFiles += storeReport.files();
                         totalBytes += storeReport.bytes();
                         reachableEvicted += storeReport.reachableEvicted();
@@ -185,14 +188,14 @@ public final class CachePlans {
 
     /**
      * Build the store-sweep plan ({@code jk repo prune}): artifact CAS temp cleanup, run-log TTL
-     * GC, unreferenced-blob sweep, and (with {@code maxSize}) LRU eviction down to the budget.
+     * GC, and unreferenced-blob sweep. Garbage-only — never evicts reachable blobs.
      */
-    public static BuildPlan sweepBuildPlan(Path root, boolean dryRun, String maxSize) {
+    public static BuildPlan sweepBuildPlan(Path root, boolean dryRun) {
         Task sweepStep = Task.builder("sweep")
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("Sweeping store…");
-                    SweepReport report = sweepStore(root, dryRun, maxSize);
+                    SweepReport report = sweepStore(root, dryRun);
                     ctx.put(FILES, report.files());
                     ctx.put(BYTES, report.bytes());
                     ctx.put(REACHABLE_EVICTED, report.reachableEvicted());
@@ -206,7 +209,7 @@ public final class CachePlans {
     public record SweepReport(long files, long bytes, long reachableEvicted) {}
 
     /** Artifact-store GC: reclaims temps, expired run logs, and unreferenced store blobs only. Never evicts reachable blobs. */
-    public static SweepReport sweepStore(Path root, boolean dryRun, String maxSize) throws IOException {
+    public static SweepReport sweepStore(Path root, boolean dryRun) throws IOException {
         long totalFiles = 0;
         long totalBytes = 0;
 

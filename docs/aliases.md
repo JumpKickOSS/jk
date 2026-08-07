@@ -68,7 +68,6 @@ Still functional, but gone from `--help`; the canonical home moved in the cache/
 | Hidden surface                          | Canonical                  |
 | --------------------------------------- | -------------------------- |
 | `cache prune --sweep`                   | `repo prune`               |
-| `cache prune --max-size <size>`         | `repo prune --max-size`    |
 
 ## Hidden global options
 

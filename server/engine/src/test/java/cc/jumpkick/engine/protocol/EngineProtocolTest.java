@@ -643,19 +643,17 @@ class EngineProtocolTest {
 
     @Test
     void cache_prune_request_round_trips_all_fields() {
-        String json = EngineProtocol.cachePruneRequest("prune", "/cache", 14, true, true, "20G", true);
+        String json = EngineProtocol.cachePruneRequest("prune", "/cache", 14, true, true, true);
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.CACHE_PRUNE_REQUEST);
         assertThat(Jsonl.str(json, "op")).isEqualTo("prune");
         assertThat(Jsonl.str(json, "cache")).isEqualTo("/cache");
         assertThat(Jsonl.intValue(json, "olderThanDays", -1)).isEqualTo(14);
         assertThat(Jsonl.bool(json, "dryRun", false)).isTrue();
         assertThat(Jsonl.bool(json, "sweep", false)).isTrue();
-        assertThat(Jsonl.str(json, "maxSize")).isEqualTo("20G");
         assertThat(Jsonl.bool(json, "includeJkTmp", false)).isTrue();
 
-        String purge = EngineProtocol.cachePruneRequest("purge", "/c", 0, false, false, null, false);
+        String purge = EngineProtocol.cachePruneRequest("purge", "/c", 0, false, false, false);
         assertThat(Jsonl.str(purge, "op")).isEqualTo("purge");
-        assertThat(Jsonl.str(purge, "maxSize")).isNull();
     }
 
     @Test

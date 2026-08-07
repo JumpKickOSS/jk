@@ -56,6 +56,43 @@ class BuildLogicKtsHostTest {
         assertTrue(wrapped.contains("\"ok\".uppercase(Locale.ROOT)"));
     }
 
+    /**
+     * A {@code /* ... *}{@code /} block comment is the same JK-1605 bug as a leading {@code //}
+     * line comment — a common license-header style, and it can span multiple lines.
+     */
+    @Test
+    void a_leading_block_comment_does_not_strand_the_imports_below_the_bindings(@TempDir Path dir) throws Exception {
+        Path script = dir.resolve("before-compile.kts");
+        Files.writeString(script, """
+                /*
+                 * Copyright Example Corp.
+                 * Licensed under Apache-2.0.
+                 */
+                import java.nio.file.Files
+
+                Files.writeString(outDir.resolve("kts.txt"), "ok")
+                """);
+        String wrapped = BuildLogicKtsHost.wrap(script, dir, dir.resolve("o"), dir.resolve("c"));
+
+        assertTrue(wrapped.indexOf("import java.nio.file.Files") < wrapped.indexOf("val projectDir"));
+        assertTrue(wrapped.contains("Files.writeString(outDir.resolve(\"kts.txt\"), \"ok\")"));
+    }
+
+    /** A block comment that opens and closes on the same line, with an import right after. */
+    @Test
+    void a_same_line_block_comment_does_not_strand_the_following_import(@TempDir Path dir) throws Exception {
+        Path script = dir.resolve("before-compile.kts");
+        Files.writeString(script, """
+                /* SPDX-License-Identifier: Apache-2.0 */
+                import java.nio.file.Files
+
+                Files.writeString(outDir.resolve("kts.txt"), "ok")
+                """);
+        String wrapped = BuildLogicKtsHost.wrap(script, dir, dir.resolve("o"), dir.resolve("c"));
+
+        assertTrue(wrapped.indexOf("import java.nio.file.Files") < wrapped.indexOf("val projectDir"));
+    }
+
     @Test
     void file_annotations_precede_every_import_including_the_injected_one(@TempDir Path dir) throws Exception {
         Path script = dir.resolve("before-compile.kts");

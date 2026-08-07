@@ -242,6 +242,26 @@ public final class EngineProtocol {
     public static final String EDIT_ACK = "edit-ack";
 
     /**
+     * Client → server: freshen a network-backed catalog ({@code templates}, {@code libraries}, or
+     * {@code jdks}) on demand before {@code jk new}/{@code init} (templates), {@code jk lock}/{@code
+     * update} (libraries), or JDK install/update (jdks) reads the local cache. Every fetch is
+     * engine-hosted and always attempted (no client-side TTL to go stale across a per-invocation
+     * process). {@code url}/{@code cacheFile} override the default source/destination ({@code
+     * libraries}/{@code jdks} only, for tests and power users); one {@link #FRESHEN_CATALOG_ACK}.
+     *
+     * <p>Clients that only ever talk to an already-running engine (the web dashboard, MCP) can
+     * always use {@code jdks} here too — that is how they install JDKs. {@code jk jdk
+     * install}/{@code update} is the one exception with a bootstrap concern: the engine is a JVM
+     * process that needs a JDK to run, so it cannot be the sole path to provisioning the first JDK
+     * on a bare machine. That CLI path only sends this request when an engine already answers, and
+     * fetches {@code jdks.json} directly itself otherwise.
+     */
+    public static final String FRESHEN_CATALOG_REQUEST = "freshen-catalog-request";
+
+    /** Server → client, terminal for {@link #FRESHEN_CATALOG_REQUEST}. */
+    public static final String FRESHEN_CATALOG_ACK = "freshen-catalog-ack";
+
+    /**
      * Client → server: evaluate {@code [deny]} against the lock ({@code jk deny}). Engine-hosted so
      * policy is never client-parsed; one {@link #DENY_CHECK_ACK}.
      */
@@ -1799,6 +1819,18 @@ public final class EngineProtocol {
         return "{\"type\":\"" + EDIT_ACK + "\",\"changed\":" + changed + ",\"error\":" + Jsonl.quote(error) + "}";
     }
 
+    public static String freshenCatalogRequest(String catalog, boolean offline, String url, String cacheFile) {
+        return "{\"type\":\"" + FRESHEN_CATALOG_REQUEST + "\",\"catalog\":" + Jsonl.quote(catalog)
+                + ",\"offline\":" + offline
+                + ",\"url\":" + Jsonl.quote(url)
+                + ",\"cacheFile\":" + Jsonl.quote(cacheFile)
+                + "}";
+    }
+
+    public static String freshenCatalogAck(boolean ok, String error) {
+        return "{\"type\":\"" + FRESHEN_CATALOG_ACK + "\",\"ok\":" + ok + ",\"error\":" + Jsonl.quote(error) + "}";
+    }
+
     public static String projectInfoRequest(String dir, String cache) {
         return "{\"type\":\"" + PROJECT_INFO_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + ",\"cache\":"
                 + Jsonl.quote(cache) + "}";
@@ -2773,19 +2805,12 @@ public final class EngineProtocol {
 
     /**
      * Run a cache maintenance operation (see {@link #CACHE_PRUNE_REQUEST}). {@code op} is {@code
-     * prune}/{@code purge}/{@code gc}; {@code olderThanDays}/{@code sweep}/{@code maxSize} apply to
-     * {@code prune} only ({@code maxSize} may be {@code null}); {@code includeJkTmp} asks the prune
-     * to also sweep {@code state/tmp} (only when the default cache dir is in use, mirroring the
-     * in-process command's behavior).
+     * prune}/{@code purge}/{@code gc}; {@code olderThanDays}/{@code sweep} apply to {@code prune}
+     * only; {@code includeJkTmp} asks the prune to also sweep {@code state/tmp} (only when the
+     * default cache dir is in use, mirroring the in-process command's behavior).
      */
     public static String cachePruneRequest(
-            String op,
-            String cache,
-            int olderThanDays,
-            boolean dryRun,
-            boolean sweep,
-            String maxSize,
-            boolean includeJkTmp) {
+            String op, String cache, int olderThanDays, boolean dryRun, boolean sweep, boolean includeJkTmp) {
         return "{\"type\":\""
                 + CACHE_PRUNE_REQUEST
                 + "\",\"op\":"
@@ -2798,8 +2823,6 @@ public final class EngineProtocol {
                 + dryRun
                 + ",\"sweep\":"
                 + sweep
-                + ",\"maxSize\":"
-                + Jsonl.quote(maxSize)
                 + ",\"includeJkTmp\":"
                 + includeJkTmp
                 + "}";

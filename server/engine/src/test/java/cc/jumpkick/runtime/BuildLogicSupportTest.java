@@ -254,6 +254,66 @@ class BuildLogicSupportTest {
     }
 
     /**
+     * A task can read {@code jk.toml} itself through {@code ctx.projectDir()} — e.g. to embed the
+     * declared version — same as it can read product sources. Editing it must invalidate the task
+     * the same way (JK-1603).
+     */
+    @Test
+    void a_jk_toml_edit_invalidates_a_task_that_reads_the_project_file(@TempDir Path dir) throws Exception {
+        Path project = dir.resolve("proj");
+        Files.createDirectories(project.resolve("src/main/java/demo"));
+        Files.writeString(project.resolve("jk.toml"), """
+                [project]
+                group = "t"
+                name = "t"
+                version = "0.0.1"
+                jdk = 25
+                """);
+        Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
+
+        Path logicSrc = project.resolve(".jk-build/src/demo");
+        Files.createDirectories(logicSrc);
+        Files.writeString(logicSrc.resolve("VersionLogic.java"), """
+                package demo;
+                import cc.jumpkick.plugin.buildlogic.*;
+                import java.nio.file.*;
+                public class VersionLogic implements BuildLogicContributor {
+                  @Override
+                  public void register(BuildLogicGraph g) {
+                    g.task("embed-version", BuildLogicAnchor.AFTER_COMPILE, ctx -> {
+                      String toml = Files.readString(ctx.projectDir().resolve("jk.toml"));
+                      Files.writeString(ctx.outDir().resolve("version.txt"), toml);
+                    });
+                  }
+                }
+                """);
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
+        Path classes = layout.classesDir();
+        Files.createDirectories(classes);
+
+        assertTrue(BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> {}));
+        String first = Files.readString(classes.resolve("version.txt"));
+
+        // Same logic, only jk.toml's own content changed: the embedded text must change too.
+        Files.writeString(project.resolve("jk.toml"), """
+                [project]
+                group = "t"
+                name = "t"
+                version = "0.0.2"
+                jdk = 25
+                """);
+        StringBuilder labels = new StringBuilder();
+        assertTrue(BuildLogicSupport.run(
+                project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> labels.append(s)
+                        .append(';')));
+
+        assertFalse(labels.toString().contains("cache hit"), labels.toString());
+        assertNotEquals(first, Files.readString(classes.resolve("version.txt")));
+    }
+
+    /**
      * The loader that defined a task must still be open when the task runs — registration and
      * execution are far apart, and a task body routinely first-touches a class then.
      *

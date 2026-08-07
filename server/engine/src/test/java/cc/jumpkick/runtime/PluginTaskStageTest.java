@@ -144,4 +144,21 @@ class PluginTaskStageTest {
                 .hasMessageContaining("fixtures")
                 .hasMessageContaining("run-tests");
     }
+
+    @Test
+    void declared_stage_after_package_is_rejected_for_a_package_time_task() {
+        // package-jar (PACKAGE) requires every packageTime() task unconditionally
+        // (BuildPlanner#packageRequires) — mirrors the run-tests/TEST case above for PACKAGE.
+        PluginBuild.TaskDecl bad = decl("dex-native", List.of("classes", "config"), List.of(), List.of(), "native");
+        assertThatThrownBy(() -> BuildPlanner.pluginStage(bad))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("dex-native")
+                .hasMessageContaining("package");
+    }
+
+    @Test
+    void package_time_task_may_declare_up_to_package_stage() {
+        PluginBuild.TaskDecl ok = decl("dex-native", List.of("classes", "config"), List.of(), List.of(), "package");
+        assertThat(BuildPlanner.pluginStage(ok)).isEqualTo(BuildStage.PACKAGE);
+    }
 }

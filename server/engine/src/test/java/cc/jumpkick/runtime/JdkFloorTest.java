@@ -10,6 +10,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -21,6 +22,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>Network tests (Maven Central; provisions the pin on first run); the CAS under build/
  * keeps repeats warm.
  */
+@Tag("integration")
 class JdkFloorTest {
 
     @Test

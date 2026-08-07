@@ -55,18 +55,37 @@ public final class DoctorCommand implements CliCommand {
         boolean verifyLinked = in.isSet("verify-linked");
         Path root = toolsDir != null ? toolsDir : JkDirs.cache().resolve("tools");
 
-        // Collect checks first so JSON and human share the same facts.
+        // Collect checks first so JSON and human share the same facts. Tools are scanned (and
+        // repaired — broken links unlinked, fingerprints written) exactly once, here, so
+        // `--output json` performs the same repair the human view does instead of only reporting it.
         Check engine = checkEngine();
         Check cache = checkDirs();
         Check jdk = checkJdk();
         Check lock = checkLock();
-        ToolsResult tools = checkTools(root, verifyLinked);
+        List<ToolRow> toolRows;
+        String toolsError = null;
+        try {
+            toolRows = scanTools(root, verifyLinked);
+        } catch (IOException e) {
+            toolRows = List.of();
+            toolsError = e.getMessage();
+        }
+        int healthy = 0, pruned = 0, verified = 0;
+        for (ToolRow row : toolRows) {
+            switch (row.kind()) {
+                case PRUNED -> pruned++;
+                case VERIFIED -> {
+                    healthy++;
+                    verified++;
+                }
+                case LINKED, OK -> healthy++;
+            }
+        }
 
         boolean hasFail = engine.status == Status.FAIL
                 || cache.status == Status.FAIL
                 || jdk.status == Status.FAIL
-                || lock.status == Status.FAIL
-                || tools.pruned < 0; // never fail on tools alone, but keep shape
+                || lock.status == Status.FAIL; // tools alone (including a scan error) never fails
 
         if (global.outputIsJson()) {
             String json = "{"
@@ -74,8 +93,8 @@ public final class DoctorCommand implements CliCommand {
                     + "\"cache\":" + checkJson(cache) + ","
                     + "\"jdk\":" + checkJson(jdk) + ","
                     + "\"lock\":" + checkJson(lock) + ","
-                    + "\"tools\":{\"healthy\":" + tools.healthy + ",\"pruned\":" + tools.pruned
-                    + ",\"verified\":" + tools.verified + "}"
+                    + "\"tools\":{\"healthy\":" + healthy + ",\"pruned\":" + pruned + ",\"verified\":" + verified
+                    + ",\"error\":" + Jsonl.quote(toolsError) + "}"
                     + "}";
             CliOutput.out(json);
             return hasFail ? 1 : 0;
@@ -90,41 +109,30 @@ public final class DoctorCommand implements CliCommand {
         printCheck(jdk, t);
         printCheck(lock, t);
 
-        // Tools section — preserve legacy row format for existing tests.
-        int healthy = 0, pruned = 0, verified = 0;
-        for (BuildTool tool : BuildTool.values()) {
-            for (InstalledTool installed : listIncludingBrokenLinks(root, tool)) {
-                Path home = installed.home();
-                String toolName = Theme.colorize(tool.slug(), t.cyan());
-                String label = toolName + " " + installed.version();
-                if (SymlinkProvisioner.isBrokenLink(home)) {
-                    String wasPointingAt = readlinkSafe(home);
-                    SymlinkProvisioner.unlink(home);
-                    pruned++;
-                    CliOutput.out(Theme.colorize("pruned:  ", t.warning()) + " " + label + " (link target missing: "
-                            + Theme.colorize(wasPointingAt, t.path()) + ")");
-                    continue;
-                }
-                if (Files.isSymbolicLink(home) && verifyLinked) {
-                    String fingerprint = TreeFingerprint.compute(home);
-                    Path marker = root.resolve(tool.slug()).resolve(installed.version() + ".fingerprint");
-                    Files.writeString(marker, fingerprint);
-                    verified++;
-                    CliOutput.out(Theme.colorize("verified:", t.completedStep()) + " " + label + " (sha256-tree="
-                            + fingerprint.substring(0, 12) + "…)");
-                } else if (Files.isSymbolicLink(home)) {
-                    CliOutput.out("linked:   " + label
-                            + " " + Theme.colorize("→", t.darkGray()) + " "
-                            + Theme.colorize(readlinkSafe(home), t.path()));
-                } else {
-                    CliOutput.out(Theme.colorize("ok:      ", t.completedStep()) + " " + label);
-                }
-                healthy++;
-            }
-        }
-        // If no tools at all, emit a row so the checklist looks complete.
-        if (healthy == 0 && pruned == 0) {
+        if (toolsError != null) {
+            CliOutput.out(Theme.colorize("warn:    ", t.warning()) + Theme.colorize("tools", t.cyan()) + " — probe failed: "
+                    + toolsError);
+        } else if (toolRows.isEmpty()) {
+            // If no tools at all, emit a row so the checklist looks complete.
             CliOutput.out(Theme.colorize("ok:      ", t.completedStep()) + " tools — no installs found");
+        } else {
+            for (ToolRow row : toolRows) {
+                String toolName = Theme.colorize(row.tool().slug(), t.cyan());
+                String label = toolName + " " + row.installed().version();
+                switch (row.kind()) {
+                    case PRUNED ->
+                        CliOutput.out(Theme.colorize("pruned:  ", t.warning()) + " " + label
+                                + " (link target missing: " + Theme.colorize(row.detail(), t.path()) + ")");
+                    case VERIFIED ->
+                        CliOutput.out(Theme.colorize("verified:", t.completedStep()) + " " + label
+                                + " (sha256-tree=" + row.detail().substring(0, 12) + "…)");
+                    case LINKED ->
+                        CliOutput.out("linked:   " + label
+                                + " " + Theme.colorize("→", t.darkGray()) + " "
+                                + Theme.colorize(row.detail(), t.path()));
+                    case OK -> CliOutput.out(Theme.colorize("ok:      ", t.completedStep()) + " " + label);
+                }
+            }
         }
 
         CliOutput.out(Theme.colorize("---", t.darkGray()));
@@ -150,12 +158,31 @@ public final class DoctorCommand implements CliCommand {
 
     private record Check(Status status, String label, String detail) {}
 
-    private record ToolsResult(int healthy, int pruned, int verified) {}
+    private enum ToolRowKind {
+        PRUNED,
+        VERIFIED,
+        LINKED,
+        OK
+    }
+
+    /** One installed/linked tool, after {@link #scanTools} has already applied any repair. */
+    private record ToolRow(BuildTool tool, InstalledTool installed, ToolRowKind kind, String detail) {}
 
     private static Check checkEngine() {
         EnginePaths.Paths paths = EnginePaths.current();
-        Optional<EngineClient.Status> st = EngineClient.status(EnginePaths.activeSocket(paths));
-        if (st.isEmpty()) return new Check(Status.WARN, "engine", "not running (lazy start on next build)");
+        Path socket = EnginePaths.activeSocket(paths);
+        Optional<EngineClient.Status> st = EngineClient.status(socket);
+        if (st.isEmpty()) {
+            // A socket that accepts connections but never answers status is a wedged engine, not
+            // an absent one — `jk build` would hang on it instead of lazy-starting a fresh one.
+            if (EngineClient.reachable(socket)) {
+                return new Check(
+                        Status.FAIL,
+                        "engine",
+                        "listening but not answering status — likely wedged; try `jk engine stop`");
+            }
+            return new Check(Status.WARN, "engine", "not running (lazy start on next build)");
+        }
         EngineClient.Status s = st.get();
         String detail = "running pid " + s.pid() + " · " + s.version() + " · up "
                 + formatUptime((System.currentTimeMillis() - s.startedAtMillis()) / 1000);
@@ -210,20 +237,35 @@ public final class DoctorCommand implements CliCommand {
         }
     }
 
-    private static ToolsResult checkTools(Path root, boolean verifyLinked) throws IOException {
-        // Actual counting is done in run() for output fidelity; this helper just for JSON.
-        int h = 0, p = 0, v = 0;
+    /**
+     * Scan every installed/linked tool, applying repair as it goes (unlink a broken symlink,
+     * fingerprint a verified one) — the single pass both JSON and human output render from, so
+     * {@code --output json} performs the same repair the human view reports.
+     */
+    private static List<ToolRow> scanTools(Path root, boolean verifyLinked) throws IOException {
+        List<ToolRow> rows = new ArrayList<>();
         for (BuildTool tool : BuildTool.values()) {
             for (InstalledTool installed : listIncludingBrokenLinks(root, tool)) {
                 Path home = installed.home();
-                if (SymlinkProvisioner.isBrokenLink(home)) p++;
-                else {
-                    h++;
-                    if (Files.isSymbolicLink(home) && verifyLinked) v++;
+                if (SymlinkProvisioner.isBrokenLink(home)) {
+                    String wasPointingAt = readlinkSafe(home);
+                    SymlinkProvisioner.unlink(home);
+                    rows.add(new ToolRow(tool, installed, ToolRowKind.PRUNED, wasPointingAt));
+                    continue;
+                }
+                if (Files.isSymbolicLink(home) && verifyLinked) {
+                    String fingerprint = TreeFingerprint.compute(home);
+                    Path marker = root.resolve(tool.slug()).resolve(installed.version() + ".fingerprint");
+                    Files.writeString(marker, fingerprint);
+                    rows.add(new ToolRow(tool, installed, ToolRowKind.VERIFIED, fingerprint));
+                } else if (Files.isSymbolicLink(home)) {
+                    rows.add(new ToolRow(tool, installed, ToolRowKind.LINKED, readlinkSafe(home)));
+                } else {
+                    rows.add(new ToolRow(tool, installed, ToolRowKind.OK, null));
                 }
             }
         }
-        return new ToolsResult(h, p, v);
+        return rows;
     }
 
     private static void printCheck(Check c, Theme t) {

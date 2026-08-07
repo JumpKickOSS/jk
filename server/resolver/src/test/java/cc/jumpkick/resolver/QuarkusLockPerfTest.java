@@ -44,8 +44,9 @@ class QuarkusLockPerfTest {
      * slow link reports a resolve regression that is not one, which is how JK-1597 happened.
      *
      * <p>Shared by every test in this family so the three of them cannot drift apart again.
+     * Matches the project-wide network/integration test budget (5 minutes).
      */
-    static final int NETWORK_TIMEOUT_SECONDS = 120;
+    static final int NETWORK_TIMEOUT_SECONDS = 300;
 
     /** Resolve budget for a warm store. Cold fetching is deliberately outside the assertion. */
     private static final long WARM_BUDGET_MS = 5_000L;

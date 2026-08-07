@@ -343,6 +343,18 @@ public final class JdkUpdateCommand implements CliCommand {
     }
 
     private JdkCatalog fetchCatalog() throws IOException, InterruptedException {
+        // Delegate to an already-running engine when there is one; never start one — `jk jdk
+        // update` must work standalone with no engine running and no JDK installed yet. Skipped
+        // for a custom feed with no explicit --cache-file: that combination falls back to a
+        // throwaway ephemeralCachePath() below, which the engine has no way to share with this
+        // process.
+        if (feedUrl == null || cacheFile != null) {
+            cc.jumpkick.cli.engine.EngineClient.freshenCatalogIfRunning(
+                    cc.jumpkick.engine.EnginePaths.current(),
+                    "jdks",
+                    feedUrl != null ? feedUrl.toString() : null,
+                    cacheFile);
+        }
         boolean refresh = cc.jumpkick.config.SessionContext.current().config().forceOr(false);
         JdkCatalogClient client = (feedUrl != null
                         ? new JdkCatalogClient(

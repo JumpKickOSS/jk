@@ -296,15 +296,13 @@ public final class NewCommand implements CliCommand {
             try {
                 extractScratch = Files.createTempDirectory("jk-g8-");
                 var cfg = cc.jumpkick.config.JkTemplatesConfig.resolve();
-                // Lazy JIT for jk-templates: ensure official cache is present / fresh for built-in names.
+                // Lazy JIT for jk-templates: the engine freshens the official cache for built-in
+                // short names — the CLI never talks to jk-templates' network itself.
                 if (Giter8Catalog.isShortName(templateRef)
                         && cc.jumpkick.scaffold.Giter8ShortNames.find(templateRef)
                                 .isPresent()) {
-                    try {
-                        cc.jumpkick.templates.OfficialTemplatesFreshen.refreshQuiet(s -> {});
-                    } catch (Throwable ignored) {
-                        // best-effort
-                    }
+                    cc.jumpkick.cli.engine.EngineClient.freshenCatalog(
+                            cc.jumpkick.engine.EnginePaths.current(), "templates", global.offline, null, null);
                 }
                 var shortResolved =
                         Giter8Catalog.resolveShortName(templateRef, cwd, extractScratch, cfg, templateSources);

@@ -106,7 +106,7 @@ public final class CleanCommand implements CliCommand {
             cc.jumpkick.run.BuildPlanResult result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
                     cc.jumpkick.engine.EnginePaths.current(),
                     new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest(
-                            "gc", JkDirs.cache(), 0, false, false, null, false),
+                            "gc", JkDirs.cache(), 0, false, false, false),
                     steps -> new cc.jumpkick.run.BuildPlanListener() {},
                     (external, plans) -> {},
                     summary);
@@ -229,7 +229,7 @@ public final class CleanCommand implements CliCommand {
             var result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
                     cc.jumpkick.engine.EnginePaths.current(),
                     new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest(
-                            "clear", root, 0, false, false, null, false, projectDir),
+                            "clear", root, 0, false, false, false, projectDir),
                     steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
                     CacheCommand::printWait,
                     summary);

@@ -246,6 +246,14 @@ function cssVar(name, fallback) {
   return v || fallback;
 }
 
+const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+/** Escape a value for interpolation into an HTML tooltip string — dependency names/versions/paths
+ * come from a project's jk.toml/jk-lock.toml, which is attacker-adjacent (a shared or malicious
+ * repo someone opens in the dashboard), so they must never reach innerHTML unescaped. */
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
+}
+
 /** Outcome → spark-bar colour, resolved from the style.css palette via cssVar (see BuildBars).
  * Fallbacks must equal :root tokens (Jk Dark / JK-1081) — not Material leftovers. */
 const buildColors = () => ({
@@ -566,8 +574,10 @@ const ModuleDepGraph = {
                 const t = p.data.target;
                 const sn = nodes.find((x) => x.id === s);
                 const tn = nodes.find((x) => x.id === t);
-                const sc = p.data.scope ? ' <span style="opacity:.65">[' + p.data.scope + ']</span>' : '';
-                return (sn ? sn.name : s) + ' → ' + (tn ? tn.name : t) + sc;
+                const sc = p.data.scope
+                  ? ' <span style="opacity:.65">[' + escapeHtml(p.data.scope) + ']</span>'
+                  : '';
+                return escapeHtml(sn ? sn.name : s) + ' → ' + escapeHtml(tn ? tn.name : t) + sc;
               }
               const d = p.data || {};
               const role =
@@ -576,9 +586,9 @@ const ModuleDepGraph = {
                   : d.kind === 'module' || d.path
                     ? '<br/><span style="opacity:.75">workspace module</span>'
                     : '<br/><span style="opacity:.75">declared</span>';
-              const ver = d.version ? '<br/><span style="opacity:.7">' + d.version + '</span>' : '';
-              const path = d.path ? '<br/><span style="opacity:.7">' + d.path + '</span>' : '';
-              return (d.name || p.name || '') + role + ver + path;
+              const ver = d.version ? '<br/><span style="opacity:.7">' + escapeHtml(d.version) + '</span>' : '';
+              const path = d.path ? '<br/><span style="opacity:.7">' + escapeHtml(d.path) + '</span>' : '';
+              return escapeHtml(d.name || p.name || '') + role + ver + path;
             },
           },
           series: [

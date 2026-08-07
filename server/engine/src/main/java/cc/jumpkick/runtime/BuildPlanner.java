@@ -2835,13 +2835,17 @@ public final class BuildPlanner {
 
     /**
      * The latest stage a plugin task may claim. {@code run-tests} (TEST) requires every
-     * test-classpath contributor, so those may not sit downstream of TEST.
+     * test-classpath contributor, and {@code package-jar} (PACKAGE) requires every
+     * {@link PluginBuild.TaskDecl#packageTime()} task ({@link #packageRequires}) — either
+     * consumer rejects a plan where the task claims a later stage than it.
      */
     private static BuildStage pluginCeiling(PluginBuild.TaskDecl step) {
         boolean requiredByTests = step.testOnly()
                 || (step.contributesTestClasspath() != null
                         && !step.contributesTestClasspath().isEmpty());
-        return requiredByTests ? BuildStage.TEST : BuildStage.IMAGE;
+        if (requiredByTests) return BuildStage.TEST;
+        if (step.packageTime()) return BuildStage.PACKAGE;
+        return BuildStage.IMAGE;
     }
 
     /**
@@ -3711,7 +3715,7 @@ public final class BuildPlanner {
         final boolean persist = true;
         List<String> extra = extraArgs == null ? List.of() : extraArgs;
         return Task.builder(TaskNames.NATIVE_IMAGE)
-                .stage(BuildStage.PACKAGE)
+                .stage(BuildStage.NATIVE)
                 .label("Native")
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PACKAGE_JAR)

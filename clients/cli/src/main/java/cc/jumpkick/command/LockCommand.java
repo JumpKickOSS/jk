@@ -17,8 +17,6 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.repo.LibraryRegistryClient;
-import cc.jumpkick.repo.LibraryRegistrySync;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
@@ -95,12 +93,15 @@ public final class LockCommand implements CliCommand {
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
         Files.createDirectories(cache);
 
-        // Client-side pre-flight: ensure libs.global.toml exists (first-time download) and
-        // revalidate when present — before anything parses jk.toml short names. The engine reads
-        // the same on-disk file; this closes the race with background StoreFeedRefresh.
-        LibraryRegistrySync.ensurePresent(
+        // Ensure libs.global.toml exists (first-time download) and revalidate when present —
+        // before anything parses jk.toml short names. Engine-hosted (JIT, no client-side TTL): the
+        // CLI never talks to the library registry's network itself, and the engine reads the same
+        // on-disk file this writes, closing the race with background StoreFeedRefresh.
+        cc.jumpkick.cli.engine.EngineClient.freshenCatalog(
+                cc.jumpkick.engine.EnginePaths.current(),
+                "libraries",
                 global.offline,
-                libraryRegistryUrl != null ? libraryRegistryUrl : LibraryRegistryClient.DEFAULT_SOURCE,
+                libraryRegistryUrl != null ? libraryRegistryUrl.toString() : null,
                 libraryCacheFile != null ? libraryCacheFile : LibraryCatalog.downloadedFile());
 
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);

@@ -605,6 +605,24 @@ class HttpEngineServerTest {
     }
 
     @Test
+    void api_project_graph_rejects_malformed_percent_encoding_with_400_not_500() throws Exception {
+        // URLDecoder.decode throws IllegalArgumentException on a bad escape (e.g. "%zz") — that
+        // must land on the same 400 path as an unknown scope, not an uncaught 500. java.net.URI
+        // (and so HttpClient) refuses to even send a request with an invalid escape, so this goes
+        // over a raw socket like HttpEngineServerTest#raw, with the bearer token added by hand.
+        String request = "GET /api/project/graph?dir=%zz HTTP/1.1\r\n"
+                + "Authorization: Bearer " + token() + "\r\n"
+                + "Connection: close\r\n\r\n";
+        String response;
+        try (Socket socket = new Socket("127.0.0.1", port)) {
+            socket.getOutputStream().write(request.getBytes(UTF_8));
+            response = new String(socket.getInputStream().readAllBytes(), UTF_8);
+        }
+
+        assertThat(response).startsWith("HTTP/1.1 400");
+    }
+
+    @Test
     void api_metrics_reports_aggregate_rows_with_the_token() throws Exception {
         var ok = new cc.jumpkick.runtime.BuildMetrics.Stats(3, 6000, 1000, 3000);
         var empty = cc.jumpkick.runtime.BuildMetrics.Stats.EMPTY;

@@ -653,7 +653,9 @@ public final class BuildLogicSupport {
 
     /**
      * What a build-logic task can read through {@link BuildLogicContext}, as cache-key tokens: the
-     * module's source roots.
+     * module's source roots plus {@code jk.toml}/{@code jk-lock.toml} — {@code BuildLogicContext}
+     * hands a task {@code projectDir} itself, and reading its own project file (e.g. to embed the
+     * declared version) is the obvious first thing a codegen task does with that (JK-1603).
      *
      * <p>Conservative on purpose — a task declares no inputs, so the key covers every input it
      * <em>could</em> consume. Narrowing it needs a declared-input surface on the SPI.
@@ -667,6 +669,12 @@ public final class BuildLogicSupport {
         List<String> tokens = new ArrayList<>();
         for (Path dir : cc.jumpkick.layout.ModuleLayout.fingerprintDirs(projectDir, /* skipTests */ false)) {
             hashTree(projectDir, dir, "in", tokens);
+        }
+        for (String file : new String[] {"jk.toml", "jk-lock.toml"}) {
+            Path p = projectDir.resolve(file);
+            if (Files.isRegularFile(p)) {
+                tokens.add("in:" + file + ":" + Hashing.sha256Hex(Files.readAllBytes(p)));
+            }
         }
         java.util.Collections.sort(tokens);
         return tokens;

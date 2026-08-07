@@ -484,6 +484,28 @@ final class EngineBuildListenerAdapter {
                 });
     }
 
+    /**
+     * On-demand engine-hosted catalog freshen ({@code templates}/{@code libraries}/{@code jdks}) —
+     * the CLI never touches these catalogs' networks itself once an engine is available. Callers
+     * decide separately whether it's fine to start an engine for this ({@link
+     * EngineClient#freshenCatalog}) or whether an already-running one is required ({@link
+     * EngineClient#freshenCatalogIfRunning}, for {@code jk jdk install}/{@code update}'s bootstrap
+     * case) — this method itself just sends the request. Best-effort: swallows the engine's error
+     * rather than throwing, since the caller falls back to whatever the local cache already holds.
+     */
+    static void freshenCatalog(EnginePaths.Paths paths, String catalog, boolean offline, String url, String cacheFile) {
+        try {
+            request(
+                    paths,
+                    EngineProtocol.freshenCatalogRequest(catalog, offline, url, cacheFile),
+                    EngineProtocol.FRESHEN_CATALOG_ACK,
+                    catalog + " freshen request",
+                    line -> Jsonl.bool(line, "ok", false));
+        } catch (IOException ignored) {
+            // Best-effort — local resolution proceeds against whatever the cache already holds.
+        }
+    }
+
     /** One engine-hosted tree render: the marker-tagged tree; throws with the engine's message. */
     static String treeRender(
             EnginePaths.Paths paths,
@@ -755,7 +777,7 @@ final class EngineBuildListenerAdapter {
                         if (listener != null) listener.planFinish(result);
                         return result;
                     }
-                    case EngineProtocol.ERROR -> throw EngineWireException.fromJsonLine(line);
+                    case EngineProtocol.ERROR -> throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
                     default -> {
                         /* forward-compatible no-op */
                     }
@@ -948,7 +970,16 @@ final class EngineBuildListenerAdapter {
                         listener.onWorkspaceFinish(result);
                         return result;
                     }
-                    case EngineProtocol.ERROR -> throw EngineWireException.fromJsonLine(line);
+                    case EngineProtocol.ERROR -> {
+                        EngineWireException wire = EngineWireException.fromJsonLine(line);
+                        // surface as the wedge message body without engine noise.
+                        if (wire.alreadyRunning()) {
+                            String msg = wire.getMessage();
+                            throw new EngineWireException(
+                                    wire.code(), msg == null || msg.isBlank() ? "Build is already running" : msg);
+                        }
+                        throw new EngineWireException(wire.code(), "jk engine: build failed: " + wire.getMessage());
+                    }
                     default -> {
                         /* forward-compatible no-op */
                     }

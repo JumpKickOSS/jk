@@ -81,22 +81,58 @@ final class BuildLogicKtsHost {
         // including imports that sit after a comment. A comment must not end the header scan: this
         // repo's own convention puts `// SPDX-License-Identifier` on line 1, which would have
         // pushed every following import below the bindings and made the script uncompilable
-        // (JK-1605).
+        // (JK-1605) — and a `/* ... */` block comment (a common license-header style) is the same
+        // bug for a comment that can also span multiple lines.
         List<String> fileAnnotations = new ArrayList<>();
         List<String> userImports = new ArrayList<>();
         StringBuilder body = new StringBuilder();
         boolean inHeader = true;
+        boolean inBlockComment = false;
         for (String line : user.split("\n", -1)) {
-            String t = line.stripLeading();
             if (inHeader) {
-                if (t.isEmpty() || t.startsWith("//")) {
-                    continue; // blank lines and comments never end the header
+                String remaining = line.stripLeading();
+                boolean consumedByComment = false;
+                while (true) {
+                    if (inBlockComment) {
+                        int end = remaining.indexOf("*/");
+                        if (end < 0) {
+                            consumedByComment = true;
+                            break;
+                        }
+                        inBlockComment = false;
+                        remaining = remaining.substring(end + 2).stripLeading();
+                        if (remaining.isEmpty()) {
+                            consumedByComment = true;
+                            break;
+                        }
+                        continue;
+                    }
+                    if (remaining.isEmpty() || remaining.startsWith("//")) {
+                        consumedByComment = true;
+                        break;
+                    }
+                    if (remaining.startsWith("/*")) {
+                        int end = remaining.indexOf("*/", 2);
+                        if (end < 0) {
+                            inBlockComment = true;
+                            consumedByComment = true;
+                            break;
+                        }
+                        remaining = remaining.substring(end + 2).stripLeading();
+                        if (remaining.isEmpty()) {
+                            consumedByComment = true;
+                            break;
+                        }
+                        continue;
+                    }
+                    break; // remaining now holds real header content: @file:, import, or code
                 }
-                if (t.startsWith("@file:")) {
+                if (consumedByComment) continue; // blank/comment-only line never ends the header
+                if (remaining.startsWith("@file:")) {
                     fileAnnotations.add(line);
                     continue;
                 }
-                if (t.startsWith("import ")) {
+                if (remaining.startsWith("import ")) {
                     userImports.add(line);
                     continue;
                 }

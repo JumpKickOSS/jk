@@ -888,7 +888,7 @@ class EngineServerTest {
         String planFinish = null;
         String buildError = null;
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
-            c.sendLine(EngineProtocol.cachePruneRequest("prune", cache.toString(), 30, false, false, null, false));
+            c.sendLine(EngineProtocol.cachePruneRequest("prune", cache.toString(), 30, false, false, false));
             String line;
             while ((line = c.readLine()) != null) {
                 String type = EngineProtocol.typeOf(line);

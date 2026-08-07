@@ -7,8 +7,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -91,23 +89,6 @@ class NewProjectOpsTest {
         } finally {
             Files.deleteIfExists(real);
         }
-    }
-
-    @Test
-    void extract_from_jar_removed_no_classpath_bundle(@TempDir Path temp) throws Exception {
-        // Bundled giter8 resources removed (jk-templates cache only). This test now just
-        // verifies the test jar was created correctly – the engine no longer extracts
-        // from classpath.
-        Path jar = temp.resolve("templates.jar");
-        try (var out = new ZipOutputStream(Files.newOutputStream(jar))) {
-            out.putNextEntry(new ZipEntry("giter8/acme-jar-demo/default.properties"));
-            out.write("name=demo\n".getBytes());
-            out.closeEntry();
-            out.putNextEntry(new ZipEntry("giter8/acme-jar-demo/src/main/g8/jk.toml"));
-            out.write("name=demo\n".getBytes());
-            out.closeEntry();
-        }
-        assertThat(Files.isRegularFile(jar)).isTrue();
     }
 
     @Test

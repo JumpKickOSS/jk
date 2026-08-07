@@ -72,4 +72,4 @@ firebase-debug.*.log
 /jk.bat
 
 # Agents
-.agents
+.agents/
