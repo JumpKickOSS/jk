@@ -124,6 +124,12 @@ after compile, custom packagers) via `TaskSpec`/`TaskContribution`. Important SP
 
 - **`transformsClasses`** — at most one classes transform per build (e.g. Hilt weaving); runs
   between compile and package and replaces the classes dir for downstream tasks.
+- **`stage`** — every task carries a `BuildStage`, inferred from the window the engine schedules it
+  in. `TaskSpec.stage("package")` narrows it for the UI fold, and is validated: it may not name a
+  stage earlier than the window, may not go past `test` for a test-classpath contributor, and an
+  unrecognized name is an error. A task may never `require` a task in a later stage — the plan is
+  rejected before anything runs. See
+  [build-plan.md](features/build-plan.md#stages).
 - **Action keys include plugin worker jar hashes** — upgrading the plugin invalidates cache.
 - Tasks declare inputs/outputs so incrementality and `jk explain` stay correct.
 - The worker wire keeps its legacy spellings (`run-step`, `step:` input refs, `step-output`) —

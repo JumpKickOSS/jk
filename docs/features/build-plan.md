@@ -11,7 +11,8 @@ dependencies, not a fixed lifecycle of slots.
 | **Target** | The terminal task the invocation is trying to reach (e.g. `package-jar`, `run-tests`, `write-image`). CLI verbs and engine `kind` map to a target. |
 | **BuildPlan** | The executable DAG for one module (or single-module request): the **transitive closure** of tasks required to produce the target, scheduled by readiness. |
 | **TaskForecast** | Read-only cache forecast for the same task set (explain / dirty reporting). Not the executor. |
-| **InvocationPhase** | Coarse outer stages of a whole `jk` request (below). Orthogonal to the task graph. |
+| **InvocationPhase** | Coarse outer **phases** of a whole `jk` request (below). Orthogonal to the task graph. |
+| **BuildStage** | Which part of a module build a task belongs to — `resolve`, `generate`, `compile`, `test`, `package`, `native`, `image`, `other`. A closed taxonomy, and **enforced**: see [Stages](#stages). |
 
 ### Rename map (implementation)
 
@@ -24,7 +25,51 @@ dependencies, not a fixed lifecycle of slots.
 | `PhaseGraph` | Removed (task graph is law) |
 | “Goal” (terminal capability / UI) | **Target** |
 | Forecast type `BuildPlan` / `TaskForecaster` | `TaskForecast` / `TaskForecaster` |
-| Plugin/lifecycle `Phase` enum + `PhaseGraph` | Removed; optional free-form **group** label on tasks for UI only |
+| Plugin/lifecycle `Phase` enum + `PhaseGraph` | Removed; replaced by the closed `BuildStage` taxonomy (below) |
+
+## Stages
+
+Every task carries a `BuildStage`. It is **not** a free-form label and **not** UI-only.
+
+| Stage | Runs | Examples |
+|-------|------|----------|
+| `resolve` | module setup | `parse-build`, `resolve-deps`, `ensure-jdk` |
+| `generate` | codegen before compile | `build-logic-before-compile`, source-generating plugin tasks |
+| `compile` | main compile + resources | `compile-java`, `copy-resources`, `write-stamp` |
+| `test` | test compile + run | `compile-test`, `run-tests` |
+| `package` | jar / assembly | `package-jar`, `embed-sha` |
+| `native` / `image` | native-image, OCI | `native-image`, `write-image` |
+| `other` | unknown or plugin-private | UI parks these under "Other" |
+
+**A task may not require a task in a later stage.** `BuildPlan.build()` rejects such an edge, so
+this aborts the build at plan time, before any task runs:
+
+```
+step 'x' (stage generate) requires 'y' (stage compile) — cannot depend on a later BuildStage
+```
+
+Ordering is still the DAG (`requires`); the stage is product taxonomy that the DAG must not
+contradict. `other` is exempt from the check on both sides.
+
+### Plugin tasks
+
+A plugin task's stage is **inferred from the window the engine schedules it in**, so inference can
+never produce an edge the validator rejects:
+
+| Window | Stage |
+|--------|-------|
+| runs before the compilers (source-generating, or no `In.classes()` and no package/test contribution) | `generate` |
+| contributes only to the test runtime classpath | `test` |
+| everything else | `compile` |
+
+`TaskSpec.stage("…")` **narrows** that for the UI fold — `android-dex` declaring `package`, say. It
+is validated, not trusted:
+
+- it must be at or after the window's stage;
+- it must be at or before `test` when `run-tests` requires the task (any test-classpath contributor);
+- an unrecognized spelling is an error, not a silent `other`.
+
+Violations name the plugin task and say which window it is in.
 
 ## Targets
 
@@ -98,7 +143,7 @@ than inserting mid-graph steps.
 
 ## InvocationPhase (outer orchestration)
 
-Separate from the task graph. Stages of a **whole engine request**:
+Separate from the task graph, and separate from `BuildStage`. Phases of a **whole engine request**:
 
 | Phase | User-visible (CLI / Web) | Role |
 |-------|--------------------------|------|
@@ -135,7 +180,7 @@ Compile / test / package are **task names** (or groups of tasks), not invocation
 | `buildplan-start` / `buildplan-finish` | One module BuildPlan start/end |
 | `progress` / `label` / `output` / … | Unchanged roles; field `step` → `task` where present |
 | `explain-task` / `history-task` | Explain/history bursts (were `explain-step` / `history-step`) |
-| Task events' group | Field `group` (was `phase`) — the free-form task group; `phase` now means only InvocationPhase and the metrics taxonomy |
+| Task events' stage | Field `group` (was `phase`) carries the task's `BuildStage` wire name; `phase` means only InvocationPhase and the workspace-progress tracker |
 | Status | `activeBuildPlans` (was `activePipelines`) |
 
 Protocol version stays **1** (pre-1.0 freeze); names replace in place — no dual-read.
