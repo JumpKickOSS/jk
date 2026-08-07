@@ -98,9 +98,10 @@ public final class BuildLogicSupport {
     }
 
     /**
-     * Compile + run build logic tasks for {@code anchor} (or restore from action cache), merging
-     * outputs into {@code classesDir}. Returns whether any logic is configured for this project
-     * (even if this anchor has zero tasks).
+     * As {@link #run(Path, BuildLayout, ActionCache, Path, BuildLogicAnchor, java.util.function.Consumer,
+     * java.util.concurrent.atomic.AtomicReference)}, with no cross-anchor token cache — this call
+     * computes its own if it needs one. Fine for a single anchor; BuildPlanner uses the other
+     * overload to share one computation across a module's (up to four) anchor calls (JK-1655).
      */
     public static boolean run(
             Path projectDir,
@@ -109,6 +110,30 @@ public final class BuildLogicSupport {
             Path classesDir,
             BuildLogicAnchor anchor,
             java.util.function.Consumer<String> label)
+            throws IOException, InterruptedException {
+        return run(projectDir, layout, actionCache, classesDir, anchor, label, new java.util.concurrent.atomic.AtomicReference<>());
+    }
+
+    /**
+     * Compile + run build logic tasks for {@code anchor} (or restore from action cache), merging
+     * outputs into {@code classesDir}. Returns whether any logic is configured for this project
+     * (even if this anchor has zero tasks).
+     *
+     * <p>{@code inputTokensRef} caches {@link #projectInputTokens} across the (up to four) anchor
+     * calls one module's build makes: computed once by whichever anchor needs it first, reused by
+     * the rest — the anchors are DAG-serialized for one module (compile can't run before generate,
+     * etc.), so a plain lazy-init race (matching {@code BuildPlanner}'s other per-build caches) is
+     * enough; no synchronization needed. Caller owns the reference's lifetime — one per module per
+     * build, never reused across builds.
+     */
+    public static boolean run(
+            Path projectDir,
+            BuildLayout layout,
+            ActionCache actionCache,
+            Path classesDir,
+            BuildLogicAnchor anchor,
+            java.util.function.Consumer<String> label,
+            java.util.concurrent.atomic.AtomicReference<List<String>> inputTokensRef)
             throws IOException, InterruptedException {
         Optional<Config> cfg = config(projectDir);
         if (cfg.isEmpty()) return false;
@@ -175,7 +200,8 @@ public final class BuildLogicSupport {
                     javaSources,
                     ktSources,
                     scripts,
-                    byAnchor);
+                    byAnchor,
+                    inputTokensRef);
         } finally {
             if (logicLoader != null) logicLoader.close();
         }
@@ -193,7 +219,8 @@ public final class BuildLogicSupport {
             List<Path> javaSources,
             List<Path> ktSources,
             List<BuildLogicScripts.ScriptTask> scripts,
-            Map<BuildLogicAnchor, List<RegisteredTask>> byAnchor)
+            Map<BuildLogicAnchor, List<RegisteredTask>> byAnchor,
+            java.util.concurrent.atomic.AtomicReference<List<String>> inputTokensRef)
             throws IOException, InterruptedException {
 
         List<RegisteredTask> tasks = byAnchor.getOrDefault(anchor, List.of());
@@ -216,7 +243,17 @@ public final class BuildLogicSupport {
         // projectDir and classesDir. Keying on the logic sources alone made an edit to the
         // product invisible, so the task reported `cache hit` and replayed a stale output —
         // the shipped line-count example re-merged the old count into the jar (JK-1603).
-        sourceTokens.addAll(projectInputTokens(projectDir));
+        //
+        // Memoized in inputTokensRef: the source tree can't change mid-build, so whichever anchor
+        // needs this first computes it and every later anchor in the same build reuses it instead
+        // of re-walking/re-hashing the same tree (JK-1655).
+        List<String> inputTokens = inputTokensRef.get();
+        if (inputTokens == null) {
+            inputTokens = projectInputTokens(projectDir);
+            inputTokensRef.compareAndSet(null, inputTokens);
+            inputTokens = inputTokensRef.get();
+        }
+        sourceTokens.addAll(inputTokens);
 
         // BEFORE_COMPILE is codegen: its output joins the compile source set (like KSP), it is
         // never merged into classes/. Merging there compiled nothing — a generated .java was
@@ -665,7 +702,12 @@ public final class BuildLogicSupport {
      * self-referential: post-compile anchors merge their own output into it, so every run would
      * perturb its own next key and a cache hit could never happen.
      */
+    /** Test seam: counts real {@link #projectInputTokens} computations (JK-1655's "at most once per build" claim). */
+    static final java.util.concurrent.atomic.AtomicInteger PROJECT_INPUT_TOKENS_CALLS_FOR_TESTS =
+            new java.util.concurrent.atomic.AtomicInteger();
+
     private static List<String> projectInputTokens(Path projectDir) throws IOException {
+        PROJECT_INPUT_TOKENS_CALLS_FOR_TESTS.incrementAndGet();
         List<String> tokens = new ArrayList<>();
         for (Path dir : cc.jumpkick.layout.ModuleLayout.fingerprintDirs(projectDir, /* skipTests */ false)) {
             hashTree(projectDir, dir, "in", tokens);

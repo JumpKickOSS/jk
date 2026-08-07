@@ -521,6 +521,13 @@ public final class BuildPlanner {
                 new java.util.concurrent.atomic.AtomicReference<>();
         final java.util.concurrent.atomic.AtomicReference<List<Path>> groovyMainSrcRef =
                 new java.util.concurrent.atomic.AtomicReference<>();
+        // Build-logic anchors (BEFORE_COMPILE / AFTER_COMPILE / AFTER_RESOURCES / BEFORE_PACKAGE)
+        // each call BuildLogicSupport.run() independently; a module registering tasks at more
+        // than one anchor used to hash its whole source tree once per anchor with tasks. Shared
+        // here the same lazy-init-race pattern as javaMainSrcRef above: computed once by whichever
+        // anchor task needs it first, reused by the rest (JK-1655).
+        final java.util.concurrent.atomic.AtomicReference<List<String>> buildLogicInputTokensRef =
+                new java.util.concurrent.atomic.AtomicReference<>();
         final Path javaMainSrcDir = compact ? in.dir().resolve("src") : in.dir().resolve("src/main/java");
 
         // ---- parse-build ------------------------------------------------
@@ -533,6 +540,7 @@ public final class BuildPlanner {
                 javaMainSrcRef,
                 kotlinMainSrcRef,
                 groovyMainSrcRef,
+                buildLogicInputTokensRef,
                 javaMainSrcDir,
                 compact,
                 mixed,
@@ -733,6 +741,7 @@ public final class BuildPlanner {
             java.util.concurrent.atomic.AtomicReference<List<Path>> javaMainSrcRef,
             java.util.concurrent.atomic.AtomicReference<List<Path>> kotlinMainSrcRef,
             java.util.concurrent.atomic.AtomicReference<List<Path>> groovyMainSrcRef,
+            java.util.concurrent.atomic.AtomicReference<List<String>> buildLogicInputTokensRef,
             Path javaMainSrcDir,
             boolean compact,
             boolean mixed,
@@ -1972,6 +1981,8 @@ public final class BuildPlanner {
         java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
         java.util.concurrent.atomic.AtomicReference<List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
         java.util.concurrent.atomic.AtomicReference<List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
+        java.util.concurrent.atomic.AtomicReference<List<String>> buildLogicInputTokensRef =
+                cx.buildLogicInputTokensRef();
         Path javaMainSrcDir = cx.javaMainSrcDir();
         boolean compact = cx.compact();
         boolean mixed = cx.mixed();
@@ -2020,7 +2031,8 @@ public final class BuildPlanner {
                                 actionCache,
                                 classes,
                                 cc.jumpkick.plugin.buildlogic.BuildLogicAnchor.AFTER_RESOURCES,
-                                ctx::label);
+                                ctx::label,
+                                buildLogicInputTokensRef);
                         if (ran) ctx.label("build-logic applied");
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
@@ -2039,6 +2051,8 @@ public final class BuildPlanner {
         Inputs in = cx.in();
         ActionCache actionCache = cx.actionCache();
         java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
+        java.util.concurrent.atomic.AtomicReference<List<String>> buildLogicInputTokensRef =
+                cx.buildLogicInputTokensRef();
         return Task.builder(TaskNames.BUILD_LOGIC_BEFORE_COMPILE)
                 .stage(BuildStage.GENERATE)
                 .label("Build logic (before compile)")
@@ -2055,7 +2069,8 @@ public final class BuildPlanner {
                                 actionCache,
                                 classes,
                                 cc.jumpkick.plugin.buildlogic.BuildLogicAnchor.BEFORE_COMPILE,
-                                ctx::label);
+                                ctx::label,
+                                buildLogicInputTokensRef);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         throw new IOException("build-logic interrupted", e);
@@ -2071,6 +2086,8 @@ public final class BuildPlanner {
         ActionCache actionCache = cx.actionCache();
         java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
         String mainCompile = cx.mainCompile();
+        java.util.concurrent.atomic.AtomicReference<List<String>> buildLogicInputTokensRef =
+                cx.buildLogicInputTokensRef();
         return Task.builder(TaskNames.BUILD_LOGIC_AFTER_COMPILE)
                 .stage(BuildStage.COMPILE)
                 .label("Build logic (after compile)")
@@ -2087,7 +2104,8 @@ public final class BuildPlanner {
                                 actionCache,
                                 classes,
                                 cc.jumpkick.plugin.buildlogic.BuildLogicAnchor.AFTER_COMPILE,
-                                ctx::label);
+                                ctx::label,
+                                buildLogicInputTokensRef);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         throw new IOException("build-logic interrupted", e);
@@ -2102,6 +2120,8 @@ public final class BuildPlanner {
         Inputs in = cx.in();
         ActionCache actionCache = cx.actionCache();
         java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
+        java.util.concurrent.atomic.AtomicReference<List<String>> buildLogicInputTokensRef =
+                cx.buildLogicInputTokensRef();
         return Task.builder(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE)
                 .stage(BuildStage.PACKAGE)
                 .label("Build logic (before package)")
@@ -2118,7 +2138,8 @@ public final class BuildPlanner {
                                 actionCache,
                                 classes,
                                 cc.jumpkick.plugin.buildlogic.BuildLogicAnchor.BEFORE_PACKAGE,
-                                ctx::label);
+                                ctx::label,
+                                buildLogicInputTokensRef);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         throw new IOException("build-logic interrupted", e);

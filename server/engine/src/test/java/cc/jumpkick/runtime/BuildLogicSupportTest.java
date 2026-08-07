@@ -192,6 +192,68 @@ class BuildLogicSupportTest {
     }
 
     /**
+     * BuildPlanner calls {@code run()} once per anchor a module has tasks registered at — up to
+     * four times per module per build — and each call used to hash the whole project source tree
+     * from scratch. Sharing one {@code AtomicReference} (as BuildPlanner does) across a module's
+     * anchor calls must hash it at most once per build (JK-1655).
+     */
+    @Test
+    void multiple_anchors_in_one_build_share_a_single_project_hash(@TempDir Path dir) throws Exception {
+        Path project = dir.resolve("proj");
+        Files.createDirectories(project.resolve("src/main/java/demo"));
+        Files.writeString(project.resolve("jk.toml"), """
+                [project]
+                group = "t"
+                name = "t"
+                version = "0.0.1"
+                jdk = 25
+                """);
+        Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
+
+        Path logicSrc = project.resolve(".jk-build/src/demo");
+        Files.createDirectories(logicSrc);
+        Files.writeString(logicSrc.resolve("MultiAnchorLogic.java"), """
+                package demo;
+                import cc.jumpkick.plugin.buildlogic.*;
+                import java.nio.file.*;
+                public class MultiAnchorLogic implements BuildLogicContributor {
+                  @Override
+                  public void register(BuildLogicGraph g) {
+                    g.task("before-compile-marker", BuildLogicAnchor.BEFORE_COMPILE, ctx -> {
+                      Files.writeString(ctx.outDir().resolve("before-compile.txt"), "g");
+                    });
+                    g.task("after-compile-marker", BuildLogicAnchor.AFTER_COMPILE, ctx -> {
+                      Files.writeString(ctx.outDir().resolve("after-compile.txt"), "c");
+                    });
+                    g.task("before-package-marker", BuildLogicAnchor.BEFORE_PACKAGE, ctx -> {
+                      Files.writeString(ctx.outDir().resolve("before-package.txt"), "p");
+                    });
+                  }
+                }
+                """);
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
+        Path classes = layout.classesDir();
+        Files.createDirectories(classes);
+
+        int before = BuildLogicSupport.PROJECT_INPUT_TOKENS_CALLS_FOR_TESTS.get();
+        var sharedTokens = new java.util.concurrent.atomic.AtomicReference<java.util.List<String>>();
+        assertTrue(BuildLogicSupport.run(
+                project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> {}, sharedTokens));
+        assertTrue(BuildLogicSupport.run(
+                project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> {}, sharedTokens));
+        assertTrue(BuildLogicSupport.run(
+                project, layout, ac, classes, BuildLogicAnchor.BEFORE_PACKAGE, s -> {}, sharedTokens));
+        int after = BuildLogicSupport.PROJECT_INPUT_TOKENS_CALLS_FOR_TESTS.get();
+
+        assertEquals(1, after - before, "three anchors sharing one reference must hash the project once, not three times");
+        assertTrue(Files.isRegularFile(generated(layout, "before-compile-marker", "before-compile.txt")));
+        assertTrue(Files.isRegularFile(classes.resolve("after-compile.txt")));
+        assertTrue(Files.isRegularFile(classes.resolve("before-package.txt")));
+    }
+
+    /**
      * A task reads the project through {@code BuildLogicContext}, so the key must cover it. Keying
      * on the logic sources alone reported `cache hit` after a product edit and replayed the stale
      * output (JK-1603).
