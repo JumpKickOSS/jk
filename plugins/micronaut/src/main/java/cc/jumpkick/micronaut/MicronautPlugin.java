@@ -134,15 +134,9 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
      */
     private static Path writeEffectiveConfig(TaskExec exec, Path generated) throws IOException {
         Properties props = new Properties();
-        Path user = null;
-        String configured = exec.config().stringOpt("aot-config").orElse("").trim();
-        if (!configured.isEmpty()) {
-            user = exec.moduleDir().resolve(configured);
-        } else {
-            Path def = exec.moduleDir().resolve("aot.properties");
-            if (Files.isRegularFile(def)) user = def;
-        }
-        if (user != null && Files.isRegularFile(user)) {
+        Path user = userConfigFile(
+                exec.moduleDir(), exec.config().stringOpt("aot-config").orElse(""));
+        if (user != null) {
             try (var in = Files.newInputStream(user)) {
                 props.load(in);
             }
@@ -162,6 +156,29 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
             props.store(out, "Effective Micronaut AOT configuration (jk)");
         }
         return effective;
+    }
+
+    /**
+     * The user's AOT properties file, or {@code null} to use jk's defaults.
+     *
+     * <p>An <em>unset</em> {@code aot-config} falls back: {@code aot.properties} if it happens to
+     * be there, else defaults. An <em>explicitly set</em> one does not — a typo'd path would
+     * otherwise produce a green build that silently optimized with jk's defaults instead of the
+     * configuration the user wrote, and nothing in the output would say so (JK-1662).
+     */
+    static Path userConfigFile(Path moduleDir, String configured) throws IOException {
+        String spec = configured == null ? "" : configured.trim();
+        if (spec.isEmpty()) {
+            Path conventional = moduleDir.resolve("aot.properties");
+            return Files.isRegularFile(conventional) ? conventional : null;
+        }
+        Path named = moduleDir.resolve(spec);
+        if (!Files.isRegularFile(named)) {
+            throw new IOException("[micronaut] aot-config = \"" + spec + "\" does not name a readable file ("
+                    + named.toAbsolutePath().normalize()
+                    + "). Fix the path, or remove the key to use jk's default optimizers.");
+        }
+        return named;
     }
 
     private static List<Path> jarsIn(Path dir) throws IOException {

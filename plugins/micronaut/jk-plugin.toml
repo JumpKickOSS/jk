@@ -16,7 +16,7 @@ version     = { type = "string", required = true, example = "5", hint = "major-l
 aot         = { type = "bool" }  # tri-state: absent = auto (on when [native] is declared)
 aot-runtime = { type = "string", default = "jit", example = "jit", hint = "jit (default) or native — match packaging/native mode" }
 aot-package = { type = "string", example = "com.example.aot.generated", hint = "Java package for AOT-generated classes; default is project.group + .aot.generated" }
-aot-config  = { type = "string", example = "aot.properties", hint = "optional path to aot.properties (module-relative); defaults written when absent" }
+aot-config  = { type = "string", example = "aot.properties", hint = "module-relative path to an aot.properties. Leave the key out to use ./aot.properties if present, else jk's defaults; setting it to a path that does not exist is an error" }
 # Tooling line for micronaut-aot-{api,cli,std-optimizers}. Tracked separately from the platform BOM.
 aot-version = { type = "string", default = "3.1.0", example = "3.1.0", hint = "Micronaut AOT tooling version (cli/api/std-optimizers)" }
 
