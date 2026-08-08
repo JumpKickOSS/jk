@@ -16,12 +16,14 @@ class FormatPlansNotExcludedTest {
 
     @Test
     void a_dot_g8_template_root_is_excluded() {
-        assertThat(FormatPlans.notExcluded(Path.of("templates/quarkus.g8/src/main/Foo.java"))).isFalse();
+        assertThat(FormatPlans.notExcluded(Path.of("templates/quarkus.g8/src/main/Foo.java")))
+                .isFalse();
     }
 
     @Test
     void a_bare_g8_dir_is_excluded() {
-        assertThat(FormatPlans.notExcluded(Path.of("proj/src/main/g8/Foo.java"))).isFalse();
+        assertThat(FormatPlans.notExcluded(Path.of("proj/src/main/g8/Foo.java")))
+                .isFalse();
     }
 
     @Test
@@ -35,7 +37,8 @@ class FormatPlansNotExcludedTest {
         assertThat(FormatPlans.notExcluded(Path.of("proj/target/Gen.java"))).isFalse();
         assertThat(FormatPlans.notExcluded(Path.of("proj/build/Gen.java"))).isFalse();
         assertThat(FormatPlans.notExcluded(Path.of("proj/.git/Gen.java"))).isFalse();
-        assertThat(FormatPlans.notExcluded(Path.of("proj/node_modules/Gen.java"))).isFalse();
+        assertThat(FormatPlans.notExcluded(Path.of("proj/node_modules/Gen.java")))
+                .isFalse();
     }
 
     @Test
@@ -55,6 +58,7 @@ class FormatPlansNotExcludedTest {
 
     @Test
     void a_dollar_sign_that_is_not_a_placeholder_is_not_excluded() {
-        assertThat(FormatPlans.notExcluded(Path.of("proj/src/main/java/demo/a$b/Foo.java"))).isTrue();
+        assertThat(FormatPlans.notExcluded(Path.of("proj/src/main/java/demo/a$b/Foo.java")))
+                .isTrue();
     }
 }

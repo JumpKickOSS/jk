@@ -628,8 +628,8 @@ public final class LockOrchestrator {
         for (Dependency platformDep : project.dependencies().of(Scope.PLATFORM)) {
             // JK-1545: resolve caret/tilde against repo metadata, then load *that* BOM's catalog.
             // Exact pins skip metadata. latest/open ranges still rejected (R6b / PlatformBomVersions).
-            String bomVersion = PlatformBomVersions.resolve(
-                    repos, platformDep.group(), platformDep.name(), platformDep.version());
+            String bomVersion =
+                    PlatformBomVersions.resolve(repos, platformDep.group(), platformDep.name(), platformDep.version());
             Coordinate bomCoord = Coordinate.of(platformDep.group(), platformDep.name(), bomVersion);
             EffectivePom bomPom = pomBuilder.build(bomCoord);
             String bomLabel = bomCoord.toGav();

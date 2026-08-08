@@ -43,8 +43,7 @@ class DoctorCommandTest {
         Path link = mavenSlug.resolve("3.9.9");
         Files.createSymbolicLink(link, tempDir.resolve("nonexistent"));
 
-        String stdout =
-                capture(() -> Jk.execute("doctor", "--tools-dir", tempDir.toString(), "--output", "json"));
+        String stdout = capture(() -> Jk.execute("doctor", "--tools-dir", tempDir.toString(), "--output", "json"));
 
         assertThat(stdout).contains("\"pruned\":1");
         assertThat(Files.exists(link, LinkOption.NOFOLLOW_LINKS)).isFalse();

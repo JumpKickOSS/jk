@@ -111,7 +111,14 @@ public final class BuildLogicSupport {
             BuildLogicAnchor anchor,
             java.util.function.Consumer<String> label)
             throws IOException, InterruptedException {
-        return run(projectDir, layout, actionCache, classesDir, anchor, label, new java.util.concurrent.atomic.AtomicReference<>());
+        return run(
+                projectDir,
+                layout,
+                actionCache,
+                classesDir,
+                anchor,
+                label,
+                new java.util.concurrent.atomic.AtomicReference<>());
     }
 
     /**

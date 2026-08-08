@@ -29,8 +29,8 @@ class EngineWireExceptionTest {
 
     @Test
     void already_running_is_a_typed_check_not_a_string_match() {
-        EngineWireException running =
-                EngineWireException.fromJsonLine(EngineProtocol.error(EngineProtocol.ERR_ALREADY_RUNNING, "Build #27 is already running"));
+        EngineWireException running = EngineWireException.fromJsonLine(
+                EngineProtocol.error(EngineProtocol.ERR_ALREADY_RUNNING, "Build #27 is already running"));
         EngineWireException other = EngineWireException.fromJsonLine(EngineProtocol.error("deadline", "timed out"));
 
         assertThat(running.alreadyRunning()).isTrue();

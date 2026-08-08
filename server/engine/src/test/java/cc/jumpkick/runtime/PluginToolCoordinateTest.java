@@ -74,7 +74,8 @@ class PluginToolCoordinateTest {
 
     @Test
     void an_explicit_caret_floats_to_the_highest_stable_in_the_line(@TempDir Path tmp) throws Exception {
-        serveMetadata("org.springframework.boot", "spring-boot-loader", List.of("4.0.0", "4.1.0", "4.2.0-RC1", "5.0.0"));
+        serveMetadata(
+                "org.springframework.boot", "spring-boot-loader", List.of("4.0.0", "4.1.0", "4.2.0-RC1", "5.0.0"));
 
         Coordinate coord = PluginBuild.resolveCoordinate(repos(tmp), "org.springframework.boot:spring-boot-loader:^4");
 
@@ -86,7 +87,8 @@ class PluginToolCoordinateTest {
     void a_float_keeps_the_classifier_and_type(@TempDir Path tmp) throws Exception {
         serveMetadata("com.google.protobuf", "protoc", List.of("4.33.1", "4.34.0"));
 
-        Coordinate coord = PluginBuild.resolveCoordinate(repos(tmp), "com.google.protobuf:protoc:^4.33.1:linux-x86_64@exe");
+        Coordinate coord =
+                PluginBuild.resolveCoordinate(repos(tmp), "com.google.protobuf:protoc:^4.33.1:linux-x86_64@exe");
 
         assertThat(coord.version()).isEqualTo("4.34.0");
         assertThat(coord.classifier()).isEqualTo("linux-x86_64");

@@ -407,9 +407,7 @@ class LockOrchestratorBomTest {
         // JK-1649: POM resolves, jar 404s → lock must fail (not write a checksum-less row).
         // servePath only (not servePom) so no auto-jar is registered.
         serveMetadata("/com/foo/ghost/maven-metadata.xml", "com.foo", "ghost", List.of("1.0"));
-        servePath(
-                "/com/foo/ghost/1.0/ghost-1.0.pom",
-                """
+        servePath("/com/foo/ghost/1.0/ghost-1.0.pom", """
                 <project>
                   <groupId>com.foo</groupId>
                   <artifactId>ghost</artifactId>

@@ -283,7 +283,8 @@ public final class NewCommand implements CliCommand {
     private int runTemplateBuildPlan(Path cwd) {
         if (spring || grails || quarkus || micronaut || plugin) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "New", "--template cannot be combined with --spring, --grails, --quarkus, --micronaut, or --plugin"));
+                    "New",
+                    "--template cannot be combined with --spring, --grails, --quarkus, --micronaut, or --plugin"));
             return Exit.USAGE;
         }
         Path template = Path.of(templateRef);
@@ -737,8 +738,14 @@ public final class NewCommand implements CliCommand {
                                 : (parent != null && parent.groovy())
                                         ? NewInputs.Language.GROOVY
                                         : NewInputs.Language.JAVA;
-        var isExecutable =
-                Boolean.TRUE.equals(executable) || assembly || nativeImage || spring || grails || quarkus || micronaut || plugin;
+        var isExecutable = Boolean.TRUE.equals(executable)
+                || assembly
+                || nativeImage
+                || spring
+                || grails
+                || quarkus
+                || micronaut
+                || plugin;
         // A plugin project is a fat jar whose "main" is the SDK's PluginMain; it uses the Maven
         // layout so its jk-plugin.toml resource lands at the jar root (src/main/resources). Boot /
         // Quarkus / Grails users also expect the Maven layout. An explicit --layout still wins.

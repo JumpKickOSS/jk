@@ -125,7 +125,8 @@ final class EnginePluginAdapter {
                         if (listener != null) listener.planFinish(result);
                         return new HostedFinish(result, line);
                     }
-                    case EngineProtocol.ERROR -> throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
+                    case EngineProtocol.ERROR ->
+                        throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
                     default -> dispatchBuildPlanEvent(type, line, listener, diagnostics);
                 }
             }
@@ -173,7 +174,8 @@ final class EnginePluginAdapter {
                                 Jsonl.intValue(line, "exit", 1),
                                 Jsonl.str(line, "diag"));
                     }
-                    case EngineProtocol.ERROR -> throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
+                    case EngineProtocol.ERROR ->
+                        throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
                     default -> {
                         /* forward-compatible no-op */
                     }

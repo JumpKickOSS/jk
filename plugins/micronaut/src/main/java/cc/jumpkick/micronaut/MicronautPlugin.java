@@ -12,7 +12,6 @@ import cc.jumpkick.plugin.build.TaskExec;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -62,7 +61,8 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
             throw new IOException("no classes to optimize at " + classes);
         }
 
-        String runtime = exec.config().stringOpt("aot-runtime").orElse("jit").trim().toLowerCase(Locale.ROOT);
+        String runtime =
+                exec.config().stringOpt("aot-runtime").orElse("jit").trim().toLowerCase(Locale.ROOT);
         if (!runtime.equals("jit") && !runtime.equals("native")) {
             throw new IOException("[micronaut] aot-runtime must be \"jit\" or \"native\" (got `" + runtime + "`)");
         }

@@ -247,7 +247,8 @@ class BuildLogicSupportTest {
                 project, layout, ac, classes, BuildLogicAnchor.BEFORE_PACKAGE, s -> {}, sharedTokens));
         int after = BuildLogicSupport.PROJECT_INPUT_TOKENS_CALLS_FOR_TESTS.get();
 
-        assertEquals(1, after - before, "three anchors sharing one reference must hash the project once, not three times");
+        assertEquals(
+                1, after - before, "three anchors sharing one reference must hash the project once, not three times");
         assertTrue(Files.isRegularFile(generated(layout, "before-compile-marker", "before-compile.txt")));
         assertTrue(Files.isRegularFile(classes.resolve("after-compile.txt")));
         assertTrue(Files.isRegularFile(classes.resolve("before-package.txt")));

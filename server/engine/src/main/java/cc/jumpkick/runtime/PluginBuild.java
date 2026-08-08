@@ -433,8 +433,7 @@ public final class PluginBuild {
     }
 
     /** Stable CAS dir name for a tool closure (includes BOM + extra roots). */
-    private static String toolClosureCacheKey(
-            List<cc.jumpkick.model.Coordinate> roots, String managedByResolved) {
+    private static String toolClosureCacheKey(List<cc.jumpkick.model.Coordinate> roots, String managedByResolved) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < roots.size(); i++) {
             if (i > 0) sb.append("__");
@@ -539,8 +538,7 @@ public final class PluginBuild {
         cc.jumpkick.model.Coordinate raw = cc.jumpkick.model.Coordinate.parse(gav);
         String resolved = resolveToolVersion(repos, raw.module(), raw.version());
         if (resolved.equals(raw.version())) return raw;
-        return new cc.jumpkick.model.Coordinate(
-                raw.group(), raw.artifact(), resolved, raw.classifier(), raw.type());
+        return new cc.jumpkick.model.Coordinate(raw.group(), raw.artifact(), resolved, raw.classifier(), raw.type());
     }
 
     /** Fetch one {@code module:version} jar into the CAS and return its path. */

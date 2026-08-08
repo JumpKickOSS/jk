@@ -777,7 +777,8 @@ final class EngineBuildListenerAdapter {
                         if (listener != null) listener.planFinish(result);
                         return result;
                     }
-                    case EngineProtocol.ERROR -> throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
+                    case EngineProtocol.ERROR ->
+                        throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
                     default -> {
                         /* forward-compatible no-op */
                     }

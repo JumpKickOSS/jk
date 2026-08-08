@@ -3617,9 +3617,7 @@ public final class BuildPlanner {
                     JkBuild project = ctx.require(PROJECT);
                     BuildLayout layout = ctx.require(LAYOUT);
                     Path classes = stageClassesWithContributions(
-                            ctx.require(MAIN_CLASSES),
-                            pluginDeclarationsFor(project, layout, cache),
-                            layout);
+                            ctx.require(MAIN_CLASSES), pluginDeclarationsFor(project, layout, cache), layout);
                     Path assemblyJar = layout.assemblyJar();
                     // Module-scoped runtime closure (not the whole workspace lock) — JK-1345.
                     List<Path> depJars = assemblyDependencyJars(layout.moduleRoot(), project, lockFile, cache);
@@ -4837,20 +4835,19 @@ public final class BuildPlanner {
         return extras;
     }
 
-    private static PluginBuild.Declarations pluginDeclarationsFor(
-            JkBuild project, BuildLayout layout, Path cache) throws java.io.IOException, InterruptedException {
+    private static PluginBuild.Declarations pluginDeclarationsFor(JkBuild project, BuildLayout layout, Path cache)
+            throws java.io.IOException, InterruptedException {
         var active = PluginBuild.activeCodePlugin(project, layout.moduleRoot());
         if (active.isEmpty()) return null;
-        return PluginBuild.declarations(
-                active.get(), project, layout.moduleRoot(), cache, layout.moduleTargetDir());
+        return PluginBuild.declarations(active.get(), project, layout.moduleRoot(), cache, layout.moduleTargetDir());
     }
 
     /**
      * Main classes plus any plugin {@code contributesClasses}/{@code contributesResources} dirs
      * (Micronaut AOT, etc.). When nothing is contributed, returns {@code classes} unchanged.
      */
-    private static Path stageClassesWithContributions(
-            Path classes, PluginBuild.Declarations decls, BuildLayout layout) throws java.io.IOException {
+    private static Path stageClassesWithContributions(Path classes, PluginBuild.Declarations decls, BuildLayout layout)
+            throws java.io.IOException {
         if (decls == null) return classes;
         List<Path> extra = new ArrayList<>();
         for (Path pth : PluginBuild.contributedDirs(decls, layout)) {
@@ -4889,6 +4886,4 @@ public final class BuildPlanner {
             }
         }
     }
-
-
 }

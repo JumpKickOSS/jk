@@ -55,8 +55,7 @@ class PlatformBomVersionsTest {
     @Test
     void exact_pin_returns_literal_without_needing_metadata(@TempDir Path tmp) throws Exception {
         RepoGroup repos = RepoGroup.of(new MavenRepo("local", base, new Http(), new Cas(tmp.resolve("c"))));
-        String v = PlatformBomVersions.resolve(
-                repos, "org.example", "bom", VersionSelector.parseFloating("=1.2.3"));
+        String v = PlatformBomVersions.resolve(repos, "org.example", "bom", VersionSelector.parseFloating("=1.2.3"));
         assertThat(v).isEqualTo("1.2.3");
     }
 
@@ -64,8 +63,7 @@ class PlatformBomVersionsTest {
     void caret_major_floor_picks_highest_stable(@TempDir Path tmp) throws Exception {
         serveMetadata("org.example", "bom", List.of("4.0.0", "4.0.1", "4.1.0", "4.1.0-RC1", "5.0.0"));
         RepoGroup repos = RepoGroup.of(new MavenRepo("local", base, new Http(), new Cas(tmp.resolve("c"))));
-        String v = PlatformBomVersions.resolve(
-                repos, "org.example", "bom", VersionSelector.parseFloating("4"));
+        String v = PlatformBomVersions.resolve(repos, "org.example", "bom", VersionSelector.parseFloating("4"));
         assertThat(v).isEqualTo("4.1.0");
     }
 
@@ -73,8 +71,7 @@ class PlatformBomVersionsTest {
     void caret_floor_at_minor_does_not_go_below_anchor(@TempDir Path tmp) throws Exception {
         serveMetadata("org.example", "bom", List.of("4.0.0", "4.0.1", "4.1.0", "4.2.0"));
         RepoGroup repos = RepoGroup.of(new MavenRepo("local", base, new Http(), new Cas(tmp.resolve("c"))));
-        String v = PlatformBomVersions.resolve(
-                repos, "org.example", "bom", VersionSelector.parseFloating("4.1.0"));
+        String v = PlatformBomVersions.resolve(repos, "org.example", "bom", VersionSelector.parseFloating("4.1.0"));
         assertThat(v).isEqualTo("4.2.0");
     }
 
@@ -82,8 +79,7 @@ class PlatformBomVersionsTest {
     void tilde_stays_within_minor(@TempDir Path tmp) throws Exception {
         serveMetadata("org.example", "bom", List.of("4.1.0", "4.1.5", "4.2.0"));
         RepoGroup repos = RepoGroup.of(new MavenRepo("local", base, new Http(), new Cas(tmp.resolve("c"))));
-        String v = PlatformBomVersions.resolve(
-                repos, "org.example", "bom", VersionSelector.parseFloating("~4.1.0"));
+        String v = PlatformBomVersions.resolve(repos, "org.example", "bom", VersionSelector.parseFloating("~4.1.0"));
         assertThat(v).isEqualTo("4.1.5");
     }
 

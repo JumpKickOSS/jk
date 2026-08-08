@@ -16,7 +16,6 @@ import java.net.URI;
 import java.nio.file.Path;
 import java.util.EnumMap;
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -31,8 +30,7 @@ class LogbackCoreEdgeTest {
         EnumMap<Scope, List<Dependency>> by = new EnumMap<>(Scope.class);
         by.put(
                 Scope.MAIN,
-                List.of(new Dependency(
-                        "ch.qos.logback:logback-classic", VersionSelector.parseFloating("1.5.37"))));
+                List.of(new Dependency("ch.qos.logback:logback-classic", VersionSelector.parseFloating("1.5.37"))));
         // Platform BOM like Micronaut — enforces managed pins
         by.put(
                 Scope.PLATFORM,
@@ -40,8 +38,8 @@ class LogbackCoreEdgeTest {
                         "platform",
                         "io.micronaut.platform:micronaut-platform",
                         VersionSelector.parseFloating("=5.1.0"))));
-        JkBuild project = new JkBuild(
-                new JkBuild.Project("com.example", "demo", "0.1.0", 25), new JkBuild.Dependencies(by));
+        JkBuild project =
+                new JkBuild(new JkBuild.Project("com.example", "demo", "0.1.0", 25), new JkBuild.Dependencies(by));
         Lockfile lock = new LockOrchestrator(RepoGroup.of(central)).lock(project, "test");
         Lockfile.Artifact classic = lock.artifacts().stream()
                 .filter(a -> a.packageKey().startsWith("ch.qos.logback:logback-classic"))

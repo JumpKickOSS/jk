@@ -19,8 +19,7 @@ import org.junit.jupiter.api.io.TempDir;
 class LogbackCoreEdgeFullTest {
     @Test
     void micronaut_hello_shape_keeps_logback_core_edge(@TempDir Path tmp) throws Exception {
-        String toml =
-                """
+        String toml = """
                 [project]
                 group = "com.example"
                 name = "hello-http"

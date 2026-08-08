@@ -1604,7 +1604,8 @@ public final class EngineClient {
             Path projectRoot) {
 
         /** Prune/purge/gc request — no project scope. */
-        public CacheMaintRequest(String op, Path cache, int olderThanDays, boolean dryRun, boolean sweep, boolean includeJkTmp) {
+        public CacheMaintRequest(
+                String op, Path cache, int olderThanDays, boolean dryRun, boolean sweep, boolean includeJkTmp) {
             this(op, cache, olderThanDays, dryRun, sweep, includeJkTmp, null);
         }
     }

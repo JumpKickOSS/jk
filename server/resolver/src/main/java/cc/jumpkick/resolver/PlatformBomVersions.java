@@ -48,14 +48,15 @@ public final class PlatformBomVersions {
             return e.version();
         }
 
-        String anchor = switch (selector) {
-            case VersionSelector.Caret c -> c.version();
-            case VersionSelector.Tilde t -> t.version();
-            case VersionSelector.Exact ignored -> throw new IllegalStateException("unreachable");
-            case VersionSelector.Range r -> throw reject(group, artifact, r.raw());
-            case VersionSelector.Latest l -> throw reject(group, artifact, l.raw());
-            case VersionSelector.Snapshot s -> throw reject(group, artifact, s.raw());
-        };
+        String anchor =
+                switch (selector) {
+                    case VersionSelector.Caret c -> c.version();
+                    case VersionSelector.Tilde t -> t.version();
+                    case VersionSelector.Exact ignored -> throw new IllegalStateException("unreachable");
+                    case VersionSelector.Range r -> throw reject(group, artifact, r.raw());
+                    case VersionSelector.Latest l -> throw reject(group, artifact, l.raw());
+                    case VersionSelector.Snapshot s -> throw reject(group, artifact, s.raw());
+                };
 
         VersionSet allowed = VersionSelectors.toVersionSet(selector);
         Coordinate probe = Coordinate.of(group, artifact, anchor);

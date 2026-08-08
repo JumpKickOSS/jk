@@ -151,6 +151,7 @@ class AssemblyPackagerTest {
         jos.write(content.getBytes(StandardCharsets.UTF_8));
         jos.closeEntry();
     }
+
     @Test
     void directory_entries_for_soft_service_loader(@TempDir Path tmp) throws Exception {
         // Micronaut SoftServiceLoader enumerates META-INF/micronaut/... as directories.
@@ -160,16 +161,17 @@ class AssemblyPackagerTest {
         Files.writeString(micronaut.resolve("com.example.$Foo$Definition"), "ref");
         Path out = tmp.resolve("app-all.jar");
         new AssemblyPackager()
-                .packageAssembly(new AssemblyPackager.AssemblyRequest(classes, List.of(), out, "app.Main", Map.of(), 0L));
-        try (java.util.jar.JarFile jf = new java.util.jar.JarFile(out.toFile())) {
+                .packageAssembly(
+                        new AssemblyPackager.AssemblyRequest(classes, List.of(), out, "app.Main", Map.of(), 0L));
+        try (JarFile jf = new JarFile(out.toFile())) {
             assertThat(jf.getEntry("META-INF/")).isNotNull();
             assertThat(jf.getEntry("META-INF/micronaut/")).isNotNull();
             assertThat(jf.getEntry("META-INF/micronaut/io.micronaut.inject.BeanDefinitionReference/"))
                     .isNotNull();
-            assertThat(jf.getEntry(
-                            "META-INF/micronaut/io.micronaut.inject.BeanDefinitionReference/com.example.$Foo$Definition"))
+            assertThat(
+                            jf.getEntry(
+                                    "META-INF/micronaut/io.micronaut.inject.BeanDefinitionReference/com.example.$Foo$Definition"))
                     .isNotNull();
         }
     }
-
 }

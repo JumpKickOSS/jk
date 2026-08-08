@@ -288,7 +288,11 @@ public final class FormatPlans {
     static boolean notExcluded(Path p) {
         for (Path seg : p) {
             String s = seg.toString();
-            if (s.equals("target") || s.equals("build") || s.equals(".jk") || s.equals(".git") || s.equals("node_modules")) {
+            if (s.equals("target")
+                    || s.equals("build")
+                    || s.equals(".jk")
+                    || s.equals(".git")
+                    || s.equals("node_modules")) {
                 return false;
             }
             // A giter8 template root has an unambiguous shape — a directory literally suffixed

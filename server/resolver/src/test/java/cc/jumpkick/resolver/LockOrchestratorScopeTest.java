@@ -246,16 +246,7 @@ class LockOrchestratorScopeTest {
     }
 
     private void servePom(String group, String artifact, String version, String body) {
-        String base = "/"
-                + group.replace('.', '/')
-                + "/"
-                + artifact
-                + "/"
-                + version
-                + "/"
-                + artifact
-                + "-"
-                + version;
+        String base = "/" + group.replace('.', '/') + "/" + artifact + "/" + version + "/" + artifact + "-" + version;
         servePath(base + ".pom", body);
         // JK-1649: lock materialize requires the artifact for non-pom packaging.
         if (!body.contains("<packaging>pom</packaging>")) {

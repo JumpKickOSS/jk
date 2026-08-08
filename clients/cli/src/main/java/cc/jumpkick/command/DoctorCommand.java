@@ -110,8 +110,8 @@ public final class DoctorCommand implements CliCommand {
         printCheck(lock, t);
 
         if (toolsError != null) {
-            CliOutput.out(Theme.colorize("warn:    ", t.warning()) + Theme.colorize("tools", t.cyan()) + " — probe failed: "
-                    + toolsError);
+            CliOutput.out(Theme.colorize("warn:    ", t.warning()) + Theme.colorize("tools", t.cyan())
+                    + " — probe failed: " + toolsError);
         } else if (toolRows.isEmpty()) {
             // If no tools at all, emit a row so the checklist looks complete.
             CliOutput.out(Theme.colorize("ok:      ", t.completedStep()) + " tools — no installs found");
@@ -121,11 +121,11 @@ public final class DoctorCommand implements CliCommand {
                 String label = toolName + " " + row.installed().version();
                 switch (row.kind()) {
                     case PRUNED ->
-                        CliOutput.out(Theme.colorize("pruned:  ", t.warning()) + " " + label
-                                + " (link target missing: " + Theme.colorize(row.detail(), t.path()) + ")");
+                        CliOutput.out(Theme.colorize("pruned:  ", t.warning()) + " " + label + " (link target missing: "
+                                + Theme.colorize(row.detail(), t.path()) + ")");
                     case VERIFIED ->
-                        CliOutput.out(Theme.colorize("verified:", t.completedStep()) + " " + label
-                                + " (sha256-tree=" + row.detail().substring(0, 12) + "…)");
+                        CliOutput.out(Theme.colorize("verified:", t.completedStep()) + " " + label + " (sha256-tree="
+                                + row.detail().substring(0, 12) + "…)");
                     case LINKED ->
                         CliOutput.out("linked:   " + label
                                 + " " + Theme.colorize("→", t.darkGray()) + " "
