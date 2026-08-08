@@ -57,7 +57,7 @@ public final class NewJkBuildRenderer {
                 sb.append("main       = \"").append(inputs.main().get()).append("\"\n");
             }
             if (inputs.assembly()) {
-                sb.append("assembly = true\n");
+                sb.append("assembly   = true\n"); // aligns with `main       =` above
             }
         }
         if (inputs.nativeImage()) {
