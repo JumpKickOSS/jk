@@ -181,19 +181,30 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
         return named;
     }
 
-    private static List<Path> jarsIn(Path dir) throws IOException {
+    static List<Path> jarsIn(Path dir) throws IOException {
         List<Path> out = new ArrayList<>();
         try (Stream<Path> s = Files.walk(dir)) {
-            s.filter(p -> p.getFileName().toString().endsWith(".jar")).forEach(out::add);
+            s.filter(Files::isRegularFile)
+                    .filter(p -> p.getFileName().toString().endsWith(".jar"))
+                    .forEach(out::add);
         }
+        // Files.walk order is directory-iteration order — it varies by filesystem and by the
+        // order entries were created. This list becomes both --classpath and the forked JVM's
+        // -cp, so an unsorted closure hands AOT a different classpath on two machines holding
+        // identical jars, and a duplicate class resolves differently (JK-1665).
+        out.sort(java.util.Comparator.comparing(Path::toString));
         return out;
     }
 
-    private static String joinCp(List<Path> paths) {
+    static String joinCp(List<Path> paths) throws IOException {
         String sep = System.getProperty("path.separator", ":");
         StringBuilder sb = new StringBuilder();
         for (Path p : paths) {
-            if (!Files.exists(p)) continue;
+            // A missing entry silently shortening the classpath is how you get an AOT run that
+            // "succeeds" with half its optimizers unavailable.
+            if (!Files.exists(p)) {
+                throw new IOException("Micronaut AOT classpath entry does not exist: " + p.toAbsolutePath());
+            }
             if (sb.length() > 0) sb.append(sep);
             sb.append(p.toAbsolutePath().normalize());
         }
