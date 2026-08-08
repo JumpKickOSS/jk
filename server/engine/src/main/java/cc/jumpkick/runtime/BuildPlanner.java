@@ -2674,6 +2674,9 @@ public final class BuildPlanner {
                                 ctx, in, cas, project, classes, jarPath, pluginActive, pluginDecls, variantSecrets);
                         return;
                     }
+                    // Plain/assembly packaging: merge plugin contributesClasses (Micronaut AOT, …).
+                    // Custom packagers (boot-jar) merge step outputs themselves.
+                    classes = stageClassesWithContributions(classes, pluginDecls, layout);
                     Files.createDirectories(jarPath.getParent());
                     String mainClass = project.mainClass();
                     // Application jars embed the lockfile-derived SBOM (libraries don't:
@@ -3613,7 +3616,10 @@ public final class BuildPlanner {
                 .execute(ctx -> {
                     JkBuild project = ctx.require(PROJECT);
                     BuildLayout layout = ctx.require(LAYOUT);
-                    Path classes = ctx.require(MAIN_CLASSES);
+                    Path classes = stageClassesWithContributions(
+                            ctx.require(MAIN_CLASSES),
+                            pluginDeclarationsFor(project, layout, cache),
+                            layout);
                     Path assemblyJar = layout.assemblyJar();
                     // Module-scoped runtime closure (not the whole workspace lock) — JK-1345.
                     List<Path> depJars = assemblyDependencyJars(layout.moduleRoot(), project, lockFile, cache);
@@ -4830,4 +4836,59 @@ public final class BuildPlanner {
         }
         return extras;
     }
+
+    private static PluginBuild.Declarations pluginDeclarationsFor(
+            JkBuild project, BuildLayout layout, Path cache) throws java.io.IOException, InterruptedException {
+        var active = PluginBuild.activeCodePlugin(project, layout.moduleRoot());
+        if (active.isEmpty()) return null;
+        return PluginBuild.declarations(
+                active.get(), project, layout.moduleRoot(), cache, layout.moduleTargetDir());
+    }
+
+    /**
+     * Main classes plus any plugin {@code contributesClasses}/{@code contributesResources} dirs
+     * (Micronaut AOT, etc.). When nothing is contributed, returns {@code classes} unchanged.
+     */
+    private static Path stageClassesWithContributions(
+            Path classes, PluginBuild.Declarations decls, BuildLayout layout) throws java.io.IOException {
+        if (decls == null) return classes;
+        List<Path> extra = new ArrayList<>();
+        for (Path pth : PluginBuild.contributedDirs(decls, layout)) {
+            if (pth != null && Files.isDirectory(pth)) extra.add(pth);
+        }
+        if (extra.isEmpty()) return classes;
+        Path stage = layout.moduleTargetDir().resolve("package-classes");
+        if (Files.exists(stage)) {
+            try (var walk = Files.walk(stage)) {
+                walk.sorted(java.util.Comparator.reverseOrder()).forEach(p2 -> {
+                    try {
+                        Files.deleteIfExists(p2);
+                    } catch (java.io.IOException ignored) {
+                    }
+                });
+            }
+        }
+        Files.createDirectories(stage);
+        copyTreeInto(classes, stage);
+        for (Path contrib : extra) copyTreeInto(contrib, stage);
+        return stage;
+    }
+
+    private static void copyTreeInto(Path from, Path to) throws java.io.IOException {
+        if (!Files.isDirectory(from)) return;
+        try (var walk = Files.walk(from)) {
+            for (Path src : (Iterable<Path>) walk::iterator) {
+                Path rel = from.relativize(src);
+                Path dst = to.resolve(rel.toString());
+                if (Files.isDirectory(src)) {
+                    Files.createDirectories(dst);
+                } else {
+                    Files.createDirectories(dst.getParent());
+                    Files.copy(src, dst, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                }
+            }
+        }
+    }
+
+
 }

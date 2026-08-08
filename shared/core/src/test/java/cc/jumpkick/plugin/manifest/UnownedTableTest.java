@@ -18,11 +18,11 @@ class UnownedTableTest {
                         group = "com.example"
                         version = "1.0.0"
 
-                        [micronaut]
+                        [not-a-real-plugin]
                         version = "4.0.0"
                         """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("[micronaut] is not owned by any installed plugin")
+                .hasMessageContaining("[not-a-real-plugin] is not owned by any installed plugin")
                 .hasMessageContaining("add it under [plugins]");
     }
 

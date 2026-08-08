@@ -1,6 +1,5 @@
-# Built-in Micronaut 5.x plugin — declarative layer (JK-1533/1534).
-# Packaging: scaffold sets [application] assembly = true (fat/runnable jar).
-# AOT / native: later tickets (JK-1536 / JK-1539).
+# Built-in Micronaut 5.x plugin (JK-1533/1534/1536).
+# Declarative: BOM + scaffold. Worker: micronaut-aot step. Packaging: assembly fat jar.
 
 [plugin]
 id        = "micronaut"
@@ -8,8 +7,18 @@ table     = "micronaut"
 version   = "1.0.0"
 jk-compat = ">=0.10"
 
+[code]
+worker          = "jk-micronaut"
+protocol-prefix = "##JKMN:"
+
 [schema]
-version = { type = "string", required = true, example = "5", hint = "major-line floor for micronaut-platform (caret; lock pins exact). Use =5.1.0 to hard-pin" }
+version     = { type = "string", required = true, example = "5", hint = "major-line floor for micronaut-platform (caret; lock pins exact). Use =5.1.0 to hard-pin" }
+aot         = { type = "bool" }  # tri-state: absent = auto (on when [native] is declared)
+aot-runtime = { type = "string", default = "jit", example = "jit", hint = "jit (default) or native — match packaging/native mode" }
+aot-package = { type = "string", example = "com.example.aot.generated", hint = "Java package for AOT-generated classes; default is project.group + .aot.generated" }
+aot-config  = { type = "string", example = "aot.properties", hint = "optional path to aot.properties (module-relative); defaults written when absent" }
+# Tooling line for micronaut-aot-{api,cli,std-optimizers}. Tracked separately from the platform BOM.
+aot-version = { type = "string", default = "3.1.0", example = "3.1.0", hint = "Micronaut AOT tooling version (cli/api/std-optimizers)" }
 
 # Platform BOM so micronaut-* deps are versionless under [dependencies].
 [[contribute.platform-dependency]]
@@ -19,6 +28,16 @@ coordinate = "io.micronaut.platform:micronaut-platform:${config.version}"
 [[contribute.compiler-args]]
 javac  = ["-parameters"]
 kotlin = ["-java-parameters"]
+
+# AOT tool classpath: cli + api + std-optimizers (always materialize; step body gated in code).
+[[contribute.step-dependency]]
+artifact   = "micronaut-aot-cli"
+coordinate = "io.micronaut.aot:micronaut-aot-cli:${config.aot-version}"
+with       = [
+  "io.micronaut.aot:micronaut-aot-api:${config.aot-version}",
+  "io.micronaut.aot:micronaut-aot-std-optimizers:${config.aot-version}",
+]
+transitive = true
 
 # ---- Scaffold: jk new --micronaut
 [scaffold]
