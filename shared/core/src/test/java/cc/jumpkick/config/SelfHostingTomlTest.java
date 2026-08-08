@@ -87,6 +87,7 @@ class SelfHostingTomlTest {
                         "shared/jk-api",
                         "shared/core",
                         "shared/client-io",
+                        "shared/dynamic-surface",
                         "server/io",
                         "server/resolver",
                         "shared/toolchain-jdk",
