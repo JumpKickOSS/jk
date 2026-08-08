@@ -432,8 +432,12 @@ public final class PluginBuild {
         return dir;
     }
 
-    /** Stable CAS dir name for a tool closure (includes BOM + extra roots). */
-    private static String toolClosureCacheKey(List<cc.jumpkick.model.Coordinate> roots, String managedByResolved) {
+    /**
+     * Stable CAS dir name for a tool closure (resolved roots + resolved BOM). Short keys stay
+     * readable; long ones hash.
+     */
+    // Package-private for ToolClosureCacheKeyTest.
+    static String toolClosureCacheKey(List<cc.jumpkick.model.Coordinate> roots, String managedByResolved) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < roots.size(); i++) {
             if (i > 0) sb.append("__");
@@ -442,10 +446,14 @@ public final class PluginBuild {
         if (managedByResolved != null && !managedByResolved.isBlank()) {
             sb.append("__bom_").append(managedByResolved.replace(':', '_'));
         }
-        // Keep path components reasonable on case-sensitive FS / path length limits.
+        // Keep path components reasonable on case-sensitive FS / path length limits. The lookup
+        // is `Files.isDirectory(dir)` with no content check, so a collision silently serves one
+        // closure's jars for another — hash the whole key rather than truncating it and hoping
+        // the tail differs in 32 bits of String.hashCode (JK-1661).
         String key = sb.toString();
         if (key.length() > 180) {
-            key = key.substring(0, 140) + "_" + Integer.toHexString(key.hashCode());
+            String artifact = roots.isEmpty() ? "tools" : roots.getFirst().artifact();
+            return Hashing.sha256Hex(key.getBytes(StandardCharsets.UTF_8)).substring(0, 40) + "_" + artifact;
         }
         return key;
     }
