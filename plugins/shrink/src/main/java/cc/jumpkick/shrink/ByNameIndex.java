@@ -2,6 +2,7 @@
 package cc.jumpkick.shrink;
 
 import cc.jumpkick.surface.DynamicSurface;
+import cc.jumpkick.surface.NativeImageMetadata;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -61,6 +62,33 @@ final class ByNameIndex {
             }
         }
         return out;
+    }
+
+    /**
+     * The GraalVM metadata {@code jars} publish under {@code META-INF/native-image}, as a surface.
+     *
+     * <p>Libraries already describe their own reflective surface there for {@code native-image},
+     * which finds it on the classpath unaided. R8 has no equivalent, so the same facts have to
+     * reach it as keep rules. Reading them costs a jar scan and no application run.
+     */
+    static DynamicSurface composedFromLibraries(Collection<Path> jars) throws IOException {
+        DynamicSurface surface = DynamicSurface.empty();
+        for (Path jar : jars) {
+            if (!Files.isRegularFile(jar)) continue;
+            try (JarFile jf = new JarFile(jar.toFile())) {
+                Enumeration<JarEntry> entries = jf.entries();
+                while (entries.hasMoreElements()) {
+                    JarEntry entry = entries.nextElement();
+                    if (!NativeImageMetadata.isMetadataFile(entry.getName())) continue;
+                    String body;
+                    try (var in = jf.getInputStream(entry)) {
+                        body = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+                    }
+                    surface = surface.merge(NativeImageMetadata.parse(entry.getName(), body, "library"));
+                }
+            }
+        }
+        return surface;
     }
 
     /** Fully-qualified names of every class present in {@code jars}. */

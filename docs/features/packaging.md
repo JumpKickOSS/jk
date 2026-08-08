@@ -107,9 +107,15 @@ classes, and roughly a fifth of them match no naming convention at all (framewor
 `InterceptorRegistryBean`, and `LogbackServiceProvider`, whose loss silences the logging that
 would report the damage).
 
-The effective rule set — jk's defaults, the derived rules, and yours — is written next to the
-artifact as `<name>-keep.pro`. Read it when R8 kept something unexpected, or when writing a rule
-for something it could not derive.
+jk also composes the GraalVM metadata libraries publish under `META-INF/native-image`.
+`native-image` finds that on the classpath unaided; R8 has no equivalent and would ignore it, so
+the reflective types, members, proxies and resources it declares are translated into keep rules.
+On a Micronaut application that is another ~220 entries, free — the data is already in the jars
+and no application run is involved.
+
+The effective rule set — jk's defaults, the derived rules, the composed library metadata, and
+yours — is written next to the artifact as `<name>-keep.pro`. Read it when R8 kept something
+unexpected, or when writing a rule for something it could not derive.
 
 ### Classes absent from the closure
 

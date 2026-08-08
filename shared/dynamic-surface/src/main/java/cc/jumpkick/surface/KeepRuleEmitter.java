@@ -40,8 +40,15 @@ public final class KeepRuleEmitter {
                 // A member spec needs a type: `*** name;` is any field of that name, and
                 // `*** name(...);` any method. The model records a name without saying which,
                 // so emit both rather than guess and drop the one that mattered.
+                //
+                // Initializers are the exception — they have no return type, and Graal's
+                // reflect-config lists constructors under `methods` as `<init>`.
                 StringJoiner members = new StringJoiner(" ");
                 for (String member : entry.members()) {
+                    if (member.equals("<init>") || member.equals("<clinit>")) {
+                        members.add(member + "(...);");
+                        continue;
+                    }
                     members.add("*** " + member + ";");
                     members.add("*** " + member + "(...);");
                 }

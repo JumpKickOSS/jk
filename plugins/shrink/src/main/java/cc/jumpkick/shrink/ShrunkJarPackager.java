@@ -113,10 +113,18 @@ final class ShrunkJarPackager {
             // whatever the project actually depends on.
             Set<String> derived = new java.util.TreeSet<>(ByNameIndex.referencedClasses(program));
             derived.retainAll(ByNameIndex.classesIn(program));
-            if (!derived.isEmpty()) {
-                pro.append("\n# Derived from service files and marker indexes in the inputs.\n")
-                        .append(cc.jumpkick.surface.KeepRuleEmitter.emit(ByNameIndex.surface(derived)));
-                io.label("keep rules: " + derived.size() + " derived from by-name indexes");
+
+            // Libraries describe their own reflective surface in META-INF/native-image for
+            // native-image, which reads it unaided. R8 has no equivalent, so the same facts reach
+            // it as keep rules. Free: the data is already in the jars, no run involved.
+            cc.jumpkick.surface.DynamicSurface composed = ByNameIndex.composedFromLibraries(program);
+            cc.jumpkick.surface.DynamicSurface surface =
+                    ByNameIndex.surface(derived).merge(composed);
+            if (!surface.entries().isEmpty()) {
+                pro.append("\n# Derived from by-name indexes and library native-image metadata.\n")
+                        .append(cc.jumpkick.surface.KeepRuleEmitter.emit(surface));
+                io.label("keep rules: " + derived.size() + " from by-name indexes, "
+                        + composed.entries().size() + " from library metadata");
             }
 
             for (String rule : io.config().stringList("keep")) {

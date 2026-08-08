@@ -54,6 +54,21 @@ class EmittersTest {
     }
 
     @Test
+    void an_initializer_member_has_no_return_type() {
+        // Graal's reflect-config lists constructors under `methods` as <init>; `*** <init>;` is
+        // not a legal member spec and R8 rejects the whole rule file.
+        DynamicSurface surface = DynamicSurface.of(
+                new Entry(REFLECTIVE_MEMBER, "com.acme.A", Set.of("<init>", "<clinit>", "run"), "library"));
+
+        assertThat(KeepRuleEmitter.emit(surface))
+                .contains("<init>(...);")
+                .contains("<clinit>(...);")
+                .doesNotContain("*** <init>")
+                .doesNotContain("*** <clinit>")
+                .contains("*** run;");
+    }
+
+    @Test
     void a_member_entry_with_no_members_keeps_the_whole_type() {
         DynamicSurface surface = DynamicSurface.of(Entry.type(REFLECTIVE_MEMBER, "com.acme.A", "x"));
 

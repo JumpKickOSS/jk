@@ -102,6 +102,21 @@ everything else. Every class derived here is one the train suite does not have t
 Recognition is strict: every dot-separated segment must be a legal Java identifier, so data files
 sitting beside an index are not mistaken for classes.
 
+## Composing published library metadata
+
+Libraries describe their own reflective surface under `META-INF/native-image/<group>/<artifact>/`,
+in either the split schema (`reflect-config.json`, `resource-config.json`, `proxy-config.json`,
+`serialization-config.json`, `jni-config.json`) or the unified `reachability-metadata.json`. jk
+reads both.
+
+`native-image` finds this on the classpath by itself, so composition exists for R8's benefit: the
+same declarations become keep rules. On a Micronaut application it is ~220 entries that would
+otherwise have to be trained for or hand-written.
+
+A malformed file is skipped rather than failing the build — a third party's broken metadata
+should not stop someone packaging their application. `native-image.properties` is build flags
+rather than surface, and is not jk's to interpret.
+
 ## `jk train`
 
 ```bash
