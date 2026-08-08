@@ -189,6 +189,9 @@ Keep the class itself to fix it:
 keep = ["-keep class com.example.GenericThing { *; }"]
 ```
 
+Both of these are what [`jk train`](dynamic-surface.md) exists to discover by observing a real
+run, rather than by guessing.
+
 Sample: [examples/shrunk-cli/](examples/shrunk-cli/).
 
 ## Spring Boot
