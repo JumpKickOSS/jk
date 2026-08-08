@@ -91,6 +91,16 @@ caret; the difference is who wrote the version.
 `[[contribute.platform-dependency]]` is *not* a tool coordinate — it lands in the project's
 `[platform-dependencies]` and follows the `jk.toml` bare-is-caret rule.
 
+```toml
+[[contribute.native-args]]
+when = { native-declared = true }
+args = ["--initialize-at-build-time=ch.qos.logback"]
+```
+
+`native-args` carries what `native-image` needs and reachability metadata cannot express —
+chiefly class-initialization policy. Contributed args land before the project's `[native] args`,
+so a user can override anything a plugin sets.
+
 **Conditions (closed set, one per `when`):** `classpath-has`, `config`/`equals`,
 `native-declared`, `kotlin-project`. Richer logic belongs in code.
 

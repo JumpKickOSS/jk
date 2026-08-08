@@ -291,6 +291,17 @@ public final class PluginDescriptors {
             compilerArgs.add(new PluginDescriptor.CompilerArgs(javac, kotlin, groovy, ksp, parseCondition(t, where)));
         }
 
+        // [[contribute.native-args]] — class-initialization policy and other native-image flags
+        // the framework needs. Not reachability metadata: no amount of it expresses which types
+        // may be initialized while the image is built.
+        List<PluginDescriptor.NativeArgs> nativeArgs = new ArrayList<>();
+        for (TomlTable t : tableArray(contribute, "native-args", displayPath)) {
+            String where = displayPath + ".contribute.native-args";
+            List<String> args = stringList(t, "args", where);
+            for (String arg : args) Interpolation.validate(arg, schemaKeys, where + ".args");
+            nativeArgs.add(new PluginDescriptor.NativeArgs(args, parseCondition(t, where)));
+        }
+
         // [[contribute.source-roots]] — extra module input roots (Grails' grails-app tree).
         // Dirs must stay inside the module: absolute or ..-escaping entries fail at load.
         List<PluginDescriptor.SourceRoot> sourceRoots = new ArrayList<>();
@@ -425,6 +436,7 @@ public final class PluginDescriptors {
         return new PluginDescriptor.Contributions(
                 platformDeps,
                 compilerArgs,
+                nativeArgs,
                 kotlinPlugins,
                 packagerDeps,
                 stepDeps,

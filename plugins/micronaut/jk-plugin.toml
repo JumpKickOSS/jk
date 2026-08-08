@@ -39,6 +39,24 @@ with       = [
 ]
 transitive = true
 
+# ---- native-image: class-initialization policy the framework needs.
+# Reachability metadata cannot express which types may be initialized while the image is built,
+# so without these a native build fails one class at a time. `[native] args` overrides any of it.
+#
+# INCOMPLETE (JK-1694): these two are the standard, documented workarounds any logback + Netty
+# application needs. A Micronaut image needs more, and the rest should be ported from Micronaut's
+# own Gradle/Maven plugin rather than rediscovered one failure at a time.
+[[contribute.native-args]]
+when = { native-declared = true }
+args = [
+  # Logback initialises its context eagerly; leaving it to run time puts a half-built
+  # LoggerContext in the image heap.
+  "--initialize-at-build-time=ch.qos.logback,org.slf4j",
+  # Netty's pcap handler holds a static wildcard InetAddress, which drags a resolved
+  # Inet4Address into the heap if it is initialised at build time.
+  "--initialize-at-run-time=io.netty.handler.pcap",
+]
+
 # ---- Scaffold: jk new --micronaut
 [scaffold]
 flag        = "micronaut"

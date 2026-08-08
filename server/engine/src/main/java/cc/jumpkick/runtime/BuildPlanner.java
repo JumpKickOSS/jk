@@ -3822,8 +3822,18 @@ public final class BuildPlanner {
                         out = shared ? layout.nativeLibrary() : layout.nativeBinary();
                     }
                     Files.createDirectories(out.getParent());
-                    // Args: [native].args (project-level) + extra (CLI --) in that order
-                    List<String> allArgs = new ArrayList<>(nativeCfg.args());
+                    // Args, least specific first so the more specific wins on conflict: what the
+                    // active plugins' frameworks require (class-initialization policy, which no
+                    // amount of reachability metadata expresses), then [native].args, then the
+                    // CLI's trailing args.
+                    List<String> pluginNativeArgs =
+                            cc.jumpkick.plugin.manifest.PluginContributions.nativeArgs(project, dir);
+                    if (!pluginNativeArgs.isEmpty()) {
+                        ctx.label(pluginNativeArgs.size() + " native-image "
+                                + (pluginNativeArgs.size() == 1 ? "arg" : "args") + " from plugins");
+                    }
+                    List<String> allArgs = new ArrayList<>(pluginNativeArgs);
+                    allArgs.addAll(nativeCfg.args());
                     allArgs.addAll(extra);
 
                     Path javaHome = javaHomeEarly; // resolved above in fail-fast check

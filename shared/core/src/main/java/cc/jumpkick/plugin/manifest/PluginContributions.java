@@ -170,6 +170,40 @@ public final class PluginContributions {
         return out;
     }
 
+    /**
+     * The {@code native-image} arguments the active plugins contribute, in declaration order.
+     *
+     * <p>Mostly class-initialization policy: which types may be initialized while the image is
+     * built. Reachability metadata does not express it and static analysis cannot infer it, so
+     * without this a framework application fails one class at a time and the user reassembles a
+     * list their framework's own build plugin already knows.
+     *
+     * <p>The caller places these before {@code [native] args} so a user can override.
+     */
+    public static List<String> nativeArgs(JkBuild build, java.nio.file.Path moduleDir) {
+        List<String> out = new ArrayList<>();
+        for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
+            PluginConfig config = build.pluginConfigs().get(manifest.id());
+            if (config == null) continue;
+            for (PluginDescriptor.NativeArgs contributed :
+                    manifest.contributions().nativeArgs()) {
+                if (!holds(
+                        contributed.when(),
+                        config,
+                        build.project(),
+                        build.nativeConfig().isPresent(),
+                        null,
+                        manifest.id())) {
+                    continue;
+                }
+                for (String arg : contributed.args()) {
+                    out.add(Interpolation.resolve(arg, config, build.project(), null));
+                }
+            }
+        }
+        return out;
+    }
+
     /** One resolved packager-dependency: fetch {@code module:version}, hand it over as {@code artifact}. */
     public record PackagerDep(String artifact, String module, String version) {}
 
