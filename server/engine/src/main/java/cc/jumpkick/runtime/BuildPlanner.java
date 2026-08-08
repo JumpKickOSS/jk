@@ -120,6 +120,14 @@ public final class BuildPlanner {
     public static final BuildPlanKey<String> KOTLIN_OUTCOME = BuildPlanKey.of("kotlin-outcome", String.class);
     public static final BuildPlanKey<String> GROOVY_OUTCOME = BuildPlanKey.of("groovy-outcome", String.class);
     public static final BuildPlanKey<Path> JAR_PATH = BuildPlanKey.of("jar-path", Path.class);
+
+    /**
+     * Fingerprint of the inputs {@code target/package-classes} was last staged from in this build,
+     * so package-jar and assembly do not each copy the same tree (JK-1658).
+     */
+    public static final BuildPlanKey<String> STAGED_CLASSES_INPUTS =
+            BuildPlanKey.of("staged-classes-inputs", String.class);
+
     public static final BuildPlanKey<Path> MAIN_CLASSES = BuildPlanKey.of("main-classes", Path.class);
     public static final BuildPlanKey<Path> TEST_CLASSES = BuildPlanKey.of("test-classes", Path.class);
     public static final BuildPlanKey<BuildLayout> LAYOUT = BuildPlanKey.of("layout", BuildLayout.class);
@@ -2674,9 +2682,11 @@ public final class BuildPlanner {
                                 ctx, in, cas, project, classes, jarPath, pluginActive, pluginDecls, variantSecrets);
                         return;
                     }
-                    // Plain/assembly packaging: merge plugin contributesClasses (Micronaut AOT, …).
-                    // Custom packagers (boot-jar) merge step outputs themselves.
-                    classes = stageClassesWithContributions(classes, pluginDecls, layout);
+                    // Plain/assembly packaging merges plugin contributesClasses (Micronaut AOT, …);
+                    // custom packagers (boot-jar) merge step outputs themselves. The dirs are only
+                    // *listed* here — staging them is a copy, and it must not happen before the
+                    // cache check below (JK-1658).
+                    List<Path> contributed = existingContributedDirs(pluginDecls, layout);
                     Files.createDirectories(jarPath.getParent());
                     String mainClass = project.mainClass();
                     // Application jars embed the lockfile-derived SBOM (libraries don't:
@@ -2687,10 +2697,12 @@ public final class BuildPlanner {
                         if (sbomLock != null) sbom = applicationSbom(project, sbomLock, cas);
                     }
                     // Packaging cache: the jar is a pure function of the main classes
-                    // (resources already copied in), the main-class, the manifest, and
-                    // the SBOM content (a lock change re-embeds).
+                    // (resources already copied in), the plugin-contributed dirs merged over
+                    // them, the main-class, the manifest, and the SBOM content (a lock change
+                    // re-embeds).
                     List<String> tokens = List.of(
                             "classes:" + cc.jumpkick.task.ClasspathFingerprint.entry(classes),
+                            "contrib:" + contributionsToken(contributed),
                             "main:" + (mainClass == null ? "" : mainClass),
                             "sbom:" + (sbom == null ? "" : cc.jumpkick.util.Hashing.sha256Hex(sbom)),
                             "manifest:" + project.manifest());
@@ -2707,6 +2719,7 @@ public final class BuildPlanner {
                         return;
                     }
                     ctx.label("package " + jarPath.getFileName());
+                    classes = stageClassesWithContributions(ctx, classes, contributed, layout);
                     JarPackager.JarRequest jarRequest = JarPackager.JarRequest.of(classes, jarPath);
                     if (mainClass != null && !mainClass.isBlank()) jarRequest = jarRequest.withMainClass(mainClass);
                     Map<String, String> jarAttrs = new LinkedHashMap<>(project.manifest());
@@ -3616,16 +3629,28 @@ public final class BuildPlanner {
                 .execute(ctx -> {
                     JkBuild project = ctx.require(PROJECT);
                     BuildLayout layout = ctx.require(LAYOUT);
-                    Path classes = stageClassesWithContributions(
-                            ctx.require(MAIN_CLASSES), pluginDeclarationsFor(project, layout, cache), layout);
+                    Path classes = ctx.require(MAIN_CLASSES);
+                    // Listed, not staged — see packageJarStep. package-jar runs first (hard
+                    // requires edge) and publishes its stage, so the copy below is usually a
+                    // no-op; when package-jar restored from cache there is nothing to reuse and
+                    // this task stages for itself.
+                    //
+                    // Declarations are re-derived rather than threaded in from the plan: this is
+                    // a tail step assembled by appendDeclaredTails, which has no plugin context,
+                    // and hoisting the lookup into plan construction would risk forking the
+                    // plugin worker while merely *planning*. PluginBuild.declarations is
+                    // file-cached under the module target, so this is a read, not a fork.
+                    List<Path> contributed =
+                            existingContributedDirs(pluginDeclarationsFor(project, layout, cache), layout);
                     Path assemblyJar = layout.assemblyJar();
                     // Module-scoped runtime closure (not the whole workspace lock) — JK-1345.
                     List<Path> depJars = assemblyDependencyJars(layout.moduleRoot(), project, lockFile, cache);
                     // Packaging cache: the fat jar is a pure function of the main
-                    // classes, the bundled dependency jars' content, the main-class,
-                    // and the manifest.
+                    // classes, the plugin-contributed dirs merged over them, the bundled
+                    // dependency jars' content, the main-class, and the manifest.
                     List<String> tokens = List.of(
                             "classes:" + cc.jumpkick.task.ClasspathFingerprint.entry(classes),
+                            "contrib:" + contributionsToken(contributed),
                             "deps:" + cc.jumpkick.task.ClasspathFingerprint.of(depJars),
                             "main:" + (project.mainClass() == null ? "" : project.mainClass()),
                             "manifest:" + project.manifest(),
@@ -3640,6 +3665,7 @@ public final class BuildPlanner {
                         return;
                     }
                     ctx.label("package " + assemblyJar.getFileName());
+                    classes = stageClassesWithContributions(ctx, classes, contributed, layout);
                     byte[] assemblySbom = null;
                     Map<String, String> assemblyAttrs = new LinkedHashMap<>(project.manifest());
                     if (Files.exists(lockFile)) {
@@ -4846,16 +4872,52 @@ public final class BuildPlanner {
      * Main classes plus any plugin {@code contributesClasses}/{@code contributesResources} dirs
      * (Micronaut AOT, etc.). When nothing is contributed, returns {@code classes} unchanged.
      */
+    /**
+     * The plugin {@code contributesClasses}/{@code contributesResources} dirs that exist, in
+     * declaration order. Listing is cheap; {@link #stageClassesWithContributions} is the copy.
+     */
     // Package-private for BuildPlannerStagedClassesTest.
-    static Path stageClassesWithContributions(Path classes, PluginBuild.Declarations decls, BuildLayout layout)
-            throws java.io.IOException {
-        if (decls == null) return classes;
-        List<Path> extra = new ArrayList<>();
+    static List<Path> existingContributedDirs(PluginBuild.Declarations decls, BuildLayout layout) {
+        if (decls == null) return List.of();
+        List<Path> out = new ArrayList<>();
         for (Path pth : PluginBuild.contributedDirs(decls, layout)) {
-            if (pth != null && Files.isDirectory(pth)) extra.add(pth);
+            if (pth != null && Files.isDirectory(pth)) out.add(pth);
         }
+        return out;
+    }
+
+    /**
+     * Cache-key token covering the contributed dirs. Order-sensitive on purpose: contributions
+     * merge first-wins, so declaration order is part of what the packaged output depends on.
+     */
+    private static String contributionsToken(List<Path> contributed) throws java.io.IOException {
+        if (contributed.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        for (Path dir : contributed) {
+            sb.append(cc.jumpkick.task.ClasspathFingerprint.entry(dir)).append('\n');
+        }
+        return cc.jumpkick.util.Hashing.sha256Hex(sb.toString());
+    }
+
+    /**
+     * Main classes plus the plugin-contributed dirs, merged into one tree for the packagers.
+     * Returns {@code classes} unchanged when nothing is contributed.
+     *
+     * <p>Both packaging tasks call this, and package-jar always runs first, so it publishes the
+     * staged dir under {@link #STAGED_CLASSES} and assembly reuses it. Reuse is keyed on the
+     * inputs, not merely on the dir existing: package-jar may have restored from cache without
+     * staging at all, in which case assembly stages for itself.
+     */
+    // Package-private for BuildPlannerStagedClassesTest.
+    static Path stageClassesWithContributions(
+            cc.jumpkick.run.TaskContext ctx, Path classes, List<Path> extra, BuildLayout layout)
+            throws java.io.IOException {
         if (extra.isEmpty()) return classes;
         Path stage = layout.moduleTargetDir().resolve("package-classes");
+        String inputs = cc.jumpkick.task.ClasspathFingerprint.entry(classes) + "|" + contributionsToken(extra);
+        if (ctx != null && inputs.equals(ctx.get(STAGED_CLASSES_INPUTS).orElse(null)) && Files.isDirectory(stage)) {
+            return stage;
+        }
         // A wipe that cannot finish is a build error, not something to paper over: the copy below
         // only overwrites paths it reproduces, so a survivor from a previous build (a renamed or
         // no-longer-emitted class) would be packaged, and the packaging key is taken over this
@@ -4864,6 +4926,7 @@ public final class BuildPlanner {
         Files.createDirectories(stage);
         copyTreeInto(classes, stage);
         for (Path contrib : extra) copyTreeInto(contrib, stage);
+        if (ctx != null) ctx.put(STAGED_CLASSES_INPUTS, inputs);
         return stage;
     }
 
