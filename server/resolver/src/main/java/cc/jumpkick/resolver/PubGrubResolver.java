@@ -177,55 +177,27 @@ public final class PubGrubResolver implements Resolver {
             }
         }
 
-        // Exclusions effective when listing each package's children: seed from parent edges
-        // (P depends on A with exclusions E → E applies under A), then cascade down so
-        // subtree members inherit (Maven: exclusion covers the whole branch).
-        Map<String, Set<String>> exclWhenListing = new HashMap<>();
-        if (pomBuilder != null) {
-            for (Map.Entry<String, String> e : decisions.entrySet()) {
-                EffectivePom pom = pomBuilder.build(toCoord(e.getKey(), e.getValue()));
-                for (Pom.Dep d : pom.dependencies()) {
-                    Set<String> edgeExcl = MavenPackageSource.modulesOf(d.exclusions());
-                    if (edgeExcl.isEmpty()) continue;
-                    exclWhenListing.merge(MavenPackageSource.packageKey(d), edgeExcl, PubGrubResolver::unionSets);
-                }
-            }
-            // Cascade: if A has exclusions E and A→B, B also filters by E.
-            boolean changed = true;
-            while (changed) {
-                changed = false;
-                for (Map.Entry<String, String> e : decisions.entrySet()) {
-                    Set<String> parentExcl = exclWhenListing.get(e.getKey());
-                    if (parentExcl == null || parentExcl.isEmpty()) continue;
-                    EffectivePom pom = pomBuilder.build(toCoord(e.getKey(), e.getValue()));
-                    for (Pom.Dep d : pom.dependencies()) {
-                        String childPkg = MavenPackageSource.packageKey(d);
-                        if (!decisions.containsKey(childPkg)) continue;
-                        Set<String> before = exclWhenListing.getOrDefault(childPkg, Set.of());
-                        Set<String> merged = unionSets(before, parentExcl);
-                        if (merged.size() != before.size()) {
-                            exclWhenListing.put(childPkg, merged);
-                            changed = true;
-                        }
-                    }
-                }
-            }
-        }
-
+        // Exclusions are a SOLVE-time concern, not a lock-edge concern. MavenPackageSource applies
+        // them while listing candidates, so an excluded-everywhere package never reaches
+        // `decisions`. Once a package IS in the resolution, every POM edge pointing at it is real
+        // and the closure needs it — filtering here is what dropped logback-classic → logback-core
+        // when an unrelated Micronaut edge excluded logback-core, and the assembly then shipped
+        // without ch.qos.logback.core (ea6dc765). Do not reintroduce a per-edge exclusion filter
+        // below: `decisions.containsKey` is the whole rule (JK-1660).
         Map<String, Set<String>> dependsOn = new HashMap<>();
         for (Map.Entry<String, String> e : decisions.entrySet()) {
             Set<String> deps = new LinkedHashSet<>();
             if (pomBuilder != null) {
-                Set<String> excl = exclWhenListing.getOrDefault(e.getKey(), Set.of());
                 // Mirror MavenPackageSource's KMP rewrite: the dep edges must show the
-                // GMM-selected platform artifact, not the POM's platform fallback.
+                // GMM-selected platform artifact, not the POM's platform fallback. A rewritten
+                // edge is still a POM edge, so it follows the same rule as the loop below.
                 var kmpSelection = kmp.selectionFor(e.getKey(), e.getValue());
                 Set<String> kmpDropped = Set.of();
                 if (kmpSelection.isPresent()) {
                     var target = kmpSelection.get().target();
                     String targetPkg = PackageId.ofGa(target.group() + ":" + target.module())
                             .key();
-                    if (decisions.containsKey(targetPkg) && !MavenPackageSource.isExcluded(targetPkg, excl)) {
+                    if (decisions.containsKey(targetPkg)) {
                         deps.add(targetPkg + "@" + decisions.get(targetPkg));
                     }
                     kmpDropped = kmpSelection.get().allTargets();
@@ -239,11 +211,6 @@ public final class PubGrubResolver implements Resolver {
                         continue;
                     if (d.version() == null || d.version().isBlank()) continue;
                     String childPkg = MavenPackageSource.packageKey(d);
-                    // Path-specific exclusions (exclWhenListing) must not strip lock edges.
-                    // They affect which packages are *selected* during the solve; once both
-                    // parent and child are in the resolution, the POM edge is real and
-                    // classpathClosure/assembly need it (e.g. logback-classic → logback-core
-                    // was dropped when some Micronaut edge excluded logback-core onto classic).
                     if (!decisions.containsKey(childPkg)) continue;
                     deps.add(childPkg + "@" + decisions.get(childPkg));
                 }
@@ -263,13 +230,5 @@ public final class PubGrubResolver implements Resolver {
 
     private static Coordinate toCoord(String packageKey, String version) {
         return PackageId.parse(packageKey).withVersion(version);
-    }
-
-    private static Set<String> unionSets(Set<String> a, Set<String> b) {
-        if (a == null || a.isEmpty()) return b == null ? Set.of() : Set.copyOf(b);
-        if (b == null || b.isEmpty()) return Set.copyOf(a);
-        Set<String> u = new LinkedHashSet<>(a);
-        u.addAll(b);
-        return Set.copyOf(u);
     }
 }
