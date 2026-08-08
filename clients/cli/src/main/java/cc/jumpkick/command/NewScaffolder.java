@@ -54,7 +54,7 @@ public final class NewScaffolder {
         params.put("group", inputs.group());
         params.put("name", inputs.name());
         params.put("version", "0.1.0");
-        params.putIfAbsent("quarkus.version", ToolDefaults.QUARKUS_PLATFORM_VERSION);
+        params.putIfAbsent("quarkus.version", ToolDefaults.QUARKUS_PLATFORM_FLOOR);
         params.put("simpleLayout", String.valueOf(inputs.isSimpleLayout()));
         params.put("sample", String.valueOf(inputs.sample()));
         params.put("baseToml", NewJkBuildRenderer.render(inputs));
