@@ -27,6 +27,8 @@ import java.util.stream.Stream;
 public final class MicronautPlugin implements Plugin, BuildExtension {
 
     static final String AOT_STEP = "micronaut-aot";
+    static final String RUNTIME_JIT = "jit";
+    static final String RUNTIME_NATIVE = "native";
     private static final String AOT_TOOLS = "micronaut-aot-cli";
     private static final String AOT_MAIN = "io.micronaut.aot.cli.Main";
 
@@ -60,15 +62,18 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
             throw new IOException("no classes to optimize at " + classes);
         }
 
-        String runtime =
-                exec.config().stringOpt("aot-runtime").orElse("jit").trim().toLowerCase(Locale.ROOT);
-        if (!runtime.equals("jit") && !runtime.equals("native")) {
+        String runtime = exec.config()
+                .stringOpt("aot-runtime")
+                .orElse(RUNTIME_JIT)
+                .trim()
+                .toLowerCase(Locale.ROOT);
+        if (!runtime.equals(RUNTIME_JIT) && !runtime.equals(RUNTIME_NATIVE)) {
             throw new IOException("[micronaut] aot-runtime must be \"jit\" or \"native\" (got `" + runtime + "`)");
         }
-        if (runtime.equals("native") && !exec.project().nativeDeclared()) {
+        if (runtime.equals(RUNTIME_NATIVE) && !exec.project().nativeDeclared()) {
             exec.label("note: aot-runtime=native without [native] — still generating native-oriented AOT");
         }
-        if (runtime.equals("jit") && exec.project().nativeDeclared()) {
+        if (runtime.equals(RUNTIME_JIT) && exec.project().nativeDeclared()) {
             exec.label("note: [native] present but aot-runtime=jit — prefer aot-runtime=native for native-image");
         }
 
@@ -78,7 +83,7 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
                 .orElse(exec.project().group() + ".aot.generated");
 
         Path generated = exec.outputDir("generated");
-        Path configFile = writeEffectiveConfig(exec, generated);
+        Path configFile = writeEffectiveConfig(exec, generated, runtime);
 
         // Tool CP: AOT cli closure (api + cli + std-optimizers via transitive step-dep).
         Path tools = exec.requireExtra(AOT_TOOLS);
@@ -128,10 +133,10 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
     }
 
     /**
-     * Effective aot.properties: user file when present ({@code aot-config} or {@code aot.properties}),
-     * else a minimal default enabling common optimizers.
+     * Effective aot.properties: the user's file when present ({@code aot-config} or
+     * {@code aot.properties}), else the defaults for {@code runtime}.
      */
-    private static Path writeEffectiveConfig(TaskExec exec, Path generated) throws IOException {
+    private static Path writeEffectiveConfig(TaskExec exec, Path generated, String runtime) throws IOException {
         Properties props = new Properties();
         Path user = userConfigFile(
                 exec.moduleDir(), exec.config().stringOpt("aot-config").orElse(""));
@@ -140,19 +145,39 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
                 props.load(in);
             }
         } else {
-            // Sensible defaults when the user has not authored a config yet.
-            props.setProperty("cached.environment.enabled", "true");
-            props.setProperty("logback.xml.to.java.enabled", "true");
-            props.setProperty("yaml.to.java.config.enabled", "true");
-            props.setProperty("scan.reactive.types.enabled", "true");
-            props.setProperty("serviceloading.jit.enabled", "true");
-            props.setProperty("precompute.environment.properties.enabled", "true");
-            props.setProperty("deduce.environment.enabled", "true");
+            defaultsFor(runtime).forEach(props::setProperty);
         }
         Path effective = generated.resolve("effective-aot.properties");
         Files.createDirectories(effective.getParent());
         Files.writeString(effective, renderProperties(props));
         return effective;
+    }
+
+    /**
+     * Default optimizers for a runtime.
+     *
+     * <p>The two sets differ where an optimizer resolves state at build time. Under {@code jit}
+     * that is the point: caching the environment and precomputing properties is free startup.
+     * Under {@code native} it puts the resolved objects — {@code Inet4Address} among them — into
+     * the image heap, and {@code native-image} refuses to build against types initialized at run
+     * time. Service loading splits the same way: the JIT optimizer is the wrong one for a closed
+     * world.
+     *
+     * <p>Source translation ({@code logback.xml}, YAML) helps both, and helps native twice over
+     * by removing a by-name instantiation path nothing can otherwise see.
+     */
+    static java.util.Map<String, String> defaultsFor(String runtime) {
+        java.util.Map<String, String> props = new java.util.LinkedHashMap<>();
+        props.put("logback.xml.to.java.enabled", "true");
+        props.put("yaml.to.java.config.enabled", "true");
+        props.put("scan.reactive.types.enabled", "true");
+        boolean nativeRuntime = RUNTIME_NATIVE.equals(runtime);
+        props.put("serviceloading.jit.enabled", String.valueOf(!nativeRuntime));
+        props.put("serviceloading.native.enabled", String.valueOf(nativeRuntime));
+        props.put("cached.environment.enabled", String.valueOf(!nativeRuntime));
+        props.put("deduce.environment.enabled", String.valueOf(!nativeRuntime));
+        props.put("precompute.environment.properties.enabled", String.valueOf(!nativeRuntime));
+        return props;
     }
 
     /**
