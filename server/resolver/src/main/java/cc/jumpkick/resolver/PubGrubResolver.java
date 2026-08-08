@@ -239,7 +239,11 @@ public final class PubGrubResolver implements Resolver {
                         continue;
                     if (d.version() == null || d.version().isBlank()) continue;
                     String childPkg = MavenPackageSource.packageKey(d);
-                    if (MavenPackageSource.isExcluded(childPkg, excl)) continue;
+                    // Path-specific exclusions (exclWhenListing) must not strip lock edges.
+                    // They affect which packages are *selected* during the solve; once both
+                    // parent and child are in the resolution, the POM edge is real and
+                    // classpathClosure/assembly need it (e.g. logback-classic → logback-core
+                    // was dropped when some Micronaut edge excluded logback-core onto classic).
                     if (!decisions.containsKey(childPkg)) continue;
                     deps.add(childPkg + "@" + decisions.get(childPkg));
                 }
