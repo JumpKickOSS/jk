@@ -65,7 +65,7 @@ public final class AssemblyPackager {
                     continue;
                 }
                 if (written.add(name)) {
-                    writeParentDirs(jos, name, epoch, dirs);
+                    DeterministicJar.writeParentDirs(jos, name, epoch, dirs);
                     // Streamed — a large bundled resource never has to fit in the heap.
                     DeterministicJar.writeEntryStreaming(jos, name, Files.newInputStream(file), epoch);
                 }
@@ -89,7 +89,7 @@ public final class AssemblyPackager {
                             continue;
                         }
                         if (written.add(name)) {
-                            writeParentDirs(jos, name, epoch, dirs);
+                            DeterministicJar.writeParentDirs(jos, name, epoch, dirs);
                             // Streamed entry-to-entry copy — never buffers a whole entry.
                             DeterministicJar.writeEntryStreaming(jos, name, jf.getInputStream(e), epoch);
                         }
@@ -99,7 +99,7 @@ public final class AssemblyPackager {
 
             // 3. Merged multi-entry META-INF files (services, Spring handlers, …).
             for (Map.Entry<String, ByteArrayOutputStream> e : merged.entrySet()) {
-                writeParentDirs(jos, e.getKey(), epoch, dirs);
+                DeterministicJar.writeParentDirs(jos, e.getKey(), epoch, dirs);
                 DeterministicJar.writeEntry(jos, e.getKey(), e.getValue().toByteArray(), epoch);
                 written.add(e.getKey());
             }
@@ -107,27 +107,11 @@ public final class AssemblyPackager {
             // 4. Generated entries (e.g. the CycloneDX SBOM); real content wins on collision.
             for (Map.Entry<String, byte[]> e : new TreeMap<>(request.extraEntries()).entrySet()) {
                 if (!written.add(e.getKey())) continue;
-                writeParentDirs(jos, e.getKey(), epoch, dirs);
+                DeterministicJar.writeParentDirs(jos, e.getKey(), epoch, dirs);
                 DeterministicJar.writeEntry(jos, e.getKey(), e.getValue(), epoch);
             }
         }
         return request.outputJar();
-    }
-
-    /**
-     * Directory entries for SoftServiceLoader (Micronaut {@code META-INF/micronaut/...}).
-     * Same contract as {@link JarPackager} (JK-1414) — assembly jars need this too.
-     */
-    private static void writeParentDirs(JarOutputStream jos, String name, long epoch, Set<String> dirs)
-            throws IOException {
-        int slash = -1;
-        while ((slash = name.indexOf('/', slash + 1)) >= 0) {
-            String dir = name.substring(0, slash + 1);
-            if (dirs.add(dir)) {
-                jos.putNextEntry(DeterministicJar.entry(dir, epoch));
-                jos.closeEntry();
-            }
-        }
     }
 
     private static void accumulate(Map<String, ByteArrayOutputStream> sink, String name, byte[] data)

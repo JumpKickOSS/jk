@@ -47,7 +47,7 @@ public final class JarPackager {
                 if (name.equals("META-INF/MANIFEST.MF")) continue; // already written
                 if (DeterministicJar.isBuildStamp(name)) continue; // build-host artefact, not jar content
                 written.add(name);
-                writeParentDirs(jos, name, epoch, dirs);
+                DeterministicJar.writeParentDirs(jos, name, epoch, dirs);
                 DeterministicJar.writeEntry(jos, name, file, epoch);
             }
 
@@ -55,7 +55,7 @@ public final class JarPackager {
             // filesystem content wins on a path collision.
             for (Map.Entry<String, byte[]> e : new java.util.TreeMap<>(request.extraEntries()).entrySet()) {
                 if (written.contains(e.getKey())) continue;
-                writeParentDirs(jos, e.getKey(), epoch, dirs);
+                DeterministicJar.writeParentDirs(jos, e.getKey(), epoch, dirs);
                 DeterministicJar.writeEntry(jos, e.getKey(), e.getValue(), epoch);
             }
         }
@@ -75,24 +75,6 @@ public final class JarPackager {
             attrs.put(new Attributes.Name(e.getKey()), e.getValue());
         }
         return manifest;
-    }
-
-    /**
-     * Directory entries for every ancestor of {@code name}, parents first, each once. Frameworks
-     * that enumerate resource <em>directories</em> from the classpath (Micronaut's
-     * SoftServiceLoader over {@code META-INF/micronaut/...}) resolve them via the jar's directory
-     * entries — a jar with file entries only makes those lookups come back empty (JK-1414).
-     */
-    private static void writeParentDirs(JarOutputStream jos, String name, long epoch, java.util.Set<String> dirs)
-            throws IOException {
-        int slash = -1;
-        while ((slash = name.indexOf('/', slash + 1)) >= 0) {
-            String dir = name.substring(0, slash + 1);
-            if (dirs.add(dir)) {
-                jos.putNextEntry(DeterministicJar.entry(dir, epoch));
-                jos.closeEntry();
-            }
-        }
     }
 
     private static List<Path> collectFiles(Path root) throws IOException {

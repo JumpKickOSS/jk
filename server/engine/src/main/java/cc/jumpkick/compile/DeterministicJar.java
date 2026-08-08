@@ -69,6 +69,27 @@ final class DeterministicJar {
         writeEntry(jos, "META-INF/MANIFEST.MF", buf.toByteArray(), epochSeconds);
     }
 
+    /**
+     * Directory entries for every ancestor of {@code name}, parents first, each once —
+     * {@code dirs} accumulates what has already been emitted across a whole jar.
+     *
+     * <p>Frameworks that enumerate resource <em>directories</em> from the classpath (Micronaut's
+     * SoftServiceLoader over {@code META-INF/micronaut/...}) resolve them via the jar's directory
+     * entries; a jar with file entries only makes those lookups come back empty (JK-1414). Thin
+     * and fat jars owe the same contract, so they share one implementation (JK-1667).
+     */
+    static void writeParentDirs(JarOutputStream jos, String name, long epochSeconds, java.util.Set<String> dirs)
+            throws IOException {
+        int slash = -1;
+        while ((slash = name.indexOf('/', slash + 1)) >= 0) {
+            String dir = name.substring(0, slash + 1);
+            if (dirs.add(dir)) {
+                jos.putNextEntry(entry(dir, epochSeconds));
+                jos.closeEntry();
+            }
+        }
+    }
+
     /** jk's freshness/skip stamps — build-host metadata that must never enter a jar. */
     static boolean isBuildStamp(String name) {
         return name.endsWith(".jstamp") || name.endsWith(".kstamp") || name.endsWith(".test-stamp");
