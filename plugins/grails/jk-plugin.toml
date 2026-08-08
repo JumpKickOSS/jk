@@ -84,7 +84,7 @@ kind = "resource"
 # Boot line this Grails release targets, fetched engine-side, handed to the worker by name.
 [[contribute.packager-dependency]]
 artifact   = "spring-boot-loader"
-coordinate = "org.springframework.boot:spring-boot-loader:${config.boot-version}"
+coordinate = "org.springframework.boot:spring-boot-loader:^${config.boot-version}"
 
 # ---- Scaffold — `jk new --grails` renders these engine-side; the client writes the
 # returned payloads. Paths are literal grails-app conventions plus ${package-path}.

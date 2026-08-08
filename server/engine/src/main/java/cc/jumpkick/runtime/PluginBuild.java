@@ -505,9 +505,14 @@ public final class PluginBuild {
     }
 
     /**
-     * Concrete version for a packager/step tool jar. Bare/caret/tilde specs float within the
-     * selector range against the tool's own maven-metadata (Boot loader tracks the Boot line).
-     * JK-1545.
+     * Concrete version for a packager/step tool jar.
+     *
+     * <p><b>A bare version is exact.</b> A tool coordinate in a {@code jk-plugin.toml} is written
+     * by the plugin author, not the project, and a literal like {@code 8.5.35} is a deliberate pin
+     * — android's r8/aapt2/manifest-merger versions are chosen to match one AGP tools line. Only
+     * an explicit {@code ^}/{@code ~} floats, and only then does this touch maven-metadata; an
+     * exact spec costs no network at all. This is the opposite of the {@code jk.toml} dependency
+     * convention on purpose (JK-1657, correcting JK-1545).
      */
     static String resolveToolVersion(cc.jumpkick.repo.RepoGroup repos, String module, String versionSpec)
             throws IOException, InterruptedException {
@@ -519,15 +524,20 @@ public final class PluginBuild {
             throw new IllegalArgumentException("tool module must be group:artifact — got " + module);
         }
         return cc.jumpkick.resolver.PlatformBomVersions.resolve(
-                repos, module.substring(0, colon), module.substring(colon + 1), versionSpec);
+                repos,
+                module.substring(0, colon),
+                module.substring(colon + 1),
+                cc.jumpkick.model.VersionSelector.parse(versionSpec));
     }
 
-    /** {@code group:artifact:version[:classifier]} with a possibly floating version segment. */
+    /**
+     * {@code group:artifact:version[:classifier]} where the version segment may float. Bare is
+     * exact — see {@link #resolveToolVersion} for why.
+     */
     static cc.jumpkick.model.Coordinate resolveCoordinate(cc.jumpkick.repo.RepoGroup repos, String gav)
             throws IOException, InterruptedException {
         cc.jumpkick.model.Coordinate raw = cc.jumpkick.model.Coordinate.parse(gav);
-        String resolved = cc.jumpkick.resolver.PlatformBomVersions.resolve(
-                repos, raw.group(), raw.artifact(), raw.version());
+        String resolved = resolveToolVersion(repos, raw.module(), raw.version());
         if (resolved.equals(raw.version())) return raw;
         return new cc.jumpkick.model.Coordinate(
                 raw.group(), raw.artifact(), resolved, raw.classifier(), raw.type());

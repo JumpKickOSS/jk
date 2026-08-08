@@ -32,10 +32,10 @@ coordinate = "io.quarkus.platform:quarkus-bom:${config.version}"
 # trees, no hard-coded smallrye pins — versions track ${config.version}.
 [[contribute.step-dependency]]
 artifact   = "quarkus-bootstrap"
-coordinate = "io.quarkus:quarkus-bootstrap-core:${config.version}"
-with       = ["io.quarkus:quarkus-bootstrap-maven-resolver:${config.version}"]
+coordinate = "io.quarkus:quarkus-bootstrap-core:^${config.version}"
+with       = ["io.quarkus:quarkus-bootstrap-maven-resolver:^${config.version}"]
 transitive = true
-managed-by = "io.quarkus:quarkus-bootstrap-bom:${config.version}"
+managed-by = "io.quarkus:quarkus-bootstrap-bom:^${config.version}"
 
 # Quarkus REST / CDI reflect on parameter names.
 [[contribute.compiler-args]]

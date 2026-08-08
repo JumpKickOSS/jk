@@ -15,6 +15,12 @@ import java.util.Objects;
  * <p>Platform BOMs may use caret/tilde anchors (or exact pins) but not {@code latest}. The managed
  * catalog is loaded from the <em>resolved</em> BOM POM — so {@code version = "4"} must pick the
  * highest stable 4.x before reading {@code dependencyManagement}.
+ *
+ * <p>Takes a parsed {@link VersionSelector}, never a raw string: whether a <em>bare</em> version
+ * means "exact" or "caret floor" is the caller's convention, not this class's. {@code jk.toml}
+ * dependencies are bare-is-caret ({@link VersionSelector#parseFloating}); {@code jk-plugin.toml}
+ * tool coordinates are bare-is-exact ({@link VersionSelector#parse}) so a plugin author's literal
+ * pin stays pinned (JK-1657).
  */
 public final class PlatformBomVersions {
 
@@ -75,12 +81,6 @@ public final class PlatformBomVersions {
                 + selector.raw()
                 + "` matches no version in configured repositories"
                 + (available.isEmpty() ? " (no versions advertised)" : ""));
-    }
-
-    /** Parse a user/plugin version string the same way {@code jk.toml} does (bare → caret). */
-    public static String resolve(RepoGroup repos, String group, String artifact, String versionSpec)
-            throws IOException, InterruptedException {
-        return resolve(repos, group, artifact, VersionSelector.parseFloating(versionSpec));
     }
 
     private static IllegalStateException reject(String group, String artifact, String raw) {

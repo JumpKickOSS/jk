@@ -69,11 +69,11 @@ when       = { classpath-has = "jakarta.persistence:jakarta.persistence-api" }
 # engine-side (version-locked to the declared Boot line), handed to the worker by name.
 [[contribute.packager-dependency]]
 artifact   = "spring-boot-loader"
-coordinate = "org.springframework.boot:spring-boot-loader:${config.version}"
+coordinate = "org.springframework.boot:spring-boot-loader:^${config.version}"
 
 [[contribute.packager-dependency]]
 artifact   = "spring-boot-jarmode-tools"
-coordinate = "org.springframework.boot:spring-boot-jarmode-tools:${config.version}"
+coordinate = "org.springframework.boot:spring-boot-jarmode-tools:^${config.version}"
 when       = { config = "include-tools", equals = "true" }
 
 # ---- Scaffold (P4) — pure data (plan row 9). `jk new --spring` renders these engine-side
