@@ -94,6 +94,20 @@ final class ByNameIndex {
         return java.util.Optional.of(parts[3]);
     }
 
+    /** How many distinct classes R8 reported absent from the program inputs. */
+    static int countMissingClasses(String r8Output) {
+        if (r8Output == null || r8Output.isEmpty()) return 0;
+        Set<String> seen = new LinkedHashSet<>();
+        for (String line : r8Output.split("\n")) {
+            int at = line.indexOf("Missing class ");
+            if (at < 0) continue;
+            String rest = line.substring(at + "Missing class ".length()).trim();
+            int space = rest.indexOf(' ');
+            seen.add(space < 0 ? rest : rest.substring(0, space));
+        }
+        return seen.size();
+    }
+
     /** ProGuard rules retaining {@code names} and their members. */
     static String keepRules(Collection<String> names) {
         StringBuilder sb = new StringBuilder();

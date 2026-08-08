@@ -29,6 +29,7 @@ r8-version = { type = "string", default = "8.13.19", hint = "the com.android.too
 keep       = { type = "string-list", default = [] }   # inline ProGuard keep rules
 keep-files = { type = "string-list", default = [] }   # project-relative rule files (proguard syntax)
 obfuscate  = { type = "bool", default = false }       # shrink-only by default: -dontobfuscate (JVM stack traces stay readable)
+strict-warnings = { type = "bool", default = false, hint = "fail the build when R8 reports a class missing from the closure; off by default because optional dependencies are absent on purpose" }
 
 # The r8 jar (D8/R8 share it — the exact artifact the android plugin pins), fetched
 # engine-side and handed to the packager by name. r8 publishes to Google Maven — a

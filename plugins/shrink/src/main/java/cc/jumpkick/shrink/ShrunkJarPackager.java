@@ -141,6 +141,16 @@ final class ShrunkJarPackager {
                     .arg(io.javaHome().toString())
                     .arg("--pg-conf")
                     .arg(rules.toString());
+            // jk resolved this closure from the lockfile, so a class missing from it is absent on
+            // purpose — an optional dependency behind a Class.forName probe. Netty and Micronaut
+            // alone contribute dozens. R8 calls that an error and produces nothing, so downgrade
+            // just that diagnostic; the messages still print, and `strict-warnings` restores the
+            // hard failure for closures that should be complete.
+            if (!io.config().bool("strict-warnings", false)) {
+                run.arg("--map-diagnostics:MissingDefinitionsDiagnostic")
+                        .arg("error")
+                        .arg("warning");
+            }
             // Project rule files ride as further --pg-conf entries (already declared inputs).
             for (String rel : io.config().stringList("keep-files")) {
                 run.arg("--pg-conf").arg(projectFile(io, rel).toString());
@@ -158,6 +168,12 @@ final class ShrunkJarPackager {
             TaskExec.ToolRun.Result result = run.run();
             if (result.exit() != 0) {
                 throw new IllegalStateException("R8 failed (exit " + result.exit() + "):\n" + result.output());
+            }
+            int absent = ByNameIndex.countMissingClasses(result.output());
+            if (absent > 0) {
+                io.label(absent + " optional " + (absent == 1 ? "class is" : "classes are")
+                        + " absent from the closure — run with -v to list them, or set"
+                        + " [shrink] strict-warnings = true to fail on them");
             }
 
             auditByNameIndexes(program, shrunk);

@@ -93,6 +93,25 @@ class ByNameIndexTest {
     }
 
     @Test
+    void missing_classes_are_counted_once_each() {
+        String output = """
+                Warning: Missing class org.jetbrains.annotations.NotNull (referenced from: void a.B.c() and 31 other contexts)
+                Warning: Missing class io.netty.channel.epoll.Epoll (referenced from: void d.E.f())
+                Warning: Missing class org.jetbrains.annotations.NotNull (referenced from: void g.H.i())
+                Info: something unrelated
+                """;
+
+        assertThat(ByNameIndex.countMissingClasses(output)).isEqualTo(2);
+    }
+
+    @Test
+    void output_without_missing_classes_counts_zero() {
+        assertThat(ByNameIndex.countMissingClasses("")).isZero();
+        assertThat(ByNameIndex.countMissingClasses(null)).isZero();
+        assertThat(ByNameIndex.countMissingClasses("Info: all good\n")).isZero();
+    }
+
+    @Test
     void keep_rules_retain_members() {
         assertThat(ByNameIndex.keepRules(List.of("com.acme.A", "com.acme.B")))
                 .isEqualTo("-keep class com.acme.A { *; }\n-keep class com.acme.B { *; }\n");

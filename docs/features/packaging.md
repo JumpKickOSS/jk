@@ -85,14 +85,42 @@ main = "com.example.App"
 assembly = "shrink"   # R8 over classes + runtime closure → small fat jar (*-all.jar path)
 ```
 
-Optional keep rules / R8 version still live under `[shrink]` when you need them:
+Optional keep rules / R8 version live under `[shrink]`:
 
 ```toml
 [shrink]
 # keep = ["-keep class com.example.** { *; }"]
 # keep-files = ["proguard-rules.pro"]
-# obfuscate = false   # default
+# obfuscate = false         # default
+# strict-warnings = false   # default
 ```
+
+### Derived keep rules
+
+R8 removes what nothing references, and a class named only as text is referenced by nothing. jk
+reads the two conventions that carry such names — `META-INF/services/<interface>` line lists, and
+`META-INF/<vendor>/<interface>/<impl>` markers whose leaf path segment *is* the class name — and
+keeps every class they name.
+
+This is exact, so it beats any pattern you could write by hand: on a Micronaut app it is ~320
+classes, and roughly a fifth of them match no naming convention at all (framework internals like
+`InterceptorRegistryBean`, and `LogbackServiceProvider`, whose loss silences the logging that
+would report the damage).
+
+The effective rule set — jk's defaults, the derived rules, and yours — is written next to the
+artifact as `<name>-keep.pro`. Read it when R8 kept something unexpected, or when writing a rule
+for something it could not derive.
+
+### Classes absent from the closure
+
+R8 treats a class it cannot find as an error and produces nothing. On any realistic dependency
+graph that stops the build immediately: Netty and Micronaut alone reference dozens of optional
+integrations — brotli, zstd, epoll, io_uring, quic, bouncycastle, conscrypt, log4j bridges —
+behind `Class.forName` probes.
+
+jk resolved the closure from `jk-lock.toml`, so absence is intentional, and the missing-class
+diagnostic is downgraded to a warning. The build reports the count and `-v` lists them. Set
+`strict-warnings = true` to fail on them instead, for a closure that should be complete.
 
 A bare `[shrink]` table (without `assembly = "shrink"`) also enables the packager. Prefer
 `assembly = "shrink"`. Build labels size before → after.
