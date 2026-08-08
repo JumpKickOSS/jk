@@ -24,7 +24,6 @@ import java.util.Map;
  * <ul>
  *   <li>{@code projectDir} — {@link Path} project root
  *   <li>{@code outDir} — {@link Path} action-cached task output (merged into classes)
- *   <li>{@code classesDir} — {@link Path} module classes tree
  *   <li>{@code properties} — mutable {@link Map}{@code <String,Object>} (e.g. for nested scripts)
  *   <li>{@code ant} — {@code groovy.ant.AntBuilder} when groovy-ant + Ant resolve
  * </ul>
@@ -40,7 +39,7 @@ final class BuildLogicGroovyHost {
 
     private BuildLogicGroovyHost() {}
 
-    static void evaluate(Path script, Path projectDir, Path outDir, Path classesDir) throws Exception {
+    static void evaluate(Path script, Path projectDir, Path outDir) throws Exception {
         Path[] jars = ensureJars();
         URL[] urls = new URL[jars.length];
         for (int i = 0; i < jars.length; i++) {
@@ -53,7 +52,6 @@ final class BuildLogicGroovyHost {
             Method setVariable = bindingCl.getMethod("setVariable", String.class, Object.class);
             setVariable.invoke(binding, "projectDir", projectDir);
             setVariable.invoke(binding, "outDir", outDir);
-            setVariable.invoke(binding, "classesDir", classesDir);
             // Name "props" would avoid Script#properties, but Netty codegen.groovy expects
             // "properties" — Binding.setVariable works; GroovyShell.setProperty does not.
             Map<String, Object> props = new HashMap<>();

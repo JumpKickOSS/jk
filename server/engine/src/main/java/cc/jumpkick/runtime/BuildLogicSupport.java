@@ -298,10 +298,11 @@ public final class BuildLogicSupport {
             label.accept("build-logic:" + simple + ": " + anchor.name().toLowerCase(Locale.ROOT));
             deleteContents(outDir);
             Files.createDirectories(outDir);
+            // No classesDir binding: outDir is the only surface the action cache captures,
+            // so it is the only place a task may write (JK-1614).
             BuildLogicContext ctx = new BuildLogicContext(
                     projectDir.toAbsolutePath().normalize(),
-                    outDir.toAbsolutePath().normalize(),
-                    classesDir.toAbsolutePath().normalize());
+                    outDir.toAbsolutePath().normalize());
             try {
                 task.task().run(ctx);
             } catch (Exception e) {
@@ -355,9 +356,9 @@ public final class BuildLogicSupport {
             BuildLogicTask task = ctx -> {
                 try {
                     if (kind == BuildLogicScripts.ScriptKind.KTS) {
-                        BuildLogicKtsHost.evaluate(scriptFile, ctx.projectDir(), ctx.outDir(), ctx.classesDir());
+                        BuildLogicKtsHost.evaluate(scriptFile, ctx.projectDir(), ctx.outDir());
                     } else {
-                        BuildLogicGroovyHost.evaluate(scriptFile, ctx.projectDir(), ctx.outDir(), ctx.classesDir());
+                        BuildLogicGroovyHost.evaluate(scriptFile, ctx.projectDir(), ctx.outDir());
                     }
                 } catch (Exception e) {
                     Throwable root = e;

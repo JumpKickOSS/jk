@@ -58,9 +58,14 @@ are aliases (`before_compile.kts`). A `.groovy` and `.kts` with the same stem na
 |------|------|---------|--------|--------|
 | `projectDir` | `java.nio.file.Path` | Project root (`jk.toml`) | yes | yes |
 | `outDir` | `Path` | Per-task output (action-cached). A **generated-source root** at `BEFORE_COMPILE`; merged into classes at every other anchor | yes | yes |
-| `classesDir` | `Path` | Module classes tree | yes | yes |
 | `properties` | `Map<String,Object>` | Mutable bag (e.g. nested `evaluate`) | yes | — |
 | `ant` | `groovy.ant.AntBuilder` | When Ant jars resolve | yes | — |
+
+**`outDir` is the only place a task may write.** It is the only thing the action cache captures,
+so it is the only thing that survives a cache hit. There used to be a `classesDir` binding too;
+a task that wrote there worked on the first build and silently lost those files on the second,
+under a reassuring `cache hit` label (JK-1614). Write to `outDir` and the engine merges it into
+classes for you.
 
 | Host | How it runs |
 |------|-------------|

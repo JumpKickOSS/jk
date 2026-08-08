@@ -22,12 +22,13 @@ class BuildLogicKtsHostTest {
                 """);
         Path project = dir.resolve("proj");
         Path out = dir.resolve("out");
-        Path classes = dir.resolve("classes");
-        String wrapped = BuildLogicKtsHost.wrap(script, project, out, classes);
+        String wrapped = BuildLogicKtsHost.wrap(script, project, out);
         assertTrue(wrapped.contains("import java.nio.file.Path"));
         assertTrue(wrapped.contains("import java.nio.file.Files"));
         assertTrue(wrapped.contains("val projectDir: Path = Path.of("));
         assertTrue(wrapped.contains("val outDir: Path = Path.of("));
+        // No classesDir binding: outDir is the only surface the action cache replays (JK-1614).
+        assertFalse(wrapped.contains("classesDir"));
         assertTrue(wrapped.contains("Files.writeString(outDir.resolve(\"kts.txt\"), \"ok\")"));
         // Path import not duplicated
         assertFalse(wrapped.contains("import java.nio.file.Path\nimport java.nio.file.Path"));
@@ -49,7 +50,7 @@ class BuildLogicKtsHostTest {
 
                 Files.writeString(outDir.resolve("kts.txt"), "ok".uppercase(Locale.ROOT))
                 """);
-        String wrapped = BuildLogicKtsHost.wrap(script, dir, dir.resolve("o"), dir.resolve("c"));
+        String wrapped = BuildLogicKtsHost.wrap(script, dir, dir.resolve("o"));
 
         assertTrue(wrapped.indexOf("import java.nio.file.Files") < wrapped.indexOf("val projectDir"));
         assertTrue(wrapped.indexOf("import java.util.Locale") < wrapped.indexOf("val projectDir"));
@@ -72,7 +73,7 @@ class BuildLogicKtsHostTest {
 
                 Files.writeString(outDir.resolve("kts.txt"), "ok")
                 """);
-        String wrapped = BuildLogicKtsHost.wrap(script, dir, dir.resolve("o"), dir.resolve("c"));
+        String wrapped = BuildLogicKtsHost.wrap(script, dir, dir.resolve("o"));
 
         assertTrue(wrapped.indexOf("import java.nio.file.Files") < wrapped.indexOf("val projectDir"));
         assertTrue(wrapped.contains("Files.writeString(outDir.resolve(\"kts.txt\"), \"ok\")"));
@@ -88,7 +89,7 @@ class BuildLogicKtsHostTest {
 
                 Files.writeString(outDir.resolve("kts.txt"), "ok")
                 """);
-        String wrapped = BuildLogicKtsHost.wrap(script, dir, dir.resolve("o"), dir.resolve("c"));
+        String wrapped = BuildLogicKtsHost.wrap(script, dir, dir.resolve("o"));
 
         assertTrue(wrapped.indexOf("import java.nio.file.Files") < wrapped.indexOf("val projectDir"));
     }
@@ -103,7 +104,7 @@ class BuildLogicKtsHostTest {
 
                 Files.writeString(outDir.resolve("kts.txt"), "ok")
                 """);
-        String wrapped = BuildLogicKtsHost.wrap(script, dir, dir.resolve("o"), dir.resolve("c"));
+        String wrapped = BuildLogicKtsHost.wrap(script, dir, dir.resolve("o"));
 
         assertTrue(wrapped.indexOf("@file:JvmName(\"Gen\")") < wrapped.indexOf("import java.nio.file.Path"));
         assertTrue(wrapped.indexOf("@file:JvmName(\"Gen\")") < wrapped.indexOf("import java.nio.file.Files"));
@@ -113,9 +114,7 @@ class BuildLogicKtsHostTest {
     void wrap_rejects_package_declaration(@TempDir Path dir) throws Exception {
         Path script = dir.resolve("before-compile.kts");
         Files.writeString(script, "package demo\nval x = 1\n");
-        assertThrows(
-                IllegalStateException.class,
-                () -> BuildLogicKtsHost.wrap(script, dir, dir.resolve("o"), dir.resolve("c")));
+        assertThrows(IllegalStateException.class, () -> BuildLogicKtsHost.wrap(script, dir, dir.resolve("o")));
     }
 
     @Test

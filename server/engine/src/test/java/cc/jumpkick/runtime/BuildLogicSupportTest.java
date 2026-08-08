@@ -11,8 +11,10 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.plugin.buildlogic.BuildLogicAnchor;
 import cc.jumpkick.task.ActionCache;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -189,6 +191,78 @@ class BuildLogicSupportTest {
                         .append(';')));
         assertTrue(labels.toString().contains("cache hit"), labels.toString());
         assertTrue(Files.isRegularFile(classes.resolve("after-compile.txt")));
+    }
+
+    /**
+     * JK-1614: every file a task produces has to survive a cache hit. Only {@code outDir} is
+     * captured and replayed, which is why the context no longer hands out the classes tree — a
+     * task that wrote there worked once and then silently lost the file under a {@code cache hit}
+     * label. This asserts the whole produced set, twice, so a future binding that reintroduces an
+     * uncaptured write surface fails here.
+     */
+    @Test
+    void every_produced_file_survives_a_cache_hit(@TempDir Path dir) throws Exception {
+        Path project = dir.resolve("proj");
+        Files.createDirectories(project.resolve("src/main/java/demo"));
+        Files.writeString(project.resolve("jk.toml"), """
+                [project]
+                group = "t"
+                name = "t"
+                version = "0.0.1"
+                jdk = 25
+                """);
+        Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
+
+        Path logicSrc = project.resolve(".jk-build/src/demo");
+        Files.createDirectories(logicSrc);
+        Files.writeString(logicSrc.resolve("MultiFileLogic.java"), """
+                package demo;
+                import cc.jumpkick.plugin.buildlogic.*;
+                import java.nio.file.*;
+                public class MultiFileLogic implements BuildLogicContributor {
+                  @Override
+                  public void register(BuildLogicGraph g) {
+                    g.task("multi", BuildLogicAnchor.AFTER_COMPILE, ctx -> {
+                      Files.writeString(ctx.outDir().resolve("root.txt"), "r");
+                      Files.createDirectories(ctx.outDir().resolve("nested/deep"));
+                      Files.writeString(ctx.outDir().resolve("nested/deep/leaf.txt"), "l");
+                      Files.writeString(ctx.outDir().resolve("nested/mid.txt"), "m");
+                    });
+                  }
+                }
+                """);
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
+        Path classes = layout.classesDir();
+        Files.createDirectories(classes);
+
+        StringBuilder labels = new StringBuilder();
+        assertTrue(BuildLogicSupport.run(
+                project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> labels.append(s)
+                        .append(';')));
+        assertFalse(labels.toString().contains("cache hit"), labels.toString());
+        List<String> firstRun = mergedFiles(classes);
+        assertEquals(List.of("nested/deep/leaf.txt", "nested/mid.txt", "root.txt"), firstRun);
+
+        // Wipe what the first run merged, then replay from the cache: the set must come back whole.
+        for (String rel : firstRun) Files.delete(classes.resolve(rel));
+        labels.setLength(0);
+        assertTrue(BuildLogicSupport.run(
+                project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> labels.append(s)
+                        .append(';')));
+        assertTrue(labels.toString().contains("cache hit"), labels.toString());
+        assertEquals(firstRun, mergedFiles(classes), "a cache hit must replay every produced file");
+    }
+
+    /** Relative paths of everything under {@code classes}, sorted. */
+    private static List<String> mergedFiles(Path classes) throws IOException {
+        try (var walk = Files.walk(classes)) {
+            return walk.filter(Files::isRegularFile)
+                    .map(p -> classes.relativize(p).toString().replace('\\', '/'))
+                    .sorted()
+                    .toList();
+        }
     }
 
     /**

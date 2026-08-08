@@ -20,7 +20,6 @@ import java.util.List;
  * <ul>
  *   <li>{@code projectDir} — {@link Path} project root
  *   <li>{@code outDir} — {@link Path} action-cached task output
- *   <li>{@code classesDir} — {@link Path} module classes tree
  * </ul>
  *
  * <p>No {@code ant} / {@code properties} bag (Kotlin scripts use the JDK; call Ant from a Groovy
@@ -31,7 +30,7 @@ final class BuildLogicKtsHost {
 
     private BuildLogicKtsHost() {}
 
-    static void evaluate(Path script, Path projectDir, Path outDir, Path classesDir) throws Exception {
+    static void evaluate(Path script, Path projectDir, Path outDir) throws Exception {
         Path kotlinHome = CompileToolchain.resolveKotlinHome(JkDirs.cache(), null, msg -> {
             /* silent — engine labels surface the task, not toolchain chatter */
         });
@@ -43,7 +42,7 @@ final class BuildLogicKtsHost {
 
         Path wrapper = Files.createTempFile("jk-build-logic-", ".kts");
         try {
-            Files.writeString(wrapper, wrap(script, projectDir, outDir, classesDir), StandardCharsets.UTF_8);
+            Files.writeString(wrapper, wrap(script, projectDir, outDir), StandardCharsets.UTF_8);
             List<String> cmd = new ArrayList<>();
             cmd.add(kotlinc.toString());
             // Prefer the engine JVM for the script process (stable vs project pin).
@@ -69,7 +68,7 @@ final class BuildLogicKtsHost {
     }
 
     /** Build a self-contained script: imports + bindings + user body. */
-    static String wrap(Path script, Path projectDir, Path outDir, Path classesDir) throws IOException {
+    static String wrap(Path script, Path projectDir, Path outDir) throws IOException {
         String user = Files.readString(script, StandardCharsets.UTF_8);
         if (user.lines().anyMatch(l -> l.stripLeading().startsWith("package "))) {
             throw new IllegalStateException(
@@ -159,9 +158,6 @@ final class BuildLogicKtsHost {
                 .append(")\n");
         out.append("val outDir: Path = Path.of(")
                 .append(ktString(outDir.toString()))
-                .append(")\n");
-        out.append("val classesDir: Path = Path.of(")
-                .append(ktString(classesDir.toString()))
                 .append(")\n");
         out.append('\n');
         out.append(body);
