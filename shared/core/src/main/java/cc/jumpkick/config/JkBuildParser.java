@@ -1783,7 +1783,7 @@ public final class JkBuildParser {
         for (PluginContributions.PlatformDep dep : contributed) {
             boolean declared = platform.stream().anyMatch(d -> dep.module().equals(d.module()));
             if (declared) continue;
-            platform.add(new Dependency(dep.module(), VersionSelector.parseFloating("=" + dep.version())));
+            platform.add(new Dependency(dep.module(), VersionSelector.parseFloating(dep.version())));
             changed = true;
         }
         if (!changed) return deps;

@@ -626,16 +626,10 @@ public final class LockOrchestrator {
             Map<String, String> constraintProvenance)
             throws IOException, InterruptedException {
         for (Dependency platformDep : project.dependencies().of(Scope.PLATFORM)) {
-            String bomVersion = versionLiteral(platformDep.version());
-            if (bomVersion == null) {
-                // R6b: platform BOMs must pin a concrete version (exact / caret / tilde anchor).
-                throw new IllegalStateException("platform dependency `"
-                        + platformDep.module()
-                        + "` must use an exact or caret/tilde version (got `"
-                        + platformDep.version().raw()
-                        + "`). Floating selectors like `latest` or open ranges are not supported for"
-                        + " [platform-dependencies] BOMs — pin e.g. `=3.4.0` or `3.4.0`.");
-            }
+            // JK-1545: resolve caret/tilde against repo metadata, then load *that* BOM's catalog.
+            // Exact pins skip metadata. latest/open ranges still rejected (R6b / PlatformBomVersions).
+            String bomVersion = PlatformBomVersions.resolve(
+                    repos, platformDep.group(), platformDep.name(), platformDep.version());
             Coordinate bomCoord = Coordinate.of(platformDep.group(), platformDep.name(), bomVersion);
             EffectivePom bomPom = pomBuilder.build(bomCoord);
             String bomLabel = bomCoord.toGav();

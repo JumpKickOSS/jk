@@ -1,0 +1,69 @@
+# Built-in Micronaut 5.x plugin — declarative layer (JK-1533/1534).
+# Packaging: scaffold sets [application] assembly = true (fat/runnable jar).
+# AOT / native: later tickets (JK-1536 / JK-1539).
+
+[plugin]
+id        = "micronaut"
+table     = "micronaut"
+version   = "1.0.0"
+jk-compat = ">=0.10"
+
+[schema]
+version = { type = "string", required = true, example = "5", hint = "major-line floor for micronaut-platform (caret; lock pins exact). Use =5.1.0 to hard-pin" }
+
+# Platform BOM so micronaut-* deps are versionless under [dependencies].
+[[contribute.platform-dependency]]
+coordinate = "io.micronaut.platform:micronaut-platform:${config.version}"
+
+# Micronaut DI / HTTP use parameter names.
+[[contribute.compiler-args]]
+javac  = ["-parameters"]
+kotlin = ["-java-parameters"]
+
+# ---- Scaffold: jk new --micronaut
+[scaffold]
+flag        = "micronaut"
+description = "Micronaut 5 application"
+
+[[scaffold.append]]
+template = "scaffold/jk-toml-java.toml.tmpl"
+when     = { lang = "java" }
+
+[[scaffold.append]]
+template = "scaffold/jk-toml-kotlin.toml.tmpl"
+when     = { lang = "kotlin" }
+
+[[scaffold.file]]
+path     = "${main-root}/${package-path}/Application.java"
+template = "scaffold/Application.java.tmpl"
+when     = { lang = "java" }
+
+[[scaffold.file]]
+path     = "${main-root}/${package-path}/HelloController.java"
+template = "scaffold/HelloController.java.tmpl"
+when     = { lang = "java" }
+
+[[scaffold.file]]
+path     = "${test-root}/${package-path}/HelloControllerTest.java"
+template = "scaffold/HelloControllerTest.java.tmpl"
+when     = { lang = "java" }
+
+[[scaffold.file]]
+path     = "${main-root}/${package-path}/Application.kt"
+template = "scaffold/Application.kt.tmpl"
+when     = { lang = "kotlin" }
+
+[[scaffold.file]]
+path     = "${main-root}/${package-path}/HelloController.kt"
+template = "scaffold/HelloController.kt.tmpl"
+when     = { lang = "kotlin" }
+
+[[scaffold.file]]
+path     = "${test-root}/${package-path}/HelloControllerTest.kt"
+template = "scaffold/HelloControllerTest.kt.tmpl"
+when     = { lang = "kotlin" }
+
+[[scaffold.file]]
+path          = "${resources-root}/application.properties"
+template      = "scaffold/application.properties.tmpl"
+keep-existing = true

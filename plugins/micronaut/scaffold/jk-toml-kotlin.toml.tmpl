@@ -1,19 +1,10 @@
-[project]
-group   = "$organization$"
-name    = "$name$"
-version = "0.1.0"
-jdk     = $jdk$
-java    = $jdk$
-layout  = "simple"
+[micronaut]
+# major-line floor (caret); lock pins exact — JK-1544
+version = "5"
 
 [application]
-main = "$package$.Application"
-# Micronaut apps ship as a single runnable fat jar (Maven shade parity).
+main = "${package}.ApplicationKt"
 assembly = true
-
-# Micronaut 5.x major-line floor (caret); first jk lock pins exact — JK-1544
-[micronaut]
-version = "$micronaut$"
 
 [dependencies]
 micronaut-http-server-netty = { group = "io.micronaut", name = "micronaut-http-server-netty" }
@@ -26,4 +17,3 @@ micronaut-inject-java = { group = "io.micronaut", name = "micronaut-inject-java"
 [test-dependencies]
 micronaut-test-junit5 = { group = "io.micronaut.test", name = "micronaut-test-junit5" }
 micronaut-http-client = { group = "io.micronaut", name = "micronaut-http-client" }
-junit-jupiter         = { group = "org.junit.jupiter", name = "junit-jupiter", version = "=5.11.4" }

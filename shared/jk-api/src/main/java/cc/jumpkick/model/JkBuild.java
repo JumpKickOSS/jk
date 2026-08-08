@@ -226,6 +226,14 @@ public record JkBuild(
     /** The built-in spring-boot plugin's id / table name. */
     public static final String SPRING_BOOT_ID = "spring-boot";
 
+    /** True when the {@code [micronaut]} plugin table is declared. */
+    public boolean isMicronaut() {
+        return pluginConfigs.containsKey(MICRONAUT_ID);
+    }
+
+    /** The built-in micronaut plugin's id / table name. */
+    public static final String MICRONAUT_ID = "micronaut";
+
     /**
      * {@code [application].assembly} packaging mode: off, fat assembly jar, or R8 shrink packager.
      */

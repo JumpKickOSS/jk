@@ -45,8 +45,8 @@ version   = "1.0.0"
 jk-compat = ">=0.10"
 
 [schema]
-version = { type = "string", required = true, example = "4.0.1",
-            hint = "the Spring Boot release to build against" }
+version = { type = "string", required = true, example = "4",
+            hint = "major-line floor for the platform BOM (caret; lock pins exact). Use =4.1.0 to hard-pin" }
 aot     = { type = "bool" }   # no default = tri-state
 ```
 

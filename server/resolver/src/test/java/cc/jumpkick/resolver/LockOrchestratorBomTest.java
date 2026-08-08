@@ -453,6 +453,63 @@ class LockOrchestratorBomTest {
     }
 
     @Test
+    void caret_platform_bom_loads_management_from_highest_matching_release(@TempDir Path tempDir) throws Exception {
+        // JK-1545: version = "1.0" (caret) must use 1.5's dependencyManagement, not the 1.0 anchor.
+        serveMetadata("/org/example/the-bom/maven-metadata.xml", "org.example", "the-bom", List.of("1.0", "1.5"));
+        servePom("org.example", "the-bom", "1.0", """
+                <project>
+                  <groupId>org.example</groupId>
+                  <artifactId>the-bom</artifactId>
+                  <version>1.0</version>
+                  <packaging>pom</packaging>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>com.foo</groupId>
+                        <artifactId>widget</artifactId>
+                        <version>1.0</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+        servePom("org.example", "the-bom", "1.5", """
+                <project>
+                  <groupId>org.example</groupId>
+                  <artifactId>the-bom</artifactId>
+                  <version>1.5</version>
+                  <packaging>pom</packaging>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>com.foo</groupId>
+                        <artifactId>widget</artifactId>
+                        <version>1.5</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+        serveMetadata("/com/foo/widget/maven-metadata.xml", "com.foo", "widget", List.of("1.0", "1.5"));
+        servePom("com.foo", "widget", "1.0", leafVersioned("widget", "1.0"));
+        servePom("com.foo", "widget", "1.5", leafVersioned("widget", "1.5"));
+
+        JkBuild project = jkBuildWithDeps(Map.of(
+                Scope.PLATFORM,
+                List.of(Dependency.of("the-bom", "org.example:the-bom", VersionSelector.parseFloating("1.0"))),
+                Scope.MAIN,
+                List.of(new Dependency("com.foo:widget", VersionSelector.parseFloating("1.0")))));
+
+        Lockfile lock = new LockOrchestrator(repoGroup(tempDir)).lock(project, "test");
+        Lockfile.Artifact widget = lock.artifacts().stream()
+                .filter(a -> a.packageKey().equals("com.foo:widget:jar:"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(widget.version()).isEqualTo("1.5");
+        assertThat(widget.pinnedBy()).contains("1.5");
+    }
+
+    @Test
     void empty_test_scope_defaults_to_latest_stable_junit(@TempDir Path tempDir) throws Exception {
         // No dependencies at all — jk still defaults the test framework.
         JkBuild project = jkBuildWithDeps(Map.of());

@@ -100,7 +100,7 @@ class PluginTableRegistryTest {
         assertThat(grails.id()).isEqualTo("grails");
         assertThat(grails.schema()).containsKeys("version", "boot-version");
         assertThat(grails.schema().get("version").required()).isTrue();
-        assertThat(grails.schema().get("boot-version").defaultValue()).isEqualTo("4.1.0");
+        assertThat(grails.schema().get("boot-version").defaultValue()).isEqualTo("4");
         assertThat(grails.code().worker()).isEqualTo("jk-grails");
 
         var packaging = grails.packaging();

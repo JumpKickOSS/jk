@@ -13,3 +13,5 @@ curl -s 'localhost:8080/hello?name=jk'
 The `micronaut-platform` BOM in `[platform-dependencies]` pins all Micronaut modules;
 `[processor-dependencies]` wires `micronaut-inject-java` so bean definitions are
 generated at compile time (no reflection at runtime). Bump the BOM version to upgrade.
+
+Uses the built-in `[micronaut]` plugin (5.x major-line float). `jk update` lifts within 5.x.

@@ -476,7 +476,7 @@ jk new --quarkus my-api          # plugin [scaffold]
 jk new --template quarkus my-api # Giter8 short name (same single-module shape)
 ```
 
-- Pin with `[quarkus] version = "3.38.0"` (platform BOM). Starters / extensions are
+- Pin with `[quarkus] version = "3"` (major-line floor / platform BOM; lock pins exact). Starters / extensions are
   versionless under `[dependencies]` (e.g. `quarkus-rest`, `quarkus-rest-jackson`).
 - Default package is **fast-jar** (`quarkus-run.jar` + `lib/` + `quarkus-app/`). Set
   `package = "uber-jar"` for a single runner. Packaging uses pure bootstrap (no permanent

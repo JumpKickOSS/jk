@@ -20,6 +20,7 @@ public record NewInputs(
         boolean spring,
         boolean grails,
         boolean quarkus,
+        boolean micronaut,
         boolean plugin,
         Language lang,
         String layout,
@@ -71,6 +72,7 @@ public record NewInputs(
                 false,
                 false,
                 false,
+                false,
                 lang,
                 layout,
                 kotlinModuleName,
@@ -109,6 +111,7 @@ public record NewInputs(
                 assembly,
                 nativeImage,
                 spring,
+                false,
                 false,
                 false,
                 plugin,
@@ -153,6 +156,7 @@ public record NewInputs(
                 spring,
                 grails,
                 false,
+                false,
                 plugin,
                 lang,
                 layout,
@@ -188,6 +192,7 @@ public record NewInputs(
                 main,
                 assembly,
                 nativeImage,
+                false,
                 false,
                 false,
                 false,
@@ -233,13 +238,14 @@ public record NewInputs(
 
     /** True when any framework plugin scaffold flag is set. */
     public boolean frameworkScaffold() {
-        return spring || grails || quarkus;
+        return spring || grails || quarkus || micronaut;
     }
 
     /** Scaffold flag name for the engine ({@code spring} / {@code grails} / {@code quarkus}). */
     public String frameworkPluginFlag() {
         if (grails) return "grails";
         if (quarkus) return "quarkus";
+        if (micronaut) return "micronaut";
         if (spring) return "spring";
         throw new IllegalStateException("no framework scaffold flag set");
     }

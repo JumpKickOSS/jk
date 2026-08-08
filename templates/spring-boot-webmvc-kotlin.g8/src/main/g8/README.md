@@ -23,3 +23,5 @@ themselves, and the entity carries an explicit default constructor. If you prefe
 
 Upgrade path: bump `[spring-boot] version` (starters are version-managed) and the
 `kotlin` pin in `jk.toml` together.
+
+Version policy: `[spring-boot] version` is a major-line floor (caret). First `jk lock` pins an exact 4.x; `jk update` may lift within 4.x. Use `=4.1.0` to freeze.

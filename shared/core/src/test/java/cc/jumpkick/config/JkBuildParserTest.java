@@ -1868,7 +1868,8 @@ class JkBuildParserTest {
         var platform = b.dependencies().of(cc.jumpkick.model.Scope.PLATFORM);
         assertThat(platform).hasSize(1);
         assertThat(platform.get(0).module()).isEqualTo("org.springframework.boot:spring-boot-dependencies");
-        assertThat(platform.get(0).version().raw()).isEqualTo("=4.0.0");
+        assertThat(platform.get(0).version().raw()).isEqualTo("4.0.0");
+        assertThat(platform.get(0).version()).isInstanceOf(cc.jumpkick.model.VersionSelector.Caret.class);
         // ...which makes the versionless starter platform-managed.
         assertThat(b.dependencies().of(cc.jumpkick.model.Scope.MAIN).get(0).isPlatformManaged())
                 .isTrue();
@@ -1945,5 +1946,24 @@ class JkBuildParserTest {
         assertThat(JkBuildParser.parseCacheSizeForTest())
                 .as("one entry per file, not one per revision")
                 .isEqualTo(sizeAfterFirst);
+    }
+
+    @Test
+    void micronaut_table_imports_platform_bom_with_caret_version() {
+        var b = JkBuildParser.parse(PROJECT + """
+                [micronaut]
+                version = "5"
+
+                [dependencies]
+                micronaut-http-server-netty = { group = "io.micronaut", name = "micronaut-http-server-netty" }
+                """);
+        assertThat(b.isMicronaut()).isTrue();
+        var platform = b.dependencies().of(cc.jumpkick.model.Scope.PLATFORM);
+        assertThat(platform).hasSize(1);
+        assertThat(platform.get(0).module()).isEqualTo("io.micronaut.platform:micronaut-platform");
+        assertThat(platform.get(0).version().raw()).isEqualTo("5");
+        assertThat(platform.get(0).version()).isInstanceOf(cc.jumpkick.model.VersionSelector.Caret.class);
+        assertThat(b.dependencies().of(cc.jumpkick.model.Scope.MAIN).get(0).isPlatformManaged())
+                .isTrue();
     }
 }

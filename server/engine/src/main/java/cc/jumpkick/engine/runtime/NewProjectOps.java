@@ -100,11 +100,12 @@ public final class NewProjectOps {
         boolean spring = "spring".equalsIgnoreCase(nullToEmpty(req.framework()));
         boolean grails = "grails".equalsIgnoreCase(nullToEmpty(req.framework()));
         boolean quarkus = "quarkus".equalsIgnoreCase(nullToEmpty(req.framework()));
-        if (spring || grails || quarkus) {
+        boolean micronaut = "micronaut".equalsIgnoreCase(nullToEmpty(req.framework()));
+        if (spring || grails || quarkus || micronaut) {
             // Framework scaffolds need ScaffoldOps; wire plain path first — frameworks via CLI for now
             // until we inject ScaffoldOps here. Reject with a clear message.
             throw new IllegalArgumentException("framework scaffolds from the web are not enabled yet; use: jk new --"
-                    + (spring ? "spring" : grails ? "grails" : "quarkus")
+                    + (spring ? "spring" : grails ? "grails" : quarkus ? "quarkus" : "micronaut")
                     + " "
                     + name);
         }
@@ -129,6 +130,7 @@ public final class NewProjectOps {
                 jdkMajor,
                 Optional.empty(),
                 main,
+                false,
                 false,
                 false,
                 false,

@@ -281,7 +281,9 @@ public final class PluginBuild {
         if (deps.isEmpty()) return out;
         cc.jumpkick.repo.RepoGroup repos = RepoGroupBuilder.buildFor(project, null, cas);
         for (PluginContributions.PackagerDep dep : deps) {
-            out.put(dep.artifact(), fetchArtifact(repos, dep.module(), dep.version()));
+            // JK-1545: ${config.version} may be a caret floor ("4"); resolve to a concrete release.
+            String version = resolveToolVersion(repos, dep.module(), dep.version());
+            out.put(dep.artifact(), fetchArtifact(repos, dep.module(), version));
         }
         return out;
     }
@@ -323,7 +325,7 @@ public final class PluginBuild {
                     out.put(dep.artifact(), toolClosureDir(dep, repos, cas));
                     continue;
                 }
-                cc.jumpkick.model.Coordinate coord = cc.jumpkick.model.Coordinate.parse(dep.coordinateSpec());
+                cc.jumpkick.model.Coordinate coord = resolveCoordinate(repos, dep.coordinateSpec());
                 out.put(
                         dep.artifact(),
                         repos.tryFetchArtifact(coord)
@@ -348,18 +350,24 @@ public final class PluginBuild {
      */
     private static Path toolClosureDir(PluginContributions.StepDep dep, cc.jumpkick.repo.RepoGroup repos, Cas cas)
             throws IOException, InterruptedException {
-        String cacheKey = toolClosureCacheKey(dep);
+        // Resolve floating ${config.version} segments first so the CAS key tracks the concrete line.
+        List<cc.jumpkick.model.Coordinate> roots = new ArrayList<>();
+        roots.add(resolveCoordinate(repos, dep.coordinateSpec()));
+        for (String w : dep.with()) {
+            roots.add(resolveCoordinate(repos, w));
+        }
+        String managedByResolved = null;
+        if (dep.managedBy() != null && !dep.managedBy().isBlank()) {
+            cc.jumpkick.model.Coordinate bom = resolveCoordinate(repos, dep.managedBy());
+            managedByResolved = bom.group() + ":" + bom.artifact() + ":" + bom.version();
+        }
+
+        String cacheKey = toolClosureCacheKey(roots, managedByResolved);
         Path dir = cas.root().resolve("plugin-tools").resolve(cacheKey);
         if (Files.isDirectory(dir)) {
             try (var listing = Files.list(dir)) {
                 if (listing.findFirst().isPresent()) return dir;
             }
-        }
-
-        List<cc.jumpkick.model.Coordinate> roots = new ArrayList<>();
-        roots.add(cc.jumpkick.model.Coordinate.parse(dep.coordinateSpec()));
-        for (String w : dep.with()) {
-            roots.add(cc.jumpkick.model.Coordinate.parse(w));
         }
 
         List<cc.jumpkick.model.Dependency> declared = new ArrayList<>();
@@ -370,8 +378,8 @@ public final class PluginBuild {
         }
 
         Map<String, String> bomConstraints = Map.of();
-        if (dep.managedBy() != null && !dep.managedBy().isBlank()) {
-            bomConstraints = loadBomConstraints(repos, dep.managedBy());
+        if (managedByResolved != null) {
+            bomConstraints = loadBomConstraints(repos, managedByResolved);
         }
 
         cc.jumpkick.resolver.Resolution resolution;
@@ -425,18 +433,20 @@ public final class PluginBuild {
     }
 
     /** Stable CAS dir name for a tool closure (includes BOM + extra roots). */
-    private static String toolClosureCacheKey(PluginContributions.StepDep dep) {
-        StringBuilder sb = new StringBuilder(dep.coordinateSpec().replace(':', '_'));
-        for (String w : dep.with()) {
-            sb.append("__").append(w.replace(':', '_'));
+    private static String toolClosureCacheKey(
+            List<cc.jumpkick.model.Coordinate> roots, String managedByResolved) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < roots.size(); i++) {
+            if (i > 0) sb.append("__");
+            sb.append(roots.get(i).toGav().replace(':', '_'));
         }
-        if (dep.managedBy() != null && !dep.managedBy().isBlank()) {
-            sb.append("__bom_").append(dep.managedBy().replace(':', '_'));
+        if (managedByResolved != null && !managedByResolved.isBlank()) {
+            sb.append("__bom_").append(managedByResolved.replace(':', '_'));
         }
         // Keep path components reasonable on case-sensitive FS / path length limits.
         String key = sb.toString();
         if (key.length() > 180) {
-            return Hashing.sha256Hex(key.getBytes(StandardCharsets.UTF_8)).substring(0, 40) + "_" + dep.artifact();
+            key = key.substring(0, 140) + "_" + Integer.toHexString(key.hashCode());
         }
         return key;
     }
@@ -492,6 +502,35 @@ public final class PluginBuild {
         } catch (Exception e) {
             return Map.of();
         }
+    }
+
+    /**
+     * Concrete version for a packager/step tool jar. Bare/caret/tilde specs float within the
+     * selector range against the tool's own maven-metadata (Boot loader tracks the Boot line).
+     * JK-1545.
+     */
+    static String resolveToolVersion(cc.jumpkick.repo.RepoGroup repos, String module, String versionSpec)
+            throws IOException, InterruptedException {
+        if (versionSpec == null || versionSpec.isBlank()) {
+            throw new IllegalArgumentException("tool version is blank for " + module);
+        }
+        int colon = module.indexOf(':');
+        if (colon <= 0 || colon != module.lastIndexOf(':')) {
+            throw new IllegalArgumentException("tool module must be group:artifact — got " + module);
+        }
+        return cc.jumpkick.resolver.PlatformBomVersions.resolve(
+                repos, module.substring(0, colon), module.substring(colon + 1), versionSpec);
+    }
+
+    /** {@code group:artifact:version[:classifier]} with a possibly floating version segment. */
+    static cc.jumpkick.model.Coordinate resolveCoordinate(cc.jumpkick.repo.RepoGroup repos, String gav)
+            throws IOException, InterruptedException {
+        cc.jumpkick.model.Coordinate raw = cc.jumpkick.model.Coordinate.parse(gav);
+        String resolved = cc.jumpkick.resolver.PlatformBomVersions.resolve(
+                repos, raw.group(), raw.artifact(), raw.version());
+        if (resolved.equals(raw.version())) return raw;
+        return new cc.jumpkick.model.Coordinate(
+                raw.group(), raw.artifact(), resolved, raw.classifier(), raw.type());
     }
 
     /** Fetch one {@code module:version} jar into the CAS and return its path. */
