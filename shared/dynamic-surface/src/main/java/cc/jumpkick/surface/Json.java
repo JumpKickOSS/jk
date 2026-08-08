@@ -48,6 +48,11 @@ final class Json {
         return value instanceof List<?> l ? l : List.of();
     }
 
+    /** {@code map.get(key)} whatever its shape; null when absent. */
+    static Object get(Object o, String key) {
+        return o instanceof Map<?, ?> map ? map.get(key) : null;
+    }
+
     /** {@code map.get(key)} as a map; null when absent or not a map. */
     static Map<?, ?> map(Object o, String key) {
         Object value = o instanceof Map<?, ?> map ? map.get(key) : null;

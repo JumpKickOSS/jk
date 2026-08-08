@@ -81,6 +81,20 @@ class NativeImageMetadataTest {
     }
 
     @Test
+    void the_tracing_agent_writes_resources_as_a_bare_list() {
+        // What `-agentlib:native-image-agent` actually produces, as opposed to the nested
+        // {"resources": {"includes": [...]}} the split schema uses.
+        String body = """
+                {"reflection": [], "resources": [{"glob":"META-INF/micronaut"},{"glob":"application.properties"}]}
+                """;
+
+        assertThat(NativeImageMetadata.parse("x/reachability-metadata.json", body, "train")
+                        .of(RESOURCE))
+                .extracting(Entry::name)
+                .containsExactly("META-INF/micronaut", "application.properties");
+    }
+
+    @Test
     void jni_and_serialization_files_map_to_their_own_kinds() {
         assertThat(NativeImageMetadata.parse("x/jni-config.json", "[{\"name\":\"com.acme.N\"}]", "lib")
                         .of(JNI_TYPE))

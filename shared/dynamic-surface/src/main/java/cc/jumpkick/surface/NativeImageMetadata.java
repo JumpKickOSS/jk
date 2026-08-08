@@ -73,7 +73,7 @@ public final class NativeImageMetadata {
                 reflection(Json.list(root, "jni"), origin, JNI_TYPE, out);
                 reflection(Json.list(root, "serialization"), origin, SERIALIZATION_TYPE, out);
                 proxies(Json.list(root, "reflection-proxies"), origin, out);
-                resources(Json.map(root, "resources"), origin, out);
+                resources(Json.get(root, "resources"), origin, out);
             }
             default -> {}
         }
@@ -124,14 +124,19 @@ public final class NativeImageMetadata {
     }
 
     /**
-     * {@code {"resources": {"includes": [{"pattern": …}]}}} in the split schema, and
-     * {@code {"includes": [{"glob": …}]}} in the unified one.
+     * Three shapes in the wild: {@code {"resources": {"includes": [{"pattern": …}]}}} in the split
+     * schema, the same nested under the unified document, and a bare {@code [{"glob": …}]} list —
+     * which is what the tracing agent writes.
      */
     private static void resources(Object root, String origin, List<DynamicSurface.Entry> out) {
         if (root == null) return;
-        Object holder = Json.map(root, "resources");
-        Object includes = holder != null ? holder : root;
-        for (Object include : Json.list(includes, "includes")) {
+        Object includes = root;
+        if (!(root instanceof List<?>)) {
+            Object holder = Json.map(root, "resources");
+            includes = Json.list(holder != null ? holder : root, "includes");
+        }
+        if (!(includes instanceof List<?> items)) return;
+        for (Object include : items) {
             String pattern = Json.str(include, "pattern");
             if (pattern == null) pattern = Json.str(include, "glob");
             if (pattern != null && !pattern.isBlank()) {
