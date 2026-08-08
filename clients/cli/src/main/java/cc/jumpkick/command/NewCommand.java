@@ -778,7 +778,7 @@ public final class NewCommand implements CliCommand {
                 resolvedJavaRelease,
                 Optional.<String>empty(), // flag path doesn't resolve to a specific install
                 resolvedMain,
-                assembly || plugin, // a plugin ships a fat jar (jk-plugin-sdk shaded in)
+                assembly, // NewInputs also forces it on for --plugin / --micronaut (JK-1671)
                 nativeImage,
                 spring,
                 grails,

@@ -39,6 +39,11 @@ public record NewInputs(
         Objects.requireNonNull(kotlinModuleName, "kotlinModuleName");
         Objects.requireNonNull(directory, "directory");
         deps = List.copyOf(deps);
+        // A plugin project ships a fat jar (jk-plugin-sdk shaded in) and so does a Micronaut app
+        // (Maven shade parity). The rule lives here, not at the call site, because
+        // NewJkBuildRenderer owns the single [application] table — a scaffold fragment cannot
+        // open a second one to add `assembly = true` (JK-1671).
+        assembly = assembly || plugin || micronaut;
     }
 
     /** Back-compat constructor: no framework scaffold or plugin project. */
