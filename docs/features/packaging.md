@@ -161,10 +161,33 @@ Keep them with [shrink] keep, or a keep-files rule file:
 The audit compares the shrunk jar against the inputs, so a name the inputs never resolved — an
 optional dependency nobody bundled — is not reported.
 
-A clean audit means the by-name indexes are intact. It does not mean the application works:
-instantiation by name that appears in no index (logback reading `logback.xml`) and R8
-optimizations that rewrite what a framework reflects on are separate failure modes the audit
-cannot see.
+A clean audit means the by-name indexes are intact. It does not mean the application works — see
+below for the two things it cannot see.
+
+### What shrinking still cannot work out for you
+
+Shrink is an advanced opt-in. `assembly = true` is the reliable choice; reach for `"shrink"` when
+size matters enough to own the rules, and expect to iterate.
+
+**Instantiation by name that appears in no index.** Logback reads `logback.xml` and constructs
+appenders reflectively, so `ch.qos.logback.core.ConsoleAppender` is referenced by nothing R8 or
+jk can read. Losing it costs you the error messages for everything else.
+
+**Types whose generic signature is read at runtime.** In `--classfile` mode R8 runs in full mode,
+where a class's generic signature survives only if the class is explicitly kept —
+`-keepattributes Signature` is not enough. A framework calling `Class.getTypeParameters()` on a
+type that was merely retained gets zero parameters:
+
+```
+IllegalArgumentException: Type parameter length does not match. Required: 0, Specified: 1
+```
+
+Keep the class itself to fix it:
+
+```toml
+[shrink]
+keep = ["-keep class com.example.GenericThing { *; }"]
+```
 
 Sample: [examples/shrunk-cli/](examples/shrunk-cli/).
 
