@@ -112,9 +112,15 @@ class ByNameIndexTest {
     }
 
     @Test
-    void keep_rules_retain_members() {
-        assertThat(ByNameIndex.keepRules(List.of("com.acme.A", "com.acme.B")))
-                .isEqualTo("-keep class com.acme.A { *; }\n-keep class com.acme.B { *; }\n");
+    void names_become_service_implementation_entries_the_emitter_turns_into_keeps() {
+        var surface = ByNameIndex.surface(List.of("com.acme.A", "com.acme.B"));
+
+        assertThat(surface.entries())
+                .allMatch(e -> e.kind() == cc.jumpkick.surface.DynamicSurface.Kind.SERVICE_IMPLEMENTATION)
+                .allMatch(e -> e.origin().equals("index"));
+        assertThat(cc.jumpkick.surface.KeepRuleEmitter.emit(surface))
+                .contains("-keep class com.acme.A { *; }")
+                .contains("-keep class com.acme.B { *; }");
     }
 
     private static Path jar(Path path, Map<String, String> entries) throws IOException {

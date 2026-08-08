@@ -16,11 +16,15 @@ public final class KeepRuleEmitter {
 
     public static String emit(DynamicSurface surface) {
         StringBuilder out = new StringBuilder();
+        String currentOrigin = null;
         for (DynamicSurface.Entry entry : surface.entries()) {
             String rule = rule(entry);
             if (rule == null) continue;
-            if (!entry.origin().isBlank()) {
+            // One comment per run of entries sharing an origin: a few hundred rules from the same
+            // source should not carry a few hundred identical comments.
+            if (!entry.origin().isBlank() && !entry.origin().equals(currentOrigin)) {
                 out.append("# ").append(entry.origin()).append('\n');
+                currentOrigin = entry.origin();
             }
             out.append(rule).append('\n');
         }

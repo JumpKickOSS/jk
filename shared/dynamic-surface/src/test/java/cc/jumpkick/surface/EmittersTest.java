@@ -89,6 +89,22 @@ class EmittersTest {
     }
 
     @Test
+    void a_run_of_entries_from_one_origin_gets_one_comment() {
+        DynamicSurface surface = DynamicSurface.of(
+                Entry.type(SERVICE_IMPLEMENTATION, "com.acme.A", "index"),
+                Entry.type(SERVICE_IMPLEMENTATION, "com.acme.B", "index"),
+                Entry.type(SERVICE_IMPLEMENTATION, "com.acme.C", "user"));
+
+        assertThat(KeepRuleEmitter.emit(surface)).isEqualTo("""
+                        # index
+                        -keep class com.acme.A { *; }
+                        -keep class com.acme.B { *; }
+                        # user
+                        -keep class com.acme.C { *; }
+                        """);
+    }
+
+    @Test
     void an_empty_surface_emits_valid_output_in_both_formats() {
         assertThat(KeepRuleEmitter.emit(DynamicSurface.empty())).isEmpty();
         assertThat(ReachabilityMetadataEmitter.emit(DynamicSurface.empty())).isEqualTo("{\n}\n");

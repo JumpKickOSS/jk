@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.shrink;
 
+import cc.jumpkick.surface.DynamicSurface;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Enumeration;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.jar.JarEntry;
@@ -108,13 +111,17 @@ final class ByNameIndex {
         return seen.size();
     }
 
-    /** ProGuard rules retaining {@code names} and their members. */
-    static String keepRules(Collection<String> names) {
-        StringBuilder sb = new StringBuilder();
+    /**
+     * The classes {@code jars} name by text, as a {@link DynamicSurface}. Every entry is a
+     * {@link DynamicSurface.Kind#SERVICE_IMPLEMENTATION}: an implementation an index points at,
+     * which the emitter turns into a class-level keep.
+     */
+    static DynamicSurface surface(Collection<String> names) {
+        List<DynamicSurface.Entry> entries = new ArrayList<>(names.size());
         for (String name : names) {
-            sb.append("-keep class ").append(name).append(" { *; }\n");
+            entries.add(DynamicSurface.Entry.type(DynamicSurface.Kind.SERVICE_IMPLEMENTATION, name, "index"));
         }
-        return sb.toString();
+        return new DynamicSurface(entries);
     }
 
     private static void readServiceFile(JarFile jf, JarEntry entry, Set<String> sink) throws IOException {

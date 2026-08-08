@@ -11,4 +11,5 @@ description = "jk-shrink: the built-in shrink build plugin's code layer — R8 i
 
 dependencies {
     implementation(project(":plugin-sdk"))
+    implementation(project(":dynamic-surface"))
 }

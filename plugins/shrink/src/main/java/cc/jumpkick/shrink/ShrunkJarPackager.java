@@ -115,7 +115,7 @@ final class ShrunkJarPackager {
             derived.retainAll(ByNameIndex.classesIn(program));
             if (!derived.isEmpty()) {
                 pro.append("\n# Derived from service files and marker indexes in the inputs.\n")
-                        .append(ByNameIndex.keepRules(derived));
+                        .append(cc.jumpkick.surface.KeepRuleEmitter.emit(ByNameIndex.surface(derived)));
                 io.label("keep rules: " + derived.size() + " derived from by-name indexes");
             }
 
@@ -219,7 +219,8 @@ final class ShrunkJarPackager {
             message.append("  ").append(name).append('\n');
         }
         message.append("\nKeep them with [shrink] keep, or a keep-files rule file:\n")
-                .append(ByNameIndex.keepRules(expected.stream().limit(3).toList()));
+                .append(cc.jumpkick.surface.KeepRuleEmitter.emit(
+                        ByNameIndex.surface(expected.stream().limit(3).toList())));
         if (expected.size() > 3) message.append("  …\n");
         throw new IllegalStateException(message.toString());
     }
