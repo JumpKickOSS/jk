@@ -4846,7 +4846,8 @@ public final class BuildPlanner {
      * Main classes plus any plugin {@code contributesClasses}/{@code contributesResources} dirs
      * (Micronaut AOT, etc.). When nothing is contributed, returns {@code classes} unchanged.
      */
-    private static Path stageClassesWithContributions(Path classes, PluginBuild.Declarations decls, BuildLayout layout)
+    // Package-private for BuildPlannerStagedClassesTest.
+    static Path stageClassesWithContributions(Path classes, PluginBuild.Declarations decls, BuildLayout layout)
             throws java.io.IOException {
         if (decls == null) return classes;
         List<Path> extra = new ArrayList<>();
@@ -4855,16 +4856,11 @@ public final class BuildPlanner {
         }
         if (extra.isEmpty()) return classes;
         Path stage = layout.moduleTargetDir().resolve("package-classes");
-        if (Files.exists(stage)) {
-            try (var walk = Files.walk(stage)) {
-                walk.sorted(java.util.Comparator.reverseOrder()).forEach(p2 -> {
-                    try {
-                        Files.deleteIfExists(p2);
-                    } catch (java.io.IOException ignored) {
-                    }
-                });
-            }
-        }
+        // A wipe that cannot finish is a build error, not something to paper over: the copy below
+        // only overwrites paths it reproduces, so a survivor from a previous build (a renamed or
+        // no-longer-emitted class) would be packaged, and the packaging key is taken over this
+        // dir — so the wrong content is what gets cached and restored (JK-1659).
+        cc.jumpkick.util.PathUtil.deleteRecursivelyOrThrow(stage);
         Files.createDirectories(stage);
         copyTreeInto(classes, stage);
         for (Path contrib : extra) copyTreeInto(contrib, stage);
