@@ -106,10 +106,28 @@ final class ShrunkJarPackager {
             pro.append("-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod,")
                     .append("SourceFile,LineNumberTable\n");
             if (!obfuscate) pro.append("-dontobfuscate\n");
+
+            // Classes the inputs name by text rather than reference. The indexes enumerate them
+            // exactly, so deriving the rules beats any pattern a user could write: it covers
+            // hand-written framework internals that match no naming convention, and it tracks
+            // whatever the project actually depends on.
+            Set<String> derived = new java.util.TreeSet<>(ByNameIndex.referencedClasses(program));
+            derived.retainAll(ByNameIndex.classesIn(program));
+            if (!derived.isEmpty()) {
+                pro.append("\n# Derived from service files and marker indexes in the inputs.\n")
+                        .append(ByNameIndex.keepRules(derived));
+                io.label("keep rules: " + derived.size() + " derived from by-name indexes");
+            }
+
             for (String rule : io.config().stringList("keep")) {
                 pro.append(rule).append('\n');
             }
             Files.writeString(rules, pro);
+            // The effective rule set, next to the artifact: the one place to look when R8 kept
+            // something unexpected, or when writing a rule to cover what it could not derive.
+            Path effectiveRules = io.artifactPath().resolveSibling(stripExtension(io.artifactPath()) + "-keep.pro");
+            Files.copy(rules, effectiveRules, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            io.produced(effectiveRules);
 
             Path shrunk = work.resolve("shrunk.jar");
             TaskExec.ToolRun run = io.java()
