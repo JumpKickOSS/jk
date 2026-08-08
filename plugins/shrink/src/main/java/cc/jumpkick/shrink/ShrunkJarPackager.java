@@ -142,11 +142,52 @@ final class ShrunkJarPackager {
                 throw new IllegalStateException("R8 failed (exit " + result.exit() + "):\n" + result.output());
             }
 
+            auditByNameIndexes(program, shrunk);
             writeOutputJar(shrunk, io.artifactPath(), mainClass);
             io.label("shrunk " + mb(before) + " → " + mb(Files.size(io.artifactPath())));
         } finally {
             deleteRecursively(work);
         }
+    }
+
+    /**
+     * Fail when R8 removed a class that a service file or marker index still names.
+     *
+     * <p>Such a class is unreachable to static analysis and is loaded by name at runtime, so
+     * removing it does not produce a link error — the loader (Micronaut's {@code
+     * SoftServiceLoader}, {@code java.util.ServiceLoader}) skips what it cannot load, and the
+     * application starts missing pieces. Losing an SLF4J provider this way silences the very
+     * logging that would report the damage. A build error naming the classes is the only place
+     * this is cheap to catch.
+     *
+     * <p>Scoped to classes the inputs actually carried: a name an input already failed to resolve
+     * belongs to an optional dependency nobody bundled, and is not R8's doing.
+     */
+    // Package-private for ShrunkJarAuditTest.
+    static void auditByNameIndexes(List<Path> program, Path shrunk) throws IOException {
+        Set<String> expected = new java.util.TreeSet<>(ByNameIndex.referencedClasses(program));
+        expected.retainAll(ByNameIndex.classesIn(program));
+        expected.removeAll(ByNameIndex.classesIn(List.of(shrunk)));
+        if (expected.isEmpty()) return;
+
+        StringBuilder message = new StringBuilder("R8 removed ")
+                .append(expected.size())
+                .append(expected.size() == 1 ? " class that is" : " classes that are")
+                .append(" named by a service file or index in this jar, so nothing can load ")
+                .append(expected.size() == 1 ? "it" : "them")
+                .append(" at runtime:\n");
+        int shown = 0;
+        for (String name : expected) {
+            if (shown++ == 20) {
+                message.append("  … and ").append(expected.size() - 20).append(" more\n");
+                break;
+            }
+            message.append("  ").append(name).append('\n');
+        }
+        message.append("\nKeep them with [shrink] keep, or a keep-files rule file:\n")
+                .append(ByNameIndex.keepRules(expected.stream().limit(3).toList()));
+        if (expected.size() > 3) message.append("  …\n");
+        throw new IllegalStateException(message.toString());
     }
 
     /**

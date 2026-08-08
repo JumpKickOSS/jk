@@ -94,11 +94,49 @@ Optional keep rules / R8 version still live under `[shrink]` when you need them:
 # obfuscate = false   # default
 ```
 
-A bare `[shrink]` table (without `assembly = "shrink"`) still enables the packager for
-backward compatibility. Prefer `assembly = "shrink"`. Build labels size before → after.
+A bare `[shrink]` table (without `assembly = "shrink"`) also enables the packager. Prefer
+`assembly = "shrink"`. Build labels size before → after.
 
 Try without editing the file first: `jk assemble --shrink`. Persist with
 `jk assemble --shrink --write-config`.
+
+### By-name index audit
+
+Shrinking is reachability analysis, and a class reached only *by name* is invisible to it. Two
+conventions carry those names as text rather than bytecode:
+
+| convention | shape |
+|---|---|
+| service files | `META-INF/services/<interface>` — one implementation FQCN per line |
+| marker indexes | `META-INF/<vendor>/<interface>/<impl>` — the leaf path segment *is* the class name |
+
+R8 removes what nothing references, and neither shape references anything. Worse, the removal is
+quiet: `ServiceLoader` and framework equivalents skip an implementation they cannot load, so the
+application starts with pieces missing instead of failing. Losing an SLF4J provider that way
+silences the logging that would have reported it.
+
+jk audits the shrunk jar against both index shapes and **fails the build** naming every class R8
+removed, with the keep rule that retains it:
+
+```
+R8 removed 3 classes that are named by a service file or index in this jar,
+so nothing can load them at runtime:
+  ch.qos.logback.classic.spi.LogbackServiceProvider
+  com.example.$HelloController$Definition
+  io.micronaut.aop.internal.InterceptorRegistryBean
+
+Keep them with [shrink] keep, or a keep-files rule file:
+-keep class ch.qos.logback.classic.spi.LogbackServiceProvider { *; }
+…
+```
+
+The audit compares the shrunk jar against the inputs, so a name the inputs never resolved — an
+optional dependency nobody bundled — is not reported.
+
+A clean audit means the by-name indexes are intact. It does not mean the application works:
+instantiation by name that appears in no index (logback reading `logback.xml`) and R8
+optimizations that rewrite what a framework reflects on are separate failure modes the audit
+cannot see.
 
 Sample: [examples/shrunk-cli/](examples/shrunk-cli/).
 
