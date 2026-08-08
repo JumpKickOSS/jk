@@ -18,7 +18,9 @@ class PluginTableRegistryTest {
         assertThat(manifest.schema()).containsKeys("version", "aot", "build-info", "include-tools", "aot-args");
         assertThat(manifest.schema().get("version").required()).isTrue();
         assertThat(manifest.schema().get("aot").defaultValue()).isNull(); // tri-state
-        assertThat(PluginTableRegistry.byTable("micronaut")).isEmpty();
+        // A table nobody owns stays unowned. Named so that shipping the next built-in plugin
+        // does not turn this assertion red — it used to name `micronaut`, which then shipped.
+        assertThat(PluginTableRegistry.byTable("not-a-plugin-table")).isEmpty();
     }
 
     @Test
@@ -36,11 +38,17 @@ class PluginTableRegistryTest {
     @Test
     void validate_enforces_required_with_example_and_hint() {
         var manifest = PluginTableRegistry.byTable("spring-boot").orElseThrow();
+        // Assert against the schema's own example/hint, not copies of them: the invariant is
+        // "the error surfaces what the manifest says", and the manifest's wording is free to
+        // change (JK-1546 moved the example from "4.0.0" to the major-line floor "4").
+        var version = manifest.schema().get("version");
+        assertThat(version.example()).isNotBlank();
+        assertThat(version.hint()).isNotBlank();
         assertThatThrownBy(() -> PluginTableRegistry.validate(manifest, Toml.parse("build-info = true")))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("[spring-boot].version is required")
-                .hasMessageContaining("e.g. version = \"4.0.0\"")
-                .hasMessageContaining("BOM, loader, and AOT tooling");
+                .hasMessageContaining("e.g. version = \"" + version.example() + "\"")
+                .hasMessageContaining(version.hint());
     }
 
     @Test

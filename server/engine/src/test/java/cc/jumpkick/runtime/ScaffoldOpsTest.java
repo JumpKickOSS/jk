@@ -78,8 +78,10 @@ class ScaffoldOpsTest {
 
     @Test
     void unknown_flag_reports_an_error() {
-        var files = ScaffoldOps.scaffold(Path.of("."), Map.of("plugin", "micronaut", "package", "x"));
-        assertThat(files.error()).contains("micronaut");
+        // Named so that shipping the next framework plugin does not turn this green by accident —
+        // it used to say `micronaut`, which then shipped as a real scaffold.
+        var files = ScaffoldOps.scaffold(Path.of("."), Map.of("plugin", "not-a-plugin", "package", "x"));
+        assertThat(files.error()).contains("not-a-plugin");
     }
 
     @Test
