@@ -142,6 +142,11 @@ final class ShrunkJarPackager {
                     .classpath(List.of(r8))
                     .mainClass("com.android.tools.r8.R8")
                     .arg("--release")
+                    // Desugaring rewrites for an Android API level. This output is a JVM jar, and
+                    // the rewrite is not merely pointless here: it emits invokespecial to an
+                    // interface default method that is not a direct superinterface, which the
+                    // verifier rejects outright (VerifyError at first use).
+                    .arg("--no-desugaring")
                     .arg("--classfile")
                     .arg("--output")
                     .arg(shrunk.toString())
