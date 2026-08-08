@@ -825,8 +825,8 @@ public final class LockOrchestrator {
                 && !kmpAlias
                 && (coord.type() == null || "jar".equals(coord.type()))
                 && (coord.classifier() == null || coord.classifier().isEmpty())) {
-            // Jar miss for a bare-GA dep whose POM packaging is aarprobe packaging
-            // only on miss — the warm path stays probe-free — and rewrite to.aar
+            // Jar miss for a bare-GA dep whose POM packaging is aar: probe packaging
+            // only on miss — the warm path stays probe-free — and rewrite to .aar
             // instead of silently writing a checksum-less row.
             try {
                 if ("aar".equals(pomBuilder.build(coord).packaging())) {
@@ -843,6 +843,11 @@ public final class LockOrchestrator {
         if (hit != null) {
             source = hit.repo().name() + "+" + hit.repo().baseUrl();
             checksum = "sha256:" + hit.fetched().sha256();
+        } else if (!kmpAlias && !isPomOnlyPackage(coord, pomBuilder)) {
+            // JK-1649: a resolved package whose artifact 404s must not land as a checksum-less
+            // lock row that ClasspathResolver silently drops. KMP aliases and packaging=pom
+            // (BOMs / aggregators) legitimately have no file; everything else fails the lock.
+            throw unfetchableArtifact(coord, fallbackSource);
         }
 
         if (tags.isEmpty()) tags = EnumSet.of(Scope.MAIN);
@@ -877,6 +882,53 @@ public final class LockOrchestrator {
 
     /** Filled during {@link #lock}; read by {@link #toArtifact}. */
     private Map<String, List<String>> crossPackageActivatedFeatures;
+
+    /**
+     * True when this package is not expected to publish a primary artifact: coordinate type
+     * {@code pom}, or POM {@code packaging=pom} (BOM / aggregator).
+     */
+    private static boolean isPomOnlyPackage(Coordinate coord, EffectivePomBuilder pomBuilder) {
+        if (coord.type() != null && "pom".equalsIgnoreCase(coord.type())) {
+            return true;
+        }
+        try {
+            return "pom".equalsIgnoreCase(pomBuilder.build(coord).packaging());
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    /**
+     * Fail lock when a package resolved to a version but no repo served its artifact (JK-1649).
+     * Names the coordinate, the Maven layout path tried, and the repositories consulted.
+     */
+    private IllegalStateException unfetchableArtifact(Coordinate coord, String fallbackSource) {
+        String rel = cc.jumpkick.repo.MavenLayout.artifactPath(coord);
+        StringBuilder reposTried = new StringBuilder();
+        for (MavenRepo r : repos.repos()) {
+            if (reposTried.length() > 0) reposTried.append(", ");
+            String base = r.baseUrl().toString();
+            if (!base.endsWith("/")) base = base + "/";
+            reposTried.append(r.name()).append('+').append(base).append(rel);
+        }
+        if (reposTried.length() == 0) {
+            reposTried.append(fallbackSource).append('/').append(rel);
+        }
+        String display = coord.group() + ":" + coord.artifact() + ":" + coord.version();
+        if (coord.type() != null && !coord.type().isBlank() && !"jar".equals(coord.type())) {
+            display = display + " type=" + coord.type();
+        }
+        if (coord.classifier() != null && !coord.classifier().isEmpty()) {
+            display = display + " classifier=" + coord.classifier();
+        }
+        return new IllegalStateException("could not fetch artifact "
+                + display
+                + " at "
+                + rel
+                + " (tried: "
+                + reposTried
+                + ") — the POM resolved but the artifact is missing; check the coordinate and repositories");
+    }
 
     /** Human-facing module id: {@code group:artifact} for Maven package keys. */
     private static String displayModule(String moduleOrKey) {

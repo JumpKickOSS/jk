@@ -226,7 +226,18 @@ public final class ClasspathResolver {
         cc.jumpkick.task.AccessLedger ledger = cc.jumpkick.task.AccessLedger.atDefaultPath();
         for (Lockfile.Artifact pkg : selected) {
             String checksum = pkg.checksum();
-            if (checksum == null) continue;
+            if (checksum == null) {
+                // POM-only aliases (KMP roots, packaging=pom) legitimately have none; a jar row
+                // without a checksum is an incomplete lock. Either way, never skip silently
+                // (JK-1649): a missing classpath entry must not present as "cannot find symbol".
+                System.err.println("jk: warning: lock row "
+                        + pkg.name()
+                        + "@"
+                        + pkg.version()
+                        + " has no checksum — skipped from classpath"
+                        + " (POM-only alias, or incomplete lock; re-run `jk lock`)");
+                continue;
+            }
             String hex = checksum.startsWith("sha256:") ? checksum.substring("sha256:".length()) : checksum;
             // Always use the content-addressed CAS path for jar classpath entries.
             // repos/<name>/<m2-path> is human-readable but optional: a blob may exist only under

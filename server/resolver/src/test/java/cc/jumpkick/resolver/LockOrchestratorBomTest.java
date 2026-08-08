@@ -92,6 +92,23 @@ class LockOrchestratorBomTest {
                         + "</artifactId><version>"
                         + version
                         + "</version></project>");
+        serveJar(group, artifact, version);
+    }
+
+    /** Minimal empty jar so lock materialize can pin a checksum (JK-1649). */
+    private void serveJar(String group, String artifact, String version) {
+        String path = "/"
+                + group.replace('.', '/')
+                + "/"
+                + artifact
+                + "/"
+                + version
+                + "/"
+                + artifact
+                + "-"
+                + version
+                + ".jar";
+        served.put(path, new byte[] {0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
     }
 
     @AfterEach
@@ -179,6 +196,7 @@ class LockOrchestratorBomTest {
                   <version>1.0</version>
                 </project>
                 """);
+        serveJar("com.foo", "widget", "1.0");
 
         JkBuild project = jkBuildWithDeps(Map.of(
                 Scope.PLATFORM, List.of(Dependency.of("the-bom", "org.example:the-bom", VersionSelector.parse("=1.0"))),
@@ -233,9 +251,13 @@ class LockOrchestratorBomTest {
                   </dependencies>
                 </project>
                 """);
+        serveJar("com.foo", "middle", "1.0");
         servePom("com.foo", "leaf", "1.0", leafVersioned("leaf", "1.0"));
+        serveJar("com.foo", "leaf", "1.0");
         servePom("com.foo", "leaf", "1.5", leafVersioned("leaf", "1.5"));
+        serveJar("com.foo", "leaf", "1.5");
         servePom("com.foo", "leaf", "2.0", leafVersioned("leaf", "2.0"));
+        serveJar("com.foo", "leaf", "2.0");
 
         JkBuild project = jkBuildWithDeps(Map.of(
                 Scope.PLATFORM, List.of(Dependency.of("the-bom", "org.example:the-bom", VersionSelector.parse("=1.0"))),
@@ -277,6 +299,7 @@ class LockOrchestratorBomTest {
                   <version>1.0</version>
                 </project>
                 """);
+        serveJar("com.foo", "widget", "1.0");
 
         JkBuild project = jkBuildWithDeps(Map.of(
                 Scope.PLATFORM, List.of(Dependency.of("the-bom", "org.example:the-bom", VersionSelector.parse("=1.0"))),
@@ -309,6 +332,7 @@ class LockOrchestratorBomTest {
                   <version>1.0</version>
                 </project>
                 """);
+        serveJar("com.foo", "proc", "1.0");
 
         JkBuild project = jkBuildWithDeps(
                 Map.of(Scope.PROCESSOR, List.of(new Dependency("com.foo:proc", VersionSelector.parseFloating("1.0")))));
@@ -327,8 +351,10 @@ class LockOrchestratorBomTest {
     void optional_dep_is_withheld_until_a_feature_activates_it(@TempDir Path tempDir) throws Exception {
         serveMetadata("/com/foo/core/maven-metadata.xml", "com.foo", "core", List.of("1.0"));
         servePom("com.foo", "core", "1.0", leaf("core"));
+        serveJar("com.foo", "core", "1.0");
         serveMetadata("/com/foo/extra/maven-metadata.xml", "com.foo", "extra", List.of("1.0"));
         servePom("com.foo", "extra", "1.0", leaf("extra"));
+        serveJar("com.foo", "extra", "1.0");
 
         // `extra` is optional; the `with-extra` feature (a default) names it.
         Dependency core = new Dependency("com.foo:core", VersionSelector.parseFloating("1.0"));
@@ -377,6 +403,56 @@ class LockOrchestratorBomTest {
     }
 
     @Test
+    void declared_dep_with_pom_but_no_jar_fails_lock(@TempDir Path tempDir) {
+        // JK-1649: POM resolves, jar 404s → lock must fail (not write a checksum-less row).
+        // servePath only (not servePom) so no auto-jar is registered.
+        serveMetadata("/com/foo/ghost/maven-metadata.xml", "com.foo", "ghost", List.of("1.0"));
+        servePath(
+                "/com/foo/ghost/1.0/ghost-1.0.pom",
+                """
+                <project>
+                  <groupId>com.foo</groupId>
+                  <artifactId>ghost</artifactId>
+                  <version>1.0</version>
+                </project>
+                """);
+
+        JkBuild project = jkBuildWithDeps(
+                Map.of(Scope.MAIN, List.of(new Dependency("com.foo:ghost", VersionSelector.parse("=1.0")))));
+
+        assertThatThrownBy(() -> new LockOrchestrator(repoGroup(tempDir)).lock(project, "test"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("could not fetch artifact")
+                .hasMessageContaining("com.foo:ghost:1.0")
+                .hasMessageContaining("ghost-1.0.jar")
+                .hasMessageContaining("tried:");
+    }
+
+    @Test
+    void packaging_pom_declared_dep_locks_without_artifact(@TempDir Path tempDir) throws Exception {
+        // packaging=pom aggregators / BOM-shaped modules legitimately have no jar.
+        serveMetadata("/com/foo/aggregator/maven-metadata.xml", "com.foo", "aggregator", List.of("1.0"));
+        servePom("com.foo", "aggregator", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId>
+                  <artifactId>aggregator</artifactId>
+                  <version>1.0</version>
+                  <packaging>pom</packaging>
+                </project>
+                """);
+
+        JkBuild project = jkBuildWithDeps(
+                Map.of(Scope.MAIN, List.of(new Dependency("com.foo:aggregator", VersionSelector.parse("=1.0")))));
+
+        Lockfile lock = new LockOrchestrator(repoGroup(tempDir)).lock(project, "test");
+        Lockfile.Artifact row = lock.artifacts().stream()
+                .filter(p -> p.packageKey().equals("com.foo:aggregator:jar:"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(row.checksum()).isNull();
+    }
+
+    @Test
     void empty_test_scope_defaults_to_latest_stable_junit(@TempDir Path tempDir) throws Exception {
         // No dependencies at all — jk still defaults the test framework.
         JkBuild project = jkBuildWithDeps(Map.of());
@@ -406,6 +482,7 @@ class LockOrchestratorBomTest {
                 "5.10.0",
                 "<project><groupId>org.junit.jupiter</groupId>"
                         + "<artifactId>junit-jupiter</artifactId><version>5.10.0</version></project>");
+        serveJar("org.junit.jupiter", "junit-jupiter", "5.10.0");
 
         JkBuild project = jkBuildWithDeps(Map.of(
                 Scope.TEST,
@@ -464,6 +541,11 @@ class LockOrchestratorBomTest {
                 + version
                 + ".pom";
         servePath(path, body);
+        // Non-pom packaging needs a jar for lock materialize (JK-1649). packaging=pom rows
+        // legitimately have no artifact — leave them jar-less so the lock path stays honest.
+        if (!body.contains("<packaging>pom</packaging>")) {
+            serveJar(group, artifact, version);
+        }
     }
 
     private void serveMetadata(String path, String group, String artifact, List<String> versions) {

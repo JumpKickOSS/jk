@@ -226,14 +226,8 @@ class LockOrchestratorScopeTest {
                 artifact,
                 List.of(version));
         servePom(group, artifact, version, emptyPom(group, artifact, version));
-    }
-
-    private void servePath(String path, String body) {
-        served.put(path, body.getBytes(StandardCharsets.UTF_8));
-    }
-
-    private void servePom(String group, String artifact, String version, String body) {
-        String path = "/"
+        // Empty EOCD zip so lock materialize pins a checksum (JK-1649).
+        String jarPath = "/"
                 + group.replace('.', '/')
                 + "/"
                 + artifact
@@ -243,8 +237,32 @@ class LockOrchestratorScopeTest {
                 + artifact
                 + "-"
                 + version
-                + ".pom";
-        servePath(path, body);
+                + ".jar";
+        served.put(jarPath, new byte[] {0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
+    }
+
+    private void servePath(String path, String body) {
+        served.put(path, body.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private void servePom(String group, String artifact, String version, String body) {
+        String base = "/"
+                + group.replace('.', '/')
+                + "/"
+                + artifact
+                + "/"
+                + version
+                + "/"
+                + artifact
+                + "-"
+                + version;
+        servePath(base + ".pom", body);
+        // JK-1649: lock materialize requires the artifact for non-pom packaging.
+        if (!body.contains("<packaging>pom</packaging>")) {
+            served.put(
+                    base + ".jar",
+                    new byte[] {0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
+        }
     }
 
     private void serveMetadata(String path, String group, String artifact, List<String> versions) {

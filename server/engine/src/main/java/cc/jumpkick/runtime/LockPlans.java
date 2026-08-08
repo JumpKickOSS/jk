@@ -836,7 +836,17 @@ public final class LockPlans {
         }
         for (Lockfile.Artifact pkg : lock.artifacts()) {
             String checksum = pkg.checksum();
-            if (checksum == null) continue;
+            if (checksum == null) {
+                // Nothing to materialize for POM-only rows. Still say so — a checksum-less
+                // jar row is how JK-1649 used to hide a missing artifact.
+                System.err.println("jk: note: lock row "
+                        + pkg.name()
+                        + "@"
+                        + pkg.version()
+                        + " has no checksum — offline check skipped it"
+                        + " (POM-only alias, or incomplete lock)");
+                continue;
+            }
             String hex = checksum.startsWith("sha256:") ? checksum.substring("sha256:".length()) : checksum;
             if (!cas.contains(hex)) {
                 throw new IllegalStateException("offline: "
