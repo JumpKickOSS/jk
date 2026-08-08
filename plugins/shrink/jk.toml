@@ -7,6 +7,7 @@ main     = "cc.jumpkick.plugin.process.PluginMain"
 
 [dependencies]
 jk-plugin-sdk.workspace = true
+jk-dynamic-surface.workspace = true
 
 [test-dependencies]
 assertj-core            = "latest"
