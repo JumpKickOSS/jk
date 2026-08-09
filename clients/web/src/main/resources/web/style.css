@@ -212,15 +212,17 @@ header {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  padding: 5px 11px;
+  /* Equal inset so content hugs the same distance from left and right edges. */
+  padding: 5px 8px;
   border: 1px solid var(--bd);
   border-radius: var(--r-md);
   background: rgba(var(--cn-rgb), 0.03);
-  min-width: 18.5rem;
+  min-width: 17rem;
 }
 .sysrow {
   display: grid;
-  grid-template-columns: minmax(7.5rem, auto) 1fr auto;
+  /* auto | flex meter | auto — no min-width on the label that invents left empty space. */
+  grid-template-columns: auto 1fr auto;
   column-gap: 8px;
   align-items: center;
 }
@@ -229,7 +231,7 @@ header {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--dim);
-  text-align: right;
+  text-align: left;
   white-space: nowrap;
 }
 /* Capacity prefix shares the CPU/RAM label treatment (JK-1717). */
@@ -247,9 +249,9 @@ header {
 .sv {
   font: 600 11.5px var(--mono);
   color: var(--bright);
-  text-align: left;
+  text-align: right;
   white-space: nowrap;
-  min-width: 9.5ch;
+  font-variant-numeric: tabular-nums;
 }
 /* Secondary parenthetical matches .sk (dim mono label), not bright .sv (JK-1717). */
 .ssec {
