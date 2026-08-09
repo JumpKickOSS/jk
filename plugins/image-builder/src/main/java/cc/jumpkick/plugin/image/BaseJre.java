@@ -16,6 +16,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 import java.util.zip.GZIPInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
@@ -121,7 +122,9 @@ final class BaseJre {
                     Files.createDirectories(target);
                     continue;
                 }
-                if (!entry.isFile()) continue; // symlinks/devices: the JRE tree needs none of them
+                // A symlink entry carries no content: writing it as a file leaves a 0-byte stub
+                // that execs successfully and does nothing, which is worse than not having it.
+                if (entry.isSymbolicLink() || entry.isLink() || !entry.isFile()) continue;
                 Files.createDirectories(target.getParent());
                 try {
                     Files.copy(tar, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
@@ -133,15 +136,49 @@ final class BaseJre {
         }
     }
 
-    /** The first {@code bin/java} in the extracted tree. */
-    private static Path findJava(Path root) throws IOException {
+    /**
+     * A {@code bin/java} in the extracted tree that actually runs.
+     *
+     * <p>Images carry several: {@code /usr/bin/java} is usually a symlink, which unpacks to
+     * nothing, and an empty file execs with status 0 and no output — a failure that looks like
+     * success. So candidates are ordered by depth (the real JVM lives under
+     * {@code lib/jvm/<dist>/bin}) and each is proven with {@code -version} before it is returned.
+     */
+    private static Path findJava(Path root) throws IOException, InterruptedException {
+        List<Path> candidates;
         try (var walk = Files.walk(root)) {
-            return walk.filter(Files::isRegularFile)
+            candidates = walk.filter(Files::isRegularFile)
                     .filter(p -> p.getFileName().toString().equals("java"))
                     .filter(p -> p.getParent() != null
                             && p.getParent().getFileName().toString().equals("bin"))
-                    .findFirst()
-                    .orElse(null);
+                    .filter(p -> {
+                        try {
+                            return Files.size(p) > 0;
+                        } catch (IOException e) {
+                            return false;
+                        }
+                    })
+                    .sorted(java.util.Comparator.comparingInt((Path p) -> p.getNameCount())
+                            .reversed())
+                    .toList();
+        }
+        for (Path candidate : candidates) {
+            candidate.toFile().setExecutable(true, false);
+            if (runsVersion(candidate)) return candidate;
+        }
+        return null;
+    }
+
+    /** True when {@code java -version} exits 0 and says something. */
+    private static boolean runsVersion(Path javaBin) throws InterruptedException {
+        try {
+            Process p = new ProcessBuilder(javaBin.toString(), "-version")
+                    .redirectErrorStream(true)
+                    .start();
+            String out = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            return p.waitFor(60, TimeUnit.SECONDS) && p.exitValue() == 0 && !out.isBlank();
+        } catch (IOException e) {
+            return false;
         }
     }
 
