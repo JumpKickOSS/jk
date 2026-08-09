@@ -29,6 +29,7 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
     static final String AOT_STEP = "micronaut-aot";
     static final String RUNTIME_JIT = "jit";
     static final String RUNTIME_NATIVE = "native";
+    static final String DEFAULT_AOT_CONFIG = "aot.properties";
     private static final String AOT_TOOLS = "micronaut-aot-cli";
     private static final String AOT_MAIN = "io.micronaut.aot.cli.Main";
 
@@ -47,8 +48,11 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
         PluginConfig cfg = ctx.config();
         // Explicit aot=true, or auto when [native] is declared (mirror spring-boot).
         if (cfg.bool("aot").orElse(ctx.project().nativeDeclared())) {
+            // The properties file is read by the step body, so it belongs in the action key —
+            // In.config() only covers the [micronaut] table. Declared whether or not it exists:
+            // an absent declared file fingerprints distinctly, so creating one re-runs.
             ctx.named(AOT_STEP)
-                    .inputs(In.classes(), In.runtimeClasspath(), In.config())
+                    .inputs(In.classes(), In.runtimeClasspath(), In.config(), In.projectFiles(configSpec(cfg)))
                     .outputs("generated")
                     .contributesClasses("generated/classes")
                     .contributesResources("generated/resources")
@@ -238,10 +242,22 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
      * otherwise produce a green build that silently optimized with jk's defaults instead of the
      * configuration the user wrote, and nothing in the output would say so (JK-1662).
      */
+    /**
+     * The module-relative properties file this build reads: {@code aot-config} when set, else the
+     * conventional {@code aot.properties}. One spelling for the declared input and the step body,
+     * so the action key covers the file the body actually opens.
+     */
+    static String configSpec(PluginConfig cfg) {
+        return cfg.stringOpt("aot-config")
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .orElse(DEFAULT_AOT_CONFIG);
+    }
+
     static Path userConfigFile(Path moduleDir, String configured) throws IOException {
         String spec = configured == null ? "" : configured.trim();
         if (spec.isEmpty()) {
-            Path conventional = moduleDir.resolve("aot.properties");
+            Path conventional = moduleDir.resolve(DEFAULT_AOT_CONFIG);
             return Files.isRegularFile(conventional) ? conventional : null;
         }
         Path named = moduleDir.resolve(spec);
