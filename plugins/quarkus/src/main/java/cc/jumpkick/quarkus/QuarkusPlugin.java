@@ -75,8 +75,11 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         for (PackageIo.RuntimeEntry e : exec.runtimeEntries()) {
             Path jar = e.jar();
             if (jar == null || !Files.isRegularFile(jar)) continue;
-            String gav = gavFromPath(jar);
-            if (gav == null) {
+            // The coordinate rides on the entry. Deriving it from the path cannot work: jk serves
+            // the runtime classpath out of the content-addressed store, so `jar` is a hash.
+            // Workspace siblings carry no coordinate and the augment synthesizes one.
+            String gav = e.gav();
+            if (gav.isEmpty()) {
                 gav = "unknown:unknown:0";
             }
             lines.add(gav + "\t" + jar.toAbsolutePath().normalize());
@@ -101,7 +104,11 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         String baseName = exec.project().name();
         exec.label("quarkus augment (" + baseName + ")");
 
-        String quarkusVersion = exec.config().string("version");
+        // [quarkus] version is a major-line floor ("3"); the augment hands it to Maven as a real
+        // version when it resolves the platform BOM and its properties artifact. Take the version
+        // the lock actually chose, which is what quarkus-core resolved to.
+        String quarkusVersion = resolvedQuarkusVersion(exec.runtimeEntries())
+                .orElseGet(() -> exec.config().string("version"));
         String packageType =
                 normalizePackageType(exec.config().stringOpt("package").orElse("fast-jar"));
         TaskExec.ToolRun.Result run = exec.java()
@@ -225,30 +232,17 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
     }
 
     /**
-     * Parse Maven-layout path {@code …/repos/…/group/path/artifact/version/artifact-version.jar}
-     * → {@code g:a:v}. Workspace jars (no {@code /repos/}) return {@code null} so the caller can
-     * fall back to {@code unknown:unknown:0}; the augment step re-synthesizes installable coords.
+     * The Quarkus version this build resolved to, read off {@code io.quarkus:quarkus-core} in the
+     * runtime closure. Empty when the closure has no Quarkus core — the caller falls back to the
+     * configured floor and the augment reports whatever Maven makes of it.
      */
-    static String gavFromPath(Path jar) {
-        try {
-            Path verDir = jar.getParent();
-            Path artDir = verDir.getParent();
-            if (verDir == null || artDir == null || artDir.getParent() == null) return null;
-            String version = verDir.getFileName().toString();
-            String artifact = artDir.getFileName().toString();
-            String sp = artDir.getParent().toString().replace('\\', '/');
-            int idx = sp.indexOf("/repos/");
-            if (idx < 0) return null;
-            // /repos/<name>/group/path
-            String after = sp.substring(idx + "/repos/".length());
-            int slash = after.indexOf('/');
-            if (slash < 0) return null;
-            String gpath = after.substring(slash + 1);
-            String group = gpath.replace('/', '.');
-            return group + ":" + artifact + ":" + version;
-        } catch (Exception e) {
-            return null;
+    static java.util.Optional<String> resolvedQuarkusVersion(List<PackageIo.RuntimeEntry> entries) {
+        for (PackageIo.RuntimeEntry e : entries) {
+            if ("io.quarkus".equals(e.group()) && "quarkus-core".equals(e.artifact())) {
+                return e.version().isEmpty() ? java.util.Optional.empty() : java.util.Optional.of(e.version());
+            }
         }
+        return java.util.Optional.empty();
     }
 
     private static Path pluginJar() throws IOException {

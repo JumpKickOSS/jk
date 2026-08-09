@@ -3071,7 +3071,14 @@ public final class BuildPlanner {
                             .javaHome(javaHome)
                             .classpath(classpath);
                     for (var pe : prodEntries) {
-                        specWriter.entry(pe.fileName(), pe.jar(), pe.snapshot(), pe.container());
+                        specWriter.entry(
+                                pe.fileName(),
+                                pe.jar(),
+                                pe.snapshot(),
+                                pe.container(),
+                                pe.group(),
+                                pe.artifact(),
+                                pe.version());
                     }
                     for (var tool : toolExtras.entrySet()) {
                         specWriter.extra(tool.getKey(), tool.getValue());
@@ -3221,7 +3228,9 @@ public final class BuildPlanner {
                 .layout(classes, in.dir(), layout.moduleTargetDir().resolve("plugin"))
                 .javaHome(ctx.require(JAVA_HOME))
                 .artifact(jarPath);
-        for (PluginBuild.ProdEntry e : entries) spec.entry(e.fileName(), e.jar(), e.snapshot(), e.container());
+        for (PluginBuild.ProdEntry e : entries) {
+            spec.entry(e.fileName(), e.jar(), e.snapshot(), e.container(), e.group(), e.artifact(), e.version());
+        }
         for (var e : extras.entrySet()) spec.extra(e.getKey(), e.getValue());
         for (var e : secrets.entrySet()) spec.secret(e.getKey(), e.getValue());
         spec.extra("sbom", sbomFile);

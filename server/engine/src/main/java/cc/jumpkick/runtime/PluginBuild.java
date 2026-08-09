@@ -600,8 +600,26 @@ public final class PluginBuild {
         return classpath;
     }
 
-    /** One production runtime entry the engine hands a step/packager (container-aware). */
-    public record ProdEntry(String fileName, Path jar, boolean snapshot, Path container) {}
+    /**
+     * One production runtime entry the engine hands a step/packager (container-aware).
+     *
+     * <p>{@code group}/{@code artifact}/{@code version} come from the lock; they are empty for a
+     * workspace sibling. Steps need them because the jar path points into the content-addressed
+     * store, where nothing about the coordinate survives.
+     */
+    public record ProdEntry(
+            String fileName,
+            Path jar,
+            boolean snapshot,
+            Path container,
+            String group,
+            String artifact,
+            String version) {
+
+        public ProdEntry(String fileName, Path jar, boolean snapshot, Path container) {
+            this(fileName, jar, snapshot, container, "", "", "");
+        }
+    }
 
     /**
      * The production RUNTIME entries a step sees ({@code In.runtimeEntries()}): lock-ordered
@@ -623,7 +641,10 @@ public final class PluginBuild {
                         a.moduleArtifact() + "-" + a.version() + ext,
                         entry.jar(),
                         a.version().contains("SNAPSHOT"),
-                        entry.container()));
+                        entry.container(),
+                        a.moduleGroup(),
+                        a.moduleArtifact(),
+                        a.version()));
             }
         }
         try {
@@ -716,7 +737,26 @@ public final class PluginBuild {
         }
 
         public SpecWriter entry(String fileName, Path jar, boolean snapshot, Path container) {
+            return entry(fileName, jar, snapshot, container, "", "", "");
+        }
+
+        public SpecWriter entry(
+                String fileName,
+                Path jar,
+                boolean snapshot,
+                Path container,
+                String group,
+                String artifact,
+                String version) {
             StringBuilder b = new StringBuilder("{\"t\":\"entry\",\"file\":").append(Jsonl.quote(fileName));
+            if (group != null && !group.isEmpty()) {
+                b.append(",\"group\":")
+                        .append(Jsonl.quote(group))
+                        .append(",\"artifact\":")
+                        .append(Jsonl.quote(artifact))
+                        .append(",\"version\":")
+                        .append(Jsonl.quote(version));
+            }
             if (jar != null)
                 b.append(",\"path\":").append(Jsonl.quote(jar.toAbsolutePath().toString()));
             b.append(",\"snapshot\":").append(snapshot);

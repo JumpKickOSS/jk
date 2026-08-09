@@ -19,8 +19,24 @@ public interface PackageIo {
      * {@code classes.jar}, {@code res/}, {@code AndroidManifest.xml}, {@code R.txt} inside) —
      * null for a plain jar. {@code jar} is the host-classpath entry (a container's
      * {@code classes.jar}); null when the container carries no classes.
+     *
+     * <p>{@code group}/{@code artifact}/{@code version} are the artifact's coordinate as the lock
+     * records it, empty for a workspace sibling that has none. Read them; do not reconstruct a
+     * coordinate from {@code jar}'s path — entries are served out of the content-addressed store,
+     * so the path is a hash and carries no Maven layout.
      */
-    record RuntimeEntry(String fileName, Path jar, boolean snapshot, Path container) {}
+    record RuntimeEntry(
+            String fileName, Path jar, boolean snapshot, Path container, String group, String artifact, String version) {
+
+        public RuntimeEntry(String fileName, Path jar, boolean snapshot, Path container) {
+            this(fileName, jar, snapshot, container, "", "", "");
+        }
+
+        /** {@code group:artifact:version}, or empty when this entry has no coordinate. */
+        public String gav() {
+            return group.isEmpty() || artifact.isEmpty() ? "" : group + ":" + artifact + ":" + version;
+        }
+    }
 
     Path classesDir();
 
