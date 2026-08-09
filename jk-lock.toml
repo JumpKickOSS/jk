@@ -1,8 +1,8 @@
 version = 1
 generated-by = "jk 0.11.0"
 resolution-algorithm = "pubgrub-v1"
-jk = { version = "0.11.0", sha256 = "2f3f6e6179949bd3182a40cb2602afe2f016d00bbcdbc71e9839aac9b85f913d" }
-manifests-sha256 = "4ba9a3a242d6912c6a191ccb81724e8c1dfe84f566d04774357118807f084787"
+jk = { version = "0.11.0", sha256 = "367c665125461d40a4fedb9096b188a7a130b2f8008ddfba63d164d969a734d6" }
+manifests-sha256 = "88dea6c59b6680377a3c892825ce950a85bfd3b3b3b8d3352d3228eddfcd0759"
 
 [[artifact]]
 name     = "aopalliance:aopalliance:jar:"
@@ -2153,6 +2153,15 @@ java    = 25
 description = "jk-kotlin-compiler: Kotlin Build Tools API worker (PluginMain)."
 
 [[module]]
+path    = "plugins/minified"
+group   = "cc.jumpkick"
+name    = "jk-minified"
+version = "0.11.0"
+jdk     = "25"
+java    = 25
+description = "jk-minified: R8 classfile minify worker (PluginMain)."
+
+[[module]]
 path    = "plugins/protobuf"
 group   = "cc.jumpkick"
 name    = "jk-protobuf"
@@ -2177,15 +2186,6 @@ name    = "jk-quarkus"
 version = "0.11.0"
 jdk     = "25"
 java    = 25
-
-[[module]]
-path    = "plugins/shrink"
-group   = "cc.jumpkick"
-name    = "jk-shrink"
-version = "0.11.0"
-jdk     = "25"
-java    = 25
-description = "jk-shrink: R8 classfile shrink worker (PluginMain)."
 
 [[module]]
 path    = "plugins/spring-boot"
