@@ -231,7 +231,7 @@ public final class CacheCommand extends GroupCommand {
 
     /**
      * {@code jk cache storage} — cache-tier footprint (action index + cache CAS + format stamps;
-     * utilization vs {@code [cache] max-cache-size-mb}, last pruned).
+     * utilization vs {@code [cache] max-cache-size-gb}, last pruned).
      */
     public static final class CacheStorageCommand implements CliCommand {
         /**
@@ -531,7 +531,7 @@ public final class CacheCommand extends GroupCommand {
                             "evicted "
                                     + evicted
                                     + " reachable objects to fit the budget — consider raising"
-                                    + " cache.max-cache-size-mb (or JK_MAX_CACHE_SIZE_MB).",
+                                    + " cache.max-cache-size-gb (or JK_MAX_CACHE_SIZE_GB).",
                             pt.settled()));
         }
     }
@@ -693,7 +693,7 @@ public final class CacheCommand extends GroupCommand {
 
     /**
      * Box table for {@code jk repo storage}: CAS + worker jars + run logs, utilization vs store
-     * {@code max-store-size-mb}, last-pruned footer.
+     * {@code max-store-size-gb}, last-pruned footer.
      */
     static List<String> renderRepoStorageTable(
             Stats cas, Stats repos, Stats runs, long totalFiles, long totalBytes, long maxBytes, String lastPruned) {

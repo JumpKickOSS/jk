@@ -169,23 +169,26 @@ Utilization bars:
 
 | Report | Cap (config) | Default |
 |--------|--------------|---------|
-| `jk cache storage` | `[cache] max-cache-size-mb` / `JK_MAX_CACHE_SIZE_MB` | **1024** (1 GiB) |
-| `jk repo storage` | `[cache] max-store-size-mb` / `JK_MAX_STORE_SIZE_MB` | **4096** (4 GiB) |
+| `jk cache storage` | `[cache] max-cache-size-gb` / `JK_MAX_CACHE_SIZE_GB` | **4** GiB (8 on `CI=1`/`true`) |
+| `jk repo storage` | `[cache] max-store-size-gb` / `JK_MAX_STORE_SIZE_GB` | **6** GiB (12 on `CI=1`/`true`) |
 
 ```toml
 # ~/.config/jk/config.toml
 [cache]
-max-cache-size-mb = 1024    # cache CAS + action index (ephemeral build outputs)
-max-store-size-mb = 4096    # artifact store CAS + repos/ (long-lived deps)
+max-cache-size-gb = 4      # cache CAS + action index (ephemeral build outputs)
+max-store-size-gb = 6      # artifact store CAS + repos/ (long-lived deps)
+# max-cache-size-gb = 0.5  # 512 MiB — sizes are GiB; fractions allowed
 ```
 
 `0` (or a negative value) for either size — file key or env var — means **unset**: the default
-above applies. Both storage reports use the same rule.
+above applies. Both storage reports use the same rule. On volumes with **&lt; 10 GiB total** capacity,
+unset defaults are clamped to `(free × 0.8) / 2` each so cache + store claim at most 80 % of free
+space. Explicit sizes are never disk-clamped.
 
 The two budgets differ in what they *enforce*. The cache tier is rebuildable, so scheduled prunes
-LRU-evict it to its budget (default 1 GiB); the evictor targets the blob pool at the budget net
+LRU-evict it to its budget (default 4 GiB); the evictor targets the blob pool at the budget net
 of the action-index + stamp overhead, so a prune can bring the utilization bar back under 100%. The artifact store holds long-lived downloads: its
-4 GiB default is display-only — `jk repo prune` never evicts reachable store blobs (even when the store exceeds the display budget). GC only reclaims garbage: leftover `.put-` temps, expired run logs, and unreferenced CAS blobs.
+6 GiB default is display-only — `jk repo prune` never evicts reachable store blobs (even when the store exceeds the display budget). GC only reclaims garbage: leftover `.put-` temps, expired run logs, and unreferenced CAS blobs.
 
 Preflight dirty memo fingerprints use **source content hashes** by default (CI-safe). Opt into
 faster path/size/mtime fingerprints with `JK_PREFLIGHT_MEMO_MTIME=1` if needed.

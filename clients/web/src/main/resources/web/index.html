@@ -64,7 +64,7 @@
       <nav>
         <button :class="{ active: view === 'activity' }" @click="setView('activity')">Activity</button>
         <button :class="{ active: view === 'projects' }" @click="setView('projects')">Projects</button>
-        <button :class="{ active: view === 'status' }" @click="setView('status')">Status</button>
+        <button :class="{ active: view === 'status' }" @click="setView('status')">Admin</button>
       </nav>
 
       <span class="hdiv"></span>
@@ -338,6 +338,9 @@
     </main>
 
     <main v-if="view === 'status'">
+      <div class="feed-head">
+        <h2>Manage JumpKick</h2>
+      </div>
       <p v-if="!status" class="empty">No status yet — the engine hasn't answered.</p>
       <template v-if="status">
         <div class="tiles">
@@ -377,29 +380,28 @@
         </template>
         <p v-else class="dim small">No build metrics yet — run a build and the stats appear here.</p>
 
-        <!-- Cache tier + artifact store share a row. -->
+        <!-- Action cache + artifact store share a row. -->
         <div class="panels">
           <div class="panel">
-            <div class="panel-head"><span class="lbl">cache tier</span><span class="spacer"></span>
+            <div class="panel-head"><span class="lbl" data-tip="Action outputs used to speed up future builds">action cache</span><span class="spacer"></span>
               <span v-if="cache" class="mono dim">{{ mib(actionCacheBytes()) }} of {{ actionMaxBytes() != null ? mib(actionMaxBytes()) : '—' }} · pruned {{ prunedAgo() }}</span></div>
             <template v-if="cache">
-              <span class="meter" data-tip="vs [cache] max-cache-size-mb">
+              <span class="meter" data-tip="vs [cache] max-cache-size-gb">
                 <span class="meter-fill used" :style="{ width: actionCacheUtilizationPercent() + '%' }"></span>
               </span>
               <dl>
-                <dt>action index</dt><dd>{{ count(cache.actionsCount) }} · {{ mib(cache.actionsBytes) }}</dd>
                 <dt>cache CAS</dt><dd>{{ count(cache.cacheCasCount != null ? cache.cacheCasCount : 0) }} · {{ mib(cache.cacheCasBytes != null ? cache.cacheCasBytes : 0) }}</dd>
+                <dt>action index</dt><dd>{{ count(cache.actionsCount) }} · {{ mib(cache.actionsBytes) }}</dd>
                 <dt>format stamps</dt><dd>{{ count(cache.formatStampsCount) }} · {{ mib(cache.formatStampsBytes) }}</dd>
               </dl>
-              <p class="dim small" style="margin:8px 0 0">Rebuildable action outputs under the cache dir</p>
             </template>
-            <div v-else class="dim small">Cache tier loading…</div>
+            <div v-else class="dim small">Action cache loading…</div>
           </div>
           <div class="panel">
-            <div class="panel-head"><span class="lbl">artifact store</span><span class="spacer"></span>
+            <div class="panel-head"><span class="lbl" data-tip="Long-lived artifact repository data">artifact store</span><span class="spacer"></span>
               <span v-if="cache" class="mono dim">{{ mib(artifactStorageBytes()) }} of {{ mib(cache.maxBytes) }}</span></div>
             <template v-if="cache">
-              <span class="meter" data-tip="vs [cache] max-store-size-mb (artifact store budget)">
+              <span class="meter" data-tip="vs [cache] max-store-size-gb (artifact store budget)">
                 <span class="meter-fill used" :style="{ width: artifactStorageUtilizationPercent() + '%' }"></span>
               </span>
               <dl>
@@ -407,7 +409,6 @@
                 <dt>repos / workers</dt><dd>{{ count(cache.workerJarsCount) }} · {{ mib(cache.workerJarsBytes) }}</dd>
                 <dt>run logs</dt><dd>{{ count(cache.runLogsCount) }} · {{ mib(cache.runLogsBytes) }}</dd>
               </dl>
-              <p class="dim small" style="margin:8px 0 0">Long-lived deps under the artifact store. <span class="mono">jk repo storage</span></p>
             </template>
             <div v-else class="dim small">Artifact store loading…</div>
           </div>

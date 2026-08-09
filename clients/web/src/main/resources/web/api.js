@@ -242,7 +242,7 @@ export function echartsTooltipChrome(cssVar) {
   const mono = cssVar('--mono', 'monospace');
   return {
     appendToBody: true,
-    backgroundColor: cssVar('--s2', '#1c2630'),
+    backgroundColor: cssVar('--tip-bg', '#0b0f13'),
     borderColor: cssVar('--bd', '#2a3742'),
     borderWidth: 1,
     padding: [6, 10],

@@ -13,8 +13,9 @@ import java.nio.file.Path;
  * jk repo storage} (artifact store: store CAS + repos + run logs).
  *
  * <p>{@code maxBytes} is the <strong>artifact store</strong> budget ({@code [cache]
- * max-store-size-mb}, default 4 GiB). {@code actionMaxBytes} / {@code cacheMaxBytes} is the
- * <strong>cache tier</strong> budget ({@code [cache] max-cache-size-mb}, default 1 GiB).
+ * max-store-size-gb}, default 6 GiB / 12 GiB on CI). {@code actionMaxBytes} / {@code
+ * cacheMaxBytes} is the <strong>cache tier</strong> budget ({@code [cache] max-cache-size-gb},
+ * default 4 GiB / 8 GiB on CI; small disks clamp both defaults).
  *
  * <p>Byte sizes are <em>exclusive</em> across store sections (CAS before repos) so hard-linked
  * {@code repos/} views do not double-count CAS blob allocations — same accounting as the CLI.

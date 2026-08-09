@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * Flattened view of the machine-scoped {@code ~/.config/jk/config.toml} (plus env) as key /
@@ -48,12 +49,17 @@ public final class EffectiveUserConfig {
 
     /** As {@link #rows()} against an explicit config file + env — for tests. */
     public static List<Row> rows(Path userConfig, Function<String, String> env) {
+        return rows(userConfig, env, () -> JkCacheConfig.DiskSpace.probe(JkDirs.cache()));
+    }
+
+    /** Test seam: inject disk space so size defaults are hermetic. */
+    static List<Row> rows(Path userConfig, Function<String, String> env, Supplier<JkCacheConfig.DiskSpace> disk) {
         List<Row> out = new ArrayList<>();
         addGlobal(out, userConfig, env);
         addToolchain(out, userConfig, env);
         addHttp(out, userConfig, env);
         addEngine(out, userConfig, env);
-        addCache(out, userConfig, env);
+        addCache(out, userConfig, env, disk);
         addHistory(out, userConfig, env);
         addM2(out, userConfig, env);
         addTemplates(out, userConfig);
@@ -91,12 +97,23 @@ public final class EffectiveUserConfig {
         add(out, "engine.jobs", jobsLabel(d.jobs()), jobsLabel(e.jobs()));
     }
 
-    private static void addCache(List<Row> out, Path file, Function<String, String> env) {
-        JkCacheConfig d = JkCacheConfig.DEFAULTS;
-        JkCacheConfig e = JkCacheConfig.resolve(file, env);
+    private static void addCache(
+            List<Row> out, Path file, Function<String, String> env, Supplier<JkCacheConfig.DiskSpace> disk) {
+        // Defaults are machine-aware (CI + small-disk clamp) so "overridden" is real user intent.
+        JkCacheConfig.DiskSpace space = disk != null ? disk.get() : null;
+        JkCacheConfig d = JkCacheConfig.resolvedDefaults(env, space);
+        JkCacheConfig e = JkCacheConfig.resolve(file, env, space);
         add(out, "cache.auto-prune", d.autoPrune(), e.autoPrune());
-        add(out, "cache.max-cache-size-mb", d.maxCacheSizeMb(), e.maxCacheSizeMb());
-        add(out, "cache.max-store-size-mb", d.maxStoreSizeMb(), e.maxStoreSizeMb());
+        add(
+                out,
+                "cache.max-cache-size-gb",
+                JkCacheConfig.formatGb(d.maxCacheSizeGb()),
+                JkCacheConfig.formatGb(e.maxCacheSizeGb()));
+        add(
+                out,
+                "cache.max-store-size-gb",
+                JkCacheConfig.formatGb(d.maxStoreSizeGb()),
+                JkCacheConfig.formatGb(e.maxStoreSizeGb()));
         add(out, "cache.prune-interval-days", d.pruneIntervalDays(), e.pruneIntervalDays());
         add(out, "cache.record-ttl-days", d.recordTtlDays(), e.recordTtlDays());
     }

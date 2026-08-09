@@ -14,22 +14,28 @@ import org.junit.jupiter.api.io.TempDir;
 
 class EffectiveUserConfigTest {
 
+    private static final JkCacheConfig.DiskSpace BIG_DISK =
+            new JkCacheConfig.DiskSpace(100L * JkCacheConfig.GIB, 50L * JkCacheConfig.GIB);
+
     @Test
     void missing_file_lists_defaults_with_no_overrides(@TempDir Path dir) {
         Path missing = dir.resolve("no-such-config.toml");
-        var rows = EffectiveUserConfig.rows(missing, env());
+        var rows = EffectiveUserConfig.rows(missing, env(), () -> BIG_DISK);
         assertThat(rows).isNotEmpty();
         assertThat(rows).allMatch(r -> !r.overridden());
         assertThat(find(rows, "http.host").defaultValue()).isEqualTo("127.0.0.1");
         assertThat(find(rows, "http.host").effectiveValue()).isEqualTo("127.0.0.1");
-        assertThat(find(rows, "cache.max-cache-size-mb").defaultValue()).isEqualTo("1024");
+        assertThat(find(rows, "cache.max-cache-size-gb").defaultValue()).isEqualTo("4");
+        assertThat(find(rows, "cache.max-store-size-gb").defaultValue()).isEqualTo("6");
         assertThat(find(rows, "engine.jobs").effectiveValue()).isEqualTo("auto");
     }
 
     @Test
     void file_overrides_mark_only_changed_keys(@TempDir Path dir) throws Exception {
         Path toml = dir.resolve("config.toml");
-        Files.writeString(toml, """
+        Files.writeString(
+                toml,
+                """
                 [global]
                 nerdfont = true
 
@@ -37,23 +43,23 @@ class EffectiveUserConfigTest {
                 port = 9000
 
                 [cache]
-                max-cache-size-mb = 2048
+                max-cache-size-gb = 2
                 """);
-        var rows = EffectiveUserConfig.rows(toml, env());
+        var rows = EffectiveUserConfig.rows(toml, env(), () -> BIG_DISK);
         assertThat(find(rows, "global.nerdfont").overridden()).isTrue();
         assertThat(find(rows, "global.nerdfont").effectiveValue()).isEqualTo("true");
         assertThat(find(rows, "http.port").overridden()).isTrue();
         assertThat(find(rows, "http.port").effectiveValue()).isEqualTo("9000");
         assertThat(find(rows, "http.host").overridden()).isFalse();
-        assertThat(find(rows, "cache.max-cache-size-mb").effectiveValue()).isEqualTo("2048");
-        assertThat(find(rows, "cache.max-store-size-mb").overridden()).isFalse();
+        assertThat(find(rows, "cache.max-cache-size-gb").effectiveValue()).isEqualTo("2");
+        assertThat(find(rows, "cache.max-store-size-gb").overridden()).isFalse();
     }
 
     @Test
     void env_overrides_file(@TempDir Path dir) throws Exception {
         Path toml = dir.resolve("config.toml");
         Files.writeString(toml, "[http]\nport = 9000\n");
-        var rows = EffectiveUserConfig.rows(toml, env("JK_HTTP_PORT", "9100"));
+        var rows = EffectiveUserConfig.rows(toml, env("JK_HTTP_PORT", "9100"), () -> BIG_DISK);
         assertThat(find(rows, "http.port").effectiveValue()).isEqualTo("9100");
         assertThat(find(rows, "http.port").overridden()).isTrue();
     }

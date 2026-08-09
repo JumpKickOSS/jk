@@ -10,6 +10,8 @@
   --s1: #161d25;
   --s2: #1c2630;
   --s3: #232f3a;
+  /* Hover tips: 60% darker than --s2 so they lift off panels/canvas (JK-1726 chrome). */
+  --tip-bg: #0b0f13;
   --bd: #2a3742;
   --bd2: #1e2830;
   --tx: #cfd8dc;
@@ -266,7 +268,7 @@ header {
 .jk-tip {
   font: 11px/1.4 var(--mono);
   color: var(--tx);
-  background: var(--s2);
+  background: var(--tip-bg);
   border: 1px solid var(--bd);
   border-radius: var(--r-sm);
   padding: 6px 9px;
@@ -577,7 +579,7 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
   align-items: flex-end;
   gap: 2px;
   padding: 7px 9px;
-  background: var(--s2);
+  background: var(--tip-bg);
   border: 1px solid var(--bd);
   border-radius: var(--r-sm);
   box-shadow: 0 10px 28px -8px rgba(0, 0, 0, 0.55);

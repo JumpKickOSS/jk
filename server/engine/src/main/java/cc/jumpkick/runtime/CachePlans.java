@@ -37,7 +37,7 @@ public final class CachePlans {
     public static final BuildPlanKey<Long> BYTES = BuildPlanKey.of("cache-bytes", Long.class);
 
     /**
-     * Reachable cache-tier CAS objects the LRU evictor removed to fit {@code cache.max-cache-size-mb}
+     * Reachable cache-tier CAS objects the LRU evictor removed to fit {@code cache.max-cache-size-gb}
      * ({@code jk cache prune} only — {@code jk repo prune}'s store-tier sweep never evicts reachable
      * blobs).
      */
@@ -48,7 +48,7 @@ public final class CachePlans {
 
     /**
      * Prune plan for the cache at {@code root}: expire stale entries, GC sidecar files, optional
-     * CAS sweep, and cache-tier LRU eviction against {@code cache.max-cache-size-mb} (config, not a
+     * CAS sweep, and cache-tier LRU eviction against {@code cache.max-cache-size-gb} (config, not a
      * CLI flag). {@code includeJkTmp} sweeps {@code state/tmp} only for the default cache dir.
      */
     public static BuildPlan pruneBuildPlan(
@@ -96,8 +96,8 @@ public final class CachePlans {
                     // Run logs are store-tier (`jk repo storage`); their GC lives in sweepStore —
                     // running it here too double-counted dry-run FILES/BYTES on every
                     // prune-with-sweep (JK-1526).
-                    var formatStampReport = cc.jumpkick.task.FormatStampGc.sweep(
-                            root, cc.jumpkick.task.FormatStampGc.DEFAULT_TTL, dryRun);
+                    // Format stamps: 7d unused TTL + count-cap LRU (512k / 1M when CI=1|true).
+                    var formatStampReport = cc.jumpkick.task.FormatStampGc.sweep(root, dryRun);
                     totalFiles += formatStampReport.deleted();
                     totalBytes += formatStampReport.freedBytes();
 

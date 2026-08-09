@@ -762,9 +762,9 @@ class HttpEngineServerTest {
                 .contains("\"totalCount\":152")
                 .contains("\"totalBytes\":35209100")
                 .contains("\"actionCacheBytes\":200100")
-                .contains("\"actionMaxBytes\":1073741824") // max-cache-size-mb default 1024
+                .contains("\"actionMaxBytes\":1073741824") // fixture cache budget (1 GiB)
                 .contains("\"artifactStorageBytes\":35009000")
-                .contains("\"maxBytes\":4294967296")
+                .contains("\"maxBytes\":4294967296") // fixture store budget (4 GiB)
                 .contains("\"lastPrunedMillis\":1700000000000");
     }
 
