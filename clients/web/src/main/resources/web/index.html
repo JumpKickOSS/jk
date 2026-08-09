@@ -265,7 +265,7 @@
 
         <div class="proj-stats">
           <span class="badge" :class="p.state"><jk-icon :name="stateIcon(p.state)"></jk-icon>#{{ p.total }}</span>
-          <span class="reliability" :class="p.reliabilityClass" data-tip="pass rate over the builds shown (cancelled excluded)">
+          <span class="reliability" :class="p.reliabilityClass" data-tip="pass rate for these builds">
             {{ p.reliability }}<span class="rel-lbl">reliability</span>
           </span>
         </div>
