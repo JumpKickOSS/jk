@@ -135,6 +135,8 @@ public final class PubGrubResolver implements Resolver {
 
         Map<String, String> decisions;
         try {
+            // Parallel-load BOM/lock pins before the first decide (warm disk, cold process).
+            source.warmUp();
             decisions = solveFor(rootTerms);
         } finally {
             // Speculative prefetches run on the shared io pool with no handle back here. Let them

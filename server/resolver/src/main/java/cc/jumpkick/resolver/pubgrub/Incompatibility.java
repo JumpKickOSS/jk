@@ -68,8 +68,9 @@ public record Incompatibility(List<Term> terms, Cause cause) {
         record Derived(Incompatibility a, Incompatibility b) implements Cause {}
 
         /**
-         * Solver hit a decision or time budget (R6c). Not a logical unsatisfiability — the graph
-         * may still resolve with higher limits.
+         * Solver hit a decision/step/time budget or an anti-loop watermark (R6c). Not always a
+         * logical unsatisfiability — the graph may still resolve with higher limits, except loop
+         * watermarks which mean learning failed to exclude a known-bad assignment.
          */
         record BudgetExceeded(String reason) implements Cause {}
     }

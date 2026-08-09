@@ -28,6 +28,7 @@ class EffectivePomBuilderTest {
 
     @BeforeEach
     void start() throws IOException {
+        EffectivePomBuilder.clearProcessCache();
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         // Single catch-all handler that serves any registered POM and 404s otherwise.
         server.createContext("/", exchange -> {

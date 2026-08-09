@@ -306,11 +306,36 @@ public final class PluginContributions {
     }
 
     /**
-     * The {@code [contribute.resolution] jvm-environment} of the active plugin that declares one
-     * ({@code "android"}), or {@code "standard-jvm"} — the GMM environment KMP runtime variants
-     * resolve for. Two active plugins declaring conflicting environments is a config error.
+     * The {@code [contribute.resolution] jvm-environment} for resolve/lock ({@code "android"} or
+     * {@code "standard-jvm"}) — the GMM environment KMP runtime variants select.
+     *
+     * <p>For a single module: the active plugin that declares one wins; two conflicting
+     * declarations are a config error. Default {@code standard-jvm}.
+     *
+     * <p>For a <strong>workspace root</strong> (often no {@code [android]} on the aggregator
+     * itself): if <em>any</em> member module selects {@code android}, the unified workspace graph
+     * uses {@code android}. Otherwise AndroidX multiplatform roots resolve to {@code -jvmstubs}
+     * and PubGrub cannot align suites that expect the android line (Now in Android).
      */
     public static String jvmEnvironment(JkBuild build, java.nio.file.Path moduleDir) {
+        String selected = jvmEnvironmentLocal(build, moduleDir);
+        if ("android".equals(selected)) return selected;
+        if (build.isWorkspaceRoot()) {
+            try {
+                for (var entry : cc.jumpkick.config.WorkspaceLoader.loadModules(moduleDir, build).entrySet()) {
+                    if ("android".equals(jvmEnvironmentLocal(entry.getValue(), entry.getKey()))) {
+                        return "android";
+                    }
+                }
+            } catch (java.io.IOException ignored) {
+                // Fall through to the root's selection / default.
+            }
+        }
+        return selected;
+    }
+
+    /** Plugin-local environment for one module only (no workspace walk). */
+    private static String jvmEnvironmentLocal(JkBuild build, java.nio.file.Path moduleDir) {
         String selected = null;
         String selectedBy = null;
         for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {

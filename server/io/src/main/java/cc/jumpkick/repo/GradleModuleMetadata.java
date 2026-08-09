@@ -6,11 +6,13 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Gradle {@code .module} slice for KMP root redirects: pick the {@code java-runtime} variant for
@@ -24,19 +26,60 @@ public final class GradleModuleMetadata {
     /** A variant redirect: this module's classes actually live at {@code module}:{@code version}. */
     public record Redirect(String group, String module, String version) {}
 
+    /**
+     * Process-wide parse memo keyed by absolute path + size + mtime. First-in-process Android locks
+     * re-read the same {@code .module} files across scopes; MiniJson dominates without this.
+     */
+    private static final ConcurrentHashMap<String, GradleModuleMetadata> PARSE_CACHE = new ConcurrentHashMap<>();
+
+    private static final int PARSE_CACHE_MAX = 4_096;
+
     private final List<Map<String, Object>> variants;
 
     private GradleModuleMetadata(List<Map<String, Object>> variants) {
         this.variants = variants;
     }
 
+    /** Test seam. */
+    public static void clearParseCache() {
+        PARSE_CACHE.clear();
+    }
+
     @SuppressWarnings("unchecked")
     public static GradleModuleMetadata parse(Path moduleFile) throws IOException {
-        Object root = MiniJson.parse(Files.readString(moduleFile, StandardCharsets.UTF_8));
+        BasicFileAttributes attrs = Files.readAttributes(moduleFile, BasicFileAttributes.class);
+        String cacheKey = moduleFile.toAbsolutePath()
+                + "\0"
+                + attrs.size()
+                + "\0"
+                + attrs.lastModifiedTime().toMillis();
+        GradleModuleMetadata hit = PARSE_CACHE.get(cacheKey);
+        if (hit != null) return hit;
+
+        String text = Files.readString(moduleFile, StandardCharsets.UTF_8);
+        // KMP roots publish platform redirects via available-at. Most Gradle .module files are
+        // variant catalogs without redirects — skip MiniJson entirely (dominates first-in-process
+        // Android locks: hundreds of 20–70 KB parses that always yield empty).
+        if (!text.contains("\"available-at\"")) {
+            GradleModuleMetadata empty = new GradleModuleMetadata(List.of());
+            remember(cacheKey, empty);
+            return empty;
+        }
+
+        Object root = MiniJson.parse(text);
         if (!(root instanceof Map<?, ?> map)) throw new IOException("not a GMM document: " + moduleFile);
         Object variants = map.get("variants");
-        if (!(variants instanceof List<?> list)) return new GradleModuleMetadata(List.of());
-        return new GradleModuleMetadata((List<Map<String, Object>>) (List<?>) list);
+        GradleModuleMetadata parsed = !(variants instanceof List<?> list)
+                ? new GradleModuleMetadata(List.of())
+                : new GradleModuleMetadata((List<Map<String, Object>>) (List<?>) list);
+        remember(cacheKey, parsed);
+        return parsed;
+    }
+
+    private static void remember(String cacheKey, GradleModuleMetadata parsed) {
+        if (PARSE_CACHE.size() < PARSE_CACHE_MAX) {
+            PARSE_CACHE.putIfAbsent(cacheKey, parsed);
+        }
     }
 
     /**

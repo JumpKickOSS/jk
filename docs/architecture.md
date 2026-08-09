@@ -200,7 +200,10 @@ Ship layout (`./gradlew dist`): slim native `jk` + `lib/jk-engine-<version>.jar`
   classpaths select by scope.
 - **POM fidelity:** exclusions and Maven version ranges are honored on expand; optional deps
   stay out until features activate them.
-- **Budgets:** `JK_RESOLVE_MAX_DECISIONS` (default 100 000), `JK_RESOLVE_TIMEOUT_MS` (default 120 s).
+- **Budgets / anti-loop:** `JK_RESOLVE_MAX_DECISIONS` (default 100 000), `JK_RESOLVE_TIMEOUT_MS`
+  (default 120 s). Every prop/conflict step counts toward a step budget
+  (`maxDecisions × 16`). Conflict **watermarks** fingerprint decision maps that already
+  failed so the solver cannot re-enter them (cleared when a universe expands).
 
 Package identity in the solver is `group:artifact:type:classifier` (defaults: type `jar`,
 classifier empty → `g:a:jar:`). Legacy lock rows with bare `g:a` still load. BOM management

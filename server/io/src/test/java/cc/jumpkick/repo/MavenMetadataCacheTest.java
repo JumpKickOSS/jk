@@ -115,10 +115,14 @@ class MavenMetadataCacheTest {
 
     @Test
     void with_force_revalidate_skips_ttl_and_hits_the_network(@TempDir Path dir) throws Exception {
-        // Explicit jk lock uses this so a same-URL re-resolve sees newly published versions
-        // that a warm TTL cache would otherwise hide (JK-1350 float-to-latest).
+        // jk update / -F use this so float-to-latest sees newly published versions that a warm
+        // TTL would otherwise hide. Normal jk lock must NOT wrap in withForceRevalidate.
         MavenMetadataCache cache = cache(dir, Duration.ofHours(1));
 
+        assertThat(cache.fetch(uri, RepoCredential.ANONYMOUS)).isEqualTo(BODY);
+        assertThat(hits.get()).isEqualTo(1);
+
+        // Back-to-back fetch within TTL: still local-only.
         assertThat(cache.fetch(uri, RepoCredential.ANONYMOUS)).isEqualTo(BODY);
         assertThat(hits.get()).isEqualTo(1);
 

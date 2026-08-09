@@ -7,7 +7,6 @@ group    = "cc.jumpkick"
 name     = "jk"
 version  = "0.11.0"
 description = "JumpKick - the best damn build tool for the JVM"
-jdk      = 25
 java     = 25
 
 # Explicit baseline remotes (also the product default after F6). Google hosts apksig / AndroidX / R8.

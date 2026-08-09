@@ -238,14 +238,16 @@ public final class LockPlans {
                                     withDefaultFeatures,
                                     wrappedObserver);
                         } else {
-                            // Explicit re-lock must revalidate maven-metadata (same-URL TTL would
-                            // hide newly published versions until --force / next day).
-                            lock = cc.jumpkick.repo.MavenMetadataCache.withForceRevalidate(() -> orchestrator.lock(
+                            // Local maven-metadata within TTL first (default 24h) — do not
+                            // force-revalidate every jk lock (conditional GETs still 429 Central
+                            // on large graphs / back-to-back dogfood). Fresh indexes: jk update
+                            // or -F / --force (Session force → MavenMetadataCache).
+                            lock = orchestrator.lock(
                                     pathPrep.project(),
                                     JkVersion.VERSION,
                                     features,
                                     withDefaultFeatures,
-                                    wrappedObserver));
+                                    wrappedObserver);
                         }
                         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
                         String kotlinVersion = keepPins && existing.kotlin() != null
@@ -439,13 +441,16 @@ public final class LockPlans {
                                 GitSourceResolution.prepare(eff, baseRepos, cas, javaHome, JkVersion.VERSION);
                         PathSourceResolution.Prepared pathPrep = PathSourceResolution.prepare(
                                 prep.project(), prep.repos(), cas, dir, javaHome, JkVersion.VERSION);
-                        Lockfile lock = new LockOrchestrator(pathPrep.repos())
+                        // Float-to-latest needs current indexes; revalidate past TTL (conditional
+                        // GET). Normal jk lock stays on the warm disk TTL.
+                        Lockfile lock = cc.jumpkick.repo.MavenMetadataCache.withForceRevalidate(() -> new LockOrchestrator(
+                                        pathPrep.repos())
                                 .withProjectDir(dir)
                                 .withJvmEnvironment(cc.jumpkick.plugin.manifest.PluginContributions.jvmEnvironment(
                                         pathPrep.project(), dir))
                                 .withPlatformPolicy(policy)
                                 .withUnmappedPolicy(pathPrep.project().build().unmappedPolicy())
-                                .lock(pathPrep.project(), JkVersion.VERSION, features, withDefaultFeatures);
+                                .lock(pathPrep.project(), JkVersion.VERSION, features, withDefaultFeatures));
                         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
                         // jk update floats everything — including the Kotlin compiler pin, which
                         // this plan used to drop from the lock entirely (JK-1371).

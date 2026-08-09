@@ -23,6 +23,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Maven-backed PubGrub {@link PackageSource}. Caches versions/deps per solve; prefetches transitive
@@ -35,8 +36,12 @@ public final class MavenPackageSource implements PackageSource {
 
     private static final Set<String> FOLLOWED_SCOPES = Set.of("compile", "runtime");
 
-    /** Max concurrent speculative prefetches. Tuned to stay polite to Maven Central. */
-    private static final int PREFETCH_PERMITS = 8;
+    /**
+     * Concurrent warm of POMs / KMP metadata (pre-solve BOM blast + frontier prefetch). Disk-bound
+     * on a warm CAS; virtual threads + local store tolerate higher fan-out than network-polite
+     * Maven Central.
+     */
+    private static final int PREFETCH_PERMITS = 32;
 
     /** Upper bound on how long a solve waits for speculative prefetches to wind down. */
     private static final long QUIESCE_TIMEOUT_MS = 30_000;
@@ -88,6 +93,9 @@ public final class MavenPackageSource implements PackageSource {
             new java.util.concurrent.atomic.AtomicInteger();
 
     private final Object prefetchIdle = new Object();
+
+    /** Ensures {@link #warmUp} runs once per source instance (main/test/processor share one source). */
+    private final AtomicBoolean warmedUp = new AtomicBoolean();
 
     public MavenPackageSource(MavenRepo repo, EffectivePomBuilder pomBuilder) {
         this(RepoGroup.of(repo), pomBuilder, Map.of());
@@ -234,6 +242,7 @@ public final class MavenPackageSource implements PackageSource {
         List<String> cached = versionCache.get(pkg);
         if (cached != null) return cached;
 
+        long t0 = cc.jumpkick.resolve.ResolveProfile.on() ? System.nanoTime() : 0L;
         // highest-wins only needs the soft-prefer pin (if any) + a few highest releases.
         // Full maven-metadata histories (80+ versions) made PubGrub thrash on Quarkus test graphs.
         List<String> ordered = orderedVersions(pkg);
@@ -241,6 +250,9 @@ public final class MavenPackageSource implements PackageSource {
         List<String> result =
                 List.copyOf(isSnapshotPackage(pkg) ? compactHighest(ordered) : compactVersionCandidates(ordered));
         versionCache.put(pkg, result);
+        if (cc.jumpkick.resolve.ResolveProfile.on()) {
+            cc.jumpkick.resolve.ResolveProfile.versions(System.nanoTime() - t0);
+        }
         return result;
     }
 
@@ -397,6 +409,7 @@ public final class MavenPackageSource implements PackageSource {
 
     @Override
     public List<Term> dependencies(String pkg, String version) throws IOException, InterruptedException {
+        long t0 = cc.jumpkick.resolve.ResolveProfile.on() ? System.nanoTime() : 0L;
         Set<String> excl = exclusionsWhenExpanding.getOrDefault(pkg, Set.of());
         List<RawEdge> raw = rawEdges(pkg, version);
         List<Term> out = new ArrayList<>(raw.size());
@@ -412,12 +425,16 @@ public final class MavenPackageSource implements PackageSource {
         }
         List<Term> immutable = List.copyOf(out);
         prefetchTransitiveAsync(immutable);
+        if (cc.jumpkick.resolve.ResolveProfile.on()) {
+            cc.jumpkick.resolve.ResolveProfile.deps(System.nanoTime() - t0);
+        }
         return immutable;
     }
 
     /** POM edges for {@code pkg@version}, cached without inherited exclusions. */
     private List<RawEdge> rawEdges(String pkg, String version) throws IOException, InterruptedException {
-        String key = pkg + "@" + version;
+        // GA@ver: jar/aar (and classifiers) share one POM; BOM warm seeds the default jar: key.
+        String key = rawEdgesCacheKey(pkg, version);
         List<RawEdge> hit = rawDepsCache.get(key);
         if (hit != null) return hit;
 
@@ -544,15 +561,27 @@ public final class MavenPackageSource implements PackageSource {
      */
     VersionSet constraintForManagedEdge(String depPkg, String version) {
         String trimmed = version.trim();
-        if (VersionSelectors.looksLikeMavenRange(trimmed)) {
-            return VersionSelectors.constraintFromPomVersion(trimmed);
-        }
         PackageId id = PackageId.parse(depPkg);
         String ga = id.ga();
+        String bomPin = firstNonBlank(bomConstraints.get(ga), bomConstraints.get(depPkg));
+
+        // Maven bracket ranges in POMs (AndroidX loves `[1.4.0]` exact / floor-as-bracket).
+        // Platform ENFORCED must still win for managed GAs — otherwise compose-bom pins lose to
+        // every `[x.y.z]` edge and PubGrub cannot align adaptive/suite (NIA). FLOOR keeps the
+        // range as a floor at max(bomPin, range).
+        if (VersionSelectors.looksLikeMavenRange(trimmed)) {
+            if (bomPin != null) {
+                if (platformPolicy == PlatformPolicy.FLOOR) {
+                    return VersionSet.atLeast(bomPin, true);
+                }
+                return VersionSet.exact(bomPin);
+            }
+            return VersionSelectors.constraintFromPomVersion(trimmed);
+        }
+
         // Classified artifacts (guice:jar:classes): GA maven-metadata highest-wins picks versions
         // that often have no classifier POM → Unavailable thrash.
         if (!id.classifier().isEmpty()) {
-            String bomPin = firstNonBlank(bomConstraints.get(ga), bomConstraints.get(depPkg));
             if (bomPin != null && platformPolicy == PlatformPolicy.FLOOR) {
                 return VersionSet.atLeast(floorOf(bomPin, trimmed), true);
             }
@@ -560,7 +589,6 @@ public final class MavenPackageSource implements PackageSource {
         }
 
         // Platform map entry.
-        String bomPin = firstNonBlank(bomConstraints.get(ga), bomConstraints.get(depPkg));
         if (bomPin != null) {
             if (platformPolicy == PlatformPolicy.FLOOR) {
                 // Opt-in soft platform: pin is a floor; preferBom still front-loads the pin.
@@ -580,41 +608,79 @@ public final class MavenPackageSource implements PackageSource {
     }
 
     /**
-     * Speculative I/O for children of a just-expanded package
+     * Fire-and-forget parallel warm of BOM/lock pins: fill KMP + effective-POM process caches (and
+     * {@link #rawDepsCache} via {@link #rawEdges}) so PubGrub's first decides race a hot frontier.
+     * Does not block the solver — a full drain made first-in-process worse than racing.
+     */
+    @Override
+    public void warmUp() {
+        if (!warmedUp.compareAndSet(false, true)) return;
+        if (bomConstraints.isEmpty() && lockedVersionPrefs.isEmpty()) return;
+
+        Map<String, String> pins = new java.util.LinkedHashMap<>();
+        for (var e : bomConstraints.entrySet()) {
+            if (e.getValue() == null || e.getValue().isBlank()) continue;
+            try {
+                pins.putIfAbsent(PackageId.ofGa(e.getKey()).key(), e.getValue());
+            } catch (RuntimeException ignored) {
+                // skip
+            }
+        }
+        for (var e : lockedVersionPrefs.entrySet()) {
+            if (e.getValue() == null || e.getValue().isBlank()) continue;
+            try {
+                String key = e.getKey();
+                String pkg = PackageId.isMavenPackageKey(key)
+                        ? PackageId.parse(key).key()
+                        : PackageId.ofGa(key).key();
+                pins.putIfAbsent(pkg, e.getValue());
+            } catch (RuntimeException ignored) {
+                // skip
+            }
+        }
+        int n = 0;
+        // Modest fan-out: huge BOM blasts thrash under load and made cold times noisier than a
+        // smaller head-start + frontier prefetch during expand.
+        final int cap = bomConstraints.size() > 200 ? 160 : 64;
+        for (var e : pins.entrySet()) {
+            if (n++ >= cap) break;
+            String pkg = e.getKey();
+            String pin = e.getValue();
+            submitPrefetch(() -> rawEdges(pkg, pin));
+        }
+    }
+
+    /**
+     * Speculative I/O for children of a just-expanded package — the next PubGrub decides.
      *
      * <ul>
-     * <li>When a child has an exact or soft-prefer pin, prefetch that GAV's <b>POM</b> (and let
-     * {@link EffectivePomBuilder} warm its cache) so the next decision hits local-first.
-     * <li>When the child needs a full version list (open range, no prefer), prefetch
-     * maven-metadata as before.
+     * <li>Exact pins: warm effective POM <em>and</em> KMP {@code .module} redirect in parallel so
+     * the next decide does not block on serial disk+JSON work.
+     * <li>Open ranges: left cold (metadata list is cheap enough on miss).
      * </ul>
      *
-     * <p>only prefetch the first few children (breadth limit) so large Quarkus-style
-     * fan-outs do not stampede parallel BOM expansions under a 256 MiB engine cap.
+     * <p>Large platform BOMs still prefetch a bounded frontier of exact-pin children (not zero —
+     * the old {@code size > 200 → return} left Android/Compose graphs fully serial).
      */
     private void prefetchTransitiveAsync(List<Term> deps) {
-        // skip speculative prefetch when a large platform BOM is in play — parallel
-        // EffectivePom expansions of quarkus-bom parents dominated CPU/heap without helping the
-        // exact-pin happy path. Small graphs still warm a few children.
-        if (bomConstraints.size() > 200) return;
-        int budget = 4;
+        // Warm the next decide frontier in parallel. Unbounded fan-out stampeded heap on Quarkus;
+        // large BOMs still get a wide window so Android/Compose stay ahead of PubGrub.
+        int budget = bomConstraints.size() > 200 ? 64 : 16;
         for (Term dep : deps) {
             if (budget <= 0) return;
-            budget--;
             String pkg = dep.pkg();
-            String pin = dep.versions()
-                    .asExactSingleton()
-                    .or(() -> preferredVersion(pkg))
-                    .orElse(null);
-            if (pin != null) {
-                Coordinate child = withVersion(pkg, pin);
-                // Full effective POM (parents + BOM imports). Builder is concurrent-safe
-                // so sibling prefetches walk chains in parallel.
-                submitPrefetch(() -> pomBuilder.build(child));
-                continue;
-            }
-            if (versionCache.containsKey(pkg)) continue;
-            submitPrefetch(() -> versions(pkg));
+            // Exact edge pins only — soft-prefer (BOM) of every managed GA floods the pool;
+            // warmUp already blasted the BOM map.
+            Optional<String> exact = dep.versions().asExactSingleton();
+            if (exact.isEmpty()) continue;
+            String pin = exact.get();
+            budget--;
+            Coordinate child = withVersion(pkg, pin);
+            // One task does both: KMP redirect then POM (POM often already warm from the parent walk).
+            submitPrefetch(() -> {
+                kmp.selectionFor(pkg, pin);
+                pomBuilder.build(child);
+            });
         }
     }
 
@@ -680,5 +746,17 @@ public final class MavenPackageSource implements PackageSource {
 
     private static Coordinate withVersion(String pkg, String version) {
         return PackageId.parse(pkg).withVersion(version);
+    }
+
+    /** Cache key for POM edge lists — type/classifier-independent (one POM per GAV). */
+    static String rawEdgesCacheKey(String pkg, String version) {
+        try {
+            if (PackageId.isMavenPackageKey(pkg)) {
+                return PackageId.parse(pkg).ga() + "@" + version;
+            }
+        } catch (RuntimeException ignored) {
+            // fall through
+        }
+        return pkg + "@" + version;
     }
 }

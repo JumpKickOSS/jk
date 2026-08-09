@@ -248,12 +248,15 @@ auto-refreshes when the lock is missing or out of sync with manifests. Explicit 
 
 | Command | Role |
 |---|---|
-| `jk lock` | Resolve and write `jk-lock.toml` |
+| `jk lock` | Resolve and write `jk-lock.toml` (warm `maven-metadata.xml` within 24h TTL — local first) |
 | `jk sync` | Materialize cache / offline prep (`--offline-prepare`) |
 | `jk outdated` | Read-only: which direct deps have newer versions than the lock |
-| `jk update` | Re-resolve within declared constraints (rewrites the lock) |
+| `jk update` | Re-resolve within declared constraints (rewrites the lock; revalidates metadata) |
 | `jk build` | Builds from the lock — does not re-resolve |
 | `jk tree` / `jk why` | Inspect the graph offline |
+
+Metadata indexes live under the store (`metadata/`, 24h TTL + ETag). Back-to-back `jk lock`
+hits disk only; use `jk update` or `-F` when you need Central’s current version lists today.
 
 **Pre-release pins:** a lock that records an RC/M/beta is kept on conservative re-locks when
 it still satisfies the declared range. A platform BOM pin (including a pre-release line) is

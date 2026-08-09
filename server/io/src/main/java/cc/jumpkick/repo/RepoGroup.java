@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Ordered {@link MavenRepo}s with try-each / first-hit-wins semantics, plus optional exclusive
@@ -14,6 +15,24 @@ import java.util.Optional;
  * repos participate in version discovery and fetch.
  */
 public final class RepoGroup {
+
+    /**
+     * Process-wide local POM hits (GAV → fetch). Warm multi-repo resolves re-probe Central then
+     * Google for every package; caching the hit path skips thousands of filesystem stats on
+     * first-in-process Android locks. Misses are not cached (may appear mid-session via fetch).
+     */
+    private static final ConcurrentHashMap<String, RepoFetched> POM_HIT_CACHE = new ConcurrentHashMap<>();
+
+    /** Same for non-POM artifacts (Gradle {@code .module}, jars). Keyed by GAVC+type. */
+    private static final ConcurrentHashMap<String, RepoFetched> ARTIFACT_HIT_CACHE = new ConcurrentHashMap<>();
+
+    private static final int HIT_CACHE_MAX = 16_384;
+
+    /** Test seam — drop process fetch memos. */
+    public static void clearProcessFetchCache() {
+        POM_HIT_CACHE.clear();
+        ARTIFACT_HIT_CACHE.clear();
+    }
 
     private final List<MavenRepo> repos;
     /** Parallel to {@link #repos}: exclusive group patterns per repo (empty = no exclusive claim). */
@@ -82,11 +101,29 @@ public final class RepoGroup {
     }
 
     public Optional<RepoFetched> tryFetchPom(Coordinate coord) throws IOException, InterruptedException {
-        return tryFetch(coord, MavenRepo::tryLocalPom, MavenRepo::fetchPom);
+        String key = coord.toGav();
+        RepoFetched hit = POM_HIT_CACHE.get(key);
+        if (hit != null) return Optional.of(hit);
+        Optional<RepoFetched> found = tryFetch(coord, MavenRepo::tryLocalPom, MavenRepo::fetchPom);
+        if (found.isPresent() && POM_HIT_CACHE.size() < HIT_CACHE_MAX) {
+            POM_HIT_CACHE.putIfAbsent(key, found.get());
+        }
+        return found;
     }
 
     public Optional<RepoFetched> tryFetchArtifact(Coordinate coord) throws IOException, InterruptedException {
-        return tryFetch(coord, MavenRepo::tryLocalArtifact, MavenRepo::fetchArtifact);
+        String key = coord.toGav()
+                + "\0"
+                + (coord.type() == null ? "" : coord.type())
+                + "\0"
+                + (coord.classifier() == null ? "" : coord.classifier());
+        RepoFetched hit = ARTIFACT_HIT_CACHE.get(key);
+        if (hit != null) return Optional.of(hit);
+        Optional<RepoFetched> found = tryFetch(coord, MavenRepo::tryLocalArtifact, MavenRepo::fetchArtifact);
+        if (found.isPresent() && ARTIFACT_HIT_CACHE.size() < HIT_CACHE_MAX) {
+            ARTIFACT_HIT_CACHE.putIfAbsent(key, found.get());
+        }
+        return found;
     }
 
     public Optional<RepoFetched> tryFetchMetadata(Coordinate coord) throws IOException, InterruptedException {
@@ -97,12 +134,23 @@ public final class RepoGroup {
      * Union of the versions of {@code coord}'s {@code group:artifact} available across eligible
      * repos (exclusive bindings applied), de-duplicated, preserving first-seen order.
      */
+    /**
+     * Version discovery across eligible remotes. Stops at the first repo that advertises any
+     * versions (repo order is the precedence contract — Central before Google for unbound GAs,
+     * exclusive claimants alone for claimed groups).
+     *
+     * <p>Previously this <em>unioned</em> every eligible remote's metadata, which forced a
+     * second {@code maven-metadata.xml} read (often a 404) on every AndroidX GAV when both
+     * Central and Google were declared — dominant on warm multi-repo locks (NIA). Split version
+     * catalogs across remotes are vanishingly rare for our remotes; exclusive bindings still
+     * restrict which remotes are eligible at all.
+     */
     public List<String> availableVersions(Coordinate coord) throws IOException, InterruptedException {
-        java.util.LinkedHashSet<String> union = new java.util.LinkedHashSet<>();
         for (MavenRepo repo : eligibleRepos(coord)) {
-            union.addAll(repo.availableVersions(coord));
+            List<String> found = repo.availableVersions(coord);
+            if (!found.isEmpty()) return found;
         }
-        return List.copyOf(union);
+        return List.of();
     }
 
     /**

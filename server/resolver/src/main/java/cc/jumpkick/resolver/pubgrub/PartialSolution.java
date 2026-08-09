@@ -279,24 +279,31 @@ public final class PartialSolution {
      * </ul>
      */
     public Relation relationTo(Incompatibility inco) {
-        Term unsatisfied = null;
-        int unsatisfiedCount = 0;
-        for (Term term : inco.terms()) {
-            if (contradicts(term)) {
-                return new Relation(IncompatibilityRelation.INCONCLUSIVE, null);
-            }
-            if (!satisfies(term)) {
-                unsatisfied = term;
-                unsatisfiedCount++;
-                if (unsatisfiedCount > 1) {
+        long t0 = cc.jumpkick.resolve.ResolveProfile.on() ? System.nanoTime() : 0L;
+        try {
+            Term unsatisfied = null;
+            int unsatisfiedCount = 0;
+            for (Term term : inco.terms()) {
+                if (contradicts(term)) {
                     return new Relation(IncompatibilityRelation.INCONCLUSIVE, null);
                 }
+                if (!satisfies(term)) {
+                    unsatisfied = term;
+                    unsatisfiedCount++;
+                    if (unsatisfiedCount > 1) {
+                        return new Relation(IncompatibilityRelation.INCONCLUSIVE, null);
+                    }
+                }
+            }
+            if (unsatisfied == null) {
+                return new Relation(IncompatibilityRelation.SATISFIED, null);
+            }
+            return new Relation(IncompatibilityRelation.ALMOST_SATISFIED, unsatisfied);
+        } finally {
+            if (cc.jumpkick.resolve.ResolveProfile.on()) {
+                cc.jumpkick.resolve.ResolveProfile.relation(System.nanoTime() - t0);
             }
         }
-        if (unsatisfied == null) {
-            return new Relation(IncompatibilityRelation.SATISFIED, null);
-        }
-        return new Relation(IncompatibilityRelation.ALMOST_SATISFIED, unsatisfied);
     }
 
     public enum IncompatibilityRelation {

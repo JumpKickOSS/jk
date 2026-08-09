@@ -32,6 +32,29 @@ public final class EffectivePomBuilder {
     private final RepoGroup repos;
     private final Map<String, EffectivePom> cache = new ConcurrentHashMap<>();
 
+    /**
+     * Process-wide effective-POM memo. Published Maven POMs are immutable per GAV; warm re-locks
+     * in the resident engine used to re-walk parent/BOM chains for every package. Capped so a
+     * long-lived engine cannot retain unbounded POM graphs.
+     */
+    private static final ConcurrentHashMap<String, EffectivePom> PROCESS_CACHE = new ConcurrentHashMap<>();
+
+    /**
+     * In-flight builds keyed by GAV so parallel warm/prefetch workers share one parent/BOM walk
+     * instead of stampeding the same chain.
+     */
+    private static final ConcurrentHashMap<String, CompletableFuture<EffectivePom>> IN_FLIGHT =
+            new ConcurrentHashMap<>();
+
+    private static final int PROCESS_CACHE_MAX = 8_192;
+
+    /** Drop process-wide memo (tests; never required in production). */
+    public static void clearProcessCache() {
+        PROCESS_CACHE.clear();
+        IN_FLIGHT.clear();
+        RepoGroup.clearProcessFetchCache();
+    }
+
     public EffectivePomBuilder(MavenRepo repo) {
         this(RepoGroup.of(repo));
     }
@@ -45,10 +68,15 @@ public final class EffectivePomBuilder {
      * each call uses its own cycle-detection set so sibling BOM imports can expand in parallel.
      */
     public EffectivePom build(Coordinate coord) throws IOException, InterruptedException {
+        boolean profile = cc.jumpkick.resolve.ResolveProfile.on();
+        long t0 = profile ? System.nanoTime() : 0L;
         String key = coord.toGav();
-        EffectivePom hit = cache.get(key);
-        if (hit != null) return hit;
-        return buildInternal(coord, new HashSet<>(), 0);
+        boolean known = cache.containsKey(key) || PROCESS_CACHE.containsKey(key);
+        EffectivePom built = buildInternal(coord, new HashSet<>(), 0);
+        if (profile) {
+            cc.jumpkick.resolve.ResolveProfile.pomBuild(known ? 0L : System.nanoTime() - t0, known);
+        }
+        return built;
     }
 
     private EffectivePom buildInternal(Coordinate coord, Set<String> visiting, int depth)
@@ -59,9 +87,33 @@ public final class EffectivePomBuilder {
         String key = coord.toGav();
         EffectivePom cached = cache.get(key);
         if (cached != null) return cached;
+        EffectivePom processHit = PROCESS_CACHE.get(key);
+        if (processHit != null) {
+            cache.put(key, processHit);
+            return processHit;
+        }
         if (!visiting.add(key)) {
             throw new PomParseException("cycle in POM chain at " + key + " (already visiting: " + visiting + ")");
         }
+
+        // Single-flight: parallel warm workers share one walk of each GAV (parents + BOM imports).
+        CompletableFuture<EffectivePom> created = new CompletableFuture<>();
+        CompletableFuture<EffectivePom> existing = IN_FLIGHT.putIfAbsent(key, created);
+        if (existing != null) {
+            visiting.remove(key);
+            try {
+                EffectivePom shared = existing.join();
+                cache.put(key, shared);
+                return shared;
+            } catch (CompletionException e) {
+                Throwable c = e.getCause() == null ? e : e.getCause();
+                if (c instanceof IOException io) throw io;
+                if (c instanceof InterruptedException ie) throw ie;
+                if (c instanceof RuntimeException re) throw re;
+                throw new IOException("effective POM build failed for " + key, c);
+            }
+        }
+
         try {
             RepoGroup.RepoFetched hit = repos.tryFetchPom(coord)
                     .orElseThrow(() ->
@@ -69,9 +121,17 @@ public final class EffectivePomBuilder {
             Pom raw = PomParser.parse(Files.readAllBytes(hit.fetched().cachePath()));
             EffectivePom effective = merge(raw, visiting, depth);
             cache.put(key, effective);
+            if (PROCESS_CACHE.size() < PROCESS_CACHE_MAX) {
+                PROCESS_CACHE.putIfAbsent(key, effective);
+            }
+            created.complete(effective);
             return effective;
+        } catch (IOException | InterruptedException | RuntimeException e) {
+            created.completeExceptionally(e);
+            throw e;
         } finally {
             visiting.remove(key);
+            IN_FLIGHT.remove(key, created);
         }
     }
 
