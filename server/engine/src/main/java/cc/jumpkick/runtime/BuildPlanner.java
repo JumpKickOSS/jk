@@ -4004,9 +4004,6 @@ public final class BuildPlanner {
                     String nKey = ActionKey.forArtifact(
                             nTask, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), nativeTokens);
                     if (!shared && restorePackaged(cache, nKey, out.getParent())) {
-                        // CAS blobs carry no mode, so a restored binary comes back 0644 and the
-                        // user gets a native image they cannot run on every build after the first.
-                        out.toFile().setExecutable(true);
                         ctx.label(out.getFileName() + " up-to-date");
                         ctx.progress(1);
                         return;
