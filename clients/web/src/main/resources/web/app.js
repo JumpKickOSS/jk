@@ -6,7 +6,6 @@
 import {
   bootstrapToken,
   token,
-  applyToken,
   clearToken,
   get,
   getText,
@@ -740,9 +739,6 @@ Vue.createApp({
     help: false, // the header Help/About modal
     // Blocking gate when a required token is missing/invalid — no partial dashboard (docs/webclient.md).
     authModal: false,
-    authTokenInput: '',
-    authError: null,
-    authBusy: false,
     newProjectOpen: false,
     newProjectBusy: false,
     newProjectError: null,
@@ -1117,52 +1113,6 @@ Vue.createApp({
           }
         },
       );
-    },
-
-    /** Accept a raw token or a full dashboard URL ending in {@code #t=…}. */
-    parseTokenInput(raw) {
-      const s = (raw || '').trim();
-      if (!s) return null;
-      const fromHash = /#t=([A-Za-z0-9_=-]+)/.exec(s);
-      if (fromHash) return fromHash[1];
-      if (/^[A-Za-z0-9_=-]+$/.test(s)) return s;
-      return null;
-    },
-
-    async submitAuthToken() {
-      const t = this.parseTokenInput(this.authTokenInput);
-      if (!t) {
-        this.authError =
-          'Paste the token or the full URL from `jk web` (it ends with #t=…).';
-        return;
-      }
-      this.authBusy = true;
-      this.authError = null;
-      applyToken(t);
-      try {
-        // Prove the bearer is accepted (status + a always-gated read).
-        await get('/api/status', { bootstrap: true });
-        await getText('/api/log?lines=1');
-        this.authModal = false;
-        this.authTokenInput = '';
-        this.connection = 'connecting';
-        this.connectEvents();
-        // Re-derive the route from the hash: URL changes made while the gate was up were
-        // dropped by applyRoute's authModal guard. This also loads the route's data
-        // (project meta / metrics / status refresh).
-        this.applyRoute();
-        this.refresh();
-        this.loadHistory();
-        this.loadProjectHistory();
-      } catch (e) {
-        clearToken();
-        this.authError =
-          e.status === 401
-            ? 'That token was rejected. Run `jk web` for a fresh dashboard URL.'
-            : 'Could not reach the engine.';
-      } finally {
-        this.authBusy = false;
-      }
     },
 
     setView(view) {

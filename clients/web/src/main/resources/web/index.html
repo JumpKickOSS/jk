@@ -628,41 +628,18 @@
       </div>
     </div>
 
-    <!-- Blocking auth gate: missing/invalid token — no dismiss via scrim (docs/webclient.md). -->
+    <!-- Blocking auth gate: missing/invalid token — not dismissible (docs/webclient.md). -->
     <div v-if="authModal" class="modal-bg auth-modal-bg" role="presentation">
       <div class="modal about auth-modal" role="alertdialog" aria-modal="true" aria-labelledby="auth-title" aria-describedby="auth-desc">
         <div class="modal-head">
           <jk-icon name="alert" class="auth-icon"></jk-icon>
           <div>
-            <div id="auth-title" class="about-title">Authorization required</div>
-            <div class="about-sub">Engine token missing or invalid</div>
+            <h2 id="auth-title" class="about-title auth-denied">Access Denied</h2>
           </div>
         </div>
         <div id="auth-desc" class="auth-body">
           <p>Run <code>jk web</code> from your command-line.</p>
-          <p class="auth-or">…or…</p>
-          <ol class="auth-steps">
-            <li>Run <code>jk engine status</code></li>
-            <li>Open the printed URL (it ends with <code>#t=…</code>)</li>
-            <li>Or paste that URL / token below</li>
-          </ol>
-          <label class="auth-paste">
-            <span>Token or dashboard URL</span>
-            <input
-              v-model="authTokenInput"
-              type="password"
-              autocomplete="off"
-              spellcheck="false"
-              placeholder="paste #t=… URL or bare token"
-              @keydown.enter.prevent="submitAuthToken()">
-          </label>
-          <p v-if="authError" class="error">{{ authError }}</p>
-        </div>
-        <div class="modal-foot auth-actions">
-          <button type="button" class="use-folder" :disabled="authBusy" @click="submitAuthToken()">
-            <jk-icon name="check"></jk-icon>
-            {{ authBusy ? 'Checking…' : 'Authorize' }}
-          </button>
+          <p>Or run <code>jk engine status</code>, and follow the link shown.</p>
         </div>
       </div>
     </div>

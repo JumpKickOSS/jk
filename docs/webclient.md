@@ -29,11 +29,11 @@ opens it in a browser (`$BROWSER` when set — word-split, so values with argume
 `open` / `rundll32 url.dll,FileProtocolHandler` / `xdg-open`). Use `--no-open` to print only.
 
 When a token is **missing or invalid** (bare `http://localhost:8910` with no stored token, a
-rotated/stale token, or any `401` from the engine), the SPA opens a **blocking authorization
+rotated/stale token, or any `401` from the engine), the SPA opens a **blocking “Access Denied”
 dialog** and freezes the rest of the UI — it does **not** paint Activity, vitals, or a quiet
-“No activity yet” empty state. The dialog explains how to recover: run `jk web` (opens a new
-authenticated tab), open the printed URL, or paste the `#t=…` URL / token. Unauthorized is sticky
-until a token is accepted.
+“No activity yet” empty state. There is no paste field and no dismiss: recover by running
+`jk web` (opens an authenticated tab) or by opening the `#t=…` URL printed by
+`jk engine status` (or the same link copied into the address bar).
 
 ## Dependencies: CDN, pinned, integrity-locked
 
