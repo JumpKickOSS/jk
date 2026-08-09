@@ -5,11 +5,13 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.util.PathUtil;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -128,13 +130,121 @@ final class AotCachePackage {
         }
 
         String runFlag = aotTier ? "-XX:AOTCache=" + cacheFile : "-XX:SharedArchiveFile=" + cacheFile;
+
+        // Prove the cache loads before claiming it exists. A cache is rejected in silence — wrong
+        // JVM build, moved directory, changed jar — and the app just starts cold, so an unverified
+        // artifact is indistinguishable from a working one until someone measures.
+        String rejection = verifyLoads(java, outDir, runFlag, appJarName, springBoot);
+        if (rejection != null) {
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Build", "the AOT cache was written but the JVM refused it:\n  " + rejection));
+            return cc.jumpkick.model.command.Exit.SOFTWARE;
+        }
+
+        String jvmIdent = jvmIdentity(java);
+        writeManifest(outDir, java, jvmIdent, cacheFile, runFlag, appJarName);
+        Path launcher = writeLauncher(outDir, java, runFlag, appJarName);
+
         CliOutput.err("jk: wrote " + cc.jumpkick.cli.PathDisplay.styledRaw(outDir) + " ("
-                + Files.size(cachePath) / (1024 * 1024) + " MiB cache)");
-        // Name the exact training binary: the cache is keyed to the JVM build, and a
-        // "same version, different vendor" java silently falls back to a cold start.
-        CliOutput.err("jk: run it with:  cd " + projectDir.relativize(outDir) + " && " + java + " " + runFlag + " -jar "
-                + appJarName);
+                + Files.size(cachePath) / (1024 * 1024) + " MiB cache, verified)");
+        // The cache is keyed to the exact JVM build AND to these absolute paths. A different
+        // vendor at the same version, or the same files moved elsewhere, falls back to a cold
+        // start without saying so — hence the launcher, which pins both.
+        CliOutput.err("jk: run it with:  " + cc.jumpkick.cli.PathDisplay.styledRaw(launcher));
+        CliOutput.err("jk:   pinned to " + jvmIdent);
+        CliOutput.err(
+                "jk:   the cache is void if this directory moves, the jars change, or another" + " JVM build runs it");
         return 0;
+    }
+
+    /**
+     * Start the app once with the cache and report why the JVM refused it, or null when it mapped.
+     * {@code -Xlog:aot} is the only place the refusal is visible; at default log level a rejected
+     * cache is indistinguishable from a working one.
+     */
+    private static String verifyLoads(String java, Path outDir, String runFlag, String appJarName, boolean springBoot)
+            throws IOException, InterruptedException {
+        List<String> command = new ArrayList<>();
+        command.add(java);
+        command.add("-Xlog:aot=info");
+        command.add(runFlag);
+        if (springBoot) command.add("-Dspring.context.exit=onRefresh");
+        command.add("-jar");
+        command.add(appJarName);
+        Process process = new ProcessBuilder(command)
+                .directory(outDir.toFile())
+                .redirectErrorStream(true)
+                .start();
+        StringBuilder out = new StringBuilder();
+        Thread reader = Thread.ofVirtual().start(() -> {
+            try (var in = process.inputReader()) {
+                in.lines().forEach(l -> out.append(l).append('\n'));
+            } catch (IOException ignored) {
+            }
+        });
+        if (!process.waitFor(TRAINING_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+            process.destroyForcibly();
+        }
+        reader.join(5_000);
+        for (String line : out.toString().split("\n")) {
+            if (!line.contains("[aot]")) continue;
+            String lower = line.toLowerCase(Locale.ROOT);
+            if (lower.contains("mismatch")
+                    || lower.contains("failed")
+                    || lower.contains("unable to")
+                    || lower.contains("different version")) {
+                return line.trim();
+            }
+        }
+        return null;
+    }
+
+    /** {@code java -version}'s VM line — the identity the cache is keyed to. */
+    private static String jvmIdentity(String java) throws IOException, InterruptedException {
+        Process p = new ProcessBuilder(List.of(java, "-version"))
+                .redirectErrorStream(true)
+                .start();
+        String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        p.waitFor(30, TimeUnit.SECONDS);
+        for (String line : out.split("\n")) {
+            if (line.contains("Server VM") || line.contains("Client VM")) return line.trim();
+        }
+        return out.isBlank() ? "unknown" : out.split("\n")[0].trim();
+    }
+
+    /** What the cache is pinned to, for anyone (or anything) that needs to check later. */
+    private static void writeManifest(
+            Path outDir, String java, String jvmIdent, String cacheFile, String runFlag, String appJarName)
+            throws IOException {
+        Files.writeString(
+                outDir.resolve("aot-cache.toml"), """
+                # Written by `jk build --aot-cache`. The cache is void if this directory moves, the
+                # jars change, or a JVM other than the one below runs it — the JVM reports none of
+                # that at default log level, so check here rather than trusting a fast start.
+                cache        = "%s"
+                java-home    = "%s"
+                jvm-identity = "%s"
+                run          = "%s %s -jar %s"
+                """.formatted(cacheFile, java, jvmIdent, java, runFlag, appJarName));
+    }
+
+    /** A launcher that pins the JVM and the working directory, since both are part of the key. */
+    private static Path writeLauncher(Path outDir, String java, String runFlag, String appJarName) throws IOException {
+        Path launcher = outDir.resolve(HostPlatform.isWindows() ? "run.cmd" : "run.sh");
+        // JVM options ride JK_JAVA_OPTS rather than "$@", which lands after -jar and would reach
+        // the application as arguments. Flags that change heap shape or the collector can cost the
+        // cache; the JVM falls back to a cold start rather than misbehaving.
+        String body = HostPlatform.isWindows()
+                ? "@echo off\r\ncd /d \"%~dp0\"\r\n\"" + java + "\" %JK_JAVA_OPTS% " + runFlag + " -jar " + appJarName
+                        + " %*\r\n"
+                : "#!/bin/sh\n"
+                        + "# The cache is keyed to this JVM and this directory; both are pinned here.\n"
+                        + "# JVM options: JK_JAVA_OPTS=... ./run.sh   application arguments: ./run.sh a b c\n"
+                        + "cd \"$(dirname \"$0\")\" || exit 1\n"
+                        + "exec \"" + java + "\" ${JK_JAVA_OPTS} " + runFlag + " -jar " + appJarName + " \"$@\"\n";
+        Files.writeString(launcher, body);
+        launcher.toFile().setExecutable(true, false);
+        return launcher;
     }
 
     /**
