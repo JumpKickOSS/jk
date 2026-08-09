@@ -359,8 +359,11 @@ public final class ImagePlans {
             }
             if (!config.platforms().isEmpty()) sw.configList("platforms", config.platforms());
             sw.artifact(layout.mainJar());
-            for (Path dep : depJars) sw.entry(dep.getFileName().toString(), dep, false, null);
-            for (Path dep : snapshotJars) sw.entry(dep.getFileName().toString(), dep, true, null);
+            // Name each jar by its coordinate. The path is a CAS digest, so shipping that name
+            // into the image leaves a lib/ directory neither a human nor a scanner can read.
+            java.util.Map<Path, String> names = casJarNames(layout.moduleRoot(), cache);
+            for (Path dep : depJars) sw.entry(jarName(names, dep), dep, false, null);
+            for (Path dep : snapshotJars) sw.entry(jarName(names, dep), dep, true, null);
             if (classesDir != null) sw.layout(java.util.Map.of("classesDir", classesDir));
 
             Path spec = Files.createTempFile("jk-image-", ".spec");
@@ -551,6 +554,27 @@ public final class ImagePlans {
             if (!Files.exists(entry.jar())) continue;
             (entry.artifact().version().contains("SNAPSHOT") ? snapshots : releases).add(entry.jar());
         }
+    }
+
+    /** CAS path → {@code <artifact>-<version>.jar}, from the lock that put it there. */
+    private static java.util.Map<Path, String> casJarNames(Path projectDir, Path cache) throws IOException {
+        java.util.Map<Path, String> names = new java.util.LinkedHashMap<>();
+        Path lockPath = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
+        if (!Files.exists(lockPath)) return names;
+        Cas cas = JkStores.cas(cache);
+        for (Lockfile.Artifact pkg : LockfileReader.read(lockPath).artifacts()) {
+            if (pkg.checksum() == null) continue;
+            String hex = pkg.checksum().startsWith("sha256:")
+                    ? pkg.checksum().substring("sha256:".length())
+                    : pkg.checksum();
+            names.put(cas.pathFor(hex), pkg.moduleArtifact() + "-" + pkg.version() + ".jar");
+        }
+        return names;
+    }
+
+    private static String jarName(java.util.Map<Path, String> names, Path jar) {
+        String named = names.get(jar);
+        return named != null ? named : jar.getFileName().toString();
     }
 
     private static List<Path> loadDependencyJars(Path projectDir, Path cache) throws IOException {

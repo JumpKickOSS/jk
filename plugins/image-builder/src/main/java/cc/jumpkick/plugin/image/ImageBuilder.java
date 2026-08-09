@@ -44,10 +44,36 @@ public final class ImageBuilder {
             Path mainJar,
             List<Path> dependencyJars,
             List<Path> snapshotJars,
-            Path classesDir) {
+            Path classesDir,
+            /**
+             * Coordinate-derived file name per dependency jar. jk serves the runtime classpath from
+             * the content-addressed store, so a jar's own path is its digest — shipping that into
+             * an image leaves a lib/ directory nobody, and no scanner, can read.
+             */
+            Map<Path, String> jarNames) {
+
+        /** Without coordinate names: jars keep their on-disk file name. */
+        public Plan(
+                ImageConfig config,
+                String artifact,
+                String version,
+                String mainClass,
+                Path mainJar,
+                List<Path> dependencyJars,
+                List<Path> snapshotJars,
+                Path classesDir) {
+            this(config, artifact, version, mainClass, mainJar, dependencyJars, snapshotJars, classesDir, Map.of());
+        }
+
+        /** The name this jar should carry in the image. */
+        public String nameOf(Path jar) {
+            String named = jarNames.get(jar);
+            return named != null && !named.isBlank() ? named : jar.getFileName().toString();
+        }
 
         public Plan {
             Objects.requireNonNull(config, "config");
+            jarNames = jarNames == null ? Map.of() : Map.copyOf(jarNames);
             Objects.requireNonNull(artifact, "artifact");
             Objects.requireNonNull(version, "version");
             Objects.requireNonNull(mainClass, "mainClass");
@@ -139,6 +165,15 @@ public final class ImageBuilder {
         return layer.build();
     }
 
+    /** Dependency jars at {@code /app/libs}, named by coordinate rather than by CAS digest. */
+    private static FileEntriesLayer namedJarLayer(Plan plan, List<Path> jars) {
+        FileEntriesLayer.Builder layer = FileEntriesLayer.builder();
+        for (Path jar : jars) {
+            layer.addEntry(jar, AbsoluteUnixPath.get("/app/libs/" + plan.nameOf(jar)));
+        }
+        return layer.build();
+    }
+
     private static JibContainer run(Plan plan, Containerizer containerizer)
             throws IOException, InterruptedException, InvalidImageReferenceException {
         ImageConfig cfg = plan.config();
@@ -151,12 +186,12 @@ public final class ImageBuilder {
 
         // Layer 1 — release dependency jars (change least often).
         if (!plan.dependencyJars().isEmpty()) {
-            builder = builder.addLayer(plan.dependencyJars(), AbsoluteUnixPath.get("/app/libs"));
+            builder = builder.addFileEntriesLayer(namedJarLayer(plan, plan.dependencyJars()));
         }
         // Layer 2 — SNAPSHOT dependency jars (their own layer: they churn while releases don't,
         // so a snapshot bump never invalidates the big release-deps layer). Boot layer mapping.
         if (!plan.snapshotJars().isEmpty()) {
-            builder = builder.addLayer(plan.snapshotJars(), AbsoluteUnixPath.get("/app/libs"));
+            builder = builder.addFileEntriesLayer(namedJarLayer(plan, plan.snapshotJars()));
         }
         // Layer 3 — the application: either exploded classes (Boot layer mapping — the
         // most-frequently-changing bytes ride the smallest layer) or the classic main jar.

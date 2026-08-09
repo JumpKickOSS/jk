@@ -187,7 +187,7 @@ final class AotCacheTrainer {
                 plan.mainJar(),
                 classpathDir.resolve(plan.mainJar().getFileName().toString()));
         for (Path jar : allDependencyJars(plan)) {
-            Files.copy(jar, libs.resolve(jar.getFileName().toString()));
+            Files.copy(jar, libs.resolve(plan.nameOf(jar)));
         }
     }
 
@@ -208,7 +208,7 @@ final class AotCacheTrainer {
         List<String> entries = new ArrayList<>();
         entries.add("classpath/" + plan.mainJar().getFileName());
         List<String> libs = new ArrayList<>();
-        for (Path jar : allDependencyJars(plan)) libs.add("libs/" + jar.getFileName());
+        for (Path jar : allDependencyJars(plan)) libs.add("libs/" + plan.nameOf(jar));
         java.util.Collections.sort(libs);
         entries.addAll(libs);
         return String.join(":", entries);
