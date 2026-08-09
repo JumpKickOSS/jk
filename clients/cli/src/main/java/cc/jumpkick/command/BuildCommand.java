@@ -164,6 +164,10 @@ public final class BuildCommand implements CliCommand {
             // Post-build tail (like run's exec): extract layout + training run, client-side
             // the layout inputs come from the engine's exec plan (thin client).
             code = AotCachePackage.run(startDir, cacheDir != null ? cacheDir : JkDirs.cache());
+        } else if (code == 0) {
+            // A cache the build just invalidated is worse than none: it looks like an artifact
+            // and does nothing. Drop it rather than leave it to be discovered later.
+            AotCachePackage.discardIfStale(startDir);
         }
         return finishSession(code);
     }

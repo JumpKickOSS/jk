@@ -142,7 +142,7 @@ final class AotCachePackage {
         }
 
         String jvmIdent = jvmIdentity(java);
-        writeManifest(outDir, java, jvmIdent, cacheFile, runFlag, appJarName);
+        writeManifest(outDir, Path.of(plan.mainJar()), java, jvmIdent, cacheFile, runFlag, appJarName);
         Path launcher = writeLauncher(outDir, java, runFlag, appJarName);
 
         CliOutput.err("jk: wrote " + cc.jumpkick.cli.PathDisplay.styledRaw(outDir) + " ("
@@ -212,20 +212,81 @@ final class AotCachePackage {
         return out.isBlank() ? "unknown" : out.split("\n")[0].trim();
     }
 
+    /**
+     * Drop {@code target/aot-cache/} when the application jar no longer matches the one it was
+     * trained against. The JVM would reject it anyway, silently; a build that has just made it
+     * void is the moment to say so, and the cost of keeping it is tens of MiB that look like a
+     * deliverable.
+     */
+    static void discardIfStale(Path projectDir) {
+        try {
+            Path outDir = findCacheDir(projectDir);
+            if (outDir == null) return;
+            Path manifest = outDir.resolve(MANIFEST);
+            if (!Files.isRegularFile(manifest)) return;
+            String text = Files.readString(manifest);
+            String recorded = valueOf(text, "app-sha256");
+            String builtFrom = valueOf(text, "built-from");
+            if (recorded.isEmpty() || builtFrom.isEmpty()) return;
+            Path jar = Path.of(builtFrom);
+            String actual = Files.isRegularFile(jar) ? cc.jumpkick.util.Hashing.sha256Hex(jar) : "";
+            if (recorded.equals(actual)) return;
+            PathUtil.deleteRecursively(outDir);
+            CliOutput.err("jk: the AOT cache no longer matches this build — removed "
+                    + cc.jumpkick.cli.PathDisplay.styledRaw(outDir) + " (re-run with --aot-cache)");
+        } catch (IOException | RuntimeException ignored) {
+            // Best effort: never fail a build over a cache that was only ever an optimisation.
+        }
+    }
+
+    /** {@code <target>/aot-cache} for a module, or null when there is none. */
+    private static Path findCacheDir(Path projectDir) {
+        for (String rel : new String[] {"target/aot-cache", "build/aot-cache"}) {
+            Path p = projectDir.resolve(rel);
+            if (Files.isDirectory(p)) return p;
+        }
+        return null;
+    }
+
+    /** The value of a {@code key = "value"} line, or empty. */
+    private static String valueOf(String toml, String key) {
+        for (String line : toml.split("\n")) {
+            String t = line.trim();
+            if (!t.startsWith(key)) continue;
+            int q = t.indexOf('"');
+            int end = t.lastIndexOf('"');
+            if (q > 0 && end > q) return t.substring(q + 1, end);
+        }
+        return "";
+    }
+
+    static final String MANIFEST = "aot-cache.toml";
+
     /** What the cache is pinned to, for anyone (or anything) that needs to check later. */
     private static void writeManifest(
-            Path outDir, String java, String jvmIdent, String cacheFile, String runFlag, String appJarName)
+            Path outDir,
+            Path sourceJar,
+            String java,
+            String jvmIdent,
+            String cacheFile,
+            String runFlag,
+            String appJarName)
             throws IOException {
-        Files.writeString(
-                outDir.resolve("aot-cache.toml"), """
+        // The jar the layout was derived from, not the extracted copy inside outDir — the copy
+        // never changes on its own, so comparing it to itself would always look fresh.
+        String appSha = Files.isRegularFile(sourceJar) ? cc.jumpkick.util.Hashing.sha256Hex(sourceJar) : "";
+        Files.writeString(outDir.resolve(MANIFEST), """
                 # Written by `jk build --aot-cache`. The cache is void if this directory moves, the
                 # jars change, or a JVM other than the one below runs it — the JVM reports none of
                 # that at default log level, so check here rather than trusting a fast start.
                 cache        = "%s"
+                built-from   = "%s"
+                app-sha256   = "%s"
                 java-home    = "%s"
                 jvm-identity = "%s"
                 run          = "%s %s -jar %s"
-                """.formatted(cacheFile, java, jvmIdent, java, runFlag, appJarName));
+                """.formatted(
+                        cacheFile, sourceJar.toAbsolutePath(), appSha, java, jvmIdent, java, runFlag, appJarName));
     }
 
     /** A launcher that pins the JVM and the working directory, since both are part of the key. */
