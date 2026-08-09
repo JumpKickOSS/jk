@@ -1466,6 +1466,13 @@ button.browse:hover::before {
   color: var(--tx);
 }
 .auth-body p { margin: 0 0 10px; }
+.auth-or {
+  margin: 12px 0 !important;
+  text-align: center;
+  color: var(--dim);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
 .auth-steps {
   margin: 0 0 14px;
   padding-left: 1.25rem;
