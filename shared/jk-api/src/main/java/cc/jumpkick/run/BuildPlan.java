@@ -480,22 +480,51 @@ public final class BuildPlan {
                 if (!known.contains(req)) {
                     throw new IllegalArgumentException("step '" + p.name() + "' requires unknown '" + req + "'");
                 }
-                Task upstream = byName.get(req);
-                if (upstream != null && !p.stage().mayRequire(upstream.stage())) {
-                    throw new IllegalArgumentException("step '"
-                            + p.name()
-                            + "' (stage "
-                            + p.stage().wireName()
-                            + ") requires '"
-                            + req
-                            + "' (stage "
-                            + upstream.stage().wireName()
-                            + ") — cannot depend on a later BuildStage");
-                }
             }
         }
-        // Cheap cycle detection via topo sort attempt.
-        topoSort(steps);
+        // Topo sort doubles as cycle detection and gives the order the stage check needs.
+        checkStageOrder(topoSort(steps), byName);
+    }
+
+    /**
+     * No task may wait on one that runs later.
+     *
+     * <p>Checked over the whole graph rather than edge by edge. {@link BuildStage#OTHER} has no
+     * position of its own, so an OTHER task takes the latest position among the tasks it waits on;
+     * without that, {@code package → other → image} would pass while the equivalent
+     * {@code package → image} fails, and every OTHER task would be a hole the invariant leaks
+     * through.
+     *
+     * @param ordered tasks in topological order — upstreams first, so one pass settles every
+     *     derived position
+     */
+    private static void checkStageOrder(List<Task> ordered, Map<String, Task> byName) {
+        Map<String, Integer> effective = new HashMap<>();
+        Map<String, String> effectiveSource = new HashMap<>();
+        for (Task p : ordered) {
+            int own = p.stage() == BuildStage.OTHER ? -1 : p.stage().pipelineOrder();
+            int derived = own;
+            String source = p.name();
+            for (String req : p.requires()) {
+                Integer up = effective.get(req);
+                if (up == null) continue;
+                if (p.stage() != BuildStage.OTHER && up > own) {
+                    Task upstream = byName.get(req);
+                    String late = effectiveSource.getOrDefault(req, req);
+                    throw new IllegalArgumentException("step '" + p.name() + "' (stage "
+                            + p.stage().wireName() + ") requires '" + req + "' (stage "
+                            + (upstream == null ? "?" : upstream.stage().wireName()) + ")"
+                            + (late.equals(req) ? "" : ", which waits on '" + late + "'")
+                            + " — cannot depend on a later BuildStage");
+                }
+                if (up > derived) {
+                    derived = up;
+                    source = effectiveSource.getOrDefault(req, req);
+                }
+            }
+            effective.put(p.name(), derived);
+            effectiveSource.put(p.name(), source);
+        }
     }
 
     private static List<Task> topoSort(List<Task> steps) {

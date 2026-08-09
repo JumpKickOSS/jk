@@ -56,8 +56,15 @@ public enum BuildStage {
     }
 
     /**
-     * Pipeline order for inter-stage {@code requires} checks. Lower runs earlier. {@link #OTHER}
-     * returns {@code -1} (skip cross-stage checks involving OTHER).
+     * Pipeline order for inter-stage {@code requires} checks. Lower runs earlier.
+     *
+     * <p>A total order, and it is meant literally: {@code native-image} consumes what packaging
+     * produced, and an OCI image consumes either the jar or the binary. {@link #NATIVE} and
+     * {@link #IMAGE} are later stages, not siblings of {@link #PACKAGE} — a join over them belongs
+     * at the latest stage it joins.
+     *
+     * <p>{@link #OTHER} returns {@code -1}: it has no position. {@code BuildPlan} derives one for
+     * it from the tasks it waits on rather than exempting it.
      */
     public int pipelineOrder() {
         return switch (this) {
@@ -75,6 +82,11 @@ public enum BuildStage {
     /**
      * True when a task in {@code this} stage may {@code require} a task in {@code upstream}.
      * Same stage or earlier is allowed; later stages are not (no backward edges).
+     *
+     * <p>Pairwise only, and {@link #OTHER} is a wildcard on both sides because a single pair
+     * carries no information about where an unpositioned task sits. The graph-wide invariant is
+     * enforced by {@code BuildPlan}, which derives OTHER's position from its upstreams; do not
+     * read a {@code true} here as "this edge is legal in context".
      */
     public boolean mayRequire(BuildStage upstream) {
         if (this == OTHER || upstream == OTHER) return true;

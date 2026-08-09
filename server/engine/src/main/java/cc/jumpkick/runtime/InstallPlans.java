@@ -79,7 +79,10 @@ public final class InstallPlans {
         if (isNative) requires.add(TaskNames.NATIVE_IMAGE);
         if (proj.isApplication() && proj.assembly() && !isNative) requires.add(TaskNames.PACKAGE_ASSEMBLY);
 
+        // Positioned at the latest artifact it waits on rather than left to fall into OTHER,
+        // which is the one stage the plan's ordering check cannot place.
         Task cacheInstall = Task.builder(TaskNames.CACHE_INSTALL)
+                .stage(isNative ? cc.jumpkick.run.BuildStage.NATIVE : cc.jumpkick.run.BuildStage.PACKAGE)
                 .requires(requires.toArray(new String[0]))
                 .ticks(1)
                 .execute(ctx -> {
