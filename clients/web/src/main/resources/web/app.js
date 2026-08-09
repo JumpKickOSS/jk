@@ -899,6 +899,8 @@ Vue.createApp({
         if (id && r.projectId) return r.projectId === id;
         return dir && r.dir === dir;
       });
+      // Prefer live /api/project coord (jk.toml), else the newest journal record.
+      const metaCoord = this.projectMeta && this.projectMeta.coord ? this.projectMeta.coord : null;
       const parts = this.coordParts({ coord: metaCoord || (records[0] && records[0].coord), dir });
       const base = {
         dir,
