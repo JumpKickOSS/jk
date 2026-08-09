@@ -428,6 +428,18 @@ public final class MavenPackageSource implements PackageSource {
         } catch (MavenRepo.ArtifactNotFoundException e) {
             throw new VersionUnavailableException(e.getMessage());
         }
+        // <distributionManagement><relocation>: this coordinate moved. The stub has no classes and
+        // no dependencies of its own, so its one edge is to the target — which is how Maven and
+        // Gradle render it too. Chains terminate because each hop is a normal package expansion.
+        Pom.Relocation moved = pom.relocation();
+        if (moved != null && moved.redirects(coord)) {
+            Coordinate to = moved.applyTo(coord);
+            String toPkg = PackageId.ofGa(to.group() + ":" + to.artifact()).key();
+            List<RawEdge> redirect = List.of(new RawEdge(toPkg, VersionSet.exact(to.version()), Set.of()));
+            rawDepsCache.put(key, redirect);
+            return redirect;
+        }
+
         List<RawEdge> out = new ArrayList<>();
         var kmpSelection = kmp.selectionFor(pkg, version);
         Set<String> kmpDropped = Set.of();

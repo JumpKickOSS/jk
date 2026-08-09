@@ -184,6 +184,20 @@ public final class PubGrubResolver implements Resolver {
                     kmpDropped = kmpSelection.get().allTargets();
                 }
                 EffectivePom pom = pomBuilder.build(toCoord(e.getKey(), e.getValue()));
+                // A relocation stub's one edge is the redirect. Without it the target would sit in
+                // the lock unreachable from anything, and every consumer of the graph — tree,
+                // explain, packaging closure — would treat it as orphaned.
+                var moved = pom.relocation();
+                if (moved != null && moved.redirects(toCoord(e.getKey(), e.getValue()))) {
+                    var to = moved.applyTo(toCoord(e.getKey(), e.getValue()));
+                    String toPkg = cc.jumpkick.model.PackageId.ofGa(to.group() + ":" + to.artifact())
+                            .key();
+                    if (decisions.containsKey(toPkg)) {
+                        deps.add(toPkg + "@" + decisions.get(toPkg));
+                    }
+                    dependsOn.put(e.getKey(), deps);
+                    continue;
+                }
                 for (Pom.Dep d : pom.dependencies()) {
                     if (d.optional()) continue;
                     if (kmpDropped.contains(d.module())) continue;
