@@ -153,13 +153,15 @@ class SelfHostingTomlTest {
     @Test
     void every_workspace_module_has_a_parseable_jk_toml() throws Exception {
         JkBuild root = JkBuildParser.parse(REPO.resolve("jk.toml"));
+        // Language level is on the workspace root (java = 25); modules inherit — do not require
+        // per-module jdk = pins (AGENTS.md: prefer java = N, rare jdk =).
+        assertThat(root.project().java()).isEqualTo(25);
         for (String module : root.workspace().modules()) {
             Path moduleManifest = REPO.resolve(module).resolve("jk.toml");
             assertThat(moduleManifest).as("missing " + moduleManifest).exists();
             JkBuild parsed = JkBuildParser.parse(moduleManifest);
             assertThat(parsed.project().group()).isEqualTo("cc.jumpkick");
             assertThat(parsed.project().name()).startsWith("jk-");
-            assertThat(parsed.project().jdk()).isEqualTo("25");
         }
     }
 

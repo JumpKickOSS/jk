@@ -166,6 +166,8 @@ public record CacheSnapshot(
                 .put("runLogsBytes", runLogsBytes)
                 .put("formatStampsCount", formatStampsCount)
                 .put("formatStampsBytes", formatStampsBytes)
+                // Count-cap for the stamp tree (512k default / 1M when CI=1|true) — web shows % used, not GiB.
+                .put("formatStampsMax", cc.jumpkick.task.FormatStampGc.resolveMaxFiles())
                 .put("totalCount", totalCount())
                 .put("totalBytes", totalBytes())
                 .put("actionCacheCount", actionCacheCount())

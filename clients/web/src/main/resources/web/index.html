@@ -392,7 +392,7 @@
               <dl>
                 <dt>cache CAS</dt><dd>{{ count(cache.cacheCasCount != null ? cache.cacheCasCount : 0) }} · {{ gib(cache.cacheCasBytes != null ? cache.cacheCasBytes : 0) }}</dd>
                 <dt>action index</dt><dd>{{ count(cache.actionsCount) }} · {{ gib(cache.actionsBytes) }}</dd>
-                <dt>format stamps</dt><dd>{{ count(cache.formatStampsCount) }} · {{ gib(cache.formatStampsBytes) }}</dd>
+                <dt>format stamps</dt><dd :data-tip="'Count of empty stamp files vs cap (' + formatStampsMaxLabel() + ')'">{{ count(cache.formatStampsCount) }} · {{ formatStampsUsedPct() }}% used</dd>
               </dl>
             </template>
             <div v-else class="dim small">Action cache loading…</div>

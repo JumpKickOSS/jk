@@ -13,7 +13,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class CachePruneSchedulerTest {
 
-    private static final JkCacheConfig ON = new JkCacheConfig(true, 4096, 7, 30, 1024);
+    private static final JkCacheConfig ON = new JkCacheConfig(true, 6.0, 7, 30, 4.0);
 
     @Test
     void should_run_when_stamp_missing(@TempDir Path cacheRoot) throws IOException {
@@ -59,7 +59,7 @@ class CachePruneSchedulerTest {
 
     @Test
     void maybe_run_no_op_when_auto_prune_off(@TempDir Path cacheRoot) {
-        JkCacheConfig off = new JkCacheConfig(false, 4096, 7, 30, 1024);
+        JkCacheConfig off = new JkCacheConfig(false, 6.0, 7, 30, 4.0);
         CachePruneScheduler.maybeRun(off, cacheRoot, "/usr/local/bin/jk");
     }
 

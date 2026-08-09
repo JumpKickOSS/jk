@@ -1637,6 +1637,22 @@ Vue.createApp({
     count(n) {
       return n == null ? '—' : n.toLocaleString();
     },
+    /** Format-stamp count cap (512k default / 1M on CI); from API or local fallback. */
+    formatStampsMax() {
+      const m = this.cache?.formatStampsMax;
+      if (m != null && m > 0) return m;
+      return 512000;
+    },
+    formatStampsMaxLabel() {
+      return this.formatStampsMax().toLocaleString();
+    },
+    /** Percent of stamp-file cap in use (one decimal), not byte utilization. */
+    formatStampsUsedPct() {
+      const n = this.cache?.formatStampsCount;
+      const max = this.formatStampsMax();
+      if (n == null || max <= 0) return '—';
+      return ((100 * n) / max).toFixed(1);
+    },
 
     // ---- the Status view's build-stats section (running aggregates from /api/metrics) ----
 
