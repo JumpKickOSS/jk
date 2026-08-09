@@ -483,41 +483,52 @@ class JkBuildEditorTest {
     }
 
     @Test
-    void set_assembly_mode_creates_application_table() {
-        String fat = JkBuildEditor.setAssemblyMode(BASE, JkBuild.AssemblyMode.FAT);
-        assertThat(fat).contains("[application]");
-        assertThat(fat).contains("assembly = true");
-        assertThat(JkBuildParser.parse(fat).assemblyMode()).isEqualTo(JkBuild.AssemblyMode.FAT);
-
-        String shrink = JkBuildEditor.setAssemblyMode(BASE, JkBuild.AssemblyMode.SHRINK);
-        assertThat(shrink).contains("assembly = \"shrink\"");
-        assertThat(JkBuildParser.parse(shrink).assemblyMode()).isEqualTo(JkBuild.AssemblyMode.SHRINK);
+    void set_artifacts_creates_application_table() {
+        String fat = JkBuildEditor.setArtifacts(BASE, true, false);
+        assertThat(fat).contains("[application]").contains("assembly = true").doesNotContain("minified");
+        assertThat(JkBuildParser.parse(fat).assembly()).isTrue();
+        assertThat(JkBuildParser.parse(fat).minified()).isFalse();
     }
 
     @Test
-    void set_assembly_mode_preserves_main_and_other_keys() {
+    void minified_writes_both_keys_because_artifacts_are_additive() {
+        String min = JkBuildEditor.setArtifacts(BASE, false, true);
+        assertThat(min).contains("assembly = true").contains("minified = true");
+
+        JkBuild parsed = JkBuildParser.parse(min);
+        assertThat(parsed.minified()).isTrue();
+        assertThat(parsed.assembly())
+                .as("a minified build ships the fat jar too")
+                .isTrue();
+    }
+
+    @Test
+    void set_artifacts_preserves_main_and_other_keys() {
         String start = BASE + """
                         [application]
                         main = "demo.App"
                         # keep me
                         """;
-        String result = JkBuildEditor.setAssemblyMode(start, JkBuild.AssemblyMode.SHRINK);
-        assertThat(result).contains("main = \"demo.App\"");
-        assertThat(result).contains("# keep me");
-        assertThat(result).contains("assembly = \"shrink\"");
+        String result = JkBuildEditor.setArtifacts(start, false, true);
+        assertThat(result).contains("main = \"demo.App\"").contains("# keep me").contains("minified = true");
         assertThat(JkBuildParser.parse(result).mainClass()).isEqualTo("demo.App");
-        assertThat(JkBuildParser.parse(result).assemblyMode()).isEqualTo(JkBuild.AssemblyMode.SHRINK);
     }
 
     @Test
-    void set_assembly_mode_replaces_existing_assignment() {
+    void set_artifacts_replaces_and_removes() {
         String start = BASE + "[application]\nmain = \"demo.App\"\nassembly = true\n";
-        String shrink = JkBuildEditor.setAssemblyMode(start, JkBuild.AssemblyMode.SHRINK);
-        assertThat(shrink).contains("assembly = \"shrink\"");
-        assertThat(shrink).doesNotContain("assembly = true");
-        String off = JkBuildEditor.setAssemblyMode(shrink, JkBuild.AssemblyMode.OFF);
-        assertThat(off).doesNotContain("assembly =");
+        String min = JkBuildEditor.setArtifacts(start, false, true);
+        assertThat(min).contains("assembly = true").contains("minified = true");
+
+        String off = JkBuildEditor.setArtifacts(min, false, false);
+        assertThat(off).doesNotContain("assembly =").doesNotContain("minified =");
         assertThat(off).contains("main = \"demo.App\"");
-        assertThat(JkBuildParser.parse(off).assemblyMode()).isEqualTo(JkBuild.AssemblyMode.OFF);
+        assertThat(JkBuildParser.parse(off).assembly()).isFalse();
+    }
+
+    @Test
+    void the_old_shrink_spelling_is_rejected_with_the_replacement() {
+        assertThatThrownBy(() -> JkBuildParser.parse(BASE + "[application]\nassembly = \"shrink\"\n"))
+                .hasMessageContaining("minified = true");
     }
 }

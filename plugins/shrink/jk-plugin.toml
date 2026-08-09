@@ -1,7 +1,7 @@
 # The built-in shrink build plugin's declarative manifest: R8 in --classfile mode over the
 # application + its runtime closure, packaged as a slim self-contained jar — the fat-jar
 # counterpart of Android's release shrinking, for CLI tools, functions, and services that
-# ship a single artifact. Opt-in via [application] assembly = "shrink" (preferred) or a
+# ship a single artifact. Opt-in via [application] minified = true (preferred) or a
 # [shrink] table (keep rules / r8-version). Reflection-heavy frameworks need keep rules
 # the user owns; jk never guesses.
 
@@ -15,12 +15,14 @@ jk-compat = ">=0.10"
 worker          = "jk-shrink"
 protocol-prefix = "##JKSH:"
 
-# The shrunk jar replaces the main artifact: one self-contained, host-runnable jar.
+# An additional artifact, not the module's: -min.jar lands beside the thin and fat jars so the
+# two can be compared. main-artifact = false keeps package-jar out of this packager.
 [packaging]
 packager       = "shrunk-jar"
 exec-mode      = "jar"
 self-contained = true
 main-scan      = true
+main-artifact  = false
 
 [schema]
 # Newer than the android plugin's pin: --lib reads the running JDK's platform classes,

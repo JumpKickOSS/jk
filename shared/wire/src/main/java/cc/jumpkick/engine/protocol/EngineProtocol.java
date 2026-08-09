@@ -2923,8 +2923,8 @@ public final class EngineProtocol {
     }
 
     /**
-     * Session envelope including optional {@code assemblyOverride} ({@code fat} / {@code shrink}) for
-     * {@code jk assemble --shrink} one-offs.
+     * Session envelope including optional {@code assemblyOverride} ({@code fat} / {@code minified}) for
+     * {@code jk assemble --minified} one-offs.
      */
     public static String withSession(
             String request,
@@ -2966,7 +2966,7 @@ public final class EngineProtocol {
         return b.append('}').toString();
     }
 
-    /** Decode {@code assemblyOverride} from a session envelope ({@code fat}/{@code shrink}/empty). */
+    /** Decode {@code assemblyOverride} from a session envelope ({@code fat}/{@code minified}/empty). */
     public static String assemblyOverrideOf(String request) {
         String v = Jsonl.str(request, "assemblyOverride");
         return v == null ? "" : v;

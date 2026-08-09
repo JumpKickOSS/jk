@@ -7,26 +7,44 @@ default.
 
 | Artifact | How | Command | R8? |
 |---|---|---|---|
-| **Thin jar** | default | `jk build` | no |
-| **Assembly jar** | `[application] assembly = true` | `jk assemble` / `jk build` | no |
-| **Shrunk jar** | `[application] assembly = "shrink"` | `jk assemble` / `jk build` | yes (opt-in) |
+| **Thin jar** | always | `jk build` | no |
+| **Fat jar** `-all.jar` | `[application] assembly = true` | `jk assemble` / `jk build` | no |
+| **Minified jar** `-min.jar` | `[application] minified = true` | `jk assemble` / `jk build` | yes (opt-in) |
 | **Spring Boot jar** | spring-boot plugin | `jk build` | plugin-owned |
 | **Quarkus fast-jar / uber-jar** | quarkus plugin | `jk build` | plugin-owned (augment) |
 | **Grails jar** (Boot layout) | grails plugin | `jk build` | plugin-owned |
 
-## Thin jar (default)
+## Artifacts are additive
+
+```
+target/
+  svc-0.1.0.jar        thin      always, no opt-out
+  svc-0.1.0-all.jar    fat       assembly = true
+  svc-0.1.0-min.jar    minified  minified = true, which also builds the fat jar
+```
+
+Each switch adds an artifact; none replaces another. Asking for a minified jar always produces
+the fat jar beside it, so the two can be compared without a config change — which matters,
+because a minified jar can be silently wrong for an application that resolves types by runtime
+generic matching.
 
 ```toml
-[project]
-# …
-# no [application] assembly — package-jar only
+[application]
+main     = "com.example.App"
+assembly = true      # -all.jar
+minified = true      # -min.jar (implies assembly)
 ```
+
+A plugin that owns the module's artifact shape — Spring Boot, Quarkus, Grails — still owns it;
+`BOOT-INF` is not a thin jar with extras. The additive rule governs jk's own packaging modes.
+
+## Thin jar (always)
 
 ```bash
 jk build    # target/<name>-<version>.jar (or layout default)
 ```
 
-## Assembly / fat jar (`*-all.jar`)
+## Fat jar (`-all.jar`)
 
 ```toml
 [application]
@@ -41,22 +59,22 @@ jk build      # same packaging graph when assembly = true
 # → target/<name>-<version>-all.jar
 ```
 
-### One-off CLI override (`--fat` / `--shrink`)
+### One-off CLI override (`--fat` / `--minified`)
 
 You can package without (or against) `jk.toml` for a single run:
 
 ```bash
 jk assemble --fat                 # fat jar this run only
-jk assemble --shrink              # R8 this run only
-jk assemble --shrink --write-config   # R8 + surgically set assembly = "shrink" in jk.toml
+jk assemble --minified            # add -min.jar this run only
+jk assemble --minified --write-config # -min.jar + surgically set minified = true in jk.toml
 jk assemble --fat --write-config      # fat + assembly = true
 ```
 
 | Flag | Effect |
 |---|---|
 | `--fat` | Override packaging to classic fat jar (`*-all.jar`) for **this invocation** |
-| `--shrink` | Override packaging to R8 shrink packager for **this invocation** |
-| `--write-config` | With `--fat` or `--shrink`, surgically edit `[application].assembly` in `jk.toml` (creates the table if missing; leaves `main` and other keys alone). Never rewrites the whole file. |
+| `--minified` | Also build the R8 `-min.jar` for **this invocation** |
+| `--write-config` | With `--fat` or `--minified`, surgically edit `[application].assembly` / `.minified` in `jk.toml` (creates the table if missing; leaves `main` and other keys alone). Never rewrites the whole file. |
 
 One-offs print a loud note that the mode is not persisted (unless you pass `--write-config`). CLI
 overrides ride the client→engine session envelope and are included in packaging action-cache keys
@@ -76,13 +94,13 @@ overrides ride the client→engine session envelope and are included in packagin
 
 Sample: [examples/assembly-app/](examples/assembly-app/).
 
-## Shrunk jar (R8)
+## Minified jar (`-min.jar`, R8)
 
 ```toml
 [application]
-# main is optional (library shrink jars keep module classes without an entry point)
+# main is optional (library minified jars keep module classes without an entry point)
 main = "com.example.App"
-assembly = "shrink"   # R8 over classes + runtime closure → small fat jar (*-all.jar path)
+minified = true   # R8 over classes + runtime closure → target/<name>-<version>-min.jar
 ```
 
 Optional keep rules / R8 version live under `[shrink]`:
@@ -128,11 +146,10 @@ jk resolved the closure from `jk-lock.toml`, so absence is intentional, and the 
 diagnostic is downgraded to a warning. The build reports the count and `-v` lists them. Set
 `strict-warnings = true` to fail on them instead, for a closure that should be complete.
 
-A bare `[shrink]` table (without `assembly = "shrink"`) also enables the packager. Prefer
-`assembly = "shrink"`. Build labels size before → after.
+Build labels size before → after.
 
-Try without editing the file first: `jk assemble --shrink`. Persist with
-`jk assemble --shrink --write-config`.
+Try without editing the file first: `jk assemble --minified`. Persist with
+`jk assemble --minified --write-config`.
 
 ### By-name index audit
 
@@ -172,7 +189,7 @@ below for the two things it cannot see.
 
 ### What shrinking still cannot work out for you
 
-Shrink is an advanced opt-in. `assembly = true` is the reliable choice; reach for `"shrink"` when
+Minification is an advanced opt-in. `assembly = true` is the reliable choice; reach for it when
 size matters enough to own the rules, and expect to iterate.
 
 **Instantiation by name that appears in no index.** Logback reads `logback.xml` and constructs
@@ -198,7 +215,7 @@ keep = ["-keep class com.example.GenericThing { *; }"]
 Both of these are what [`jk train`](dynamic-surface.md) exists to discover by observing a real
 run, rather than by guessing.
 
-Sample: [examples/shrunk-cli/](examples/shrunk-cli/).
+Sample: [examples/minified-cli/](examples/minified-cli/).
 
 ## Spring Boot
 

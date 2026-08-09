@@ -252,6 +252,8 @@ public final class PluginDescriptors {
                 Boolean.TRUE.equals(packaging.getBoolean("layered-image")),
                 extension,
                 deployCommand == null ? "" : deployCommand,
+                // Default true: a packager owns the module's artifact unless it says otherwise.
+                !Boolean.FALSE.equals(packaging.getBoolean("main-artifact")),
                 variants);
     }
 

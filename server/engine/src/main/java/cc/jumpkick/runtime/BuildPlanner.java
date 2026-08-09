@@ -396,7 +396,7 @@ public final class BuildPlanner {
             if (!jkBuild.plugins().isEmpty() && PluginDescriptorOps.ensureMaterialized(in.dir(), in.cache())) {
                 jkBuild = JkBuildParser.reparse(in.buildFile());
             }
-            // CLI packaging override (jk assemble --shrink / --fat) wins over jk.toml for this run.
+            // CLI packaging override (jk assemble --minified / --fat) wins over jk.toml for this run.
             // Read from Inputs.session (not ambient SessionContext) — single-build constructs the
             // plan outside SessionContext.where.
             jkBuild = applyAssemblyOverride(jkBuild, in.session());
@@ -794,8 +794,11 @@ public final class BuildPlanner {
                     ctx.label("parse jk.toml");
                     JkBuild project;
                     try {
+                        // Same override the plan was built from (jk assemble --fat/--minified).
+                        // Plan construction and step bodies must read one effective config, or a
+                        // task gets scheduled against a config its body cannot see.
                         project = cc.jumpkick.plugin.manifest.VariantApply.apply(
-                                        JkBuildParser.parse(in.buildFile()),
+                                        applyAssemblyOverride(JkBuildParser.parse(in.buildFile()), in.session()),
                                         in.dir(),
                                         cc.jumpkick.model.Variants.Selection.parse(in.variant()),
                                         in.clientEnv())
@@ -2674,7 +2677,7 @@ public final class BuildPlanner {
                     BuildLayout layout = ctx.require(LAYOUT);
                     Path classes = ctx.require(MAIN_CLASSES);
                     Path jarPath = layout.mainJar();
-                    if (pluginDecls != null && pluginDecls.packager() != null) {
+                    if (pluginDecls != null && pluginDecls.packager() != null && ownsMainArtifact(pluginActive)) {
                         // The packager's declared artifact extension replaces.jar (an APK, …).
                         jarPath = PluginBuild.mainArtifactPath(layout, pluginActive);
                         Files.createDirectories(jarPath.getParent());
@@ -3556,6 +3559,10 @@ public final class BuildPlanner {
                 b.addTask(assemblyStep(in.cache(), in.lockFile(), !in.ephemeralActions()));
                 leaves.add(TaskNames.PACKAGE_ASSEMBLY);
             }
+            if (project.minified()) {
+                b.addTask(minifiedStep(in, graalHome));
+                leaves.add(TaskNames.PACKAGE_MINIFIED);
+            }
             if (allowNative && project.nativeMode() == JkBuild.NativeMode.ALWAYS) {
                 b.addTask(nativeStep(in.dir(), in.cache(), in.lockFile(), in.jdksDir(), graalHome, null, List.of()));
                 leaves.add(TaskNames.NATIVE_IMAGE);
@@ -3594,7 +3601,7 @@ public final class BuildPlanner {
     static final String COMPILE_JOIN = "compile-join";
 
     /**
-     * Apply {@link cc.jumpkick.config.Session#assemblyOverride} (CLI {@code --fat}/{@code --shrink})
+     * Apply {@link cc.jumpkick.config.Session#assemblyOverride} (CLI {@code --fat}/{@code --minified})
      * over the parsed manifest for this invocation only. Prefer the request {@link Inputs#session}
      * over ambient {@link SessionContext} so single-build plan construction (outside {@code
      * SessionContext.where}) still sees the wire override.
@@ -3605,12 +3612,69 @@ public final class BuildPlanner {
             raw = SessionContext.current().assemblyOverride();
         }
         if (raw == null || raw.isBlank()) return build;
-        JkBuild.AssemblyMode mode = JkBuildParser.parseAssemblyOverride(raw);
-        if (mode == null) return build;
-        return JkBuildParser.withAssemblyModeOverride(build, mode);
+        JkBuildParser.ArtifactOverride override = JkBuildParser.parseArtifactOverride(raw);
+        if (override == null) return build;
+        return JkBuildParser.withArtifactOverride(build, override);
+    }
+
+    /**
+     * True when the active plugin's packager produces the module's main artifact. A packager that
+     * produces an <em>additional</em> one (shrink's {@code -min.jar}) runs from its own tail task
+     * instead, so the thin and fat jars are still built.
+     */
+    private static boolean ownsMainArtifact(PluginBuild.Active active) {
+        if (active == null) return true;
+        var packaging = active.manifest().packaging();
+        if (packaging == null) return true;
+        return packaging.resolve(active.config()).mainArtifact();
     }
 
     // ---- tail steps ----------------------------------------------------
+
+    /**
+     * {@code -min.jar} — the R8-minified artifact, produced by a packager that does not own the
+     * module's main artifact.
+     *
+     * <p>A tail beside {@code package-assembly}, not a replacement for {@code package-jar}:
+     * artifacts are additive, so a minified build ships the thin jar and the fat jar too. That is
+     * deliberate — a minified jar can be silently wrong for an application that resolves types by
+     * runtime generic matching, and the fat jar beside it is what makes that testable.
+     */
+    static Task minifiedStep(Inputs in, Path graalHome) {
+        return Task.builder(TaskNames.PACKAGE_MINIFIED)
+                .stage(BuildStage.PACKAGE)
+                .label("Minify")
+                .kind(TaskKind.CPU)
+                .requires(TaskNames.PACKAGE_ASSEMBLY)
+                .ticks(1)
+                .execute(ctx -> {
+                    JkBuild project = ctx.require(PROJECT);
+                    BuildLayout layout = ctx.require(LAYOUT);
+                    var active = PluginBuild.activeCodePlugin(project, layout.moduleRoot());
+                    if (active.isEmpty()) {
+                        throw new IllegalStateException("[application] minified = true requires the shrink plugin"
+                                + " — add a [shrink] table or remove `minified`");
+                    }
+                    PluginBuild.Declarations decls = PluginBuild.declarations(
+                            active.get(), project, layout.moduleRoot(), in.cache(), layout.moduleTargetDir());
+                    if (decls.packager() == null) {
+                        throw new IllegalStateException("[application] minified = true, but the active plugin `"
+                                + active.get().manifest().id() + "` declares no packager");
+                    }
+                    packagePlugin(
+                            ctx,
+                            in,
+                            JkStores.cas(in.cache()),
+                            project,
+                            ctx.require(MAIN_CLASSES),
+                            layout.minifiedJar(),
+                            active.get(),
+                            decls,
+                            Map.of());
+                    ctx.progress(1);
+                })
+                .build();
+    }
 
     /** Assembly-jar packaging — requires package-jar. */
     public static Task assemblyStep(Path cache, Path lockFile) {

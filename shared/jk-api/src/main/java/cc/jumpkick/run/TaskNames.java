@@ -40,6 +40,10 @@ public final class TaskNames {
     public static final String NATIVE_IMAGE = "native-image";
     public static final String PACKAGE_JAR = "package-jar";
     public static final String PACKAGE_ASSEMBLY = "package-assembly";
+
+    /** R8-minified jar ({@code -min.jar}), built from the same inputs as the fat jar. */
+    public static final String PACKAGE_MINIFIED = "package-minified";
+
     public static final String PACKAGE_SOURCES = "package-sources";
     public static final String PARSE_BUILD = "parse-build";
     public static final String PARSE_LOCK = "parse-lock";

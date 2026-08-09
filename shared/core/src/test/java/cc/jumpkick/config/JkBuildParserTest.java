@@ -1604,17 +1604,25 @@ class JkBuildParserTest {
         assertThat(parsed.isApplication()).isTrue();
         assertThat(parsed.mainClass()).isNull();
         assertThat(parsed.assembly()).isTrue();
-        assertThat(parsed.assemblyMode()).isEqualTo(JkBuild.AssemblyMode.FAT);
+        assertThat(parsed.minified()).isFalse();
     }
 
     @Test
-    void application_assembly_shrink_enables_shrink_plugin_without_table() {
-        JkBuild parsed = JkBuildParser.parse(PROJECT + "\n[application]\nmain = \"demo.App\"\nassembly = \"shrink\"\n");
+    void minified_implies_assembly_and_enables_the_shrink_plugin_without_a_table() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + "\n[application]\nmain = \"demo.App\"\nminified = true\n");
         assertThat(parsed.isApplication()).isTrue();
-        assertThat(parsed.assembly()).isFalse();
-        assertThat(parsed.assemblyShrink()).isTrue();
-        assertThat(parsed.assemblyMode()).isEqualTo(JkBuild.AssemblyMode.SHRINK);
+        assertThat(parsed.minified()).isTrue();
+        assertThat(parsed.assembly())
+                .as("the fat jar is built beside the minified one")
+                .isTrue();
         assertThat(parsed.pluginConfig("shrink")).isPresent();
+    }
+
+    @Test
+    void the_old_shrink_spelling_points_at_minified() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + "\n[application]\nassembly = \"shrink\"\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("minified = true");
     }
 
     @Test
@@ -1625,24 +1633,30 @@ class JkBuildParserTest {
     }
 
     @Test
-    void assembly_mode_override_injects_shrink_plugin() {
+    void artifact_override_minified_injects_the_shrink_plugin() {
         JkBuild base = JkBuildParser.parse(PROJECT + "\n[application]\nmain = \"demo.App\"\n");
-        assertThat(base.assemblyMode()).isEqualTo(JkBuild.AssemblyMode.OFF);
-        JkBuild shrunk = JkBuildParser.withAssemblyModeOverride(base, JkBuild.AssemblyMode.SHRINK);
-        assertThat(shrunk.assemblyMode()).isEqualTo(JkBuild.AssemblyMode.SHRINK);
-        assertThat(shrunk.pluginConfig("shrink")).isPresent();
-        assertThat(JkBuildParser.parseAssemblyOverride("fat")).isEqualTo(JkBuild.AssemblyMode.FAT);
-        assertThat(JkBuildParser.parseAssemblyOverride("shrink")).isEqualTo(JkBuild.AssemblyMode.SHRINK);
-        assertThat(JkBuildParser.parseAssemblyOverride("")).isNull();
+        assertThat(base.assembly()).isFalse();
+
+        JkBuild min = JkBuildParser.withArtifactOverride(base, new JkBuildParser.ArtifactOverride(false, true));
+        assertThat(min.minified()).isTrue();
+        assertThat(min.assembly()).isTrue();
+        assertThat(min.pluginConfig("shrink")).isPresent();
+
+        assertThat(JkBuildParser.parseArtifactOverride("fat"))
+                .isEqualTo(new JkBuildParser.ArtifactOverride(true, false));
+        assertThat(JkBuildParser.parseArtifactOverride("minified"))
+                .isEqualTo(new JkBuildParser.ArtifactOverride(true, true));
+        assertThat(JkBuildParser.parseArtifactOverride("")).isNull();
     }
 
     @Test
-    void assembly_mode_override_fat_strips_shrink_plugin() {
-        JkBuild shrink = JkBuildParser.parse(PROJECT + "\n[application]\nmain = \"demo.App\"\nassembly = \"shrink\"\n");
-        assertThat(shrink.pluginConfig("shrink")).isPresent();
-        JkBuild fat = JkBuildParser.withAssemblyModeOverride(shrink, JkBuild.AssemblyMode.FAT);
-        assertThat(fat.assemblyMode()).isEqualTo(JkBuild.AssemblyMode.FAT);
+    void artifact_override_fat_strips_the_shrink_plugin() {
+        JkBuild min = JkBuildParser.parse(PROJECT + "\n[application]\nmain = \"demo.App\"\nminified = true\n");
+        assertThat(min.pluginConfig("shrink")).isPresent();
+
+        JkBuild fat = JkBuildParser.withArtifactOverride(min, new JkBuildParser.ArtifactOverride(true, false));
         assertThat(fat.assembly()).isTrue();
+        assertThat(fat.minified()).isFalse();
         assertThat(fat.pluginConfig("shrink")).isEmpty();
     }
 

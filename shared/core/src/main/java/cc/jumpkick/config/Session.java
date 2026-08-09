@@ -33,7 +33,7 @@ public record Session(
         // Variant selection + client-resolved env (env: indirection for signing secrets).
         String variant,
         java.util.Map<String, String> clientEnv,
-        /** CLI packaging override: empty, {@code fat}, or {@code shrink} ({@code jk assemble --shrink}). */
+        /** CLI packaging override: empty, {@code fat}, or {@code minified} ({@code jk assemble --minified}). */
         String assemblyOverride,
         /** Test suite / tag selection ({@code jk test --suite}/tags); default = unit suite only. */
         TestSelection testSelection,

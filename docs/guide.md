@@ -531,32 +531,35 @@ jk export bom --out dist/my-bom.pom --overwrite
 
 Import that POM like any other platform BOM (`[platform-dependencies]`).
 
-## Packaging (thin / assembly / shrink / Boot / Quarkus / Grails)
+## Packaging (thin / fat / minified / Boot / Quarkus / Grails)
 
 | Artifact | Config | Command |
 |---|---|---|
-| Thin jar | default | `jk build` |
-| Assembly jar (`target/<name>-<version>-all.jar`) | `[application] assembly = true` | `jk assemble` / `jk build` |
-| Shrunk jar | `[application] assembly = "shrink"` | `jk assemble` / `jk build` (R8; size labels) |
+| Thin jar (`target/<name>-<version>.jar`) | always | `jk build` |
+| Fat jar (`target/<name>-<version>-all.jar`) | `[application] assembly = true` | `jk assemble` / `jk build` |
+| Minified jar (`target/<name>-<version>-min.jar`) | `[application] minified = true` | `jk assemble` / `jk build` (R8; size labels) |
 | Spring Boot jar | spring-boot plugin | `jk build` (not assembly packaging) |
 | Quarkus fast-jar / uber-jar | `[quarkus]` (+ optional `package`) | `jk build` (augment; not assembly packaging) |
 | Grails jar (Boot layout) | grails plugin | `jk build` (not assembly packaging) |
 
-One-off without editing `jk.toml`: `jk assemble --fat` or `jk assemble --shrink`. Persist with
-`--write-config` (surgical edit of `assembly` only). See [features/packaging.md](features/packaging.md).
+jk's own artifacts are additive: the thin jar is always written, `assembly` adds the fat jar,
+and `minified` adds the R8 jar *and* the fat jar beside it so the two can be compared.
+
+One-off without editing `jk.toml`: `jk assemble --fat` or `jk assemble --minified`. Persist with
+`--write-config` (surgical edit of the artifact flags only). See [features/packaging.md](features/packaging.md).
 
 Assembly merge/exclude rules (SPI, Spring META-INF, drop signatures / `module-info.class`):
 [features/packaging.md](features/packaging.md). Samples:
-[assembly-app](features/examples/assembly-app/), [shrunk-cli](features/examples/shrunk-cli/).
+[assembly-app](features/examples/assembly-app/), [minified-cli](features/examples/minified-cli/).
 
 ```toml
 [application]
 main = "com.example.App"
-assembly = true       # fat jar — jk assemble (or jk build)
-# assembly = "shrink" # R8 small fat jar — same commands
+assembly = true    # adds -all.jar — jk assemble (or jk build)
+# minified = true  # adds -min.jar via R8, built beside -all.jar
 ```
 
-R8 is **opt-in** via `assembly = "shrink"` — never the default.
+R8 is **opt-in** via `minified = true` — never the default.
 
 ### Grails (`[grails]`)
 
@@ -589,8 +592,8 @@ jk update                    # re-resolve within ranges (rewrites jk-lock.toml)
 jk update --platform=floor   # opt-in soft BOM pins for this re-resolve (see platforms)
 jk export bom                # freeze lock scope as a Maven BOM POM
 jk compile                   # type-check
-jk build                     # package (thin, assembly, shrink, Boot, Quarkus, …)
-jk assemble                  # assembly/shrink jar (alias: assembly; or --fat/--shrink)
+jk build                     # package (thin, fat, minified, Boot, Quarkus, …)
+jk assemble                  # fat/minified jar (alias: assembly; or --fat/--minified)
 jk release                   # local ship layout (alias: dist) — build + workers + target/dist
 jk test
 jk run -- args…              # at workspace root: runs the module with [application] main

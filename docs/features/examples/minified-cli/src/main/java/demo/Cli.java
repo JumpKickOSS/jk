@@ -4,7 +4,7 @@ package demo;
 /** Minimal main for the shrink packaging sample (enable [shrink] when the plugin is on the path). */
 public final class Cli {
     public static void main(String[] args) {
-        System.out.println("shrunk-cli ok");
+        System.out.println("minified-cli ok");
     }
 
     private Cli() {}

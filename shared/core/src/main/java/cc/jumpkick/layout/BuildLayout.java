@@ -351,6 +351,11 @@ public final class BuildLayout {
         return artifactDir().resolve(artifact + "-" + version + "-all.jar");
     }
 
+    /** {@code <artifactDir>/<artifact>-<version>-min.jar} — the R8-minified jar. */
+    public Path minifiedJar() {
+        return artifactDir().resolve(artifact + "-" + version + "-min.jar");
+    }
+
     /** {@code <artifactDir>/<artifact>-<version>-sources.jar}. */
     public Path sourcesJar() {
         return artifactDir().resolve(artifact + "-" + version + "-sources.jar");

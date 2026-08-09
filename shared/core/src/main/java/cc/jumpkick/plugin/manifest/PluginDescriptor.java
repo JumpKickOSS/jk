@@ -102,6 +102,12 @@ public record PluginDescriptor(
             boolean layeredImage,
             String artifactExtension,
             String deployCommand,
+            /**
+             * False when this packager produces an <em>additional</em> artifact rather than the
+             * module's main one — the shrink packager writes {@code -min.jar} beside the thin and
+             * fat jars. Boot, Quarkus and Grails own the main artifact and leave this true.
+             */
+            boolean mainArtifact,
             List<Variant> variants) {
 
         /** Config-conditional packaging override; first matching {@code when} wins. */

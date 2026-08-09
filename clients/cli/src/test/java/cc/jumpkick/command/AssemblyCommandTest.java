@@ -52,7 +52,7 @@ class AssemblyCommandTest {
         assertThat(msg).contains("jk assemble");
         assertThat(msg).contains("assembly = true");
         assertThat(msg).contains("--fat");
-        assertThat(msg).contains("--shrink");
+        assertThat(msg).contains("--minified");
         assertThat(msg).contains("--write-config");
     }
 
@@ -73,19 +73,19 @@ class AssemblyCommandTest {
     }
 
     @Test
-    void fat_and_shrink_are_mutually_exclusive(@TempDir Path dir) throws IOException {
+    void fat_and_minified_are_mutually_exclusive(@TempDir Path dir) throws IOException {
         Files.writeString(dir.resolve("jk.toml"), TOML);
         ByteArrayOutputStream err = new ByteArrayOutputStream();
         PrintStream orig = System.err;
         System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
         int exit;
         try {
-            exit = Jk.execute("assemble", "-C", dir.toString(), "--fat", "--shrink");
+            exit = Jk.execute("assemble", "-C", dir.toString(), "--fat", "--minified");
         } finally {
             System.setErr(orig);
         }
         assertThat(exit).isEqualTo(64); // Exit.USAGE
-        assertThat(err.toString(StandardCharsets.UTF_8)).contains("--fat").contains("--shrink");
+        assertThat(err.toString(StandardCharsets.UTF_8)).contains("--fat").contains("--minified");
     }
 
     @Test
@@ -115,7 +115,7 @@ class AssemblyCommandTest {
         System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
         System.setOut(new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8));
         try {
-            Jk.execute("assemble", "-C", dir.toString(), "--shrink", "--write-config", "--skip-tests");
+            Jk.execute("assemble", "-C", dir.toString(), "--minified", "--write-config", "--skip-tests");
         } catch (Exception ignored) {
             // engine/build may fail in unit env; config write happens first
         } finally {
@@ -124,9 +124,9 @@ class AssemblyCommandTest {
         }
         String content = Files.readString(dir.resolve("jk.toml"));
         assertThat(content).contains("main = \"demo.App\"");
-        assertThat(content).contains("assembly = \"shrink\"");
+        assertThat(content).contains("minified = true").contains("assembly = true");
         JkBuild parsed = JkBuildParser.parse(content);
-        assertThat(parsed.assemblyMode()).isEqualTo(JkBuild.AssemblyMode.SHRINK);
+        assertThat(parsed.minified()).isTrue();
         assertThat(parsed.mainClass()).isEqualTo("demo.App");
         assertThat(err.toString(StandardCharsets.UTF_8)).contains("wrote");
     }
@@ -146,7 +146,8 @@ class AssemblyCommandTest {
             System.setErr(origErr);
             System.setOut(origOut);
         }
-        assertThat(JkBuildParser.parse(Files.readString(dir.resolve("jk.toml"))).assemblyMode())
-                .isEqualTo(JkBuild.AssemblyMode.FAT);
+        JkBuild written = JkBuildParser.parse(Files.readString(dir.resolve("jk.toml")));
+        assertThat(written.assembly()).isTrue();
+        assertThat(written.minified()).isFalse();
     }
 }
