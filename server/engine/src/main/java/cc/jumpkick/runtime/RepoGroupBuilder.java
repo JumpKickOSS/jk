@@ -8,6 +8,7 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.model.RepositorySpec;
+import cc.jumpkick.repo.ExclusiveGroups;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoCredentialResolver;
 import cc.jumpkick.repo.RepoGroup;
@@ -128,31 +129,46 @@ public final class RepoGroupBuilder {
                 // which silently disabled the metadata TTL cache and the ~/.m2 probe for every real
                 // build.
                 repos.add(MavenRepo.overTransport(spec.name(), spec.url(), transport, cas, cred, http, mirrorToM2));
-                exclusiveGroups.add(spec.groups());
+                exclusiveGroups.add(exclusiveGroupsFor(spec));
             }
-            maybeWarnMultiRepoWithoutBindings(effective);
+            maybeWarnMultiRepoWithoutBindings(effective, exclusiveGroups);
             return new RepoGroup(repos, exclusiveGroups);
         }
         return new RepoGroup(repos);
     }
 
     /**
-     * Once per {@link #buildFor} when the effective remote list has more than one repo and none
-     * declare exclusive {@code groups}. Soft warn — resolve still proceeds.
+     * Exclusive patterns for {@code spec}: declared {@code groups} win; otherwise Google Android
+     * Maven gets {@link RepositorySpec#GOOGLE_ANDROID_EXCLUSIVE_GROUPS} so {@code androidx.*}
+     * never double-probes Central.
      */
-    static void maybeWarnMultiRepoWithoutBindings(List<RepositorySpec> effective) {
+    static List<String> exclusiveGroupsFor(RepositorySpec spec) {
+        if (spec.hasExclusiveGroups()) return spec.groups();
+        if (isGoogleAndroidMaven(spec)) return RepositorySpec.GOOGLE_ANDROID_EXCLUSIVE_GROUPS;
+        return List.of();
+    }
+
+    /** True for the built-in Google Maven remote (name or well-known host). */
+    static boolean isGoogleAndroidMaven(RepositorySpec spec) {
+        if (spec == null) return false;
+        if ("google".equalsIgnoreCase(spec.name())) return true;
+        String host = spec.url().getHost();
+        return host != null
+                && (host.equalsIgnoreCase("dl.google.com")
+                        || host.equalsIgnoreCase("maven.google.com"));
+    }
+
+    /**
+     * Once per {@link #buildFor} when the effective remote list has more than one repo and none
+     * end up with exclusive bindings (after Google defaults). Soft warn — resolve still proceeds.
+     */
+    static void maybeWarnMultiRepoWithoutBindings(List<RepositorySpec> effective, List<List<String>> exclusive) {
         if (effective == null || effective.size() <= 1) return;
-        boolean any = false;
-        for (RepositorySpec s : effective) {
-            if (s.hasExclusiveGroups()) {
-                any = true;
-                break;
-            }
-        }
-        if (any) return;
+        if (ExclusiveGroups.anyBinding(exclusive)) return;
         System.err.println("jk: warning: multiple repositories configured without exclusive `groups` bindings "
                 + "(dependency-confusion risk). Bind internal namespaces, e.g. "
                 + "[repositories.internal] groups = [\"com.acme\", \"com.acme.*\"]. "
+                + "Google Android groups are bound by default when the Google Maven remote is present. "
                 + "See the guide § Auth and repositories.");
     }
 

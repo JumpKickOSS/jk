@@ -76,13 +76,22 @@ class RepoGroupBuilderTest {
                 new RepositorySpec("central", URI.create("https://repo.maven.apache.org/maven2/")),
                 new RepositorySpec("corp", URI.create("https://corp.example/maven/")));
         // Smoke: does not throw; warn goes to stderr (once per call).
-        RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(multi);
-        RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(List.of(RepositorySpec.MAVEN_CENTRAL));
-        RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(List.of(new RepositorySpec(
-                "internal",
-                URI.create("https://i.example/"),
-                Optional.empty(),
-                Optional.empty(),
-                List.of("com.acme"))));
+        RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(multi, List.of(List.of(), List.of()));
+        RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(
+                List.of(RepositorySpec.MAVEN_CENTRAL), List.of(List.of()));
+        // With exclusive bindings (JumpKick/Google defaults or user groups) — no warn.
+        RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(
+                List.of(
+                        RepositorySpec.MAVEN_CENTRAL,
+                        RepositorySpec.GOOGLE_MAVEN),
+                List.of(List.of(), RepositorySpec.GOOGLE_ANDROID_EXCLUSIVE_GROUPS));
+        RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(
+                List.of(new RepositorySpec(
+                        "internal",
+                        URI.create("https://i.example/"),
+                        Optional.empty(),
+                        Optional.empty(),
+                        List.of("com.acme"))),
+                List.of(List.of("com.acme")));
     }
 }

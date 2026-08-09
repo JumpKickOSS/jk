@@ -80,7 +80,27 @@ work for the chosen GAV.
 | Hot re-lock (same process) | **~3 s** |
 
 Target: both under **10 s** without network. Enable `-Djk.resolve.profile=true` / `JK_RESOLVE_PROFILE=1`
-for `pomBuild` / `deps` / `kmp` / `versions` / `solve` counters.
+for `pomBuild` / `deps` / `kmp` / `versions` / `solve` counters, plus plan phases
+`phasePrep` / `phaseResolve` / `phasePost` on the engine (printed to stderr when profile is on).
+
+### Force vs process caches
+
+`--force` / `-F` / `jk update` (force-revalidate) **clears** process-wide resolve memos (effective
+POM, GMM parse, KMP selection, local fetch hits, version lists) before resolve so stale answers
+cannot win. Non-force warm re-locks keep the memos.
+
+### Default Google exclusive groups
+
+When the Google Android Maven remote is present, `androidx.*` / `com.android.*` /
+`com.google.android.*` (and related) are exclusively bound to it — Central is not probed for those
+GAs. Override by declaring `[repositories.google] groups = [...]` explicitly (including empty only
+if you intentionally want dual-probe — not recommended).
+
+### Engine first-lock
+
+AOT cache is keyed by engine jar identity + JDK. After the engine endpoint is live, a background
+task classloads PubGrub/resolve types so the first plan pays less classload. Residual first-lock
+cost after `jk engine start` is mostly cold process resolve memos + any remaining JIT.
 
 ## Lazy version universes (metadata skip)
 

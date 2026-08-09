@@ -53,6 +53,7 @@ public final class EffectivePomBuilder {
         PROCESS_CACHE.clear();
         IN_FLIGHT.clear();
         RepoGroup.clearProcessFetchCache();
+        RepoGroup.clearProcessVersionsCache();
     }
 
     public EffectivePomBuilder(MavenRepo repo) {

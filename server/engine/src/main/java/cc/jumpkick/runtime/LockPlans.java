@@ -139,6 +139,10 @@ public final class LockPlans {
                     ctx.label("Resolving");
                     JkBuild eff = ctx.require(EFFECTIVE);
                     Cas cas = JkStores.cas(cache);
+                    // --force / Session force: drop process resolve memos before any POM/metadata work.
+                    if (SessionContext.current().config().forceOr(false)) {
+                        cc.jumpkick.resolve.ResolveProcessCacheControl.clearAll();
+                    }
                     if (SessionContext.current().offline() && Files.exists(lockFile)) {
                         try {
                             Lockfile existing = LockfileReader.read(lockFile);
@@ -151,6 +155,9 @@ public final class LockPlans {
                             throw new RuntimeException(e);
                         }
                     }
+                    boolean profile = cc.jumpkick.resolve.ResolveProfile.on();
+                    if (profile) cc.jumpkick.resolve.ResolveProfile.reset();
+                    long prepT0 = profile ? System.nanoTime() : 0L;
                     RepoGroup baseRepos = RepoGroupBuilder.buildFor(eff, repoUrl, cas);
                     Lockfile existing = null;
                     if (Files.exists(lockFile)) {
@@ -174,6 +181,7 @@ public final class LockPlans {
                         ctx.error(TaskNames.RESOLVE_DEPS, e.getMessage());
                         throw new RuntimeException(e);
                     }
+                    if (profile) cc.jumpkick.resolve.ResolveProfile.phasePrep(System.nanoTime() - prepT0);
                     RepoGroup repos = pathPrep.repos();
                     // Deliberately no Diagnostics.Palette here — see the class javadoc.
                     LockOrchestrator orchestrator = new LockOrchestrator(repos)
@@ -222,6 +230,7 @@ public final class LockPlans {
                     try {
                         boolean keepPins = conservative && !sources && existing != null;
                         Lockfile lock;
+                        long resolveT0 = profile ? System.nanoTime() : 0L;
                         if (sources) {
                             lock = orchestrator.lockWithSources(
                                     pathPrep.project(),
@@ -249,6 +258,10 @@ public final class LockPlans {
                                     withDefaultFeatures,
                                     wrappedObserver);
                         }
+                        if (profile) {
+                            cc.jumpkick.resolve.ResolveProfile.phaseResolve(System.nanoTime() - resolveT0);
+                        }
+                        long postT0 = profile ? System.nanoTime() : 0L;
                         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
                         String kotlinVersion = keepPins && existing.kotlin() != null
                                 ? existing.kotlin()
@@ -258,6 +271,10 @@ public final class LockPlans {
                             lock = lock.withKotlin(kotlinVersion);
                         }
                         ctx.put(LOCKFILE, lock);
+                        if (profile) {
+                            cc.jumpkick.resolve.ResolveProfile.phasePost(System.nanoTime() - postT0);
+                            System.err.println("jk: " + cc.jumpkick.resolve.ResolveProfile.report());
+                        }
                     } catch (UnsatisfiableException e) {
                         ctx.error("verbatim", e.getMessage());
                         throw new RuntimeException(e);

@@ -26,12 +26,24 @@ public final class RepoGroup {
     /** Same for non-POM artifacts (Gradle {@code .module}, jars). Keyed by GAVC+type. */
     private static final ConcurrentHashMap<String, RepoFetched> ARTIFACT_HIT_CACHE = new ConcurrentHashMap<>();
 
+    /**
+     * Process-wide {@link #availableVersions} memo keyed by {@code group:artifact}. Metadata is
+     * immutable within the TTL window; force (see {@link #clearProcessVersionsCache}) drops this.
+     */
+    private static final ConcurrentHashMap<String, List<String>> VERSIONS_CACHE = new ConcurrentHashMap<>();
+
     private static final int HIT_CACHE_MAX = 16_384;
+    private static final int VERSIONS_CACHE_MAX = 8_192;
 
     /** Test seam — drop process fetch memos. */
     public static void clearProcessFetchCache() {
         POM_HIT_CACHE.clear();
         ARTIFACT_HIT_CACHE.clear();
+    }
+
+    /** Drop process-wide version lists (force / tests). */
+    public static void clearProcessVersionsCache() {
+        VERSIONS_CACHE.clear();
     }
 
     private final List<MavenRepo> repos;
@@ -146,11 +158,25 @@ public final class RepoGroup {
      * restrict which remotes are eligible at all.
      */
     public List<String> availableVersions(Coordinate coord) throws IOException, InterruptedException {
+        String ga = coord.group() + ":" + coord.artifact();
+        List<String> cached = VERSIONS_CACHE.get(ga);
+        if (cached != null) return cached;
         for (MavenRepo repo : eligibleRepos(coord)) {
             List<String> found = repo.availableVersions(coord);
-            if (!found.isEmpty()) return found;
+            if (!found.isEmpty()) {
+                List<String> immutable = List.copyOf(found);
+                if (VERSIONS_CACHE.size() < VERSIONS_CACHE_MAX) {
+                    VERSIONS_CACHE.putIfAbsent(ga, immutable);
+                }
+                return immutable;
+            }
         }
-        return List.of();
+        // Cache empty only after a full miss — rare; avoids re-statting empty GAs every expand.
+        List<String> empty = List.of();
+        if (VERSIONS_CACHE.size() < VERSIONS_CACHE_MAX) {
+            VERSIONS_CACHE.putIfAbsent(ga, empty);
+        }
+        return empty;
     }
 
     /**

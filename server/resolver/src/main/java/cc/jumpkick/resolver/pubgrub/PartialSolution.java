@@ -179,6 +179,11 @@ public final class PartialSolution {
 
     /** True iff every version still allowed for {@code term.pkg()} satisfies {@code term}. */
     public boolean satisfies(Term term) {
+        // Decided packages are singletons — avoid AllowedSet project/intersect on the hot path.
+        String decided = decisionByPackage.get(term.pkg());
+        if (decided != null) {
+            return term.effectiveVersions().contains(decided);
+        }
         PackageState s = byPackage.get(term.pkg());
         VersionSet effective = term.effectiveVersions();
         if (s == null) {
@@ -211,6 +216,10 @@ public final class PartialSolution {
     public boolean contradicts(Term term) {
         PackageState s = byPackage.get(term.pkg());
         if (s == null || !s.mentioned) return false;
+        String decided = decisionByPackage.get(term.pkg());
+        if (decided != null) {
+            return !term.effectiveVersions().contains(decided);
+        }
         VersionSet effective = term.effectiveVersions();
         VersionUniverse u = universes.get(term.pkg());
         if (s.allowed != null && u != null && !s.allowed.isEmpty()) {

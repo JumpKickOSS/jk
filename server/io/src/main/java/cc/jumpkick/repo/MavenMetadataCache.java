@@ -60,7 +60,19 @@ public final class MavenMetadataCache {
     public static <T> T withForceRevalidate(java.util.concurrent.Callable<T> body) throws Exception {
         Boolean prev = FORCE_REVALIDATE.get();
         FORCE_REVALIDATE.set(Boolean.TRUE);
+        // Force means do not trust process-wide resolve memos computed against a prior view.
+        // Concrete clears live on the types themselves so this module stays free of resolver deps.
+        EffectivePomBuilder.clearProcessCache();
+        GradleModuleMetadata.clearParseCache();
         try {
+            // KMP process cache is in resolver — clear via reflective no-op if absent (tests/io-only).
+            try {
+                Class.forName("cc.jumpkick.resolver.KmpRedirects")
+                        .getMethod("clearProcessCache")
+                        .invoke(null);
+            } catch (ReflectiveOperationException ignored) {
+                // io unit tests without resolver on classpath
+            }
             return body.call();
         } finally {
             FORCE_REVALIDATE.set(prev);

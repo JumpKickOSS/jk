@@ -1256,20 +1256,25 @@ Maven**. Routing is exclusive by group:
 | Coordinates | Where they resolve |
 |-------------|--------------------|
 | `cc.jumpkick`, `cc.jumpkick.*`, `build.jumpkick`, `build.jumpkick.*` | **JumpKick only** (never Central) — dependency-confusion safe |
-| Everything else | **Central then Google** (JumpKick is not probed for third-party GAV 404s) |
+| `androidx.*`, `com.android.*`, `com.google.android.*`, Firebase/ML Kit/Play-related Google Android groups | **Google Maven only** (never Central dual-probe) |
+| Everything else | **Central** (and other non-specialist remotes; JumpKick/Google specialists are not probed for unbound third-party GAs) |
 
 So AndroidX / R8 / apksig resolve without a per-project `[repositories]` table, and first-party
 workers still come from `https://jumpkick.build/repo/`. Local lookup prefers CAS, per-repo
 mirrors under the cache, and `~/.m2` before the network. Corporate mirrors, forge package
 registries, S3/MinIO, and GCS are supported. Prefer `auth = "env:TOKEN"` over secrets in TOML.
 
+Google’s exclusive set applies whenever the Google Android Maven remote is present (built-in or
+declared as `google` / `dl.google.com`). Override with an explicit
+`[repositories.google] groups = [...]` if you must.
+
 Details: [maven-repo.md](maven-repo.md).
 
 ### Exclusive groups (dependency-confusion defense)
 
-Built-in JumpKick groups are already exclusive (table above). When you declare an **internal**
-repository next to a public one, bind *your* Maven namespaces the same way so those
-coordinates are **never** discovered or fetched from other remotes:
+Built-in JumpKick and Google Android groups are already exclusive (table above). When you declare
+an **internal** repository next to a public one, bind *your* Maven namespaces the same way so
+those coordinates are **never** discovered or fetched from other remotes:
 
 ```toml
 [repositories.central]

@@ -464,6 +464,8 @@ public final class EngineServer implements AutoCloseable {
         engineMaintenance.start();
         // First-start self-heal: feeds → templates → AOT/cal on the idle worker (does not block accept).
         scheduleHostWarmupIfNeeded(false);
+        // Touch resolve/PubGrub classes so the first real lock does not pay classload on the critical path.
+        scheduleResolveClassWarmup();
         startDisplacementWatchdog();
         acceptLoop();
         cleanup();
@@ -4639,6 +4641,26 @@ public final class EngineServer implements AutoCloseable {
             kickPendingWarmup(/* trailGc */ true);
         }
         return true;
+    }
+
+    /**
+     * Background classload of resolve/PubGrub hot types after the endpoint is live. Does not run a
+     * real lock (would need a store/project); only reduces first-lock classload latency.
+     */
+    private void scheduleResolveClassWarmup() {
+        if (shuttingDown || draining) return;
+        Thread.ofVirtual().name("jk-resolve-warmup").start(() -> {
+            try {
+                Class.forName("cc.jumpkick.resolver.pubgrub.PubGrubSolver");
+                Class.forName("cc.jumpkick.resolver.pubgrub.PartialSolution");
+                Class.forName("cc.jumpkick.resolver.MavenPackageSource");
+                Class.forName("cc.jumpkick.resolver.LockOrchestrator");
+                Class.forName("cc.jumpkick.repo.EffectivePomBuilder");
+                Class.forName("cc.jumpkick.resolve.ResolveProcessCacheControl");
+            } catch (ClassNotFoundException | LinkageError ignored) {
+                // best-effort
+            }
+        });
     }
 
     /**

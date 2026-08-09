@@ -23,6 +23,9 @@ public final class ResolveProfile {
     private static final AtomicLong SOLVE_CALLS = new AtomicLong();
     private static final AtomicLong RELATION_NS = new AtomicLong();
     private static final AtomicLong RELATION_CALLS = new AtomicLong();
+    private static final AtomicLong PHASE_PREP_NS = new AtomicLong();
+    private static final AtomicLong PHASE_RESOLVE_NS = new AtomicLong();
+    private static final AtomicLong PHASE_POST_NS = new AtomicLong();
 
     private ResolveProfile() {}
 
@@ -47,6 +50,27 @@ public final class ResolveProfile {
         SOLVE_CALLS.set(0);
         RELATION_NS.set(0);
         RELATION_CALLS.set(0);
+        PHASE_PREP_NS.set(0);
+        PHASE_RESOLVE_NS.set(0);
+        PHASE_POST_NS.set(0);
+    }
+
+    /** Wall time for lock plan prep (git/path materialize, repo build) outside PubGrub. */
+    public static void phasePrep(long nanos) {
+        if (!on()) return;
+        PHASE_PREP_NS.addAndGet(nanos);
+    }
+
+    /** Wall time for {@code LockOrchestrator.lock} (graph + materialize). */
+    public static void phaseResolve(long nanos) {
+        if (!on()) return;
+        PHASE_RESOLVE_NS.addAndGet(nanos);
+    }
+
+    /** Wall time after resolve (kotlin pin, stamp, write lockfile). */
+    public static void phasePost(long nanos) {
+        if (!on()) return;
+        PHASE_POST_NS.addAndGet(nanos);
     }
 
     public static void pomBuild(long nanos, boolean cacheHit) {
@@ -114,7 +138,14 @@ public final class ResolveProfile {
                 + " relationTo="
                 + ms(RELATION_NS)
                 + "ms/"
-                + RELATION_CALLS.get();
+                + RELATION_CALLS.get()
+                + " phasePrep="
+                + ms(PHASE_PREP_NS)
+                + "ms phaseResolve="
+                + ms(PHASE_RESOLVE_NS)
+                + "ms phasePost="
+                + ms(PHASE_POST_NS)
+                + "ms";
     }
 
     private static long ms(AtomicLong nanos) {

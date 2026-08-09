@@ -69,9 +69,9 @@ public final class KmpRedirects {
     /** The redirect selection for {@code module}:{@code version}, or empty when none applies. */
     public Optional<Selection> selectionFor(String module, String version) {
         if (repos == null) return Optional.empty();
-        // Fast reject: groups that never publish Gradle module metadata / KMP roots. Avoids a
-        // tryFetchPom + head scan on every Guava/OkHttp/etc expand (hundreds per Android lock).
-        if (!mayPublishGradleMetadata(module)) return Optional.empty();
+        // Authoritative gate is the POM Gradle-metadata marker (see lookup) — not a group
+        // allowlist. Missing a KMP redirect is a classpath bug; process memo makes plain-Maven
+        // GAs cheap after the first head-scan miss.
         // Key by GA@ver — type/classifier (jar vs aar) share one POM/.module. BOM warm uses
         // default jar: keys; AndroidX solver packages are often aar: — separate keys forced a
         // full cold re-parse of every KMP root on first-in-process locks.
@@ -155,43 +155,4 @@ public final class KmpRedirects {
         return head.contains(GradleModuleMetadata.POM_MARKER);
     }
 
-    /**
-     * Groups that commonly publish {@code .module} files (Gradle metadata / KMP). Everything else
-     * is plain Maven — skip the marker scan. Broad enough for AndroidX, Kotlin, Compose, and the
-     * usual multiplatform ecosystem; uncommon KMP roots still work if they land under these
-     * prefixes or are added later.
-     */
-    static boolean mayPublishGradleMetadata(String moduleKey) {
-        String ga = moduleKey;
-        try {
-            if (PackageId.isMavenPackageKey(moduleKey)) {
-                ga = PackageId.parse(moduleKey).ga();
-            }
-        } catch (RuntimeException ignored) {
-            // fall through with raw key
-        }
-        int colon = ga.indexOf(':');
-        String group = colon > 0 ? ga.substring(0, colon) : ga;
-        return group.startsWith("androidx.")
-                || group.startsWith("org.jetbrains.")
-                || group.startsWith("com.google.android.")
-                || group.startsWith("com.android.")
-                || group.startsWith("app.cash.")
-                || group.startsWith("co.touchlab.")
-                || group.startsWith("com.russhwolf.")
-                || group.startsWith("io.ktor.")
-                || group.startsWith("io.github.oshai.")
-                || group.startsWith("org.koin.")
-                || group.startsWith("com.arkivanov.")
-                || group.startsWith("cafe.adriel.voyager")
-                || group.equals("com.squareup.okio")
-                || group.startsWith("com.squareup.okio.")
-                || group.startsWith("org.mongodb.")
-                || group.startsWith("io.insert-koin.")
-                || group.startsWith("media.kamel.")
-                || group.startsWith("com.moriatsushi.")
-                || group.startsWith("com.github.skydoves.")
-                || group.startsWith("io.coil-kt")
-                || group.startsWith("com.google.accompanist");
-    }
 }
