@@ -38,8 +38,19 @@ final class AotCacheTrainer {
      */
     static final FileTime LAYER_TIME = FileTime.fromMillis(1000);
 
-    /** The cache's path inside the image, and the name the entrypoint refers to. */
-    static final String CACHE_PATH = "/app/app.aot";
+    /** Where the application tree lives in the image; also the working directory. */
+    static final String APP_DIR = "/app";
+
+    /** The cache file, named relative to {@link #APP_DIR}. */
+    static final String CACHE_FILE = "app.aot";
+
+    /**
+     * A trained layout: the tree to ship at {@link #APP_DIR}, the java arguments that run it, and
+     * the cache. Paths are relative and the image sets {@code WORKDIR}, which is how Spring, Paketo
+     * and Quarkus all do it — the archive records each entry as given, so a relative classpath run
+     * from a fixed directory matches wherever the tree ends up.
+     */
+    record Result(Path stagingRoot, List<String> runArgs, Path cache) {}
 
     private static final long TRAIN_TIMEOUT_SECONDS = 300;
 
@@ -47,10 +58,11 @@ final class AotCacheTrainer {
 
     /** Why an AOT cache cannot be trained for this image, or null when it can. */
     static String unsupportedReason(ImageBuilder.Plan plan) {
-        if (plan.classesDir() != null) {
-            return "the exploded-classes image layout cannot be trained — a CDS dump refuses any"
-                    + " classpath entry that is a directory (JDK-8329980, Won't Fix). Package this"
-                    + " module as a jar image layout to use [image] aot-cache";
+        if (plan.classesDir() != null && !BootLayout.isBootJar(plan.mainJar())) {
+            return "this module's image is an exploded-classes layout and its main artifact is not a"
+                    + " Spring Boot jar, so there is nothing to unpack into a trainable shape. A CDS"
+                    + " dump refuses any classpath entry that is a directory (JDK-8329980, Won't"
+                    + " Fix)";
         }
         if (containerRuntime(plan.config().dockerExecutable()) == null
                 && !BaseJre.hostCanExecute(plan.config().platforms())) {
@@ -76,43 +88,50 @@ final class AotCacheTrainer {
      * @param classpath the classpath string the image entrypoint will use — the training run must
      *     be given the identical string, in the identical order, or the JVM rejects the cache
      */
-    static Path train(ImageBuilder.Plan plan, String classpath, Path workDir, Consumer<String> log)
+    static Result train(ImageBuilder.Plan plan, Path workDir, Consumer<String> log)
             throws IOException, InterruptedException {
         String blocked = unsupportedReason(plan);
         if (blocked != null) throw new IOException(blocked);
 
+        String base = qualify(plan.config().base());
+        Path localJre = localBaseJre(plan, base, workDir, log);
         Path staging = workDir.resolve("aot-train");
-        stageLayout(plan, staging);
+
+        // Boot nests its jars under BOOT-INF and loads them itself, so nothing useful reaches the
+        // JVM classpath. Its own `jarmode extract` produces the shape that can be trained: a thin
+        // launcher jar whose manifest Class-Path names lib/*.jar, relative.
+        List<String> runArgs;
+        if (BootLayout.isBootJar(plan.mainJar())) {
+            Path extractTool = localJre != null ? localJre : hostJava();
+            BootLayout.Extracted boot = BootLayout.extract(plan.mainJar(), staging, extractTool);
+            runArgs = List.of("-jar", boot.launcherJar());
+            log.accept("unpacked the Spring Boot jar for training (" + boot.launcherJar() + " + lib/)");
+        } else {
+            stageLayout(plan, staging);
+            runArgs = List.of("-cp", relativeClasspath(plan), plan.mainClass());
+        }
         stamp(staging);
 
-        String base = qualify(plan.config().base());
-
-        // Fast path: run the image's own JVM straight off the host. Same JVM, so the cache is just
-        // as valid, and no container runtime is involved — which is the point of building with Jib.
-        // Only when the host can execute that binary; a linux-amd64 JRE runs nowhere else.
-        Path localJre = localBaseJre(plan, base, workDir, log);
         List<String> prefix;
         if (localJre != null) {
             log.accept("training the AOT cache with " + base + "'s JVM, on this host");
             prefix = new ArrayList<>(List.of(localJre.toString()));
         } else {
-            String runtime = containerRuntime(plan.config().dockerExecutable());
             log.accept("training the AOT cache in " + base);
-            prefix = new ArrayList<>(containerPrefix(runtime, staging, base));
+            prefix = new ArrayList<>(
+                    containerPrefix(containerRuntime(plan.config().dockerExecutable()), staging, base));
             prefix.add("java");
         }
 
         List<String> train = new ArrayList<>(prefix);
-        Path cacheOut = localJre != null ? staging.resolve("app.aot") : Path.of(CACHE_PATH);
-        train.add("-XX:AOTCacheOutput=" + cacheOut);
+        train.add("-XX:AOTCacheOutput=" + CACHE_FILE);
         // Boot exits once the context is up. Anything else has to terminate on its own; JEP 514
         // assembles the cache at exit, so a run that never ends produces nothing.
-        if (isSpringBoot(plan)) train.add("-Dspring.context.exit=onRefresh");
-        train.addAll(List.of("-cp", localJre != null ? stagedClasspath(classpath, staging) : classpath));
-        train.add(plan.mainClass());
+        if (BootLayout.isBootJar(plan.mainJar())) train.add("-Dspring.context.exit=onRefresh");
+        train.addAll(runArgs);
 
-        Output trained = exec(train);
-        Path cache = staging.resolve("app.aot");
+        Output trained = exec(train, localJre != null ? staging : null);
+        Path cache = staging.resolve(CACHE_FILE);
         if (!Files.isRegularFile(cache)) {
             throw new IOException("the training run produced no cache. It has to be a run that exits —"
                     + " Spring Boot exits at context refresh, other applications must do so themselves.\n"
@@ -125,17 +144,21 @@ final class AotCacheTrainer {
         // level, so an unverified one is indistinguishable from a working one.
         List<String> verify = new ArrayList<>(prefix);
         verify.add("-Xlog:aot=info");
-        verify.add("-XX:AOTCache=" + cacheOut);
-        if (isSpringBoot(plan)) verify.add("-Dspring.context.exit=onRefresh");
-        verify.addAll(List.of("-cp", localJre != null ? stagedClasspath(classpath, staging) : classpath));
-        verify.add(plan.mainClass());
+        verify.add("-XX:AOTCache=" + CACHE_FILE);
+        if (BootLayout.isBootJar(plan.mainJar())) verify.add("-Dspring.context.exit=onRefresh");
+        verify.addAll(runArgs);
 
-        String refusal = refusal(exec(verify).text());
+        String refusal = refusal(exec(verify, localJre != null ? staging : null).text());
         if (refusal != null) {
             throw new IOException("the AOT cache was trained but the JVM refused it:\n  " + refusal);
         }
         log.accept("AOT cache verified (" + Files.size(cache) / (1024 * 1024) + " MiB)");
-        return cache;
+        return new Result(staging, runArgs, cache);
+    }
+
+    /** The JVM running this worker — good enough to rewrite a jar with Boot's jarmode tool. */
+    private static Path hostJava() {
+        return Path.of(System.getProperty("java.home"), "bin", "java");
     }
 
     /**
@@ -153,19 +176,6 @@ final class AotCacheTrainer {
             log.accept("could not read " + base + "'s JVM (" + e.getMessage() + ") — training in a container");
             return null;
         }
-    }
-
-    /**
-     * The container classpath rewritten onto the staging directory. The archive records each entry
-     * after the longest common prefix, and HotSpot substitutes a new prefix at load time, so
-     * training under {@code <staging>/classpath/x.jar} validates against {@code /app/classpath/x.jar}.
-     */
-    private static String stagedClasspath(String containerClasspath, Path staging) {
-        List<String> out = new ArrayList<>();
-        for (String entry : containerClasspath.split(":")) {
-            out.add(staging.resolve(entry.substring("/app/".length())).toString());
-        }
-        return String.join(":", out);
     }
 
     /** Lay out exactly what the image will contain, at the paths the image will use. */
@@ -194,11 +204,11 @@ final class AotCacheTrainer {
      * training run reads a bind mount while the real run reads an overlay — nothing guarantees
      * those enumerate alike, and a different order is a rejected cache.
      */
-    static String explicitClasspath(ImageBuilder.Plan plan) {
+    static String relativeClasspath(ImageBuilder.Plan plan) {
         List<String> entries = new ArrayList<>();
-        entries.add("/app/classpath/" + plan.mainJar().getFileName());
+        entries.add("classpath/" + plan.mainJar().getFileName());
         List<String> libs = new ArrayList<>();
-        for (Path jar : allDependencyJars(plan)) libs.add("/app/libs/" + jar.getFileName());
+        for (Path jar : allDependencyJars(plan)) libs.add("libs/" + jar.getFileName());
         java.util.Collections.sort(libs);
         entries.addAll(libs);
         return String.join(":", entries);
@@ -282,8 +292,11 @@ final class AotCacheTrainer {
 
     private record Output(String text, int exit) {}
 
-    private static Output exec(List<String> command) throws IOException, InterruptedException {
-        Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+    /** Run {@code command}, optionally from {@code cwd} — the local path trains from the staging tree. */
+    private static Output exec(List<String> command, Path cwd) throws IOException, InterruptedException {
+        ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
+        if (cwd != null) pb.directory(cwd.toFile());
+        Process process = pb.start();
         StringBuilder out = new StringBuilder();
         Thread reader = Thread.ofVirtual().start(() -> {
             try (var in = process.inputReader()) {

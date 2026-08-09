@@ -118,6 +118,27 @@ public final class ImageBuilder {
         }
     }
 
+    /**
+     * Ship the trained tree verbatim at {@code /app}, timestamps included. The archive validates
+     * each entry by size and modification time, so the bytes that were trained against and the
+     * bytes that ship have to agree on both.
+     */
+    private static FileEntriesLayer appTreeLayer(Path root) throws IOException {
+        FileEntriesLayer.Builder layer = FileEntriesLayer.builder();
+        try (var walk = java.nio.file.Files.walk(root)) {
+            for (Path file :
+                    walk.filter(java.nio.file.Files::isRegularFile).sorted().toList()) {
+                layer.addEntry(
+                        file,
+                        AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR + "/"
+                                + root.relativize(file).toString().replace('\\', '/')),
+                        FilePermissions.DEFAULT_FILE_PERMISSIONS,
+                        AotCacheTrainer.LAYER_TIME.toInstant());
+            }
+        }
+        return layer.build();
+    }
+
     private static JibContainer run(Plan plan, Containerizer containerizer)
             throws IOException, InterruptedException, InvalidImageReferenceException {
         ImageConfig cfg = plan.config();
@@ -148,32 +169,23 @@ public final class ImageBuilder {
             appClasspath = "/app/classpath/*:/app/libs/*";
         }
 
-        // AOT cache: trained inside the base image, because the cache is only valid for the exact
-        // JVM build that produced it. The classpath becomes an explicit ordered list — a `*`
-        // wildcard expands in directory order, and the training run reads a bind mount while the
-        // real run reads an overlay, so nothing guarantees the two enumerate alike.
-        Path aotCache = null;
+        // AOT cache: the trainer produces the tree to ship at /app, the arguments that run it, and
+        // the cache. Everything is relative to /app with WORKDIR set, so the archive's recorded
+        // paths match wherever the tree lands.
+        AotCacheTrainer.Result aot = null;
         if (cfg.aotCache()) {
             String blocked = AotCacheTrainer.unsupportedReason(plan);
             if (blocked != null) {
                 throw new IOException("[image] aot-cache = true, but " + blocked);
             }
-            appClasspath = AotCacheTrainer.explicitClasspath(plan);
-            aotCache = AotCacheTrainer.train(
-                    plan, appClasspath, plan.mainJar().getParent(), msg -> System.err.println("jk: " + msg));
-            builder = builder.addFileEntriesLayer(FileEntriesLayer.builder()
-                    .addEntry(
-                            aotCache,
-                            AbsoluteUnixPath.get(AotCacheTrainer.CACHE_PATH),
-                            FilePermissions.DEFAULT_FILE_PERMISSIONS,
-                            AotCacheTrainer.LAYER_TIME.toInstant())
-                    .build());
+            aot = AotCacheTrainer.train(plan, plan.mainJar().getParent(), msg -> System.err.println("jk: " + msg));
+            builder = builder.addFileEntriesLayer(appTreeLayer(aot.stagingRoot()));
+            builder = builder.setWorkingDirectory(AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR));
         }
 
         // Entrypoint: java -cp <app classpath> <main>
         List<String> entrypoint = new ArrayList<>();
         entrypoint.add("java");
-        if (aotCache != null) entrypoint.add("-XX:AOTCache=" + AotCacheTrainer.CACHE_PATH);
         if (!cfg.env().isEmpty()) {
             // JAVA_OPTS is the conventional hook; values are joined with spaces.
             String javaOpts = cfg.env().get("JAVA_OPTS");
@@ -181,9 +193,14 @@ public final class ImageBuilder {
                 for (String token : javaOpts.trim().split("\\s+")) entrypoint.add(token);
             }
         }
-        entrypoint.add("-cp");
-        entrypoint.add(appClasspath);
-        entrypoint.add(plan.mainClass());
+        if (aot != null) {
+            entrypoint.add("-XX:AOTCache=" + AotCacheTrainer.CACHE_FILE);
+            entrypoint.addAll(aot.runArgs());
+        } else {
+            entrypoint.add("-cp");
+            entrypoint.add(appClasspath);
+            entrypoint.add(plan.mainClass());
+        }
         builder = builder.setEntrypoint(entrypoint);
 
         if (cfg.user() != null && !cfg.user().isBlank()) {

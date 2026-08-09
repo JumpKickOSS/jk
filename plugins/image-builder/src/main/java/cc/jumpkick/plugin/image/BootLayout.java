@@ -1,0 +1,103 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.plugin.image;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.jar.JarFile;
+import java.util.jar.Manifest;
+
+/**
+ * A Spring Boot jar unpacked into the shape an AOT cache can be trained against.
+ *
+ * <p>Boot's own jar nests its dependencies under {@code BOOT-INF/lib} and loads them with a custom
+ * loader, so nothing useful is on the JVM classpath; jk's layered image goes the other way and
+ * explodes the classes, which a CDS dump refuses outright because the entry is a directory
+ * (JDK-8329980, Won't Fix). Neither shape can carry a cache.
+ *
+ * <p>Boot ships the answer: {@code java -Djarmode=tools -jar app.jar extract} produces a thin
+ * launcher jar whose manifest {@code Class-Path} names {@code lib/*.jar} — all jars, relative
+ * paths, no wildcards. That is what Spring's own Dockerfile recipe and the Paketo buildpack both
+ * use, and it is what this produces.
+ */
+final class BootLayout {
+
+    private static final long EXTRACT_TIMEOUT_SECONDS = 120;
+
+    /** The extracted tree: a thin launcher jar and the libraries its manifest points at. */
+    record Extracted(Path root, String launcherJar) {}
+
+    private BootLayout() {}
+
+    /** True when {@code jar} is a Spring Boot application jar rather than a plain one. */
+    static boolean isBootJar(Path jar) {
+        if (jar == null || !Files.isRegularFile(jar)) return false;
+        try (JarFile jf = new JarFile(jar.toFile())) {
+            Manifest mf = jf.getManifest();
+            if (mf == null) return false;
+            var attrs = mf.getMainAttributes();
+            if (attrs.getValue("Spring-Boot-Version") != null) return true;
+            String main = attrs.getValue("Main-Class");
+            return main != null && main.startsWith("org.springframework.boot.loader.");
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Run Boot's own {@code jarmode} extractor. Uses {@code java} from the image's JRE when one was
+     * unpacked, so the tool runs on the same JVM the image will — {@code extract} only rewrites a
+     * jar, but there is no reason to introduce a second JVM into the equation.
+     */
+    static Extracted extract(Path bootJar, Path dest, Path javaBin) throws IOException, InterruptedException {
+        deleteRecursively(dest);
+        Files.createDirectories(dest);
+        List<String> command = List.of(
+                javaBin.toString(),
+                "-Djarmode=tools",
+                "-jar",
+                bootJar.toAbsolutePath().toString(),
+                "extract",
+                "--force",
+                "--destination",
+                dest.toAbsolutePath().toString());
+        Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+        String output = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        if (!process.waitFor(EXTRACT_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+            process.destroyForcibly();
+            throw new IOException("`-Djarmode=tools extract` did not finish within " + EXTRACT_TIMEOUT_SECONDS + "s");
+        }
+        if (process.exitValue() != 0) {
+            throw new IOException("`-Djarmode=tools extract` failed (exit " + process.exitValue() + "):\n" + output);
+        }
+        String launcher = launcherJarIn(dest);
+        if (launcher == null) {
+            throw new IOException("`-Djarmode=tools extract` produced no launcher jar in " + dest
+                    + ". It needs Spring Boot 3.3 or newer:\n" + output);
+        }
+        return new Extracted(dest, launcher);
+    }
+
+    /** The thin jar sits at the root; every other jar is under {@code lib/}. */
+    private static String launcherJarIn(Path dest) throws IOException {
+        try (var list = Files.list(dest)) {
+            return list.filter(Files::isRegularFile)
+                    .map(p -> p.getFileName().toString())
+                    .filter(n -> n.endsWith(".jar"))
+                    .sorted()
+                    .findFirst()
+                    .orElse(null);
+        }
+    }
+
+    private static void deleteRecursively(Path root) throws IOException {
+        if (!Files.exists(root)) return;
+        try (var walk = Files.walk(root)) {
+            for (Path p : walk.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(p);
+            }
+        }
+    }
+}

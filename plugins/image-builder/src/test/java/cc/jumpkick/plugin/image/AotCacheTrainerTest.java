@@ -30,11 +30,11 @@ class AotCacheTrainerTest {
     }
 
     /**
-     * The exploded-classes layout can never be trained: a CDS dump refuses a directory on the
-     * classpath, and that restriction is Won't Fix upstream (JDK-8329980).
+     * An exploded-classes layout whose artifact is not a Boot jar has nothing to unpack: a CDS dump
+     * refuses a directory on the classpath, and that is Won't Fix upstream (JDK-8329980).
      */
     @Test
-    void the_exploded_classes_layout_is_refused_with_the_reason() {
+    void a_non_boot_exploded_classes_layout_is_refused_with_the_reason() {
         assertThat(AotCacheTrainer.unsupportedReason(plan(Path.of("/w/target/classes"))))
                 .contains("exploded-classes")
                 .contains("directory");
@@ -47,11 +47,12 @@ class AotCacheTrainerTest {
      */
     @Test
     void the_classpath_is_explicit_ordered_and_starts_with_the_main_jar() {
-        String cp = AotCacheTrainer.explicitClasspath(plan(null));
-        assertThat(cp).isEqualTo("/app/classpath/svc-1.0.0.jar:/app/libs/aa:/app/libs/bb:/app/libs/zz");
-        assertThat(cp).doesNotContain("*");
+        String cp = AotCacheTrainer.relativeClasspath(plan(null));
+        // Relative, because the archive records entries as given and the image sets WORKDIR /app.
+        assertThat(cp).isEqualTo("classpath/svc-1.0.0.jar:libs/aa:libs/bb:libs/zz");
+        assertThat(cp).doesNotContain("*").doesNotStartWith("/");
         // Stable across calls — the order is sorted, not whatever the plan happened to hold.
-        assertThat(AotCacheTrainer.explicitClasspath(plan(null))).isEqualTo(cp);
+        assertThat(AotCacheTrainer.relativeClasspath(plan(null))).isEqualTo(cp);
     }
 
     /** Jib reads a bare name as Docker Hub; podman refuses to guess and cannot prompt in a build. */
