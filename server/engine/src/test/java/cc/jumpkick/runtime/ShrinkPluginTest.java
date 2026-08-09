@@ -43,7 +43,8 @@ class ShrinkPluginTest {
                 layout  = "simple"
 
                 [application]
-                main = "com.example.slim.Main"
+                main     = "com.example.slim.Main"
+                minified = true
 
                 [shrink]
 
@@ -97,16 +98,24 @@ class ShrinkPluginTest {
                 false,
                 java.util.Set.of(),
                 SessionContext.current());
-        BuildPlanResult result = BuildPlanner.coreBuilder(in).build().run();
+        // The tails carry the additive artifacts (-all.jar, -min.jar); coreBuilder stops at the
+        // thin jar, so a plan without them is not what `jk build` runs.
+        var builder = BuildPlanner.coreBuilder(in);
+        BuildPlanner.appendDeclaredTails(builder, in);
+        BuildPlanResult result = builder.build().run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
 
-        Path jar;
-        try (var walk = Files.walk(project.resolve("target"))) {
-            jar = walk.filter(p -> p.getFileName().toString().equals("slim-1.0.0.jar"))
-                    .findFirst()
-                    .orElseThrow(() -> new AssertionError("slim-1.0.0.jar not produced under target/"));
-        }
+        // Artifacts are additive: the thin jar always, the fat jar because minified implies it,
+        // and the minified jar itself. The fat jar beside it is what makes the two comparable.
+        Path target = project.resolve("target");
+        assertThat(target.resolve("slim-1.0.0.jar")).exists();
+        assertThat(target.resolve("slim-1.0.0-all.jar")).exists();
+        Path jar = target.resolve("slim-1.0.0-min.jar");
+        assertThat(jar).exists();
+        assertThat(Files.size(jar))
+                .as("the minified jar is smaller than the fat jar it came from")
+                .isLessThan(Files.size(target.resolve("slim-1.0.0-all.jar")));
 
         // Behavioral: the shrunk jar actually runs — R8 kept the reachable closure.
         Process run = new ProcessBuilder(

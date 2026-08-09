@@ -1616,11 +1616,23 @@ public final class JkBuildParser {
      * When {@code [application] minified = true} and no {@code [shrink]} table is present, inject
      * shrink plugin defaults so the minified packager is available.
      */
+    /**
+     * {@code minified = true} pulls in the shrink plugin's config so the packager is active. The
+     * reverse is not implied: a {@code [shrink]} table configures the minified artifact, it does
+     * not ask for one. Saying so is better than building the table's rules into nothing.
+     */
     private static Map<String, PluginConfig> ensureShrinkForMinified(
             Optional<JkBuild.Application> application,
             Map<String, PluginConfig> pluginConfigs,
             List<PluginDescriptor> installed) {
-        if (application.isEmpty() || !application.get().minified()) return pluginConfigs;
+        boolean minified = application.isPresent() && application.get().minified();
+        if (!minified) {
+            if (pluginConfigs.containsKey("shrink")) {
+                throw new JkBuildParseException("[shrink] configures the minified jar, but no minified jar is"
+                        + " requested — add `minified = true` under [application], or drop the [shrink] table");
+            }
+            return pluginConfigs;
+        }
         return ensureShrinkPluginConfig(pluginConfigs, installed);
     }
 
