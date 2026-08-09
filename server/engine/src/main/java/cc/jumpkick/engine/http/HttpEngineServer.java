@@ -1166,7 +1166,7 @@ public final class HttpEngineServer implements AutoCloseable {
 
     /**
      * {@code GET /api/cache} — the cache-directory breakdown (the {@code jk cache storage} /
-     * {@code jk repo storage} sections) as one flat object, for the Status view's Cache panel. Read-tier auth, like every other GET;
+     * {@code jk storage} sections) as one flat object, for the Status view's Cache panel. Read-tier auth, like every other GET;
      * IO-shaped (a walk of the cache sections), so it is computed per request, never cached.
      */
     private void handleCache(HttpExchange exchange) throws IOException {

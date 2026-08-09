@@ -1591,8 +1591,8 @@ public final class EngineClient {
 
     /**
      * Everything an engine-hosted cache maintenance op needs ({@code op} = {@code prune}/{@code
-     * purge}/{@code sweep}/{@code gc} — {@code jk cache prune}/{@code purge}, {@code jk repo
-     * prune}, {@code jk clean --cache}). Ops ignore the fields they don't use.
+     * purge}/{@code sweep}/{@code gc}/{@code clear} — {@code jk cache clean}/{@code nuke}, {@code
+     * jk storage clean}, {@code jk clean --force}). Ops ignore the fields they don't use.
      */
     public record CacheMaintRequest(
             String op,
@@ -1601,12 +1601,31 @@ public final class EngineClient {
             boolean dryRun,
             boolean sweep,
             boolean includeJkTmp,
-            Path projectRoot) {
+            Path projectRoot,
+            boolean dropAllClassC) {
 
-        /** Prune/purge/gc request — no project scope. */
+        /** Prune/purge/sweep request — no project scope. */
         public CacheMaintRequest(
                 String op, Path cache, int olderThanDays, boolean dryRun, boolean sweep, boolean includeJkTmp) {
-            this(op, cache, olderThanDays, dryRun, sweep, includeJkTmp, null);
+            this(op, cache, olderThanDays, dryRun, sweep, includeJkTmp, null, false);
+        }
+
+        /** Project-scoped clear / clean-with-Class-C. */
+        public CacheMaintRequest(
+                String op,
+                Path cache,
+                int olderThanDays,
+                boolean dryRun,
+                boolean sweep,
+                boolean includeJkTmp,
+                Path projectRoot) {
+            this(op, cache, olderThanDays, dryRun, sweep, includeJkTmp, projectRoot, false);
+        }
+
+        /** Cache clean ({@code dropAllClassC=true}) or other prune variants. */
+        public static CacheMaintRequest cacheClean(
+                Path cache, int olderThanDays, boolean dryRun, boolean includeJkTmp) {
+            return new CacheMaintRequest("prune", cache, olderThanDays, dryRun, false, includeJkTmp, null, true);
         }
     }
 
@@ -1639,7 +1658,8 @@ public final class EngineClient {
                         req.olderThanDays(),
                         req.dryRun(),
                         req.sweep(),
-                        req.includeJkTmp());
+                        req.includeJkTmp(),
+                        req.dropAllClassC());
         return EnginePluginAdapter.stream(
                         paths,
                         requestLine,

@@ -23,15 +23,28 @@ import java.util.stream.Stream;
  * Persistent action cache: {@code action_key → CAS outputs} plus a project-qualified {@code task
  * → action_key} pointer. Layout: {@code keys/<actionKey>}, {@code tasks/<taskId>}. Store/restore
  * always copy (never hard-link) so compile trees cannot poison CAS blobs.
+ *
+ * <p>Optional {@code storeCas}: Class-C blobs promoted by {@link cc.jumpkick.cache.ActionPromote} /
+ * {@code jk release} may live only in the artifact store — restore falls back there on cache miss.
+ * Class-C tasks also keep a short generation list ({@code tasks/<taskId>.gens}).
  */
 public final class ActionCache {
 
     private final Cas cas;
+    private final Cas storeCas; // nullable — dual-CAS lookup for promoted Class-C blobs
     private final Path root;
 
     public ActionCache(Cas cas, Path root) {
+        this(cas, root, null);
+    }
+
+    /**
+     * @param storeCas optional long-lived store CAS for Class-C blob fallback (may be null)
+     */
+    public ActionCache(Cas cas, Path root, Cas storeCas) {
         this.cas = Objects.requireNonNull(cas, "cas");
         this.root = Objects.requireNonNull(root, "root");
+        this.storeCas = storeCas;
     }
 
     /**
@@ -40,6 +53,21 @@ public final class ActionCache {
      */
     public Cas cas() {
         return cas;
+    }
+
+    /** Resolve a blob path: cache CAS first, then store CAS (promoted Class-C). */
+    Path resolveBlob(String sha) {
+        Path p = cas.pathFor(sha);
+        if (Files.isRegularFile(p)) return p;
+        if (storeCas != null) {
+            Path s = storeCas.pathFor(sha);
+            if (Files.isRegularFile(s)) return s;
+        }
+        return p;
+    }
+
+    private boolean hasBlob(String sha) {
+        return Files.isRegularFile(resolveBlob(sha));
     }
 
     public Optional<ActionRecord> lookup(String actionKey) throws IOException {
@@ -149,8 +177,57 @@ public final class ActionCache {
         // Atomic temp+move: concurrent store/lookup under cacheGate read mode must never see a
         // truncated keys/ or tasks/ file. Order preserved: key before task pointer.
         AtomicWrites.replace(keysDir().resolve(actionKey), render(record));
-        AtomicWrites.replace(tasksDir().resolve(taskId), actionKey);
+        // Generation trim for Class-C (native / OCI / fat assembly) before flipping the pointer.
+        String previous = null;
+        Path pointer = tasksDir().resolve(taskId);
+        if (Files.isRegularFile(pointer)) {
+            try {
+                previous = Files.readString(pointer).trim();
+            } catch (IOException ignored) {
+                previous = null;
+            }
+        }
+        AtomicWrites.replace(pointer, actionKey);
+        trimGenerations(taskId, actionKey, previous);
         return record;
+    }
+
+    /**
+     * Keep at most {@link HeavyActionPolicy#generations(String)} action keys for Class-C tasks:
+     * current pointer + {@code tasks/<taskId>.gens} (newest first). Older key files are deleted so
+     * {@link CasSweep} can reclaim their blobs.
+     */
+    private void trimGenerations(String taskId, String newKey, String previousKey) throws IOException {
+        int keep = HeavyActionPolicy.generations(taskId);
+        if (keep == Integer.MAX_VALUE) return; // not Class-C
+        Path gens = HeavyActionGc.gensFile(tasksDir(), taskId);
+        List<String> history = new ArrayList<>();
+        if (previousKey != null && !previousKey.isBlank() && !previousKey.equals(newKey)) {
+            history.add(previousKey);
+        }
+        if (Files.isRegularFile(gens)) {
+            for (String line : Files.readAllLines(gens)) {
+                String k = line.trim();
+                if (k.isEmpty() || k.equals(newKey) || history.contains(k)) continue;
+                history.add(k);
+            }
+        }
+        // keep total generations including current (newKey): retain keep-1 predecessors
+        int retain = Math.max(0, keep - 1);
+        List<String> drop = new ArrayList<>();
+        if (history.size() > retain) {
+            drop.addAll(history.subList(retain, history.size()));
+            history = new ArrayList<>(history.subList(0, retain));
+        }
+        for (String k : drop) {
+            Files.deleteIfExists(keysDir().resolve(k));
+        }
+        if (history.isEmpty()) {
+            Files.deleteIfExists(gens);
+        } else {
+            Files.createDirectories(gens.getParent());
+            AtomicWrites.replace(gens, String.join("\n", history) + "\n");
+        }
     }
 
     /**
@@ -162,7 +239,7 @@ public final class ActionCache {
      */
     public boolean restore(ActionRecord record, Path outputDir) throws IOException {
         for (String sha : record.outputs().values()) {
-            if (!Files.isRegularFile(cas.pathFor(sha))) return false;
+            if (!hasBlob(sha)) return false;
         }
         // Build-host compile freshness stamps (.jstamp/.kstamp) live inside the
         // classes tree but are NOT part of the cached compiled output — they're
@@ -194,7 +271,7 @@ public final class ActionCache {
             // Digest while copying: the memo seed below asserts these exact bytes, so a
             // truncated/corrupt blob must surface as a miss here — not as green tests over
             // wrong classes downstream.
-            if (!copyVerified(cas.pathFor(entry.getValue()), target, entry.getValue())) {
+            if (!copyVerified(resolveBlob(entry.getValue()), target, entry.getValue())) {
                 dropCorruptBlob(entry.getValue());
                 deleteRecursively(outputDir);
                 Files.createDirectories(outputDir);
@@ -244,7 +321,7 @@ public final class ActionCache {
     /** A blob whose bytes no longer match its name is garbage — drop it so the next store re-puts. */
     private void dropCorruptBlob(String sha) {
         try {
-            Files.deleteIfExists(cas.pathFor(sha));
+            Files.deleteIfExists(resolveBlob(sha));
         } catch (IOException ignored) {
             // best-effort hygiene
         }
@@ -259,7 +336,7 @@ public final class ActionCache {
     public boolean restoreArtifacts(ActionRecord record, Path baseDir) throws IOException {
         if (record.outputs().isEmpty()) return false;
         for (String sha : record.outputs().values()) {
-            if (!Files.isRegularFile(cas.pathFor(sha))) return false;
+            if (!hasBlob(sha)) return false;
         }
         // Clear the DIRECTORY roots this record owns before copyinga multi-file
         // layout (quarkus fast-jar lib/ app/ quarkus-app/) restored over a dirty target/
@@ -297,8 +374,9 @@ public final class ActionCache {
                 Files.deleteIfExists(target);
                 // COPY, never link: a packager may later rewrite the target in place, and a link
                 // would let that rewrite mutate the blob (see Cas.putFile). Digest while copying —
-                // the memo seed below asserts these exact bytes.
-                if (!copyVerified(cas.pathFor(e.getValue()), target, e.getValue())) {
+                // the memo seed below asserts these exact bytes. Blobs may live in the store CAS
+                // after a release promote (Class-C).
+                if (!copyVerified(resolveBlob(e.getValue()), target, e.getValue())) {
                     dropCorruptBlob(e.getValue());
                     return false;
                 }
@@ -347,7 +425,9 @@ public final class ActionCache {
      */
     private boolean identicalTo(Path target, String sha) throws IOException {
         if (!Files.isRegularFile(target)) return false;
-        if (Files.size(target) != Files.size(cas.pathFor(sha))) return false;
+        Path blob = resolveBlob(sha);
+        if (!Files.isRegularFile(blob)) return false;
+        if (Files.size(target) != Files.size(blob)) return false;
         return sha.equals(Hashing.sha256Hex(target));
     }
 
@@ -385,7 +465,7 @@ public final class ActionCache {
         for (String sha : outputs.values()) {
             // Not every record's values are blob hashes: a marker record (run-tests) parks small
             // scalars here instead, so meter only what is actually a CAS object.
-            if (isSha256Hex(sha)) bytes += IoLedger.sizeOf(cas.pathFor(sha));
+            if (isSha256Hex(sha)) bytes += IoLedger.sizeOf(resolveBlob(sha));
         }
         IoLedger io = SessionContext.current().io();
         if (intoCache) io.localUp(bytes);

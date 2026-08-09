@@ -18,7 +18,6 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.PathUtil;
 import java.io.IOException;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -30,16 +29,14 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@code jk self purge} — wipe JumpKick product data while leaving the PATH install binaries,
- * managed JDKs, the <strong>active engine version</strong>, and <strong>latest plugin workers</strong>
- * ({@code store/lib/}) intact.
+ * {@code jk self nuke} — wipe JumpKick product data while leaving the PATH install binaries,
+ * managed JDKs, and the <strong>active engine version</strong> intact.
  *
  * <p>Targets (stackable; default {@code --all}):
  *
  * <ul>
- *   <li>{@code --cache} — cache tier (action index + cache CAS + format stamps)
- *   <li>{@code --store} — artifact store CAS, repo mirrors, store catalogs, shell completions, old
- *       {@code versions/*} (keeps active version + {@code store/lib})
+ *   <li>{@code --cache} — same as {@code jk cache nuke}
+ *   <li>{@code --store} — same as {@code jk storage nuke} (entire artifact store)
  *   <li>{@code --state} — engine sockets, AOT, builds, scratch tmp
  *   <li>{@code --config} — user config
  *   <li>{@code --all} — every target above (default when none are named)
@@ -48,12 +45,12 @@ import java.util.Set;
  * <p><strong>Never touches the bin directory</strong> ({@code ~/.local/bin} / {@code JK_BIN_DIR}),
  * and never removes forge/repo credentials — logging out is {@code jk repo logout}'s job.
  */
-public final class SelfPurgeCommand implements CliCommand {
+public final class SelfNukeCommand implements CliCommand {
 
-    /** Selectable purge scopes. */
+    /** Selectable nuke scopes. */
     enum Target {
         CACHE("Cache tier"),
-        STORE("Artifact store, old engines"),
+        STORE("Artifact store"),
         STATE("Engine sockets, AOT, builds"),
         CONFIG("User config");
 
@@ -85,52 +82,69 @@ public final class SelfPurgeCommand implements CliCommand {
 
     @Override
     public String name() {
-        return "purge";
+        return "nuke";
+    }
+
+    @Override
+    public List<String> aliases() {
+        return List.of("purge"); // pre-rename
     }
 
     @Override
     public String description() {
-        return "Wipe data/state (keeps active engine, plugins, PATH, JDKs)";
+        return "Nuke data/state (keeps active engine, PATH, JDKs)";
     }
 
     @Override
     public List<Opt> options() {
         return List.of(
                 Opt.flag("Print what would be removed; touch nothing.", "--dry-run"),
-                Opt.flag("Purge every target (default when none named).", "--all"),
-                Opt.flag("Purge the cache tier only (action outputs).", "--cache"),
-                Opt.flag("Purge store + old engines (keeps plugins, logins).", "--store"),
-                Opt.flag("Purge engine state, AOT caches, builds, and tmp.", "--state"),
-                Opt.flag("Purge user config.", "--config"));
+                Opt.flag("Nuke every target (default when none named).", "--all"),
+                Opt.flag("Nuke the cache tier only (action outputs).", "--cache"),
+                Opt.flag("Nuke artifact store (same as jk storage nuke).", "--store"),
+                Opt.flag("Nuke engine state, AOT caches, builds, and tmp.", "--state"),
+                Opt.flag("Nuke user config.", "--config"));
     }
 
     @Override
-    public int run(Invocation in) {
-        GlobalOptions.from(in);
+    public int run(Invocation in) throws Exception {
+        GlobalOptions global = GlobalOptions.from(in);
         boolean dryRun = in.isSet("dry-run");
         Set<Target> selected = selectedTargets(in);
         JkDirs dirs = JkDirs.current();
 
+        // Single-target cache/store: identical code path + UX as the dedicated commands.
+        if (selected.equals(EnumSet.of(Target.CACHE))) {
+            return CacheCommand.runNuke(dirs.cacheDir(), dryRun, global, false);
+        }
+        if (selected.equals(EnumSet.of(Target.STORE))) {
+            return StorageCommand.runNuke(dirs.cacheDir(), dryRun, false);
+        }
+
         List<PurgeRow> rows = plan(dirs, selected);
-        List<PurgeRow> existing = rows.stream()
+        // For multi-target, CACHE/STORE are handled via shared nukes — drop them from path rows.
+        List<PurgeRow> pathRows = rows.stream()
+                .filter(r -> r.target() != Target.CACHE && r.target() != Target.STORE)
+                .toList();
+        boolean wantCache = selected.contains(Target.CACHE);
+        boolean wantStore = selected.contains(Target.STORE);
+        List<PurgeRow> existing = pathRows.stream()
                 .filter(r -> Files.exists(r.path(), LinkOption.NOFOLLOW_LINKS))
                 .toList();
-        if (existing.isEmpty()) {
-            CommandWedge.printOk("Self", "Nothing to purge — selected JumpKick data not found.");
+        boolean cacheExists = wantCache && Files.isDirectory(dirs.cacheDir());
+        boolean storeExists = wantStore && Files.isDirectory(dirs.storeDir());
+        if (existing.isEmpty() && !cacheExists && !storeExists) {
+            CommandWedge.printOk("Self", "Nothing to nuke — selected JumpKick data not found.");
             return Exit.SUCCESS;
         }
 
-        printPlan(existing, dirs, selected);
-        // Dry run deletes nothing — never gate it behind the destructive prompt (which would
-        // also abort with exit 1 on non-TTY stdin).
+        printPlan(existing, dirs, selected, wantCache, wantStore);
         if (!dryRun && !confirmPrompt()) {
-            CommandWedge.printFail("Self", "Purge aborted.");
+            CommandWedge.printFail("Self", "Nuke aborted.");
             return 1;
         }
 
-        // Engines hold sockets under state and read/write the store mid-build — stop them
-        // before deleting either tree, and say so when one refuses to die.
-        if (!dryRun && (selected.contains(Target.STATE) || selected.contains(Target.STORE))) {
+        if (!dryRun && (selected.contains(Target.STATE) || wantStore)) {
             try {
                 for (EngineFleet.StopResult r : EngineFleet.stopAll(true)) {
                     if (r.outcome() == EngineFleet.Outcome.SURVIVED) {
@@ -138,12 +152,22 @@ public final class SelfPurgeCommand implements CliCommand {
                         CliOutput.err(Theme.colorize(Glyphs.BANG, t.warning())
                                 + " Engine pid "
                                 + r.member().pid()
-                                + " did not stop; purging around it may leave it orphaned.");
+                                + " did not stop; nuking around it may leave it orphaned.");
                     }
                 }
             } catch (RuntimeException ignored) {
                 // best-effort
             }
+        }
+
+        int exit = Exit.SUCCESS;
+        if (wantCache) {
+            int c = CacheCommand.runNuke(dirs.cacheDir(), dryRun, global, true);
+            if (c != 0) exit = c;
+        }
+        if (wantStore) {
+            int s = StorageCommand.runNuke(dirs.cacheDir(), dryRun, true);
+            if (s != 0) exit = s;
         }
 
         long removed = 0;
@@ -169,19 +193,24 @@ public final class SelfPurgeCommand implements CliCommand {
             return Exit.SOFTWARE;
         }
         if (dryRun) {
-            CommandWedge.printOk("Self", "Dry run: would purge " + removed + " path" + (removed == 1 ? "" : "s") + ".");
-        } else {
             CommandWedge.printOk(
                     "Self",
-                    "Purged "
+                    "Dry run: would nuke "
                             + removed
                             + " path"
                             + (removed == 1 ? "" : "s")
-                            + ". Kept: active engine "
+                            + (wantCache || wantStore ? " plus cache/store targets" : "")
+                            + ".");
+        } else if (removed > 0 || wantCache || wantStore) {
+            CommandWedge.printOk(
+                    "Self",
+                    "Nuked selected JumpKick data. Kept: active engine "
                             + Jk.VERSION
-                            + ", store/lib plugins, PATH, JDKs.");
+                            + ", PATH, JDKs"
+                            + (wantStore ? "" : ", store")
+                            + ".");
         }
-        return Exit.SUCCESS;
+        return exit;
     }
 
     /** Parse stackable target flags; default {@code --all} when none named. */
@@ -213,7 +242,12 @@ public final class SelfPurgeCommand implements CliCommand {
         }
 
         if (selected.contains(Target.STORE)) {
-            planStore(dirs, byPath, guards);
+            // Same as jk storage nuke: the whole store tree, including store/lib.
+            // Do not run through addRow guards — those refuse ancestors of store/lib.
+            Path store = abs(dirs.storeDir());
+            if (store != null) {
+                byPath.putIfAbsent(store, new PurgeRow(store, "Artifact store", Target.STORE));
+            }
         }
 
         if (selected.contains(Target.STATE)) {
@@ -237,79 +271,7 @@ public final class SelfPurgeCommand implements CliCommand {
     }
 
     /**
-     * Store purge is surgical: wipe CAS + mirrors + non-active engine versions; keep {@code
-     * versions/<active>/} and {@code store/lib/} (latest workers).
-     */
-    private static void planStore(JkDirs dirs, Map<Path, PurgeRow> byPath, Guards guards) {
-        String active = Jk.VERSION;
-        Path versions = abs(dirs.versionsDir());
-        if (versions != null && Files.isDirectory(versions)) {
-            try (DirectoryStream<Path> stream = Files.newDirectoryStream(versions)) {
-                for (Path p : stream) {
-                    String name = p.getFileName().toString();
-                    if (name.startsWith(".")) {
-                        // Stale .0.9.0.lock etc. — safe to drop. The active version's lock file
-                        // stays: VersionStore.materialize holds a flock on it, and unlinking a
-                        // held lock lets a racing materializer lock a fresh inode (two winners).
-                        if (name.equals("." + active + ".lock")) continue;
-                        if (Files.isRegularFile(p)) {
-                            addRow(byPath, p, "Version lock/marker", Target.STORE, guards);
-                        }
-                        continue;
-                    }
-                    if (!Files.isDirectory(p)) continue;
-                    if (name.equals(active)) continue; // keep active engine + client materialization
-                    addRow(byPath, p, "Old engine version " + name, Target.STORE, guards);
-                }
-            } catch (IOException ignored) {
-            }
-        }
-
-        Path store = abs(dirs.storeDir());
-        if (store != null && Files.isDirectory(store)) {
-            try (DirectoryStream<Path> stream = Files.newDirectoryStream(store)) {
-                for (Path p : stream) {
-                    String name = p.getFileName().toString();
-                    // Latest plugin/tool workers — do not remove (jk would need reinstallLocal).
-                    if ("lib".equals(name)) continue;
-                    // Feed catalogs re-download on idle warmup; drop them with store purge.
-                    String what =
-                            switch (name) {
-                                case "sha256" -> "CAS blobs";
-                                case "repos" -> "Repo mirrors";
-                                case "jdks.json" -> "JDK catalog cache";
-                                case "libs.global.toml" -> "Library registry cache";
-                                default -> "Store: " + name;
-                            };
-                    addRow(byPath, p, what, Target.STORE, guards);
-                }
-            } catch (IOException ignored) {
-            }
-        }
-
-        // Other data-dir siblings (e.g. completions), but never versions/store handled above, never
-        // the data dir root itself (would wipe kept subtrees).
-        Path data = abs(dirs.dataDir());
-        if (data != null && Files.isDirectory(data)) {
-            try (DirectoryStream<Path> stream = Files.newDirectoryStream(data)) {
-                for (Path p : stream) {
-                    String name = p.getFileName().toString();
-                    if ("versions".equals(name) || "store".equals(name)) continue;
-                    if (name.startsWith(".")) continue;
-                    // Auth outlives every purge target: removing logins is jk repo logout /
-                    // jk forge logout territory, never implied by "CAS/repos and old engines".
-                    if ("credentials".equals(name) || "repo-credentials".equals(name)) continue;
-                    String what =
-                            "completions".equals(name) ? "Shell completions (re-run jk activate)" : "Data: " + name;
-                    addRow(byPath, p, what, Target.STORE, guards);
-                }
-            } catch (IOException ignored) {
-            }
-        }
-    }
-
-    /**
-     * Config purge targets the dedicated platform config dir ({@code ~/.config/jk}) when there is
+     * Config nuke targets the dedicated platform config dir ({@code ~/.config/jk}) when there is
      * one. Under {@code JK_HOME} the "config dir" is the umbrella root shared with versions, store,
      * and state — deleting it would wipe every kept subtree — so only {@code config.toml} itself is
      * scheduled. Same when the config dir coincides with the product home/data root for any other
@@ -358,21 +320,26 @@ public final class SelfPurgeCommand implements CliCommand {
         return true;
     }
 
-    private static void printPlan(List<PurgeRow> rows, JkDirs dirs, Set<Target> selected) {
+    private static void printPlan(
+            List<PurgeRow> rows, JkDirs dirs, Set<Target> selected, boolean wantCache, boolean wantStore) {
         List<String> headers = List.of("Path to Delete", "What");
         List<List<String>> tableRows = new ArrayList<>();
         for (PurgeRow r : rows) {
             tableRows.add(List.of(pathStyled(r.path()), r.what()));
         }
+        if (wantCache) {
+            tableRows.add(List.of(pathStyled(dirs.cacheDir()), "Cache tier (jk cache nuke)"));
+        }
+        if (wantStore) {
+            tableRows.add(List.of(pathStyled(dirs.storeDir()), "Artifact store (jk storage nuke)"));
+        }
         CommandWedge.envelopeStart();
-        for (String line : BoxTable.renderWarning("JumpKick Data Purge", headers, tableRows)) {
+        for (String line : BoxTable.renderWarning("JumpKick Data Nuke", headers, tableRows)) {
             CliOutput.out(line);
         }
-        if (selected.contains(Target.STORE)) {
-            Path active = dirs.versionsDir().resolve(Jk.VERSION);
-            Path lib = dirs.libDir();
-            CliOutput.out("  Kept:  " + pathStyled(active) + "  and  " + pathStyled(lib) + "  (latest plugins)");
+        if (wantStore) {
             CliOutput.out("  Kept:  forge/repo credentials  (remove via jk repo logout)");
+            CliOutput.out("  Kept:  " + pathStyled(dirs.versionsDir().resolve(Jk.VERSION)) + "  (active engine)");
         }
         CliOutput.out("  Kept:  " + pathStyled(dirs.binDirectory()) + "  (PATH binaries)");
         CliOutput.out("  Kept:  " + pathStyled(dirs.jdksDir()) + "  (managed JDKs)");
@@ -382,7 +349,7 @@ public final class SelfPurgeCommand implements CliCommand {
     private static boolean confirmPrompt() {
         Theme t = Theme.active();
         String bang = Theme.colorize(Glyphs.BANG, t.warning());
-        return Confirm.of(bang + " Purge this JumpKick data?", false).ask();
+        return Confirm.of(bang + " Nuke this JumpKick data?", false).ask();
     }
 
     /** Home-relative display form, painted with the theme path color. */

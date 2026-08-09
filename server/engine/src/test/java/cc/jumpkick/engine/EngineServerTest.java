@@ -855,14 +855,14 @@ class EngineServerTest {
     }
 
     /**
-     * Engine-hosted {@code jk cache prune} round-trip (Wave 4 — the idle-boundary cache job): a
+     * Engine-hosted {@code jk cache clean} round-trip (Wave 4 — the idle-boundary cache job): a
      * real server over the socket sweeps a fixture cache holding a stale action key and a leftover
      * cache-CAS temp file. Asserts the single-plan wire conversation ends in a summary-carrying
      * {@code plan-finish}, that the stale files are gone, and that the {@code.prune.lock}
      * cross-process guard was created (the hosted path always takes it — the Wave-3 finding's fix).
      *
      * <p>Both planted files are <strong>cache</strong> tier. Since the JK-1531 split a plain prune
-     * owns the cache root only; store temps belong to `jk repo prune`, and `CacheCommandTest`
+     * owns the cache root only; store temps belong to `jk storage clean`, and `CacheCommandTest`
      * pins that half.
      */
     @Test
@@ -923,7 +923,7 @@ class EngineServerTest {
     }
 
     /**
-     * Engine-hosted {@code jk cache clear} round-trip: a real server over the socket invalidates the
+     * Engine-hosted {@code jk clean --force} round-trip: a real server over the socket invalidates the
      * action-cache entries for a fixture project, matching a record by its qualified-task tag while
      * leaving an unrelated project's record untouched. Also asserts the {@code.prune.lock} guard.
      */

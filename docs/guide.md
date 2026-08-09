@@ -84,7 +84,8 @@ jk lock --cache-dir "$COLD"          # or: JK_CACHE_DIR="$COLD" jk lock
 The engine process is keyed by state directory + store; isolating only the action
 cache leaves CAS reuse intact.
 
-Everything under a cache root — including its `sha256/` blob pool — is **cache tier**: rebuildable, prunable to the cache budget, and wiped by `jk cache purge`.
+Everything under a cache root — including its `sha256/` blob pool — is **cache tier**: rebuildable,
+cleaned with `jk cache clean` (including all Class-C heavy outputs), and wiped by `jk cache nuke`.
 
 ### `jk env` — where values come from
 
@@ -139,38 +140,43 @@ cache, a normal `jk build` should hit action cache for unchanged modules.
 
 | Command | Scope |
 |---------|--------|
-| **`jk cache storage`** | Cache tier: action index + cache CAS (`sha256/` under the cache dir) + format stamps |
-| **`jk cache clear` / `prune` / `purge`** | Invalidate, expire, or wipe the **cache tier** (actions + cache CAS + format stamps). Artifact store CAS and repo mirrors survive |
-| **`jk repo storage`** | Artifact store CAS + `repos/` mirrors + run logs |
-| **`jk repo prune`** | Sweep unreferenced store CAS blobs + expired run logs |
-| **`jk repo search`** | Offline search of locally mirrored coordinates |
-| **`jk repo refresh <coord>`** | Evict a coordinate from the mirror so it re-fetches. The mirror is first-write-wins (Maven Central's immutability contract); this is the escape hatch for an upstream that genuinely republished — see [mirror-verification-decision.md](mirror-verification-decision.md) |
-| **`jk repo login` / `logout`** | Artifact-repository credentials |
-| **`jk self purge`** | Wipe **jk-owned** data only. Never touches the PATH bin dir or JDKs. |
+| **`jk cache storage`** | Cache tier size/utilization (action index + cache CAS + format stamps) |
+| **`jk cache clean`** | Hygiene: stale action keys, **all Class-C** heavy outputs (native / OCI / fat jars), temps, LRU to budget. Cache tier only |
+| **`jk cache nuke`** | Wipe the **entire cache tier**. Artifact store survives. Confirms first |
+| **`jk storage`** | Artifact store size/utilization (CAS + `repos/` + run logs) |
+| **`jk storage clean`** | Hygiene: unreferenced store CAS blobs + expired run logs (garbage only) |
+| **`jk storage nuke`** | Wipe the **entire artifact store**. Confirms first |
+| **`jk clean`** | Delete project `target/` outputs; with **`--force`**, also invalidate this project's action-cache entries |
+| **`jk repo search` / `refresh` / `login` / `logout`** | Mirror search, coord re-fetch, credentials |
+| **`jk self nuke`** | Wipe **jk-owned** data only. Never touches the PATH bin dir or JDKs. `--cache` / `--store` share code with `jk cache nuke` / `jk storage nuke` |
 
 ```bash
-jk self purge                     # all targets (default); confirms first
-jk self purge -y                  # skip confirmation
-jk self purge --cache --state -y  # stackable targets
-jk self purge --store --config
+jk cache clean                    # first knob for safe space reclaim
+jk storage clean                  # orphan deps / old run logs
+jk cache nuke -y                  # wipe rebuildable action cache
+jk storage nuke                   # wipe downloaded artifacts (confirms)
+jk self nuke                      # all targets (default); confirms first
+jk self nuke -y                   # skip confirmation
+jk self nuke --cache --state -y   # stackable targets
+jk self nuke --store --config
 ```
 
 | Flag | Deletes | Keeps |
 |------|---------|-------|
 | `--all` | Every target below (default when none named) | — |
-| `--cache` | Cache tier (`~/.cache/jk` — action index + cache CAS) | — |
-| `--store` | Artifact CAS, repo mirrors, store catalogs (`jdks.json`, `libs.global.toml`), shell completions, **old** `versions/*` | **Active** `versions/<this-jk>/`, **`store/lib/`** (latest plugins), forge/repo credentials, live JDK pointer symlinks |
+| `--cache` | Same as **`jk cache nuke`** (action index + cache CAS + stamps) | Artifact store, PATH, JDKs |
+| `--store` | Same as **`jk storage nuke`** (entire artifact store, including `store/lib/`) | Active engine version, forge/repo credentials, PATH, JDKs |
 | `--state` | Engine sockets, AOT, builds, scratch tmp (`~/.local/state/jk`) | — |
 | `--config` | User config (`~/.config/jk`; under `JK_HOME`, only `config.toml`) | — |
 
-Does **not** delete anything under `~/.local/bin` (or `JK_BIN_DIR`) — including `jk`, `jkx`, and every other tool on PATH. Does **not** remove managed JDKs or the running client’s engine install. Never logs you out: forge and repo credentials survive every target (`jk repo logout` removes them). Purged shell completions come back with `jk activate`.
+Does **not** delete anything under `~/.local/bin` (or `JK_BIN_DIR`) — including `jk`, `jkx`, and every other tool on PATH. Does **not** remove managed JDKs or the running client’s engine install. Never logs you out: forge and repo credentials survive every target (`jk repo logout` removes them).
 
 Utilization bars:
 
 | Report | Cap (config) | Default |
 |--------|--------------|---------|
 | `jk cache storage` | `[cache] max-cache-size-gb` / `JK_MAX_CACHE_SIZE_GB` | **4** GiB (8 on `CI=1`/`true`) |
-| `jk repo storage` | `[cache] max-store-size-gb` / `JK_MAX_STORE_SIZE_GB` | **6** GiB (12 on `CI=1`/`true`) |
+| `jk storage` | `[cache] max-store-size-gb` / `JK_MAX_STORE_SIZE_GB` | **6** GiB (12 on `CI=1`/`true`) |
 
 ```toml
 # ~/.config/jk/config.toml
@@ -185,10 +191,23 @@ above applies. Both storage reports use the same rule. On volumes with **&lt; 10
 unset defaults are clamped to `(free × 0.8) / 2` each so cache + store claim at most 80 % of free
 space. Explicit sizes are never disk-clamped.
 
-The two budgets differ in what they *enforce*. The cache tier is rebuildable, so scheduled prunes
-LRU-evict it to its budget (default 4 GiB); the evictor targets the blob pool at the budget net
-of the action-index + stamp overhead, so a prune can bring the utilization bar back under 100%. The artifact store holds long-lived downloads: its
-6 GiB default is display-only — `jk repo prune` never evicts reachable store blobs (even when the store exceeds the display budget). GC only reclaims garbage: leftover `.put-` temps, expired run logs, and unreferenced CAS blobs.
+The two budgets differ in what they *enforce*. The cache tier is rebuildable, so scheduled
+hygiene LRU-evicts it to its budget (default 4 GiB); the evictor targets the blob pool at the
+budget net of the action-index + stamp overhead. **`jk cache clean`** is the first admin knob:
+it drops **all Class-C** heavy outputs (native / OCI / fat jars) immediately, plus stale keys
+and temps, while keeping modular compile/test cache.
+
+**Class-C (heavy ship) action outputs** — `native-image`, `write-image` (OCI), fat
+`package-assembly` / minified jars — use a tighter opportunistic policy so they do not starve
+modular compile/test cache between cleans: **50 % of the cache budget** (2 GiB at the 4 GiB
+default), **3-day** unused TTL, **2 generations** of native binaries / fat jars, **1 generation**
+of OCI images. On `jk release`, staged natives and engine fat jars are **promoted** into the
+artifact store CAS (hard-link when possible); restore still hits those blobs via store fallback.
+
+The artifact store holds long-lived downloads: its
+6 GiB default is display-only — `jk storage clean` never evicts reachable store blobs (even when
+the store exceeds the display budget). GC only reclaims garbage: leftover `.put-` temps, expired
+run logs, and unreferenced CAS blobs.
 
 Preflight dirty memo fingerprints use **source content hashes** by default (CI-safe). Opt into
 faster path/size/mtime fingerprints with `JK_PREFLIGHT_MEMO_MTIME=1` if needed.

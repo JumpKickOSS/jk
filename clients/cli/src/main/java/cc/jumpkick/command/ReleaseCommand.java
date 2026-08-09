@@ -174,12 +174,44 @@ public final class ReleaseCommand implements CliCommand {
             CliOutput.out("  tip: run `jk native --skip-tests` then `jk release` again for a production native CLI");
         }
 
+        // Promote Class-C ship artifacts (native CLI, engine fat jar) into the long-lived store CAS
+        // so aggressive action-cache eviction does not drop a just-released binary.
+        promoteReleasedArtifacts(cacheDir, clientBin, engineJar, nativeClient);
+
         CliOutput.out("");
         CliOutput.out(
                 cc.jumpkick.cli.tui.CommandWedge.ok("Release", "distribution ready at " + PathDisplay.styledRaw(out)));
         CliOutput.out("  next: ./install.sh " + out.resolve("jk"));
         CliOutput.out("    or: jk self materialize " + out.resolve("jk") + " " + stagedEngine);
         return 0;
+    }
+
+    /**
+     * Best-effort: move released fat/native bytes from the action cache CAS into the artifact
+     * store (hard-link when possible). Failures never fail the release.
+     */
+    private static void promoteReleasedArtifacts(
+            Path cacheDir, Path clientBin, Path engineJar, boolean nativeClient) {
+        try {
+            Path cacheRoot = cacheDir != null ? cacheDir : cc.jumpkick.util.JkDirs.cache();
+            var cacheCas = cc.jumpkick.cache.JkStores.cacheCas(cacheRoot);
+            var storeCas = cc.jumpkick.cache.JkStores.storeCas();
+            java.util.List<Path> files = new java.util.ArrayList<>();
+            if (engineJar != null && Files.isRegularFile(engineJar)) files.add(engineJar);
+            if (nativeClient && clientBin != null && Files.isRegularFile(clientBin)) files.add(clientBin);
+            if (files.isEmpty()) return;
+            var report = cc.jumpkick.cache.ActionPromote.promoteFiles(cacheCas, storeCas, files);
+            if (report.promoted() > 0 || report.alreadyInStore() > 0) {
+                CliOutput.out("  cache→store: promoted "
+                        + report.promoted()
+                        + " Class-C blob(s) ("
+                        + report.alreadyInStore()
+                        + " already durable)");
+            }
+        } catch (Exception e) {
+            // Advisory — release already staged dist files.
+            CliOutput.out("  cache→store: skipped (" + e.getMessage() + ")");
+        }
     }
 
     private static int runBuild(Path dir, boolean skipTests, String modulesSpec, Path cacheDir) {

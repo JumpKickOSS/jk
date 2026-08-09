@@ -13,7 +13,7 @@ import java.util.Set;
 import java.util.stream.Stream;
 
 /**
- * {@code jk clean --cache} GC: mark reachable ({@link CacheRoots}), delete unreferenced blobs idle
+ * {@code jk cache clean} GC: mark reachable ({@link CacheRoots}), delete unreferenced blobs idle
  * longer than {@link #MAX_AGE}, drop matching {@code repos/} hard-links, compact the access log.
  *
  * <p>CAS and {@code repos/<name>/} share inodes via hard link. Purging must remove <strong>every

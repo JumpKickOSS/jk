@@ -190,7 +190,8 @@ public final class ImagePlans {
                     // side-effect (the remote's state is unknown), so it's never skipped.
                     // The tarball is a pure function of the main jar, the dependency jars,
                     // the main class, the image config, and the image-builder plugin version.
-                    ActionCache ac = new ActionCache(JkStores.cacheCas(cache), cache.resolve("actions"));
+                    ActionCache ac =
+                            new ActionCache(JkStores.cacheCas(cache), cache.resolve("actions"), JkStores.storeCas());
                     boolean useCache = tarballPath != null
                             && !SessionContext.current().config().rebuildOr(false);
                     String imgTask = null, imgKey = null;

@@ -2805,12 +2805,24 @@ public final class EngineProtocol {
 
     /**
      * Run a cache maintenance operation (see {@link #CACHE_PRUNE_REQUEST}). {@code op} is {@code
-     * prune}/{@code purge}/{@code gc}; {@code olderThanDays}/{@code sweep} apply to {@code prune}
-     * only; {@code includeJkTmp} asks the prune to also sweep {@code state/tmp} (only when the
-     * default cache dir is in use, mirroring the in-process command's behavior).
+     * prune}/{@code purge}/{@code gc}/{@code sweep}; {@code olderThanDays}/{@code sweep}/
+     * {@code dropAllClassC} apply to {@code prune} only; {@code includeJkTmp} asks the prune to also
+     * sweep {@code state/tmp} (only when the default cache dir is in use).
      */
     public static String cachePruneRequest(
             String op, String cache, int olderThanDays, boolean dryRun, boolean sweep, boolean includeJkTmp) {
+        return cachePruneRequest(op, cache, olderThanDays, dryRun, sweep, includeJkTmp, false);
+    }
+
+    /** @param dropAllClassC when true with {@code op=prune}, delete every Class-C action key */
+    public static String cachePruneRequest(
+            String op,
+            String cache,
+            int olderThanDays,
+            boolean dryRun,
+            boolean sweep,
+            boolean includeJkTmp,
+            boolean dropAllClassC) {
         return "{\"type\":\""
                 + CACHE_PRUNE_REQUEST
                 + "\",\"op\":"
@@ -2825,6 +2837,8 @@ public final class EngineProtocol {
                 + sweep
                 + ",\"includeJkTmp\":"
                 + includeJkTmp
+                + ",\"dropAllClassC\":"
+                + dropAllClassC
                 + "}";
     }
 

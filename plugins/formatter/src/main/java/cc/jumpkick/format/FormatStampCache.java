@@ -11,7 +11,7 @@ import java.nio.file.attribute.FileTime;
  * file is already clean for the config in the key. Fail-open on I/O errors.
  *
  * <p>Hits refresh mtime so the engine's format-stamp GC can LRU-evict cold entries (age TTL +
- * count cap on {@code jk cache prune} / idle-boundary prune).
+ * count cap on {@code jk cache clean} / idle-boundary prune).
  */
 final class FormatStampCache {
 

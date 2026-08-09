@@ -91,7 +91,7 @@ changing the code (and vice versa):
 | `jk history list` | status · Id · Project · Kind · Took · When · Saved · Notes |
 | `jk tasks` | Name · Stage · Description (per module at a workspace root) |
 | `jk jdk list` | (wave 1 — the exemplar) |
-| `jk repo storage` | Element · File Count · Size, plus Total, a spanning utilization row, and a last-pruned footer (hand-rolled on the shared BoxTable chrome) |
+| `jk storage` | Element · File Count · Size, plus Total, a spanning utilization row, and a last-pruned footer (hand-rolled on the shared BoxTable chrome) |
 
 Use `cc.jumpkick.cli.tui.BoxTable.render(title, headers, rows)`; it opens the envelope
 via the caller's `CommandWedge.envelopeStart()` and degrades to ASCII under `--no-ansi`.
@@ -116,7 +116,7 @@ via the caller's `CommandWedge.envelopeStart()` and degrades to ASCII under `--n
 | `jk format` (quiet/check) | already wedge-settled (wave 1) |
 | `jk selective prepare` | already wedge-settled |
 | `jk jdk ensure` / `graal` | settles via `JdkRender.available` under the envelope |
-| `jk repo prune` | plan console (`Repo` chip); settles with the sweep summary (`Finished sweeping store …`), like `jk cache prune` |
+| `jk storage clean` | plan console (`Repo` chip); settles with the sweep summary (`Finished sweeping store …`), like `jk cache clean` |
 
 ### Documented exceptions (deliberately plain)
 

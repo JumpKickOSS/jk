@@ -63,7 +63,7 @@ public final class PluginProcess {
      * One-shot (parent only reads): forks, <strong>closes the child's stdin immediately</strong>, then
      * streams stdout. Closing stdin matters — an open pipe with no writer makes {@code System.in}
      * {@code readLine()} hang forever, which is exactly how a suite that prompts for confirmation
-     * (e.g. {@code jk self purge} without {@code -y}) deadlocks under {@code jk test}/{@code jk
+     * (e.g. {@code jk self nuke} without {@code -y}) deadlocks under {@code jk test}/{@code jk
      * build}.
      */
     public static int run(

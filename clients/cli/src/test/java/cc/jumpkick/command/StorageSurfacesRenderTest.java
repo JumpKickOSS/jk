@@ -19,7 +19,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * JK-1441 — storage-surface rendering: {@code jk cache storage} label column accounts for the
- * colon (all four values start in the same column), and {@code jk repo storage}'s hand-built box
+ * colon (all four values start in the same column), and {@code jk storage}'s hand-built box
  * stays aligned via ANSI-aware {@code BoxTable.visibleWidth} padding.
  */
 class StorageSurfacesRenderTest {

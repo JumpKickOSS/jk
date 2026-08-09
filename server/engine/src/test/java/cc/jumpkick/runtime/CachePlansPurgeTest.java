@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code jk cache purge} wipes the cache tier ({@code actions/}, {@code format-stamps/}, cache
+ * {@code jk cache nuke} wipes the cache tier ({@code actions/}, {@code format-stamps/}, cache
  * {@code sha256/}) and must keep collocated store-ish trees ({@code repos/}, {@code runs/}).
  */
 class CachePlansPurgeTest {

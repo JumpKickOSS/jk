@@ -13,7 +13,6 @@ import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -25,8 +24,10 @@ import java.util.List;
 import java.util.stream.Stream;
 
 /**
- * {@code jk clean}: remove per-module {@code target/} ({@code --keep-artifacts} keeps final jars),
- * optional {@code --cache} GC, optional {@code --force} action-cache invalidation for the project.
+ * {@code jk clean}: remove per-module {@code target/} ({@code --keep-artifacts} keeps final jars).
+ * With global {@code --force}, also invalidates this project's action-cache entries so the next
+ * build starts from scratch. Shared-cache hygiene is {@code jk cache clean} / {@code jk storage
+ * clean}.
  */
 public final class CleanCommand implements CliCommand {
 
@@ -44,14 +45,12 @@ public final class CleanCommand implements CliCommand {
     public List<Opt> options() {
         return List.of(
                 Opt.flag("Delete only build/ intermediates; keep artifacts.", "--keep-artifacts"),
-                Opt.flag("GC the shared cache: purge blobs idle 90+ days.", "--cache"),
                 cc.jumpkick.cli.CommonOpts.cacheDir());
     }
 
     @Override
     public int run(Invocation in) throws IOException {
         boolean keepArtifacts = in.isSet("keep-artifacts");
-        boolean gcCache = in.isSet("cache");
         boolean force = GlobalOptions.from(in).force;
         Path cacheDirOverride = in.value("cache-dir").map(Path::of).orElse(null);
         Path dir = GlobalOptions.from(in).workingDir();
@@ -82,9 +81,6 @@ public final class CleanCommand implements CliCommand {
             CommandWedge.printOk("Clean", removed + " " + stats_ + " " + inTime);
         }
 
-        if (gcCache) {
-            gcCache();
-        }
         if (force) {
             // The hammer's second half: this project's action-cache entries go too, so the
             // next build genuinely starts from scratch. No prompt — --force IS the consent.
@@ -92,46 +88,6 @@ public final class CleanCommand implements CliCommand {
             if (cleared != 0) return cleared;
         }
         return 0;
-    }
-
-    /** Run the cache GC (engine-hosted for a real invocation) and print a one-line summary. */
-    private static void gcCache() throws IOException {
-        long purgedBlobs;
-        long freedBytes;
-        long repoLinksRemoved;
-        // Hosted: the spinner stays client-side (the plan has no per-file progress worth a
-        // bar); the counts ride the terminal plan-finish.
-        var summary = new cc.jumpkick.cli.engine.EngineClient.CacheMaintSummary[1];
-        try (Spinner spinner = Spinner.show(CliOutput.stdout(), "Collecting cache...")) {
-            cc.jumpkick.run.BuildPlanResult result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest(
-                            "gc", JkDirs.cache(), 0, false, false, false),
-                    steps -> new cc.jumpkick.run.BuildPlanListener() {},
-                    (external, plans) -> {},
-                    summary);
-            if (!result.success() || summary[0] == null) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                        "Clean", "cache GC failed — run `jk engine status` for details"));
-                return;
-            }
-        }
-        purgedBlobs = Math.max(0, summary[0].files());
-        freedBytes = Math.max(0, summary[0].bytes());
-        repoLinksRemoved = Math.max(0, summary[0].repoLinks());
-
-        if (purgedBlobs == 0) {
-            CommandWedge.printOk("Cache GC", "nothing idle past 90 days");
-        } else {
-            String msg = String.format(
-                    "purged %,d blob%s (%s), %,d repo link%s",
-                    purgedBlobs,
-                    purgedBlobs == 1 ? "" : "s",
-                    CacheCommand.fmtBytes(freedBytes),
-                    repoLinksRemoved,
-                    repoLinksRemoved == 1 ? "" : "s");
-            CommandWedge.printOk("Cache GC", msg);
-        }
     }
 
     /** Build-intermediate subdirs removed by {@code --keep-artifacts} (final jars stay). */
@@ -203,7 +159,7 @@ public final class CleanCommand implements CliCommand {
         return WorkspaceScan.findRoot(dir).orElse(dir);
     }
 
-    /** Invalidate this project's (+ workspace's) action-cache entries — `jk cache clear -y`. */
+    /** Invalidate this project's (+ workspace's) action-cache entries for {@code --force}. */
     private static int clearProjectActionCache(Path projectDir, Path cacheDirOverride) {
         if (!Files.isRegularFile(projectDir.resolve("jk.toml"))) {
             // Not a project dir: nothing project-scoped to clear; the file clean already ran.
@@ -221,7 +177,7 @@ public final class CleanCommand implements CliCommand {
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(new GlobalOptions());
 
         var summary = new cc.jumpkick.cli.engine.EngineClient.CacheMaintSummary[1];
-        ConsoleSpec spec = CacheCommand.CacheClearCommand.clearSpec(
+        ConsoleSpec spec = CacheCommand.clearSpec(
                 false,
                 () -> summary[0] != null ? summary[0].files() : 0L,
                 () -> summary[0] != null ? summary[0].bytes() : 0L);

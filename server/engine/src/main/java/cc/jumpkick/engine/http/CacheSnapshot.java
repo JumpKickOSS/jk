@@ -10,7 +10,7 @@ import java.nio.file.Path;
 /**
  * Storage breakdown for {@code GET /api/cache} and live {@code cache} SSE — the same two surfaces
  * the CLI splits as {@code jk cache storage} (cache CAS + action index + format stamps) and {@code
- * jk repo storage} (artifact store: store CAS + repos + run logs).
+ * jk storage} (artifact store: store CAS + repos + run logs).
  *
  * <p>{@code maxBytes} is the <strong>artifact store</strong> budget ({@code [cache]
  * max-store-size-gb}, default 6 GiB / 12 GiB on CI). {@code actionMaxBytes} / {@code
@@ -70,7 +70,7 @@ public record CacheSnapshot(
     }
 
     /**
-     * Artifact / store footprint matching {@code jk repo storage}: store CAS + worker JAR mirrors +
+     * Artifact / store footprint matching {@code jk storage}: store CAS + worker JAR mirrors +
      * run logs.
      */
     public long artifactStorageBytes() {
@@ -83,7 +83,7 @@ public record CacheSnapshot(
 
     /**
      * Walk store + cache sections and snapshot their sizes — identical dirs and hardlink-aware
-     * exclusive byte accounting as {@code jk cache storage} / {@code jk repo storage}.
+     * exclusive byte accounting as {@code jk cache storage} / {@code jk storage}.
      */
     public static CacheSnapshot capture(Path cacheRoot) {
         Path storeCas = JkStores.resolve(cacheRoot, "sha256");

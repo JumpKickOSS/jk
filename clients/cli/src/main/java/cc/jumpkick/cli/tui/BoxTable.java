@@ -177,7 +177,7 @@ public final class BoxTable {
      * Visible terminal-column width: CSI/OSC sequences are ignored and each code point counts
      * its wcwidth (CJK wide chars are 2 columns, astral chars 1 code point each) so colored and
      * non-ASCII cells pad correctly. Public so custom tables that share this chrome (e.g. {@code
-     * jk repo storage}'s spanning utilization footer) pad with the same rule instead of raw
+     * jk storage}'s spanning utilization footer) pad with the same rule instead of raw
      * {@code String.length()}.
      */
     public static int visibleWidth(String s) {

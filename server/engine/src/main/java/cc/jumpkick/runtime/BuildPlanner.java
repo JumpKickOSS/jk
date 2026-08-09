@@ -4681,7 +4681,7 @@ public final class BuildPlanner {
         if (cc.jumpkick.config.SessionContext.current().config().rebuildOr(false)) {
             return false;
         }
-        ActionCache ac = new ActionCache(JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"));
+        ActionCache ac = packagingActionCache(cacheRoot);
         var hit = ac.lookup(key);
         return hit.isPresent() && ac.restoreArtifacts(hit.get(), baseDir);
     }
@@ -4704,8 +4704,13 @@ public final class BuildPlanner {
             boolean persist)
             throws IOException {
         if (!persist) return;
-        new ActionCache(JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"))
+        packagingActionCache(cacheRoot)
                 .storeArtifacts(taskId, key, Map.of("inputs", String.join(";", tokens)), baseDir, artifacts);
+    }
+
+    /** Action cache with store-CAS fallback for Class-C blobs promoted by release. */
+    private static ActionCache packagingActionCache(Path cacheRoot) {
+        return new ActionCache(JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"), JkStores.storeCas());
     }
 
     /** Test hook: {@link #storePackaged} under a rebuild session must still persist. */
@@ -4868,8 +4873,8 @@ public final class BuildPlanner {
      *
      * <p><strong>Fully sandboxed product layout</strong> — cache and store both live under
      * {@code $JK_HOME}. Never point {@code JK_CACHE_DIR} or {@code JK_STORE_DIR} at the host: a
-     * prior bug set them to the developer's real trees so {@code SelfPurgeCommandTest} /
-     * {@code jk cache purge} / {@code jk self purge --store} wiped action-cache and install-local
+     * prior bug set them to the developer's real trees so {@code SelfNukeCommandTest} /
+     * {@code jk cache nuke} / {@code jk self nuke --store} wiped action-cache and install-local
      * workers mid-{@code jk build}. After that, post-green {@code jk explain} reported a full
      * rebuild and subsequent tests could not find {@code jk-test-runner}.
      *

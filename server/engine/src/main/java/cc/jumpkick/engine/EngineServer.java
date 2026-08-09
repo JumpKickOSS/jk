@@ -2137,7 +2137,7 @@ public final class EngineServer implements AutoCloseable {
 
     /**
      * Queue an opportunistic prune of {@code cache} for the next idle boundary if the auto-prune
-     * cadence is due — the engine-internal replacement for the detached {@code jk cache prune
+     * cadence is due — the engine-internal replacement for the detached {@code jk cache clean
      * --background} self-spawn (the engine is the process that did the work, and the idle boundary
      * is the only safe time to mutate the caches it serves).
      */
@@ -3704,7 +3704,8 @@ public final class EngineServer implements AutoCloseable {
                                                 Jsonl.intValue(requestLine, "olderThanDays", 30),
                                                 dryRun,
                                                 Jsonl.bool(requestLine, "sweep", false),
-                                                Jsonl.bool(requestLine, "includeJkTmp", false));
+                                                Jsonl.bool(requestLine, "includeJkTmp", false),
+                                                Jsonl.bool(requestLine, "dropAllClassC", false));
                                 };
                         Session session = Session.defaults().withCacheDir(cache).withCancel(cancelToken);
                         String dir = EngineProtocol.SINGLE_PLAN_DIR;
