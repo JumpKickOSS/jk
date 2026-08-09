@@ -16,9 +16,11 @@ import org.junit.jupiter.api.io.TempDir;
 class DependencyGraphModelTest {
 
     @Test
-    void parseScopes_defaults_to_main() {
-        assertThat(DependencyGraphModel.parseScopes(null)).containsExactly(Scope.MAIN);
-        assertThat(DependencyGraphModel.parseScopes("")).containsExactly(Scope.MAIN);
+    void parseScopes_defaults_to_export_main_runtime_like_jk_tree() {
+        assertThat(DependencyGraphModel.parseScopes(null))
+                .containsExactly(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME);
+        assertThat(DependencyGraphModel.parseScopes(""))
+                .containsExactly(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME);
         assertThat(DependencyGraphModel.parseScopes("test,main")).containsExactly(Scope.MAIN, Scope.TEST);
         // An unknown token is an error, not a silent fallback: swallowing it hid the endpoint's
         // missing percent-decode for a whole release (JK-1607).

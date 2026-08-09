@@ -3,6 +3,8 @@
 // See docs/webclient.md and docs/http.md (auth tiers, #t= fragment bootstrap).
 
 const TOKEN_KEY = 'jk-http-token';
+const EPOCH_KEY = 'jk-engine-epoch';
+const EPOCH_HEADER = 'X-Jk-Engine-Epoch';
 
 /**
  * On load, adopt a token from the URL fragment (`#t=…` — printed by `jk engine status`), stash it
@@ -70,17 +72,87 @@ export function loopback() {
   return ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(location.hostname);
 }
 
-function headers() {
+/** Latched process generation for fail-closed API calls (JK-1724). */
+export function engineEpoch() {
+  return sessionStorage.getItem(EPOCH_KEY) || null;
+}
+
+/**
+ * Latch {@code engineEpoch} from a status payload. Returns {@code 'mismatch'} when the generation
+ * changed (caller should hard-reload), {@code 'ok'} when unchanged or first latch, {@code 'none'}
+ * when the payload has no epoch.
+ */
+export function noteEngineEpoch(statusOrEpoch) {
+  const next =
+    statusOrEpoch == null
+      ? null
+      : typeof statusOrEpoch === 'string'
+        ? statusOrEpoch
+        : statusOrEpoch.engineEpoch;
+  if (next == null || next === '') return 'none';
+  const prev = engineEpoch();
+  if (prev == null) {
+    sessionStorage.setItem(EPOCH_KEY, next);
+    return 'ok';
+  }
+  if (prev !== next) return 'mismatch';
+  return 'ok';
+}
+
+/** Full shell reload when the engine generation under this tab has changed. Loop-safe. */
+export function hardRefreshForEpoch() {
+  const flag = 'jk-epoch-reload';
+  if (sessionStorage.getItem(flag) === '1') {
+    sessionStorage.removeItem(flag);
+    return;
+  }
+  sessionStorage.setItem(flag, '1');
+  location.reload();
+}
+
+function headers(includeEpoch) {
+  const h = {};
   const t = token();
-  return t ? { Authorization: 'Bearer ' + t } : {};
+  if (t) h.Authorization = 'Bearer ' + t;
+  if (includeEpoch !== false) {
+    const ep = engineEpoch();
+    if (ep) h[EPOCH_HEADER] = ep;
+  }
+  return h;
+}
+
+function throwHttp(resp, json) {
+  const err = { status: resp.status };
+  if (json && json.error) err.error = json.error;
+  if (json && json.engineEpoch) err.engineEpoch = json.engineEpoch;
+  throw err;
+}
+
+async function handleEpochConflict(resp) {
+  if (resp.status !== 409) return false;
+  let json = {};
+  try {
+    json = await resp.clone().json();
+  } catch {
+    // not JSON
+  }
+  if (json.error === 'engine-epoch-mismatch' || json.engineEpoch) {
+    if (json.engineEpoch) sessionStorage.setItem(EPOCH_KEY, json.engineEpoch);
+    hardRefreshForEpoch();
+    return true;
+  }
+  return false;
 }
 
 /**
  * GET an /api path as parsed JSON. Throws {status} on any non-2xx so callers can branch on 401.
  * Optional {@code opts.signal} (AbortSignal) cancels the fetch when a lazy panel is closed.
+ * {@code opts.bootstrap} skips the epoch header (only for GET /api/status discovery).
  */
 export async function get(path, opts = {}) {
-  const resp = await fetch(path, { headers: headers(), signal: opts.signal });
+  const bootstrap = !!opts.bootstrap || path === '/api/status' || path.startsWith('/api/status?');
+  const resp = await fetch(path, { headers: headers(!bootstrap), signal: opts.signal });
+  if (await handleEpochConflict(resp)) throw { status: 409, error: 'engine-epoch-mismatch' };
   if (!resp.ok) throw { status: resp.status };
   return resp.json();
 }
@@ -89,24 +161,27 @@ export async function get(path, opts = {}) {
 export async function post(path, body) {
   const resp = await fetch(path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...headers() },
+    headers: { 'Content-Type': 'application/json', ...headers(true) },
     body: JSON.stringify(body),
   });
+  if (await handleEpochConflict(resp)) throw { status: 409, error: 'engine-epoch-mismatch' };
   const json = await resp.json().catch(() => ({}));
-  if (!resp.ok) throw { status: resp.status, error: json.error };
+  if (!resp.ok) throwHttp(resp, json);
   return json;
 }
 
 /** GET an /api path as plain text (the log tail). Throws {status} on any non-2xx. */
 export async function getText(path) {
-  const resp = await fetch(path, { headers: headers() });
+  const resp = await fetch(path, { headers: headers(true) });
+  if (await handleEpochConflict(resp)) throw { status: 409, error: 'engine-epoch-mismatch' };
   if (!resp.ok) throw { status: resp.status };
   return resp.text();
 }
 
 /** DELETE an /api path (a mutation — always token-bearing). Throws {status} on non-2xx. */
 export async function del(path) {
-  const resp = await fetch(path, { method: 'DELETE', headers: headers() });
+  const resp = await fetch(path, { method: 'DELETE', headers: headers(true) });
+  if (await handleEpochConflict(resp)) throw { status: 409, error: 'engine-epoch-mismatch' };
   if (!resp.ok) throw { status: resp.status };
   return resp.json().catch(() => ({}));
 }
@@ -158,4 +233,19 @@ export function events(onEvent, onState) {
     });
   }
   return source;
+}
+
+/** Shared ECharts tooltip chrome (JK-1726) — soft Jk Dark panel, not a harsh black slab. */
+export function echartsTooltipChrome(cssVar) {
+  const mono = cssVar('--mono', 'monospace');
+  return {
+    appendToBody: true,
+    backgroundColor: cssVar('--s2', '#1c2630'),
+    borderColor: cssVar('--bd', '#2a3742'),
+    borderWidth: 1,
+    padding: [6, 10],
+    textStyle: { color: cssVar('--tx', '#cfd8dc'), fontSize: 11, fontFamily: mono },
+    extraCssText:
+      'border-radius:6px;box-shadow:0 10px 28px -8px rgba(0,0,0,0.55);font-family:' + mono + ';',
+  };
 }

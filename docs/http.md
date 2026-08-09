@@ -117,7 +117,7 @@ Dependency graph for the Project page (JK-1542), same idea as `jk tree`:
 | Query | Default | Meaning |
 | --- | --- | --- |
 | `dir` | required | Project or workspace root |
-| `scopes` | `main` | Comma-separated canonical scopes (`main`, `test`, `provided`, …). Percent-encoded like any query value; an unknown name is a **400** naming the valid set |
+| `scopes` | `export,main,runtime` | Comma-separated canonical scopes (same default as `jk tree`). Percent-encoded like any query value; an unknown name is a **400** naming the valid set |
 | `transitive` | `false` | When true, expand lockfile transitive deps under each declared root |
 
 Response:
@@ -176,9 +176,19 @@ async — a first-ever connect may briefly carry no `cache` frame until the asyn
 
 ### `event: status`
 
-Core engine/host vitals (same facts as `GET /api/status` heap/load/plans fields). Config knobs
-(`httpUrl`, `maxConcurrentRequests`, …) stay REST-only; the SPA merges SSE into the last REST
-hydrate.
+Core engine/host vitals (same facts as `GET /api/status` heap/load/plans fields), including
+`availableMemoryBytes`, `systemCpuLoad`, `systemLoadAverage` (1‑minute), and `engineEpoch`
+(process generation id). Config knobs (`httpUrl`, `maxConcurrentRequests`, …) stay REST-only;
+the SPA merges SSE into the last REST hydrate.
+
+### Engine generation (`engineEpoch`)
+
+Every process mints a stable `engineEpoch` (`version[+buildId]@startedAtMillis`). It appears on
+`GET /api/status` and every SSE `status` frame. After bootstrap, non-bootstrap `/api/*` calls must
+send `X-Jk-Engine-Epoch: <epoch>` matching the running process; mismatch or missing header →
+**409** `{ "error": "engine-epoch-mismatch", "engineEpoch": "…" }`. Exempt: `GET /api/status` and
+`GET /api/events` (EventSource cannot send headers). Static shell is ungated. The SPA latches the
+epoch and hard-reloads when it changes (engine restart / displacement).
 
 ### `event: cache` and `GET /api/cache`
 

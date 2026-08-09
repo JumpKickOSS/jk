@@ -55,8 +55,9 @@ ECharts (`series-graph`). Complex graphs are expensive server- and client-side, 
 
 - the panel is **closed by default**;
 - `GET /api/project/graph` runs **only** when the panel opens (`module-dep-graph` mounts then);
-  scope checkboxes (default `main`) and a **Transitive** toggle (off by default) re-fetch with
-  `scopes=` / `transitive=`;
+  scope checkboxes (default **export / main / runtime**, same as `jk tree`) and a **Transitive**
+  toggle (off by default) re-fetch with `scopes=` / `transitive=`;
+- node labels are **name only** (hover shows Group / Name / Version / Kind);
 - `echarts.init` runs only after that payload lands;
 - closing the panel (or leaving the project) unmounts the component (aborts in-flight fetch,
   disposes the chart).
@@ -71,8 +72,12 @@ panel rather than the global auth dialog.
 | Path | Handler |
 | --- | --- |
 | Build activity | `fold.js` → activity cards (hard bounds: `MAX_CARDS`, `MAX_OUTPUT_LINES`, `MAX_DIAGNOSTICS`); `label` events drive the live detail after the running phase node (CLI tree-row parity) |
-| `status` | Header sysbox (CPU / RAM meters) + footer Builds Running / Engine Heap |
+| `status` | Header sysbox (capacity + CPU/RAM % + load avg / used GiB) + footer Builds Running / Engine Heap; latches `engineEpoch` for hard-refresh on engine replace |
 | `cache` | Footer **Cache** + **Store** (thin dual-surface frames); Status panels load full breakdown via REST on view entry |
+
+**Builds Running** stays in lockstep with Live activity (running card count while live). **API
+calls** after the first status hydrate send `X-Jk-Engine-Epoch`; a **409** or a changed epoch on
+status triggers a full page reload so static assets match the new engine.
 
 While the stream is **live**, the SPA does **not** poll `/api/status` or `/api/cache` on a timer.
 REST hydrate runs on load/reconnect. **Offline** status fallback uses stepped backoff (5 s → 30 s

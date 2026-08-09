@@ -34,8 +34,10 @@ class LiveVitalsTest {
                 base.aotTrainingPid(),
                 base.cores(),
                 base.totalMemoryBytes(),
-                base.freeMemoryBytes(),
+                base.availableMemoryBytes(),
                 base.systemCpuLoad(),
+                base.systemLoadAverage(),
+                base.engineEpoch(),
                 base.peakActiveRequests(),
                 base.peakActiveBuildPlans());
         StatusSnapshot hotter = snap(5L * 1024 * 1024 * 1024, 0.50);
@@ -85,8 +87,10 @@ class LiveVitalsTest {
                     s.aotTrainingPid(),
                     s.cores(),
                     s.totalMemoryBytes(),
-                    s.freeMemoryBytes(),
+                    s.availableMemoryBytes(),
                     s.systemCpuLoad(),
+                    s.systemLoadAverage(),
+                    s.engineEpoch(),
                     s.peakActiveRequests(),
                     s.peakActiveBuildPlans()));
             live.publishStatus(false);
@@ -270,6 +274,8 @@ class LiveVitalsTest {
                 16L * 1024 * 1024 * 1024,
                 freeBytes,
                 load,
+                0.5,
+                "0.11.0-test@1",
                 0,
                 0);
     }

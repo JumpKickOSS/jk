@@ -440,10 +440,45 @@ public final class HttpEngineServer implements AutoCloseable {
                 sendText(exchange, 401, "missing or invalid bearer token\n");
                 return;
             }
+            // Generation gate (JK-1724): fail-closed except bootstrap status + SSE (EventSource
+            // cannot send headers). Stale dashboards hard-refresh on 409.
+            if (!engineEpochOk(exchange)) {
+                sendEngineEpochConflict(exchange);
+                return;
+            }
             api.handle(exchange);
             return;
         }
         staticContent.serve(exchange); // static is never token-gated — the dashboard shell has no secrets
+    }
+
+    /**
+     * {@code GET /api/status} and {@code GET /api/events} may omit the epoch header (bootstrap /
+     * EventSource). Every other {@code /api/*} call must send a matching {@code X-Jk-Engine-Epoch}.
+     */
+    private boolean engineEpochOk(HttpExchange exchange) {
+        String path = exchange.getRequestURI().getPath();
+        String method = exchange.getRequestMethod();
+        boolean bootstrap = ("GET".equals(method) || "HEAD".equals(method))
+                && (path.equals("/api/status") || path.equals("/api/events"));
+        if (bootstrap) return true;
+        String presented = exchange.getRequestHeaders().getFirst("X-Jk-Engine-Epoch");
+        if (presented == null || presented.isBlank()) return false;
+        StatusSnapshot s = status.get();
+        String expected = s != null ? s.engineEpoch() : null;
+        return expected != null && expected.equals(presented.trim());
+    }
+
+    private void sendEngineEpochConflict(HttpExchange exchange) throws IOException {
+        StatusSnapshot s = status.get();
+        String epoch = s != null && s.engineEpoch() != null ? s.engineEpoch() : "";
+        String body = JsonOut.object()
+                .put("error", "engine-epoch-mismatch")
+                .put("engineEpoch", epoch)
+                .put("version", s != null ? s.version() : "")
+                .put("startedAt", s != null ? s.startedAtMillis() : 0L)
+                .toString();
+        sendJson(exchange, 409, body);
     }
 
     /**
@@ -650,8 +685,10 @@ public final class HttpEngineServer implements AutoCloseable {
                 .put("aotTrainingPid", s.aotTrainingPid())
                 .put("cores", s.cores())
                 .put("totalMemoryBytes", s.totalMemoryBytes())
-                .put("freeMemoryBytes", s.freeMemoryBytes())
+                .put("availableMemoryBytes", s.availableMemoryBytes())
                 .put("systemCpuLoad", s.systemCpuLoad())
+                .put("systemLoadAverage", s.systemLoadAverage())
+                .put("engineEpoch", s.engineEpoch())
                 .put("httpUrl", url())
                 // url already ends with /; avoid //mcp in status/mcpUrl. Null when MCP is off.
                 .put("mcpUrl", config.mcp().enabled() && url() != null ? url().replaceAll("/+$", "") + "/mcp" : null)

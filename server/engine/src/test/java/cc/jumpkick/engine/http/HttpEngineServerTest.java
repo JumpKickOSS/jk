@@ -30,7 +30,24 @@ import org.junit.jupiter.api.io.TempDir;
 class HttpEngineServerTest {
 
     private static final StatusSnapshot SNAPSHOT = new StatusSnapshot(
-            "9.9.9-test", 42, 1_000, 1, 0, 1_000, 2_000, 3_000, -1, -1, 8, 16_000_000_000L, 8_000_000_000L, 0.18, 1, 0);
+            "9.9.9-test",
+            42,
+            1_000,
+            1,
+            0,
+            1_000,
+            2_000,
+            3_000,
+            -1,
+            -1,
+            8,
+            16_000_000_000L,
+            8_000_000_000L,
+            0.18,
+            1.2,
+            "9.9.9-test@1000",
+            1,
+            0);
 
     @TempDir
     Path webRoot;
@@ -136,7 +153,18 @@ class HttpEngineServerTest {
 
     private HttpResponse<String> get(String path, String... headers) throws IOException, InterruptedException {
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(baseUrl + path.substring(1)));
-        for (int i = 0; i < headers.length; i += 2) builder.header(headers[i], headers[i + 1]);
+        // Fail-closed epoch gate (JK-1724): non-bootstrap /api/* require the generation header.
+        // Tests that deliberately omit it pass an empty pair or hit status/events only.
+        String pathOnly = path.contains("?") ? path.substring(0, path.indexOf('?')) : path;
+        boolean bootstrap = pathOnly.equals("/api/status") || pathOnly.equals("/api/events");
+        boolean hasEpoch = false;
+        for (int i = 0; i < headers.length; i += 2) {
+            builder.header(headers[i], headers[i + 1]);
+            if ("X-Jk-Engine-Epoch".equalsIgnoreCase(headers[i])) hasEpoch = true;
+        }
+        if (path.startsWith("/api/") && !bootstrap && !hasEpoch) {
+            builder.header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch());
+        }
         return client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
     }
 
@@ -375,8 +403,10 @@ class HttpEngineServerTest {
                 .contains("\"rssBytes\":-1")
                 .contains("\"cores\":8")
                 .contains("\"totalMemoryBytes\":16000000000")
-                .contains("\"freeMemoryBytes\":8000000000")
+                .contains("\"availableMemoryBytes\":8000000000")
                 .contains("\"systemCpuLoad\":0.18")
+                .contains("\"systemLoadAverage\":1.2")
+                .contains("\"engineEpoch\":\"9.9.9-test@1000\"")
                 .contains("\"httpUrl\":\"" + baseUrl + "\"");
     }
 
@@ -467,6 +497,28 @@ class HttpEngineServerTest {
     void api_metrics_requires_the_token_even_on_loopback() throws Exception {
         // Rows carry every project dir and coordinate ever built — same class as /api/fs (JK-1466).
         assertThat(get("/api/metrics").statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void api_requires_matching_engine_epoch_except_status_and_events() throws Exception {
+        // Bootstrap status has no epoch header requirement.
+        assertThat(get("/api/status").statusCode()).isEqualTo(200);
+        // Missing epoch on other /api/* → 409 (fail-closed, JK-1724).
+        HttpResponse<String> missing = client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + "api/history")).build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(missing.statusCode()).isEqualTo(409);
+        assertThat(missing.body()).contains("engine-epoch-mismatch").contains(SNAPSHOT.engineEpoch());
+        // Wrong epoch → 409 with current generation.
+        HttpResponse<String> wrong = client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + "api/history"))
+                        .header("X-Jk-Engine-Epoch", "stale-generation")
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(wrong.statusCode()).isEqualTo(409);
+        assertThat(wrong.body()).contains("\"engineEpoch\":\"" + SNAPSHOT.engineEpoch() + "\"");
+        // Matching epoch succeeds (history is open on loopback).
+        assertThat(get("/api/history").statusCode()).isEqualTo(200);
     }
 
     @Test
@@ -612,6 +664,7 @@ class HttpEngineServerTest {
         // over a raw socket like HttpEngineServerTest#raw, with the bearer token added by hand.
         String request = "GET /api/project/graph?dir=%zz HTTP/1.1\r\n"
                 + "Authorization: Bearer " + token() + "\r\n"
+                + "X-Jk-Engine-Epoch: " + SNAPSHOT.engineEpoch() + "\r\n"
                 + "Connection: close\r\n\r\n";
         String response;
         try (Socket socket = new Socket("127.0.0.1", port)) {

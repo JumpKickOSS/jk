@@ -14,6 +14,9 @@ import {
   del,
   events,
   loopback,
+  noteEngineEpoch,
+  hardRefreshForEpoch,
+  echartsTooltipChrome,
 } from './api.js';
 import {
   foldEvent,
@@ -314,12 +317,8 @@ const BuildBars = {
           yAxis: { type: 'value', show: false, min: 0 },
           tooltip: {
             trigger: 'axis',
-            appendToBody: true,
-            backgroundColor: cssVar('--s1', '#161d25'),
-            borderColor: cssVar('--bd', '#2a3742'),
-            borderWidth: 1,
+            ...echartsTooltipChrome(cssVar),
             padding: [4, 8],
-            textStyle: { color: cssVar('--tx', '#cfd8dc'), fontSize: 11, fontFamily: 'var(--mono)' },
             axisPointer: { type: 'none' },
             formatter: (ps) => {
               const b = builds[ps[0].dataIndex];
@@ -347,8 +346,8 @@ const ModuleDepGraph = {
     loading: true,
     error: null,
     graph: null,
-    // Default: main only, no lockfile transitive expansion (matches "direct deps" first look).
-    selectedScopes: { main: true },
+    // Default: export/main/runtime — same as jk tree (DependencyTree.defaultScopeOrder).
+    selectedScopes: { export: true, main: true, runtime: true },
     transitive: false,
     // Filled from the first successful response (server lists all Scope.canonical values).
     availableScopes: [
@@ -409,7 +408,7 @@ const ModuleDepGraph = {
     scopesQuery() {
       const order = this.availableScopes;
       const picked = order.filter((s) => this.selectedScopes[s]);
-      return picked.length ? picked.join(',') : 'main';
+      return picked.length ? picked.join(',') : 'export,main,runtime';
     },
     toggleScope(sc, ev) {
       const on = !!(ev && ev.target && ev.target.checked);
@@ -509,23 +508,36 @@ const ModuleDepGraph = {
       this._ro = new ResizeObserver(() => this._chart && this._chart.resize());
       this._ro.observe(el);
 
-      const tx = cssVar('--tx', '#cfd8dc');
       const dim = cssVar('--dim', '#5c6d78');
       const cn = cssVar('--cn', '#00f0ff');
       const indigo = cssVar('--indigo', '#3f51b5');
-      const s1 = cssVar('--s1', '#161d25');
-      const bd = cssVar('--bd', '#2a3742');
       const bright = cssVar('--bright', '#eceff1');
       const mono = cssVar('--mono', 'monospace');
 
       // Cyan: workspace module or declared in a selected-scope jk.toml. Indigo: transitive only.
+      const shortName = (label) => {
+        if (!label) return '';
+        const i = label.indexOf(':');
+        return i < 0 ? label : label.slice(i + 1);
+      };
+      const coordParts = (label) => {
+        if (!label) return { group: '', name: '' };
+        const i = label.indexOf(':');
+        if (i < 0) return { group: '', name: label };
+        return { group: label.slice(0, i), name: label.slice(i + 1) };
+      };
       const nodes = (g.nodes || []).map((n) => {
         const kind = n.kind === 'transitive' ? 'transitive' : n.kind === 'module' ? 'module' : 'declared';
         const isTransitive = kind === 'transitive';
         const accent = isTransitive ? indigo : cn;
+        const fullLabel = n.label || '';
+        const parts = coordParts(fullLabel);
         return {
           id: n.id,
-          name: n.label,
+          name: shortName(fullLabel),
+          fullLabel,
+          group: parts.group,
+          artifactName: parts.name,
           path: n.path,
           version: n.version,
           kind,
@@ -556,18 +568,14 @@ const ModuleDepGraph = {
       const n = nodes.length;
       const repulsion = n > 80 ? 180 : n > 40 ? 320 : n > 15 ? 720 : 1100;
       const edgeLength = n > 80 ? 70 : n > 40 ? 110 : n > 15 ? 220 : 300;
+      const tipChrome = echartsTooltipChrome(cssVar);
 
       this._chart.setOption(
         {
           animationDuration: n > 30 ? 200 : 400,
           tooltip: {
             show: true,
-            appendToBody: true,
-            backgroundColor: s1,
-            borderColor: bd,
-            borderWidth: 1,
-            padding: [6, 10],
-            textStyle: { color: tx, fontSize: 11, fontFamily: mono },
+            ...tipChrome,
             formatter: (p) => {
               if (p.dataType === 'edge') {
                 const s = p.data.source;
@@ -577,18 +585,39 @@ const ModuleDepGraph = {
                 const sc = p.data.scope
                   ? ' <span style="opacity:.65">[' + escapeHtml(p.data.scope) + ']</span>'
                   : '';
-                return escapeHtml(sn ? sn.name : s) + ' → ' + escapeHtml(tn ? tn.name : t) + sc;
+                return (
+                  escapeHtml(sn ? sn.name : s) + ' → ' + escapeHtml(tn ? tn.name : t) + sc
+                );
               }
               const d = p.data || {};
-              const role =
+              const lines = [];
+              if (d.group) {
+                lines.push(
+                  '<span style="opacity:.7">Group:</span> ' + escapeHtml(d.group),
+                );
+              }
+              lines.push(
+                '<span style="opacity:.7">Name:</span> ' +
+                  escapeHtml(d.artifactName || d.name || p.name || ''),
+              );
+              if (d.version) {
+                lines.push(
+                  '<span style="opacity:.7">Version:</span> ' + escapeHtml(d.version),
+                );
+              }
+              const kindLabel =
                 d.kind === 'transitive'
-                  ? '<br/><span style="opacity:.75">transitive</span>'
-                  : d.kind === 'module' || d.path
-                    ? '<br/><span style="opacity:.75">workspace module</span>'
-                    : '<br/><span style="opacity:.75">declared</span>';
-              const ver = d.version ? '<br/><span style="opacity:.7">' + escapeHtml(d.version) + '</span>' : '';
-              const path = d.path ? '<br/><span style="opacity:.7">' + escapeHtml(d.path) + '</span>' : '';
-              return escapeHtml(d.name || p.name || '') + role + ver + path;
+                  ? 'transitive'
+                  : d.kind === 'module'
+                    ? 'module'
+                    : 'declared';
+              lines.push('<span style="opacity:.7">Kind:</span> ' + escapeHtml(kindLabel));
+              if (d.path) {
+                lines.push(
+                  '<span style="opacity:.7">Path:</span> ' + escapeHtml(d.path),
+                );
+              }
+              return lines.join('<br/>');
             },
           },
           series: [
@@ -1045,6 +1074,11 @@ Vue.createApp({
             return;
           }
           foldEvent(this.cards, { ...event, at: Date.now() });
+          // Keep footer Builds Running in lockstep with activity (JK-1725). Prefer the post-
+          // transition count on the event when present; otherwise derive from running cards.
+          if (event.type === 'request-start' || event.type === 'request-finish') {
+            this.applyActiveBuildPlans(event.data);
+          }
           // The build number + journal record are written just after request-finish (writeJournal),
           // so re-pull history a beat later: it reconciles the live card (tagging its #number) and
           // refreshes the Projects tab. Debounced so a burst of finishes triggers one reload.
@@ -1453,7 +1487,34 @@ Vue.createApp({
     applyStatusEvent(data) {
       if (this.authModal || this.connection === 'unauthorized') return;
       if (!data || typeof data !== 'object') return;
+      if (noteEngineEpoch(data) === 'mismatch') {
+        hardRefreshForEpoch();
+        return;
+      }
       this.status = this.status ? { ...this.status, ...data } : { ...data };
+    },
+
+    /**
+     * Immediate plan-count update from request-start/finish (JK-1725). When the event carries
+     * {@code activeBuildPlans}, use it; otherwise count running activity cards so the footer
+     * never lags the Live feed.
+     */
+    applyActiveBuildPlans(data) {
+      const n =
+        data && typeof data.activeBuildPlans === 'number'
+          ? data.activeBuildPlans
+          : this.runningCardCount();
+      if (!this.status) this.status = {};
+      this.status = { ...this.status, activeBuildPlans: n };
+    },
+
+    /** Number of Live activity cards still in flight. */
+    runningCardCount() {
+      let n = 0;
+      for (const c of this.cards || []) {
+        if (outcomeOf(c) === 'running') n++;
+      }
+      return n;
     },
 
     // Thin live `cache` frames (JK-1502) merge into the last full REST snapshot; full frames replace.
@@ -1473,7 +1534,12 @@ Vue.createApp({
       if (this.authModal) return;
       return this.fetchOnce('status', async () => {
         try {
-          this.status = await get('/api/status');
+          const s = await get('/api/status', { bootstrap: true });
+          if (noteEngineEpoch(s) === 'mismatch') {
+            hardRefreshForEpoch();
+            return;
+          }
+          this.status = s;
         } catch (e) {
           this.handleHttpError(e);
         }
@@ -1886,7 +1952,7 @@ Vue.createApp({
       // to #status — section fields are absent and rendered "NaN MiB" without it (JK-1530).
       return bytes == null || bytes < 0 ? '—' : Math.round(bytes / 1048576) + ' MiB';
     },
-    // System RAM reads naturally in GiB (total / free physical memory the engine's OS reports).
+    // System RAM reads naturally in GiB (total / available physical memory the engine's OS reports).
     gib(bytes) {
       return bytes == null || bytes < 0 ? '—' : (bytes / 1073741824).toFixed(1) + ' GiB';
     },
@@ -1904,14 +1970,29 @@ Vue.createApp({
     },
     /**
      * Host RAM used % for the header sysbox: (total − available) / total.
-     * freeMemoryBytes is available headroom (see StatusSnapshot), not raw free.
+     * availableMemoryBytes is available headroom (see StatusSnapshot).
      */
     ramPercent() {
       const s = this.status;
       if (!s || s.totalMemoryBytes == null || s.totalMemoryBytes <= 0) return null;
-      if (s.freeMemoryBytes == null || s.freeMemoryBytes < 0) return null;
-      const used = Math.max(0, s.totalMemoryBytes - s.freeMemoryBytes);
+      const avail = s.availableMemoryBytes ?? s.freeMemoryBytes;
+      if (avail == null || avail < 0) return null;
+      const used = Math.max(0, s.totalMemoryBytes - avail);
       return Math.min(100, Math.round((100 * used) / s.totalMemoryBytes));
+    },
+    /** Used host RAM in bytes (total − available), or null. */
+    ramUsedBytes() {
+      const s = this.status;
+      if (!s || s.totalMemoryBytes == null || s.totalMemoryBytes <= 0) return null;
+      const avail = s.availableMemoryBytes ?? s.freeMemoryBytes;
+      if (avail == null || avail < 0) return null;
+      return Math.max(0, s.totalMemoryBytes - avail);
+    },
+    /** 1-minute load average formatted to one decimal, or null when unobservable. */
+    loadAverageText() {
+      const avg = this.status?.systemLoadAverage;
+      if (avg == null || avg < 0) return null;
+      return avg.toFixed(1);
     },
     sysMeterPct(pct) {
       return pct == null ? '—' : pct + '%';
@@ -1927,9 +2008,13 @@ Vue.createApp({
     versionPill() {
       return this.status ? 'v' + String(this.status.version).replace(/-SNAPSHOT$/, '') : '';
     },
-    // Footer "Builds Running": the engine's live plan count (authoritative, always in /api/status).
+    /**
+     * Footer "Builds Running": lockstep with Live activity while live (JK-1725).
+     * Offline falls back to last status snapshot.
+     */
     buildsRunning() {
-      return this.status ? this.status.activeBuildPlans : 0;
+      if (this.connection === 'live') return this.runningCardCount();
+      return this.status?.activeBuildPlans ?? 0;
     },
     heapUsedPercent() {
       return this.percentOfMax(this.status?.heapUsedBytes);

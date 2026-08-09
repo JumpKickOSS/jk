@@ -38,24 +38,24 @@
 
       <span class="hdiv"></span>
 
-      <div class="sysbox" title="Engine host CPU &amp; RAM (live over SSE — sampled ~2s, updates on change)">
+      <div class="sysbox" aria-label="Engine host CPU and RAM (live over SSE)">
         <div class="sysrow" :class="sysMeterLevel(cpuPercent())">
-          <span class="sk">CPU</span>
+          <span class="sk"><span class="scap" v-if="status && status.cores != null">({{ status.cores }} cores)</span> CPU</span>
           <span class="meter" role="meter"
                 :aria-valuenow="cpuPercent() ?? undefined" aria-valuemin="0" aria-valuemax="100"
                 :aria-label="'Host CPU ' + sysMeterPct(cpuPercent())">
             <span class="meter-fill used" :style="{ width: (cpuPercent() ?? 0) + '%' }"></span>
           </span>
-          <span class="sv">{{ sysMeterPct(cpuPercent()) }}</span>
+          <span class="sv">{{ sysMeterPct(cpuPercent()) }}<span class="ssec" v-if="loadAverageText() != null"> ({{ loadAverageText() }} load)</span></span>
         </div>
         <div class="sysrow" :class="sysMeterLevel(ramPercent())">
-          <span class="sk">RAM</span>
+          <span class="sk"><span class="scap" v-if="status && status.totalMemoryBytes != null">({{ gib(status.totalMemoryBytes) }})</span> RAM</span>
           <span class="meter" role="meter"
                 :aria-valuenow="ramPercent() ?? undefined" aria-valuemin="0" aria-valuemax="100"
                 :aria-label="'Host RAM ' + sysMeterPct(ramPercent())">
             <span class="meter-fill used" :style="{ width: (ramPercent() ?? 0) + '%' }"></span>
           </span>
-          <span class="sv">{{ sysMeterPct(ramPercent()) }}</span>
+          <span class="sv">{{ sysMeterPct(ramPercent()) }}<span class="ssec" v-if="ramUsedBytes() != null"> ({{ gib(ramUsedBytes()) }})</span></span>
         </div>
       </div>
 
@@ -617,8 +617,9 @@
           <dt>PID</dt><dd class="mono">{{ status ? status.pid : '—' }}</dd>
           <dt>Cores</dt><dd class="mono">{{ status ? status.cores : '—' }}</dd>
           <dt>Load</dt><dd class="mono">{{ loadPercent() }}</dd>
+          <dt>Load avg (1m)</dt><dd class="mono">{{ loadAverageText() != null ? loadAverageText() : '—' }}</dd>
           <dt>System RAM</dt><dd class="mono">{{ status ? gib(status.totalMemoryBytes) : '—' }}</dd>
-          <dt>Available RAM</dt><dd class="mono">{{ status ? gib(status.freeMemoryBytes) : '—' }}</dd>
+          <dt>Available RAM</dt><dd class="mono">{{ status ? gib(status.availableMemoryBytes ?? status.freeMemoryBytes) : '—' }}</dd>
           <dt>Dashboard docs</dt><dd class="mono">docs/webclient.md</dd>
         </dl>
         <div class="modal-foot">
