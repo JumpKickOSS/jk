@@ -52,10 +52,15 @@ final class AotCacheTrainer {
                     + " classpath entry that is a directory (JDK-8329980, Won't Fix). Package this"
                     + " module as a jar image layout to use [image] aot-cache";
         }
-        if (containerRuntime(plan.config().dockerExecutable()) == null) {
-            return "no container runtime found (docker, podman or nerdctl). The training run has to"
-                    + " execute inside the base image, because the cache is only valid for the exact"
-                    + " JVM build that produced it";
+        if (containerRuntime(plan.config().dockerExecutable()) == null
+                && !BaseJre.hostCanExecute(plan.config().platforms())) {
+            return "this host can neither run the image's JVM directly (it builds for "
+                    + (plan.config().platforms().isEmpty()
+                            ? "linux/amd64"
+                            : String.join(",", plan.config().platforms()))
+                    + ") nor find a container runtime (docker, podman, nerdctl). The cache is only"
+                    + " valid for the exact JVM build that produced it, so training needs one or the"
+                    + " other";
         }
         return null;
     }
@@ -80,17 +85,31 @@ final class AotCacheTrainer {
         stageLayout(plan, staging);
         stamp(staging);
 
-        String runtime = containerRuntime(plan.config().dockerExecutable());
         String base = qualify(plan.config().base());
-        log.accept("training the AOT cache in " + base);
 
-        List<String> train = new ArrayList<>(containerPrefix(runtime, staging, base));
-        train.add("java");
-        train.add("-XX:AOTCacheOutput=" + CACHE_PATH);
+        // Fast path: run the image's own JVM straight off the host. Same JVM, so the cache is just
+        // as valid, and no container runtime is involved — which is the point of building with Jib.
+        // Only when the host can execute that binary; a linux-amd64 JRE runs nowhere else.
+        Path localJre = localBaseJre(plan, base, workDir, log);
+        List<String> prefix;
+        if (localJre != null) {
+            log.accept("training the AOT cache with " + base + "'s JVM, on this host");
+            prefix = new ArrayList<>(List.of(localJre.toString()));
+        } else {
+            String runtime = containerRuntime(plan.config().dockerExecutable());
+            log.accept("training the AOT cache in " + base);
+            prefix = new ArrayList<>(containerPrefix(runtime, staging, base));
+            prefix.add("java");
+        }
+
+        List<String> train = new ArrayList<>(prefix);
+        Path cacheOut = localJre != null ? staging.resolve("app.aot") : Path.of(CACHE_PATH);
+        train.add("-XX:AOTCacheOutput=" + cacheOut);
         // Boot exits once the context is up. Anything else has to terminate on its own; JEP 514
         // assembles the cache at exit, so a run that never ends produces nothing.
         if (isSpringBoot(plan)) train.add("-Dspring.context.exit=onRefresh");
-        train.addAll(List.of("-cp", classpath, plan.mainClass()));
+        train.addAll(List.of("-cp", localJre != null ? stagedClasspath(classpath, staging) : classpath));
+        train.add(plan.mainClass());
 
         Output trained = exec(train);
         Path cache = staging.resolve("app.aot");
@@ -104,12 +123,12 @@ final class AotCacheTrainer {
 
         // Prove it loads before it becomes a layer. A rejected cache is silent at default log
         // level, so an unverified one is indistinguishable from a working one.
-        List<String> verify = new ArrayList<>(containerPrefix(runtime, staging, base));
-        verify.add("java");
+        List<String> verify = new ArrayList<>(prefix);
         verify.add("-Xlog:aot=info");
-        verify.add("-XX:AOTCache=" + CACHE_PATH);
+        verify.add("-XX:AOTCache=" + cacheOut);
         if (isSpringBoot(plan)) verify.add("-Dspring.context.exit=onRefresh");
-        verify.addAll(List.of("-cp", classpath, plan.mainClass()));
+        verify.addAll(List.of("-cp", localJre != null ? stagedClasspath(classpath, staging) : classpath));
+        verify.add(plan.mainClass());
 
         String refusal = refusal(exec(verify).text());
         if (refusal != null) {
@@ -117,6 +136,36 @@ final class AotCacheTrainer {
         }
         log.accept("AOT cache verified (" + Files.size(cache) / (1024 * 1024) + " MiB)");
         return cache;
+    }
+
+    /**
+     * The image's JVM, on this host, or null to fall back to running the image. Never fatal: the
+     * container path produces the same cache, so a base image jk cannot unpack is a slower build
+     * rather than a failed one.
+     */
+    private static Path localBaseJre(ImageBuilder.Plan plan, String base, Path workDir, Consumer<String> log) {
+        if (!BaseJre.hostCanExecute(plan.config().platforms())) return null;
+        try {
+            Path java = BaseJre.javaBinary(base, workDir.resolve("jk-image"));
+            return java != null && Files.isExecutable(java) ? java : null;
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            log.accept("could not read " + base + "'s JVM (" + e.getMessage() + ") — training in a container");
+            return null;
+        }
+    }
+
+    /**
+     * The container classpath rewritten onto the staging directory. The archive records each entry
+     * after the longest common prefix, and HotSpot substitutes a new prefix at load time, so
+     * training under {@code <staging>/classpath/x.jar} validates against {@code /app/classpath/x.jar}.
+     */
+    private static String stagedClasspath(String containerClasspath, Path staging) {
+        List<String> out = new ArrayList<>();
+        for (String entry : containerClasspath.split(":")) {
+            out.add(staging.resolve(entry.substring("/app/".length())).toString());
+        }
+        return String.join(":", out);
     }
 
     /** Lay out exactly what the image will contain, at the paths the image will use. */

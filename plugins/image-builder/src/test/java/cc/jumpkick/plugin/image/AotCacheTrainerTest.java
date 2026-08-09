@@ -79,6 +79,26 @@ class AotCacheTrainerTest {
                 .contains("failed");
     }
 
+    /**
+     * The fast path runs the image's JVM on the host, so it needs a host that can execute it. A
+     * linux-amd64 JRE runs on a linux-amd64 host and nowhere else, and a multi-arch image has no
+     * single JVM to train with.
+     */
+    @Test
+    void the_host_can_only_run_a_matching_linux_platform() {
+        boolean linuxAmd64 = System.getProperty("os.name", "")
+                        .toLowerCase(java.util.Locale.ROOT)
+                        .contains("linux")
+                && List.of("amd64", "x86_64").contains(System.getProperty("os.arch", ""));
+        assertThat(BaseJre.hostCanExecute(List.of("linux/amd64"))).isEqualTo(linuxAmd64);
+        assertThat(BaseJre.hostCanExecute(List.of())).isEqualTo(linuxAmd64); // default is linux/amd64
+        assertThat(BaseJre.hostCanExecute(List.of("linux/s390x"))).isFalse();
+        assertThat(BaseJre.hostCanExecute(List.of("windows/amd64"))).isFalse();
+        assertThat(BaseJre.hostCanExecute(List.of("linux/amd64", "linux/arm64")))
+                .as("multi-arch has no single JVM to train with")
+                .isFalse();
+    }
+
     @Test
     void a_cache_that_maps_reports_no_refusal() {
         assertThat(AotCacheTrainer.refusal("[0.008s][info][class,path] Archived app classpath validation: passed\n"
