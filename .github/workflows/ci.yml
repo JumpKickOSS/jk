@@ -123,12 +123,22 @@ jobs:
           "$CLIENT_BIN" self materialize "$CLIENT_BIN" "$ENGINE_JAR"
           echo "$PWD/clients/cli/build/install/jk/bin" >> "$GITHUB_PATH"
 
+      # Dogfooded format gate (JK-1664). Lives here rather than in its own job so it reuses
+      # this job's bootstrap instead of paying a second one — and runs before the heavy steps
+      # so drift fails in seconds.
+      - name: Format check
+        run: |
+          jk lock
+          jk format --check || {
+            echo "::error::Source is unformatted. Run 'jk format' and commit the result."
+            exit 1
+          }
+
       - name: jk lock + build + install-local + library tests
         env:
           JK_AOT_TRAIN: off
         run: |
           jk --version
-          jk lock
           jk build --skip-tests
           jk plugin install-local
           # Same pure-jk suite as native job (C2 default parallel tests); release stages bootstrap client.

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -125,7 +126,7 @@ class EffortWeightsTest {
         // Pin sources into the past so the stamp is unambiguously newer (see KotlinForecastStampTest).
         long past = System.currentTimeMillis() - 3_600_000L;
         for (Path f : sources) {
-            Files.setLastModifiedTime(f, java.nio.file.attribute.FileTime.fromMillis(past));
+            Files.setLastModifiedTime(f, FileTime.fromMillis(past));
         }
         BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                 dir,

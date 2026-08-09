@@ -11,6 +11,7 @@ import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
@@ -97,7 +98,7 @@ public final class FormatPlans {
                 .build();
 
         Task resolve = Task.builder(TaskNames.RESOLVE_FORMATTERS)
-                .group("resolve")
+                .stage(BuildStage.RESOLVE)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.COLLECT_SOURCES)
                 .ticks(1)
@@ -284,7 +285,7 @@ public final class FormatPlans {
         }
     }
 
-    private static boolean notExcluded(Path p) {
+    static boolean notExcluded(Path p) {
         for (Path seg : p) {
             String s = seg.toString();
             if (s.equals("target")
@@ -292,6 +293,19 @@ public final class FormatPlans {
                     || s.equals(".jk")
                     || s.equals(".git")
                     || s.equals("node_modules")) {
+                return false;
+            }
+            // A giter8 template root has an unambiguous shape — a directory literally suffixed
+            // `.g8`, or named `g8` (the jk-templates catalog and this repo's own templates/*.g8
+            // dogfood tree both use one of these two). A bare "templates"/"giter8" segment name is
+            // NOT a reliable signal: this repo's own cc.jumpkick.templates package (and any user's
+            // legitimate templates/ code, e.g. email templates) would be silently unformatted too.
+            if (s.endsWith(".g8") || s.equals("g8")) {
+                return false;
+            }
+            // Giter8 placeholders are wrapped in `$…$` ($package$, $name$) — not just any name that
+            // happens to contain a `$`.
+            if (s.length() > 1 && s.startsWith("$") && s.endsWith("$")) {
                 return false;
             }
         }

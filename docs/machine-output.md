@@ -25,7 +25,7 @@ All machine surfaces should carry **the same conceptual events**. Framing differ
 | Concept | CLI JSONL (`type`) | Web SSE (`event` + `data`) | Verbose (human) | MCP (tools / SSE) |
 |---------|--------------------|----------------------------|-----------------|-------------------|
 | Request / session start | `buildplan-start` (per plan); workspace: `workspace-start` | `request-start` | `▶ plan (N steps)` | tool result / `notifications/jk/event` |
-| Task start | `task-start` | `task-start` | `· group/task (ticks: N)` | notification |
+| Task start | `task-start` | `task-start` | `· stage/task (ticks: N)` | notification |
 | Progress ticks (fine) | `progress`, `tick-update` | `plan-progress` | (bar / quiet) | notification |
 | **Whole-job % (aggregate)** | **`workspace-progress`** | **`workspace-progress`** | TUI bar | filter `type=workspace-progress` |
 | Label (current work) | `label` | (via progress / output) | last label on finish line | notification |
@@ -69,7 +69,7 @@ Example lines (illustrative):
 
 ```json
 {"schema":1,"ts":1721664000123,"type":"buildplan-start","plan":"test","denominator":42,"tasks":3,"progress":12.5}
-{"schema":1,"ts":1721664000456,"type":"task-start","task":"run-tests","group":"test","ticks":10,"progress":45}
+{"schema":1,"ts":1721664000456,"type":"task-start","task":"run-tests","stage":"test","ticks":10,"progress":45}
 {"schema":1,"ts":1721664000789,"type":"label","task":"run-tests","label":"cc.jumpkick:jk-core :: FooTest > bar()  [w2]","progress":67.3}
 {"schema":1,"ts":1721664000901,"type":"error","task":"run-tests","code":"test-failure","message":"…","test":"cc.jumpkick:jk-core :: FooTest > bar()  [w2]","exceptionClass":"org.opentest4j.AssertionFailedError","progress":67.3}
 {"schema":1,"ts":1721664001000,"type":"buildplan-finish","plan":"test","success":false,"duration_ms":880,"warnings":0,"errors":1,"progress":100}
@@ -138,7 +138,7 @@ same work:
 | `schema` | Always `1` until jk 1.0 |
 | `type` | Conceptual event name (`task-start`, `progress`, `error`, …) |
 | `progress` | Aggregate % 0–100 or `null` (JK-1117/1119) — **not** `progress_num`/`progress_den` |
-| `task` / `group` / `status` / `dir` / `coord` | Same names across surfaces (`group` = free-form task group; `phase` survives only on `workspace-progress`) |
+| `task` / `stage` / `status` / `dir` / `coord` | Same names across surfaces. `stage` is the task's `BuildStage` — a **closed** set (`resolve`, `generate`, `compile`, `test`, `package`, `native`, `image`, `other`), always present, never free-form. `phase` means only `InvocationPhase` and `workspace-progress` |
 | `numerator` / `denominator` | Task-scoped weights (progress events); optional beside the % rider |
 | `test` / `exceptionClass` | Structured failure fields |
 

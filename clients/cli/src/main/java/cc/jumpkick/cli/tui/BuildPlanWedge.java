@@ -116,10 +116,7 @@ public final class BuildPlanWedge {
             String plainBody = "Failed" + (name.isEmpty() ? "" : " to " + name.toLowerCase(Locale.ROOT)) + " " + tail;
             return plainWedge(Glyphs.CROSS_PLAIN, name, plainBody);
         }
-        return chip(Glyphs.CROSS, name, t.planFailureChip(), nerdfont)
-                + cap(t.planFailColor(), nerdfont)
-                + " "
-                + body;
+        return chip(Glyphs.CROSS, name, t.planFailureChip(), nerdfont) + cap(t.planFailColor(), nerdfont) + " " + body;
     }
 
     /**
@@ -150,10 +147,7 @@ public final class BuildPlanWedge {
             return plainWedge(Glyphs.CROSS_PLAIN, name, "job was cancelled" + (byUser ? " by user" : "") + took);
         }
         String body = "job was " + Theme.colorize("cancelled", t.warning()) + (byUser ? " by user" : "") + took;
-        return chip(Glyphs.CROSS, name, t.planFailureChip(), nerdfont)
-                + cap(t.planFailColor(), nerdfont)
-                + " "
-                + body;
+        return chip(Glyphs.CROSS, name, t.planFailureChip(), nerdfont) + cap(t.planFailColor(), nerdfont) + " " + body;
     }
 
     /** Remote cancel — no "by user". */

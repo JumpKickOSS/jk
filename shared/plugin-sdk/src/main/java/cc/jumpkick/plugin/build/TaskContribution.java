@@ -26,6 +26,12 @@ public interface TaskContribution {
     /** Upstream task names that must succeed before this task runs. */
     TaskContribution requires(String... taskNames);
 
+    /**
+     * Product stage wire name ({@code generate}, {@code compile}, {@code test}, …). Matches
+     * BuildStage; omit to let the engine infer from contributions / name.
+     */
+    TaskContribution stage(String stageWire);
+
     /** Declare the implicit task's inputs (fingerprinted into its action key). */
     TaskContribution inputs(In... ins);
 

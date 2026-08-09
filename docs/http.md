@@ -110,11 +110,38 @@ tokenless dashboard can show live builds **and** rehydrate them after a hard ref
 
 ### `GET /api/project/graph`
 
-Module dependency DAG for the Project page (JK-1542): `GET /api/project/graph?dir=<path>` →
-`{ dir, workspace, nodes: [{ id, label, path }], edges: [{ from, to }] }`. Same edges as
-`jk explain --graph` / `ModuleDotGraph` (dependent → prereq). Workspace roots expand all modules;
-standalone projects return one node. Token-gated like `/api/project`. The SPA loads this **only**
-when the user opens the Dependencies panel — not on project page mount.
+Dependency graph for the Project page (JK-1542), same idea as `jk tree`:
+
+`GET /api/project/graph?dir=<path>&scopes=main,test&transitive=0|1`
+
+| Query | Default | Meaning |
+| --- | --- | --- |
+| `dir` | required | Project or workspace root |
+| `scopes` | `main` | Comma-separated canonical scopes (`main`, `test`, `provided`, …). Percent-encoded like any query value; an unknown name is a **400** naming the valid set |
+| `transitive` | `false` | When true, expand lockfile transitive deps under each declared root |
+
+Response:
+
+`{ dir, workspace, scopes, transitive, availableScopes, nodes: [{ id, label, kind, version?, path? }], edges: [{ from, to, scope? }] }`
+
+`kind` is `module` (workspace member), `declared` (listed in a selected-scope `jk.toml`), or
+`transitive` (lockfile-only). Edges are dependent → prereq. Token-gated like `/api/project`. The
+SPA loads this **only** when the Dependencies panel opens.
+
+### `GET /api/metrics`
+
+Aggregate build history as a flat array, one object per row, averages pre-computed so clients stay
+arithmetic-free. `?dir=<path>` keeps that project's rows plus the always-included machine tiers.
+
+| `scope` | Row is | `kind` | `task` |
+| --- | --- | --- | --- |
+| `global` | every build on this machine | `build` / `test` | null |
+| `project` | every build of one `dir` | `build` / `test` | null |
+| `task` | one task across every project | null | task name |
+| `project/task` | one task in one `dir` | null | task name |
+
+The tier names come from `BuildMetrics.SCOPE_*`; the socket `metrics-entry` frame carries the same
+`scope` values.
 
 ### `GET /api/config`
 
@@ -168,8 +195,7 @@ Full REST also exposes `actionsCount`/`actionsBytes` (index), `cacheCasCount`/`c
 cacheMaxBytes, actionCacheBytes, actionMaxBytes, artifactStorageBytes, maxBytes,
 lastPrunedMillis }` — enough for the footer; change-gated on MiB quanta.
 
-**REST (full):** section counts (`casCount`, `actionsCount`, …) for the Status panels. `totalBytes`
-is a legacy combined sum; prefer the two surfaces for UI.
+**REST (full):** section counts (`casCount`, `actionsCount`, …) for the Status panels. Prefer the two surfaces for UI; `totalBytes` is the combined sum.
 
 REST `GET /api/status` and `GET /api/cache` remain for hydrate, offline fallback, CLI/MCP tools,
 and curl. Metrics (`GET /api/metrics`) stay **REST-only / view-scoped** — not on the vitals SSE bus.

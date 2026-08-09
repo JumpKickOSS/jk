@@ -4,29 +4,36 @@
   <name>JumpKick</name>
   <vendor url="https://github.com/jkbuild/jk">JumpKick</vendor>
   <description><![CDATA[
-    JumpKick for IntelliJ: BSP install + sync/build via the <code>jk</code> CLI (wire-only).
-    Does not put engine jars on the IDE classpath. Prefer JetBrains BSP support for import after
-    <em>JumpKick: Install BSP connection</em>.
+    JumpKick for IntelliJ (wire-only): <b>Sync</b> imports modules and classpath from the
+    engine <code>ide-model</code> (via the <code>jk</code> CLI — never loads engine jars),
+    installs BSP (<code>.bsp/jk.json</code>), and offers build/test/lock actions.
+    Requires <code>jk</code> on PATH (or <code>JK_BIN</code>).
   ]]></description>
 
   <depends>com.intellij.modules.platform</depends>
   <depends>com.intellij.modules.lang</depends>
+  <depends>com.intellij.modules.java</depends>
 
   <extensions defaultExtensionNs="com.intellij">
     <notificationGroup id="JumpKick" displayType="BALLOON"/>
+    <postStartupActivity implementation="cc.jumpkick.idea.JkProjectOpenActivity"/>
   </extensions>
 
   <actions>
     <group id="JumpKick.Menu" text="JumpKick" description="JumpKick build tool" popup="true">
       <add-to-group group-id="ToolsMenu" anchor="last"/>
+      <action id="JumpKick.Sync"
+              class="cc.jumpkick.idea.JkCliAction$Sync"
+              text="Sync project"
+              description="Lock, sync deps, apply IntelliJ modules from engine ide-model, refresh BSP"/>
+      <action id="JumpKick.SyncDeps"
+              class="cc.jumpkick.idea.JkCliAction$SyncDeps"
+              text="Sync dependencies only"
+              description="Run jk sync (materialize lock artifacts)"/>
       <action id="JumpKick.BspInstall"
               class="cc.jumpkick.idea.JkCliAction$BspInstall"
               text="Install BSP connection"
               description="Run jk bsp install (writes .bsp/jk.json)"/>
-      <action id="JumpKick.Sync"
-              class="cc.jumpkick.idea.JkCliAction$Sync"
-              text="Sync dependencies"
-              description="Run jk sync"/>
       <action id="JumpKick.Build"
               class="cc.jumpkick.idea.JkCliAction$Build"
               text="Build"

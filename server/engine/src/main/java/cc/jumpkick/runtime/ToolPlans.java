@@ -10,6 +10,7 @@ import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
@@ -53,7 +54,7 @@ public final class ToolPlans {
             Path cache,
             String coordLabel) {
         Task resolve = Task.builder(TaskNames.RESOLVE_COORD)
-                .group("resolve")
+                .stage(BuildStage.RESOLVE)
                 .kind(TaskKind.IO)
                 .ticks(1)
                 .execute(ctx -> {

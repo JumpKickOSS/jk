@@ -36,7 +36,8 @@ class ExplainBuildEtaParityTest {
         int jobs = 8;
         int buildStyle = BuildService.etaConcurrency(maxReady, workers, parallelTests, jobs);
         // Serial -j1
-        assertThat(BuildService.etaConcurrency(maxReady, workers, parallelTests, 1)).isEqualTo(1);
+        assertThat(BuildService.etaConcurrency(maxReady, workers, parallelTests, 1))
+                .isEqualTo(1);
         // jobs clamp is applied
         assertThat(buildStyle).isLessThanOrEqualTo(jobs);
         assertThat(buildStyle).isGreaterThan(0);
@@ -56,18 +57,14 @@ class ExplainBuildEtaParityTest {
         // Mirrors the dirty-memo fast path: no TaskForecaster, empty steps, ETA 0.
         Path mod = tmp.resolve("m");
         java.nio.file.Files.createDirectories(mod);
-        java.nio.file.Files.writeString(
-                mod.resolve("jk.toml"),
-                """
+        java.nio.file.Files.writeString(mod.resolve("jk.toml"), """
                 [project]
                 group = "ex"
                 name = "m"
                 version = "1.0"
                 java = 25
                 """);
-        java.nio.file.Files.writeString(
-                tmp.resolve("jk.toml"),
-                """
+        java.nio.file.Files.writeString(tmp.resolve("jk.toml"), """
                 [project]
                 group = "ex"
                 name = "ws"

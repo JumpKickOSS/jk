@@ -60,8 +60,7 @@ class BuildServiceEtaParityTest {
                 .withCacheDir(tmp.resolve("cache"));
         List<EffortWeights.ModuleCost> costs = cc.jumpkick.config.SessionContext.where(
                 forced,
-                () -> BuildService.etaCostsFromExplainPlan(
-                        plan, tmp.resolve("cache"), 1, null, null, false, false));
+                () -> BuildService.etaCostsFromExplainPlan(plan, tmp.resolve("cache"), 1, null, null, false, false));
         assertThat(costs).hasSize(1);
         assertThat(costs.get(0).weight()).isGreaterThan(0);
     }
@@ -83,10 +82,7 @@ class BuildServiceEtaParityTest {
         var mb = new cc.jumpkick.runtime.TaskForecast.Module(b, "g:b", List.of(run), 1, 0, true, false);
         var mc = new cc.jumpkick.runtime.TaskForecast.Module(c, "g:c", List.of(cached), 1, 0, true, false);
         var plan = new ExplainPlan(
-                List.of(ma, mb, mc),
-                java.util.Map.of(a, Set.of(b, c), b, Set.of(), c, Set.of()),
-                2,
-                List.of());
+                List.of(ma, mb, mc), java.util.Map.of(a, Set.of(b, c), b, Set.of(), c, Set.of()), 2, List.of());
 
         ExplainPlan restricted = BuildService.restrictToSelection(plan, Set.of(a, c));
 

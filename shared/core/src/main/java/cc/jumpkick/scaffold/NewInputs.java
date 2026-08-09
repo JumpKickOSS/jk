@@ -20,6 +20,7 @@ public record NewInputs(
         boolean spring,
         boolean grails,
         boolean quarkus,
+        boolean micronaut,
         boolean plugin,
         Language lang,
         String layout,
@@ -38,6 +39,11 @@ public record NewInputs(
         Objects.requireNonNull(kotlinModuleName, "kotlinModuleName");
         Objects.requireNonNull(directory, "directory");
         deps = List.copyOf(deps);
+        // A plugin project ships a fat jar (jk-plugin-sdk shaded in) and so does a Micronaut app
+        // (Maven shade parity). The rule lives here, not at the call site, because
+        // NewJkBuildRenderer owns the single [application] table — a scaffold fragment cannot
+        // open a second one to add `assembly = true` (JK-1671).
+        assembly = assembly || plugin || micronaut;
     }
 
     /** Back-compat constructor: no framework scaffold or plugin project. */
@@ -67,6 +73,7 @@ public record NewInputs(
                 main,
                 assembly,
                 nativeImage,
+                false,
                 false,
                 false,
                 false,
@@ -111,6 +118,7 @@ public record NewInputs(
                 spring,
                 false,
                 false,
+                false,
                 plugin,
                 lang,
                 layout,
@@ -153,6 +161,7 @@ public record NewInputs(
                 spring,
                 grails,
                 false,
+                false,
                 plugin,
                 lang,
                 layout,
@@ -188,6 +197,7 @@ public record NewInputs(
                 main,
                 assembly,
                 nativeImage,
+                false,
                 false,
                 false,
                 false,
@@ -233,13 +243,14 @@ public record NewInputs(
 
     /** True when any framework plugin scaffold flag is set. */
     public boolean frameworkScaffold() {
-        return spring || grails || quarkus;
+        return spring || grails || quarkus || micronaut;
     }
 
     /** Scaffold flag name for the engine ({@code spring} / {@code grails} / {@code quarkus}). */
     public String frameworkPluginFlag() {
         if (grails) return "grails";
         if (quarkus) return "quarkus";
+        if (micronaut) return "micronaut";
         if (spring) return "spring";
         throw new IllegalStateException("no framework scaffold flag set");
     }

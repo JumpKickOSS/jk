@@ -149,6 +149,340 @@ class MavenPackageSourceExclusionTest {
         assertThat(result.modules()).containsKey("com.foo:leaf:jar:");
     }
 
+    /**
+     * JK-1704: two paths reach the same package, one under an exclusion and one not. Maven drops a
+     * dependency only when EVERY path that reaches it excludes it, so leaf must survive on the
+     * app → target edge. Ordering matters — app lists the excluding edge first, so a resolver that
+     * accumulates exclusions per package sees the excluded view before the clean one.
+     *
+     * <p>This is the shape that breaks Quarkus in the real world: quarkus-bootstrap-maven-resolver
+     * excludes httpclient on its smallrye-beanbag-maven edge, and its own direct edge to
+     * maven-resolver-transport-http does not — Gradle keeps httpclient, jk dropped it.
+     */
+    @Test
+    void an_unexcluded_path_wins_over_an_excluded_one_regardless_of_order(@TempDir Path tempDir) throws Exception {
+        serveMetadata("/com/foo/app/maven-metadata.xml", "com.foo", "app", List.of("1.0"));
+        serveMetadata("/com/foo/mid/maven-metadata.xml", "com.foo", "mid", List.of("1.0"));
+        serveMetadata("/com/foo/target/maven-metadata.xml", "com.foo", "target", List.of("1.0"));
+        serveMetadata("/com/foo/leaf/maven-metadata.xml", "com.foo", "leaf", List.of("1.0"));
+        servePom("com.foo", "app", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>app</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>mid</artifactId><version>1.0</version>
+                      <exclusions>
+                        <exclusion>
+                          <groupId>com.foo</groupId><artifactId>leaf</artifactId>
+                        </exclusion>
+                      </exclusions>
+                    </dependency>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>target</artifactId><version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        servePom("com.foo", "mid", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>mid</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>target</artifactId><version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        servePom("com.foo", "target", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>target</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>leaf</artifactId><version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        servePom("com.foo", "leaf", "1.0", emptyPom("com.foo", "leaf", "1.0"));
+
+        Resolution result = new PubGrubResolver(repoGroup(tempDir))
+                .resolve(List.of(new Dependency("com.foo:app", VersionSelector.parse("=1.0"))));
+
+        assertThat(result.modules()).containsKey("com.foo:leaf:jar:");
+        assertThat(result.modules().get("com.foo:target:jar:").deps()).anyMatch(d -> d.startsWith("com.foo:leaf"));
+    }
+
+    /**
+     * The clean path is discovered a level deeper, after the excluded subtree has already been
+     * walked: root → a → mid (excludes leaf) → target, and root → b → target. Whichever order
+     * PubGrub explores in, leaf is reachable un-excluded, so it stays.
+     */
+    @Test
+    void a_clean_path_found_later_still_restores_the_module(@TempDir Path tempDir) throws Exception {
+        for (String a : List.of("a", "b", "mid", "target", "leaf")) {
+            serveMetadata("/com/foo/" + a + "/maven-metadata.xml", "com.foo", a, List.of("1.0"));
+        }
+        servePom("com.foo", "a", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>a</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>mid</artifactId><version>1.0</version>
+                      <exclusions>
+                        <exclusion><groupId>com.foo</groupId><artifactId>leaf</artifactId></exclusion>
+                      </exclusions>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        servePom("com.foo", "b", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>b</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>target</artifactId><version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        servePom("com.foo", "mid", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>mid</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>target</artifactId><version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        servePom("com.foo", "target", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>target</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>leaf</artifactId><version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        servePom("com.foo", "leaf", "1.0", emptyPom("com.foo", "leaf", "1.0"));
+
+        Resolution result = new PubGrubResolver(repoGroup(tempDir))
+                .resolve(List.of(
+                        new Dependency("com.foo:a", VersionSelector.parse("=1.0")),
+                        new Dependency("com.foo:b", VersionSelector.parse("=1.0"))));
+
+        assertThat(result.modules()).containsKey("com.foo:leaf:jar:");
+    }
+
+    /** Excluded on every path that reaches it — still dropped. */
+    @Test
+    void an_exclusion_on_every_path_still_drops_the_module(@TempDir Path tempDir) throws Exception {
+        serveMetadata("/com/foo/app/maven-metadata.xml", "com.foo", "app", List.of("1.0"));
+        serveMetadata("/com/foo/mid/maven-metadata.xml", "com.foo", "mid", List.of("1.0"));
+        serveMetadata("/com/foo/target/maven-metadata.xml", "com.foo", "target", List.of("1.0"));
+        serveMetadata("/com/foo/leaf/maven-metadata.xml", "com.foo", "leaf", List.of("1.0"));
+        servePom("com.foo", "app", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>app</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>mid</artifactId><version>1.0</version>
+                      <exclusions>
+                        <exclusion><groupId>com.foo</groupId><artifactId>leaf</artifactId></exclusion>
+                      </exclusions>
+                    </dependency>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>target</artifactId><version>1.0</version>
+                      <exclusions>
+                        <exclusion><groupId>com.foo</groupId><artifactId>leaf</artifactId></exclusion>
+                      </exclusions>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        servePom("com.foo", "mid", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>mid</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>target</artifactId><version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        servePom("com.foo", "target", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>target</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>leaf</artifactId><version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        servePom("com.foo", "leaf", "1.0", emptyPom("com.foo", "leaf", "1.0"));
+
+        Resolution result = new PubGrubResolver(repoGroup(tempDir))
+                .resolve(List.of(new Dependency("com.foo:app", VersionSelector.parse("=1.0"))));
+
+        assertThat(result.modules()).doesNotContainKey("com.foo:leaf:jar:");
+    }
+
+    /**
+     * The accumulator's own contract: registrations intersect, so a path that strips nothing
+     * clears the set no matter which order the paths arrive in.
+     */
+    @Test
+    void registered_exclusions_intersect_across_paths(@TempDir Path tempDir) {
+        MavenPackageSource src = new MavenPackageSource(
+                repoGroup(tempDir), new cc.jumpkick.repo.EffectivePomBuilder(repoGroup(tempDir)));
+
+        src.registerExclusions("com.foo:target", Set.of("com.foo:leaf", "com.foo:other"));
+        assertThat(src.exclusionsFor("com.foo:target")).containsExactlyInAnyOrder("com.foo:leaf", "com.foo:other");
+
+        // A second path strips only one of them — the other is no longer excluded everywhere.
+        src.registerExclusions("com.foo:target", Set.of("com.foo:leaf"));
+        assertThat(src.exclusionsFor("com.foo:target")).containsExactly("com.foo:leaf");
+
+        // A path that strips nothing clears the set.
+        src.registerExclusions("com.foo:target", Set.of());
+        assertThat(src.exclusionsFor("com.foo:target")).isEmpty();
+
+        // And an unencumbered path first is just as final.
+        src.registerExclusions("com.foo:second", Set.of());
+        src.registerExclusions("com.foo:second", Set.of("com.foo:leaf"));
+        assertThat(src.exclusionsFor("com.foo:second")).isEmpty();
+    }
+
+    /**
+     * JK-1708: {@code <distributionManagement><relocation>} moves a coordinate. The stub carries no
+     * classes and no dependencies, so anything that stops there resolves to nothing. Maven and
+     * Gradle both render the stub with a single edge to its target; so does jk.
+     */
+    @Test
+    void a_relocation_resolves_the_target_and_its_tree(@TempDir Path tempDir) throws Exception {
+        for (String a : List.of("old", "new", "leaf")) {
+            serveMetadata("/com/foo/" + a + "/maven-metadata.xml", "com.foo", a, List.of("1.0"));
+        }
+        servePom("com.foo", "old", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>old</artifactId><version>1.0</version>
+                  <distributionManagement>
+                    <relocation>
+                      <groupId>com.foo</groupId>
+                      <artifactId>new</artifactId>
+                      <version>${project.version}</version>
+                      <message>renamed in 1.0</message>
+                    </relocation>
+                  </distributionManagement>
+                </project>
+                """);
+        servePom("com.foo", "new", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>new</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>leaf</artifactId><version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        servePom("com.foo", "leaf", "1.0", emptyPom("com.foo", "leaf", "1.0"));
+
+        Resolution result = new PubGrubResolver(repoGroup(tempDir))
+                .resolve(List.of(new Dependency("com.foo:old", VersionSelector.parse("=1.0"))));
+
+        assertThat(result.modules()).containsKeys("com.foo:old:jar:", "com.foo:new:jar:", "com.foo:leaf:jar:");
+        assertThat(result.modules().get("com.foo:old:jar:").deps())
+                .as("the stub's only edge is the redirect")
+                .anyMatch(d -> d.startsWith("com.foo:new"));
+    }
+
+    /** A relocation with no {@code <version>} keeps the requesting version, as Maven does. */
+    @Test
+    void a_relocation_without_a_version_keeps_the_requested_one(@TempDir Path tempDir) throws Exception {
+        serveMetadata("/com/foo/old/maven-metadata.xml", "com.foo", "old", List.of("2.5"));
+        serveMetadata("/com/foo/new/maven-metadata.xml", "com.foo", "new", List.of("2.5", "9.9"));
+        servePom("com.foo", "old", "2.5", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>old</artifactId><version>2.5</version>
+                  <distributionManagement>
+                    <relocation>
+                      <artifactId>new</artifactId>
+                    </relocation>
+                  </distributionManagement>
+                </project>
+                """);
+        servePom("com.foo", "new", "2.5", emptyPom("com.foo", "new", "2.5"));
+        servePom("com.foo", "new", "9.9", emptyPom("com.foo", "new", "9.9"));
+
+        Resolution result = new PubGrubResolver(repoGroup(tempDir))
+                .resolve(List.of(new Dependency("com.foo:old", VersionSelector.parse("=2.5"))));
+
+        assertThat(result.modules().get("com.foo:new:jar:").version()).isEqualTo("2.5");
+    }
+
+    /** A → B → C: each hop is a normal expansion, so the chain terminates at real content. */
+    @Test
+    void a_relocation_chain_follows_to_the_end(@TempDir Path tempDir) throws Exception {
+        for (String a : List.of("a", "b", "c")) {
+            serveMetadata("/com/foo/" + a + "/maven-metadata.xml", "com.foo", a, List.of("1.0"));
+        }
+        servePom("com.foo", "a", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>a</artifactId><version>1.0</version>
+                  <distributionManagement>
+                    <relocation><artifactId>b</artifactId></relocation>
+                  </distributionManagement>
+                </project>
+                """);
+        servePom("com.foo", "b", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>b</artifactId><version>1.0</version>
+                  <distributionManagement>
+                    <relocation><artifactId>c</artifactId></relocation>
+                  </distributionManagement>
+                </project>
+                """);
+        servePom("com.foo", "c", "1.0", emptyPom("com.foo", "c", "1.0"));
+
+        Resolution result = new PubGrubResolver(repoGroup(tempDir))
+                .resolve(List.of(new Dependency("com.foo:a", VersionSelector.parse("=1.0"))));
+
+        assertThat(result.modules()).containsKeys("com.foo:a:jar:", "com.foo:b:jar:", "com.foo:c:jar:");
+    }
+
+    /** A relocation cycle must terminate — an unsatisfiable graph, never a hang. */
+    @org.junit.jupiter.api.Timeout(60)
+    @Test
+    void a_relocation_cycle_terminates(@TempDir Path tempDir) throws Exception {
+        for (String a : List.of("x", "y")) {
+            serveMetadata("/com/foo/" + a + "/maven-metadata.xml", "com.foo", a, List.of("1.0"));
+        }
+        servePom("com.foo", "x", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>x</artifactId><version>1.0</version>
+                  <distributionManagement>
+                    <relocation><artifactId>y</artifactId></relocation>
+                  </distributionManagement>
+                </project>
+                """);
+        servePom("com.foo", "y", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>y</artifactId><version>1.0</version>
+                  <distributionManagement>
+                    <relocation><artifactId>x</artifactId></relocation>
+                  </distributionManagement>
+                </project>
+                """);
+
+        // Mutually-referencing packages are an ordinary dependency cycle to the solver.
+        Resolution result = new PubGrubResolver(repoGroup(tempDir))
+                .resolve(List.of(new Dependency("com.foo:x", VersionSelector.parse("=1.0"))));
+        assertThat(result.modules()).containsKeys("com.foo:x:jar:", "com.foo:y:jar:");
+    }
+
     @Test
     void isExcluded_wildcards() {
         assertThat(MavenPackageSource.isExcluded("com.foo:leaf", Set.of("com.foo:leaf")))

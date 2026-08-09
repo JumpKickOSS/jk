@@ -7,6 +7,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.EngineWireException;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
@@ -483,6 +484,28 @@ final class EngineBuildListenerAdapter {
                 });
     }
 
+    /**
+     * On-demand engine-hosted catalog freshen ({@code templates}/{@code libraries}/{@code jdks}) —
+     * the CLI never touches these catalogs' networks itself once an engine is available. Callers
+     * decide separately whether it's fine to start an engine for this ({@link
+     * EngineClient#freshenCatalog}) or whether an already-running one is required ({@link
+     * EngineClient#freshenCatalogIfRunning}, for {@code jk jdk install}/{@code update}'s bootstrap
+     * case) — this method itself just sends the request. Best-effort: swallows the engine's error
+     * rather than throwing, since the caller falls back to whatever the local cache already holds.
+     */
+    static void freshenCatalog(EnginePaths.Paths paths, String catalog, boolean offline, String url, String cacheFile) {
+        try {
+            request(
+                    paths,
+                    EngineProtocol.freshenCatalogRequest(catalog, offline, url, cacheFile),
+                    EngineProtocol.FRESHEN_CATALOG_ACK,
+                    catalog + " freshen request",
+                    line -> Jsonl.bool(line, "ok", false));
+        } catch (IOException ignored) {
+            // Best-effort — local resolution proceeds against whatever the cache already holds.
+        }
+    }
+
     /** One engine-hosted tree render: the marker-tagged tree; throws with the engine's message. */
     static String treeRender(
             EnginePaths.Paths paths,
@@ -686,14 +709,14 @@ final class EngineBuildListenerAdapter {
                     case EngineProtocol.PLAN_TASK ->
                         steps.add(Task.builder(Jsonl.str(line, "name"))
                                 .label(Jsonl.str(line, "label"))
-                                .phase(wireGroup(Jsonl.str(line, "group")))
+                                .phase(wireGroup(Jsonl.str(line, "stage")))
                                 .build());
                     case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
                     case EngineProtocol.BUILDPLAN_START -> listener.planStart(readBuildPlanView(line));
                     case EngineProtocol.TASK_START ->
                         listener.stepStart(
                                 Jsonl.str(line, "task"),
-                                wireGroup(Jsonl.str(line, "group")),
+                                wireGroup(Jsonl.str(line, "stage")),
                                 Jsonl.intValue(line, "ticks", 0));
                     case EngineProtocol.PROGRESS ->
                         listener.progress(
@@ -722,9 +745,9 @@ final class EngineBuildListenerAdapter {
                     case EngineProtocol.TASK_FINISH ->
                         listener.stepFinish(
                                 Jsonl.str(line, "task"),
-                                wireGroup(Jsonl.str(line, "group")),
+                                wireGroup(Jsonl.str(line, "stage")),
                                 TaskStatus.valueOf(Jsonl.str(line, "status")),
-                                Duration.ZERO);
+                                Duration.ofMillis(Jsonl.longValue(line, "millis", 0)));
                     case EngineProtocol.BUILDPLAN_FINISH -> {
                         boolean success = Jsonl.bool(line, "success", false);
                         long total = Jsonl.longValue(line, "testTotal", -1);
@@ -755,7 +778,7 @@ final class EngineBuildListenerAdapter {
                         return result;
                     }
                     case EngineProtocol.ERROR ->
-                        throw new IOException("jk engine: run failed: " + Jsonl.str(line, "message"));
+                        throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
                     default -> {
                         /* forward-compatible no-op */
                     }
@@ -821,7 +844,7 @@ final class EngineBuildListenerAdapter {
                         if (m != null) {
                             m.steps.add(Task.builder(Jsonl.str(line, "name"))
                                     .label(Jsonl.str(line, "label"))
-                                    .phase(wireGroup(Jsonl.str(line, "group")))
+                                    .phase(wireGroup(Jsonl.str(line, "stage")))
                                     .build());
                         }
                     }
@@ -856,7 +879,7 @@ final class EngineBuildListenerAdapter {
                                 .getOrDefault(dir, NOOP)
                                 .stepStart(
                                         Jsonl.str(line, "task"),
-                                        wireGroup(Jsonl.str(line, "group")),
+                                        wireGroup(Jsonl.str(line, "stage")),
                                         Jsonl.intValue(line, "ticks", 0));
                     case EngineProtocol.PROGRESS ->
                         planListenersByDir
@@ -907,9 +930,9 @@ final class EngineBuildListenerAdapter {
                                 .getOrDefault(dir, NOOP)
                                 .stepFinish(
                                         Jsonl.str(line, "task"),
-                                        wireGroup(Jsonl.str(line, "group")),
+                                        wireGroup(Jsonl.str(line, "stage")),
                                         TaskStatus.valueOf(Jsonl.str(line, "status")),
-                                        Duration.ZERO);
+                                        Duration.ofMillis(Jsonl.longValue(line, "millis", 0)));
                     case EngineProtocol.BUILDPLAN_FINISH -> {
                         ModuleMeta meta = planByDir.get(dir);
                         String planName = meta != null ? meta.planName : dir;
@@ -949,13 +972,14 @@ final class EngineBuildListenerAdapter {
                         return result;
                     }
                     case EngineProtocol.ERROR -> {
-                        String code = Jsonl.str(line, "code");
-                        String msg = Jsonl.str(line, "message");
+                        EngineWireException wire = EngineWireException.fromJsonLine(line);
                         // surface as the wedge message body without engine noise.
-                        if (EngineProtocol.ERR_ALREADY_RUNNING.equals(code)) {
-                            throw new IOException(msg == null || msg.isBlank() ? "Build is already running" : msg);
+                        if (wire.alreadyRunning()) {
+                            String msg = wire.getMessage();
+                            throw new EngineWireException(
+                                    wire.code(), msg == null || msg.isBlank() ? "Build is already running" : msg);
                         }
-                        throw new IOException("jk engine: build failed: " + msg);
+                        throw new EngineWireException(wire.code(), "jk engine: build failed: " + wire.getMessage());
                     }
                     default -> {
                         /* forward-compatible no-op */

@@ -12,7 +12,8 @@ public final class Main {
     public static void main(String[] args) throws Exception {
         // dumb(true): fall back to a plain terminal under pipes/CI and in a native image
         // without extra terminal-provider configuration.
-        try (Terminal terminal = TerminalBuilder.builder().system(true).dumb(true).build()) {
+        try (Terminal terminal =
+                TerminalBuilder.builder().system(true).dumb(true).build()) {
             LineReader reader = LineReaderBuilder.builder()
                     .terminal(terminal)
                     .appName("$name$")

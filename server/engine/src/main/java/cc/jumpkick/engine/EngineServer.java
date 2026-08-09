@@ -402,8 +402,7 @@ public final class EngineServer implements AutoCloseable {
             // This token gates every engine RPC — i.e. arbitrary code execution as the engine
             // owner. It must be owner-only, like the HTTP bearer token, not left to the ambient
             // umask on a shared machine (JK-1467).
-            cc.jumpkick.util.OwnerOnlyFiles.write(
-                    active.token().getParent(), active.token(), expectedToken);
+            cc.jumpkick.util.OwnerOnlyFiles.write(active.token().getParent(), active.token(), expectedToken);
             Files.writeString(active.socket(), Integer.toString(port));
         } else {
             serverChannel = ServerSocketChannel.open(StandardProtocolFamily.UNIX);
@@ -902,6 +901,7 @@ public final class EngineServer implements AutoCloseable {
                     case EngineProtocol.OUTDATED_REQUEST -> handleOutdatedRequest(line, writer);
                     case EngineProtocol.EXEC_PLAN_REQUEST -> handleExecPlanRequest(line, writer);
                     case EngineProtocol.EDIT_REQUEST -> handleEditRequest(line, writer);
+                    case EngineProtocol.FRESHEN_CATALOG_REQUEST -> handleFreshenCatalogRequest(line, writer);
                     case EngineProtocol.DENY_CHECK_REQUEST -> handleDenyCheckRequest(line, writer);
                     case EngineProtocol.TREE_REQUEST -> handleTreeRequest(line, writer);
                     case EngineProtocol.WHY_REQUEST -> handleWhyRequest(line, writer);
@@ -1018,11 +1018,7 @@ public final class EngineServer implements AutoCloseable {
         if (trigger == null || trigger.isBlank()) trigger = "cli";
         // exclusive fingerprint + start-time build number for journaled kinds.
         AdmitResult admit = admitJob(
-                eventRequestId,
-                eventKind,
-                eventDir,
-                BuildJobFingerprint.ofRequest(eventKind, requestLine),
-                trigger);
+                eventRequestId, eventKind, eventDir, BuildJobFingerprint.ofRequest(eventKind, requestLine), trigger);
         if (admit.rejected() != null) {
             try {
                 InFlightBuilds.Hold h = admit.rejected();
@@ -1226,9 +1222,7 @@ public final class EngineServer implements AutoCloseable {
             // success: same default as BuildAccumulator.toRecord — HTTP jobs always sent it; CLI
             // socket jobs used to omit it and force the SPA to derive from module rows (JK-1499).
             BuildAccumulator finishAcc = accumulators.get(eventRequestId);
-            boolean success = finishAcc != null
-                    ? finishAcc.effectiveSuccess(cancelled)
-                    : !cancelled;
+            boolean success = finishAcc != null ? finishAcc.effectiveSuccess(cancelled) : !cancelled;
             // Pin 100% only on success — a failed build keeps its last true percent, matching the
             // workspace-runner path and the stated policy (JK-1521).
             if (success && !cancelled) lastProgressByRequest.put(eventRequestId, 100.0);
@@ -1837,11 +1831,11 @@ public final class EngineServer implements AutoCloseable {
                                 .put("requestId", requestId)
                                 .put("dir", dir)
                                 .put("task", step)
-                                .put("group", phase),
+                                .put("stage", phase),
                         requestId));
     }
 
-    private void publishStepFinish(long requestId, String dir, String step, String phase, String status) {
+    private void publishStepFinish(long requestId, String dir, String step, String phase, String status, long millis) {
         if (!eventsWanted()) return;
         publishEvent(
                 "task-finish",
@@ -1852,8 +1846,9 @@ public final class EngineServer implements AutoCloseable {
                                 .put("requestId", requestId)
                                 .put("dir", dir)
                                 .put("task", step)
-                                .put("group", phase)
-                                .put("status", status),
+                                .put("stage", phase)
+                                .put("status", status)
+                                .put("millis", millis),
                         requestId));
     }
 
@@ -2188,12 +2183,7 @@ public final class EngineServer implements AutoCloseable {
             try {
                 var config = cc.jumpkick.config.JkCacheConfig.resolve();
                 cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.CachePlans.pruneBuildPlan(
-                        cache,
-                        config.recordTtlDays(),
-                        false,
-                        true,
-                        config.storeBudgetConfigured() ? config.maxStoreSizeMb() + "M" : null,
-                        false);
+                        cache, config.recordTtlDays(), false, false, false);
                 cc.jumpkick.run.BuildPlanResult result = plan.run();
                 if (result.success()) {
                     Files.writeString(
@@ -2201,11 +2191,9 @@ public final class EngineServer implements AutoCloseable {
                             Long.toString(clockMillis.getAsLong()),
                             StandardCharsets.UTF_8);
                     log.accept("jk engine: idle-boundary cache prune removed "
-                            + plan.get(cc.jumpkick.runtime.CachePlans.FILES)
-                                    .orElse(0L)
+                            + plan.get(cc.jumpkick.runtime.CachePlans.FILES).orElse(0L)
                             + " files ("
-                            + plan.get(cc.jumpkick.runtime.CachePlans.BYTES)
-                                    .orElse(0L)
+                            + plan.get(cc.jumpkick.runtime.CachePlans.BYTES).orElse(0L)
                             + " bytes)");
                 } else {
                     log.accept("jk engine: idle-boundary cache prune failed");
@@ -2550,6 +2538,61 @@ public final class EngineServer implements AutoCloseable {
         sendQuiet(writer, EngineProtocol.editAck(result.changed(), result.error()));
     }
 
+    /**
+     * {@link EngineProtocol#FRESHEN_CATALOG_REQUEST}: on-demand, TTL-free freshen of a
+     * network-backed catalog ({@code templates}, {@code libraries}, or {@code jdks}) — the network
+     * fetch itself always happens here, never client-side. Every client that is already talking to
+     * an engine (the web dashboard and MCP are always engine-hosted; the CLI once a healthy engine
+     * is running) delegates here, including for {@code jdks} — that lets those non-CLI clients
+     * install JDKs too. The one caller that does <em>not</em> require a reachable engine first is
+     * {@code jk jdk install}/{@code update} when no engine is running yet: the engine is a JVM
+     * process that needs a JDK to run, so it cannot be the sole path to provisioning the first JDK
+     * on a bare machine. That CLI path only calls this when an engine already answers, and fetches
+     * {@code jdks.json} directly itself otherwise ({@code JdkCatalogClient}) — see {@link
+     * cc.jumpkick.cli.engine.EngineClient#freshenCatalogIfRunning}.
+     */
+    private void handleFreshenCatalogRequest(String requestLine, BufferedWriter writer) {
+        String catalog = Jsonl.str(requestLine, "catalog");
+        boolean offline = Jsonl.bool(requestLine, "offline", false);
+        String url = Jsonl.str(requestLine, "url");
+        String cacheFile = Jsonl.str(requestLine, "cacheFile");
+        String error = null;
+        try {
+            switch (String.valueOf(catalog)) {
+                case "templates" -> {
+                    if (!offline) cc.jumpkick.templates.OfficialTemplatesFreshen.refreshNow(msg -> {});
+                }
+                case "libraries" ->
+                    cc.jumpkick.repo.LibraryRegistrySync.ensurePresent(
+                            offline,
+                            url != null
+                                    ? java.net.URI.create(url)
+                                    : cc.jumpkick.repo.LibraryRegistryClient.DEFAULT_SOURCE,
+                            cacheFile != null
+                                    ? Path.of(cacheFile)
+                                    : cc.jumpkick.library.LibraryCatalog.downloadedFile());
+                case "jdks" -> {
+                    if (!offline) {
+                        cc.jumpkick.jdk.JdkCatalogClient client = url != null
+                                ? new cc.jumpkick.jdk.JdkCatalogClient(
+                                        new cc.jumpkick.http.Http(),
+                                        java.net.URI.create(url),
+                                        cacheFile != null
+                                                ? Path.of(cacheFile)
+                                                : cc.jumpkick.jdk.JdkCatalogClient.defaultCachePath(),
+                                        java.time.Duration.ZERO)
+                                : new cc.jumpkick.jdk.JdkCatalogClient();
+                        client.onWarning(msg -> {}).fetch(true);
+                    }
+                }
+                default -> error = "unknown catalog: " + catalog;
+            }
+        } catch (Exception e) {
+            error = String.valueOf(e.getMessage());
+        }
+        sendQuiet(writer, EngineProtocol.freshenCatalogAck(error == null, error));
+    }
+
     private void handleExecPlanRequest(String requestLine, BufferedWriter writer) {
         cc.jumpkick.engine.protocol.ExecPlan plan;
         try {
@@ -2659,8 +2702,8 @@ public final class EngineServer implements AutoCloseable {
                     .withWorkingDir(entryDir)
                     .withCacheDir(cache);
             JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve("jk.toml"));
-            ExplainPlan plan = SessionContext.where(
-                    session, () -> BuildService.explain(entryDir, entryBuild, cache, skipTests));
+            ExplainPlan plan =
+                    SessionContext.where(session, () -> BuildService.explain(entryDir, entryBuild, cache, skipTests));
             if (plan.hasErrors()) {
                 for (String err : plan.errors()) {
                     sendQuiet(writer, requestFailedLine(entryDir.toString(), err));
@@ -2879,8 +2922,7 @@ public final class EngineServer implements AutoCloseable {
             // BuildPlan construction must see session.assemblyOverride (applyAssemblyOverride);
             // run under SessionContext.where so ambient helpers agree with Inputs.session.
             cc.jumpkick.run.BuildPlan plan = SessionContext.where(session, () -> {
-                cc.jumpkick.run.BuildPlan.Builder builder =
-                        cc.jumpkick.runtime.BuildPlanner.coreBuilder(inputs, false);
+                cc.jumpkick.run.BuildPlan.Builder builder = cc.jumpkick.runtime.BuildPlanner.coreBuilder(inputs, false);
                 cc.jumpkick.runtime.BuildPlanner.appendDeclaredTails(builder, inputs);
                 return builder.build();
             });
@@ -3069,10 +3111,9 @@ public final class EngineServer implements AutoCloseable {
                                     phaseWire(p.group().orElse(null))));
                 }
                 sendQuiet(writer, EngineProtocol.planDone(1));
-                plan.addListener(
-                        wireBuildPlanListener(dir, writer, (java.util.function.Function<BuildPlanResult, String>)
-                                result -> EngineProtocol.planFinishSync(
-                                        dir, result.success(), fetched.get(), upToDate.get())));
+                plan.addListener(wireBuildPlanListener(
+                        dir, writer, (java.util.function.Function<BuildPlanResult, String>) result ->
+                                EngineProtocol.planFinishSync(dir, result.success(), fetched.get(), upToDate.get())));
                 BuildPlanResult result = plan.run();
                 if (result.success()) {
                     maybeEnqueuePrune(cache);
@@ -3136,8 +3177,7 @@ public final class EngineServer implements AutoCloseable {
                     vulns != null ? java.net.URI.create(vulns) : null,
                     (module, version, vulnId, sev, summary) ->
                             sendQuiet(writer, EngineProtocol.auditFinding(dir, module, version, vulnId, sev, summary)));
-            streamSingleBuildPlan(
-                    plan, session, writer, result -> EngineProtocol.planFinish(dir, result.success()));
+            streamSingleBuildPlan(plan, session, writer, result -> EngineProtocol.planFinish(dir, result.success()));
         } catch (Exception e) {
             sendQuiet(writer, requestFailedLine(null, e));
         }
@@ -3175,14 +3215,10 @@ public final class EngineServer implements AutoCloseable {
                     result -> EngineProtocol.planFinishFormat(
                             dir,
                             result.success(),
-                            plan.get(cc.jumpkick.runtime.FormatPlans.CHANGED)
-                                    .orElse(-1),
-                            plan.get(cc.jumpkick.runtime.FormatPlans.CLEAN)
-                                    .orElse(-1),
-                            plan.get(cc.jumpkick.runtime.FormatPlans.ERRORS)
-                                    .orElse(-1),
-                            plan.get(cc.jumpkick.runtime.FormatPlans.TOTAL)
-                                    .orElse(-1),
+                            plan.get(cc.jumpkick.runtime.FormatPlans.CHANGED).orElse(-1),
+                            plan.get(cc.jumpkick.runtime.FormatPlans.CLEAN).orElse(-1),
+                            plan.get(cc.jumpkick.runtime.FormatPlans.ERRORS).orElse(-1),
+                            plan.get(cc.jumpkick.runtime.FormatPlans.TOTAL).orElse(-1),
                             plan.get(cc.jumpkick.runtime.FormatPlans.WORKER_EXIT)
                                     .orElse(-1)));
         } catch (Exception e) {
@@ -3229,8 +3265,7 @@ public final class EngineServer implements AutoCloseable {
                     .withCacheDir(cache)
                     .withCancel(cancelToken);
             String dir = EngineProtocol.SINGLE_PLAN_DIR;
-            cc.jumpkick.run.BuildPlan plan =
-                    cc.jumpkick.runtime.PublishPlans.publishBuildPlan(entryDir, cache, req);
+            cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.PublishPlans.publishBuildPlan(entryDir, cache, req);
             streamSingleBuildPlan(
                     plan,
                     session,
@@ -3238,8 +3273,7 @@ public final class EngineServer implements AutoCloseable {
                     result -> EngineProtocol.planFinishPublish(
                             dir,
                             result.success(),
-                            plan.get(cc.jumpkick.runtime.PublishPlans.FILES)
-                                    .orElse(-1)));
+                            plan.get(cc.jumpkick.runtime.PublishPlans.FILES).orElse(-1)));
         } catch (Exception e) {
             sendQuiet(writer, requestFailedLine(null, e));
         }
@@ -3296,12 +3330,12 @@ public final class EngineServer implements AutoCloseable {
                             Jsonl.str(requestLine, "tarball"),
                             Jsonl.str(requestLine, "dockerExecutable")));
             streamSingleBuildPlan(plan, session, writer, result -> {
-                cc.jumpkick.run.TestSummary testResult = plan.get(cc.jumpkick.runtime.BuildPlanner.TEST_RESULT)
-                        .orElse(null);
+                cc.jumpkick.run.TestSummary testResult =
+                        plan.get(cc.jumpkick.runtime.BuildPlanner.TEST_RESULT).orElse(null);
                 cc.jumpkick.image.ImageConfig cfg =
                         plan.get(cc.jumpkick.runtime.ImagePlans.CONFIG).orElse(null);
-                Path tarball = plan.get(cc.jumpkick.runtime.ImagePlans.TARBALL_PATH)
-                        .orElse(null);
+                Path tarball =
+                        plan.get(cc.jumpkick.runtime.ImagePlans.TARBALL_PATH).orElse(null);
                 JkBuild project =
                         plan.get(cc.jumpkick.runtime.BuildPlanner.PROJECT).orElse(null);
                 boolean daemonMode = tarball == null
@@ -3318,8 +3352,7 @@ public final class EngineServer implements AutoCloseable {
                         testResult != null ? testResult.succeeded() : -1,
                         testResult != null ? testResult.failed() : -1,
                         testResult != null ? testResult.skipped() : -1,
-                        plan.get(cc.jumpkick.runtime.ImagePlans.IMAGE_REF)
-                                .orElse(null),
+                        plan.get(cc.jumpkick.runtime.ImagePlans.IMAGE_REF).orElse(null),
                         tarball != null ? tarball.toString() : null,
                         project != null ? project.project().name() : null,
                         project != null ? project.project().version() : null,
@@ -3362,14 +3395,10 @@ public final class EngineServer implements AutoCloseable {
                     result -> EngineProtocol.planFinishImport(
                             dir,
                             result.success(),
-                            plan.get(cc.jumpkick.runtime.CompatPlans.EXIT)
-                                    .orElse(1),
-                            plan.get(cc.jumpkick.runtime.CompatPlans.WARNINGS)
-                                    .orElse(0),
-                            plan.get(cc.jumpkick.runtime.CompatPlans.ERROR)
-                                    .orElse(null),
-                            plan.get(cc.jumpkick.runtime.CompatPlans.DIAG)
-                                    .orElse(null)));
+                            plan.get(cc.jumpkick.runtime.CompatPlans.EXIT).orElse(1),
+                            plan.get(cc.jumpkick.runtime.CompatPlans.WARNINGS).orElse(0),
+                            plan.get(cc.jumpkick.runtime.CompatPlans.ERROR).orElse(null),
+                            plan.get(cc.jumpkick.runtime.CompatPlans.DIAG).orElse(null)));
         } catch (Exception e) {
             sendQuiet(writer, requestFailedLine(null, e));
         }
@@ -3420,8 +3449,7 @@ public final class EngineServer implements AutoCloseable {
                     session,
                     () -> cc.jumpkick.runtime.CompilePlans.compileBuildPlan(
                             session.workingDir(), session.cacheDir(), profile, verbose));
-            streamSingleBuildPlan(
-                    plan, session, writer, result -> EngineProtocol.planFinish(dir, result.success()));
+            streamSingleBuildPlan(plan, session, writer, result -> EngineProtocol.planFinish(dir, result.success()));
         } catch (Exception e) {
             sendQuiet(writer, requestFailedLine(null, e));
         }
@@ -3452,8 +3480,8 @@ public final class EngineServer implements AutoCloseable {
                             verbose,
                             graalHomeStr != null ? Path.of(graalHomeStr) : null));
             streamSingleBuildPlan(plan, session, writer, result -> {
-                cc.jumpkick.run.TestSummary testResult = plan.get(cc.jumpkick.runtime.BuildPlanner.TEST_RESULT)
-                        .orElse(null);
+                cc.jumpkick.run.TestSummary testResult =
+                        plan.get(cc.jumpkick.runtime.BuildPlanner.TEST_RESULT).orElse(null);
                 return testResult == null
                         ? EngineProtocol.planFinish(dir, result.success())
                         : EngineProtocol.planFinish(
@@ -3502,10 +3530,10 @@ public final class EngineServer implements AutoCloseable {
                     refresh,
                     Jsonl.bool(requestLine, "requireJkToml", true));
             streamSingleBuildPlan(plan, session, writer, result -> {
-                Path checkout = plan.get(cc.jumpkick.runtime.InstallPlans.CHECKOUT)
-                        .orElse(null);
-                String sha = plan.get(cc.jumpkick.runtime.InstallPlans.FETCHED_SHA)
-                        .orElse(null);
+                Path checkout =
+                        plan.get(cc.jumpkick.runtime.InstallPlans.CHECKOUT).orElse(null);
+                String sha =
+                        plan.get(cc.jumpkick.runtime.InstallPlans.FETCHED_SHA).orElse(null);
                 return EngineProtocol.planFinishGitFetch(
                         dir, result.success(), checkout != null ? checkout.toString() : null, sha);
             });
@@ -3554,17 +3582,16 @@ public final class EngineServer implements AutoCloseable {
                     };
             String dir = EngineProtocol.SINGLE_PLAN_DIR;
             streamSingleBuildPlan(plan, session, writer, result -> {
-                Path classesDir = plan.get(cc.jumpkick.runtime.ScriptPlans.CLASSES_DIR)
-                        .orElse(null);
-                Path kotlincBin = plan.get(cc.jumpkick.runtime.ScriptPlans.KOTLINC_BIN)
-                        .orElse(null);
-                Path stdlib = plan.get(cc.jumpkick.runtime.ScriptPlans.KT_STDLIB)
-                        .orElse(null);
+                Path classesDir =
+                        plan.get(cc.jumpkick.runtime.ScriptPlans.CLASSES_DIR).orElse(null);
+                Path kotlincBin =
+                        plan.get(cc.jumpkick.runtime.ScriptPlans.KOTLINC_BIN).orElse(null);
+                Path stdlib =
+                        plan.get(cc.jumpkick.runtime.ScriptPlans.KT_STDLIB).orElse(null);
                 return EngineProtocol.planFinishScript(
                         dir,
                         result.success(),
-                        plan.get(cc.jumpkick.runtime.ScriptPlans.MAIN_CLASS)
-                                .orElse(null),
+                        plan.get(cc.jumpkick.runtime.ScriptPlans.MAIN_CLASS).orElse(null),
                         cc.jumpkick.runtime.ScriptPlans.classpathOf(plan).stream()
                                 .map(Path::toString)
                                 .toList(),
@@ -3598,8 +3625,8 @@ public final class EngineServer implements AutoCloseable {
             Session session = Session.defaults().withCacheDir(cache).withCancel(cancelToken);
             String dir = EngineProtocol.SINGLE_PLAN_DIR;
             // Plain g:a[:v] label — coordinate colorization is a client-side concern.
-            cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.ToolPlans.resolveBuildPlan(
-                    spec, with, bin, mainClass, repoUrl, cache, coord);
+            cc.jumpkick.run.BuildPlan plan =
+                    cc.jumpkick.runtime.ToolPlans.resolveBuildPlan(spec, with, bin, mainClass, repoUrl, cache, coord);
             streamSingleBuildPlan(plan, session, writer, result -> {
                 cc.jumpkick.tool.ToolEnv env =
                         plan.get(cc.jumpkick.runtime.ToolPlans.TOOL_ENV).orElse(null);
@@ -3649,9 +3676,7 @@ public final class EngineServer implements AutoCloseable {
                         cc.jumpkick.run.BuildPlan plan =
                                 switch (op) {
                                     case "purge" -> cc.jumpkick.runtime.CachePlans.purgeBuildPlan(cache);
-                                    case "sweep" ->
-                                        cc.jumpkick.runtime.CachePlans.sweepBuildPlan(
-                                                cache, dryRun, Jsonl.str(requestLine, "maxSize"));
+                                    case "sweep" -> cc.jumpkick.runtime.CachePlans.sweepBuildPlan(cache, dryRun);
                                     case "gc" -> cc.jumpkick.runtime.CachePlans.gcBuildPlan(cache);
                                     case "clear" ->
                                         cc.jumpkick.runtime.CachePlans.clearBuildPlan(
@@ -3662,7 +3687,6 @@ public final class EngineServer implements AutoCloseable {
                                                 Jsonl.intValue(requestLine, "olderThanDays", 30),
                                                 dryRun,
                                                 Jsonl.bool(requestLine, "sweep", false),
-                                                Jsonl.str(requestLine, "maxSize"),
                                                 Jsonl.bool(requestLine, "includeJkTmp", false));
                                 };
                         Session session = Session.defaults().withCacheDir(cache).withCancel(cancelToken);
@@ -4001,8 +4025,8 @@ public final class EngineServer implements AutoCloseable {
                     dirTag, writer, (java.util.function.Function<BuildPlanResult, String>) result -> {
                         lockPkgs.flush();
                         lockPkgs.close();
-                        cc.jumpkick.lock.Lockfile lock = plan.get(cc.jumpkick.runtime.LockPlans.LOCKFILE)
-                                .orElse(null);
+                        cc.jumpkick.lock.Lockfile lock =
+                                plan.get(cc.jumpkick.runtime.LockPlans.LOCKFILE).orElse(null);
                         return EngineProtocol.planFinishLock(
                                 dirTag,
                                 result.success(),
@@ -4021,10 +4045,7 @@ public final class EngineServer implements AutoCloseable {
                 sendQuiet(
                         writer,
                         EngineProtocol.lockFinish(
-                                false,
-                                cc.jumpkick.runtime.LockPlans.failureExitCode(result),
-                                java.util.List.of(),
-                                -1));
+                                false, cc.jumpkick.runtime.LockPlans.failureExitCode(result), java.util.List.of(), -1));
                 return;
             }
         }
@@ -4088,11 +4109,13 @@ public final class EngineServer implements AutoCloseable {
                 sendQuiet(writer, EngineProtocol.preflight(stage, done, total, label));
                 // Map coarse preflight stages onto user-visible InvocationPhases. Wire names
                 // come from the enum — the one vocabulary a future consumer's fromWire parses.
-                cc.jumpkick.plugin.build.InvocationPhase inv = switch (stage == null ? "" : stage) {
-                    case "lock", "graph" -> cc.jumpkick.plugin.build.InvocationPhase.RESOLVE;
-                    case "checking", "plan", "prepare", "calibrate" -> cc.jumpkick.plugin.build.InvocationPhase.PLAN;
-                    default -> null;
-                };
+                cc.jumpkick.plugin.build.InvocationPhase inv =
+                        switch (stage == null ? "" : stage) {
+                            case "lock", "graph" -> cc.jumpkick.plugin.build.InvocationPhase.RESOLVE;
+                            case "checking", "plan", "prepare", "calibrate" ->
+                                cc.jumpkick.plugin.build.InvocationPhase.PLAN;
+                            default -> null;
+                        };
                 if (inv != null) {
                     String status = (total > 0 && done >= total) ? "finish" : "start";
                     sendQuiet(writer, EngineProtocol.invocationPhase(inv.wireName(), status));
@@ -4117,8 +4140,7 @@ public final class EngineServer implements AutoCloseable {
                     weights.put(dir, (long) m.weight());
                     sendQuiet(
                             writer,
-                            EngineProtocol.planModule(
-                                    dir, m.coord(), m.plan().name(), m.weight(), m.fullyCached()));
+                            EngineProtocol.planModule(dir, m.coord(), m.plan().name(), m.weight(), m.fullyCached()));
                     for (Task p : m.plan().steps()) {
                         sendQuiet(
                                 writer,
@@ -4189,8 +4211,7 @@ public final class EngineServer implements AutoCloseable {
                 if (g != null) {
                     accTests(
                             eventRequestId,
-                            g.get(cc.jumpkick.runtime.BuildPlanner.TEST_RESULT)
-                                    .orElse(null));
+                            g.get(cc.jumpkick.runtime.BuildPlanner.TEST_RESULT).orElse(null));
                 }
             }
         };
@@ -4231,11 +4252,7 @@ public final class EngineServer implements AutoCloseable {
             }
 
             @Override
-            public void stepFinish(
-                    String step,
-                    String group,
-                    cc.jumpkick.run.TaskStatus status,
-                    Duration duration) {
+            public void stepFinish(String step, String group, cc.jumpkick.run.TaskStatus status, Duration duration) {
                 inner.stepFinish(step, group, status, duration);
             }
 
@@ -4583,8 +4600,7 @@ public final class EngineServer implements AutoCloseable {
             sendQuiet(
                     writer,
                     scheduled
-                            ? EngineProtocol.optimizeAck(
-                                    true, "", "scheduled", "scheduled: host warmup on idle worker")
+                            ? EngineProtocol.optimizeAck(true, "", "scheduled", "scheduled: host warmup on idle worker")
                             : EngineProtocol.optimizeAck(
                                     true, "", "", "nothing to do: worker AOT and calibration are current"));
         } catch (RuntimeException e) {
@@ -4627,8 +4643,7 @@ public final class EngineServer implements AutoCloseable {
                 () -> {
                     try {
                         if (activeBuildPlans.get() != 0) {
-                            pendingWarmupForce.updateAndGet(
-                                    prev -> prev == null ? force : (prev || force));
+                            pendingWarmupForce.updateAndGet(prev -> prev == null ? force : (prev || force));
                             return;
                         }
                         // Re-drain prune that may have been queued while we waited to start.
@@ -4740,11 +4755,9 @@ public final class EngineServer implements AutoCloseable {
 
     /** One aggregate row as a flat wire object; avg is pre-computed so clients stay arithmetic-free. */
     private static String metricsEntryJson(BuildMetrics.Entry e) {
-        boolean global = e.dir().isEmpty();
-        String scope = e.step() == null ? (global ? "global" : "project") : (global ? "task" : "project/task");
         return JsonOut.object()
                 .put("type", EngineProtocol.METRICS_ENTRY)
-                .put("scope", scope)
+                .put("scope", e.scope())
                 .put("kind", e.kind())
                 .put("dir", e.dir())
                 .put("coord", e.coord())
@@ -5098,14 +5111,11 @@ public final class EngineServer implements AutoCloseable {
             }
 
             @Override
-            public void stepFinish(
-                    String step,
-                    String group,
-                    cc.jumpkick.run.TaskStatus status,
-                    Duration duration) {
-                sendQuiet(writer, EngineProtocol.stepFinish(dir, step, phaseWire(group), status.name()));
-                publishStepFinish(eventRequestId, dir, step, phaseWire(group), status.name());
-                accStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), duration.toMillis());
+            public void stepFinish(String step, String group, cc.jumpkick.run.TaskStatus status, Duration duration) {
+                long millis = duration.toMillis();
+                sendQuiet(writer, EngineProtocol.stepFinish(dir, step, phaseWire(group), status.name(), millis));
+                publishStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), millis);
+                accStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), millis);
             }
 
             @Override
@@ -5640,12 +5650,8 @@ public final class EngineServer implements AutoCloseable {
             }
 
             @Override
-            public void stepFinish(
-                    String step,
-                    String group,
-                    cc.jumpkick.run.TaskStatus status,
-                    Duration duration) {
-                publishStepFinish(eventRequestId, dir, step, phaseWire(group), status.name());
+            public void stepFinish(String step, String group, cc.jumpkick.run.TaskStatus status, Duration duration) {
+                publishStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), duration.toMillis());
             }
 
             @Override
@@ -5738,12 +5744,10 @@ public final class EngineServer implements AutoCloseable {
 
                     @Override
                     public void stepFinish(
-                            String step,
-                            String group,
-                            cc.jumpkick.run.TaskStatus status,
-                            Duration duration) {
-                        publishStepFinish(eventRequestId, dir, step, phaseWire(group), status.name());
-                        accStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), duration.toMillis());
+                            String step, String group, cc.jumpkick.run.TaskStatus status, Duration duration) {
+                        long millis = duration.toMillis();
+                        publishStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), millis);
+                        accStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), millis);
                     }
 
                     @Override
@@ -5775,8 +5779,7 @@ public final class EngineServer implements AutoCloseable {
                 if (g != null) {
                     accTests(
                             eventRequestId,
-                            g.get(cc.jumpkick.runtime.BuildPlanner.TEST_RESULT)
-                                    .orElse(null));
+                            g.get(cc.jumpkick.runtime.BuildPlanner.TEST_RESULT).orElse(null));
                 }
             }
         };
@@ -5890,7 +5893,10 @@ public final class EngineServer implements AutoCloseable {
         try {
             Path ep = EnginePaths.endpoint(paths);
             if (!Files.isRegularFile(ep)) return false;
-            return active.socket().getFileName().toString().equals(Files.readString(ep).trim());
+            return active.socket()
+                    .getFileName()
+                    .toString()
+                    .equals(Files.readString(ep).trim());
         } catch (IOException e) {
             return false;
         }

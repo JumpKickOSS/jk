@@ -4,6 +4,7 @@ package cc.jumpkick.config;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.model.JkBuild;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -263,11 +264,9 @@ class ModuleDotGraphTest {
         assertThat(ModuleDotGraph.forProjectDir(tmp.resolve("nope")).nodes()).isEmpty();
 
         Path ws = tmp.resolve("ws");
-        java.nio.file.Files.createDirectories(ws.resolve("lib"));
-        java.nio.file.Files.createDirectories(ws.resolve("app"));
-        java.nio.file.Files.writeString(
-                ws.resolve("jk.toml"),
-                """
+        Files.createDirectories(ws.resolve("lib"));
+        Files.createDirectories(ws.resolve("app"));
+        Files.writeString(ws.resolve("jk.toml"), """
                 [project]
                 group = "com.example"
                 name = "ws"
@@ -276,17 +275,13 @@ class ModuleDotGraphTest {
                 [workspace]
                 modules = ["lib", "app"]
                 """);
-        java.nio.file.Files.writeString(
-                ws.resolve("lib/jk.toml"),
-                """
+        Files.writeString(ws.resolve("lib/jk.toml"), """
                 [project]
                 group = "com.example"
                 name = "lib"
                 version = "1.0.0"
                 """);
-        java.nio.file.Files.writeString(
-                ws.resolve("app/jk.toml"),
-                """
+        Files.writeString(ws.resolve("app/jk.toml"), """
                 [project]
                 group = "com.example"
                 name = "app"

@@ -208,12 +208,8 @@ public final class LockFlow {
             } else {
                 // Explicit jk lock: revalidate maven-metadata so same-URL re-resolves see newly
                 // published versions (TTL alone would hide them until the next day / --force).
-                lock = cc.jumpkick.repo.MavenMetadataCache.withForceRevalidate(
-                        () -> orchestrator.lock(
-                                pathPrep.project(),
-                                cc.jumpkick.model.JkVersion.VERSION,
-                                features,
-                                !noDefaultFeatures));
+                lock = cc.jumpkick.repo.MavenMetadataCache.withForceRevalidate(() -> orchestrator.lock(
+                        pathPrep.project(), cc.jumpkick.model.JkVersion.VERSION, features, !noDefaultFeatures));
             }
         } catch (IOException e) {
             return new Result(

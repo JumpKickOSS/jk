@@ -89,7 +89,7 @@ changing the code (and vice versa):
 | `jk library search` | Name · Coordinates (· Layer) · Cached |
 | `jk tool list` | Tool · Coordinates · Source · Launcher |
 | `jk history list` | status · Id · Project · Kind · Took · When · Saved · Notes |
-| `jk tasks` | Name · Phase · Description (per module at a workspace root) |
+| `jk tasks` | Name · Stage · Description (per module at a workspace root) |
 | `jk jdk list` | (wave 1 — the exemplar) |
 | `jk repo storage` | Element · File Count · Size, plus Total, a spanning utilization row, and a last-pruned footer (hand-rolled on the shared BoxTable chrome) |
 

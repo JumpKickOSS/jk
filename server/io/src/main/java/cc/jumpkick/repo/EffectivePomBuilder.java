@@ -155,8 +155,16 @@ public final class EffectivePomBuilder {
         // managed list (~2k entries for quarkus-bom parents) on every GAV dominated engine heap.
         List<Pom.Dep> retainedManaged = "pom".equalsIgnoreCase(child.packaging()) ? mergedManaged : List.of();
 
+        // A relocation belongs to the POM that declares it — it is not inherited from a parent.
         return new EffectivePom(
-                groupId, child.artifactId(), version, child.packaging(), props, finalDeps, retainedManaged);
+                groupId,
+                child.artifactId(),
+                version,
+                child.packaging(),
+                props,
+                finalDeps,
+                retainedManaged,
+                child.relocation());
     }
 
     // --- merge helpers -----------------------------------------------------

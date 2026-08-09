@@ -270,6 +270,7 @@ class LockFreshenConservativeTest {
                 """.formatted(group, artifact, version);
         served.put(
                 prefix + "/" + version + "/" + artifact + "-" + version + ".pom", pom.getBytes(StandardCharsets.UTF_8));
+        served.put(prefix + "/" + version + "/" + artifact + "-" + version + ".jar", emptyJar());
     }
 
     private void serveLib(String... versions) {
@@ -287,6 +288,22 @@ class LockFreshenConservativeTest {
                     </project>
                     """.formatted(v);
             served.put("/com/foo/lib/" + v + "/lib-" + v + ".pom", pom.getBytes(StandardCharsets.UTF_8));
+            served.put("/com/foo/lib/" + v + "/lib-" + v + ".jar", emptyJar());
+        }
+    }
+
+    /**
+     * A real (empty) jar for every POM this fixture serves. JK-1649 made a resolved-but-unfetchable
+     * artifact a hard lock failure, and this fixture predates it — POM-only repos used to be
+     * enough. Serving the bytes exercises that check instead of dodging it.
+     */
+    private static byte[] emptyJar() {
+        try {
+            var bytes = new java.io.ByteArrayOutputStream();
+            new java.util.jar.JarOutputStream(bytes, new java.util.jar.Manifest()).close();
+            return bytes.toByteArray();
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
         }
     }
 }

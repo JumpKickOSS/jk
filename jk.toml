@@ -24,6 +24,7 @@ modules = [
   "shared/jk-api",
   "shared/core",
   "shared/client-io",
+  "shared/dynamic-surface",
   # Server/Engine
   "server/io",
   "server/resolver",

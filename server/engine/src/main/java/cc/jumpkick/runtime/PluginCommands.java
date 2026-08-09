@@ -86,7 +86,8 @@ public final class PluginCommands {
                         .onOther(line -> {
                             // labels/done — not part of the command's user-facing output
                         });
-                int exit = client.run(PluginLaunch.javaCommand(jar, spec, active.manifest().code().protocolPrefix()));
+                int exit = client.run(PluginLaunch.javaCommand(
+                        jar, spec, active.manifest().code().protocolPrefix()));
                 if (error[0] != null) return PluginCommandReport.error(error[0]);
                 return new PluginCommandReport(null, true, exit, output);
             } finally {

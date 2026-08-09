@@ -56,7 +56,13 @@ class SelfPurgeCommandTest {
         Path cas = dirs.storeDir().resolve("sha256");
         Path lib = dirs.libDir().resolve("jk-java-compiler");
         Files.createDirectories(active.resolve("lib"));
-        Files.writeString(active.resolve("manifest.toml"), "version = \"" + Jk.VERSION + "\"\n");
+        // The suite shares one JK_HOME. Leave a materialized engine tree alone — a stub manifest
+        // here is a version dir VersionStore can neither resolve nor replace, which strands every
+        // later class in this fork.
+        Path activeManifest = active.resolve("manifest.toml");
+        if (!Files.exists(activeManifest)) {
+            Files.writeString(activeManifest, "version = \"" + Jk.VERSION + "\"\n");
+        }
         Files.createDirectories(old);
         Files.writeString(old.resolve("manifest.toml"), "version = \"0.9.0\"\n");
         Files.createDirectories(cas.resolve("ab"));
@@ -68,8 +74,9 @@ class SelfPurgeCommandTest {
         assertThat(roots).anyMatch(p -> p.endsWith("0.9.0") || p.toString().endsWith("0.9.0"));
         assertThat(roots).anyMatch(p -> p.endsWith("sha256") || p.toString().contains("sha256"));
         assertThat(roots).noneMatch(p -> p.equals(active.toAbsolutePath().normalize()));
-        assertThat(roots).noneMatch(p -> p.equals(lib.toAbsolutePath().normalize())
-                || p.startsWith(dirs.libDir().toAbsolutePath().normalize()));
+        assertThat(roots)
+                .noneMatch(p -> p.equals(lib.toAbsolutePath().normalize())
+                        || p.startsWith(dirs.libDir().toAbsolutePath().normalize()));
 
         int exit = capture(() -> Jk.execute("self", "purge", "--store", "-y"));
         assertThat(exit).isZero();
@@ -118,7 +125,8 @@ class SelfPurgeCommandTest {
         Path marker = cache.resolve("dry-run-keep");
         Files.writeString(marker, "keep");
 
-        String out = captureStdout(() -> assertThat(Jk.execute("self", "purge", "--cache", "--dry-run", "-y")).isZero());
+        String out = captureStdout(() -> assertThat(Jk.execute("self", "purge", "--cache", "--dry-run", "-y"))
+                .isZero());
         assertThat(TestAnsi.strip(out)).containsIgnoringCase("dry run");
         assertThat(TestAnsi.strip(out)).contains("Path to Delete").contains("What");
         assertThat(marker).exists();
@@ -132,7 +140,8 @@ class SelfPurgeCommandTest {
         Path outsideBin = root.resolve("outside-bin");
         Files.createDirectories(home.resolve("versions"));
         Files.createDirectories(outsideBin);
-        JkDirs dirs = JkDirs.of(env("JK_HOME", home.toString(), "JK_BIN_DIR", outsideBin.toString()),
+        JkDirs dirs = JkDirs.of(
+                env("JK_HOME", home.toString(), "JK_BIN_DIR", outsideBin.toString()),
                 root.resolve("userhome").toString());
 
         List<Path> roots = SelfPurgeCommand.wipeRoots(dirs, EnumSet.of(Target.CONFIG));
@@ -148,7 +157,8 @@ class SelfPurgeCommandTest {
         Files.createDirectories(home.resolve("versions").resolve(Jk.VERSION));
         Files.createDirectories(home.resolve("store").resolve("lib"));
         // JK_STATE_DIR mis-pointed at the umbrella root: state purge must not take the whole tree.
-        JkDirs dirs = JkDirs.of(env("JK_HOME", home.toString(), "JK_STATE_DIR", home.toString()),
+        JkDirs dirs = JkDirs.of(
+                env("JK_HOME", home.toString(), "JK_STATE_DIR", home.toString()),
                 root.resolve("userhome").toString());
 
         List<Path> roots = SelfPurgeCommand.wipeRoots(dirs, EnumSet.of(Target.STATE));
@@ -165,7 +175,8 @@ class SelfPurgeCommandTest {
         Files.createDirectories(home.resolve("store").resolve("sha256"));
         Files.createDirectories(home.resolve("versions").resolve(Jk.VERSION));
         Files.createDirectories(home.resolve("versions").resolve("0.0.1"));
-        JkDirs dirs = JkDirs.of(env("JK_HOME", home.toString()), root.resolve("userhome").toString());
+        JkDirs dirs = JkDirs.of(
+                env("JK_HOME", home.toString()), root.resolve("userhome").toString());
 
         List<Path> roots = SelfPurgeCommand.wipeRoots(dirs, EnumSet.of(Target.STORE));
         Path homeAbs = home.toAbsolutePath().normalize();
@@ -189,7 +200,8 @@ class SelfPurgeCommandTest {
             return; // filesystem without symlink support — nothing to verify here
         }
         // PATH bin is the symlink; its target lives inside the purged data tree.
-        JkDirs dirs = JkDirs.of(env("JK_HOME", home.toString(), "JK_BIN_DIR", linkBin.toString()),
+        JkDirs dirs = JkDirs.of(
+                env("JK_HOME", home.toString(), "JK_BIN_DIR", linkBin.toString()),
                 root.resolve("userhome").toString());
 
         List<Path> roots = SelfPurgeCommand.wipeRoots(dirs, EnumSet.of(Target.STORE));
@@ -226,7 +238,8 @@ class SelfPurgeCommandTest {
         Files.createDirectories(versions);
         Files.writeString(versions.resolve("." + Jk.VERSION + ".lock"), "");
         Files.writeString(versions.resolve(".0.9.0.lock"), "");
-        JkDirs dirs = JkDirs.of(env("JK_HOME", home.toString()), root.resolve("userhome").toString());
+        JkDirs dirs = JkDirs.of(
+                env("JK_HOME", home.toString()), root.resolve("userhome").toString());
 
         List<Path> roots = SelfPurgeCommand.wipeRoots(dirs, EnumSet.of(Target.STORE));
         Path versionsAbs = versions.toAbsolutePath().normalize();
@@ -291,7 +304,8 @@ class SelfPurgeCommandTest {
         Files.writeString(marker, "keep");
 
         // No -y and no TTY: a prompt would hit EOF and abort with exit 1.
-        String out = captureStdout(() -> assertThat(Jk.execute("self", "purge", "--cache", "--dry-run")).isZero());
+        String out = captureStdout(() ->
+                assertThat(Jk.execute("self", "purge", "--cache", "--dry-run")).isZero());
         assertThat(TestAnsi.strip(out)).containsIgnoringCase("dry run");
         assertThat(TestAnsi.strip(out)).doesNotContain("Purge aborted");
         assertThat(marker).exists();

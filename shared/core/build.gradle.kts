@@ -47,6 +47,13 @@ tasks.processResources {
     from(rootProject.file("plugins/quarkus/scaffold")) {
         into("cc/jumpkick/plugin/manifest/quarkus/scaffold")
     }
+    from(rootProject.file("plugins/micronaut/jk-plugin.toml")) {
+        into("cc/jumpkick/plugin/manifest")
+        rename { "micronaut.jk-plugin.toml" }
+    }
+    from(rootProject.file("plugins/micronaut/scaffold")) {
+        into("cc/jumpkick/plugin/manifest/micronaut/scaffold")
+    }
     from(rootProject.file("plugins/android/jk-plugin.toml")) {
         into("cc/jumpkick/plugin/manifest")
         rename { "android.jk-plugin.toml" }

@@ -19,9 +19,7 @@ class JkCacheConfigTest {
     @Test
     void parses_size_knobs(@TempDir Path tempDir) throws Exception {
         Path toml = tempDir.resolve("config.toml");
-        Files.writeString(
-                toml,
-                """
+        Files.writeString(toml, """
                 [cache]
                 max-store-size-mb   = 8192
                 prune-interval-days = 3
@@ -35,8 +33,6 @@ class JkCacheConfigTest {
         assertThat(c.maxCacheSizeMb()).isEqualTo(512);
         assertThat(c.maxCacheSizeBytes()).isEqualTo(512L * 1024 * 1024);
         assertThat(c.maxStoreSizeBytes()).isEqualTo(8192L * 1024 * 1024);
-        assertThat(c.storeBudgetConfigured()).isTrue();
-        assertThat(c.configuredStoreSizeBytes()).isEqualTo(8192L * 1024 * 1024);
     }
 
     @Test
@@ -50,16 +46,12 @@ class JkCacheConfigTest {
         assertThat(c.recordTtlDays()).isEqualTo(JkCacheConfig.DEFAULTS.recordTtlDays());
         assertThat(c.maxCacheSizeMb()).isEqualTo(JkCacheConfig.DEFAULT_MAX_CACHE_SIZE_MB);
         assertThat(c.maxStoreSizeBytes()).isEqualTo(4096L * 1024 * 1024);
-        assertThat(c.storeBudgetConfigured()).isFalse();
-        assertThat(c.configuredStoreSizeBytes()).isZero();
     }
 
     @Test
     void malformed_values_fall_back_to_defaults(@TempDir Path tempDir) throws Exception {
         Path toml = tempDir.resolve("config.toml");
-        Files.writeString(
-                toml,
-                """
+        Files.writeString(toml, """
                 [cache]
                 max-store-size-mb = not-a-number
                 max-cache-size-mb = nope
@@ -70,9 +62,7 @@ class JkCacheConfigTest {
     @Test
     void env_overrides_file(@TempDir Path tempDir) throws Exception {
         Path toml = tempDir.resolve("config.toml");
-        Files.writeString(
-                toml,
-                """
+        Files.writeString(toml, """
                 [cache]
                 max-store-size-mb   = 8192
                 max-cache-size-mb   = 512
@@ -93,9 +83,7 @@ class JkCacheConfigTest {
     @Test
     void zero_size_means_unset_default(@TempDir Path tempDir) throws Exception {
         Path toml = tempDir.resolve("config.toml");
-        Files.writeString(
-                toml,
-                """
+        Files.writeString(toml, """
                 [cache]
                 max-store-size-mb  = 0
                 max-cache-size-mb  = 0
@@ -105,8 +93,6 @@ class JkCacheConfigTest {
         assertThat(c.maxCacheSizeMb()).isEqualTo(JkCacheConfig.DEFAULT_MAX_CACHE_SIZE_MB);
         assertThat(c.maxStoreSizeBytes()).isEqualTo(4096L * 1024 * 1024);
         assertThat(c.maxCacheSizeBytes()).isEqualTo(1024L * 1024 * 1024);
-        assertThat(c.storeBudgetConfigured()).isFalse();
-        assertThat(c.configuredStoreSizeBytes()).isZero();
     }
 
     @Test
@@ -136,50 +122,12 @@ class JkCacheConfigTest {
     }
 
     @Test
-    void store_budget_configured_via_env_alone(@TempDir Path tempDir) {
+    void store_budget_is_display_only(@TempDir Path tempDir) {
         JkCacheConfig c =
                 JkCacheConfig.resolve(tempDir.resolve("none.toml"), Map.of("JK_MAX_STORE_SIZE_MB", "50")::get);
-        assertThat(c.storeBudgetConfigured()).isTrue();
-        assertThat(c.configuredStoreSizeBytes()).isEqualTo(50L * 1024 * 1024);
-    }
-
-    @Test
-    void store_budget_not_configured_by_defaults_or_zero_env(@TempDir Path tempDir) {
-        JkCacheConfig none = JkCacheConfig.resolve(tempDir.resolve("none.toml"), key -> null);
-        assertThat(none.storeBudgetConfigured()).isFalse();
-        assertThat(none.configuredStoreSizeBytes()).isZero();
-
-        JkCacheConfig zeroEnv =
-                JkCacheConfig.resolve(tempDir.resolve("none.toml"), Map.of("JK_MAX_STORE_SIZE_MB", "0")::get);
-        assertThat(zeroEnv.storeBudgetConfigured()).isFalse();
-    }
-
-    @Test
-    void legacy_knobs_warn_with_successor_names(@TempDir Path tempDir) throws Exception {
-        Path toml = tempDir.resolve("config.toml");
-        Files.writeString(
-                toml,
-                """
-                [cache]
-                max-size-gb        = 50
-                action-max-size-mb = 512
-                """);
-        var env = Map.of("JK_MAX_SIZE_GB", "50", "JK_ACTION_MAX_SIZE_MB", "512");
-        var warnings = JkCacheConfig.legacyKnobWarnings(toml, env::get);
-        assertThat(warnings).hasSize(4);
-        assertThat(warnings)
-                .anySatisfy(w -> assertThat(w).contains("max-size-gb").contains("max-store-size-mb"))
-                .anySatisfy(w -> assertThat(w).contains("action-max-size-mb").contains("max-cache-size-mb"))
-                .anySatisfy(w -> assertThat(w).contains("JK_MAX_SIZE_GB").contains("JK_MAX_STORE_SIZE_MB"))
-                .anySatisfy(w -> assertThat(w).contains("JK_ACTION_MAX_SIZE_MB").contains("JK_MAX_CACHE_SIZE_MB"));
-    }
-
-    @Test
-    void no_legacy_warnings_for_current_knobs(@TempDir Path tempDir) throws Exception {
-        Path toml = tempDir.resolve("config.toml");
-        Files.writeString(toml, "[cache]\nmax-store-size-mb = 8192\nmax-cache-size-mb = 512\n");
-        assertThat(JkCacheConfig.legacyKnobWarnings(toml, key -> null)).isEmpty();
-        assertThat(JkCacheConfig.legacyKnobWarnings(tempDir.resolve("none.toml"), key -> null))
-                .isEmpty();
+        assertThat(c.maxStoreSizeMb()).isEqualTo(50);
+        assertThat(c.maxStoreSizeBytes()).isEqualTo(50L * 1024 * 1024);
+        // Even when configured, there is no eviction budget — GC only reclaims garbage.
+        assertThat(JkCacheConfig.DEFAULTS.maxStoreSizeBytes()).isEqualTo(4096L * 1024 * 1024);
     }
 }

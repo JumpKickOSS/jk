@@ -3,8 +3,8 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.BuildPlanConsole;
+import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -106,7 +106,7 @@ public final class CleanCommand implements CliCommand {
             cc.jumpkick.run.BuildPlanResult result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
                     cc.jumpkick.engine.EnginePaths.current(),
                     new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest(
-                            "gc", JkDirs.cache(), 0, false, false, null, false),
+                            "gc", JkDirs.cache(), 0, false, false, false),
                     steps -> new cc.jumpkick.run.BuildPlanListener() {},
                     (external, plans) -> {},
                     summary);
@@ -229,7 +229,7 @@ public final class CleanCommand implements CliCommand {
             var result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
                     cc.jumpkick.engine.EnginePaths.current(),
                     new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest(
-                            "clear", root, 0, false, false, null, false, projectDir),
+                            "clear", root, 0, false, false, false, projectDir),
                     steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
                     CacheCommand::printWait,
                     summary);

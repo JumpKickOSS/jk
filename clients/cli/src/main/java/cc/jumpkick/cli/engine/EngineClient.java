@@ -125,6 +125,20 @@ public final class EngineClient {
         }
     }
 
+    /**
+     * Whether a socket connection can be opened at all, regardless of protocol behavior — for host
+     * checks (e.g. {@code jk doctor}) that must tell "nothing is listening" (a WARN — lazy-start
+     * handles it) apart from "something is listening but not answering" (a wedged engine, a FAIL).
+     * {@link #status} alone cannot make that distinction: it returns empty for both.
+     */
+    public static boolean reachable(Path socket) {
+        try (SocketChannel ch = connect(socket)) {
+            return true;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
     /** Connect and request a status snapshot; empty if no engine is reachable. */
     public static Optional<Status> status(Path socket) {
         try (SocketChannel ch = connect(socket)) {
@@ -631,6 +645,54 @@ public final class EngineClient {
             cc.jumpkick.engine.EnginePaths.Paths paths, java.nio.file.Path file, String op, java.util.List<String> args)
             throws java.io.IOException {
         return EngineBuildListenerAdapter.edit(paths, file, op, args);
+    }
+
+    /**
+     * On-demand, engine-hosted freshen of a network-backed catalog — {@code "templates"} (before
+     * {@code jk new}/{@code init}) or {@code "libraries"} (before {@code jk lock}/{@code update}).
+     * Starts the engine if it isn't already running (these two commands have no bootstrap concern —
+     * they never need to run before a JDK exists). {@code url}/{@code cacheFile} override the
+     * default source/destination ({@code "libraries"} only; {@code null} for {@code "templates"}).
+     * Best-effort: never throws — a stale/offline catalog is not this call's problem, the caller
+     * resolves against whatever the local cache already holds.
+     *
+     * <p>{@code jk jdk install}/{@code update} must not use this — use {@link
+     * #freshenCatalogIfRunning} instead, which never starts an engine.
+     */
+    public static void freshenCatalog(
+            cc.jumpkick.engine.EnginePaths.Paths paths,
+            String catalog,
+            boolean offline,
+            String url,
+            java.nio.file.Path cacheFile) {
+        if (offline) return; // nothing to freshen without a network
+        try {
+            ensureRunning(paths, cc.jumpkick.cli.Jk.VERSION);
+        } catch (java.io.IOException e) {
+            return; // no engine to host the freshen — local resolution proceeds against the cache
+        }
+        EngineBuildListenerAdapter.freshenCatalog(
+                paths, catalog, false, url, cacheFile == null ? null : cacheFile.toString());
+    }
+
+    /**
+     * As {@link #freshenCatalog}, but for {@code "jdks"} from {@code jk jdk install}/{@code
+     * update} specifically: it must work to bootstrap a bare machine that has no JDK at all yet
+     * (possibly the one that will host the engine), so it never starts an engine — only an
+     * already-reachable one is asked to freshen. Returns {@code true} when it delegated (an engine
+     * answered); {@code false} means nothing happened here and the caller must fetch {@code
+     * jdks.json} itself ({@code JdkCatalogClient}). Never throws.
+     *
+     * <p>Once a healthy engine is running, every client — this CLI path included — funnels JDK
+     * installs through it the same way the web dashboard and MCP always do, so there is one place
+     * that actually touches the JDK feed's network when the engine is available.
+     */
+    public static boolean freshenCatalogIfRunning(
+            cc.jumpkick.engine.EnginePaths.Paths paths, String catalog, String url, java.nio.file.Path cacheFile) {
+        if (!reachable(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) return false;
+        EngineBuildListenerAdapter.freshenCatalog(
+                paths, catalog, false, url, cacheFile == null ? null : cacheFile.toString());
+        return true;
     }
 
     /**
@@ -1530,8 +1592,7 @@ public final class EngineClient {
     /**
      * Everything an engine-hosted cache maintenance op needs ({@code op} = {@code prune}/{@code
      * purge}/{@code sweep}/{@code gc} — {@code jk cache prune}/{@code purge}, {@code jk repo
-     * prune}, {@code jk clean --cache}). {@code maxSize} may be {@code null}; ops ignore the
-     * fields they don't use.
+     * prune}, {@code jk clean --cache}). Ops ignore the fields they don't use.
      */
     public record CacheMaintRequest(
             String op,
@@ -1539,20 +1600,13 @@ public final class EngineClient {
             int olderThanDays,
             boolean dryRun,
             boolean sweep,
-            String maxSize,
             boolean includeJkTmp,
             Path projectRoot) {
 
         /** Prune/purge/gc request — no project scope. */
         public CacheMaintRequest(
-                String op,
-                Path cache,
-                int olderThanDays,
-                boolean dryRun,
-                boolean sweep,
-                String maxSize,
-                boolean includeJkTmp) {
-            this(op, cache, olderThanDays, dryRun, sweep, maxSize, includeJkTmp, null);
+                String op, Path cache, int olderThanDays, boolean dryRun, boolean sweep, boolean includeJkTmp) {
+            this(op, cache, olderThanDays, dryRun, sweep, includeJkTmp, null);
         }
     }
 
@@ -1585,15 +1639,14 @@ public final class EngineClient {
                         req.olderThanDays(),
                         req.dryRun(),
                         req.sweep(),
-                        req.maxSize(),
                         req.includeJkTmp());
         return EnginePluginAdapter.stream(
                         paths,
                         requestLine,
                         "cache-" + req.op(),
                         listenerFactory,
-                        (type, line) -> onWait.accept(
-                                Jsonl.bool(line, "external", false), Jsonl.intValue(line, "plans", 0)),
+                        (type, line) ->
+                                onWait.accept(Jsonl.bool(line, "external", false), Jsonl.intValue(line, "plans", 0)),
                         line -> summaryOut[0] = new CacheMaintSummary(
                                 Jsonl.longValue(line, "cacheFiles", -1),
                                 Jsonl.longValue(line, "cacheBytes", -1),
@@ -2074,8 +2127,7 @@ public final class EngineClient {
      * marker is present. {@code ready} means size &gt; 0 — the same predicate {@link
      * #chooseAotMode} maps by, so the manifest and the engine never disagree about one file.
      */
-    static void recordEngineAotManifest(
-            Path cache, Path engineJar, EngineJdk jdk, String version, String hash) {
+    static void recordEngineAotManifest(Path cache, Path engineJar, EngineJdk jdk, String version, String hash) {
         if (cache == null) return;
         Path aotDir = cache.getParent();
         if (aotDir == null) return;
@@ -2089,9 +2141,7 @@ public final class EngineClient {
                     .key(hash)
                     .jkVersion(version)
                     .status(status)
-                    .jvmFlags(List.of(
-                            "-XX:+UseSerialGC",
-                            "--enable-native-access=ALL-UNNAMED"));
+                    .jvmFlags(List.of("-XX:+UseSerialGC", "--enable-native-access=ALL-UNNAMED"));
             if (ready) {
                 b.sizeBytes(Files.size(cache)).lastUsed(cc.jumpkick.util.AotManifest.nowIso());
             }
@@ -2105,7 +2155,8 @@ public final class EngineClient {
                 b.engineJar(engineJar.getFileName().toString());
                 try {
                     b.engineJarSize(Files.size(engineJar))
-                            .engineJarMtimeMs(Files.getLastModifiedTime(engineJar).toMillis());
+                            .engineJarMtimeMs(
+                                    Files.getLastModifiedTime(engineJar).toMillis());
                 } catch (IOException ignored) {
                     // identity without size/mtime still documents the name
                 }

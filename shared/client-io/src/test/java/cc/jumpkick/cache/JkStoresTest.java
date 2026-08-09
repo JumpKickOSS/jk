@@ -47,7 +47,11 @@ class JkStoresTest {
     void cache_cas_is_rooted_at_the_cache_dir(@TempDir Path tmp) {
         Path cache = tmp.resolve("cache");
         assertThat(JkStores.cacheCas(cache).root()).isEqualTo(cache);
-        assertThat(JkStores.cacheCas(cache).pathFor("abcd0123").getParent().getParent().getParent())
+        assertThat(JkStores.cacheCas(cache)
+                        .pathFor("abcd0123")
+                        .getParent()
+                        .getParent()
+                        .getParent())
                 .isEqualTo(cache.resolve("sha256"));
     }
 }

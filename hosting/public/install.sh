@@ -242,6 +242,85 @@ info "Running \`jk activate\`... This may download a JDK and optimize your insta
 # the binary is already installed.
 run_jk activate --yes || note "'jk activate --yes' failed; run 'jk activate' (or 'jk activate <shell>') manually."
 
+# ---- preemptive payload warm-up (jk-templates, jk-libraries, jdks.json) -------
+#
+# Populate the template/library/JDK catalog caches now so the first real
+# `jk new` / `jk lock` / `jk jdk install` doesn't pay cold-start latency.
+# Best-effort: never fail the install. Replaces existing cache entries
+# (shallow clone depth 1, conditional GET with ETag). Works for both
+# `curl|bash` and `bash install.sh build/dist/jk` (local) flows.
+if have git; then
+  # jk-templates: shallow clone (replace if exists) – mirrors OfficialTemplatesFreshen dest
+  _jk_templates_url="${JK_TEMPLATES_URL:-https://github.com/jkbuild/jk-templates.git}"
+  _jk_cache_templates=""
+  if [ -d "${HOME}/.jk/cache/templates" ] || [ -d "${HOME}/.jk" ]; then
+    _jk_cache_templates="${HOME}/.jk/cache/templates"
+  else
+    _jk_cache_templates="${XDG_CACHE_HOME:-${HOME}/.cache}/jk/templates"
+    # Respect JK_CACHE_DIR if set (engine/cache root)
+    if [ -n "${JK_CACHE_DIR:-}" ]; then
+      _jk_cache_templates="${JK_CACHE_DIR}/templates"
+    fi
+    if [ -n "${JK_HOME:-}" ]; then
+      _jk_cache_templates="${JK_HOME}/cache/templates"
+    fi
+  fi
+  # Derive cache key similar to OfficialTemplatesFreshen (sanitize URL)
+  _jk_tmpl_key="$(printf '%s' "$_jk_templates_url" | tr '[:upper:]' '[:lower:]' | sed -e 's|^https*://||' -e 's|^git@||' -e 's|\.git$||' -e 's|[^a-z0-9._-]|_|g')"
+  _jk_tmpl_dest="$_jk_cache_templates/$_jk_tmpl_key"
+  mkdir -p "$(dirname "$_jk_tmpl_dest")" || true
+  if [ -d "$_jk_tmpl_dest" ]; then
+    rm -rf "$_jk_tmpl_dest" || true
+  fi
+  GIT_TERMINAL_PROMPT=0 git clone --depth 1 "$_jk_templates_url" "$_jk_tmpl_dest" >/dev/null 2>&1 \
+    || note "templates prefetch skipped (git clone failed – will lazy-clone on jk new)"
+  unset _jk_templates_url _jk_cache_templates _jk_tmpl_key _jk_tmpl_dest
+fi
+# jk-libraries: conditional fetch of libraries.toml (ETag-aware in LibraryRegistrySync, but prefetch raw)
+if have curl; then
+  _jk_libs_url="${JK_LIBRARIES_URL:-https://raw.githubusercontent.com/jkbuild/jk-libraries/refs/heads/main/libraries.toml}"
+  _jk_libs_dest=""
+  if [ -n "${JK_CACHE_DIR:-}" ]; then
+    _jk_libs_dest="${JK_CACHE_DIR}/libs.global.toml"
+  elif [ -d "${HOME}/.jk" ]; then
+    _jk_libs_dest="${HOME}/.jk/cache/libs.global.toml"
+  else
+    _jk_libs_dest="${XDG_CACHE_HOME:-${HOME}/.cache}/jk/libs.global.toml"
+  fi
+  # Also try store location (StoreFeedRefresh uses store/libs.global.toml)
+  _jk_store_libs="${HOME}/.local/share/jk/store/libs.global.toml"
+  if [ -n "${JK_STORE_DIR:-}" ]; then _jk_store_libs="${JK_STORE_DIR}/libs.global.toml"; fi
+  if [ -n "${JK_HOME:-}" ]; then _jk_store_libs="${JK_HOME}/store/libs.global.toml"; fi
+  mkdir -p "$(dirname "$_jk_libs_dest")" "$(dirname "$_jk_store_libs")" || true
+  curl -fsSL "$_jk_libs_url" -o "$_jk_libs_dest.tmp" >/dev/null 2>&1 && mv -f "$_jk_libs_dest.tmp" "$_jk_libs_dest" 2>/dev/null && cp -f "$_jk_libs_dest" "$_jk_store_libs" 2>/dev/null || rm -f "$_jk_libs_dest.tmp" 2>/dev/null || true
+  unset _jk_libs_url _jk_libs_dest _jk_store_libs
+elif have wget; then
+  _jk_libs_url="${JK_LIBRARIES_URL:-https://raw.githubusercontent.com/jkbuild/jk-libraries/refs/heads/main/libraries.toml}"
+  _jk_libs_dest="${JK_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME}/.cache}/jk}/libs.global.toml"
+  _jk_store_libs="${HOME}/.local/share/jk/store/libs.global.toml"
+  if [ -n "${JK_STORE_DIR:-}" ]; then _jk_store_libs="${JK_STORE_DIR}/libs.global.toml"; fi
+  if [ -n "${JK_HOME:-}" ]; then _jk_store_libs="${JK_HOME}/store/libs.global.toml"; fi
+  mkdir -p "$(dirname "$_jk_libs_dest")" "$(dirname "$_jk_store_libs")" || true
+  wget -q "$_jk_libs_url" -O "$_jk_libs_dest.tmp" >/dev/null 2>&1 && mv -f "$_jk_libs_dest.tmp" "$_jk_libs_dest" 2>/dev/null && cp -f "$_jk_libs_dest" "$_jk_store_libs" 2>/dev/null || rm -f "$_jk_libs_dest.tmp" 2>/dev/null || true
+  unset _jk_libs_url _jk_libs_dest _jk_store_libs
+fi
+# jdks.json: one-shot fetch to store (JdkCatalogClient will revalidate with If-Modified-Since)
+if have curl; then
+  _jk_jdks_url="${JK_JDKS_URL:-https://download.jetbrains.com/jdk/feed/v1/jdks.json}"
+  _jk_jdks_dest="${JK_STORE_DIR:-${HOME}/.local/share/jk/store}/jdks.json"
+  if [ -n "${JK_HOME:-}" ]; then _jk_jdks_dest="${JK_HOME}/store/jdks.json"; fi
+  mkdir -p "$(dirname "$_jk_jdks_dest")" || true
+  curl -fsSL "$_jk_jdks_url" -o "$_jk_jdks_dest.tmp" >/dev/null 2>&1 && mv -f "$_jk_jdks_dest.tmp" "$_jk_jdks_dest" 2>/dev/null || rm -f "$_jk_jdks_dest.tmp" 2>/dev/null || true
+  unset _jk_jdks_url _jk_jdks_dest
+elif have wget; then
+  _jk_jdks_url="${JK_JDKS_URL:-https://download.jetbrains.com/jdk/feed/v1/jdks.json}"
+  _jk_jdks_dest="${JK_STORE_DIR:-${HOME}/.local/share/jk/store}/jdks.json"
+  if [ -n "${JK_HOME:-}" ]; then _jk_jdks_dest="${JK_HOME}/store/jdks.json"; fi
+  mkdir -p "$(dirname "$_jk_jdks_dest")" || true
+  wget -q "$_jk_jdks_url" -O "$_jk_jdks_dest.tmp" >/dev/null 2>&1 && mv -f "$_jk_jdks_dest.tmp" "$_jk_jdks_dest" 2>/dev/null || rm -f "$_jk_jdks_dest.tmp" 2>/dev/null || true
+  unset _jk_jdks_url _jk_jdks_dest
+fi
+
 # ---- warm the engine -------------------------------------------------------
 #
 # Pre-pay the engine's cold-start costs now so the first real build doesn't:

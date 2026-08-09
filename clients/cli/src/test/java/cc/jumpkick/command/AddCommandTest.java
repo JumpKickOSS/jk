@@ -159,7 +159,8 @@ class AddCommandTest {
 
         int exit = Jk.execute("add", "not-a-catalog-lib-xyz", "-C", tmp.toString());
         assertThat(exit).isEqualTo(64);
-        assertThat(JkBuildParser.parse(tmp.resolve("jk.toml")).workspace().modules()).isEmpty();
+        assertThat(JkBuildParser.parse(tmp.resolve("jk.toml")).workspace().modules())
+                .isEmpty();
     }
 
     @Test
@@ -180,7 +181,8 @@ class AddCommandTest {
         assertThat(exit).isEqualTo(0);
         // Catalog library, not the local module's version.
         assertThat(Files.readString(tmp.resolve("jk.toml"))).contains("jackson3-core = \"3.1.0\"");
-        assertThat(JkBuildParser.parse(tmp.resolve("jk.toml")).workspace().modules()).isEmpty();
+        assertThat(JkBuildParser.parse(tmp.resolve("jk.toml")).workspace().modules())
+                .isEmpty();
     }
 
     @Test

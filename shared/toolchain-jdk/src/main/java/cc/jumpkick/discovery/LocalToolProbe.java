@@ -30,8 +30,6 @@ public interface LocalToolProbe extends Extension {
         return name();
     }
 
-    
-
     /** Return a matching install, or empty if this probe doesn't have one. */
     Optional<DiscoveredTool> find(ToolSpec spec) throws IOException;
 

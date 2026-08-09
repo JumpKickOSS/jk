@@ -45,8 +45,8 @@ version   = "1.0.0"
 jk-compat = ">=0.10"
 
 [schema]
-version = { type = "string", required = true, example = "4.0.1",
-            hint = "the Spring Boot release to build against" }
+version = { type = "string", required = true, example = "4",
+            hint = "major-line floor for the platform BOM (caret; lock pins exact). Use =4.1.0 to hard-pin" }
 aot     = { type = "bool" }   # no default = tri-state
 ```
 
@@ -78,6 +78,28 @@ when       = { classpath-has = "jakarta.persistence:jakarta.persistence-api" }
 
 **Interpolation (closed set):** `${config.<key>}`, `${kotlin.version}`,
 `${project.group|name|version}`, `${host.os}`, `${host.os-arch}`.
+
+**Coordinate versions — bare is exact.** In a `[[contribute.step-dependency]]` or
+`[[contribute.packager-dependency]]`, `…:8.5.35` is a hard pin and costs no network: a tool
+version in a manifest is *your* choice, and a literal usually exists because the tool has to
+match some other line (android's r8 tracks the AGP tools line). Write `^` or `~` when you mean
+float-within-line — `…:^${config.version}` follows the Boot/Quarkus/Grails line the project
+declared, resolving against the tool's own `maven-metadata.xml`. `latest` and open ranges are
+rejected. This is the opposite of the `jk.toml` `[dependencies]` convention, where bare means
+caret; the difference is who wrote the version.
+
+`[[contribute.platform-dependency]]` is *not* a tool coordinate — it lands in the project's
+`[platform-dependencies]` and follows the `jk.toml` bare-is-caret rule.
+
+```toml
+[[contribute.native-args]]
+when = { native-declared = true }
+args = ["--initialize-at-build-time=ch.qos.logback"]
+```
+
+`native-args` carries what `native-image` needs and reachability metadata cannot express —
+chiefly class-initialization policy. Contributed args land before the project's `[native] args`,
+so a user can override anything a plugin sets.
 
 **Conditions (closed set, one per `when`):** `classpath-has`, `config`/`equals`,
 `native-declared`, `kotlin-project`. Richer logic belongs in code.
@@ -124,6 +146,12 @@ after compile, custom packagers) via `TaskSpec`/`TaskContribution`. Important SP
 
 - **`transformsClasses`** — at most one classes transform per build (e.g. Hilt weaving); runs
   between compile and package and replaces the classes dir for downstream tasks.
+- **`stage`** — every task carries a `BuildStage`, inferred from the window the engine schedules it
+  in. `TaskSpec.stage("package")` narrows it for the UI fold, and is validated: it may not name a
+  stage earlier than the window, may not go past `test` for a test-classpath contributor, and an
+  unrecognized name is an error. A task may never `require` a task in a later stage — the plan is
+  rejected before anything runs. See
+  [build-plan.md](features/build-plan.md#stages).
 - **Action keys include plugin worker jar hashes** — upgrading the plugin invalidates cache.
 - Tasks declare inputs/outputs so incrementality and `jk explain` stay correct.
 - The worker wire keeps its legacy spellings (`run-step`, `step:` input refs, `step-output`) —

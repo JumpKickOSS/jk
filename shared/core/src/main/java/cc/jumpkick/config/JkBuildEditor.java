@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
-import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.tomlj.Toml;
@@ -473,16 +471,21 @@ public final class JkBuildEditor {
     }
 
     /**
-     * Set {@code [application].assembly} surgically: {@code true}, {@code "shrink"}, or remove the
-     * key when {@link JkBuild.AssemblyMode#OFF}. Creates {@code [application]} if missing. Leaves
-     * other keys in the table (e.g. {@code main}) intact. Does not remove a legacy {@code [shrink]}
-     * table.
+     * Set {@code [application].assembly} and {@code minified} surgically. Artifacts are additive,
+     * so both keys are written independently; a minified build also carries {@code assembly = true}
+     * because the R8 jar is built beside the fat one. Creates {@code [application]} if missing and
+     * leaves other keys (e.g. {@code main}) intact.
      */
-    public static String setAssemblyMode(String content, JkBuild.AssemblyMode mode) {
-        Objects.requireNonNull(mode, "mode");
+    public static String setArtifacts(String content, boolean assembly, boolean minified) {
+        String next = setApplicationFlag(content, "assembly", assembly || minified);
+        return setApplicationFlag(next, "minified", minified);
+    }
+
+    /** Write {@code key = true} under {@code [application]}, or remove the key when false. */
+    private static String setApplicationFlag(String content, String key, boolean value) {
         List<String> lines = splitPreservingTerminator(content);
         Pattern appHeader = Pattern.compile("^\\s*\\[application]\\s*$");
-        Pattern assemblyKey = Pattern.compile("^(\\s*)assembly\\s*=");
+        Pattern flagKey = Pattern.compile("^(\\s*)" + Pattern.quote(key) + "\\s*=");
         int header = -1;
         for (int i = 0; i < lines.size(); i++) {
             if (appHeader.matcher(lines.get(i)).matches()) {
@@ -490,12 +493,7 @@ public final class JkBuildEditor {
                 break;
             }
         }
-        String assignment =
-                switch (mode) {
-                    case FAT -> "assembly = true";
-                    case SHRINK -> "assembly = \"shrink\"";
-                    case OFF -> null;
-                };
+        String assignment = value ? key + " = true" : null;
         if (header < 0) {
             if (assignment == null) return content; // nothing to remove
             ensureTrailingBlankLine(lines);
@@ -506,7 +504,7 @@ public final class JkBuildEditor {
         int end = endOfTable(lines, header);
         int existing = -1;
         for (int i = header + 1; i < end; i++) {
-            if (assemblyKey.matcher(lines.get(i)).find()) {
+            if (flagKey.matcher(lines.get(i)).find()) {
                 existing = i;
                 break;
             }
@@ -515,10 +513,9 @@ public final class JkBuildEditor {
             if (existing >= 0) lines.remove(existing);
             return validated(join(lines));
         }
-        // Preserve indentation of existing assembly line when present.
         String line = assignment;
         if (existing >= 0) {
-            Matcher m = assemblyKey.matcher(lines.get(existing));
+            Matcher m = flagKey.matcher(lines.get(existing));
             if (m.find()) line = m.group(1) + assignment;
             lines.set(existing, line);
         } else {

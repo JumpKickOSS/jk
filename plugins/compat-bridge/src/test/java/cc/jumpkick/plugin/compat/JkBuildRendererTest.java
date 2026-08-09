@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
@@ -204,6 +205,32 @@ class JkBuildRendererTest {
         JkBuild reparsed = JkBuildParser.parse(out);
         assertThat(reparsed.isWorkspaceRoot()).isTrue();
         assertThat(reparsed.workspace().modules()).containsExactly("core", "app");
+    }
+
+    @Test
+    void workspace_tests_kind_renders_as_table() {
+        Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.put(Scope.MAIN, List.of(Dependency.workspace("lib")));
+        byScope.put(Scope.TEST, List.of(Dependency.workspace("lib", DependencyKind.TESTS)));
+        JkBuild model =
+                new JkBuild(new JkBuild.Project("com.example", "app", "1.0.0", 21), new JkBuild.Dependencies(byScope));
+        String out = JkBuildRenderer.render(model);
+        assertThat(out).contains("lib.workspace = true");
+        assertThat(out).contains("lib = { workspace = true, kind = \"tests\" }");
+    }
+
+    @Test
+    void external_tests_kind_renders_kind_key() {
+        Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.put(
+                Scope.TEST,
+                List.of(Dependency.of("helpers", "com.acme:helpers", VersionSelector.parse("=1.2.3"))
+                        .withKind(DependencyKind.TESTS)));
+        JkBuild model =
+                new JkBuild(new JkBuild.Project("com.example", "app", "1.0.0", 21), new JkBuild.Dependencies(byScope));
+        String out = JkBuildRenderer.render(model);
+        assertThat(out).contains("kind = \"tests\"");
+        assertThat(out).contains("com.acme");
     }
 
     @Test

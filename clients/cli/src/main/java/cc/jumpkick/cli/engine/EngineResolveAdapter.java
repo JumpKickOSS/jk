@@ -4,6 +4,7 @@ package cc.jumpkick.cli.engine;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.EngineWireException;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
@@ -149,7 +150,7 @@ final class EngineResolveAdapter {
                     case EngineProtocol.PLAN_TASK ->
                         steps.add(Task.builder(Jsonl.str(line, "name"))
                                 .label(Jsonl.str(line, "label"))
-                                .phase(wireGroup(Jsonl.str(line, "group")))
+                                .phase(wireGroup(Jsonl.str(line, "stage")))
                                 .build());
                     case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
                     case EngineProtocol.BUILDPLAN_FINISH -> {
@@ -168,7 +169,7 @@ final class EngineResolveAdapter {
                         return result;
                     }
                     case EngineProtocol.ERROR ->
-                        throw new IOException("jk engine: run failed: " + Jsonl.str(line, "message"));
+                        throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
                     default -> dispatchBuildPlanEvent(type, line, listener, diagnostics);
                 }
             }
@@ -211,7 +212,7 @@ final class EngineResolveAdapter {
                     case EngineProtocol.PLAN_TASK ->
                         steps.add(Task.builder(Jsonl.str(line, "name"))
                                 .label(Jsonl.str(line, "label"))
-                                .phase(wireGroup(Jsonl.str(line, "group")))
+                                .phase(wireGroup(Jsonl.str(line, "stage")))
                                 .build());
                     case EngineProtocol.PLAN_DONE -> listener = handler.onModuleStart(currentDir, currentCoord, steps);
                     case EngineProtocol.LOCK_PACKAGE ->
@@ -247,7 +248,7 @@ final class EngineResolveAdapter {
                                 Jsonl.intValue(line, "refreshed", -1));
                     }
                     case EngineProtocol.ERROR ->
-                        throw new IOException("jk engine: run failed: " + Jsonl.str(line, "message"));
+                        throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
                     default -> dispatchBuildPlanEvent(type, line, listener, diagnostics);
                 }
             }
@@ -273,9 +274,7 @@ final class EngineResolveAdapter {
             case EngineProtocol.BUILDPLAN_START -> listener.planStart(readBuildPlanView(line));
             case EngineProtocol.TASK_START ->
                 listener.stepStart(
-                        Jsonl.str(line, "task"),
-                        wireGroup(Jsonl.str(line, "group")),
-                        Jsonl.intValue(line, "ticks", 0));
+                        Jsonl.str(line, "task"), wireGroup(Jsonl.str(line, "stage")), Jsonl.intValue(line, "ticks", 0));
             case EngineProtocol.PROGRESS ->
                 listener.progress(Jsonl.str(line, "task"), Jsonl.intValue(line, "delta", 0), readBuildPlanView(line));
             case EngineProtocol.TICK_UPDATE ->
@@ -295,7 +294,7 @@ final class EngineResolveAdapter {
             case EngineProtocol.TASK_FINISH ->
                 listener.stepFinish(
                         Jsonl.str(line, "task"),
-                        wireGroup(Jsonl.str(line, "group")),
+                        wireGroup(Jsonl.str(line, "stage")),
                         TaskStatus.valueOf(Jsonl.str(line, "status")),
                         Duration.ZERO);
             default -> {

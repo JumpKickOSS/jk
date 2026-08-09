@@ -155,14 +155,14 @@ public record JkBuild(
     }
 
     /**
-     * Override {@code [application].assembly} for this in-memory build (CLI {@code --fat}/{@code
-     * --shrink}). Does not rewrite {@code jk.toml}. Caller must ensure the shrink plugin config is
-     * present when {@code mode == SHRINK} (see {@code JkBuildParser.ensureShrinkForAssemblyMode}).
+     * Override the requested artifacts for this in-memory build (CLI {@code --fat} /
+     * {@code --minified}). Does not rewrite {@code jk.toml}. The caller must ensure the shrink
+     * plugin config is present when {@code minified} (see
+     * {@code JkBuildParser.ensureShrinkForMinified}).
      */
-    public JkBuild withAssemblyMode(AssemblyMode mode) {
-        AssemblyMode m = mode == null ? AssemblyMode.OFF : mode;
-        Application app = application.orElse(new Application(null, AssemblyMode.OFF));
-        if (app.assembly() == m) return this;
+    public JkBuild withArtifacts(boolean assembly, boolean minified) {
+        Application app = application.orElse(new Application(null, false, false));
+        if (app.assembly() == (assembly || minified) && app.minified() == minified) return this;
         return new JkBuild(
                 project,
                 dependencies,
@@ -172,7 +172,7 @@ public record JkBuild(
                 workspace,
                 manifest,
                 plugins,
-                Optional.of(new Application(app.main(), m)),
+                Optional.of(new Application(app.main(), assembly, minified)),
                 nativeConfig,
                 pluginConfigs,
                 build,
@@ -226,24 +226,22 @@ public record JkBuild(
     /** The built-in spring-boot plugin's id / table name. */
     public static final String SPRING_BOOT_ID = "spring-boot";
 
-    /**
-     * {@code [application].assembly} packaging mode: off, fat assembly jar, or R8 shrink packager.
-     */
-    public AssemblyMode assemblyMode() {
-        return application.map(Application::assembly).orElse(AssemblyMode.OFF);
+    /** True when the {@code [micronaut]} plugin table is declared. */
+    public boolean isMicronaut() {
+        return pluginConfigs.containsKey(MICRONAUT_ID);
     }
 
-    /**
-     * True when a classic fat assembly jar is requested ({@code assembly = true}). False for {@code
-     * assembly = "shrink"} (that path uses the shrink packager on the main artifact instead).
-     */
+    /** The built-in micronaut plugin's id / table name. */
+    public static final String MICRONAUT_ID = "micronaut";
+
+    /** True when a fat jar is requested — implied by {@link #minified()}. */
     public boolean assembly() {
-        return assemblyMode() == AssemblyMode.FAT;
+        return application.map(Application::assembly).orElse(false);
     }
 
-    /** True when {@code assembly = "shrink"} (or equivalent) is set. */
-    public boolean assemblyShrink() {
-        return assemblyMode() == AssemblyMode.SHRINK;
+    /** True when an R8-minified jar is requested alongside the fat jar. */
+    public boolean minified() {
+        return application.map(Application::minified).orElse(false);
     }
 
     /** {@code [native].graal} — the GraalVM spec {@code jk native} uses, or {@code null} if unset. */
@@ -821,41 +819,24 @@ public record JkBuild(
     }
 
     /**
-     * How {@code [application].assembly} packages the app.
-     *
-     * <ul>
-     * <li>{@link #OFF} — thin main jar only
-     * <li>{@link #FAT} — {@code assembly = true}: all-in-one assembly jar ({@code jk assemble})
-     * <li>{@link #SHRINK} — {@code assembly = "shrink"}: R8 shrunk fat jar via the shrink packager
-     * </ul>
-     */
-    public enum AssemblyMode {
-        OFF,
-        FAT,
-        SHRINK;
-
-        /** Fat or shrink — some form of bundled runtime packaging is requested. */
-        public boolean isBundled() {
-            return this != OFF;
-        }
-    }
-
-    /**
      * {@code [application]} block. Presence alone marks an application; absent means library.
      *
-     * @param assembly packaging mode ({@link AssemblyMode#FAT} / {@link AssemblyMode#SHRINK} /
-     * {@link AssemblyMode#OFF})
+     * @param assembly build a fat {@code -all.jar} beside the thin jar
+     * @param minified build an R8-minified {@code -min.jar}; implies {@code assembly}
      */
-    public record Application(String main, AssemblyMode assembly) {
+    public record Application(String main, boolean assembly, boolean minified) {
 
         public Application {
             if (main != null && main.isBlank()) main = null;
-            if (assembly == null) assembly = AssemblyMode.OFF;
+            // Artifacts are additive and a minified jar is built from the fat one, so asking for
+            // -min.jar always yields -all.jar beside it. That is also what makes the pair
+            // A/B-testable without a config change.
+            if (minified) assembly = true;
         }
 
-        /** Convenience for importers: {@code true} → fat assembly, {@code false} → off. */
-        public Application(String main, boolean fatAssembly) {
-            this(main, fatAssembly ? AssemblyMode.FAT : AssemblyMode.OFF);
+        /** Convenience for importers: no minified artifact. */
+        public Application(String main, boolean assembly) {
+            this(main, assembly, false);
         }
     }
 

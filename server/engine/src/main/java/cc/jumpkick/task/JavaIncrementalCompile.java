@@ -219,8 +219,8 @@ public final class JavaIncrementalCompile {
         // jk optimize sets -Djk.java.forceWorker=true (or JK_JAVA_FORCE_WORKER=1) so the
         // ToolProvider worker runs and PluginAot can train java-compiler-*.aot even when
         // the project has no source-generating annotation processors.
-        boolean forceWorker = Boolean.getBoolean("jk.java.forceWorker")
-                || "1".equals(System.getenv("JK_JAVA_FORCE_WORKER"));
+        boolean forceWorker =
+                Boolean.getBoolean("jk.java.forceWorker") || "1".equals(System.getenv("JK_JAVA_FORCE_WORKER"));
         Path workerJar = null;
         if (ap != null && (flags.sourceGenAps() || forceWorker)) {
             try {

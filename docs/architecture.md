@@ -306,15 +306,39 @@ There is no third-party marketplace yet; first-party plugins ship with jk and ve
 | `buildTarget/compile` | `IdeEngineClient.build` |
 
 - **VS Code (ticket-1017):** `clients/vscode/` — VSIX, tasks/commands via `jk`, BSP install.  
-- **IntelliJ (ticket-1054):** `clients/intellij/` — install-from-disk zip, Tools → JumpKick actions
-  (`jk bsp install` / sync / build / test). No engine jars on the plugin classpath.
+- **IntelliJ (JK-1054 / JK-1551):** `clients/intellij/` — install-from-disk zip. **Sync project**
+  uses `jk ide --print-model` (structured model) + `jk ide --idea` (shared generator apply) +
+  `jk bsp install` (dual-path with JetBrains BSP). Open-project activity offers/auto Sync when
+  `jk.toml` is present. No engine jars on the plugin classpath. BSP (JK-1552): run, cancel,
+  outputPaths, sources jars, publishDiagnostics.
+
+### Request phases vs build stages
+
+Two fixed taxonomies (do not collapse them):
+
+| Layer | Type | Scope |
+|-------|------|--------|
+| **Request** | `InvocationPhase` | Whole engine call: `initialize → resolve → plan → toolchain → build → finalize` |
+| **Module plan** | `BuildStage` | Inside a module `BuildPlan` (usually during `InvocationPhase.BUILD`): `resolve → generate → compile → test → package → native → image → other` |
+
+- **Task DAG** (`TaskNames` + `requires`) is the scheduler; stages are product buckets for UI fold, ETA, and future pre/post hooks — not a second scheduler.
+- In-plan stage **`resolve`** (parse / lock classpath / ensure JDK) ≠ request phase **`RESOLVE`** (lock/graph for the command).
+- Prefer `Task.builder(…).stage(BuildStage.COMPILE)`; free-form `group("…")` maps unknown strings to `OTHER`.
+- `TaskPhases` remains a string facade over `BuildStage` for metrics call sites.
+- **Build-logic anchors** are pre/post cuts on stages (`BEFORE_COMPILE`→generate, `AFTER_COMPILE`→compile, `BEFORE_PACKAGE`→package).
+- **Inter-stage requires**: a task may not require a task in a *later* stage (plan validation).
+- **Plugins**: optional `TaskSpec.stage("compile")` (describe wire); else engine infers (e.g. source-gen → `generate`).
 
 ### Project build logic (`.jk-build/`, ticket-1037)
 
-Convention directory **`.jk-build/`** (hidden) next to `jk.toml` holds project-local Java build
-logic (overridable via `[build].logic`). The engine compiles and runs mains (`--project` /
-`--out`) during `copy-resources`, action-caches outputs, and merges generated files into the
-classes tree. No scripts in TOML. See [features/project-build-logic.md](features/project-build-logic.md).
+Convention directory **`.jk-build/`** (hidden) next to `jk.toml` holds project-local build logic
+(overridable via `[build].logic`): **stem scripts** (`before-compile.groovy` / `.kts`, …) and/or
+**compiled Java/Kotlin** SPI / `*Build` mains under e.g. `.jk-build/src/`. Scripts-only trees are
+valid. The
+engine action-caches each task’s `outDir` and merges into the classes tree. No scripts in TOML.
+Anchors: `BEFORE_COMPILE` (codegen), `AFTER_COMPILE`, `AFTER_RESOURCES`, `BEFORE_PACKAGE` — each
+carries a stage wire name aligned with `BuildStage`. See
+[features/project-build-logic.md](features/project-build-logic.md).
 
 ## Status
 

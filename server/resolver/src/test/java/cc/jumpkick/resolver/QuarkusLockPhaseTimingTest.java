@@ -32,7 +32,7 @@ import org.junit.jupiter.api.io.TempDir;
 class QuarkusLockPhaseTimingTest {
 
     @Test
-    @Timeout(value = 120, unit = TimeUnit.SECONDS)
+    @Timeout(value = QuarkusLockPerfTest.NETWORK_TIMEOUT_SECONDS, unit = TimeUnit.SECONDS)
     void warm_quarkus_lock_phases(@TempDir Path tmp) throws Exception {
         Path store = QuarkusLockPerfTest.developerStore();
         assumeTrue(Files.isDirectory(store));

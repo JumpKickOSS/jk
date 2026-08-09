@@ -44,9 +44,7 @@ public final class Giter8ShortNames {
         public Entry {
             if (id == null || id.isBlank()) throw new IllegalArgumentException("id");
             if (description == null) description = "";
-            languages = languages == null || languages.isEmpty()
-                    ? List.of("java")
-                    : List.copyOf(languages);
+            languages = languages == null || languages.isEmpty() ? List.of("java") : List.copyOf(languages);
             layout = normalizeLayout(layout);
         }
 
@@ -77,11 +75,7 @@ public final class Giter8ShortNames {
             entry("java-cli", "Simple Java 25 executable (Mill SIMPLE layout)", LAYOUT_SIMPLE, "java"),
             entry("kotlin-cli", "Simple Kotlin executable (Mill SIMPLE layout)", LAYOUT_SIMPLE, "kotlin"),
             entry("java-cli-native", "Interactive Java CLI with JLine (jk native ready)", LAYOUT_SIMPLE, "java"),
-            entry(
-                    "spring-boot-webmvc",
-                    "Spring Boot 4.1 WebMVC + JPA/H2 + Actuator",
-                    LAYOUT_TRADITIONAL,
-                    "java"),
+            entry("spring-boot-webmvc", "Spring Boot 4.1 WebMVC + JPA/H2 + Actuator", LAYOUT_TRADITIONAL, "java"),
             entry(
                     "spring-boot-webmvc-kotlin",
                     "Kotlin Spring Boot 4.1 WebMVC + JPA/H2 + Actuator",

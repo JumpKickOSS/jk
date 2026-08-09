@@ -38,8 +38,8 @@ class SweepEvictDryRunParityTest {
         Path live2 = cas.put("live-two-x".getBytes());
         for (Path p : new Path[] {dead, live1, live2}) backdate(p);
         String deadHex = cas.hashFromPath(dead).orElseThrow();
-        Set<String> reachable =
-                Set.of(cas.hashFromPath(live1).orElseThrow(), cas.hashFromPath(live2).orElseThrow());
+        Set<String> reachable = Set.of(
+                cas.hashFromPath(live1).orElseThrow(), cas.hashFromPath(live2).orElseThrow());
 
         var sweep = CasSweep.sweep(cas, reachable, true);
         assertThat(sweep.deletedShas()).containsExactly(deadHex);

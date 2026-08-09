@@ -53,10 +53,12 @@ public final class Glyphs {
     public static final String BANG_PLAIN = "!";
     /** Unchecked / pending box under plain — bracket form so it still reads as a checkbox. */
     public static final String PENDING_PLAIN = "[ ]";
+
     public static final String PLAY_PLAIN = ">";
     public static final String STOP_PLAIN = "x";
     /** List bullet under plain — dash, distinct from pulse {@link #PULSE_PLAIN} {@code *}. */
     public static final String BULLET_PLAIN = "-";
+
     public static final String MENU_PLAIN = "=";
     /** Spinner / black-circle under plain. */
     public static final String PULSE_PLAIN = "*";

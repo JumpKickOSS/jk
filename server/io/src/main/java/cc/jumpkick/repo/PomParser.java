@@ -110,7 +110,19 @@ public final class PomParser {
                 parent,
                 properties,
                 deps,
-                managed);
+                managed,
+                parseRelocation(project, ctx));
+    }
+
+    /** {@code <distributionManagement><relocation>} — absent for all but renamed artifacts. */
+    private static Pom.Relocation parseRelocation(Element project, Map<String, String> ctx) {
+        Element rel = childElement(childElement(project, "distributionManagement"), "relocation");
+        if (rel == null) return null;
+        return new Pom.Relocation(
+                substitute(childText(rel, "groupId"), ctx),
+                substitute(childText(rel, "artifactId"), ctx),
+                substitute(childText(rel, "version"), ctx),
+                substitute(childText(rel, "message"), ctx));
     }
 
     private static Pom.Parent parseParent(Element project) {

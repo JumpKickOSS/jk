@@ -130,11 +130,7 @@ public final class PluginCommand extends GroupCommand {
         @Override
         public List<Opt> options() {
             return List.of(
-                    Opt.value(
-                            "<sel>",
-                            "Only these modules (default: all workers)",
-                            "-m",
-                            "--modules"),
+                    Opt.value("<sel>", "Only these modules (default: all workers)", "-m", "--modules"),
                     Opt.flag("Print what would be installed; write nothing.", "--dry-run"),
                     cc.jumpkick.cli.CommonOpts.cacheDir());
         }

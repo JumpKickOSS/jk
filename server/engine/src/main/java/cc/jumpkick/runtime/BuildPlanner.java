@@ -26,11 +26,11 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Scope;
-
 import cc.jumpkick.resolver.CacheSync;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
@@ -120,6 +120,14 @@ public final class BuildPlanner {
     public static final BuildPlanKey<String> KOTLIN_OUTCOME = BuildPlanKey.of("kotlin-outcome", String.class);
     public static final BuildPlanKey<String> GROOVY_OUTCOME = BuildPlanKey.of("groovy-outcome", String.class);
     public static final BuildPlanKey<Path> JAR_PATH = BuildPlanKey.of("jar-path", Path.class);
+
+    /**
+     * Fingerprint of the inputs {@code target/package-classes} was last staged from in this build,
+     * so package-jar and assembly do not each copy the same tree (JK-1658).
+     */
+    public static final BuildPlanKey<String> STAGED_CLASSES_INPUTS =
+            BuildPlanKey.of("staged-classes-inputs", String.class);
+
     public static final BuildPlanKey<Path> MAIN_CLASSES = BuildPlanKey.of("main-classes", Path.class);
     public static final BuildPlanKey<Path> TEST_CLASSES = BuildPlanKey.of("test-classes", Path.class);
     public static final BuildPlanKey<BuildLayout> LAYOUT = BuildPlanKey.of("layout", BuildLayout.class);
@@ -388,7 +396,7 @@ public final class BuildPlanner {
             if (!jkBuild.plugins().isEmpty() && PluginDescriptorOps.ensureMaterialized(in.dir(), in.cache())) {
                 jkBuild = JkBuildParser.reparse(in.buildFile());
             }
-            // CLI packaging override (jk assemble --shrink / --fat) wins over jk.toml for this run.
+            // CLI packaging override (jk assemble --minified / --fat) wins over jk.toml for this run.
             // Read from Inputs.session (not ambient SessionContext) — single-build constructs the
             // plan outside SessionContext.where.
             jkBuild = applyAssemblyOverride(jkBuild, in.session());
@@ -521,6 +529,13 @@ public final class BuildPlanner {
                 new java.util.concurrent.atomic.AtomicReference<>();
         final java.util.concurrent.atomic.AtomicReference<List<Path>> groovyMainSrcRef =
                 new java.util.concurrent.atomic.AtomicReference<>();
+        // Build-logic anchors (BEFORE_COMPILE / AFTER_COMPILE / AFTER_RESOURCES / BEFORE_PACKAGE)
+        // each call BuildLogicSupport.run() independently; a module registering tasks at more
+        // than one anchor used to hash its whole source tree once per anchor with tasks. Shared
+        // here the same lazy-init-race pattern as javaMainSrcRef above: computed once by whichever
+        // anchor task needs it first, reused by the rest (JK-1655).
+        final java.util.concurrent.atomic.AtomicReference<List<String>> buildLogicInputTokensRef =
+                new java.util.concurrent.atomic.AtomicReference<>();
         final Path javaMainSrcDir = compact ? in.dir().resolve("src") : in.dir().resolve("src/main/java");
 
         // ---- parse-build ------------------------------------------------
@@ -533,6 +548,7 @@ public final class BuildPlanner {
                 javaMainSrcRef,
                 kotlinMainSrcRef,
                 groovyMainSrcRef,
+                buildLogicInputTokensRef,
                 javaMainSrcDir,
                 compact,
                 mixed,
@@ -613,6 +629,8 @@ public final class BuildPlanner {
                 BuildPlan.builder("build").addTask(parseBuild).addTask(syncDeps).addTask(ensureJdk);
         // Workspace root with no sources: validate jk.toml + sync deps, nothing more.
         if (workspaceNoSources) return b.terminal(TaskNames.RESOLVE_DEPS);
+        // SPI BEFORE_COMPILE / GENERATE: codegen before any language compile (or KSP).
+        b.addTask(buildLogicBeforeCompileStep(cx));
         if (kspEnabled) {
             b.addTask(kspStep(cx, pluginDeclsF));
         }
@@ -654,7 +672,7 @@ public final class BuildPlanner {
                 stamps.add(TaskNames.ASSEMBLE_CLASSES);
             }
             b.addTask(Task.builder(COMPILE_JOIN)
-                    .group("compile")
+                    .stage(BuildStage.COMPILE)
                     .requires(stamps.toArray(String[]::new))
                     .weight(0)
                     .ticks(0)
@@ -731,6 +749,7 @@ public final class BuildPlanner {
             java.util.concurrent.atomic.AtomicReference<List<Path>> javaMainSrcRef,
             java.util.concurrent.atomic.AtomicReference<List<Path>> kotlinMainSrcRef,
             java.util.concurrent.atomic.AtomicReference<List<Path>> groovyMainSrcRef,
+            java.util.concurrent.atomic.AtomicReference<List<String>> buildLogicInputTokensRef,
             Path javaMainSrcDir,
             boolean compact,
             boolean mixed,
@@ -756,7 +775,7 @@ public final class BuildPlanner {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.PARSE_BUILD)
-                .group("resolve")
+                .stage(BuildStage.RESOLVE)
                 .label("Parsing")
                 .weight(() -> plan.get().fullyCached() ? W_CACHED_TOUCH : W_PARSE)
                 .ticks(() -> {
@@ -775,8 +794,11 @@ public final class BuildPlanner {
                     ctx.label("parse jk.toml");
                     JkBuild project;
                     try {
+                        // Same override the plan was built from (jk assemble --fat/--minified).
+                        // Plan construction and step bodies must read one effective config, or a
+                        // task gets scheduled against a config its body cannot see.
                         project = cc.jumpkick.plugin.manifest.VariantApply.apply(
-                                        JkBuildParser.parse(in.buildFile()),
+                                        applyAssemblyOverride(JkBuildParser.parse(in.buildFile()), in.session()),
                                         in.dir(),
                                         cc.jumpkick.model.Variants.Selection.parse(in.variant()),
                                         in.clientEnv())
@@ -888,8 +910,8 @@ public final class BuildPlanner {
                     }
                     ctx.put(PROCESSOR_CP, processorClasspath(lock, resolver, processorSiblings));
 
-                    WorkspaceClasspath.Result testSiblings =
-                            WorkspaceClasspath.resolve(in.dir(), project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST));
+                    WorkspaceClasspath.Result testSiblings = WorkspaceClasspath.resolve(
+                            in.dir(), project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
                     List<Path> compileTestCp =
                             new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_TEST));
                     compileTestCp.addAll(testSiblings.jars());
@@ -975,7 +997,7 @@ public final class BuildPlanner {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.RESOLVE_DEPS)
-                .group("resolve")
+                .stage(BuildStage.RESOLVE)
                 .label("Syncing")
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_BUILD)
@@ -1037,7 +1059,7 @@ public final class BuildPlanner {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.ENSURE_JDK)
-                .group("resolve")
+                .stage(BuildStage.RESOLVE)
                 .label("JDK")
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_BUILD)
@@ -1204,11 +1226,14 @@ public final class BuildPlanner {
         // Plugin-contributed sources (protoc output, variant extra-src) must exist before the
         // round and join its source roots — a contributed @Module/@Entity is processor input
         // like any hand-written one.
-        List<String> requires =
-                new ArrayList<>(List.of(TaskNames.PARSE_BUILD, TaskNames.RESOLVE_DEPS, TaskNames.ENSURE_JDK));
+        List<String> requires = new ArrayList<>(List.of(
+                TaskNames.PARSE_BUILD,
+                TaskNames.RESOLVE_DEPS,
+                TaskNames.ENSURE_JDK,
+                TaskNames.BUILD_LOGIC_BEFORE_COMPILE));
         requires.addAll(sourceGenStepSteps(pluginDecls));
         return Task.builder("ksp")
-                .group("compile")
+                .stage(BuildStage.COMPILE)
                 .label("KSP")
                 .kind(TaskKind.CPU)
                 .requires(requires.toArray(new String[0]))
@@ -1450,7 +1475,7 @@ public final class BuildPlanner {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.COMPILE_JAVA)
-                .group("compile")
+                .stage(BuildStage.COMPILE)
                 .label("Compiling")
                 .kind(TaskKind.CPU)
                 .requires(javaCompileRequires(mixed, cx.mixedGroovy(), pluginDecls, cx.ksp()))
@@ -1483,10 +1508,12 @@ public final class BuildPlanner {
                     List<Path> sources = javaSources(ctx);
                     List<Path> generated = pluginContributedSources(ctx.require(LAYOUT), pluginDecls, ".java");
                     List<Path> kspGenerated = kspGeneratedSources(ctx.require(LAYOUT), ".java");
-                    if (!generated.isEmpty() || !kspGenerated.isEmpty()) {
+                    List<Path> logicGenerated = BuildLogicSupport.generatedSources(ctx.require(LAYOUT), ".java");
+                    if (!generated.isEmpty() || !kspGenerated.isEmpty() || !logicGenerated.isEmpty()) {
                         sources = new ArrayList<>(sources);
                         sources.addAll(generated);
                         sources.addAll(kspGenerated);
+                        sources.addAll(logicGenerated);
                         // Re-publish the union so write-stamp records the same input set
                         // this compile checked (else the fast freshness path never holds).
                         ctx.put(JAVA_SOURCES, sources);
@@ -1656,8 +1683,11 @@ public final class BuildPlanner {
     }
 
     private static String[] kotlinCompileRequires(PluginBuild.Declarations decls, boolean ksp) {
-        List<String> requires =
-                new ArrayList<>(List.of(TaskNames.PARSE_BUILD, TaskNames.RESOLVE_DEPS, TaskNames.ENSURE_JDK));
+        List<String> requires = new ArrayList<>(List.of(
+                TaskNames.PARSE_BUILD,
+                TaskNames.RESOLVE_DEPS,
+                TaskNames.ENSURE_JDK,
+                TaskNames.BUILD_LOGIC_BEFORE_COMPILE));
         if (ksp) requires.add("ksp");
         requires.addAll(sourceGenStepSteps(decls));
         return requires.toArray(new String[0]);
@@ -1665,8 +1695,11 @@ public final class BuildPlanner {
 
     private static String[] javaCompileRequires(
             boolean mixed, boolean mixedGroovy, PluginBuild.Declarations decls, boolean ksp) {
-        List<String> requires =
-                new ArrayList<>(List.of(TaskNames.PARSE_BUILD, TaskNames.RESOLVE_DEPS, TaskNames.ENSURE_JDK));
+        List<String> requires = new ArrayList<>(List.of(
+                TaskNames.PARSE_BUILD,
+                TaskNames.RESOLVE_DEPS,
+                TaskNames.ENSURE_JDK,
+                TaskNames.BUILD_LOGIC_BEFORE_COMPILE));
         if (mixed) requires.add(TaskNames.COMPILE_KOTLIN);
         if (mixedGroovy) requires.add(TaskNames.COMPILE_GROOVY);
         if (ksp) requires.add("ksp");
@@ -1675,8 +1708,11 @@ public final class BuildPlanner {
     }
 
     private static String[] groovyCompileRequires(PluginBuild.Declarations decls) {
-        List<String> requires =
-                new ArrayList<>(List.of(TaskNames.PARSE_BUILD, TaskNames.RESOLVE_DEPS, TaskNames.ENSURE_JDK));
+        List<String> requires = new ArrayList<>(List.of(
+                TaskNames.PARSE_BUILD,
+                TaskNames.RESOLVE_DEPS,
+                TaskNames.ENSURE_JDK,
+                TaskNames.BUILD_LOGIC_BEFORE_COMPILE));
         requires.addAll(sourceGenStepSteps(decls));
         return requires.toArray(new String[0]);
     }
@@ -1702,7 +1738,7 @@ public final class BuildPlanner {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.COMPILE_KOTLIN)
-                .group("compile")
+                .stage(BuildStage.COMPILE)
                 .label("Kotlin")
                 .kind(TaskKind.CPU)
                 // Kotlin compiles first (reads Java declarations from source), so it
@@ -1735,10 +1771,12 @@ public final class BuildPlanner {
                     // see generated files as ordinary sources.
                     List<Path> generatedKt = pluginContributedSources(ctx.require(LAYOUT), pluginDecls, ".kt");
                     List<Path> kspKt = kspGeneratedSources(ctx.require(LAYOUT), ".kt");
-                    if (!generatedKt.isEmpty() || !kspKt.isEmpty()) {
+                    List<Path> logicKt = BuildLogicSupport.generatedSources(ctx.require(LAYOUT), ".kt");
+                    if (!generatedKt.isEmpty() || !kspKt.isEmpty() || !logicKt.isEmpty()) {
                         ktSources = new ArrayList<>(ktSources);
                         ktSources.addAll(generatedKt);
                         ktSources.addAll(kspKt);
+                        ktSources.addAll(logicKt);
                         // Re-publish so write-stamp-kotlin records what this compile checked.
                         ctx.put(KOTLIN_SOURCES, ktSources);
                     }
@@ -1835,7 +1873,7 @@ public final class BuildPlanner {
         boolean compact = cx.compact();
         boolean mixedGroovy = cx.mixedGroovy();
         return Task.builder(TaskNames.COMPILE_GROOVY)
-                .group("compile")
+                .stage(BuildStage.COMPILE)
                 .label("Groovy")
                 .kind(TaskKind.CPU)
                 // Groovy compiles first (joint mode reads Java *declarations* by sweeping the
@@ -1865,9 +1903,11 @@ public final class BuildPlanner {
                     // Kotlin side — the freshness stamp and the worker see generated files as
                     // ordinary sources.
                     List<Path> generatedGv = pluginContributedSources(ctx.require(LAYOUT), pluginDecls, ".groovy");
-                    if (!generatedGv.isEmpty()) {
+                    List<Path> logicGv = BuildLogicSupport.generatedSources(ctx.require(LAYOUT), ".groovy");
+                    if (!generatedGv.isEmpty() || !logicGv.isEmpty()) {
                         gvSources = new ArrayList<>(gvSources);
                         gvSources.addAll(generatedGv);
+                        gvSources.addAll(logicGv);
                         // Re-publish so write-stamp-groovy records what this compile checked.
                         ctx.put(GROOVY_SOURCES, gvSources);
                     }
@@ -1952,6 +1992,8 @@ public final class BuildPlanner {
         java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
         java.util.concurrent.atomic.AtomicReference<List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
         java.util.concurrent.atomic.AtomicReference<List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
+        java.util.concurrent.atomic.AtomicReference<List<String>> buildLogicInputTokensRef =
+                cx.buildLogicInputTokensRef();
         Path javaMainSrcDir = cx.javaMainSrcDir();
         boolean compact = cx.compact();
         boolean mixed = cx.mixed();
@@ -1959,7 +2001,7 @@ public final class BuildPlanner {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.COPY_RESOURCES)
-                .group("compile")
+                .stage(BuildStage.COMPILE)
                 .label("Resources")
                 .kind(TaskKind.CPU)
                 // After AFTER_COMPILE SPI so generated classes land before resource merge.
@@ -2000,8 +2042,46 @@ public final class BuildPlanner {
                                 actionCache,
                                 classes,
                                 cc.jumpkick.plugin.buildlogic.BuildLogicAnchor.AFTER_RESOURCES,
-                                ctx::label);
+                                ctx::label,
+                                buildLogicInputTokensRef);
                         if (ran) ctx.label("build-logic applied");
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IOException("build-logic interrupted", e);
+                    }
+                    ctx.progress(1);
+                })
+                .build();
+    }
+
+    /**
+     * SPI anchor {@code BEFORE_COMPILE}: named build-logic tasks before main language compile
+     * (codegen). Product stage {@link BuildStage#GENERATE}.
+     */
+    private static Task buildLogicBeforeCompileStep(Ctx cx) {
+        Inputs in = cx.in();
+        ActionCache actionCache = cx.actionCache();
+        java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
+        java.util.concurrent.atomic.AtomicReference<List<String>> buildLogicInputTokensRef =
+                cx.buildLogicInputTokensRef();
+        return Task.builder(TaskNames.BUILD_LOGIC_BEFORE_COMPILE)
+                .stage(BuildStage.GENERATE)
+                .label("Build logic (before compile)")
+                .kind(TaskKind.CPU)
+                .requires(TaskNames.PARSE_BUILD, TaskNames.RESOLVE_DEPS, TaskNames.ENSURE_JDK)
+                .weight(() -> plan.get().fullyCached() ? 0 : 1)
+                .ticks(1)
+                .execute(ctx -> {
+                    Path classes = ctx.require(MAIN_CLASSES);
+                    try {
+                        BuildLogicSupport.run(
+                                in.dir(),
+                                ctx.require(LAYOUT),
+                                actionCache,
+                                classes,
+                                cc.jumpkick.plugin.buildlogic.BuildLogicAnchor.BEFORE_COMPILE,
+                                ctx::label,
+                                buildLogicInputTokensRef);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         throw new IOException("build-logic interrupted", e);
@@ -2017,8 +2097,10 @@ public final class BuildPlanner {
         ActionCache actionCache = cx.actionCache();
         java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
         String mainCompile = cx.mainCompile();
+        java.util.concurrent.atomic.AtomicReference<List<String>> buildLogicInputTokensRef =
+                cx.buildLogicInputTokensRef();
         return Task.builder(TaskNames.BUILD_LOGIC_AFTER_COMPILE)
-                .group("compile")
+                .stage(BuildStage.COMPILE)
                 .label("Build logic (after compile)")
                 .kind(TaskKind.CPU)
                 .requires(mainCompile)
@@ -2033,7 +2115,8 @@ public final class BuildPlanner {
                                 actionCache,
                                 classes,
                                 cc.jumpkick.plugin.buildlogic.BuildLogicAnchor.AFTER_COMPILE,
-                                ctx::label);
+                                ctx::label,
+                                buildLogicInputTokensRef);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         throw new IOException("build-logic interrupted", e);
@@ -2048,8 +2131,10 @@ public final class BuildPlanner {
         Inputs in = cx.in();
         ActionCache actionCache = cx.actionCache();
         java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
+        java.util.concurrent.atomic.AtomicReference<List<String>> buildLogicInputTokensRef =
+                cx.buildLogicInputTokensRef();
         return Task.builder(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE)
-                .group("package")
+                .stage(BuildStage.PACKAGE)
                 .label("Build logic (before package)")
                 .kind(TaskKind.CPU)
                 .requires(beforePackageRequires(in))
@@ -2064,7 +2149,8 @@ public final class BuildPlanner {
                                 actionCache,
                                 classes,
                                 cc.jumpkick.plugin.buildlogic.BuildLogicAnchor.BEFORE_PACKAGE,
-                                ctx::label);
+                                ctx::label,
+                                buildLogicInputTokensRef);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         throw new IOException("build-logic interrupted", e);
@@ -2096,11 +2182,14 @@ public final class BuildPlanner {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.COMPILE_TEST)
-                .group("test")
+                .stage(BuildStage.TEST)
                 .label("Test Compile")
                 .kind(TaskKind.CPU)
-                // AFTER_COMPILE SPI may generate types tests import.
-                .requires(TaskNames.BUILD_LOGIC_AFTER_COMPILE, TaskNames.RESOLVE_DEPS)
+                // AFTER_COMPILE SPI may generate types tests import. copy-resources is a real
+                // input, not just ordering: the test classpath (and its action-key fingerprint)
+                // includes classes/main, which copy-resources writes — racing it fingerprints a
+                // half-copied dir and intermittently crashes on vanishing files under -r.
+                .requires(TaskNames.BUILD_LOGIC_AFTER_COMPILE, TaskNames.RESOLVE_DEPS, TaskNames.COPY_RESOURCES)
                 .weight(() -> plan.get().compileTest())
                 .interpolated() // opaque javac/kotlinc call — ease it over time
                 .ticks(1)
@@ -2339,7 +2428,7 @@ public final class BuildPlanner {
             }
         }
         return Task.builder(TaskNames.RUN_TESTS)
-                .group("test")
+                .stage(BuildStage.TEST)
                 .label("Testing")
                 .kind(TaskKind.IO)
                 .requires(testRequires.toArray(new String[0]))
@@ -2574,11 +2663,10 @@ public final class BuildPlanner {
         boolean groovyModule = cx.groovyModule();
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
-        boolean javaStamp = mixedWithJava
-                || TaskNames.COMPILE_JAVA.equals(mainCompile)
-                || (!kotlinModule && !groovyModule);
+        boolean javaStamp =
+                mixedWithJava || TaskNames.COMPILE_JAVA.equals(mainCompile) || (!kotlinModule && !groovyModule);
         return Task.builder(TaskNames.PACKAGE_JAR)
-                .group("package")
+                .stage(BuildStage.PACKAGE)
                 .label("Packaging")
                 .kind(TaskKind.CPU)
                 .requires(packageRequires(in, pluginDecls, javaStamp, kotlinModule, groovyModule))
@@ -2589,7 +2677,7 @@ public final class BuildPlanner {
                     BuildLayout layout = ctx.require(LAYOUT);
                     Path classes = ctx.require(MAIN_CLASSES);
                     Path jarPath = layout.mainJar();
-                    if (pluginDecls != null && pluginDecls.packager() != null) {
+                    if (pluginDecls != null && pluginDecls.packager() != null && ownsMainArtifact(pluginActive)) {
                         // The packager's declared artifact extension replaces.jar (an APK, …).
                         jarPath = PluginBuild.mainArtifactPath(layout, pluginActive);
                         Files.createDirectories(jarPath.getParent());
@@ -2597,6 +2685,11 @@ public final class BuildPlanner {
                                 ctx, in, cas, project, classes, jarPath, pluginActive, pluginDecls, variantSecrets);
                         return;
                     }
+                    // Plain/assembly packaging merges plugin contributesClasses (Micronaut AOT, …);
+                    // custom packagers (boot-jar) merge step outputs themselves. The dirs are only
+                    // *listed* here — staging them is a copy, and it must not happen before the
+                    // cache check below (JK-1658).
+                    List<Path> contributed = existingContributedDirs(pluginDecls, layout);
                     Files.createDirectories(jarPath.getParent());
                     String mainClass = project.mainClass();
                     // Application jars embed the lockfile-derived SBOM (libraries don't:
@@ -2607,10 +2700,12 @@ public final class BuildPlanner {
                         if (sbomLock != null) sbom = applicationSbom(project, sbomLock, cas);
                     }
                     // Packaging cache: the jar is a pure function of the main classes
-                    // (resources already copied in), the main-class, the manifest, and
-                    // the SBOM content (a lock change re-embeds).
+                    // (resources already copied in), the plugin-contributed dirs merged over
+                    // them, the main-class, the manifest, and the SBOM content (a lock change
+                    // re-embeds).
                     List<String> tokens = List.of(
                             "classes:" + cc.jumpkick.task.ClasspathFingerprint.entry(classes),
+                            "contrib:" + contributionsToken(contributed),
                             "main:" + (mainClass == null ? "" : mainClass),
                             "sbom:" + (sbom == null ? "" : cc.jumpkick.util.Hashing.sha256Hex(sbom)),
                             "manifest:" + project.manifest());
@@ -2627,6 +2722,7 @@ public final class BuildPlanner {
                         return;
                     }
                     ctx.label("package " + jarPath.getFileName());
+                    classes = stageClassesWithContributions(ctx, classes, contributed, layout);
                     JarPackager.JarRequest jarRequest = JarPackager.JarRequest.of(classes, jarPath);
                     if (mainClass != null && !mainClass.isBlank()) jarRequest = jarRequest.withMainClass(mainClass);
                     Map<String, String> jarAttrs = new LinkedHashMap<>(project.manifest());
@@ -2767,11 +2863,60 @@ public final class BuildPlanner {
     }
 
     /**
-     * One declared build-plugin task: engine fingerprints inputs, restores on hit, forks on miss.
+     * The stage a plugin task is scheduled in, from the same predicates {@link
+     * #pluginTask} uses to build its {@code requires} — inference must never contradict the
+     * edges, or {@link BuildPlan} rejects a plan the planner itself produced.
      */
-    private static Task pluginTask(
-            Ctx cx, PluginBuild.Active active, PluginBuild.TaskDecl step, PluginBuild.TaskDecl transform) {
-        Inputs in = cx.in();
+    static BuildStage pluginWindow(PluginBuild.TaskDecl step) {
+        if (beforeCompile(step)) return BuildStage.GENERATE;
+        if (step.testOnly()) return BuildStage.TEST;
+        return BuildStage.COMPILE;
+    }
+
+    /**
+     * The latest stage a plugin task may claim. {@code run-tests} (TEST) requires every
+     * test-classpath contributor, and {@code package-jar} (PACKAGE) requires every
+     * {@link PluginBuild.TaskDecl#packageTime()} task ({@link #packageRequires}) — either
+     * consumer rejects a plan where the task claims a later stage than it.
+     */
+    private static BuildStage pluginCeiling(PluginBuild.TaskDecl step) {
+        boolean requiredByTests = step.testOnly()
+                || (step.contributesTestClasspath() != null
+                        && !step.contributesTestClasspath().isEmpty());
+        if (requiredByTests) return BuildStage.TEST;
+        if (step.packageTime()) return BuildStage.PACKAGE;
+        return BuildStage.IMAGE;
+    }
+
+    /**
+     * Product stage for a plugin task. A plugin may declare one to sharpen the UI fold (dex is
+     * {@code package}, not {@code compile}), but only within the window its scheduling allows —
+     * a contradiction is the plugin's error and says so.
+     */
+    static BuildStage pluginStage(PluginBuild.TaskDecl step) {
+        BuildStage window = pluginWindow(step);
+        String declared = step.stage();
+        if (declared == null || declared.isBlank()) return window;
+        BuildStage stage = BuildStage.fromWireExact(declared)
+                .orElseThrow(() -> new IllegalStateException("plugin task " + step.name() + " declares stage `"
+                        + declared + "` — expected one of " + BuildStage.wireNames()));
+        BuildStage ceiling = pluginCeiling(step);
+        if (stage.pipelineOrder() < window.pipelineOrder() || stage.pipelineOrder() > ceiling.pipelineOrder()) {
+            throw new IllegalStateException("plugin task " + step.name() + " declares stage `" + stage.wireName()
+                    + "` but is scheduled in the " + window.wireName() + " window"
+                    + (ceiling == BuildStage.TEST ? " and is required by run-tests" : "")
+                    + " — declare a stage between `" + window.wireName() + "` and `" + ceiling.wireName() + "`");
+        }
+        return stage;
+    }
+
+    /**
+     * The DAG edges a declared plugin task rides: its own declarations, the window anchors, and
+     * the peer/transform outputs its inputs name. Shares the {@link #beforeCompile} /
+     * {@link PluginBuild.TaskDecl#testOnly()} split with {@link #pluginWindow} so stage and edges
+     * cannot disagree.
+     */
+    static List<String> pluginRequires(PluginBuild.TaskDecl step, PluginBuild.TaskDecl transform) {
         boolean beforeCompile = beforeCompile(step);
         if (beforeCompile && step.inputs().contains("classes")) {
             throw new IllegalStateException("plugin task " + step.name()
@@ -2789,6 +2934,8 @@ public final class BuildPlanner {
             requires.add(TaskNames.PARSE_BUILD);
             requires.add(TaskNames.RESOLVE_DEPS);
             requires.add(TaskNames.ENSURE_JDK);
+            // Project build-logic codegen (BEFORE_COMPILE) before plugin source generators.
+            requires.add(TaskNames.BUILD_LOGIC_BEFORE_COMPILE);
         } else if (step.testOnly()) {
             requires.add(TaskNames.PARSE_BUILD);
             requires.add(TaskNames.RESOLVE_DEPS);
@@ -2806,10 +2953,23 @@ public final class BuildPlanner {
                 && step.inputs().contains("classes")) {
             requires.add("plugin-" + transform.name());
         }
+        return requires;
+    }
+
+    /**
+     * One declared build-plugin task: engine fingerprints inputs, restores on hit, forks on miss.
+     */
+    private static Task pluginTask(
+            Ctx cx, PluginBuild.Active active, PluginBuild.TaskDecl step, PluginBuild.TaskDecl transform) {
+        Inputs in = cx.in();
+        boolean beforeCompile = beforeCompile(step);
+        List<String> requires = pluginRequires(step, transform);
         return Task.builder("plugin-" + step.name())
                 .label(step.name())
                 .kind(TaskKind.CPU)
-                .requires(requires.toArray(new String[0]))                .ticks(1)
+                .stage(pluginStage(step))
+                .requires(requires.toArray(new String[0]))
+                .ticks(1)
                 // A plugin command forks its process and can dominate a build (d8 dex, AOT), yet its
                 // static reservation is a token 1 unit — price it from the running metrics once this
                 // machine has seen it run (own-project average, else host average).
@@ -2911,7 +3071,14 @@ public final class BuildPlanner {
                             .javaHome(javaHome)
                             .classpath(classpath);
                     for (var pe : prodEntries) {
-                        specWriter.entry(pe.fileName(), pe.jar(), pe.snapshot(), pe.container());
+                        specWriter.entry(
+                                pe.fileName(),
+                                pe.jar(),
+                                pe.snapshot(),
+                                pe.container(),
+                                pe.group(),
+                                pe.artifact(),
+                                pe.version());
                     }
                     for (var tool : toolExtras.entrySet()) {
                         specWriter.extra(tool.getKey(), tool.getValue());
@@ -3061,7 +3228,9 @@ public final class BuildPlanner {
                 .layout(classes, in.dir(), layout.moduleTargetDir().resolve("plugin"))
                 .javaHome(ctx.require(JAVA_HOME))
                 .artifact(jarPath);
-        for (PluginBuild.ProdEntry e : entries) spec.entry(e.fileName(), e.jar(), e.snapshot(), e.container());
+        for (PluginBuild.ProdEntry e : entries) {
+            spec.entry(e.fileName(), e.jar(), e.snapshot(), e.container(), e.group(), e.artifact(), e.version());
+        }
         for (var e : extras.entrySet()) spec.extra(e.getKey(), e.getValue());
         for (var e : secrets.entrySet()) spec.secret(e.getKey(), e.getValue());
         spec.extra("sbom", sbomFile);
@@ -3175,7 +3344,7 @@ public final class BuildPlanner {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.WRITE_STAMP)
-                .group("compile")
+                .stage(BuildStage.COMPILE)
                 .requires(TaskNames.COMPILE_JAVA)
                 .weight(() -> plan.get().fullyCached() ? 0 : W_STAMP)
                 .ticks(1)
@@ -3234,7 +3403,7 @@ public final class BuildPlanner {
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
         return Task.builder(TaskNames.WRITE_STAMP_KOTLIN)
-                .group("compile")
+                .stage(BuildStage.COMPILE)
                 .requires(TaskNames.COMPILE_KOTLIN)
                 .weight(() -> plan.get().fullyCached() ? 0 : W_STAMP)
                 .ticks(1)
@@ -3269,7 +3438,7 @@ public final class BuildPlanner {
         java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
         boolean mixedGroovy = cx.mixedGroovy();
         return Task.builder(TaskNames.WRITE_STAMP_GROOVY)
-                .group("compile")
+                .stage(BuildStage.COMPILE)
                 .requires(TaskNames.COMPILE_GROOVY)
                 .weight(() -> plan.get().fullyCached() ? 0 : W_STAMP)
                 .ticks(1)
@@ -3318,7 +3487,7 @@ public final class BuildPlanner {
         if (mixed) requires.add(TaskNames.COMPILE_KOTLIN);
         if (mixedGroovy) requires.add(TaskNames.COMPILE_GROOVY);
         return Task.builder(TaskNames.ASSEMBLE_CLASSES)
-                .group("compile")
+                .stage(BuildStage.COMPILE)
                 .label("Assembling")
                 .kind(TaskKind.CPU)
                 .requires(requires.toArray(new String[0]))
@@ -3399,15 +3568,12 @@ public final class BuildPlanner {
                 b.addTask(assemblyStep(in.cache(), in.lockFile(), !in.ephemeralActions()));
                 leaves.add(TaskNames.PACKAGE_ASSEMBLY);
             }
+            if (project.minified()) {
+                b.addTask(minifiedStep(in, graalHome));
+                leaves.add(TaskNames.PACKAGE_MINIFIED);
+            }
             if (allowNative && project.nativeMode() == JkBuild.NativeMode.ALWAYS) {
-                b.addTask(nativeStep(
-                        in.dir(),
-                        in.cache(),
-                        in.lockFile(),
-                        in.jdksDir(),
-                        graalHome,
-                        null,
-                        List.of()));
+                b.addTask(nativeStep(in.dir(), in.cache(), in.lockFile(), in.jdksDir(), graalHome, null, List.of()));
                 leaves.add(TaskNames.NATIVE_IMAGE);
             }
             if (project.project().sourcesMode() == JkBuild.SourcesMode.ALWAYS) {
@@ -3421,7 +3587,7 @@ public final class BuildPlanner {
             }
             // Multiple independent tails of package-jar — join them so prune keeps every branch.
             b.addTask(Task.builder(DELIVER_JOIN)
-                    .group("package")
+                    .stage(BuildStage.PACKAGE)
                     .requires(leaves.toArray(String[]::new))
                     .weight(0)
                     .ticks(0)
@@ -3444,7 +3610,7 @@ public final class BuildPlanner {
     static final String COMPILE_JOIN = "compile-join";
 
     /**
-     * Apply {@link cc.jumpkick.config.Session#assemblyOverride} (CLI {@code --fat}/{@code --shrink})
+     * Apply {@link cc.jumpkick.config.Session#assemblyOverride} (CLI {@code --fat}/{@code --minified})
      * over the parsed manifest for this invocation only. Prefer the request {@link Inputs#session}
      * over ambient {@link SessionContext} so single-build plan construction (outside {@code
      * SessionContext.where}) still sees the wire override.
@@ -3455,12 +3621,69 @@ public final class BuildPlanner {
             raw = SessionContext.current().assemblyOverride();
         }
         if (raw == null || raw.isBlank()) return build;
-        JkBuild.AssemblyMode mode = JkBuildParser.parseAssemblyOverride(raw);
-        if (mode == null) return build;
-        return JkBuildParser.withAssemblyModeOverride(build, mode);
+        JkBuildParser.ArtifactOverride override = JkBuildParser.parseArtifactOverride(raw);
+        if (override == null) return build;
+        return JkBuildParser.withArtifactOverride(build, override);
+    }
+
+    /**
+     * True when the active plugin's packager produces the module's main artifact. A packager that
+     * produces an <em>additional</em> one (shrink's {@code -min.jar}) runs from its own tail task
+     * instead, so the thin and fat jars are still built.
+     */
+    private static boolean ownsMainArtifact(PluginBuild.Active active) {
+        if (active == null) return true;
+        var packaging = active.manifest().packaging();
+        if (packaging == null) return true;
+        return packaging.resolve(active.config()).mainArtifact();
     }
 
     // ---- tail steps ----------------------------------------------------
+
+    /**
+     * {@code -min.jar} — the R8-minified artifact, produced by a packager that does not own the
+     * module's main artifact.
+     *
+     * <p>A tail beside {@code package-assembly}, not a replacement for {@code package-jar}:
+     * artifacts are additive, so a minified build ships the thin jar and the fat jar too. That is
+     * deliberate — a minified jar can be silently wrong for an application that resolves types by
+     * runtime generic matching, and the fat jar beside it is what makes that testable.
+     */
+    static Task minifiedStep(Inputs in, Path graalHome) {
+        return Task.builder(TaskNames.PACKAGE_MINIFIED)
+                .stage(BuildStage.PACKAGE)
+                .label("Minify")
+                .kind(TaskKind.CPU)
+                .requires(TaskNames.PACKAGE_ASSEMBLY)
+                .ticks(1)
+                .execute(ctx -> {
+                    JkBuild project = ctx.require(PROJECT);
+                    BuildLayout layout = ctx.require(LAYOUT);
+                    var active = PluginBuild.activeCodePlugin(project, layout.moduleRoot());
+                    if (active.isEmpty()) {
+                        throw new IllegalStateException("[application] minified = true requires the shrink plugin"
+                                + " — add a [shrink] table or remove `minified`");
+                    }
+                    PluginBuild.Declarations decls = PluginBuild.declarations(
+                            active.get(), project, layout.moduleRoot(), in.cache(), layout.moduleTargetDir());
+                    if (decls.packager() == null) {
+                        throw new IllegalStateException("[application] minified = true, but the active plugin `"
+                                + active.get().manifest().id() + "` declares no packager");
+                    }
+                    packagePlugin(
+                            ctx,
+                            in,
+                            JkStores.cas(in.cache()),
+                            project,
+                            ctx.require(MAIN_CLASSES),
+                            layout.minifiedJar(),
+                            active.get(),
+                            decls,
+                            Map.of());
+                    ctx.progress(1);
+                })
+                .build();
+    }
 
     /** Assembly-jar packaging — requires package-jar. */
     public static Task assemblyStep(Path cache, Path lockFile) {
@@ -3470,7 +3693,7 @@ public final class BuildPlanner {
     /** As {@link #assemblyStep(Path, Path)}; {@code persist=false} keeps verify-scratch keys out of the cache. */
     public static Task assemblyStep(Path cache, Path lockFile, boolean persist) {
         return Task.builder(TaskNames.PACKAGE_ASSEMBLY)
-                .group("package")
+                .stage(BuildStage.PACKAGE)
                 .label("Assembly")
                 .kind(TaskKind.CPU)
                 .requires(TaskNames.PACKAGE_JAR)
@@ -3480,14 +3703,27 @@ public final class BuildPlanner {
                     JkBuild project = ctx.require(PROJECT);
                     BuildLayout layout = ctx.require(LAYOUT);
                     Path classes = ctx.require(MAIN_CLASSES);
+                    // Listed, not staged — see packageJarStep. package-jar runs first (hard
+                    // requires edge) and publishes its stage, so the copy below is usually a
+                    // no-op; when package-jar restored from cache there is nothing to reuse and
+                    // this task stages for itself.
+                    //
+                    // Declarations are re-derived rather than threaded in from the plan: this is
+                    // a tail step assembled by appendDeclaredTails, which has no plugin context,
+                    // and hoisting the lookup into plan construction would risk forking the
+                    // plugin worker while merely *planning*. PluginBuild.declarations is
+                    // file-cached under the module target, so this is a read, not a fork.
+                    List<Path> contributed =
+                            existingContributedDirs(pluginDeclarationsFor(project, layout, cache), layout);
                     Path assemblyJar = layout.assemblyJar();
                     // Module-scoped runtime closure (not the whole workspace lock) — JK-1345.
                     List<Path> depJars = assemblyDependencyJars(layout.moduleRoot(), project, lockFile, cache);
                     // Packaging cache: the fat jar is a pure function of the main
-                    // classes, the bundled dependency jars' content, the main-class,
-                    // and the manifest.
+                    // classes, the plugin-contributed dirs merged over them, the bundled
+                    // dependency jars' content, the main-class, and the manifest.
                     List<String> tokens = List.of(
                             "classes:" + cc.jumpkick.task.ClasspathFingerprint.entry(classes),
+                            "contrib:" + contributionsToken(contributed),
                             "deps:" + cc.jumpkick.task.ClasspathFingerprint.of(depJars),
                             "main:" + (project.mainClass() == null ? "" : project.mainClass()),
                             "manifest:" + project.manifest(),
@@ -3502,6 +3738,7 @@ public final class BuildPlanner {
                         return;
                     }
                     ctx.label("package " + assemblyJar.getFileName());
+                    classes = stageClassesWithContributions(ctx, classes, contributed, layout);
                     byte[] assemblySbom = null;
                     Map<String, String> assemblyAttrs = new LinkedHashMap<>(project.manifest());
                     if (Files.exists(lockFile)) {
@@ -3532,7 +3769,7 @@ public final class BuildPlanner {
     /** As {@link #sourcesStep(Path)}; {@code persist=false} keeps verify-scratch keys out of the cache. */
     public static Task sourcesStep(Path cache, boolean persist) {
         return Task.builder(TaskNames.PACKAGE_SOURCES)
-                .group("package")
+                .stage(BuildStage.PACKAGE)
                 .label("Sources")
                 .kind(TaskKind.CPU)
                 .requires(TaskNames.PACKAGE_JAR)
@@ -3602,7 +3839,7 @@ public final class BuildPlanner {
         final boolean persist = true;
         List<String> extra = extraArgs == null ? List.of() : extraArgs;
         return Task.builder(TaskNames.NATIVE_IMAGE)
-                .group("package")
+                .stage(BuildStage.NATIVE)
                 .label("Native")
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PACKAGE_JAR)
@@ -3658,8 +3895,18 @@ public final class BuildPlanner {
                         out = shared ? layout.nativeLibrary() : layout.nativeBinary();
                     }
                     Files.createDirectories(out.getParent());
-                    // Args: [native].args (project-level) + extra (CLI --) in that order
-                    List<String> allArgs = new ArrayList<>(nativeCfg.args());
+                    // Args, least specific first so the more specific wins on conflict: what the
+                    // active plugins' frameworks require (class-initialization policy, which no
+                    // amount of reachability metadata expresses), then [native].args, then the
+                    // CLI's trailing args.
+                    List<String> pluginNativeArgs =
+                            cc.jumpkick.plugin.manifest.PluginContributions.nativeArgs(project, dir);
+                    if (!pluginNativeArgs.isEmpty()) {
+                        ctx.label(pluginNativeArgs.size() + " native-image "
+                                + (pluginNativeArgs.size() == 1 ? "arg" : "args") + " from plugins");
+                    }
+                    List<String> allArgs = new ArrayList<>(pluginNativeArgs);
+                    allArgs.addAll(nativeCfg.args());
                     allArgs.addAll(extra);
 
                     Path javaHome = javaHomeEarly; // resolved above in fail-fast check
@@ -4481,8 +4728,7 @@ public final class BuildPlanner {
             }
         }
         try {
-            var mat = cc.jumpkick.cache.VersionStore.current()
-                    .resolve(cc.jumpkick.model.JkVersion.VERSION);
+            var mat = cc.jumpkick.cache.VersionStore.current().resolve(cc.jumpkick.model.JkVersion.VERSION);
             if (mat.isPresent() && Files.isRegularFile(mat.get().engineJar())) {
                 return mat.get().engineJar().toAbsolutePath().normalize();
             }
@@ -4492,7 +4738,8 @@ public final class BuildPlanner {
         // Last resort: monorepo product outputs relative to user.dir (and parents). Pure-jk
         // nested isolation runs with user.dir = clients/cli; host run-tests has monorepo root
         // or server/engine as cwd under Gradle.
-        return findMonorepoEngineJar(Path.of(System.getProperty("user.dir", ".")).toAbsolutePath().normalize());
+        return findMonorepoEngineJar(
+                Path.of(System.getProperty("user.dir", ".")).toAbsolutePath().normalize());
     }
 
     /** Prefer fat assembly, then dist/shadow, then thin main jar under known layout roots. */
@@ -4695,5 +4942,90 @@ public final class BuildPlanner {
             extras.add("worker:" + e.getKey() + "=" + fp);
         }
         return extras;
+    }
+
+    private static PluginBuild.Declarations pluginDeclarationsFor(JkBuild project, BuildLayout layout, Path cache)
+            throws java.io.IOException, InterruptedException {
+        var active = PluginBuild.activeCodePlugin(project, layout.moduleRoot());
+        if (active.isEmpty()) return null;
+        return PluginBuild.declarations(active.get(), project, layout.moduleRoot(), cache, layout.moduleTargetDir());
+    }
+
+    /**
+     * Main classes plus any plugin {@code contributesClasses}/{@code contributesResources} dirs
+     * (Micronaut AOT, etc.). When nothing is contributed, returns {@code classes} unchanged.
+     */
+    /**
+     * The plugin {@code contributesClasses}/{@code contributesResources} dirs that exist, in
+     * declaration order. Listing is cheap; {@link #stageClassesWithContributions} is the copy.
+     */
+    // Package-private for BuildPlannerStagedClassesTest.
+    static List<Path> existingContributedDirs(PluginBuild.Declarations decls, BuildLayout layout) {
+        if (decls == null) return List.of();
+        List<Path> out = new ArrayList<>();
+        for (Path pth : PluginBuild.contributedDirs(decls, layout)) {
+            if (pth != null && Files.isDirectory(pth)) out.add(pth);
+        }
+        return out;
+    }
+
+    /**
+     * Cache-key token covering the contributed dirs. Order-sensitive on purpose: contributions
+     * merge first-wins, so declaration order is part of what the packaged output depends on.
+     */
+    private static String contributionsToken(List<Path> contributed) throws java.io.IOException {
+        if (contributed.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        for (Path dir : contributed) {
+            sb.append(cc.jumpkick.task.ClasspathFingerprint.entry(dir)).append('\n');
+        }
+        return cc.jumpkick.util.Hashing.sha256Hex(sb.toString());
+    }
+
+    /**
+     * Main classes plus the plugin-contributed dirs, merged into one tree for the packagers.
+     * Returns {@code classes} unchanged when nothing is contributed.
+     *
+     * <p>Both packaging tasks call this, and package-jar always runs first, so it publishes the
+     * staged dir under {@link #STAGED_CLASSES} and assembly reuses it. Reuse is keyed on the
+     * inputs, not merely on the dir existing: package-jar may have restored from cache without
+     * staging at all, in which case assembly stages for itself.
+     */
+    // Package-private for BuildPlannerStagedClassesTest.
+    static Path stageClassesWithContributions(
+            cc.jumpkick.run.TaskContext ctx, Path classes, List<Path> extra, BuildLayout layout)
+            throws java.io.IOException {
+        if (extra.isEmpty()) return classes;
+        Path stage = layout.moduleTargetDir().resolve("package-classes");
+        String inputs = cc.jumpkick.task.ClasspathFingerprint.entry(classes) + "|" + contributionsToken(extra);
+        if (ctx != null && inputs.equals(ctx.get(STAGED_CLASSES_INPUTS).orElse(null)) && Files.isDirectory(stage)) {
+            return stage;
+        }
+        // A wipe that cannot finish is a build error, not something to paper over: the copy below
+        // only overwrites paths it reproduces, so a survivor from a previous build (a renamed or
+        // no-longer-emitted class) would be packaged, and the packaging key is taken over this
+        // dir — so the wrong content is what gets cached and restored (JK-1659).
+        cc.jumpkick.util.PathUtil.deleteRecursivelyOrThrow(stage);
+        Files.createDirectories(stage);
+        copyTreeInto(classes, stage);
+        for (Path contrib : extra) copyTreeInto(contrib, stage);
+        if (ctx != null) ctx.put(STAGED_CLASSES_INPUTS, inputs);
+        return stage;
+    }
+
+    private static void copyTreeInto(Path from, Path to) throws java.io.IOException {
+        if (!Files.isDirectory(from)) return;
+        try (var walk = Files.walk(from)) {
+            for (Path src : (Iterable<Path>) walk::iterator) {
+                Path rel = from.relativize(src);
+                Path dst = to.resolve(rel.toString());
+                if (Files.isDirectory(src)) {
+                    Files.createDirectories(dst);
+                } else {
+                    Files.createDirectories(dst.getParent());
+                    Files.copy(src, dst, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                }
+            }
+        }
     }
 }

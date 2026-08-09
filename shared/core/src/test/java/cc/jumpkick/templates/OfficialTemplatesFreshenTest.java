@@ -28,8 +28,8 @@ class OfficialTemplatesFreshenTest {
         // Holds stdout open and sleeps forever — the old readAllBytes() path would block here.
         Path script = script("#!/bin/sh\nsleep 600\n");
         long start = System.nanoTime();
-        IOException e = assertThrows(
-                IOException.class, () -> OfficialTemplatesFreshen.runGit(List.of(script.toString()), 2));
+        IOException e =
+                assertThrows(IOException.class, () -> OfficialTemplatesFreshen.runGit(List.of(script.toString()), 2));
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
         assertEquals("git timed out", e.getMessage());
         assertTrue(elapsedMs < 30_000, "timeout not enforced: took " + elapsedMs + "ms");
@@ -48,8 +48,8 @@ class OfficialTemplatesFreshenTest {
     @DisabledOnOs(OS.WINDOWS)
     void runGitSurfacesNonZeroExit() throws Exception {
         Path script = script("#!/bin/sh\nexit 3\n");
-        IOException e = assertThrows(
-                IOException.class, () -> OfficialTemplatesFreshen.runGit(List.of(script.toString()), 10));
+        IOException e =
+                assertThrows(IOException.class, () -> OfficialTemplatesFreshen.runGit(List.of(script.toString()), 10));
         assertEquals("git exit 3", e.getMessage());
     }
 
@@ -61,8 +61,7 @@ class OfficialTemplatesFreshenTest {
         long t0 = 1_000L;
         assertTrue(OfficialTemplatesFreshen.markAttempt("key-a", t0));
         assertTrue(
-                !OfficialTemplatesFreshen.markAttempt(
-                        "key-a", t0 + OfficialTemplatesFreshen.ATTEMPT_TTL_NANOS - 1),
+                !OfficialTemplatesFreshen.markAttempt("key-a", t0 + OfficialTemplatesFreshen.ATTEMPT_TTL_NANOS - 1),
                 "second attempt within the TTL must be suppressed");
         assertTrue(OfficialTemplatesFreshen.markAttempt("key-b", t0), "keys are independent");
         assertTrue(

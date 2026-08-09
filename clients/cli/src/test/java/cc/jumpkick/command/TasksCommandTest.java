@@ -24,7 +24,8 @@ class TasksCommandTest {
         assertThat(out).contains("package-jar");
         assertThat(out).contains("compile-java");
         // JK-1375: plain uppercase headers became BoxTable title-case columns.
-        assertThat(out).contains("Phase");
+        // JK-1598: the column is the task's BuildStage, so it is spelled Stage.
+        assertThat(out).contains("Stage");
     }
 
     @Test
@@ -46,8 +47,8 @@ class TasksCommandTest {
     void inspect_compile_java(@TempDir Path tempDir) throws Exception {
         run("new", "--name", "widget", "--layout", "traditional", tempDir.toString());
         String out = captureStdout(() -> run("inspect", "compile-java", "-C", tempDir.toString()));
-        assertThat(out).contains("step:").contains("compile-java");
-        assertThat(out).contains("phase:").contains("compile");
+        assertThat(out).contains("task:").contains("compile-java");
+        assertThat(out).contains("stage:").contains("compile");
         assertThat(out).contains("output:");
         assertThat(out).contains("cache:");
         // not the old "unknown offline" stub when engine can forecast
@@ -108,7 +109,7 @@ class TasksCommandTest {
         String out = captureStdout(() -> run("tasks", "-C", tempDir.toString()));
         assertThat(out).contains("build-logic:gen-tokens");
         assertThat(out).contains("build-logic:LineCountBuild");
-        // JK-1375: build-logic rows ride the main table (phase cell "logic"), no separate heading.
+        // JK-1375: build-logic rows ride the main table (stage cell "logic"), no separate heading.
         assertThat(out).contains("logic");
     }
 

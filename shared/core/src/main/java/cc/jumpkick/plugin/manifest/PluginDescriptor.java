@@ -102,6 +102,12 @@ public record PluginDescriptor(
             boolean layeredImage,
             String artifactExtension,
             String deployCommand,
+            /**
+             * False when this packager produces an <em>additional</em> artifact rather than the
+             * module's main one — the shrink packager writes {@code -min.jar} beside the thin and
+             * fat jars. Boot, Quarkus and Grails own the main artifact and leave this true.
+             */
+            boolean mainArtifact,
             List<Variant> variants) {
 
         /** Config-conditional packaging override; first matching {@code when} wins. */
@@ -126,6 +132,7 @@ public record PluginDescriptor(
     public record Contributions(
             List<PlatformDependency> platformDependencies,
             List<CompilerArgs> compilerArgs,
+            List<NativeArgs> nativeArgs,
             List<KotlinPlugin> kotlinPlugins,
             List<PackagerDependency> packagerDependencies,
             List<StepDependency> stepDependencies,
@@ -134,12 +141,13 @@ public record PluginDescriptor(
             /** GMM {@code org.gradle.jvm.environment} (e.g. {@code "android"}), or null. */
             String jvmEnvironment) {
 
-        public static final Contributions NONE =
-                new Contributions(List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null);
+        public static final Contributions NONE = new Contributions(
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null);
 
         public Contributions {
             platformDependencies = platformDependencies == null ? List.of() : List.copyOf(platformDependencies);
             compilerArgs = compilerArgs == null ? List.of() : List.copyOf(compilerArgs);
+            nativeArgs = nativeArgs == null ? List.of() : List.copyOf(nativeArgs);
             kotlinPlugins = kotlinPlugins == null ? List.of() : List.copyOf(kotlinPlugins);
             packagerDependencies = packagerDependencies == null ? List.of() : List.copyOf(packagerDependencies);
             stepDependencies = stepDependencies == null ? List.of() : List.copyOf(stepDependencies);
@@ -225,6 +233,17 @@ public record PluginDescriptor(
         /** Back-compat constructor: no groovy lane. */
         public CompilerArgs(List<String> javac, List<String> kotlin, List<String> ksp, Condition when) {
             this(javac, kotlin, List.of(), ksp, when);
+        }
+    }
+
+    /**
+     * Extra {@code native-image} arguments a plugin's framework requires — chiefly class
+     * initialization policy, which reachability metadata does not express and static analysis
+     * cannot infer. Composed before the user's {@code [native] args}, so the user wins.
+     */
+    public record NativeArgs(List<String> args, Condition when) {
+        public NativeArgs {
+            args = args == null ? List.of() : List.copyOf(args);
         }
     }
 

@@ -106,16 +106,47 @@ final class ShrunkJarPackager {
             pro.append("-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod,")
                     .append("SourceFile,LineNumberTable\n");
             if (!obfuscate) pro.append("-dontobfuscate\n");
+
+            // Classes the inputs name by text rather than reference. The indexes enumerate them
+            // exactly, so deriving the rules beats any pattern a user could write: it covers
+            // hand-written framework internals that match no naming convention, and it tracks
+            // whatever the project actually depends on.
+            Set<String> derived = new java.util.TreeSet<>(ByNameIndex.referencedClasses(program));
+            derived.retainAll(ByNameIndex.classesIn(program));
+
+            // Libraries describe their own reflective surface in META-INF/native-image for
+            // native-image, which reads it unaided. R8 has no equivalent, so the same facts reach
+            // it as keep rules. Free: the data is already in the jars, no run involved.
+            cc.jumpkick.surface.DynamicSurface composed = ByNameIndex.composedFromLibraries(program);
+            cc.jumpkick.surface.DynamicSurface surface =
+                    ByNameIndex.surface(derived).merge(composed);
+            if (!surface.entries().isEmpty()) {
+                pro.append("\n# Derived from by-name indexes and library native-image metadata.\n")
+                        .append(cc.jumpkick.surface.KeepRuleEmitter.emit(surface));
+                io.label("keep rules: " + derived.size() + " from by-name indexes, "
+                        + composed.entries().size() + " from library metadata");
+            }
+
             for (String rule : io.config().stringList("keep")) {
                 pro.append(rule).append('\n');
             }
             Files.writeString(rules, pro);
+            // The effective rule set, next to the artifact: the one place to look when R8 kept
+            // something unexpected, or when writing a rule to cover what it could not derive.
+            Path effectiveRules = io.artifactPath().resolveSibling(stripExtension(io.artifactPath()) + "-keep.pro");
+            Files.copy(rules, effectiveRules, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            io.produced(effectiveRules);
 
             Path shrunk = work.resolve("shrunk.jar");
             TaskExec.ToolRun run = io.java()
                     .classpath(List.of(r8))
                     .mainClass("com.android.tools.r8.R8")
                     .arg("--release")
+                    // Desugaring rewrites for an Android API level. This output is a JVM jar, and
+                    // the rewrite is not merely pointless here: it emits invokespecial to an
+                    // interface default method that is not a direct superinterface, which the
+                    // verifier rejects outright (VerifyError at first use).
+                    .arg("--no-desugaring")
                     .arg("--classfile")
                     .arg("--output")
                     .arg(shrunk.toString())
@@ -123,6 +154,16 @@ final class ShrunkJarPackager {
                     .arg(io.javaHome().toString())
                     .arg("--pg-conf")
                     .arg(rules.toString());
+            // jk resolved this closure from the lockfile, so a class missing from it is absent on
+            // purpose — an optional dependency behind a Class.forName probe. Netty and Micronaut
+            // alone contribute dozens. R8 calls that an error and produces nothing, so downgrade
+            // just that diagnostic; the messages still print, and `strict-warnings` restores the
+            // hard failure for closures that should be complete.
+            if (!io.config().bool("strict-warnings", false)) {
+                run.arg("--map-diagnostics:MissingDefinitionsDiagnostic")
+                        .arg("error")
+                        .arg("warning");
+            }
             // Project rule files ride as further --pg-conf entries (already declared inputs).
             for (String rel : io.config().stringList("keep-files")) {
                 run.arg("--pg-conf").arg(projectFile(io, rel).toString());
@@ -141,12 +182,60 @@ final class ShrunkJarPackager {
             if (result.exit() != 0) {
                 throw new IllegalStateException("R8 failed (exit " + result.exit() + "):\n" + result.output());
             }
+            int absent = ByNameIndex.countMissingClasses(result.output());
+            if (absent > 0) {
+                io.label(absent + " optional " + (absent == 1 ? "class is" : "classes are")
+                        + " absent from the closure — run with -v to list them, or set"
+                        + " [shrink] strict-warnings = true to fail on them");
+            }
 
+            auditByNameIndexes(program, shrunk);
             writeOutputJar(shrunk, io.artifactPath(), mainClass);
             io.label("shrunk " + mb(before) + " → " + mb(Files.size(io.artifactPath())));
         } finally {
             deleteRecursively(work);
         }
+    }
+
+    /**
+     * Fail when R8 removed a class that a service file or marker index still names.
+     *
+     * <p>Such a class is unreachable to static analysis and is loaded by name at runtime, so
+     * removing it does not produce a link error — the loader (Micronaut's {@code
+     * SoftServiceLoader}, {@code java.util.ServiceLoader}) skips what it cannot load, and the
+     * application starts missing pieces. Losing an SLF4J provider this way silences the very
+     * logging that would report the damage. A build error naming the classes is the only place
+     * this is cheap to catch.
+     *
+     * <p>Scoped to classes the inputs actually carried: a name an input already failed to resolve
+     * belongs to an optional dependency nobody bundled, and is not R8's doing.
+     */
+    // Package-private for ShrunkJarAuditTest.
+    static void auditByNameIndexes(List<Path> program, Path shrunk) throws IOException {
+        Set<String> expected = new java.util.TreeSet<>(ByNameIndex.referencedClasses(program));
+        expected.retainAll(ByNameIndex.classesIn(program));
+        expected.removeAll(ByNameIndex.classesIn(List.of(shrunk)));
+        if (expected.isEmpty()) return;
+
+        StringBuilder message = new StringBuilder("R8 removed ")
+                .append(expected.size())
+                .append(expected.size() == 1 ? " class that is" : " classes that are")
+                .append(" named by a service file or index in this jar, so nothing can load ")
+                .append(expected.size() == 1 ? "it" : "them")
+                .append(" at runtime:\n");
+        int shown = 0;
+        for (String name : expected) {
+            if (shown++ == 20) {
+                message.append("  … and ").append(expected.size() - 20).append(" more\n");
+                break;
+            }
+            message.append("  ").append(name).append('\n');
+        }
+        message.append("\nKeep them with [shrink] keep, or a keep-files rule file:\n")
+                .append(cc.jumpkick.surface.KeepRuleEmitter.emit(
+                        ByNameIndex.surface(expected.stream().limit(3).toList())));
+        if (expected.size() > 3) message.append("  …\n");
+        throw new IllegalStateException(message.toString());
     }
 
     /**

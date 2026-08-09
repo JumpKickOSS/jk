@@ -87,6 +87,7 @@ class SelfHostingTomlTest {
                         "shared/jk-api",
                         "shared/core",
                         "shared/client-io",
+                        "shared/dynamic-surface",
                         "server/io",
                         "server/resolver",
                         "shared/toolchain-jdk",
@@ -168,9 +169,8 @@ class SelfHostingTomlTest {
         // Only the engine stays assembly = true for ship.
         for (String module : List.of("plugins/test-runner", "plugins/java-compiler")) {
             JkBuild p = JkBuildParser.parse(REPO.resolve(module).resolve("jk.toml"));
-            assertThat(p.assemblyMode().isBundled())
-                    .as(module + " must not fat-assemble")
-                    .isFalse();
+            assertThat(p.assembly()).as(module + " must not fat-assemble").isFalse();
+            assertThat(p.minified()).as(module).isFalse();
             assertThat(p.mainClass()).as(module).isEqualTo("cc.jumpkick.plugin.process.PluginMain");
             assertThat(p.dependencies().of(Scope.MAIN).stream()
                             .map(d -> d.module())
@@ -193,7 +193,7 @@ class SelfHostingTomlTest {
             if (!module.startsWith("plugins/")) continue;
             JkBuild p = JkBuildParser.parse(REPO.resolve(module).resolve("jk.toml"));
             assertThat(p.mainClass()).as(module).isEqualTo("cc.jumpkick.plugin.process.PluginMain");
-            assertThat(p.assemblyMode().isBundled())
+            assertThat(p.assembly())
                     .as(module + " must not set assembly (JK-1347 thin workers)")
                     .isFalse();
         }

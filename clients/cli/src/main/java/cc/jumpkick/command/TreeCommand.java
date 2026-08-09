@@ -6,9 +6,9 @@ import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.command.CliCommand;
@@ -43,12 +43,11 @@ public final class TreeCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        // --flat / --scope are accepted as unique prefixes of --flatten / --scopes (no explicit alias).
         return List.of(
-                Opt.value("<depth>", "Maximum tree depth. Default: unlimited.", "--depth"),
-                Opt.flag("Flatten each scope to a sorted, deduped list.", "--flatten"),
-                Opt.flag("Blend all scopes into one tree, one badge row.", "--stack"),
-                Opt.value("<scopes>", "Scopes to show, in order; meta: exec/run/all.", "--scopes"));
+                Opt.value("<depth>", "Maximum tree depth. Default: unlimited.", "-d", "--depth"),
+                Opt.flag("Flatten each scope to a sorted, deduped list.", "-f", "--flatten"),
+                Opt.flag("Blend all scopes into one tree, one badge row.", "-S", "--stack"),
+                Opt.value("<scopes>", "Scopes to show, in order; meta: exec/run/all.", "-s", "--scopes"));
     }
 
     @Override
@@ -57,8 +56,8 @@ public final class TreeCommand implements CliCommand {
         boolean flatten = in.isSet("flatten");
         boolean stack = in.isSet("stack");
 
-        // --scopes: an explicit, ordered subset of scopes to display.
-        List<Scope> scopes = null;
+        // -s/--scopes: an explicit, ordered subset; default = export, main, runtime.
+        List<Scope> scopes = new ArrayList<>(DependencyTree.defaultScopeOrder());
         var scopesArg = in.value("scopes");
         if (scopesArg.isPresent()) {
             List<String> tokens = Arrays.stream(scopesArg.get().split(","))
@@ -113,11 +112,7 @@ public final class TreeCommand implements CliCommand {
 
         // Composite-aware: walks path deps' own trees too (anchored at `dir`). The walk runs
         // engine-side (thin client) with marker-tag styling; this client substitutes its Theme.
-        List<String> scopeNames = scopes == null
-                ? List.of()
-                : scopes.stream()
-                        .map(sc -> sc.name().toLowerCase(Locale.ROOT).replace('_', '-'))
-                        .toList();
+        List<String> scopeNames = scopes.stream().map(Scope::canonical).toList();
         String tagged;
         try {
             tagged = cc.jumpkick.cli.engine.EngineClient.treeRender(
@@ -127,14 +122,16 @@ public final class TreeCommand implements CliCommand {
             return Exit.CONFIG;
         }
         String rendered = DependencyTree.applyStyling(tagged, styling(nerdfont, ansi));
-        // Split root coord from tree body so we can insert a separator between them.
+        // Root coord, then a rail line naming the scopes included in this tree, then the body.
         int nl = rendered.indexOf('\n');
+        String scopeLine = scopesSummaryLine(scopeNames, ansi, t);
         if (nl >= 0) {
             CliOutput.out(rendered.substring(0, nl));
-            CliOutput.out(ansi ? " " + Theme.colorize("│", t.darkGray()) : " |");
+            CliOutput.out(scopeLine);
             CliOutput.outRaw(indentBody(rendered.substring(nl + 1), false));
         } else {
             CliOutput.outRaw(rendered);
+            CliOutput.out(scopeLine);
         }
         if (rendered.contains(DependencyTree.MISSING_SUFFIX)) {
             CliOutput.out();
@@ -145,6 +142,23 @@ public final class TreeCommand implements CliCommand {
                             : "Some dependencies are missing from your local cache. Run `jk lock`");
         }
         return 0;
+    }
+
+    /**
+     * Rail + scope list under the root, e.g. {@code  │ · Scopes: export, main, runtime}.
+     * Names the filter for this render (default or {@code -s}), not only non-empty sections.
+     */
+    private static String scopesSummaryLine(List<String> scopeNames, boolean ansi, Theme t) {
+        String list = String.join(", ", scopeNames);
+        if (ansi) {
+            return " "
+                    + Theme.colorize("│", t.darkGray())
+                    + " "
+                    + Theme.colorize("·", t.darkGray())
+                    + " Scopes: "
+                    + list;
+        }
+        return " | · Scopes: " + list;
     }
 
     /**
@@ -163,7 +177,7 @@ public final class TreeCommand implements CliCommand {
      */
     private static List<Scope> resolveScopeToken(String token) {
         String t = token.toLowerCase(Locale.ROOT);
-        if (t.equals("all")) return DependencyTree.defaultScopeOrder();
+        if (t.equals("all")) return DependencyTree.allScopeOrder();
         if (t.equals("exec") || t.equals("run")) return EXEC_SCOPES;
         Scope scope = coerceScope(t);
         return scope == null ? null : List.of(scope);

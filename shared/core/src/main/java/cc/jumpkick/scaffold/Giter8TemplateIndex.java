@@ -148,13 +148,10 @@ public final class Giter8TemplateIndex {
     }
 
     private static void mergeInto(
-            Map<String, Giter8ShortNames.Entry> byId,
-            java.util.Set<String> overlaid,
-            String id,
-            Path templateRoot) {
+            Map<String, Giter8ShortNames.Entry> byId, java.util.Set<String> overlaid, String id, Path templateRoot) {
         if (id == null || id.isBlank()) return;
-        Giter8ShortNames.Entry base = byId.getOrDefault(
-                id, new Giter8ShortNames.Entry(id, id, List.of(), Giter8ShortNames.LAYOUT_SIMPLE));
+        Giter8ShortNames.Entry base =
+                byId.getOrDefault(id, new Giter8ShortNames.Entry(id, id, List.of(), Giter8ShortNames.LAYOUT_SIMPLE));
         byId.put(id, mergeFromDisk(base, templateRoot));
         overlaid.add(id);
     }
@@ -203,9 +200,8 @@ public final class Giter8TemplateIndex {
         if (templateRoot == null) return out;
         Path g8 = templateRoot.resolve("src/main/g8");
         Path contentRoot = Files.isDirectory(g8) ? g8 : templateRoot;
-        for (Path propsFile : new Path[] {
-            templateRoot.resolve("default.properties"), contentRoot.resolve("default.properties")
-        }) {
+        for (Path propsFile :
+                new Path[] {templateRoot.resolve("default.properties"), contentRoot.resolve("default.properties")}) {
             if (!Files.isRegularFile(propsFile)) continue;
             Properties p = new Properties();
             try (InputStream in = Files.newInputStream(propsFile)) {

@@ -152,9 +152,10 @@ public final class HostWarmup {
         try {
             if (needsCalibration()) {
                 Calibration cal = Calibration.ensure(null, false, true);
-                log.accept(cal.present() && cal.measured()
-                        ? "jk engine: idle host calibration saved"
-                        : "jk engine: idle host calibration deferred");
+                log.accept(
+                        cal.present() && cal.measured()
+                                ? "jk engine: idle host calibration saved"
+                                : "jk engine: idle host calibration deferred");
             }
         } catch (RuntimeException e) {
             log.accept("jk engine: idle host calibration failed: " + e.getMessage());

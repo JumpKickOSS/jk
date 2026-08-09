@@ -56,11 +56,7 @@ public final class EngineMaintenance implements AutoCloseable {
 
     /** Test seam: injectable stamp + config paths. */
     EngineMaintenance(
-            Consumer<String> log,
-            StoreFeedRefresh feeds,
-            Runnable onMaintenanceDue,
-            Path stampFile,
-            Path configFile) {
+            Consumer<String> log, StoreFeedRefresh feeds, Runnable onMaintenanceDue, Path stampFile, Path configFile) {
         this.log = log != null ? log : s -> {};
         this.feeds = Objects.requireNonNull(feeds, "feeds");
         this.onMaintenanceDue = onMaintenanceDue != null ? onMaintenanceDue : () -> {};
@@ -134,7 +130,8 @@ public final class EngineMaintenance implements AutoCloseable {
     private boolean maintenanceDue() {
         try {
             if (!Files.isRegularFile(stampFile)) return true;
-            long last = Long.parseLong(Files.readString(stampFile, StandardCharsets.UTF_8).trim());
+            long last = Long.parseLong(
+                    Files.readString(stampFile, StandardCharsets.UTF_8).trim());
             return System.currentTimeMillis() - last >= MAINTENANCE_INTERVAL.toMillis();
         } catch (Exception e) {
             return true;

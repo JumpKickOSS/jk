@@ -4,6 +4,8 @@ package cc.jumpkick.cli.tui;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
+import java.util.Optional;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
 /** JK-1375: the shared list-command table renderer. */
@@ -15,8 +17,8 @@ class BoxTableRenderTest {
 
     @Test
     void renders_title_header_rows_and_close() {
-        List<String> out = BoxTable.render(
-                "Things", List.of("Name", "Value"), List.of(List.of("alpha", "1"), List.of("b", "22")));
+        List<String> out =
+                BoxTable.render("Things", List.of("Name", "Value"), List.of(List.of("alpha", "1"), List.of("b", "22")));
         // title + top divider + header + divider + 2 rows + close
         assertThat(out).hasSize(7);
         String plain = stripAnsi(String.join("\n", out));
@@ -30,8 +32,9 @@ class BoxTableRenderTest {
     void header_cells_are_italic_when_ansi() {
         if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) return;
         String cell = BoxTable.headerCell("Name");
-        assertThat(cell).isEqualTo(cc.jumpkick.cli.theme.Theme.colorize(
-                "Name", org.jline.utils.AttributedStyle.DEFAULT.italic()));
+        assertThat(cell)
+                .isEqualTo(
+                        cc.jumpkick.cli.theme.Theme.colorize("Name", org.jline.utils.AttributedStyle.DEFAULT.italic()));
         // Full table: header row (index 2) carries italic; body does not restyle plain cells.
         List<String> out = BoxTable.render("T", List.of("Name"), List.of(List.of("alpha")));
         assertThat(out.get(2)).contains(BoxTable.headerCell("Name"));
@@ -55,10 +58,8 @@ class BoxTableRenderTest {
 
     private static void assertUniformWidth(List<String> out) {
         // Title bar included: JK-1437 widens the table when the chip would overhang.
-        var widths = out.stream()
-                .map(BoxTableRenderTest::visibleColumns)
-                .distinct()
-                .toList();
+        var widths =
+                out.stream().map(BoxTableRenderTest::visibleColumns).distinct().toList();
         assertThat(widths).hasSize(1);
     }
 
@@ -87,8 +88,8 @@ class BoxTableRenderTest {
     void cjk_cells_stay_aligned_under_wcwidth() {
         // CJK chars are 1 UTF-16 unit but 2 terminal columns; width accounting must be
         // column-aware or the row overflows its rails.
-        List<String> out = BoxTable.render(
-                "T", List.of("Project", "Took"), List.of(List.of("构建工具", "1s"), List.of("app", "2s")));
+        List<String> out =
+                BoxTable.render("T", List.of("Project", "Took"), List.of(List.of("构建工具", "1s"), List.of("app", "2s")));
         assertUniformWidth(out);
     }
 
@@ -126,19 +127,19 @@ class BoxTableRenderTest {
         });
     }
 
-    private static <T> T withNoAnsi(java.util.function.Supplier<T> body) throws Exception {
+    private static <T> T withNoAnsi(Supplier<T> body) throws Exception {
         cc.jumpkick.config.JkConfig noAnsi = new cc.jumpkick.config.JkConfig(
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.of(true),
-                java.util.Optional.empty(),
-                java.util.Optional.empty());
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(true),
+                Optional.empty(),
+                Optional.empty());
         cc.jumpkick.config.Session original = cc.jumpkick.config.SessionContext.current();
         try {
             return cc.jumpkick.config.SessionContext.where(original.withConfig(noAnsi), body::get);

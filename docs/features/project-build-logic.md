@@ -6,8 +6,9 @@
 ## Intent
 
 JumpKick stays **convention-over-configuration** with a **data-only** `jk.toml`. Custom build
-behavior lives in a **project-local Java (later Kotlin) module**, not in TOML scripts — the same
-idea as Mill’s programmable tasks, without making the manifest a programming language.
+behavior lives under **`.jk-build/`** as stem scripts (`.groovy` today; `.kts` later) and/or a
+**project-local Java (later Kotlin) module** — not in TOML scripts. Same idea as Mill’s programmable
+tasks, without making the manifest a programming language.
 
 The convention directory is **hidden** (`.jk-build/`) so it does not sit next to product `src/`
 like Gradle’s `buildSrc/`. Prefer that; use `[build].logic` only when you want a different path.
@@ -21,18 +22,62 @@ like Gradle’s `buildSrc/`. Prefer that; use `[build].logic` only when you want
 
 ## Convention
 
-If a directory named **`.jk-build`** exists next to `jk.toml` and contains `.java` sources, the
-engine compiles and runs it during the resources phase (action-cached).
+If a directory named **`.jk-build`** exists next to `jk.toml` and contains stem scripts and/or
+`.java` sources, the engine discovers tasks and runs them at the matching anchors (action-cached).
 
 ```text
 my-app/
   jk.toml
   src/…
   .jk-build/
-    src/demo/LineCountBuild.java
+    before-compile.groovy          # optional stem scripts (scripts-only is fine)
+    after-resources.kts            # same stems for .kts (kotlinc -script)
+    src/demo/LineCountBuild.java   # optional Java SPI / *Build mains
+    src/demo/TokenLogic.kt         # optional Kotlin SPI (same anchors)
 ```
 
 No TOML required when the convention directory is present.
+
+### Stem scripts (`.groovy` / `.kts`)
+
+Top-level files under `.jk-build/` (not recursive). Same stems for both extensions:
+
+| File | Anchor | Stage wire |
+|------|--------|------------|
+| `before-compile.groovy` / `.kts` | `BEFORE_COMPILE` | `generate` |
+| `after-compile.groovy` / `.kts` | `AFTER_COMPILE` | `compile` |
+| `after-resources.groovy` / `.kts` | `AFTER_RESOURCES` | `compile` |
+| `before-package.groovy` / `.kts` | `BEFORE_PACKAGE` | `package` |
+
+Suffixes allowed for multiple scripts at one anchor: `before-compile-collections.groovy`. Underscores
+are aliases (`before_compile.kts`). A `.groovy` and `.kts` with the same stem name conflict.
+
+**Bindings** (injected for both hosts):
+
+| Name | Type | Meaning | Groovy | `.kts` |
+|------|------|---------|--------|--------|
+| `projectDir` | `java.nio.file.Path` | Project root (`jk.toml`) | yes | yes |
+| `outDir` | `Path` | Per-task output (action-cached). A **generated-source root** at `BEFORE_COMPILE`; merged into classes at every other anchor | yes | yes |
+| `properties` | `Map<String,Object>` | Mutable bag (e.g. nested `evaluate`) | yes | — |
+| `ant` | `groovy.ant.AntBuilder` | When Ant jars resolve | yes | — |
+
+**`outDir` is the only place a task may write.** It is the only thing the action cache captures,
+so it is the only thing that survives a cache hit. There used to be a `classesDir` binding too;
+a task that wrote there worked on the first build and silently lost those files on the second,
+under a reassuring `cache hit` label (JK-1614). Write to `outDir` and the engine merges it into
+classes for you.
+
+| Host | How it runs |
+|------|-------------|
+| **Groovy** | Reflective `GroovyShell`; jars fetched into `$JK_CACHE_DIR/tools/build-logic-groovy/` |
+| **`.kts`** | Product `kotlinc -script` (Kotlin home via `CompileToolchain`); wrapper injects bindings |
+
+`.kts` example:
+
+```kotlin
+import java.nio.file.Files
+Files.writeString(outDir.resolve("stamp.txt"), "ok")
+```
 
 ## Override location
 
@@ -54,19 +99,35 @@ logic = "off"   # also: false, none, disable
 ## Runtime
 
 1. Resolve logic dir (override or `.jk-build`).  
-2. Compile all `.java` under that tree with the **build-logic SPI** (`jk-plugin-sdk`) on the
-   compile classpath.  
-3. Discover tasks:
-   - **SPI:** classes implementing `cc.jumpkick.plugin.buildlogic.BuildLogicContributor`
-     call `register(BuildLogicGraph)` and may attach named tasks to anchors.  
-   - **Legacy mains:** every public class named `*Build` / `*BuildMain` with
-     `public static void main` (or `[build].logic-main`) runs at **`AFTER_RESOURCES`**.  
-4. BuildPlan anchors invoke matching tasks as **independently action-cached** steps:
-   - `AFTER_COMPILE` — after main compile / assemble  
-   - `AFTER_RESOURCES` — after static resources copy (default for legacy mains)  
-   - `BEFORE_PACKAGE` — immediately before jar/image packaging  
-5. Merge each task’s `outDir` into the classes tree.  
+2. Discover **stem scripts** (`*.groovy` / `*.kts` at the logic dir root).  
+3. If any **`.java` / `.kt`** sources exist under the logic tree:
+   - Compile `.java` with the system javac (SPI jar on classpath).  
+   - Compile `.kt` with the product **kotlin-compiler worker** (default Kotlin line + stdlib;
+     non-incremental). Kotlin may call already-compiled Java in the same tree.  
+   - Discover:
+     - **SPI:** classes implementing `cc.jumpkick.plugin.buildlogic.BuildLogicContributor`
+       call `register(BuildLogicGraph)` and may attach named tasks to anchors.
+     - **Mains:** every public class named `*Build` / `*BuildMain` with
+       `public static void main` (or `[build].logic-main`) runs at **`AFTER_RESOURCES`**.  
+4. BuildPlan anchors invoke matching tasks as **independently action-cached** steps
+   (each maps to a [`BuildStage`](../architecture.md#request-phases-vs-build-stages) wire name):
+   - `BEFORE_COMPILE` — before main language compile (**stage `generate`**) — codegen home  
+   - `AFTER_COMPILE` — after main compile / assemble (**stage `compile`**)  
+   - `AFTER_RESOURCES` — after static resources copy (**stage `compile`**)  
+   - `BEFORE_PACKAGE` — immediately before jar/image packaging (**stage `package`**)  
+5. Deliver each task’s `outDir`, and **where it goes depends on the anchor**:
+   - `BEFORE_COMPILE` writes a **generated-source root** under
+     `target/generated/sources/jk-build/<task>/`, which javac / kotlinc / groovyc read exactly the
+     way they read KSP output. Write `.java` / `.kt` / `.groovy` here and it is compiled and lands
+     in the jar as a class.
+   - Every other anchor **merges into the classes tree**, which is what you want for a resource, a
+     manifest, or a stamp — compilation has already happened.
+
+   Do not write `.class` files from `BEFORE_COMPILE`: javac's full-compile sweep clears the classes
+   dir after this anchor runs. Emit sources and let the compiler own the output.  
 6. Labels: `build-logic:<name>: cache hit` or `build-logic:<name>: <anchor>`.
+
+Scripts and Java may coexist; task names must be unique across both.
 
 ### SPI sketch
 
@@ -78,6 +139,13 @@ import java.nio.file.*;
 public class CodegenLogic implements BuildLogicContributor {
   @Override
   public void register(BuildLogicGraph g) {
+    // Sources that must exist before javac/kotlinc. outDir is a generated-source
+    // root — package directories and all, as the compiler expects them.
+    g.task("gen-collections", BuildLogicAnchor.BEFORE_COMPILE, ctx -> {
+      Path pkg = Files.createDirectories(ctx.outDir().resolve("com/example"));
+      Files.writeString(pkg.resolve("Generated.java"),
+          "package com.example; public final class Generated {}");
+    });
     g.task("gen-tokens", BuildLogicAnchor.AFTER_COMPILE, ctx -> {
       Files.writeString(ctx.outDir().resolve("tokens.txt"), "ok");
     });
@@ -88,21 +156,36 @@ public class CodegenLogic implements BuildLogicContributor {
 }
 ```
 
-Legacy `*Build` mains still work unchanged (AFTER_RESOURCES). Both styles may coexist.
+Legacy `*Build` mains still work unchanged (AFTER_RESOURCES). Java SPI, Kotlin SPI, and scripts
+may coexist (unique task names).
+
+### Kotlin SPI sketch
+
+```kotlin
+package demo
+import cc.jumpkick.plugin.buildlogic.*
+import java.nio.file.Files
+
+class TokenLogic : BuildLogicContributor {
+  override fun register(g: BuildLogicGraph) {
+    g.task("gen-tokens", BuildLogicAnchor.AFTER_COMPILE) { ctx ->
+      Files.writeString(ctx.outDir().resolve("tokens.txt"), "ok")
+    }
+  }
+}
+```
 
 Sample (legacy main): [examples/line-count-build/](examples/line-count-build/).
 
 ## Non-goals
 
 - Scripts **inside** `jk.toml`  
-- Per-phase free-form `.kts` hooks  
 - Loading build logic into the native CLI image  
 - Replacing first-party plugins for reusable tooling  
 - Dual convention with a visible `jk-build/` (use `[build].logic` if you want a non-dot path)
 
 ## Future
 
-- Kotlin sources in `.jk-build/`  
 - Workspace-shared logic via `[workspace]`  
 - Richer graph (task→task edges, Mill-style traits)
 

@@ -197,6 +197,93 @@ class PubGrubResolverTest {
         assertThat(result.modules().get("com.foo:other:jar:").version()).isEqualTo("1.5");
     }
 
+    /**
+     * JK-1660 / {@code ea6dc765}: the hermetic version of the logback-core regression. An
+     * exclusion on one edge decides what gets *selected*; it must not erase a real POM edge
+     * pointing at a package that something else brought in anyway, or the closure ships without
+     * classes the runtime loads by reflection.
+     */
+    @Test
+    void an_exclusion_on_one_edge_does_not_erase_the_same_edge_elsewhere(@TempDir Path tempDir) throws Exception {
+        // app → classic → core, and app → other → core (no exclusion). `classic` excludes `core`
+        // on nobody's behalf here; the exclusion sits on app → classic, the shape that used to
+        // cascade down and strip classic → core.
+        serveMetadata("/com/foo/app/maven-metadata.xml", "com.foo", "app", List.of("1.0"));
+        serveMetadata("/com/foo/classic/maven-metadata.xml", "com.foo", "classic", List.of("1.0"));
+        serveMetadata("/com/foo/other/maven-metadata.xml", "com.foo", "other", List.of("1.0"));
+        serveMetadata("/com/foo/core/maven-metadata.xml", "com.foo", "core", List.of("1.0"));
+        servePom("com.foo", "app", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>app</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>classic</artifactId><version>1.0</version>
+                      <exclusions>
+                        <exclusion><groupId>com.foo</groupId><artifactId>core</artifactId></exclusion>
+                      </exclusions>
+                    </dependency>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>other</artifactId><version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        servePom("com.foo", "classic", "1.0", dependsOnCore("classic"));
+        servePom("com.foo", "other", "1.0", dependsOnCore("other"));
+        servePom("com.foo", "core", "1.0", emptyPom("com.foo", "core", "1.0"));
+
+        Resolution result = new PubGrubResolver(repoGroup(tempDir), Map.of())
+                .resolve(List.of(new Dependency("com.foo:app", VersionSelector.parse("=1.0"))));
+
+        assertThat(result.modules()).containsKey("com.foo:core:jar:");
+        assertThat(result.modules().get("com.foo:classic:jar:").deps())
+                .as("classic → core is a real POM edge; the app-level exclusion decided selection, not edges")
+                .anyMatch(d -> d.startsWith("com.foo:core:"));
+    }
+
+    @Test
+    void an_exclusion_that_keeps_a_package_out_entirely_leaves_no_edge(@TempDir Path tempDir) throws Exception {
+        // The other half of the rule: with `core` on nobody else's path, the exclusion keeps it
+        // out of the resolution and the edge goes with it.
+        serveMetadata("/com/foo/app/maven-metadata.xml", "com.foo", "app", List.of("1.0"));
+        serveMetadata("/com/foo/classic/maven-metadata.xml", "com.foo", "classic", List.of("1.0"));
+        serveMetadata("/com/foo/core/maven-metadata.xml", "com.foo", "core", List.of("1.0"));
+        servePom("com.foo", "app", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>app</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>classic</artifactId><version>1.0</version>
+                      <exclusions>
+                        <exclusion><groupId>com.foo</groupId><artifactId>core</artifactId></exclusion>
+                      </exclusions>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        servePom("com.foo", "classic", "1.0", dependsOnCore("classic"));
+        servePom("com.foo", "core", "1.0", emptyPom("com.foo", "core", "1.0"));
+
+        Resolution result = new PubGrubResolver(repoGroup(tempDir), Map.of())
+                .resolve(List.of(new Dependency("com.foo:app", VersionSelector.parse("=1.0"))));
+
+        assertThat(result.modules()).doesNotContainKey("com.foo:core:jar:");
+        assertThat(result.modules().get("com.foo:classic:jar:").deps()).noneMatch(d -> d.startsWith("com.foo:core:"));
+    }
+
+    private static String dependsOnCore(String artifact) {
+        return """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>%s</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>core</artifactId><version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """.formatted(artifact);
+    }
+
     private RepoGroup repoGroup(Path tempDir) {
         Cas cas = new Cas(tempDir.resolve("cache"));
         return RepoGroup.of(new MavenRepo("local", base, new Http(), cas));

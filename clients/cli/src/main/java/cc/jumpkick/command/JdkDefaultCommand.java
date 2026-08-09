@@ -3,9 +3,9 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.jdk.GlobalDefaultJdk;
 import cc.jumpkick.jdk.InstalledJdk;

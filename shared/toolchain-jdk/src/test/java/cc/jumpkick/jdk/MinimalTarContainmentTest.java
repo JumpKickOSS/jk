@@ -42,8 +42,8 @@ class MinimalTarContainmentTest {
     @Test
     void traversing_link_target_is_refused(@TempDir Path tmp) throws Exception {
         Path dest = Files.createDirectories(tmp.resolve("jdk"));
-        assertThatThrownBy(() ->
-                        MinimalTar.createSymlinkInside(dest, dest.resolve("lib"), "../../../../home/victim/.ssh"))
+        assertThatThrownBy(
+                        () -> MinimalTar.createSymlinkInside(dest, dest.resolve("lib"), "../../../../home/victim/.ssh"))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("escapes destination");
     }

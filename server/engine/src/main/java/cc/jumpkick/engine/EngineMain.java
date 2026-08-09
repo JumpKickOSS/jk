@@ -145,9 +145,7 @@ public final class EngineMain {
      */
     static void promoteTrainedCache(java.nio.file.Path tmp, java.nio.file.Path finalPath, int exit) {
         try {
-            if (exit == 0
-                    && java.nio.file.Files.isRegularFile(tmp)
-                    && java.nio.file.Files.size(tmp) > 0) {
+            if (exit == 0 && java.nio.file.Files.isRegularFile(tmp) && java.nio.file.Files.size(tmp) > 0) {
                 cc.jumpkick.util.AtomicWrites.moveInto(tmp, finalPath);
                 return;
             }

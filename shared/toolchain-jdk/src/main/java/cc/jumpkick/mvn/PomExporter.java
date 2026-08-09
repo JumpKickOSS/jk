@@ -136,7 +136,7 @@ public final class PomExporter {
             Map<String, String> locked,
             ImportReport.Builder report) {
         if (warnIfUnmappable(d, report)) return;
-        PomXml.appendDependency(sb, d.group(), d.name(), resolveVersion(d, locked, report), mavenScope);
+        PomXml.appendDependency(sb, d, resolveVersion(d, locked, report), mavenScope);
     }
 
     /** Git / content-addressed deps have no Maven equivalent — warn and skip. */
@@ -278,8 +278,7 @@ public final class PomExporter {
         sb.append("        <groupId>org.mvnsearch</groupId>\n");
         sb.append("        <artifactId>toolchains-maven-plugin</artifactId>\n");
         sb.append("        <version>").append(TOOLCHAINS_PLUGIN).append("</version>\n");
-        sb.append(
-                "        <executions><execution><goals><goal>toolchain</goal></goals></execution></executions>\n");
+        sb.append("        <executions><execution><goals><goal>toolchain</goal></goals></execution></executions>\n");
         sb.append("        <configuration>\n          <toolchains>\n            <jdk>\n");
         sb.append("              <version>")
                 .append(major > 0 ? major : p.javaRelease())

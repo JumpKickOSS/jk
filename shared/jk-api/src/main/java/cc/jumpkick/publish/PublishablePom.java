@@ -153,7 +153,7 @@ public final class PublishablePom {
                 if (d.isGit() && d.gitSource().ref() instanceof GitRefSpec.Branch) {
                     continue;
                 }
-                PomXml.appendDependency(sb, d.group(), d.name(), versionOf(d.version()), mavenScope);
+                PomXml.appendDependency(sb, d, versionOf(d.version()), mavenScope);
             }
         }
         sb.append("  </dependencies>\n");

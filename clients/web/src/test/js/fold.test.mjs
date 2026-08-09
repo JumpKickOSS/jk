@@ -14,6 +14,8 @@ const {
   seedFromHistory,
   ioLines,
   fmtBytes,
+  fmtStepMillis,
+  stepTimingLabel,
   detailForDisplay,
   liveStepDetail,
   detailSegments,
@@ -157,11 +159,11 @@ test('coord and client timestamps ride the card', () => {
 test('steps fold per module, each module keeping its own chain', () => {
   const cards = [];
   foldEvent(cards, start(1, '/w'));
-  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '/w/a', task: 'compile', phase: 'compile' } });
-  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '/w/b', task: 'compile', phase: 'compile' } });
-  foldEvent(cards, { type: 'task-finish', data: { requestId: 1, dir: '/w/a', task: 'compile', phase: 'compile', status: 'SUCCESS' } });
-  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '/w/a', task: 'test', phase: 'test' } });
-  foldEvent(cards, { type: 'task-finish', data: { requestId: 1, dir: '/w/a', task: 'test', phase: 'test', status: 'FAIL' } });
+  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '/w/a', task: 'compile', stage: 'compile' } });
+  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '/w/b', task: 'compile', stage: 'compile' } });
+  foldEvent(cards, { type: 'task-finish', data: { requestId: 1, dir: '/w/a', task: 'compile', stage: 'compile', status: 'SUCCESS' } });
+  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '/w/a', task: 'test', stage: 'test' } });
+  foldEvent(cards, { type: 'task-finish', data: { requestId: 1, dir: '/w/a', task: 'test', stage: 'test', status: 'FAIL' } });
   const byDir = (dir) => cards[0].modules.find((m) => m.dir === dir);
   assert.equal(cards[0].modules.length, 2); // two modules, not one merged chain
   assert.deepEqual(
@@ -183,7 +185,7 @@ test('orderedModules puts running first (newest activity), finished last', () =>
   foldEvent(cards, { type: 'module-start', data: { requestId: 1, dir: '/w/a' }, at: 100 });
   foldEvent(cards, { type: 'module-finish', data: { requestId: 1, dir: '/w/a', success: true, millis: 10 }, at: 200 });
   foldEvent(cards, { type: 'module-start', data: { requestId: 1, dir: '/w/b' }, at: 300 });
-  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '/w/b', task: 'compile', phase: 'compile' }, at: 400 });
+  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '/w/b', task: 'compile', stage: 'compile' }, at: 400 });
   foldEvent(cards, { type: 'module-start', data: { requestId: 1, dir: '/w/c' }, at: 350 });
   foldEvent(cards, { type: 'module-finish', data: { requestId: 1, dir: '/w/c', success: false, millis: 5 }, at: 360 });
   // Later tick on b → b is the most recently active runner.
@@ -203,8 +205,8 @@ test('orderedModules puts running first (newest activity), finished last', () =>
 test('single-plan step events (empty dir) become one module with a chain', () => {
   const cards = [];
   foldEvent(cards, start(1, '/proj'));
-  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '', task: 'compile-java', phase: 'compile' } });
-  foldEvent(cards, { type: 'task-finish', data: { requestId: 1, dir: '', task: 'compile-java', phase: 'compile', status: 'SUCCESS' } });
+  foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '', task: 'compile-java', stage: 'compile' } });
+  foldEvent(cards, { type: 'task-finish', data: { requestId: 1, dir: '', task: 'compile-java', stage: 'compile', status: 'SUCCESS' } });
   assert.equal(cards[0].modules.length, 1);
   assert.equal(cards[0].modules[0].dir, '');
   assert.deepEqual(cards[0].modules[0].steps.map((p) => p.name + ':' + p.state), ['compile-java:success']);
@@ -529,8 +531,8 @@ test('phaseChainOf collapses steps into coarse phase nodes in encounter order', 
   const cards = [];
   foldEvent(cards, start(1, '/proj'));
   const step = (name, phase, status) => {
-    foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '', task: name, phase } });
-    if (status) foldEvent(cards, { type: 'task-finish', data: { requestId: 1, dir: '', task: name, phase, status } });
+    foldEvent(cards, { type: 'task-start', data: { requestId: 1, dir: '', task: name, stage: phase } });
+    if (status) foldEvent(cards, { type: 'task-finish', data: { requestId: 1, dir: '', task: name, stage: phase, status } });
   };
   step('resolve-deps', 'resolve', 'SUCCESS');
   step('compile-java', 'compile', 'SUCCESS');
@@ -540,6 +542,66 @@ test('phaseChainOf collapses steps into coarse phase nodes in encounter order', 
   assert.deepEqual(chain.map((p) => p.label), ['Resolve', 'Compile', 'Test']); // one node per phase, in order
   assert.deepEqual(chain.map((p) => p.state), ['success', 'success', 'success']);
   assert.deepEqual(chain[1].steps.map((s) => s.name), ['compile-java', 'compile-kotlin']); // Compile collapses both
+});
+
+test('task-finish stores engine millis on the step row', () => {
+  const cards = [];
+  foldEvent(cards, start(1, '/proj'));
+  foldEvent(cards, {
+    type: 'task-start',
+    data: { requestId: 1, dir: '', task: 'ensure-jdk', stage: 'resolve' },
+    at: 1000,
+  });
+  foldEvent(cards, {
+    type: 'task-finish',
+    data: { requestId: 1, dir: '', task: 'ensure-jdk', stage: 'resolve', status: 'SUCCESS', millis: 360 },
+    at: 1500,
+  });
+  assert.equal(cards[0].modules[0].steps[0].millis, 360);
+});
+
+test('task-finish falls back to receipt delta when millis is absent', () => {
+  const cards = [];
+  foldEvent(cards, start(1, '/proj'));
+  foldEvent(cards, {
+    type: 'task-start',
+    data: { requestId: 1, dir: '', task: 'compile-tests', stage: 'compile' },
+    at: 1000,
+  });
+  foldEvent(cards, {
+    type: 'task-finish',
+    data: { requestId: 1, dir: '', task: 'compile-tests', stage: 'compile', status: 'SUCCESS' },
+    at: 1212,
+  });
+  assert.equal(cards[0].modules[0].steps[0].millis, 212);
+});
+
+test('history seed preserves per-step millis for tooltips', () => {
+  const cards = [];
+  seedFromHistory(cards, [
+    historyRecord('h1', '/w', {
+      steps: [
+        { name: 'ensure-jdk', stage: 'resolve', status: 'SUCCESS', millis: 360 },
+        { name: 'resolve-deps', stage: 'resolve', status: 'SUCCESS', millis: 1200 },
+      ],
+    }),
+  ]);
+  const steps = cards[0].modules[0].steps;
+  assert.equal(steps[0].millis, 360);
+  assert.equal(steps[1].millis, 1200);
+  assert.equal(stepTimingLabel(steps[0]), 'ensure-jdk (360ms)');
+  assert.equal(stepTimingLabel(steps[1]), 'resolve-deps (1.2s)');
+});
+
+test('fmtStepMillis is compact for tooltips', () => {
+  assert.equal(fmtStepMillis(null), '');
+  assert.equal(fmtStepMillis(0), '0ms');
+  assert.equal(fmtStepMillis(360), '360ms');
+  assert.equal(fmtStepMillis(1200), '1.2s');
+  assert.equal(fmtStepMillis(12_000), '12s');
+  assert.equal(fmtStepMillis(65_000), '1m 5s');
+  assert.equal(stepTimingLabel({ name: 'compile-tests', millis: 212 }), 'compile-tests (212ms)');
+  assert.equal(stepTimingLabel({ name: 'compile-tests', millis: null }), 'compile-tests');
 });
 
 test('phaseChainOf state precedence: failed > running > success', () => {

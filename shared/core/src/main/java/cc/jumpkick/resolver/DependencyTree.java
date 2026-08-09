@@ -322,14 +322,23 @@ public final class DependencyTree {
         return out.toString();
     }
 
-    /** The default scope display order — the scopes shown (when non-empty) absent any override. */
+    /**
+     * Default scopes for {@code jk tree} (and empty {@code --scopes}): production runtime classpath
+     * — {@code export}, {@code main}, {@code runtime}. Matches {@code ClasspathResolver.RUNTIME} /
+     * the {@code exec}/{@code run} meta-scopes. Use {@link #allScopeOrder()} for every scope.
+     */
     public static List<Scope> defaultScopeOrder() {
+        return List.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME);
+    }
+
+    /** Every scope in display order — the {@code --scopes all} expansion. */
+    public static List<Scope> allScopeOrder() {
         return List.of(SCOPE_SECTIONS);
     }
 
     /** The scope sections to consider, in display order: an explicit override or the default set. */
     private static List<Scope> sectionOrder(List<Scope> override) {
-        return override != null ? override : List.of(SCOPE_SECTIONS);
+        return override != null ? override : defaultScopeOrder();
     }
 
     /** All scope badges joined on one line — the {@code --stack} header. */

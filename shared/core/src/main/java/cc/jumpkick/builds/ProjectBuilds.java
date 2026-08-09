@@ -154,7 +154,8 @@ public final class ProjectBuilds {
     public static long allocateRunNumber(Path projectHome) throws IOException {
         Files.createDirectories(projectHome);
         Path f = projectHome.resolve(RUN_NUMBER);
-        Path lockPath = projectHome.resolve(RUN_NUMBER + ".lock").toAbsolutePath().normalize();
+        Path lockPath =
+                projectHome.resolve(RUN_NUMBER + ".lock").toAbsolutePath().normalize();
         RUN_NUMBER_LOCK.lock();
         try {
             java.nio.channels.FileChannel ch = null;
@@ -194,7 +195,9 @@ public final class ProjectBuilds {
         long next = 1;
         if (Files.isRegularFile(f)) {
             try {
-                next = Long.parseLong(Files.readString(f, StandardCharsets.UTF_8).trim()) + 1;
+                next = Long.parseLong(
+                                Files.readString(f, StandardCharsets.UTF_8).trim())
+                        + 1;
             } catch (NumberFormatException ignored) {
                 next = 1;
             }

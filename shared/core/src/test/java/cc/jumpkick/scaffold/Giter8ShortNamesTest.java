@@ -13,10 +13,11 @@ class Giter8ShortNamesTest {
         assertThat(Giter8ShortNames.entries()).isNotEmpty();
         for (var e : Giter8ShortNames.entries()) {
             assertThat(e.languages()).isNotEmpty();
-            assertThat(e.layout()).isIn(
-                    Giter8ShortNames.LAYOUT_SIMPLE,
-                    Giter8ShortNames.LAYOUT_TRADITIONAL,
-                    Giter8ShortNames.LAYOUT_CUSTOM);
+            assertThat(e.layout())
+                    .isIn(
+                            Giter8ShortNames.LAYOUT_SIMPLE,
+                            Giter8ShortNames.LAYOUT_TRADITIONAL,
+                            Giter8ShortNames.LAYOUT_CUSTOM);
             assertThat(e.supports(e.languages().get(0))).isTrue();
         }
     }
@@ -32,7 +33,8 @@ class Giter8ShortNamesTest {
             assertThat(e.supports("groovy")).isTrue();
             assertThat(e.supports("java")).isFalse();
         });
-        assertThat(Giter8ShortNames.find("java-cli")).get().satisfies(e -> assertThat(e.supports("java")).isTrue());
+        assertThat(Giter8ShortNames.find("java-cli")).get().satisfies(e -> assertThat(e.supports("java"))
+                .isTrue());
     }
 
     @Test
@@ -44,7 +46,8 @@ class Giter8ShortNamesTest {
         assertThat(Giter8ShortNames.languagesFromProperties(Map.of("language", "groovy")))
                 .containsExactly("groovy");
         // JDK pin mis-keyed as language= — ignored
-        assertThat(Giter8ShortNames.languagesFromProperties(Map.of("language", "25"))).isEmpty();
+        assertThat(Giter8ShortNames.languagesFromProperties(Map.of("language", "25")))
+                .isEmpty();
         assertThat(Giter8ShortNames.languagesFromProperties(Map.of())).isEmpty();
     }
 }

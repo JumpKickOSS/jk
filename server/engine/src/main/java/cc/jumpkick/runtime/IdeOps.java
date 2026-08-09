@@ -18,6 +18,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.MavenLayout;
@@ -373,19 +374,27 @@ public final class IdeOps {
     // Per-module dependency lists
     // =========================================================================
 
-    /** Workspace siblings this module directly depends on, as {@code {name, COMPILE|TEST}}. */
+    /**
+     * Workspace siblings this module directly depends on, as {@code {name, COMPILE|TEST|TEST_KIND}}.
+     * {@code TEST_KIND} is Mill testModuleDeps / Maven test-jar ({@code kind = "tests"}) — IDE
+     * generators must also put the sibling's test classes on the test classpath.
+     */
     private static List<String[]> siblingModuleRefs(Path moduleDir, JkBuild module, Map<Path, JkBuild> modules)
             throws IOException {
         List<String[]> result = new ArrayList<>();
         WorkspaceClasspath.Result mainCp =
                 WorkspaceClasspath.resolve(moduleDir, module, EnumSet.of(Scope.EXPORT, Scope.MAIN));
-        WorkspaceClasspath.Result testCp = WorkspaceClasspath.resolve(moduleDir, module, EnumSet.of(Scope.TEST));
+        WorkspaceClasspath.Result testCp =
+                WorkspaceClasspath.resolve(moduleDir, module, EnumSet.of(Scope.TEST, Scope.TEST_DEV));
 
         // Map jar → module name for all workspace siblings.
         Map<Path, String> jarToModule = new LinkedHashMap<>();
+        Map<String, Path> nameToDir = new LinkedHashMap<>();
         for (Map.Entry<Path, JkBuild> me : modules.entrySet()) {
             BuildLayout layout = BuildLayout.of(me.getKey(), me.getValue());
-            jarToModule.put(layout.mainJar(), me.getValue().project().name());
+            String name = me.getValue().project().name();
+            jarToModule.put(layout.mainJar(), name);
+            nameToDir.put(name, me.getKey());
         }
 
         // Use the full declared closure, not jars() — the latter is filtered to jars that already
@@ -401,7 +410,48 @@ public final class IdeOps {
             String name = jarToModule.get(sj);
             if (name != null && added.add(name)) result.add(new String[] {name, "TEST"});
         }
+        // kind=tests edges: upgrade/add TEST_KIND so generators expose sibling test output.
+        Set<String> testsKinds = new LinkedHashSet<>();
+        for (Scope scope : EnumSet.of(Scope.TEST, Scope.TEST_DEV)) {
+            for (Dependency d : module.dependencies().of(scope)) {
+                if (!d.isTestsKind()) continue;
+                String name = siblingNameForDep(d, nameToDir, modules);
+                if (name != null) testsKinds.add(name);
+            }
+        }
+        for (String name : testsKinds) {
+            // Replace plain TEST with TEST_KIND when present; else append.
+            boolean replaced = false;
+            for (int i = 0; i < result.size(); i++) {
+                if (name.equals(result.get(i)[0]) && "TEST".equals(result.get(i)[1])) {
+                    result.set(i, new String[] {name, "TEST_KIND"});
+                    replaced = true;
+                    break;
+                }
+            }
+            if (!replaced && added.add(name + "|TEST_KIND")) {
+                result.add(new String[] {name, "TEST_KIND"});
+            }
+        }
         return result;
+    }
+
+    /** Resolve a workspace/tests-kind edge to the sibling project name. */
+    private static String siblingNameForDep(Dependency d, Map<String, Path> nameToDir, Map<Path, JkBuild> modules) {
+        if (d.isWorkspace()) {
+            String n = d.workspaceName();
+            return nameToDir.containsKey(n) ? n : null;
+        }
+        // After resolveSiblingCoordinates, module is group:artifact.
+        String mod = d.module();
+        for (Map.Entry<Path, JkBuild> e : modules.entrySet()) {
+            String coord = e.getValue().project().group() + ":"
+                    + e.getValue().project().name();
+            if (coord.equals(mod) || e.getValue().project().name().equals(mod)) {
+                return e.getValue().project().name();
+            }
+        }
+        return null;
     }
 
     /** External library references for one module as {@code {libName, "MAIN,TEST"}} — processor-only deps excluded. */

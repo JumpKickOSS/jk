@@ -76,8 +76,7 @@ class PlainAsciiTest {
     @Test
     void plain_wedge_message_rewrites_ellipsis() throws Exception {
         withNoAnsi(() -> {
-            assertThat(BuildPlanWedge.plainWedge("*", "Lock", "Locking g:n…"))
-                    .isEqualTo(" * Lock > Locking g:n...");
+            assertThat(BuildPlanWedge.plainWedge("*", "Lock", "Locking g:n…")).isEqualTo(" * Lock > Locking g:n...");
             return null;
         });
     }

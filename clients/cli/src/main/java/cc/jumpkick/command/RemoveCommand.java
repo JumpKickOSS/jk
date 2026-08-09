@@ -135,7 +135,8 @@ public final class RemoveCommand implements CliCommand {
         // Path form: also drop the module from the enclosing workspace root's [workspace].modules
         // (symmetry with `jk add <path>`, which registers it). Bare-name removals that matched the
         // literal manifest key leave module registration alone.
-        boolean removedViaPath = explicitPath || (pathCandidate && removed.equals(candidates.get(candidates.size() - 1)));
+        boolean removedViaPath =
+                explicitPath || (pathCandidate && removed.equals(candidates.get(candidates.size() - 1)));
         if (removedViaPath) {
             unregisterWorkspaceModule(dir, nameArg);
         }

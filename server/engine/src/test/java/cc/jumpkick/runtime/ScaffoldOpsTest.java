@@ -78,8 +78,10 @@ class ScaffoldOpsTest {
 
     @Test
     void unknown_flag_reports_an_error() {
-        var files = ScaffoldOps.scaffold(Path.of("."), Map.of("plugin", "micronaut", "package", "x"));
-        assertThat(files.error()).contains("micronaut");
+        // Named so that shipping the next framework plugin does not turn this green by accident —
+        // it used to say `micronaut`, which then shipped as a real scaffold.
+        var files = ScaffoldOps.scaffold(Path.of("."), Map.of("plugin", "not-a-plugin", "package", "x"));
+        assertThat(files.error()).contains("not-a-plugin");
     }
 
     @Test
@@ -93,7 +95,7 @@ class ScaffoldOpsTest {
                         "group", "com.example",
                         "name", "demo",
                         "version", "0.1.0",
-                        "quarkus.version", "3.38.0",
+                        "quarkus.version", "3",
                         "simpleLayout", "false",
                         "sample", "true",
                         "baseToml", "[project]\nname = \"demo\"\ngroup = \"com.example\"\n"));
@@ -106,7 +108,7 @@ class ScaffoldOpsTest {
         String xml = files.contents().get(pom);
         assertThat(xml).contains("<groupId>com.example</groupId>");
         assertThat(xml).contains("<artifactId>demo</artifactId>");
-        assertThat(xml).contains("<quarkus.platform.version>3.38.0</quarkus.platform.version>");
+        assertThat(xml).contains("<quarkus.platform.version>3</quarkus.platform.version>");
         assertThat(xml).doesNotContain("${group}").doesNotContain("${name}");
     }
 }

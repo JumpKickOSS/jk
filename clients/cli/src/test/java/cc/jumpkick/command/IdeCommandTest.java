@@ -95,6 +95,41 @@ class IdeCommandTest {
         assertBspConnection(ws);
     }
 
+    @Test
+    void print_model_emits_wire_json_without_writing_idea_files(@TempDir Path tmp) throws IOException {
+        Path ws = simpleProject(tmp);
+        Path jdks = tmp.resolve("jdks");
+        fakeJdk(jdks, "temurin-25.0.3", "25.0.3");
+        Path cache = tmp.resolve("cache");
+
+        // Capture stdout from Jk.execute — use process-level capture via System.out redirect.
+        java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+        var prev = System.out;
+        try {
+            System.setOut(new java.io.PrintStream(buf, true, java.nio.charset.StandardCharsets.UTF_8));
+            assertThat(Jk.execute(new String[] {
+                        "ide",
+                        "--print-model",
+                        "-C",
+                        ws.toString(),
+                        "--cache-dir",
+                        cache.toString(),
+                        "--jdks-dir",
+                        jdks.toString()
+                    }))
+                    .isEqualTo(0);
+        } finally {
+            System.setOut(prev);
+        }
+        String out = buf.toString(java.nio.charset.StandardCharsets.UTF_8);
+        assertThat(out).contains("\"type\":\"ide-model-ack\"");
+        assertThat(out).contains("\"wsRoot\"");
+        assertThat(out).contains("\"moduleDirs\"");
+        // No file generation on the print-model path.
+        assertThat(Files.exists(ws.resolve(".idea"))).isFalse();
+        assertThat(Files.exists(ws.resolve("widget.iml"))).isFalse();
+    }
+
     private static void assertBspConnection(Path ws) throws IOException {
         Path bsp = ws.resolve(".bsp/jk.json");
         assertThat(bsp).exists();
@@ -113,7 +148,7 @@ class IdeCommandTest {
                 group = "dev.example"
                 name = "widget"
                 version = "0.1.0"
-                jdk = 25
+                java = 25
                 """);
         return ws;
     }

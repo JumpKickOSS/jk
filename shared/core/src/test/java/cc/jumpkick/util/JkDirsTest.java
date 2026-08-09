@@ -34,8 +34,7 @@ class JkDirsTest {
         assertThat(dirs.cacheDir()).isEqualTo(Path.of("/Users/me/.cache/jk"));
         assertThat(dirs.userConfigFilePath()).isEqualTo(Path.of("/Users/me/.config/jk/config.toml"));
         assertThat(dirs.binDirectory()).isEqualTo(Path.of("/Users/me/.local/bin"));
-        assertThat(dirs.jdksDir())
-                .isEqualTo(Path.of("/Users/me/Library/Java/JavaVirtualMachines"));
+        assertThat(dirs.jdksDir()).isEqualTo(Path.of("/Users/me/Library/Java/JavaVirtualMachines"));
         assertThat(dirs.storeDir()).isEqualTo(Path.of("/Users/me/.local/share/jk/store"));
     }
 
@@ -49,11 +48,11 @@ class JkDirsTest {
         assertThat(dirs.dataDir()).isEqualTo(local.resolve("jk").resolve("data"));
         assertThat(dirs.cacheDir()).isEqualTo(local.resolve("jk").resolve("cache"));
         assertThat(dirs.stateDir()).isEqualTo(local.resolve("jk").resolve("state"));
-        assertThat(dirs.userConfigFilePath())
-                .isEqualTo(roaming.resolve("jk").resolve("config.toml"));
+        assertThat(dirs.userConfigFilePath()).isEqualTo(roaming.resolve("jk").resolve("config.toml"));
         assertThat(dirs.binDirectory()).isEqualTo(home.resolve(".local").resolve("bin"));
         assertThat(dirs.jdksDir()).isEqualTo(home.resolve(".jdks"));
-        assertThat(dirs.storeDir()).isEqualTo(local.resolve("jk").resolve("data").resolve("store"));
+        assertThat(dirs.storeDir())
+                .isEqualTo(local.resolve("jk").resolve("data").resolve("store"));
         assertThat(dirs.versionsDir())
                 .isEqualTo(local.resolve("jk").resolve("data").resolve("versions"));
     }
@@ -68,8 +67,7 @@ class JkDirsTest {
         JkDirs dirs = JkDirs.of(env::get, "C:\\Users\\me", "Windows 11");
         assertThat(dirs.dataDir()).isEqualTo(local.resolve("jk").resolve("data"));
         assertThat(dirs.cacheDir()).isEqualTo(local.resolve("jk").resolve("cache"));
-        assertThat(dirs.userConfigFilePath())
-                .isEqualTo(roaming.resolve("jk").resolve("config.toml"));
+        assertThat(dirs.userConfigFilePath()).isEqualTo(roaming.resolve("jk").resolve("config.toml"));
     }
 
     @Test

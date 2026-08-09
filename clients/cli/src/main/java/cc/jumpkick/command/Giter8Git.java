@@ -56,8 +56,7 @@ public final class Giter8Git {
         Path clone = ensureClone(ref, cacheRoot);
         if (Giter8Catalog.isTemplateRoot(clone)) return clone.toAbsolutePath().normalize();
         try (var stream = Files.list(clone)) {
-            Optional<Path> nested = stream
-                    .filter(Files::isDirectory)
+            Optional<Path> nested = stream.filter(Files::isDirectory)
                     .filter(d -> d.getFileName().toString().endsWith(".g8") || Giter8Catalog.isTemplateRoot(d))
                     .filter(Giter8Catalog::isTemplateRoot)
                     .findFirst();

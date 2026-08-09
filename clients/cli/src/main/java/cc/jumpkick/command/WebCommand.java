@@ -7,9 +7,9 @@ import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.OpenBrowser;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.model.command.CliCommand;
@@ -54,7 +54,8 @@ public final class WebCommand implements CliCommand {
             return Exit.SOFTWARE;
         }
 
-        EngineClient.Status status = EngineClient.status(EnginePaths.activeSocket(paths)).orElse(null);
+        EngineClient.Status status =
+                EngineClient.status(EnginePaths.activeSocket(paths)).orElse(null);
         if (status == null) {
             CliOutput.err(CommandWedge.fail("Web", "Engine did not answer after start"));
             return Exit.SOFTWARE;
@@ -70,8 +71,7 @@ public final class WebCommand implements CliCommand {
         String url = tokenizedUrl(status.httpUrl(), paths);
         Theme t = Theme.active();
         CommandWedge.envelopeStart();
-        CliOutput.out(BuildPlanWedge.chipLine(
-                Glyphs.PLAY, "Web", GlobalConfig.nerdfont(), "JumpKick dashboard"));
+        CliOutput.out(BuildPlanWedge.chipLine(Glyphs.PLAY, "Web", GlobalConfig.nerdfont(), "JumpKick dashboard"));
         CliOutput.out("");
         CliOutput.out("  Live build activity from this host's engine.");
         CliOutput.out("  Open the URL below if a browser did not launch.");
@@ -90,8 +90,7 @@ public final class WebCommand implements CliCommand {
                 CliOutput.out("  Opening in your browser…");
             } else {
                 CliOutput.out("");
-                CliOutput.out(Theme.colorize(
-                        "  Could not launch a browser — copy the URL above.", t.warning()));
+                CliOutput.out(Theme.colorize("  Could not launch a browser — copy the URL above.", t.warning()));
             }
         }
         return Exit.SUCCESS;

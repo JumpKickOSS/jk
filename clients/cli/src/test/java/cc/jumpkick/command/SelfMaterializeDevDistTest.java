@@ -39,7 +39,8 @@ class SelfMaterializeDevDistTest {
         assertThat(SelfCommand.MaterializeSub.distLibFor(scriptNoLib)).isNull();
 
         assertThat(SelfCommand.MaterializeSub.distLibFor(null)).isNull();
-        assertThat(SelfCommand.MaterializeSub.distLibFor(tmp.resolve("missing"))).isNull();
+        assertThat(SelfCommand.MaterializeSub.distLibFor(tmp.resolve("missing")))
+                .isNull();
     }
 
     @Test

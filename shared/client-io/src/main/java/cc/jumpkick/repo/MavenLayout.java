@@ -13,9 +13,13 @@ public final class MavenLayout {
 
     private MavenLayout() {}
 
-    /** Relative path to the primary artifact for this coordinate. */
+    /**
+     * Relative path to the primary artifact for this coordinate. The extension comes from the
+     * packaging type, which is not always the type name — {@code test-jar} publishes as
+     * {@code artifact-version-tests.jar}.
+     */
     public static String artifactPath(Coordinate coord) {
-        return basePath(coord) + filename(coord, coord.type(), true);
+        return basePath(coord) + filename(coord, cc.jumpkick.model.MavenPackaging.extensionOf(coord.type()), true);
     }
 
     /**

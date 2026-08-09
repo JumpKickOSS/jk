@@ -107,9 +107,12 @@ public final class EngineAotCommand implements cc.jumpkick.model.command.CliComm
                 detail("Engine jar", jar);
             }
             if (!e.classpath().isEmpty()) {
-                detail("Classpath", e.classpath().size() + " entr" + (e.classpath().size() == 1 ? "y" : "ies"));
+                detail(
+                        "Classpath",
+                        e.classpath().size() + " entr" + (e.classpath().size() == 1 ? "y" : "ies"));
                 for (String cp : e.classpath()) {
-                    CliOutput.out("   " + Theme.colorize(Glyphs.bullet(), Theme.active().dim()) + " " + cp);
+                    CliOutput.out("   "
+                            + Theme.colorize(Glyphs.bullet(), Theme.active().dim()) + " " + cp);
                 }
             }
             if (!e.jvmFlags().isEmpty()) {
@@ -174,7 +177,8 @@ public final class EngineAotCommand implements cc.jumpkick.model.command.CliComm
             appendJson(sb, "jkVersion", e.jkVersion());
             appendJson(sb, "engineJar", e.engineJar());
             if (e.engineJarSize() != null) sb.append(",\"engineJarSize\":").append(e.engineJarSize());
-            if (e.engineJarMtimeMs() != null) sb.append(",\"engineJarMtimeMs\":").append(e.engineJarMtimeMs());
+            if (e.engineJarMtimeMs() != null)
+                sb.append(",\"engineJarMtimeMs\":").append(e.engineJarMtimeMs());
             appendJson(sb, "created", e.created());
             appendJson(sb, "lastUsed", e.lastUsed());
             if (!e.classpath().isEmpty()) {

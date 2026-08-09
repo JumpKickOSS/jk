@@ -266,10 +266,11 @@ public final class LockOrchestrator {
                     optionalByLib.putIfAbsent(dep.library(), dep);
                     optionalScopeByLib.putIfAbsent(dep.library(), scope);
                 } else {
+                    // packageKey so main jar and test-jar of the same GA can both root.
                     switch (graphGroup(scope)) {
-                        case PROCESSOR -> processorDeduped.putIfAbsent(dep.module(), dep);
-                        case TEST -> testDeduped.putIfAbsent(dep.module(), dep);
-                        case MAIN -> mainDeduped.putIfAbsent(dep.module(), dep);
+                        case PROCESSOR -> processorDeduped.putIfAbsent(dep.packageKey(), dep);
+                        case TEST -> testDeduped.putIfAbsent(dep.packageKey(), dep);
+                        case MAIN -> mainDeduped.putIfAbsent(dep.packageKey(), dep);
                     }
                 }
             }
@@ -284,21 +285,21 @@ public final class LockOrchestrator {
             }
             Scope optScope = optionalScopeByLib.getOrDefault(depName, Scope.MAIN);
             switch (graphGroup(optScope)) {
-                case PROCESSOR -> processorDeduped.putIfAbsent(opt.module(), opt);
-                case TEST -> testDeduped.putIfAbsent(opt.module(), opt);
-                case MAIN -> mainDeduped.putIfAbsent(opt.module(), opt);
+                case PROCESSOR -> processorDeduped.putIfAbsent(opt.packageKey(), opt);
+                case TEST -> testDeduped.putIfAbsent(opt.packageKey(), opt);
+                case MAIN -> mainDeduped.putIfAbsent(opt.packageKey(), opt);
             }
         }
         // Cross-package features on path= libraries: pull their optional deps.
         CrossPackageFeatures.Result cross = CrossPackageFeatures.expand(projectDir, mainDeduped.values());
         this.crossPackageActivatedFeatures = cross.activatedFeaturesByModule();
         for (Dependency extra : cross.extrasList()) {
-            mainDeduped.putIfAbsent(extra.module(), extra);
+            mainDeduped.putIfAbsent(extra.packageKey(), extra);
         }
         // junit infrastructure rides the test graph only.
-        testDeduped.putIfAbsent(JUNIT_LAUNCHER.module(), JUNIT_LAUNCHER);
+        testDeduped.putIfAbsent(JUNIT_LAUNCHER.packageKey(), JUNIT_LAUNCHER);
         if (project.dependencies().of(Scope.TEST).isEmpty()) {
-            testDeduped.putIfAbsent(JUNIT_JUPITER.module(), JUNIT_JUPITER);
+            testDeduped.putIfAbsent(JUNIT_JUPITER.packageKey(), JUNIT_JUPITER);
         }
         Map<String, String> bomConstraints = new LinkedHashMap<>();
         Map<String, String> constraintProvenance = new LinkedHashMap<>();
@@ -409,11 +410,12 @@ public final class LockOrchestrator {
         // First failure wins: tasks still waiting on a permit/queue skip their download instead
         // of hammering the host for a lock that is already dead.
         java.util.concurrent.atomic.AtomicBoolean failed = new java.util.concurrent.atomic.AtomicBoolean();
+        List<CompletableFuture<?>> inFlight = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
             final int idx = i;
             var e = ordered.get(i);
             EnumSet<Scope> tags = tagsByKey.get(e.getKey());
-            CompletableFuture.supplyAsync(
+            inFlight.add(CompletableFuture.supplyAsync(
                             () -> {
                                 try {
                                     if (failed.get()) {
@@ -441,7 +443,7 @@ public final class LockOrchestrator {
                             var mod = e.getValue();
                             doneQ.offer(MaterializeDone.ok(idx, art, displayModule(mod.module()), mod.version()));
                         }
-                    });
+                    }));
         }
         int received = 0;
         while (received < n) {
@@ -449,10 +451,18 @@ public final class LockOrchestrator {
             try {
                 d = doneQ.take();
             } catch (InterruptedException ie) {
+                failed.set(true);
+                settle(inFlight);
                 Thread.currentThread().interrupt();
                 throw ie;
             }
             if (d.error != null) {
+                // Siblings are still on the io pool writing into the CAS. Let them wind down
+                // before the failure propagates — `failed` makes the unstarted ones return at
+                // once, so this is bounded by whatever is mid-download. Escaping here leaves
+                // threads mutating a store the caller believes it has finished with.
+                failed.set(true);
+                settle(inFlight);
                 Throwable c = d.error.getCause() != null ? d.error.getCause() : d.error;
                 if (c instanceof CompletionException ce && ce.getCause() != null) c = ce.getCause();
                 if (c instanceof IOException io) throw io;
@@ -582,6 +592,21 @@ public final class LockOrchestrator {
         return r.resolve(roots);
     }
 
+    /**
+     * Wait for every materialize task to finish, discarding outcomes. Called when the lock is
+     * already lost, so the only thing that matters is that no task is still touching the CAS when
+     * this returns.
+     */
+    private static void settle(List<CompletableFuture<?>> inFlight) {
+        for (CompletableFuture<?> f : inFlight) {
+            try {
+                f.join();
+            } catch (CompletionException | java.util.concurrent.CancellationException ignored) {
+                // the failure that got us here, or a sibling's — already reported
+            }
+        }
+    }
+
     /** Completion event for parallel jar materialize (progress on complete, rows ordered). */
     private record MaterializeDone(
             int index, Lockfile.Artifact artifact, String module, String version, Throwable error) {
@@ -625,16 +650,10 @@ public final class LockOrchestrator {
             Map<String, String> constraintProvenance)
             throws IOException, InterruptedException {
         for (Dependency platformDep : project.dependencies().of(Scope.PLATFORM)) {
-            String bomVersion = versionLiteral(platformDep.version());
-            if (bomVersion == null) {
-                // R6b: platform BOMs must pin a concrete version (exact / caret / tilde anchor).
-                throw new IllegalStateException("platform dependency `"
-                        + platformDep.module()
-                        + "` must use an exact or caret/tilde version (got `"
-                        + platformDep.version().raw()
-                        + "`). Floating selectors like `latest` or open ranges are not supported for"
-                        + " [platform-dependencies] BOMs — pin e.g. `=3.4.0` or `3.4.0`.");
-            }
+            // JK-1545: resolve caret/tilde against repo metadata, then load *that* BOM's catalog.
+            // Exact pins skip metadata. latest/open ranges still rejected (R6b / PlatformBomVersions).
+            String bomVersion =
+                    PlatformBomVersions.resolve(repos, platformDep.group(), platformDep.name(), platformDep.version());
             Coordinate bomCoord = Coordinate.of(platformDep.group(), platformDep.name(), bomVersion);
             EffectivePom bomPom = pomBuilder.build(bomCoord);
             String bomLabel = bomCoord.toGav();
@@ -745,8 +764,10 @@ public final class LockOrchestrator {
                             + "` is declared without a version, but no [platform-dependencies] BOM manages it"
                             + " — add a `version`, or import the BOM that pins it.");
                 }
-                roots.add(new Dependency(
-                        d.library(), d.module(), VersionSelector.parse("=" + managed), null, null, true, d.optional()));
+                roots.add(Dependency.of(d.library(), d.module(), VersionSelector.parse("=" + managed))
+                        .withOptional(d.optional())
+                        .withKind(d.kind())
+                        .withFeatures(d.requestedFeatures(), d.defaultFeatures()));
             } else {
                 roots.add(d);
             }
@@ -761,13 +782,13 @@ public final class LockOrchestrator {
         for (Scope scope : scopes) {
             Set<String> rootModules = new HashSet<>();
             for (Dependency d : project.dependencies().of(scope)) {
-                // Resolution keys are package ids (g:a:type:classifier); declared modules are GA.
-                rootModules.add(PackageId.ofGa(d.module()).key());
+                // packageKey: kind=tests → g:a:test-jar:tests; else g:a:jar:
+                rootModules.add(d.packageKey());
             }
             if (includeJunitSeeds && scope == Scope.TEST) {
-                rootModules.add(PackageId.ofGa(JUNIT_LAUNCHER.module()).key());
+                rootModules.add(JUNIT_LAUNCHER.packageKey());
                 if (project.dependencies().of(Scope.TEST).isEmpty()) {
-                    rootModules.add(PackageId.ofGa(JUNIT_JUPITER.module()).key());
+                    rootModules.add(JUNIT_JUPITER.packageKey());
                 }
             }
             if (rootModules.isEmpty()) continue;
@@ -822,8 +843,8 @@ public final class LockOrchestrator {
                 && !kmpAlias
                 && (coord.type() == null || "jar".equals(coord.type()))
                 && (coord.classifier() == null || coord.classifier().isEmpty())) {
-            // Jar miss for a bare-GA dep whose POM packaging is aarprobe packaging
-            // only on miss — the warm path stays probe-free — and rewrite to.aar
+            // Jar miss for a bare-GA dep whose POM packaging is aar: probe packaging
+            // only on miss — the warm path stays probe-free — and rewrite to .aar
             // instead of silently writing a checksum-less row.
             try {
                 if ("aar".equals(pomBuilder.build(coord).packaging())) {
@@ -840,6 +861,11 @@ public final class LockOrchestrator {
         if (hit != null) {
             source = hit.repo().name() + "+" + hit.repo().baseUrl();
             checksum = "sha256:" + hit.fetched().sha256();
+        } else if (!kmpAlias && !isPomOnlyPackage(coord, pomBuilder)) {
+            // JK-1649: a resolved package whose artifact 404s must not land as a checksum-less
+            // lock row that ClasspathResolver silently drops. KMP aliases and packaging=pom
+            // (BOMs / aggregators) legitimately have no file; everything else fails the lock.
+            throw unfetchableArtifact(coord, fallbackSource);
         }
 
         if (tags.isEmpty()) tags = EnumSet.of(Scope.MAIN);
@@ -874,6 +900,53 @@ public final class LockOrchestrator {
 
     /** Filled during {@link #lock}; read by {@link #toArtifact}. */
     private Map<String, List<String>> crossPackageActivatedFeatures;
+
+    /**
+     * True when this package is not expected to publish a primary artifact: coordinate type
+     * {@code pom}, or POM {@code packaging=pom} (BOM / aggregator).
+     */
+    private static boolean isPomOnlyPackage(Coordinate coord, EffectivePomBuilder pomBuilder) {
+        if (coord.type() != null && "pom".equalsIgnoreCase(coord.type())) {
+            return true;
+        }
+        try {
+            return "pom".equalsIgnoreCase(pomBuilder.build(coord).packaging());
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    /**
+     * Fail lock when a package resolved to a version but no repo served its artifact (JK-1649).
+     * Names the coordinate, the Maven layout path tried, and the repositories consulted.
+     */
+    private IllegalStateException unfetchableArtifact(Coordinate coord, String fallbackSource) {
+        String rel = cc.jumpkick.repo.MavenLayout.artifactPath(coord);
+        StringBuilder reposTried = new StringBuilder();
+        for (MavenRepo r : repos.repos()) {
+            if (reposTried.length() > 0) reposTried.append(", ");
+            String base = r.baseUrl().toString();
+            if (!base.endsWith("/")) base = base + "/";
+            reposTried.append(r.name()).append('+').append(base).append(rel);
+        }
+        if (reposTried.length() == 0) {
+            reposTried.append(fallbackSource).append('/').append(rel);
+        }
+        String display = coord.group() + ":" + coord.artifact() + ":" + coord.version();
+        if (coord.type() != null && !coord.type().isBlank() && !"jar".equals(coord.type())) {
+            display = display + " type=" + coord.type();
+        }
+        if (coord.classifier() != null && !coord.classifier().isEmpty()) {
+            display = display + " classifier=" + coord.classifier();
+        }
+        return new IllegalStateException("could not fetch artifact "
+                + display
+                + " at "
+                + rel
+                + " (tried: "
+                + reposTried
+                + ") — the POM resolved but the artifact is missing; check the coordinate and repositories");
+    }
 
     /** Human-facing module id: {@code group:artifact} for Maven package keys. */
     private static String displayModule(String moduleOrKey) {
@@ -977,7 +1050,11 @@ public final class LockOrchestrator {
         String pinLit = declared != null ? versionLiteral(declared) : null;
         boolean pinned = pinLit != null && !pinLit.isBlank();
         Dependency dep = new Dependency(module, runtimeSelector(bomConstraints, module, declared, fallbackMajor));
-        if (mainDeduped.putIfAbsent(module, dep) == null && !pinned) {
+        // mainDeduped is keyed by packageKey (so a jar and a test-jar of one GA can both root), so
+        // probe with the same key — a bare-GA probe never sees the user's own dep and injects a
+        // second root for the same solver package. `added` stays GA-keyed: stripBomForExactRoots
+        // matches it against Dependency.module().
+        if (mainDeduped.putIfAbsent(dep.packageKey(), dep) == null && !pinned) {
             added.add(module);
         }
     }

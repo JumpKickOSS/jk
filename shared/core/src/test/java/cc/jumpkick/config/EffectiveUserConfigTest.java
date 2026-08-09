@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import org.junit.jupiter.api.Test;
@@ -27,9 +29,7 @@ class EffectiveUserConfigTest {
     @Test
     void file_overrides_mark_only_changed_keys(@TempDir Path dir) throws Exception {
         Path toml = dir.resolve("config.toml");
-        Files.writeString(
-                toml,
-                """
+        Files.writeString(toml, """
                 [global]
                 nerdfont = true
 
@@ -58,7 +58,7 @@ class EffectiveUserConfigTest {
         assertThat(find(rows, "http.port").overridden()).isTrue();
     }
 
-    private static EffectiveUserConfig.Row find(java.util.List<EffectiveUserConfig.Row> rows, String key) {
+    private static EffectiveUserConfig.Row find(List<EffectiveUserConfig.Row> rows, String key) {
         return rows.stream()
                 .filter(r -> key.equals(r.key()))
                 .findFirst()
@@ -66,7 +66,7 @@ class EffectiveUserConfigTest {
     }
 
     private static Function<String, String> env(String... kv) {
-        Map<String, String> m = new java.util.HashMap<>();
+        Map<String, String> m = new HashMap<>();
         for (int i = 0; i + 1 < kv.length; i += 2) m.put(kv[i], kv[i + 1]);
         return m::get;
     }

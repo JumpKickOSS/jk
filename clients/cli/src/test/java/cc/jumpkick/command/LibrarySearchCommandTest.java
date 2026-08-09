@@ -10,10 +10,11 @@ import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.util.Hashing;
 import java.io.ByteArrayOutputStream;
-import java.nio.file.Files;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -48,7 +49,7 @@ class LibrarySearchCommandTest {
         boolean moved = false;
         try {
             if (Files.exists(downloaded)) {
-                Files.move(downloaded, aside, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                Files.move(downloaded, aside, StandardCopyOption.REPLACE_EXISTING);
                 moved = true;
             }
             int exit = Jk.execute("library", "search", "junit", "--show-layer");
@@ -62,7 +63,7 @@ class LibrarySearchCommandTest {
             assertThat(stdout).contains("bundled");
         } finally {
             if (moved) {
-                Files.move(aside, downloaded, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                Files.move(aside, downloaded, StandardCopyOption.REPLACE_EXISTING);
             }
         }
     }

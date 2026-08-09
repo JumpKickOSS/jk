@@ -1,0 +1,8 @@
+[project]
+name        = "jk-dynamic-surface"
+description = "jk dynamic surface: reflection/proxy/resource/service surface modelled once, emitted as R8 keep rules and GraalVM reachability metadata."
+
+[test-dependencies]
+assertj-core            = "latest"
+junit-jupiter           = "latest"
+junit-platform-launcher = "latest"

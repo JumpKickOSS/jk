@@ -57,7 +57,7 @@ public final class NewJkBuildRenderer {
                 sb.append("main       = \"").append(inputs.main().get()).append("\"\n");
             }
             if (inputs.assembly()) {
-                sb.append("assembly = true\n");
+                sb.append("assembly   = true\n"); // aligns with `main       =` above
             }
         }
         if (inputs.nativeImage()) {
@@ -135,7 +135,8 @@ public final class NewJkBuildRenderer {
             if (curated != null) {
                 for (var e : curated) {
                     String shortName = e.coord().substring(e.coord().indexOf(':') + 1);
-                    byScope.computeIfAbsent(e.scope(), _ -> new LinkedHashMap<>()).putIfAbsent(shortName, e);
+                    byScope.computeIfAbsent(e.scope(), _ -> new LinkedHashMap<>())
+                            .putIfAbsent(shortName, e);
                 }
                 continue;
             }

@@ -12,6 +12,7 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -37,11 +38,12 @@ class EngineAotCommandTest {
                             .jdkVendor("TEMURIN")
                             .jdkVersion("25.0.3")
                             .gc("parallel")
-                            .classpath(java.util.List.of("/plugins/jk-java-compiler.jar"))
-                            .jvmFlags(java.util.List.of("-XX:+UseParallelGC"))
+                            .classpath(List.of("/plugins/jk-java-compiler.jar"))
+                            .jvmFlags(List.of("-XX:+UseParallelGC"))
                             .build());
 
-            String plain = TestAnsi.strip(capture(() -> assertThat(Jk.execute("engine", "aot")).isZero()));
+            String plain = TestAnsi.strip(
+                    capture(() -> assertThat(Jk.execute("engine", "aot")).isZero()));
             assertThat(plain).contains("AOT Caches");
             assertThat(plain).contains(name);
             assertThat(plain).contains("java-compiler");
@@ -65,7 +67,8 @@ class EngineAotCommandTest {
         Path cache = aot.resolve(name);
         try {
             Files.writeString(cache, "eng");
-            String out = capture(() -> assertThat(Jk.execute("engine", "aot", "-O", "json")).isZero());
+            String out = capture(
+                    () -> assertThat(Jk.execute("engine", "aot", "-O", "json")).isZero());
             assertThat(out).contains("\"directory\"");
             assertThat(out).contains(name);
             assertThat(out).contains("\"caches\"");
@@ -78,7 +81,8 @@ class EngineAotCommandTest {
     @Test
     void empty_missing_dir_is_ok() {
         // Don't delete ambient aot if other tests use it — just assert command exits 0 and has title.
-        String plain = TestAnsi.strip(capture(() -> assertThat(Jk.execute("engine", "aot")).isZero()));
+        String plain = TestAnsi.strip(
+                capture(() -> assertThat(Jk.execute("engine", "aot")).isZero()));
         assertThat(plain).contains("AOT Caches");
     }
 

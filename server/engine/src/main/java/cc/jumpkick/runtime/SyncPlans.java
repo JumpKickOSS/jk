@@ -40,7 +40,8 @@ public final class SyncPlans {
     public static final BuildPlanKey<JkBuild> BUILD = BuildPlanKey.of("build", JkBuild.class);
     public static final BuildPlanKey<JdkEnsure.Outcome> JDK_OUTCOME =
             BuildPlanKey.of("jdk-outcome", JdkEnsure.Outcome.class);
-    public static final BuildPlanKey<CacheSync.Report> CAS_REPORT = BuildPlanKey.of("cas-report", CacheSync.Report.class);
+    public static final BuildPlanKey<CacheSync.Report> CAS_REPORT =
+            BuildPlanKey.of("cas-report", CacheSync.Report.class);
     public static final BuildPlanKey<JkPluginSync.Result> WORKER_REPORT =
             BuildPlanKey.of("worker-report", JkPluginSync.Result.class);
     public static final BuildPlanKey<Integer> WORKSPACE_MODULES = BuildPlanKey.of("workspace-modules", Integer.class);

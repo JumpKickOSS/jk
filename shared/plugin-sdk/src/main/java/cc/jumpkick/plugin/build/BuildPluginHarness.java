@@ -178,6 +178,8 @@ public final class BuildPluginHarness {
                     .append(quoteArray(step.testClasspathContributions()))
                     .append(",\"transformsClasses\":")
                     .append(Jsonl.quote(step.classesTransform() == null ? "" : step.classesTransform()))
+                    .append(",\"stage\":")
+                    .append(Jsonl.quote(step.stage() == null ? "" : step.stage()))
                     .append('}');
             out.emit(b.toString());
         }
@@ -356,11 +358,17 @@ public final class BuildPluginHarness {
                     case "entry" -> {
                         String jarPath = Jsonl.str(line, "path");
                         String container = Jsonl.str(line, "container");
+                        String g = Jsonl.str(line, "group");
+                        String a = Jsonl.str(line, "artifact");
+                        String v = Jsonl.str(line, "version");
                         entries.add(new PackageIo.RuntimeEntry(
                                 String.valueOf(Jsonl.str(line, "file")),
                                 jarPath == null ? null : Path.of(jarPath),
                                 Jsonl.bool(line, "snapshot", false),
-                                container == null ? null : Path.of(container)));
+                                container == null ? null : Path.of(container),
+                                g == null ? "" : g,
+                                a == null ? "" : a,
+                                v == null ? "" : v));
                     }
                     case "step-output" ->
                         stepOutputs.put(

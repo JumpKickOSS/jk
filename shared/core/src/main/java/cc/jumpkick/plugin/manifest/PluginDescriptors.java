@@ -252,6 +252,8 @@ public final class PluginDescriptors {
                 Boolean.TRUE.equals(packaging.getBoolean("layered-image")),
                 extension,
                 deployCommand == null ? "" : deployCommand,
+                // Default true: a packager owns the module's artifact unless it says otherwise.
+                !Boolean.FALSE.equals(packaging.getBoolean("main-artifact")),
                 variants);
     }
 
@@ -289,6 +291,17 @@ public final class PluginDescriptors {
             for (String arg : groovy) Interpolation.validate(arg, schemaKeys, where + ".groovy");
             for (String arg : ksp) Interpolation.validate(arg, schemaKeys, where + ".ksp");
             compilerArgs.add(new PluginDescriptor.CompilerArgs(javac, kotlin, groovy, ksp, parseCondition(t, where)));
+        }
+
+        // [[contribute.native-args]] — class-initialization policy and other native-image flags
+        // the framework needs. Not reachability metadata: no amount of it expresses which types
+        // may be initialized while the image is built.
+        List<PluginDescriptor.NativeArgs> nativeArgs = new ArrayList<>();
+        for (TomlTable t : tableArray(contribute, "native-args", displayPath)) {
+            String where = displayPath + ".contribute.native-args";
+            List<String> args = stringList(t, "args", where);
+            for (String arg : args) Interpolation.validate(arg, schemaKeys, where + ".args");
+            nativeArgs.add(new PluginDescriptor.NativeArgs(args, parseCondition(t, where)));
         }
 
         // [[contribute.source-roots]] — extra module input roots (Grails' grails-app tree).
@@ -425,6 +438,7 @@ public final class PluginDescriptors {
         return new PluginDescriptor.Contributions(
                 platformDeps,
                 compilerArgs,
+                nativeArgs,
                 kotlinPlugins,
                 packagerDeps,
                 stepDeps,

@@ -6,9 +6,9 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.model.command.CliCommand;
@@ -96,9 +96,9 @@ public final class EngineStatusCommand implements CliCommand {
                 Glyphs.PLAY, "Engine", GlobalConfig.nerdfont(), "Engine is running (pid " + pidStyled(s.pid()) + ")"));
         detail("Version", s.version());
         detail("Uptime", formatUptime(uptimeSeconds));
-        detail("Jobs", String.valueOf(s.activeBuildPlans()));
+        detail("Live Jobs", String.valueOf(s.activeBuildPlans()));
         // Transient by design: the sidecar trainer lives ~15s after a fresh install/upgrade, then
-        // this line disappears — steady state stays exactly four/five bullets.
+        // this line disappears — steady state stays four/five detail rows (+ memory bar).
         if (s.aotTrainingPid() > 0) {
             detail("AOT", "training in progress (pid " + pidStyled(s.aotTrainingPid()) + ")");
         }
@@ -106,17 +106,17 @@ public final class EngineStatusCommand implements CliCommand {
         if (memory != null) {
             detail("Memory", memory);
             String bar = memoryBar(s);
+            // Align under the value column (same indent as status dotted-label values).
             if (bar != null) CliOutput.out(" ".repeat(VALUE_COL) + bar);
         }
         String http = describeHttp(s, paths);
-        // OSC-8 hyperlink with the URL in the theme's path color so it reads AND behaves as a link.
+        // OSC-8 hyperlink; visible text is white to match other status values.
         String webUi = s.httpUrl() != null
-                ? Ansi.hyperlink(http, Theme.colorize(http, Theme.active().path()))
+                ? Ansi.hyperlink(http, Theme.colorize(http, Theme.active().brightWhite()))
                 : http;
         detail("Web UI", webUi);
         if (s.mcpUrl() != null) {
-            String mcp = Theme.colorize(s.mcpUrl(), Theme.active().path());
-            detail("MCP", mcp + "  (POST JSON-RPC; Bearer token)");
+            detail("MCP", s.mcpUrl() + "  (POST JSON-RPC; Bearer token)");
         }
         java.util.List<cc.jumpkick.cli.engine.EngineFleet.Member> fleet = cc.jumpkick.cli.engine.EngineFleet.list();
         if (fleet.size() > 1) printFleet(fleet);
@@ -182,16 +182,39 @@ public final class EngineStatusCommand implements CliCommand {
         return b.append("]").toString();
     }
 
-    /** Widest {@code "label:"} ({@code "Version:"}); values line up one space past it. */
-    private static final int LABEL_FIELD = 8;
+    /**
+     * Label field width including the trailing colon (widest is {@code Live Jobs:}). Labels are
+     * left-aligned and padded with dim dots — same shape as {@code jk status}.
+     */
+    private static final int LABEL_W = 10;
 
-    /** Column where values (and the memory bar) begin: {@code " • "} + label field + one space. */
-    private static final int VALUE_COL = 3 + LABEL_FIELD + 1;
+    /** Column where values (and the memory bar) begin: leading space + label field + one space. */
+    private static final int VALUE_COL = 1 + LABEL_W + 1;
 
-    /** One detail line under the header: {@code  • Label:  value} (label left-aligned, values aligned). */
+    /**
+     * One detail row under the header chip:
+     *
+     * <pre>
+     *  Version..: 0.11.0
+     *  Live Jobs: 0
+     * </pre>
+     *
+     * {@link Theme#settled()} label (body foreground), bright-black ({@link Theme#darkGray()})
+     * dotted leader + colon, bright-white value. Leading space matches the historical engine-status
+     * indent.
+     *
+     * <p>When {@code value} already contains ANSI (e.g. an OSC-8 hyperlink), it is emitted as-is
+     * so nested styling is not double-wrapped.
+     */
     private static void detail(String label, String value) {
-        CliOutput.out(" " + Theme.colorize(Glyphs.BULLET, Theme.active().dim()) + " "
-                + String.format("%-" + LABEL_FIELD + "s", label + ":") + " " + value);
+        Theme t = Theme.active();
+        String field = StatusCommand.dottedLabel(label, LABEL_W);
+        String name = field.substring(0, label.length());
+        String leader = field.substring(label.length()); // dots + ':'
+        String val = value == null ? "—" : value;
+        // Pre-styled values (hyperlinks) keep their own sequences; plain text is bright white.
+        String styledVal = val.indexOf('\u001B') >= 0 ? val : Theme.colorize(val, t.brightWhite());
+        CliOutput.out(" " + Theme.colorize(name, t.settled()) + Theme.colorize(leader, t.darkGray()) + " " + styledVal);
     }
 
     /** The engine pid in yellow on an ANSI terminal (matching the start/stop wedges). */

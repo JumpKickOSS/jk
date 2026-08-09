@@ -11,8 +11,6 @@ import java.io.IOException;
  */
 public interface GitBackend extends Extension {
 
-    
-
     /** Enumerate the remote's tags + {@code HEAD} sha via {@code ls-remote} — no clone. */
     GitFetcher.RemoteRefs listRefs(GitSource source) throws IOException;
 

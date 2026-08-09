@@ -43,7 +43,6 @@ import cc.jumpkick.command.LockCommand;
 import cc.jumpkick.command.MvnCommand;
 import cc.jumpkick.command.NativeCommand;
 import cc.jumpkick.command.NewCommand;
-
 import cc.jumpkick.command.OutdatedCommand;
 import cc.jumpkick.command.PluginCommand;
 import cc.jumpkick.command.PublishCommand;

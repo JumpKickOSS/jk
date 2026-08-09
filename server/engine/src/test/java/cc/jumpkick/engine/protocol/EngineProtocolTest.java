@@ -182,10 +182,11 @@ class EngineProtocolTest {
     @Test
     void invocation_phase_wire_names_round_trip_the_enum() {
         for (var p : cc.jumpkick.plugin.build.InvocationPhase.values()) {
-            assertThat(cc.jumpkick.plugin.build.InvocationPhase.fromWire(p.wireName())).isEqualTo(p);
+            assertThat(cc.jumpkick.plugin.build.InvocationPhase.fromWire(p.wireName()))
+                    .isEqualTo(p);
         }
-        String line = EngineProtocol.invocationPhase(
-                cc.jumpkick.plugin.build.InvocationPhase.RESOLVE.wireName(), "start");
+        String line =
+                EngineProtocol.invocationPhase(cc.jumpkick.plugin.build.InvocationPhase.RESOLVE.wireName(), "start");
         assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.INVOCATION_PHASE);
         assertThat(Jsonl.str(line, "phase")).isEqualTo("resolve");
         assertThat(Jsonl.str(line, "status")).isEqualTo("start");
@@ -194,7 +195,20 @@ class EngineProtocolTest {
     @Test
     void build_request_carries_test_only_and_dirty_hint() {
         String on = EngineProtocol.buildRequest(
-                "/w", "/c", null, 1, null, false, false, 0, false, false, false, true, false, true,
+                "/w",
+                "/c",
+                null,
+                1,
+                null,
+                false,
+                false,
+                0,
+                false,
+                false,
+                false,
+                true,
+                false,
+                true,
                 List.of("/w/api", "/w/core"));
         assertThat(Jsonl.bool(on, "testOnly", false)).isTrue();
         assertThat(EngineProtocol.dirtyHintOf(on)).containsExactly("/w/api", "/w/core");
@@ -629,19 +643,17 @@ class EngineProtocolTest {
 
     @Test
     void cache_prune_request_round_trips_all_fields() {
-        String json = EngineProtocol.cachePruneRequest("prune", "/cache", 14, true, true, "20G", true);
+        String json = EngineProtocol.cachePruneRequest("prune", "/cache", 14, true, true, true);
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.CACHE_PRUNE_REQUEST);
         assertThat(Jsonl.str(json, "op")).isEqualTo("prune");
         assertThat(Jsonl.str(json, "cache")).isEqualTo("/cache");
         assertThat(Jsonl.intValue(json, "olderThanDays", -1)).isEqualTo(14);
         assertThat(Jsonl.bool(json, "dryRun", false)).isTrue();
         assertThat(Jsonl.bool(json, "sweep", false)).isTrue();
-        assertThat(Jsonl.str(json, "maxSize")).isEqualTo("20G");
         assertThat(Jsonl.bool(json, "includeJkTmp", false)).isTrue();
 
-        String purge = EngineProtocol.cachePruneRequest("purge", "/c", 0, false, false, null, false);
+        String purge = EngineProtocol.cachePruneRequest("purge", "/c", 0, false, false, false);
         assertThat(Jsonl.str(purge, "op")).isEqualTo("purge");
-        assertThat(Jsonl.str(purge, "maxSize")).isNull();
     }
 
     @Test

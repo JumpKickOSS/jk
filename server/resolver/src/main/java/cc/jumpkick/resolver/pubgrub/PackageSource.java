@@ -39,6 +39,13 @@ public interface PackageSource {
     }
 
     /**
+     * Wait for any speculative work this source started in the background. Called when a solve
+     * finishes, so a caller that then deletes the cache directory is not racing a prefetch still
+     * writing into it. Default: nothing to wait for.
+     */
+    default void quiesce() {}
+
+    /**
      * @return dependency edges of {@code (pkg, version)} as {@link Term}s. Each Term gives a
      * downstream package and the version range the parent requires of it.
      * @throws VersionUnavailableException when this exact version is <em>definitively</em> absent

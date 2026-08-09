@@ -174,7 +174,15 @@ class DependencyTreeTest {
                                 List.of(new Dependency("org.junit:junit", new VersionSelector.Exact("=5.0", "5.0"))))));
         Lockfile lock = lockOf(pkg("com.foo:lib", "1.0", List.of()), pkg("org.junit:junit", "5.0", List.of()));
 
-        String rendered = DependencyTree.render(project, lock, tmp, Integer.MAX_VALUE, DependencyTree.Styling.plain());
+        // Default scopes are export/main/runtime — pass test explicitly for this grouping check.
+        String rendered = DependencyTree.render(
+                project,
+                lock,
+                tmp,
+                Integer.MAX_VALUE,
+                DependencyTree.Styling.plain(),
+                false,
+                List.of(Scope.MAIN, Scope.TEST));
 
         // main + test sections present; empty scopes (provided, runtime, …) omitted.
         // (Plain styling emits the bare scope label; padding/caps are the styler's job.)
@@ -184,6 +192,23 @@ class DependencyTreeTest {
         assertThat(rendered.indexOf("main")).isLessThan(rendered.indexOf("com.foo:lib"));
         assertThat(rendered.indexOf("com.foo:lib")).isLessThan(rendered.indexOf("test"));
         assertThat(rendered.indexOf("test")).isLessThan(rendered.indexOf("org.junit:junit"));
+    }
+
+    @Test
+    void default_scopes_are_export_main_runtime_only(@org.junit.jupiter.api.io.TempDir Path tmp) {
+        JkBuild project = new JkBuild(
+                new JkBuild.Project("com.example", "widget", "0.1.0", 0),
+                new JkBuild.Dependencies(Map.of(
+                        Scope.MAIN, List.of(new Dependency("com.foo:lib", new VersionSelector.Exact("=1.0", "1.0"))),
+                        Scope.TEST,
+                                List.of(new Dependency("org.junit:junit", new VersionSelector.Exact("=5.0", "5.0"))))));
+        Lockfile lock = lockOf(pkg("com.foo:lib", "1.0", List.of()), pkg("org.junit:junit", "5.0", List.of()));
+
+        String rendered = DependencyTree.render(project, lock, tmp, Integer.MAX_VALUE, DependencyTree.Styling.plain());
+
+        assertThat(rendered).contains("main").contains("com.foo:lib");
+        assertThat(rendered).doesNotContain("test").doesNotContain("org.junit:junit");
+        assertThat(DependencyTree.defaultScopeOrder()).containsExactly(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME);
     }
 
     @Test
@@ -297,7 +322,14 @@ class DependencyTreeTest {
         Lockfile lock = lockOf(pkg("com.foo:m", "1.0", List.of()), pkg("com.foo:t", "1.0", List.of()));
 
         String rendered = DependencyTree.render(
-                project, lock, dir, Integer.MAX_VALUE, DependencyTree.Styling.plain(), false, null, true);
+                project,
+                lock,
+                dir,
+                Integer.MAX_VALUE,
+                DependencyTree.Styling.plain(),
+                false,
+                List.of(Scope.MAIN, Scope.TEST),
+                true);
 
         // A single header line carries every scope badge; deps from all scopes are
         // blended into the one tree beneath it.

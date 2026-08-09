@@ -19,7 +19,7 @@ Status: **normative** for TUI / wire progress. Implementations live under
 |-----------|----------------|
 | `EffortWeights` | Plan-time task weights; `TOKEN` for skip/check; dirty-task composition |
 | `TestEffort` | `run-tests` pricing (class walls or method product) |
-| `TaskPhases` | Closed phase taxonomy for rollup (not a lifecycle scheduler) |
+| `BuildStage` / `TaskPhases` | Closed stage taxonomy for rollup (UI fold + ETA; not a lifecycle scheduler). Prefer `BuildStage`. |
 | Project runs + harvest | Per-run `metrics.toml` → `project-metrics.toml` + `host-metrics.toml` |
 | `BuildService.seedEta` | Schedule-aware wall ETA + history floors |
 | `WorkspaceProgressTracker` | Preflight band + calibrated Σ module slices |

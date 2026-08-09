@@ -126,7 +126,8 @@ public final class BuildJournal {
                     deleteTreeQuietly(target);
                 }
                 move(tmp, target);
-                if (!record.running() && !record.synthetic()) MetricsHarvest.get().request();
+                if (!record.running() && !record.synthetic())
+                    MetricsHarvest.get().request();
                 return dirName;
             } catch (IOException e) {
                 deleteTreeQuietly(tmp);
@@ -326,7 +327,11 @@ public final class BuildJournal {
             }
         }
         for (Map.Entry<String, Long> e : phaseTotals.entrySet()) {
-            sb.append("phase.").append(e.getKey()).append(".wall-ms = ").append(e.getValue()).append('\n');
+            sb.append("phase.")
+                    .append(e.getKey())
+                    .append(".wall-ms = ")
+                    .append(e.getValue())
+                    .append('\n');
         }
         for (Map.Entry<String, Map<String, Long>> me : modulePhaseTotals.entrySet()) {
             for (Map.Entry<String, Long> e : me.getValue().entrySet()) {
@@ -377,7 +382,14 @@ public final class BuildJournal {
         if (s == null || s.millis() <= 0) return;
         if (s.status() == null || !"SUCCESS".equalsIgnoreCase(s.status())) return;
         String task = sanitize(s.name());
-        String phase = sanitize(cc.jumpkick.runtime.TaskPhases.of(s.name()));
+        // The record already carries the stage the plan declared (wire `stage`). Re-deriving it
+        // from the task name put the metrics rollup on a different taxonomy than the UI fold —
+        // plugin-android-res reported `generate` on the wire and landed in `phase.compile` here,
+        // and every stage(RESOLVE) task in ScriptPlans landed in `other` (JK-1610). Name inference
+        // stays as the fallback for records that carry no stage.
+        String declared = s.stage();
+        String phase = sanitize(
+                declared != null && !declared.isBlank() ? declared : cc.jumpkick.runtime.TaskPhases.of(s.name()));
         sb.append("task.").append(task).append(".wall-ms = ").append(s.millis()).append('\n');
         phaseTotals.merge(phase, s.millis(), Long::sum);
         if (moduleDir != null && !moduleDir.isBlank()) {
@@ -389,9 +401,7 @@ public final class BuildJournal {
                     .append(".wall-ms = ")
                     .append(s.millis())
                     .append('\n');
-            modulePhaseTotals
-                    .computeIfAbsent(mod, k -> new LinkedHashMap<>())
-                    .merge(phase, s.millis(), Long::sum);
+            modulePhaseTotals.computeIfAbsent(mod, k -> new LinkedHashMap<>()).merge(phase, s.millis(), Long::sum);
         }
     }
 
@@ -484,8 +494,9 @@ public final class BuildJournal {
             if (parsed != null && !parsed.synthetic()) out.add(new Loaded(parsed, json, dir));
         }
         // Newest first by startedAt / finishedAt
-        out.sort(Comparator.comparingLong((Loaded l) ->
-                        l.record().finishedAt() > 0 ? l.record().finishedAt() : l.record().startedAt())
+        out.sort(Comparator.comparingLong((Loaded l) -> l.record().finishedAt() > 0
+                        ? l.record().finishedAt()
+                        : l.record().startedAt())
                 .reversed());
         return out;
     }

@@ -30,22 +30,7 @@ import org.junit.jupiter.api.io.TempDir;
 class HttpEngineServerTest {
 
     private static final StatusSnapshot SNAPSHOT = new StatusSnapshot(
-            "9.9.9-test",
-            42,
-            1_000,
-            1,
-            0,
-            1_000,
-            2_000,
-            3_000,
-            -1,
-            -1,
-            8,
-            16_000_000_000L,
-            8_000_000_000L,
-            0.18,
-            1,
-            0);
+            "9.9.9-test", 42, 1_000, 1, 0, 1_000, 2_000, 3_000, -1, -1, 8, 16_000_000_000L, 8_000_000_000L, 0.18, 1, 0);
 
     @TempDir
     Path webRoot;
@@ -62,8 +47,7 @@ class HttpEngineServerTest {
     private final java.util.List<cc.jumpkick.runtime.BuildMetrics.Entry> metricsRows = new java.util.ArrayList<>();
 
     /** The snapshot served by {@code GET /api/cache} — tests reassign the field directly. */
-    private static final CacheSnapshot EMPTY_CACHE =
-            new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    private static final CacheSnapshot EMPTY_CACHE = new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
     private CacheSnapshot cacheSnapshot = EMPTY_CACHE;
     private HttpEngineServer server;
@@ -510,9 +494,7 @@ class HttpEngineServerTest {
         Path ws = stateDir.resolve("graph-ws");
         Files.createDirectories(ws.resolve("lib"));
         Files.createDirectories(ws.resolve("app"));
-        Files.writeString(
-                ws.resolve("jk.toml"),
-                """
+        Files.writeString(ws.resolve("jk.toml"), """
                 [project]
                 group = "com.example"
                 name = "ws"
@@ -521,17 +503,13 @@ class HttpEngineServerTest {
                 [workspace]
                 modules = ["lib", "app"]
                 """);
-        Files.writeString(
-                ws.resolve("lib").resolve("jk.toml"),
-                """
+        Files.writeString(ws.resolve("lib").resolve("jk.toml"), """
                 [project]
                 group = "com.example"
                 name = "lib"
                 version = "1.0.0"
                 """);
-        Files.writeString(
-                ws.resolve("app").resolve("jk.toml"),
-                """
+        Files.writeString(ws.resolve("app").resolve("jk.toml"), """
                 [project]
                 group = "com.example"
                 name = "app"
@@ -545,36 +523,103 @@ class HttpEngineServerTest {
         assertThat(missing.statusCode()).isEqualTo(400);
         assertThat(missing.body()).contains("missing");
 
-        HttpResponse<String> resp =
-                get("/api/project/graph?dir=" + ws, "Authorization", "Bearer " + token());
+        HttpResponse<String> resp = get("/api/project/graph?dir=" + ws, "Authorization", "Bearer " + token());
         assertThat(resp.statusCode()).isEqualTo(200);
         assertThat(resp.headers().firstValue("Content-Type")).contains("application/json; charset=utf-8");
         assertThat(resp.body())
                 .contains("\"workspace\":true")
                 .contains("\"label\":\"com.example:lib\"")
                 .contains("\"label\":\"com.example:app\"")
+                .contains("\"kind\":\"module\"")
+                .contains("\"scopes\":")
+                .contains("\"availableScopes\":")
+                .contains("\"transitive\":false")
                 .contains("\"from\":")
                 .contains("\"to\":")
                 .contains("\"nodes\":")
                 .contains("\"edges\":");
 
-        // Standalone project → one node, no edges.
+        // Standalone project with an external direct dep (no lock → declared node, no transitive).
         Path solo = stateDir.resolve("solo");
         Files.createDirectories(solo);
-        Files.writeString(
-                solo.resolve("jk.toml"),
-                """
+        Files.writeString(solo.resolve("jk.toml"), """
                 [project]
                 group = "g"
                 name = "n"
                 version = "1"
+
+                [dependencies]
+                leaf = { group = "com.foo", name = "leaf", version = "1.0" }
                 """);
-        String soloBody =
-                get("/api/project/graph?dir=" + solo, "Authorization", "Bearer " + token()).body();
+        String soloBody = get("/api/project/graph?dir=" + solo, "Authorization", "Bearer " + token())
+                .body();
         assertThat(soloBody)
                 .contains("\"workspace\":false")
                 .contains("\"label\":\"g:n\"")
-                .contains("\"edges\":[]");
+                .contains("\"label\":\"com.foo:leaf\"")
+                .contains("\"kind\":\"declared\"");
+    }
+
+    /**
+     * The SPA sends encodeURIComponent, which spells `,` as %2C. Reading the parameter raw turned
+     * every multi-scope selection into one unknown token and silently fell back to main, with both
+     * checkboxes still ticked (JK-1607). Single-scope requests worked, which is why this was never
+     * caught.
+     */
+    @Test
+    void api_project_graph_decodes_a_multi_scope_selection(@TempDir Path stateDir) throws Exception {
+        Path solo = stateDir.resolve("solo");
+        Files.createDirectories(solo);
+        Files.writeString(solo.resolve("jk.toml"), """
+                [project]
+                group = "g"
+                name = "n"
+                version = "1"
+
+                [dependencies]
+                leaf = { group = "com.foo", name = "leaf", version = "1.0" }
+
+                [test-dependencies]
+                harness = { group = "com.foo", name = "harness", version = "1.0" }
+                """);
+
+        String body = get(
+                        "/api/project/graph?dir=" + solo + "&scopes="
+                                + java.net.URLEncoder.encode("main,test", java.nio.charset.StandardCharsets.UTF_8),
+                        "Authorization",
+                        "Bearer " + token())
+                .body();
+
+        // Both scopes are echoed, and the test-scope dependency is actually in the graph.
+        assertThat(body).contains("\"main\"").contains("\"test\"");
+        assertThat(body).contains("\"label\":\"com.foo:leaf\"");
+        assertThat(body).contains("\"label\":\"com.foo:harness\"");
+    }
+
+    @Test
+    void api_project_graph_rejects_an_unknown_scope_instead_of_falling_back_to_main() throws Exception {
+        var resp = get("/api/project/graph?dir=/tmp&scopes=bogus", "Authorization", "Bearer " + token());
+
+        assertThat(resp.statusCode()).isEqualTo(400);
+        assertThat(resp.body()).contains("bogus").contains("valid:");
+    }
+
+    @Test
+    void api_project_graph_rejects_malformed_percent_encoding_with_400_not_500() throws Exception {
+        // URLDecoder.decode throws IllegalArgumentException on a bad escape (e.g. "%zz") — that
+        // must land on the same 400 path as an unknown scope, not an uncaught 500. java.net.URI
+        // (and so HttpClient) refuses to even send a request with an invalid escape, so this goes
+        // over a raw socket like HttpEngineServerTest#raw, with the bearer token added by hand.
+        String request = "GET /api/project/graph?dir=%zz HTTP/1.1\r\n"
+                + "Authorization: Bearer " + token() + "\r\n"
+                + "Connection: close\r\n\r\n";
+        String response;
+        try (Socket socket = new Socket("127.0.0.1", port)) {
+            socket.getOutputStream().write(request.getBytes(UTF_8));
+            response = new String(socket.getInputStream().readAllBytes(), UTF_8);
+        }
+
+        assertThat(response).startsWith("HTTP/1.1 400");
     }
 
     @Test
@@ -590,9 +635,9 @@ class HttpEngineServerTest {
         assertThat(resp.statusCode()).isEqualTo(200);
         assertThat(resp.headers().firstValue("Content-Type")).contains("application/json; charset=utf-8");
         assertThat(resp.body())
-                .contains("\"scope\":\"global\"")
-                .contains("\"scope\":\"project\"")
-                .contains("\"scope\":\"project/step\"")
+                .contains(scopeJson(cc.jumpkick.runtime.BuildMetrics.SCOPE_GLOBAL))
+                .contains(scopeJson(cc.jumpkick.runtime.BuildMetrics.SCOPE_PROJECT))
+                .contains(scopeJson(cc.jumpkick.runtime.BuildMetrics.SCOPE_PROJECT_TASK))
                 .contains("\"okCount\":3")
                 .contains("\"okAvgMillis\":2000")
                 .contains("\"coord\":\"g:n\"");
@@ -600,8 +645,14 @@ class HttpEngineServerTest {
         // ?dir= keeps the global tiers but drops other projects' rows.
         String filtered =
                 get("/api/metrics?dir=/p", "Authorization", "Bearer " + token()).body();
-        assertThat(filtered).contains("\"scope\":\"global\"").contains("\"dir\":\"/p\"");
+        assertThat(filtered)
+                .contains(scopeJson(cc.jumpkick.runtime.BuildMetrics.SCOPE_GLOBAL))
+                .contains("\"dir\":\"/p\"");
         assertThat(filtered).doesNotContain("/other");
+    }
+
+    private static String scopeJson(String scope) {
+        return "\"scope\":\"" + scope + "\"";
     }
 
     @Test
@@ -1055,8 +1106,7 @@ class HttpEngineServerTest {
         assertThat(nextLine(lines)).isEqualTo(""); // blank line terminating the connected comment
         // Connect hydrate may publish status/cache before our frame (JK-1495 LiveVitals).
         events.publish("request-start", JsonOut.object().put("requestId", 1).put("kind", "build"));
-        assertThat(awaitSseEvent(lines, "request-start"))
-                .isEqualTo("data: {\"requestId\":1,\"kind\":\"build\"}");
+        assertThat(awaitSseEvent(lines, "request-start")).isEqualTo("data: {\"requestId\":1,\"kind\":\"build\"}");
     }
 
     @Test

@@ -19,10 +19,10 @@ import java.util.List;
 
 /**
  * {@code jk assemble} — build a bundled app jar. Same packaging graph as {@code jk build} when
- * {@code [application] assembly = true} (fat) or {@code assembly = "shrink"} (R8); does not invent a
+ * {@code [application] assembly = true} (fat) or {@code minified = true} (R8); does not invent a
  * second graph.
  *
- * <p>CLI one-offs: {@code --fat} / {@code --shrink} override {@code jk.toml} for this invocation only
+ * <p>CLI one-offs: {@code --fat} / {@code --minified} override {@code jk.toml} for this invocation only
  * (packaging mode is part of the action cache key). {@code --write-config} surgically sets {@code
  * assembly} in {@code jk.toml}. Hidden alias: {@code jk assembly}.
  */
@@ -37,7 +37,7 @@ public final class AssemblyCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Build an assembly or shrink jar (see --fat / --shrink)";
+        return "Build a fat or minified jar (see --fat / --minified)";
     }
 
     @Override
@@ -49,7 +49,7 @@ public final class AssemblyCommand implements CliCommand {
     public List<Opt> options() {
         List<Opt> opts = new ArrayList<>(build.options());
         opts.add(Opt.flag("One-off fat jar (this run only)", "--fat"));
-        opts.add(Opt.flag("One-off shrunk jar (this run only)", "--shrink"));
+        opts.add(Opt.flag("One-off minified jar (this run only)", "--minified"));
         opts.add(Opt.flag("Write assembly mode into jk.toml", "--write-config"));
         return opts;
     }
@@ -66,55 +66,55 @@ public final class AssemblyCommand implements CliCommand {
         }
 
         boolean fat = in.isSet("fat");
-        boolean shrink = in.isSet("shrink");
+        boolean minified = in.isSet("minified");
         boolean writeConfig = in.isSet("write-config");
-        if (fat && shrink) {
+        if (fat && minified) {
             CliOutput.err(
-                    cc.jumpkick.cli.tui.CommandWedge.fail("Assemble", "choose one of --fat or --shrink (not both)"));
+                    cc.jumpkick.cli.tui.CommandWedge.fail("Assemble", "choose one of --fat or --minified (not both)"));
             return Exit.USAGE;
         }
-        if (writeConfig && !fat && !shrink) {
+        if (writeConfig && !fat && !minified) {
             CliOutput.err(
-                    cc.jumpkick.cli.tui.CommandWedge.fail("Assemble", "--write-config requires --fat or --shrink"));
+                    cc.jumpkick.cli.tui.CommandWedge.fail("Assemble", "--write-config requires --fat or --minified"));
             return Exit.USAGE;
         }
 
-        JkBuild.AssemblyMode overrideMode =
-                fat ? JkBuild.AssemblyMode.FAT : shrink ? JkBuild.AssemblyMode.SHRINK : null;
+        JkBuildParser.ArtifactOverride override = minified
+                ? new JkBuildParser.ArtifactOverride(true, true)
+                : fat ? new JkBuildParser.ArtifactOverride(true, false) : null;
+        String overrideLabel = minified ? "minified" : "fat";
 
-        if (writeConfig && overrideMode != null) {
+        if (writeConfig && override != null) {
             String original = Files.readString(toml);
-            String edited = JkBuildEditor.setAssemblyMode(original, overrideMode);
+            String edited = JkBuildEditor.setArtifacts(original, override.assembly(), override.minified());
             if (!edited.equals(original)) {
                 Files.writeString(toml, edited);
-                CliOutput.err("jk assemble: wrote [application] assembly = "
-                        + (overrideMode == JkBuild.AssemblyMode.SHRINK ? "\"shrink\"" : "true")
-                        + " to " + PathDisplay.styledRaw(toml));
+                CliOutput.err("jk assemble: wrote [application] " + overrideLabel + " = true to "
+                        + PathDisplay.styledRaw(toml));
             } else {
-                CliOutput.err("jk assemble: jk.toml already has assembly = "
-                        + (overrideMode == JkBuild.AssemblyMode.SHRINK ? "\"shrink\"" : "true"));
+                CliOutput.err("jk assemble: jk.toml already has " + overrideLabel + " = true");
             }
         }
 
-        if (overrideMode == null) {
+        if (override == null) {
             JkBuild project = JkBuildParser.parse(toml);
-            if (!project.assemblyMode().isBundled()) {
+            if (!project.assembly()) {
                 CliOutput.err("""
-                        jk assemble: assembly packaging is off — pick one:
+                        jk assemble: no bundled artifact is configured — pick one:
 
                           One-off (this run only):
                             jk assemble --fat
-                            jk assemble --shrink
+                            jk assemble --minified
 
                           Persist in jk.toml:
                             jk assemble --fat --write-config
-                            jk assemble --shrink --write-config
+                            jk assemble --minified --write-config
 
                           Or edit manually:
                             [application]
                             main = "your.Main"   # optional but usual for a runnable jar
-                            assembly = true        # fat jar (all deps)
-                            # assembly = "shrink"  # R8 small fat jar
+                            assembly = true      # -all.jar, every dependency bundled
+                            # minified = true    # -min.jar via R8, built beside -all.jar
 
                         Then re-run `jk assemble` (or `jk build`). See docs/features/packaging.md.
                         """.stripIndent());
@@ -123,22 +123,20 @@ public final class AssemblyCommand implements CliCommand {
             return build.run(in);
         }
 
-        // One-off --fat/--shrink: install override for this invocation only, then restore. A sticky
+        // One-off --fat/--minified: install override for this invocation only, then restore. A sticky
         // SessionContext.assemblyOverride leaked into later Jk.execute / engine requests in the same
         // JVM (tests, multi-command tools) and forced R8 package-jar on library projects without main.
         if (!writeConfig) {
-            String modeLabel = overrideMode == JkBuild.AssemblyMode.SHRINK ? "shrink (R8)" : "fat";
             CliOutput.err("""
                     jk assemble: one-off packaging override — %s for this run only
                       (not written to jk.toml; action cache keys include the packaging mode)
                       make it permanent: jk assemble --%s --write-config
-                    """.formatted(modeLabel, overrideMode == JkBuild.AssemblyMode.SHRINK ? "shrink" : "fat")
+                    """.formatted(minified ? "minified (R8, beside the fat jar)" : "fat", overrideLabel)
                     .stripIndent()
                     .trim());
         }
         var previous = SessionContext.current();
-        SessionContext.install(
-                previous.withAssemblyOverride(overrideMode == JkBuild.AssemblyMode.SHRINK ? "shrink" : "fat"));
+        SessionContext.install(previous.withAssemblyOverride(overrideLabel));
         try {
             return build.run(in);
         } finally {

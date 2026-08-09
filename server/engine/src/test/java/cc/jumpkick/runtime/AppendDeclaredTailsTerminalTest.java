@@ -25,7 +25,9 @@ class AppendDeclaredTailsTerminalTest {
     void assembly_tail_survives_terminal_prune() throws Exception {
         Path dir = tmp.resolve("app");
         Files.createDirectories(dir.resolve("src/main/java/ex"));
-        Files.writeString(dir.resolve("src/main/java/ex/Main.java"), "package ex; class Main { public static void main(String[] a) {} }\n");
+        Files.writeString(
+                dir.resolve("src/main/java/ex/Main.java"),
+                "package ex; class Main { public static void main(String[] a) {} }\n");
         Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "ex"

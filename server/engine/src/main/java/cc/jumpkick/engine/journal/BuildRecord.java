@@ -182,14 +182,15 @@ public record BuildRecord(
     }
 
     /**
-     * One step's aggregate outcome: {@code status} is {@code SUCCESS} / {@code FAIL} /
-     * {@code CANCELLED} / {@code SKIPPED}; {@code phase} is the coarse plan phase's wire-name
-     * ({@code ""} when unphased) so the dashboard can fold reloaded/finished cards into the same
-     * phase-chain the live cards render.
+     * One task's aggregate outcome: {@code status} is {@code SUCCESS} / {@code FAIL} /
+     * {@code CANCELLED} / {@code SKIPPED}; {@code stage} is the task's {@code BuildStage} wire name
+     * ({@code ""} when unknown) so the dashboard folds reloaded cards into the same chain the live
+     * cards render, and so the metrics rollup buckets by what the plan declared rather than
+     * re-guessing from the task name.
      */
-    public record Task(String name, String phase, String status, long millis) {
+    public record Task(String name, String stage, String status, long millis) {
         public Task {
-            phase = phase == null ? "" : phase;
+            stage = stage == null ? "" : stage;
         }
     }
 

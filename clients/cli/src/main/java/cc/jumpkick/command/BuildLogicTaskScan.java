@@ -18,13 +18,18 @@ import org.tomlj.TomlTable;
 
 /**
  * Offline discovery of project build-logic task names for {@code jk tasks}. Scans
- * {@code.jk-build/} (or {@code [build].logic}) sources without compiling — SPI {@code.task("name",
- * …)} strings and legacy {@code *Build} class names.
+ * {@code .jk-build/} (or {@code [build].logic}) sources without compiling — stem scripts
+ * ({@code before-compile.groovy} / {@code .kts}), SPI {@code .task("name", …)} strings, and legacy
+ * {@code *Build} class names.
  */
 final class BuildLogicTaskScan {
 
     private static final Pattern SPI_TASK = Pattern.compile("\\.task\\s*\\(\\s*\"([^\"]+)\"", Pattern.MULTILINE);
     private static final Pattern SPI_TASK_SQ = Pattern.compile("\\.task\\s*\\(\\s*'([^']+)'", Pattern.MULTILINE);
+
+    /** Mirrors engine {@code BuildLogicScripts} stems (keep in sync). */
+    private static final List<String> SCRIPT_STEMS =
+            List.of("before-compile", "after-compile", "after-resources", "before-package");
 
     private BuildLogicTaskScan() {}
 
@@ -33,25 +38,55 @@ final class BuildLogicTaskScan {
         Path logicDir = logicDir(projectDir);
         if (logicDir == null || !Files.isDirectory(logicDir)) return List.of();
         Set<String> names = new LinkedHashSet<>();
-        try (Stream<Path> walk = Files.walk(logicDir)) {
-            walk.filter(p -> p.toString().endsWith(".java")).forEach(p -> {
-                try {
-                    String src = Files.readString(p, StandardCharsets.UTF_8);
-                    Matcher m = SPI_TASK.matcher(src);
-                    while (m.find()) names.add(m.group(1).trim());
-                    m = SPI_TASK_SQ.matcher(src);
-                    while (m.find()) names.add(m.group(1).trim());
-                    String file = p.getFileName().toString();
-                    if (file.endsWith("Build.java") || file.endsWith("BuildMain.java")) {
-                        String simple = file.substring(0, file.length() - ".java".length());
-                        if (!simple.isBlank()) names.add(simple);
+        // Top-level stem scripts (engine only discovers non-recursive *.groovy / *.kts)
+        try (Stream<Path> top = Files.list(logicDir)) {
+            top.filter(Files::isRegularFile).forEach(p -> {
+                String file = p.getFileName().toString();
+                String stem;
+                if (file.endsWith(".groovy")) {
+                    stem = file.substring(0, file.length() - ".groovy".length());
+                } else if (file.endsWith(".kts")) {
+                    stem = file.substring(0, file.length() - ".kts".length());
+                } else {
+                    return;
+                }
+                stem = stem.trim().toLowerCase(Locale.ROOT).replace('_', '-');
+                for (String s : SCRIPT_STEMS) {
+                    if (stem.equals(s) || stem.startsWith(s + "-")) {
+                        names.add(stem);
+                        break;
                     }
-                } catch (IOException ignored) {
-                    // skip unreadable
                 }
             });
+        } catch (IOException ignored) {
+            // continue with java/kotlin scan
+        }
+        try (Stream<Path> walk = Files.walk(logicDir)) {
+            walk.filter(p -> {
+                        String n = p.getFileName().toString();
+                        return n.endsWith(".java") || (n.endsWith(".kt") && !n.endsWith(".kts"));
+                    })
+                    .forEach(p -> {
+                        try {
+                            String src = Files.readString(p, StandardCharsets.UTF_8);
+                            Matcher m = SPI_TASK.matcher(src);
+                            while (m.find()) names.add(m.group(1).trim());
+                            m = SPI_TASK_SQ.matcher(src);
+                            while (m.find()) names.add(m.group(1).trim());
+                            String file = p.getFileName().toString();
+                            if (file.endsWith("Build.java") || file.endsWith("BuildMain.java")) {
+                                String simple = file.substring(0, file.length() - ".java".length());
+                                if (!simple.isBlank()) names.add(simple);
+                            } else if (file.endsWith("Build.kt") || file.endsWith("BuildMain.kt")) {
+                                String simple = file.substring(0, file.length() - ".kt".length());
+                                if (!simple.isBlank()) names.add(simple);
+                            }
+                        } catch (IOException ignored) {
+                            // skip unreadable
+                        }
+                    });
         } catch (IOException e) {
-            return List.of();
+            return new ArrayList<>(names);
         }
         return new ArrayList<>(names);
     }

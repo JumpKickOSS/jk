@@ -41,13 +41,38 @@ class BspServerTest {
     }
 
     @Test
+    void target_json_canRun_when_main_present() {
+        String json = BspServer.targetJson("file:///p#app", "app", "file:///p/app", true);
+        assertThat(json).contains("\"canRun\":true");
+    }
+
+    @Test
+    void initialize_advertises_run_provider(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                [project]
+                group = "t"
+                name = "t"
+                version = "0.0.1"
+                java = 25
+                """);
+        IdeEngineClient ide = IdeEngineClient.open(dir, dir.resolve("cache"), null);
+
+        String session = frame(init(1)) + frame(shutdown(2)) + frame(exit());
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        new BspServer(ide, new ByteArrayInputStream(session.getBytes(StandardCharsets.UTF_8)), out).serve();
+        String responses = out.toString(StandardCharsets.UTF_8);
+        assertThat(responses).contains("runProvider");
+        assertThat(responses).contains("testProvider");
+    }
+
+    @Test
     void initialize_advertises_test_provider(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "t"
                 version = "0.0.1"
-                jdk = 25
+                java = 25
                 """);
         IdeEngineClient ide = IdeEngineClient.open(dir, dir.resolve("cache"), null);
 
@@ -57,6 +82,7 @@ class BspServerTest {
         String responses = out.toString(StandardCharsets.UTF_8);
         assertThat(responses).contains("testProvider");
         assertThat(responses).contains("compileProvider");
+        assertThat(responses).contains("runProvider");
         assertThat(responses).contains("java");
     }
 

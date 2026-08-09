@@ -38,6 +38,9 @@ public final class MavenPackageSource implements PackageSource {
     /** Max concurrent speculative prefetches. Tuned to stay polite to Maven Central. */
     private static final int PREFETCH_PERMITS = 8;
 
+    /** Upper bound on how long a solve waits for speculative prefetches to wind down. */
+    private static final long QUIESCE_TIMEOUT_MS = 30_000;
+
     private final RepoGroup repos;
     private final EffectivePomBuilder pomBuilder;
     private final Map<String, String> bomConstraints;
@@ -66,12 +69,25 @@ public final class MavenPackageSource implements PackageSource {
     private record RawEdge(String depPkg, VersionSet constraint, Set<String> edgeExclusions) {}
 
     /**
-     * Modules to strip when expanding a package (union of exclusions registered by parents, cascaded
-     * down the subtree). Keyed by package module id.
+     * Modules to strip when expanding a package, keyed by package module id.
+     *
+     * <p>Maven drops a dependency only when <em>every</em> path reaching it excludes that
+     * dependency, so entries here are the <strong>intersection</strong> of the sets registered by
+     * parents, not their union. Two parents, one excluding and one not, leave the child expanding
+     * with nothing stripped.
+     *
+     * <p>Intersection only shrinks, so registrations may arrive in any order and still converge on
+     * the same set.
      */
     private final ConcurrentHashMap<String, Set<String>> exclusionsWhenExpanding = new ConcurrentHashMap<>();
 
     private final Semaphore prefetchSlots = new Semaphore(PREFETCH_PERMITS);
+
+    /** Speculative prefetches submitted and not yet finished. Guards {@link #quiesce}. */
+    private final java.util.concurrent.atomic.AtomicInteger outstandingPrefetches =
+            new java.util.concurrent.atomic.AtomicInteger();
+
+    private final Object prefetchIdle = new Object();
 
     public MavenPackageSource(MavenRepo repo, EffectivePomBuilder pomBuilder) {
         this(RepoGroup.of(repo), pomBuilder, Map.of());
@@ -386,12 +402,12 @@ public final class MavenPackageSource implements PackageSource {
         List<Term> out = new ArrayList<>(raw.size());
         for (RawEdge edge : raw) {
             if (isExcluded(edge.depPkg(), excl)) continue;
-            // Cascade parent exclusions + edge exclusions onto the child for later expansion.
-            if (!excl.isEmpty() || !edge.edgeExclusions().isEmpty()) {
-                Set<String> merged = new LinkedHashSet<>(excl);
-                merged.addAll(edge.edgeExclusions());
-                registerExclusions(edge.depPkg(), merged);
-            }
+            // Cascade parent exclusions + edge exclusions onto the child. Registered even when
+            // empty: an unencumbered path is exactly what has to collapse the child's set to
+            // nothing, and staying silent here would leave another path's exclusions standing.
+            Set<String> merged = new LinkedHashSet<>(excl);
+            merged.addAll(edge.edgeExclusions());
+            registerExclusions(edge.depPkg(), merged);
             out.add(Term.positive(edge.depPkg(), edge.constraint()));
         }
         List<Term> immutable = List.copyOf(out);
@@ -412,6 +428,18 @@ public final class MavenPackageSource implements PackageSource {
         } catch (MavenRepo.ArtifactNotFoundException e) {
             throw new VersionUnavailableException(e.getMessage());
         }
+        // <distributionManagement><relocation>: this coordinate moved. The stub has no classes and
+        // no dependencies of its own, so its one edge is to the target — which is how Maven and
+        // Gradle render it too. Chains terminate because each hop is a normal package expansion.
+        Pom.Relocation moved = pom.relocation();
+        if (moved != null && moved.redirects(coord)) {
+            Coordinate to = moved.applyTo(coord);
+            String toPkg = PackageId.ofGa(to.group() + ":" + to.artifact()).key();
+            List<RawEdge> redirect = List.of(new RawEdge(toPkg, VersionSet.exact(to.version()), Set.of()));
+            rawDepsCache.put(key, redirect);
+            return redirect;
+        }
+
         List<RawEdge> out = new ArrayList<>();
         var kmpSelection = kmp.selectionFor(pkg, version);
         Set<String> kmpDropped = Set.of();
@@ -438,16 +466,23 @@ public final class MavenPackageSource implements PackageSource {
     }
 
     /**
-     * Union {@code extra} into the exclusion set applied when {@code pkg} is expanded. Package-visible
-     * for tests.
+     * Intersect {@code extra} into the exclusion set applied when {@code pkg} is expanded — a
+     * module is stripped only if every observed parent path strips it. The first registration
+     * establishes the set; later ones can only narrow it. Package-visible for tests.
      */
     void registerExclusions(String pkg, Set<String> extra) {
-        if (extra == null || extra.isEmpty()) return;
-        exclusionsWhenExpanding.merge(pkg, Set.copyOf(extra), (a, b) -> {
-            Set<String> u = new LinkedHashSet<>(a);
-            u.addAll(b);
-            return Set.copyOf(u);
+        Set<String> incoming = extra == null ? Set.of() : Set.copyOf(extra);
+        exclusionsWhenExpanding.merge(pkg, incoming, (existing, fresh) -> {
+            if (existing.isEmpty() || fresh.isEmpty()) return Set.of();
+            Set<String> both = new LinkedHashSet<>(existing);
+            both.retainAll(fresh);
+            return Set.copyOf(both);
         });
+    }
+
+    /** The exclusions currently applied when {@code pkg} expands. Package-visible for tests. */
+    Set<String> exclusionsFor(String pkg) {
+        return exclusionsWhenExpanding.getOrDefault(pkg, Set.of());
     }
 
     /**
@@ -573,35 +608,73 @@ public final class MavenPackageSource implements PackageSource {
                     .orElse(null);
             if (pin != null) {
                 Coordinate child = withVersion(pkg, pin);
-                JkThreads.io().execute(() -> {
-                    try {
-                        prefetchSlots.acquire();
-                        try {
-                            // Full effective POM (parents + BOM imports). Builder is concurrent-safe
-                            // so sibling prefetches walk chains in parallel.
-                            pomBuilder.build(child);
-                        } finally {
-                            prefetchSlots.release();
-                        }
-                    } catch (Exception ignored) {
-                        // best-effort; sync path surfaces real failures
-                    }
-                });
+                // Full effective POM (parents + BOM imports). Builder is concurrent-safe
+                // so sibling prefetches walk chains in parallel.
+                submitPrefetch(() -> pomBuilder.build(child));
                 continue;
             }
             if (versionCache.containsKey(pkg)) continue;
+            submitPrefetch(() -> versions(pkg));
+        }
+    }
+
+    /** Run {@code work} on the io pool under a permit, counted so {@link #quiesce} can wait for it. */
+    private void submitPrefetch(PrefetchWork work) {
+        outstandingPrefetches.incrementAndGet();
+        try {
             JkThreads.io().execute(() -> {
                 try {
                     prefetchSlots.acquire();
                     try {
-                        versions(pkg);
+                        work.run();
                     } finally {
                         prefetchSlots.release();
                     }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                 } catch (Exception ignored) {
-                    // best-effort prefetch; surface errors via the sync path
+                    // best-effort warming; the sync path surfaces real failures
+                } finally {
+                    finishPrefetch();
                 }
             });
+        } catch (RuntimeException e) {
+            finishPrefetch(); // rejected before it ever ran
+            throw e;
+        }
+    }
+
+    private void finishPrefetch() {
+        if (outstandingPrefetches.decrementAndGet() == 0) {
+            synchronized (prefetchIdle) {
+                prefetchIdle.notifyAll();
+            }
+        }
+    }
+
+    @FunctionalInterface
+    private interface PrefetchWork {
+        void run() throws Exception;
+    }
+
+    /**
+     * Block until no speculative prefetch is running. Warming is best-effort, so this gives up
+     * after {@link #QUIESCE_TIMEOUT_MS} rather than holding a build hostage to a wedged fetch.
+     */
+    @Override
+    public void quiesce() {
+        long deadline = System.nanoTime() + QUIESCE_TIMEOUT_MS * 1_000_000L;
+        synchronized (prefetchIdle) {
+            while (outstandingPrefetches.get() > 0) {
+                long remainingMs = (deadline - System.nanoTime()) / 1_000_000L;
+                if (remainingMs <= 0) return;
+                try {
+                    prefetchIdle.wait(remainingMs);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
         }
     }
 

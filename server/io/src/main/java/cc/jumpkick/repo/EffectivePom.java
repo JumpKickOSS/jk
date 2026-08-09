@@ -19,7 +19,20 @@ public record EffectivePom(
         String packaging,
         Map<String, String> properties,
         List<Pom.Dep> dependencies,
-        List<Pom.Dep> managedDependencies) {
+        List<Pom.Dep> managedDependencies,
+        Pom.Relocation relocation) {
+
+    /** Compatibility constructor for POMs with no {@code <distributionManagement>} redirect. */
+    public EffectivePom(
+            String groupId,
+            String artifactId,
+            String version,
+            String packaging,
+            Map<String, String> properties,
+            List<Pom.Dep> dependencies,
+            List<Pom.Dep> managedDependencies) {
+        this(groupId, artifactId, version, packaging, properties, dependencies, managedDependencies, null);
+    }
 
     public EffectivePom {
         Objects.requireNonNull(groupId, "groupId");

@@ -24,6 +24,7 @@ import cc.jumpkick.resolver.NaiveResolver;
 import cc.jumpkick.resolver.Resolution;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
+import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
@@ -102,7 +103,7 @@ public final class ScriptPlans {
         String mainClass = header.main() != null ? header.main() : simpleMainClassName(script, ".java");
 
         Task parseHeader = Task.builder(TaskNames.PARSE_SCRIPT)
-                .group("resolve")
+                .stage(BuildStage.RESOLVE)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("parse " + script.getFileName());
@@ -115,7 +116,7 @@ public final class ScriptPlans {
                 .build();
 
         Task resolveDeps = Task.builder(TaskNames.RESOLVE_DEPS)
-                .group("resolve")
+                .stage(BuildStage.RESOLVE)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_SCRIPT)
                 .ticks(1)
@@ -136,7 +137,7 @@ public final class ScriptPlans {
                 .build();
 
         Task compile = Task.builder(TaskNames.COMPILE_JAVA)
-                .group("compile")
+                .stage(BuildStage.COMPILE)
                 .kind(TaskKind.CPU)
                 .requires(TaskNames.RESOLVE_DEPS)
                 .ticks(1)
@@ -217,7 +218,7 @@ public final class ScriptPlans {
         String mainClass = header.main() != null ? header.main() : kotlinMainClassName(script);
 
         Task parseHeader = Task.builder(TaskNames.PARSE_SCRIPT)
-                .group("resolve")
+                .stage(BuildStage.RESOLVE)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("parse " + script.getFileName());
@@ -232,7 +233,7 @@ public final class ScriptPlans {
         // resolve-deps and resolve-kotlinc are independent and slow; run
         // them in parallel.
         Task resolveDeps = Task.builder(TaskNames.RESOLVE_DEPS)
-                .group("resolve")
+                .stage(BuildStage.RESOLVE)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_SCRIPT)
                 .ticks(1)
@@ -253,7 +254,7 @@ public final class ScriptPlans {
                 .build();
 
         Task resolveKotlinc = Task.builder(TaskNames.RESOLVE_KOTLINC)
-                .group("resolve")
+                .stage(BuildStage.RESOLVE)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_SCRIPT)
                 .ticks(1)
@@ -280,7 +281,7 @@ public final class ScriptPlans {
                 .build();
 
         Task compile = Task.builder(TaskNames.COMPILE_KOTLIN)
-                .group("compile")
+                .stage(BuildStage.COMPILE)
                 .kind(TaskKind.CPU)
                 .requires(TaskNames.RESOLVE_DEPS, TaskNames.RESOLVE_KOTLINC)
                 .ticks(1)
@@ -373,7 +374,7 @@ public final class ScriptPlans {
                 extraDeps);
 
         Task resolveDeps = Task.builder(TaskNames.RESOLVE_DEPS)
-                .group("resolve")
+                .stage(BuildStage.RESOLVE)
                 .kind(TaskKind.IO)
                 .ticks(1)
                 .execute(ctx -> {
@@ -391,7 +392,7 @@ public final class ScriptPlans {
                 .build();
 
         Task resolveKotlinc = Task.builder(TaskNames.RESOLVE_KOTLINC)
-                .group("resolve")
+                .stage(BuildStage.RESOLVE)
                 .kind(TaskKind.IO)
                 .ticks(1)
                 .execute(ctx -> {
@@ -418,7 +419,7 @@ public final class ScriptPlans {
     /** {@code inspect-jar → resolve-jar-deps} for a prebuilt jar (manifest main + embedded-POM deps). */
     public static BuildPlan jarBuildPlan(Path jar, Path cacheDir, URI repoUrl) {
         Task inspect = Task.builder(TaskNames.INSPECT_JAR)
-                .group("resolve")
+                .stage(BuildStage.RESOLVE)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("read manifest + embedded poms");
@@ -458,7 +459,7 @@ public final class ScriptPlans {
                 .build();
 
         Task resolveJarDeps = Task.builder(TaskNames.RESOLVE_JAR_DEPS)
-                .group("resolve")
+                .stage(BuildStage.RESOLVE)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.INSPECT_JAR)
                 .ticks(1)

@@ -3,6 +3,7 @@ package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.model.ToolDefaults;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -72,7 +73,45 @@ class JUnitLauncherToolingPomTest {
         module(dir, "[quarkus]\n\n[project]\nname = \"svc\"\nversion = \"0.1.0\"\n");
         JUnitLauncher.ensureQuarkusToolingPom(dir);
         String pom = Files.readString(dir.resolve("pom.xml"));
-        assertThat(pom).contains("<quarkus.platform.version>3.38.0</quarkus.platform.version>");
+        assertThat(pom).doesNotContain("<quarkus.platform.version>0.1.0</quarkus.platform.version>");
+        assertThat(pom)
+                .contains("<quarkus.platform.version>" + ToolDefaults.QUARKUS_TOOLING_BOM_VERSION
+                        + "</quarkus.platform.version>");
+    }
+
+    @Test
+    void a_major_line_floor_never_reaches_the_pom_as_a_literal_version(@TempDir Path dir) throws IOException {
+        // JK-1669: `version = "3"` is a caret floor in jk.toml. Maven has no caret, so writing it
+        // through would import io.quarkus.platform:quarkus-bom:3 — a version that does not exist.
+        module(dir, "[project]\nname = \"svc\"\n\n[quarkus]\nversion = \"3\"\n");
+        JUnitLauncher.ensureQuarkusToolingPom(dir);
+        String pom = Files.readString(dir.resolve("pom.xml"));
+        assertThat(pom).doesNotContain("<quarkus.platform.version>3</quarkus.platform.version>");
+        assertThat(pom)
+                .contains("<quarkus.platform.version>" + ToolDefaults.QUARKUS_TOOLING_BOM_VERSION
+                        + "</quarkus.platform.version>");
+    }
+
+    @Test
+    void the_lock_wins_over_the_declared_floor(@TempDir Path dir) throws IOException {
+        // The pom exists so @QuarkusTest's bootstrap agrees with the classpath jk built, and
+        // jk-lock.toml is what jk built from — so it outranks whatever jk.toml declares.
+        module(dir, "[project]\nname = \"svc\"\n\n[quarkus]\nversion = \"3\"\n");
+        Files.writeString(dir.resolve("jk-lock.toml"), """
+                version = 1
+                generated-by = "jk test"
+                resolution-algorithm = "pubgrub-v1"
+
+                [[artifact]]
+                name     = "io.quarkus:quarkus-core:jar:"
+                version  = "3.41.2"
+                source   = "central+https://repo.maven.apache.org/maven2/"
+                checksum = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+                scopes   = ["main"]
+                """);
+        JUnitLauncher.ensureQuarkusToolingPom(dir);
+        assertThat(Files.readString(dir.resolve("pom.xml")))
+                .contains("<quarkus.platform.version>3.41.2</quarkus.platform.version>");
     }
 
     @Test

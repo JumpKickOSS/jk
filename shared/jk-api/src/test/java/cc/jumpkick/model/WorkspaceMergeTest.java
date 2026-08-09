@@ -89,6 +89,27 @@ class WorkspaceMergeTest {
     }
 
     @Test
+    void resolve_sibling_coordinates_preserves_tests_kind() {
+        // applyToModule drops sibling edges (lock path). resolveSiblingCoordinates keeps them
+        // (publish/POM path) and must retain kind so test-jar edges survive rewrite.
+        JkBuild root = workspaceRoot("jk", List.of("lib", "app"));
+        JkBuild lib = newProject("lib", Map.of());
+        Dependency testsEdge = workspacePlaceholder("lib").withKind(DependencyKind.TESTS);
+        JkBuild app = newProject(
+                "app",
+                Map.of(
+                        Scope.MAIN, List.of(workspacePlaceholder("lib")),
+                        Scope.TEST, List.of(testsEdge)));
+
+        JkBuild rewritten = WorkspaceMerge.resolveSiblingCoordinates(root, app, List.of(lib, app));
+        assertThat(rewritten.dependencies().of(Scope.TEST))
+                .anyMatch(d -> d.isTestsKind() && d.module().equals("cc.jumpkick:lib"));
+        assertThat(rewritten.dependencies().of(Scope.MAIN))
+                .filteredOn(d -> d.module().equals("cc.jumpkick:lib"))
+                .allMatch(d -> d.kind() == DependencyKind.MAIN);
+    }
+
+    @Test
     void variants_survive_apply_to_module_and_union_into_lock_scopes() {
         // A flavored module: its [variants] block must ride through the merge (the finding-5
         // class of bug), and lock scopes must see the UNION of every value's dep overlays —

@@ -108,11 +108,17 @@ public final class PluginSpec {
                 case PluginProtocol.ENTRY -> {
                     String jar = Jsonl.str(line, PluginProtocol.PATH);
                     String container = Jsonl.str(line, PluginProtocol.CONTAINER);
+                    String g = Jsonl.str(line, "group");
+                    String a = Jsonl.str(line, "artifact");
+                    String v = Jsonl.str(line, "version");
                     s.entries.add(new PackageIo.RuntimeEntry(
                             String.valueOf(Jsonl.str(line, PluginProtocol.FILE_NAME)),
                             jar == null ? null : Path.of(jar),
                             Jsonl.bool(line, PluginProtocol.SNAPSHOT, false),
-                            container == null ? null : Path.of(container)));
+                            container == null ? null : Path.of(container),
+                            g == null ? "" : g,
+                            a == null ? "" : a,
+                            v == null ? "" : v));
                 }
                 case PluginProtocol.SOURCE -> s.sources.add(path(Jsonl.str(line, PluginProtocol.PATH)));
                 case PluginProtocol.ARG -> s.args.add(Jsonl.str(line, PluginProtocol.VALUE));

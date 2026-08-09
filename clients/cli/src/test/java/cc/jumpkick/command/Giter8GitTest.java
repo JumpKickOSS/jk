@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.io.IOException;
 import org.junit.jupiter.api.Test;
 
 class Giter8GitTest {
@@ -30,7 +31,7 @@ class Giter8GitTest {
     @Test
     void parse_rejects_garbage() {
         assertThatThrownBy(() -> Giter8Git.parse("not a ref"))
-                .isInstanceOf(java.io.IOException.class)
+                .isInstanceOf(IOException.class)
                 .hasMessageContaining("not a git template ref");
     }
 }

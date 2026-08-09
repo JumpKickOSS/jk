@@ -4,13 +4,13 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.CompositeBuildPlanListener;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.EventLogListener;
-import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.CommandManager;
 import cc.jumpkick.cli.tui.BuildPlanWedge;
+import cc.jumpkick.cli.tui.CommandManager;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.CliCommand;
@@ -362,7 +362,8 @@ public final class NativeCommand implements CliCommand {
                     .map(cc.jumpkick.runtime.ModuleOutcome::coord)
                     .findFirst()
                     .orElse("build");
-            view.finishBuildPlanFailure(BuildPlanWedge.coord(failedCoord) + " " + BuildCommand.elapsedSince(buildStart));
+            view.finishBuildPlanFailure(
+                    BuildPlanWedge.coord(failedCoord) + " " + BuildCommand.elapsedSince(buildStart));
             for (BuildPlanResult.Diagnostic d : agg.lastErrors()) {
                 CliOutput.err(ConsoleSpec.renderError(d));
             }

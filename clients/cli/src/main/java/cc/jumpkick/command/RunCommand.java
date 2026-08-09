@@ -5,11 +5,11 @@ import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
-import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.BuildPlanConsole;
+import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.BuildPlanWedge;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.util.JkDirs;
@@ -127,9 +127,8 @@ public final class RunCommand {
 
                         @Override
                         public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
-                            String glyph = o.success()
-                                    ? cc.jumpkick.cli.tui.Glyphs.CHECK
-                                    : cc.jumpkick.cli.tui.Glyphs.CROSS;
+                            String glyph =
+                                    o.success() ? cc.jumpkick.cli.tui.Glyphs.CHECK : cc.jumpkick.cli.tui.Glyphs.CROSS;
                             CliOutput.out(glyph + " [" + done.incrementAndGet() + "/" + Math.max(total[0], 1) + "] "
                                     + o.coord());
                         }
@@ -416,7 +415,9 @@ public final class RunCommand {
             return null;
         }
         if (!wr.success()) {
-            String tail = wr.errors().isEmpty() ? "workspace build failed" : wr.errors().get(0);
+            String tail = wr.errors().isEmpty()
+                    ? "workspace build failed"
+                    : wr.errors().get(0);
             view.finishBuildPlanFailure(tail, deferredOutput);
             return null;
         }

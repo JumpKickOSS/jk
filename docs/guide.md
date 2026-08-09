@@ -84,10 +84,7 @@ jk lock --cache-dir "$COLD"          # or: JK_CACHE_DIR="$COLD" jk lock
 The engine process is keyed by state directory + store; isolating only the action
 cache leaves CAS reuse intact.
 
-Since the two-tier split, everything under a cache root — including its `sha256/` blob pool — is
-**cache tier**: rebuildable, prunable to the cache budget, and wiped by `jk cache purge`. A
-pre-split custom `--cache-dir` whose `sha256/` still holds store blobs should be recreated fresh
-(the old contents re-fetch on demand); jk does not special-case legacy collocated layouts.
+Everything under a cache root — including its `sha256/` blob pool — is **cache tier**: rebuildable, prunable to the cache budget, and wiped by `jk cache purge`.
 
 ### `jk env` — where values come from
 
@@ -145,7 +142,7 @@ cache, a normal `jk build` should hit action cache for unchanged modules.
 | **`jk cache storage`** | Cache tier: action index + cache CAS (`sha256/` under the cache dir) + format stamps |
 | **`jk cache clear` / `prune` / `purge`** | Invalidate, expire, or wipe the **cache tier** (actions + cache CAS + format stamps). Artifact store CAS and repo mirrors survive |
 | **`jk repo storage`** | Artifact store CAS + `repos/` mirrors + run logs |
-| **`jk repo prune`** | Sweep unreferenced store CAS blobs + expired run logs; `--max-size <size>` LRU-evicts to the store budget |
+| **`jk repo prune`** | Sweep unreferenced store CAS blobs + expired run logs |
 | **`jk repo search`** | Offline search of locally mirrored coordinates |
 | **`jk repo refresh <coord>`** | Evict a coordinate from the mirror so it re-fetches. The mirror is first-write-wins (Maven Central's immutability contract); this is the escape hatch for an upstream that genuinely republished — see [mirror-verification-decision.md](mirror-verification-decision.md) |
 | **`jk repo login` / `logout`** | Artifact-repository credentials |
@@ -188,10 +185,7 @@ above applies. Both storage reports use the same rule.
 The two budgets differ in what they *enforce*. The cache tier is rebuildable, so scheduled prunes
 LRU-evict it to its budget (default 1 GiB); the evictor targets the blob pool at the budget net
 of the action-index + stamp overhead, so a prune can bring the utilization bar back under 100%. The artifact store holds long-lived downloads: its
-4 GiB default drives the utilization bar **only** — reachable store blobs are LRU-evicted solely
-when you set `max-store-size-mb` (or `JK_MAX_STORE_SIZE_MB`) explicitly, or pass
-`--max-size` to `jk repo prune`. The pre-split knobs (`max-size-gb`, `action-max-size-mb`,
-`JK_MAX_SIZE_GB`, `JK_ACTION_MAX_SIZE_MB`) are no longer read; prune warns if one is still set.
+4 GiB default is display-only — `jk repo prune` never evicts reachable store blobs (even when the store exceeds the display budget). GC only reclaims garbage: leftover `.put-` temps, expired run logs, and unreferenced CAS blobs.
 
 Preflight dirty memo fingerprints use **source content hashes** by default (CI-safe). Opt into
 faster path/size/mtime fingerprints with `JK_PREFLIGHT_MEMO_MTIME=1` if needed.
@@ -435,7 +429,7 @@ jk outdated                      # Current / Compatible / Latest table
 jk outdated --exclude-up-to-date # only rows that can move
 jk outdated --output json        # machine-readable array of rows
 jk why com.foo:bar               # why a pin is there
-jk tree                          # full graph
+jk tree                          # export/main/runtime graph (see -s for scopes)
 jk update                        # re-resolve on purpose, then commit jk-lock.toml
 ```
 
@@ -482,7 +476,7 @@ jk new --quarkus my-api          # plugin [scaffold]
 jk new --template quarkus my-api # Giter8 short name (same single-module shape)
 ```
 
-- Pin with `[quarkus] version = "3.38.0"` (platform BOM). Starters / extensions are
+- Pin with `[quarkus] version = "3"` (major-line floor / platform BOM; lock pins exact). Starters / extensions are
   versionless under `[dependencies]` (e.g. `quarkus-rest`, `quarkus-rest-jackson`).
 - Default package is **fast-jar** (`quarkus-run.jar` + `lib/` + `quarkus-app/`). Set
   `package = "uber-jar"` for a single runner. Packaging uses pure bootstrap (no permanent
@@ -495,7 +489,7 @@ jk new --template quarkus my-api # Giter8 short name (same single-module shape)
   module. Prefer a small `@ApplicationScoped` holder in the app module over CDI producers
   whose return types live only in sibling jars (Jandex). Synthetic `pom.xml` is for tooling
   only — JumpKick owns resolve via `jk-lock.toml`. Dogfood:
-  [jk-examples `java/quarkus-petshop`](https://github.com/jkbuild/jk-examples).
+  [jk-examples](https://github.com/jkbuild/jk-examples) (`micronaut/hello-http`, Quarkus/Boot petshops, …).
 - Cold first lock of the Quarkus platform is large; warm CAS re-locks are fast. See
   [perf/resolve-io.md](perf/resolve-io.md).
 
@@ -508,7 +502,7 @@ Platform BOMs (`[platform-dependencies]` / `[spring-boot] version` / `[quarkus] 
 **enforced platforms** by default: GAs listed in the BOM map use the BOM pin on transitive
 edges. Explicit Maven ranges on a POM edge remain open ranges. Use an exact or caret/tilde
 version on the BOM itself — not `latest`. The BOM is a **pin source** (recorded on managed
-lock rows as `pinned-by`), not a runtime jar; `jk tree` shows it under the platform section
+lock rows as `pinned-by`), not a runtime jar; `jk tree -s platform` shows it under the platform section
 with its version and a `(platform)` tag, not as missing.
 
 | Policy | Config / flag | BOM-map pin |
@@ -537,32 +531,35 @@ jk export bom --out dist/my-bom.pom --overwrite
 
 Import that POM like any other platform BOM (`[platform-dependencies]`).
 
-## Packaging (thin / assembly / shrink / Boot / Quarkus / Grails)
+## Packaging (thin / fat / minified / Boot / Quarkus / Grails)
 
 | Artifact | Config | Command |
 |---|---|---|
-| Thin jar | default | `jk build` |
-| Assembly jar (`target/<name>-<version>-all.jar`) | `[application] assembly = true` | `jk assemble` / `jk build` |
-| Shrunk jar | `[application] assembly = "shrink"` | `jk assemble` / `jk build` (R8; size labels) |
+| Thin jar (`target/<name>-<version>.jar`) | always | `jk build` |
+| Fat jar (`target/<name>-<version>-all.jar`) | `[application] assembly = true` | `jk assemble` / `jk build` |
+| Minified jar (`target/<name>-<version>-min.jar`) | `[application] minified = true` | `jk assemble` / `jk build` (R8; size labels) |
 | Spring Boot jar | spring-boot plugin | `jk build` (not assembly packaging) |
 | Quarkus fast-jar / uber-jar | `[quarkus]` (+ optional `package`) | `jk build` (augment; not assembly packaging) |
 | Grails jar (Boot layout) | grails plugin | `jk build` (not assembly packaging) |
 
-One-off without editing `jk.toml`: `jk assemble --fat` or `jk assemble --shrink`. Persist with
-`--write-config` (surgical edit of `assembly` only). See [features/packaging.md](features/packaging.md).
+jk's own artifacts are additive: the thin jar is always written, `assembly` adds the fat jar,
+and `minified` adds the R8 jar *and* the fat jar beside it so the two can be compared.
+
+One-off without editing `jk.toml`: `jk assemble --fat` or `jk assemble --minified`. Persist with
+`--write-config` (surgical edit of the artifact flags only). See [features/packaging.md](features/packaging.md).
 
 Assembly merge/exclude rules (SPI, Spring META-INF, drop signatures / `module-info.class`):
 [features/packaging.md](features/packaging.md). Samples:
-[assembly-app](features/examples/assembly-app/), [shrunk-cli](features/examples/shrunk-cli/).
+[assembly-app](features/examples/assembly-app/), [minified-cli](features/examples/minified-cli/).
 
 ```toml
 [application]
 main = "com.example.App"
-assembly = true       # fat jar — jk assemble (or jk build)
-# assembly = "shrink" # R8 small fat jar — same commands
+assembly = true    # adds -all.jar — jk assemble (or jk build)
+# minified = true  # adds -min.jar via R8, built beside -all.jar
 ```
 
-R8 is **opt-in** via `assembly = "shrink"` (or a legacy `[shrink]` table) — never the default.
+R8 is **opt-in** via `minified = true` — never the default.
 
 ### Grails (`[grails]`)
 
@@ -595,8 +592,8 @@ jk update                    # re-resolve within ranges (rewrites jk-lock.toml)
 jk update --platform=floor   # opt-in soft BOM pins for this re-resolve (see platforms)
 jk export bom                # freeze lock scope as a Maven BOM POM
 jk compile                   # type-check
-jk build                     # package (thin, assembly, shrink, Boot, Quarkus, …)
-jk assemble                  # assembly/shrink jar (alias: assembly; or --fat/--shrink)
+jk build                     # package (thin, fat, minified, Boot, Quarkus, …)
+jk assemble                  # fat/minified jar (alias: assembly; or --fat/--minified)
 jk release                   # local ship layout (alias: dist) — build + workers + target/dist
 jk test
 jk run -- args…              # at workspace root: runs the module with [application] main
@@ -860,10 +857,9 @@ Custom generate / prep steps live in a **hidden project-local directory**, not i
 (unlike Gradle’s visible `buildSrc/`).
 
 **Convention:** if `.jk-build/` exists next to `jk.toml`, its Java sources compile and run on
-build (action-cached; outputs merge onto the classpath as resources). Prefer a
-`BuildLogicContributor` SPI for **named tasks** at anchors (`AFTER_COMPILE`,
-`AFTER_RESOURCES`, `BEFORE_PACKAGE`); legacy `*Build` mains still run at
-`AFTER_RESOURCES`. `jk.toml` stays data-only (`logic` path / `logic-main` only).
+build (action-cached; outputs merge onto the classpath as resources). `*Build` mains and
+`BuildLogicContributor` SPI provide named tasks at anchors (`AFTER_COMPILE`, `AFTER_RESOURCES`,
+`BEFORE_PACKAGE`). `jk.toml` stays data-only (`logic` path / `logic-main` only).
 
 ```toml
 # optional override — only when you do not want the .jk-build/ convention
@@ -877,7 +873,7 @@ logic-main = "demo.LineCountBuild" # optional public static void main(String[])
 my-app/
   jk.toml
   src/…
-  .jk-build/src/demo/LineCountBuild.java   # legacy main, or BuildLogicContributor
+  .jk-build/src/demo/LineCountBuild.java   # *Build main or BuildLogicContributor
 ```
 
 Sample: `docs/features/examples/line-count-build/`. Prefer plugins for heavy/reusable tools; use
@@ -932,19 +928,29 @@ Fields mirror CLI: `allSuites` ↔ `--all`, `suites` ↔ `--suite`, tags ↔
 
 | Capability | Status |
 |---|---|
-| `workspace/buildTargets`, sources, dependency modules | yes |
-| `buildTarget/compile` | yes (per-target / module) |
+| `workspace/buildTargets`, sources (incl. resources + generated), dependency modules | yes |
+| Dependency **sources** jars (`classifier: sources` when present) | yes |
+| `buildTarget/outputPaths` | yes (main + test classes dirs) |
+| `buildTarget/compile` | yes (per-target / module); **publishDiagnostics** on failure when `path:line:` parseable |
 | `buildTarget/test` | yes (engine `jk test`; optional suite/tag `data`) |
-| `buildTarget/run` | **no** — use IDE tasks / `jk run` |
+| `buildTarget/run` | yes (build + exec plan / same as `jk run`; `canRun` when main class known) |
+| `build/cancel` | yes (engine cancel for in-flight compile/test/run) |
 | `workspace/reload` | yes |
 | Debug adapter | no |
 
+**Machine model for IDE plugins:** `jk ide --print-model` prints one engine `ide-model` JSON
+object on stdout (lock + sync + model; no `.iml` / `.vscode` writes).
+
 **VS Code (ticket-1017):** [`clients/vscode/`](../clients/vscode/) — VSIX via `./scripts/package-vscode.sh`.
 
-**IntelliJ (ticket-1054):** [`clients/intellij/`](../clients/intellij/) — zip via `./scripts/package-intellij.sh`
-(Tools → JumpKick actions).
+**IntelliJ (JK-1054 / JK-1551):** [`clients/intellij/`](../clients/intellij/) — zip via
+`./scripts/package-intellij.sh`. **Tools → JumpKick → Sync project** runs
+`jk ide --print-model` + `jk ide --idea` + `jk bsp install` and refreshes the VFS. On open,
+projects with `jk.toml` are offered Sync (auto-Sync when no IDEA modules yet). No manual
+`jk ide` required for import.
 
-Both are **wire-only** (shell `jk` / BSP; no engine jars in the IDE process). Requires `jk` on PATH.
+Both are **wire-only** (shell `jk` / BSP; no engine jars in the IDE process). Requires `jk` on PATH
+(or `JK_BIN`).
 
 ```bash
 ./scripts/package-vscode.sh      # → clients/vscode/jumpkick-*.vsix
@@ -1068,7 +1074,26 @@ name = "api"
 [dependencies]
 jackson-databind.workspace = true   # shared external
 widget-core.workspace = true        # sibling module (matches [project].name)
+
+# Sibling *test* output (Mill testModuleDeps / Maven test-jar) — test scope only:
+[test-dependencies]
+widget-core = { workspace = true, kind = "tests" }
 ```
+
+`kind = "tests"` puts the sibling’s `target/.../classes/test` (and test resources) on this
+module’s test classpath. Use it for shared test helpers that live under another module’s
+`src/test` (e.g. Netty’s `ChannelHandlerMetadataUtil` in `transport`). Illegal outside
+`[test-dependencies]` / `[test-dev-dependencies]`. Default kind is `main` (omit the key).
+
+The same key works on **external** Maven coordinates (imports a published test-jar):
+
+```toml
+[test-dependencies]
+helpers = { group = "com.acme", name = "helpers", version = "1.2.3", kind = "tests" }
+```
+
+That resolves as Maven `{type=test-jar, classifier=tests}` and exports the same shape via
+`jk generate pom` / publish.
 
 - **One `jk-lock.toml` at the workspace root** (never per-module; members redirect to the root lock)
 - Module build output lands under **`target/<module-rel>/`** at the workspace root (not `module/target/`)

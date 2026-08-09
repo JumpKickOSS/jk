@@ -36,6 +36,7 @@ public enum PluginJar {
     SPRING_BOOT("jk-spring-boot", "jk.spring-boot.plugin.jar", ":spring-boot:installLocal"),
     GRAILS("jk-grails", "jk.grails.plugin.jar", ":grails:installLocal"),
     QUARKUS("jk-quarkus", "jk.quarkus.plugin.jar", ":quarkus:installLocal"),
+    MICRONAUT("jk-micronaut", "jk.micronaut.plugin.jar", ":micronaut:installLocal"),
     ANDROID("jk-android", "jk.android.plugin.jar", ":android:installLocal"),
     PROTOBUF("jk-protobuf", "jk.protobuf.plugin.jar", ":protobuf:installLocal"),
     SHRINK("jk-shrink", "jk.shrink.plugin.jar", ":shrink:installLocal");

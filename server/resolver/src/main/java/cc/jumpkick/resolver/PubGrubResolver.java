@@ -123,8 +123,8 @@ public final class PubGrubResolver implements Resolver {
         List<Term> rootTerms = new ArrayList<>(roots.size());
         Map<String, String> rootDepNames = new HashMap<>();
         for (Dependency dep : roots) {
-            // Declared modules are GA; solver keys are g:a:type:classifier (default jar).
-            String pkg = PackageId.ofGa(dep.module()).key();
+            // Declared GAs → g:a:jar:; kind=tests → g:a:test-jar:tests.
+            String pkg = dep.packageKey();
             rootTerms.add(Term.positive(pkg, VersionSelectors.toVersionSet(dep.version())));
             // Skip workspace placeholders — they never hit the network so
             // the artifact-defaulting hint would be misleading there.
@@ -133,6 +133,98 @@ public final class PubGrubResolver implements Resolver {
             }
         }
 
+        Map<String, String> decisions;
+        try {
+            decisions = solveFor(rootTerms);
+        } finally {
+            // Speculative prefetches run on the shared io pool with no handle back here. Let them
+            // finish before the caller moves on — otherwise a lock that has already returned is
+            // still writing into the cache the caller may be about to read, delete, or replace.
+            source.quiesce();
+        }
+
+        // Drop the synthetic root from the result and build the per-module dep lists.
+        decisions = new TreeMap<>(decisions);
+        decisions.remove(ROOT_PKG);
+
+        // KMP global variant exclusion (A5f finding 20): a platform artifact's own POM can name
+        // a non-selected SIBLING concretely (datastore-core-okio-jvm → datastore-core-jvm)
+        // variant-aware in GMM space, a double-define at dex in POM space. When the selected
+        // sibling made it into the resolution, the non-selected one leaves it; its dep edges
+        // (built below) drop with it, and the selected artifact supplies the classes.
+        for (var drop : kmp.droppedSiblings().entrySet()) {
+            if (decisions.containsKey(drop.getValue())) {
+                decisions.remove(drop.getKey());
+            }
+        }
+
+        // Exclusions are a SOLVE-time concern, not a lock-edge concern. MavenPackageSource applies
+        // them while listing candidates, so an excluded-everywhere package never reaches
+        // `decisions`. Once a package IS in the resolution, every POM edge pointing at it is real
+        // and the closure needs it — filtering here is what dropped logback-classic → logback-core
+        // when an unrelated Micronaut edge excluded logback-core, and the assembly then shipped
+        // without ch.qos.logback.core (ea6dc765). Do not reintroduce a per-edge exclusion filter
+        // below: `decisions.containsKey` is the whole rule (JK-1660).
+        Map<String, Set<String>> dependsOn = new HashMap<>();
+        for (Map.Entry<String, String> e : decisions.entrySet()) {
+            Set<String> deps = new LinkedHashSet<>();
+            if (pomBuilder != null) {
+                // Mirror MavenPackageSource's KMP rewrite: the dep edges must show the
+                // GMM-selected platform artifact, not the POM's platform fallback. A rewritten
+                // edge is still a POM edge, so it follows the same rule as the loop below.
+                var kmpSelection = kmp.selectionFor(e.getKey(), e.getValue());
+                Set<String> kmpDropped = Set.of();
+                if (kmpSelection.isPresent()) {
+                    var target = kmpSelection.get().target();
+                    String targetPkg = PackageId.ofGa(target.group() + ":" + target.module())
+                            .key();
+                    if (decisions.containsKey(targetPkg)) {
+                        deps.add(targetPkg + "@" + decisions.get(targetPkg));
+                    }
+                    kmpDropped = kmpSelection.get().allTargets();
+                }
+                EffectivePom pom = pomBuilder.build(toCoord(e.getKey(), e.getValue()));
+                // A relocation stub's one edge is the redirect. Without it the target would sit in
+                // the lock unreachable from anything, and every consumer of the graph — tree,
+                // explain, packaging closure — would treat it as orphaned.
+                var moved = pom.relocation();
+                if (moved != null && moved.redirects(toCoord(e.getKey(), e.getValue()))) {
+                    var to = moved.applyTo(toCoord(e.getKey(), e.getValue()));
+                    String toPkg = cc.jumpkick.model.PackageId.ofGa(to.group() + ":" + to.artifact())
+                            .key();
+                    if (decisions.containsKey(toPkg)) {
+                        deps.add(toPkg + "@" + decisions.get(toPkg));
+                    }
+                    dependsOn.put(e.getKey(), deps);
+                    continue;
+                }
+                for (Pom.Dep d : pom.dependencies()) {
+                    if (d.optional()) continue;
+                    if (kmpDropped.contains(d.module())) continue;
+                    String scope = d.scope();
+                    if (scope != null && !scope.isEmpty() && !scope.equals("compile") && !scope.equals("runtime"))
+                        continue;
+                    if (d.version() == null || d.version().isBlank()) continue;
+                    String childPkg = MavenPackageSource.packageKey(d);
+                    if (!decisions.containsKey(childPkg)) continue;
+                    deps.add(childPkg + "@" + decisions.get(childPkg));
+                }
+            }
+            dependsOn.put(e.getKey(), deps);
+        }
+
+        Map<String, Resolution.ResolvedModule> out = new TreeMap<>();
+        for (Map.Entry<String, String> e : decisions.entrySet()) {
+            out.put(
+                    e.getKey(),
+                    new Resolution.ResolvedModule(
+                            e.getKey(), e.getValue(), new ArrayList<>(dependsOn.getOrDefault(e.getKey(), Set.of()))));
+        }
+        return new Resolution(out);
+    }
+
+    /** Run the solver, retrying once with full candidate histories, and render diagnostics on unsat. */
+    private Map<String, String> solveFor(List<Term> rootTerms) throws IOException, InterruptedException {
         Map<String, String> decisions;
         try {
             PubGrubSolver solver = new PubGrubSolver(source);
@@ -162,110 +254,10 @@ public final class PubGrubResolver implements Resolver {
             throw new UnsatisfiableException(Diagnostics.render(e.rootCause(), palette), e.rootCause());
         }
 
-        // Drop the synthetic root from the result and build the per-module dep lists.
-        decisions = new TreeMap<>(decisions);
-        decisions.remove(ROOT_PKG);
-
-        // KMP global variant exclusion (A5f finding 20): a platform artifact's own POM can name
-        // a non-selected SIBLING concretely (datastore-core-okio-jvm → datastore-core-jvm)
-        // variant-aware in GMM space, a double-define at dex in POM space. When the selected
-        // sibling made it into the resolution, the non-selected one leaves it; its dep edges
-        // (built below) drop with it, and the selected artifact supplies the classes.
-        for (var drop : kmp.droppedSiblings().entrySet()) {
-            if (decisions.containsKey(drop.getValue())) {
-                decisions.remove(drop.getKey());
-            }
-        }
-
-        // Exclusions effective when listing each package's children: seed from parent edges
-        // (P depends on A with exclusions E → E applies under A), then cascade down so
-        // subtree members inherit (Maven: exclusion covers the whole branch).
-        Map<String, Set<String>> exclWhenListing = new HashMap<>();
-        if (pomBuilder != null) {
-            for (Map.Entry<String, String> e : decisions.entrySet()) {
-                EffectivePom pom = pomBuilder.build(toCoord(e.getKey(), e.getValue()));
-                for (Pom.Dep d : pom.dependencies()) {
-                    Set<String> edgeExcl = MavenPackageSource.modulesOf(d.exclusions());
-                    if (edgeExcl.isEmpty()) continue;
-                    exclWhenListing.merge(MavenPackageSource.packageKey(d), edgeExcl, PubGrubResolver::unionSets);
-                }
-            }
-            // Cascade: if A has exclusions E and A→B, B also filters by E.
-            boolean changed = true;
-            while (changed) {
-                changed = false;
-                for (Map.Entry<String, String> e : decisions.entrySet()) {
-                    Set<String> parentExcl = exclWhenListing.get(e.getKey());
-                    if (parentExcl == null || parentExcl.isEmpty()) continue;
-                    EffectivePom pom = pomBuilder.build(toCoord(e.getKey(), e.getValue()));
-                    for (Pom.Dep d : pom.dependencies()) {
-                        String childPkg = MavenPackageSource.packageKey(d);
-                        if (!decisions.containsKey(childPkg)) continue;
-                        Set<String> before = exclWhenListing.getOrDefault(childPkg, Set.of());
-                        Set<String> merged = unionSets(before, parentExcl);
-                        if (merged.size() != before.size()) {
-                            exclWhenListing.put(childPkg, merged);
-                            changed = true;
-                        }
-                    }
-                }
-            }
-        }
-
-        Map<String, Set<String>> dependsOn = new HashMap<>();
-        for (Map.Entry<String, String> e : decisions.entrySet()) {
-            Set<String> deps = new LinkedHashSet<>();
-            if (pomBuilder != null) {
-                Set<String> excl = exclWhenListing.getOrDefault(e.getKey(), Set.of());
-                // Mirror MavenPackageSource's KMP rewrite: the dep edges must show the
-                // GMM-selected platform artifact, not the POM's platform fallback.
-                var kmpSelection = kmp.selectionFor(e.getKey(), e.getValue());
-                Set<String> kmpDropped = Set.of();
-                if (kmpSelection.isPresent()) {
-                    var target = kmpSelection.get().target();
-                    String targetPkg = PackageId.ofGa(target.group() + ":" + target.module())
-                            .key();
-                    if (decisions.containsKey(targetPkg) && !MavenPackageSource.isExcluded(targetPkg, excl)) {
-                        deps.add(targetPkg + "@" + decisions.get(targetPkg));
-                    }
-                    kmpDropped = kmpSelection.get().allTargets();
-                }
-                EffectivePom pom = pomBuilder.build(toCoord(e.getKey(), e.getValue()));
-                for (Pom.Dep d : pom.dependencies()) {
-                    if (d.optional()) continue;
-                    if (kmpDropped.contains(d.module())) continue;
-                    String scope = d.scope();
-                    if (scope != null && !scope.isEmpty() && !scope.equals("compile") && !scope.equals("runtime"))
-                        continue;
-                    if (d.version() == null || d.version().isBlank()) continue;
-                    String childPkg = MavenPackageSource.packageKey(d);
-                    if (MavenPackageSource.isExcluded(childPkg, excl)) continue;
-                    if (!decisions.containsKey(childPkg)) continue;
-                    deps.add(childPkg + "@" + decisions.get(childPkg));
-                }
-            }
-            dependsOn.put(e.getKey(), deps);
-        }
-
-        Map<String, Resolution.ResolvedModule> out = new TreeMap<>();
-        for (Map.Entry<String, String> e : decisions.entrySet()) {
-            out.put(
-                    e.getKey(),
-                    new Resolution.ResolvedModule(
-                            e.getKey(), e.getValue(), new ArrayList<>(dependsOn.getOrDefault(e.getKey(), Set.of()))));
-        }
-        return new Resolution(out);
+        return decisions;
     }
 
     private static Coordinate toCoord(String packageKey, String version) {
         return PackageId.parse(packageKey).withVersion(version);
-    }
-
-    private static Set<String> unionSets(Set<String> a, Set<String> b) {
-        if (a == null || a.isEmpty()) return b == null ? Set.of() : Set.copyOf(b);
-        if (b == null || b.isEmpty()) return Set.copyOf(a);
-        Set<String> u = new LinkedHashSet<>(a);
-        u.addAll(b);
-        return Set.copyOf(u);
     }
 }

@@ -4,6 +4,7 @@ package cc.jumpkick.config;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.Feature;
 import cc.jumpkick.model.Features;
 import cc.jumpkick.model.GitRefSpec;
@@ -166,8 +167,7 @@ public final class JkBuildParser {
         // Workspace roots keep concrete [project] defaults; members may omit fields and inherit.
         boolean workspaceRoot = hasWorkspaceModules(result);
         JkBuild.Project project = parseProject(result, workspaceRoot);
-        LibraryCatalog effective =
-                catalogBase(result, catalog).withProjectOverrides(parseProjectLibraries(result));
+        LibraryCatalog effective = catalogBase(result, catalog).withProjectOverrides(parseProjectLibraries(result));
         Workspace workspace = parseWorkspace(result, effective);
         JkBuild.Dependencies deps = parseDependencies(result, workspace, effective);
         List<RepositorySpec> repos = parseRepositories(result);
@@ -179,8 +179,8 @@ public final class JkBuildParser {
         Optional<JkBuild.NativeConfig> nativeConfig = parseNativeConfig(result);
         List<PluginDescriptor> installedManifests = PluginTableRegistry.manifestsFor(moduleDir, plugins);
         Map<String, PluginConfig> pluginConfigs = parsePluginTables(result, installedManifests);
-        // assembly = "shrink" enables the shrink packager without requiring an empty [shrink] table.
-        pluginConfigs = ensureShrinkForAssemblyMode(application, pluginConfigs, installedManifests);
+        // minified = true enables the shrink packager without requiring an empty [shrink] table.
+        pluginConfigs = ensureShrinkForMinified(application, pluginConfigs, installedManifests);
         checkUnownedTables(result, moduleDir, plugins, installedManifests);
         deps = withPlatformContributions(deps, project, nativeConfig.isPresent(), pluginConfigs, installedManifests);
         JkBuild.Build build = parseBuild(result);
@@ -917,8 +917,8 @@ public final class JkBuildParser {
         return switch (mode) {
             case "bundled" -> LibraryCatalog.bundled();
             case "layered" -> fallback;
-            default -> throw new JkBuildParseException(
-                    "catalog must be \"bundled\" or \"layered\", got \"" + mode + "\"");
+            default ->
+                throw new JkBuildParseException("catalog must be \"bundled\" or \"layered\", got \"" + mode + "\"");
         };
     }
 
@@ -945,6 +945,7 @@ public final class JkBuildParser {
         boolean optional = Boolean.TRUE.equals(entry.getBoolean("optional"));
         Dependency dep =
                 parseDepEntryForm(name, entry, scope, workspace, catalog).withOptional(optional);
+        dep = applyDependencyKind(dep, entry, scope, name);
         // Cross-package features: only when the consumer set `features` and/or
         // `default-features` — absent keys leave prior resolve behavior unchanged.
         boolean hasFeaturesKey = entry.contains("features");
@@ -955,6 +956,47 @@ public final class JkBuildParser {
                 : List.of();
         boolean defaultFeatures = !hasDefaultFeaturesKey || !Boolean.FALSE.equals(entry.getBoolean("default-features"));
         return dep.withFeatures(features, defaultFeatures);
+    }
+
+    /**
+     * {@code kind = "main"|"tests"} — workspace sibling tests kind (Mill {@code testModuleDeps})
+     * or external Maven test-jar. Tests kind is only legal in test scopes so helpers never leak
+     * into main jars. External (non-workspace) kind=tests is only legal on Maven GAs.
+     */
+    private static Dependency applyDependencyKind(Dependency dep, TomlTable entry, Scope scope, String name) {
+        if (!entry.contains("kind")) return dep;
+        String displayPath = scope.tomlSection() + "." + name;
+        String raw = entry.getString("kind");
+        DependencyKind kind;
+        try {
+            kind = DependencyKind.parse(raw);
+        } catch (IllegalArgumentException e) {
+            throw new JkBuildParseException(displayPath + ".kind: " + e.getMessage());
+        }
+        if (kind == DependencyKind.MAIN) return dep.withKind(kind);
+        // kind = "tests"
+        if (scope != Scope.TEST && scope != Scope.TEST_DEV) {
+            throw new JkBuildParseException(displayPath
+                    + ".kind = \"tests\" is only legal under [test-dependencies] or"
+                    + " [test-dev-dependencies] (got ["
+                    + scope.tomlSection()
+                    + "])");
+        }
+        if (!dep.isWorkspace()) {
+            if (dep.isGit() || dep.isPath() || dep.isFile()) {
+                throw new JkBuildParseException(displayPath
+                        + ".kind = \"tests\" requires `workspace = true` or a Maven"
+                        + " coordinate (got git/path/file source)");
+            }
+            // Maven GA only (group:artifact). packageKey maps this to g:a:test-jar:tests.
+            String mod = dep.module();
+            if (mod == null || mod.indexOf(':') <= 0 || mod.indexOf(':') != mod.lastIndexOf(':')) {
+                throw new JkBuildParseException(displayPath
+                        + ".kind = \"tests\" on an external dep requires a Maven"
+                        + " group:artifact module");
+            }
+        }
+        return dep.withKind(kind);
     }
 
     private static Dependency parseDepEntryForm(
@@ -999,6 +1041,7 @@ public final class JkBuildParser {
                 throw new JkBuildParseException(
                         displayPath + " with `workspace = true` must not set `group` or `name`");
             }
+            // kind is applied in parseDepEntry after this form returns.
             return resolveWorkspaceDep(name, displayPath, workspace);
         }
 
@@ -1533,34 +1576,29 @@ public final class JkBuildParser {
         TomlTable application = root.getTable("application");
         if (application == null) return Optional.empty();
         String main = application.getString("main");
-        return Optional.of(new JkBuild.Application(main, parseAssemblyMode(application)));
+        return Optional.of(new JkBuild.Application(
+                main, artifactFlag(application, "assembly"), artifactFlag(application, "minified")));
     }
 
     /**
-     * {@code assembly = true} → fat jar; {@code assembly = "shrink"} → R8 packager; absent/false →
-     * off. Also accepts {@code "fat"} / {@code "assembly"} as synonyms for true.
+     * One additive artifact switch. Artifacts stack — a thin jar always, {@code assembly} adds the
+     * fat jar, {@code minified} adds the R8 jar and implies the fat one — so each key is a plain
+     * boolean rather than a mode.
      */
-    private static JkBuild.AssemblyMode parseAssemblyMode(TomlTable application) {
-        if (!application.contains("assembly")) return JkBuild.AssemblyMode.OFF;
-        if (application.isBoolean("assembly")) {
-            return Boolean.TRUE.equals(application.getBoolean("assembly"))
-                    ? JkBuild.AssemblyMode.FAT
-                    : JkBuild.AssemblyMode.OFF;
-        }
-        if (application.isString("assembly")) {
-            String raw = application.getString("assembly");
-            String s = raw == null ? "" : raw.trim().toLowerCase(Locale.ROOT);
-            return switch (s) {
-                case "shrink", "shrunk", "r8" -> JkBuild.AssemblyMode.SHRINK;
-                case "true", "fat", "assembly", "on" -> JkBuild.AssemblyMode.FAT;
-                case "false", "off", "none", "thin" -> JkBuild.AssemblyMode.OFF;
-                default ->
-                    throw new JkBuildParseException(
-                            "[application].assembly must be true, false, or \"shrink\" (got \"" + raw + "\")");
-            };
+    private static boolean artifactFlag(TomlTable application, String key) {
+        if (!application.contains(key)) return false;
+        if (application.isBoolean(key)) return Boolean.TRUE.equals(application.getBoolean(key));
+        String raw = application.isString(key) ? application.getString(key) : null;
+        String value = raw == null ? "" : raw.trim().toLowerCase(Locale.ROOT);
+        if (value.equals("true") || value.equals("on")) return true;
+        if (value.equals("false") || value.equals("off") || value.equals("none")) return false;
+        if (value.equals("shrink") || value.equals("shrunk") || value.equals("r8")) {
+            throw new JkBuildParseException("[application]." + key + " is a boolean, not \"" + raw
+                    + "\" — artifacts are additive: set `minified = true` for an R8 jar (it builds"
+                    + " the fat jar too)");
         }
         throw new JkBuildParseException(
-                "[application].assembly must be true, false, or \"shrink\" (got a non-bool/string value)");
+                "[application]." + key + " must be true or false (got \"" + (raw == null ? "" : raw) + "\")");
     }
 
     /** Schema-validate each installed plugin's owned table into a {@link PluginConfig}. */
@@ -1575,43 +1613,52 @@ public final class JkBuildParser {
     }
 
     /**
-     * When {@code [application] assembly = "shrink"} and no {@code [shrink]} table is present, inject
-     * shrink plugin defaults so the shrunk-jar packager activates.
+     * When {@code [application] minified = true} and no {@code [shrink]} table is present, inject
+     * shrink plugin defaults so the minified packager is available.
      */
-    private static Map<String, PluginConfig> ensureShrinkForAssemblyMode(
+    /**
+     * {@code minified = true} pulls in the shrink plugin's config so the packager is active. The
+     * reverse is not implied: a {@code [shrink]} table configures the minified artifact, it does
+     * not ask for one. Saying so is better than building the table's rules into nothing.
+     */
+    private static Map<String, PluginConfig> ensureShrinkForMinified(
             Optional<JkBuild.Application> application,
             Map<String, PluginConfig> pluginConfigs,
             List<PluginDescriptor> installed) {
-        if (application.isEmpty() || application.get().assembly() != JkBuild.AssemblyMode.SHRINK) {
+        boolean minified = application.isPresent() && application.get().minified();
+        if (!minified) {
+            if (pluginConfigs.containsKey("shrink")) {
+                throw new JkBuildParseException("[shrink] configures the minified jar, but no minified jar is"
+                        + " requested — add `minified = true` under [application], or drop the [shrink] table");
+            }
             return pluginConfigs;
         }
         return ensureShrinkPluginConfig(pluginConfigs, installed);
     }
 
     /**
-     * Apply a CLI packaging override over a parsed build for this invocation only.
-     *
-     * <ul>
-     * <li>{@link JkBuild.AssemblyMode#SHRINK} — set assembly mode and inject shrink defaults when
-     * missing
-     * <li>{@link JkBuild.AssemblyMode#FAT} / {@link JkBuild.AssemblyMode#OFF} — set mode and drop
-     * the shrink plugin config so a prior {@code assembly = "shrink"} or bare {@code [shrink]}
-     * cannot still own packaging for this run
-     * </ul>
+     * Apply a CLI packaging override over a parsed build for this invocation only. Minified pulls
+     * in the shrink plugin config when the project has none; anything else drops it, so a prior
+     * {@code minified = true} or a bare {@code [shrink]} table cannot still produce an R8 jar for
+     * this run.
      */
-    public static JkBuild withAssemblyModeOverride(JkBuild build, JkBuild.AssemblyMode mode) {
+    public static JkBuild withArtifactOverride(JkBuild build, ArtifactOverride override) {
         Objects.requireNonNull(build, "build");
-        if (mode == null) return build;
-        JkBuild next = build.withAssemblyMode(mode);
-        if (mode == JkBuild.AssemblyMode.SHRINK) {
-            if (next.pluginConfig("shrink").isPresent()) return next;
-            Map<String, PluginConfig> configs = ensureShrinkPluginConfig(
-                    next.pluginConfigs(), PluginTableRegistry.manifestsFor(null, next.plugins()));
-            PluginConfig shrink = configs.get("shrink");
-            return shrink == null ? next : next.withPluginConfig(shrink);
+        if (override == null) return build;
+        JkBuild next = build.withArtifacts(override.assembly(), override.minified());
+        if (!override.minified()) return next.withoutPluginConfig("shrink");
+        if (next.pluginConfig("shrink").isPresent()) return next;
+        Map<String, PluginConfig> configs =
+                ensureShrinkPluginConfig(next.pluginConfigs(), PluginTableRegistry.manifestsFor(null, next.plugins()));
+        PluginConfig shrink = configs.get("shrink");
+        return shrink == null ? next : next.withPluginConfig(shrink);
+    }
+
+    /** Which artifacts a single invocation asks for, from {@code --fat} / {@code --minified}. */
+    public record ArtifactOverride(boolean assembly, boolean minified) {
+        public ArtifactOverride {
+            if (minified) assembly = true;
         }
-        // FAT / OFF: CLI override must not leave the shrink packager active.
-        return next.withoutPluginConfig("shrink");
     }
 
     private static Map<String, PluginConfig> ensureShrinkPluginConfig(
@@ -1628,8 +1675,7 @@ public final class JkBuildParser {
             shrink = PluginTableRegistry.byTable("shrink").orElse(null);
         }
         if (shrink == null) {
-            throw new JkBuildParseException(
-                    "assembly = \"shrink\" requires the built-in shrink plugin (not installed)");
+            throw new JkBuildParseException("minified = true requires the built-in shrink plugin (not installed)");
         }
         TomlTable empty = Objects.requireNonNull(Toml.parse("[shrink]\n").getTable("shrink"));
         Map<String, PluginConfig> out = new LinkedHashMap<>(pluginConfigs);
@@ -1637,14 +1683,14 @@ public final class JkBuildParser {
         return out;
     }
 
-    /** Parse CLI / wire override: empty → null (no override), {@code fat}/{@code shrink}. */
-    public static JkBuild.AssemblyMode parseAssemblyOverride(String raw) {
+    /** Parse CLI / wire override: empty → null (no override), {@code fat} / {@code minified}. */
+    public static ArtifactOverride parseArtifactOverride(String raw) {
         if (raw == null || raw.isBlank()) return null;
         return switch (raw.trim().toLowerCase(Locale.ROOT)) {
-            case "fat", "true", "assembly" -> JkBuild.AssemblyMode.FAT;
-            case "shrink", "shrunk", "r8" -> JkBuild.AssemblyMode.SHRINK;
-            case "off", "false", "none", "thin" -> JkBuild.AssemblyMode.OFF;
-            default -> throw new IllegalArgumentException("unknown assembly override: " + raw + " (want fat|shrink)");
+            case "fat", "true", "assembly" -> new ArtifactOverride(true, false);
+            case "minified", "min", "shrink", "shrunk", "r8" -> new ArtifactOverride(true, true);
+            case "off", "false", "none", "thin" -> new ArtifactOverride(false, false);
+            default -> throw new IllegalArgumentException("unknown artifact override: " + raw + " (want fat|minified)");
         };
     }
 
@@ -1740,7 +1786,7 @@ public final class JkBuildParser {
         for (PluginContributions.PlatformDep dep : contributed) {
             boolean declared = platform.stream().anyMatch(d -> dep.module().equals(d.module()));
             if (declared) continue;
-            platform.add(new Dependency(dep.module(), VersionSelector.parseFloating("=" + dep.version())));
+            platform.add(new Dependency(dep.module(), VersionSelector.parseFloating(dep.version())));
             changed = true;
         }
         if (!changed) return deps;

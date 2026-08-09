@@ -31,7 +31,9 @@ public class NoteController {
 
     @GetMapping("/{id}")
     public ResponseEntity<Note> one(@PathVariable Long id) {
-        return notes.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
+        return notes.findById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping

@@ -17,7 +17,8 @@ class NewParentDirGuessTest {
         Path src = home.resolve("src");
         Files.createDirectories(src);
         Files.createDirectories(home.resolve("Documents"));
-        assertThat(NewParentDirGuess.guess(home, List.of())).isEqualTo(src.toAbsolutePath().normalize());
+        assertThat(NewParentDirGuess.guess(home, List.of()))
+                .isEqualTo(src.toAbsolutePath().normalize());
     }
 
     @Test
@@ -37,7 +38,8 @@ class NewParentDirGuessTest {
     void falls_back_to_home_when_nothing_else(@TempDir Path temp) throws Exception {
         Path home = temp.resolve("home");
         Files.createDirectories(home);
-        assertThat(NewParentDirGuess.guess(home, List.of())).isEqualTo(home.toAbsolutePath().normalize());
+        assertThat(NewParentDirGuess.guess(home, List.of()))
+                .isEqualTo(home.toAbsolutePath().normalize());
     }
 
     @Test
@@ -61,7 +63,8 @@ class NewParentDirGuessTest {
         Files.createDirectories(trees.resolve("wt2"));
         Files.writeString(trees.resolve("wt1/.git"), "gitdir: /elsewhere/repo/.git/worktrees/wt1\n");
         Files.writeString(trees.resolve("wt2/.git"), "gitdir: /elsewhere/repo/.git/worktrees/wt2\n");
-        assertThat(NewParentDirGuess.guess(home, List.of())).isEqualTo(trees.toAbsolutePath().normalize());
+        assertThat(NewParentDirGuess.guess(home, List.of()))
+                .isEqualTo(trees.toAbsolutePath().normalize());
     }
 
     @Test

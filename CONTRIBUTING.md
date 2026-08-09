@@ -43,6 +43,12 @@ JDK (the pin above qualifies).
 Full `./gradlew build` hits Maven Central; avoid rate-limited environments for the
 full suite.
 
+### Formatting
+
+jk formats itself. Run `jk format` before you commit; CI runs `jk format --check` in the
+`self-host-jvm` job and fails the build on drift (JK-1664). There is no pre-commit hook — if
+you want one, `jk format --check` is the command, but the CI gate is what's authoritative.
+
 ### Self-host (phase 2+) — workspace modules + thin workers with jk
 
 Long-form dogfood and the `jk-jk` worktree: **[docs/self-host.md](docs/self-host.md)**.

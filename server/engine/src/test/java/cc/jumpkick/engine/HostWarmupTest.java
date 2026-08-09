@@ -40,7 +40,8 @@ class HostWarmupTest {
         Files.writeString(cfg, "[engine]\nauto-warmup = false\n");
         assertThat(HostWarmup.enabled(cfg, k -> null)).isFalse();
         Files.writeString(cfg, "[engine]\nauto-warmup = true\n");
-        assertThat(HostWarmup.enabled(cfg, Map.of("JK_AUTO_WARMUP", "off")::get)).isFalse();
+        assertThat(HostWarmup.enabled(cfg, Map.of("JK_AUTO_WARMUP", "off")::get))
+                .isFalse();
         assertThat(HostWarmup.enabled(cfg, Map.of("JK_AUTO_WARMUP", "on")::get)).isTrue();
     }
 

@@ -94,6 +94,7 @@ include(
     ":client-io",       // client I/O slice: http, forge auth, credential files, CAS read/link
     ":toolchain-jdk",   // client JDK/tool flow: catalog/installer/registry, launchers, exporters
     ":wire",            // the client<->engine wire contract (was :engine-api)
+    ":dynamic-surface", // reflection/proxy/resource surface → R8 keeps + Graal reachability
     // server/ — engine-only (never on the native CLI classpath)
     ":io",              // repo fetch/publish machinery: transports (http/file/s3), POM, metadata
     ":resolver",        // PubGrub solver + conflict diagnostics
@@ -115,6 +116,7 @@ include(
     ":spring-boot",
     ":grails",
     ":quarkus",
+    ":micronaut",
     ":android",
     ":protobuf",
     ":shrink",
@@ -127,6 +129,7 @@ project(":core").projectDir          = file("shared/core")
 project(":client-io").projectDir     = file("shared/client-io")
 project(":toolchain-jdk").projectDir = file("shared/toolchain-jdk")
 project(":wire").projectDir          = file("shared/wire")
+project(":dynamic-surface").projectDir = file("shared/dynamic-surface")
 
 // server/ — engine-only
 project(":io").projectDir        = file("server/io")
@@ -151,6 +154,7 @@ project(":formatter").projectDir      = file("plugins/formatter")
 project(":spring-boot").projectDir    = file("plugins/spring-boot")
 project(":grails").projectDir         = file("plugins/grails")
 project(":quarkus").projectDir        = file("plugins/quarkus")
+project(":micronaut").projectDir      = file("plugins/micronaut")
 project(":android").projectDir        = file("plugins/android")
 project(":protobuf").projectDir       = file("plugins/protobuf")
 project(":shrink").projectDir         = file("plugins/shrink")

@@ -2,6 +2,7 @@
 package cc.jumpkick.plugin.compat;
 
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
@@ -105,11 +106,8 @@ public final class JkBuildRenderer {
         sb.append("\n[application]\n");
         if (app.main() != null)
             sb.append("main       = ").append(quote(app.main())).append('\n');
-        switch (app.assembly()) {
-            case FAT -> sb.append("assembly = true\n");
-            case SHRINK -> sb.append("assembly = \"shrink\"\n");
-            case OFF -> {}
-        }
+        if (app.assembly()) sb.append("assembly = true\n");
+        if (app.minified()) sb.append("minified = true\n");
     }
 
     /** {@code [native]} table — its presence alone marks the project as native-image-eligible. */
@@ -193,7 +191,14 @@ public final class JkBuildRenderer {
     /** One dependency line: workspace flag, git table, or versioned table. */
     private static String renderEntry(Dependency d) {
         if (d.isWorkspace()) {
-            return safeKey(d.library()) + ".workspace = true";
+            // Shorthand only for the default main kind; kind=tests needs a table form.
+            if (d.kind() == DependencyKind.MAIN) {
+                return safeKey(d.library()) + ".workspace = true";
+            }
+            return safeKey(d.library())
+                    + " = { workspace = true, kind = "
+                    + quote(d.kind().toml())
+                    + " }";
         }
         StringBuilder sb = new StringBuilder();
         sb.append(safeKey(d.library())).append(" = { ");
@@ -219,6 +224,9 @@ public final class JkBuildRenderer {
             // parser re-derives the platform-managed marker from its absence.
             if (!d.isPlatformManaged()) {
                 sb.append(", version = ").append(quote(versionLiteral(d.version())));
+            }
+            if (d.isTestsKind()) {
+                sb.append(", kind = ").append(quote(d.kind().toml()));
             }
         }
         sb.append(" }");

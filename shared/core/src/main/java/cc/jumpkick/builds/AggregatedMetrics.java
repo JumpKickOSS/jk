@@ -132,8 +132,7 @@ public final class AggregatedMetrics {
     /** Measured class wall for {@code fqcn} under module {@code dir}, if any. */
     public OptionalLong testClassWallMs(String dir, String fqcn) {
         if (dir == null || dir.isBlank() || fqcn == null || fqcn.isBlank()) return OptionalLong.empty();
-        OptionalDouble v =
-                value("module." + sanitize(dir) + ".test-class." + sanitize(fqcn) + ".wall-ms");
+        OptionalDouble v = value("module." + sanitize(dir) + ".test-class." + sanitize(fqcn) + ".wall-ms");
         return v.isPresent() ? OptionalLong.of(Math.round(v.getAsDouble())) : OptionalLong.empty();
     }
 

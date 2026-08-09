@@ -77,7 +77,9 @@ public final class UpdateCommand implements CliCommand {
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
         Files.createDirectories(cache);
         // Same pre-flight as lock: first-time download + revalidate before engine parses jk.toml.
-        cc.jumpkick.repo.LibraryRegistrySync.ensurePresent(global.offline);
+        // Engine-hosted (JIT, no client-side TTL): the CLI never talks to the registry's network.
+        cc.jumpkick.cli.engine.EngineClient.freshenCatalog(
+                cc.jumpkick.engine.EnginePaths.current(), "libraries", global.offline, null, null);
 
         String gitTarget = null;
         if (in.has("git")) {

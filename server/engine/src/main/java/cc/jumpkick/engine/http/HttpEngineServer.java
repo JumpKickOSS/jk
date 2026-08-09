@@ -920,8 +920,8 @@ public final class HttpEngineServer implements AutoCloseable {
         }
         // Same roots the short-name resolver uses (JK-1458) — the picker must never list a
         // template that then resolves differently, or miss one that would resolve.
-        var entries = cc.jumpkick.scaffold.Giter8TemplateIndex.build(
-                cc.jumpkick.scaffold.Giter8TemplateIndex.searchRoots());
+        var entries =
+                cc.jumpkick.scaffold.Giter8TemplateIndex.build(cc.jumpkick.scaffold.Giter8TemplateIndex.searchRoots());
         var arr = new StringBuilder("[");
         boolean first = true;
         for (var e : entries) {
@@ -1075,10 +1075,7 @@ public final class HttpEngineServer implements AutoCloseable {
         String dir = rec.get("dir") instanceof String s ? s : null;
         String id = rec.get("id") instanceof String s ? s : null;
         for (LiveRun h : live) {
-            boolean sameRun = buildNumber > 0
-                    && buildNumber == h.buildNumber()
-                    && dir != null
-                    && dir.equals(h.dir());
+            boolean sameRun = buildNumber > 0 && buildNumber == h.buildNumber() && dir != null && dir.equals(h.dir());
             boolean sameJournal = id != null && h.journalId() != null && id.equals(h.journalId());
             if (sameRun || sameJournal) return h;
         }
@@ -1116,10 +1113,8 @@ public final class HttpEngineServer implements AutoCloseable {
         for (cc.jumpkick.runtime.BuildMetrics.Entry e : metrics.get()) {
             if (dirFilter != null && !e.dir().isEmpty() && !e.dir().equals(dirFilter)) continue;
             if (body.length() > 1) body.append(',');
-            boolean global = e.dir().isEmpty();
-            String scope = e.step() == null ? (global ? "global" : "project") : (global ? "task" : "project/task");
             body.append(JsonOut.object()
-                    .put("scope", scope)
+                    .put("scope", e.scope())
                     .put("kind", e.kind())
                     .put("dir", e.dir())
                     .put("coord", e.coord())
@@ -1182,29 +1177,46 @@ public final class HttpEngineServer implements AutoCloseable {
     }
 
     /**
-     * {@code GET /api/project/graph?dir=…} — module dependency DAG as JSON for the Project page
-     * ECharts panel (JK-1542). Same edges as {@code jk explain --graph} / {@link
-     * cc.jumpkick.config.ModuleDotGraph}. On-demand only (SPA lazy-loads); not on status/history
-     * polls. Token-gated like {@code /api/project}. Empty nodes when the dir has no usable
-     * {@code jk.toml}.
+     * {@code GET /api/project/graph?dir=…[&scopes=main,test][&transitive=0|1]} — dependency graph
+     * for the Project page ECharts panel (JK-1542). Workspace modules plus declared external deps
+     * for the selected scopes (default {@code main}); optional lockfile transitive expansion.
+     * On-demand only (SPA lazy-loads). Token-gated like {@code /api/project}.
      */
     private void handleProjectGraph(HttpExchange exchange) throws IOException {
-        String dir = decode(queryParam(exchange.getRequestURI().getQuery(), "dir"));
-        if (dir == null || dir.isBlank()) {
+        String query = exchange.getRequestURI().getQuery();
+        Path projectDir;
+        List<cc.jumpkick.model.Scope> scopes;
+        try {
+            // decode can throw IllegalArgumentException on malformed percent-encoding — keep it (and
+            // the missing-dir check) inside the try so a bad `dir`/`scopes` query always gets the 400
+            // path below, not an uncaught exception turned into a generic 500.
+            String dir = decode(queryParam(query, "dir"));
+            if (dir == null || dir.isBlank()) {
+                sendJson(
+                        exchange,
+                        400,
+                        JsonOut.object().put("error", "missing \"dir\"").toString());
+                return;
+            }
+            projectDir = Path.of(dir);
+            // decode, like `dir` above: the SPA sends encodeURIComponent, which spells `,` as %2C,
+            // so a raw read turns every multi-scope selection into one unknown token (JK-1607).
+            scopes = cc.jumpkick.resolver.DependencyGraphModel.parseScopes(decode(queryParam(query, "scopes")));
+        } catch (IllegalArgumentException e) { // includes InvalidPathException from Path.of
             sendJson(
-                    exchange,
-                    400,
-                    JsonOut.object().put("error", "missing \"dir\"").toString());
+                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
             return;
         }
-        Path projectDir = Path.of(dir);
-        var data = cc.jumpkick.config.ModuleDotGraph.forProjectDir(projectDir);
+        boolean transitive = parseTruthy(queryParam(query, "transitive"));
+        var data = cc.jumpkick.resolver.DependencyGraphModel.forProjectDir(projectDir, scopes, transitive);
         List<Map<String, Object>> nodes = new ArrayList<>(data.nodes().size());
         for (var n : data.nodes()) {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("id", n.id());
             row.put("label", n.label());
-            row.put("path", n.path());
+            row.put("kind", n.kind());
+            if (n.version() != null) row.put("version", n.version());
+            if (n.path() != null) row.put("path", n.path());
             nodes.add(row);
         }
         List<Map<String, Object>> edges = new ArrayList<>(data.edges().size());
@@ -1212,14 +1224,25 @@ public final class HttpEngineServer implements AutoCloseable {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("from", e.from());
             row.put("to", e.to());
+            if (e.scope() != null) row.put("scope", e.scope());
             edges.add(row);
         }
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("dir", projectDir.toAbsolutePath().normalize().toString());
         body.put("workspace", data.workspace());
+        body.put("scopes", data.scopes());
+        body.put("transitive", data.transitive());
+        body.put("availableScopes", data.availableScopes());
         body.put("nodes", nodes);
         body.put("edges", edges);
         sendJson(exchange, 200, cc.jumpkick.plugin.protocol.MiniJson.write(body));
+    }
+
+    /** Query flag: true for {@code 1}/{@code true}/{@code yes}/{@code on} (case-insensitive). */
+    private static boolean parseTruthy(String raw) {
+        if (raw == null || raw.isBlank()) return false;
+        String t = raw.trim().toLowerCase(java.util.Locale.ROOT);
+        return t.equals("1") || t.equals("true") || t.equals("yes") || t.equals("on");
     }
 
     /**

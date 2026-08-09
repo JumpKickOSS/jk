@@ -8,17 +8,18 @@ layout  = "simple"
 
 [application]
 main = "$package$.Application"
+# Micronaut apps ship as a single runnable fat jar (Maven shade parity).
+assembly = true
 
-# The Micronaut platform BOM pins every io.micronaut artifact below.
-[platform-dependencies]
-micronaut-platform = { group = "io.micronaut.platform", name = "micronaut-platform", version = "=$micronaut$" }
+# Micronaut 5.x major-line floor (caret); first jk lock pins exact — JK-1544
+[micronaut]
+version = "$micronaut$"
 
 [dependencies]
 micronaut-http-server-netty = { group = "io.micronaut", name = "micronaut-http-server-netty" }
 micronaut-jackson-databind  = { group = "io.micronaut", name = "micronaut-jackson-databind" }
 logback                     = { group = "ch.qos.logback", name = "logback-classic" }
 
-# Micronaut DI is compile-time: the annotation processor generates bean definitions.
 [processor-dependencies]
 micronaut-inject-java = { group = "io.micronaut", name = "micronaut-inject-java" }
 

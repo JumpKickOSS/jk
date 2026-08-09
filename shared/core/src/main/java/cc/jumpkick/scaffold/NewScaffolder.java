@@ -105,10 +105,9 @@ public final class NewScaffolder {
         if (inputs.frameworkScaffold()) {
             FrameworkScaffoldSource src = frameworkSource != null ? frameworkSource : FRAMEWORK.get();
             if (src == null) {
-                throw new IOException(
-                        "jk new: framework scaffold ("
-                                + inputs.frameworkPluginFlag()
-                                + ") requires an engine FrameworkScaffoldSource");
+                throw new IOException("jk new: framework scaffold ("
+                        + inputs.frameworkPluginFlag()
+                        + ") requires an engine FrameworkScaffoldSource");
             }
             plugin = src.generate(inputs);
             if (plugin == null) throw new IOException("jk new: plugin scaffold failed");

@@ -96,9 +96,7 @@ class AddRemoveParseTest {
 
         Path lib = tmp.resolve("libb");
         Files.createDirectories(lib);
-        Files.writeString(
-                lib.resolve("jk.toml"),
-                """
+        Files.writeString(lib.resolve("jk.toml"), """
                 [project]
                 group = "g"
                 name = "libb"
@@ -108,7 +106,6 @@ class AddRemoveParseTest {
         assertThat(RemoveCommand.shortNameOf("libb/", tmp)).isEqualTo("libb");
         assertThat(RemoveCommand.shortNameOf("libb", tmp)).isEqualTo("libb"); // dir exists → path
 
-        assertThatThrownBy(() -> RemoveCommand.shortNameOf("@1.0", tmp))
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> RemoveCommand.shortNameOf("@1.0", tmp)).isInstanceOf(IllegalArgumentException.class);
     }
 }

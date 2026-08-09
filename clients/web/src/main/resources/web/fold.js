@@ -82,17 +82,20 @@ export function foldEvent(cards, event) {
     case 'task-start': {
       const card = resolveCard(cards, d);
       if (card) {
-        const row = stepRow(card, d.dir, (d.task || d.step), d.group, event.at);
+        const row = stepRow(card, d.dir, (d.task || d.step), d.stage, event.at);
         row.state = 'running';
         row.message = ''; // new step — clear previous tick text
+        row.startedAt = event.at ?? row.startedAt ?? null; // wall receipt for duration fallback
       }
       break;
     }
     case 'task-finish': {
       const card = resolveCard(cards, d);
       if (card) {
-        const row = stepRow(card, d.dir, (d.task || d.step), d.group, event.at);
+        const row = stepRow(card, d.dir, (d.task || d.step), d.stage, event.at);
         row.state = stepState(d.status);
+        // Engine carries millis (additive); duration_ms is the CLI jsonl alias; else receipt delta.
+        row.millis = stepMillisOf(d, row, event.at);
         // Keep last message for a moment of context only while running rows use it; finished
         // phases do not surface live detail.
       }
@@ -101,7 +104,7 @@ export function foldEvent(cards, event) {
     case 'label': {
       // Live step detail (test class.method, "shrinking jar", …) — CLI tree-row parity.
       const card = resolveCard(cards, d);
-      if (card) stepRow(card, d.dir, (d.task || d.step), d.group, event.at).message = d.label || '';
+      if (card) stepRow(card, d.dir, (d.task || d.step), d.stage, event.at).message = d.label || '';
       break;
     }
     case 'plan': {
@@ -418,7 +421,15 @@ function historyDiags(diags, dir) {
  * and its steps at the top level — synthesize one row from them so backfilled cards match live.
  */
 function historyModules(rec) {
-  const toSteps = (ps) => (ps || []).map((p) => ({ name: p.name || '?', state: stepState(p.status), phase: p.group || p.phase || '' }));
+  const toSteps = (ps) =>
+    (ps || []).map((p) => ({
+      name: p.name || '?',
+      state: stepState(p.status),
+      phase: p.stage || p.group || p.phase || '',
+      // Journal tasks always carry millis (0 when unknown); keep null only if the field is absent.
+      millis: typeof p.millis === 'number' ? p.millis : null,
+      message: '',
+    }));
   // finishedAt / startedAt give a stable lastActivity for display order after backfill.
   const activity = rec.finishedAt || rec.startedAt || 0;
   if ((rec.modules || []).length > 0) {
@@ -654,12 +665,60 @@ function stepRow(card, dir, step, phase, at) {
   const mod = moduleRow(card, dir, at);
   let row = mod.steps.find((p) => p.name === step);
   if (!row) {
-    row = { name: step || '?', state: 'running', phase: phase || '', message: '' };
+    row = {
+      name: step || '?',
+      state: 'running',
+      phase: phase || '',
+      message: '',
+      millis: null,
+      startedAt: at ?? null,
+    };
     mod.steps.push(row);
   } else if (phase && !row.phase) {
     row.phase = phase; // a later event carried the phase the first one omitted
   }
   return row;
+}
+
+/**
+ * Step wall-clock from a finish payload: prefer engine {@code millis}, then CLI {@code duration_ms},
+ * else client receipt delta from {@code task-start} (best-effort for older engines).
+ */
+function stepMillisOf(d, row, at) {
+  if (typeof d.millis === 'number' && Number.isFinite(d.millis)) return Math.max(0, d.millis);
+  if (typeof d.duration_ms === 'number' && Number.isFinite(d.duration_ms)) {
+    return Math.max(0, d.duration_ms);
+  }
+  if (row && row.startedAt != null && at != null && Number.isFinite(at) && Number.isFinite(row.startedAt)) {
+    return Math.max(0, at - row.startedAt);
+  }
+  return row && row.millis != null ? row.millis : null;
+}
+
+/**
+ * Compact duration for phase/step tooltips: {@code 360ms}, {@code 1.2s}, {@code 1m 5s}.
+ * Slightly tighter than the card-level {@code duration()} (no space before the unit).
+ */
+export function fmtStepMillis(millis) {
+  if (millis == null || !Number.isFinite(millis)) return '';
+  const ms = Math.max(0, Math.round(millis));
+  if (ms < 1000) return ms + 'ms';
+  if (ms < 60_000) {
+    const s = ms / 1000;
+    // One decimal under 10s ("1.2s"), whole seconds from there ("12s").
+    return (s < 10 ? s.toFixed(1) : String(Math.round(s))) + 's';
+  }
+  const totalSec = Math.floor(ms / 1000);
+  return Math.floor(totalSec / 60) + 'm ' + (totalSec % 60) + 's';
+}
+
+/**
+ * One step's tooltip fragment: {@code compile-tests (212ms)}, or just the name while still running.
+ */
+export function stepTimingLabel(step) {
+  if (!step || !step.name) return '';
+  const t = fmtStepMillis(step.millis);
+  return t ? step.name + ' (' + t + ')' : step.name;
 }
 
 /**

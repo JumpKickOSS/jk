@@ -52,10 +52,20 @@ public final class IdeSupport {
      * so the resolved {@code JAVA_HOME} paths are valid regardless of which IDE consumes them.
      */
     public static IdeModel build(Invocation in) throws IOException {
-        GlobalOptions global = GlobalOptions.from(in);
         Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
         Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
         Path ideConfigDir = in.value("ide-config-dir").map(Path::of).orElse(null);
+        return reconstruct(wireModel(in), cacheDir, jdksDir, ideConfigDir);
+    }
+
+    /**
+     * Engine {@link IdeWireModel} after lock + hosted sync — for IDE plugins ({@code jk ide
+     * --print-model}) and generators.
+     */
+    public static IdeWireModel wireModel(Invocation in) throws IOException {
+        GlobalOptions global = GlobalOptions.from(in);
+        Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
+        Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
 
         Path startDir = global.workingDir();
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
@@ -83,7 +93,7 @@ public final class IdeSupport {
         if (wire.error() != null) {
             throw new IdeException(2, wire.error());
         }
-        return reconstruct(wire, cacheDir, jdksDir, ideConfigDir);
+        return wire;
     }
 
     /** Rebuild the generator-facing {@link IdeModel} from the wire form. */

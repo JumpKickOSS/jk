@@ -42,8 +42,7 @@ class KotlincDriverTest {
                 tempDir.resolve("java-home"), "worker.jar", tempDir.resolve("out.aot"), scratch);
 
         String spec = Files.readString(scratch.resolve("train.spec"), StandardCharsets.UTF_8);
-        assertThat(jvmTargetIn(spec))
-                .isEqualTo(String.valueOf(KotlincDriver.TRAINER_FALLBACK_JVM_TARGET));
+        assertThat(jvmTargetIn(spec)).isEqualTo(String.valueOf(KotlincDriver.TRAINER_FALLBACK_JVM_TARGET));
         // Intent pin: 21 is the newest target every supported Kotlin line accepts. Do not bump
         // this alongside the host JDK — pre-2.2.20 Kotlin rejects newer targets and the AOT
         // cache silently never trains (JK-1434).

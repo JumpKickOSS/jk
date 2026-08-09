@@ -16,13 +16,15 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
-import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.scaffold.Giter8LocalApply;
+import cc.jumpkick.scaffold.NewInputs;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -33,9 +35,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import org.jline.terminal.Terminal;
-import cc.jumpkick.scaffold.NewInputs;
-import cc.jumpkick.scaffold.NewJkBuildRenderer;
-import cc.jumpkick.scaffold.Giter8LocalApply;
 
 /**
  * {@code jk new} — scaffold a project or workspace module (aliases: {@code init}, {@code create}).
@@ -75,9 +74,11 @@ public final class NewCommand implements CliCommand {
                 Opt.flag("Spring Boot application (implies --executable).", "--spring"),
                 Opt.flag("Grails app (--executable, --lang groovy)", "--grails"),
                 Opt.flag("Quarkus application (implies --executable).", "--quarkus"),
+                Opt.flag("Micronaut application (implies --executable).", "--micronaut"),
                 Opt.flag("Scaffold a jk build-plugin authoring project.", "--plugin"),
                 Opt.value("<ref>", "Giter8 template path, short name, or URL", "--template"),
-                Opt.value("<k=v>", "Template property k=v (repeatable)", "--param").repeat(),
+                Opt.value("<k=v>", "Template property k=v (repeatable)", "--param")
+                        .repeat(),
                 Opt.value("<url>", "Extra git template source (repeatable)", "--template-source")
                         .repeat(),
                 Opt.value("<deps>", "Curated deps, comma-separated.", "--deps"),
@@ -103,11 +104,13 @@ public final class NewCommand implements CliCommand {
     boolean spring;
     boolean grails;
     boolean quarkus;
+    boolean micronaut;
     boolean plugin;
     String templateRef;
     java.util.List<String> templateParams = java.util.List.of();
     /** One-shot third-party git sources for short-name lookup (JK-1380). */
     java.util.List<String> templateSources = java.util.List.of();
+
     String depsCsv;
     String layoutFlag;
     String kotlinModule;
@@ -226,6 +229,7 @@ public final class NewCommand implements CliCommand {
         this.spring = in.isSet("spring");
         this.grails = in.isSet("grails");
         this.quarkus = in.isSet("quarkus");
+        this.micronaut = in.isSet("micronaut");
         this.plugin = in.isSet("plugin");
         this.templateRef = in.value("template").orElse(null);
         this.templateParams = in.values("param");
@@ -277,9 +281,10 @@ public final class NewCommand implements CliCommand {
      * JK-1380).
      */
     private int runTemplateBuildPlan(Path cwd) {
-        if (spring || grails || quarkus || plugin) {
+        if (spring || grails || quarkus || micronaut || plugin) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "New", "--template cannot be combined with --spring, --grails, --quarkus, or --plugin"));
+                    "New",
+                    "--template cannot be combined with --spring, --grails, --quarkus, --micronaut, or --plugin"));
             return Exit.USAGE;
         }
         Path template = Path.of(templateRef);
@@ -295,8 +300,16 @@ public final class NewCommand implements CliCommand {
             try {
                 extractScratch = Files.createTempDirectory("jk-g8-");
                 var cfg = cc.jumpkick.config.JkTemplatesConfig.resolve();
-                var shortResolved = Giter8Catalog.resolveShortName(
-                        templateRef, cwd, extractScratch, cfg, templateSources);
+                // Lazy JIT for jk-templates: the engine freshens the official cache for built-in
+                // short names — the CLI never talks to jk-templates' network itself.
+                if (Giter8Catalog.isShortName(templateRef)
+                        && cc.jumpkick.scaffold.Giter8ShortNames.find(templateRef)
+                                .isPresent()) {
+                    cc.jumpkick.cli.engine.EngineClient.freshenCatalog(
+                            cc.jumpkick.engine.EnginePaths.current(), "templates", global.offline, null, null);
+                }
+                var shortResolved =
+                        Giter8Catalog.resolveShortName(templateRef, cwd, extractScratch, cfg, templateSources);
                 if (shortResolved.isPresent()) {
                     template = shortResolved.get();
                 } else if (Giter8Git.looksRemote(templateRef)) {
@@ -630,6 +643,7 @@ public final class NewCommand implements CliCommand {
                 || spring
                 || grails
                 || quarkus
+                || micronaut
                 || plugin
                 || (templateRef != null && !templateRef.isBlank())
                 || depsCsv != null
@@ -657,14 +671,14 @@ public final class NewCommand implements CliCommand {
     }
 
     private NewInputs fromFlags(Path cwd) {
-        if (plugin && (spring || grails || quarkus || nativeImage)) {
+        if (plugin && (spring || grails || quarkus || micronaut || nativeImage)) {
             throw new IllegalArgumentException(
                     "--plugin scaffolds a build-plugin project and can't be combined with --spring, --grails,"
-                            + " --quarkus, or --native");
+                            + " --quarkus, --micronaut, or --native");
         }
-        int frameworks = (spring ? 1 : 0) + (grails ? 1 : 0) + (quarkus ? 1 : 0);
+        int frameworks = (spring ? 1 : 0) + (grails ? 1 : 0) + (quarkus ? 1 : 0) + (micronaut ? 1 : 0);
         if (frameworks > 1) {
-            throw new IllegalArgumentException("--spring, --grails, and --quarkus are mutually exclusive");
+            throw new IllegalArgumentException("--spring, --grails, --quarkus, and --micronaut are mutually exclusive");
         }
         if (grails && lang != null && !lang.isBlank() && !"groovy".equalsIgnoreCase(lang)) {
             throw new IllegalArgumentException("--grails scaffolds a Groovy application (--lang " + lang + "?)");
@@ -724,17 +738,23 @@ public final class NewCommand implements CliCommand {
                                 : (parent != null && parent.groovy())
                                         ? NewInputs.Language.GROOVY
                                         : NewInputs.Language.JAVA;
-        var isExecutable =
-                Boolean.TRUE.equals(executable) || assembly || nativeImage || spring || grails || quarkus || plugin;
+        var isExecutable = Boolean.TRUE.equals(executable)
+                || assembly
+                || nativeImage
+                || spring
+                || grails
+                || quarkus
+                || micronaut
+                || plugin;
         // A plugin project is a fat jar whose "main" is the SDK's PluginMain; it uses the Maven
         // layout so its jk-plugin.toml resource lands at the jar root (src/main/resources). Boot /
         // Quarkus / Grails users also expect the Maven layout. An explicit --layout still wins.
         var resolvedLayout = (layoutFlag != null && !layoutFlag.isBlank())
                 ? layoutFlag.toLowerCase()
-                : (spring || grails || quarkus || plugin) ? "traditional" : "simple";
+                : (spring || grails || quarkus || micronaut || plugin) ? "traditional" : "simple";
         var resolvedMain = plugin
                 ? Optional.of("cc.jumpkick.plugin.process.PluginMain")
-                : (spring || grails || quarkus)
+                : (spring || grails || quarkus || micronaut)
                         // Kotlin's top-level main lives on the ApplicationKt facade class.
                         // Quarkus scaffold uses an object Application with @JvmStatic main → Application.
                         ? Optional.of(resolvedGroup
@@ -758,11 +778,12 @@ public final class NewCommand implements CliCommand {
                 resolvedJavaRelease,
                 Optional.<String>empty(), // flag path doesn't resolve to a specific install
                 resolvedMain,
-                assembly || plugin, // a plugin ships a fat jar (jk-plugin-sdk shaded in)
+                assembly, // NewInputs also forces it on for --plugin / --micronaut (JK-1671)
                 nativeImage,
                 spring,
                 grails,
                 quarkus,
+                micronaut,
                 plugin,
                 resolvedLang,
                 resolvedLayout,
@@ -1201,7 +1222,8 @@ public final class NewCommand implements CliCommand {
         var out = new ArrayList<cc.jumpkick.cli.tui.Choice>();
         // Prefer curated scaffold ids first (stable defaults for new projects).
         for (String id : CURATED_IDS) {
-            if (NewScaffolder.CURATED_DEPS.containsKey(id) || LibraryCatalog.bundled().lookup(id).isPresent()) {
+            if (NewScaffolder.CURATED_DEPS.containsKey(id)
+                    || LibraryCatalog.bundled().lookup(id).isPresent()) {
                 out.add(new cc.jumpkick.cli.tui.Choice(id, id, "curated"));
             }
         }

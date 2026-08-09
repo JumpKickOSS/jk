@@ -71,14 +71,18 @@ public final class NewProjectOps {
             }
         }
 
-        String group = req.group() == null || req.group().isBlank() ? "com.example" : req.group().strip();
+        String group = req.group() == null || req.group().isBlank()
+                ? "com.example"
+                : req.group().strip();
         if (!GROUP.matcher(group).matches()) {
             throw new IllegalArgumentException("invalid group (Java package form expected)");
         }
 
         NewInputs.Language lang = parseLang(req.lang());
         String layout = parseLayout(req.layout());
-        String template = req.template() == null || req.template().isBlank() ? null : req.template().strip();
+        String template = req.template() == null || req.template().isBlank()
+                ? null
+                : req.template().strip();
 
         if (template != null) {
             Path templateRoot = resolveTemplate(template, parent);
@@ -96,14 +100,14 @@ public final class NewProjectOps {
         boolean spring = "spring".equalsIgnoreCase(nullToEmpty(req.framework()));
         boolean grails = "grails".equalsIgnoreCase(nullToEmpty(req.framework()));
         boolean quarkus = "quarkus".equalsIgnoreCase(nullToEmpty(req.framework()));
-        if (spring || grails || quarkus) {
+        boolean micronaut = "micronaut".equalsIgnoreCase(nullToEmpty(req.framework()));
+        if (spring || grails || quarkus || micronaut) {
             // Framework scaffolds need ScaffoldOps; wire plain path first — frameworks via CLI for now
             // until we inject ScaffoldOps here. Reject with a clear message.
-            throw new IllegalArgumentException(
-                    "framework scaffolds from the web are not enabled yet; use: jk new --"
-                            + (spring ? "spring" : grails ? "grails" : "quarkus")
-                            + " "
-                            + name);
+            throw new IllegalArgumentException("framework scaffolds from the web are not enabled yet; use: jk new --"
+                    + (spring ? "spring" : grails ? "grails" : quarkus ? "quarkus" : "micronaut")
+                    + " "
+                    + name);
         }
 
         boolean executable = req.executable();
@@ -132,6 +136,7 @@ public final class NewProjectOps {
                 false,
                 false,
                 false,
+                false,
                 lang,
                 layout,
                 Optional.empty(),
@@ -145,8 +150,7 @@ public final class NewProjectOps {
     /**
      * Resolve a template ref: absolute/relative path, short name via {@link
      * Giter8TemplateIndex#resolveShortName} (local roots + monorepo dogfood + official cache
-     * freshen from the public {@code jkbuild/jk-templates} repo), then classpath bootstrap
-     * ({@code giter8/java-cli|kotlin-cli|quarkus}).
+     * freshen from the public {@code jkbuild/jk-templates} repo).
      */
     static Path resolveTemplate(String ref, Path cwd) throws IOException {
         Path asPath = Path.of(ref);
@@ -163,107 +167,19 @@ public final class NewProjectOps {
             Optional<Path> indexed = Giter8TemplateIndex.resolveShortName(ref, cwd);
             if (indexed.isPresent()) return indexed.get();
 
-            // Classpath bootstrap only (three offline names shipped in :core resources).
-            Path extracted = extractClasspathTemplate(ref);
-            if (extracted != null) return extracted;
-
             JkTemplatesConfig cfg = JkTemplatesConfig.resolve();
-            throw new IllegalArgumentException(
-                    "template short name not found: "
-                            + ref
-                            + " (looked under $JK_TEMPLATES, ~/.jk/templates, monorepo templates/,"
-                            + " official cache; try `jk new --template "
-                            + ref
-                            + "` once to populate the cache, or install under ~/.jk/templates/"
-                            + ref
-                            + ".g8; official="
-                            + cfg.officialUrl()
-                            + ")");
+            throw new IllegalArgumentException("template short name not found: "
+                    + ref
+                    + " (looked under $JK_TEMPLATES, ~/.jk/templates, monorepo templates/,"
+                    + " official cache; try `jk new --template "
+                    + ref
+                    + "` once to populate the cache, or install under ~/.jk/templates/"
+                    + ref
+                    + ".g8; official="
+                    + cfg.officialUrl()
+                    + ")");
         }
         throw new IllegalArgumentException("unknown template ref: " + ref);
-    }
-
-    /**
-     * Extracted classpath templates, one per short name per engine run — the engine is long-lived,
-     * so re-extracting (and leaking) a fresh temp tree per create is not acceptable (JK-1457).
-     */
-    private static final java.util.concurrent.ConcurrentHashMap<String, Path> EXTRACTED =
-            new java.util.concurrent.ConcurrentHashMap<>();
-
-    /**
-     * Unpack {@code classpath:giter8/&lt;shortName&gt;/…} when present (bootstrap java-cli /
-     * kotlin-cli / quarkus). Looks up a file marker — jar classloaders often omit directory URLs.
-     */
-    private static Path extractClasspathTemplate(String shortName) throws IOException {
-        String prefix = "giter8/" + shortName;
-        ClassLoader cl = NewProjectOps.class.getClassLoader();
-        java.net.URL marker = cl.getResource(prefix + "/default.properties");
-        if (marker == null) return null;
-        try {
-            if ("file".equals(marker.getProtocol())) {
-                Path props = Path.of(marker.toURI());
-                Path root = props.getParent();
-                return root != null && isTemplateRoot(root) ? root.toAbsolutePath().normalize() : null;
-            }
-            if ("jar".equals(marker.getProtocol())) {
-                String external = marker.toExternalForm();
-                int bang = external.indexOf('!');
-                if (bang < 0) return null;
-                return extractFromJar(java.net.URI.create(external.substring(0, bang)), prefix, shortName);
-            }
-        } catch (Exception e) {
-            throw new IOException("failed to extract classpath template '" + shortName + "': " + e.getMessage(), e);
-        }
-        return null;
-    }
-
-    /** Jar branch of {@link #extractClasspathTemplate}: extract once, reuse, clean up on failure. */
-    static Path extractFromJar(java.net.URI jarUri, String prefix, String shortName) throws IOException {
-        Path cached = EXTRACTED.get(shortName);
-        if (cached != null && isTemplateRoot(cached)) return cached;
-        Path tmp = Files.createTempDirectory("jk-g8-" + shortName + "-");
-        try {
-            String rootEntry = prefix + "/";
-            try (var fs = java.nio.file.FileSystems.newFileSystem(jarUri, Map.of())) {
-                Path root = fs.getPath(rootEntry);
-                if (!Files.isDirectory(root)) root = fs.getPath("/" + rootEntry);
-                if (!Files.isDirectory(root)) {
-                    deleteTreeQuiet(tmp);
-                    return null;
-                }
-                try (var walk = Files.walk(root)) {
-                    for (Path p : (Iterable<Path>) walk::iterator) {
-                        Path rel = root.relativize(p);
-                        Path out = tmp.resolve(rel.toString().replace('\\', '/'));
-                        if (Files.isDirectory(p)) {
-                            Files.createDirectories(out);
-                        } else {
-                            Files.createDirectories(out.getParent());
-                            Files.copy(p, out);
-                        }
-                    }
-                }
-            }
-            if (!isTemplateRoot(tmp)) {
-                deleteTreeQuiet(tmp);
-                return null;
-            }
-            EXTRACTED.put(shortName, tmp);
-            return tmp;
-        } catch (IOException | RuntimeException e) {
-            deleteTreeQuiet(tmp); // no partial trees left behind
-            throw e;
-        }
-    }
-
-    private static void deleteTreeQuiet(Path root) {
-        try (var walk = Files.walk(root)) {
-            for (Path p : walk.sorted(java.util.Comparator.reverseOrder()).toList()) {
-                Files.deleteIfExists(p);
-            }
-        } catch (IOException ignored) {
-            // best-effort cleanup
-        }
     }
 
     static boolean isTemplateRoot(Path p) {
@@ -278,7 +194,8 @@ public final class NewProjectOps {
      */
     static void assertAllowedParent(Path parent) {
         Path home = Path.of(System.getProperty("user.home")).toAbsolutePath().normalize();
-        Path tmp = Path.of(System.getProperty("java.io.tmpdir")).toAbsolutePath().normalize();
+        Path tmp =
+                Path.of(System.getProperty("java.io.tmpdir")).toAbsolutePath().normalize();
         Path p = parent.toAbsolutePath().normalize();
         // normalize() is textual, so a symlink satisfies the allowlist while the writes land
         // wherever it points — and java.io.tmpdir is world-writable, so an unprivileged local user

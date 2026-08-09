@@ -22,10 +22,10 @@ class TestEffortTest {
     @Test
     void incomplete_class_walls_uses_method_count() {
         Map<String, Long> walls = Map.of("com.ex.A", 1000L); // B missing
-        long withMethods = TestEffort.wallMillis(
-                "/m", walls, List.of("com.ex.A", "com.ex.B"), 10, null, List.of(), null, 1);
-        long noMethods = TestEffort.wallMillis(
-                "/m", walls, List.of("com.ex.A", "com.ex.B"), 0, null, List.of(), null, 1);
+        long withMethods =
+                TestEffort.wallMillis("/m", walls, List.of("com.ex.A", "com.ex.B"), 10, null, List.of(), null, 1);
+        long noMethods =
+                TestEffort.wallMillis("/m", walls, List.of("com.ex.A", "com.ex.B"), 0, null, List.of(), null, 1);
         assertThat(withMethods).isGreaterThan(noMethods);
     }
 

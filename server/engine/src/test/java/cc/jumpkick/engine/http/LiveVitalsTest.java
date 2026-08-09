@@ -3,7 +3,9 @@ package cc.jumpkick.engine.http;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
 /** Change-gate and dual-surface fingerprint for live SSE vitals (JK-1495 / JK-1497). */
@@ -56,8 +58,8 @@ class LiveVitalsTest {
     void publishStatus_change_gates_without_subscribers_and_with_unchanged_present() throws Exception {
         HttpEvents hub = new HttpEvents();
         AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
-        AtomicReference<CacheSnapshot> cache = new AtomicReference<>(
-                new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0));
+        AtomicReference<CacheSnapshot> cache =
+                new AtomicReference<>(new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0));
         try (LiveVitals live = new LiveVitals(hub, status::get, cache::get);
                 HttpEvents.Subscription sub = hub.subscribe()) {
             live.publishStatus(true);
@@ -115,8 +117,7 @@ class LiveVitalsTest {
 
     @Test
     void cache_json_exposes_dual_surface_fields() {
-        CacheSnapshot c =
-                new CacheSnapshot(10, 1000, 5, 50, 0, 0, 2, 200, 1, 30, 0, 0, 20L << 30, 1L << 30, 99);
+        CacheSnapshot c = new CacheSnapshot(10, 1000, 5, 50, 0, 0, 2, 200, 1, 30, 0, 0, 20L << 30, 1L << 30, 99);
         String json = c.toJson().toString();
         assertThat(json)
                 .contains("\"actionCacheBytes\":50")
@@ -138,8 +139,8 @@ class LiveVitalsTest {
         // status/cache chrome frames never land on MCP subscriptions.
         HttpEvents hub = new HttpEvents();
         AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
-        AtomicReference<CacheSnapshot> cache = new AtomicReference<>(
-                new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0));
+        AtomicReference<CacheSnapshot> cache =
+                new AtomicReference<>(new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0));
         try (LiveVitals live = new LiveVitals(hub, status::get, cache::get);
                 HttpEvents.Subscription mcp = hub.subscribe(HttpEvents.FrameStyle.MCP, null)) {
             assertThat(hub.hasSubscribers()).isTrue();
@@ -165,8 +166,8 @@ class LiveVitalsTest {
     void chrome_frames_reach_dashboard_but_not_mcp_side_by_side() throws Exception {
         HttpEvents hub = new HttpEvents();
         AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
-        AtomicReference<CacheSnapshot> cache = new AtomicReference<>(
-                new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0));
+        AtomicReference<CacheSnapshot> cache =
+                new AtomicReference<>(new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0));
         try (LiveVitals live = new LiveVitals(hub, status::get, cache::get);
                 HttpEvents.Subscription dash = hub.subscribe();
                 HttpEvents.Subscription mcp = hub.subscribe(HttpEvents.FrameStyle.MCP, null)) {
@@ -185,8 +186,8 @@ class LiveVitalsTest {
         AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
         CacheSnapshot snapshot =
                 new CacheSnapshot(10, 5_000_000, 2, 100_000, 0, 0, 1, 2_000_000, 0, 0, 0, 0, 20L << 30, 1L << 30, 0);
-        java.util.concurrent.atomic.AtomicInteger captures = new java.util.concurrent.atomic.AtomicInteger();
-        java.util.function.Supplier<CacheSnapshot> slowCapture = () -> {
+        AtomicInteger captures = new AtomicInteger();
+        Supplier<CacheSnapshot> slowCapture = () -> {
             captures.incrementAndGet();
             try {
                 Thread.sleep(1_000);
@@ -218,8 +219,8 @@ class LiveVitalsTest {
         // JK-1523: connect hydrate must not re-broadcast chrome to every open tab.
         HttpEvents hub = new HttpEvents();
         AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
-        AtomicReference<CacheSnapshot> cache = new AtomicReference<>(
-                new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0));
+        AtomicReference<CacheSnapshot> cache =
+                new AtomicReference<>(new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0));
         try (LiveVitals live = new LiveVitals(hub, status::get, cache::get);
                 HttpEvents.Subscription existing = hub.subscribe();
                 HttpEvents.Subscription fresh = hub.subscribe()) {
@@ -240,8 +241,8 @@ class LiveVitalsTest {
         AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
         CacheSnapshot snapshot =
                 new CacheSnapshot(10, 5_000_000, 2, 100_000, 0, 0, 1, 2_000_000, 0, 0, 0, 0, 20L << 30, 1L << 30, 0);
-        java.util.concurrent.atomic.AtomicReference<Thread> captureThread = new java.util.concurrent.atomic.AtomicReference<>();
-        java.util.function.Supplier<CacheSnapshot> capture = () -> {
+        AtomicReference<Thread> captureThread = new AtomicReference<>();
+        Supplier<CacheSnapshot> capture = () -> {
             captureThread.set(Thread.currentThread());
             return snapshot;
         };

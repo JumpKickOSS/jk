@@ -35,6 +35,21 @@ class DoctorCommandTest {
     }
 
     @Test
+    void output_json_actually_prunes_not_just_reports(@TempDir Path tempDir) throws Exception {
+        // The JSON path used to only count broken links; the mutating unlink ran on the human path
+        // only, so `jk doctor --output json` reported "pruned" without touching the filesystem.
+        Path mavenSlug = tempDir.resolve("maven");
+        Files.createDirectories(mavenSlug);
+        Path link = mavenSlug.resolve("3.9.9");
+        Files.createSymbolicLink(link, tempDir.resolve("nonexistent"));
+
+        String stdout = capture(() -> Jk.execute("doctor", "--tools-dir", tempDir.toString(), "--output", "json"));
+
+        assertThat(stdout).contains("\"pruned\":1");
+        assertThat(Files.exists(link, LinkOption.NOFOLLOW_LINKS)).isFalse();
+    }
+
+    @Test
     void reports_ok_for_healthy_local_install(@TempDir Path tempDir) throws Exception {
         // A real (not-link) gradle dir under the build-tools tree.
         Path home = tempDir.resolve("gradle").resolve("9.5.1");

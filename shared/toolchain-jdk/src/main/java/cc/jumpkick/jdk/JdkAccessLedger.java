@@ -95,9 +95,7 @@ public final class JdkAccessLedger {
                 foldOldJournal(rows);
                 Entry prev = rows.get(homeKey);
                 int count = prev == null ? 1 : prev.accessCount() + 1;
-                rows.put(
-                        homeKey,
-                        new Entry(System.currentTimeMillis(), count, ver, ven, Path.of(homeKey)));
+                rows.put(homeKey, new Entry(System.currentTimeMillis(), count, ver, ven, Path.of(homeKey)));
                 writeAll(rows);
             });
         } catch (IOException ignored) {
@@ -119,8 +117,7 @@ public final class JdkAccessLedger {
      */
     public void touch(InstalledJdk jdk) {
         if (jdk == null || jdk.home() == null) return;
-        ProbeSupport.discoverJdk(jdk.home(), "jk")
-                .ifPresentOrElse(this::touch, () -> touch(jdk.home(), "", ""));
+        ProbeSupport.discoverJdk(jdk.home(), "jk").ifPresentOrElse(this::touch, () -> touch(jdk.home(), "", ""));
     }
 
     /** All rows keyed by absolute javaHome string (iteration order = file order). */
@@ -144,15 +141,10 @@ public final class JdkAccessLedger {
     private void withExclusiveLock(IoRunnable body) throws IOException {
         Path lockFile = file.resolveSibling(file.getFileName() + ".lock");
         Object jvmLock =
-                JVM_LOCKS.computeIfAbsent(
-                        lockFile.toAbsolutePath().normalize().toString(), k -> new Object());
+                JVM_LOCKS.computeIfAbsent(lockFile.toAbsolutePath().normalize().toString(), k -> new Object());
         synchronized (jvmLock) {
             if (lockFile.getParent() != null) Files.createDirectories(lockFile.getParent());
-            try (FileChannel channel =
-                            FileChannel.open(
-                                    lockFile,
-                                    StandardOpenOption.CREATE,
-                                    StandardOpenOption.WRITE);
+            try (FileChannel channel = FileChannel.open(lockFile, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
                     FileLock lock = channel.lock()) {
                 body.run();
             }
@@ -181,9 +173,7 @@ public final class JdkAccessLedger {
                     continue;
                 }
                 byIdentifier.merge(
-                        parts[2].trim(),
-                        new long[] {millis, 1},
-                        (a, b) -> new long[] {Math.max(a[0], b[0]), a[1] + 1});
+                        parts[2].trim(), new long[] {millis, 1}, (a, b) -> new long[] {Math.max(a[0], b[0]), a[1] + 1});
             }
             for (Map.Entry<String, long[]> e : byIdentifier.entrySet()) {
                 Path home = file.resolveSibling(e.getKey());
@@ -192,9 +182,7 @@ public final class JdkAccessLedger {
                 if (homeKey.isEmpty() || rows.containsKey(homeKey)) continue;
                 var m = VERSION_SUFFIX.matcher(e.getKey());
                 String version = m.matches() ? m.group(1) : "";
-                rows.put(
-                        homeKey,
-                        new Entry(e.getValue()[0], (int) e.getValue()[1], version, "", Path.of(homeKey)));
+                rows.put(homeKey, new Entry(e.getValue()[0], (int) e.getValue()[1], version, "", Path.of(homeKey)));
             }
             Files.deleteIfExists(old);
         } catch (IOException ignored) {

@@ -85,7 +85,12 @@ public final class PluginBuild {
             List<String> contributesSources,
             List<String> contributesTestClasspath,
             /** The classes-replacing output dir ({@code TaskSpec.transformsClasses}), or null. */
-            String transformsClasses) {
+            String transformsClasses,
+            /**
+             * Optional product stage wire ({@code generate}, {@code compile}, …). Empty/null → engine
+             * infers from contributions / name.
+             */
+            String stage) {
 
         /** True when this task replaces the module's classes dir downstream. */
         public boolean transforms() {
@@ -208,7 +213,8 @@ public final class PluginBuild {
                             Jsonl.strArray(line, "contributesResources"),
                             Jsonl.strArray(line, "contributesSources"),
                             Jsonl.strArray(line, "contributesTestClasspath"),
-                            Jsonl.str(line, "transformsClasses")));
+                            Jsonl.str(line, "transformsClasses"),
+                            blankToNull(Jsonl.str(line, "stage"))));
                 case "packager" -> packager = new PackagerDecl(Jsonl.str(line, "name"), Jsonl.strArray(line, "inputs"));
                 case "command" ->
                     commands.add(new CommandDecl(Jsonl.str(line, "name"), Jsonl.str(line, "description")));
@@ -275,7 +281,9 @@ public final class PluginBuild {
         if (deps.isEmpty()) return out;
         cc.jumpkick.repo.RepoGroup repos = RepoGroupBuilder.buildFor(project, null, cas);
         for (PluginContributions.PackagerDep dep : deps) {
-            out.put(dep.artifact(), fetchArtifact(repos, dep.module(), dep.version()));
+            // JK-1545: ${config.version} may be a caret floor ("4"); resolve to a concrete release.
+            String version = resolveToolVersion(repos, dep.module(), dep.version());
+            out.put(dep.artifact(), fetchArtifact(repos, dep.module(), version));
         }
         return out;
     }
@@ -317,7 +325,7 @@ public final class PluginBuild {
                     out.put(dep.artifact(), toolClosureDir(dep, repos, cas));
                     continue;
                 }
-                cc.jumpkick.model.Coordinate coord = cc.jumpkick.model.Coordinate.parse(dep.coordinateSpec());
+                cc.jumpkick.model.Coordinate coord = resolveCoordinate(repos, dep.coordinateSpec());
                 out.put(
                         dep.artifact(),
                         repos.tryFetchArtifact(coord)
@@ -342,18 +350,24 @@ public final class PluginBuild {
      */
     private static Path toolClosureDir(PluginContributions.StepDep dep, cc.jumpkick.repo.RepoGroup repos, Cas cas)
             throws IOException, InterruptedException {
-        String cacheKey = toolClosureCacheKey(dep);
+        // Resolve floating ${config.version} segments first so the CAS key tracks the concrete line.
+        List<cc.jumpkick.model.Coordinate> roots = new ArrayList<>();
+        roots.add(resolveCoordinate(repos, dep.coordinateSpec()));
+        for (String w : dep.with()) {
+            roots.add(resolveCoordinate(repos, w));
+        }
+        String managedByResolved = null;
+        if (dep.managedBy() != null && !dep.managedBy().isBlank()) {
+            cc.jumpkick.model.Coordinate bom = resolveCoordinate(repos, dep.managedBy());
+            managedByResolved = bom.group() + ":" + bom.artifact() + ":" + bom.version();
+        }
+
+        String cacheKey = toolClosureCacheKey(roots, managedByResolved);
         Path dir = cas.root().resolve("plugin-tools").resolve(cacheKey);
         if (Files.isDirectory(dir)) {
             try (var listing = Files.list(dir)) {
                 if (listing.findFirst().isPresent()) return dir;
             }
-        }
-
-        List<cc.jumpkick.model.Coordinate> roots = new ArrayList<>();
-        roots.add(cc.jumpkick.model.Coordinate.parse(dep.coordinateSpec()));
-        for (String w : dep.with()) {
-            roots.add(cc.jumpkick.model.Coordinate.parse(w));
         }
 
         List<cc.jumpkick.model.Dependency> declared = new ArrayList<>();
@@ -364,8 +378,8 @@ public final class PluginBuild {
         }
 
         Map<String, String> bomConstraints = Map.of();
-        if (dep.managedBy() != null && !dep.managedBy().isBlank()) {
-            bomConstraints = loadBomConstraints(repos, dep.managedBy());
+        if (managedByResolved != null) {
+            bomConstraints = loadBomConstraints(repos, managedByResolved);
         }
 
         cc.jumpkick.resolver.Resolution resolution;
@@ -418,19 +432,28 @@ public final class PluginBuild {
         return dir;
     }
 
-    /** Stable CAS dir name for a tool closure (includes BOM + extra roots). */
-    private static String toolClosureCacheKey(PluginContributions.StepDep dep) {
-        StringBuilder sb = new StringBuilder(dep.coordinateSpec().replace(':', '_'));
-        for (String w : dep.with()) {
-            sb.append("__").append(w.replace(':', '_'));
+    /**
+     * Stable CAS dir name for a tool closure (resolved roots + resolved BOM). Short keys stay
+     * readable; long ones hash.
+     */
+    // Package-private for ToolClosureCacheKeyTest.
+    static String toolClosureCacheKey(List<cc.jumpkick.model.Coordinate> roots, String managedByResolved) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < roots.size(); i++) {
+            if (i > 0) sb.append("__");
+            sb.append(roots.get(i).toGav().replace(':', '_'));
         }
-        if (dep.managedBy() != null && !dep.managedBy().isBlank()) {
-            sb.append("__bom_").append(dep.managedBy().replace(':', '_'));
+        if (managedByResolved != null && !managedByResolved.isBlank()) {
+            sb.append("__bom_").append(managedByResolved.replace(':', '_'));
         }
-        // Keep path components reasonable on case-sensitive FS / path length limits.
+        // Keep path components reasonable on case-sensitive FS / path length limits. The lookup
+        // is `Files.isDirectory(dir)` with no content check, so a collision silently serves one
+        // closure's jars for another — hash the whole key rather than truncating it and hoping
+        // the tail differs in 32 bits of String.hashCode (JK-1661).
         String key = sb.toString();
         if (key.length() > 180) {
-            return Hashing.sha256Hex(key.getBytes(StandardCharsets.UTF_8)).substring(0, 40) + "_" + dep.artifact();
+            String artifact = roots.isEmpty() ? "tools" : roots.getFirst().artifact();
+            return Hashing.sha256Hex(key.getBytes(StandardCharsets.UTF_8)).substring(0, 40) + "_" + artifact;
         }
         return key;
     }
@@ -488,6 +511,44 @@ public final class PluginBuild {
         }
     }
 
+    /**
+     * Concrete version for a packager/step tool jar.
+     *
+     * <p><b>A bare version is exact.</b> A tool coordinate in a {@code jk-plugin.toml} is written
+     * by the plugin author, not the project, and a literal like {@code 8.5.35} is a deliberate pin
+     * — android's r8/aapt2/manifest-merger versions are chosen to match one AGP tools line. Only
+     * an explicit {@code ^}/{@code ~} floats, and only then does this touch maven-metadata; an
+     * exact spec costs no network at all. This is the opposite of the {@code jk.toml} dependency
+     * convention on purpose (JK-1657, correcting JK-1545).
+     */
+    static String resolveToolVersion(cc.jumpkick.repo.RepoGroup repos, String module, String versionSpec)
+            throws IOException, InterruptedException {
+        if (versionSpec == null || versionSpec.isBlank()) {
+            throw new IllegalArgumentException("tool version is blank for " + module);
+        }
+        int colon = module.indexOf(':');
+        if (colon <= 0 || colon != module.lastIndexOf(':')) {
+            throw new IllegalArgumentException("tool module must be group:artifact — got " + module);
+        }
+        return cc.jumpkick.resolver.PlatformBomVersions.resolve(
+                repos,
+                module.substring(0, colon),
+                module.substring(colon + 1),
+                cc.jumpkick.model.VersionSelector.parse(versionSpec));
+    }
+
+    /**
+     * {@code group:artifact:version[:classifier]} where the version segment may float. Bare is
+     * exact — see {@link #resolveToolVersion} for why.
+     */
+    static cc.jumpkick.model.Coordinate resolveCoordinate(cc.jumpkick.repo.RepoGroup repos, String gav)
+            throws IOException, InterruptedException {
+        cc.jumpkick.model.Coordinate raw = cc.jumpkick.model.Coordinate.parse(gav);
+        String resolved = resolveToolVersion(repos, raw.module(), raw.version());
+        if (resolved.equals(raw.version())) return raw;
+        return new cc.jumpkick.model.Coordinate(raw.group(), raw.artifact(), resolved, raw.classifier(), raw.type());
+    }
+
     /** Fetch one {@code module:version} jar into the CAS and return its path. */
     private static Path fetchArtifact(cc.jumpkick.repo.RepoGroup repos, String module, String version)
             throws IOException, InterruptedException {
@@ -539,8 +600,26 @@ public final class PluginBuild {
         return classpath;
     }
 
-    /** One production runtime entry the engine hands a step/packager (container-aware). */
-    public record ProdEntry(String fileName, Path jar, boolean snapshot, Path container) {}
+    /**
+     * One production runtime entry the engine hands a step/packager (container-aware).
+     *
+     * <p>{@code group}/{@code artifact}/{@code version} come from the lock; they are empty for a
+     * workspace sibling. Steps need them because the jar path points into the content-addressed
+     * store, where nothing about the coordinate survives.
+     */
+    public record ProdEntry(
+            String fileName,
+            Path jar,
+            boolean snapshot,
+            Path container,
+            String group,
+            String artifact,
+            String version) {
+
+        public ProdEntry(String fileName, Path jar, boolean snapshot, Path container) {
+            this(fileName, jar, snapshot, container, "", "", "");
+        }
+    }
 
     /**
      * The production RUNTIME entries a step sees ({@code In.runtimeEntries()}): lock-ordered
@@ -562,7 +641,10 @@ public final class PluginBuild {
                         a.moduleArtifact() + "-" + a.version() + ext,
                         entry.jar(),
                         a.version().contains("SNAPSHOT"),
-                        entry.container()));
+                        entry.container(),
+                        a.moduleGroup(),
+                        a.moduleArtifact(),
+                        a.version()));
             }
         }
         try {
@@ -655,7 +737,26 @@ public final class PluginBuild {
         }
 
         public SpecWriter entry(String fileName, Path jar, boolean snapshot, Path container) {
+            return entry(fileName, jar, snapshot, container, "", "", "");
+        }
+
+        public SpecWriter entry(
+                String fileName,
+                Path jar,
+                boolean snapshot,
+                Path container,
+                String group,
+                String artifact,
+                String version) {
             StringBuilder b = new StringBuilder("{\"t\":\"entry\",\"file\":").append(Jsonl.quote(fileName));
+            if (group != null && !group.isEmpty()) {
+                b.append(",\"group\":")
+                        .append(Jsonl.quote(group))
+                        .append(",\"artifact\":")
+                        .append(Jsonl.quote(artifact))
+                        .append(",\"version\":")
+                        .append(Jsonl.quote(version));
+            }
             if (jar != null)
                 b.append(",\"path\":").append(Jsonl.quote(jar.toAbsolutePath().toString()));
             b.append(",\"snapshot\":").append(snapshot);
@@ -747,6 +848,10 @@ public final class PluginBuild {
                         + " is not in the local cache — run `jk sync` first"));
     }
 
+    private static String blankToNull(String s) {
+        return (s == null || s.isBlank()) ? null : s;
+    }
+
     private static void appendConfig(List<String> lines, PluginConfig config) {
         for (Map.Entry<String, Object> e : config.values().entrySet()) {
             Object v = e.getValue();
@@ -817,14 +922,14 @@ public final class PluginBuild {
                     if (tail.size() >= 20) tail.removeFirst();
                     tail.addLast(line);
                 });
-        int exit = client.run(PluginLaunch.javaCommand(jar, spec, active.manifest().code().protocolPrefix()));
+        int exit = client.run(
+                PluginLaunch.javaCommand(jar, spec, active.manifest().code().protocolPrefix()));
         if (error[0] != null) {
             throw new IOException(error[0]);
         }
         if (exit != 0) {
             String detail = tail.isEmpty() ? "" : "\n" + String.join("\n", tail);
-            throw new IOException(
-                    "plugin worker " + active.manifest().id() + " failed (exit " + exit + ")" + detail);
+            throw new IOException("plugin worker " + active.manifest().id() + " failed (exit " + exit + ")" + detail);
         }
         return collected;
     }

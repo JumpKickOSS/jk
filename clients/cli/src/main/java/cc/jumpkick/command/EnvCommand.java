@@ -148,10 +148,7 @@ public final class EnvCommand implements CliCommand {
             return;
         }
         int nameW = rows.stream().mapToInt(r -> r.name.length()).max().orElse(8);
-        int valW = rows.stream()
-                .mapToInt(r -> displayValue(r).length())
-                .max()
-                .orElse(8);
+        int valW = rows.stream().mapToInt(r -> displayValue(r).length()).max().orElse(8);
         nameW = Math.min(Math.max(nameW, 8), 40);
         valW = Math.min(Math.max(valW, 8), 48);
         for (Row r : rows) {
@@ -184,9 +181,7 @@ public final class EnvCommand implements CliCommand {
             sb.append("\"source\":").append(jsonStr(r.source)).append(',');
             sb.append("\"secret\":").append(r.secret);
             if (verbose && r.shadowed != null) {
-                String sv = r.shadowed.length() >= SecretRedactor.MIN_SECRET_LENGTH
-                        ? SecretRedactor.MASK
-                        : r.shadowed;
+                String sv = r.shadowed.length() >= SecretRedactor.MIN_SECRET_LENGTH ? SecretRedactor.MASK : r.shadowed;
                 sb.append(",\"shadowed\":").append(jsonStr(sv));
             }
             sb.append('}');

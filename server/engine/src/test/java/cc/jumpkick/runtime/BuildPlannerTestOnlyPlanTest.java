@@ -108,8 +108,7 @@ class BuildPlannerTestOnlyPlanTest {
         BuildPlanner.Inputs testOnly = inputs(dir, true, false);
         BuildPlan.Builder tb = BuildPlanner.coreBuilder(testOnly);
         BuildPlanner.appendDeclaredTails(tb, testOnly);
-        Set<String> testNames =
-                tb.build().steps().stream().map(s -> s.name()).collect(Collectors.toSet());
+        Set<String> testNames = tb.build().steps().stream().map(s -> s.name()).collect(Collectors.toSet());
         assertThat(testNames)
                 .as("test plan terminates at run-tests; no assembly tail, no package-jar")
                 .contains(TaskNames.RUN_TESTS)
@@ -193,6 +192,30 @@ class BuildPlannerTestOnlyPlanTest {
                 .doesNotContain(BuildPlanner.COMPILE_JOIN, TaskNames.PACKAGE_JAR);
     }
 
+    /**
+     * Regression (JK-1593): compile-test's classpath includes classes/main, which copy-resources
+     * writes — without this edge the two are racing siblings under build-logic-after-compile and
+     * the fingerprint intermittently walks a half-copied dir (`jk build -r` on resource modules).
+     */
+    @Test
+    void compile_test_requires_copy_resources(@TempDir Path dir) throws Exception {
+        Files.createDirectories(dir.resolve("src/main/java"));
+        Files.createDirectories(dir.resolve("src/test/java"));
+        Files.writeString(dir.resolve("jk.toml"), """
+                [project]
+                group = "ex"
+                name = "m"
+                version = "1.0"
+                java = 25
+                """);
+        var plan = BuildPlanner.coreBuilder(inputs(dir, false, false)).build();
+        var compileTest = plan.steps().stream()
+                .filter(s -> s.name().equals(TaskNames.COMPILE_TEST))
+                .findFirst()
+                .orElseThrow();
+        assertThat(compileTest.requires()).contains(TaskNames.COPY_RESOURCES);
+    }
+
     // ---- fixture ------------------------------------------------------------------------------
 
     /** A Java module with a path-pinned, materialized [code] plugin (no worker fork needed). */
@@ -218,7 +241,8 @@ class BuildPlannerTestOnlyPlanTest {
 
                 [fake]
                 enabled = true
-                """.formatted(dir.relativize(jar).toString().replace('\\', '/'), hex));
+                """.formatted(
+                        dir.relativize(jar).toString().replace('\\', '/'), hex));
 
         Cas cas = new Cas(tmp.resolve("cache"));
         Path casJar = cas.putFile(jar, hex);
@@ -238,8 +262,7 @@ class BuildPlannerTestOnlyPlanTest {
 
     /** Pre-seed the content-keyed describe cache so coreBuilder never forks a plugin worker. */
     private static void seedDescribeCache(Path dir, JkBuild build, List<String> declLines) throws Exception {
-        PluginBuild.Active active =
-                PluginBuild.activeCodePlugin(build, dir).orElseThrow();
+        PluginBuild.Active active = PluginBuild.activeCodePlugin(build, dir).orElseThrow();
         Path target = BuildLayout.of(dir, build).moduleTargetDir();
         String key = PluginBuild.describeKey(active, build);
         Path cacheFile = target.resolve("plugin").resolve("fake-describe-" + key + ".jsonl");

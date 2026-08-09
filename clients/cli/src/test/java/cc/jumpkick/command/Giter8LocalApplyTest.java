@@ -4,12 +4,13 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.scaffold.Giter8LocalApply;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import cc.jumpkick.scaffold.Giter8LocalApply;
 
 class Giter8LocalApplyTest {
 
@@ -49,7 +50,7 @@ class Giter8LocalApplyTest {
         Path dest = tmp.resolve("proj/out");
         Files.createDirectories(dest);
         assertThatThrownBy(() -> Giter8LocalApply.apply(template, dest, Map.of()))
-                .isInstanceOf(java.io.IOException.class)
+                .isInstanceOf(IOException.class)
                 .hasMessageContaining("escapes the project directory");
         assertThat(tmp.resolve("pwned")).doesNotExist();
     }

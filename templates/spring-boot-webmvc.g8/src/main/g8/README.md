@@ -19,3 +19,5 @@ curl -s localhost:8080/actuator/health
 
 Upgrade path: bump `[spring-boot] version` in `jk.toml`; starters are version-managed by
 the plugin, so no per-dependency pins to touch.
+
+Version policy: `[spring-boot] version` is a major-line floor (caret). First `jk lock` pins an exact 4.x; `jk update` may lift within 4.x. Use `=4.1.0` to freeze.

@@ -115,8 +115,7 @@ class FreshnessStampTest {
         Path classes = tempDir.resolve("classes");
         Files.createDirectories(classes);
         Path src = writeFile(tempDir.resolve("A.java"), "class A {}");
-        Path casJar = tempDir
-                .resolve("store")
+        Path casJar = tempDir.resolve("store")
                 .resolve("sha256")
                 .resolve("ab")
                 .resolve("cd")
@@ -125,20 +124,13 @@ class FreshnessStampTest {
         writeFile(casJar, "payload");
 
         FreshnessStamp.write(
-                classes,
-                FreshnessStamp.JAVA_STAMP,
-                "compile-main",
-                "key123",
-                List.of(src),
-                List.of(casJar),
-                RELEASE);
+                classes, FreshnessStamp.JAVA_STAMP, "compile-main", "key123", List.of(src), List.of(casJar), RELEASE);
         Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis() - 1000));
         // CAS blob "rewritten" after the stamp — same path identity, newer mtime.
         Files.setLastModifiedTime(casJar, FileTime.fromMillis(System.currentTimeMillis() + 5_000));
 
         assertThat(FreshnessStamp.isContentAddressed(casJar)).isTrue();
-        assertThat(FreshnessStamp.isFresh(
-                        classes, FreshnessStamp.JAVA_STAMP, List.of(src), List.of(casJar), RELEASE))
+        assertThat(FreshnessStamp.isFresh(classes, FreshnessStamp.JAVA_STAMP, List.of(src), List.of(casJar), RELEASE))
                 .isTrue();
     }
 
@@ -152,19 +144,12 @@ class FreshnessStampTest {
         Path localJar = writeFile(tempDir.resolve("dep.jar"), "stub");
 
         FreshnessStamp.write(
-                classes,
-                FreshnessStamp.JAVA_STAMP,
-                "compile-main",
-                "key123",
-                List.of(src),
-                List.of(localJar),
-                RELEASE);
+                classes, FreshnessStamp.JAVA_STAMP, "compile-main", "key123", List.of(src), List.of(localJar), RELEASE);
         Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis() - 1000));
         Files.setLastModifiedTime(localJar, FileTime.fromMillis(System.currentTimeMillis() + 5_000));
 
         assertThat(FreshnessStamp.isContentAddressed(localJar)).isFalse();
-        assertThat(FreshnessStamp.isFresh(
-                        classes, FreshnessStamp.JAVA_STAMP, List.of(src), List.of(localJar), RELEASE))
+        assertThat(FreshnessStamp.isFresh(classes, FreshnessStamp.JAVA_STAMP, List.of(src), List.of(localJar), RELEASE))
                 .isFalse();
     }
 

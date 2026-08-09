@@ -134,8 +134,8 @@ public final class RepoCommand extends GroupCommand {
 
     /**
      * {@code jk repo prune} — store-side reclamation: sweep unreferenced CAS blobs, drop leftover
-     * CAS temp files, expire old run logs, and (with {@code --max-size}) LRU-evict down to a
-     * budget. Engine-hosted at an idle boundary, like {@code jk cache prune}.
+     * CAS temp files, and expire old run logs. Garbage-only — reachable blobs are never evicted,
+     * even over the display budget. Engine-hosted at an idle boundary, like {@code jk cache prune}.
      */
     public static final class RepoPruneCommand implements CliCommand {
         @Override
@@ -152,15 +152,13 @@ public final class RepoCommand extends GroupCommand {
         public List<Opt> options() {
             return List.of(
                     cc.jumpkick.cli.CommonOpts.cacheDir(),
-                    Opt.flag("Print what would be removed; touch nothing.", "--dry-run"),
-                    Opt.value("<size>", "Cap CAS size (e.g. 20G); evict least-recently-used blobs", "--max-size"));
+                    Opt.flag("Print what would be removed; touch nothing.", "--dry-run"));
         }
 
         @Override
         public int run(Invocation in) {
             Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
             boolean dryRun = in.isSet("dry-run");
-            String maxSize = in.value("max-size").orElse(null);
             cc.jumpkick.cli.GlobalOptions global = cc.jumpkick.cli.GlobalOptions.from(in);
             Path root = CacheCommand.resolveCacheRoot(cacheDir);
 
@@ -178,7 +176,7 @@ public final class RepoCommand extends GroupCommand {
                 result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
                         cc.jumpkick.engine.EnginePaths.current(),
                         new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest(
-                                "sweep", root, Integer.MAX_VALUE, dryRun, true, maxSize, false),
+                                "sweep", root, Integer.MAX_VALUE, dryRun, true, false),
                         steps -> cc.jumpkick.cli.run.BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Repo"),
                         CacheCommand::printWait,
                         summary);
@@ -242,9 +240,8 @@ public final class RepoCommand extends GroupCommand {
                     in.value("cache-dir").map(Path::of).orElse(null));
             Path storeRoot = JkStores.storeRootFor(cacheRoot);
             if (!Files.isDirectory(cacheRoot) && !Files.isDirectory(storeRoot)) {
-                CliOutput.out("Store directory: "
-                        + cc.jumpkick.cli.PathDisplay.styledRaw(storeRoot)
-                        + " (not yet created)");
+                CliOutput.out(
+                        "Store directory: " + cc.jumpkick.cli.PathDisplay.styledRaw(storeRoot) + " (not yet created)");
                 return 0;
             }
             CacheCommand.SectionStats s = CacheCommand.sectionStats(cacheRoot);
@@ -253,13 +250,7 @@ public final class RepoCommand extends GroupCommand {
             // Last-pruned stamp still lives under the cache root (prune job).
             String lastPruned = CacheCommand.lastPrunedLabel(cacheRoot);
             for (String line : CacheCommand.renderRepoStorageTable(
-                    s.cas(),
-                    s.repos(),
-                    s.runs(),
-                    s.repoFiles(),
-                    s.repoBytes(),
-                    maxBytes,
-                    lastPruned)) {
+                    s.cas(), s.repos(), s.runs(), s.repoFiles(), s.repoBytes(), maxBytes, lastPruned)) {
                 CliOutput.out(line);
             }
             return 0;

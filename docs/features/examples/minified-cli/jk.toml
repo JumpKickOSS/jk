@@ -1,0 +1,14 @@
+[project]
+group = "com.example"
+name = "minified-cli"
+version = "0.0.1"
+java = 25
+
+[application]
+main = "demo.Cli"
+# R8 small fat jar (runtime deps + shrink). Prefer this over a bare [shrink] table.
+minified = true
+
+# Optional keep rules still use the [shrink] table when you need them:
+# [shrink]
+# keep = ["-keep class demo.** { *; }"]

@@ -109,7 +109,7 @@ final class Json {
         for (BuildRecord.Task p : steps) {
             Map<String, Object> pm = new LinkedHashMap<>();
             pm.put("name", p.name());
-            pm.put("group", p.phase());
+            pm.put("stage", p.stage());
             pm.put("status", p.status());
             pm.put("millis", p.millis());
             out.add(pm);
@@ -230,7 +230,10 @@ final class Json {
         if (rows.isEmpty()) rows = arr(o, "steps");
         for (Object e : rows) {
             Map<String, Object> pm = (Map<String, Object>) e;
-            steps.add(new BuildRecord.Task(str(pm, "name"), strOr(pm, "group", "phase"), str(pm, "status"), lng(pm, "millis")));
+            // Journals on disk predate the rename; read the old keys so history stays readable.
+            String stage = strOr(pm, "stage", "group");
+            if (stage == null || stage.isBlank()) stage = str(pm, "phase");
+            steps.add(new BuildRecord.Task(str(pm, "name"), stage, str(pm, "status"), lng(pm, "millis")));
         }
         return steps;
     }

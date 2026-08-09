@@ -22,10 +22,11 @@ class StatusCommandTest {
     }
 
     @Test
-    void padLeft_right_aligns_labels() {
-        assertThat(StatusCommand.padLeft("JDK:", 18)).isEqualTo(" ".repeat(14) + "JDK:");
-        assertThat(StatusCommand.padLeft("Total Build Count:", 18)).isEqualTo("Total Build Count:");
-        assertThat(StatusCommand.padLeft("Artifacts Cached:", 18)).isEqualTo(" Artifacts Cached:");
+    void dottedLabel_left_aligns_with_dot_leaders() {
+        assertThat(StatusCommand.dottedLabel("JDK", 18)).isEqualTo("JDK..............:");
+        assertThat(StatusCommand.dottedLabel("Total Build Count", 18)).isEqualTo("Total Build Count:");
+        assertThat(StatusCommand.dottedLabel("Artifacts Cached", 18)).isEqualTo("Artifacts Cached.:");
+        assertThat(StatusCommand.dottedLabel("Language", 18)).isEqualTo("Language.........:");
     }
 
     @Test

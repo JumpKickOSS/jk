@@ -21,9 +21,7 @@ class JkTemplatesConfigTest {
     @Test
     void parses_official_and_sources_map(@TempDir Path tmp) throws Exception {
         Path cfg = tmp.resolve("config.toml");
-        Files.writeString(
-                cfg,
-                """
+        Files.writeString(cfg, """
                 [templates]
                 official = "https://github.com/example/official-g8"
 
@@ -48,7 +46,6 @@ class JkTemplatesConfigTest {
     @Test
     void fromTomlRoot_empty_templates_table() {
         var root = Toml.parse("[config]\ncolor = \"auto\"\n");
-        assertThat(JkTemplatesConfig.fromTomlRoot(root).officialUrl())
-                .isEqualTo(JkTemplatesConfig.DEFAULT_OFFICIAL);
+        assertThat(JkTemplatesConfig.fromTomlRoot(root).officialUrl()).isEqualTo(JkTemplatesConfig.DEFAULT_OFFICIAL);
     }
 }

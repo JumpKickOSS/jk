@@ -67,6 +67,30 @@ class BuildJournalTest {
     }
 
     /**
+     * The rollup buckets by the stage the plan <em>declared</em>, not by re-guessing from the task
+     * name. Those disagreed: a plugin source generator reports {@code generate} on the wire and was
+     * bucketed {@code compile} here, and every {@code stage(RESOLVE)} task in ScriptPlans landed in
+     * {@code other} — so the priors were fed by a different task set than the UI displayed
+     * (JK-1610).
+     */
+    @Test
+    void metrics_bucket_by_the_declared_stage_not_the_task_name() throws Exception {
+        BuildJournal j = new BuildJournal(dir);
+        var tasks = List.of(
+                // ofTaskName would call this one `compile`; the plan says `generate`.
+                new BuildRecord.Task("plugin-android-res", "generate", "SUCCESS", 700),
+                // ofTaskName has no case for this name at all and would bucket it `other`.
+                new BuildRecord.Task("resolve-kotlinc", "resolve", "SUCCESS", 300));
+        String locator =
+                j.append(withTasks(record(1_700_000_000_000L, true, "g:a"), tasks), BuildJournal.Snapshot.NONE);
+        String toml = Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
+
+        assertThat(toml).contains("phase.generate.wall-ms = 700");
+        assertThat(toml).contains("phase.resolve.wall-ms = 300");
+        assertThat(toml).doesNotContain("phase.other.wall-ms");
+    }
+
+    /**
      * Regression (JK-1587): {@code phase.*.wall-ms} is one summed key per run — duplicate
      * per-task keys would be folded as a MEAN by MetricsHarvest, deflating the phase priors.
      */
@@ -78,37 +102,17 @@ class BuildJournalTest {
                 new BuildRecord.Task("copy-resources", "compile", "SUCCESS", 1000),
                 new BuildRecord.Task("write-stamp", "compile", "SUCCESS", 500),
                 new BuildRecord.Task("run-tests", "test", "SUCCESS", 4000));
-        BuildRecord base = record(1_700_000_000_000L, true, "g:a");
-        BuildRecord withTasks = new BuildRecord(
-                base.id(),
-                base.buildNumber(),
-                BuildRecord.SCHEMA,
-                base.kind(),
-                base.dir(),
-                base.coord(),
-                base.startedAt(),
-                base.finishedAt(),
-                base.millis(),
-                base.success(),
-                base.cancelled(),
-                base.exitCode(),
-                base.jkVersion(),
-                base.tests(),
-                base.modules(),
-                tasks,
-                base.diagnostics(),
-                base.trigger(),
-                base.commit(),
-                base.benefit(),
-                base.running(),
-                base.io());
-        String locator = j.append(withTasks, BuildJournal.Snapshot.NONE);
+        String locator =
+                j.append(withTasks(record(1_700_000_000_000L, true, "g:a"), tasks), BuildJournal.Snapshot.NONE);
         Path metrics = j.runDir(locator).orElseThrow().resolve("metrics.toml");
         String toml = Files.readString(metrics);
         // One key per phase, summed: compile-java + copy-resources + write-stamp.
         assertThat(toml).contains("phase.compile.wall-ms = 3500");
         assertThat(toml).contains("phase.test.wall-ms = 4000");
-        assertThat(toml.lines().filter(l -> l.startsWith("phase.compile.wall-ms")).count()).isEqualTo(1);
+        assertThat(toml.lines()
+                        .filter(l -> l.startsWith("phase.compile.wall-ms"))
+                        .count())
+                .isEqualTo(1);
         // Per-task keys stay per task.
         assertThat(toml).contains("task.compile-java.wall-ms = 2000");
     }
@@ -287,5 +291,32 @@ class BuildJournalTest {
         j.begin(BuildRecord.running(8, "build", "/projA", "g:a", 1_700_000_000_000L, "9.9", "cli"));
         assertThat(j.delete("8", "g:b", "/projB")).isFalse();
         assertThat(j.runDir("g:a", "/projA", 8)).isPresent();
+    }
+
+    /** {@code base} with its task list replaced — the record is wide and all-positional. */
+    private static BuildRecord withTasks(BuildRecord base, List<BuildRecord.Task> tasks) {
+        return new BuildRecord(
+                base.id(),
+                base.buildNumber(),
+                BuildRecord.SCHEMA,
+                base.kind(),
+                base.dir(),
+                base.coord(),
+                base.startedAt(),
+                base.finishedAt(),
+                base.millis(),
+                base.success(),
+                base.cancelled(),
+                base.exitCode(),
+                base.jkVersion(),
+                base.tests(),
+                base.modules(),
+                tasks,
+                base.diagnostics(),
+                base.trigger(),
+                base.commit(),
+                base.benefit(),
+                base.running(),
+                base.io());
     }
 }

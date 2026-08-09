@@ -21,7 +21,7 @@ final class TaskCatalog {
 
     record TaskDef(
             String name,
-            String phase,
+            String stage,
             String description,
             Function<BuildLayout, Path> primaryOutput,
             List<String> aliases) {
@@ -111,7 +111,7 @@ final class TaskCatalog {
     }
 
     private static TaskDef def(
-            String name, String phase, String description, Function<BuildLayout, Path> out, String... aliases) {
-        return new TaskDef(name, phase, description, out, List.of(aliases));
+            String name, String stage, String description, Function<BuildLayout, Path> out, String... aliases) {
+        return new TaskDef(name, stage, description, out, List.of(aliases));
     }
 }

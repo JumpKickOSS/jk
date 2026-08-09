@@ -23,7 +23,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 
 /**
- * Best-effort machine build history (engine/project/step tiers) at {@code ~/.local/state/jk/builds/metrics.json}.
+ * Best-effort machine build history (global/project/task tiers) at {@code ~/.local/state/jk/builds/metrics.json}.
  * Outcome buckets stay separate so estimators only learn from {@link Entry#ok}; {@link #record} is
  * locked atomic replace.
  */
@@ -87,7 +87,27 @@ public final class BuildMetrics {
             Stats ok,
             Stats failed,
             Stats cancelled,
-            long updatedMillis) {}
+            long updatedMillis) {
+
+        /**
+         * The row's tier as it appears on the wire and in {@code /api/metrics}. One definition —
+         * both emitters and their tests read it here, so a rename can't leave a literal behind.
+         */
+        public String scope() {
+            boolean global = dir().isEmpty();
+            if (step() == null) return global ? SCOPE_GLOBAL : SCOPE_PROJECT;
+            return global ? SCOPE_TASK : SCOPE_PROJECT_TASK;
+        }
+    }
+
+    /** Machine-wide invocation rows. */
+    public static final String SCOPE_GLOBAL = "global";
+    /** Per-project invocation rows. */
+    public static final String SCOPE_PROJECT = "project";
+    /** Machine-wide per-task rows. */
+    public static final String SCOPE_TASK = "task";
+    /** Per-project per-task rows. */
+    public static final String SCOPE_PROJECT_TASK = "project/task";
 
     /** One step's outcome within a finished run; {@code status} is a {@code TaskStatus} name. */
     public record StepSample(String dir, String step, String status, long millis) {}

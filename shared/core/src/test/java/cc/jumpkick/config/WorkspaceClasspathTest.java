@@ -76,6 +76,72 @@ class WorkspaceClasspathTest {
                 %s""".formatted(name, depsBlock));
     }
 
+    @Test
+    void tests_kind_puts_sibling_test_classes_on_the_test_classpath(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("jk.toml"), """
+                [project]
+                group = "com.ex"
+                name = "ws"
+                version = "0.1.0"
+                jdk = "25"
+
+                [workspace]
+                modules = ["lib", "app"]
+                """);
+        module(root, "lib", "");
+        module(root, "app", """
+                [dependencies]
+                lib = { workspace = true }
+
+                [test-dependencies]
+                lib = { workspace = true, kind = "tests" }
+                """);
+        // Materialize the products WorkspaceClasspath looks for.
+        Path libMain = root.resolve("target/lib/lib/lib-0.1.0.jar");
+        Path libTestClasses = root.resolve("target/lib/classes/test");
+        Files.createDirectories(libMain.getParent());
+        Files.createDirectories(libTestClasses);
+        Files.writeString(libMain, "jar");
+        Files.writeString(libTestClasses.resolve("Helper.class"), "class");
+
+        JkBuild app = JkBuildParser.parse(root.resolve("app/jk.toml"));
+        var mainOnly = WorkspaceClasspath.resolve(root.resolve("app"), app, Set.of(Scope.EXPORT, Scope.MAIN));
+        assertThat(mainOnly.jars().stream().map(Object::toString).toList()).noneMatch(p -> p.contains("classes/test"));
+
+        var withTests =
+                WorkspaceClasspath.resolve(root.resolve("app"), app, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST));
+        assertThat(withTests.jars()).anyMatch(p -> p.endsWith(Path.of("classes/test")));
+        assertThat(withTests.missingSiblingJars()).isEmpty();
+    }
+
+    @Test
+    void kind_tests_outside_test_scope_is_rejected(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("jk.toml"), """
+                [project]
+                group = "com.ex"
+                name = "ws"
+                version = "0.1.0"
+                jdk = "25"
+
+                [workspace]
+                modules = ["lib", "app"]
+                """);
+        module(root, "lib", "");
+        Path appToml = root.resolve("app/jk.toml");
+        Files.createDirectories(appToml.getParent());
+        Files.writeString(appToml, """
+                [project]
+                group = "com.ex"
+                name = "app"
+                version = "0.1.0"
+                jdk = "25"
+
+                [dependencies]
+                lib = { workspace = true, kind = "tests" }
+                """);
+        org.junit.jupiter.api.Assertions.assertThrows(JkBuildParseException.class, () -> JkBuildParser.parse(appToml));
+    }
+
     private static List<String> jarNames(WorkspaceClasspath.Result result) {
         return result.siblingClosureJars().stream()
                 .map(p -> p.getFileName().toString())

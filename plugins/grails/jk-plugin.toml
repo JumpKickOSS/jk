@@ -27,7 +27,7 @@ layered-image  = true          # images split release/snapshot dep layers + expl
 
 [schema]
 version      = { type = "string", required = true, example = "8.0.0-M4", hint = "it pins the Apache grails-bom (org.grails is the pre-ASF line and has no 8.x)" }
-boot-version = { type = "string", default = "4.1.0", hint = "the Spring Boot loader line matching this Grails release" }
+boot-version = { type = "string", default = "4", hint = "the Spring Boot loader line matching this Grails release" }
 
 # ---- Declarative contributions — pure data, evaluated engine-side with zero plugin code.
 
@@ -84,7 +84,7 @@ kind = "resource"
 # Boot line this Grails release targets, fetched engine-side, handed to the worker by name.
 [[contribute.packager-dependency]]
 artifact   = "spring-boot-loader"
-coordinate = "org.springframework.boot:spring-boot-loader:${config.boot-version}"
+coordinate = "org.springframework.boot:spring-boot-loader:^${config.boot-version}"
 
 # ---- Scaffold — `jk new --grails` renders these engine-side; the client writes the
 # returned payloads. Paths are literal grails-app conventions plus ${package-path}.

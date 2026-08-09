@@ -55,6 +55,8 @@ ECharts (`series-graph`). Complex graphs are expensive server- and client-side, 
 
 - the panel is **closed by default**;
 - `GET /api/project/graph` runs **only** when the panel opens (`module-dep-graph` mounts then);
+  scope checkboxes (default `main`) and a **Transitive** toggle (off by default) re-fetch with
+  `scopes=` / `transitive=`;
 - `echarts.init` runs only after that payload lands;
 - closing the panel (or leaving the project) unmounts the component (aborts in-flight fetch,
   disposes the chart).
@@ -69,7 +71,7 @@ panel rather than the global auth dialog.
 | Path | Handler |
 | --- | --- |
 | Build activity | `fold.js` → activity cards (hard bounds: `MAX_CARDS`, `MAX_OUTPUT_LINES`, `MAX_DIAGNOSTICS`); `label` events drive the live detail after the running phase node (CLI tree-row parity) |
-| `status` | Header sysbox (CORES/LOAD/RAM/AVAIL) + footer Builds Running / Engine Heap |
+| `status` | Header sysbox (CPU / RAM meters) + footer Builds Running / Engine Heap |
 | `cache` | Footer **Cache** + **Store** (thin dual-surface frames); Status panels load full breakdown via REST on view entry |
 
 While the stream is **live**, the SPA does **not** poll `/api/status` or `/api/cache` on a timer.

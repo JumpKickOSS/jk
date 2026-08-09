@@ -22,6 +22,8 @@ public final class TaskNames {
     public static final String COPY_RESOURCES = "copy-resources";
     /** Optional project build logic; often folded into copy-resources. */
     public static final String HATCH_GENERATE = "build-logic";
+    /** SPI BEFORE_COMPILE / GENERATE anchor (codegen before main compile). */
+    public static final String BUILD_LOGIC_BEFORE_COMPILE = "build-logic-before-compile";
     /** SPI AFTER_COMPILE anchor. */
     public static final String BUILD_LOGIC_AFTER_COMPILE = "build-logic-after-compile";
     /** SPI BEFORE_PACKAGE anchor. */
@@ -38,6 +40,10 @@ public final class TaskNames {
     public static final String NATIVE_IMAGE = "native-image";
     public static final String PACKAGE_JAR = "package-jar";
     public static final String PACKAGE_ASSEMBLY = "package-assembly";
+
+    /** R8-minified jar ({@code -min.jar}), built from the same inputs as the fat jar. */
+    public static final String PACKAGE_MINIFIED = "package-minified";
+
     public static final String PACKAGE_SOURCES = "package-sources";
     public static final String PARSE_BUILD = "parse-build";
     public static final String PARSE_LOCK = "parse-lock";

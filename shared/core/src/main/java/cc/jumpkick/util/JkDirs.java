@@ -197,7 +197,8 @@ public final class JkDirs {
     public Path buildsDir() {
         String override = nonBlank(env.apply("JK_BUILDS_DIR"));
         if (override != null) return Path.of(override);
-        if (jkHomeOrNull() != null) return Path.of(jkHomeOrNull()).resolve("state").resolve("builds");
+        if (jkHomeOrNull() != null)
+            return Path.of(jkHomeOrNull()).resolve("state").resolve("builds");
         return stateDir().resolve("builds");
     }
 

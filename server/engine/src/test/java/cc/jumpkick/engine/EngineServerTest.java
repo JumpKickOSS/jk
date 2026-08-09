@@ -257,7 +257,7 @@ class EngineServerTest {
             assertThat(rows).hasSize(5);
 
             String global = rows.stream()
-                    .filter(r -> "global".equals(Jsonl.str(r, "scope")))
+                    .filter(r -> cc.jumpkick.runtime.BuildMetrics.SCOPE_GLOBAL.equals(Jsonl.str(r, "scope")))
                     .findFirst()
                     .orElseThrow();
             assertThat(Jsonl.longValue(global, "okCount", -1)).isEqualTo(1);
@@ -280,14 +280,12 @@ class EngineServerTest {
             assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.METRICS_DONE);
             assertThat(filtered).hasSize(4);
             assertThat(filtered).noneMatch(r -> "/proj/b".equals(Jsonl.str(r, "dir")));
-            String stepRow = filtered.stream()
-                    .filter(r -> "project/step".equals(Jsonl.str(r, "scope")))
+            String taskRow = filtered.stream()
+                    .filter(r -> cc.jumpkick.runtime.BuildMetrics.SCOPE_PROJECT_TASK.equals(Jsonl.str(r, "scope")))
                     .findFirst()
                     .orElseThrow();
-            String stepName = Jsonl.str(stepRow, "task");
-            if (stepName == null || stepName.isBlank()) stepName = Jsonl.str(stepRow, "step");
-            assertThat(stepName).isEqualTo("compile-java");
-            assertThat(Jsonl.longValue(stepRow, "okTotalMillis", -1)).isEqualTo(700);
+            assertThat(Jsonl.str(taskRow, "task")).isEqualTo("compile-java");
+            assertThat(Jsonl.longValue(taskRow, "okTotalMillis", -1)).isEqualTo(700);
         }
         server.close();
     }
@@ -859,9 +857,13 @@ class EngineServerTest {
     /**
      * Engine-hosted {@code jk cache prune} round-trip (Wave 4 — the idle-boundary cache job): a
      * real server over the socket sweeps a fixture cache holding a stale action key and a leftover
-     * CAS temp file. Asserts the single-plan wire conversation ends in a summary-carrying {@code
-     * plan-finish}, that the stale files are gone, and that the {@code.prune.lock} cross-process
-     * guard was created (the hosted path always takes it — the Wave-3 finding's fix).
+     * cache-CAS temp file. Asserts the single-plan wire conversation ends in a summary-carrying
+     * {@code plan-finish}, that the stale files are gone, and that the {@code.prune.lock}
+     * cross-process guard was created (the hosted path always takes it — the Wave-3 finding's fix).
+     *
+     * <p>Both planted files are <strong>cache</strong> tier. Since the JK-1531 split a plain prune
+     * owns the cache root only; store temps belong to `jk repo prune`, and `CacheCommandTest`
+     * pins that half.
      */
     @Test
     void cache_prune_request_sweeps_the_cache_over_the_socket() throws Exception {
@@ -873,9 +875,7 @@ class EngineServerTest {
                 staleKey,
                 java.nio.file.attribute.FileTime.fromMillis(
                         System.currentTimeMillis() - Duration.ofDays(90).toMillis()));
-        // CAS blobs (and their.put-* temps) live in the store, not under the request's cache
-        // root, sincethe sweep resolves sha256/ through JkStores.
-        Path putTmp = cc.jumpkick.cache.JkStores.resolve(cache, "sha256").resolve(".put-1234");
+        Path putTmp = cache.resolve("sha256").resolve(".put-1234");
         Files.createDirectories(putTmp.getParent());
         Files.writeString(putTmp, "partial");
 
@@ -888,7 +888,7 @@ class EngineServerTest {
         String planFinish = null;
         String buildError = null;
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
-            c.sendLine(EngineProtocol.cachePruneRequest("prune", cache.toString(), 30, false, false, null, false));
+            c.sendLine(EngineProtocol.cachePruneRequest("prune", cache.toString(), 30, false, false, false));
             String line;
             while ((line = c.readLine()) != null) {
                 String type = EngineProtocol.typeOf(line);

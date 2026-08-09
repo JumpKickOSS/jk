@@ -2,7 +2,6 @@
 package cc.jumpkick.android;
 
 import cc.jumpkick.plugin.build.TaskExec;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -94,5 +93,4 @@ final class R8Step {
             throw new IllegalStateException("R8 failed:\n" + result.output());
         }
     }
-
 }

@@ -36,8 +36,11 @@ public final class OfficialTemplatesFreshen {
 
     /**
      * Best-effort freshen; never throws. Network / missing git → silent skip. Attempts are rate
-     * limited to one per cache key per {@link #ATTEMPT_TTL_NANOS} (success <em>or</em> failure);
-     * the 12 h maintenance cycle and engine-start warmup are unaffected by a 10 min TTL.
+     * limited to one per cache key per {@link #ATTEMPT_TTL_NANOS} (success <em>or</em> failure) —
+     * for the 12 h maintenance cycle and engine-start warmup, both long-lived-process callers where
+     * the guard actually protects against a hung run retrying itself. {@link #refreshNow} is the
+     * on-demand counterpart for a real user action ({@code jk new}/{@code init}): every call
+     * attempts a real fetch, no TTL.
      */
     public static void refreshQuiet(Consumer<String> log) {
         if (log == null) log = s -> {};
@@ -49,7 +52,27 @@ public final class OfficialTemplatesFreshen {
             // Quiet: one short line only when something unexpected is worth a breadcrumb.
             String m = t.getMessage();
             if (m != null && !m.isBlank() && m.length() < 120) {
-                log.accept("jk engine: templates freshen skipped (" + t.getClass().getSimpleName() + ")");
+                log.accept(
+                        "jk engine: templates freshen skipped (" + t.getClass().getSimpleName() + ")");
+            }
+        }
+    }
+
+    /**
+     * On-demand freshen for a real user action ({@code jk new}/{@code init}, engine-hosted via
+     * {@code FRESHEN_CATALOG_REQUEST}): always attempts a fetch — no TTL guard, since the caller is
+     * the engine (already the single long-lived process; a CLI-process-local TTL here would reset
+     * on every invocation and never actually gate anything). Best-effort; never throws.
+     */
+    public static void refreshNow(Consumer<String> log) {
+        if (log == null) log = s -> {};
+        try {
+            refresh(JkTemplatesConfig.resolve(), log);
+        } catch (Throwable t) {
+            String m = t.getMessage();
+            if (m != null && !m.isBlank() && m.length() < 120) {
+                log.accept(
+                        "jk engine: templates freshen skipped (" + t.getClass().getSimpleName() + ")");
             }
         }
     }
@@ -192,8 +215,7 @@ public final class OfficialTemplatesFreshen {
             url = r.substring(0, hash);
             rev = r.substring(hash + 1);
         }
-        if (!url.endsWith(".git")
-                && (url.startsWith("https://github.com/") || url.startsWith("http://github.com/"))) {
+        if (!url.endsWith(".git") && (url.startsWith("https://github.com/") || url.startsWith("http://github.com/"))) {
             url = url + ".git";
         }
         return new Parsed(url, rev, cacheKeyForUrl(url, rev));

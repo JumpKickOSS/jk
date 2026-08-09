@@ -149,6 +149,20 @@ public final class JdkInstallCommand implements CliCommand {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("fetch JetBrains JDK feed");
+                    // Delegate to an already-running engine when there is one (same path the web
+                    // dashboard/MCP always use); never start one — this is how a JDK gets onto a
+                    // machine that has none at all, possibly the one that will host the engine
+                    // itself, so it must work standalone. Skipped for a custom feed with no
+                    // explicit --cache-file: that combination falls back to a throwaway
+                    // ephemeralCachePath() below, which the engine has no way to share with this
+                    // process.
+                    if (!global.offline && (feedUrl == null || cacheFile != null)) {
+                        cc.jumpkick.cli.engine.EngineClient.freshenCatalogIfRunning(
+                                cc.jumpkick.engine.EnginePaths.current(),
+                                "jdks",
+                                feedUrl != null ? feedUrl.toString() : null,
+                                cacheFile);
+                    }
                     boolean refresh =
                             cc.jumpkick.config.SessionContext.current().config().forceOr(false);
                     try {
@@ -303,8 +317,7 @@ public final class JdkInstallCommand implements CliCommand {
         // never opened a terminal and never asked about the default.
         boolean wizardRan = Boolean.TRUE.equals(plan.get(WIZARD_RAN).orElse(false));
         if (!wizardRan && Confirm.isInteractiveTerminal()) {
-            boolean wantedDefault =
-                    Boolean.TRUE.equals(plan.get(WANT_DEFAULT).orElse(false));
+            boolean wantedDefault = Boolean.TRUE.equals(plan.get(WANT_DEFAULT).orElse(false));
             plan.get(INSTALLED).ifPresent(jdk -> offerDefaults(jdk, wantedDefault));
         }
         return 0;

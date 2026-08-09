@@ -291,14 +291,18 @@ public final class AddCommand implements CliCommand {
                                 + " is outside the workspace root "
                                 + root
                                 + "; added the dependency but not registering it as a module."));
-            } else if (Files.exists(rootToml)
-                    && (BuildCommand.projectInfoOrNull(root) != null
-                            && BuildCommand.projectInfoOrNull(root).workspaceRoot())) {
+            } else if (Files.exists(rootToml) && BuildCommand.projectInfoOrNull(root) != null) {
+                // Adding the first local module promotes a plain project into a workspace root
+                // (Cargo/uv semantics) — without the registration the dependency names a
+                // coordinate that was never published and `jk lock` cannot resolve it.
+                boolean alreadyWorkspace = BuildCommand.projectInfoOrNull(root).workspaceRoot();
                 String rel = root.relativize(target).toString().replace('\\', '/');
-                if (EngineEdits.apply(rootToml, "add-workspace-module", java.util.List.of(rel))) {
+                String op = alreadyWorkspace ? "add-workspace-module" : "register-workspace-module";
+                if (EngineEdits.apply(rootToml, op, java.util.List.of(rel))) {
                     CliOutput.out("Registered module '"
                             + rel
-                            + "' in workspace "
+                            + "' in "
+                            + (alreadyWorkspace ? "workspace " : "new workspace ")
                             + cc.jumpkick.cli.PathDisplay.styledRaw(root));
                 }
             }

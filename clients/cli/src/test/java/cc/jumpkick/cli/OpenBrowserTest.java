@@ -11,8 +11,8 @@ class OpenBrowserTest {
 
     @Test
     void prefers_BROWSER_env_over_platform_default() {
-        List<String> cmd = OpenBrowser.command(
-                "http://example/", k -> "BROWSER".equals(k) ? "/usr/bin/firefox" : null, "Linux");
+        List<String> cmd =
+                OpenBrowser.command("http://example/", k -> "BROWSER".equals(k) ? "/usr/bin/firefox" : null, "Linux");
         assertThat(cmd).containsExactly("/usr/bin/firefox", "http://example/");
     }
 

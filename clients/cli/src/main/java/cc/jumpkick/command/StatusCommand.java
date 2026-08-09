@@ -6,6 +6,7 @@ import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.run.BuildPlanConsole;
+import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -23,8 +24,8 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.plugin.protocol.Jsonl;
-import cc.jumpkick.runtime.TaskForecast;
 import cc.jumpkick.runtime.ExplainPlan;
+import cc.jumpkick.runtime.TaskForecast;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
@@ -46,7 +47,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public final class StatusCommand implements CliCommand {
 
-    /** Right-aligned label column width (widest label is {@code Total Build Count:}). */
+    /**
+     * Label field width including the trailing colon (widest is {@code Total Build Count:}). Labels
+     * are left-aligned and padded with dim dots to this width.
+     */
     private static final int LABEL_W = 18;
 
     @Override
@@ -301,43 +305,56 @@ public final class StatusCommand implements CliCommand {
 
     private static void sectionHeader(String title, String suffix) {
         Theme t = Theme.active();
-        String bullet = Theme.colorize("●", t.darkGray());
+        String bullet = Theme.colorize("●", t.blue());
         String head = Theme.colorize(title, t.brightWhite());
         if (suffix == null || suffix.isBlank()) {
             CliOutput.out(bullet + " " + head);
             return;
         }
-        // "Project: coord" / "Project Build: coord" — suffix in coord colors when G:A[:V].
-        CliOutput.out(bullet + " " + head + Theme.colorize(":", t.darkGray()) + " " + styleCoord(suffix));
+        // "Project: coord" / "Project Build: coord" — suffix in standard coord colors when G:A[:V].
+        CliOutput.out(bullet + " " + head + ":" + " " + styleCoord(suffix));
     }
 
     private static String styleCoord(String coord) {
         if (coord == null || coord.isBlank() || "—".equals(coord) || coord.startsWith("(")) {
             return Theme.colorize(coord == null ? "—" : coord, Theme.active().normalGray());
         }
-        Theme t = Theme.active();
         String[] parts = coord.split(":", 3);
-        if (parts.length == 1) return Theme.colorize(coord, t.coordName());
-        StringBuilder sb = new StringBuilder();
-        sb.append(Theme.colorize(parts[0], t.coordGroup()));
-        sb.append(Theme.colorize(":", t.darkGray()));
-        sb.append(Theme.colorize(parts[1], t.coordName()));
-        if (parts.length > 2) {
-            sb.append(Theme.colorize(":", t.darkGray()));
-            sb.append(Theme.colorize(parts[2], t.warning()));
-        }
-        return sb.toString();
+        if (parts.length >= 3) return Coords.gav(parts[0], parts[1], parts[2]);
+        if (parts.length == 2) return Coords.ga(parts[0], parts[1]);
+        return Coords.shortName(coord);
     }
 
+    /**
+     * One detail row: {@link Theme#settled()} label (body foreground), bright-black
+     * ({@link Theme#darkGray()}) dotted leader + colon, white value.
+     *
+     * <pre>
+     * Language.........: Java 25
+     * Total Build Count: 3 (3 ok)
+     * </pre>
+     */
     private static void kv(String label, String value) {
         Theme t = Theme.active();
-        String padded = padLeft(label + ":", LABEL_W);
-        CliOutput.out(Theme.colorize(padded, t.normalGray()) + " " + (value == null ? "—" : value));
+        String field = dottedLabel(label, LABEL_W);
+        // Split so the bare label is settled() and the dots+colon are bright black (darkGray).
+        int labelLen = label.length();
+        String name = field.substring(0, labelLen);
+        String leader = field.substring(labelLen); // dots + ':'
+        String val = value == null ? "—" : value;
+        CliOutput.out(Theme.colorize(name, t.settled())
+                + Theme.colorize(leader, t.darkGray())
+                + " "
+                + Theme.colorize(val, t.brightWhite()));
     }
 
-    static String padLeft(String s, int width) {
-        if (s.length() >= width) return s;
-        return " ".repeat(width - s.length()) + s;
+    /**
+     * Left-align {@code label} and pad with dots up to {@code width - 1}, then append {@code :}.
+     * Example: {@code dottedLabel("JDK", 18)} → {@code "JDK..............:"}.
+     */
+    static String dottedLabel(String label, int width) {
+        int dots = Math.max(0, width - label.length() - 1);
+        return label + ".".repeat(dots) + ":";
     }
 
     // ── metrics aggregation ──────────────────────────────────────────────────

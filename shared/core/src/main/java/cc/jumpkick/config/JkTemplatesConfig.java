@@ -68,9 +68,7 @@ public record JkTemplatesConfig(String officialUrl, List<Source> sources) {
 
     /** As {@link #resolve()} against an explicit config path (tests). */
     public static JkTemplatesConfig resolve(Path userConfig) {
-        return TomlValues.parse(userConfig)
-                .map(JkTemplatesConfig::fromTomlRoot)
-                .orElseGet(JkTemplatesConfig::defaults);
+        return TomlValues.parse(userConfig).map(JkTemplatesConfig::fromTomlRoot).orElseGet(JkTemplatesConfig::defaults);
     }
 
     /** Parse from a root TOML document (tests / explicit file). */

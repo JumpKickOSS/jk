@@ -36,8 +36,8 @@ public final class TestEffort {
             java.util.Collection<String> projectDirs,
             BuildMetrics metrics,
             int testWorkers) {
-        long wallMs =
-                wallMillis(moduleDir, classWallsMs, classesToRun, methodCount, timings, projectDirs, metrics, testWorkers);
+        long wallMs = wallMillis(
+                moduleDir, classWallsMs, classesToRun, methodCount, timings, projectDirs, metrics, testWorkers);
         return wallMs > 0 ? EffortWeights.flatWeight(wallMs) : EffortWeights.TOKEN;
     }
 
@@ -101,8 +101,7 @@ public final class TestEffort {
     }
 
     /** Hierarchical method-ms: module residual → project median → host absolute → calibration. */
-    public static double methodMs(
-            String moduleDir, StepTimings timings, java.util.Collection<String> projectDirs) {
+    public static double methodMs(String moduleDir, StepTimings timings, java.util.Collection<String> projectDirs) {
         if (timings != null) {
             var own = timings.perUnit(moduleDir == null ? "" : moduleDir, "run-tests");
             if (own.isPresent() && own.getAsDouble() > 0) {
