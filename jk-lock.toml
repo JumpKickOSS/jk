@@ -1,7 +1,7 @@
 version = 1
 generated-by = "jk 0.11.0"
 resolution-algorithm = "pubgrub-v1"
-jk = { version = "0.11.0", sha256 = "ed68e7219e878f4d4a974921a28a0068cff7e685ba39d4e716961bea55d7390e" }
+jk = { version = "0.11.0", sha256 = "2f3f6e6179949bd3182a40cb2602afe2f016d00bbcdbc71e9839aac9b85f913d" }
 manifests-sha256 = "4ba9a3a242d6912c6a191ccb81724e8c1dfe84f566d04774357118807f084787"
 
 [[artifact]]
@@ -398,6 +398,13 @@ checksum = "sha256:2b9a7b1f726fb86216dbd2c8321eabe0221dbd5b1be81c18e1cb53811b104
 scopes   = ["main", "provided"]
 
 [[artifact]]
+name     = "commons-logging:commons-logging:jar:"
+version  = "1.4.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:d175dbd751dd782a63bde28c7a039520e971f25e84b79c19b8435edc3603e0dc"
+scopes   = ["main", "provided"]
+
+[[artifact]]
 name     = "dev.sigstore:sigstore-java:jar:"
 version  = "2.2.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
@@ -422,9 +429,9 @@ deps = [
 
 [[artifact]]
 name     = "io.github.classgraph:classgraph:jar:"
-version  = "4.8.188"
+version  = "4.8.189"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:e70a4719c20a74eb6e6fd222027a6e7faefe24ea6ffb743f72066ac5c9e854c3"
+checksum = "sha256:1900d538d3106a7a1aa5a8043c44d3666ea33b927668ba186728f4f90944c42b"
 scopes   = ["main"]
 
 [[artifact]]
@@ -998,6 +1005,7 @@ checksum = "sha256:c8bc7e1c51a6d4ce72f40d2ebbabf1c4b68bfe76e732104b04381b493478e
 scopes   = ["main", "provided"]
 deps = [
   "commons-codec:commons-codec:jar:@1.22.1",
+  "commons-logging:commons-logging:jar:@1.4.0",
   "org.apache.httpcomponents:httpcore:jar:@4.4.16",
 ]
 
@@ -1822,7 +1830,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:82d3c9e7d5dff7ffb1e0f8e9181f446e8270e0842957e7311f19ff0d859a9860"
 scopes   = ["main"]
 deps = [
-  "io.github.classgraph:classgraph:jar:@4.8.188",
+  "io.github.classgraph:classgraph:jar:@4.8.189",
   "io.micrometer:micrometer-core:jar:@1.17.0",
   "org.jetbrains:annotations:jar:@26.1.0",
   "org.openrewrite:rewrite-core:jar:@8.88.3",
@@ -1851,7 +1859,7 @@ checksum = "sha256:90a8d2355a174665616d4b5937c045c830c35f40b6c228419f31b0fea6122
 scopes   = ["main"]
 deps = [
   "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
-  "io.github.classgraph:classgraph:jar:@4.8.188",
+  "io.github.classgraph:classgraph:jar:@4.8.189",
   "io.micrometer:micrometer-core:jar:@1.17.0",
   "org.antlr:antlr4-runtime:jar:@4.13.2",
   "org.apache.commons:commons-text:jar:@1.15.0",

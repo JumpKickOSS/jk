@@ -135,31 +135,12 @@ public final class PubGrubResolver implements Resolver {
 
         Map<String, String> decisions;
         try {
-            PubGrubSolver solver = new PubGrubSolver(source);
-            if (onDecision != null) solver.withOnDecision(onDecision);
-            try {
-                decisions = solver.solve(ROOT_PKG, ROOT_VERSION, rootTerms);
-            } catch (UnsatisfiableException first) {
-                // Bounded retry with full historiescompact candidate lists
-                // can make a satisfiable graph LOOK unsat when conflict resolution never
-                // revisits the starved package. Source caches make the retry cheap; a real
-                // unsat fails again and its (better-informed) diagnostics win.
-                if (!solver.maybeIncomplete()) throw first;
-                PubGrubSolver wide = new PubGrubSolver(source).withWideUniverses();
-                if (onDecision != null) wide.withOnDecision(onDecision);
-                decisions = wide.solve(ROOT_PKG, ROOT_VERSION, rootTerms);
-            }
-        } catch (UnsatisfiableException e) {
-            boolean ansi =
-                    System.console() != null && !"dumb".equals(System.getenv("TERM")) && System.getenv("CI") == null;
-            // Use the injected palette (from the CLI theme) when available; fall back to the
-            // built-in DEFAULT which hard-codes the same values as JkDarkTheme.
-            cc.jumpkick.resolver.pubgrub.Diagnostics.Palette palette = this.palette != null
-                    ? this.palette
-                    : (ansi
-                            ? cc.jumpkick.resolver.pubgrub.Diagnostics.Palette.DEFAULT
-                            : cc.jumpkick.resolver.pubgrub.Diagnostics.Palette.PLAIN);
-            throw new UnsatisfiableException(Diagnostics.render(e.rootCause(), palette), e.rootCause());
+            decisions = solveFor(rootTerms);
+        } finally {
+            // Speculative prefetches run on the shared io pool with no handle back here. Let them
+            // finish before the caller moves on — otherwise a lock that has already returned is
+            // still writing into the cache the caller may be about to read, delete, or replace.
+            source.quiesce();
         }
 
         // Drop the synthetic root from the result and build the per-module dep lists.
@@ -226,6 +207,40 @@ public final class PubGrubResolver implements Resolver {
                             e.getKey(), e.getValue(), new ArrayList<>(dependsOn.getOrDefault(e.getKey(), Set.of()))));
         }
         return new Resolution(out);
+    }
+
+    /** Run the solver, retrying once with full candidate histories, and render diagnostics on unsat. */
+    private Map<String, String> solveFor(List<Term> rootTerms) throws IOException, InterruptedException {
+        Map<String, String> decisions;
+        try {
+            PubGrubSolver solver = new PubGrubSolver(source);
+            if (onDecision != null) solver.withOnDecision(onDecision);
+            try {
+                decisions = solver.solve(ROOT_PKG, ROOT_VERSION, rootTerms);
+            } catch (UnsatisfiableException first) {
+                // Bounded retry with full historiescompact candidate lists
+                // can make a satisfiable graph LOOK unsat when conflict resolution never
+                // revisits the starved package. Source caches make the retry cheap; a real
+                // unsat fails again and its (better-informed) diagnostics win.
+                if (!solver.maybeIncomplete()) throw first;
+                PubGrubSolver wide = new PubGrubSolver(source).withWideUniverses();
+                if (onDecision != null) wide.withOnDecision(onDecision);
+                decisions = wide.solve(ROOT_PKG, ROOT_VERSION, rootTerms);
+            }
+        } catch (UnsatisfiableException e) {
+            boolean ansi =
+                    System.console() != null && !"dumb".equals(System.getenv("TERM")) && System.getenv("CI") == null;
+            // Use the injected palette (from the CLI theme) when available; fall back to the
+            // built-in DEFAULT which hard-codes the same values as JkDarkTheme.
+            cc.jumpkick.resolver.pubgrub.Diagnostics.Palette palette = this.palette != null
+                    ? this.palette
+                    : (ansi
+                            ? cc.jumpkick.resolver.pubgrub.Diagnostics.Palette.DEFAULT
+                            : cc.jumpkick.resolver.pubgrub.Diagnostics.Palette.PLAIN);
+            throw new UnsatisfiableException(Diagnostics.render(e.rootCause(), palette), e.rootCause());
+        }
+
+        return decisions;
     }
 
     private static Coordinate toCoord(String packageKey, String version) {
