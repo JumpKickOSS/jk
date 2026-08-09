@@ -118,32 +118,6 @@ public final class HttpEngineServer implements AutoCloseable {
     }
 
     /**
-     * GET paths that require the bearer token even on loopback. {@code /api/fs} lists the
-     * filesystem with the owner's permissions; {@code /api/log} and {@code /api/history/artifact}
-     * carry full on-disk diagnostics; {@code /api/project} is a path-existence oracle;
-     * {@code /api/project/graph} walks workspace module layout; {@code /api/metrics} emits every
-     * project dir and coordinate ever built; {@code /api/projects/defaults} derives from the
-     * owner's git identity and home layout.
-     *
-     * <p>{@code GET /api/history} (the journal <em>list</em>) is intentionally <strong>not</strong>
-     * here: the activity stream is already open on loopback so a tokenless dashboard can show live
-     * builds, and a hard-refresh must rehydrate that same journal rather than flash "No activity
-     * yet". Artifacts stay gated.
-     */
-    private static final java.util.Set<String> SENSITIVE_READS = java.util.Set.of(
-            "/api/fs",
-            "/api/log",
-            "/api/history/artifact",
-            "/api/project",
-            // Module DAG walk discloses workspace layout / module paths (same class as /api/project).
-            "/api/project/graph",
-            "/api/metrics",
-            "/api/projects/defaults",
-            // Returns the config file path (home layout) and verbatim effective values —
-            // templates.official may carry a credential-embedded URL (JK-1524).
-            "/api/config");
-
-    /**
      * {@code GET /api/templates} response cache — building the index walks every template root
      * (with a deep DFS for catalog-only ids), so repeated modal opens must not rescan the disk
      * (JK-1455). One immutable holder rather than two volatiles: a reader must never pair the old
@@ -155,9 +129,6 @@ public final class HttpEngineServer implements AutoCloseable {
     private static final long TEMPLATES_TTL_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
     private byte[] token;
     private long heartbeatMillis = DEFAULT_HEARTBEAT_MILLIS;
-
-    /** {@code true} when bound beyond loopback — then even {@code /api} reads require the token. */
-    private boolean readsRequireToken;
 
     /**
      * @param webRoot the resolved on-disk static root (the caller resolves {@code web-root} against
@@ -236,7 +207,6 @@ public final class HttpEngineServer implements AutoCloseable {
     public void start() throws IOException {
         loadOrMintToken();
         InetSocketAddress bind = new InetSocketAddress(InetAddress.getByName(config.host()), config.port());
-        readsRequireToken = !bind.getAddress().isLoopbackAddress();
         server = bindWithRetry(bind);
         server.createContext("/", this::handle);
         executor = Executors.newThreadPerTaskExecutor(
@@ -626,22 +596,16 @@ public final class HttpEngineServer implements AutoCloseable {
     }
 
     /**
-     * Mutations always need the bearer token (CSRF defense on loopback). Reads need it when bound
-     * beyond loopback; {@code GET /api/events} also accepts {@code ?access_token=} ({@code
-     * EventSource} cannot send headers).
+     * Every {@code /api/*} call needs the bearer token — loopback is not a free pass. A bare
+     * browser open without {@code #t=} or a stored token must not paint live activity (fail-closed).
+     * Static shell assets stay ungated so the SPA can show the authorization dialog. {@code GET
+     * /api/events} also accepts {@code ?access_token=} because {@code EventSource} cannot send
+     * headers.
      */
     private boolean authorized(HttpExchange exchange) {
+        if (tokenValid(bearerToken(exchange.getRequestHeaders().getFirst("Authorization")))) return true;
         String method = exchange.getRequestMethod();
         boolean read = method.equals("GET") || method.equals("HEAD");
-        // Reads that disclose the engine owner's filesystem, identity, or full on-disk artifacts are
-        // never token-exempt: on a shared machine another local user must not have them for free
-        // over loopback (JK-1305, JK-1453, JK-1466). Aggregate-only reads (/api/status,
-        // /api/cache), the activity stream, and the journal list (/api/history) stay open so a
-        // tokenless loopback dashboard can rehydrate past builds after refresh.
-        String path = exchange.getRequestURI().getPath();
-        boolean sensitiveRead = SENSITIVE_READS.contains(path);
-        if (read && !readsRequireToken && !sensitiveRead) return true;
-        if (tokenValid(bearerToken(exchange.getRequestHeaders().getFirst("Authorization")))) return true;
         return read
                 && exchange.getRequestURI().getPath().equals("/api/events")
                 && tokenValid(queryParam(exchange.getRequestURI().getQuery(), "access_token"));

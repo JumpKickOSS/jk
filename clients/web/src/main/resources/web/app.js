@@ -1008,11 +1008,7 @@ Vue.createApp({
     /** True when {@code e} is a 401 — marks unauthorized and returns true so callers can stop. */
     handleHttpError(e) {
       if (e && e.status === 401) {
-        // Tokenless loopback is deliberately open for watch-only (checkAuth's contract): a 401
-        // from a gated panel (metrics/log/config) is expected there, not a session failure —
-        // degrade that panel instead of wiping the cards and throwing the blocking gate
-        // (JK-1530). With a token present, a 401 means the token was rejected — gate as before.
-        if (!token() && loopback()) return true;
+        // Fail closed: any 401 (missing or rejected token) opens the blocking auth dialog.
         this.markUnauthorized({ clear: !!token() });
         return true;
       }
@@ -1020,25 +1016,25 @@ Vue.createApp({
     },
 
     /**
-     * Session gate on load (and after a pasted token). Fails closed when:
-     * <ul>
-     *   <li>{@code GET /api/status} is 401 — bind requires a token for all reads (non-loopback)</li>
-     *   <li>a stored token is present but a always-gated probe rejects it</li>
-     * </ul>
-     * Loopback with no token remains open for watch-only (history/events/status).
+     * Session gate on load (and after a pasted token). Fails closed when there is no token, when
+     * {@code GET /api/status} is 401, or when a stored token is rejected by a gated probe.
+     * Loopback is not a free pass — without a bearer the SPA must not paint Activity.
      */
     async checkAuth() {
+      if (!token()) {
+        this.markUnauthorized({ clear: false });
+        return false;
+      }
       try {
-        await get('/api/status');
+        await get('/api/status', { bootstrap: true });
       } catch (e) {
         if (e.status === 401) {
-          this.markUnauthorized({ clear: !!token() });
+          this.markUnauthorized({ clear: true });
           return false;
         }
-        // engine down / network — not an auth failure
+        // engine down / network — not an auth failure (token is present; reconnect later)
         return true;
       }
-      if (!token()) return true;
       // Prove a stored token still works (stale localStorage after rotate-token is the common case).
       try {
         await getText('/api/log?lines=1');
@@ -1144,19 +1140,15 @@ Vue.createApp({
       this.authError = null;
       applyToken(t);
       try {
-        await get('/api/status');
-        // Status may be open without a token on loopback — prove the bearer is accepted.
-        try {
-          await getText('/api/log?lines=1');
-        } catch (e) {
-          if (e.status === 401) throw e;
-        }
+        // Prove the bearer is accepted (status + a always-gated read).
+        await get('/api/status', { bootstrap: true });
+        await getText('/api/log?lines=1');
         this.authModal = false;
         this.authTokenInput = '';
         this.connection = 'connecting';
         this.connectEvents();
         // Re-derive the route from the hash: URL changes made while the gate was up were
-        // dropped by applyRoute's authModal guard (JK-1530). This also loads the route's data
+        // dropped by applyRoute's authModal guard. This also loads the route's data
         // (project meta / metrics / status refresh).
         this.applyRoute();
         this.refresh();

@@ -7,7 +7,7 @@ client code without being recorded anywhere.
 
 ## On by default
 
-`[http]` is **enabled by default** — loopback bind, token-gated mutations. It is not opt-in. Turn it
+`[http]` is **enabled by default** — loopback bind, **token-gated `/api/*`** (static shell open). It is not opt-in. Turn it
 off with `[http] enabled = false` in `~/.config/jk/config.toml` or `JK_HTTP_ENABLED=false`; a malformed
 config yields empty and fails closed (no server).
 
@@ -84,29 +84,16 @@ Task Manager.
 
 ## Auth tiers
 
-Loopback binds serve the dashboard without a token; mutations are token-gated. Non-loopback origins
-carry the token — `EventSource` cannot send headers, so streams pass it as an `access_token` query
-parameter, and the SPA bootstraps from a `#t=` fragment. **`jk web`** starts the engine if needed,
-prints the tokenized URL, and opens a browser (`$BROWSER` or the platform default).
+**Every `/api/*` call requires a valid bearer token**, including loopback binds. There is no
+tokenless “watch-only” mode — a bare browser open without a token must not see live builds or
+history. Static shell assets (`index.html`, JS, CSS, images) stay open so the SPA can show the
+blocking authorization dialog. Non-loopback clients carry the token the same way; `EventSource`
+cannot send headers, so SSE passes it as an `access_token` query parameter. The SPA bootstraps
+from a `#t=` fragment. **`jk web`** starts the engine if needed, prints the tokenized URL, and
+opens a browser (`$BROWSER` or the platform default).
 
-**Sensitive reads need the token even on loopback**, because on a shared machine another local
-account must not have the engine owner's filesystem and identity for free:
-
-| Endpoint | Why |
-|---|---|
-| `GET /api/fs` | lists the filesystem with the owner's permissions |
-| `GET /api/log` | engine log tail |
-| `GET /api/history/artifact` | full on-disk diagnostics / lock snapshots |
-| `GET /api/project` | path-existence oracle |
-| `GET /api/project/graph` | module dependency DAG (workspace layout / module paths) |
-| `GET /api/metrics` | every project dir and coordinate ever built |
-| `GET /api/projects/defaults` | derives from the owner's git identity and home layout |
-| `GET /api/config` | config file path (home layout) + verbatim values (`templates.official` may embed credentials) |
-
-Aggregate-only reads (`GET /api/status`, `GET /api/cache`), the activity stream
-(`GET /api/events`), and the **journal list** (`GET /api/history`) stay open on loopback so a
-tokenless dashboard can show live builds **and** rehydrate them after a hard refresh. History
-**artifacts** remain token-gated.
+Missing or invalid credentials → **401** (plus SPA hard-gate). Engine generation mismatch →
+**409** with `engine-epoch-mismatch` (see below).
 
 ### `GET /api/project/graph`
 

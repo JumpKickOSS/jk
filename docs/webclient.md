@@ -20,25 +20,20 @@ the doc the shell's source files cite.
 Token bootstrap rides the URL fragment: `jk web` (and `jk engine status`) print a dashboard link
 ending in `#t=<token>`; on load `api.js` stashes the token in `sessionStorage` and `localStorage`
 and scrubs the fragment from the address bar (fragments never leave the browser). Later
-tabs/refreshes reuse the stored token. Every `/api` call then sends `Authorization: Bearer <token>`
-when present. On loopback the journal list (`GET /api/history`) is open without a token so a
-hard-refresh still rehydrates Activity; mutations and sensitive reads stay token-gated (see
-[http.md](http.md)).
+tabs/refreshes reuse the stored token. Every `/api` call then sends `Authorization: Bearer <token>`.
+**All `/api/*` endpoints require a valid token**, including loopback (static shell assets stay open
+so the SPA can render the auth dialog — see [http.md](http.md)).
 
 **`jk web`** ensures the engine is running, prints the authenticated URL as an OSC-8 hyperlink, and
 opens it in a browser (`$BROWSER` when set — word-split, so values with arguments work — else
 `open` / `rundll32 url.dll,FileProtocolHandler` / `xdg-open`). Use `--no-open` to print only.
 
-When a required token is **missing or invalid** (non-loopback binds, a rotated/stale stored token,
-or a `401` from a gated call *while a token is held*), the SPA opens a **blocking authorization
-dialog** and freezes the rest of the UI — it does not half-render open endpoints under a quiet
-“Unauthorized” footer chip. The dialog explains how to recover: run `jk web` (opens a new
+When a token is **missing or invalid** (bare `http://localhost:8910` with no stored token, a
+rotated/stale token, or any `401` from the engine), the SPA opens a **blocking authorization
+dialog** and freezes the rest of the UI — it does **not** paint Activity, vitals, or a quiet
+“No activity yet” empty state. The dialog explains how to recover: run `jk web` (opens a new
 authenticated tab), open the printed URL, or paste the `#t=…` URL / token. Unauthorized is sticky
-until a token is accepted; open loopback reads and SSE must not clear it.
-
-**Tokenless loopback is watch-only, not an error** (JK-1530): the activity stream, journal list,
-status and cache vitals stay live, while gated panels (metrics, engine log, configuration) simply
-degrade — their `401`s never throw the dialog. Pasting a token upgrades the session in place.
+until a token is accepted.
 
 ## Dependencies: CDN, pinned, integrity-locked
 
@@ -62,8 +57,8 @@ ECharts (`series-graph`). Complex graphs are expensive server- and client-side, 
 - closing the panel (or leaving the project) unmounts the component (aborts in-flight fetch,
   disposes the chart).
 
-Token-gated like other project metadata; tokenless loopback watch-only shows a local error in the
-panel rather than the global auth dialog.
+Token-gated like other project metadata; without a session token the global auth dialog already
+blocks the shell before the panel opens.
 
 ## Live updates
 

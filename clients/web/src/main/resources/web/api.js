@@ -219,7 +219,9 @@ const EVENT_TYPES = [
  * send headers, so non-loopback origins carry the token as a query parameter.
  */
 export function events(onEvent, onState) {
-  const query = !loopback() && token() ? '?access_token=' + encodeURIComponent(token()) : '';
+  // EventSource cannot send Authorization headers — always pass the token as a query param
+  // when present (required on loopback too now that /api/* is fully gated).
+  const query = token() ? '?access_token=' + encodeURIComponent(token()) : '';
   const source = new EventSource('/api/events' + query);
   source.onopen = () => onState('live');
   source.onerror = () => onState('offline');

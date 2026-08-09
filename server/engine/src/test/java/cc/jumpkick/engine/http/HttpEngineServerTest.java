@@ -153,14 +153,19 @@ class HttpEngineServerTest {
 
     private HttpResponse<String> get(String path, String... headers) throws IOException, InterruptedException {
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(baseUrl + path.substring(1)));
-        // Fail-closed epoch gate (JK-1724): non-bootstrap /api/* require the generation header.
-        // Tests that deliberately omit it pass an empty pair or hit status/events only.
+        // Fail-closed: every /api/* needs a bearer; non-bootstrap also need the generation header.
+        // Explicit Authorization / X-Jk-Engine-Epoch in headers win (tests can force 401/409).
         String pathOnly = path.contains("?") ? path.substring(0, path.indexOf('?')) : path;
         boolean bootstrap = pathOnly.equals("/api/status") || pathOnly.equals("/api/events");
         boolean hasEpoch = false;
+        boolean hasAuth = false;
         for (int i = 0; i < headers.length; i += 2) {
             builder.header(headers[i], headers[i + 1]);
             if ("X-Jk-Engine-Epoch".equalsIgnoreCase(headers[i])) hasEpoch = true;
+            if ("Authorization".equalsIgnoreCase(headers[i])) hasAuth = true;
+        }
+        if (path.startsWith("/api/") && !hasAuth) {
+            builder.header("Authorization", "Bearer " + token());
         }
         if (path.startsWith("/api/") && !bootstrap && !hasEpoch) {
             builder.header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch());
@@ -391,7 +396,7 @@ class HttpEngineServerTest {
     }
 
     @Test
-    void api_status_reports_engine_vitals_without_a_token_on_loopback() throws Exception {
+    void api_status_reports_engine_vitals_with_token() throws Exception {
         HttpResponse<String> resp = get("/api/status");
         assertThat(resp.statusCode()).isEqualTo(200);
         assertThat(resp.headers().firstValue("Content-Type")).contains("application/json; charset=utf-8");
@@ -475,12 +480,14 @@ class HttpEngineServerTest {
 
             // The web surfaces are unaffected; status reports the disable with a null mcpUrl.
             HttpResponse<String> status = client.send(
-                    HttpRequest.newBuilder(URI.create(url + "api/status")).build(),
+                    HttpRequest.newBuilder(URI.create(url + "api/status"))
+                            .header("Authorization", "Bearer " + tok)
+                            .build(),
                     HttpResponse.BodyHandlers.ofString());
             assertThat(status.statusCode()).isEqualTo(200);
             assertThat(status.body()).contains("\"mcpEnabled\":false").contains("\"mcpUrl\":null");
             HttpResponse<java.util.stream.Stream<String>> events = client.send(
-                    HttpRequest.newBuilder(URI.create(url + "api/events")).build(),
+                    HttpRequest.newBuilder(URI.create(url + "api/events?access_token=" + tok)).build(),
                     HttpResponse.BodyHandlers.ofLines());
             try {
                 assertThat(events.statusCode()).isEqualTo(200);
@@ -496,28 +503,35 @@ class HttpEngineServerTest {
     @Test
     void api_metrics_requires_the_token_even_on_loopback() throws Exception {
         // Rows carry every project dir and coordinate ever built — same class as /api/fs (JK-1466).
-        assertThat(get("/api/metrics").statusCode()).isEqualTo(401);
+        HttpResponse<String> noToken = client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + "api/metrics")).build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(noToken.statusCode()).isEqualTo(401);
+        assertThat(get("/api/metrics").statusCode()).isEqualTo(200);
     }
 
     @Test
     void api_requires_matching_engine_epoch_except_status_and_events() throws Exception {
-        // Bootstrap status has no epoch header requirement.
+        // Bootstrap status has no epoch header requirement (token still required).
         assertThat(get("/api/status").statusCode()).isEqualTo(200);
-        // Missing epoch on other /api/* → 409 (fail-closed, JK-1724).
+        // Token without epoch on other /api/* → 409 (fail-closed, JK-1724).
         HttpResponse<String> missing = client.send(
-                HttpRequest.newBuilder(URI.create(baseUrl + "api/history")).build(),
+                HttpRequest.newBuilder(URI.create(baseUrl + "api/history"))
+                        .header("Authorization", "Bearer " + token())
+                        .build(),
                 HttpResponse.BodyHandlers.ofString());
         assertThat(missing.statusCode()).isEqualTo(409);
         assertThat(missing.body()).contains("engine-epoch-mismatch").contains(SNAPSHOT.engineEpoch());
         // Wrong epoch → 409 with current generation.
         HttpResponse<String> wrong = client.send(
                 HttpRequest.newBuilder(URI.create(baseUrl + "api/history"))
+                        .header("Authorization", "Bearer " + token())
                         .header("X-Jk-Engine-Epoch", "stale-generation")
                         .build(),
                 HttpResponse.BodyHandlers.ofString());
         assertThat(wrong.statusCode()).isEqualTo(409);
         assertThat(wrong.body()).contains("\"engineEpoch\":\"" + SNAPSHOT.engineEpoch() + "\"");
-        // Matching epoch succeeds (history is open on loopback).
+        // Matching epoch + token succeeds.
         assertThat(get("/api/history").statusCode()).isEqualTo(200);
     }
 
@@ -525,20 +539,24 @@ class HttpEngineServerTest {
     void api_config_requires_the_token_even_on_loopback() throws Exception {
         // Payload names the owner's config path and verbatim values (templates.official can embed
         // credentials) — same class as /api/projects/defaults (JK-1524).
-        assertThat(get("/api/config").statusCode()).isEqualTo(401);
-        assertThat(get("/api/config", "Authorization", "Bearer " + token()).statusCode())
-                .isEqualTo(200);
+        HttpResponse<String> noToken = client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + "api/config")).build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(noToken.statusCode()).isEqualTo(401);
+        assertThat(get("/api/config").statusCode()).isEqualTo(200);
     }
 
     @Test
-    void api_history_list_is_open_on_loopback_but_artifacts_and_project_need_token() throws Exception {
-        // Journal list rehydrates the Activity feed after refresh (same openness as /api/events).
-        // Full artifacts and path-oracle GETs stay token-gated even on loopback.
+    void api_all_routes_require_token_including_history_status_and_cache() throws Exception {
+        // Fail closed: bare browser / curl without a bearer must not see engine data.
+        for (String path : java.util.List.of("api/status", "api/cache", "api/history", "api/events")) {
+            HttpResponse<String> noToken = client.send(
+                    HttpRequest.newBuilder(URI.create(baseUrl + path)).build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(noToken.statusCode()).as(path).isEqualTo(401);
+        }
         assertThat(get("/api/history").statusCode()).isEqualTo(200);
-        assertThat(get("/api/history/artifact?id=1&name=diagnostics.txt").statusCode())
-                .isEqualTo(401);
-        assertThat(get("/api/project?dir=" + stateDir).statusCode()).isEqualTo(401);
-        assertThat(get("/api/project/graph?dir=" + stateDir).statusCode()).isEqualTo(401);
+        assertThat(get("/api/status").statusCode()).isEqualTo(200);
     }
 
     @Test
@@ -715,7 +733,7 @@ class HttpEngineServerTest {
     }
 
     @Test
-    void api_cache_reports_the_cache_breakdown_without_a_token_on_loopback() throws Exception {
+    void api_cache_reports_the_cache_breakdown_with_token() throws Exception {
         // maxBytes = store/artifact budget; actionMaxBytes = action-cache budget (CLI parity).
         cacheSnapshot = new CacheSnapshot(
                 100,
@@ -761,7 +779,10 @@ class HttpEngineServerTest {
     @Test
     void api_log_requires_the_token_even_on_loopback() throws Exception {
         // The log can carry build diagnostics — another local user must not read it.
-        assertThat(get("/api/log").statusCode()).isEqualTo(401);
+        HttpResponse<String> noToken = client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + "api/log")).build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(noToken.statusCode()).isEqualTo(401);
     }
 
     @Test
@@ -784,7 +805,10 @@ class HttpEngineServerTest {
     @Test
     void fs_listing_requires_the_token_even_on_loopback() throws Exception {
         // It lists the filesystem with the engine owner's permissions — never token-exempt.
-        assertThat(get("/api/fs").statusCode()).isEqualTo(401);
+        HttpResponse<String> noToken = client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + "api/fs")).build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(noToken.statusCode()).isEqualTo(401);
     }
 
     @Test
@@ -816,7 +840,10 @@ class HttpEngineServerTest {
     @Test
     void project_defaults_require_the_token_even_on_loopback() throws Exception {
         // Derived from the owner's git identity + home layout — same class as /api/fs.
-        assertThat(get("/api/projects/defaults").statusCode()).isEqualTo(401);
+        HttpResponse<String> noToken = client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + "api/projects/defaults")).build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(noToken.statusCode()).isEqualTo(401);
     }
 
     @Test
@@ -858,10 +885,11 @@ class HttpEngineServerTest {
     @Test
     void mutation_with_valid_token_reaches_the_router() throws Exception {
         // No mutating routes exist yet, so a correctly authorized POST to a GET-only path is the
-        // router's 405 — proving the token was accepted (401 would mean it wasn't).
+        // router's 405 — proving the token (and epoch) were accepted (401/409 would mean not).
         HttpResponse<String> resp = client.send(
                 HttpRequest.newBuilder(URI.create(baseUrl + "api/status"))
                         .header("Authorization", "Bearer " + token())
+                        .header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch())
                         .POST(HttpRequest.BodyPublishers.noBody())
                         .build(),
                 HttpResponse.BodyHandlers.ofString());
@@ -905,6 +933,7 @@ class HttpEngineServerTest {
             HttpResponse<String> resp = client.send(
                     HttpRequest.newBuilder(URI.create(restarted.url() + "api/fs?dir=" + stateDir))
                             .header("Authorization", "Bearer " + original)
+                            .header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch())
                             .build(),
                     HttpResponse.BodyHandlers.ofString());
             assertThat(resp.statusCode()).isEqualTo(200); // the pre-restart token is still accepted
@@ -1045,9 +1074,10 @@ class HttpEngineServerTest {
         try {
             tiny.start();
             String url = tiny.url();
+            String tok = Files.readString(stateDir.resolve("tiny.http-token")).trim();
             for (int i = 0; i < 3; i++) { // more streams than the whole RPC budget
                 HttpResponse<java.util.stream.Stream<String>> resp = client.send(
-                        HttpRequest.newBuilder(URI.create(url + "api/events")).build(),
+                        HttpRequest.newBuilder(URI.create(url + "api/events?access_token=" + tok)).build(),
                         HttpResponse.BodyHandlers.ofLines());
                 assertThat(resp.statusCode()).isEqualTo(200);
                 var lines = resp.body().iterator();
@@ -1055,7 +1085,9 @@ class HttpEngineServerTest {
                 streams.add(resp);
             }
             HttpResponse<String> rpc = client.send(
-                    HttpRequest.newBuilder(URI.create(url + "api/status")).build(),
+                    HttpRequest.newBuilder(URI.create(url + "api/status"))
+                            .header("Authorization", "Bearer " + tok)
+                            .build(),
                     HttpResponse.BodyHandlers.ofString());
             assertThat(rpc.statusCode()).isEqualTo(200); // RPC admission untouched by the streams
         } finally {
@@ -1127,9 +1159,15 @@ class HttpEngineServerTest {
 
     /** Open the SSE stream and return a line iterator (the JDK client de-chunks for us). */
     private java.util.Iterator<String> openEvents(String query) throws Exception {
+        String q = query == null ? "" : query;
+        if (!q.contains("access_token=")) {
+            String tok = "access_token=" + token();
+            if (q.isEmpty()) q = "?" + tok;
+            else if (q.startsWith("?")) q = q + "&" + tok;
+            else q = "?" + q + "&" + tok;
+        }
         HttpResponse<java.util.stream.Stream<String>> resp = client.send(
-                HttpRequest.newBuilder(URI.create(baseUrl + "api/events" + query))
-                        .build(),
+                HttpRequest.newBuilder(URI.create(baseUrl + "api/events" + q)).build(),
                 HttpResponse.BodyHandlers.ofLines());
         assertThat(resp.statusCode()).isEqualTo(200);
         assertThat(resp.headers().firstValue("Content-Type")).contains("text/event-stream; charset=utf-8");
@@ -1242,6 +1280,8 @@ class HttpEngineServerTest {
         return client.send(
                 HttpRequest.newBuilder(URI.create(baseUrl + "api/build"))
                         .header("Authorization", "Bearer " + token())
+                        .header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch())
+                        .header("Content-Type", "application/json")
                         .POST(HttpRequest.BodyPublishers.ofString(body))
                         .build(),
                 HttpResponse.BodyHandlers.ofString());
