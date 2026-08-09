@@ -97,14 +97,12 @@
           <span v-if="outcome(card) === 'running'" class="spin"></span>
           <span v-else class="badge to-project" :class="outcome(card)"
                 role="link" tabindex="0"
-                data-tip="Open this project"
                 @click="openProjectFromCard(card)"
                 @keydown.enter.prevent="openProjectFromCard(card)">
             <jk-icon :name="stateIcon(outcome(card))"></jk-icon>{{ activityBadge(card) }}
           </span>
           <span class="coord to-project"
                 role="link" tabindex="0"
-                data-tip="Open this project"
                 @click="openProjectFromCard(card)"
                 @keydown.enter.prevent="openProjectFromCard(card)">
             <template v-if="coordParts(card).group"><span class="cg">{{ coordParts(card).group }}</span><span class="csep">:</span></template>
@@ -240,7 +238,7 @@
            pill #buildNumber} {reliability} right. State (orb + left border + pill) is the latest
            build's outcome, upgraded to 'running' when a build is in flight right now. -->
       <article v-for="(p, i) in projectsList" :key="p.key" class="project rise-in" :class="p.state"
-               @click="openProject(p.dir)" data-tip="Open this project" :style="{ animationDelay: riseDelay(i) }">
+               @click="openProject(p.dir)" :style="{ animationDelay: riseDelay(i) }">
 
         <div class="proj-id">
           <span class="orb" :class="p.state" :data-tip="p.state"></span>
