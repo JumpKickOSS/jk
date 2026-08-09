@@ -565,6 +565,36 @@ assembly = true    # adds -all.jar — jk assemble (or jk build)
 
 R8 is **opt-in** via `minified = true` — never the default.
 
+### JVM startup cache (`jk build --aot-cache`)
+
+```bash
+jk build --aot-cache      # target/aot-cache/ — the app, its jars, and a trained cache
+./target/aot-cache/run.sh # start it
+```
+
+Trains a JEP 514 AOT cache (JDK 25+; an AppCDS archive below that) from one run of the
+application. Measured on the `jk new --spring` scaffold: **771 ms cold, 325 ms cached**.
+
+The cache is pinned to three things, and it is worth knowing which, because a mismatch is not an
+error — the JVM silently starts cold:
+
+- **the exact JVM build.** Same version from another vendor does not count. `run.sh` execs the JVM
+  that trained it; `aot-cache.toml` records its identity.
+- **the absolute paths of the classpath.** Moving `target/aot-cache/` elsewhere voids it. `run.sh`
+  cd's to its own directory for that reason.
+- **the jars themselves.** A build that changes them removes the cache and says so; re-run with
+  `--aot-cache`. A build that changes nothing keeps it.
+
+`jk build --aot-cache` starts the app once with the cache and fails if the JVM refuses it, so a
+cache that exists is a cache that loads.
+
+JVM options go through `JK_JAVA_OPTS` (`"$@"` reaches the application). Flags that change the
+collector or heap shape can cost the cache; the JVM falls back to a cold start rather than
+misbehaving.
+
+Not available for `jk run`: a CDS dump rejects any classpath entry that is a directory, and `jk run`
+launches from `target/classes/`.
+
 ### Grails (`[grails]`)
 
 Grails 8 (Apache, Spring Boot 4.1) on the Groovy lane — `jk new --grails` scaffolds a
