@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.shrink;
+package cc.jumpkick.minified;
 
 import cc.jumpkick.surface.DynamicSurface;
 import cc.jumpkick.surface.NativeImageMetadata;

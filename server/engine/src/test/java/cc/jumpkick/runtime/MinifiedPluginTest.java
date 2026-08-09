@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The shrink plugin: R8 {@code --classfile} full mode over a plain Java app + its runtime
+ * The minified plugin: R8 {@code --classfile} full mode over a plain Java app + its runtime
  * closure, packaged as one slim executable jar replacing the main artifact. The acceptance is
  * behavioral AND structural: the shrunk jar <em>runs</em> ({@code java -jar} prints the expected
  * output — R8 kept everything reachable), dead library code is gone (an unreferenced
@@ -27,7 +27,7 @@ import org.junit.jupiter.api.io.TempDir;
  * repeat runs are warm.
  */
 @Tag("slow")
-class ShrinkPluginTest {
+class MinifiedPluginTest {
 
     @Test
     void shrunk_jar_runs_and_dead_code_is_gone(@TempDir Path tmp) throws Exception {
@@ -46,7 +46,7 @@ class ShrinkPluginTest {
                 main     = "com.example.slim.Main"
                 minified = true
 
-                [shrink]
+                [minified]
 
                 [dependencies]
                 commons-lang3 = { group = "org.apache.commons", name = "commons-lang3", version = "=3.18.0" }
@@ -75,7 +75,7 @@ class ShrinkPluginTest {
                 """);
 
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
-        assertThat(build.pluginConfig("shrink")).isPresent();
+        assertThat(build.pluginConfig("minified")).isPresent();
 
         BuildPlan lock = LockPlans.lockBuildPlan(
                 project, build, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);

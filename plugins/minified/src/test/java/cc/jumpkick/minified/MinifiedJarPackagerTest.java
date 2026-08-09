@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.shrink;
+package cc.jumpkick.minified;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -10,14 +10,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**top-level `$` class names vs nested types. */
-class ShrunkJarPackagerTest {
+class MinifiedJarPackagerTest {
 
     @Test
     void nested_class_with_outer_peer_is_skipped() {
         Set<String> paths = Set.of("com/ex/Outer.class", "com/ex/Outer$Inner.class");
-        assertThat(ShrunkJarPackager.isNestedClassFile("com/ex/Outer$Inner.class", paths))
+        assertThat(MinifiedJarPackager.isNestedClassFile("com/ex/Outer$Inner.class", paths))
                 .isTrue();
-        assertThat(ShrunkJarPackager.isNestedClassFile("com/ex/Outer.class", paths))
+        assertThat(MinifiedJarPackager.isNestedClassFile("com/ex/Outer.class", paths))
                 .isFalse();
     }
 
@@ -25,7 +25,7 @@ class ShrunkJarPackagerTest {
     void top_level_dollar_name_without_outer_is_kept() {
         // Legal JVM top-level simple name containing `$` — no Outer.class peer.
         Set<String> paths = Set.of("com/ex/Foo$Bar.class");
-        assertThat(ShrunkJarPackager.isNestedClassFile("com/ex/Foo$Bar.class", paths))
+        assertThat(MinifiedJarPackager.isNestedClassFile("com/ex/Foo$Bar.class", paths))
                 .isFalse();
     }
 
@@ -39,7 +39,7 @@ class ShrunkJarPackagerTest {
         Files.write(pkg.resolve("Foo$Bar.class"), new byte[] {(byte) 0xCA, (byte) 0xFE});
 
         StringBuilder pro = new StringBuilder();
-        ShrunkJarPackager.appendModuleClassKeeps(pro, classes);
+        MinifiedJarPackager.appendModuleClassKeeps(pro, classes);
         String rules = pro.toString();
         assertThat(rules).contains("-keep class com.ex.Outer ");
         assertThat(rules).contains("-keep class com.ex.Foo$Bar ");

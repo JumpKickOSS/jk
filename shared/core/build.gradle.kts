@@ -62,8 +62,8 @@ tasks.processResources {
         into("cc/jumpkick/plugin/manifest")
         rename { "protobuf.jk-plugin.toml" }
     }
-    from(rootProject.file("plugins/shrink/jk-plugin.toml")) {
+    from(rootProject.file("plugins/minified/jk-plugin.toml")) {
         into("cc/jumpkick/plugin/manifest")
-        rename { "shrink.jk-plugin.toml" }
+        rename { "minified.jk-plugin.toml" }
     }
 }

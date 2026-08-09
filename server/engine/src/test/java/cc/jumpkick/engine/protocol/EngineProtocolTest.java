@@ -134,8 +134,8 @@ class EngineProtocolTest {
     void with_session_carries_assembly_override() {
         String base = EngineProtocol.ping();
         assertThat(EngineProtocol.assemblyOverrideOf(base)).isEmpty();
-        String line = EngineProtocol.withSession(base, null, null, null, false, false, "shrink");
-        assertThat(EngineProtocol.assemblyOverrideOf(line)).isEqualTo("shrink");
+        String line = EngineProtocol.withSession(base, null, null, null, false, false, "minified");
+        assertThat(EngineProtocol.assemblyOverrideOf(line)).isEqualTo("minified");
         String fat = EngineProtocol.withSession(base, null, null, null, false, false, "fat");
         assertThat(EngineProtocol.assemblyOverrideOf(fat)).isEqualTo("fat");
     }

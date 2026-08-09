@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.shrink;
+package cc.jumpkick.minified;
 
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginManifest;
@@ -12,13 +12,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Shrink plugin: registers the {@code shrunk-jar} packager (R8 over classes + runtime closure).
+ * Minified plugin: registers the {@code minified-jar} packager (R8 over classes + runtime closure).
  */
-public final class ArtifactShrinker implements Plugin, PackageExtension {
+public final class MinifiedPlugin implements Plugin, PackageExtension {
 
     @Override
     public PluginManifest manifest() {
-        return new PluginManifest("jk-shrink", "##JKSH:");
+        return new PluginManifest("jk-minified", "##JKMIN:");
     }
 
     @Override
@@ -32,6 +32,6 @@ public final class ArtifactShrinker implements Plugin, PackageExtension {
         for (String rel : ctx.config().stringList("keep-files")) {
             inputs.add(In.projectFiles(rel));
         }
-        ctx.inputs(inputs.toArray(new In[0])).produce("shrunk-jar", ShrunkJarPackager::produce);
+        ctx.inputs(inputs.toArray(new In[0])).produce("minified-jar", MinifiedJarPackager::produce);
     }
 }

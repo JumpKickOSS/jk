@@ -1,23 +1,23 @@
-# The built-in shrink build plugin's declarative manifest: R8 in --classfile mode over the
+# The built-in minified build plugin's declarative manifest: R8 in --classfile mode over the
 # application + its runtime closure, packaged as a slim self-contained jar — the fat-jar
 # counterpart of Android's release shrinking, for CLI tools, functions, and services that
 # ship a single artifact. Opt-in via [application] minified = true (preferred) or a
-# [shrink] table (keep rules / r8-version). Reflection-heavy frameworks need keep rules
+# [minified] table (keep rules / r8-version). Reflection-heavy frameworks need keep rules
 # the user owns; jk never guesses.
 
 [plugin]
-id        = "shrink"
-table     = "shrink"
+id        = "minified"
+table     = "minified"
 version   = "0.1.0"
 jk-compat = ">=0.10"
 
 [code]
-worker          = "jk-shrink"
-protocol-prefix = "##JKSH:"
+worker          = "jk-minified"
+protocol-prefix = "##JKMIN:"
 
 # The shrunk jar replaces the main artifact: one self-contained, host-runnable jar.
 [packaging]
-packager       = "shrunk-jar"
+packager       = "minified-jar"
 exec-mode      = "jar"
 self-contained = true
 main-scan      = true
@@ -32,7 +32,7 @@ obfuscate  = { type = "bool", default = false }       # shrink-only by default: 
 
 # The r8 jar (D8/R8 share it — the exact artifact the android plugin pins), fetched
 # engine-side and handed to the packager by name. r8 publishes to Google Maven — a
-# [shrink] project declares it alongside central:
+# [minified] project declares it alongside central:
 #   google = "https://dl.google.com/dl/android/maven2/"
 [[contribute.packager-dependency]]
 artifact   = "r8"

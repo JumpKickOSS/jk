@@ -104,7 +104,7 @@ class SelfHostingTomlTest {
                         "plugins/publisher",
                         "plugins/image-builder",
                         "plugins/compat-bridge",
-                        "plugins/shrink",
+                        "plugins/minified",
                         "plugins/formatter",
                         "plugins/spring-boot",
                         "plugins/quarkus",

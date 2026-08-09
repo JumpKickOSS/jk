@@ -179,8 +179,8 @@ public final class JkBuildParser {
         Optional<JkBuild.NativeConfig> nativeConfig = parseNativeConfig(result);
         List<PluginDescriptor> installedManifests = PluginTableRegistry.manifestsFor(moduleDir, plugins);
         Map<String, PluginConfig> pluginConfigs = parsePluginTables(result, installedManifests);
-        // minified = true enables the shrink packager without requiring an empty [shrink] table.
-        pluginConfigs = ensureShrinkForMinified(application, pluginConfigs, installedManifests);
+        // minified = true enables the minified packager without requiring an empty [minified] table.
+        pluginConfigs = ensureMinifiedPluginConfigured(application, pluginConfigs, installedManifests);
         checkUnownedTables(result, moduleDir, plugins, installedManifests);
         deps = withPlatformContributions(deps, project, nativeConfig.isPresent(), pluginConfigs, installedManifests);
         JkBuild.Build build = parseBuild(result);
@@ -1613,45 +1613,45 @@ public final class JkBuildParser {
     }
 
     /**
-     * When {@code [application] minified = true} and no {@code [shrink]} table is present, inject
-     * shrink plugin defaults so the minified packager is available.
+     * When {@code [application] minified = true} and no {@code [minified]} table is present, inject
+     * minified plugin defaults so the packager is available.
      */
     /**
-     * {@code minified = true} pulls in the shrink plugin's config so the packager is active. The
-     * reverse is not implied: a {@code [shrink]} table configures the minified artifact, it does
+     * {@code minified = true} pulls in the minified plugin's config so the packager is active. The
+     * reverse is not implied: a {@code [minified]} table configures the minified artifact, it does
      * not ask for one. Saying so is better than building the table's rules into nothing.
      */
-    private static Map<String, PluginConfig> ensureShrinkForMinified(
+    private static Map<String, PluginConfig> ensureMinifiedPluginConfigured(
             Optional<JkBuild.Application> application,
             Map<String, PluginConfig> pluginConfigs,
             List<PluginDescriptor> installed) {
         boolean minified = application.isPresent() && application.get().minified();
         if (!minified) {
-            if (pluginConfigs.containsKey("shrink")) {
-                throw new JkBuildParseException("[shrink] configures the minified jar, but no minified jar is"
-                        + " requested — add `minified = true` under [application], or drop the [shrink] table");
+            if (pluginConfigs.containsKey("minified")) {
+                throw new JkBuildParseException("[minified] configures the minified jar, but no minified jar is"
+                        + " requested — add `minified = true` under [application], or drop the [minified] table");
             }
             return pluginConfigs;
         }
-        return ensureShrinkPluginConfig(pluginConfigs, installed);
+        return ensureMinifiedPluginConfig(pluginConfigs, installed);
     }
 
     /**
      * Apply a CLI packaging override over a parsed build for this invocation only. Minified pulls
-     * in the shrink plugin config when the project has none; anything else drops it, so a prior
-     * {@code minified = true} or a bare {@code [shrink]} table cannot still produce an R8 jar for
+     * in the minified plugin config when the project has none; anything else drops it, so a prior
+     * {@code minified = true} or a bare {@code [minified]} table cannot still produce an R8 jar for
      * this run.
      */
     public static JkBuild withArtifactOverride(JkBuild build, ArtifactOverride override) {
         Objects.requireNonNull(build, "build");
         if (override == null) return build;
         JkBuild next = build.withArtifacts(override.assembly(), override.minified());
-        if (!override.minified()) return next.withoutPluginConfig("shrink");
-        if (next.pluginConfig("shrink").isPresent()) return next;
-        Map<String, PluginConfig> configs =
-                ensureShrinkPluginConfig(next.pluginConfigs(), PluginTableRegistry.manifestsFor(null, next.plugins()));
-        PluginConfig shrink = configs.get("shrink");
-        return shrink == null ? next : next.withPluginConfig(shrink);
+        if (!override.minified()) return next.withoutPluginConfig("minified");
+        if (next.pluginConfig("minified").isPresent()) return next;
+        Map<String, PluginConfig> configs = ensureMinifiedPluginConfig(
+                next.pluginConfigs(), PluginTableRegistry.manifestsFor(null, next.plugins()));
+        PluginConfig minified = configs.get("minified");
+        return minified == null ? next : next.withPluginConfig(minified);
     }
 
     /** Which artifacts a single invocation asks for, from {@code --fat} / {@code --minified}. */
@@ -1661,25 +1661,25 @@ public final class JkBuildParser {
         }
     }
 
-    private static Map<String, PluginConfig> ensureShrinkPluginConfig(
+    private static Map<String, PluginConfig> ensureMinifiedPluginConfig(
             Map<String, PluginConfig> pluginConfigs, List<PluginDescriptor> installed) {
-        if (pluginConfigs.containsKey("shrink")) return pluginConfigs;
-        PluginDescriptor shrink = null;
+        if (pluginConfigs.containsKey("minified")) return pluginConfigs;
+        PluginDescriptor minified = null;
         for (PluginDescriptor m : installed) {
-            if ("shrink".equals(m.id()) || "shrink".equals(m.table())) {
-                shrink = m;
+            if ("minified".equals(m.id()) || "minified".equals(m.table())) {
+                minified = m;
                 break;
             }
         }
-        if (shrink == null) {
-            shrink = PluginTableRegistry.byTable("shrink").orElse(null);
+        if (minified == null) {
+            minified = PluginTableRegistry.byTable("minified").orElse(null);
         }
-        if (shrink == null) {
-            throw new JkBuildParseException("minified = true requires the built-in shrink plugin (not installed)");
+        if (minified == null) {
+            throw new JkBuildParseException("minified = true requires the built-in minified plugin (not installed)");
         }
-        TomlTable empty = Objects.requireNonNull(Toml.parse("[shrink]\n").getTable("shrink"));
+        TomlTable empty = Objects.requireNonNull(Toml.parse("[minified]\n").getTable("minified"));
         Map<String, PluginConfig> out = new LinkedHashMap<>(pluginConfigs);
-        out.put(shrink.id(), PluginTableRegistry.validate(shrink, empty));
+        out.put(minified.id(), PluginTableRegistry.validate(minified, empty));
         return out;
     }
 
@@ -1688,7 +1688,7 @@ public final class JkBuildParser {
         if (raw == null || raw.isBlank()) return null;
         return switch (raw.trim().toLowerCase(Locale.ROOT)) {
             case "fat", "true", "assembly" -> new ArtifactOverride(true, false);
-            case "minified", "min", "shrink", "shrunk", "r8" -> new ArtifactOverride(true, true);
+            case "minified", "min" -> new ArtifactOverride(true, true);
             case "off", "false", "none", "thin" -> new ArtifactOverride(false, false);
             default -> throw new IllegalArgumentException("unknown artifact override: " + raw + " (want fat|minified)");
         };

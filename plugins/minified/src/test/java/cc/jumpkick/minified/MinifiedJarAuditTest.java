@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.shrink;
+package cc.jumpkick.minified;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -20,7 +20,7 @@ import org.junit.jupiter.api.io.TempDir;
  * the loader skips it and the application runs incomplete — so the build has to be where this
  * is caught.
  */
-class ShrunkJarAuditTest {
+class MinifiedJarAuditTest {
 
     @Test
     void a_marker_indexed_class_that_r8_dropped_fails_the_build(@TempDir Path dir) throws Exception {
@@ -32,7 +32,7 @@ class ShrunkJarAuditTest {
         Path output =
                 jar(dir.resolve("out.jar"), Map.of("META-INF/micronaut/com.acme.Spi/com.acme.$Bean$Definition", ""));
 
-        assertThatThrownBy(() -> ShrunkJarPackager.auditByNameIndexes(List.of(input), output))
+        assertThatThrownBy(() -> MinifiedJarPackager.auditByNameIndexes(List.of(input), output))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("com.acme.$Bean$Definition")
                 .hasMessageContaining("-keep class com.acme.$Bean$Definition { *; }");
@@ -49,7 +49,7 @@ class ShrunkJarAuditTest {
                 dir.resolve("out.jar"),
                 Map.of("META-INF/services/org.slf4j.spi.SLF4JServiceProvider", "com.acme.Provider\n"));
 
-        assertThatThrownBy(() -> ShrunkJarPackager.auditByNameIndexes(List.of(input), output))
+        assertThatThrownBy(() -> MinifiedJarPackager.auditByNameIndexes(List.of(input), output))
                 .hasMessageContaining("com.acme.Provider");
     }
 
@@ -59,7 +59,7 @@ class ShrunkJarAuditTest {
                 "META-INF/services/com.acme.Spi", "com.acme.Impl\n",
                 "com/acme/Impl.class", "x");
 
-        assertThatCode(() -> ShrunkJarPackager.auditByNameIndexes(
+        assertThatCode(() -> MinifiedJarPackager.auditByNameIndexes(
                         List.of(jar(dir.resolve("in.jar"), both)), jar(dir.resolve("out.jar"), both)))
                 .doesNotThrowAnyException();
     }
@@ -71,7 +71,7 @@ class ShrunkJarAuditTest {
         Path input = jar(dir.resolve("in.jar"), Map.of("META-INF/services/com.acme.Spi", "com.optional.Missing\n"));
         Path output = jar(dir.resolve("out.jar"), Map.of("META-INF/services/com.acme.Spi", "com.optional.Missing\n"));
 
-        assertThatCode(() -> ShrunkJarPackager.auditByNameIndexes(List.of(input), output))
+        assertThatCode(() -> MinifiedJarPackager.auditByNameIndexes(List.of(input), output))
                 .doesNotThrowAnyException();
     }
 
@@ -87,7 +87,7 @@ class ShrunkJarAuditTest {
         Path input = jar(dir.resolve("in.jar"), inputEntries);
         Path output = jar(dir.resolve("out.jar"), Map.of("META-INF/services/com.acme.Spi", serviceBody.toString()));
 
-        assertThatThrownBy(() -> ShrunkJarPackager.auditByNameIndexes(List.of(input), output))
+        assertThatThrownBy(() -> MinifiedJarPackager.auditByNameIndexes(List.of(input), output))
                 .hasMessageContaining("R8 removed 25 classes")
                 .hasMessageContaining("… and 5 more");
     }

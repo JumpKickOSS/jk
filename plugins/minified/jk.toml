@@ -1,6 +1,6 @@
 [project]
-name        = "jk-shrink"
-description = "jk-shrink: R8 classfile shrink worker (PluginMain)."
+name        = "jk-minified"
+description = "jk-minified: R8 classfile minify worker (PluginMain)."
 
 [application]
 main     = "cc.jumpkick.plugin.process.PluginMain"

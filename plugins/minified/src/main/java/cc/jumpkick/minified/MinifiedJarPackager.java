@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.shrink;
+package cc.jumpkick.minified;
 
 import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.TaskExec;
@@ -23,14 +23,14 @@ import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 
 /**
- * {@code shrunk-jar} packager: R8 {@code --classfile} full mode over classes + runtime closure →
+ * {@code minified-jar} packager: R8 {@code --classfile} full mode over classes + runtime closure →
  * one slim jar. Shrink-only by default; {@code obfuscate = true} writes a mapping file.
  *
  * <p>{@code [application] main} is optional: when present, R8 keeps the entry point and the
  * manifest gets {@code Main-Class}. When absent (library fat/shrunk jars), every class from the
  * module's own classes dir is kept so R8 can still strip unused dependency code.
  */
-final class ShrunkJarPackager {
+final class MinifiedJarPackager {
 
     /** Fixed entry timestamp (zip's floor is 1980) — reproducible output, same as jk's packagers. */
     private static final java.time.LocalDateTime ENTRY_TIME = java.time.LocalDateTime.of(1980, 2, 1, 0, 0);
@@ -46,7 +46,7 @@ final class ShrunkJarPackager {
         return entry;
     }
 
-    private ShrunkJarPackager() {}
+    private MinifiedJarPackager() {}
 
     /** Alias every extensionless jar as {@code .jar} under {@code work} (R8 judges by extension). */
     private static List<Path> jarSuffixed(Path work, List<Path> jars) throws java.io.IOException {
@@ -77,7 +77,7 @@ final class ShrunkJarPackager {
         if (mainClass != null && mainClass.isBlank()) mainClass = null;
         Path r8 = io.extra("r8")
                 .orElseThrow(() -> new IllegalStateException("the r8 packager-dependency was not supplied"));
-        Path work = Files.createTempDirectory("jk-shrink-");
+        Path work = Files.createTempDirectory("jk-minified-");
         try {
             // R8's program inputs: the module classes (zipped — one input shape) + runtime jars.
             Path classesJar = work.resolve("classes.jar");
@@ -186,7 +186,7 @@ final class ShrunkJarPackager {
             if (absent > 0) {
                 io.label(absent + " optional " + (absent == 1 ? "class is" : "classes are")
                         + " absent from the closure — run with -v to list them, or set"
-                        + " [shrink] strict-warnings = true to fail on them");
+                        + " [minified] strict-warnings = true to fail on them");
             }
 
             auditByNameIndexes(program, shrunk);
@@ -210,7 +210,7 @@ final class ShrunkJarPackager {
      * <p>Scoped to classes the inputs actually carried: a name an input already failed to resolve
      * belongs to an optional dependency nobody bundled, and is not R8's doing.
      */
-    // Package-private for ShrunkJarAuditTest.
+    // Package-private for MinifiedJarAuditTest.
     static void auditByNameIndexes(List<Path> program, Path shrunk) throws IOException {
         Set<String> expected = new java.util.TreeSet<>(ByNameIndex.referencedClasses(program));
         expected.retainAll(ByNameIndex.classesIn(program));
@@ -231,7 +231,7 @@ final class ShrunkJarPackager {
             }
             message.append("  ").append(name).append('\n');
         }
-        message.append("\nKeep them with [shrink] keep, or a keep-files rule file:\n")
+        message.append("\nKeep them with [minified] keep, or a keep-files rule file:\n")
                 .append(cc.jumpkick.surface.KeepRuleEmitter.emit(
                         ByNameIndex.surface(expected.stream().limit(3).toList())));
         if (expected.size() > 3) message.append("  …\n");
@@ -292,7 +292,7 @@ final class ShrunkJarPackager {
     private static Path projectFile(PackageIo io, String rel) {
         Path file = io.moduleDir().resolve(rel);
         if (!Files.isRegularFile(file)) {
-            throw new IllegalStateException("[shrink] keep-files entry not found: " + rel);
+            throw new IllegalStateException("[minified] keep-files entry not found: " + rel);
         }
         return file;
     }
