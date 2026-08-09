@@ -106,8 +106,9 @@ public final class KmpRedirects {
     }
 
     private void rememberDropped(Selection selection) {
-        String selected =
-                PackageId.ofGa(selection.target().group() + ":" + selection.target().module()).key();
+        String selected = PackageId.ofGa(
+                        selection.target().group() + ":" + selection.target().module())
+                .key();
         for (String sibling : selection.allTargets()) {
             String siblingKey = PackageId.ofGa(sibling).key();
             if (!siblingKey.equals(selected)) droppedSiblings.put(siblingKey, selected);

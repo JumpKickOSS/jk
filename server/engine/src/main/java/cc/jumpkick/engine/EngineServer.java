@@ -5854,7 +5854,8 @@ public final class EngineServer implements AutoCloseable {
     /** OS 1-minute load average, or {@code -1} when the platform bean cannot answer. */
     private static double systemLoadAverage() {
         try {
-            double avg = java.lang.management.ManagementFactory.getOperatingSystemMXBean().getSystemLoadAverage();
+            double avg = java.lang.management.ManagementFactory.getOperatingSystemMXBean()
+                    .getSystemLoadAverage();
             return avg >= 0 ? avg : -1;
         } catch (RuntimeException e) {
             return -1;

@@ -64,9 +64,10 @@ class NiaWarmLockTimingTest {
                 .withJvmEnvironment(jvmEnv)
                 .lock(project, "nia-cold", List.of(), true, coldObs);
         long coldMs = (System.nanoTime() - coldT0) / 1_000_000L;
-        System.out.println("COLD_TOTAL_MS=" + coldMs + " packages=" + cold.artifacts().size());
-        System.out.println("COLD_graphMs=" + coldObs.msUntilDownloadPhase.get()
-                + " COLD_matMs=" + coldObs.msInDownloadPhase.get());
+        System.out.println(
+                "COLD_TOTAL_MS=" + coldMs + " packages=" + cold.artifacts().size());
+        System.out.println("COLD_graphMs=" + coldObs.msUntilDownloadPhase.get() + " COLD_matMs="
+                + coldObs.msInDownloadPhase.get());
         System.out.println("COLD_" + cc.jumpkick.resolve.ResolveProfile.report());
 
         // Pass B: process caches hot.
@@ -78,9 +79,10 @@ class NiaWarmLockTimingTest {
                 .withJvmEnvironment(jvmEnv)
                 .lock(project, "nia-hot", List.of(), true, hotObs);
         long hotMs = (System.nanoTime() - hotT0) / 1_000_000L;
-        System.out.println("HOT_TOTAL_MS=" + hotMs + " packages=" + hot.artifacts().size());
-        System.out.println("HOT_graphMs=" + hotObs.msUntilDownloadPhase.get()
-                + " HOT_matMs=" + hotObs.msInDownloadPhase.get());
+        System.out.println(
+                "HOT_TOTAL_MS=" + hotMs + " packages=" + hot.artifacts().size());
+        System.out.println(
+                "HOT_graphMs=" + hotObs.msUntilDownloadPhase.get() + " HOT_matMs=" + hotObs.msInDownloadPhase.get());
         System.out.println("HOT_" + cc.jumpkick.resolve.ResolveProfile.report());
 
         assertThat(cold.artifacts().size()).isGreaterThan(200);

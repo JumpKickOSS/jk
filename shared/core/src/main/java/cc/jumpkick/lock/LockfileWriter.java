@@ -54,8 +54,7 @@ public final class LockfileWriter {
         // Materialize identity.toml so project= id resolves to a checkout without a prior build.
         try {
             LockfileReader.clearCache();
-            cc.jumpkick.builds.ProjectIdentity identity =
-                    cc.jumpkick.builds.ProjectIdentity.resolve(owner);
+            cc.jumpkick.builds.ProjectIdentity identity = cc.jumpkick.builds.ProjectIdentity.resolve(owner);
             Path home = cc.jumpkick.builds.ProjectBuilds.projectHome(
                     cc.jumpkick.builds.ProjectBuilds.buildsRoot(), identity);
             cc.jumpkick.builds.ProjectIdentity.IdentityFile.write(home, identity);

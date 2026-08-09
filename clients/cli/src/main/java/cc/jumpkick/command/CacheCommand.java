@@ -202,7 +202,6 @@ public final class CacheCommand extends GroupCommand {
         return String.format("%.1f%s", v, units.charAt(u));
     }
 
-
     /**
      * Full cache-tier nuke. Shared by {@code jk cache nuke} and {@code jk self nuke --cache}.
      * Deletes {@code actions/}, {@code format-stamps/}, and cache {@code sha256/} (same trees as
@@ -229,8 +228,8 @@ public final class CacheCommand extends GroupCommand {
         }
         if (!skipConfirm && !CacheNukeCommand.confirmNuke(root, stats)) {
             CommandWedge.envelopeStart();
-            CliOutput.out(cc.jumpkick.cli.tui.BuildPlanWedge.chipLine(
-                    Glyphs.CROSS, "Cache", nerdfont, "Nuke aborted."));
+            CliOutput.out(
+                    cc.jumpkick.cli.tui.BuildPlanWedge.chipLine(Glyphs.CROSS, "Cache", nerdfont, "Nuke aborted."));
             return 1;
         }
         // Prefer engine idle-boundary wipe; fall back to in-process delete (unit tests, engine down).
@@ -244,8 +243,7 @@ public final class CacheCommand extends GroupCommand {
             BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
             var planResult = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
                     cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest(
-                            "purge", root, 0, false, false, false),
+                    new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest("purge", root, 0, false, false, false),
                     steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
                     CacheCommand::printWait,
                     new cc.jumpkick.cli.engine.EngineClient.CacheMaintSummary[1]);
@@ -256,8 +254,7 @@ public final class CacheCommand extends GroupCommand {
         }
         wipeCacheTier(root);
         CommandWedge.printOk(
-                "Cache",
-                "Nuked " + fmtCount(stats.files()) + " files, " + fmtBytes(stats.bytes()) + " freed.");
+                "Cache", "Nuked " + fmtCount(stats.files()) + " files, " + fmtBytes(stats.bytes()) + " freed.");
         return 0;
     }
 

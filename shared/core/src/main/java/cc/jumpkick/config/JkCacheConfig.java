@@ -113,12 +113,10 @@ public record JkCacheConfig(
         double defaultCache = clampDefaultGb(logicalCache, space);
         double defaultStore = clampDefaultGb(logicalStore, space);
 
-        double storeGb = envStore.isPresent()
-                ? envStore.getAsDouble()
-                : p.storeGb().orElse(defaultStore);
-        double cacheGb = envCache.isPresent()
-                ? envCache.getAsDouble()
-                : p.cacheGb().orElse(defaultCache);
+        double storeGb =
+                envStore.isPresent() ? envStore.getAsDouble() : p.storeGb().orElse(defaultStore);
+        double cacheGb =
+                envCache.isPresent() ? envCache.getAsDouble() : p.cacheGb().orElse(defaultCache);
 
         return new JkCacheConfig(
                 EnvValues.bool(env, "JK_AUTO_PRUNE").orElse(p.autoPrune()),

@@ -158,7 +158,8 @@ public final class RepoCommand extends GroupCommand {
         @Override
         public int run(Invocation in) throws Exception {
             CliOutput.err(Theme.colorize(
-                    "note: jk storage clean moved to jk storage clean", Theme.active().dim()));
+                    "note: jk storage clean moved to jk storage clean",
+                    Theme.active().dim()));
             return target.run(in);
         }
     }

@@ -62,12 +62,7 @@ public final class CachePlans {
      *     (native / OCI / fat assembly); opportunistic idle prune keeps this false (TTL + budget)
      */
     public static BuildPlan pruneBuildPlan(
-            Path root,
-            int olderThanDays,
-            boolean dryRun,
-            boolean sweep,
-            boolean includeJkTmp,
-            boolean dropAllClassC) {
+            Path root, int olderThanDays, boolean dryRun, boolean sweep, boolean includeJkTmp, boolean dropAllClassC) {
         Task pruneStep = Task.builder("prune")
                 .ticks(1)
                 .execute(ctx -> {

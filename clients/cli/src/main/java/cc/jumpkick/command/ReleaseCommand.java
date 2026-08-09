@@ -190,8 +190,7 @@ public final class ReleaseCommand implements CliCommand {
      * Best-effort: move released fat/native bytes from the action cache CAS into the artifact
      * store (hard-link when possible). Failures never fail the release.
      */
-    private static void promoteReleasedArtifacts(
-            Path cacheDir, Path clientBin, Path engineJar, boolean nativeClient) {
+    private static void promoteReleasedArtifacts(Path cacheDir, Path clientBin, Path engineJar, boolean nativeClient) {
         try {
             Path cacheRoot = cacheDir != null ? cacheDir : cc.jumpkick.util.JkDirs.cache();
             var cacheCas = cc.jumpkick.cache.JkStores.cacheCas(cacheRoot);

@@ -59,9 +59,12 @@ class FormatStampGcTest {
         Path hot = stamp(cache, "55", "66", "hot");
         // Distinct mtimes so LRU order is deterministic (all within TTL).
         long now = System.currentTimeMillis();
-        Files.setLastModifiedTime(old, FileTime.fromMillis(now - Duration.ofDays(3).toMillis()));
-        Files.setLastModifiedTime(mid, FileTime.fromMillis(now - Duration.ofDays(2).toMillis()));
-        Files.setLastModifiedTime(hot, FileTime.fromMillis(now - Duration.ofHours(1).toMillis()));
+        Files.setLastModifiedTime(
+                old, FileTime.fromMillis(now - Duration.ofDays(3).toMillis()));
+        Files.setLastModifiedTime(
+                mid, FileTime.fromMillis(now - Duration.ofDays(2).toMillis()));
+        Files.setLastModifiedTime(
+                hot, FileTime.fromMillis(now - Duration.ofHours(1).toMillis()));
 
         var r = FormatStampGc.sweep(cache, Duration.ofDays(7), 2, false);
 

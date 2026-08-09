@@ -7,10 +7,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.locks.ReentrantLock;
@@ -78,7 +76,8 @@ public final class ProjectBuilds {
     /** @deprecated use {@link #key(Path)} — path-only hash is no longer the identity. */
     @Deprecated
     public static String key(String coord, Path projectDir) {
-        return ProjectIdentity.resolve(projectDir == null ? Path.of(".") : projectDir).id();
+        return ProjectIdentity.resolve(projectDir == null ? Path.of(".") : projectDir)
+                .id();
     }
 
     public static Path projectHome(Path projectDir) {

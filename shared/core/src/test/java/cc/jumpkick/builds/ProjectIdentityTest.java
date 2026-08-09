@@ -14,9 +14,7 @@ class ProjectIdentityTest {
 
     @Test
     void path_tier_is_stable_for_same_checkout(@TempDir Path dir) throws Exception {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "com.example"
                 name = "demo"
@@ -32,15 +30,14 @@ class ProjectIdentityTest {
 
     @Test
     void lock_project_id_wins_over_path(@TempDir Path dir) throws Exception {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "com.example"
                 name = "demo"
                 version = "0.1.0"
                 """);
-        LockfileWriter.write(Lockfile.empty("test").withProjectId("aabbccddeeff00112233445566778899"), dir.resolve("jk-lock.toml"));
+        LockfileWriter.write(
+                Lockfile.empty("test").withProjectId("aabbccddeeff00112233445566778899"), dir.resolve("jk-lock.toml"));
         ProjectIdentity id = ProjectIdentity.resolve(dir);
         assertThat(id.source()).isEqualTo(ProjectIdentity.Source.LOCK);
         assertThat(id.id()).isEqualTo("aabbccddeeff00112233445566778899");
@@ -48,9 +45,7 @@ class ProjectIdentityTest {
 
     @Test
     void ensure_project_id_mints_and_preserves(@TempDir Path dir) throws Exception {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "com.example"
                 name = "demo"
@@ -67,16 +62,15 @@ class ProjectIdentityTest {
 
     @Test
     void explicit_toml_id_wins(@TempDir Path dir) throws Exception {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "com.example"
                 name = "demo"
                 version = "0.1.0"
                 id = "explicit-project-id-00112233"
                 """);
-        LockfileWriter.write(Lockfile.empty("test").withProjectId("lock-id-should-not-win-00112233"), dir.resolve("jk-lock.toml"));
+        LockfileWriter.write(
+                Lockfile.empty("test").withProjectId("lock-id-should-not-win-00112233"), dir.resolve("jk-lock.toml"));
         ProjectIdentity id = ProjectIdentity.resolve(dir);
         assertThat(id.source()).isEqualTo(ProjectIdentity.Source.EXPLICIT);
         assertThat(id.id()).isEqualTo("explicit-project-id-00112233");

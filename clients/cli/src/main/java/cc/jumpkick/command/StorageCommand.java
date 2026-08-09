@@ -13,14 +13,11 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.GroupCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.PathUtil;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
-import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -132,11 +129,7 @@ public final class StorageCommand extends GroupCommand {
         long[] wiped = wipeStore(storeRoot);
         CommandWedge.printOk(
                 "Storage",
-                "Nuked "
-                        + CacheCommand.fmtCount(wiped[0])
-                        + " files, "
-                        + CacheCommand.fmtBytes(wiped[1])
-                        + " freed.");
+                "Nuked " + CacheCommand.fmtCount(wiped[0]) + " files, " + CacheCommand.fmtBytes(wiped[1]) + " freed.");
         return 0;
     }
 
@@ -144,14 +137,16 @@ public final class StorageCommand extends GroupCommand {
         Theme t = Theme.active();
         String bang = Theme.colorize(Glyphs.BANG, t.warning());
         CliOutput.out();
-        CliOutput.out(bang + " " + Theme.colorize("This permanently deletes the ENTIRE artifact store.", t.errorLabel()));
+        CliOutput.out(
+                bang + " " + Theme.colorize("This permanently deletes the ENTIRE artifact store.", t.errorLabel()));
         CliOutput.out("  " + storeRoot);
         CliOutput.stdout()
                 .printf(
                         "  %s files, %s — CAS blobs, repo mirrors, and related store trees.%n",
                         CacheCommand.fmtCount(stats.files()), CacheCommand.fmtBytes(stats.bytes()));
         CliOutput.out("  Cache tier (action outputs) is kept. Credentials are kept (jk repo logout).");
-        return cc.jumpkick.cli.tui.Confirm.of(bang + " Nuke the artifact store?", false).ask();
+        return cc.jumpkick.cli.tui.Confirm.of(bang + " Nuke the artifact store?", false)
+                .ask();
     }
 
     // --- subcommands ----------------------------------------------------------------

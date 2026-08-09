@@ -443,14 +443,16 @@ public final class LockPlans {
                                 prep.project(), prep.repos(), cas, dir, javaHome, JkVersion.VERSION);
                         // Float-to-latest needs current indexes; revalidate past TTL (conditional
                         // GET). Normal jk lock stays on the warm disk TTL.
-                        Lockfile lock = cc.jumpkick.repo.MavenMetadataCache.withForceRevalidate(() -> new LockOrchestrator(
-                                        pathPrep.repos())
-                                .withProjectDir(dir)
-                                .withJvmEnvironment(cc.jumpkick.plugin.manifest.PluginContributions.jvmEnvironment(
-                                        pathPrep.project(), dir))
-                                .withPlatformPolicy(policy)
-                                .withUnmappedPolicy(pathPrep.project().build().unmappedPolicy())
-                                .lock(pathPrep.project(), JkVersion.VERSION, features, withDefaultFeatures));
+                        Lockfile lock = cc.jumpkick.repo.MavenMetadataCache.withForceRevalidate(
+                                () -> new LockOrchestrator(pathPrep.repos())
+                                        .withProjectDir(dir)
+                                        .withJvmEnvironment(
+                                                cc.jumpkick.plugin.manifest.PluginContributions.jvmEnvironment(
+                                                        pathPrep.project(), dir))
+                                        .withPlatformPolicy(policy)
+                                        .withUnmappedPolicy(
+                                                pathPrep.project().build().unmappedPolicy())
+                                        .lock(pathPrep.project(), JkVersion.VERSION, features, withDefaultFeatures));
                         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
                         // jk update floats everything — including the Kotlin compiler pin, which
                         // this plan used to drop from the lock entirely (JK-1371).

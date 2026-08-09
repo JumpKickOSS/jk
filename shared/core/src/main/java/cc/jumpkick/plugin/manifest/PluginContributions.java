@@ -322,7 +322,8 @@ public final class PluginContributions {
         if ("android".equals(selected)) return selected;
         if (build.isWorkspaceRoot()) {
             try {
-                for (var entry : cc.jumpkick.config.WorkspaceLoader.loadModules(moduleDir, build).entrySet()) {
+                for (var entry : cc.jumpkick.config.WorkspaceLoader.loadModules(moduleDir, build)
+                        .entrySet()) {
                     if ("android".equals(jvmEnvironmentLocal(entry.getValue(), entry.getKey()))) {
                         return "android";
                     }

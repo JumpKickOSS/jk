@@ -12,7 +12,8 @@ class HeavyActionPolicyTest {
     void class_c_kinds_and_generations() {
         assertThat(HeavyActionPolicy.isClassC(TaskNames.NATIVE_IMAGE + "@abc")).isTrue();
         assertThat(HeavyActionPolicy.isClassC(TaskNames.WRITE_IMAGE + "@x")).isTrue();
-        assertThat(HeavyActionPolicy.isClassC(TaskNames.PACKAGE_ASSEMBLY + "@y")).isTrue();
+        assertThat(HeavyActionPolicy.isClassC(TaskNames.PACKAGE_ASSEMBLY + "@y"))
+                .isTrue();
         assertThat(HeavyActionPolicy.isClassC("compile-main@z")).isFalse();
         assertThat(HeavyActionPolicy.isClassC("package-jar@z")).isFalse();
 
@@ -26,8 +27,7 @@ class HeavyActionPolicyTest {
 
     @Test
     void budget_is_half_of_cache() {
-        assertThat(HeavyActionPolicy.classCBudgetBytes(4L * 1024 * 1024 * 1024))
-                .isEqualTo(2L * 1024 * 1024 * 1024);
+        assertThat(HeavyActionPolicy.classCBudgetBytes(4L * 1024 * 1024 * 1024)).isEqualTo(2L * 1024 * 1024 * 1024);
         assertThat(HeavyActionPolicy.TTL.toDays()).isEqualTo(3);
     }
 }

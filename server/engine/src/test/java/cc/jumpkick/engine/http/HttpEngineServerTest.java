@@ -487,7 +487,8 @@ class HttpEngineServerTest {
             assertThat(status.statusCode()).isEqualTo(200);
             assertThat(status.body()).contains("\"mcpEnabled\":false").contains("\"mcpUrl\":null");
             HttpResponse<java.util.stream.Stream<String>> events = client.send(
-                    HttpRequest.newBuilder(URI.create(url + "api/events?access_token=" + tok)).build(),
+                    HttpRequest.newBuilder(URI.create(url + "api/events?access_token=" + tok))
+                            .build(),
                     HttpResponse.BodyHandlers.ofLines());
             try {
                 assertThat(events.statusCode()).isEqualTo(200);
@@ -551,8 +552,7 @@ class HttpEngineServerTest {
         // Fail closed: bare browser / curl without a bearer must not see engine data.
         for (String path : java.util.List.of("api/status", "api/cache", "api/history", "api/events")) {
             HttpResponse<String> noToken = client.send(
-                    HttpRequest.newBuilder(URI.create(baseUrl + path)).build(),
-                    HttpResponse.BodyHandlers.ofString());
+                    HttpRequest.newBuilder(URI.create(baseUrl + path)).build(), HttpResponse.BodyHandlers.ofString());
             assertThat(noToken.statusCode()).as(path).isEqualTo(401);
         }
         assertThat(get("/api/history").statusCode()).isEqualTo(200);
@@ -780,8 +780,7 @@ class HttpEngineServerTest {
     void api_log_requires_the_token_even_on_loopback() throws Exception {
         // The log can carry build diagnostics — another local user must not read it.
         HttpResponse<String> noToken = client.send(
-                HttpRequest.newBuilder(URI.create(baseUrl + "api/log")).build(),
-                HttpResponse.BodyHandlers.ofString());
+                HttpRequest.newBuilder(URI.create(baseUrl + "api/log")).build(), HttpResponse.BodyHandlers.ofString());
         assertThat(noToken.statusCode()).isEqualTo(401);
     }
 
@@ -806,8 +805,7 @@ class HttpEngineServerTest {
     void fs_listing_requires_the_token_even_on_loopback() throws Exception {
         // It lists the filesystem with the engine owner's permissions — never token-exempt.
         HttpResponse<String> noToken = client.send(
-                HttpRequest.newBuilder(URI.create(baseUrl + "api/fs")).build(),
-                HttpResponse.BodyHandlers.ofString());
+                HttpRequest.newBuilder(URI.create(baseUrl + "api/fs")).build(), HttpResponse.BodyHandlers.ofString());
         assertThat(noToken.statusCode()).isEqualTo(401);
     }
 
@@ -841,7 +839,8 @@ class HttpEngineServerTest {
     void project_defaults_require_the_token_even_on_loopback() throws Exception {
         // Derived from the owner's git identity + home layout — same class as /api/fs.
         HttpResponse<String> noToken = client.send(
-                HttpRequest.newBuilder(URI.create(baseUrl + "api/projects/defaults")).build(),
+                HttpRequest.newBuilder(URI.create(baseUrl + "api/projects/defaults"))
+                        .build(),
                 HttpResponse.BodyHandlers.ofString());
         assertThat(noToken.statusCode()).isEqualTo(401);
     }
@@ -1077,7 +1076,8 @@ class HttpEngineServerTest {
             String tok = Files.readString(stateDir.resolve("tiny.http-token")).trim();
             for (int i = 0; i < 3; i++) { // more streams than the whole RPC budget
                 HttpResponse<java.util.stream.Stream<String>> resp = client.send(
-                        HttpRequest.newBuilder(URI.create(url + "api/events?access_token=" + tok)).build(),
+                        HttpRequest.newBuilder(URI.create(url + "api/events?access_token=" + tok))
+                                .build(),
                         HttpResponse.BodyHandlers.ofLines());
                 assertThat(resp.statusCode()).isEqualTo(200);
                 var lines = resp.body().iterator();

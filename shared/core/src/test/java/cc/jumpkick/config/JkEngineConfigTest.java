@@ -37,8 +37,7 @@ class JkEngineConfigTest {
         assertThat(JkEngineConfig.defaultMaxHeapMb(Map.of("CI", "true")::get)).isEqualTo(512);
         assertThat(JkEngineConfig.defaultMaxHeapMb(Map.of("CI", "TRUE")::get)).isEqualTo(512);
 
-        JkEngineConfig c =
-                JkEngineConfig.resolve(tempDir.resolve("none.toml"), Map.of("CI", "true")::get);
+        JkEngineConfig c = JkEngineConfig.resolve(tempDir.resolve("none.toml"), Map.of("CI", "true")::get);
         assertThat(c.maxHeapMb()).isEqualTo(512);
     }
 

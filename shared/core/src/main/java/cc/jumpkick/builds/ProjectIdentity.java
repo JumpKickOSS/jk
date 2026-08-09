@@ -34,13 +34,7 @@ import java.util.stream.Stream;
  * <p>The opaque {@link #id()} is URL-safe and is the sole key under {@code builds/projects/&lt;id&gt;/}.
  * Absolute path is operational (where to build), not the identity.
  */
-public record ProjectIdentity(
-        String id,
-        String coord,
-        Path path,
-        Source source,
-        String gitRemote,
-        String gitRelPath) {
+public record ProjectIdentity(String id, String coord, Path path, Source source, String gitRemote, String gitRelPath) {
 
     public enum Source {
         EXPLICIT,
@@ -124,10 +118,7 @@ public record ProjectIdentity(
         }
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
-            boolean ok = (c >= 'a' && c <= 'z')
-                    || (c >= '0' && c <= '9')
-                    || c == '-'
-                    || c == '_';
+            boolean ok = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_';
             if (!ok) throw new IllegalArgumentException("invalid project id char: " + raw);
         }
         return s;
@@ -184,7 +175,9 @@ public record ProjectIdentity(
 
     /** Last known absolute path for this id from identity.toml, if any. */
     public static Optional<Path> pathForId(String id) {
-        return homeForId(id).flatMap(IdentityFile::read).map(f -> Path.of(f.path()).toAbsolutePath().normalize());
+        return homeForId(id)
+                .flatMap(IdentityFile::read)
+                .map(f -> Path.of(f.path()).toAbsolutePath().normalize());
     }
 
     public static String coordOf(Path projectDir) {
@@ -270,7 +263,11 @@ public record ProjectIdentity(
         if (origin != null && !origin.isBlank()) return origin.trim();
         String remotes = git(top, "remote");
         if (remotes == null || remotes.isBlank()) return null;
-        String first = remotes.lines().map(String::trim).filter(s -> !s.isEmpty()).findFirst().orElse(null);
+        String first = remotes.lines()
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .findFirst()
+                .orElse(null);
         if (first == null) return null;
         String url = git(top, "remote", "get-url", first);
         return url == null ? null : url.trim();
@@ -362,7 +359,9 @@ public record ProjectIdentity(
             b.append("id = ").append(q(identity.id())).append('\n');
             b.append("coord = ").append(q(identity.coord())).append('\n');
             b.append("path = ").append(q(identity.path().toString())).append('\n');
-            b.append("source = ").append(q(identity.source().name().toLowerCase(Locale.ROOT))).append('\n');
+            b.append("source = ")
+                    .append(q(identity.source().name().toLowerCase(Locale.ROOT)))
+                    .append('\n');
             if (identity.gitRemote() != null) {
                 b.append("git-remote = ").append(q(identity.gitRemote())).append('\n');
             }

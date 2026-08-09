@@ -33,9 +33,7 @@ class EffectiveUserConfigTest {
     @Test
     void file_overrides_mark_only_changed_keys(@TempDir Path dir) throws Exception {
         Path toml = dir.resolve("config.toml");
-        Files.writeString(
-                toml,
-                """
+        Files.writeString(toml, """
                 [global]
                 nerdfont = true
 

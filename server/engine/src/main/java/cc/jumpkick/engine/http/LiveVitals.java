@@ -255,8 +255,7 @@ public final class LiveVitals implements AutoCloseable {
 
         static PresentStatus of(StatusSnapshot s) {
             int loadPp = s.systemCpuLoad() < 0 ? -1 : (int) Math.round(s.systemCpuLoad() * 100);
-            int loadAvgTenths =
-                    s.systemLoadAverage() < 0 ? -1 : (int) Math.round(s.systemLoadAverage() * 10.0);
+            int loadAvgTenths = s.systemLoadAverage() < 0 ? -1 : (int) Math.round(s.systemLoadAverage() * 10.0);
             return new PresentStatus(
                     s.activeBuildPlans(),
                     s.activeRequests(),

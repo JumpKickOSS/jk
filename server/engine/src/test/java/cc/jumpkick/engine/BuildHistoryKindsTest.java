@@ -39,9 +39,7 @@ class BuildHistoryKindsTest {
             "",
             "Build", // wire tokens are lowercase
         }) {
-            assertThat(BuildHistoryKinds.isBuildLike(kind))
-                    .as("kind=%s", kind)
-                    .isFalse();
+            assertThat(BuildHistoryKinds.isBuildLike(kind)).as("kind=%s", kind).isFalse();
         }
     }
 

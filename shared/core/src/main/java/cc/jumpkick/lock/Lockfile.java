@@ -87,7 +87,19 @@ public record Lockfile(
             List<Artifact> artifacts,
             List<PluginEntry> plugins,
             List<SdkEntry> sdk) {
-        this(version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, sdk, List.of(), null, null, null);
+        this(
+                version,
+                generatedBy,
+                resolutionAlgorithm,
+                jdk,
+                kotlin,
+                artifacts,
+                plugins,
+                sdk,
+                List.of(),
+                null,
+                null,
+                null);
     }
 
     /** Back-compat constructor with toolchain pin but no module pins. */
@@ -101,7 +113,19 @@ public record Lockfile(
             List<PluginEntry> plugins,
             List<SdkEntry> sdk,
             JkToolchain jk) {
-        this(version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, sdk, List.of(), jk, null, null);
+        this(
+                version,
+                generatedBy,
+                resolutionAlgorithm,
+                jdk,
+                kotlin,
+                artifacts,
+                plugins,
+                sdk,
+                List.of(),
+                jk,
+                null,
+                null);
     }
 
     /** Back-compat constructor with modules + toolchain, no manifests digest. */
@@ -139,13 +163,35 @@ public record Lockfile(
     /** This lock with a content digest of the manifests used to produce it. */
     public Lockfile withManifestsSha256(String digest) {
         return new Lockfile(
-                version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, sdk, modules, jk, digest, projectId);
+                version,
+                generatedBy,
+                resolutionAlgorithm,
+                jdk,
+                kotlin,
+                artifacts,
+                plugins,
+                sdk,
+                modules,
+                jk,
+                digest,
+                projectId);
     }
 
     /** This lock with a durable project identity. */
     public Lockfile withProjectId(String id) {
         return new Lockfile(
-                version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, sdk, modules, jk, manifestsSha256, id);
+                version,
+                generatedBy,
+                resolutionAlgorithm,
+                jdk,
+                kotlin,
+                artifacts,
+                plugins,
+                sdk,
+                modules,
+                jk,
+                manifestsSha256,
+                id);
     }
 
     /** Back-compat constructor without SDK entries. */

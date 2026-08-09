@@ -24,9 +24,7 @@ class JkCacheConfigTest {
     @Test
     void parses_size_knobs_in_gib(@TempDir Path tempDir) throws Exception {
         Path toml = tempDir.resolve("config.toml");
-        Files.writeString(
-                toml,
-                """
+        Files.writeString(toml, """
                 [cache]
                 max-store-size-gb   = 8
                 prune-interval-days = 3
@@ -58,9 +56,7 @@ class JkCacheConfigTest {
     @Test
     void malformed_values_fall_back_to_defaults(@TempDir Path tempDir) throws Exception {
         Path toml = tempDir.resolve("config.toml");
-        Files.writeString(
-                toml,
-                """
+        Files.writeString(toml, """
                 [cache]
                 max-store-size-gb = not-a-number
                 max-cache-size-gb = nope
@@ -71,9 +67,7 @@ class JkCacheConfigTest {
     @Test
     void env_overrides_file(@TempDir Path tempDir) throws Exception {
         Path toml = tempDir.resolve("config.toml");
-        Files.writeString(
-                toml,
-                """
+        Files.writeString(toml, """
                 [cache]
                 max-store-size-gb   = 8
                 max-cache-size-gb   = 0.5
@@ -94,9 +88,7 @@ class JkCacheConfigTest {
     @Test
     void zero_size_means_unset_default(@TempDir Path tempDir) throws Exception {
         Path toml = tempDir.resolve("config.toml");
-        Files.writeString(
-                toml,
-                """
+        Files.writeString(toml, """
                 [cache]
                 max-store-size-gb  = 0
                 max-cache-size-gb  = 0
@@ -120,8 +112,8 @@ class JkCacheConfigTest {
 
     @Test
     void env_only_without_file(@TempDir Path tempDir) {
-        JkCacheConfig c2 =
-                JkCacheConfig.resolve(tempDir.resolve("none.toml"), Map.of("JK_MAX_STORE_SIZE_GB", "0.5")::get, BIG_DISK);
+        JkCacheConfig c2 = JkCacheConfig.resolve(
+                tempDir.resolve("none.toml"), Map.of("JK_MAX_STORE_SIZE_GB", "0.5")::get, BIG_DISK);
         assertThat(c2.maxStoreSizeGb()).isEqualTo(0.5);
 
         Path toml = tempDir.resolve("config.toml");
@@ -136,13 +128,11 @@ class JkCacheConfigTest {
 
     @Test
     void ci_bumps_logical_defaults(@TempDir Path tempDir) {
-        JkCacheConfig c =
-                JkCacheConfig.resolve(tempDir.resolve("none.toml"), Map.of("CI", "true")::get, BIG_DISK);
+        JkCacheConfig c = JkCacheConfig.resolve(tempDir.resolve("none.toml"), Map.of("CI", "true")::get, BIG_DISK);
         assertThat(c.maxCacheSizeGb()).isEqualTo(JkCacheConfig.CI_MAX_CACHE_SIZE_GB);
         assertThat(c.maxStoreSizeGb()).isEqualTo(JkCacheConfig.CI_MAX_STORE_SIZE_GB);
 
-        JkCacheConfig c1 =
-                JkCacheConfig.resolve(tempDir.resolve("none.toml"), Map.of("CI", "1")::get, BIG_DISK);
+        JkCacheConfig c1 = JkCacheConfig.resolve(tempDir.resolve("none.toml"), Map.of("CI", "1")::get, BIG_DISK);
         assertThat(c1.maxCacheSizeGb()).isEqualTo(8.0);
         assertThat(c1.maxStoreSizeGb()).isEqualTo(12.0);
     }
@@ -175,8 +165,8 @@ class JkCacheConfigTest {
 
     @Test
     void store_budget_is_display_only(@TempDir Path tempDir) {
-        JkCacheConfig c =
-                JkCacheConfig.resolve(tempDir.resolve("none.toml"), Map.of("JK_MAX_STORE_SIZE_GB", "0.5")::get, BIG_DISK);
+        JkCacheConfig c = JkCacheConfig.resolve(
+                tempDir.resolve("none.toml"), Map.of("JK_MAX_STORE_SIZE_GB", "0.5")::get, BIG_DISK);
         assertThat(c.maxStoreSizeGb()).isEqualTo(0.5);
         assertThat(c.maxStoreSizeBytes()).isEqualTo(Math.round(0.5 * JkCacheConfig.GIB));
         assertThat(JkCacheConfig.DEFAULTS.maxStoreSizeBytes()).isEqualTo(Math.round(6.0 * JkCacheConfig.GIB));

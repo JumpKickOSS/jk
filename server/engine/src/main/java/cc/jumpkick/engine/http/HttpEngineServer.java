@@ -1077,7 +1077,8 @@ public final class HttpEngineServer implements AutoCloseable {
                     try {
                         m.put(
                                 "projectId",
-                                cc.jumpkick.builds.ProjectIdentity.resolve(Path.of(dir)).id());
+                                cc.jumpkick.builds.ProjectIdentity.resolve(Path.of(dir))
+                                        .id());
                     } catch (RuntimeException ignored) {
                         // leave absent
                     }
@@ -1186,7 +1187,9 @@ public final class HttpEngineServer implements AutoCloseable {
             sendJson(
                     exchange,
                     400,
-                    JsonOut.object().put("error", "missing \"project\" or \"dir\"").toString());
+                    JsonOut.object()
+                            .put("error", "missing \"project\" or \"dir\"")
+                            .toString());
             return;
         }
         if (projectId != null && !projectId.isBlank()) {
@@ -1224,7 +1227,10 @@ public final class HttpEngineServer implements AutoCloseable {
             sendJson(
                     exchange,
                     200,
-                    JsonOut.object().put("dir", dir).put("projectId", projectId == null ? "" : projectId).toString());
+                    JsonOut.object()
+                            .put("dir", dir)
+                            .put("projectId", projectId == null ? "" : projectId)
+                            .toString());
         }
     }
 

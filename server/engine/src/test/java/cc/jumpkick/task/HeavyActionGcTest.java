@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -25,10 +26,12 @@ class HeavyActionGcTest {
         Path bin = out.resolve("app");
         Files.writeString(bin, "native-binary-payload");
         String task = TaskNames.NATIVE_IMAGE + "@mod";
-        var rec = ac.storeArtifacts(task, "key-old", Map.of(), out, java.util.List.of(bin));
+        var rec = ac.storeArtifacts(task, "key-old", Map.of(), out, List.of(bin));
         Path keyFile = cache.resolve("actions/keys").resolve(rec.actionKey());
         Files.setLastModifiedTime(
-                keyFile, FileTime.fromMillis(System.currentTimeMillis() - Duration.ofDays(10).toMillis()));
+                keyFile,
+                FileTime.fromMillis(
+                        System.currentTimeMillis() - Duration.ofDays(10).toMillis()));
 
         var report = HeavyActionGc.sweep(cache, cas, 0L, Duration.ofDays(3), false);
 
@@ -47,13 +50,13 @@ class HeavyActionGcTest {
 
         Path a = out.resolve("app");
         Files.writeString(a, "gen-one");
-        var r1 = ac.storeArtifacts(task, "key-1", Map.of(), out, java.util.List.of(a));
+        var r1 = ac.storeArtifacts(task, "key-1", Map.of(), out, List.of(a));
 
         Files.writeString(a, "gen-two");
-        var r2 = ac.storeArtifacts(task, "key-2", Map.of(), out, java.util.List.of(a));
+        var r2 = ac.storeArtifacts(task, "key-2", Map.of(), out, List.of(a));
 
         Files.writeString(a, "gen-three");
-        var r3 = ac.storeArtifacts(task, "key-3", Map.of(), out, java.util.List.of(a));
+        var r3 = ac.storeArtifacts(task, "key-3", Map.of(), out, List.of(a));
 
         Path keys = cache.resolve("actions/keys");
         // 2 generations: current key-3 + one predecessor key-2; key-1 dropped
@@ -72,7 +75,7 @@ class HeavyActionGcTest {
         Path bin = out.resolve("app");
         Files.writeString(bin, "fresh-native");
         String task = TaskNames.NATIVE_IMAGE + "@mod";
-        var rec = ac.storeArtifacts(task, "key-fresh", Map.of(), out, java.util.List.of(bin));
+        var rec = ac.storeArtifacts(task, "key-fresh", Map.of(), out, List.of(bin));
         Path keyFile = cache.resolve("actions/keys").resolve(rec.actionKey());
 
         var report = HeavyActionGc.purgeAll(cache, cas, false);
@@ -92,9 +95,9 @@ class HeavyActionGcTest {
 
         Path tar = out.resolve("img.tar");
         Files.writeString(tar, "image-v1");
-        var r1 = ac.storeArtifacts(task, "img-1", Map.of(), out, java.util.List.of(tar));
+        var r1 = ac.storeArtifacts(task, "img-1", Map.of(), out, List.of(tar));
         Files.writeString(tar, "image-v2");
-        var r2 = ac.storeArtifacts(task, "img-2", Map.of(), out, java.util.List.of(tar));
+        var r2 = ac.storeArtifacts(task, "img-2", Map.of(), out, List.of(tar));
 
         Path keys = cache.resolve("actions/keys");
         assertThat(Files.exists(keys.resolve(r2.actionKey()))).isTrue();
