@@ -14,7 +14,7 @@ protocol-prefix = "##JKMN:"
 [schema]
 version     = { type = "string", required = true, example = "5", hint = "major-line floor for micronaut-platform (caret; lock pins exact). Use =5.1.0 to hard-pin" }
 aot         = { type = "bool" }  # tri-state: absent = auto (on when [native] is declared)
-aot-runtime = { type = "string", default = "jit", example = "jit", hint = "jit (default) or native — match packaging/native mode" }
+aot-runtime = { type = "string", example = "native", hint = "jit or native; unset follows the project — native when [native] is declared, else jit" }
 aot-package = { type = "string", example = "com.example.aot.generated", hint = "Java package for AOT-generated classes; default is project.group + .aot.generated" }
 aot-config  = { type = "string", example = "aot.properties", hint = "module-relative path to an aot.properties. Leave the key out to use ./aot.properties if present, else jk's defaults; setting it to a path that does not exist is an error" }
 # Tooling line for micronaut-aot-{api,cli,std-optimizers}. Tracked separately from the platform BOM.
@@ -41,20 +41,36 @@ transitive = true
 
 # ---- native-image: class-initialization policy the framework needs.
 # Reachability metadata cannot express which types may be initialized while the image is built,
-# so without these a native build fails one class at a time. `[native] args` overrides any of it.
+# and the GraalVM metadata repository carries none of it (checked: zero initialize-at entries in
+# the whole 1.1.4 repository). Netty and Micronaut publish some in their own jars'
+# native-image.properties, which native-image reads off the classpath; what remains is what a
+# framework build plugin supplies.
 #
-# INCOMPLETE (JK-1694): these two are the standard, documented workarounds any logback + Netty
-# application needs. A Micronaut image needs more, and the rest should be ported from Micronaut's
-# own Gradle/Maven plugin rather than rediscovered one failure at a time.
+# Harvested from io.micronaut.gradle:micronaut-graalvm-plugin 5.0.2 rather than derived from
+# failures. `[native] args` still overrides any of it.
 [[contribute.native-args]]
 when = { native-declared = true }
 args = [
-  # Logback initialises its context eagerly; leaving it to run time puts a half-built
-  # LoggerContext in the image heap.
+  # Netty: whole packages to run time. Anything eagerly initialised here captures allocators,
+  # event loops and resolved addresses into the image heap.
+  "--initialize-at-run-time=io.netty.bootstrap",
+  "--initialize-at-run-time=io.netty.buffer",
+  "--initialize-at-run-time=io.netty.channel",
+  "--initialize-at-run-time=io.netty.handler",
+  "--initialize-at-run-time=io.netty.resolver",
+  "--initialize-at-run-time=io.netty.util",
+  "--initialize-at-run-time=io.netty.channel.unix.Errors",
+  "--initialize-at-run-time=io.netty.channel.unix.IovArray",
+  "--initialize-at-run-time=io.netty.channel.unix.Limits",
+  # Micronaut's generated service-discovery interceptors are the exception: they must exist by
+  # the time the heap is written.
+  "--initialize-at-build-time=io.micronaut.http.server.netty.discovery.$NettyServiceDiscovery$ApplicationEventListener$onStart1$Intercepted$Definition$Exec",
+  "--initialize-at-build-time=io.micronaut.http.server.netty.discovery.$NettyServiceDiscovery$ApplicationEventListener$onStop2$Intercepted$Definition$Exec",
+  # AOT's reactive-types optimizer emits a loader holding this; it has to exist by the time the
+  # image heap is written.
+  "--initialize-at-build-time=io.micronaut.core.async.publisher",
+  # Logback ships no native-image.properties of its own; its context initialises eagerly.
   "--initialize-at-build-time=ch.qos.logback,org.slf4j",
-  # Netty's pcap handler holds a static wildcard InetAddress, which drags a resolved
-  # Inet4Address into the heap if it is initialised at build time.
-  "--initialize-at-run-time=io.netty.handler.pcap",
 ]
 
 # ---- Scaffold: jk new --micronaut

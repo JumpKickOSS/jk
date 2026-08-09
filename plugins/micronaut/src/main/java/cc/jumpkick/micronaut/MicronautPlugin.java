@@ -62,19 +62,20 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
             throw new IOException("no classes to optimize at " + classes);
         }
 
-        String runtime = exec.config()
-                .stringOpt("aot-runtime")
-                .orElse(RUNTIME_JIT)
-                .trim()
-                .toLowerCase(Locale.ROOT);
+        // Unset follows the project: a [native] build wants native-oriented AOT, and getting JIT
+        // optimizers into an image is what JK-1695 is about. An explicit value always wins.
+        java.util.Optional<String> declared =
+                exec.config().stringOpt("aot-runtime").filter(s -> !s.isBlank());
+        String runtime = declared.map(s -> s.trim().toLowerCase(Locale.ROOT))
+                .orElse(exec.project().nativeDeclared() ? RUNTIME_NATIVE : RUNTIME_JIT);
         if (!runtime.equals(RUNTIME_JIT) && !runtime.equals(RUNTIME_NATIVE)) {
             throw new IOException("[micronaut] aot-runtime must be \"jit\" or \"native\" (got `" + runtime + "`)");
         }
-        if (runtime.equals(RUNTIME_NATIVE) && !exec.project().nativeDeclared()) {
-            exec.label("note: aot-runtime=native without [native] — still generating native-oriented AOT");
-        }
-        if (runtime.equals(RUNTIME_JIT) && exec.project().nativeDeclared()) {
-            exec.label("note: [native] present but aot-runtime=jit — prefer aot-runtime=native for native-image");
+        if (declared.isPresent()
+                && runtime.equals(RUNTIME_JIT)
+                && exec.project().nativeDeclared()) {
+            exec.label("note: aot-runtime=jit with [native] declared — the JIT optimizers are not"
+                    + " native-oriented; remove the key to follow the project");
         }
 
         String pkg = exec.config()

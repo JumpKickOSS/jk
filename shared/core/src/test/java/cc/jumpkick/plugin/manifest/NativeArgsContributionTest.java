@@ -33,8 +33,10 @@ class NativeArgsContributionTest {
                 """);
 
         assertThat(PluginContributions.nativeArgs(build, dir))
-                .anyMatch(a -> a.startsWith("--initialize-at-build-time=ch.qos.logback"))
-                .anyMatch(a -> a.equals("--initialize-at-run-time=io.netty.handler.pcap"));
+                .contains("--initialize-at-run-time=io.netty.buffer")
+                .contains("--initialize-at-run-time=io.netty.util")
+                .contains("--initialize-at-build-time=ch.qos.logback,org.slf4j")
+                .anyMatch(a -> a.contains("$NettyServiceDiscovery$"));
     }
 
     @Test
