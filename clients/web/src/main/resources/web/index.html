@@ -40,22 +40,22 @@
 
       <div class="sysbox" aria-label="Engine host CPU and RAM (live over SSE)">
         <div class="sysrow" :class="sysMeterLevel(cpuPercent())">
-          <span class="sk"><span class="scap" v-if="status && status.cores != null">({{ status.cores }} cores)</span> CPU</span>
+          <span class="sk">CPU</span>
           <span class="meter" role="meter"
                 :aria-valuenow="cpuPercent() ?? undefined" aria-valuemin="0" aria-valuemax="100"
                 :aria-label="'Host CPU ' + sysMeterPct(cpuPercent())">
             <span class="meter-fill used" :style="{ width: (cpuPercent() ?? 0) + '%' }"></span>
           </span>
-          <span class="sv">{{ sysMeterPct(cpuPercent()) }}<span class="ssec" v-if="loadAverageText() != null"> ({{ loadAverageText() }} load)</span></span>
+          <span class="sv" :data-tip="cpuSysTip() || undefined">{{ sysMeterPct(cpuPercent()) }}<span class="ssec" v-if="loadAverageText() != null"> ({{ loadAverageText() }} load)</span></span>
         </div>
         <div class="sysrow" :class="sysMeterLevel(ramPercent())">
-          <span class="sk"><span class="scap" v-if="status && status.totalMemoryBytes != null">({{ gib(status.totalMemoryBytes) }})</span> RAM</span>
+          <span class="sk">RAM</span>
           <span class="meter" role="meter"
                 :aria-valuenow="ramPercent() ?? undefined" aria-valuemin="0" aria-valuemax="100"
                 :aria-label="'Host RAM ' + sysMeterPct(ramPercent())">
             <span class="meter-fill used" :style="{ width: (ramPercent() ?? 0) + '%' }"></span>
           </span>
-          <span class="sv">{{ sysMeterPct(ramPercent()) }}<span class="ssec" v-if="ramUsedBytes() != null"> ({{ gib(ramUsedBytes()) }})</span></span>
+          <span class="sv" :data-tip="ramSysTip() || undefined">{{ sysMeterPct(ramPercent()) }}<span class="ssec" v-if="ramUsedBytes() != null"> ({{ gib(ramUsedBytes()) }})</span></span>
         </div>
       </div>
 
@@ -384,30 +384,30 @@
         <div class="panels">
           <div class="panel">
             <div class="panel-head"><span class="lbl" data-tip="Action outputs used to speed up future builds">action cache</span><span class="spacer"></span>
-              <span v-if="cache" class="mono dim">{{ mib(actionCacheBytes()) }} of {{ actionMaxBytes() != null ? mib(actionMaxBytes()) : '—' }} · pruned {{ prunedAgo() }}</span></div>
+              <span v-if="cache" class="mono dim">{{ gib(actionCacheBytes()) }} of {{ actionMaxBytes() != null ? gib(actionMaxBytes()) : '—' }} · pruned {{ prunedAgo() }}</span></div>
             <template v-if="cache">
               <span class="meter" data-tip="vs [cache] max-cache-size-gb">
                 <span class="meter-fill used" :style="{ width: actionCacheUtilizationPercent() + '%' }"></span>
               </span>
               <dl>
-                <dt>cache CAS</dt><dd>{{ count(cache.cacheCasCount != null ? cache.cacheCasCount : 0) }} · {{ mib(cache.cacheCasBytes != null ? cache.cacheCasBytes : 0) }}</dd>
-                <dt>action index</dt><dd>{{ count(cache.actionsCount) }} · {{ mib(cache.actionsBytes) }}</dd>
-                <dt>format stamps</dt><dd>{{ count(cache.formatStampsCount) }} · {{ mib(cache.formatStampsBytes) }}</dd>
+                <dt>cache CAS</dt><dd>{{ count(cache.cacheCasCount != null ? cache.cacheCasCount : 0) }} · {{ gib(cache.cacheCasBytes != null ? cache.cacheCasBytes : 0) }}</dd>
+                <dt>action index</dt><dd>{{ count(cache.actionsCount) }} · {{ gib(cache.actionsBytes) }}</dd>
+                <dt>format stamps</dt><dd>{{ count(cache.formatStampsCount) }} · {{ gib(cache.formatStampsBytes) }}</dd>
               </dl>
             </template>
             <div v-else class="dim small">Action cache loading…</div>
           </div>
           <div class="panel">
             <div class="panel-head"><span class="lbl" data-tip="Long-lived artifact repository data">artifact store</span><span class="spacer"></span>
-              <span v-if="cache" class="mono dim">{{ mib(artifactStorageBytes()) }} of {{ mib(cache.maxBytes) }}</span></div>
+              <span v-if="cache" class="mono dim">{{ gib(artifactStorageBytes()) }} of {{ gib(cache.maxBytes) }}</span></div>
             <template v-if="cache">
               <span class="meter" data-tip="vs [cache] max-store-size-gb (artifact store budget)">
                 <span class="meter-fill used" :style="{ width: artifactStorageUtilizationPercent() + '%' }"></span>
               </span>
               <dl>
-                <dt>store CAS</dt><dd>{{ count(cache.casCount) }} · {{ mib(cache.casBytes) }}</dd>
-                <dt>repos / workers</dt><dd>{{ count(cache.workerJarsCount) }} · {{ mib(cache.workerJarsBytes) }}</dd>
-                <dt>run logs</dt><dd>{{ count(cache.runLogsCount) }} · {{ mib(cache.runLogsBytes) }}</dd>
+                <dt>store CAS</dt><dd>{{ count(cache.casCount) }} · {{ gib(cache.casBytes) }}</dd>
+                <dt>repos / workers</dt><dd>{{ count(cache.workerJarsCount) }} · {{ gib(cache.workerJarsBytes) }}</dd>
+                <dt>run logs</dt><dd>{{ count(cache.runLogsCount) }} · {{ gib(cache.runLogsBytes) }}</dd>
               </dl>
             </template>
             <div v-else class="dim small">Artifact store loading…</div>
@@ -479,9 +479,9 @@
       <div class="sb-left">
         <span class="sb-item"><jk-icon name="activity"></jk-icon>Builds Running&nbsp;<b>{{ buildsRunning() }}</b></span>
         <span class="sb-div"></span>
-        <span class="sb-item" data-tip="Cache tier (rebuildable action outputs) — jk cache storage"><jk-icon name="database"></jk-icon>Cache&nbsp;<b>{{ actionCacheBytes() != null ? mib(actionCacheBytes()) : '—' }}</b></span>
+        <span class="sb-item" data-tip="Cache tier (rebuildable action outputs) — jk cache storage"><jk-icon name="database"></jk-icon>Cache&nbsp;<b>{{ actionCacheBytes() != null ? gib(actionCacheBytes()) : '—' }}</b></span>
         <span class="sb-div"></span>
-        <span class="sb-item" data-tip="Artifact store (deps CAS + repos) — jk repo storage"><jk-icon name="database"></jk-icon>Store&nbsp;<b>{{ artifactStorageBytes() != null ? mib(artifactStorageBytes()) : '—' }}</b></span>
+        <span class="sb-item" data-tip="Artifact store (deps CAS + repos) — jk repo storage"><jk-icon name="database"></jk-icon>Store&nbsp;<b>{{ artifactStorageBytes() != null ? gib(artifactStorageBytes()) : '—' }}</b></span>
         <span class="sb-div"></span>
         <span class="sb-item"><jk-icon name="cpu"></jk-icon>Engine Heap&nbsp;<b>{{ status ? mib(status.heapCommittedBytes) : '—' }}</b></span>
       </div>

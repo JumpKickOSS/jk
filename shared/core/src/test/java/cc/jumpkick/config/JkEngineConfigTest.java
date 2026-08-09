@@ -19,14 +19,35 @@ class JkEngineConfigTest {
     }
 
     /**
-     * default engine coordinator heap stays 256 MiB (measured ~36 MiB peak on a 200-module
-     * build — see docs/perf/engine-heap-monorepo.md). Do not raise without ticket evidence.
+     * Non-CI engine coordinator heap stays 256 MiB (measured ~36 MiB peak on a 200-module build —
+     * see docs/perf/engine-heap-monorepo.md). CI defaults to 512 MiB when unset.
      */
     @Test
     void default_max_heap_stays_256_mib_good_neighbor() {
         assertThat(JkEngineConfig.DEFAULT_MAX_HEAP_MB).isEqualTo(256);
         assertThat(JkEngineConfig.DEFAULTS.heapCapped()).isTrue();
         assertThat(JkEngineConfig.DEFAULTS.minHeapMb()).isLessThanOrEqualTo(256);
+        assertThat(JkEngineConfig.defaultMaxHeapMb(k -> null)).isEqualTo(256);
+    }
+
+    @Test
+    void ci_bumps_unset_heap_default_to_512(@TempDir Path tempDir) {
+        assertThat(JkEngineConfig.CI_DEFAULT_MAX_HEAP_MB).isEqualTo(512);
+        assertThat(JkEngineConfig.defaultMaxHeapMb(Map.of("CI", "1")::get)).isEqualTo(512);
+        assertThat(JkEngineConfig.defaultMaxHeapMb(Map.of("CI", "true")::get)).isEqualTo(512);
+        assertThat(JkEngineConfig.defaultMaxHeapMb(Map.of("CI", "TRUE")::get)).isEqualTo(512);
+
+        JkEngineConfig c =
+                JkEngineConfig.resolve(tempDir.resolve("none.toml"), Map.of("CI", "true")::get);
+        assertThat(c.maxHeapMb()).isEqualTo(512);
+    }
+
+    @Test
+    void ci_does_not_override_explicit_heap(@TempDir Path tempDir) throws IOException {
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, "[engine]\nmax-heap-mb = 256\n");
+        JkEngineConfig c = JkEngineConfig.resolve(toml, Map.of("CI", "1")::get);
+        assertThat(c.maxHeapMb()).isEqualTo(256);
     }
 
     @Test

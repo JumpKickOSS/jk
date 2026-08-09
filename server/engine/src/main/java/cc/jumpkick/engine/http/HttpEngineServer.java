@@ -1035,10 +1035,28 @@ public final class HttpEngineServer implements AutoCloseable {
             sendJson(exchange, 200, enrichHistoryJson(Files.readString(record.get(), StandardCharsets.UTF_8)));
             return;
         }
-        List<String> raw = journal.rawRecords(HISTORY_LIST_LIMIT);
-        List<String> parts = new ArrayList<>(raw.size());
-        for (String r : raw) parts.add(enrichHistoryJson(r));
+        // Oversample raw journal rows, keep only build-like kinds (see BuildHistoryKinds).
+        List<String> raw = journal.rawRecords(Math.max(HISTORY_LIST_LIMIT * 4, HISTORY_LIST_LIMIT));
+        List<String> parts = new ArrayList<>(HISTORY_LIST_LIMIT);
+        for (String r : raw) {
+            if (!isBuildLikeHistoryJson(r)) continue;
+            parts.add(enrichHistoryJson(r));
+            if (parts.size() >= HISTORY_LIST_LIMIT) break;
+        }
         sendJson(exchange, 200, "[" + String.join(",", parts) + "]");
+    }
+
+    /** True when a journal JSON blob's {@code kind} is a durable project build. */
+    private static boolean isBuildLikeHistoryJson(String raw) {
+        if (raw == null || raw.isBlank()) return false;
+        try {
+            Object parsed = cc.jumpkick.plugin.protocol.MiniJson.parse(raw);
+            if (!(parsed instanceof Map<?, ?> m)) return false;
+            Object k = m.get("kind");
+            return k instanceof String s && cc.jumpkick.engine.BuildHistoryKinds.isBuildLike(s);
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     /**

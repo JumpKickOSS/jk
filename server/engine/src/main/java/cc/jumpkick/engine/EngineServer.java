@@ -1315,12 +1315,12 @@ public final class EngineServer implements AutoCloseable {
         String canonDir = BuildJobFingerprint.canonicalDir(dir);
         String coord = coordOf(dir);
         long buildNumber = 0L;
-        if (JOURNALED_KINDS.contains(kind) && canonDir != null && !canonDir.isBlank()) {
+        if (BuildHistoryKinds.isBuildLike(kind) && canonDir != null && !canonDir.isBlank()) {
             buildNumber = cc.jumpkick.runtime.BuildNumberAllocator.allocate(canonDir, coord);
         }
         long startedAt = clockMillis.getAsLong();
         String journalId = null;
-        if (JOURNALED_KINDS.contains(kind) && historyConfig.enabled() && buildNumber > 0) {
+        if (BuildHistoryKinds.isBuildLike(kind) && historyConfig.enabled() && buildNumber > 0) {
             journalId = journal.begin(BuildRecord.running(buildNumber, kind, dir, coord, startedAt, version, trigger));
         }
         InFlightBuilds.Hold candidate =
@@ -4361,13 +4361,11 @@ public final class EngineServer implements AutoCloseable {
 
     // ---- build-history journal capture (docs: state/builds) ---------------------
 
-    /** Request kinds we journal — the actual "build" commands; lock/sync/tool/etc. are not history. */
-    private static final java.util.Set<String> JOURNALED_KINDS = java.util.Set.of("build", "test");
-
     /**
-     * Open an accumulator for a journaled build kind (no-op for other kinds). Always on — even with
-     * history disabled the accumulator feeds the running {@link BuildMetrics}; only the journal
-     * append itself is gated on {@code historyConfig.enabled}.
+     * Open an accumulator for a journaled build-like kind (no-op for lock/format/tool/etc.). Always
+     * on — even with history disabled the accumulator feeds the running {@link BuildMetrics}; only
+     * the journal append itself is gated on {@code historyConfig.enabled}. See {@link
+     * BuildHistoryKinds}.
      */
     private void registerAccumulator(long requestId, String kind, String dir, String trigger) {
         registerAccumulator(requestId, kind, dir, trigger, false, false, 0L, null);
@@ -4386,7 +4384,7 @@ public final class EngineServer implements AutoCloseable {
             boolean rebuild,
             long buildNumber,
             String journalId) {
-        if (!JOURNALED_KINDS.contains(kind)) return;
+        if (!BuildHistoryKinds.isBuildLike(kind)) return;
         Path projectDir = null;
         try {
             if (dir != null && !dir.isBlank()) projectDir = Path.of(dir);
@@ -4801,10 +4799,13 @@ public final class EngineServer implements AutoCloseable {
         int limit = Math.max(1, Jsonl.intValue(requestLine, "limit", 200));
         // Truncate in the journal (synthetic fixtures are already filtered there, JK-1390) rather
         // than materialising every record on disk and then dropping most of them (JK-1481).
-        java.util.List<BuildRecord> records = journal.list(limit);
-        int n = Math.min(records.size(), limit);
-        for (int i = 0; i < n; i++) {
-            BuildRecord r = records.get(i);
+        // Oversample then keep only build-like kinds so lock/format/etc. never dilute history.
+        java.util.List<BuildRecord> records = journal.list(Math.max(limit * 4, limit));
+        int emitted = 0;
+        for (BuildRecord r : records) {
+            if (!BuildHistoryKinds.isBuildLike(r.kind())) continue;
+            if (emitted >= limit) break;
+            emitted++;
             BuildRecord.Tests t = r.tests();
             BuildRecord.CacheBenefit b = r.benefit();
             int failedModules =
@@ -4862,7 +4863,7 @@ public final class EngineServer implements AutoCloseable {
                 writer,
                 JsonOut.object()
                         .put("type", EngineProtocol.HISTORY_DONE)
-                        .put("count", n)
+                        .put("count", emitted)
                         .toString());
     }
 

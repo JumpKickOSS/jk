@@ -41,6 +41,8 @@
   --warn-rgb: 255, 184, 0;
   --cg-rgb: 0, 212, 224;
   --cn-rgb: 0, 240, 255;   /* the neon accent (bright cyan) — drives chrome glows/outlines */
+  /* Keyboard focus: soft cyan halo (matches text fields / checkboxes — not a solid neon border). */
+  --focus-ring: 0 0 0 3px rgba(var(--cn-rgb), 0.18);
   --indigo-rgb: 63, 81, 181;
   --bright-rgb: 236, 239, 241;
   --mu-rgb: 144, 164, 174;
@@ -211,6 +213,7 @@ header {
 
 /* outlined system box: CPU / RAM meters (engine host; live SSE ~2s) */
 .sysbox {
+  --sys-meter-w: 5.625rem; /* fixed bar width — value text must not reflow the track */
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -219,12 +222,12 @@ header {
   border: 1px solid var(--bd);
   border-radius: var(--r-md);
   background: rgba(var(--cn-rgb), 0.03);
-  min-width: 18.5rem;
+  min-width: 14.5rem;
 }
 .sysrow {
   display: grid;
-  /* auto | flex meter | auto — no min-width on the label that invents left empty space. */
-  grid-template-columns: auto 1fr auto;
+  /* Fixed meter column so 6% vs 12% never stretches/shrinks the bar. */
+  grid-template-columns: auto var(--sys-meter-w) auto;
   column-gap: 8px;
   align-items: center;
 }
@@ -236,13 +239,15 @@ header {
   text-align: left;
   white-space: nowrap;
 }
-/* Capacity prefix shares the CPU/RAM label treatment (JK-1717). */
-.scap { letter-spacing: 0.06em; }
-/* Compact track: reuses Status-page .meter / .meter-fill.used (cyan). 25% wider than 4.5rem. */
+/* Hover target for % / secondary (load, GiB) tooltips. */
+.sysbox .sv[data-tip] { cursor: default; }
 .sysbox .meter {
   display: block;
   height: 7px;
-  min-width: 5.625rem;
+  width: var(--sys-meter-w);
+  min-width: var(--sys-meter-w);
+  max-width: var(--sys-meter-w);
+  box-sizing: border-box;
 }
 .sysrow.warn .meter-fill.used { background: var(--warn); }
 .sysrow.crit .meter-fill.used { background: var(--err); }
@@ -522,11 +527,7 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 /* Activity feed: outcome badge + coordinates open the project detail page. */
 .to-project { cursor: pointer; }
 .to-project:hover { filter: brightness(1.12); }
-.to-project:focus-visible {
-  outline: 2px solid rgba(var(--cn-rgb), 0.55);
-  outline-offset: 2px;
-  border-radius: var(--r-sm);
-}
+.to-project:focus-visible { border-radius: var(--r-sm); }
 .badge.to-project:focus-visible { border-radius: var(--r-sm); }
 
 .kind { color: var(--mu); font-size: 12px; }
@@ -1243,17 +1244,19 @@ table.stats td.err { color: var(--err); }
  * but release to author styles once done, so a later :hover transform (card lift) still applies. */
 .rise-in { animation: fadeSlideIn var(--dur-slow) var(--ease) backwards; }
 
-/* Keyboard focus ring. jk's UA outline is nearly invisible on these dark custom controls; give
- * focus a cyan ring (--cg is jk's accent/identity tone, cf. the .accent utility). :focus-visible
- * so it shows for keyboard / assistive tech but not on mouse click. */
-:focus-visible { outline: 2px solid var(--cg); outline-offset: 2px; }
+/* Keyboard focus ring — same soft cyan halo as text inputs / checkboxes (not a solid neon border).
+ * :focus-visible so it shows for keyboard / assistive tech but not on mouse click. Elements that
+ * already paint their own focus (form fields, themed checkboxes) restate outline:none + the ring. */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+/* Round the ring on dense chrome so it doesn't look square on pill-ish controls. */
 button:focus-visible,
-input:focus-visible,
 .project:focus-visible,
-.fs-entry:focus-visible {
-  outline: 2px solid var(--cg);
-  outline-offset: 2px;
-  box-shadow: 0 0 0 4px rgba(var(--cg-rgb), 0.18);
+.fs-entry:focus-visible,
+a:focus-visible {
+  border-radius: var(--r-sm);
 }
 
 /* Honour the OS "reduce motion" preference: collapse animations/transitions to a near-instant
@@ -1280,7 +1283,7 @@ input:focus-visible,
 
 /* build-dir input — neon accent border + soft ring while focused/typing (mouse or keyboard) */
 .trigger input { transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease); }
-.trigger input:focus { outline: none; border-color: var(--cn); box-shadow: 0 0 0 3px rgba(var(--cn-rgb), 0.18); }
+.trigger input:focus { outline: none; border-color: var(--cn); box-shadow: var(--focus-ring); }
 
 /* small rebuild / delete icon buttons — neon hover (cyan; the delete button goes red) */
 .rebuild { transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease); }
@@ -1590,7 +1593,7 @@ button.browse:hover::before {
 .new-project-form select:focus {
   outline: none;
   border-color: var(--cn);
-  box-shadow: 0 0 0 3px rgba(var(--cn-rgb), 0.18);
+  box-shadow: var(--focus-ring);
 }
 /* Option rows: dark panel so the OS popup doesn't flash white. Highlight colour is still
  * platform-controlled, but color-scheme + these surfaces keep it on-theme on modern browsers. */
@@ -1665,8 +1668,13 @@ label.check input:checked + .check-box {
 label.check input:checked + .check-box::after {
   transform: rotate(45deg) scale(1);
 }
+/* Hide the native (invisible) checkbox ring; paint focus on the themed box instead. */
+label.check input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
 label.check input:focus-visible + .check-box {
-  box-shadow: 0 0 0 3px rgba(var(--cn-rgb), 0.22);
+  box-shadow: var(--focus-ring);
 }
 label.check:hover .check-box {
   border-color: rgba(var(--cn-rgb), 0.65);

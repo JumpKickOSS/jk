@@ -14,33 +14,38 @@ import java.util.TreeSet;
 /**
  * Stable exclusivity key for concurrent build-like jobs.
  *
- * <p>Two admissions with the same fingerprint must not run at once on one engine. For {@code
- * build} and {@code test}, the key is <strong>project directory only</strong> (JK-1291):
- * overlapping builds that share a {@code target/} tree must not interleave, even when flags
- * differ ({@code --rebuild}, {@code -m}, …). Other exclusive kinds may still incorporate flags.
+ * <p>Two admissions with the same fingerprint must not run at once on one engine. For every
+ * {@linkplain BuildHistoryKinds build-history kind}, the key is <strong>project directory +
+ * kind only</strong> (JK-1291 extended): overlapping work that shares a {@code target/} tree must
+ * not interleave, even when flags differ ({@code --rebuild}, {@code -m}, …). Non-build kinds
+ * ({@code lock}, {@code format}, …) never take a slot.
  *
  * <p>Different worktrees (different real paths) yield different fingerprints and may run
- * concurrently.
+ * concurrently. Different kinds on the same dir (e.g. {@code build} vs {@code test}) are separate
+ * slots.
  */
 public final class BuildJobFingerprint {
 
-    /** Kinds that take an exclusive fingerprint slot (journaled build-like work). */
-    public static final Set<String> EXCLUSIVE_KINDS = Set.of("build", "test");
+    /**
+     * Kinds that take an exclusive fingerprint slot — same set as durable build history ({@link
+     * BuildHistoryKinds#ALL}).
+     */
+    public static final Set<String> EXCLUSIVE_KINDS = BuildHistoryKinds.ALL;
 
     private BuildJobFingerprint() {}
 
     public static boolean isExclusiveKind(String kind) {
-        return kind != null && EXCLUSIVE_KINDS.contains(kind);
+        return BuildHistoryKinds.isBuildLike(kind);
     }
 
     /**
      * Fingerprint for a socket request line ({@code dir} + session-ish flags) and dispatch
-     * {@code kind}.
+     * {@code kind}. Build-like kinds use project-scoped exclusivity; others are non-exclusive.
      */
     public static String ofRequest(String kind, String requestLine) {
         String dir = Jsonl.str(requestLine, "dir");
-        // build/test: dir-only exclusivity so concurrent rebuild/modules cannot race target/.
-        if ("build".equals(kind) || "test".equals(kind)) {
+        // Build-like: dir+kind exclusivity so concurrent rebuild/modules cannot race target/.
+        if (BuildHistoryKinds.isBuildLike(kind)) {
             return ofProject(kind, dir);
         }
         return of(
@@ -57,15 +62,15 @@ public final class BuildJobFingerprint {
 
     /** Fingerprint for HTTP/MCP workspace jobs (absolute dir + kind + test-only shape). */
     public static String ofHttp(String kind, Path dir, boolean skipTests, boolean testOnly) {
-        if ("build".equals(kind) || "test".equals(kind)) {
+        if (BuildHistoryKinds.isBuildLike(kind)) {
             return ofProject(kind, dir != null ? dir.toString() : "");
         }
         return of(kind, dir != null ? dir.toString() : "", false, false, skipTests, testOnly, null, null, null);
     }
 
     /**
-     * Project-scoped exclusivity for build/test: same canonical dir cannot run two jobs at once
-     * (JK-1291).
+     * Project-scoped exclusivity for build-like kinds: same canonical dir + kind cannot run two
+     * jobs at once (JK-1291).
      */
     public static String ofProject(String kind, String dir) {
         String canon = canonicalDir(dir);

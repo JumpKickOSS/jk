@@ -1951,8 +1951,31 @@ Vue.createApp({
       if (avg == null || avg < 0) return null;
       return avg.toFixed(1);
     },
+    /** Sysbox percent label ({@code 6%}, {@code 51%}); em-dash when unsampled. */
     sysMeterPct(pct) {
       return pct == null ? '—' : pct + '%';
+    },
+    /**
+     * CPU sysbox tip on the % / load text: total cores + 1m load as "cores used".
+     * Example: {@code 24 cores. 1.4 cores used recently}
+     */
+    cpuSysTip() {
+      const cores = this.status?.cores;
+      const load = this.loadAverageText();
+      if (cores == null && load == null) return '';
+      const c = cores != null ? String(cores) : '—';
+      const l = load != null ? load : '—';
+      return c + ' cores. ' + l + ' cores used recently';
+    },
+    /**
+     * RAM sysbox tip on the % / used text: total + used.
+     * Example: {@code 30.4 GiB total RAM. 15.6 GiB used.}
+     */
+    ramSysTip() {
+      const total = this.status?.totalMemoryBytes;
+      const used = this.ramUsedBytes();
+      if (total == null && used == null) return '';
+      return this.gib(total) + ' total RAM. ' + this.gib(used) + ' used.';
     },
     /** CSS level on a sysrow: cyan default, warn >90%, crit >97%. */
     sysMeterLevel(pct) {

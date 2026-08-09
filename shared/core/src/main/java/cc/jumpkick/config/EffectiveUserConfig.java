@@ -91,7 +91,8 @@ public final class EffectiveUserConfig {
     }
 
     private static void addEngine(List<Row> out, Path file, Function<String, String> env) {
-        JkEngineConfig d = JkEngineConfig.DEFAULTS;
+        // Heap default is CI-aware (256 MiB locally, 512 MiB when CI=1|true).
+        JkEngineConfig d = JkEngineConfig.resolvedDefaults(env);
         JkEngineConfig e = JkEngineConfig.resolve(file, env);
         add(out, "engine.max-heap-mb", d.maxHeapMb(), e.maxHeapMb());
         add(out, "engine.jobs", jobsLabel(d.jobs()), jobsLabel(e.jobs()));

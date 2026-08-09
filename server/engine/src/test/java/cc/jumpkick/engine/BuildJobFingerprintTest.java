@@ -52,4 +52,21 @@ class BuildJobFingerprintTest {
                 .isNotEqualTo(
                         BuildJobFingerprint.of("test", dir.toString(), false, false, false, false, null, null, null));
     }
+
+    @Test
+    void native_and_image_are_project_scoped_like_build(@TempDir Path dir) throws Exception {
+        Files.createDirectories(dir);
+        // Flag churn must not open a second concurrent slot for build-like kinds.
+        String nativeA = BuildJobFingerprint.ofRequest(
+                "native", "{\"type\":\"native-request\",\"dir\":\"" + dir + "\",\"rebuild\":false}");
+        String nativeB = BuildJobFingerprint.ofRequest(
+                "native", "{\"type\":\"native-request\",\"dir\":\"" + dir + "\",\"rebuild\":true}");
+        assertThat(nativeA).isEqualTo(nativeB);
+        assertThat(BuildJobFingerprint.ofProject("native", dir.toString())).isEqualTo(nativeA);
+
+        String image = BuildJobFingerprint.ofProject("image", dir.toString());
+        String compile = BuildJobFingerprint.ofProject("compile", dir.toString());
+        assertThat(image).isNotEqualTo(compile);
+        assertThat(image).isNotEqualTo(BuildJobFingerprint.ofProject("build", dir.toString()));
+    }
 }

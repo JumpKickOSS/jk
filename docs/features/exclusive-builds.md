@@ -5,18 +5,21 @@ are rejected; running builds survive a dashboard refresh.
 
 ## Fingerprint (exclusivity key)
 
-Computed by `BuildJobFingerprint` for kinds `build` and `test` only.
+Computed by `BuildJobFingerprint` for **build-history kinds** only (`BuildHistoryKinds`:
+`build`, `test`, `compile`, `native`, `image`).
 
-**JK-1291:** for `build` and `test`, the key is **project directory + kind only** (canonical
+**JK-1291:** for those kinds, the key is **project directory + kind only** (canonical
 `toRealPath()` when resolvable). Flags such as `--rebuild`, `-m`, `skipTests`, or variant do
 **not** open a second concurrent slot — they share the same `target/` tree and would race.
 
 | Input | Notes |
 |-------|--------|
 | Canonical project dir | `toRealPath()` when the tree exists; else absolute normalized path — **worktrees differ** |
-| Kind | `build` vs `test` (separate slots: you can test while building only if kinds differ) |
+| Kind | Separate slots per kind (e.g. `build` vs `test` on the same dir may run concurrently) |
 
-SHA-256 of a canonical multiline form. Non-exclusive kinds (`lock`, `sync`, …) do not take a slot.
+SHA-256 of a canonical multiline form. Non-build kinds (`lock`, `update`, `format`, `sync`,
+tooling, …) do **not** take a slot and are **not** written to durable build history — even though
+they may show up on the live activity feed while running.
 
 ## Client exit while building
 
@@ -44,8 +47,9 @@ MVP is **engine-local** (not multi-engine / multi-host).
 ## Build numbers
 
 `BuildNumberAllocator` assigns a monotonic per-project number at **request-start** from
-`~/.local/state/jk/builds/projects/<key>/run-number.txt` (JK-1377). Finish harvest trains metrics but
-does **not** mint a second number. The journal and SSE `request-start` carry the same `#N`.
+`~/.local/state/jk/builds/projects/<key>/run-number.txt` (JK-1377) **only for build-history kinds**.
+Finish harvest trains metrics but does **not** mint a second number. The journal and SSE
+`request-start` carry the same `#N`.
 
 ## Durable in-flight
 
