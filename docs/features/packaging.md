@@ -1,4 +1,4 @@
-# Packaging matrix (thin / fat / shrink / Boot / Quarkus / Grails)
+# Packaging matrix (thin / fat / minified / Boot / Quarkus / Grails)
 
 **Ticket:** JK-1032 ([kanartist](https://github.com/jkbuild/kanartist) project `jk`); Quarkus JK-1160/1202
 
@@ -78,7 +78,7 @@ jk assemble --fat --write-config      # fat + assembly = true
 
 One-offs print a loud note that the mode is not persisted (unless you pass `--write-config`). CLI
 overrides ride the client→engine session envelope and are included in packaging action-cache keys
-(`packaging:fat` / `packaging:<packager>`), so fat and shrink never cache-collide.
+(`packaging:fat` / `packaging:<packager>`), so fat and minified never cache-collide.
 
 **Merge rules** (engine `AssemblyPackager`):
 
@@ -103,10 +103,10 @@ main = "com.example.App"
 minified = true   # R8 over classes + runtime closure → target/<name>-<version>-min.jar
 ```
 
-Optional keep rules / R8 version live under `[shrink]`:
+Optional keep rules / R8 version live under `[minified]`:
 
 ```toml
-[shrink]
+[minified]
 # keep = ["-keep class com.example.** { *; }"]
 # keep-files = ["proguard-rules.pro"]
 # obfuscate = false         # default
@@ -176,7 +176,7 @@ so nothing can load them at runtime:
   com.example.$HelloController$Definition
   io.micronaut.aop.internal.InterceptorRegistryBean
 
-Keep them with [shrink] keep, or a keep-files rule file:
+Keep them with [minified] keep, or a keep-files rule file:
 -keep class ch.qos.logback.classic.spi.LogbackServiceProvider { *; }
 …
 ```
@@ -208,7 +208,7 @@ IllegalArgumentException: Type parameter length does not match. Required: 0, Spe
 Keep the class itself to fix it:
 
 ```toml
-[shrink]
+[minified]
 keep = ["-keep class com.example.GenericThing { *; }"]
 ```
 
@@ -260,8 +260,8 @@ not `assembly`. See the user guide “Grails” section.
 
 ```text
 thin      → package-jar
-assembly  → package-assembly   (jk assemble / alias: assembly)
-shrunk    → shrunk-jar packager (R8)
+assembly  → package-assembly    (jk assemble / alias: assembly)
+minified  → minified-jar packager (R8)
 boot      → spring-boot packager
 grails    → grails packager (Boot layout)
 quarkus   → quarkus-fast-jar (augment; fast-jar default / uber-jar opt-in)

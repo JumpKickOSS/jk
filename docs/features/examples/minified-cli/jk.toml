@@ -5,10 +5,10 @@ version = "0.0.1"
 java = 25
 
 [application]
-main = "demo.Cli"
-# R8 small fat jar (runtime deps + shrink). Prefer this over a bare [shrink] table.
-minified = true
+main     = "demo.Cli"
+assembly = true      # target/minified-cli-0.0.1-all.jar
+minified = true      # target/minified-cli-0.0.1-min.jar via R8 (implies assembly)
 
-# Optional keep rules still use the [shrink] table when you need them:
-# [shrink]
+# Keep rules and R8 settings for the minified jar, when it needs them:
+# [minified]
 # keep = ["-keep class demo.** { *; }"]
