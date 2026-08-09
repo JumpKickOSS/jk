@@ -481,6 +481,10 @@ jk new --template quarkus my-api # Giter8 short name (same single-module shape)
 - Default package is **fast-jar** (`quarkus-run.jar` + `lib/` + `quarkus-app/`). Set
   `package = "uber-jar"` for a single runner. Packaging uses pure bootstrap (no permanent
   `mvn` CLI).
+- **Native:** `[native] always = true` builds the binary through Quarkus's own native-image
+  command. Quarkus computes the argument list — the generated `--features` entry point, the runner
+  jar, the Netty flags — and jk runs it with its own GraalVM toolchain. Nothing jk composes is
+  added on top, because that list is already complete; `[native] args` still applies.
 - Use a plain `main` + `Quarkus.run` (as scaffolded). Avoid `@QuarkusMain` under jk’s
   `target/classes/main` layout — `@QuarkusTest` can report two mains with the same name.
 - Keep `quarkus-junit5` / RestAssured on **`[test-dependencies]`** only so MAIN does not pull
