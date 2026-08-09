@@ -104,10 +104,17 @@ public record PluginDescriptor(
             String deployCommand,
             /**
              * False when this packager produces an <em>additional</em> artifact rather than the
-             * module's main one — the shrink packager writes {@code -min.jar} beside the thin and
+             * module's main one — the minified packager writes {@code -min.jar} beside the thin and
              * fat jars. Boot, Quarkus and Grails own the main artifact and leave this true.
              */
             boolean mainArtifact,
+            /**
+             * A step-output directory holding a {@code native-image.args} the framework computed,
+             * or empty when the module's native image is jk's generic one. Quarkus enters through a
+             * generated {@code --features} class and builds from its own runner jar, so
+             * {@code [application] main} and jk's classpath do not describe its image at all.
+             */
+            String nativeImageSources,
             List<Variant> variants) {
 
         /** Config-conditional packaging override; first matching {@code when} wins. */

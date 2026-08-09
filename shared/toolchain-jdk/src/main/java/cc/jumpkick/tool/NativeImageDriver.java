@@ -28,23 +28,48 @@ public final class NativeImageDriver {
             String mainClass,
             Path outputPath,
             List<String> extraArgs,
-            boolean shared) {
+            boolean shared,
+            Path workingDir,
+            boolean verbatim) {
 
         public Request {
             Objects.requireNonNull(javaHome, "javaHome");
             Objects.requireNonNull(outputPath, "outputPath");
-            // An executable needs a main class; a shared library (--shared) has
-            // no entry point and must not be given one.
-            if (!shared) {
+            // An executable needs a main class; a shared library (--shared) has no entry point,
+            // and a verbatim command carries its own (Quarkus enters through --features, not main).
+            if (!shared && !verbatim) {
                 Objects.requireNonNull(mainClass, "mainClass");
             }
             classpath = List.copyOf(classpath);
             extraArgs = List.copyOf(extraArgs);
         }
 
+        public Request(
+                Path javaHome,
+                List<Path> classpath,
+                String mainClass,
+                Path outputPath,
+                List<String> extraArgs,
+                boolean shared) {
+            this(javaHome, classpath, mainClass, outputPath, extraArgs, shared, null, false);
+        }
+
         /** An executable image with the given entry point. */
         public Request(Path javaHome, List<Path> classpath, String mainClass, Path outputPath, List<String> extraArgs) {
             this(javaHome, classpath, mainClass, outputPath, extraArgs, false);
+        }
+
+        /**
+         * Run {@code args} exactly as given from {@code workingDir}. For frameworks that compute
+         * their own native-image invocation — Quarkus writes the classpath, the entry feature, the
+         * output name and every flag into {@code native-image.args}. jk supplies the toolchain and
+         * runs it; rewriting a list the framework derived would only reintroduce guessing.
+         *
+         * @param outputPath where the produced binary ends up (the args name it themselves, so the
+         *     caller moves it there afterwards)
+         */
+        public static Request verbatim(Path javaHome, Path workingDir, List<String> args, Path outputPath) {
+            return new Request(javaHome, List.of(), null, outputPath, args, false, workingDir, true);
         }
     }
 
@@ -102,7 +127,9 @@ public final class NativeImageDriver {
         // caller's sink (the engine's TaskContext::output), which renders output
         // above the TUI progress bar. No System.out/err, no reliance on a stream swap.
         Consumer<String> sink = (out == null) ? line -> {} : out;
-        Process process = new ProcessBuilder(command).start();
+        ProcessBuilder pb = new ProcessBuilder(command);
+        if (request.workingDir() != null) pb.directory(request.workingDir().toFile());
+        Process process = pb.start();
         Thread fwdOut = forwardStdout(process.getInputStream(), listener, sink);
         Thread fwdErr = forwardStream(process.getErrorStream(), sink);
         int exit = process.waitFor();
@@ -120,6 +147,10 @@ public final class NativeImageDriver {
     static List<String> buildCommand(Path binary, Request request) {
         List<String> command = new ArrayList<>();
         command.add(binary.toString());
+        if (request.verbatim()) {
+            command.addAll(request.extraArgs());
+            return command;
+        }
         command.add("-cp");
         command.add(joinClasspath(request.classpath()));
         if (request.shared()) {

@@ -3564,6 +3564,10 @@ public final class BuildPlanner {
         try {
             JkBuild project = applyAssemblyOverride(JkBuildParser.parse(in.buildFile()), in.session());
             List<String> leaves = new ArrayList<>();
+            // The join sits at the latest stage it joins. Hard-coding PACKAGE made a plan with
+            // both an assembly tail and a native tail fail validation — the join would be
+            // requiring native-image, which is a later stage than itself.
+            BuildStage joinStage = BuildStage.PACKAGE;
             if (project.assembly()) {
                 b.addTask(assemblyStep(in.cache(), in.lockFile(), !in.ephemeralActions()));
                 leaves.add(TaskNames.PACKAGE_ASSEMBLY);
@@ -3575,6 +3579,7 @@ public final class BuildPlanner {
             if (allowNative && project.nativeMode() == JkBuild.NativeMode.ALWAYS) {
                 b.addTask(nativeStep(in.dir(), in.cache(), in.lockFile(), in.jdksDir(), graalHome, null, List.of()));
                 leaves.add(TaskNames.NATIVE_IMAGE);
+                joinStage = BuildStage.NATIVE;
             }
             if (project.project().sourcesMode() == JkBuild.SourcesMode.ALWAYS) {
                 b.addTask(sourcesStep(in.cache(), !in.ephemeralActions()));
@@ -3587,7 +3592,7 @@ public final class BuildPlanner {
             }
             // Multiple independent tails of package-jar — join them so prune keeps every branch.
             b.addTask(Task.builder(DELIVER_JOIN)
-                    .stage(BuildStage.PACKAGE)
+                    .stage(joinStage)
                     .requires(leaves.toArray(String[]::new))
                     .weight(0)
                     .ticks(0)
@@ -3662,7 +3667,7 @@ public final class BuildPlanner {
                     var active = PluginBuild.activeCodePlugin(project, layout.moduleRoot());
                     if (active.isEmpty()) {
                         throw new IllegalStateException("[application] minified = true requires the shrink plugin"
-                                + " — add a [shrink] table or remove `minified`");
+                                + " — add a [minified] table or remove `minified`");
                     }
                     PluginBuild.Declarations decls = PluginBuild.declarations(
                             active.get(), project, layout.moduleRoot(), in.cache(), layout.moduleTargetDir());
@@ -3899,8 +3904,16 @@ public final class BuildPlanner {
                     // active plugins' frameworks require (class-initialization policy, which no
                     // amount of reachability metadata expresses), then [native].args, then the
                     // CLI's trailing args.
-                    List<String> pluginNativeArgs =
-                            cc.jumpkick.plugin.manifest.PluginContributions.nativeArgs(project, dir);
+                    // A framework that computed its own invocation gets none of jk's automatic
+                    // additions. Its list is complete by construction — Quarkus even passes
+                    // --exclude-config to suppress library metadata it does not want, and layering
+                    // the community metadata repository on top of that reintroduces exactly what it
+                    // excluded. `[native] args` and CLI extras still apply: those are the user
+                    // speaking, not jk guessing.
+                    Path frameworkSources = nativeImageSourcesDir(project, dir, cache, layout);
+                    List<String> pluginNativeArgs = frameworkSources != null
+                            ? List.of()
+                            : cc.jumpkick.plugin.manifest.PluginContributions.nativeArgs(project, dir);
                     if (!pluginNativeArgs.isEmpty()) {
                         ctx.label(pluginNativeArgs.size() + " native-image "
                                 + (pluginNativeArgs.size() == 1 ? "arg" : "args") + " from plugins");
@@ -3954,6 +3967,9 @@ public final class BuildPlanner {
                         metadataDirs = ReachabilityMetadata.configDirs(
                                 cache, metaRepos, runtimeArtifacts, msg -> ctx.label(msg));
                     }
+                    if (frameworkSources != null) {
+                        metadataDirs = List.of();
+                    }
                     if (!metadataDirs.isEmpty()) {
                         StringBuilder dirsArg = new StringBuilder();
                         for (Path d : metadataDirs) {
@@ -3988,6 +4004,9 @@ public final class BuildPlanner {
                     String nKey = ActionKey.forArtifact(
                             nTask, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), nativeTokens);
                     if (!shared && restorePackaged(cache, nKey, out.getParent())) {
+                        // CAS blobs carry no mode, so a restored binary comes back 0644 and the
+                        // user gets a native image they cannot run on every build after the first.
+                        out.toFile().setExecutable(true);
                         ctx.label(out.getFileName() + " up-to-date");
                         ctx.progress(1);
                         return;
@@ -4013,14 +4032,36 @@ public final class BuildPlanner {
                         ctx.progress(1); // stage N started = stage N-1 done
                     };
 
-                    int exit = cc.jumpkick.tool.NativeImageDriver.run(
-                            new cc.jumpkick.tool.NativeImageDriver.Request(
-                                    javaHome, classpath, mainClass, out, allArgs, shared),
-                            listener,
-                            ctx::output);
+                    // Run the framework's list; jk's classpath and [application] main describe a
+                    // different image entirely (Quarkus enters through a generated --features
+                    // class, not a main method).
+                    var request = frameworkSources != null
+                            ? cc.jumpkick.tool.NativeImageDriver.Request.verbatim(
+                                    javaHome, frameworkSources, frameworkNativeArgs(frameworkSources, allArgs), out)
+                            : new cc.jumpkick.tool.NativeImageDriver.Request(
+                                    javaHome, classpath, mainClass, out, allArgs, shared);
+                    if (frameworkSources != null) {
+                        ctx.label("native-image from "
+                                + PluginBuild.activeCodePlugin(project, dir)
+                                        .map(a -> a.manifest().id())
+                                        .orElse("plugin")
+                                + " sources");
+                    }
+                    int exit = cc.jumpkick.tool.NativeImageDriver.run(request, listener, ctx::output);
                     if (exit != 0) {
                         ctx.error("native", "native-image exited " + exit);
                         throw new RuntimeException("native-image failed (exit " + exit + ")");
+                    }
+                    // The framework's args name their own output, inside its sources dir.
+                    if (frameworkSources != null) {
+                        Path produced = frameworkBinary(frameworkSources);
+                        if (produced == null) {
+                            throw new IOException(
+                                    "native-image reported success but produced no binary in " + frameworkSources);
+                        }
+                        Files.createDirectories(out.getParent());
+                        Files.move(produced, out, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                        out.toFile().setExecutable(true);
                     }
                     // Final tick: completes the last native-image step (or the only tick
                     // when no progress headers were emitted).
@@ -4033,6 +4074,68 @@ public final class BuildPlanner {
     }
 
     // ---- helpers --------------------------------------------------------
+
+    /**
+     * The active plugin's {@code native-image-sources} step output, or null when the module's
+     * native image is jk's generic one. Present only once the plugin has actually written it — a
+     * declared directory with no {@code native-image.args} means the framework did not run a
+     * native build.
+     */
+    private static Path nativeImageSourcesDir(
+            JkBuild project, Path dir, Path cache, cc.jumpkick.layout.BuildLayout layout)
+            throws IOException, InterruptedException {
+        var active = PluginBuild.activeCodePlugin(project, dir);
+        if (active.isEmpty()) return null;
+        var packaging = active.get().manifest().packaging();
+        if (packaging == null) return null;
+        String rel = packaging.resolve(active.get().config()).nativeImageSources();
+        if (rel == null || rel.isBlank()) return null;
+        Path sources = PluginBuild.taskScratch(layout, stepNameOf(active.get(), project, dir, cache))
+                .resolve(rel);
+        return Files.isRegularFile(sources.resolve(NATIVE_IMAGE_ARGS)) ? sources : null;
+    }
+
+    /** The plugin's build step name — the scratch dir its declared outputs live under. */
+    private static String stepNameOf(PluginBuild.Active active, JkBuild project, Path dir, Path cache)
+            throws IOException, InterruptedException {
+        var decls = PluginBuild.declarations(active, project, dir, cache, dir.resolve("target"));
+        for (var task : decls.steps()) {
+            for (String outDir : task.outputs()) {
+                if (!outDir.isBlank()) return task.name();
+            }
+        }
+        return active.manifest().id();
+    }
+
+    static final String NATIVE_IMAGE_ARGS = "native-image.args";
+
+    /**
+     * The framework's argument list, plus jk's own extras last so {@code [native] args} and CLI
+     * trailing args still win. The file is one whitespace-separated line as native-image's
+     * {@code @argfile} format expects.
+     */
+    private static List<String> frameworkNativeArgs(Path sources, List<String> extras) throws IOException {
+        List<String> args = new ArrayList<>();
+        for (String token :
+                Files.readString(sources.resolve(NATIVE_IMAGE_ARGS)).trim().split("\\s+")) {
+            if (!token.isBlank()) args.add(token);
+        }
+        args.addAll(extras);
+        return args;
+    }
+
+    /** The executable native-image left in {@code sources} (the args name it, jk does not). */
+    private static Path frameworkBinary(Path sources) throws IOException {
+        try (var list = Files.list(sources)) {
+            return list.filter(Files::isRegularFile)
+                    .filter(p -> Files.isExecutable(p))
+                    .filter(p -> !p.getFileName().toString().endsWith(".jar"))
+                    .filter(p -> !p.getFileName().toString().endsWith(".args"))
+                    .filter(p -> !p.getFileName().toString().endsWith(".json"))
+                    .findFirst()
+                    .orElse(null);
+        }
+    }
 
     @SuppressWarnings("unchecked")
     private static List<Path> javaSources(TaskContext ctx) {

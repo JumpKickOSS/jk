@@ -13,6 +13,10 @@ protocol-prefix = "##JKQ:"
 
 [packaging]
 packager       = "quarkus-fast-jar"
+# Quarkus computes its own native-image invocation — the entry point is a generated --features
+# class, not [application] main. Asked for a native build without running native-image, it writes
+# this directory: the runner jar, its lib/, and native-image.args. jk runs that list verbatim.
+native-image-sources = "native-sources"
 exec-mode      = "jar"
 self-contained = true
 classes-run    = false
