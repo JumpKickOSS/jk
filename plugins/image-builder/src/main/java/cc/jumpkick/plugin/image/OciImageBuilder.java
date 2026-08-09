@@ -101,6 +101,7 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         String registry = c.stringOpt("registry").orElse(null);
         String tag = c.stringOpt("tag").orElse(null);
         String dockerExecutable = c.stringOpt("dockerExecutable").orElse(null);
+        boolean aotCache = c.bool("aotCache").orElse(false);
 
         Path mainJar = ctx.mainArtifact().orElseThrow(() -> new IOException("image goal needs a built main artifact"));
         List<Path> depJars = new ArrayList<>();
@@ -121,7 +122,8 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
                 platforms.isEmpty() ? null : platforms,
                 mainClass,
                 dockerExecutable,
-                null);
+                null,
+                aotCache);
         ImageBuilder.Plan plan =
                 new ImageBuilder.Plan(config, artifact, version, mainClass, mainJar, depJars, snapshotJars, classesDir);
 

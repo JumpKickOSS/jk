@@ -13,6 +13,8 @@ import com.google.cloud.tools.jib.api.RegistryException;
 import com.google.cloud.tools.jib.api.RegistryImage;
 import com.google.cloud.tools.jib.api.TarImage;
 import com.google.cloud.tools.jib.api.buildplan.AbsoluteUnixPath;
+import com.google.cloud.tools.jib.api.buildplan.FileEntriesLayer;
+import com.google.cloud.tools.jib.api.buildplan.FilePermissions;
 import com.google.cloud.tools.jib.api.buildplan.Platform;
 import com.google.cloud.tools.jib.api.buildplan.Port;
 import java.io.IOException;
@@ -146,9 +148,32 @@ public final class ImageBuilder {
             appClasspath = "/app/classpath/*:/app/libs/*";
         }
 
+        // AOT cache: trained inside the base image, because the cache is only valid for the exact
+        // JVM build that produced it. The classpath becomes an explicit ordered list — a `*`
+        // wildcard expands in directory order, and the training run reads a bind mount while the
+        // real run reads an overlay, so nothing guarantees the two enumerate alike.
+        Path aotCache = null;
+        if (cfg.aotCache()) {
+            String blocked = AotCacheTrainer.unsupportedReason(plan);
+            if (blocked != null) {
+                throw new IOException("[image] aot-cache = true, but " + blocked);
+            }
+            appClasspath = AotCacheTrainer.explicitClasspath(plan);
+            aotCache = AotCacheTrainer.train(
+                    plan, appClasspath, plan.mainJar().getParent(), msg -> System.err.println("jk: " + msg));
+            builder = builder.addFileEntriesLayer(FileEntriesLayer.builder()
+                    .addEntry(
+                            aotCache,
+                            AbsoluteUnixPath.get(AotCacheTrainer.CACHE_PATH),
+                            FilePermissions.DEFAULT_FILE_PERMISSIONS,
+                            AotCacheTrainer.LAYER_TIME.toInstant())
+                    .build());
+        }
+
         // Entrypoint: java -cp <app classpath> <main>
         List<String> entrypoint = new ArrayList<>();
         entrypoint.add("java");
+        if (aotCache != null) entrypoint.add("-XX:AOTCache=" + AotCacheTrainer.CACHE_PATH);
         if (!cfg.env().isEmpty()) {
             // JAVA_OPTS is the conventional hook; values are joined with spaces.
             String javaOpts = cfg.env().get("JAVA_OPTS");

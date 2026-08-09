@@ -22,7 +22,28 @@ public record ImageConfig(
         /** Docker/Podman executable; null → auto-detect. */
         String dockerExecutable,
         /** Relative Dockerfile path; non-null → {@code docker build}, else Jib. */
-        String dockerFile) {
+        String dockerFile,
+        /**
+         * Train a JVM AOT cache for the image. Off by default: it costs a container run at build
+         * time and tens of MiB of image, and it only pays off for start-up-sensitive workloads.
+         */
+        boolean aotCache) {
+
+    /** Without an AOT cache — the shape every existing caller builds. */
+    public ImageConfig(
+            String base,
+            String user,
+            List<Integer> ports,
+            Map<String, String> env,
+            Map<String, String> labels,
+            String registry,
+            String tag,
+            List<String> platforms,
+            String main,
+            String dockerExecutable,
+            String dockerFile) {
+        this(base, user, ports, env, labels, registry, tag, platforms, main, dockerExecutable, dockerFile, false);
+    }
 
     public ImageConfig {
         ports = ports == null ? List.of() : List.copyOf(ports);

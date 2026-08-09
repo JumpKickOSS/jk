@@ -307,7 +307,8 @@ public final class ImagePlans {
                 data.platforms(),
                 data.main(),
                 dockerExe,
-                data.dockerFile());
+                data.dockerFile(),
+                Boolean.TRUE.equals(data.aotCache()));
     }
 
     private static String runImageWorker(
@@ -337,6 +338,7 @@ public final class ImagePlans {
             if (tarballPath != null)
                 sw.configString("tarball", tarballPath.toAbsolutePath().toString());
             if (config.dockerExecutable() != null) sw.configString("dockerExecutable", config.dockerExecutable());
+            if (config.aotCache()) sw.configBool("aotCache", true);
             if (!config.ports().isEmpty()) {
                 sw.configList(
                         "ports", config.ports().stream().map(String::valueOf).toList());
