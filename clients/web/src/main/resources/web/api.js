@@ -40,7 +40,7 @@ function storeToken(value) {
   }
 }
 
-/** Persist a bearer token (paste dialog / tests). Scrubs surrounding whitespace. */
+/** Persist a bearer token (URL fragment bootstrap / tests). Scrubs surrounding whitespace. */
 export function applyToken(value) {
   const t = (value || '').trim();
   if (!t) return false;

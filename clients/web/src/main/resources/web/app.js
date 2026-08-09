@@ -1012,9 +1012,9 @@ Vue.createApp({
     },
 
     /**
-     * Session gate on load (and after a pasted token). Fails closed when there is no token, when
-     * {@code GET /api/status} is 401, or when a stored token is rejected by a gated probe.
-     * Loopback is not a free pass — without a bearer the SPA must not paint Activity.
+     * Session gate on load. Fails closed when there is no token, when {@code GET /api/status} is
+     * 401, or when a stored token is rejected by a gated probe. Loopback is not a free pass —
+     * without a bearer the SPA must not paint Activity (recover via {@code jk web} / status URL).
      */
     async checkAuth() {
       if (!token()) {
@@ -2024,7 +2024,7 @@ Vue.createApp({
         connecting: 'Connecting…',
         live: 'Live',
         offline: 'Engine stopped — run any jk command to restart it',
-        unauthorized: 'Authorization required — run `jk web` or paste the tokenized URL',
+        unauthorized: 'Access denied — run `jk web` or open the URL from `jk engine status`',
       }[this.connection];
     },
   },
