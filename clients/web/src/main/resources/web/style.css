@@ -1460,7 +1460,7 @@ button.browse:hover::before {
   flex: none;
 }
 .auth-body {
-  padding: 14px 16px 4px;
+  padding: 14px 16px; /* even bottom — no footer row on this modal */
   font-size: 13px;
   line-height: 1.45;
   color: var(--tx);
