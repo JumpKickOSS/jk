@@ -217,7 +217,7 @@ header {
   border: 1px solid var(--bd);
   border-radius: var(--r-md);
   background: rgba(var(--cn-rgb), 0.03);
-  min-width: 17rem;
+  min-width: 18.5rem;
 }
 .sysrow {
   display: grid;
@@ -236,11 +236,11 @@ header {
 }
 /* Capacity prefix shares the CPU/RAM label treatment (JK-1717). */
 .scap { letter-spacing: 0.06em; }
-/* Compact track: reuses Status-page .meter / .meter-fill.used (cyan). */
+/* Compact track: reuses Status-page .meter / .meter-fill.used (cyan). 25% wider than 4.5rem. */
 .sysbox .meter {
   display: block;
   height: 7px;
-  min-width: 4.5rem;
+  min-width: 5.625rem;
 }
 .sysrow.warn .meter-fill.used { background: var(--warn); }
 .sysrow.crit .meter-fill.used { background: var(--err); }
