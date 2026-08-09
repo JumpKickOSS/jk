@@ -56,7 +56,13 @@ class SelfPurgeCommandTest {
         Path cas = dirs.storeDir().resolve("sha256");
         Path lib = dirs.libDir().resolve("jk-java-compiler");
         Files.createDirectories(active.resolve("lib"));
-        Files.writeString(active.resolve("manifest.toml"), "version = \"" + Jk.VERSION + "\"\n");
+        // The suite shares one JK_HOME. Leave a materialized engine tree alone — a stub manifest
+        // here is a version dir VersionStore can neither resolve nor replace, which strands every
+        // later class in this fork.
+        Path activeManifest = active.resolve("manifest.toml");
+        if (!Files.exists(activeManifest)) {
+            Files.writeString(activeManifest, "version = \"" + Jk.VERSION + "\"\n");
+        }
         Files.createDirectories(old);
         Files.writeString(old.resolve("manifest.toml"), "version = \"0.9.0\"\n");
         Files.createDirectories(cas.resolve("ab"));

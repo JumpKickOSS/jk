@@ -349,10 +349,13 @@ public final class VersionStore {
                             + "engine-sha256 = \"" + engineJarSha + "\"\n"
                             + clientLine
                             + "protocol = 1\n");
-            // An aborted earlier materialization (dir without manifest) blocks the rename
-            // clear it; a COMPLETE dir was returned above and never reaches this point.
-            if (Files.isDirectory(finalRoot) && !Files.isRegularFile(finalRoot.resolve(MANIFEST))) {
-                deleteRecursively(finalRoot);
+            // Anything still at finalRoot is unusable: a complete, content-matching tree returned
+            // from the caller's resolve() and never reaches here. Clear it — rename onto a
+            // non-empty directory is ENOTEMPTY, and a torn tree (empty lib, half-written manifest)
+            // would otherwise wedge every later materialization of this version. Throw on a
+            // genuine delete failure so the cause is reported here, not as ENOTEMPTY below.
+            if (Files.exists(finalRoot)) {
+                cc.jumpkick.util.PathUtil.deleteRecursivelyOrThrow(finalRoot);
             }
             try {
                 AtomicWrites.publishDir(tmp, finalRoot);

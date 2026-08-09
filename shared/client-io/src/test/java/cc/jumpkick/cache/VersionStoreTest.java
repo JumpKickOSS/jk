@@ -77,6 +77,29 @@ class VersionStoreTest {
         assertThat(third.root()).isEqualTo(second.root());
     }
 
+    /**
+     * A torn tree — a manifest that names the version but records no engine, and an empty
+     * {@code lib/} — is unresolvable and must be replaced. Renaming onto it is ENOTEMPTY, so
+     * anything short of clearing it wedges the version for good and the only recovery is a
+     * hand-run {@code rm -rf}.
+     */
+    @Test
+    void materializing_over_a_torn_tree_replaces_it(@TempDir Path dir) throws Exception {
+        var cas = new Cas(dir.resolve("cache"));
+        var store = new VersionStore(dir.resolve("versions"));
+        Path jar = dir.resolve("engine.jar");
+        Files.writeString(jar, "engine bytes");
+
+        Path torn = dir.resolve("versions").resolve("1.0.0");
+        Files.createDirectories(torn.resolve("lib"));
+        Files.writeString(torn.resolve("manifest.toml"), "version = \"1.0.0\"\n");
+        assertThat(store.resolve("1.0.0")).isEmpty();
+
+        var healed = store.materializeFromFiles("1.0.0", cas, jar, null);
+        assertThat(healed.engineJar()).hasContent("engine bytes");
+        assertThat(store.resolve("1.0.0")).isPresent();
+    }
+
     @Test
     void rematerializing_snapshot_with_new_client_bytes_replaces_client(@TempDir Path dir) throws Exception {
         // engine jar unchanged, client binary rebuilt — versions/ tree must update.

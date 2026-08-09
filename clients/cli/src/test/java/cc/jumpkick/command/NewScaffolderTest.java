@@ -294,7 +294,7 @@ class NewScaffolderTest {
                 false,
                 Optional.empty());
         NewScaffolder.write(on);
-        assertThat(Files.readString(sub.resolve("jk.toml"))).contains("assembly = true");
+        assertThat(Files.readString(sub.resolve("jk.toml"))).contains("assembly   = true");
     }
 
     @Test
@@ -425,7 +425,7 @@ class NewScaffolderTest {
         // jk.toml: fat jar whose main is PluginMain, with the SDK as a normal (shaded) dep.
         var toml = Files.readString(tempDir.resolve("jk.toml"));
         assertThat(toml).contains("main       = \"cc.jumpkick.plugin.process.PluginMain\"");
-        assertThat(toml).contains("assembly = true");
+        assertThat(toml).contains("assembly   = true");
         assertThat(toml).contains("jk-plugin-sdk = { group = \"cc.jumpkick\", version = \"");
 
         // The manifest lands under src/main/resources so it's packaged at the jar root.

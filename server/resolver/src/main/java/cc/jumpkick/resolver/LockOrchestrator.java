@@ -410,11 +410,12 @@ public final class LockOrchestrator {
         // First failure wins: tasks still waiting on a permit/queue skip their download instead
         // of hammering the host for a lock that is already dead.
         java.util.concurrent.atomic.AtomicBoolean failed = new java.util.concurrent.atomic.AtomicBoolean();
+        List<CompletableFuture<?>> inFlight = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
             final int idx = i;
             var e = ordered.get(i);
             EnumSet<Scope> tags = tagsByKey.get(e.getKey());
-            CompletableFuture.supplyAsync(
+            inFlight.add(CompletableFuture.supplyAsync(
                             () -> {
                                 try {
                                     if (failed.get()) {
@@ -442,7 +443,7 @@ public final class LockOrchestrator {
                             var mod = e.getValue();
                             doneQ.offer(MaterializeDone.ok(idx, art, displayModule(mod.module()), mod.version()));
                         }
-                    });
+                    }));
         }
         int received = 0;
         while (received < n) {
@@ -450,10 +451,18 @@ public final class LockOrchestrator {
             try {
                 d = doneQ.take();
             } catch (InterruptedException ie) {
+                failed.set(true);
+                settle(inFlight);
                 Thread.currentThread().interrupt();
                 throw ie;
             }
             if (d.error != null) {
+                // Siblings are still on the io pool writing into the CAS. Let them wind down
+                // before the failure propagates — `failed` makes the unstarted ones return at
+                // once, so this is bounded by whatever is mid-download. Escaping here leaves
+                // threads mutating a store the caller believes it has finished with.
+                failed.set(true);
+                settle(inFlight);
                 Throwable c = d.error.getCause() != null ? d.error.getCause() : d.error;
                 if (c instanceof CompletionException ce && ce.getCause() != null) c = ce.getCause();
                 if (c instanceof IOException io) throw io;
@@ -581,6 +590,21 @@ public final class LockOrchestrator {
         PubGrubResolver r = buildResolver(repos, bomConstraints, prefs, kmp).withOnDecision(liveGraph);
         if (diagnosticPalette != null) r.palette = diagnosticPalette;
         return r.resolve(roots);
+    }
+
+    /**
+     * Wait for every materialize task to finish, discarding outcomes. Called when the lock is
+     * already lost, so the only thing that matters is that no task is still touching the CAS when
+     * this returns.
+     */
+    private static void settle(List<CompletableFuture<?>> inFlight) {
+        for (CompletableFuture<?> f : inFlight) {
+            try {
+                f.join();
+            } catch (CompletionException | java.util.concurrent.CancellationException ignored) {
+                // the failure that got us here, or a sibling's — already reported
+            }
+        }
     }
 
     /** Completion event for parallel jar materialize (progress on complete, rows ordered). */
