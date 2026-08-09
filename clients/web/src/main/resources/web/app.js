@@ -69,6 +69,8 @@ const ICON_PATHS = {
   cpu: 'M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM9 9h6v6H9zM9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3',
   'folder-open': 'M6 14l1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2',
   plus: 'M12 5v14M5 12h14',
+  // Two overlapping rectangles — clipboard / copy affordance (lucide-style).
+  copy: 'M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2M8 2h8a1 1 0 0 1 1 1v2H7V3a1 1 0 0 1 1-1z',
 };
 // Icons that read better as a solid shape than an outline at small sizes.
 const ICON_SOLID = {
@@ -743,6 +745,8 @@ Vue.createApp({
     help: false, // the header Help/About modal
     // Blocking gate when a required token is missing/invalid — no partial dashboard (docs/webclient.md).
     authModal: false,
+    authCopied: false, // brief "Copied" feedback on the Access Denied console copy button
+    _authCopiedTimer: null,
     newProjectOpen: false,
     newProjectBusy: false,
     newProjectError: null,
@@ -2035,8 +2039,35 @@ Vue.createApp({
         connecting: 'Connecting…',
         live: 'Live',
         offline: 'Engine stopped — run any jk command to restart it',
-        unauthorized: 'Access denied — run `jk web` or open the URL from `jk engine status`',
+        unauthorized: 'Access denied — run `jk web` and follow the instructions',
       }[this.connection];
+    },
+    /** Copy `jk web` for the Access Denied console — clipboard only, never the prompt glyph. */
+    async copyJkWeb() {
+      const text = 'jk web';
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed';
+          ta.style.left = '-9999px';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
+        this.authCopied = true;
+        if (this._authCopiedTimer) clearTimeout(this._authCopiedTimer);
+        this._authCopiedTimer = setTimeout(() => {
+          this.authCopied = false;
+          this._authCopiedTimer = null;
+        }, 1500);
+      } catch (_) {
+        // Clipboard blocked — user can still select the command text.
+      }
     },
   },
 })

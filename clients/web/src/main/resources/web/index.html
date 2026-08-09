@@ -339,7 +339,7 @@
 
     <main v-if="view === 'status'">
       <div class="feed-head">
-        <h2>Manage JumpKick</h2>
+        <h2>System administration</h2>
       </div>
       <p v-if="!status" class="empty">No status yet — the engine hasn't answered.</p>
       <template v-if="status">
@@ -637,8 +637,16 @@
           </div>
         </div>
         <div id="auth-desc" class="auth-body">
-          <p>Run <code>jk web</code> from your command-line.</p>
-          <p>Or run <code>jk engine status</code>, and follow the link shown.</p>
+          <p>Run <code>jk web</code> from your command-line and follow the instructions.</p>
+          <div class="auth-console" role="group" aria-label="Command to run">
+            <pre class="auth-console-line"><span class="auth-console-prompt" aria-hidden="true">&gt; </span><code class="auth-console-cmd">jk web</code></pre>
+            <button type="button" class="icon-btn auth-copy"
+                    @click="copyJkWeb()"
+                    :aria-label="authCopied ? 'Copied' : 'Copy jk web'"
+                    :data-tip="authCopied ? 'Copied' : 'Copy jk web'">
+              <jk-icon :name="authCopied ? 'check' : 'copy'"></jk-icon>
+            </button>
+          </div>
         </div>
       </div>
     </div>

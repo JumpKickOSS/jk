@@ -32,8 +32,8 @@ When a token is **missing or invalid** (bare `http://localhost:8910` with no sto
 rotated/stale token, or any `401` from the engine), the SPA opens a **blocking “Access Denied”
 dialog** and freezes the rest of the UI — it does **not** paint Activity, vitals, or a quiet
 “No activity yet” empty state. There is no paste field and no dismiss: recover by running
-`jk web` (opens an authenticated tab) or by opening the `#t=…` URL printed by
-`jk engine status` (or the same link copied into the address bar).
+`jk web` (opens an authenticated tab and prints a clickable `#t=…` URL if the browser cannot
+open). The dialog shows a console-style `jk web` snippet with a copy button.
 
 ## Tooltips
 
