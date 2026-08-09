@@ -595,6 +595,32 @@ misbehaving.
 Not available for `jk run`: a CDS dump rejects any classpath entry that is a directory, and `jk run`
 launches from `target/classes/`.
 
+### AOT cache in a container image (`[image] aot-cache`)
+
+```toml
+[image]
+base      = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
+aot-cache = true
+```
+
+Trains a JEP 514 AOT cache and ships it as an image layer, with the entrypoint pointing at it.
+Opt-in: it costs a training run at build time and tens of MiB of image.
+
+The cache is only valid for the exact JVM build that produced it — the archive records the OS,
+architecture, build number and even the compiler HotSpot was built with — so jk trains with the
+image's own JVM, never the build JDK. It gets there one of two ways:
+
+- **Host** (Linux, matching the image's architecture): the base image's JRE is unpacked from the
+  layers Jib already pulls and run directly. No container runtime.
+- **Container**: otherwise, the training run executes inside the base image, which needs docker,
+  podman or nerdctl.
+
+Either way the cache is started once and checked before it becomes a layer — a rejected cache is
+silent at default log level, so an unverified one is indistinguishable from a working one.
+
+Not available for the exploded-classes image layout, which currently includes Spring Boot: a CDS
+dump refuses any classpath entry that is a directory, and that restriction is Won't Fix upstream.
+
 ### Grails (`[grails]`)
 
 Grails 8 (Apache, Spring Boot 4.1) on the Groovy lane — `jk new --grails` scaffolds a
