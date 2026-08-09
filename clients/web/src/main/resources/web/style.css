@@ -261,7 +261,8 @@ header {
   color: var(--dim);
 }
 
-/* Shared floating tooltip chrome (JK-1726) — soft Jk Dark panel like retention/sysbox/io. */
+/* Shared floating tooltip chrome (JK-1726) — soft Jk Dark panel like retention/sysbox/io.
+ * Native HTML title= is OS chrome and CANNOT be styled; tip.js shows this layer instead. */
 .jk-tip {
   font: 11px/1.4 var(--mono);
   color: var(--tx);
@@ -276,6 +277,22 @@ header {
 }
 .jk-tip .muted { color: var(--mu); }
 .jk-tip .dim { color: var(--dim); }
+
+/* Single global hover tip (appended to body by tip.js). */
+.jk-tip-float {
+  position: fixed;
+  z-index: 200; /* above modals' content chrome; tips are hover affordances */
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
+  max-width: min(22rem, calc(100vw - 16px));
+}
+.jk-tip-float.jk-tip-visible {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .jk-tip-float { transition: none; }
+}
 
 nav { display: flex; gap: 4px; }
 

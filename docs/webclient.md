@@ -35,6 +35,13 @@ dialog** and freezes the rest of the UI — it does **not** paint Activity, vita
 `jk web` (opens an authenticated tab) or by opening the `#t=…` URL printed by
 `jk engine status` (or the same link copied into the address bar).
 
+## Tooltips
+
+Native HTML `title=` is **OS chrome** (harsh white-on-black, no radius) and cannot be styled.
+Hover help uses `data-tip="…"` (or `:data-tip`) plus `tip.js`, which paints a fixed `.jk-tip-float`
+panel with the same soft Jk Dark shell as retention / sysbox / the millis I/O tip. Do not reintroduce
+`title=` for user-visible hover text.
+
 ## Dependencies: CDN, pinned, integrity-locked
 
 Vue (and ECharts for history sparks **and** the Project-page module dependency graph) load from

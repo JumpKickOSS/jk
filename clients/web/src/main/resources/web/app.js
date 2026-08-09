@@ -33,6 +33,7 @@ import {
   etaTotalMillis,
   stepTimingLabel,
 } from './fold.js';
+import { installTips } from './tip.js';
 
 bootstrapToken();
 
@@ -104,13 +105,13 @@ const PhaseChain = {
       <div class="phase-live-row">
         <div class="step-chain-wrap">
           <button v-show="!atStart" type="button" class="chain-nav left" @click="page(-1)"
-                  aria-label="show earlier phases" title="earlier phases"><jk-icon name="chevron-left"></jk-icon></button>
+                  aria-label="show earlier phases" data-tip="earlier phases"><jk-icon name="chevron-left"></jk-icon></button>
           <span v-show="!atStart" class="chain-fade left" aria-hidden="true"></span>
           <div class="step-chain" ref="track">
             <template v-for="(p, i) in phases" :key="p.key">
               <span v-if="i > 0" class="step-edge" :class="phases[i - 1].state"></span>
               <button type="button" class="step-node phase-node" :class="[p.state, { open: openKey === p.key }]"
-                      :title="phaseTitle(p)" :aria-expanded="String(openKey === p.key)" @click="toggle(p.key)">
+                      :data-tip="phaseTitle(p)" :aria-expanded="String(openKey === p.key)" @click="toggle(p.key)">
                 <span v-if="p.state === 'running'" class="spin small"></span>
                 <jk-icon v-else-if="p.state === 'success'" name="check" class="step-glyph ok"></jk-icon>
                 <jk-icon v-else-if="p.state === 'failed'" name="x" class="step-glyph err"></jk-icon>
@@ -120,10 +121,10 @@ const PhaseChain = {
           </div>
           <span v-show="!atEnd" class="chain-fade right" aria-hidden="true"></span>
           <button v-show="!atEnd" type="button" class="chain-nav right" @click="page(1)"
-                  aria-label="show later phases" title="later phases"><jk-icon name="chevron-right"></jk-icon></button>
+                  aria-label="show later phases" data-tip="later phases"><jk-icon name="chevron-right"></jk-icon></button>
         </div>
         <!-- Live tick/label after the (blue) running phase — CLI "· detail" segment. -->
-        <span v-if="liveDetail" class="phase-detail" :title="liveDetail">
+        <span v-if="liveDetail" class="phase-detail" :data-tip="liveDetail">
           <span class="phase-detail-sep" aria-hidden="true">·</span>
           <span class="phase-detail-text">
             <span v-for="(seg, i) in liveDetailSegs" :key="i" :class="seg.cls">{{ seg.text }}</span>
@@ -133,7 +134,7 @@ const PhaseChain = {
       <div v-if="openPhase" class="phase-steps">
         <template v-for="(s, i) in openPhase.steps" :key="s.name">
           <span v-if="i > 0" class="step-edge" :class="openPhase.steps[i - 1].state"></span>
-          <span class="step-node" :class="s.state" :title="stepTitle(s)">
+          <span class="step-node" :class="s.state" :data-tip="stepTitle(s)">
             <span v-if="s.state === 'running'" class="spin small"></span>
             <jk-icon v-else-if="s.state === 'success'" name="check" class="step-glyph ok"></jk-icon>
             <jk-icon v-else-if="s.state === 'failed'" name="x" class="step-glyph err"></jk-icon>
@@ -371,7 +372,7 @@ const ModuleDepGraph = {
             <span>{{ sc }}</span>
           </label>
         </div>
-        <label class="check dep-transitive" title="Include lockfile transitive dependencies (off by default)">
+        <label class="check dep-transitive" data-tip="Include lockfile transitive dependencies (off by default)">
           <input type="checkbox" :checked="transitive" @change="setTransitive($event)">
           <span class="check-box" aria-hidden="true"></span>
           <span>Transitive</span>
@@ -387,8 +388,8 @@ const ModuleDepGraph = {
         {{ graph.nodes.length }} node{{ graph.nodes.length === 1 ? '' : 's' }}
         · {{ (graph.edges || []).length }} edge{{ (graph.edges || []).length === 1 ? '' : 's' }}
         · pan / zoom · dependent → prereq
-        <span class="swatch declared" title="Workspace module or listed in a selected-scope jk.toml"></span>declared
-        <span class="swatch transitive" title="Transitive only — not listed in any selected-scope jk.toml"></span>transitive
+        <span class="swatch declared" data-tip="Workspace module or listed in a selected-scope jk.toml"></span>declared
+        <span class="swatch transitive" data-tip="Transitive only — not listed in any selected-scope jk.toml"></span>transitive
       </p>
     </div>
   `,
@@ -2034,3 +2035,6 @@ Vue.createApp({
   .component('build-bars', BuildBars)
   .component('module-dep-graph', ModuleDepGraph)
   .mount('#app');
+
+// Themed tooltips for data-tip / title (native title= is unstyleable OS chrome — JK-1726).
+installTips(document);

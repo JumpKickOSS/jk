@@ -70,8 +70,8 @@
       <span class="hdiv"></span>
 
       <div class="hdr-actions">
-        <button class="icon-btn" @click="help = true" aria-label="Help" title="About &amp; help"><jk-icon name="help"></jk-icon></button>
-        <button class="icon-btn" @click="setView('status')" aria-label="Settings" title="Engine settings &amp; vitals"><jk-icon name="settings"></jk-icon></button>
+        <button class="icon-btn" @click="help = true" aria-label="Help" data-tip="About &amp; help"><jk-icon name="help"></jk-icon></button>
+        <button class="icon-btn" @click="setView('status')" aria-label="Settings" data-tip="Engine settings &amp; vitals"><jk-icon name="settings"></jk-icon></button>
       </div>
     </header>
 
@@ -82,7 +82,7 @@
         <span class="spacer"></span>
         <form class="trigger" @submit.prevent="triggerBuild()">
           <input v-model="buildDir" placeholder="/absolute/path/to/workspace" spellcheck="false">
-          <button type="button" class="browse" @click="openBrowser()" aria-label="Browse for a workspace" title="Browse for a workspace"><jk-icon name="folder-open"></jk-icon></button>
+          <button type="button" class="browse" @click="openBrowser()" aria-label="Browse for a workspace" data-tip="Browse for a workspace"><jk-icon name="folder-open"></jk-icon></button>
           <button type="submit"><jk-icon name="bolt"></jk-icon>Build</button>
         </form>
       </div>
@@ -97,14 +97,14 @@
           <span v-if="outcome(card) === 'running'" class="spin"></span>
           <span v-else class="badge to-project" :class="outcome(card)"
                 role="link" tabindex="0"
-                title="Open this project"
+                data-tip="Open this project"
                 @click="openProjectFromCard(card)"
                 @keydown.enter.prevent="openProjectFromCard(card)">
             <jk-icon :name="stateIcon(outcome(card))"></jk-icon>{{ activityBadge(card) }}
           </span>
           <span class="coord to-project"
                 role="link" tabindex="0"
-                title="Open this project"
+                data-tip="Open this project"
                 @click="openProjectFromCard(card)"
                 @keydown.enter.prevent="openProjectFromCard(card)">
             <template v-if="coordParts(card).group"><span class="cg">{{ coordParts(card).group }}</span><span class="csep">:</span></template>
@@ -114,14 +114,14 @@
           <span v-if="card.modules.length > 1" class="summary">{{ summary(card) }}</span>
           <span class="spacer"></span>
           <button v-if="outcome(card) === 'running' && card.id != null" class="rebuild icon danger"
-                  @click="cancelCard(card)" aria-label="Cancel" title="Cancel this job (jid)"><jk-icon name="ban"></jk-icon></button>
+                  @click="cancelCard(card)" aria-label="Cancel" data-tip="Cancel this job (jid)"><jk-icon name="ban"></jk-icon></button>
           <button v-if="outcome(card) !== 'running' && card.kind === 'build'" class="rebuild icon"
-                  @click="triggerBuild(card.dir)" aria-label="Rebuild" title="Build this directory again"><jk-icon name="refresh"></jk-icon></button>
+                  @click="triggerBuild(card.dir)" aria-label="Rebuild" data-tip="Build this directory again"><jk-icon name="refresh"></jk-icon></button>
           <button v-if="outcome(card) !== 'running' && card.historyId" class="rebuild icon danger"
-                  @click="deleteCard(card)" aria-label="Delete" title="Delete this run from history"><jk-icon name="trash"></jk-icon></button>
+                  @click="deleteCard(card)" aria-label="Delete" data-tip="Delete this run from history"><jk-icon name="trash"></jk-icon></button>
           <!-- Dual clock (CLI parity): italic/dim "ETA" + mid-gray ~remaining (freezes dim at 0s on
                overrun). Count-up sits next to it; dim while remaining > 0, yellow after. -->
-          <span v-if="outcome(card) === 'running' && hasEta(card)" class="eta" title="estimated time remaining">
+          <span v-if="outcome(card) === 'running' && hasEta(card)" class="eta" data-tip="estimated time remaining">
             <span class="eta-label">ETA</span>
             <span class="eta-cd" :class="{ zero: etaOverdue(card) }">{{ etaCountdown(card) }}</span>
           </span>
@@ -188,7 +188,7 @@
             <div v-for="m in okModules(card)" :key="m.dir" class="module">
               <div class="module-row">
                 <span class="dot" :class="m.state"></span>
-                <span class="mname" :title="m.dir">{{ moduleLabel(m) }}</span>
+                <span class="mname" :data-tip="m.dir">{{ moduleLabel(m) }}</span>
                 <span class="spacer"></span>
                 <span class="millis">{{ duration(m.millis) }}</span>
               </div>
@@ -200,7 +200,7 @@
             <div v-for="m in failedModules(card)" :key="m.dir" class="module">
               <div class="module-row">
                 <span class="dot" :class="m.state"></span>
-                <span class="mname" :title="m.dir">{{ moduleLabel(m) }}</span>
+                <span class="mname" :data-tip="m.dir">{{ moduleLabel(m) }}</span>
                 <span class="spacer"></span>
                 <span class="millis">{{ duration(m.millis) }}</span>
               </div>
@@ -240,17 +240,17 @@
            pill #buildNumber} {reliability} right. State (orb + left border + pill) is the latest
            build's outcome, upgraded to 'running' when a build is in flight right now. -->
       <article v-for="(p, i) in projectsList" :key="p.key" class="project rise-in" :class="p.state"
-               @click="openProject(p.dir)" title="Open this project" :style="{ animationDelay: riseDelay(i) }">
+               @click="openProject(p.dir)" data-tip="Open this project" :style="{ animationDelay: riseDelay(i) }">
 
         <div class="proj-id">
-          <span class="orb" :class="p.state" :title="p.state"></span>
+          <span class="orb" :class="p.state" :data-tip="p.state"></span>
           <div class="proj-label">
             <span class="coord">
               <template v-if="p.group"><span class="cg">{{ p.group }}</span><span class="csep">:</span></template>
               <span class="cn">{{ p.name }}</span>
             </span>
             <div class="proj-meta">
-              <span class="dir" :title="p.dir">{{ shortDir(p.dir) }}</span>
+              <span class="dir" :data-tip="p.dir">{{ shortDir(p.dir) }}</span>
               <span class="proj-sep">·</span>
               <span>{{ p.total }} build{{ p.total === 1 ? '' : 's' }}</span>
               <template v-if="p.avgMillis"><span class="proj-sep">·</span><span>avg {{ duration(p.avgMillis) }}</span></template>
@@ -265,7 +265,7 @@
 
         <div class="proj-stats">
           <span class="badge" :class="p.state"><jk-icon :name="stateIcon(p.state)"></jk-icon>#{{ p.total }}</span>
-          <span class="reliability" :class="p.reliabilityClass" title="pass rate over the builds shown (cancelled excluded)">
+          <span class="reliability" :class="p.reliabilityClass" data-tip="pass rate over the builds shown (cancelled excluded)">
             {{ p.reliability }}<span class="rel-lbl">reliability</span>
           </span>
         </div>
@@ -286,10 +286,10 @@
             :class="{ active: projectGraphOpen }"
             :disabled="!selectedProjectDir"
             @click="toggleProjectGraph"
-            :title="projectGraphOpen ? 'Hide module dependency graph' : 'Show module dependency graph (loads on demand)'"
+            :data-tip="projectGraphOpen ? 'Hide module dependency graph' : 'Show module dependency graph (loads on demand)'"
           >Dependencies</button>
-          <button class="ghost" title="Coming soon" disabled>Trends</button>
-          <button v-if="projectDetail" @click="buildProject(projectDetail.dir)" title="Build this project now"><jk-icon name="bolt"></jk-icon>Build</button>
+          <button class="ghost" data-tip="Coming soon" disabled>Trends</button>
+          <button v-if="projectDetail" @click="buildProject(projectDetail.dir)" data-tip="Build this project now"><jk-icon name="bolt"></jk-icon>Build</button>
         </div>
       </div>
       <p v-if="projectDetail && projectDetail.description" class="proj-desc">{{ projectDetail.description }}</p>
@@ -298,7 +298,7 @@
       <template v-if="projectDetail && !projectDetail.empty">
         <div class="tiles">
           <div class="tile"><span class="lbl">reliability</span><span class="kpi" :class="projectDetail.reliabilityClass">{{ projectDetail.reliability }}</span></div>
-          <div class="tile" title="Estimated wall-clock saved by the cache vs. a cold-cache build (critical-path estimate over the last 30 builds). ~ marks low baseline coverage."><span class="lbl">cache saved</span><span class="kpi">{{ projectDetail.cacheSaved }}<span class="kpi-sm" :class="{ warn: projectDetail.cacheLowConfidence }" v-if="projectDetail.cacheSavedPct"> {{ projectDetail.cacheSavedPct }}</span></span></div>
+          <div class="tile" data-tip="Estimated wall-clock saved by the cache vs. a cold-cache build (critical-path estimate over the last 30 builds). ~ marks low baseline coverage."><span class="lbl">cache saved</span><span class="kpi">{{ projectDetail.cacheSaved }}<span class="kpi-sm" :class="{ warn: projectDetail.cacheLowConfidence }" v-if="projectDetail.cacheSavedPct"> {{ projectDetail.cacheSavedPct }}</span></span></div>
           <div class="tile"><span class="lbl">avg build</span><span class="kpi">{{ duration(projectDetail.avgMillis) }}</span></div>
           <div class="tile"><span class="lbl">min / max</span><span class="kpi kpi-sm">{{ duration(projectDetail.minMillis) }} / {{ duration(projectDetail.maxMillis) }}</span></div>
           <div class="tile"><span class="lbl">last built</span><span class="kpi kpi-sm">{{ agoLong(projectDetail.lastFinishedAt) }}</span></div>
@@ -385,7 +385,7 @@
             <div class="panel-head"><span class="lbl">cache tier</span><span class="spacer"></span>
               <span v-if="cache" class="mono dim">{{ mib(actionCacheBytes()) }} of {{ actionMaxBytes() != null ? mib(actionMaxBytes()) : '—' }} · pruned {{ prunedAgo() }}</span></div>
             <template v-if="cache">
-              <span class="meter" title="vs [cache] max-cache-size-mb">
+              <span class="meter" data-tip="vs [cache] max-cache-size-mb">
                 <span class="meter-fill used" :style="{ width: actionCacheUtilizationPercent() + '%' }"></span>
               </span>
               <dl>
@@ -401,7 +401,7 @@
             <div class="panel-head"><span class="lbl">artifact store</span><span class="spacer"></span>
               <span v-if="cache" class="mono dim">{{ mib(artifactStorageBytes()) }} of {{ mib(cache.maxBytes) }}</span></div>
             <template v-if="cache">
-              <span class="meter" title="vs [cache] max-store-size-mb (artifact store budget)">
+              <span class="meter" data-tip="vs [cache] max-store-size-mb (artifact store budget)">
                 <span class="meter-fill used" :style="{ width: artifactStorageUtilizationPercent() + '%' }"></span>
               </span>
               <dl>
@@ -480,14 +480,14 @@
       <div class="sb-left">
         <span class="sb-item"><jk-icon name="activity"></jk-icon>Builds Running&nbsp;<b>{{ buildsRunning() }}</b></span>
         <span class="sb-div"></span>
-        <span class="sb-item" title="Cache tier (rebuildable action outputs) — jk cache storage"><jk-icon name="database"></jk-icon>Cache&nbsp;<b>{{ actionCacheBytes() != null ? mib(actionCacheBytes()) : '—' }}</b></span>
+        <span class="sb-item" data-tip="Cache tier (rebuildable action outputs) — jk cache storage"><jk-icon name="database"></jk-icon>Cache&nbsp;<b>{{ actionCacheBytes() != null ? mib(actionCacheBytes()) : '—' }}</b></span>
         <span class="sb-div"></span>
-        <span class="sb-item" title="Artifact store (deps CAS + repos) — jk repo storage"><jk-icon name="database"></jk-icon>Store&nbsp;<b>{{ artifactStorageBytes() != null ? mib(artifactStorageBytes()) : '—' }}</b></span>
+        <span class="sb-item" data-tip="Artifact store (deps CAS + repos) — jk repo storage"><jk-icon name="database"></jk-icon>Store&nbsp;<b>{{ artifactStorageBytes() != null ? mib(artifactStorageBytes()) : '—' }}</b></span>
         <span class="sb-div"></span>
         <span class="sb-item"><jk-icon name="cpu"></jk-icon>Engine Heap&nbsp;<b>{{ status ? mib(status.heapCommittedBytes) : '—' }}</b></span>
       </div>
       <span class="spacer"></span>
-      <div class="conn" :class="connection" :title="connectionLabel()">
+      <div class="conn" :class="connection" :data-tip="connectionLabel()">
         <span class="live-dot"></span>
         <span class="live-label">{{ connection === 'live' ? 'Live' : connection === 'connecting' ? 'Connecting' : connection === 'unauthorized' ? 'Unauthorized' : 'Offline' }}</span>
       </div>
@@ -533,7 +533,7 @@
         <div class="modal-head">
           <span class="lbl">New project</span>
           <span class="spacer"></span>
-          <button class="icon-btn" @click="closeNewProject()" aria-label="Close" title="Close"><jk-icon name="x"></jk-icon></button>
+          <button class="icon-btn" @click="closeNewProject()" aria-label="Close" data-tip="Close"><jk-icon name="x"></jk-icon></button>
         </div>
         <form class="new-project-form" @submit.prevent="submitNewProject()">
           <label>
@@ -580,7 +580,7 @@
               <input v-model="newProject.parentDir" required spellcheck="false" placeholder="/home/you/src"
                      @focus="$event.target.select()">
               <button type="button" class="browse" @click="openParentBrowser()" aria-label="Browse for a parent directory"
-                      title="Browse for a parent directory"><jk-icon name="folder-open"></jk-icon></button>
+                      data-tip="Browse for a parent directory"><jk-icon name="folder-open"></jk-icon></button>
             </div>
           </label>
           <label v-if="!newProject.template" class="check">
@@ -610,7 +610,7 @@
             <div class="about-sub">{{ versionPill() }}</div>
           </div>
           <span class="spacer"></span>
-          <button class="icon-btn" @click="help = false" aria-label="Close" title="Close"><jk-icon name="x"></jk-icon></button>
+          <button class="icon-btn" @click="help = false" aria-label="Close" data-tip="Close"><jk-icon name="x"></jk-icon></button>
         </div>
         <dl class="about-dl">
           <dt>Engine URL</dt><dd class="mono">{{ status ? status.httpUrl : '—' }}</dd>
