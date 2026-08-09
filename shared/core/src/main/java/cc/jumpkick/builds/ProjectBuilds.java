@@ -31,8 +31,9 @@ import java.util.stream.Stream;
  *       metrics.toml
  * </pre>
  *
- * <p>Key = SHA-256 of {@code coord + "\\0" + absolute normalized path}. Run directories are the
- * plain build number (e.g. {@code 27}), not a timestamp. No backward compat with legacy layouts.
+ * <p>Key = {@link ProjectIdentity#id()} (hybrid: explicit / lock / git / path). Run directories are the
+ * plain build number (e.g. {@code 27}), not a timestamp. Absolute path is operational checkout
+ * metadata in {@code identity.toml}, not the key.
  */
 public final class ProjectBuilds {
 
@@ -69,25 +70,31 @@ public final class ProjectBuilds {
         return buildsRoot.resolve("projects");
     }
 
-    /** Stable directory name for {@code coord} + {@code projectDir}. */
+    /** Opaque project id for this checkout ({@link ProjectIdentity#resolve(Path)}). */
+    public static String key(Path projectDir) {
+        return ProjectIdentity.resolve(projectDir).id();
+    }
+
+    /** @deprecated use {@link #key(Path)} — path-only hash is no longer the identity. */
+    @Deprecated
     public static String key(String coord, Path projectDir) {
-        String c = coord == null || coord.isBlank() ? "unknown:unknown" : coord.strip();
-        Path p = projectDir == null ? Path.of(".") : projectDir.toAbsolutePath().normalize();
-        String raw = c + "\0" + p;
-        try {
-            byte[] dig = MessageDigest.getInstance("SHA-256").digest(raw.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(dig).substring(0, 24);
-        } catch (Exception e) {
-            return Integer.toHexString(raw.hashCode());
-        }
+        return ProjectIdentity.resolve(projectDir == null ? Path.of(".") : projectDir).id();
+    }
+
+    public static Path projectHome(Path projectDir) {
+        return projectHome(buildsRoot(), ProjectIdentity.resolve(projectDir));
     }
 
     public static Path projectHome(String coord, Path projectDir) {
-        return projectHome(buildsRoot(), coord, projectDir);
+        return projectHome(projectDir);
     }
 
     public static Path projectHome(Path buildsRoot, String coord, Path projectDir) {
-        return projectsRoot(buildsRoot).resolve(key(coord, projectDir));
+        return projectHome(buildsRoot, ProjectIdentity.resolve(projectDir));
+    }
+
+    public static Path projectHome(Path buildsRoot, ProjectIdentity identity) {
+        return projectsRoot(buildsRoot).resolve(identity.id());
     }
 
     public static Path projectHome(String key) {
@@ -124,21 +131,33 @@ public final class ProjectBuilds {
         Path abs = projectDir == null
                 ? Path.of(".").toAbsolutePath().normalize()
                 : projectDir.toAbsolutePath().normalize();
-        Path home = projectHome(buildsRoot, coord, abs);
+        ProjectIdentity identity = ProjectIdentity.resolve(abs);
+        // Prefer the live coord from the tree when resolve fell back to unknown.
+        if ((identity.coord() == null || identity.coord().startsWith("unknown:"))
+                && coord != null
+                && !coord.isBlank()) {
+            identity = new ProjectIdentity(
+                    identity.id(), coord.strip(), abs, identity.source(), identity.gitRemote(), identity.gitRelPath());
+        }
+        Path home = projectHome(buildsRoot, identity);
         Files.createDirectories(home.resolve(RUNS));
-        writeIdentity(home, coord, abs);
+        ProjectIdentity.IdentityFile.write(home, identity);
         long n = allocateRunNumber(home);
         Path runDir = runDir(home, n);
         Files.createDirectories(runDir);
-        return new RunDir(
-                key(coord, abs), home, runDir, n, coord == null || coord.isBlank() ? "unknown:unknown" : coord, abs);
+        return new RunDir(identity.id(), home, runDir, n, identity.coord(), abs);
     }
 
     public static void writeIdentity(Path home, String coord, Path projectDir) throws IOException {
-        Path p = projectDir.toAbsolutePath().normalize();
-        String c = coord == null || coord.isBlank() ? "unknown:unknown" : coord.strip();
-        String body = "coord = " + quote(c) + "\npath = " + quote(p.toString()) + "\n";
-        AtomicWrites.replace(home.resolve(IDENTITY), body);
+        Path abs = projectDir.toAbsolutePath().normalize();
+        ProjectIdentity identity = ProjectIdentity.resolve(abs);
+        if ((identity.coord() == null || identity.coord().startsWith("unknown:"))
+                && coord != null
+                && !coord.isBlank()) {
+            identity = new ProjectIdentity(
+                    identity.id(), coord.strip(), abs, identity.source(), identity.gitRemote(), identity.gitRelPath());
+        }
+        ProjectIdentity.IdentityFile.write(home, identity);
     }
 
     /**

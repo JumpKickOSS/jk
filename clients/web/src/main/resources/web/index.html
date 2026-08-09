@@ -238,7 +238,7 @@
            pill #buildNumber} {reliability} right. State (orb + left border + pill) is the latest
            build's outcome, upgraded to 'running' when a build is in flight right now. -->
       <article v-for="(p, i) in projectsList" :key="p.key" class="project rise-in" :class="p.state"
-               @click="openProject(p.dir)" :style="{ animationDelay: riseDelay(i) }">
+               @click="openProject(p.projectId, p.dir)" :style="{ animationDelay: riseDelay(i) }">
 
         <div class="proj-id">
           <span class="orb" :class="p.state" :data-tip="p.state"></span>

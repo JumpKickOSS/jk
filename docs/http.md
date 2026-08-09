@@ -95,6 +95,13 @@ opens a browser (`$BROWSER` or the platform default).
 Missing or invalid credentials → **401** (plus SPA hard-gate). Engine generation mismatch →
 **409** with `engine-epoch-mismatch` (see below).
 
+### `GET /api/project`
+
+`GET /api/project?project=<id>` (preferred) or `?dir=<abs-path>`.
+
+Returns `{ projectId, dir, coord, description }`. `project` is the durable identity; `dir` is the
+last-known checkout path for build/graph ops.
+
 ### `GET /api/project/graph`
 
 Dependency graph for the Project page (JK-1542), same idea as `jk tree`:
@@ -103,7 +110,7 @@ Dependency graph for the Project page (JK-1542), same idea as `jk tree`:
 
 | Query | Default | Meaning |
 | --- | --- | --- |
-| `dir` | required | Project or workspace root |
+| `dir` | required | Project or workspace root (checkout path) |
 | `scopes` | `export,main,runtime` | Comma-separated canonical scopes (same default as `jk tree`). Percent-encoded like any query value; an unknown name is a **400** naming the valid set |
 | `transitive` | `false` | When true, expand lockfile transitive deps under each declared root |
 

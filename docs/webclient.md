@@ -50,9 +50,15 @@ script a page that can trigger builds. When bumping a pin, update the `integrity
 `index.html` in the same change. There is no bundler and no npm build step: the shell ships as
 static resources inside the engine jar.
 
+## Project routes
+
+Project detail is `#project/<projectId>` — a durable opaque id (from `project-id` in `jk-lock.toml`,
+or hybrid git/path resolution), **not** an absolute filesystem path. `GET /api/project?project=<id>`
+resolves the last-known checkout path via `identity.toml` under the builds state dir.
+
 ## Project page: dependency graph (lazy)
 
-On `#project/<dir>`, the **Dependencies** control opens a panel that renders the module DAG with
+On `#project/<projectId>`, the **Dependencies** control opens a panel that renders the module DAG with
 ECharts (`series-graph`). Complex graphs are expensive server- and client-side, so:
 
 - the panel is **closed by default**;

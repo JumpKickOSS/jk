@@ -1048,17 +1048,28 @@ public final class HttpEngineServer implements AutoCloseable {
      */
     private String enrichHistoryJson(String raw) {
         if (raw == null || raw.isBlank()) return raw;
-        // Journal records are MiniJson-compact ("running":true, no spaces); finished records —
-        // the vast majority of a 200-row list — skip the parse entirely (JK-1523).
-        if (!raw.contains("\"running\":true")) return raw;
         try {
             Object parsed = cc.jumpkick.plugin.protocol.MiniJson.parse(raw);
             if (!(parsed instanceof Map<?, ?> m0)) return raw;
             @SuppressWarnings("unchecked")
             Map<String, Object> m = (Map<String, Object>) m0;
-            if (!Boolean.TRUE.equals(m.get("running"))) return raw;
+            // Durable project id for dashboard routing (JK-1727+); derived from checkout path.
+            if (!(m.get("projectId") instanceof String pid) || pid.isBlank()) {
+                if (m.get("dir") instanceof String dir && !dir.isBlank()) {
+                    try {
+                        m.put(
+                                "projectId",
+                                cc.jumpkick.builds.ProjectIdentity.resolve(Path.of(dir)).id());
+                    } catch (RuntimeException ignored) {
+                        // leave absent
+                    }
+                }
+            }
+            if (!Boolean.TRUE.equals(m.get("running"))) {
+                return cc.jumpkick.plugin.protocol.MiniJson.write(m);
+            }
             LiveRun match = matchLiveRun(m);
-            if (match == null) return raw;
+            if (match == null) return cc.jumpkick.plugin.protocol.MiniJson.write(m);
             m.put("requestId", match.requestId());
             m.put("jid", match.requestId());
             if (!Double.isNaN(match.progress())) m.put("progress", match.progress());
@@ -1145,35 +1156,57 @@ public final class HttpEngineServer implements AutoCloseable {
     }
 
     /**
-     * {@code GET /api/project?dir=…} — live workspace metadata for one project: its {@code coord}
-     * ({@code group:name}) and {@code description}, parsed fresh from the dir's {@code jk.toml}. Not
-     * from the journal — these describe the project as it is on disk now, so the detail page shows the
-     * current description even for a project whose last build predates it. Empty object when the dir
-     * has no parseable {@code jk.toml} (e.g. a deleted workspace). Read-tier auth, like every GET.
+     * {@code GET /api/project?project=&lt;id&gt;} or {@code ?dir=…} — live workspace metadata.
+     * Prefer {@code project=} (durable identity); {@code dir=} remains for direct checkout ops.
+     * Includes {@code projectId}, {@code dir}, {@code coord}, {@code description}.
      */
     private void handleProject(HttpExchange exchange) throws IOException {
-        String dir = decode(queryParam(exchange.getRequestURI().getQuery(), "dir"));
-        if (dir == null || dir.isBlank()) {
+        String q = exchange.getRequestURI().getQuery();
+        String projectId = decode(queryParam(q, "project"));
+        String dir = decode(queryParam(q, "dir"));
+        if ((projectId == null || projectId.isBlank()) && (dir == null || dir.isBlank())) {
             sendJson(
                     exchange,
                     400,
-                    JsonOut.object().put("error", "missing \"dir\"").toString());
+                    JsonOut.object().put("error", "missing \"project\" or \"dir\"").toString());
             return;
         }
+        if (projectId != null && !projectId.isBlank()) {
+            var path = cc.jumpkick.builds.ProjectIdentity.pathForId(projectId);
+            if (path.isEmpty()) {
+                // Resolve may still work if lock/git present at a path we don't know — try reverse
+                // is not available; report missing checkout.
+                sendJson(
+                        exchange,
+                        404,
+                        JsonOut.object()
+                                .put("error", "unknown project id or checkout path missing: " + projectId)
+                                .put("projectId", projectId)
+                                .toString());
+                return;
+            }
+            dir = path.get().toString();
+        }
         try {
-            var project = cc.jumpkick.config.JkBuildParser.parse(Path.of(dir).resolve("jk.toml"))
+            Path dirPath = Path.of(dir);
+            var identity = cc.jumpkick.builds.ProjectIdentity.resolve(dirPath);
+            var project = cc.jumpkick.config.JkBuildParser.parse(dirPath.resolve("jk.toml"))
                     .project();
             sendJson(
                     exchange,
                     200,
                     JsonOut.object()
                             .put("dir", dir)
+                            .put("projectId", identity.id())
                             .put("coord", project.group() + ":" + project.name())
                             .put("description", project.description())
                             .toString());
         } catch (RuntimeException e) {
             // Unparseable/missing jk.toml (deleted or moved workspace) → empty, never an error.
-            sendJson(exchange, 200, JsonOut.object().put("dir", dir).toString());
+            sendJson(
+                    exchange,
+                    200,
+                    JsonOut.object().put("dir", dir).put("projectId", projectId == null ? "" : projectId).toString());
         }
     }
 

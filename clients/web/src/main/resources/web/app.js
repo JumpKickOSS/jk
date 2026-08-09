@@ -678,15 +678,17 @@ function recordHasErrorDiag(r) {
 
 /**
  * Parse the location hash into a route. Flat top-level views plus one detail route:
- * `#project/<url-encoded dir>` opens a single project's page (routed by dir — a coord isn't uniquely
- * reversible to a dir). Anything unrecognised falls back to the activity feed.
+ * `#project/<projectId>` — durable identity (not an absolute path). Anything unrecognised falls
+ * back to the activity feed.
  */
 function routeFromHash() {
   const h = location.hash || '';
-  if (h.startsWith('#project/')) return { view: 'project', dir: decodeURIComponent(h.slice('#project/'.length)) };
-  if (h === '#projects') return { view: 'projects', dir: null };
-  if (h === '#status') return { view: 'status', dir: null };
-  return { view: 'activity', dir: null };
+  if (h.startsWith('#project/')) {
+    return { view: 'project', projectId: decodeURIComponent(h.slice('#project/'.length)), dir: null };
+  }
+  if (h === '#projects') return { view: 'projects', projectId: null, dir: null };
+  if (h === '#status') return { view: 'status', projectId: null, dir: null };
+  return { view: 'activity', projectId: null, dir: null };
 }
 
 /** Cached-vs-total step counts for one record → the build's "N of M steps served from cache". */
@@ -719,8 +721,9 @@ function fmtMillis(millis) {
 Vue.createApp({
   data: () => ({
     view: routeFromHash().view, // 'activity' | 'projects' | 'project' | 'status'
-    selectedProjectDir: routeFromHash().dir, // the project whose detail page is open (#project/<dir>)
-    projectMeta: null, // live /api/project payload (coord + description) for the open project
+    selectedProjectId: routeFromHash().projectId, // durable id (#project/<id>)
+    selectedProjectDir: null, // checkout path resolved from project meta
+    projectMeta: null, // live /api/project payload (coord + description + dir) for the open project
     // JK-1542: Dependencies panel on the Project page — closed by default; graph fetch + echarts
     // only when opened (ModuleDepGraph mounts lazily).
     projectGraphOpen: false,
@@ -768,7 +771,7 @@ Vue.createApp({
       this.refresh();
       this.loadHistory(); // backfill past builds so a reload/restart doesn't start from an empty feed
       this.loadProjectHistory(); // so the Projects tab is populated the moment it's opened
-      if (this.view === 'project' && this.selectedProjectDir) this.loadProjectMeta(this.selectedProjectDir);
+      if (this.view === 'project' && this.selectedProjectId) this.loadProjectMeta(this.selectedProjectId);
     }
     // Back/forward and any hash change re-derive the route (openProject sets the hash, which lands here).
     window.addEventListener('hashchange', () => this.applyRoute());
@@ -797,17 +800,16 @@ Vue.createApp({
 
     // Group the journal into per-project rows for the Projects tab. A computed (not a method) so it
     // recomputes only when projectHistory or the live cards change — never on the 1s clock tick, so
-    // the ECharts canvases don't re-render every second. Key = coord when the project has one, else
-    // its dir (two dirs sharing a coord fold together; a coord-less project stands on its dir).
+    // the ECharts canvases don't re-render every second. Key = durable projectId (not path/coord).
     projectsList() {
       const RECENT = 30;
       const groups = new Map(); // key → { records[] } (records arrive newest-first from /api/history)
       for (const rec of this.projectHistory || []) {
         if (!rec || !rec.dir) continue;
-        const key = rec.coord && rec.coord.includes(':') ? rec.coord : rec.dir;
+        const key = rec.projectId || (rec.coord && rec.coord.includes(':') ? rec.coord : rec.dir);
         let g = groups.get(key);
         if (!g) {
-          g = { key, records: [] };
+          g = { key, projectId: rec.projectId || key, records: [] };
           groups.set(key, g);
         }
         g.records.push(rec);
@@ -818,7 +820,7 @@ Vue.createApp({
       const runningKeys = new Set();
       for (const c of this.cards || []) {
         if (outcomeOf(c) !== 'running') continue;
-        const key = c.coord && c.coord.includes(':') ? c.coord : c.dir;
+        const key = c.projectId || (c.coord && c.coord.includes(':') ? c.coord : c.dir);
         if (key) runningKeys.add(key);
       }
 
@@ -860,6 +862,7 @@ Vue.createApp({
 
         list.push({
           key: g.key,
+          projectId: g.projectId || latest.projectId || g.key,
           group: parts.group,
           name: parts.name,
           dir: latest.dir,
@@ -881,17 +884,16 @@ Vue.createApp({
     },
 
     // The open project's detail page: identity + aggregate metrics + a build-history table, all
-    // derived from the journal filtered to this project (same coord/dir grouping as projectsList).
+    // derived from the journal filtered to this project (by projectId).
     // Recomputes only when the history, selection, or meta change — not on the 1s clock tick.
     projectDetail() {
-      const dir = this.selectedProjectDir;
-      if (!dir) return null;
+      const id = this.selectedProjectId;
+      const dir = this.selectedProjectDir || (this.projectMeta && this.projectMeta.dir);
+      if (!id && !dir) return null;
       const RECENT = 30;
-      const metaCoord = this.projectMeta && this.projectMeta.coord ? this.projectMeta.coord : null;
-      const key = metaCoord || dir; // match how projectsList groups (coord when present, else dir)
       const records = (this.projectHistory || []).filter((r) => {
-        const rk = r.coord && r.coord.includes(':') ? r.coord : r.dir;
-        return rk === key || r.dir === dir;
+        if (id && r.projectId) return r.projectId === id;
+        return dir && r.dir === dir;
       });
       const parts = this.coordParts({ coord: metaCoord || (records[0] && records[0].coord), dir });
       const base = {
@@ -1178,31 +1180,36 @@ Vue.createApp({
       return parts.join(' ') + ' ago';
     },
 
-    // ---- the project detail page (#project/<dir>) ----
+    // ---- the project detail page (#project/<projectId>) ----
 
-    // Open a project's page — set the hash (creating a history entry so Back returns to the list);
-    // the hashchange listener drives applyRoute, which flips the view and loads the metadata.
-    openProject(dir) {
-      if (!dir) return;
-      location.hash = '#project/' + encodeURIComponent(dir);
+    // Open a project's page by durable id — hash creates a history entry so Back returns to the list.
+    openProject(projectId, dir) {
+      if (!projectId && dir) {
+        // Resolve id from a history row when only path is known (rare).
+        const hit = (this.projectHistory || []).find((r) => r.dir === dir && r.projectId);
+        projectId = hit ? hit.projectId : null;
+      }
+      if (!projectId) return;
+      if (dir) this.selectedProjectDir = dir;
+      location.hash = '#project/' + encodeURIComponent(projectId);
     },
 
-    /** Activity card badge / coord → project detail (routed by dir). */
+    /** Activity card badge / coord → project detail (by projectId, with dir fallback). */
     openProjectFromCard(card) {
-      if (!card || !card.dir) return;
-      this.openProject(card.dir);
+      if (!card) return;
+      this.openProject(card.projectId, card.dir);
     },
 
     // Re-derive view + selected project from the hash, loading whatever that route needs.
     applyRoute() {
       if (this.authModal) return;
       const r = routeFromHash();
-      const dirChanged = r.dir !== this.selectedProjectDir;
+      const idChanged = r.projectId !== this.selectedProjectId;
       this.view = r.view;
-      this.selectedProjectDir = r.dir;
+      this.selectedProjectId = r.projectId;
       // Collapse the expensive graph panel when leaving project view or switching projects.
-      if (r.view !== 'project' || dirChanged) this.projectGraphOpen = false;
-      if (r.view === 'project' && r.dir) this.loadProjectMeta(r.dir);
+      if (r.view !== 'project' || idChanged) this.projectGraphOpen = false;
+      if (r.view === 'project' && r.projectId) this.loadProjectMeta(r.projectId);
       if (r.view === 'projects') {
         this.loadProjectHistory();
         this.refreshMetrics();
@@ -1215,12 +1222,15 @@ Vue.createApp({
       this.projectGraphOpen = !this.projectGraphOpen;
     },
 
-    // Live coord + description for the open project, straight from its jk.toml on disk.
-    async loadProjectMeta(dir) {
+    // Live coord + description for the open project (by durable id).
+    async loadProjectMeta(projectId) {
       if (this.authModal) return;
       this.projectMeta = null;
       try {
-        this.projectMeta = await get('/api/project?dir=' + encodeURIComponent(dir));
+        this.projectMeta = await get('/api/project?project=' + encodeURIComponent(projectId));
+        if (this.projectMeta && this.projectMeta.dir) {
+          this.selectedProjectDir = this.projectMeta.dir;
+        }
       } catch (e) {
         this.handleHttpError(e);
       }

@@ -32,8 +32,36 @@ public final class LockfileWriter {
      */
     public static void write(Lockfile lockfile, Path file, String manifestsSha256) throws IOException {
         Lockfile stamped = lockfile.withManifestsSha256(manifestsSha256);
+        // Preserve / mint durable project-id (JK-1728): never drop on rewrite.
+        Path owner = file.toAbsolutePath().normalize().getParent();
+        if (stamped.projectId() == null || stamped.projectId().isBlank()) {
+            String existing = null;
+            if (Files.isRegularFile(file)) {
+                try {
+                    existing = LockfileReader.read(file).projectId();
+                } catch (Exception ignored) {
+                    // torn or unreadable — mint/recover below
+                }
+            }
+            if (existing != null && !existing.isBlank()) {
+                stamped = stamped.withProjectId(existing);
+            } else {
+                stamped = cc.jumpkick.builds.ProjectIdentity.ensureProjectId(stamped, owner);
+            }
+        }
         // Atomic (temp + rename): concurrent readers never observe a truncated lock (JK-1356).
         cc.jumpkick.util.AtomicWrites.replace(file, render(stamped));
+        // Materialize identity.toml so project= id resolves to a checkout without a prior build.
+        try {
+            LockfileReader.clearCache();
+            cc.jumpkick.builds.ProjectIdentity identity =
+                    cc.jumpkick.builds.ProjectIdentity.resolve(owner);
+            Path home = cc.jumpkick.builds.ProjectBuilds.projectHome(
+                    cc.jumpkick.builds.ProjectBuilds.buildsRoot(), identity);
+            cc.jumpkick.builds.ProjectIdentity.IdentityFile.write(home, identity);
+        } catch (Exception ignored) {
+            // best-effort; lock is already durable
+        }
     }
 
     /** Engine-jar sha from {@code versions/<v>/manifest.toml}, or {@code ""} if absent. */
@@ -82,6 +110,9 @@ public final class LockfileWriter {
             out.append("manifests-sha256 = ")
                     .append(quote(lockfile.manifestsSha256()))
                     .append('\n');
+        }
+        if (lockfile.projectId() != null && !lockfile.projectId().isBlank()) {
+            out.append("project-id = ").append(quote(lockfile.projectId())).append('\n');
         }
 
         List<Lockfile.Artifact> sorted = new ArrayList<>(lockfile.artifacts());
