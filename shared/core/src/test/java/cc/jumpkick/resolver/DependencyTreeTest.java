@@ -211,6 +211,41 @@ class DependencyTreeTest {
         assertThat(DependencyTree.defaultScopeOrder()).containsExactly(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME);
     }
 
+    /**
+     * JK-1640: a test-only project under the narrowed default (export/main/runtime) must not print
+     * an effectively empty tree — it names the scopes that DO have deps and how to show them.
+     */
+    @Test
+    void empty_selection_names_the_scopes_that_do_have_deps(@org.junit.jupiter.api.io.TempDir Path tmp) {
+        JkBuild testOnly = new JkBuild(
+                new JkBuild.Project("com.example", "widget", "0.1.0", 0),
+                new JkBuild.Dependencies(Map.of(
+                        Scope.TEST,
+                        List.of(new Dependency("org.junit:junit", new VersionSelector.Exact("=5.0", "5.0"))))));
+        Lockfile lock = lockOf(pkg("org.junit:junit", "5.0", List.of()));
+
+        String rendered = DependencyTree.render(testOnly, lock, tmp, Integer.MAX_VALUE, DependencyTree.Styling.plain());
+
+        assertThat(rendered).contains("found in: test").contains("-s test");
+
+        // Two populated scopes → steer to `-s all` instead of listing one flag per scope.
+        JkBuild testAndDev = new JkBuild(
+                new JkBuild.Project("com.example", "widget", "0.1.0", 0),
+                new JkBuild.Dependencies(Map.of(
+                        Scope.TEST,
+                                List.of(new Dependency("org.junit:junit", new VersionSelector.Exact("=5.0", "5.0"))),
+                        Scope.DEV,
+                                List.of(new Dependency("com.foo:tool", new VersionSelector.Exact("=1.0", "1.0"))))));
+        String two = DependencyTree.render(testAndDev, lock, tmp, Integer.MAX_VALUE, DependencyTree.Styling.plain());
+        assertThat(two).contains("found in: test, dev").contains("-s all");
+
+        // No deps anywhere → plain "(no dependencies)", no bogus steer.
+        JkBuild none = new JkBuild(
+                new JkBuild.Project("com.example", "widget", "0.1.0", 0), new JkBuild.Dependencies(Map.of()));
+        String empty = DependencyTree.render(none, lockOf(), tmp, Integer.MAX_VALUE, DependencyTree.Styling.plain());
+        assertThat(empty).contains("(no dependencies)").doesNotContain("found in:");
+    }
+
     @Test
     void workspace_root_groups_modules_under_scope_sections(@org.junit.jupiter.api.io.TempDir Path root)
             throws Exception {

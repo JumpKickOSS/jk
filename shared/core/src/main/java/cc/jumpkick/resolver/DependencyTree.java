@@ -294,6 +294,7 @@ public final class DependencyTree {
                 .append('\n');
         Set<String> seenModules = new HashSet<>();
         Set<String> seenDirs = new HashSet<>();
+        int bodyStart = out.length();
         if (project.isWorkspaceRoot()) {
             if (flatten) {
                 renderFlatWorkspaceScopes(project, projectDir, styling, scopeOrder, stack, out);
@@ -319,7 +320,40 @@ public final class DependencyTree {
                     seenDirs,
                     out);
         }
+        if (out.length() == bodyStart) {
+            appendEmptyScopesHint(project, projectDir, scopeOrder, styling, out);
+        }
         return out.toString();
+    }
+
+    /**
+     * The narrowed default ({@code export, main, runtime}) can select zero populated scopes — e.g.
+     * a test-only project — and the early-return sections then print nothing under the root, which
+     * reads as "this project has no dependencies". Name the scopes that <em>do</em> have deps and
+     * how to show them instead (JK-1640).
+     */
+    private static void appendEmptyScopesHint(
+            JkBuild project, Path projectDir, List<Scope> scopeOrder, Styling styling, StringBuilder out) {
+        Set<Scope> selected = new HashSet<>(sectionOrder(scopeOrder));
+        List<Scope> elsewhere = new ArrayList<>();
+        List<LoadedModule> modules =
+                project.isWorkspaceRoot() ? loadModules(project.workspace().modules(), projectDir) : List.of();
+        for (Scope s : allScopeOrder()) {
+            if (selected.contains(s)) continue;
+            boolean populated = project.isWorkspaceRoot()
+                    ? modules.stream().anyMatch(m -> !m.build().dependencies().of(s).isEmpty())
+                    : !project.dependencies().of(s).isEmpty();
+            if (populated) elsewhere.add(s);
+        }
+        String msg;
+        if (elsewhere.isEmpty()) {
+            msg = "(no dependencies)";
+        } else {
+            String names = elsewhere.stream().map(DependencyTree::scopeLabel).collect(java.util.stream.Collectors.joining(", "));
+            String flag = elsewhere.size() == 1 ? "-s " + scopeLabel(elsewhere.get(0)) : "-s all";
+            msg = "(no dependencies in the selected scopes — found in: " + names + "; try `" + flag + "`)";
+        }
+        out.append(styling.rail().apply("╰─ ")).append(msg).append('\n');
     }
 
     /**
