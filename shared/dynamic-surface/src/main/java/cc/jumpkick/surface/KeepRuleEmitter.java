@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.surface;
 
+import java.util.Set;
 import java.util.StringJoiner;
 
 /**
@@ -36,7 +37,9 @@ public final class KeepRuleEmitter {
             // A resource is not a class; R8 passes non-class entries through untouched.
             case RESOURCE, RESOURCE_PATTERN -> null;
             case REFLECTIVE_MEMBER, JNI_MEMBER -> {
-                if (entry.members().isEmpty()) yield "-keep class " + entry.name() + " { *; }";
+                String cls = className(entry.name());
+                if (cls == null) yield null;
+                if (entry.members().isEmpty()) yield "-keep class " + cls + " { *; }";
                 // A member spec needs a type: `*** name;` is any field of that name, and
                 // `*** name(...);` any method. Tagged members (`f:`/`m:`) emit the one form they
                 // name; an untagged name (older surface JSON) does not say which, so emit both
@@ -59,15 +62,57 @@ public final class KeepRuleEmitter {
                     if (!method) members.add("*** " + name + ";");
                     members.add("*** " + name + "(...);");
                 }
-                yield "-keep class " + entry.name() + " { " + members + " }";
+                yield "-keep class " + cls + " { " + members + " }";
             }
-            case PROXY_INTERFACE -> "-keep interface " + entry.name() + " { *; }";
-            case SERIALIZATION_TYPE ->
-                "-keepclassmembers class " + entry.name()
-                        + " { java.lang.Object writeReplace(); java.lang.Object readResolve(); <init>(...); }";
+            case PROXY_INTERFACE -> {
+                String cls = className(entry.name());
+                yield cls == null ? null : "-keep interface " + cls + " { *; }";
+            }
+            case SERIALIZATION_TYPE -> {
+                String cls = className(entry.name());
+                yield cls == null
+                        ? null
+                        : "-keepclassmembers class " + cls
+                                + " { java.lang.Object writeReplace(); java.lang.Object readResolve();"
+                                + " <init>(...); }";
+            }
             // Everything else needs the class itself retained, members included.
-            case REFLECTIVE_TYPE, GENERIC_REFLECTION, SERVICE_IMPLEMENTATION, JNI_TYPE ->
-                "-keep class " + entry.name() + " { *; }";
+            case REFLECTIVE_TYPE, GENERIC_REFLECTION, SERVICE_IMPLEMENTATION, JNI_TYPE -> {
+                String cls = className(entry.name());
+                yield cls == null ? null : "-keep class " + cls + " { *; }";
+            }
         };
+    }
+
+    private static final Set<String> PRIMITIVES =
+            Set.of("boolean", "byte", "short", "char", "int", "long", "float", "double", "void");
+
+    /**
+     * The class a keep rule can name for a metadata entry, or null when there is none. Library
+     * metadata routinely registers arrays ({@code {"name":"byte[]"}}, {@code [Ljava.lang.String;})
+     * and primitives; interpolated verbatim they produce {@code -keep class byte[]}, which is not
+     * ProGuard syntax and aborts R8 (JK-1754). Primitives and primitive arrays need no keeping;
+     * a reference array keeps its element class. The reachability emitter is untouched — Graal
+     * accepts the original names, so they pass through verbatim there.
+     */
+    static String className(String name) {
+        String n = name;
+        int dims = 0;
+        while (n.startsWith("[")) {
+            n = n.substring(1);
+            dims++;
+        }
+        if (dims > 0) {
+            // Descriptor form: [Ljava.lang.String; (dotted or slashed element) or a primitive
+            // letter, which has no class to keep.
+            if (n.length() > 2 && n.charAt(0) == 'L' && n.endsWith(";")) {
+                n = n.substring(1, n.length() - 1).replace('/', '.');
+            } else {
+                return null;
+            }
+        }
+        while (n.endsWith("[]")) n = n.substring(0, n.length() - 2);
+        if (n.isBlank() || PRIMITIVES.contains(n)) return null;
+        return n;
     }
 }

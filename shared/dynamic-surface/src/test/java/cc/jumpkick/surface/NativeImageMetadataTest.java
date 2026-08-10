@@ -248,6 +248,40 @@ class NativeImageMetadataTest {
     }
 
     @Test
+    void array_and_primitive_names_never_reach_keep_rules_verbatim() {
+        // Real-world reflect-config registers arrays and primitives; `-keep class byte[]` is not
+        // ProGuard syntax and aborts R8 (JK-1754). Reference arrays keep their element class;
+        // primitives and primitive arrays need no keeping. The reachability output still carries
+        // the original names — Graal accepts them.
+        String body = """
+                [
+                  {"name":"byte[]"},
+                  {"name":"int"},
+                  {"name":"[B"},
+                  {"name":"[Ljava.lang.String;"},
+                  {"name":"[[Lcom/acme/Grid;"},
+                  {"name":"java.lang.Object[]"}
+                ]
+                """;
+
+        DynamicSurface surface = NativeImageMetadata.parse("x/reflect-config.json", body, "library:acme");
+
+        String keeps = KeepRuleEmitter.emit(surface);
+        assertThat(keeps)
+                .contains("-keep class java.lang.String { *; }")
+                .contains("-keep class com.acme.Grid { *; }")
+                .contains("-keep class java.lang.Object { *; }")
+                .doesNotContain("byte[]")
+                .doesNotContain("[B")
+                .doesNotContain("-keep class int");
+
+        assertThat(ReachabilityMetadataEmitter.emit(surface))
+                .contains("\"byte[]\"")
+                .contains("\"[Ljava.lang.String;\"")
+                .contains("\"java.lang.Object[]\"");
+    }
+
+    @Test
     void a_malformed_file_is_skipped_rather_than_failing_the_build() {
         assertThat(NativeImageMetadata.parse("x/reflect-config.json", "{ not json", "lib")
                         .entries())
