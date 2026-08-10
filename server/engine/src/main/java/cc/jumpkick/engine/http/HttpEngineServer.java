@@ -1220,17 +1220,24 @@ public final class HttpEngineServer implements AutoCloseable {
             }
             dir = path.get().toString();
         }
+        // Resolve identity BEFORE the jk.toml parse: resolution succeeds without a parseable
+        // manifest (lock / identity.toml / hash), so a ?dir= call on a broken or deleted
+        // workspace still gets its durable projectId in the fallback branch (JK-1796).
+        String resolvedId = projectId;
         try {
-            Path dirPath = Path.of(dir);
-            var identity = cc.jumpkick.builds.ProjectIdentity.resolve(dirPath);
-            var project = cc.jumpkick.config.JkBuildParser.parse(dirPath.resolve("jk.toml"))
+            resolvedId = cc.jumpkick.builds.ProjectIdentity.resolve(Path.of(dir)).id();
+        } catch (RuntimeException e) {
+            // Invalid path — keep whatever the caller supplied (empty for ?dir= calls).
+        }
+        try {
+            var project = cc.jumpkick.config.JkBuildParser.parse(Path.of(dir).resolve("jk.toml"))
                     .project();
             sendJson(
                     exchange,
                     200,
                     JsonOut.object()
                             .put("dir", dir)
-                            .put("projectId", identity.id())
+                            .put("projectId", resolvedId)
                             .put("coord", project.group() + ":" + project.name())
                             .put("description", project.description())
                             .toString());
@@ -1241,7 +1248,7 @@ public final class HttpEngineServer implements AutoCloseable {
                     200,
                     JsonOut.object()
                             .put("dir", dir)
-                            .put("projectId", projectId == null ? "" : projectId)
+                            .put("projectId", resolvedId == null ? "" : resolvedId)
                             .toString());
         }
     }
@@ -1249,8 +1256,9 @@ public final class HttpEngineServer implements AutoCloseable {
     /**
      * {@code GET /api/project/graph?dir=…[&scopes=main,test][&transitive=0|1]} — dependency graph
      * for the Project page ECharts panel (JK-1542). Workspace modules plus declared external deps
-     * for the selected scopes (default {@code main}); optional lockfile transitive expansion.
-     * On-demand only (SPA lazy-loads). Token-gated like {@code /api/project}.
+     * for the selected scopes (default {@code export,main,runtime}, same as {@code jk tree});
+     * optional lockfile transitive expansion. On-demand only (SPA lazy-loads). Token-gated like
+     * {@code /api/project}.
      */
     private void handleProjectGraph(HttpExchange exchange) throws IOException {
         String query = exchange.getRequestURI().getQuery();
