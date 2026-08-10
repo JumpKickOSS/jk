@@ -62,7 +62,7 @@ public final class TrainRunner {
         }
         List<String> launch = launchArgs(project, layout, cache, lockFile, mainJar, log);
 
-        String fingerprint = fingerprint(project, lockFile, mainJar, config, profiles);
+        String fingerprint = fingerprint(project, lockFile, mainJar, javaHome, config, profiles);
         Path fpFile = TrainLayout.fingerprint(target);
         if (!force
                 && Files.isRegularFile(fpFile)
@@ -168,7 +168,8 @@ public final class TrainRunner {
      * fingerprint no longer matches. Returns null when fresh (or require-fresh is off).
      */
     public static String staleReason(
-            Path moduleDir, JkBuild project, BuildLayout layout, Path lockFile, TrainConfig config) throws IOException {
+            Path moduleDir, JkBuild project, BuildLayout layout, Path lockFile, Path javaHome, TrainConfig config)
+            throws IOException {
         if (!config.requireFresh()) return null;
         Path target = layout.moduleTargetDir();
         Path fpFile = TrainLayout.fingerprint(target);
@@ -176,7 +177,7 @@ public final class TrainRunner {
             return "train outputs are missing and [train] require-fresh = true — run `jk train`";
         }
         List<TrainConfig.Profile> profiles = config.effectiveProfiles();
-        String expected = fingerprint(project, lockFile, layout.mainJar(), config, profiles);
+        String expected = fingerprint(project, lockFile, layout.mainJar(), javaHome, config, profiles);
         String actual = Files.readString(fpFile, StandardCharsets.UTF_8).trim();
         if (!expected.equals(actual)) {
             return "train outputs are stale and [train] require-fresh = true — re-run `jk train`";
@@ -189,12 +190,17 @@ public final class TrainRunner {
             JkBuild project,
             Path lockFile,
             Path mainJar,
+            Path javaHome,
             TrainConfig config,
             List<TrainConfig.Profile> profiles)
             throws IOException {
         StringBuilder sb = new StringBuilder();
         sb.append("jk=").append(JkVersion.VERSION).append('\n');
         sb.append("agent=native-image-agent\n");
+        // The AOT cache is valid only for the exact JVM build that trained it, and a rejected
+        // cache is silent at runtime — a JDK switch must therefore invalidate the outputs
+        // (JK-1763). The release file carries vendor+build identity.
+        sb.append("jvm=").append(jvmIdentityToken(javaHome)).append('\n');
         if (Files.isRegularFile(lockFile)) {
             sb.append("lock=").append(Hashing.sha256Hex(lockFile)).append('\n');
         }
@@ -212,6 +218,18 @@ public final class TrainRunner {
         sb.append('\n');
         sb.append("name=").append(project.project().name()).append('\n');
         return Hashing.sha256Hex(sb.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** Stable identity of the JVM at {@code javaHome} (release-file hash), or a path fallback. */
+    private static String jvmIdentityToken(Path javaHome) {
+        if (javaHome == null) return "unknown";
+        Path release = javaHome.resolve("release");
+        try {
+            if (Files.isRegularFile(release)) return Hashing.sha256Hex(release);
+        } catch (IOException ignored) {
+            // fall through to the path
+        }
+        return javaHome.toAbsolutePath().toString();
     }
 
     /**

@@ -4014,7 +4014,8 @@ public final class BuildPlanner {
                         // Refuse to native-build on stale train outputs when configured.
                         try {
                             var trainCfg = cc.jumpkick.config.TrainConfigParser.parse(dir.resolve("jk.toml"));
-                            String stale = TrainRunner.staleReason(dir, project, layout, lockFile, trainCfg);
+                            String stale = TrainRunner.staleReason(
+                                    dir, project, layout, lockFile, javaHomeEarly, trainCfg);
                             if (stale != null) {
                                 ctx.error("train-stale", stale);
                                 throw new RuntimeException(stale);

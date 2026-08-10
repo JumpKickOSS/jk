@@ -36,11 +36,11 @@ class TrainFingerprintTest {
         Path lock = tmp.resolve("jk-lock.toml");
         Path jar = tmp.resolve("app.jar");
 
-        String all = TrainRunner.fingerprint(project, lock, jar, config, config.effectiveProfiles());
-        String smokeOnly = TrainRunner.fingerprint(project, lock, jar, config, config.select("smoke"));
+        String all = TrainRunner.fingerprint(project, lock, jar, tmp, config, config.effectiveProfiles());
+        String smokeOnly = TrainRunner.fingerprint(project, lock, jar, tmp, config, config.select("smoke"));
 
         assertThat(smokeOnly).isNotEqualTo(all);
-        assertThat(TrainRunner.fingerprint(project, lock, jar, config, config.effectiveProfiles()))
+        assertThat(TrainRunner.fingerprint(project, lock, jar, tmp, config, config.effectiveProfiles()))
                 .isEqualTo(all);
     }
 }

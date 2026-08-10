@@ -72,6 +72,9 @@ public final class TrainPlans {
                 .execute(ctx -> {
                     ctx.label("train dynamic surface");
                     BuildLayout layout = ctx.require(BuildPlanner.LAYOUT);
+                    // The module's resolved toolchain, not the engine's own JVM: an AOT cache
+                    // trained by the engine JDK is silently rejected by the app's (JK-1763).
+                    Path moduleJdk = ctx.get(BuildPlanner.JAVA_HOME).orElse(javaHome);
                     TrainConfig config;
                     try {
                         config = TrainConfigParser.parse(moduleDir.resolve("jk.toml"));
@@ -86,7 +89,7 @@ public final class TrainPlans {
                                 cache,
                                 lockFile,
                                 graalHome,
-                                javaHome,
+                                moduleJdk,
                                 config,
                                 profileFilter,
                                 force,
