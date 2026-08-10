@@ -119,8 +119,11 @@ public final class MetricsHarvest {
     public void runOnce(Path buildsRoot) throws IOException {
         long now = System.currentTimeMillis();
         Map<String, List<Double>> hostSamples = new LinkedHashMap<>();
+        // Reap every home; harvest only preferred homes per checkout path (stale re-keyed ids).
         for (Path home : ProjectBuilds.listProjectHomes(buildsRoot)) {
             reapProject(home, now);
+        }
+        for (Path home : ProjectBuilds.listProjectHomesForMetrics(buildsRoot)) {
             Map<String, Agg> project = new LinkedHashMap<>();
             Map<String, Double> last = new LinkedHashMap<>();
             Map<String, Long> counts = new LinkedHashMap<>();
@@ -168,6 +171,9 @@ public final class MetricsHarvest {
                 String key = m.group(1);
                 double v = Double.parseDouble(m.group(2));
                 if (v < 0 || Double.isNaN(v) || Double.isInfinite(v)) continue;
+                // Drop cache-restore blips for heavy steps (native-image "32ms" SUCCESS) so they
+                // never enter [mean]/[last]/[count] and poison ETA.
+                if (isImplausibleHeavyWall(key, v)) continue;
                 project.computeIfAbsent(key, k -> new Agg()).add(v);
                 // Newest-first listing → first write wins as last-success.
                 last.putIfAbsent(key, v);
@@ -198,6 +204,18 @@ public final class MetricsHarvest {
                 || key.equals("package-jar-ms")
                 || key.equals("package-assembly-ms")
                 || key.equals("ms-per-weight");
+    }
+
+    /**
+     * Heavy-step walls below these floors are action-cache restore noise, not real work. Must stay
+     * aligned with journal {@code isImplausibleHeavyWall} and EffortWeights heavy floors.
+     */
+    static boolean isImplausibleHeavyWall(String key, double ms) {
+        if (key == null || !(ms > 0)) return false;
+        String k = key.toLowerCase(Locale.ROOT);
+        if (k.contains("native-image") || k.contains(".phase.native.")) return ms < 5_000.0;
+        if (k.contains("write-image") || k.contains(".phase.image.")) return ms < 3_000.0;
+        return false;
     }
 
     private static void writeProjectMetrics(

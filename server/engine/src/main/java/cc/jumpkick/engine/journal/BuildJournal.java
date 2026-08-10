@@ -382,6 +382,9 @@ public final class BuildJournal {
         if (s == null || s.millis() <= 0) return;
         if (s.status() == null || !"SUCCESS".equalsIgnoreCase(s.status())) return;
         String task = sanitize(s.name());
+        // Cache-restore / token hits can land as SUCCESS with absurdly short walls (e.g. native-image
+        // 32ms). Those poison ETA means — never teach heavy steps below a floor.
+        if (isImplausibleHeavyWall(task, s.millis())) return;
         // The record already carries the stage the plan declared (wire `stage`). Re-deriving it
         // from the task name put the metrics rollup on a different taxonomy than the UI fold —
         // plugin-android-res reported `generate` on the wire and landed in `phase.compile` here,
@@ -403,6 +406,18 @@ public final class BuildJournal {
                     .append('\n');
             modulePhaseTotals.computeIfAbsent(mod, k -> new LinkedHashMap<>()).merge(phase, s.millis(), Long::sum);
         }
+    }
+
+    /**
+     * Heavy IO steps whose real wall is tens of seconds — sub-floor samples are action-cache
+     * restore noise, not real work. Keep in sync with {@code MetricsHarvest} floors.
+     */
+    static boolean isImplausibleHeavyWall(String task, long millis) {
+        if (task == null || millis <= 0) return false;
+        String t = task.toLowerCase(java.util.Locale.ROOT);
+        if (t.contains("native-image") || t.equals("native")) return millis < 5_000L;
+        if (t.contains("write-image") || t.equals("image")) return millis < 3_000L;
+        return false;
     }
 
     static String sanitize(String s) {

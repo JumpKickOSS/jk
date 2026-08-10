@@ -70,4 +70,31 @@ class MetricsHarvestTest {
         assertThat(MetricsHarvest.isHostKey("workspace.wall-ms")).isFalse();
         assertThat(MetricsHarvest.isHostKey("module./p.step.x.wall-ms")).isFalse();
     }
+
+    @Test
+    void isImplausibleHeavyWall_drops_native_restore_blips() {
+        assertThat(MetricsHarvest.isImplausibleHeavyWall(
+                        "module./p.task.native-image.wall-ms", 32.0))
+                .isTrue();
+        assertThat(MetricsHarvest.isImplausibleHeavyWall(
+                        "module./p.task.native-image.wall-ms", 32_000.0))
+                .isFalse();
+        assertThat(MetricsHarvest.isImplausibleHeavyWall("task.write-image.wall-ms", 100.0)).isTrue();
+        assertThat(MetricsHarvest.isImplausibleHeavyWall("task.run-tests.wall-ms", 50.0)).isFalse();
+    }
+
+    @Test
+    void harvest_skips_implausible_native_walls(@TempDir Path root) throws Exception {
+        ProjectBuilds.RunDir run = ProjectBuilds.openRun(root, "g:demo", root.resolve("proj"));
+        Files.writeString(
+                run.metricsFile(),
+                """
+                module./p.task.native-image.wall-ms = 32
+                module./p.task.run-tests.wall-ms = 28000
+                """);
+        MetricsHarvest.get().configure(50, 90);
+        MetricsHarvest.get().runOnce(root);
+        String pm = Files.readString(run.projectHome().resolve(ProjectBuilds.PROJECT_METRICS));
+        assertThat(pm).contains("run-tests").doesNotContain("native-image");
+    }
 }

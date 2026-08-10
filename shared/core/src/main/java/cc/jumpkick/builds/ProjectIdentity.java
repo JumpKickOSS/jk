@@ -168,6 +168,9 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
     private static Optional<String> recoverId(Path abs, Optional<GitInfo> git) {
         Path root = ProjectBuilds.projectsRoot();
         if (!Files.isDirectory(root)) return Optional.empty();
+        // Prefer lock-sourced / higher-run homes when multiple ids claim the same path (re-key churn).
+        String bestId = null;
+        int bestScore = Integer.MIN_VALUE;
         try (Stream<Path> homes = Files.list(root)) {
             for (Path home : homes.toList()) {
                 if (!Files.isDirectory(home)) continue;
@@ -175,21 +178,32 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
                 if (idf.isEmpty()) continue;
                 IdentityFile f = idf.get();
                 if (f.id() == null || f.id().isBlank()) continue;
-                if (abs.equals(Path.of(f.path()).toAbsolutePath().normalize())) {
-                    return Optional.of(normalizeId(f.id()));
+                boolean pathMatch = false;
+                try {
+                    pathMatch = abs.equals(Path.of(f.path()).toAbsolutePath().normalize());
+                } catch (RuntimeException ignored) {
                 }
-                if (git.isPresent()
+                boolean gitMatch = git.isPresent()
                         && f.gitRemote() != null
                         && f.gitRelPath() != null
                         && git.get().remote().equals(f.gitRemote())
-                        && git.get().relPath().equals(f.gitRelPath())) {
-                    return Optional.of(normalizeId(f.id()));
+                        && git.get().relPath().equals(f.gitRelPath());
+                if (!pathMatch && !gitMatch) continue;
+                int score = ProjectBuilds.metricsHomeScore(home, f);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestId = f.id();
                 }
             }
         } catch (IOException ignored) {
             // best-effort recovery
         }
-        return Optional.empty();
+        if (bestId == null) return Optional.empty();
+        try {
+            return Optional.of(normalizeId(bestId));
+        } catch (RuntimeException e) {
+            return Optional.empty();
+        }
     }
 
     /** Locate project home by id under the builds root. */

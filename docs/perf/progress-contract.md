@@ -1,40 +1,53 @@
-# Progress contract — remaining wall-work `R(t)`
+# Progress contract — open-loop ETA and effort-weight bar
 
 Status: **normative** for TUI / wire progress. Implementations live under
-`shared/wire` (`RemainingWork`, `WorkSchedule`, `WorkspaceProgressTracker`) and
-`server/engine` (`EffortWeights`, `TestEffort`, `BuildService.seedEta`, residual emit).
+`shared/wire` (`WorkSchedule`, `WorkspaceProgressTracker`, `RemainingWork`) and
+`server/engine` (`EffortWeights`, `TestEffort`, `BuildService.seedEta`).
 
 ## Goals
 
 1. **One aggregate** for the whole request (single module, selection subset, or monorepo).
-2. **One remaining-work oracle `R(t)`** — schedule of unfinished module costs (with in-flight
-   residual). Drives **both** the countdown and the progress bar.
-3. **Real-work denominator** — weight what will actually run; cache/skip → token ticks in costs.
-4. **Hierarchical learning** — test method → test class → task → stage → module → workspace.
-5. **Dual clock** — remaining countdown from `R(t)`; dim `+elapsed` count-up from command start.
-6. **details.jsonl** carries fine events; the header bar/clock stay run-wide.
+2. **Open-loop seed `R0`** — wall-ms estimate at plan start (`jk explain` ≡ `jk build`). Users plan from the start; mid-run residual must not redefine the countdown.
+3. **Effort-weight progress bar** — denominator is Σ plan step weights (measured walls preferred). Cache/skip → TOKEN. Bar **never goes backwards**.
+4. **Real-work only** — bookkeeping steps do not inflate dirty set or ETA.
+5. **Hierarchical learning** — test method → test class → task → stage → module → workspace.
+6. **Dual clock** — countdown from open-loop `R0 − elapsed`; dim `+elapsed` count-up from command start.
+7. **details.jsonl** carries fine events; the header bar/clock stay run-wide.
 
-## Remaining-work model
-
-**Primary product goal:** open-loop countdown from seed `R0` so users can plan from the
-**start** (`jk explain` / first ETA). Mid-run residual must not redefine success.
+## Model
 
 ```
 R0            = seed wall ms (jk explain ≡ jk build seed)
-countdown     = max(0, R0 − elapsed)     # open-loop after execute starts (client)
+countdown     = max(0, R0 − elapsed)     # open-loop after execute starts (client freezes R0)
 bar           = effort-weight slices     # Σ plan weights; NOT residual R/R0
 residual R(t) = optional wire annotation # does NOT drive bar or countdown
 ```
 
-**Why bar ≠ residual R/R0:** history floors can inflate R0 without increasing residual
-costs. Then residual → 0 early → bar stuck at 99% while work continues. Weight slices track
-actual plan ticks instead.
+**Why bar ≠ residual R/R0:** inflated history floors or residual under-prediction pinned the bar
+at 99% or raced to 100% while work remained. Weight slices track actual plan ticks; the bar
+holds peak fill when the denominator grows (never slides backwards). Correctness comes from
+an **accurate up-front denominator**, not mid-run rewrites.
 
 | Situation | Seed (R0) | Bar slice |
 |-----------|-----------|-----------|
-| Dirty real work | priced walls | full effort weight |
-| Cache/skip in plan | TOKEN in composition | TOKEN |
+| Dirty real work | priced measured walls | full effort weight |
+| Cache/skip in plan | TOKEN in composition | TOKEN / reweight shrink |
 | Omitted from plan | absent | absent |
+
+### Packaging cascade (hard rule)
+
+| If dirty… | Then dirty… |
+|-----------|-------------|
+| **jar** | **native** (when the module builds one) |
+| **jar** or **native** | **OCI** (when the module builds an image) |
+
+Impossible: jar dirty + native clean. Impossible: jar/native dirty + OCI clean.
+Implemented in `EffortWeights.jarWillChange` / `nativeWillChange` / `ociWillChange` and
+`TaskForecaster` native forecast.
+
+Dirty-module prepare/run sets **over-reserve tails** so native/assembly/OCI reserve full
+learned walls at plan-start even when an old binary still looks mtime-fresh vs the pre-build
+jar. Runtime may **shrink** on cache hit (`RESTORE`); never reweight *up* mid-run.
 
 ### HARD INVARIANT: `jk explain` ≡ `jk build` seed `R0`
 
@@ -61,14 +74,14 @@ When `parallelTests == false`: `max(scheduled, Σ testWeight)` as serial test fl
 
 | Component | Responsibility |
 |-----------|----------------|
-| `EffortWeights` | Plan-time task weights; TOKEN for skip; dirty-task composition |
-| `TestEffort` | `run-tests` pricing |
-| `WorkSchedule` / `RemainingWork` | Wall schedule + residual `R(t)` |
-| `WorkspaceProgressTracker` | Preflight band + `seedWall`/`setRemaining` → bar % |
-| `BuildService` | `R0` seed + `WorkModel` emit |
-| Wire `workspace-progress` / `eta` | Snapshots: `progress`, `remainingMs`, `R0` |
+| `EffortWeights` | Plan-time task weights; TOKEN for skip; packaging cascade; dirty over-reserve |
+| `TestEffort` | `run-tests` pricing (own suite wall before method product) |
+| `WorkSchedule` / `RemainingWork` | Wall schedule + residual annotation `R(t)` |
+| `WorkspaceProgressTracker` | Preflight band + calibrated effort-weight bar; peak hold (never backwards) |
+| `BuildService` | `R0` seed; dirty prepare uses live `estimatedTotalWeight` (not stale shape-memo) |
+| Wire `workspace-progress` / `eta` | Snapshots: `progress`, `numerator`, `denominator`, `phase`, `remainingMs`, `R0` |
 
-## Task pricing ladder (unchanged)
+## Task pricing ladder
 
 1. Module measured task wall  
 2. Host task wall  
@@ -78,18 +91,35 @@ When `parallelTests == false`: `max(scheduled, Σ testWeight)` as serial test fl
 
 ### Test task (`run-tests`)
 
-1. Class walls when complete selection has walls  
-2. Else whole `run-tests` task wall  
-3. Else methods × method-ms + suite-startup  
-4. Else host suite wall / cold baseline  
+1. **This module’s** whole `run-tests` task wall (preferred)  
+2. Class walls when complete selection has walls  
+3. Methods × hierarchical method-ms + suite-startup (cold module with known count)  
+4. Host suite wall only when method count is unknown  
+5. Cold baseline  
+
+### Metrics hygiene
+
+- `AggregatedMetrics.loadAll` / harvest use **one project home per checkout path** (prefer
+  `source=lock`, higher run count).  
+- Merge-by-higher-count when keys still collide.  
+- Session workspace loads project-scoped metrics for live ETA.  
+- **Heavy-step floors:** native-image &lt; 5s and write-image &lt; 3s walls are dropped at journal
+  write and harvest (cache-restore noise).  
+- Cancelled / failed builds do not train.
 
 ## Progress bar
 
 Clients paint engine `workspace-progress` only (no client re-sum).
 
-- Preflight: small band before `R0` is known.  
-- Execute: pure `1 − R/R0`, display-capped at **99%** until `finish()` → 100%.  
-- When residual under-predicts (`R > R0`), tracker grows `R0` to preserve completed work.
+- Preflight: small band before execute calibrate.  
+- Execute: `numerator / denominator` from effort-weight slices (preflight band + Σ module weights).  
+- **Never go backwards** — peak fraction is held if the denominator grows mid-run.  
+- `finish()` → 100%.  
+- Residual `remainingMs` / `R0` on the wire are annotations for the countdown; they do not drive bar %.
+
+**Known limitation:** the bar is Σ effort weights, not critical-path wall. Parallel modules can
+advance fill faster than the long pole’s wall clock; with correct native/test weights the long
+pole still holds the end of the bar.
 
 ## Wire (schema 1, additive fields)
 
@@ -103,7 +133,8 @@ Clients paint engine `workspace-progress` only (no client re-sum).
 ```
 ~/.local/state/jk/builds/
   host-metrics.toml
-  projects/<hash>/
+  projects/<id>/
+    identity.toml
     project-metrics.toml
     runs/<build-number>/
       record.json
@@ -111,10 +142,10 @@ Clients paint engine `workspace-progress` only (no client re-sum).
       metrics.toml
 ```
 
-**Cancelled / failed builds do not train.**
-
 ## Out of scope
 
 - Method-level live TUI rows  
-- Perfect millisecond ETA (residual schedule is the correctness target)  
+- Perfect millisecond ETA  
+- Critical-path / remaining-work bar (Σ weights is the product bar)  
 - Third-party metrics backends  
+- Allowing the bar to go backwards  

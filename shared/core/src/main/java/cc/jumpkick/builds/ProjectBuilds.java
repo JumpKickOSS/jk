@@ -9,7 +9,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Stream;
@@ -247,6 +249,54 @@ public final class ProjectBuilds {
         } catch (IOException e) {
             return List.of();
         }
+    }
+
+    /**
+     * Project homes to use for metrics harvest / global loadAll — at most one home per absolute
+     * checkout path. When lock re-key left a stale sibling home for the same path (different id),
+     * keep the preferred one (source=lock, then most runs, then newest identity) so one-sample
+     * outliers cannot re-enter aggregates.
+     */
+    public static List<Path> listProjectHomesForMetrics(Path buildsRoot) {
+        List<Path> all = listProjectHomes(buildsRoot);
+        if (all.size() <= 1) return all;
+        Map<String, Path> bestByPath = new java.util.LinkedHashMap<>();
+        Map<String, Integer> scoreByPath = new HashMap<>();
+        List<Path> noPath = new ArrayList<>();
+        for (Path home : all) {
+            var idf = ProjectIdentity.IdentityFile.read(home);
+            if (idf.isEmpty() || idf.get().path() == null || idf.get().path().isBlank()) {
+                noPath.add(home);
+                continue;
+            }
+            String pathKey;
+            try {
+                pathKey = Path.of(idf.get().path()).toAbsolutePath().normalize().toString();
+            } catch (RuntimeException e) {
+                noPath.add(home);
+                continue;
+            }
+            int score = metricsHomeScore(home, idf.get());
+            Integer prev = scoreByPath.get(pathKey);
+            if (prev == null || score > prev) {
+                scoreByPath.put(pathKey, score);
+                bestByPath.put(pathKey, home);
+            }
+        }
+        List<Path> out = new ArrayList<>(bestByPath.values());
+        out.addAll(noPath);
+        out.sort(Comparator.naturalOrder());
+        return out;
+    }
+
+    /** Higher is better: lock source, then run count, then has complete id. */
+    static int metricsHomeScore(Path home, ProjectIdentity.IdentityFile idf) {
+        int score = 0;
+        if (idf.source() != null && "lock".equalsIgnoreCase(idf.source())) score += 1_000_000;
+        if (idf.source() != null && "git".equalsIgnoreCase(idf.source())) score += 100_000;
+        if (idf.id() != null && !idf.id().isBlank()) score += 10_000;
+        score += (int) Math.min(listRuns(home).size(), 9_999);
+        return score;
     }
 
     /** Newest-first run directories for a project (by numeric build number). */

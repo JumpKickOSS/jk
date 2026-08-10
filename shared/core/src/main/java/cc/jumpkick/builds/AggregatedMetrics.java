@@ -67,7 +67,8 @@ public final class AggregatedMetrics {
         Map<String, Double> mean = new LinkedHashMap<>();
         Map<String, Double> last = new LinkedHashMap<>();
         Map<String, Long> count = new LinkedHashMap<>();
-        for (Path home : ProjectBuilds.listProjectHomes(buildsRoot)) {
+        // Prefer one home per checkout path so stale re-keyed identities do not re-enter.
+        for (Path home : ProjectBuilds.listProjectHomesForMetrics(buildsRoot)) {
             Map<String, Double> m = new LinkedHashMap<>();
             Map<String, Double> l = new LinkedHashMap<>();
             Map<String, Long> c = new LinkedHashMap<>();
