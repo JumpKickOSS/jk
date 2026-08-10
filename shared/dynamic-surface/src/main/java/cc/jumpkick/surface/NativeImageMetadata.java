@@ -66,7 +66,7 @@ public final class NativeImageMetadata {
         switch (file) {
             case "reflect-config.json" -> reflection(root, origin, REFLECTIVE_TYPE, REFLECTIVE_MEMBER, out);
             case "jni-config.json" -> reflection(root, origin, JNI_TYPE, JNI_MEMBER, out);
-            case "serialization-config.json" -> reflection(root, origin, SERIALIZATION_TYPE, null, out);
+            case "serialization-config.json" -> serialization(root, origin, out);
             case "proxy-config.json" -> proxies(root, origin, out);
             case "resource-config.json" -> resources(root, origin, out);
             case "reachability-metadata.json" -> {
@@ -132,11 +132,32 @@ public final class NativeImageMetadata {
         }
     }
 
-    /** {@code [{"interfaces": ["a.B", "c.D"]}]} — each interface is its own entry. */
+    /**
+     * Two serialization-config generations: the legacy flat array of {@code {"name": …}}, and the
+     * newer agent wrapper {@code {"types": […], "lambdaCapturingTypes": […], "proxies": […]}}
+     * (JK-1778). Wrapper proxies are arrays of interface names and register proxy classes for
+     * serialization; they are read as proxy entries so both emitters cover them.
+     */
+    private static void serialization(Object root, String origin, List<DynamicSurface.Entry> out) {
+        if (root instanceof Map<?, ?>) {
+            reflection(Json.list(root, "types"), origin, SERIALIZATION_TYPE, null, out);
+            reflection(Json.list(root, "lambdaCapturingTypes"), origin, SERIALIZATION_TYPE, null, out);
+            proxies(Json.list(root, "proxies"), origin, out);
+            return;
+        }
+        reflection(root, origin, SERIALIZATION_TYPE, null, out);
+    }
+
+    /**
+     * {@code [{"interfaces": ["a.B", "c.D"]}]} — each interface is its own entry. The
+     * serialization-config wrapper writes each proxy as a bare interface-name array instead;
+     * both shapes are read.
+     */
     private static void proxies(Object root, String origin, List<DynamicSurface.Entry> out) {
         if (!(root instanceof List<?> items)) return;
         for (Object item : items) {
-            for (Object iface : Json.list(item, "interfaces")) {
+            List<?> interfaces = item instanceof List<?> bare ? bare : Json.list(item, "interfaces");
+            for (Object iface : interfaces) {
                 if (iface instanceof String s && !s.isBlank()) {
                     out.add(DynamicSurface.Entry.type(PROXY_INTERFACE, s, origin));
                 }

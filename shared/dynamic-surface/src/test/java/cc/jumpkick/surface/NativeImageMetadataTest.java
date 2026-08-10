@@ -172,6 +172,25 @@ class NativeImageMetadataTest {
     }
 
     @Test
+    void the_serialization_wrapper_form_is_unwrapped() {
+        // Newer tracing agents write a map root; the legacy form is a flat array (JK-1778).
+        String body = """
+                {
+                  "types": [{"name":"com.acme.S"}],
+                  "lambdaCapturingTypes": [{"name":"com.acme.L"}],
+                  "proxies": [["com.acme.I","com.acme.J"]]
+                }
+                """;
+
+        DynamicSurface surface = NativeImageMetadata.parse("x/serialization-config.json", body, "train");
+
+        assertThat(surface.of(DynamicSurface.Kind.SERIALIZATION_TYPE))
+                .extracting(Entry::name)
+                .containsExactly("com.acme.L", "com.acme.S");
+        assertThat(surface.of(PROXY_INTERFACE)).extracting(Entry::name).containsExactly("com.acme.I", "com.acme.J");
+    }
+
+    @Test
     void serialization_members_still_register_the_type_for_serialization() {
         // Serialization registration is per-type in GraalVM's schema; named members must not
         // demote the entry out of the serialization section (JK-1779).
