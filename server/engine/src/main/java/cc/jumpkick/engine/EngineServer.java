@@ -1730,11 +1730,8 @@ public final class EngineServer implements AutoCloseable {
         cc.jumpkick.runtime.RemainingWork rw = remainingWorks.get(requestId);
         if (rw != null && dir != null) {
             rw.moduleProgress(java.nio.file.Path.of(dir), frac);
-            long rem = rw.remaining();
-            progressTracker(requestId).setRemaining(rem);
-            // Live remaining for countdown (residual schedule, not seed−elapsed).
-            if (writer != null) sendQuiet(writer, EngineProtocol.eta(rem, rw.R0()));
-            publishEta(requestId, rem);
+            // Progress bar may track residual work; countdown stays open-loop R0 on the client.
+            progressTracker(requestId).setRemaining(rw.remaining());
         }
         emitWorkspaceProgress(requestId, writer, forceEmit);
     }
@@ -1744,10 +1741,8 @@ public final class EngineServer implements AutoCloseable {
         cc.jumpkick.runtime.RemainingWork rw = remainingWorks.get(requestId);
         if (rw != null && dir != null) {
             rw.moduleComplete(java.nio.file.Path.of(dir));
-            long rem = rw.remaining();
-            progressTracker(requestId).setRemaining(rem);
-            if (writer != null) sendQuiet(writer, EngineProtocol.eta(rem, rw.R0()));
-            publishEta(requestId, rem);
+            progressTracker(requestId).setRemaining(rw.remaining());
+            // Do not re-emit eta — open-loop countdown is frozen at R0 on the client.
         }
         progressTracker(requestId).moduleComplete(dir, lastDen);
         emitWorkspaceProgress(requestId, writer, true);

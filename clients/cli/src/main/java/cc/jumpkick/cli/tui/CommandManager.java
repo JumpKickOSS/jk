@@ -103,14 +103,16 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     private long denominator;
     private double peakFraction; // monotonic-display floor: the bar never renders below this
     /**
-     * Last residual wall remaining {@code R(t)} from the engine ({@code -1} = unknown / count-up
-     * only). Paired with {@link #remainingSetAtElapsedMs} so paint decays R by wall time between
-     * residual updates without clearing a zero remaining (done) back to unknown.
+     * Open-loop seed remaining at seed time ({@code -1} = unknown / count-up only). Paired with
+     * {@link #remainingSetAtElapsedMs}. After {@link #openLoopLocked}, mid-run residual rewrites
+     * are ignored so the clock measures seed quality (R0 − elapsed), not just-in-time fixes.
      */
     private long remainingWorkMs = -1;
-    /** {@link #elapsedMillis()} when {@link #remainingWorkMs} was last set. */
+    /** {@link #elapsedMillis()} when the open-loop seed was taken. */
     private long remainingSetAtElapsedMs;
-    /** Run-wide total for notifications: roughly elapsed-at-seed + R0. 0 when never seeded. */
+    /** True once execute has begun (module progress) — seed is frozen for the countdown. */
+    private boolean openLoopLocked;
+    /** Run-wide total for notifications: elapsed-at-seed + R0. 0 when never seeded. */
     private long etaEstimateMs;
     private int modulesComplete;
     private int modulesTotal; // 0 = hide module remaining
@@ -336,45 +338,37 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     /**
-     * Set the header countdown from a <em>remaining wall-work</em> estimate {@code R(t)}.
-     *
-     * <p>Engine residual schedule drives live updates for the whole execute phase (not open-loop
-     * {@code seed − elapsed}). Internally stores run-wide total as {@code elapsed + remaining} so
-     * the painted countdown is {@code total − elapsed ≈ remaining}. Mid-run residual updates are
-     * accepted so the clock tracks reality; count-up elapsed is never reset.
-     *
-     * <ul>
-     * <li>With a positive remaining: show {@code ETA ~remaining} and {@code +elapsed}.
-     * <li>When remaining hits zero while work may still finish: freeze countdown at dim {@code 0s},
-     *     count-up turns yellow.
-     * <li>With no seed ({@code 0} and never seeded): count up only.
-     * </ul>
+     * Seed the open-loop countdown with remaining wall work {@code R0} (ms). Same figure as
+     * {@code jk explain}. After execute starts ({@link #setModuleProgress}), further updates are
+     * ignored so the clock is pure {@code R0 − elapsed} — residual rewrites cannot paper over a
+     * bad seed. Pre-execute re-seeds (post-prepare) are still allowed while unlocked.
      */
     public void setEtaEstimate(long remainingOrTotalMillis) {
         setRemainingWorkEstimate(remainingOrTotalMillis);
     }
 
     /**
-     * Apply a remaining-work estimate {@code R(t)} (ms). Live residual updates replace the previous
-     * remaining; count-up elapsed is unchanged. {@code 0} means no work left (still seeded — paints
-     * {@code ETA 0s}), not "unknown". An initial {@code 0} before any positive seed is ignored.
+     * Apply a seed remaining estimate. {@code 0} before any seed is ignored (unknown). After the
+     * open-loop seed is locked, updates are ignored (including residual mid-run).
      */
     public void setRemainingWorkEstimate(long remainingMillis) {
         long rem = Math.max(0, remainingMillis);
         synchronized (lock) {
+            if (openLoopLocked) return;
             // Unknown → still unknown: ignore a bare zero (engine "no estimate").
             if (remainingWorkMs < 0 && rem == 0) return;
+            // Already seeded: ignore zero (do not clear R0). Positive re-seeds allowed pre-execute.
+            if (remainingWorkMs >= 0 && rem == 0) return;
             long elapsed = elapsedMillis();
             remainingWorkMs = rem;
             remainingSetAtElapsedMs = elapsed;
-            // Notifications: run-wide total ≈ elapsed so far + remaining (stable-ish).
             etaEstimateMs = elapsed + rem;
         }
     }
 
     /**
      * Run-wide total estimate in ms for desktop notifications ({@code 0} = never seeded).
-     * Not the live remaining — use the header clock for that.
+     * Open-loop countdown uses {@link #remainingWorkMs} + set-at elapsed, not this alone.
      */
     public long etaEstimateMs() {
         synchronized (lock) {
@@ -395,6 +389,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         synchronized (lock) {
             this.modulesComplete = Math.max(0, complete);
             this.modulesTotal = Math.max(0, total);
+            // First module activity freezes the open-loop seed (R0 − elapsed).
+            if (this.modulesComplete > 0 && remainingWorkMs >= 0) openLoopLocked = true;
         }
     }
 

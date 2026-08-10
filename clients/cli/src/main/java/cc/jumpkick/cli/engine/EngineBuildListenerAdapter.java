@@ -866,11 +866,11 @@ final class EngineBuildListenerAdapter {
                                 den > 0 ? cc.jumpkick.runtime.WorkspaceProgressTracker.percentOf(num, den) : Double.NaN;
                         listener.onWorkspaceProgress(new cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot(
                                 num, den, pct, phase == null ? "" : phase, mc, mt, rem, r0));
-                        // Prefer remaining-work oracle on the progress event when present.
-                        if (rem >= 0) listener.onEtaEstimate(rem);
+                        // Do not rewrite the open-loop countdown from residual progress events.
                     }
                     case EngineProtocol.PLAN_DONE -> listener.onPlan(buildModulePlans(planByDir, cache));
                     case EngineProtocol.ETA -> {
+                        // Seed / re-seed only (R0). Client locks after execute starts.
                         long rem = Jsonl.longValue(line, "remainingMs", -1);
                         if (rem < 0) rem = Jsonl.longValue(line, "millis", 0);
                         listener.onEtaEstimate(rem);

@@ -279,20 +279,18 @@ class CommandManagerTest {
     }
 
     @Test
-    void residual_eta_updates_after_modules_finish_without_resetting_count_up() {
-        // Remaining-work R(t) may shrink mid-build; count-up stays run-wide from construction.
-        // Between residual emits the client still subtracts wall elapsed from the last R.
+    void open_loop_seed_locks_after_execute_so_residual_cannot_rewrite_the_clock() {
+        // R0 is frozen once a module completes; residual rewrites are ignored (seed quality KPI).
         var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
-        cm.setEtaEstimate(38_000); // R0 remaining at t≈0 → total ≈ 38s
-        cm.setModuleProgress(1, 2);
-        cm.setEtaEstimate(20_000); // residual: 20s left at t≈0 → total ≈ 20s (not locked at 38)
-        // 10s wall later without a new residual → remaining ≈ 10s (20−10), not open-loop 38−10=28.
+        cm.setEtaEstimate(38_000); // R0
+        cm.setModuleProgress(1, 2); // locks open-loop seed
+        cm.setEtaEstimate(20_000); // residual rewrite — ignored
+        // 10s elapsed of locked 38s seed → ~28s remain (not residual 20−10).
         String mid = TestAnsi.strip(cm.renderBuildPlanLines(120, 10_000).get(0));
-        assertThat(mid).contains("ETA ~10s");
+        assertThat(mid).contains("ETA ~28s");
         assertThat(mid).contains("+10s");
-        // Residual hits 0 → freeze countdown at 0s; count-up keeps wall elapsed.
-        cm.setEtaEstimate(0);
+        // Overrun freezes at 0s; count-up keeps wall elapsed.
         String over = TestAnsi.strip(cm.renderBuildPlanLines(120, 40_000).get(0));
         assertThat(over).contains("ETA 0s");
         assertThat(over).contains("+40s");
@@ -304,16 +302,16 @@ class CommandManagerTest {
         cm.nerdfont = false;
         // No seed → +elapsed for the whole command.
         assertThat(TestAnsi.strip(cm.renderBuildPlanLines(120, 12_000).get(0))).contains("+12s");
-        // Positive remaining seeds the dual clock (R=30s at apply time ≈ elapsed 0).
+        // Positive remaining seeds the dual clock (R0=30s at apply time ≈ elapsed 0).
         cm.setEtaEstimate(30_000);
         String seeded = TestAnsi.strip(cm.renderBuildPlanLines(120, 12_000).get(0));
         assertThat(seeded).contains("ETA ~18s");
         assertThat(seeded).contains("+12s");
-        // R(t)=0 is a real residual (done), not "unknown" — countdown freezes at 0s.
+        // Zero before lock is ignored (unknown clear) — seed remains open-loop.
         cm.setEtaEstimate(0);
-        String done = TestAnsi.strip(cm.renderBuildPlanLines(120, 12_000).get(0));
-        assertThat(done).contains("ETA 0s");
-        assertThat(done).contains("+12s");
+        String still = TestAnsi.strip(cm.renderBuildPlanLines(120, 12_000).get(0));
+        assertThat(still).contains("ETA ~18s");
+        assertThat(still).contains("+12s");
     }
 
     @Test

@@ -16,23 +16,23 @@ Status: **normative** for TUI / wire progress. Implementations live under
 
 ## Remaining-work model
 
+**Primary product goal:** open-loop countdown from seed `R0` so users can plan from the
+**start** (`jk explain` / first ETA). Mid-run residual must not redefine success.
+
 ```
 R0            = seed wall ms (jk explain ≡ jk build seed; history floors / margins applied)
 ideal0        = WorkSchedule.schedule(costs)          # weight units, first-ready admission
-weightToMs    = R0 / ideal0                           # bakes floors into residual
-R(t)          = WorkSchedule.schedule(residual) × weightToMs
-completeFrac  = 1 − R(t) / R0
-bar percent   = min(99, 100 × completeFrac)           # until finish → 100
-countdown     = R(t)                                  # live residual, not seed − elapsed
+countdown     = max(0, R0 − elapsed)                  # open-loop after execute starts
+bar (engine)  = optional residual work fraction       # diagnostics / work tracking
+residual R(t) = WorkSchedule.schedule(residual)×scale # does NOT rewrite the client countdown
 ```
 
-| Situation | Residual cost |
-|-----------|----------------|
-| Module not started | full `ModuleWorkCost` |
-| Module in flight | `cost.residual(planNum/planDen)` |
-| Module complete | absent |
-| Task omitted from plan | never in costs |
-| Cache/skip still in plan | TOKEN weight in costs |
+| Situation | Seed cost | Residual (engine bar only) |
+|-----------|-----------|----------------------------|
+| Module not started | full `ModuleWorkCost` | full |
+| Module in flight | full (in R0) | `cost.residual(planNum/planDen)` |
+| Module complete | in R0 as finished wall | absent |
+| Cache/skip still in plan | TOKEN | TOKEN |
 
 ### HARD INVARIANT: `jk explain` ≡ `jk build` seed `R0`
 
@@ -41,7 +41,8 @@ countdown     = R(t)                                  # live residual, not seed 
 | **One function** | Both call `BuildService.estimateEtaMillis` only for `R0`. |
 | **One forecast** | Costs from `TaskForecaster` / `ExplainPlan` only. |
 | **Same concurrency** | `etaConcurrency(...)` matches workspace scheduler clamp. |
-| **Live residual** | Mid-execute `R(t)` reuses the same `WorkSchedule` + costs; scale preserves `R0`. |
+| **Open-loop clock** | Client freezes `R0` when execute starts; residual ETA events are not applied mid-run. |
+| **Seed quality KPI** | `|R0 − execute_wall| / execute_wall` on success (`jk: eta-seed quality …` when serious or `JK_ETA_SEED_LOG=1`). |
 | **Fully-cached fast path** | Empty dirty → `R0 = 0`, skip forecast walk. |
 
 ### Schedule admission (ETA ≡ live)

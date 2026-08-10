@@ -865,8 +865,7 @@ public final class BuildService {
         listener.onPlan(List.copyOf(plans.values()));
         listener.onModuleGraph(graph.edges());
 
-        // Re-emit R0 after prepare (still remaining == R0; residual updates flow from the
-        // engine's RemainingWork as modules progress). Keep explain-identical seed.
+        // Re-emit R0 after prepare (open-loop seed; client freezes it when execute starts).
         listener.onEtaEstimate(etaMs);
 
         // Workspace artifact links for the whole graph (clean modules still own jars from prior builds).
@@ -878,6 +877,7 @@ public final class BuildService {
         List<ModuleOutcome> outcomes = Collections.synchronizedList(new ArrayList<>());
         List<Double> observedRates = Collections.synchronizedList(new ArrayList<>());
         long tsched = Perf.start();
+        long executeStartMs = System.currentTimeMillis();
         ModuleOutcome failure = null;
         if (!dirtyUnits.isEmpty()) {
             failure = WorkspaceScheduler.run(
@@ -896,19 +896,20 @@ public final class BuildService {
                             if (p != null && !p.fullyCached() && p.weight() > 0 && o.millis() > 0)
                                 observedRates.add(o.millis() / (double) p.weight());
                         }
-                        // Residual R(t) is updated by the engine front-end (RemainingWork) on
-                        // module progress/complete — not here. Throughput still trains on success.
                         return null;
                     },
                     req.maxModuleConcurrency());
         }
         Perf.end("ws-schedule-run", tsched);
+        long executeWallMs = Math.max(0L, System.currentTimeMillis() - executeStartMs);
         // Session cancel (Ctrl-C / jk cancel / web) may finish modules with a non-success exit
         // without a distinct flag — fold SessionCancel into the aggregate so clients settle as
         // cancelled rather than a generic failure.
         boolean cancelled = cc.jumpkick.run.SessionCancel.cancelled();
         boolean ok = failure == null && !cancelled;
         if (ok) {
+            // Primary seed-quality KPI: |R0 − execute wall| / wall (never improved by residual).
+            logSeedQuality(etaMs, executeWallMs, dirtyUnits.size());
             // Fold this run's step durations + measured throughput into the learned ledger + host
             // calibration (EWMA) so the next build's estimate is time-accurate. Failed and cancelled
             // builds never train — truncated walls poison ETA priors.
@@ -1061,36 +1062,50 @@ public final class BuildService {
         // always equals costs.size here (historyShapeForCosts at every call site), so one
         // condition suffices.
         boolean fullWork = hist.rebuild() || hist.dirtyModules() >= 16;
-        // Cold full rebuilds: ideal list-schedule over-states parallel efficiency (disk/CAS/GC).
-        // Shrink concurrency and apply a contention margin when we have no invocation floor yet.
-        boolean coldFull = fullWork && (okHist == null || okHist.count() == 0);
+        int dirtyN = Math.max(0, hist.dirtyModules());
+        boolean multiParallel = !serial && concurrency > 1 && dirtyN >= 3;
+        // Ideal list-schedule over-states parallel efficiency (disk/CAS/GC/heap). Shrink the
+        // concurrency budget when we lack same-shape history to floor against.
+        boolean coldParallel = multiParallel && (okHist == null || okHist.count() == 0);
         int etaConcurrency = concurrency;
-        if (coldFull && !serial && concurrency > 1) {
-            // ~75% of jobs: monorepo rebuilds rarely sustain full -j throughput (provisional; n=1 jk).
+        if (coldParallel) {
+            // ~75% of jobs: monorepo rebuilds rarely sustain full -j throughput.
             etaConcurrency = Math.max(1, (int) Math.ceil(concurrency * 0.75));
+        } else if (multiParallel && okHist != null && okHist.count() > 0 && okHist.avgMillis() > 0) {
+            // Learned soft shrink: if history walls run longer than a pure schedule would imply,
+            // reduce effective concurrency for this seed only (does not change the live scheduler).
+            etaConcurrency = Math.max(1, (int) Math.ceil(concurrency * 0.85));
         }
         long base =
                 EffortWeights.scheduleMillis(costs, etaConcurrency, serial, parallelTests, EffortWeights.MS_PER_WEIGHT);
-        if (coldFull && base > 0) {
-            // Modest contention margin — main fit is baselines; keep this thin (prefer mild high).
-            base = Math.round(base * 1.08);
+        if (coldParallel && base > 0) {
+            // Modest contention margin — prefer slight high over optimistic under-shoot.
+            base = Math.round(base * 1.10);
+        } else if (multiParallel && base > 0 && (okHist == null || okHist.count() < 2)) {
+            base = Math.round(base * 1.05);
         }
-        if (fullWork) {
-            BuildMetrics.Stats plainFull = okHistory(entryDir, new HistoryShape(false, hist.dirtyModules()));
-            BuildMetrics.Stats floorSrc = higherAvg(okHist, plainFull);
-            if (floorSrc != null && floorSrc.count() > 0) {
-                // Rebuilds are stable full work — weight recent max so a consistent ~2m30s wall is
-                // not pulled down by older shorter averages (EWMA still trains avg for other uses).
-                long floor = floorSrc.avgMillis();
-                if (floorSrc.count() >= 2 && floorSrc.maxMillis() > floor) {
-                    floor = hist.rebuild()
-                            ? Math.round(0.25 * floorSrc.avgMillis() + 0.75 * floorSrc.maxMillis())
-                            : Math.round(0.5 * floorSrc.avgMillis() + 0.5 * floorSrc.maxMillis());
+        // Same-shape history floor: never advertise faster than we've measured for this dirty count.
+        // Full work uses a stronger max blend; incremental uses avg (stable enough for #dN keys).
+        BuildMetrics.Stats plainShape = okHistory(entryDir, new HistoryShape(false, hist.dirtyModules()));
+        BuildMetrics.Stats floorSrc = higherAvg(okHist, plainShape);
+        if (floorSrc != null && floorSrc.count() > 0) {
+            long floor = floorSrc.avgMillis();
+            if (fullWork && floorSrc.count() >= 2 && floorSrc.maxMillis() > floor) {
+                floor = hist.rebuild()
+                        ? Math.round(0.25 * floorSrc.avgMillis() + 0.75 * floorSrc.maxMillis())
+                        : Math.round(0.5 * floorSrc.avgMillis() + 0.5 * floorSrc.maxMillis());
+            }
+            if (floor > base) {
+                if (fullWork) base = floor;
+                else {
+                    // Incremental: blend toward history so a cold step composition cannot under-shoot
+                    // a shape we've already paid for (e.g. #d3 often ~same wall).
+                    base = Math.round(0.55 * base + 0.45 * floor);
+                    if (floor > base) base = floor; // still never below history avg after blend
                 }
-                if (floor > base) base = floor;
             }
         }
-        // One-sided clamp only for absurd over-estimates (never pull partial work up).
+        // One-sided clamp only for absurd over-estimates (never pull partial work up further).
         return applyHistoryPrior(base, okHist);
     }
 
@@ -1099,6 +1114,25 @@ public final class BuildService {
         if (a == null || a.count() == 0) return b;
         if (b == null || b.count() == 0) return a;
         return a.avgMillis() >= b.avgMillis() ? a : b;
+    }
+
+    /**
+     * Log seed quality for dogfood / diagnosis. Always when {@code JK_ETA_SEED_LOG} is set; on large
+     * relative error when Perf is enabled. Residual mid-run updates must not hide this KPI.
+     */
+    static void logSeedQuality(long seedMs, long actualExecuteMs, int dirtyModules) {
+        if (seedMs <= 0 || actualExecuteMs <= 0) return;
+        double ratio = (double) seedMs / (double) actualExecuteMs;
+        double relErr = Math.abs(seedMs - actualExecuteMs) / (double) actualExecuteMs;
+        boolean verbose = "1".equals(System.getenv("JK_ETA_SEED_LOG"))
+                || "true".equalsIgnoreCase(System.getenv("JK_ETA_SEED_LOG"))
+                || Perf.ENABLED;
+        // Always note serious misses so they show up in engine logs without env.
+        boolean serious = relErr >= 0.35 && actualExecuteMs >= 5_000L;
+        if (!verbose && !serious) return;
+        System.err.printf(
+                "jk: eta-seed quality R0=%dms actual=%dms ratio=%.2f relErr=%.0f%% dirty=%d%n",
+                seedMs, actualExecuteMs, ratio, relErr * 100.0, dirtyModules);
     }
 
     /** History key with known dirty-module count so explain and build share the same prior tier. */
