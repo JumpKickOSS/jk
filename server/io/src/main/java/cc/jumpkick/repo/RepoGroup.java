@@ -218,7 +218,12 @@ public final class RepoGroup {
      * restrict which remotes are eligible at all.
      */
     public List<String> availableVersions(Coordinate coord) throws IOException, InterruptedException {
-        String key = repoIdentity + "|" + coord.group() + ":" + coord.artifact();
+        // The session's offline flag changes what MavenRepo.availableVersions even measures
+        // (local store listing vs remote metadata), so it is part of the question: an --offline
+        // session's [] must not poison an online session for the TTL, nor may network-derived
+        // lists leak into offline resolves.
+        boolean offline = cc.jumpkick.config.SessionContext.current().config().offlineOr(false);
+        String key = (offline ? "offline|" : "online|") + repoIdentity + "|" + coord.group() + ":" + coord.artifact();
         // Force means the caller does not trust any cached view of what exists.
         boolean memoable = !MavenMetadataCache.forceRevalidate();
         if (memoable) {

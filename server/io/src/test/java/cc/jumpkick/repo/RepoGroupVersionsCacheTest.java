@@ -4,11 +4,14 @@ package cc.jumpkick.repo;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -106,6 +109,50 @@ class RepoGroupVersionsCacheTest {
         // the specialist, so only 2.0 is a legal answer.
         assertThat(bound.availableVersions(Coordinate.of("com.example", "lib", "0")))
                 .containsExactly("2.0");
+    }
+
+    @Test
+    void offline_and_online_sessions_never_share_a_memoized_answer(@TempDir Path tmp) throws Exception {
+        Path repoDir = tmp.resolve("repo");
+        writeMeta(repoDir, "com.example", "lib", "1.0", "2.0");
+        Cas cas = new Cas(tmp.resolve("cas"));
+        RepoGroup group = new RepoGroup(List.of(new MavenRepo("local", repoDir.toUri(), new Http(), cas)));
+        Coordinate coord = Coordinate.of("com.example", "lib", "0");
+
+        try {
+            // Offline first: nothing mirrored into the named repo store yet, so [] is the honest
+            // offline answer — and it gets memoized under the offline key.
+            goOffline();
+            assertThat(group.availableVersions(coord)).isEmpty();
+        } finally {
+            SessionContext.reset();
+        }
+
+        // An online session in the same process must not be served that memoized [].
+        assertThat(group.availableVersions(coord)).containsExactlyInAnyOrder("1.0", "2.0");
+
+        try {
+            // Nor may the network-derived list leak back into a later offline session.
+            goOffline();
+            assertThat(group.availableVersions(coord)).isEmpty();
+        } finally {
+            SessionContext.reset();
+        }
+    }
+
+    private static void goOffline() {
+        SessionContext.installConfig(new JkConfig(
+                Optional.empty(),
+                Optional.of(true),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty()));
     }
 
     private static void writeMeta(Path root, String group, String artifact, String... versions) throws Exception {
