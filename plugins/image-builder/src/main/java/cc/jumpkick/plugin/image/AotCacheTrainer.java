@@ -71,13 +71,9 @@ final class AotCacheTrainer {
 
     /** Why an AOT cache cannot be trained for this image, or null when it can. */
     static String unsupportedReason(ImageBuilder.Plan plan) {
-        if (plan.hasAppTree()) return null;
-        if (plan.classesDir() != null && !BootLayout.isBootJar(plan.mainJar())) {
-            return "this module's image is an exploded-classes layout and its main artifact is not a"
-                    + " Spring Boot jar, so there is nothing to unpack into a trainable shape. A CDS"
-                    + " dump refuses any classpath entry that is a directory (JDK-8329980, Won't"
-                    + " Fix)";
-        }
+        // The runtime probe applies to EVERY layout — an app tree trains in a container exactly
+        // like a jar layout when the host cannot execute the image's JVM, and skipping the probe
+        // used to surface as a raw `Cannot run program "docker"` mid-train (JK-1759).
         if (containerRuntime(plan.config().dockerExecutable()) == null
                 && !BaseJre.hostCanExecute(plan.config().platforms())) {
             return "this host can neither run the image's JVM directly (it builds for "
@@ -87,6 +83,13 @@ final class AotCacheTrainer {
                     + ") nor find a container runtime (docker, podman, nerdctl). The cache is only"
                     + " valid for the exact JVM build that produced it, so training needs one or the"
                     + " other";
+        }
+        if (plan.hasAppTree()) return null;
+        if (plan.classesDir() != null && !BootLayout.isBootJar(plan.mainJar())) {
+            return "this module's image is an exploded-classes layout and its main artifact is not a"
+                    + " Spring Boot jar, so there is nothing to unpack into a trainable shape. A CDS"
+                    + " dump refuses any classpath entry that is a directory (JDK-8329980, Won't"
+                    + " Fix)";
         }
         return null;
     }
@@ -316,12 +319,51 @@ final class AotCacheTrainer {
     /** {@code <runtime> run --rm -v <staging>:/app -w /app <base>} — everything before the java command. */
     private static List<String> containerPrefix(String runtime, Path staging, String base, String name) {
         List<String> cmd = new ArrayList<>(List.of(runtime, "run", "--rm", "--name", name));
+        // Rootful docker writes app.aot/app.aotconf into the bind mount as root:root — the
+        // follow-up setLastModifiedTime/delete then fails AFTER a successful training run, and
+        // the root-owned staging dir breaks the next build's cleanup (JK-1760). Rootless podman
+        // and rootless docker map container-root to the invoking user, so --user there would
+        // remap through subuids and break instead — only rootful docker gets the flag.
+        if (rootfulDocker(runtime)) {
+            String user = unixUserGroup(staging);
+            if (user != null) cmd.addAll(List.of("--user", user));
+        }
         // :z relabels for SELinux and is meaningless (and rejected) elsewhere.
         String mount = staging.toAbsolutePath() + ":/app";
         cmd.addAll(List.of("-v", isSelinux() ? mount + ":z" : mount));
         cmd.addAll(List.of("-w", "/app"));
         cmd.add(base);
         return cmd;
+    }
+
+    /** True for a docker CLI fronting a rootful daemon (probe fails → assume rootful). */
+    private static boolean rootfulDocker(String runtime) {
+        String name = Path.of(runtime).getFileName().toString();
+        if (!name.startsWith("docker")) return false;
+        try {
+            Process p = new ProcessBuilder(runtime, "info", "--format", "{{.SecurityOptions}}")
+                    .redirectErrorStream(true)
+                    .start();
+            String out = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+            return !out.contains("rootless");
+        } catch (IOException e) {
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return true;
+        }
+    }
+
+    /** {@code uid:gid} of the invoking user (owner of {@code probe}), or null off POSIX. */
+    private static String unixUserGroup(Path probe) {
+        try {
+            Object uid = Files.getAttribute(probe, "unix:uid");
+            Object gid = Files.getAttribute(probe, "unix:gid");
+            return uid + ":" + gid;
+        } catch (IOException | UnsupportedOperationException e) {
+            return null;
+        }
     }
 
     /** Stamp every staged file so the training run records the times the image will carry. */
