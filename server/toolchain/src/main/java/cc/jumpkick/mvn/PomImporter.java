@@ -166,7 +166,7 @@ public final class PomImporter {
         Map<String, String> siblingByGa = siblingGaIndex(rootJkBuild, moduleBuilds.values());
         Map<String, JkBuild> rewritten = new LinkedHashMap<>();
         for (var e : moduleBuilds.entrySet()) {
-            rewritten.put(e.getKey(), rewriteSiblingDeps(e.getValue(), siblingByGa, report, e.getKey()));
+            rewritten.put(e.getKey(), rewriteSiblingDeps(e.getValue(), siblingByGa));
         }
         return new WorkspaceImportResult(rootJkBuild, rewritten, report.build());
     }
@@ -190,8 +190,7 @@ public final class PomImporter {
      * Convert deps whose GA matches a workspace sibling into workspace edges. Maven
      * {@code <type>test-jar</type>} becomes {@code kind = "tests"} (Mill testModuleDeps).
      */
-    private static JkBuild rewriteSiblingDeps(
-            JkBuild module, Map<String, String> siblingByGa, ImportReport.Builder report, String modulePath) {
+    private static JkBuild rewriteSiblingDeps(JkBuild module, Map<String, String> siblingByGa) {
         Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
         boolean changed = false;
         for (Scope scope : Scope.values()) {
@@ -208,20 +207,10 @@ public final class PomImporter {
                 }
                 changed = true;
                 // Library handle matches the sibling project name so `{ workspace = true }` resolves.
+                // mapDependencies already forced tests-kind deps into a test scope, so kind is
+                // carried as-is — never emitted where the parser would reject it.
                 Dependency ws = Dependency.workspace(siblingName);
-                // test-jar type is carried only until rewrite; we detect it via a side channel —
-                // toDependency already dropped type. Re-detect from library suffix isn't reliable.
-                // Import marks tests kind via mapDependencies → toDependency when type=test-jar.
                 if (d.isTestsKind()) {
-                    if (scope != Scope.TEST && scope != Scope.TEST_DEV) {
-                        report.warning("["
-                                + modulePath
-                                + "] sibling test-jar dep "
-                                + d.module()
-                                + " is in scope "
-                                + scope.canonical()
-                                + "; emitting kind=tests under [test-dependencies] semantics");
-                    }
                     ws = ws.withKind(DependencyKind.TESTS);
                 }
                 out.add(ws);
@@ -444,7 +433,20 @@ public final class PomImporter {
                         + " Run `mvn help:effective-pom` and re-import.");
             }
             Scope scope = mapScope(dep.scope());
-            byScope.computeIfAbsent(scope, s -> new ArrayList<>()).add(toDependency(dep));
+            Dependency d = toDependency(dep);
+            // kind=tests is only legal under [test-dependencies]/[test-dev-dependencies]
+            // (JkBuildParser.applyDependencyKind), so a test-jar dep declared in another Maven
+            // scope moves to TEST — otherwise the emitted jk.toml rejects its own `jk lock`.
+            if (d.isTestsKind() && scope != Scope.TEST && scope != Scope.TEST_DEV) {
+                report.warning("`<type>test-jar</type>` on "
+                        + dep.module()
+                        + " is in Maven scope `"
+                        + (dep.scope() == null || dep.scope().isBlank() ? "compile" : dep.scope())
+                        + "`; jk models test-jar deps as kind=tests, which is only legal in test"
+                        + " scopes — moved to [test-dependencies].");
+                scope = Scope.TEST;
+            }
+            byScope.computeIfAbsent(scope, s -> new ArrayList<>()).add(d);
         }
         // dependencyManagement: BOM imports → PLATFORM; bare version pins → warning.
         for (Pom.Dep managed : pom.managedDependencies()) {
@@ -530,10 +532,13 @@ public final class PomImporter {
         return d;
     }
 
-    /** Maven {@code <type>test-jar</type>} or the conventional {@code tests} classifier. */
+    /**
+     * Maven {@code <type>test-jar</type>} only. A bare {@code tests} classifier (default jar type)
+     * is NOT mapped to kind=tests — classifiers are their own (unimplemented) axis, and stamping
+     * kind on them produced jk.toml that the parser rejects outside test scopes.
+     */
     private static boolean isTestJar(Pom.Dep dep) {
-        if (dep.type() != null && "test-jar".equalsIgnoreCase(dep.type())) return true;
-        return dep.classifier() != null && "tests".equalsIgnoreCase(dep.classifier());
+        return dep.type() != null && "test-jar".equalsIgnoreCase(dep.type());
     }
 
     // --- repositories -------------------------------------------------------
