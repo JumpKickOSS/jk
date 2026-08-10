@@ -162,7 +162,10 @@ public final class SelfNukeCommand implements CliCommand {
 
         int exit = Exit.SUCCESS;
         if (wantCache) {
-            int c = CacheCommand.runNuke(dirs.cacheDir(), dryRun, global, true);
+            // Engines were stopped above for STATE/STORE — the hosted purge would boot a fresh
+            // one only for the STATE rows below to delete its state dir out from under it.
+            boolean enginesStopped = !dryRun && (selected.contains(Target.STATE) || wantStore);
+            int c = CacheCommand.runNuke(dirs.cacheDir(), dryRun, global, true, enginesStopped);
             if (c != 0) exit = c;
         }
         if (wantStore) {
