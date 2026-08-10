@@ -143,17 +143,39 @@ public final class KmpRedirects {
         }
     }
 
-    /** True when the POM head contains Gradle's published-with-gradle-metadata marker. */
+    /** Chunk size for the marker scan; the marker sits in the first few KB of most POMs. */
+    private static final int MARKER_SCAN_CHUNK = 8192;
+
+    /** Hard cap on how far the preamble scan will go on a pathological file. */
+    private static final int MARKER_SCAN_MAX = 256 * 1024;
+
+    /**
+     * True when the POM head contains Gradle's published-with-gradle-metadata marker. Reads full
+     * chunks via {@code readNBytes} (a bare {@code read} may return fewer bytes than available and
+     * silently drop a redirect) and carries an overlap across chunk boundaries so a straddling
+     * marker is still seen. The marker comment always precedes the POM's content, so scanning
+     * stops one chunk after the root element appears — a long license header pushes the marker
+     * past the first chunk, but a plain-Maven POM still costs at most one extra chunk.
+     */
     static boolean pomHasGradleMetadataMarker(java.nio.file.Path pomPath) throws IOException {
-        // Marker sits in the first few KB of every Gradle-published POM.
-        final int headBytes = 8192;
-        byte[] buf = new byte[headBytes];
-        int n;
+        // Overlap enough to reassemble a marker split across a chunk boundary (ASCII marker:
+        // byte-aligned regardless of surrounding multi-byte sequences).
+        final int overlap = GradleModuleMetadata.POM_MARKER.length() - 1;
         try (var in = Files.newInputStream(pomPath)) {
-            n = in.read(buf);
+            String carry = "";
+            boolean sawRoot = false;
+            int scanned = 0;
+            while (scanned < MARKER_SCAN_MAX) {
+                byte[] buf = in.readNBytes(MARKER_SCAN_CHUNK);
+                if (buf.length == 0) return false;
+                scanned += buf.length;
+                String text = carry + new String(buf, StandardCharsets.UTF_8);
+                if (text.contains(GradleModuleMetadata.POM_MARKER)) return true;
+                if (sawRoot) return false; // marker precedes content; one chunk past <project is enough
+                sawRoot = text.contains("<project");
+                carry = text.length() <= overlap ? text : text.substring(text.length() - overlap);
+            }
+            return false;
         }
-        if (n <= 0) return false;
-        String head = new String(buf, 0, n, StandardCharsets.UTF_8);
-        return head.contains(GradleModuleMetadata.POM_MARKER);
     }
 }
