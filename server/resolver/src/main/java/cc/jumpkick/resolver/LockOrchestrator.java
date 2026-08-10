@@ -583,6 +583,9 @@ public final class LockOrchestrator {
         if (sharedSource != null && sharedPomBuilder != null) {
             sharedSource.setLockedVersionPrefs(prefs);
             sharedSource.setSnapshotPackages(snapshotModules(roots));
+            // JK-1787: exclusion state is per-graph; main's clean paths must not bleed into
+            // the test/processor solves.
+            sharedSource.resetSolveScopedState();
             PubGrubResolver r = new PubGrubResolver(sharedSource, sharedPomBuilder, kmp).withOnDecision(liveGraph);
             if (diagnosticPalette != null) r.palette = diagnosticPalette;
             return r.resolve(roots);

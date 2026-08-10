@@ -188,6 +188,20 @@ public final class MavenPackageSource implements PackageSource {
         versionCache.clear();
     }
 
+    /**
+     * Reset per-solve expansion state before another scope solve on this shared source. Exclusion
+     * registrations (and the filtered-at-expansion records that drive the stale-expansion
+     * fixpoint) are facts about the <em>current</em> graph's paths: with intersection semantics a
+     * clean main-scope path collapses a child's exclusion set to empty, and carrying that into the
+     * test/processor solve would over-include modules that every path in the new graph excludes.
+     * Version and raw-POM-edge caches survive — raw edges are cached before exclusion filtering,
+     * so they are graph-independent.
+     */
+    public void resetSolveScopedState() {
+        exclusionsWhenExpanding.clear();
+        filteredAtExpansion.clear();
+    }
+
     /** True when {@code pkg} was requested with the {@code snapshot} selector. */
     private boolean isSnapshotPackage(String pkg) {
         if (snapshotPackages.isEmpty()) return false;
