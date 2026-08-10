@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.surface;
 
+import static cc.jumpkick.surface.DynamicSurface.Kind.JNI_MEMBER;
 import static cc.jumpkick.surface.DynamicSurface.Kind.JNI_TYPE;
 import static cc.jumpkick.surface.DynamicSurface.Kind.PROXY_INTERFACE;
 import static cc.jumpkick.surface.DynamicSurface.Kind.REFLECTIVE_MEMBER;
@@ -63,15 +64,15 @@ public final class NativeImageMetadata {
         String file = entryName.substring(entryName.lastIndexOf('/') + 1);
         List<DynamicSurface.Entry> out = new ArrayList<>();
         switch (file) {
-            case "reflect-config.json" -> reflection(root, origin, REFLECTIVE_TYPE, out);
-            case "jni-config.json" -> reflection(root, origin, JNI_TYPE, out);
-            case "serialization-config.json" -> reflection(root, origin, SERIALIZATION_TYPE, out);
+            case "reflect-config.json" -> reflection(root, origin, REFLECTIVE_TYPE, REFLECTIVE_MEMBER, out);
+            case "jni-config.json" -> reflection(root, origin, JNI_TYPE, JNI_MEMBER, out);
+            case "serialization-config.json" -> reflection(root, origin, SERIALIZATION_TYPE, null, out);
             case "proxy-config.json" -> proxies(root, origin, out);
             case "resource-config.json" -> resources(root, origin, out);
             case "reachability-metadata.json" -> {
-                reflection(Json.list(root, "reflection"), origin, REFLECTIVE_TYPE, out);
-                reflection(Json.list(root, "jni"), origin, JNI_TYPE, out);
-                reflection(Json.list(root, "serialization"), origin, SERIALIZATION_TYPE, out);
+                reflection(Json.list(root, "reflection"), origin, REFLECTIVE_TYPE, REFLECTIVE_MEMBER, out);
+                reflection(Json.list(root, "jni"), origin, JNI_TYPE, JNI_MEMBER, out);
+                reflection(Json.list(root, "serialization"), origin, SERIALIZATION_TYPE, null, out);
                 proxies(Json.list(root, "reflection-proxies"), origin, out);
                 resources(Json.get(root, "resources"), origin, out);
             }
@@ -82,10 +83,18 @@ public final class NativeImageMetadata {
 
     /**
      * {@code [{"name": …, "fields": [{"name": …}], "methods": [{"name": …}]}]}. A type asking only
-     * for named members becomes a member entry; anything broader keeps the whole type.
+     * for named members becomes a member entry of {@code memberKind} — which carries the
+     * originating section, so a jni-config member round-trips into {@code jni}, not
+     * {@code reflection} (JK-1779); anything broader keeps the whole type. A null
+     * {@code memberKind} never demotes: serialization registration is per-type in GraalVM's
+     * schema, so named members still register the type itself.
      */
     private static void reflection(
-            Object root, String origin, DynamicSurface.Kind kind, List<DynamicSurface.Entry> out) {
+            Object root,
+            String origin,
+            DynamicSurface.Kind typeKind,
+            DynamicSurface.Kind memberKind,
+            List<DynamicSurface.Entry> out) {
         if (!(root instanceof List<?> items)) return;
         for (Object item : items) {
             String name = Json.str(item, "name");
@@ -96,7 +105,8 @@ public final class NativeImageMetadata {
             for (Object field : Json.list(item, "fields")) addName(field, DynamicSurface::fieldMember, members);
             for (Object method : Json.list(item, "methods")) addName(method, DynamicSurface::methodMember, members);
 
-            boolean wholeType = members.isEmpty()
+            boolean wholeType = memberKind == null
+                    || members.isEmpty()
                     || isTrue(item, "allDeclaredFields")
                     || isTrue(item, "allDeclaredMethods")
                     || isTrue(item, "allDeclaredConstructors")
@@ -106,8 +116,8 @@ public final class NativeImageMetadata {
 
             out.add(
                     wholeType
-                            ? DynamicSurface.Entry.type(kind, name, origin)
-                            : new DynamicSurface.Entry(REFLECTIVE_MEMBER, name, members, origin));
+                            ? DynamicSurface.Entry.type(typeKind, name, origin)
+                            : new DynamicSurface.Entry(memberKind, name, members, origin));
         }
     }
 

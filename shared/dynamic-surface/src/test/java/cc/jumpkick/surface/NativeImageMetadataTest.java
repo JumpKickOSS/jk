@@ -111,6 +111,46 @@ class NativeImageMetadataTest {
     }
 
     @Test
+    void jni_members_round_trip_into_the_jni_section() {
+        // A jni-config entry naming members must not drift into the reflection section: the
+        // native image would then fail the JNI lookup the training run observed (JK-1779).
+        String body = """
+                [{"name":"com.acme.Native","methods":[{"name":"callback"}]}]
+                """;
+
+        DynamicSurface surface = NativeImageMetadata.parse("x/jni-config.json", body, "lib");
+
+        assertThat(surface.entries()).singleElement().satisfies(e -> {
+            assertThat(e.kind()).isEqualTo(DynamicSurface.Kind.JNI_MEMBER);
+            assertThat(e.members()).containsExactly("m:callback");
+        });
+        String json = ReachabilityMetadataEmitter.emit(surface);
+        assertThat(json)
+                .contains("\"jni\"")
+                .contains("\"methods\":[{\"name\":\"callback\"}]")
+                .doesNotContain("\"reflection\"");
+        assertThat(KeepRuleEmitter.emit(surface)).contains("-keep class com.acme.Native { *** callback(...); }");
+    }
+
+    @Test
+    void serialization_members_still_register_the_type_for_serialization() {
+        // Serialization registration is per-type in GraalVM's schema; named members must not
+        // demote the entry out of the serialization section (JK-1779).
+        String body = """
+                [{"name":"com.acme.S","fields":[{"name":"state"}]}]
+                """;
+
+        DynamicSurface surface = NativeImageMetadata.parse("x/serialization-config.json", body, "lib");
+
+        assertThat(surface.of(DynamicSurface.Kind.SERIALIZATION_TYPE))
+                .extracting(Entry::name)
+                .containsExactly("com.acme.S");
+        assertThat(ReachabilityMetadataEmitter.emit(surface))
+                .contains("\"serialization\"")
+                .doesNotContain("\"reflection\"");
+    }
+
+    @Test
     void a_malformed_file_is_skipped_rather_than_failing_the_build() {
         assertThat(NativeImageMetadata.parse("x/reflect-config.json", "{ not json", "lib")
                         .entries())

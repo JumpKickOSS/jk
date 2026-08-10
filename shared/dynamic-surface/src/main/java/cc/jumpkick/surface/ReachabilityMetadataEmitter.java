@@ -33,6 +33,7 @@ public final class ReachabilityMetadataEmitter {
                 case REFLECTIVE_TYPE, SERVICE_IMPLEMENTATION -> reflection.add(typeObject(entry.name(), true));
                 case REFLECTIVE_MEMBER -> reflection.add(memberObject(entry));
                 case JNI_TYPE -> jni.add(typeObject(entry.name(), true));
+                case JNI_MEMBER -> jni.add(memberObject(entry));
                 case SERIALIZATION_TYPE -> serialization.add(typeObject(entry.name(), false));
                 case RESOURCE -> resources.add("{\"glob\":" + quote(entry.name()) + "}");
                 case PROXY_INTERFACE -> proxies.add("{\"interfaces\":[" + quote(entry.name()) + "]}");

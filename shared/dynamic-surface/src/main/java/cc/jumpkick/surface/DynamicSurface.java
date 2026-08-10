@@ -58,7 +58,13 @@ public record DynamicSurface(List<Entry> entries) {
         /** An implementation named by a service file or marker index. */
         SERVICE_IMPLEMENTATION,
         /** The type is reached from native code. */
-        JNI_TYPE
+        JNI_TYPE,
+        /**
+         * A specific field or method is accessed from native code; {@code members} names it.
+         * Distinct from {@link #REFLECTIVE_MEMBER} so the entry lands in the {@code jni} section
+         * of reachability metadata, not {@code reflection} (JK-1779).
+         */
+        JNI_MEMBER
     }
 
     /**

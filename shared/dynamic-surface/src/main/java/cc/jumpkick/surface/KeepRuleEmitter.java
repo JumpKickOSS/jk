@@ -35,7 +35,7 @@ public final class KeepRuleEmitter {
         return switch (entry.kind()) {
             // A resource is not a class; R8 passes non-class entries through untouched.
             case RESOURCE -> null;
-            case REFLECTIVE_MEMBER -> {
+            case REFLECTIVE_MEMBER, JNI_MEMBER -> {
                 if (entry.members().isEmpty()) yield "-keep class " + entry.name() + " { *; }";
                 // A member spec needs a type: `*** name;` is any field of that name, and
                 // `*** name(...);` any method. Tagged members (`f:`/`m:`) emit the one form they
