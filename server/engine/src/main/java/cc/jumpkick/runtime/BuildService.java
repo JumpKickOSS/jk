@@ -792,59 +792,44 @@ public final class BuildService {
             else cleanUnits.add(u);
         }
 
-        // ---- Remaining-work seed R0 (HARD INVARIANT: same estimateEtaMillis as `jk explain`) ----
-        // Fully cached: skip TaskForecaster entirely (was ~1–2s on monorepos). R0 = 0.
-        // When there is work: one forecast walk (reuse preflight modules when present).
-        // Emit WorkModel so the engine can drive residual R(t) + bar from the same oracle.
-        long etaMs = 0;
-        if (!dirtyUnits.isEmpty()) {
-            ExplainPlan etaPlan;
-            boolean distrust = SessionContext.current().config().forceOr(false)
-                    || SessionContext.current().config().rebuildOr(false);
-            if (preflight != null && !preflight.modules().isEmpty()) {
-                etaPlan = new ExplainPlan(preflight.modules(), graph.edges(), graph.maxReadyWidth(), List.of());
-            } else {
-                if (distrust) {
-                    // --force/--redo: every step runs by definition — the TaskForecaster walk's
-                    // per-step verdicts would all say RUN, yet its content prediction hashes
-                    // sources+classpath for every module (a multi-second stall on monorepos).
-                    // Ship a shape-only plan; etaCostsFromExplainPlan's distrust fallback prices
-                    // each module from its full plan shape.
-                    etaPlan = fullyCachedExplainPlan(graph);
-                } else {
-                    etaPlan = explainFromGraph(graph, req.cache(), req.skipTests());
-                }
-                if (req.dirtyHint() != null) {
-                    // Selection build (-m / --affected-since): the seed must price exactly the
-                    // scheduled set — the whole-graph forecast would bill dirty modules this
-                    // build will never run.
-                    etaPlan = restrictToSelection(etaPlan, dirty);
-                }
-            }
-            List<EffortWeights.ModuleCost> costs = etaCostsFromExplainPlan(
-                    etaPlan, req.cache(), req.workers(), req.jdksDir(), req.profile(), req.skipTests(), req.verbose());
-            int concurrency = etaConcurrency(
-                    etaPlan.maxReadyWidth(), req.workers(), parallelTests, req.maxModuleConcurrency());
-            boolean serialEta = concurrency <= 1;
-            etaMs = estimateEtaMillis(
-                    etaPlan,
-                    req.entryDir(),
-                    req.cache(),
-                    req.workers(),
-                    req.jdksDir(),
-                    req.profile(),
-                    req.skipTests(),
-                    req.verbose(),
-                    parallelTests,
-                    req.maxModuleConcurrency());
-            // Preserve dirtyUnits topo order in costs for first-ready schedule parity.
-            List<ModuleWorkCost> ordered = orderCostsLikeUnits(dirtyUnits, costs);
-            listener.onWorkModel(WorkModel.of(etaMs, concurrency, serialEta, parallelTests, ordered));
-            listener.onEtaEstimate(etaMs); // remaining == R0 at t=0
+        // ---- R0 seed: SAME path as jk explain (HARD INVARIANT) ----
+        // One ExplainPlan + estimateEtaMillis — never a second divergent cost assembly.
+        // When preflight already walked TaskForecaster, reuse those modules; otherwise explain.
+        ExplainPlan etaPlan;
+        boolean distrust = SessionContext.current().config().forceOr(false)
+                || SessionContext.current().config().rebuildOr(false);
+        if (preflight != null && !preflight.modules().isEmpty()) {
+            // Same TaskForecaster walk already done for dirty-set — do not re-walk.
+            etaPlan = new ExplainPlan(preflight.modules(), graph.edges(), graph.maxReadyWidth(), List.of());
+        } else if (dirtyUnits.isEmpty() && !distrust) {
+            // Fully cached — same as explain's empty-memo fast path.
+            etaPlan = fullyCachedExplainPlan(graph);
         } else {
-            listener.onWorkModel(WorkModel.of(0, 1, true, parallelTests, List.of()));
-            listener.onEtaEstimate(0);
+            // Memo hit with dirty set but no modules, or force/rebuild: one explain walk.
+            etaPlan = explainFromGraph(graph, req.cache(), req.skipTests());
         }
+        if (req.dirtyHint() != null) {
+            etaPlan = restrictToSelection(etaPlan, dirty);
+        }
+        long etaMs = estimateEtaMillis(
+                etaPlan,
+                req.entryDir(),
+                req.cache(),
+                req.workers(),
+                req.jdksDir(),
+                req.profile(),
+                req.skipTests(),
+                req.verbose(),
+                parallelTests,
+                req.maxModuleConcurrency());
+        int concurrency =
+                etaConcurrency(etaPlan.maxReadyWidth(), req.workers(), parallelTests, req.maxModuleConcurrency());
+        boolean serialEta = concurrency <= 1;
+        List<EffortWeights.ModuleCost> costs = etaCostsFromExplainPlan(
+                etaPlan, req.cache(), req.workers(), req.jdksDir(), req.profile(), req.skipTests(), req.verbose());
+        List<ModuleWorkCost> ordered = orderCostsLikeUnits(dirtyUnits, costs);
+        listener.onWorkModel(WorkModel.of(etaMs, concurrency, serialEta, parallelTests, ordered));
+        listener.onEtaEstimate(etaMs);
 
         long tp = Perf.start();
         int nPrepare = dirtyUnits.size();
@@ -1047,8 +1032,11 @@ public final class BuildService {
             HistoryShape shape) {
         HistoryShape hist = shape == null ? historyShape() : shape;
         if (costs == null || costs.isEmpty()) {
-            // No dirty work modeled — only then fall back to a coarse whole-build average.
-            return applyHistoryPrior(0, okHistory(entryDir, hist));
+            // No material dirty work in the forecast — ETA is 0 (cache verify only).
+            // NEVER fall back to whole-build history here: that produced a phantom multi-minute
+            // seed whenever every step was CACHED / bookkeeping-only, while `jk explain` hid the
+            // lie behind "Fully Cached / <1s". History floors apply only when there is real work.
+            return 0;
         }
         // Always convert at MS_PER_WEIGHT. Costs are priced either as absolute step walls
         // (flatWeight(avgMs) round-trips with ×150) or residual/static units trained in that same

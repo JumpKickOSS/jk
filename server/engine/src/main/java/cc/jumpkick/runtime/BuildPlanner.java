@@ -5126,7 +5126,8 @@ public final class BuildPlanner {
         return extras;
     }
 
-    private static PluginBuild.Declarations pluginDeclarationsFor(JkBuild project, BuildLayout layout, Path cache)
+    /** Package-private for {@link TaskForecaster} package-jar key parity with the live step. */
+    static PluginBuild.Declarations pluginDeclarationsFor(JkBuild project, BuildLayout layout, Path cache)
             throws java.io.IOException, InterruptedException {
         var active = PluginBuild.activeCodePlugin(project, layout.moduleRoot());
         if (active.isEmpty()) return null;
@@ -5155,8 +5156,9 @@ public final class BuildPlanner {
      * Cache-key token covering the contributed dirs. Order-sensitive on purpose: contributions
      * merge first-wins, so declaration order is part of what the packaged output depends on.
      */
-    private static String contributionsToken(List<Path> contributed) throws java.io.IOException {
-        if (contributed.isEmpty()) return "";
+    /** Package-private for {@link TaskForecaster} package-jar key parity. */
+    static String contributionsToken(List<Path> contributed) throws java.io.IOException {
+        if (contributed == null || contributed.isEmpty()) return "";
         StringBuilder sb = new StringBuilder();
         for (Path dir : contributed) {
             sb.append(cc.jumpkick.task.ClasspathFingerprint.entry(dir)).append('\n');

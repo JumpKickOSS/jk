@@ -454,8 +454,15 @@ public final class TaskForecaster {
                     }
                 }
                 String classesTok = classesTokenForPackage(dir, compact, layout, project, actionCache, compileMainKey);
+                // Must match BuildPlanner.packageJarStep tokens exactly — omitting contrib: made
+                // every module forecast permanent "repackage", cascade depDirty, and price a full
+                // monorepo rebuild (~3.5m) while live builds hit the package cache and SKIPPED.
+                PluginBuild.Declarations pkgDecls = BuildPlanner.pluginDeclarationsFor(project, layout, cache);
+                List<Path> contributed = BuildPlanner.existingContributedDirs(pkgDecls, layout);
+                String contribTok = BuildPlanner.contributionsToken(contributed);
                 List<String> tokens = List.of(
                         "classes:" + classesTok,
+                        "contrib:" + contribTok,
                         "main:" + (mainClass == null ? "" : mainClass),
                         "sbom:" + (sbom == null ? "" : cc.jumpkick.util.Hashing.sha256Hex(sbom)),
                         "manifest:" + project.manifest());
