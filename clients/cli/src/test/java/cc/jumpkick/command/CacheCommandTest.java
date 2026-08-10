@@ -72,20 +72,50 @@ class CacheCommandTest {
     }
 
     @Test
-    void usage_reports_cache_tier_including_cache_cas(@TempDir Path tempDir) throws Exception {
+    void usage_reports_content_classes_and_full_tree_total(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
-        // Cache CAS under the same root is part of the cache tier (not the artifact store report).
-        writeBlob(cache.resolve("sha256/ab/cd/deadbeef"), "hello".getBytes(StandardCharsets.UTF_8));
-        writeBlob(cache.resolve("actions/keys/some-task"), new byte[2048]);
+        // Class file blob via compile-main action key (64-char hex CAS digest).
+        String classSha = "ab" + "cd" + "e".repeat(60);
+        writeBlob(cache.resolve("sha256/ab/cd/" + "e".repeat(60)), new byte[2048]);
+        writeBlob(
+                cache.resolve("actions/keys/compile-key"),
+                ("TASK compile-main@mod\nKEY compile-key\nOUTPUT " + classSha + " com/Ex.class\n")
+                        .getBytes(StandardCharsets.UTF_8));
+        // Thin jar
+        String jarSha = "11" + "22" + "f".repeat(60);
+        writeBlob(cache.resolve("sha256/11/22/" + "f".repeat(60)), new byte[512]);
+        writeBlob(
+                cache.resolve("actions/keys/jar-key"),
+                ("TASK package-jar@mod\nKEY jar-key\nOUTPUT " + jarSha + " lib.jar\n")
+                        .getBytes(StandardCharsets.UTF_8));
+        // Test result marker (no CAS digest)
+        writeBlob(
+                cache.resolve("actions/keys/test-key"),
+                "TASK run-tests@mod\nKEY test-key\nOUTPUT 3 tests.total\n".getBytes(StandardCharsets.UTF_8));
+        writeBlob(cache.resolve("runs/build-1.jsonl"), new byte[128]);
+        writeBlob(cache.resolve("format-stamps/ab/stamp1"), new byte[0]);
+        // Uncategorized bulk (still in Total): hash-memo entry
+        writeBlob(cache.resolve("hash-memo/aa/memo1"), new byte[4096]);
 
         String plain = TestAnsi.strip(capture(() -> run("cache", "usage", "--cache-dir", cache.toString())));
         assertThat(plain).contains("Cache Storage");
-        // action key + cache CAS blob (+ intermediate dirs may vary by DiskUsage walk)
+        assertThat(plain).contains("Class Files");
+        assertThat(plain).contains("Test Results");
+        assertThat(plain).contains("Event Logs");
+        assertThat(plain).contains("Normal Jars");
+        assertThat(plain).contains("Shadow Jars");
+        assertThat(plain).contains("Minified Jars");
+        assertThat(plain).contains("Native Bins");
+        assertThat(plain).contains("OCI Images");
+        assertThat(plain).contains("Format Stamps");
+        assertThat(plain).contains("Total");
         assertThat(plain).contains("Utilization");
+        assertThat(plain).contains("Last cleaned:");
         assertThat(plain).doesNotContain("CAS Blobs");
         assertThat(plain).doesNotContain("Worker JARs");
-        // Size includes the 2 KiB action record (cache CAS "hello" is small).
-        assertThat(plain).containsPattern("File Count:\\s*[1-9]");
+        assertThat(plain).doesNotContain("Last Pruned");
+        // Total file count includes hash-memo + keys + stamps + runs + cas blobs (more than zero).
+        assertThat(plain).containsPattern("Total\\s+│\\s*[1-9]");
     }
 
     @Test
@@ -260,12 +290,12 @@ class CacheCommandTest {
         String plain = TestAnsi.strip(capture(() -> run("storage", "usage")));
         assertThat(plain).contains("Artifact Storage");
         assertThat(plain).contains("Jar Files");
-        assertThat(plain).contains("Executables");
+        assertThat(plain).contains("Native Bins");
         assertThat(plain).contains("OCI Images");
         assertThat(plain).contains("Worker JARs");
-        assertThat(plain).contains("Format Stamps");
         assertThat(plain).contains("Total");
         assertThat(plain).contains("Utilization");
+        assertThat(plain).doesNotContain("Format Stamps");
         assertThat(plain).doesNotContain("CAS Blobs");
         assertThat(plain).doesNotContain("Run Logs");
         assertThat(plain).doesNotContain("Action Cache");

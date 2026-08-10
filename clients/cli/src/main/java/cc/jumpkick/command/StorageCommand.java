@@ -169,7 +169,7 @@ public final class StorageCommand extends GroupCommand {
 
     /**
      * {@code jk storage usage} — artifact-store size/utilization table (jars, natives, OCI, worker
-     * jars, format stamps).
+     * jars).
      */
     public static final class StorageUsageCommand implements CliCommand {
         @Override
@@ -196,8 +196,7 @@ public final class StorageCommand extends GroupCommand {
         @Override
         public int run(Invocation in) throws IOException {
             Path storeRoot = JkStores.store();
-            // The table also carries two cache-tier figures (format stamps, last pruned). Those come
-            // from the ambient cache — `jk cache` is where a cache location is chosen, not here.
+            // Last-cleaned stamp lives under the cache root (same file cache clean writes).
             Path cacheRoot = CacheCommand.resolveCacheRoot(null);
             if (!Files.isDirectory(storeRoot)) {
                 CliOutput.out(
@@ -208,6 +207,7 @@ public final class StorageCommand extends GroupCommand {
             var cfg = cc.jumpkick.config.JkCacheConfig.resolve();
             long maxBytes = cfg.maxStoreSizeBytes();
             String lastPruned = CacheCommand.lastPrunedLabel(cacheRoot);
+            CommandWedge.envelopeStart();
             for (String line : CacheCommand.renderStoreUsageTable(s, maxBytes, lastPruned)) {
                 CliOutput.out(line);
             }

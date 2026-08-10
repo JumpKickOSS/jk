@@ -140,11 +140,11 @@ cache, a normal `jk build` should hit action cache for unchanged modules.
 
 | Command | Scope |
 |---------|--------|
-| **`jk cache usage`** | Cache tier size/utilization (action index + cache CAS + format stamps) |
+| **`jk cache usage`** | Cache tier size/utilization (classes, tests, jars, natives, OCI, stamps; total = whole cache root) |
 | **`jk cache dir`** | Print the cache directory path (`JK_CACHE_DIR`) |
 | **`jk cache clean`** | Hygiene: stale action keys, **all Class-C** heavy outputs (native / OCI / fat jars), temps, LRU to budget. Cache tier only |
 | **`jk cache nuke`** | Wipe the **entire cache tier**. Artifact store survives. Confirms first |
-| **`jk storage usage`** | Artifact store size/utilization (jars, natives, OCI, worker jars, format stamps) |
+| **`jk storage usage`** | Artifact store size/utilization (jars, natives, OCI, worker jars) |
 | **`jk storage dir`** | Print the artifact store path (`JK_STORE_DIR`) |
 | **`jk storage clean`** | Hygiene: unreferenced store CAS blobs + expired run logs (garbage only) |
 | **`jk storage nuke`** | Wipe the **entire artifact store**. Confirms first |

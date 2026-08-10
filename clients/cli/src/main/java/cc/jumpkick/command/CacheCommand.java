@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.DiskUsage;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.CliOutput;
@@ -14,13 +15,18 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.GroupCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 /**
  * {@code jk cache} — manage the <strong>cache tier</strong> under {@code $JK_CACHE_DIR}: action
@@ -104,10 +110,7 @@ public final class CacheCommand extends GroupCommand {
 
     /**
      * Cache-tier stats only (action index + cache CAS, format stamps) — no artifact-store walk.
-     * The cache CAS is copy-only ({@code Cas.putFile} on both store and restore; only the store
-     * CAS ever hard-links, via {@code MavenRepo}), so no cross-tier links exist and plain sizes
-     * are exact. {@code jk cache usage} displays exactly these two numbers; walking the whole
-     * store CAS + repos for them added store-proportional latency in the slim CLI (JK-1525).
+     * Used by status / dashboard parity; {@code jk cache usage} uses {@link #cacheUsageStats}.
      */
     static CacheTierStats cacheTierStats(Path cacheRoot) throws IOException {
         DiskUsage.Stats actions = DiskUsage.of(cacheRoot.resolve("actions"));
@@ -117,8 +120,162 @@ public final class CacheCommand extends GroupCommand {
                 new Stats(actions.files() + cacheCas.files(), actions.bytes() + cacheCas.bytes()), Stats.from(stamps));
     }
 
-    /** Cache-tier breakdown for {@code jk cache usage} ({@code actions} includes the cache CAS). */
+    /** Legacy combined cache-tier totals (action index + CAS + stamps). */
     record CacheTierStats(Stats actions, Stats stamps) {}
+
+    /**
+     * Detailed cache-tier breakdown for {@code jk cache usage}. Action-output CAS blobs are
+     * attributed by task type from {@code actions/keys/} (exclusive by digest). Event logs and
+     * format stamps are trees under the cache root. {@link CacheUsageStats#totalFiles()} /
+     * {@link CacheUsageStats#totalBytes()} cover the <em>entire</em> cache root (hash-memo, Graal
+     * catalog, action index, access ledger, …).
+     */
+    static CacheUsageStats cacheUsageStats(Path cacheRoot) throws IOException {
+        long[] classFiles = {0, 0};
+        long[] testResults = {0, 0};
+        long[] normalJars = {0, 0};
+        long[] shadowJars = {0, 0};
+        long[] minifiedJars = {0, 0};
+        long[] nativeBins = {0, 0};
+        long[] ociImages = {0, 0};
+
+        Cas cas = new Cas(cacheRoot);
+        Set<String> seenShas = new HashSet<>();
+        Path keysDir = cacheRoot.resolve("actions").resolve("keys");
+        if (Files.isDirectory(keysDir)) {
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(keysDir)) {
+                for (Path keyFile : stream) {
+                    if (!Files.isRegularFile(keyFile)) continue;
+                    String body;
+                    try {
+                        body = Files.readString(keyFile, StandardCharsets.UTF_8);
+                    } catch (IOException unreadable) {
+                        continue;
+                    }
+                    String taskName = taskNameFromKeyBody(body);
+                    long[] bucket = bucketCounters(
+                            taskName, classFiles, testResults, normalJars, shadowJars, minifiedJars, nativeBins, ociImages);
+                    // run-tests mostly stores scalar markers on the key itself (no CAS digests).
+                    if (bucket == testResults) {
+                        testResults[0]++;
+                        try {
+                            testResults[1] += Files.size(keyFile);
+                        } catch (IOException ignored) {
+                        }
+                    }
+                    for (String sha : outputShasFromKeyBody(body)) {
+                        if (!seenShas.add(sha)) continue; // exclusive: first claim wins
+                        Path blob = cas.pathFor(sha);
+                        if (!Files.isRegularFile(blob)) continue;
+                        if (bucket == null) continue; // uncategorized task — still in total via full walk
+                        bucket[0]++;
+                        try {
+                            bucket[1] += Files.size(blob);
+                        } catch (IOException ignored) {
+                        }
+                    }
+                }
+            }
+        }
+
+        Stats eventLogs = statsOf(cacheRoot.resolve("runs"));
+        Stats stamps = statsOf(cacheRoot.resolve("format-stamps"));
+        // Whole-tree total (every file under the cache root).
+        Stats total = statsOf(cacheRoot);
+        return new CacheUsageStats(
+                new Stats(classFiles[0], classFiles[1]),
+                new Stats(testResults[0], testResults[1]),
+                eventLogs,
+                new Stats(normalJars[0], normalJars[1]),
+                new Stats(shadowJars[0], shadowJars[1]),
+                new Stats(minifiedJars[0], minifiedJars[1]),
+                new Stats(nativeBins[0], nativeBins[1]),
+                new Stats(ociImages[0], ociImages[1]),
+                stamps,
+                total);
+    }
+
+    /** Task name before {@code @} in a key body's {@code TASK} line, lowercased. */
+    private static String taskNameFromKeyBody(String body) {
+        for (String line : body.split("\n")) {
+            if (!line.startsWith("TASK ")) continue;
+            String id = line.substring("TASK ".length()).trim();
+            int at = id.indexOf('@');
+            String name = at < 0 ? id : id.substring(0, at);
+            return name.toLowerCase(Locale.ROOT);
+        }
+        return "";
+    }
+
+    /** CAS digests on {@code OUTPUT <sha> <rel>} lines (64-char hex only). */
+    private static List<String> outputShasFromKeyBody(String body) {
+        List<String> shas = new ArrayList<>();
+        for (String line : body.split("\n")) {
+            if (!line.startsWith("OUTPUT ")) continue;
+            String rest = line.substring("OUTPUT ".length()).trim();
+            int sp = rest.indexOf(' ');
+            String maybe = sp < 0 ? rest : rest.substring(0, sp);
+            if (maybe.length() == 64 && isHex(maybe)) shas.add(maybe.toLowerCase(Locale.ROOT));
+        }
+        return shas;
+    }
+
+    private static boolean isHex(String s) {
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) return false;
+        }
+        return true;
+    }
+
+    /**
+     * Map a task name to the mutable {@code [files, bytes]} counters for its usage row, or
+     * {@code null} when the task is not one of the displayed categories.
+     */
+    private static long[] bucketCounters(
+            String taskName,
+            long[] classFiles,
+            long[] testResults,
+            long[] normalJars,
+            long[] shadowJars,
+            long[] minifiedJars,
+            long[] nativeBins,
+            long[] ociImages) {
+        if (taskName.isEmpty()) return null;
+        if (TaskNames.RUN_TESTS.equals(taskName)) return testResults;
+        if (TaskNames.PACKAGE_JAR.equals(taskName)) return normalJars;
+        if (TaskNames.PACKAGE_ASSEMBLY.equals(taskName)) return shadowJars;
+        if (TaskNames.PACKAGE_MINIFIED.equals(taskName)) return minifiedJars;
+        if (TaskNames.NATIVE_IMAGE.equals(taskName)) return nativeBins;
+        if (TaskNames.WRITE_IMAGE.equals(taskName)) return ociImages;
+        // compile-main / compile-test / compile-java / compile-kotlin / …
+        if (taskName.startsWith("compile-") || TaskNames.ASSEMBLE_CLASSES.equals(taskName)) return classFiles;
+        return null;
+    }
+
+    /**
+     * Rows for {@code jk cache usage}. {@code total} is the whole cache-root walk; category rows
+     * are a content breakdown (they need not sum to total).
+     */
+    record CacheUsageStats(
+            Stats classFiles,
+            Stats testResults,
+            Stats eventLogs,
+            Stats normalJars,
+            Stats shadowJars,
+            Stats minifiedJars,
+            Stats nativeBins,
+            Stats ociImages,
+            Stats stamps,
+            Stats total) {
+        long totalFiles() {
+            return total.files;
+        }
+
+        long totalBytes() {
+            return total.bytes;
+        }
+    }
 
     /** Breakdown used by storage / status — fields ordered for the reports. */
     record SectionStats(Stats cas, Stats actions, Stats repos, Stats runs, Stats stamps) {
@@ -142,8 +299,8 @@ public final class CacheCommand extends GroupCommand {
 
     /**
      * Artifact-store usage breakdown for {@code jk storage usage}: packaging-class jars / natives /
-     * OCI from the store CAS (content sniff), worker jars under {@code store/lib/}, format stamps
-     * under the cache root. Run logs are state (not storage) and are omitted.
+     * OCI from the store CAS (content sniff), worker jars under {@code store/lib/}. Format stamps
+     * belong to {@code jk cache usage} (cache tier). Run logs are state and are omitted.
      *
      * <p>Byte sizes are exclusive (store CAS first, then {@code lib/}, then {@code repos/}) so
      * hard-linked materializations do not double-count.
@@ -153,7 +310,6 @@ public final class CacheCommand extends GroupCommand {
         Path storeCas = storeRoot.resolve("sha256");
         Path lib = storeRoot.resolve("lib");
         Path repos = JkStores.resolve(cacheRoot, "repos");
-        Path stamps = cacheRoot.resolve("format-stamps");
 
         java.util.Set<Object> seen = new java.util.HashSet<>();
         long jarFiles = 0, jarBytes = 0;
@@ -199,13 +355,11 @@ public final class CacheCommand extends GroupCommand {
         jarBytes += reposExtra.bytes;
 
         Stats workers = walkExclusiveAdding(lib, seen);
-        Stats stampStats = statsOf(stamps);
         return new StoreUsageStats(
                 new Stats(jarFiles, jarBytes),
                 new Stats(execFiles, execBytes),
                 new Stats(ociFiles, ociBytes),
-                workers,
-                stampStats);
+                workers);
     }
 
     /** Content-class for a store CAS blob (or any regular file under the store). */
@@ -296,19 +450,21 @@ public final class CacheCommand extends GroupCommand {
         return new Stats(files, bytes);
     }
 
-    /** Rows for {@code jk storage usage}. Format-stamp size is display-only ({@code --} when empty). */
-    record StoreUsageStats(Stats jars, Stats executables, Stats oci, Stats workers, Stats stamps) {
+    /** Rows for {@code jk storage usage} (store-tier only). */
+    record StoreUsageStats(Stats jars, Stats executables, Stats oci, Stats workers) {
         long totalFiles() {
-            return jars.files + executables.files + oci.files + workers.files + stamps.files;
+            return jars.files + executables.files + oci.files + workers.files;
         }
 
-        /** Size total excludes format stamps (empty stamp files; size column shows {@code --}). */
         long totalBytes() {
             return jars.bytes + executables.bytes + oci.bytes + workers.bytes;
         }
     }
 
-    /** Relative "last pruned" label from {@code .last-pruned} under {@code root}. */
+    /**
+     * Relative "last cleaned" label from {@code .last-pruned} under {@code root} — pluralizes
+     * correctly ({@code 1 day ago} vs {@code 3 days ago}).
+     */
     static String lastPrunedLabel(Path root) {
         Path stamp = root.resolve(cc.jumpkick.task.CachePruneScheduler.LAST_PRUNED_FILE);
         if (!Files.isRegularFile(stamp)) return "never";
@@ -464,17 +620,10 @@ public final class CacheCommand extends GroupCommand {
     }
 
     /**
-     * {@code jk cache usage} — cache-tier footprint (action index + cache CAS + format stamps;
-     * utilization vs {@code [cache] max-cache-size-gb}, last pruned).
+     * {@code jk cache usage} — cache-tier content breakdown (classes, tests, jars, natives, OCI,
+     * stamps, …) and utilization vs {@code [cache] max-cache-size-gb}.
      */
     public static final class CacheUsageCommand implements CliCommand {
-        /**
-         * Widest label (<code>Storage Size</code>) <em>plus its colon</em> — the format is applied
-         * to {@code label + ":"}, so the field must count the colon or the widest row's value
-         * lands one column right of the rest (JK-1441).
-         */
-        private static final int LABEL_FIELD = "Storage Size".length() + 1;
-
         @Override
         public String name() {
             return "usage";
@@ -508,39 +657,15 @@ public final class CacheCommand extends GroupCommand {
                 CliOutput.out("Cache: " + cc.jumpkick.cli.PathDisplay.styledRaw(root) + " (not yet created)");
                 return 0;
             }
-            // Cache tier: action index + cache CAS + format stamps — never walks the store (JK-1525).
-            CacheTierStats s = cacheTierStats(root);
-            long files = s.actions().files + s.stamps().files;
-            long bytes = s.actions().bytes + s.stamps().bytes;
+            CacheUsageStats s = cacheUsageStats(root);
             var cfg = cc.jumpkick.config.JkCacheConfig.resolve();
             long maxBytes = cfg.maxCacheSizeBytes();
-            String lastPruned = lastPrunedLabel(root);
-
+            String lastCleaned = lastPrunedLabel(root);
             CommandWedge.envelopeStart();
-            CliOutput.out(CommandWedge.menu("Cache Storage"));
-            detail("File Count", Long.toString(files));
-            detail("Storage Size", fmtBytes(bytes));
-            detail("Utilization", utilizationText(bytes, maxBytes));
-            Theme t = Theme.active();
-            detail(
-                    "Last Pruned",
-                    Theme.colorize(lastPruned, "never".equals(lastPruned) ? t.warning() : t.normalGray()));
+            for (String line : renderCacheUsageTable(s, maxBytes, lastCleaned)) {
+                CliOutput.out(line);
+            }
             return 0;
-        }
-
-        /** {@code  • Label:  value} with right-padded labels. */
-        private static void detail(String label, String value) {
-            CliOutput.out(" " + Theme.colorize(Glyphs.bullet(), Theme.active().dim()) + " "
-                    + String.format("%-" + LABEL_FIELD + "s", label + ":") + " " + value);
-        }
-
-        /** Compact utilization bar + percent for a bullet line. */
-        static String utilizationText(long used, long max) {
-            Theme t = Theme.active();
-            int pct = (int) Math.round(cc.jumpkick.cli.tui.ProgressBar.fraction(used, max) * 100);
-            String bar = cc.jumpkick.cli.tui.ProgressBar.renderBar(
-                    used, max, 24, t.bright(t.planBadgeColor()), t.darkGray());
-            return bar + "  " + pct + "%";
         }
     }
 
@@ -796,27 +921,63 @@ public final class CacheCommand extends GroupCommand {
         }
     }
 
-    // ---- shared table chrome for jk storage usage -------------------------------------
+    // ---- shared table chrome for jk cache / storage usage -----------------------------
 
-    private static final String[] STORAGE_USAGE_HEADERS = {"Element", "File Count", "Size"};
+    private static final String[] USAGE_HEADERS = {"Element", "File Count", "Size"};
 
     /**
-     * Box table for {@code jk storage usage}: jar / native / OCI content, worker jars, format
-     * stamps; utilization vs store {@code max-store-size-gb}; last-pruned footer.
+     * Box table for {@code jk cache usage}: content classes + full-tree total; utilization vs
+     * cache {@code max-cache-size-gb}; last-cleaned footer.
      */
-    static List<String> renderStoreUsageTable(StoreUsageStats s, long maxBytes, String lastPruned) {
+    static List<String> renderCacheUsageTable(CacheUsageStats s, long maxBytes, String lastCleaned) {
         String stampSize = s.stamps().bytes <= 0 ? "--" : fmtSize(s.stamps().bytes);
         String[][] rows = {
-            {"Jar Files", fmtCount(s.jars().files), fmtSize(s.jars().bytes)},
-            {"Executables", fmtCount(s.executables().files), fmtSize(s.executables().bytes)},
-            {"OCI Images", fmtCount(s.oci().files), fmtSize(s.oci().bytes)},
-            {"Worker JARs", fmtCount(s.workers().files), fmtSize(s.workers().bytes)},
+            {"Class Files", fmtCount(s.classFiles().files), fmtSize(s.classFiles().bytes)},
+            {"Test Results", fmtCount(s.testResults().files), fmtSize(s.testResults().bytes)},
+            {"Event Logs", fmtCount(s.eventLogs().files), fmtSize(s.eventLogs().bytes)},
+            {"Normal Jars", fmtCount(s.normalJars().files), fmtSize(s.normalJars().bytes)},
+            {"Shadow Jars", fmtCount(s.shadowJars().files), fmtSize(s.shadowJars().bytes)},
+            {"Minified Jars", fmtCount(s.minifiedJars().files), fmtSize(s.minifiedJars().bytes)},
+            {"Native Bins", fmtCount(s.nativeBins().files), fmtSize(s.nativeBins().bytes)},
+            {"OCI Images", fmtCount(s.ociImages().files), fmtSize(s.ociImages().bytes)},
             {"Format Stamps", fmtCount(s.stamps().files), stampSize},
         };
-        String[] total = {"Total", fmtCount(s.totalFiles()), fmtSize(s.totalBytes())};
+        return renderUsageTable(
+                "Cache Storage",
+                rows,
+                s.totalFiles(),
+                s.totalBytes(),
+                maxBytes,
+                lastCleaned);
+    }
+
+    /**
+     * Box table for {@code jk storage usage}: jar / native / OCI content and worker jars;
+     * utilization vs store {@code max-store-size-gb}; last-cleaned footer.
+     */
+    static List<String> renderStoreUsageTable(StoreUsageStats s, long maxBytes, String lastCleaned) {
+        String[][] rows = {
+            {"Jar Files", fmtCount(s.jars().files), fmtSize(s.jars().bytes)},
+            {"Native Bins", fmtCount(s.executables().files), fmtSize(s.executables().bytes)},
+            {"OCI Images", fmtCount(s.oci().files), fmtSize(s.oci().bytes)},
+            {"Worker JARs", fmtCount(s.workers().files), fmtSize(s.workers().bytes)},
+        };
+        return renderUsageTable(
+                "Artifact Storage",
+                rows,
+                s.totalFiles(),
+                s.totalBytes(),
+                maxBytes,
+                lastCleaned);
+    }
+
+    /** Shared Element / File Count / Size box chrome for cache and store usage reports. */
+    private static List<String> renderUsageTable(
+            String title, String[][] rows, long totalFiles, long totalBytes, long maxBytes, String lastCleaned) {
+        String[] total = {"Total", fmtCount(totalFiles), fmtSize(totalBytes)};
 
         int[] w = new int[3];
-        for (int i = 0; i < 3; i++) w[i] = cc.jumpkick.cli.tui.BoxTable.visibleWidth(STORAGE_USAGE_HEADERS[i]);
+        for (int i = 0; i < 3; i++) w[i] = cc.jumpkick.cli.tui.BoxTable.visibleWidth(USAGE_HEADERS[i]);
         for (String[] r : rows)
             for (int i = 0; i < 3; i++) w[i] = Math.max(w[i], cc.jumpkick.cli.tui.BoxTable.visibleWidth(r[i]));
         for (int i = 0; i < 3; i++) w[i] = Math.max(w[i], cc.jumpkick.cli.tui.BoxTable.visibleWidth(total[i]));
@@ -824,19 +985,19 @@ public final class CacheCommand extends GroupCommand {
         int inner = (w[0] + 2) + 1 + (w[1] + 2) + 1 + (w[2] + 2);
 
         List<String> out = new ArrayList<>();
-        out.add(cc.jumpkick.cli.tui.BoxTable.titleBar("Artifact Storage", inner + 2));
+        out.add(cc.jumpkick.cli.tui.BoxTable.titleBar(title, inner + 2));
         out.add(divider("├", "┬", "┤", w));
-        out.add(headerRow(STORAGE_USAGE_HEADERS, w));
+        out.add(headerRow(USAGE_HEADERS, w));
         out.add(divider("├", "┼", "┤", w));
         for (String[] r : rows) out.add(metricRow(r, w));
         out.add(divider("├", "┼", "┤", w));
         out.add(metricRow(total, w));
         out.add(divider("├", "┴", "┤", w));
-        out.add(utilizationRow(s.totalBytes(), maxBytes, inner));
+        out.add(utilizationRow(totalBytes, maxBytes, inner));
         out.add(border("╰", "╯", inner));
         Theme t = Theme.active();
-        out.add("  Last pruned: "
-                + Theme.colorize(lastPruned, "never".equals(lastPruned) ? t.warning() : t.normalGray()));
+        out.add("  Last cleaned: "
+                + Theme.colorize(lastCleaned, "never".equals(lastCleaned) ? t.warning() : t.normalGray()));
         return out;
     }
 
