@@ -553,6 +553,10 @@ Without a platform BOM, bare transitive POM versions still use **highest-version
 (not Maven nearest-wins), with PubGrub prose on conflict. Main, test, and processor graphs are
 solved separately so annotation-processor constraints do not force main classpath versions.
 
+**Maven relocations are followed**: a POM whose `<distributionManagement><relocation>` points at
+a new coordinate resolves to the relocation target (chains follow to the end; cycles terminate
+as ordinary dependency cycles), the same way Maven and Gradle render the moved artifact.
+
 **Export a freeze of the lock as a Maven BOM** (library / platform authors):
 
 ```bash
@@ -1292,7 +1296,12 @@ groups = ["com.acme", "com.acme.*"]
 
 - **Bound group** → solver only sees versions from claiming repos (a higher version planted on
   Central cannot win at `jk lock` / `jk update`).
-- **Unbound group** → all remotes union as before.
+- **Unbound group** → general (unbound) remotes are asked in declared order and the first repo
+  advertising any version answers — no union, no probing of exclusive specialists on the fast
+  path. Only when every general remote misses entirely does jk fall back to the non-claiming
+  specialists, so a Google-Maven-only group outside the built-in binding list still resolves.
+- Declared `groups` on the built-in Google remote are **additive** to the default Android
+  bindings — binding one extra group never re-opens `androidx.*` to other repos.
 - **Already locked** artifacts keep their lockfile source pin until you re-resolve that line
   (`jk update` re-opens discovery for updated/new deps).
 - If you configure **multiple repositories without any `groups`**, jk **warns once** per lock
