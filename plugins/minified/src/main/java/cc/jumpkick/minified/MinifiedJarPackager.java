@@ -332,8 +332,14 @@ final class MinifiedJarPackager {
     /**
      * R8's output jar, rewritten with a deterministic order/times. Sets {@code Main-Class} only when
      * {@code mainClass} is non-null (library fat/shrunk jars need no entry point).
+     *
+     * <p>Parent directory entries are synthesized for every file: frameworks that enumerate
+     * resource directories from the classpath (Micronaut's SoftServiceLoader over {@code
+     * META-INF/micronaut/...}) resolve them via the jar's directory entries, and R8's output
+     * carries none. Thin, fat, and minified jars owe the same contract (JK-1414/JK-1667/JK-1755).
      */
-    private static void writeOutputJar(Path shrunk, Path artifact, String mainClass) throws IOException {
+    // Package-private for MinifiedJarPackagerTest.
+    static void writeOutputJar(Path shrunk, Path artifact, String mainClass) throws IOException {
         Files.createDirectories(artifact.getParent());
         Manifest manifest = new Manifest();
         manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
@@ -343,6 +349,8 @@ final class MinifiedJarPackager {
         try (JarFile in = new JarFile(shrunk.toFile());
                 OutputStream out = Files.newOutputStream(artifact);
                 JarOutputStream jos = new JarOutputStream(out)) {
+            Set<String> dirs = new HashSet<>();
+            writeParentDirs(jos, "META-INF/MANIFEST.MF", dirs);
             jos.putNextEntry(pinnedEntry("META-INF/MANIFEST.MF"));
             manifest.write(jos);
             jos.closeEntry();
@@ -353,10 +361,28 @@ final class MinifiedJarPackager {
             entries.sort(Comparator.comparing(ZipEntry::getName));
             for (JarEntry entry : entries) {
                 if (entry.isDirectory() || entry.getName().equals("META-INF/MANIFEST.MF")) continue;
+                writeParentDirs(jos, entry.getName(), dirs);
                 jos.putNextEntry(pinnedEntry(entry.getName()));
                 try (InputStream body = in.getInputStream(entry)) {
                     body.transferTo(jos);
                 }
+                jos.closeEntry();
+            }
+        }
+    }
+
+    /**
+     * Directory entries for every ancestor of {@code name}, parents first, each once —
+     * {@code dirs} accumulates what has already been emitted across the whole jar. Local copy of
+     * the engine's DeterministicJar.writeParentDirs by design: plugins stay dependency-free of
+     * jk's kernel modules.
+     */
+    private static void writeParentDirs(JarOutputStream jos, String name, Set<String> dirs) throws IOException {
+        int slash = -1;
+        while ((slash = name.indexOf('/', slash + 1)) >= 0) {
+            String dir = name.substring(0, slash + 1);
+            if (dirs.add(dir)) {
+                jos.putNextEntry(pinnedEntry(dir));
                 jos.closeEntry();
             }
         }
