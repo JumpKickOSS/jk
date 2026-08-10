@@ -51,8 +51,15 @@ public record DynamicSurface(List<Entry> entries) {
         GENERIC_REFLECTION,
         /** A {@code java.lang.reflect.Proxy} interface. */
         PROXY_INTERFACE,
-        /** A resource loaded by name or pattern. {@code name} is the resource path or regex. */
+        /** A resource loaded by name or glob. {@code name} is the resource path or glob. */
         RESOURCE,
+        /**
+         * A resource in the legacy split-schema Java-regex syntax that has no faithful glob
+         * translation; {@code name} is the regex. Emitted as a split-format {@code
+         * resource-config.json} beside the unified file, which native-image still honors —
+         * re-emitting a regex as a glob would match nothing (JK-1777).
+         */
+        RESOURCE_PATTERN,
         /** The type crosses a serialization boundary. */
         SERIALIZATION_TYPE,
         /** An implementation named by a service file or marker index. */

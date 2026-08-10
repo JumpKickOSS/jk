@@ -114,15 +114,54 @@ class NativeImageMetadataTest {
     }
 
     @Test
-    void the_split_resource_schema_reads_patterns() {
+    void the_split_resource_schema_translates_literal_patterns_to_globs() {
+        // Old-schema patterns are Java regexes; \Qapplication.yml\E re-emitted as a glob would
+        // match nothing, so literal regexes translate to the literal they quote (JK-1777).
         String body = """
                 {"resources":{"includes":[{"pattern":"\\\\Qapplication.yml\\\\E"}]}}
                 """;
 
-        assertThat(NativeImageMetadata.parse("x/resource-config.json", body, "lib")
-                        .of(RESOURCE))
+        DynamicSurface surface = NativeImageMetadata.parse("x/resource-config.json", body, "lib");
+
+        assertThat(surface.of(RESOURCE)).extracting(Entry::name).containsExactly("application.yml");
+        assertThat(ReachabilityMetadataEmitter.emit(surface)).contains("{\"glob\":\"application.yml\"}");
+    }
+
+    @Test
+    void untranslatable_patterns_ride_in_a_split_format_sidecar() {
+        // `.properties$` has no exact glob form. It must not be emitted as a glob; it ships in a
+        // legacy split-format resource-config.json, which native-image still reads (JK-1777).
+        String body = """
+                {"resources":{"includes":[{"pattern":".*[.]properties$"}]}}
+                """;
+
+        DynamicSurface surface = NativeImageMetadata.parse("x/resource-config.json", body, "lib");
+
+        assertThat(surface.of(DynamicSurface.Kind.RESOURCE_PATTERN))
                 .extracting(Entry::name)
-                .containsExactly("\\Qapplication.yml\\E");
+                .containsExactly(".*[.]properties$");
+        assertThat(surface.of(RESOURCE)).isEmpty();
+        assertThat(ReachabilityMetadataEmitter.emit(surface)).doesNotContain("properties");
+        assertThat(ReachabilityMetadataEmitter.emitResourceConfig(surface))
+                .isEqualTo("{\"resources\":{\"includes\":[\n  {\"pattern\":\".*[.]properties$\"}\n]}}\n");
+    }
+
+    @Test
+    void regex_to_glob_translates_only_the_faithful_forms() {
+        assertThat(NativeImageMetadata.regexToGlob("\\Qapplication.yml\\E")).isEqualTo("application.yml");
+        assertThat(NativeImageMetadata.regexToGlob("\\Qconfig/\\E.*")).isEqualTo("config/**");
+        assertThat(NativeImageMetadata.regexToGlob("config/.*")).isEqualTo("config/**");
+        assertThat(NativeImageMetadata.regexToGlob(".*")).isEqualTo("**");
+        assertThat(NativeImageMetadata.regexToGlob(".*\\Q/app.yml\\E")).isEqualTo("**/app.yml");
+        assertThat(NativeImageMetadata.regexToGlob("application\\.yml")).isEqualTo("application.yml");
+        // A `.*` glued to a non-slash neighbour cannot become `**` (GraalVM requires ** to be a
+        // whole level) and `*` would stop crossing directories — untranslatable.
+        assertThat(NativeImageMetadata.regexToGlob("\\Qmessages\\E.*")).isNull();
+        // A bare `.` matches any character; a quoted `*` has no glob escape; classes stay regex.
+        assertThat(NativeImageMetadata.regexToGlob("application.yml")).isNull();
+        assertThat(NativeImageMetadata.regexToGlob("\\Qweird*name\\E")).isNull();
+        assertThat(NativeImageMetadata.regexToGlob("[abc]+")).isNull();
+        assertThat(NativeImageMetadata.regexToGlob("\\d+")).isNull();
     }
 
     @Test

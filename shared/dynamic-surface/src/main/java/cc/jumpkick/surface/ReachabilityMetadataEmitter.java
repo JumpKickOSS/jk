@@ -38,6 +38,9 @@ public final class ReachabilityMetadataEmitter {
                 // reflection entry with a map-shaped type (JK-1752).
                 case RESOURCE -> resources.add("{\"glob\":" + quote(entry.name()) + "}");
                 case PROXY_INTERFACE -> reflection.add("{\"type\":{\"proxy\":[" + quote(entry.name()) + "]}}");
+                // The unified schema has no regex resource form; these ride in the split-format
+                // resource-config.json from emitResourceConfig instead (JK-1777).
+                case RESOURCE_PATTERN -> {}
                 // Graal keeps generic signatures without being told.
                 case GENERIC_REFLECTION -> {}
             }
@@ -49,6 +52,23 @@ public final class ReachabilityMetadataEmitter {
         addArray(sections, "serialization", serialization);
         addArray(sections, "resources", resources);
         return "{\n" + String.join(",\n", sections) + (sections.isEmpty() ? "" : "\n") + "}\n";
+    }
+
+    /**
+     * {@link DynamicSurface.Kind#RESOURCE_PATTERN} entries as a legacy split-format {@code
+     * resource-config.json}. The unified schema only has globs, and a regex emitted as a glob
+     * matches nothing; native-image still honors the split pattern form, so untranslatable
+     * regexes ship in this sidecar (JK-1777). Empty string when the surface has none.
+     */
+    public static String emitResourceConfig(DynamicSurface surface) {
+        List<String> patterns = new ArrayList<>();
+        for (DynamicSurface.Entry entry : surface.entries()) {
+            if (entry.kind() == DynamicSurface.Kind.RESOURCE_PATTERN) {
+                patterns.add("{\"pattern\":" + quote(entry.name()) + "}");
+            }
+        }
+        if (patterns.isEmpty()) return "";
+        return "{\"resources\":{\"includes\":[\n  " + String.join(",\n  ", patterns) + "\n]}}\n";
     }
 
     private static String typeObject(String name, boolean allDeclared) {

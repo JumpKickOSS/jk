@@ -46,4 +46,18 @@ class DynamicSurfaceIoTest {
         assertThat(dir.resolve("reachability-metadata.json")).exists();
         assertThat(Files.readString(dir.resolve("reachability-metadata.json"))).contains("com.example.A");
     }
+
+    @Test
+    void write_reachability_dir_writes_and_clears_the_pattern_sidecar(@TempDir Path tmp) throws Exception {
+        Path dir = tmp.resolve("reachability");
+        DynamicSurface withPattern = DynamicSurface.of(
+                DynamicSurface.Entry.type(DynamicSurface.Kind.RESOURCE_PATTERN, ".*[.]properties$", "lib"));
+        DynamicSurfaceIo.writeReachabilityDir(dir, withPattern);
+        assertThat(dir.resolve("resource-config.json")).exists();
+        assertThat(Files.readString(dir.resolve("resource-config.json"))).contains(".*[.]properties$");
+
+        // A rewrite without patterns must not leave the previous run's sidecar behind.
+        DynamicSurfaceIo.writeReachabilityDir(dir, DynamicSurface.empty());
+        assertThat(dir.resolve("resource-config.json")).doesNotExist();
+    }
 }

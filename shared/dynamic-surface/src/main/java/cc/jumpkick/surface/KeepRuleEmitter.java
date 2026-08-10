@@ -34,7 +34,7 @@ public final class KeepRuleEmitter {
     private static String rule(DynamicSurface.Entry entry) {
         return switch (entry.kind()) {
             // A resource is not a class; R8 passes non-class entries through untouched.
-            case RESOURCE -> null;
+            case RESOURCE, RESOURCE_PATTERN -> null;
             case REFLECTIVE_MEMBER, JNI_MEMBER -> {
                 if (entry.members().isEmpty()) yield "-keep class " + entry.name() + " { *; }";
                 // A member spec needs a type: `*** name;` is any field of that name, and

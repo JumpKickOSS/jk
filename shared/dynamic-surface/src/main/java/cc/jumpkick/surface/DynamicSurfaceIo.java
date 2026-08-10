@@ -125,6 +125,8 @@ public final class DynamicSurfaceIo {
     /**
      * Write Graal unified reachability metadata under {@code dir} as {@code
      * reachability-metadata.json} (directory form for {@code -H:ConfigurationFileDirectories}).
+     * Untranslatable legacy regex resource patterns ride alongside as a split-format {@code
+     * resource-config.json}, which native-image reads from the same directory (JK-1777).
      */
     public static void writeReachabilityDir(Path dir, DynamicSurface surface) throws IOException {
         Files.createDirectories(dir);
@@ -132,6 +134,13 @@ public final class DynamicSurfaceIo {
                 dir.resolve("reachability-metadata.json"),
                 ReachabilityMetadataEmitter.emit(surface),
                 StandardCharsets.UTF_8);
+        String resourceConfig = ReachabilityMetadataEmitter.emitResourceConfig(surface);
+        Path sidecar = dir.resolve("resource-config.json");
+        if (resourceConfig.isEmpty()) {
+            Files.deleteIfExists(sidecar); // a previous run's patterns must not linger
+        } else {
+            Files.writeString(sidecar, resourceConfig, StandardCharsets.UTF_8);
+        }
     }
 
     private static String str(Object o) {

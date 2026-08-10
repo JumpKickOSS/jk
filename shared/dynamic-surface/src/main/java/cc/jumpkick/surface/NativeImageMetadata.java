@@ -179,12 +179,83 @@ public final class NativeImageMetadata {
         }
         if (!(includes instanceof List<?> items)) return;
         for (Object include : items) {
-            String pattern = Json.str(include, "pattern");
-            if (pattern == null) pattern = Json.str(include, "glob");
-            if (pattern != null && !pattern.isBlank()) {
-                out.add(DynamicSurface.Entry.type(RESOURCE, pattern, origin));
+            String glob = Json.str(include, "glob");
+            if (glob != null && !glob.isBlank()) {
+                out.add(DynamicSurface.Entry.type(RESOURCE, glob, origin));
+                continue;
             }
+            // Split-schema "pattern" entries are Java regexes; a regex re-emitted as a glob
+            // matches nothing. Translate the faithful cases, keep the rest as regex (JK-1777).
+            String pattern = Json.str(include, "pattern");
+            if (pattern == null || pattern.isBlank()) continue;
+            String translated = regexToGlob(pattern);
+            out.add(
+                    translated != null
+                            ? DynamicSurface.Entry.type(RESOURCE, translated, origin)
+                            : DynamicSurface.Entry.type(DynamicSurface.Kind.RESOURCE_PATTERN, pattern, origin));
         }
+    }
+
+    /**
+     * Translate a resource regex to a GraalVM glob when the translation is exact, else null.
+     *
+     * <p>Handled: {@code \Q…\E} quoted literals, single-character escapes of non-alphanumerics
+     * ({@code \.}, {@code \-}, …), plain literal characters, and {@code .*} where it maps to a
+     * whole-level {@code **} (GraalVM rejects {@code **} glued to other characters in a level).
+     * Anything else — character classes, alternation, a bare {@code .}, a within-level
+     * {@code .*} — is not translatable without changing what it matches.
+     */
+    static String regexToGlob(String regex) {
+        StringBuilder glob = new StringBuilder();
+        int i = 0;
+        int n = regex.length();
+        while (i < n) {
+            char c = regex.charAt(i);
+            if (c == '\\') {
+                if (i + 1 >= n) return null;
+                char esc = regex.charAt(i + 1);
+                if (esc == 'Q') {
+                    int end = regex.indexOf("\\E", i + 2);
+                    String literal = end < 0 ? regex.substring(i + 2) : regex.substring(i + 2, end);
+                    if (containsGlobSpecial(literal)) return null;
+                    glob.append(literal);
+                    i = end < 0 ? n : end + 2;
+                    continue;
+                }
+                if (esc == 'E') { // stray \E is a no-op
+                    i += 2;
+                    continue;
+                }
+                // An escaped non-alphanumeric is that literal; \d, \w, … are classes.
+                if (Character.isLetterOrDigit(esc) || containsGlobSpecial(String.valueOf(esc))) return null;
+                glob.append(esc);
+                i += 2;
+                continue;
+            }
+            if (c == '.' && i + 1 < n && regex.charAt(i + 1) == '*') {
+                // `.*` crosses `/`, so only `**` is faithful — and GraalVM requires `**` to be
+                // a whole level: nothing or `/` before it, and end or `/` after it.
+                boolean levelStart = glob.isEmpty() || glob.charAt(glob.length() - 1) == '/';
+                boolean levelEnd =
+                        i + 2 >= n || regex.charAt(i + 2) == '/' || regex.startsWith("\\Q/", i + 2);
+                if (!levelStart || !levelEnd) return null;
+                glob.append("**");
+                i += 2;
+                continue;
+            }
+            if (".^$|()[]{}*+?".indexOf(c) >= 0 || containsGlobSpecial(String.valueOf(c))) return null;
+            glob.append(c);
+            i++;
+        }
+        return glob.isEmpty() ? null : glob.toString();
+    }
+
+    /** Characters that mean something to GraalVM's glob syntax — a literal one is untranslatable. */
+    private static boolean containsGlobSpecial(String literal) {
+        for (int i = 0; i < literal.length(); i++) {
+            if ("*?[]{}\\".indexOf(literal.charAt(i)) >= 0) return true;
+        }
+        return false;
     }
 
     private static void addName(Object member, java.util.function.UnaryOperator<String> tag, Set<String> sink) {
