@@ -650,8 +650,10 @@ image's own JVM, never the build JDK. It gets there one of two ways:
 Either way the cache is started once and checked before it becomes a layer — a rejected cache is
 silent at default log level, so an unverified one is indistinguishable from a working one.
 
-Not available for the exploded-classes image layout, which currently includes Spring Boot: a CDS
-dump refuses any classpath entry that is a directory, and that restriction is Won't Fix upstream.
+Spring Boot images are unpacked into Boot's own CDS/AOT-friendly layout first (thin launcher
+jar + `lib/`), so they train like any jar-based image. Only a non-Boot exploded-classes layout
+remains unsupported: a CDS dump refuses any classpath entry that is a directory, and that
+restriction is Won't Fix upstream.
 
 ### Grails (`[grails]`)
 

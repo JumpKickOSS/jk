@@ -59,6 +59,7 @@ Exact and prefix-matchable like the primary name, still hidden from help.
 `cache storage` / `cache info` and `cache search` are pre-rename / pre-split spellings.
 `cache prune` / `cache purge` / `self purge` are renames from the clean/nuke vocabulary.
 `storage status` / `df` / `info` are aliases of the usage report. Hidden stubs also forward
+their arguments unchanged, so scripted spellings keep working while staying out of `--help`.
 
 ## Hidden option aliases
 
