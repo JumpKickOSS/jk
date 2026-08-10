@@ -57,12 +57,16 @@ class NativeImageMetadataTest {
 
     @Test
     void the_unified_schema_reads_every_section() {
+        // The real unified shapes: proxies are reflection entries with a map-shaped type, and
+        // resources are a flat glob array (JK-1752).
         String body = """
                 {
-                  "reflection": [{"type":"com.acme.R","allDeclaredMethods":true}],
+                  "reflection": [
+                    {"type":"com.acme.R","allDeclaredMethods":true},
+                    {"type":{"proxy":["com.acme.I","com.acme.J"]}}
+                  ],
                   "jni": [{"type":"com.acme.N"}],
-                  "reflection-proxies": [{"interfaces":["com.acme.I","com.acme.J"]}],
-                  "resources": {"includes":[{"glob":"config/*.yml"}]}
+                  "resources": [{"glob":"config/*.yml"}]
                 }
                 """;
 
@@ -72,6 +76,41 @@ class NativeImageMetadataTest {
         assertThat(surface.of(JNI_TYPE)).extracting(Entry::name).containsExactly("com.acme.N");
         assertThat(surface.of(PROXY_INTERFACE)).extracting(Entry::name).containsExactly("com.acme.I", "com.acme.J");
         assertThat(surface.of(RESOURCE)).extracting(Entry::name).containsExactly("config/*.yml");
+    }
+
+    @Test
+    void the_legacy_reflection_proxies_section_is_still_read() {
+        // Files jk emitted before JK-1752 put proxies in a top-level "reflection-proxies" array
+        // and resources under {"resources":{"includes":[...]}} — keep reading both.
+        String body = """
+                {
+                  "reflection-proxies": [{"interfaces":["com.acme.I"]}],
+                  "resources": {"includes":[{"glob":"config/*.yml"}]}
+                }
+                """;
+
+        DynamicSurface surface = NativeImageMetadata.parse("x/reachability-metadata.json", body, "old");
+
+        assertThat(surface.of(PROXY_INTERFACE)).extracting(Entry::name).containsExactly("com.acme.I");
+        assertThat(surface.of(RESOURCE)).extracting(Entry::name).containsExactly("config/*.yml");
+    }
+
+    @Test
+    void emitted_metadata_round_trips_through_the_parser() {
+        DynamicSurface surface = DynamicSurface.of(
+                Entry.type(PROXY_INTERFACE, "com.acme.I", "train:default"),
+                Entry.type(RESOURCE, "config/*.yml", "train:default"));
+
+        String json = ReachabilityMetadataEmitter.emit(surface);
+        assertThat(json)
+                .contains("{\"type\":{\"proxy\":[\"com.acme.I\"]}}")
+                .contains("\"resources\": [\n    {\"glob\":\"config/*.yml\"}\n  ]")
+                .doesNotContain("reflection-proxies")
+                .doesNotContain("includes");
+
+        DynamicSurface back = NativeImageMetadata.parse("x/reachability-metadata.json", json, "train:default");
+        assertThat(back.of(PROXY_INTERFACE)).extracting(Entry::name).containsExactly("com.acme.I");
+        assertThat(back.of(RESOURCE)).extracting(Entry::name).containsExactly("config/*.yml");
     }
 
     @Test

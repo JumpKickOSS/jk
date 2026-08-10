@@ -26,7 +26,6 @@ public final class ReachabilityMetadataEmitter {
         List<String> resources = new ArrayList<>();
         List<String> serialization = new ArrayList<>();
         List<String> jni = new ArrayList<>();
-        List<String> proxies = new ArrayList<>();
 
         for (DynamicSurface.Entry entry : surface.entries()) {
             switch (entry.kind()) {
@@ -35,8 +34,10 @@ public final class ReachabilityMetadataEmitter {
                 case JNI_TYPE -> jni.add(typeObject(entry.name(), true));
                 case JNI_MEMBER -> jni.add(memberObject(entry));
                 case SERIALIZATION_TYPE -> serialization.add(typeObject(entry.name(), false));
+                // GraalVM's unified schema: resources are a flat glob array, and a proxy is a
+                // reflection entry with a map-shaped type (JK-1752).
                 case RESOURCE -> resources.add("{\"glob\":" + quote(entry.name()) + "}");
-                case PROXY_INTERFACE -> proxies.add("{\"interfaces\":[" + quote(entry.name()) + "]}");
+                case PROXY_INTERFACE -> reflection.add("{\"type\":{\"proxy\":[" + quote(entry.name()) + "]}}");
                 // Graal keeps generic signatures without being told.
                 case GENERIC_REFLECTION -> {}
             }
@@ -46,10 +47,7 @@ public final class ReachabilityMetadataEmitter {
         addArray(sections, "reflection", reflection);
         addArray(sections, "jni", jni);
         addArray(sections, "serialization", serialization);
-        addArray(sections, "reflection-proxies", proxies);
-        if (!resources.isEmpty()) {
-            sections.add("  " + quote("resources") + ": {\"includes\": [" + String.join(", ", resources) + "]}");
-        }
+        addArray(sections, "resources", resources);
         return "{\n" + String.join(",\n", sections) + (sections.isEmpty() ? "" : "\n") + "}\n";
     }
 

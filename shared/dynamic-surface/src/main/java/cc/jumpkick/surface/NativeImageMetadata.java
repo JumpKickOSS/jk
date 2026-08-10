@@ -73,6 +73,8 @@ public final class NativeImageMetadata {
                 reflection(Json.list(root, "reflection"), origin, REFLECTIVE_TYPE, REFLECTIVE_MEMBER, out);
                 reflection(Json.list(root, "jni"), origin, JNI_TYPE, JNI_MEMBER, out);
                 reflection(Json.list(root, "serialization"), origin, SERIALIZATION_TYPE, null, out);
+                // Not part of GraalVM's unified schema (proxies live inside "reflection"), but
+                // files jk emitted before JK-1752 used this section — keep reading them.
                 proxies(Json.list(root, "reflection-proxies"), origin, out);
                 resources(Json.get(root, "resources"), origin, out);
             }
@@ -99,7 +101,16 @@ public final class NativeImageMetadata {
         for (Object item : items) {
             String name = Json.str(item, "name");
             if (name == null) name = Json.str(item, "type");
-            if (name == null || name.isBlank()) continue;
+            if (name == null || name.isBlank()) {
+                // Unified-schema proxies are reflection entries with a map-shaped type:
+                // {"type": {"proxy": ["a.B", "c.D"]}} (JK-1752).
+                for (Object iface : Json.list(Json.map(item, "type"), "proxy")) {
+                    if (iface instanceof String s && !s.isBlank()) {
+                        out.add(DynamicSurface.Entry.type(PROXY_INTERFACE, s, origin));
+                    }
+                }
+                continue;
+            }
 
             Set<String> members = new TreeSet<>();
             for (Object field : Json.list(item, "fields")) addName(field, DynamicSurface::fieldMember, members);

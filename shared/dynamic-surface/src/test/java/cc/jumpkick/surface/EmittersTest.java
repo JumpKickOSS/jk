@@ -111,7 +111,13 @@ class EmittersTest {
                 .contains("-keepclassmembers class com.acme.Z");
 
         String json = ReachabilityMetadataEmitter.emit(surface);
-        assertThat(json).contains("\"reflection\"").contains("\"jni\"").contains("\"serialization\"");
+        assertThat(json)
+                .contains("\"reflection\"")
+                .contains("\"jni\"")
+                .contains("\"serialization\"")
+                // Proxies are reflection entries in the unified schema, not their own section.
+                .contains("{\"type\":{\"proxy\":[\"com.acme.I\"]}}")
+                .doesNotContain("reflection-proxies");
     }
 
     @Test
