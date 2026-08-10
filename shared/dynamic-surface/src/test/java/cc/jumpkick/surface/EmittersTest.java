@@ -42,15 +42,33 @@ class EmittersTest {
 
     @Test
     void reflective_members_narrow_the_keep_rule() {
+        // Untagged members (older surface JSON) are of unknown kind: both forms in keep rules,
+        // both `fields` and `methods` in reachability metadata.
         DynamicSurface surface =
                 DynamicSurface.of(new Entry(REFLECTIVE_MEMBER, "com.acme.A", Set.of("run", "stop"), "train:default"));
 
         assertThat(KeepRuleEmitter.emit(surface))
                 .contains("-keep class com.acme.A { *** run; *** run(...); *** stop; *** stop(...); }");
         assertThat(ReachabilityMetadataEmitter.emit(surface))
-                .contains("\"methods\"")
-                .contains("\"run\"")
-                .contains("\"stop\"");
+                .contains("\"fields\":[{\"name\":\"run\"},{\"name\":\"stop\"}]")
+                .contains("\"methods\":[{\"name\":\"run\"},{\"name\":\"stop\"}]");
+    }
+
+    @Test
+    void tagged_members_emit_their_one_form() {
+        DynamicSurface surface = DynamicSurface.of(new Entry(
+                REFLECTIVE_MEMBER,
+                "com.acme.A",
+                Set.of(DynamicSurface.fieldMember("count"), DynamicSurface.methodMember("run")),
+                "library"));
+
+        assertThat(KeepRuleEmitter.emit(surface))
+                .contains("-keep class com.acme.A { *** count; *** run(...); }")
+                .doesNotContain("*** count(...)")
+                .doesNotContain("*** run;");
+        assertThat(ReachabilityMetadataEmitter.emit(surface))
+                .contains("\"fields\":[{\"name\":\"count\"}]")
+                .contains("\"methods\":[{\"name\":\"run\"}]");
     }
 
     @Test

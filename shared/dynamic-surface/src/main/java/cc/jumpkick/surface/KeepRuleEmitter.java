@@ -38,19 +38,26 @@ public final class KeepRuleEmitter {
             case REFLECTIVE_MEMBER -> {
                 if (entry.members().isEmpty()) yield "-keep class " + entry.name() + " { *; }";
                 // A member spec needs a type: `*** name;` is any field of that name, and
-                // `*** name(...);` any method. The model records a name without saying which,
-                // so emit both rather than guess and drop the one that mattered.
+                // `*** name(...);` any method. Tagged members (`f:`/`m:`) emit the one form they
+                // name; an untagged name (older surface JSON) does not say which, so emit both
+                // rather than guess and drop the one that mattered.
                 //
                 // Initializers are the exception — they have no return type, and Graal's
                 // reflect-config lists constructors under `methods` as `<init>`.
                 StringJoiner members = new StringJoiner(" ");
                 for (String member : entry.members()) {
-                    if (member.equals("<init>") || member.equals("<clinit>")) {
-                        members.add(member + "(...);");
+                    if (member.startsWith("f:")) {
+                        members.add("*** " + member.substring(2) + ";");
                         continue;
                     }
-                    members.add("*** " + member + ";");
-                    members.add("*** " + member + "(...);");
+                    boolean method = member.startsWith("m:");
+                    String name = method ? member.substring(2) : member;
+                    if (name.equals("<init>") || name.equals("<clinit>")) {
+                        members.add(name + "(...);");
+                        continue;
+                    }
+                    if (!method) members.add("*** " + name + ";");
+                    members.add("*** " + name + "(...);");
                 }
                 yield "-keep class " + entry.name() + " { " + members + " }";
             }

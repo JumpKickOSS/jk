@@ -2,7 +2,9 @@
 package cc.jumpkick.surface;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * A {@link DynamicSurface} as GraalVM's unified {@code reachability-metadata.json}.
@@ -56,14 +58,43 @@ public final class ReachabilityMetadataEmitter {
                 + "\"allDeclaredConstructors\":true}";
     }
 
+    /**
+     * Members tagged {@code f:}/{@code m:} emit under {@code fields} or {@code methods}; an
+     * untagged name (older surface JSON) is of unknown kind and emits under both, except
+     * initializers, which can only be methods.
+     */
     private static String memberObject(DynamicSurface.Entry entry) {
         if (entry.members().isEmpty()) return typeObject(entry.name(), true);
-        StringBuilder methods = new StringBuilder();
+        Set<String> fields = new LinkedHashSet<>();
+        Set<String> methods = new LinkedHashSet<>();
         for (String member : entry.members()) {
-            if (methods.length() > 0) methods.append(',');
-            methods.append("{\"name\":").append(quote(member)).append('}');
+            if (member.startsWith("f:")) {
+                fields.add(member.substring(2));
+            } else if (member.startsWith("m:")) {
+                methods.add(member.substring(2));
+            } else if (member.equals("<init>") || member.equals("<clinit>")) {
+                methods.add(member);
+            } else {
+                fields.add(member);
+                methods.add(member);
+            }
         }
-        return "{\"type\":" + quote(entry.name()) + ",\"methods\":[" + methods + "]}";
+        StringBuilder sb = new StringBuilder("{\"type\":").append(quote(entry.name()));
+        appendMembers(sb, "fields", fields);
+        appendMembers(sb, "methods", methods);
+        return sb.append('}').toString();
+    }
+
+    private static void appendMembers(StringBuilder sb, String key, Set<String> names) {
+        if (names.isEmpty()) return;
+        sb.append(",\"").append(key).append("\":[");
+        boolean first = true;
+        for (String name : names) {
+            if (!first) sb.append(',');
+            first = false;
+            sb.append("{\"name\":").append(quote(name)).append('}');
+        }
+        sb.append(']');
     }
 
     private static void addArray(List<String> sections, String key, List<String> values) {

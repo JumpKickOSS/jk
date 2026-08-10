@@ -31,10 +31,16 @@ class NativeImageMetadataTest {
 
         assertThat(surface.entries()).singleElement().satisfies(e -> {
             assertThat(e.kind()).isEqualTo(REFLECTIVE_MEMBER);
-            assertThat(e.members()).containsExactly("consumerIndex");
+            assertThat(e.members()).containsExactly("f:consumerIndex");
             assertThat(e.origin()).isEqualTo("library:http-netty");
         });
-        assertThat(KeepRuleEmitter.emit(surface)).contains("*** consumerIndex;");
+        assertThat(KeepRuleEmitter.emit(surface))
+                .contains("*** consumerIndex;")
+                .doesNotContain("consumerIndex(...)");
+        // A recorded field access round-trips to a `fields` entry, not a guessed method (JK-1753).
+        assertThat(ReachabilityMetadataEmitter.emit(surface))
+                .contains("\"fields\":[{\"name\":\"consumerIndex\"}]")
+                .doesNotContain("\"methods\"");
     }
 
     @Test

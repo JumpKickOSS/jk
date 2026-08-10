@@ -62,11 +62,27 @@ public record DynamicSurface(List<Entry> entries) {
     }
 
     /**
+     * Tag a member name as a field ({@code f:}). Members carry their kind as a prefix so a
+     * recorded {@code Field} access is not re-emitted as a method registration (JK-1753); a
+     * bare, untagged name (older surface JSON) means "unknown — emit both forms".
+     */
+    public static String fieldMember(String name) {
+        return "f:" + name;
+    }
+
+    /** Tag a member name as a method ({@code m:}). See {@link #fieldMember}. */
+    public static String methodMember(String name) {
+        return "m:" + name;
+    }
+
+    /**
      * One dynamic entry point.
      *
      * @param kind why {@code name} is in the surface
      * @param name a fully-qualified class name, or a resource path for {@link Kind#RESOURCE}
-     * @param members member names for {@link Kind#REFLECTIVE_MEMBER}; empty means the whole type
+     * @param members member names for {@link Kind#REFLECTIVE_MEMBER}; empty means the whole type.
+     *     Names are tagged {@code f:}/{@code m:} when the member kind is known (see
+     *     {@link #fieldMember}); an untagged name is a member of unknown kind
      * @param origin where this came from ({@code index}, {@code library}, {@code train:<profile>},
      *     {@code user}) — carried so a surprising rule can be traced back
      */

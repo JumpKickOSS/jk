@@ -93,8 +93,8 @@ public final class NativeImageMetadata {
             if (name == null || name.isBlank()) continue;
 
             Set<String> members = new TreeSet<>();
-            for (Object field : Json.list(item, "fields")) addName(field, members);
-            for (Object method : Json.list(item, "methods")) addName(method, members);
+            for (Object field : Json.list(item, "fields")) addName(field, DynamicSurface::fieldMember, members);
+            for (Object method : Json.list(item, "methods")) addName(method, DynamicSurface::methodMember, members);
 
             boolean wholeType = members.isEmpty()
                     || isTrue(item, "allDeclaredFields")
@@ -145,9 +145,9 @@ public final class NativeImageMetadata {
         }
     }
 
-    private static void addName(Object member, Set<String> sink) {
+    private static void addName(Object member, java.util.function.UnaryOperator<String> tag, Set<String> sink) {
         String name = Json.str(member, "name");
-        if (name != null && !name.isBlank()) sink.add(name);
+        if (name != null && !name.isBlank()) sink.add(tag.apply(name));
     }
 
     private static boolean isTrue(Object holder, String key) {
