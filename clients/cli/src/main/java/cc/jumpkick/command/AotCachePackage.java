@@ -142,7 +142,7 @@ final class AotCachePackage {
         }
 
         String jvmIdent = jvmIdentity(java);
-        writeManifest(outDir, Path.of(plan.mainJar()), java, jvmIdent, cacheFile, runFlag, appJarName);
+        writeManifest(outDir, Path.of(plan.mainJar()), projectDir, java, jvmIdent, cacheFile, runFlag, appJarName);
         Path launcher = writeLauncher(outDir, java, runFlag, appJarName);
 
         CliOutput.err("jk: wrote " + cc.jumpkick.cli.PathDisplay.styledRaw(outDir) + " ("
@@ -230,13 +230,24 @@ final class AotCachePackage {
             if (recorded.isEmpty() || builtFrom.isEmpty()) return;
             Path jar = Path.of(builtFrom);
             String actual = Files.isRegularFile(jar) ? cc.jumpkick.util.Hashing.sha256Hex(jar) : "";
-            if (recorded.equals(actual)) return;
+            // The lock is the dependency closure's identity: a dep-only bump rebuilds nothing in
+            // the thin main jar, but run.sh would keep executing the old lib/ copies — stale
+            // code, not a cold start. An old manifest without the key cannot be validated, which
+            // is the same situation.
+            boolean lockFresh = valueOf(text, "lock-sha256").equals(currentLockSha(projectDir));
+            if (recorded.equals(actual) && lockFresh) return;
             PathUtil.deleteRecursively(outDir);
             CliOutput.err("jk: the AOT cache no longer matches this build — removed "
                     + cc.jumpkick.cli.PathDisplay.styledRaw(outDir) + " (re-run with --aot-cache)");
         } catch (IOException | RuntimeException ignored) {
             // Best effort: never fail a build over a cache that was only ever an optimisation.
         }
+    }
+
+    /** sha256 of the module's lockfile, or empty when there is none. */
+    private static String currentLockSha(Path projectDir) throws IOException {
+        Path lock = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
+        return Files.isRegularFile(lock) ? cc.jumpkick.util.Hashing.sha256Hex(lock) : "";
     }
 
     /** {@code <target>/aot-cache} for a module, or null when there is none. */
@@ -266,6 +277,7 @@ final class AotCachePackage {
     private static void writeManifest(
             Path outDir,
             Path sourceJar,
+            Path projectDir,
             String java,
             String jvmIdent,
             String cacheFile,
@@ -273,7 +285,8 @@ final class AotCachePackage {
             String appJarName)
             throws IOException {
         // The jar the layout was derived from, not the extracted copy inside outDir — the copy
-        // never changes on its own, so comparing it to itself would always look fresh.
+        // never changes on its own, so comparing it to itself would always look fresh. The lock
+        // pins the dependency closure the lib/ copies came from for the same reason.
         String appSha = Files.isRegularFile(sourceJar) ? cc.jumpkick.util.Hashing.sha256Hex(sourceJar) : "";
         Files.writeString(outDir.resolve(MANIFEST), """
                 # Written by `jk build --aot-cache`. The cache is void if this directory moves, the
@@ -282,11 +295,20 @@ final class AotCachePackage {
                 cache        = "%s"
                 built-from   = "%s"
                 app-sha256   = "%s"
+                lock-sha256  = "%s"
                 java-home    = "%s"
                 jvm-identity = "%s"
                 run          = "%s %s -jar %s"
                 """.formatted(
-                        cacheFile, sourceJar.toAbsolutePath(), appSha, java, jvmIdent, java, runFlag, appJarName));
+                        cacheFile,
+                        sourceJar.toAbsolutePath(),
+                        appSha,
+                        currentLockSha(projectDir),
+                        java,
+                        jvmIdent,
+                        java,
+                        runFlag,
+                        appJarName));
     }
 
     /** A launcher that pins the JVM and the working directory, since both are part of the key. */
