@@ -33,51 +33,28 @@ final class TaskCatalog {
     }
 
     private static final List<TaskDef> BUILD_TASKS = List.of(
-            def(TaskNames.PARSE_BUILD, "setup", "Parse jk.toml / workspace modules", null),
-            def(TaskNames.RESOLVE_DEPS, "setup", "Resolve dependencies / lock materialize", null),
-            def(TaskNames.ENSURE_JDK, "setup", "Ensure configured JDK is available", null),
-            def(
-                    TaskNames.COMPILE_JAVA,
-                    "compile",
-                    "Compile main Java sources",
-                    BuildLayout::classesDir,
-                    "compile-main",
-                    "compile"),
-            def(TaskNames.COMPILE_KOTLIN, "compile", "Compile main Kotlin sources", BuildLayout::kotlinClassesDir),
-            def(TaskNames.COMPILE_GROOVY, "compile", "Compile main Groovy sources", BuildLayout::groovyClassesDir),
-            def(
-                    TaskNames.ASSEMBLE_CLASSES,
-                    "compile",
-                    "Merge language outputs into classes/main",
-                    BuildLayout::classesDir),
-            def(
-                    "build-logic-after-compile",
-                    "compile",
-                    "Project build-logic SPI (AFTER_COMPILE)",
-                    BuildLayout::classesDir),
+            def(TaskNames.PARSE_BUILD, "Parse jk.toml / workspace modules", null),
+            def(TaskNames.RESOLVE_DEPS, "Resolve dependencies / lock materialize", null),
+            def(TaskNames.ENSURE_JDK, "Ensure configured JDK is available", null),
+            def("build-logic-before-compile", "Project build-logic SPI (BEFORE_COMPILE)", null),
+            def(TaskNames.COMPILE_JAVA, "Compile main Java sources", BuildLayout::classesDir, "compile-main", "compile"),
+            def(TaskNames.COMPILE_KOTLIN, "Compile main Kotlin sources", BuildLayout::kotlinClassesDir),
+            def(TaskNames.COMPILE_GROOVY, "Compile main Groovy sources", BuildLayout::groovyClassesDir),
+            def(TaskNames.ASSEMBLE_CLASSES, "Merge language outputs into classes/main", BuildLayout::classesDir),
+            def("build-logic-after-compile", "Project build-logic SPI (AFTER_COMPILE)", BuildLayout::classesDir),
             def(
                     TaskNames.COPY_RESOURCES,
-                    "compile",
                     "Copy main resources + AFTER_RESOURCES build-logic",
                     BuildLayout::classesDir,
                     "resources"),
-            def(TaskNames.COMPILE_TEST, "test", "Compile test sources", BuildLayout::testClassesDir),
-            def(TaskNames.RUN_TESTS, "test", "Run tests", BuildLayout::testResultsDir, "test"),
-            def(
-                    "build-logic-before-package",
-                    "package",
-                    "Project build-logic SPI (BEFORE_PACKAGE)",
-                    BuildLayout::classesDir),
-            def(TaskNames.PACKAGE_JAR, "package", "Package main jar", BuildLayout::mainJar, "package", "jar"),
-            def(
-                    TaskNames.PACKAGE_ASSEMBLY,
-                    "package",
-                    "Package assembly (fat) jar",
-                    BuildLayout::assemblyJar,
-                    "assembly"),
-            def(TaskNames.WRITE_STAMP, "package", "Write Java compile freshness stamp", null),
-            def(TaskNames.WRITE_STAMP_KOTLIN, "package", "Write Kotlin compile freshness stamp", null),
-            def(TaskNames.WRITE_STAMP_GROOVY, "package", "Write Groovy compile freshness stamp", null));
+            def(TaskNames.COMPILE_TEST, "Compile test sources", BuildLayout::testClassesDir),
+            def(TaskNames.RUN_TESTS, "Run tests", BuildLayout::testResultsDir, "test"),
+            def("build-logic-before-package", "Project build-logic SPI (BEFORE_PACKAGE)", BuildLayout::classesDir),
+            def(TaskNames.PACKAGE_JAR, "Package main jar", BuildLayout::mainJar, "package", "jar"),
+            def(TaskNames.PACKAGE_ASSEMBLY, "Package assembly (fat) jar", BuildLayout::assemblyJar, "assembly"),
+            def(TaskNames.WRITE_STAMP, "Write Java compile freshness stamp", null),
+            def(TaskNames.WRITE_STAMP_KOTLIN, "Write Kotlin compile freshness stamp", null),
+            def(TaskNames.WRITE_STAMP_GROOVY, "Write Groovy compile freshness stamp", null));
 
     private static final Map<String, TaskDef> BY_NAME = index();
 
@@ -111,7 +88,11 @@ final class TaskCatalog {
     }
 
     private static TaskDef def(
-            String name, String stage, String description, Function<BuildLayout, Path> out, String... aliases) {
-        return new TaskDef(name, stage, description, out, List.of(aliases));
+            String name, String description, Function<BuildLayout, Path> out, String... aliases) {
+        // Stage comes from the one taxonomy the whole system speaks (JK-1651): the catalog once
+        // said `setup` where BuildStage says `resolve`, and hand-assigned stages drifted from
+        // the inference (`write-stamp` is COMPILE, not package).
+        return new TaskDef(
+                name, cc.jumpkick.run.BuildStage.ofTaskName(name).wireName(), description, out, List.of(aliases));
     }
 }
