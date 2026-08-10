@@ -125,12 +125,6 @@ class SelfHostingTomlTest {
     }
 
     @Test
-    void root_declares_central_and_google_repositories() throws Exception {
-        JkBuild root = JkBuildParser.parse(REPO.resolve("jk.toml"));
-        assertThat(root.repositories()).extracting(r -> r.name()).contains("central", "google");
-    }
-
-    @Test
     void web_module_is_resources_library() throws Exception {
         JkBuild web = JkBuildParser.parse(REPO.resolve("clients/web/jk.toml"));
         assertThat(web.project().name()).isEqualTo("jk-web");

@@ -1,5 +1,3 @@
-# Self-host guard (JK-1443): short names resolve from the bundled catalog only,
-# immune to ~/.jk/libs.toml and the downloaded registry mirror.
 catalog = "bundled"
 
 [project]
@@ -9,13 +7,6 @@ version  = "0.11.0"
 description = "JumpKick - the best damn build tool for the JVM"
 java     = 25
 
-# Explicit baseline remotes (also the product default after F6). Google hosts apksig / AndroidX / R8.
-[repositories]
-central = "https://repo.maven.apache.org/maven2/"
-google  = "https://dl.google.com/dl/android/maven2/"
-
-# Module order is declaration preference only; build order is dependency-first.
-# First-party workers are workspace modules with assembly + PluginMain.
 [workspace]
 modules = [
   # Shared Libraries
