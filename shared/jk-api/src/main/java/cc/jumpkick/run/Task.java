@@ -60,10 +60,13 @@ public final class Task {
 
     /**
      * Wire group label for UI folding ({@code compile}, {@code test}). Same as
-     * {@link BuildStage#wireName() stage().wireName()}.
+     * {@link BuildStage#wireName() stage().wireName()} — except {@link BuildStage#OTHER}, which
+     * returns empty: OTHER means "not a pipeline task", and folding half of jk's non-build
+     * commands into one indistinguishable "Other" row erased their per-step rows (JK-1612).
+     * An empty group makes the TUI fall back to the step key, one row per step.
      */
     public Optional<String> group() {
-        return Optional.of(stage.wireName());
+        return stage == BuildStage.OTHER ? Optional.empty() : Optional.of(stage.wireName());
     }
 
     /** @deprecated use {@link #group()} or {@link #stage()}; kept for call-site migration */
