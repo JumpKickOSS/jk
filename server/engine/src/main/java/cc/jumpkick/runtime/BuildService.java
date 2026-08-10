@@ -562,6 +562,9 @@ public final class BuildService {
             List<String> running = new ArrayList<>();
             for (TaskForecast.Task s : m.steps()) {
                 if (!distrust && s.cached()) continue;
+                // Price material work only — bookkeeping steps (parse-build, stamps, …) are not
+                // cache hits but must not inflate ETA toward a full monorepo wall.
+                if (!distrust && TaskForecast.Module.isBookkeepingStep(s.name())) continue;
                 running.add(s.name());
             }
             // Rebuild with an empty step list still means "all work" — fall back to plan shape.

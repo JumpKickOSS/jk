@@ -42,6 +42,8 @@ actual plan ticks instead.
 |------|--------|
 | **One function** | Both call `BuildService.estimateEtaMillis` only for `R0`. |
 | **One forecast** | Costs from `TaskForecaster` / `ExplainPlan` only. |
+| **Material dirty only** | A module is dirty only if a *material* step (compile/test/package/native/…) is not CACHED — not parse-build / resolve-deps / write-stamp bookkeeping. |
+| **Price material steps only** | ETA costs skip bookkeeping steps even when the plan still runs them. |
 | **Same concurrency** | `etaConcurrency(...)` matches workspace scheduler clamp. |
 | **Open-loop clock** | Client freezes `R0` when execute starts; residual ETA events are not applied mid-run. |
 | **Seed quality KPI** | `|R0 − execute_wall| / execute_wall` on success (`jk: eta-seed quality …` when serious or `JK_ETA_SEED_LOG=1`). |

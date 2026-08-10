@@ -83,12 +83,13 @@ public final class TaskForecaster {
             // reporting "cached". The build then reruns those steps and the live bar,
             // having reserved nothing for them, backslides. Seeding on package too keeps
             // the forecast pessimistic (safe) for the consumer.
+            // Seed downstream dirtiness only when this module's *consumed outputs* change —
+            // material compile/package work, not always-run parse/stamp bookkeeping.
             if (m.steps().stream()
                             .anyMatch(p -> !p.cached()
-                                    && (p.name().startsWith("compile-main")
-                                            || p.name().startsWith("compile-kotlin")
-                                            || p.name().startsWith("compile-groovy")
-                                            || p.name().startsWith("package-jar")))
+                                    && (p.name().startsWith("compile-")
+                                            || p.name().startsWith("package-jar")
+                                            || p.name().equals("package-jar")))
                     || depDirty) {
                 dirty.add(u.dir());
             }

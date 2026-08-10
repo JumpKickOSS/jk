@@ -99,8 +99,48 @@ public final class TaskForecast {
             return producesImage;
         }
 
+        /**
+         * True when this module has <em>material</em> work that is not cache-restorable —
+         * compile, tests, package, native, image, or source-generating build-logic.
+         *
+         * <p>Always-run bookkeeping steps ({@code parse-build}, {@code resolve-deps},
+         * {@code write-stamp}, …) are not cached in the action store but cost milliseconds; treating
+         * them as dirty scheduled every workspace member on every build and inflated ETA to a full
+         * monorepo history floor (~minutes) when only a few modules needed real work.
+         */
         public boolean dirty() {
-            return steps.stream().anyMatch(p -> !p.cached());
+            return steps.stream().anyMatch(p -> !p.cached() && isMaterialWork(p.name()));
+        }
+
+        /**
+         * Steps whose cache miss means real wall work for ETA / dirty-set (not stamp-check
+         * bookkeeping). Anything not on the bookkeeping denylist is material (plugin source-gen,
+         * native-image, run-tests, compile-*, package-*, …).
+         */
+        public static boolean isMaterialWork(String stepName) {
+            if (stepName == null || stepName.isBlank()) return false;
+            return !isBookkeepingStep(stepName);
+        }
+
+        /** Always-run / stamp-check steps that must not alone mark a module dirty. */
+        public static boolean isBookkeepingStep(String stepName) {
+            if (stepName == null) return true;
+            return switch (stepName) {
+                case "parse-build",
+                        "ensure-jdk",
+                        "resolve-deps",
+                        "copy-resources",
+                        "write-stamp",
+                        "write-stamp-kotlin",
+                        "write-stamp-groovy",
+                        "build-logic-before-compile",
+                        "build-logic-after-compile",
+                        "build-logic-before-package",
+                        "embed-sha",
+                        "sync-ide" -> true;
+                default -> false;
+            };
         }
     }
 }
+
