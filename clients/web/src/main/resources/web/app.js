@@ -1585,7 +1585,7 @@ Vue.createApp({
 
     // ---- Status view storage panels (/api/cache + live `cache` SSE) ----
 
-    /** Cache-tier bytes (CLI: jk cache storage) — index + cache CAS + stamps. */
+    /** Cache-tier bytes (CLI: jk cache usage) — index + cache CAS + stamps. */
     actionCacheBytes() {
       const c = this.cache;
       if (!c) return null;
@@ -1606,7 +1606,8 @@ Vue.createApp({
       const c = this.cache;
       if (!c) return null;
       if (c.artifactStorageBytes != null) return c.artifactStorageBytes;
-      return (c.casBytes || 0) + (c.workerJarsBytes || 0) + (c.runLogsBytes || 0);
+      // Run logs are state (not storage) — match jk storage usage.
+      return (c.casBytes || 0) + (c.workerJarsBytes || 0);
     },
 
     actionCacheUtilizationPercent() {

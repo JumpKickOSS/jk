@@ -257,13 +257,10 @@ public final class CommandDispatch {
     /** Dispatch {@code cmd} against {@code rest} (its arguments), descending into subcommands. */
     private static int dispatch(CliCommand cmd, String qualified, List<String> rest, boolean ansi) {
         if (!cmd.subcommands().isEmpty()) {
-            // A group with a default leaf can be given that leaf's options directly
-            // (`jk storage --cache-dir X`), so its value-taking options count when deciding where
-            // the subcommand starts. Without them, the option's VALUE reads as a subcommand name.
-            int subAt = commandIndex(rest, cmd.defaultSubcommand());
+            int subAt = commandIndex(rest);
             if (subAt < 0) {
-                // Bare group: optional default leaf (e.g. `jk storage` → status report),
-                // else print the subcommand list. `--help` always shows help.
+                // Bare group: optional default leaf, else print the subcommand list.
+                // `--help` always shows help.
                 if (helpRequested(cmd, rest)) {
                     System.out.print(renderHelp(cmd, qualified, ansi));
                     return 0;
@@ -506,28 +503,10 @@ public final class CommandDispatch {
      * jk}, or {@code jk --help}).
      */
     static int commandIndex(List<String> args) {
-        return commandIndex(args, null);
-    }
-
-    /**
-     * Index of the first token that is a command name, or -1.
-     *
-     * @param defaultLeaf the group's default subcommand when scanning a group, else null. Its
-     *     value-taking options are accepted before any subcommand name, because a group with a
-     *     default leaf can be invoked with that leaf's options and no subcommand at all.
-     */
-    static int commandIndex(List<String> args, CliCommand defaultLeaf) {
         Map<String, Opt> valueGlobals = new LinkedHashMap<>();
         for (Opt o : GlobalOptions.globalOpts()) {
             if (o.takesValue()) {
                 for (String n : o.allNames()) valueGlobals.put(n, o);
-            }
-        }
-        if (defaultLeaf != null) {
-            for (Opt o : defaultLeaf.options()) {
-                if (o.takesValue()) {
-                    for (String n : o.allNames()) valueGlobals.put(n, o);
-                }
             }
         }
         int i = 0;

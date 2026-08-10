@@ -118,7 +118,7 @@ public final class SelfNukeCommand implements CliCommand {
             return CacheCommand.runNuke(dirs.cacheDir(), dryRun, global, false);
         }
         if (selected.equals(EnumSet.of(Target.STORE))) {
-            return StorageCommand.runNuke(dirs.cacheDir(), dryRun, false);
+            return StorageCommand.runNuke(dryRun, false);
         }
 
         List<PurgeRow> rows = plan(dirs, selected);
@@ -166,7 +166,7 @@ public final class SelfNukeCommand implements CliCommand {
             if (c != 0) exit = c;
         }
         if (wantStore) {
-            int s = StorageCommand.runNuke(dirs.cacheDir(), dryRun, true);
+            int s = StorageCommand.runNuke(dryRun, true);
             if (s != 0) exit = s;
         }
 

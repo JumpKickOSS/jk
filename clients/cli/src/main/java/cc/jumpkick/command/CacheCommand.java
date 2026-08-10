@@ -44,7 +44,7 @@ public final class CacheCommand extends GroupCommand {
     public List<CliCommand> subcommands() {
         return List.of(
                 new CacheDirCommand(),
-                new CacheStorageCommand(),
+                new CacheUsageCommand(),
                 new CacheCleanCommand(),
                 new CacheNukeCommand(),
                 new CacheSearchRedirect());
@@ -71,7 +71,7 @@ public final class CacheCommand extends GroupCommand {
     }
 
     /**
-     * Cache/store section sizes for {@code jk cache storage}, {@code jk storage}, {@code jk
+     * Cache/store section sizes for {@code jk cache usage}, {@code jk storage usage}, {@code jk
      * status}, and dashboard parity.
      *
      * <p>Artifact CAS + {@code repos/} resolve via {@link JkStores} (store). Cache CAS ({@code
@@ -106,7 +106,7 @@ public final class CacheCommand extends GroupCommand {
      * Cache-tier stats only (action index + cache CAS, format stamps) — no artifact-store walk.
      * The cache CAS is copy-only ({@code Cas.putFile} on both store and restore; only the store
      * CAS ever hard-links, via {@code MavenRepo}), so no cross-tier links exist and plain sizes
-     * are exact. {@code jk cache storage} displays exactly these two numbers; walking the whole
+     * are exact. {@code jk cache usage} displays exactly these two numbers; walking the whole
      * store CAS + repos for them added store-proportional latency in the slim CLI (JK-1525).
      */
     static CacheTierStats cacheTierStats(Path cacheRoot) throws IOException {
@@ -117,7 +117,7 @@ public final class CacheCommand extends GroupCommand {
                 new Stats(actions.files() + cacheCas.files(), actions.bytes() + cacheCas.bytes()), Stats.from(stamps));
     }
 
-    /** Cache-tier breakdown for {@code jk cache storage} ({@code actions} includes the cache CAS). */
+    /** Cache-tier breakdown for {@code jk cache usage} ({@code actions} includes the cache CAS). */
     record CacheTierStats(Stats actions, Stats stamps) {}
 
     /** Breakdown used by storage / status — fields ordered for the reports. */
@@ -130,13 +130,181 @@ public final class CacheCommand extends GroupCommand {
             return cas.bytes + actions.bytes + repos.bytes + runs.bytes + stamps.bytes;
         }
 
-        /** Store-side footprint for {@code jk storage} (CAS + worker jars + run logs). */
+        /** Store-side footprint for {@code jk storage usage} (CAS + repos; run logs are state). */
         long repoFiles() {
-            return cas.files + repos.files + runs.files;
+            return cas.files + repos.files;
         }
 
         long repoBytes() {
-            return cas.bytes + repos.bytes + runs.bytes;
+            return cas.bytes + repos.bytes;
+        }
+    }
+
+    /**
+     * Artifact-store usage breakdown for {@code jk storage usage}: packaging-class jars / natives /
+     * OCI from the store CAS (content sniff), worker jars under {@code store/lib/}, format stamps
+     * under the cache root. Run logs are state (not storage) and are omitted.
+     *
+     * <p>Byte sizes are exclusive (store CAS first, then {@code lib/}, then {@code repos/}) so
+     * hard-linked materializations do not double-count.
+     */
+    static StoreUsageStats storeUsageStats(Path cacheRoot) throws IOException {
+        Path storeRoot = JkStores.storeRootFor(cacheRoot);
+        Path storeCas = storeRoot.resolve("sha256");
+        Path lib = storeRoot.resolve("lib");
+        Path repos = JkStores.resolve(cacheRoot, "repos");
+        Path stamps = cacheRoot.resolve("format-stamps");
+
+        java.util.Set<Object> seen = new java.util.HashSet<>();
+        long jarFiles = 0, jarBytes = 0;
+        long execFiles = 0, execBytes = 0;
+        long ociFiles = 0, ociBytes = 0;
+
+        if (Files.isDirectory(storeCas)) {
+            try (var walk = Files.walk(storeCas)) {
+                for (Path p : (Iterable<Path>) walk::iterator) {
+                    java.nio.file.attribute.BasicFileAttributes attrs;
+                    try {
+                        attrs = Files.readAttributes(p, java.nio.file.attribute.BasicFileAttributes.class);
+                    } catch (IOException unreadable) {
+                        continue;
+                    }
+                    if (!attrs.isRegularFile()) continue;
+                    Object key = attrs.fileKey();
+                    if (key == null) key = p.toAbsolutePath().normalize();
+                    long size = seen.add(key) ? attrs.size() : 0L;
+                    // File count always counts directory entries; bytes are exclusive.
+                    switch (sniffArtifactKind(p)) {
+                        case EXECUTABLE -> {
+                            execFiles++;
+                            execBytes += size;
+                        }
+                        case OCI -> {
+                            ociFiles++;
+                            ociBytes += size;
+                        }
+                        case JAR, OTHER -> {
+                            jarFiles++;
+                            jarBytes += size;
+                        }
+                    }
+                }
+            }
+        }
+
+        // repos/ materializations that are not hard-linked into CAS (poms, checksums, …) count as
+        // jar-adjacent artifact store content — exclusive of CAS + lib inodes already seen.
+        Stats reposExtra = walkExclusiveAdding(repos, seen);
+        jarFiles += reposExtra.files;
+        jarBytes += reposExtra.bytes;
+
+        Stats workers = walkExclusiveAdding(lib, seen);
+        Stats stampStats = statsOf(stamps);
+        return new StoreUsageStats(
+                new Stats(jarFiles, jarBytes),
+                new Stats(execFiles, execBytes),
+                new Stats(ociFiles, ociBytes),
+                workers,
+                stampStats);
+    }
+
+    /** Content-class for a store CAS blob (or any regular file under the store). */
+    private enum ArtifactKind {
+        JAR,
+        EXECUTABLE,
+        OCI,
+        OTHER
+    }
+
+    /**
+     * Sniff the first bytes of {@code file} to classify jar / native binary / OCI tarball. Falls
+     * back to path hints ({@code .jar}, {@code .tar}, …) when the head is unreadable.
+     */
+    private static ArtifactKind sniffArtifactKind(Path file) {
+        String name = file.getFileName() != null ? file.getFileName().toString().toLowerCase() : "";
+        if (name.endsWith(".jar") || name.endsWith(".zip") || name.endsWith(".war") || name.endsWith(".ear")) {
+            return ArtifactKind.JAR;
+        }
+        if (name.endsWith(".tar") || name.endsWith(".tar.gz") || name.endsWith(".tgz") || name.endsWith(".oci")) {
+            return ArtifactKind.OCI;
+        }
+        try (var in = Files.newInputStream(file)) {
+            byte[] head = in.readNBytes(8);
+            if (head.length >= 4
+                    && head[0] == 'P'
+                    && head[1] == 'K'
+                    && (head[2] == 3 || head[2] == 5 || head[2] == 7)
+                    && (head[3] == 4 || head[3] == 6 || head[3] == 8)) {
+                return ArtifactKind.JAR; // ZIP local/central/empty header
+            }
+            if (head.length >= 4 && head[0] == 0x7f && head[1] == 'E' && head[2] == 'L' && head[3] == 'F') {
+                return ArtifactKind.EXECUTABLE; // ELF
+            }
+            // Mach-O 32/64 (incl. fat/universal)
+            if (head.length >= 4) {
+                int be = ((head[0] & 0xff) << 24)
+                        | ((head[1] & 0xff) << 16)
+                        | ((head[2] & 0xff) << 8)
+                        | (head[3] & 0xff);
+                if (be == 0xFEEDFACE || be == 0xFEEDFACF || be == 0xCAFEBABE || be == 0xCFFAEDFE || be == 0xCEFAEDFE) {
+                    return ArtifactKind.EXECUTABLE;
+                }
+            }
+        } catch (IOException ignored) {
+            return ArtifactKind.OTHER;
+        }
+        // POSIX ustar magic sits at offset 257 — second open for the seek-less path.
+        try (var in = Files.newInputStream(file)) {
+            byte[] skip = in.readNBytes(257);
+            if (skip.length == 257) {
+                byte[] magic = in.readNBytes(5);
+                if (magic.length == 5
+                        && magic[0] == 'u'
+                        && magic[1] == 's'
+                        && magic[2] == 't'
+                        && magic[3] == 'a'
+                        && magic[4] == 'r') {
+                    return ArtifactKind.OCI;
+                }
+            }
+        } catch (IOException ignored) {
+            // fall through
+        }
+        return ArtifactKind.OTHER;
+    }
+
+    /** Walk {@code dir} counting every regular file; bytes only for unseen {@code fileKey}s. */
+    private static Stats walkExclusiveAdding(Path dir, java.util.Set<Object> seenKeys) throws IOException {
+        if (dir == null || !Files.isDirectory(dir)) return new Stats(0, 0);
+        long files = 0;
+        long bytes = 0;
+        try (var walk = Files.walk(dir)) {
+            for (Path p : (Iterable<Path>) walk::iterator) {
+                java.nio.file.attribute.BasicFileAttributes attrs;
+                try {
+                    attrs = Files.readAttributes(p, java.nio.file.attribute.BasicFileAttributes.class);
+                } catch (IOException unreadable) {
+                    continue;
+                }
+                if (!attrs.isRegularFile()) continue;
+                files++;
+                Object key = attrs.fileKey();
+                if (key == null) key = p.toAbsolutePath().normalize();
+                if (seenKeys.add(key)) bytes += attrs.size();
+            }
+        }
+        return new Stats(files, bytes);
+    }
+
+    /** Rows for {@code jk storage usage}. Format-stamp size is display-only ({@code --} when empty). */
+    record StoreUsageStats(Stats jars, Stats executables, Stats oci, Stats workers, Stats stamps) {
+        long totalFiles() {
+            return jars.files + executables.files + oci.files + workers.files + stamps.files;
+        }
+
+        /** Size total excludes format stamps (empty stamp files; size column shows {@code --}). */
+        long totalBytes() {
+            return jars.bytes + executables.bytes + oci.bytes + workers.bytes;
         }
     }
 
@@ -296,10 +464,10 @@ public final class CacheCommand extends GroupCommand {
     }
 
     /**
-     * {@code jk cache storage} — cache-tier footprint (action index + cache CAS + format stamps;
+     * {@code jk cache usage} — cache-tier footprint (action index + cache CAS + format stamps;
      * utilization vs {@code [cache] max-cache-size-gb}, last pruned).
      */
-    public static final class CacheStorageCommand implements CliCommand {
+    public static final class CacheUsageCommand implements CliCommand {
         /**
          * Widest label (<code>Storage Size</code>) <em>plus its colon</em> — the format is applied
          * to {@code label + ":"}, so the field must count the colon or the widest row's value
@@ -309,13 +477,16 @@ public final class CacheCommand extends GroupCommand {
 
         @Override
         public String name() {
-            return "storage";
+            return "usage";
         }
 
-        /** Hidden pre-split name ({@code jk cache info}) — see docs/aliases.md. */
+        /**
+         * Pre-rename / pre-split spellings ({@code jk cache storage}, {@code jk cache info}) — see
+         * docs/aliases.md.
+         */
         @Override
         public List<String> aliases() {
-            return List.of("info");
+            return List.of("storage", "info");
         }
 
         @Override
@@ -625,40 +796,43 @@ public final class CacheCommand extends GroupCommand {
         }
     }
 
-    // ---- shared table chrome for jk storage -------------------------------------------
+    // ---- shared table chrome for jk storage usage -------------------------------------
 
-    private static final String[] REPO_STORAGE_HEADERS = {"Element", "File Count", "Size"};
+    private static final String[] STORAGE_USAGE_HEADERS = {"Element", "File Count", "Size"};
 
     /**
-     * Box table for {@code jk storage}: CAS + worker jars + run logs, utilization vs store
-     * {@code max-store-size-gb}, last-pruned footer.
+     * Box table for {@code jk storage usage}: jar / native / OCI content, worker jars, format
+     * stamps; utilization vs store {@code max-store-size-gb}; last-pruned footer.
      */
-    static List<String> renderRepoStorageTable(
-            Stats cas, Stats repos, Stats runs, long totalFiles, long totalBytes, long maxBytes, String lastPruned) {
+    static List<String> renderStoreUsageTable(StoreUsageStats s, long maxBytes, String lastPruned) {
+        String stampSize = s.stamps().bytes <= 0 ? "--" : fmtSize(s.stamps().bytes);
         String[][] rows = {
-            {"CAS Blobs", fmtCount(cas.files), fmtSize(cas.bytes)},
-            {"Worker JARs", fmtCount(repos.files), fmtSize(repos.bytes)},
-            {"Run Logs", fmtCount(runs.files), fmtSize(runs.bytes)},
+            {"Jar Files", fmtCount(s.jars().files), fmtSize(s.jars().bytes)},
+            {"Executables", fmtCount(s.executables().files), fmtSize(s.executables().bytes)},
+            {"OCI Images", fmtCount(s.oci().files), fmtSize(s.oci().bytes)},
+            {"Worker JARs", fmtCount(s.workers().files), fmtSize(s.workers().bytes)},
+            {"Format Stamps", fmtCount(s.stamps().files), stampSize},
         };
-        String[] total = {"Total", fmtCount(totalFiles), fmtSize(totalBytes)};
+        String[] total = {"Total", fmtCount(s.totalFiles()), fmtSize(s.totalBytes())};
 
         int[] w = new int[3];
-        for (int i = 0; i < 3; i++) w[i] = cc.jumpkick.cli.tui.BoxTable.visibleWidth(REPO_STORAGE_HEADERS[i]);
+        for (int i = 0; i < 3; i++) w[i] = cc.jumpkick.cli.tui.BoxTable.visibleWidth(STORAGE_USAGE_HEADERS[i]);
         for (String[] r : rows)
             for (int i = 0; i < 3; i++) w[i] = Math.max(w[i], cc.jumpkick.cli.tui.BoxTable.visibleWidth(r[i]));
         for (int i = 0; i < 3; i++) w[i] = Math.max(w[i], cc.jumpkick.cli.tui.BoxTable.visibleWidth(total[i]));
-        int inner = (w[0] + 2) + (w[1] + 2) + (w[2] + 2) + 2;
+        // Inner width between outer rails: each cell is " " + pad + " ", plus one rail between cols.
+        int inner = (w[0] + 2) + 1 + (w[1] + 2) + 1 + (w[2] + 2);
 
         List<String> out = new ArrayList<>();
         out.add(cc.jumpkick.cli.tui.BoxTable.titleBar("Artifact Storage", inner + 2));
         out.add(divider("├", "┬", "┤", w));
-        out.add(headerRow(REPO_STORAGE_HEADERS, w));
+        out.add(headerRow(STORAGE_USAGE_HEADERS, w));
         out.add(divider("├", "┼", "┤", w));
         for (String[] r : rows) out.add(metricRow(r, w));
         out.add(divider("├", "┼", "┤", w));
         out.add(metricRow(total, w));
         out.add(divider("├", "┴", "┤", w));
-        out.add(utilizationRow(totalBytes, maxBytes, inner));
+        out.add(utilizationRow(s.totalBytes(), maxBytes, inner));
         out.add(border("╰", "╯", inner));
         Theme t = Theme.active();
         out.add("  Last pruned: "
@@ -711,13 +885,27 @@ public final class CacheCommand extends GroupCommand {
     private static String utilizationRow(long used, long max, int inner) {
         Theme t = Theme.active();
         int pct = (int) Math.round(cc.jumpkick.cli.tui.ProgressBar.fraction(used, max) * 100);
+        // Match metric-row padding: " Utilization  <bar>  NN% " — two spaces around the bar.
         String prefix = " Utilization  ";
         String suffix = "  " + pct + "% ";
-        int barWidth = Math.max(0, inner - prefix.length() - suffix.length());
+        int barWidth = Math.max(1, inner - prefix.length() - suffix.length());
         String bar = cc.jumpkick.cli.tui.ProgressBar.renderBar(
                 used, max, barWidth, t.bright(t.planBadgeColor()), t.darkGray());
+        String content = prefix + bar + suffix;
+        int contentCols = cc.jumpkick.cli.tui.BoxTable.visibleWidth(content);
+        if (contentCols < inner) {
+            // Prefer padding after the percent so the right rail lines up.
+            content = content + " ".repeat(inner - contentCols);
+        } else if (contentCols > inner && barWidth > 1) {
+            barWidth = Math.max(1, barWidth - (contentCols - inner));
+            bar = cc.jumpkick.cli.tui.ProgressBar.renderBar(
+                    used, max, barWidth, t.bright(t.planBadgeColor()), t.darkGray());
+            content = prefix + bar + suffix;
+            contentCols = cc.jumpkick.cli.tui.BoxTable.visibleWidth(content);
+            if (contentCols < inner) content = content + " ".repeat(inner - contentCols);
+        }
         String rail = Theme.colorize("│", t.darkGray());
-        return rail + prefix + bar + suffix + rail;
+        return rail + content + rail;
     }
 
     /** ANSI-aware pads ({@code BoxTable.visibleWidth}) so colored cells keep the box aligned. */

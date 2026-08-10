@@ -13,16 +13,25 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1436 — hidden redirect stubs for the pre-split spellings: {@code jk cache info} (now
- * {@code jk cache storage}) and {@code jk cache search} (now {@code jk repo search}). Both must
- * keep working, stay out of {@code jk cache --help}, and be listed in docs/aliases.md.
+ * JK-1436 — hidden redirect stubs / aliases for the pre-split spellings: {@code jk cache info}
+ * and {@code jk cache storage} (now {@code jk cache usage}) and {@code jk cache search} (now
+ * {@code jk repo search}). Aliases keep working, stay out of {@code jk cache --help} when hidden,
+ * and are listed in docs/aliases.md.
  */
 class CacheRedirectStubTest {
 
     @Test
-    void cache_info_is_a_hidden_alias_of_cache_storage(@TempDir Path tempDir) {
+    void cache_info_is_an_alias_of_cache_usage(@TempDir Path tempDir) {
         Path cache = tempDir.resolve("cache");
         Capture c = capture(() -> Jk.execute("cache", "info", "--cache-dir", cache.toString()));
+        assertThat(c.exit).isEqualTo(0);
+        assertThat(TestAnsi.strip(c.stdout)).contains("Cache");
+    }
+
+    @Test
+    void cache_storage_is_an_alias_of_cache_usage(@TempDir Path tempDir) {
+        Path cache = tempDir.resolve("cache");
+        Capture c = capture(() -> Jk.execute("cache", "storage", "--cache-dir", cache.toString()));
         assertThat(c.exit).isEqualTo(0);
         assertThat(TestAnsi.strip(c.stdout)).contains("Cache");
     }
@@ -40,13 +49,14 @@ class CacheRedirectStubTest {
     }
 
     @Test
-    void cache_help_does_not_list_the_redirect_stubs() {
+    void cache_help_lists_usage_not_hidden_aliases() {
         Capture c = capture(() -> Jk.execute("cache", "--help"));
         assertThat(c.exit).isEqualTo(0);
         String plain = TestAnsi.strip(c.stdout);
-        assertThat(plain).contains("storage");
+        assertThat(plain).contains("usage");
         assertThat(plain).doesNotContain("search");
         assertThat(plain).doesNotContainPattern("(?m)^\\s+info\\b");
+        assertThat(plain).doesNotContainPattern("(?m)^\\s+storage\\b");
     }
 
     // --- helpers -----------------------------------------------------------

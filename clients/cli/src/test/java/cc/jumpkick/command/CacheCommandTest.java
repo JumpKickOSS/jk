@@ -30,21 +30,55 @@ class CacheCommandTest {
     }
 
     @Test
-    void storage_summarizes_an_empty_action_cache_without_creating_it(@TempDir Path tempDir) throws Exception {
+    void dir_prints_store_root() {
+        String stdout = capture(() -> run("storage", "dir"));
+        assertThat(stdout.trim()).isEqualTo(cc.jumpkick.cache.JkStores.store().toString());
+    }
+
+    /**
+     * The store is not the cache. {@code jk storage} takes no {@code --cache-dir}: it never
+     * relocated the store, and a flag that is accepted and ignored is worse than one that is
+     * refused. Choosing a cache location is {@code jk cache}'s business.
+     */
+    /** An absent store says so rather than rendering a table of zeros. */
+    @Test
+    void storage_usage_reports_an_absent_store() throws Exception {
+        Path store = cc.jumpkick.cache.JkStores.store();
+        if (Files.isDirectory(store)) return; // the shared harness store already has content
+        String plain = TestAnsi.strip(capture(() -> run("storage", "usage")));
+        assertThat(plain).contains("not yet created");
+    }
+
+    @Test
+    void storage_refuses_a_cache_dir() {
+        assertThat(run("storage", "dir", "--cache-dir", "/tmp")).isNotZero();
+        assertThat(run("storage", "usage", "--cache-dir", "/tmp")).isNotZero();
+        assertThat(run("storage", "clean", "--cache-dir", "/tmp")).isNotZero();
+    }
+
+    @Test
+    void usage_summarizes_an_empty_action_cache_without_creating_it(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
-        String stdout = capture(() -> run("cache", "storage", "--cache-dir", cache.toString()));
+        String stdout = capture(() -> run("cache", "usage", "--cache-dir", cache.toString()));
         assertThat(stdout).contains("not yet created");
         assertThat(Files.exists(cache)).isFalse();
     }
 
     @Test
-    void storage_reports_cache_tier_including_cache_cas(@TempDir Path tempDir) throws Exception {
+    void cache_storage_alias_still_reaches_usage(@TempDir Path tempDir) throws Exception {
+        Path cache = tempDir.resolve("cache");
+        String stdout = capture(() -> run("cache", "storage", "--cache-dir", cache.toString()));
+        assertThat(stdout).contains("not yet created");
+    }
+
+    @Test
+    void usage_reports_cache_tier_including_cache_cas(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
         // Cache CAS under the same root is part of the cache tier (not the artifact store report).
         writeBlob(cache.resolve("sha256/ab/cd/deadbeef"), "hello".getBytes(StandardCharsets.UTF_8));
         writeBlob(cache.resolve("actions/keys/some-task"), new byte[2048]);
 
-        String plain = TestAnsi.strip(capture(() -> run("cache", "storage", "--cache-dir", cache.toString())));
+        String plain = TestAnsi.strip(capture(() -> run("cache", "usage", "--cache-dir", cache.toString())));
         assertThat(plain).contains("Cache Storage");
         // action key + cache CAS blob (+ intermediate dirs may vary by DiskUsage walk)
         assertThat(plain).contains("Utilization");
@@ -173,7 +207,7 @@ class CacheCommandTest {
         Path cache = tempDir.resolve("cache");
         writeBlob(cache.resolve("actions/keys/task1"), new byte[1024]);
 
-        String stdout = capture(() -> run("storage", "clean", "--cache-dir", cache.toString(), "--dry-run"));
+        String stdout = capture(() -> run("storage", "clean", "--dry-run"));
 
         // op "sweep" round-trips the engine; dry run must not touch the action cache.
         assertThat(stdout).contains("Dry run");
@@ -206,22 +240,34 @@ class CacheCommandTest {
     }
 
     @Test
-    void storage_reports_cas_and_repos_without_action_cache(@TempDir Path tempDir) throws Exception {
-        // JK-1531: since the CAS split, `jk storage` measures the AMBIENT artifact store —
-        // `--cache-dir` moves only the cache tier — so exact byte totals depend on whatever the
-        // module-shared store holds and cannot be asserted here. Structural shape only; the
-        // hard-link no-double-count arithmetic is covered hermetically by
-        // DiskUsageTest.exclusive_does_not_double_count_hardlinked_cas_and_repos.
-        Path cache = tempDir.resolve("cache");
-        writeBlob(cache.resolve("actions/keys/task"), new byte[4096]);
+    void bare_storage_prints_help_not_usage(@TempDir Path tempDir) {
+        String plain = TestAnsi.strip(capture(() -> run("storage")));
+        assertThat(plain).contains("Usage:");
+        assertThat(plain).contains("usage");
+        assertThat(plain).contains("dir");
+        assertThat(plain).doesNotContain("Artifact Storage");
+    }
 
-        String plain = TestAnsi.strip(capture(() -> run("storage", "--cache-dir", cache.toString())));
-        assertThat(plain).contains("Artifact Storage"); // the store holds artifacts, not repos
-        assertThat(plain).contains("CAS Blobs");
+    @Test
+    void storage_usage_reports_content_classes_without_action_cache() throws Exception {
+        // JK-1531: since the CAS split, `jk storage usage` measures the AMBIENT artifact store, so
+        // exact byte totals depend on whatever the module-shared store holds and cannot be asserted
+        // here. Structural shape only; the hard-link no-double-count arithmetic is covered
+        // hermetically by DiskUsageTest.exclusive_does_not_double_count_hardlinked_cas_and_repos.
+        // The store has to exist for there to be a table at all — an absent store reports itself.
+        writeBlob(cc.jumpkick.cache.JkStores.store().resolve("sha256/aa/bb/blob"), new byte[4096]);
+
+        String plain = TestAnsi.strip(capture(() -> run("storage", "usage")));
+        assertThat(plain).contains("Artifact Storage");
+        assertThat(plain).contains("Jar Files");
+        assertThat(plain).contains("Executables");
+        assertThat(plain).contains("OCI Images");
         assertThat(plain).contains("Worker JARs");
-        assertThat(plain).contains("Run Logs");
+        assertThat(plain).contains("Format Stamps");
         assertThat(plain).contains("Total");
         assertThat(plain).contains("Utilization");
+        assertThat(plain).doesNotContain("CAS Blobs");
+        assertThat(plain).doesNotContain("Run Logs");
         assertThat(plain).doesNotContain("Action Cache");
     }
 

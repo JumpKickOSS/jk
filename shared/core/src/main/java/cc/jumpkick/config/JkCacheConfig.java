@@ -19,7 +19,7 @@ import java.util.function.Supplier;
  * <p>{@link #maxStoreSizeGb} is the <strong>artifact store</strong> display budget ({@code jk repo
  * storage}, store CAS + {@code repos/}). Exceeding it never evicts reachable blobs — GC only
  * reclaims unreferenced/expired garbage. {@link #maxCacheSizeGb} is the <strong>cache</strong>
- * budget ({@code jk cache storage}: cache CAS + action index + format stamps). Both treat {@code
+ * budget ({@code jk cache usage}: cache CAS + action index + format stamps). Both treat {@code
  * 0} (and negatives) as unset — the documented default applies.
  *
  * <p>Sizes are in <strong>GiB</strong> ({@code max-cache-size-gb} / {@code JK_MAX_CACHE_SIZE_GB});

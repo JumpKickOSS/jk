@@ -407,7 +407,6 @@
               <dl>
                 <dt>store CAS</dt><dd>{{ count(cache.casCount) }} · {{ gib(cache.casBytes) }}</dd>
                 <dt>repos / workers</dt><dd>{{ count(cache.workerJarsCount) }} · {{ gib(cache.workerJarsBytes) }}</dd>
-                <dt>run logs</dt><dd>{{ count(cache.runLogsCount) }} · {{ gib(cache.runLogsBytes) }}</dd>
               </dl>
             </template>
             <div v-else class="dim small">Artifact store loading…</div>
@@ -479,9 +478,9 @@
       <div class="sb-left">
         <span class="sb-item"><jk-icon name="activity"></jk-icon>Builds Running&nbsp;<b>{{ buildsRunning() }}</b></span>
         <span class="sb-div"></span>
-        <span class="sb-item" data-tip="Cache tier (rebuildable action outputs) — jk cache storage"><jk-icon name="database"></jk-icon>Cache&nbsp;<b>{{ actionCacheBytes() != null ? gib(actionCacheBytes()) : '—' }}</b></span>
+        <span class="sb-item" data-tip="Cache tier (rebuildable action outputs) — jk cache usage"><jk-icon name="database"></jk-icon>Cache&nbsp;<b>{{ actionCacheBytes() != null ? gib(actionCacheBytes()) : '—' }}</b></span>
         <span class="sb-div"></span>
-        <span class="sb-item" data-tip="Artifact store (deps CAS + repos) — jk repo storage"><jk-icon name="database"></jk-icon>Store&nbsp;<b>{{ artifactStorageBytes() != null ? gib(artifactStorageBytes()) : '—' }}</b></span>
+        <span class="sb-item" data-tip="Artifact store (deps CAS + repos) — jk storage usage"><jk-icon name="database"></jk-icon>Store&nbsp;<b>{{ artifactStorageBytes() != null ? gib(artifactStorageBytes()) : '—' }}</b></span>
         <span class="sb-div"></span>
         <span class="sb-item"><jk-icon name="cpu"></jk-icon>Engine Heap&nbsp;<b>{{ status ? mib(status.heapCommittedBytes) : '—' }}</b></span>
       </div>

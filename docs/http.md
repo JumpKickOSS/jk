@@ -186,7 +186,7 @@ epoch and hard-reloads when it changes (engine restart / displacement).
 
 ### `event: cache` and `GET /api/cache`
 
-Two storage surfaces (CLI parity: `jk cache storage` / `jk storage`), not one combined
+Two storage surfaces (CLI parity: `jk cache usage` / `jk storage usage`), not one combined
 “cache used” total:
 
 | Surface | Bytes | Budget field |

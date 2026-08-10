@@ -91,7 +91,7 @@ changing the code (and vice versa):
 | `jk history list` | status · Id · Project · Kind · Took · When · Saved · Notes |
 | `jk tasks` | Name · Stage · Description (per module at a workspace root) |
 | `jk jdk list` | (wave 1 — the exemplar) |
-| `jk storage` | Element · File Count · Size, plus Total, a spanning utilization row, and a last-pruned footer (hand-rolled on the shared BoxTable chrome) |
+| `jk storage usage` | Element · File Count · Size (Jar Files / Executables / OCI Images / Worker JARs / Format Stamps), plus Total, a spanning utilization row, and a last-pruned footer (hand-rolled on the shared BoxTable chrome) |
 
 Use `cc.jumpkick.cli.tui.BoxTable.render(title, headers, rows)`; it opens the envelope
 via the caller's `CommandWedge.envelopeStart()` and degrades to ASCII under `--no-ansi`.
@@ -103,7 +103,7 @@ via the caller's `CommandWedge.envelopeStart()` and degrades to ASCII under `--n
 | `jk doctor` | `≡ Doctor` menu chip, then the checklist rows + summary |
 | `jk auth status` | `≡ Auth status` chip, then per-forge status lines |
 | `jk history show` | `≡ Build <id>` chip, then the detail block |
-| `jk cache storage` | `≡ Cache Storage` chip, then bullet rows (file count, size, utilization, last pruned) |
+| `jk cache usage` | `≡ Cache Storage` chip, then bullet rows (file count, size, utilization, last pruned) |
 
 ### Hybrid settles (CommandWedge.ok/fail)
 

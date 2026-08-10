@@ -125,15 +125,16 @@ class LiveVitalsTest {
         String json = c.toJson().toString();
         assertThat(json)
                 .contains("\"actionCacheBytes\":50")
-                .contains("\"artifactStorageBytes\":1230")
+                .contains("\"artifactStorageBytes\":1200")
                 .contains("\"actionMaxBytes\":")
                 .contains("\"maxBytes\":");
-        assertThat(c.artifactStorageBytes()).isEqualTo(1000 + 200 + 30);
+        // Store CAS + worker jars. Run logs are state, not storage, so they are not in the total.
+        assertThat(c.artifactStorageBytes()).isEqualTo(1000 + 200);
         String thin = c.toThinJson().toString();
         assertThat(thin)
                 .contains("\"thin\":true")
                 .contains("\"actionCacheBytes\":50")
-                .contains("\"artifactStorageBytes\":1230")
+                .contains("\"artifactStorageBytes\":1200")
                 .doesNotContain("casCount");
     }
 

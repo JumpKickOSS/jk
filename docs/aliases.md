@@ -46,14 +46,19 @@ Exact and prefix-matchable like the primary name, still hidden from help.
 | `library ls`         | `library list`      |
 | `jdk upgrade`        | `jdk update`        |
 | `export pom`         | `export maven`      |
-| `cache info`         | `cache storage`     |
+| `cache storage`      | `cache usage`       |
+| `cache info`         | `cache usage`       |
 | `cache prune`        | `cache clean`       |
 | `cache purge`        | `cache nuke`        |
 | `cache search`       | `repo search`       |
+| `storage status`     | `storage usage`     |
+| `storage df`         | `storage usage`     |
+| `storage info`       | `storage usage`     |
 | `self purge`         | `self nuke`         |
 
-`cache info` and `cache search` are pre-split spellings. `cache prune` / `cache purge` /
-`self purge` are renames from the clean/nuke vocabulary. Hidden stubs also forward
+`cache storage` / `cache info` and `cache search` are pre-rename / pre-split spellings.
+`cache prune` / `cache purge` / `self purge` are renames from the clean/nuke vocabulary.
+`storage status` / `df` / `info` are aliases of the usage report. Hidden stubs also forward
 
 ## Hidden option aliases
 

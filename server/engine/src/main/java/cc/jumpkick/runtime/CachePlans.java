@@ -142,7 +142,7 @@ public final class CachePlans {
                     totalFiles += cacheSweep.deleted();
                     totalBytes += cacheSweep.freedBytes();
                     if (cacheBudget > 0) {
-                        // Utilization surfaces (jk cache storage, /api/cache) measure index +
+                        // Utilization surfaces (jk cache usage, /api/cache) measure index +
                         // stamps + blobs against this budget, but eviction can only shrink blobs.
                         // Aim the blob pool at what remains after the index overhead so a clean
                         // can actually bring utilization back under 100% (JK-1526).

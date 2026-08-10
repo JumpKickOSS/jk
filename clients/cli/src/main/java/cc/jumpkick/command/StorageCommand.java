@@ -22,12 +22,11 @@ import java.util.List;
 
 /**
  * {@code jk storage} — manage the <strong>artifact store</strong> under {@code $JK_STORE_DIR}:
- * store CAS, {@code repos/} mirrors, and run logs. Peer of {@code jk cache} (rebuildable action
- * outputs). Credentials stay under {@code jk repo login}/{@code logout}.
+ * store CAS, {@code repos/} mirrors, and worker jars. Peer of {@code jk cache} (rebuildable action
+ * outputs). Credentials stay under {@code jk repo login}/{@code logout}. Bare {@code jk storage}
+ * prints this group's help (like {@code jk cache}).
  */
 public final class StorageCommand extends GroupCommand {
-
-    private final StorageStatusCommand status = new StorageStatusCommand();
 
     @Override
     public String name() {
@@ -41,13 +40,11 @@ public final class StorageCommand extends GroupCommand {
 
     @Override
     public List<CliCommand> subcommands() {
-        return List.of(status, new StorageCleanCommand(), new StorageNukeCommand());
-    }
-
-    /** Bare {@code jk storage} shows utilization (former {@code jk storage}). */
-    @Override
-    public CliCommand defaultSubcommand() {
-        return status;
+        return List.of(
+                new StorageDirCommand(),
+                new StorageUsageCommand(),
+                new StorageCleanCommand(),
+                new StorageNukeCommand());
     }
 
     /**
@@ -85,8 +82,8 @@ public final class StorageCommand extends GroupCommand {
      *
      * @param skipConfirm when true (multi-target self nuke already confirmed), do not prompt
      */
-    public static int runNuke(Path cacheRoot, boolean dryRun, boolean skipConfirm) throws IOException {
-        Path storeRoot = JkStores.storeRootFor(cacheRoot);
+    public static int runNuke(boolean dryRun, boolean skipConfirm) throws IOException {
+        Path storeRoot = JkStores.store();
         if (!Files.isDirectory(storeRoot)) {
             CommandWedge.printOk("Storage", "Nothing to nuke — store directory does not exist.");
             return 0;
@@ -151,16 +148,39 @@ public final class StorageCommand extends GroupCommand {
 
     // --- subcommands ----------------------------------------------------------------
 
-    public static final class StorageStatusCommand implements CliCommand {
+    /** {@code jk storage dir} — print the artifact store root ({@code JK_STORE_DIR}). */
+    public static final class StorageDirCommand implements CliCommand {
         @Override
         public String name() {
-            return "status";
+            return "dir";
+        }
+
+        @Override
+        public String description() {
+            return "Print the artifact store directory path";
+        }
+
+        @Override
+        public int run(Invocation in) {
+            CliOutput.out(String.valueOf(JkStores.store()));
+            return 0;
+        }
+    }
+
+    /**
+     * {@code jk storage usage} — artifact-store size/utilization table (jars, natives, OCI, worker
+     * jars, format stamps).
+     */
+    public static final class StorageUsageCommand implements CliCommand {
+        @Override
+        public String name() {
+            return "usage";
         }
 
         @Override
         public List<String> aliases() {
-            // Pre-split / muscle-memory names
-            return List.of("df", "info");
+            // Pre-split / muscle-memory names (bare `jk storage` used to land here)
+            return List.of("status", "df", "info");
         }
 
         @Override
@@ -170,25 +190,25 @@ public final class StorageCommand extends GroupCommand {
 
         @Override
         public List<Opt> options() {
-            return List.of(cc.jumpkick.cli.CommonOpts.cacheDir());
+            return List.of();
         }
 
         @Override
         public int run(Invocation in) throws IOException {
-            Path cacheRoot = CacheCommand.resolveCacheRoot(
-                    in.value("cache-dir").map(Path::of).orElse(null));
-            Path storeRoot = JkStores.storeRootFor(cacheRoot);
-            if (!Files.isDirectory(cacheRoot) && !Files.isDirectory(storeRoot)) {
+            Path storeRoot = JkStores.store();
+            // The table also carries two cache-tier figures (format stamps, last pruned). Those come
+            // from the ambient cache — `jk cache` is where a cache location is chosen, not here.
+            Path cacheRoot = CacheCommand.resolveCacheRoot(null);
+            if (!Files.isDirectory(storeRoot)) {
                 CliOutput.out(
                         "Store directory: " + cc.jumpkick.cli.PathDisplay.styledRaw(storeRoot) + " (not yet created)");
                 return 0;
             }
-            CacheCommand.SectionStats s = CacheCommand.sectionStats(cacheRoot);
+            CacheCommand.StoreUsageStats s = CacheCommand.storeUsageStats(cacheRoot);
             var cfg = cc.jumpkick.config.JkCacheConfig.resolve();
             long maxBytes = cfg.maxStoreSizeBytes();
             String lastPruned = CacheCommand.lastPrunedLabel(cacheRoot);
-            for (String line : CacheCommand.renderRepoStorageTable(
-                    s.cas(), s.repos(), s.runs(), s.repoFiles(), s.repoBytes(), maxBytes, lastPruned)) {
+            for (String line : CacheCommand.renderStoreUsageTable(s, maxBytes, lastPruned)) {
                 CliOutput.out(line);
             }
             return 0;
@@ -208,17 +228,14 @@ public final class StorageCommand extends GroupCommand {
 
         @Override
         public List<Opt> options() {
-            return List.of(
-                    cc.jumpkick.cli.CommonOpts.cacheDir(),
-                    Opt.flag("Print what would be removed; touch nothing.", "--dry-run"));
+            return List.of(Opt.flag("Print what would be removed; touch nothing.", "--dry-run"));
         }
 
         @Override
         public int run(Invocation in) {
-            Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
             boolean dryRun = in.isSet("dry-run");
             GlobalOptions global = GlobalOptions.from(in);
-            Path root = CacheCommand.resolveCacheRoot(cacheDir);
+            Path root = CacheCommand.resolveCacheRoot(null);
 
             var summary = new cc.jumpkick.cli.engine.EngineClient.CacheMaintSummary[1];
             ConsoleSpec spec = cleanSpec(
@@ -289,17 +306,13 @@ public final class StorageCommand extends GroupCommand {
 
         @Override
         public List<Opt> options() {
-            return List.of(
-                    cc.jumpkick.cli.CommonOpts.cacheDir(),
-                    Opt.flag("Print what would be removed; touch nothing.", "--dry-run"));
+            return List.of(Opt.flag("Print what would be removed; touch nothing.", "--dry-run"));
         }
 
         @Override
         public int run(Invocation in) throws IOException {
-            Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
             boolean dryRun = in.isSet("dry-run");
-            Path root = CacheCommand.resolveCacheRoot(cacheDir);
-            return runNuke(root, dryRun, false);
+            return runNuke(dryRun, false);
         }
     }
 }

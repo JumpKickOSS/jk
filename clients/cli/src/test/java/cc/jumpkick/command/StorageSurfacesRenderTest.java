@@ -18,20 +18,20 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1441 — storage-surface rendering: {@code jk cache storage} label column accounts for the
- * colon (all four values start in the same column), and {@code jk storage}'s hand-built box
+ * JK-1441 — storage-surface rendering: {@code jk cache usage} label column accounts for the
+ * colon (all four values start in the same column), and {@code jk storage usage}'s hand-built box
  * stays aligned via ANSI-aware {@code BoxTable.visibleWidth} padding.
  */
 class StorageSurfacesRenderTest {
 
     @Test
-    void cache_storage_values_all_start_in_the_same_column(@TempDir Path tempDir) throws Exception {
+    void cache_usage_values_all_start_in_the_same_column(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
         Path key = cache.resolve("actions/keys/task1");
         Files.createDirectories(key.getParent());
         Files.write(key, new byte[2048]);
 
-        String stdout = capture(() -> Jk.execute("cache", "storage", "--cache-dir", cache.toString()));
+        String stdout = capture(() -> Jk.execute("cache", "usage", "--cache-dir", cache.toString()));
 
         // "  • <Label>:<pad> <value>" — the value column must be identical on every detail row.
         Pattern detail = Pattern.compile("^(\\s*\\S\\s([A-Za-z ]+):\\s+)\\S");
@@ -52,15 +52,14 @@ class StorageSurfacesRenderTest {
     }
 
     @Test
-    void repo_storage_table_rows_share_one_visible_width() {
-        List<String> lines = CacheCommand.renderRepoStorageTable(
+    void store_usage_table_rows_share_one_visible_width() {
+        var stats = new CacheCommand.StoreUsageStats(
                 new CacheCommand.Stats(12, 8192),
                 new CacheCommand.Stats(3, 1024),
                 new CacheCommand.Stats(7, 555),
-                22,
-                9771,
-                20L * 1024 * 1024 * 1024,
-                "3 days ago");
+                new CacheCommand.Stats(10_370, 2_500_000),
+                new CacheCommand.Stats(1736, 0));
+        List<String> lines = CacheCommand.renderStoreUsageTable(stats, 20L * 1024 * 1024 * 1024, "3 days ago");
 
         List<Integer> widths = new ArrayList<>();
         for (String line : lines) {
@@ -70,10 +69,20 @@ class StorageSurfacesRenderTest {
                 widths.add(plain.length());
             }
         }
-        assertThat(widths).hasSizeGreaterThanOrEqualTo(8);
+        assertThat(widths).hasSizeGreaterThanOrEqualTo(10);
         assertThat(widths.stream().distinct())
                 .as("every boxed row renders the same visible width")
                 .hasSize(1);
+
+        String joined = TestAnsi.strip(String.join("\n", lines));
+        assertThat(joined).contains("Jar Files");
+        assertThat(joined).contains("Executables");
+        assertThat(joined).contains("OCI Images");
+        assertThat(joined).contains("Worker JARs");
+        assertThat(joined).contains("Format Stamps");
+        assertThat(joined).contains("--"); // zero-byte stamps
+        assertThat(joined).doesNotContain("CAS Blobs");
+        assertThat(joined).doesNotContain("Run Logs");
     }
 
     private static String capture(Runnable body) {

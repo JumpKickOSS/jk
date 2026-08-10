@@ -140,10 +140,12 @@ cache, a normal `jk build` should hit action cache for unchanged modules.
 
 | Command | Scope |
 |---------|--------|
-| **`jk cache storage`** | Cache tier size/utilization (action index + cache CAS + format stamps) |
+| **`jk cache usage`** | Cache tier size/utilization (action index + cache CAS + format stamps) |
+| **`jk cache dir`** | Print the cache directory path (`JK_CACHE_DIR`) |
 | **`jk cache clean`** | Hygiene: stale action keys, **all Class-C** heavy outputs (native / OCI / fat jars), temps, LRU to budget. Cache tier only |
 | **`jk cache nuke`** | Wipe the **entire cache tier**. Artifact store survives. Confirms first |
-| **`jk storage`** | Artifact store size/utilization (CAS + `repos/` + run logs) |
+| **`jk storage usage`** | Artifact store size/utilization (jars, natives, OCI, worker jars, format stamps) |
+| **`jk storage dir`** | Print the artifact store path (`JK_STORE_DIR`) |
 | **`jk storage clean`** | Hygiene: unreferenced store CAS blobs + expired run logs (garbage only) |
 | **`jk storage nuke`** | Wipe the **entire artifact store**. Confirms first |
 | **`jk clean`** | Delete project `target/` outputs; with **`--force`**, also invalidate this project's action-cache entries |
@@ -175,8 +177,8 @@ Utilization bars:
 
 | Report | Cap (config) | Default |
 |--------|--------------|---------|
-| `jk cache storage` | `[cache] max-cache-size-gb` / `JK_MAX_CACHE_SIZE_GB` | **4** GiB (8 on `CI=1`/`true`) |
-| `jk storage` | `[cache] max-store-size-gb` / `JK_MAX_STORE_SIZE_GB` | **6** GiB (12 on `CI=1`/`true`) |
+| `jk cache usage` | `[cache] max-cache-size-gb` / `JK_MAX_CACHE_SIZE_GB` | **4** GiB (8 on `CI=1`/`true`) |
+| `jk storage usage` | `[cache] max-store-size-gb` / `JK_MAX_STORE_SIZE_GB` | **6** GiB (12 on `CI=1`/`true`) |
 
 ```toml
 # ~/.config/jk/config.toml
