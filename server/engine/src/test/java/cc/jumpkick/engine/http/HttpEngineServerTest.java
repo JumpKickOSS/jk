@@ -683,6 +683,50 @@ class HttpEngineServerTest {
         assertThat(body).contains("\"label\":\"com.foo:harness\"");
     }
 
+    /**
+     * JK-1624: a project that exists but cannot be loaded (workspace member missing its jk.toml,
+     * malformed toml) is a 422 naming what is broken — never a 200 with empty nodes, which the SPA
+     * renders as "No dependencies for the selected scopes".
+     */
+    @Test
+    void api_project_graph_surfaces_a_broken_project_as_422_with_the_message() throws Exception {
+        Path ws = stateDir.resolve("broken-ws");
+        Files.createDirectories(ws);
+        Files.writeString(ws.resolve("jk.toml"), """
+                [project]
+                group = "com.example"
+                name = "ws"
+                version = "1.0.0"
+
+                [workspace]
+                modules = ["gone"]
+                """);
+        HttpResponse<String> broken = get("/api/project/graph?dir=" + ws, "Authorization", "Bearer " + token());
+        assertThat(broken.statusCode()).isEqualTo(422);
+        assertThat(broken.body()).contains("error").contains("gone");
+
+        Path bad = stateDir.resolve("bad-toml");
+        Files.createDirectories(bad);
+        Files.writeString(bad.resolve("jk.toml"), "not [ valid toml ===");
+        HttpResponse<String> malformed = get("/api/project/graph?dir=" + bad, "Authorization", "Bearer " + token());
+        assertThat(malformed.statusCode()).isEqualTo(422);
+        assertThat(malformed.body()).contains("error");
+
+        // An ABSENT jk.toml stays a 200 empty graph — a deleted checkout is not an error.
+        Path empty = stateDir.resolve("no-toml");
+        Files.createDirectories(empty);
+        HttpResponse<String> absent = get("/api/project/graph?dir=" + empty, "Authorization", "Bearer " + token());
+        assertThat(absent.statusCode()).isEqualTo(200);
+        assertThat(absent.body()).contains("\"nodes\":[]");
+    }
+
+    /** JK-1624: a malformed dir (NUL byte) is a client-error 400, not a logged 500. */
+    @Test
+    void api_project_graph_rejects_a_malformed_dir_with_400_not_500() throws Exception {
+        var resp = get("/api/project/graph?dir=%00x", "Authorization", "Bearer " + token());
+        assertThat(resp.statusCode()).isEqualTo(400);
+    }
+
     @Test
     void api_project_graph_rejects_an_unknown_scope_instead_of_falling_back_to_main() throws Exception {
         var resp = get("/api/project/graph?dir=/tmp&scopes=bogus", "Authorization", "Bearer " + token());

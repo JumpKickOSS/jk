@@ -386,9 +386,13 @@ const ModuleDepGraph = {
         No dependencies for the selected scopes.
       </p>
       <div v-show="graph && (graph.nodes || []).length" class="dep-graph-canvas" ref="el"></div>
+      <p v-if="graph && graph.truncated" class="dep-graph-status warn small">
+        Graph truncated at the node/edge cap — untick scopes or Transitive to see a complete graph.
+      </p>
       <p v-if="graph && (graph.nodes || []).length" class="dep-graph-hint dim small mono">
         {{ graph.nodes.length }} node{{ graph.nodes.length === 1 ? '' : 's' }}
         · {{ (graph.edges || []).length }} edge{{ (graph.edges || []).length === 1 ? '' : 's' }}
+        <template v-if="graph.truncated"> (truncated)</template>
         · pan / zoom · dependent → prereq
         <span class="swatch declared" data-tip="Workspace module or listed in a selected-scope jk.toml"></span>declared
         <span class="swatch transitive" data-tip="Transitive only — not listed in any selected-scope jk.toml"></span>transitive
@@ -418,13 +422,26 @@ const ModuleDepGraph = {
       const next = { ...this.selectedScopes, [sc]: on };
       if (!Object.values(next).some(Boolean)) next.main = true;
       this.selectedScopes = next;
-      this.load();
+      this.scheduleLoad();
     },
     setTransitive(ev) {
       this.transitive = !!(ev && ev.target && ev.target.checked);
-      this.load();
+      this.scheduleLoad();
+    },
+    /** Debounced load: ticking several scope boxes in a row fires ONE request, not one per click
+     * (each transitive graph walk is real server work — JK-1625). */
+    scheduleLoad() {
+      if (this._loadTimer) clearTimeout(this._loadTimer);
+      this._loadTimer = setTimeout(() => {
+        this._loadTimer = null;
+        this.load();
+      }, 250);
     },
     teardown() {
+      if (this._loadTimer) {
+        clearTimeout(this._loadTimer);
+        this._loadTimer = null;
+      }
       if (this._abort) {
         this._abort.abort();
         this._abort = null;
@@ -477,6 +494,9 @@ const ModuleDepGraph = {
         this.loading = false;
         if (e && e.status === 401) {
           this.error = 'Authorization required to load the graph';
+        } else if (e && e.error) {
+          // The engine names what is broken (malformed jk.toml, missing workspace member — JK-1624).
+          this.error = e.error;
         } else if (e && e.status) {
           this.error = 'Failed to load graph (HTTP ' + e.status + ')';
         } else {

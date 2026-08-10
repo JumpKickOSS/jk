@@ -1286,7 +1286,18 @@ public final class HttpEngineServer implements AutoCloseable {
             return;
         }
         boolean transitive = parseTruthy(queryParam(query, "transitive"));
-        var data = cc.jumpkick.resolver.DependencyGraphModel.forProjectDir(projectDir, scopes, transitive);
+        cc.jumpkick.resolver.DependencyGraphModel.Graph data;
+        try {
+            data = cc.jumpkick.resolver.DependencyGraphModel.forProjectDir(projectDir, scopes, transitive);
+        } catch (IOException | cc.jumpkick.config.JkBuildParseException e) {
+            // A broken project (malformed jk.toml, workspace member missing its jk.toml, IO
+            // trouble) must NOT come back as 200 + empty nodes — the SPA would tell the user the
+            // project has no dependencies (JK-1624). 422: the request was well-formed, the
+            // project is not.
+            String msg = e.getMessage() == null || e.getMessage().isBlank() ? e.toString() : e.getMessage();
+            sendJson(exchange, 422, JsonOut.object().put("error", msg).toString());
+            return;
+        }
         List<Map<String, Object>> nodes = new ArrayList<>(data.nodes().size());
         for (var n : data.nodes()) {
             Map<String, Object> row = new LinkedHashMap<>();
@@ -1310,6 +1321,7 @@ public final class HttpEngineServer implements AutoCloseable {
         body.put("workspace", data.workspace());
         body.put("scopes", data.scopes());
         body.put("transitive", data.transitive());
+        body.put("truncated", data.truncated());
         body.put("availableScopes", data.availableScopes());
         body.put("nodes", nodes);
         body.put("edges", edges);

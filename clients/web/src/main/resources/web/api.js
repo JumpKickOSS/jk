@@ -161,15 +161,19 @@ async function handleEpochConflict(resp) {
 }
 
 /**
- * GET an /api path as parsed JSON. Throws {status} on any non-2xx so callers can branch on 401.
- * Optional {@code opts.signal} (AbortSignal) cancels the fetch when a lazy panel is closed.
- * {@code opts.bootstrap} skips the epoch header (only for GET /api/status discovery).
+ * GET an /api path as parsed JSON. Throws {status, error?} on any non-2xx so callers can branch on
+ * 401 or show the server's message (the engine puts a human-readable `error` in 4xx bodies —
+ * JK-1624). Optional {@code opts.signal} (AbortSignal) cancels the fetch when a lazy panel is
+ * closed. {@code opts.bootstrap} skips the epoch header (only for GET /api/status discovery).
  */
 export async function get(path, opts = {}) {
   const bootstrap = !!opts.bootstrap || path === '/api/status' || path.startsWith('/api/status?');
   const resp = await fetch(path, { headers: headers(!bootstrap), signal: opts.signal });
   if (await handleEpochConflict(resp)) throw { status: 409, error: 'engine-epoch-mismatch' };
-  if (!resp.ok) throw { status: resp.status };
+  if (!resp.ok) {
+    const json = await resp.json().catch(() => ({}));
+    throwHttp(resp, json);
+  }
   return resp.json();
 }
 
