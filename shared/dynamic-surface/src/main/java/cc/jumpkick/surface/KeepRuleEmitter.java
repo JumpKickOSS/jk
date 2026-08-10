@@ -65,8 +65,16 @@ public final class KeepRuleEmitter {
                 yield "-keep class " + cls + " { " + members + " }";
             }
             case PROXY_INTERFACE -> {
-                String cls = className(entry.name());
-                yield cls == null ? null : "-keep interface " + cls + " { *; }";
+                // One proxy declaration carries its whole ordered interface list, comma-joined
+                // (JK-1799); R8 has no proxy concept, so each interface gets its own keep.
+                StringBuilder rules = new StringBuilder();
+                for (String iface : entry.name().split(",")) {
+                    String cls = className(iface);
+                    if (cls == null) continue;
+                    if (rules.length() > 0) rules.append('\n');
+                    rules.append("-keep interface ").append(cls).append(" { *; }");
+                }
+                yield rules.isEmpty() ? null : rules.toString();
             }
             case SERIALIZATION_TYPE -> {
                 String cls = className(entry.name());

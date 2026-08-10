@@ -74,8 +74,32 @@ class NativeImageMetadataTest {
 
         assertThat(surface.of(REFLECTIVE_TYPE)).extracting(Entry::name).containsExactly("com.acme.R");
         assertThat(surface.of(JNI_TYPE)).extracting(Entry::name).containsExactly("com.acme.N");
-        assertThat(surface.of(PROXY_INTERFACE)).extracting(Entry::name).containsExactly("com.acme.I", "com.acme.J");
+        // One entry per proxy declaration, carrying the whole ordered list (JK-1799).
+        assertThat(surface.of(PROXY_INTERFACE)).extracting(Entry::name).containsExactly("com.acme.I,com.acme.J");
         assertThat(surface.of(RESOURCE)).extracting(Entry::name).containsExactly("config/*.yml");
+    }
+
+    @Test
+    void a_multi_interface_proxy_round_trips_as_one_ordered_list() {
+        // GraalVM matches proxy registrations by the exact ordered interface list; splitting
+        // ["I","J"] into two single-interface registrations would never match the runtime
+        // Proxy.newProxyInstance lookup (JK-1799). Order is the declaration's, not sorted.
+        String body = """
+                [{"interfaces":["com.acme.J","com.acme.I"]}]
+                """;
+
+        DynamicSurface surface = NativeImageMetadata.parse("x/proxy-config.json", body, "lib");
+
+        assertThat(surface.of(PROXY_INTERFACE)).extracting(Entry::name).containsExactly("com.acme.J,com.acme.I");
+        assertThat(ReachabilityMetadataEmitter.emit(surface))
+                .contains("{\"type\":{\"proxy\":[\"com.acme.J\",\"com.acme.I\"]}}");
+        assertThat(KeepRuleEmitter.emit(surface))
+                .contains("-keep interface com.acme.J { *; }")
+                .contains("-keep interface com.acme.I { *; }");
+
+        DynamicSurface back = NativeImageMetadata.parse(
+                "x/reachability-metadata.json", ReachabilityMetadataEmitter.emit(surface), "lib");
+        assertThat(back.of(PROXY_INTERFACE)).extracting(Entry::name).containsExactly("com.acme.J,com.acme.I");
     }
 
     @Test
@@ -226,7 +250,7 @@ class NativeImageMetadataTest {
         assertThat(surface.of(DynamicSurface.Kind.SERIALIZATION_TYPE))
                 .extracting(Entry::name)
                 .containsExactly("com.acme.L", "com.acme.S");
-        assertThat(surface.of(PROXY_INTERFACE)).extracting(Entry::name).containsExactly("com.acme.I", "com.acme.J");
+        assertThat(surface.of(PROXY_INTERFACE)).extracting(Entry::name).containsExactly("com.acme.I,com.acme.J");
     }
 
     @Test

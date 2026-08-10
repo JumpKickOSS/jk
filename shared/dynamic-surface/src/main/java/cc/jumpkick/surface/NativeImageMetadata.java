@@ -104,11 +104,7 @@ public final class NativeImageMetadata {
             if (name == null || name.isBlank()) {
                 // Unified-schema proxies are reflection entries with a map-shaped type:
                 // {"type": {"proxy": ["a.B", "c.D"]}} (JK-1752).
-                for (Object iface : Json.list(Json.map(item, "type"), "proxy")) {
-                    if (iface instanceof String s && !s.isBlank()) {
-                        out.add(DynamicSurface.Entry.type(PROXY_INTERFACE, s, origin));
-                    }
-                }
+                addProxy(Json.list(Json.map(item, "type"), "proxy"), origin, out);
                 continue;
             }
 
@@ -149,19 +145,25 @@ public final class NativeImageMetadata {
     }
 
     /**
-     * {@code [{"interfaces": ["a.B", "c.D"]}]} — each interface is its own entry. The
-     * serialization-config wrapper writes each proxy as a bare interface-name array instead;
-     * both shapes are read.
+     * {@code [{"interfaces": ["a.B", "c.D"]}]} — each proxy declaration is one entry carrying its
+     * whole ordered interface list (JK-1799). The serialization-config wrapper writes each proxy
+     * as a bare interface-name array instead; both shapes are read.
      */
     private static void proxies(Object root, String origin, List<DynamicSurface.Entry> out) {
         if (!(root instanceof List<?> items)) return;
         for (Object item : items) {
-            List<?> interfaces = item instanceof List<?> bare ? bare : Json.list(item, "interfaces");
-            for (Object iface : interfaces) {
-                if (iface instanceof String s && !s.isBlank()) {
-                    out.add(DynamicSurface.Entry.type(PROXY_INTERFACE, s, origin));
-                }
-            }
+            addProxy(item instanceof List<?> bare ? bare : Json.list(item, "interfaces"), origin, out);
+        }
+    }
+
+    /** One PROXY_INTERFACE entry named by the ordered, comma-joined interface list. */
+    private static void addProxy(List<?> interfaces, String origin, List<DynamicSurface.Entry> out) {
+        List<String> names = new ArrayList<>();
+        for (Object iface : interfaces) {
+            if (iface instanceof String s && !s.isBlank()) names.add(s);
+        }
+        if (!names.isEmpty()) {
+            out.add(DynamicSurface.Entry.type(PROXY_INTERFACE, String.join(",", names), origin));
         }
     }
 

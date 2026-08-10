@@ -49,7 +49,13 @@ public record DynamicSurface(List<Entry> entries) {
          * native-image emitter skips it.
          */
         GENERIC_REFLECTION,
-        /** A {@code java.lang.reflect.Proxy} interface. */
+        /**
+         * A {@code java.lang.reflect.Proxy} declaration. {@code name} is the proxy's ordered,
+         * comma-joined interface list ({@code "a.B,c.D"} — class names cannot contain a comma):
+         * GraalVM matches proxy registrations by the exact ordered list, so splitting a
+         * multi-interface proxy into per-interface entries would register proxies that never
+         * match the runtime lookup (JK-1799).
+         */
         PROXY_INTERFACE,
         /** A resource loaded by name or glob. {@code name} is the resource path or glob. */
         RESOURCE,

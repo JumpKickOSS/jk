@@ -37,7 +37,7 @@ public final class ReachabilityMetadataEmitter {
                 // GraalVM's unified schema: resources are a flat glob array, and a proxy is a
                 // reflection entry with a map-shaped type (JK-1752).
                 case RESOURCE -> resources.add("{\"glob\":" + quote(entry.name()) + "}");
-                case PROXY_INTERFACE -> reflection.add("{\"type\":{\"proxy\":[" + quote(entry.name()) + "]}}");
+                case PROXY_INTERFACE -> reflection.add(proxyObject(entry.name()));
                 // The unified schema has no regex resource form; these ride in the split-format
                 // resource-config.json from emitResourceConfig instead (JK-1777).
                 case RESOURCE_PATTERN -> {}
@@ -69,6 +69,19 @@ public final class ReachabilityMetadataEmitter {
         }
         if (patterns.isEmpty()) return "";
         return "{\"resources\":{\"includes\":[\n  " + String.join(",\n  ", patterns) + "\n]}}\n";
+    }
+
+    /**
+     * {@code name} is the ordered, comma-joined interface list of one proxy declaration —
+     * emitted whole, because Graal matches proxy registrations by exact ordered list (JK-1799).
+     */
+    private static String proxyObject(String name) {
+        StringBuilder interfaces = new StringBuilder();
+        for (String iface : name.split(",")) {
+            if (interfaces.length() > 0) interfaces.append(',');
+            interfaces.append(quote(iface));
+        }
+        return "{\"type\":{\"proxy\":[" + interfaces + "]}}";
     }
 
     private static String typeObject(String name, boolean allDeclared) {
