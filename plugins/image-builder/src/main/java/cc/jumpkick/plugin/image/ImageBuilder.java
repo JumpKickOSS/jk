@@ -255,8 +255,16 @@ public final class ImageBuilder {
     /** Dependency jars at {@code /app/libs}, named by coordinate rather than by CAS digest. */
     private static FileEntriesLayer namedJarLayer(Plan plan, List<Path> jars) {
         FileEntriesLayer.Builder layer = FileEntriesLayer.builder();
+        java.util.Set<String> seen = new java.util.HashSet<>();
         for (Path jar : jars) {
-            layer.addEntry(jar, AbsoluteUnixPath.get("/app/libs/" + plan.nameOf(jar)));
+            String name = plan.nameOf(jar);
+            // Two entries at one path would extract as "last tar entry wins" — a jar silently
+            // missing from the runtime classpath. The engine disambiguates names; this guards
+            // the fallback (raw file names) and any future naming drift.
+            if (!seen.add(name)) {
+                throw new IllegalStateException("duplicate image jar name /app/libs/" + name);
+            }
+            layer.addEntry(jar, AbsoluteUnixPath.get("/app/libs/" + name));
         }
         return layer.build();
     }

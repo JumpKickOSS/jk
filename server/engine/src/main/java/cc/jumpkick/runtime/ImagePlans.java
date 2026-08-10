@@ -605,20 +605,65 @@ public final class ImagePlans {
         }
     }
 
-    /** CAS path → {@code <artifact>-<version>.jar}, from the lock that put it there. */
+    /**
+     * CAS path → {@code <artifact>-<version>[-<classifier>].jar}, from the lock that put it
+     * there. Lock rows are keyed {@code g:a:type:classifier}, so two classifier variants of one
+     * GA (netty's per-arch natives) or one artifactId under two groups are distinct rows — they
+     * must land as distinct file names, or the tar layer silently keeps only the last one.
+     * Colliding names are qualified with the group; a residual collision fails the build.
+     */
     private static java.util.Map<Path, String> casJarNames(Path projectDir, Path cache) throws IOException {
         java.util.Map<Path, String> names = new java.util.LinkedHashMap<>();
         Path lockPath = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
         if (!Files.exists(lockPath)) return names;
         Cas cas = JkStores.cas(cache);
+        java.util.Map<Path, Lockfile.Artifact> rows = new java.util.LinkedHashMap<>();
         for (Lockfile.Artifact pkg : LockfileReader.read(lockPath).artifacts()) {
             if (pkg.checksum() == null) continue;
             String hex = pkg.checksum().startsWith("sha256:")
                     ? pkg.checksum().substring("sha256:".length())
                     : pkg.checksum();
-            names.put(cas.pathFor(hex), pkg.moduleArtifact() + "-" + pkg.version() + ".jar");
+            rows.put(cas.pathFor(hex), pkg);
+        }
+        names.putAll(jarNames(rows));
+        return names;
+    }
+
+    /** Pure naming half of {@link #casJarNames}. Package-visible for tests. */
+    static java.util.Map<Path, String> jarNames(java.util.Map<Path, Lockfile.Artifact> rows) throws IOException {
+        java.util.Map<Path, String> names = new java.util.LinkedHashMap<>();
+        java.util.Map<String, java.util.Set<Path>> byName = new java.util.LinkedHashMap<>();
+        for (var row : rows.entrySet()) {
+            String base = coordinateJarName(row.getValue());
+            names.put(row.getKey(), base);
+            byName.computeIfAbsent(base, k -> new java.util.LinkedHashSet<>()).add(row.getKey());
+        }
+        for (var e : byName.entrySet()) {
+            if (e.getValue().size() < 2) continue;
+            java.util.Set<String> qualified = new java.util.HashSet<>();
+            for (Path jar : e.getValue()) {
+                String withGroup = rows.get(jar).moduleGroup() + "-" + e.getKey();
+                if (!qualified.add(withGroup)) {
+                    throw new IOException("image dependency jar name collision: multiple lock rows map to "
+                            + withGroup + " — cannot lay out /app/libs without losing one");
+                }
+                names.put(jar, withGroup);
+            }
         }
         return names;
+    }
+
+    private static String coordinateJarName(Lockfile.Artifact pkg) {
+        String classifier = "";
+        if (cc.jumpkick.model.PackageId.isMavenPackageKey(pkg.name())) {
+            String c = cc.jumpkick.model.PackageId.parse(pkg.name()).classifier();
+            if (c != null) classifier = c;
+        }
+        return pkg.moduleArtifact()
+                + "-"
+                + pkg.version()
+                + (classifier.isEmpty() ? "" : "-" + classifier)
+                + ".jar";
     }
 
     private static String jarName(java.util.Map<Path, String> names, Path jar) {
