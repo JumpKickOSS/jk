@@ -53,7 +53,8 @@ final class AotCacheTrainer {
      * and Quarkus all do it — the archive records each entry as given, so a relative classpath run
      * from a fixed directory matches wherever the tree ends up.
      */
-    record Result(Path stagingRoot, List<String> runArgs, Path cache) {}
+    /** {@code stagedFiles} = staging-relative paths present BEFORE the record run. */
+    record Result(Path stagingRoot, List<String> runArgs, Path cache, java.util.Set<String> stagedFiles) {}
 
     private static final long TRAIN_TIMEOUT_SECONDS = 300;
 
@@ -131,6 +132,10 @@ final class AotCacheTrainer {
             runArgs = List.of("-cp", relativeClasspath(plan), plan.mainClass());
         }
         stamp(staging);
+        // Snapshot what was staged before any training process runs: whatever the app writes
+        // during record/assemble (logs, embedded-DB files) is not application content and must
+        // not become image bytes (JK-1758).
+        java.util.Set<String> stagedFiles = snapshotRelative(staging);
 
         // A container has to be addressable to be stopped; the local path signals the process
         // directly. Each run gets its own name so the training and verifying containers cannot
@@ -198,7 +203,19 @@ final class AotCacheTrainer {
             throw new IOException("the AOT cache was trained but the JVM refused it:\n  " + refusal);
         }
         log.accept("AOT cache verified (" + Files.size(cache) / (1024 * 1024) + " MiB)");
-        return new Result(staging, runArgs, cache);
+        return new Result(staging, runArgs, cache, stagedFiles);
+    }
+
+    private static java.util.Set<String> snapshotRelative(Path root) throws IOException {
+        java.util.Set<String> out = new java.util.TreeSet<>();
+        try (var walk = Files.walk(root)) {
+            for (Path f : walk.toList()) {
+                if (Files.isRegularFile(f)) {
+                    out.add(root.relativize(f).toString().replace('\\', '/'));
+                }
+            }
+        }
+        return out;
     }
 
     private static long sizeOrZero(Path p) {
