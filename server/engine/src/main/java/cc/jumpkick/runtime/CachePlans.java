@@ -249,6 +249,8 @@ public final class CachePlans {
 
         cc.jumpkick.cache.Cas cas = cc.jumpkick.cache.JkStores.cas(root);
         Path toolsDir = cc.jumpkick.cache.JkStores.resolve(root, "tools");
+        // Expired promotion markers drop first (real runs) so their blobs sweep in this pass.
+        if (!dryRun) cc.jumpkick.task.CacheRoots.pruneExpiredPromotedMarkers(cas);
         var liveRefs = cc.jumpkick.task.CacheRoots.collect(cas, root.resolve("actions"), toolsDir);
         var sweepReport = cc.jumpkick.task.CasSweep.sweep(cas, liveRefs, dryRun);
         totalFiles += sweepReport.deleted();

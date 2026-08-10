@@ -55,7 +55,50 @@ public final class CacheRoots {
                 }
             }
         }
+        // Release-promoted blobs (jk release → ActionPromote): their Class-C action key is
+        // dropped by any `jk cache clean`, so the promotion marker is their root. Markers expire
+        // by age (see PROMOTED_MARKER_TTL_MILLIS) — durable, not immortal.
+        Path promoted = cas.root().resolve(cc.jumpkick.cache.ActionPromote.PROMOTED_DIR);
+        if (Files.isDirectory(promoted)) {
+            long now = System.currentTimeMillis();
+            try (Stream<Path> stream = Files.list(promoted)) {
+                for (Path marker : (Iterable<Path>) stream::iterator) {
+                    String name = marker.getFileName().toString();
+                    if (name.length() != 64) continue;
+                    try {
+                        long age = now - Files.getLastModifiedTime(marker).toMillis();
+                        if (age < PROMOTED_MARKER_TTL_MILLIS) refs.add(name);
+                    } catch (IOException ignored) {
+                        refs.add(name); // unreadable mtime — keep the blob, never eat a release
+                    }
+                }
+            }
+        }
         return refs;
+    }
+
+    /** How long a promotion keeps a blob rooted after its last (re-)release: 180 days. */
+    public static final long PROMOTED_MARKER_TTL_MILLIS = 180L * 24 * 60 * 60 * 1000;
+
+    /** Delete promotion markers past their TTL (real sweeps only — the collect stays pure). */
+    public static long pruneExpiredPromotedMarkers(Cas cas) throws IOException {
+        Path promoted = cas.root().resolve(cc.jumpkick.cache.ActionPromote.PROMOTED_DIR);
+        if (!Files.isDirectory(promoted)) return 0;
+        long now = System.currentTimeMillis();
+        long pruned = 0;
+        try (Stream<Path> stream = Files.list(promoted)) {
+            for (Path marker : (Iterable<Path>) stream::iterator) {
+                try {
+                    if (now - Files.getLastModifiedTime(marker).toMillis() >= PROMOTED_MARKER_TTL_MILLIS) {
+                        Files.deleteIfExists(marker);
+                        pruned++;
+                    }
+                } catch (IOException ignored) {
+                    // leave it; next sweep retries
+                }
+            }
+        }
+        return pruned;
     }
 
     /**
