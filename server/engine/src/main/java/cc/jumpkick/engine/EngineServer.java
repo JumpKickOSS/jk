@@ -3758,21 +3758,30 @@ public final class EngineServer implements AutoCloseable {
                                 };
                         Session session = Session.defaults().withCacheDir(cache).withCancel(cancelToken);
                         String dir = EngineProtocol.SINGLE_PLAN_DIR;
-                        streamSingleBuildPlan(
-                                plan,
-                                session,
-                                writer,
-                                result -> EngineProtocol.planFinishCache(
-                                        dir,
-                                        result.success(),
-                                        plan.get(cc.jumpkick.runtime.CachePlans.FILES)
-                                                .orElse(-1L),
-                                        plan.get(cc.jumpkick.runtime.CachePlans.BYTES)
-                                                .orElse(-1L),
-                                        plan.get(cc.jumpkick.runtime.CachePlans.REACHABLE_EVICTED)
-                                                .orElse(-1L),
-                                        plan.get(cc.jumpkick.runtime.CachePlans.REPO_LINKS)
-                                                .orElse(-1L)));
+                        streamSingleBuildPlan(plan, session, writer, result -> {
+                            // An explicit clean IS a prune — stamp it, or `usage` keeps warning
+                            // "Last cleaned: never" right after a successful clean and the idle
+                            // scheduler re-runs work the user just did (JK-1771). Same file for
+                            // the store tier: its usage footer reads from its own root.
+                            if (result.success() && !dryRun && ("prune".equals(op) || "sweep".equals(op))) {
+                                try {
+                                    Files.writeString(
+                                            cache.resolve(cc.jumpkick.task.CachePruneScheduler.LAST_PRUNED_FILE),
+                                            Long.toString(clockMillis.getAsLong()),
+                                            StandardCharsets.UTF_8);
+                                } catch (IOException ignored) {
+                                    // best-effort stamp; the clean itself succeeded
+                                }
+                            }
+                            return EngineProtocol.planFinishCache(
+                                    dir,
+                                    result.success(),
+                                    plan.get(cc.jumpkick.runtime.CachePlans.FILES).orElse(-1L),
+                                    plan.get(cc.jumpkick.runtime.CachePlans.BYTES).orElse(-1L),
+                                    plan.get(cc.jumpkick.runtime.CachePlans.REACHABLE_EVICTED)
+                                            .orElse(-1L),
+                                    plan.get(cc.jumpkick.runtime.CachePlans.REPO_LINKS).orElse(-1L));
+                        });
                     } finally {
                         pruneLock.release();
                     }
