@@ -333,6 +333,13 @@ Two fixed taxonomies (do not collapse them):
 - **Inter-stage requires**: a task may not require a task in a *later* stage (plan validation).
 - **Plugins**: optional `TaskSpec.stage("compile")` (describe wire); else engine infers (e.g. source-gen → `generate`).
 
+### Remaining wall-work `R(t)` (progress + ETA)
+
+Countdown and the aggregate progress bar share one oracle: residual schedule of unfinished
+module costs (`RemainingWork` / `WorkSchedule`). Seed `R0` ≡ `jk explain`; live `R(t)` updates
+as modules progress/finish. Bar percent ≈ `min(99, 100 × (1 − R/R0))` until finish.
+See [perf/progress-contract.md](perf/progress-contract.md).
+
 ### Project build logic (`.jk-build/`, ticket-1037)
 
 Convention directory **`.jk-build/`** (hidden) next to `jk.toml` holds project-local build logic

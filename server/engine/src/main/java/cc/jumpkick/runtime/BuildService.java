@@ -509,6 +509,34 @@ public final class BuildService {
         return new ExplainPlan(kept, edges, plan.maxReadyWidth(), plan.errors());
     }
 
+    /**
+     * Order module costs in the same sequence as {@code units} (workspace topo / dirty list) so
+     * first-ready schedule admission matches {@link WorkspaceScheduler}.
+     */
+    static List<ModuleWorkCost> orderCostsLikeUnits(
+            List<BuildGraph.BuildUnit> units, List<EffortWeights.ModuleCost> costs) {
+        Map<Path, EffortWeights.ModuleCost> byDir = new LinkedHashMap<>();
+        if (costs != null) {
+            for (EffortWeights.ModuleCost c : costs) {
+                if (c != null && c.dir() != null) byDir.put(c.dir(), c);
+            }
+        }
+        List<ModuleWorkCost> ordered = new ArrayList<>();
+        if (units != null) {
+            for (BuildGraph.BuildUnit u : units) {
+                EffortWeights.ModuleCost c = byDir.remove(u.dir());
+                if (c != null) {
+                    ordered.add(new ModuleWorkCost(c.dir(), c.prereqs(), c.weight(), c.testWeight()));
+                }
+            }
+        }
+        // Any leftover (shouldn't happen) — append in original cost order.
+        for (EffortWeights.ModuleCost c : byDir.values()) {
+            ordered.add(new ModuleWorkCost(c.dir(), c.prereqs(), c.weight(), c.testWeight()));
+        }
+        return ordered;
+    }
+
     static List<EffortWeights.ModuleCost> etaCostsFromExplainPlan(
             ExplainPlan plan,
             Path cache,
@@ -761,9 +789,10 @@ public final class BuildService {
             else cleanUnits.add(u);
         }
 
-        // ---- ETA seed (HARD INVARIANT: same estimateEtaMillis as `jk explain`) ----
-        // Fully cached: skip TaskForecaster entirely (was ~1–2s on monorepos). ETA is 0.
+        // ---- Remaining-work seed R0 (HARD INVARIANT: same estimateEtaMillis as `jk explain`) ----
+        // Fully cached: skip TaskForecaster entirely (was ~1–2s on monorepos). R0 = 0.
         // When there is work: one forecast walk (reuse preflight modules when present).
+        // Emit WorkModel so the engine can drive residual R(t) + bar from the same oracle.
         long etaMs = 0;
         if (!dirtyUnits.isEmpty()) {
             ExplainPlan etaPlan;
@@ -789,6 +818,11 @@ public final class BuildService {
                     etaPlan = restrictToSelection(etaPlan, dirty);
                 }
             }
+            List<EffortWeights.ModuleCost> costs = etaCostsFromExplainPlan(
+                    etaPlan, req.cache(), req.workers(), req.jdksDir(), req.profile(), req.skipTests(), req.verbose());
+            int concurrency = etaConcurrency(
+                    etaPlan.maxReadyWidth(), req.workers(), parallelTests, req.maxModuleConcurrency());
+            boolean serialEta = concurrency <= 1;
             etaMs = estimateEtaMillis(
                     etaPlan,
                     req.entryDir(),
@@ -800,8 +834,12 @@ public final class BuildService {
                     req.verbose(),
                     parallelTests,
                     req.maxModuleConcurrency());
-            listener.onEtaEstimate(etaMs);
+            // Preserve dirtyUnits topo order in costs for first-ready schedule parity.
+            List<ModuleWorkCost> ordered = orderCostsLikeUnits(dirtyUnits, costs);
+            listener.onWorkModel(WorkModel.of(etaMs, concurrency, serialEta, parallelTests, ordered));
+            listener.onEtaEstimate(etaMs); // remaining == R0 at t=0
         } else {
+            listener.onWorkModel(WorkModel.of(0, 1, true, parallelTests, List.of()));
             listener.onEtaEstimate(0);
         }
 
@@ -827,8 +865,8 @@ public final class BuildService {
         listener.onPlan(List.copyOf(plans.values()));
         listener.onModuleGraph(graph.edges());
 
-        // Re-emit the *same* seed (not a second cost assembly). Live remaining time still
-        // subtracts elapsed on the client; the absolute seed must stay explain-identical.
+        // Re-emit R0 after prepare (still remaining == R0; residual updates flow from the
+        // engine's RemainingWork as modules progress). Keep explain-identical seed.
         listener.onEtaEstimate(etaMs);
 
         // Workspace artifact links for the whole graph (clean modules still own jars from prior builds).
@@ -858,9 +896,8 @@ public final class BuildService {
                             if (p != null && !p.fullyCached() && p.weight() > 0 && o.millis() > 0)
                                 observedRates.add(o.millis() / (double) p.weight());
                         }
-                        // No mid-execute onEtaEstimate: TUI clock is pure wall-clock from the seed
-                        // (jk explain figure). Live re-projections jumped countdown / reset count-up.
-                        // Throughput still folds into Calibration + StepTimings on success below.
+                        // Residual R(t) is updated by the engine front-end (RemainingWork) on
+                        // module progress/complete — not here. Throughput still trains on success.
                         return null;
                     },
                     req.maxModuleConcurrency());

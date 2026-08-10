@@ -1,94 +1,104 @@
-# Progress contract — real-work aggregate bar + hierarchical effort
+# Progress contract — remaining wall-work `R(t)`
 
 Status: **normative** for TUI / wire progress. Implementations live under
-`server/engine` (`EffortWeights`, `TestEffort`, `TaskPhases`, `BuildService.seedEta`,
-`WorkspaceProgressTracker`, metrics harvest).
+`shared/wire` (`RemainingWork`, `WorkSchedule`, `WorkspaceProgressTracker`) and
+`server/engine` (`EffortWeights`, `TestEffort`, `BuildService.seedEta`, residual emit).
 
 ## Goals
 
 1. **One aggregate** for the whole request (single module, selection subset, or monorepo).
-2. **Real-work denominator** — weight what will actually run; cache/skip → token ticks.
-3. **Hierarchical learning** — test method → test class → task → phase → module → workspace.
-4. **Dual clock** — when a seed ETA is trustworthy, TUI / web show dim italic remaining countdown
-   and dim `+elapsed` count-up from command start. With no seed, yellow `+elapsed` only.
-5. **details.jsonl** carries fine events; the header bar/clock stay run-wide.
+2. **One remaining-work oracle `R(t)`** — schedule of unfinished module costs (with in-flight
+   residual). Drives **both** the countdown and the progress bar.
+3. **Real-work denominator** — weight what will actually run; cache/skip → token ticks in costs.
+4. **Hierarchical learning** — test method → test class → task → stage → module → workspace.
+5. **Dual clock** — remaining countdown from `R(t)`; dim `+elapsed` count-up from command start.
+6. **details.jsonl** carries fine events; the header bar/clock stay run-wide.
+
+## Remaining-work model
+
+```
+R0            = seed wall ms (jk explain ≡ jk build seed; history floors / margins applied)
+ideal0        = WorkSchedule.schedule(costs)          # weight units, first-ready admission
+weightToMs    = R0 / ideal0                           # bakes floors into residual
+R(t)          = WorkSchedule.schedule(residual) × weightToMs
+completeFrac  = 1 − R(t) / R0
+bar percent   = min(99, 100 × completeFrac)           # until finish → 100
+countdown     = R(t)                                  # live residual, not seed − elapsed
+```
+
+| Situation | Residual cost |
+|-----------|----------------|
+| Module not started | full `ModuleWorkCost` |
+| Module in flight | `cost.residual(planNum/planDen)` |
+| Module complete | absent |
+| Task omitted from plan | never in costs |
+| Cache/skip still in plan | TOKEN weight in costs |
+
+### HARD INVARIANT: `jk explain` ≡ `jk build` seed `R0`
+
+| Rule | Detail |
+|------|--------|
+| **One function** | Both call `BuildService.estimateEtaMillis` only for `R0`. |
+| **One forecast** | Costs from `TaskForecaster` / `ExplainPlan` only. |
+| **Same concurrency** | `etaConcurrency(...)` matches workspace scheduler clamp. |
+| **Live residual** | Mid-execute `R(t)` reuses the same `WorkSchedule` + costs; scale preserves `R0`. |
+| **Fully-cached fast path** | Empty dirty → `R0 = 0`, skip forecast walk. |
+
+### Schedule admission (ETA ≡ live)
+
+`WorkSchedule` admits **first ready in topo/list order**, full prereq completion, at most
+`concurrency` in flight — same policy as bounded `WorkspaceScheduler` (not longest-first).
+
+Serial (`-j1` / concurrency ≤ 1): sum of module weights.  
+When `parallelTests == false`: `max(scheduled, Σ testWeight)` as serial test floor.
 
 ## Engine owns aggregate math
 
 | Component | Responsibility |
 |-----------|----------------|
-| `EffortWeights` | Plan-time task weights; `TOKEN` for skip/check; dirty-task composition |
-| `TestEffort` | `run-tests` pricing (class walls or method product) |
-| `BuildStage` / `TaskPhases` | Closed stage taxonomy for rollup (UI fold + ETA; not a lifecycle scheduler). Prefer `BuildStage`. |
-| Project runs + harvest | Per-run `metrics.toml` → `project-metrics.toml` + `host-metrics.toml` |
-| `BuildService.seedEta` | Schedule-aware wall ETA + history floors |
-| `WorkspaceProgressTracker` | Preflight band + calibrated Σ module slices |
-| Wire `workspace-progress` / `eta` | Snapshots clients paint (no client re-sum) |
+| `EffortWeights` | Plan-time task weights; TOKEN for skip; dirty-task composition |
+| `TestEffort` | `run-tests` pricing |
+| `WorkSchedule` / `RemainingWork` | Wall schedule + residual `R(t)` |
+| `WorkspaceProgressTracker` | Preflight band + `seedWall`/`setRemaining` → bar % |
+| `BuildService` | `R0` seed + `WorkModel` emit |
+| Wire `workspace-progress` / `eta` | Snapshots: `progress`, `remainingMs`, `R0` |
 
-## Token vs real work
+## Task pricing ladder (unchanged)
 
-| Situation | Weight |
-|-----------|--------|
-| Task will do real compile/test/package work | Learned or cold real weight |
-| Stamp/CAS skip (task still in plan) | **`TOKEN` (≥1)** |
-| Task omitted from BuildPlan (not on target closure) | Absent (0) |
-
-Only tasks **present in the BuildPlan** for the invocation can contribute to ETA and train rates.
-
-## ETA composition
-
-```
-workspace ETA  = schedule(module costs)   # list-schedule + concurrency; serial-test floor when needed
-module ETA     = Σ phase ETAs
-phase ETA      = Σ dirty forecast task ETAs mapped to that phase (TaskPhases.of)
-run-tests ETA  = TestEffort (below)
-```
-
-### HARD INVARIANT: `jk explain` ≡ `jk build` countdown seed
-
-The number printed by `jk explain` and the **seed** ETA that drives the live countdown on
-`jk build` **must match exactly** for the same workspace and the same flags/env/defaults.
-
-| Rule | Detail |
-|------|--------|
-| **One function** | Both call `BuildService.estimateEtaMillis` only. No second cost assembly on the build path. |
-| **One forecast** | Costs come only from `TaskForecaster` / `ExplainPlan` (`etaCostsFromExplainPlan`). Never from prepared `BuildPlan` weights, shape-memo rows, or history-only shortcuts for the seed. |
-| **Same defaults** | Bare `jk explain` and bare `jk build` use the same `-w` (0 = auto), `-j` / jobs, and parallel-tests defaults. |
-| **Same concurrency** | `etaConcurrency(maxReadyWidth, workers, parallelTests, maxModuleConcurrency)` — identical clamp as the workspace scheduler. |
-| **If explain is wrong, build is equally wrong** | Never “fix” the build countdown with a different oracle. |
-| **Fully-cached fast path** | When the dirty memo reports an empty dirty set, **both** `jk build` and `jk explain` skip `TaskForecaster` (seed / estimate is `0` / &lt;1s). A monorepo walk is multi-second and would regress the ≲100ms up-to-date path. `explain --redo` / `--force` still walk. |
-
-Workspace ETA is **schedule-aware** (not a pure sum when module concurrency &gt; 1). Serial (`-j1`)
-is the plain sum of module costs.
-
-### Task pricing ladder
-
-1. This module’s measured task wall (`module.<dir>.task.<name>.wall-ms`)
-2. Host task wall (`task.<name>.wall-ms`)
-3. Residual per-unit rates × count (compile sources, etc.)
-4. Host continuous learned rates / calibration baselines × host scale
-5. Tight static floors
+1. Module measured task wall  
+2. Host task wall  
+3. Residual per-unit rates × count  
+4. Host continuous learned rates / calibration × host scale  
+5. Tight static floors  
 
 ### Test task (`run-tests`)
 
-1. **Class walls (preferred):** when every FQCN in the selection has a measured
-   `module.<dir>.test-class.<FQCN>.wall-ms`, ETA = suite-startup + Σ class walls.
-   **No method count is used.**
-2. Else this module’s whole `run-tests` task wall.
-3. Else methods × method-ms (module residual → project median → host absolute → calibration)
-   + suite-startup. Method count comes from plan ticks / discovery totals already on hand —
-   never a class-file walk for ETA alone.
-4. Else host suite wall / cold startup baseline.
+1. Class walls when complete selection has walls  
+2. Else whole `run-tests` task wall  
+3. Else methods × method-ms + suite-startup  
+4. Else host suite wall / cold baseline  
 
-Class walls are recorded from runner **CONTAINER** `finished` events (`duration_ms`) on green
-runs; written into run `metrics.toml` and harvested.
+## Progress bar
+
+Clients paint engine `workspace-progress` only (no client re-sum).
+
+- Preflight: small band before `R0` is known.  
+- Execute: pure `1 − R/R0`, display-capped at **99%** until `finish()` → 100%.  
+- When residual under-predicts (`R > R0`), tracker grows `R0` to preserve completed work.
+
+## Wire (schema 1, additive fields)
+
+| Event | Fields |
+|-------|--------|
+| `eta` | `millis` (= remaining), `remainingMs`, `R0` |
+| `workspace-progress` | `progress`, `numerator`, `denominator`, `phase`, `modulesComplete`, `modulesTotal`, `remainingMs`, `R0` |
 
 ## Learning layout
 
 ```
 ~/.local/state/jk/builds/
   host-metrics.toml
-  projects/<hash(coord+\0+path)>/
+  projects/<hash>/
     project-metrics.toml
     runs/<build-number>/
       record.json
@@ -96,31 +106,10 @@ runs; written into run `metrics.toml` and harvested.
       metrics.toml
 ```
 
-| Key pattern | Meaning |
-|-------------|---------|
-| `task.<name>.wall-ms` | Host mean for a task |
-| `module.<dir>.task.<name>.wall-ms` | Module task wall |
-| `phase.<name>.wall-ms` | Host mean for a phase |
-| `module.<dir>.phase.<name>.wall-ms` | Module phase wall (sum of task walls that ran) |
-| `module.<dir>.test-class.<FQCN>.wall-ms` | Successful class container wall |
-| `host.*` / continuous learned rates | Method-ms, suite-startup, compile-per-source, … |
-
-**Cancelled / failed builds do not train.** Only `SUCCESS` tasks on a successful plan finish
-update rates. Tasks not in the plan never update.
-
-## Host calibration
-
-Bootstrap probes measure host scale vs a reference machine. Continuous learning folds successful
-absolute walls into trimmed means. Cold ETA uses product baselines × host scale when no local
-history exists.
-
-## Progress bar
-
-Clients apply engine snapshots only. Tree may highlight the active module/task; bar and ETA stay
-run-wide. Cached tasks still show token ticks so the denominator does not collapse.
+**Cancelled / failed builds do not train.**
 
 ## Out of scope
 
 - Method-level live TUI rows  
-- Perfect millisecond ETA  
+- Perfect millisecond ETA (residual schedule is the correctness target)  
 - Third-party metrics backends  

@@ -46,16 +46,24 @@ public interface WorkspaceBuildListener {
     default void onModuleFinish(ModuleOutcome outcome) {}
 
     /**
-     * A wall-clock estimate (ms) for the whole build, computed by the engine's schedule-aware model
-     * emitted once up front (from learned/calibrated rates) and re-projected as modules finish and
-     * real throughput is measured. A front-end renders it as a countdown; {@code 0} means "no
-     * trustworthy estimate — count up instead".
+     * Remaining wall-work {@code R(t)} in milliseconds. Seeded once with {@code R0} at plan time
+     * (same value as {@code jk explain}), then re-emitted as modules progress/finish so the
+     * countdown tracks residual schedule — not open-loop {@code seed − elapsed}. {@code 0} means
+     * no remaining work (or no trustworthy model — clients count up).
      */
-    default void onEtaEstimate(long millis) {}
+    default void onEtaEstimate(long remainingMs) {}
+
+    /**
+     * Full remaining-work model for this build: seed {@code R0}, schedule parameters, and per-module
+     * costs. Emitted once before execute so front-ends / engine trackers can drive residual
+     * {@code R(t)} and the progress bar from the same oracle.
+     */
+    default void onWorkModel(WorkModel model) {}
 
     /**
      * Workspace aggregate progress from the engine tracker. Clients must paint this for
      * the bar / {@code progress} rider — do not re-aggregate from per-module plan ticks.
+     * {@link WorkspaceProgressTracker.Snapshot#remainingMs()} / {@code R0ms()} mirror the ETA.
      */
     default void onWorkspaceProgress(WorkspaceProgressTracker.Snapshot snapshot) {}
 

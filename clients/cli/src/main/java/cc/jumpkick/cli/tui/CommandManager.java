@@ -327,45 +327,39 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     /**
-     * Seed the header clock with the total predicted build wall-clock from command start. The clock
-     * is <em>run-wide</em> pure wall-clock from {@link #plan(PrintStream, String, boolean)
-     * construction}:
+     * Set the header countdown from a <em>remaining wall-work</em> estimate {@code R(t)}.
+     *
+     * <p>Engine residual schedule drives live updates for the whole execute phase (not open-loop
+     * {@code seed − elapsed}). Internally stores run-wide total as {@code elapsed + remaining} so
+     * the painted countdown is {@code total − elapsed ≈ remaining}. Mid-run residual updates are
+     * accepted so the clock tracks reality; count-up elapsed is never reset.
      *
      * <ul>
-     * <li>With a seed {@code > 0}: show both {@code ETA ~remaining} (countdown) and {@code +elapsed}
-     * (count-up). When remaining hits zero the countdown freezes at dim {@code 0s} and the count-up
-     * turns yellow; it does not switch to an excess-only display.
-     * <li>With no seed ({@code 0}): count up {@code +Ns} from {@code +0s} for the whole command
-     * (yellow).
+     * <li>With a positive remaining: show {@code ETA ~remaining} and {@code +elapsed}.
+     * <li>When remaining hits zero while work may still finish: freeze countdown at dim {@code 0s},
+     *     count-up turns yellow.
+     * <li>With no seed ({@code 0} and never seeded): count up only.
      * </ul>
-     *
-     * <p>Early + post-prepare seeds may refine the total while no module has finished yet. Once
-     * execute has completed any module, further updates are ignored so mid-build re-projections
-     * cannot jump the countdown or reset count-up at module boundaries.
-     *
-     * <p>Prefer {@link #setRemainingWorkEstimate} when the engine reports work still to do after
-     * elapsed preflight (lock/graph) — that keeps the explain figure and the live countdown equal.
      */
-    public void setEtaEstimate(long totalMillis) {
-        synchronized (lock) {
-            long next = Math.max(0, totalMillis);
-            // Never clear a positive seed with 0 (unknown) mid-run.
-            if (next == 0 && etaEstimateMs > 0) return;
-            // After any module finishes, lock the seed for pure wall-clock display.
-            if (etaEstimateMs > 0 && modulesComplete > 0) return;
-            this.etaEstimateMs = next;
-        }
+    public void setEtaEstimate(long remainingOrTotalMillis) {
+        // Treat as remaining-work: convert to run-wide total for the existing paint math.
+        setRemainingWorkEstimate(remainingOrTotalMillis);
     }
 
     /**
-     * Seed from a <em>remaining-work</em> estimate (what {@code jk explain} prints after lock).
-     * Converts to a run-wide total: {@code elapsed + remaining} so lock/preflight time already spent
-     * is not subtracted twice and the countdown ends near zero when the estimate is accurate.
+     * Apply a remaining-work estimate {@code R(t)} (ms). Live residual updates from the engine
+     * replace the previous remaining; elapsed count-up is unchanged.
      */
     public void setRemainingWorkEstimate(long remainingMillis) {
         long rem = Math.max(0, remainingMillis);
-        if (rem == 0) return;
-        setEtaEstimate(elapsedMillis() + rem);
+        synchronized (lock) {
+            // Convert remaining → run-wide total so paint uses total−elapsed ≈ remaining.
+            long next = elapsedMillis() + rem;
+            // Allow residual to shrink remaining (and grow it if under-predicted). Only ignore
+            // a zero remaining when we never had a seed (unknown) — once seeded, R=0 is valid.
+            if (next == 0 && etaEstimateMs <= 0 && rem == 0) return;
+            this.etaEstimateMs = next;
+        }
     }
 
     /** Seeded ETA total in milliseconds (0 = none). Used for long-build desktop notifications. */

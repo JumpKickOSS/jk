@@ -1993,17 +1993,46 @@ public final class EngineProtocol {
         return "{\"type\":\"" + PLAN_DONE + "\",\"count\":" + count + "}";
     }
 
-    public static String eta(long millis) {
-        return "{\"type\":\"" + ETA + "\",\"millis\":" + millis + "}";
+    /**
+     * Remaining wall-work {@code R(t)} in ms. {@code millis} is the remaining estimate (same as
+     * {@code remainingMs}); {@code R0} is the seed wall estimate when known ({@code 0} if not).
+     */
+    public static String eta(long remainingMs) {
+        return eta(remainingMs, 0);
+    }
+
+    public static String eta(long remainingMs, long R0ms) {
+        return "{\"type\":\""
+                + ETA
+                + "\",\"millis\":"
+                + remainingMs
+                + ",\"remainingMs\":"
+                + remainingMs
+                + ",\"R0\":"
+                + Math.max(0, R0ms)
+                + "}";
     }
 
     /**
      * Workspace aggregate progress. {@code progress} is 0–100 (one decimal) from the
      * engine tracker; {@code numerator}/{@code denominator} are the same abstract bar units.
      * {@code phase} is {@code preflight}, {@code execute}, or {@code done}.
+     * {@code remainingMs}/{@code R0} mirror the ETA remaining-work oracle when seeded.
      */
     public static String workspaceProgress(
             String dir, long numerator, long denominator, String phase, int modulesComplete, int modulesTotal) {
+        return workspaceProgress(dir, numerator, denominator, phase, modulesComplete, modulesTotal, -1, 0);
+    }
+
+    public static String workspaceProgress(
+            String dir,
+            long numerator,
+            long denominator,
+            String phase,
+            int modulesComplete,
+            int modulesTotal,
+            long remainingMs,
+            long R0ms) {
         return "{\"schema\":1,\"type\":\""
                 + WORKSPACE_PROGRESS
                 + "\",\"dir\":"
@@ -2020,6 +2049,10 @@ public final class EngineProtocol {
                 + modulesComplete
                 + ",\"modulesTotal\":"
                 + modulesTotal
+                + ",\"remainingMs\":"
+                + remainingMs
+                + ",\"R0\":"
+                + Math.max(0, R0ms)
                 + "}";
     }
 

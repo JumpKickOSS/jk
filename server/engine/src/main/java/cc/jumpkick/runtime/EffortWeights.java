@@ -866,19 +866,10 @@ public final class EffortWeights {
     public static long scheduleMillis(
             List<ModuleCost> mods, int concurrency, boolean serial, boolean parallelTests, long msPerWeight) {
         if (mods == null || mods.isEmpty()) return 0;
-        long serialSum = 0;
-        long testSum = 0;
-        for (ModuleCost m : mods) {
-            serialSum += m.weight();
-            testSum += m.testWeight();
-        }
-        if (serial || concurrency <= 1) return serialSum * msPerWeight;
-        // List-schedule with the same dep rule as WorkspaceScheduler (full prereq completion) and
-        // a rolling concurrency window. Pure DAG critical-path alone under-estimates monorepo
-        // rebuilds (many heavy independent modules share a finite worker pool).
-        long scheduled = listSchedule(mods, Math.max(1, concurrency));
-        long testFloor = parallelTests ? 0 : testSum;
-        return Math.max(scheduled, testFloor) * msPerWeight;
+        long rate = Math.max(1, msPerWeight);
+        // Shared first-ready schedule (matches WorkspaceScheduler admission).
+        long weights = WorkSchedule.schedule(toWorkCosts(mods), concurrency, serial, parallelTests);
+        return weights * rate;
     }
 
     /**
@@ -915,72 +906,23 @@ public final class EffortWeights {
         return (int) Math.max(0, Math.min(Integer.MAX_VALUE, ms));
     }
 
+    /** Convert engine costs to the shared schedule DTO (preserves list order). */
+    public static List<ModuleWorkCost> toWorkCosts(List<ModuleCost> mods) {
+        if (mods == null || mods.isEmpty()) return List.of();
+        List<ModuleWorkCost> out = new ArrayList<>(mods.size());
+        for (ModuleCost m : mods) {
+            if (m == null || m.dir() == null) continue;
+            out.add(new ModuleWorkCost(m.dir(), m.prereqs(), m.weight(), m.testWeight()));
+        }
+        return out;
+    }
+
     /**
-     * Rolling-window list schedule matching {@link WorkspaceScheduler} (bounded path):
-     *
-     * <ul>
-     * <li>A module is ready only when every dirty prereq has fully finished (entire weight).
-     * <li>At most {@code concurrency} modules run at once.
-     * <li>Ready modules are admitted longest-first (stable heuristic).
-     * </ul>
+     * Rolling-window list schedule matching {@link WorkspaceScheduler} (first-ready admission).
      *
      * @return scheduled duration in the same units as {@link ModuleCost#weight}
      */
     static long listSchedule(List<ModuleCost> mods, int concurrency) {
-        if (mods == null || mods.isEmpty()) return 0;
-        int slots = Math.max(1, concurrency);
-        java.util.Map<Path, ModuleCost> byDir = new java.util.HashMap<>();
-        for (ModuleCost m : mods) {
-            if (m != null && m.dir() != null) byDir.put(m.dir(), m);
-        }
-        if (byDir.isEmpty()) return 0;
-
-        java.util.Set<Path> remaining = new java.util.LinkedHashSet<>(byDir.keySet());
-        java.util.Map<Path, Long> doneAt = new java.util.HashMap<>();
-        record Flight(long finish, Path dir) {}
-        java.util.PriorityQueue<Flight> inFlight =
-                new java.util.PriorityQueue<>(java.util.Comparator.comparingLong(Flight::finish));
-        long t = 0;
-        int free = slots;
-
-        while (!remaining.isEmpty() || !inFlight.isEmpty()) {
-            while (free > 0 && !remaining.isEmpty()) {
-                Path next = null;
-                int bestW = -1;
-                for (Path d : remaining) {
-                    ModuleCost m = byDir.get(d);
-                    if (!prereqsDone(m, byDir.keySet(), doneAt)) continue;
-                    if (m.weight() > bestW) {
-                        bestW = m.weight();
-                        next = d;
-                    }
-                }
-                if (next == null) break;
-                remaining.remove(next);
-                long fin = t + Math.max(0, byDir.get(next).weight());
-                inFlight.add(new Flight(fin, next));
-                free--;
-            }
-            if (inFlight.isEmpty()) {
-                // Deadlock / missing edge: fall back to serial remainder.
-                long extra = 0;
-                for (Path d : remaining) extra += Math.max(0, byDir.get(d).weight());
-                return t + extra;
-            }
-            Flight done = inFlight.poll();
-            t = done.finish();
-            doneAt.put(done.dir(), t);
-            free++;
-        }
-        return t;
-    }
-
-    private static boolean prereqsDone(ModuleCost m, java.util.Set<Path> dirtyDirs, java.util.Map<Path, Long> doneAt) {
-        if (m.prereqs() == null) return true;
-        for (Path p : m.prereqs()) {
-            if (!dirtyDirs.contains(p)) continue; // clean prereq — already built
-            if (!doneAt.containsKey(p)) return false;
-        }
-        return true;
+        return WorkSchedule.schedule(toWorkCosts(mods), concurrency, false, true);
     }
 }
