@@ -37,8 +37,17 @@ public final class KmpRedirects {
      * Keyed by the repositories asked <em>and</em> {@code env + module@version} — which {@code
      * .module} is fetched depends on the repo set. No TTL: release GAV content is immutable; force
      * / {@link #clearProcessCache} drop the memo.
+     *
+     * <p>Values are futures, not results (JK-1785): the winner parks a future and runs the
+     * network lookup <em>outside</em> the map, so unrelated keys sharing a CHM bin never
+     * serialize behind a slow {@code .module} fetch the way {@code computeIfAbsent} made them.
+     * Completed futures stay as the memo. Bounded like the sibling process memos; past the cap
+     * lookups run uncached.
      */
-    private static final Map<String, Optional<Selection>> PROCESS_CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, java.util.concurrent.CompletableFuture<Optional<Selection>>> PROCESS_CACHE =
+            new ConcurrentHashMap<>();
+
+    private static final int PROCESS_CACHE_MAX = 8_192;
 
     /** Test seam: drop process-wide selection memo. */
     public static void clearProcessCache() {
@@ -86,7 +95,7 @@ public final class KmpRedirects {
         String processKey = repos.processIdentity() + "\0" + jvmEnvironment + "\0" + gaKey;
         // Single-flight: concurrent PubGrub prefetches must not re-parse the same .module.
         long t0 = cc.jumpkick.resolve.ResolveProfile.on() ? System.nanoTime() : 0L;
-        Optional<Selection> found = PROCESS_CACHE.computeIfAbsent(processKey, k -> lookup(module, version));
+        Optional<Selection> found = processMemoized(processKey, module, version);
         cache.put(gaKey, found);
         found.ifPresent(this::rememberDropped);
         if (cc.jumpkick.resolve.ResolveProfile.on() && t0 != 0L) {
@@ -115,6 +124,37 @@ public final class KmpRedirects {
             String siblingKey = PackageId.ofGa(sibling).key();
             if (!siblingKey.equals(selected)) droppedSiblings.put(siblingKey, selected);
         }
+    }
+
+    /**
+     * Future-based single-flight around {@link #lookup}: joiners wait on the winner's future
+     * while the network lookup runs outside any map lock. No cycle risk here (unlike the
+     * EffectivePomBuilder single-flight, JK-1764): lookup never re-enters {@code selectionFor}.
+     * {@code lookup} is fail-soft, so the future always completes normally; the finally guard
+     * only fires on an {@link Error}, unparking joiners without memoizing a guess.
+     */
+    private Optional<Selection> processMemoized(String processKey, String module, String version) {
+        java.util.concurrent.CompletableFuture<Optional<Selection>> flight = PROCESS_CACHE.get(processKey);
+        if (flight == null && PROCESS_CACHE.size() < PROCESS_CACHE_MAX) {
+            java.util.concurrent.CompletableFuture<Optional<Selection>> mine =
+                    new java.util.concurrent.CompletableFuture<>();
+            java.util.concurrent.CompletableFuture<Optional<Selection>> raced =
+                    PROCESS_CACHE.putIfAbsent(processKey, mine);
+            if (raced != null) {
+                flight = raced;
+            } else {
+                try {
+                    mine.complete(lookup(module, version));
+                } finally {
+                    if (!mine.isDone()) {
+                        mine.complete(Optional.empty());
+                        PROCESS_CACHE.remove(processKey, mine);
+                    }
+                }
+                flight = mine;
+            }
+        }
+        return flight != null ? flight.join() : lookup(module, version);
     }
 
     private Optional<Selection> lookup(String module, String version) {
