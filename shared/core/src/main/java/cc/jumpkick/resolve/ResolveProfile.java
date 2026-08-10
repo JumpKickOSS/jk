@@ -27,16 +27,30 @@ public final class ResolveProfile {
     private static final AtomicLong PHASE_RESOLVE_NS = new AtomicLong();
     private static final AtomicLong PHASE_POST_NS = new AtomicLong();
 
+    /**
+     * Cached enable flag. {@link #on()} sits in the PubGrub inner loop ({@code relationTo} entry +
+     * finally, millions of calls on NIA-scale solves), so it must be a plain volatile read — not a
+     * Properties hashtable walk plus {@code System.getenv} per call. Production enables via
+     * {@code -D}/env at JVM launch, which class init sees; tests that flip the property afterwards
+     * already call {@link #reset()}, which re-reads.
+     */
+    private static volatile boolean on = readOn();
+
     private ResolveProfile() {}
 
     /** True when {@code -Djk.resolve.profile=true} or {@code JK_RESOLVE_PROFILE=1}. */
     public static boolean on() {
+        return on;
+    }
+
+    private static boolean readOn() {
         if (Boolean.getBoolean("jk.resolve.profile")) return true;
         String env = System.getenv("JK_RESOLVE_PROFILE");
         return env != null && (env.equals("1") || env.equalsIgnoreCase("true"));
     }
 
     public static void reset() {
+        on = readOn();
         POM_BUILD_NS.set(0);
         POM_BUILD_CALLS.set(0);
         POM_BUILD_HITS.set(0);
