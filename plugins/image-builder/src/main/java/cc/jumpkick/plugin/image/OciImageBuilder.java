@@ -114,6 +114,8 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
             if (e.fileName() != null && !e.fileName().isBlank()) jarNames.put(e.jar(), e.fileName());
         }
         Path classesDir = ctx.classesDir().orElse(null);
+        String appDir = c.stringOpt("appDir").orElse(null);
+        String appJar = c.stringOpt("appJar").orElse(null);
 
         ImageConfig config = new ImageConfig(
                 base,
@@ -129,7 +131,17 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
                 null,
                 aotCache);
         ImageBuilder.Plan plan = new ImageBuilder.Plan(
-                config, artifact, version, mainClass, mainJar, depJars, snapshotJars, classesDir, jarNames);
+                config,
+                artifact,
+                version,
+                mainClass,
+                mainJar,
+                depJars,
+                snapshotJars,
+                classesDir,
+                jarNames,
+                appDir == null ? null : Path.of(appDir),
+                appJar);
 
         Optional<String> tarball = c.stringOpt("tarball");
         if (tarball.isPresent()) {

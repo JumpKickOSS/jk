@@ -50,7 +50,15 @@ public final class ImageBuilder {
              * the content-addressed store, so a jar's own path is its digest — shipping that into
              * an image leaves a lib/ directory nobody, and no scanner, can read.
              */
-            Map<Path, String> jarNames) {
+            Map<Path, String> jarNames,
+            /**
+             * A self-contained runnable tree the packager produced (Quarkus's {@code quarkus-app/}),
+             * or null. When set it is the whole application: shipped as-is and launched with
+             * {@code java -jar appJar} from its own directory.
+             */
+            Path appDir,
+            /** The jar to run inside {@link #appDir}. */
+            String appJar) {
 
         /** Without coordinate names: jars keep their on-disk file name. */
         public Plan(
@@ -62,13 +70,54 @@ public final class ImageBuilder {
                 List<Path> dependencyJars,
                 List<Path> snapshotJars,
                 Path classesDir) {
-            this(config, artifact, version, mainClass, mainJar, dependencyJars, snapshotJars, classesDir, Map.of());
+            this(
+                    config,
+                    artifact,
+                    version,
+                    mainClass,
+                    mainJar,
+                    dependencyJars,
+                    snapshotJars,
+                    classesDir,
+                    Map.of(),
+                    null,
+                    null);
         }
 
         /** The name this jar should carry in the image. */
         public String nameOf(Path jar) {
             String named = jarNames.get(jar);
             return named != null && !named.isBlank() ? named : jar.getFileName().toString();
+        }
+
+        /** With coordinate names but no packager-produced tree. */
+        public Plan(
+                ImageConfig config,
+                String artifact,
+                String version,
+                String mainClass,
+                Path mainJar,
+                List<Path> dependencyJars,
+                List<Path> snapshotJars,
+                Path classesDir,
+                Map<Path, String> jarNames) {
+            this(
+                    config,
+                    artifact,
+                    version,
+                    mainClass,
+                    mainJar,
+                    dependencyJars,
+                    snapshotJars,
+                    classesDir,
+                    jarNames,
+                    null,
+                    null);
+        }
+
+        /** True when the packager handed over a complete runnable tree. */
+        public boolean hasAppTree() {
+            return appDir != null && appJar != null && !appJar.isBlank();
         }
 
         public Plan {
@@ -149,6 +198,31 @@ public final class ImageBuilder {
      * each entry by size and modification time, so the bytes that were trained against and the
      * bytes that ship have to agree on both.
      */
+    /** Ship {@code src} under {@code /app}: a directory verbatim, or a single file at {@code as}. */
+    private static FileEntriesLayer treeLayer(Path src, String as) throws IOException {
+        FileEntriesLayer.Builder layer = FileEntriesLayer.builder();
+        if (java.nio.file.Files.isRegularFile(src)) {
+            layer.addEntry(
+                    src,
+                    AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR + "/" + (as == null ? src.getFileName() : as)),
+                    FilePermissions.DEFAULT_FILE_PERMISSIONS,
+                    AotCacheTrainer.LAYER_TIME.toInstant());
+            return layer.build();
+        }
+        try (var walk = java.nio.file.Files.walk(src)) {
+            for (Path file :
+                    walk.filter(java.nio.file.Files::isRegularFile).sorted().toList()) {
+                layer.addEntry(
+                        file,
+                        AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR + "/"
+                                + src.relativize(file).toString().replace('\\', '/')),
+                        FilePermissions.DEFAULT_FILE_PERMISSIONS,
+                        AotCacheTrainer.LAYER_TIME.toInstant());
+            }
+        }
+        return layer.build();
+    }
+
     private static FileEntriesLayer appTreeLayer(Path root) throws IOException {
         FileEntriesLayer.Builder layer = FileEntriesLayer.builder();
         try (var walk = java.nio.file.Files.walk(root)) {
@@ -182,6 +256,26 @@ public final class ImageBuilder {
             builder = Jib.from(RegistryImage.named(cfg.base()));
         } catch (InvalidImageReferenceException e) {
             throw new IOException("invalid base image: " + cfg.base(), e);
+        }
+
+        // A packager-produced tree is the entire application. Shipping it verbatim is the only
+        // layout that runs — Quarkus enters through its own bootstrap and loads lib/main with its
+        // own class loader, so a lock-derived classpath describes a different program.
+        if (plan.hasAppTree()) {
+            builder = builder.addFileEntriesLayer(treeLayer(plan.appDir(), null));
+            builder = builder.setWorkingDirectory(AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR));
+            List<String> appEntrypoint = new ArrayList<>(List.of("java"));
+            Path aotFile = null;
+            if (cfg.aotCache()) {
+                AotCacheTrainer.Result trained = AotCacheTrainer.train(
+                        plan, plan.mainJar().getParent(), msg -> System.err.println("jk: " + msg));
+                aotFile = trained.cache();
+                builder = builder.addFileEntriesLayer(treeLayer(aotFile, AotCacheTrainer.CACHE_FILE));
+                appEntrypoint.add("-XX:AOTCache=" + AotCacheTrainer.CACHE_FILE);
+            }
+            appEntrypoint.addAll(List.of("-jar", plan.appJar()));
+            builder = builder.setEntrypoint(appEntrypoint);
+            return finish(builder, plan, containerizer);
         }
 
         // Layer 1 — release dependency jars (change least often).
@@ -237,6 +331,13 @@ public final class ImageBuilder {
             entrypoint.add(plan.mainClass());
         }
         builder = builder.setEntrypoint(entrypoint);
+        return finish(builder, plan, containerizer);
+    }
+
+    /** Everything after the entrypoint: identity, ports, env, labels, platforms, and the build. */
+    private static JibContainer finish(JibContainerBuilder builder, Plan plan, Containerizer containerizer)
+            throws IOException, InterruptedException, InvalidImageReferenceException {
+        ImageConfig cfg = plan.config();
 
         if (cfg.user() != null && !cfg.user().isBlank()) {
             builder = builder.setUser(cfg.user());

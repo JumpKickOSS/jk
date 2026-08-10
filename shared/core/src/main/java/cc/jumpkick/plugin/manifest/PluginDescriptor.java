@@ -115,6 +115,16 @@ public record PluginDescriptor(
              * {@code [application] main} and jk's classpath do not describe its image at all.
              */
             String nativeImageSources,
+            /**
+             * A directory beside the main artifact that is the whole runnable application —
+             * Quarkus's {@code quarkus-app/}. When set, an image ships this tree and launches
+             * {@link #appJar} from it, instead of assembling a classpath from the lock: the
+             * framework's own layout is the one that works, and the one an AOT cache can be
+             * trained against.
+             */
+            String appDir,
+            /** The jar inside {@link #appDir} to run with {@code java -jar}. */
+            String appJar,
             List<Variant> variants) {
 
         /** Config-conditional packaging override; first matching {@code when} wins. */

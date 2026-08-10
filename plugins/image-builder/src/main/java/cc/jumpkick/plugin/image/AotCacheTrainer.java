@@ -44,6 +44,9 @@ final class AotCacheTrainer {
     /** The cache file, named relative to {@link #APP_DIR}. */
     static final String CACHE_FILE = "app.aot";
 
+    /** The recording the assembling step consumes; never shipped. */
+    static final String CONFIG_FILE = "app.aotconf";
+
     /**
      * A trained layout: the tree to ship at {@link #APP_DIR}, the java arguments that run it, and
      * the cache. Paths are relative and the image sets {@code WORKDIR}, which is how Spring, Paketo
@@ -54,10 +57,20 @@ final class AotCacheTrainer {
 
     private static final long TRAIN_TIMEOUT_SECONDS = 300;
 
+    /** No output for this long means startup has finished talking. */
+    private static final long QUIET_MILLIS = 4_000;
+
+    /** Never stop an application before it has had a chance to get going. */
+    private static final long MIN_RUN_MILLIS = 3_000;
+
+    /** How long to wait for the child JVM that assembles the cache after the app has exited. */
+    private static final long ASSEMBLE_TIMEOUT_SECONDS = 180;
+
     private AotCacheTrainer() {}
 
     /** Why an AOT cache cannot be trained for this image, or null when it can. */
     static String unsupportedReason(ImageBuilder.Plan plan) {
+        if (plan.hasAppTree()) return null;
         if (plan.classesDir() != null && !BootLayout.isBootJar(plan.mainJar())) {
             return "this module's image is an exploded-classes layout and its main artifact is not a"
                     + " Spring Boot jar, so there is nothing to unpack into a trainable shape. A CDS"
@@ -101,7 +114,14 @@ final class AotCacheTrainer {
         // JVM classpath. Its own `jarmode extract` produces the shape that can be trained: a thin
         // launcher jar whose manifest Class-Path names lib/*.jar, relative.
         List<String> runArgs;
-        if (BootLayout.isBootJar(plan.mainJar())) {
+        if (plan.hasAppTree()) {
+            // The packager already produced the runnable tree; train against a copy of exactly what
+            // ships. Quarkus's fast-jar also keeps lib/main off the JVM classpath — its own loader
+            // reads those — so the archive only has to agree about quarkus-run.jar and lib/boot.
+            copyTree(plan.appDir(), staging);
+            runArgs = List.of("-jar", plan.appJar());
+            log.accept("training against the packager's " + plan.appDir().getFileName() + " tree");
+        } else if (BootLayout.isBootJar(plan.mainJar())) {
             Path extractTool = localJre != null ? localJre : hostJava();
             BootLayout.Extracted boot = BootLayout.extract(plan.mainJar(), staging, extractTool);
             runArgs = List.of("-jar", boot.launcherJar());
@@ -112,48 +132,81 @@ final class AotCacheTrainer {
         }
         stamp(staging);
 
-        List<String> prefix;
-        if (localJre != null) {
-            log.accept("training the AOT cache with " + base + "'s JVM, on this host");
-            prefix = new ArrayList<>(List.of(localJre.toString()));
-        } else {
-            log.accept("training the AOT cache in " + base);
-            prefix = new ArrayList<>(
-                    containerPrefix(containerRuntime(plan.config().dockerExecutable()), staging, base));
-            prefix.add("java");
+        // A container has to be addressable to be stopped; the local path signals the process
+        // directly. Each run gets its own name so the training and verifying containers cannot
+        // collide.
+        String runtime = localJre == null ? containerRuntime(plan.config().dockerExecutable()) : null;
+        java.util.function.Function<String, List<String>> prefixFor = name -> {
+            if (localJre != null) return new ArrayList<>(List.of(localJre.toString()));
+            List<String> cmd = new ArrayList<>(containerPrefix(runtime, staging, base, name));
+            cmd.add("java");
+            return cmd;
+        };
+        log.accept(
+                localJre != null
+                        ? "training the AOT cache with " + base + "'s JVM, on this host"
+                        : "training the AOT cache in " + base);
+
+        String trainName = "jk-aot-train-" + java.util.UUID.randomUUID();
+        String assembleName = "jk-aot-create-" + java.util.UUID.randomUUID();
+        String verifyName = "jk-aot-verify-" + java.util.UUID.randomUUID();
+        List<String> prefix = prefixFor.apply(trainName);
+
+        // Two steps, deliberately. The one-step -XX:AOTCacheOutput assembles the cache from a child
+        // JVM that the application spawns as it exits normally — and a server does not exit
+        // normally, it is signalled. Under SIGTERM the recording is written and the child never
+        // runs, leaving a 33 MiB .aotconf and no cache. Recording and assembling separately puts
+        // the assembly in jk's hands, which is also how Quarkus drives its own Leyden path.
+        List<String> record = new ArrayList<>(prefix);
+        record.add("-XX:AOTMode=record");
+        record.add("-XX:AOTConfiguration=" + CONFIG_FILE);
+        record.addAll(runArgs);
+
+        Output recorded = runUntilSettled(record, localJre != null ? staging : null, runtime, trainName, log);
+        Path config = staging.resolve(CONFIG_FILE);
+        if (!Files.isRegularFile(config) || sizeOrZero(config) == 0) {
+            throw new IOException("the training run recorded nothing.\n"
+                    + "  command: " + String.join(" ", record) + "\n"
+                    + tail(recorded.text()));
         }
 
-        List<String> train = new ArrayList<>(prefix);
-        train.add("-XX:AOTCacheOutput=" + CACHE_FILE);
-        // Boot exits once the context is up. Anything else has to terminate on its own; JEP 514
-        // assembles the cache at exit, so a run that never ends produces nothing.
-        if (BootLayout.isBootJar(plan.mainJar())) train.add("-Dspring.context.exit=onRefresh");
-        train.addAll(runArgs);
-
-        Output trained = exec(train, localJre != null ? staging : null);
+        List<String> assemble = new ArrayList<>(prefixFor.apply(assembleName));
+        assemble.add("-XX:AOTMode=create");
+        assemble.add("-XX:AOTConfiguration=" + CONFIG_FILE);
+        assemble.add("-XX:AOTCache=" + CACHE_FILE);
+        assemble.addAll(runArgs);
+        Output assembled = runUntilSettled(assemble, localJre != null ? staging : null, runtime, assembleName, log);
         Path cache = staging.resolve(CACHE_FILE);
-        if (!Files.isRegularFile(cache)) {
-            throw new IOException("the training run produced no cache. It has to be a run that exits —"
-                    + " Spring Boot exits at context refresh, other applications must do so themselves.\n"
-                    + "  command: " + String.join(" ", train) + "\n"
-                    + tail(trained.text()));
+        if (!Files.isRegularFile(cache) || sizeOrZero(cache) == 0) {
+            throw new IOException("the recording could not be assembled into a cache.\n"
+                    + "  command: " + String.join(" ", assemble) + "\n"
+                    + tail(assembled.text()));
         }
+        Files.deleteIfExists(config);
         Files.setLastModifiedTime(cache, LAYER_TIME);
 
         // Prove it loads before it becomes a layer. A rejected cache is silent at default log
         // level, so an unverified one is indistinguishable from a working one.
-        List<String> verify = new ArrayList<>(prefix);
+        List<String> verify = new ArrayList<>(prefixFor.apply(verifyName));
         verify.add("-Xlog:aot=info");
         verify.add("-XX:AOTCache=" + CACHE_FILE);
-        if (BootLayout.isBootJar(plan.mainJar())) verify.add("-Dspring.context.exit=onRefresh");
         verify.addAll(runArgs);
 
-        String refusal = refusal(exec(verify, localJre != null ? staging : null).text());
+        String refusal = refusal(runUntilSettled(verify, localJre != null ? staging : null, runtime, verifyName, log)
+                .text());
         if (refusal != null) {
             throw new IOException("the AOT cache was trained but the JVM refused it:\n  " + refusal);
         }
         log.accept("AOT cache verified (" + Files.size(cache) / (1024 * 1024) + " MiB)");
         return new Result(staging, runArgs, cache);
+    }
+
+    private static long sizeOrZero(Path p) {
+        try {
+            return Files.size(p);
+        } catch (IOException e) {
+            return 0;
+        }
     }
 
     /** The JVM running this worker — good enough to rewrite a jar with Boot's jarmode tool. */
@@ -175,6 +228,22 @@ final class AotCacheTrainer {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             log.accept("could not read " + base + "'s JVM (" + e.getMessage() + ") — training in a container");
             return null;
+        }
+    }
+
+    /** Copy a tree verbatim — the staged copy is what gets trained and what ships. */
+    private static void copyTree(Path from, Path to) throws IOException {
+        deleteRecursively(to);
+        try (var walk = Files.walk(from)) {
+            for (Path p : walk.toList()) {
+                Path target = to.resolve(from.relativize(p).toString());
+                if (Files.isDirectory(p)) {
+                    Files.createDirectories(target);
+                } else {
+                    Files.createDirectories(target.getParent());
+                    Files.copy(p, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                }
+            }
         }
     }
 
@@ -228,8 +297,8 @@ final class AotCacheTrainer {
     }
 
     /** {@code <runtime> run --rm -v <staging>:/app -w /app <base>} — everything before the java command. */
-    private static List<String> containerPrefix(String runtime, Path staging, String base) {
-        List<String> cmd = new ArrayList<>(List.of(runtime, "run", "--rm"));
+    private static List<String> containerPrefix(String runtime, Path staging, String base, String name) {
+        List<String> cmd = new ArrayList<>(List.of(runtime, "run", "--rm", "--name", name));
         // :z relabels for SELinux and is meaningless (and rejected) elsewhere.
         String mount = staging.toAbsolutePath() + ":/app";
         cmd.addAll(List.of("-v", isSelinux() ? mount + ":z" : mount));
@@ -292,23 +361,95 @@ final class AotCacheTrainer {
 
     private record Output(String text, int exit) {}
 
-    /** Run {@code command}, optionally from {@code cwd} — the local path trains from the staging tree. */
-    private static Output exec(List<String> command, Path cwd) throws IOException, InterruptedException {
+    /**
+     * Start the application, wait for it to settle, then ask it to stop, and return everything it
+     * said.
+     *
+     * <p>A server never exits on its own, and JEP 514 assembles the cache when the JVM exits. It
+     * does so on SIGTERM as well, which is what makes this framework-agnostic — no
+     * {@code spring.context.exit}, no {@code quarkus.appcds.generate}, nothing to know per
+     * framework. "Settled" is {@value #QUIET_MILLIS} ms with no output after at least
+     * {@value #MIN_RUN_MILLIS} ms, which is a startup that has stopped logging. An application that
+     * exits by itself is simply finished and its output is returned as-is.
+     *
+     * @param runtime the container CLI when running in a container, null when running locally
+     * @param containerName the container to stop; ignored when {@code runtime} is null
+     */
+    private static Output runUntilSettled(
+            List<String> command, Path cwd, String runtime, String containerName, Consumer<String> log)
+            throws IOException, InterruptedException {
         ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
         if (cwd != null) pb.directory(cwd.toFile());
         Process process = pb.start();
         StringBuilder out = new StringBuilder();
+        java.util.concurrent.atomic.AtomicLong lastOutput =
+                new java.util.concurrent.atomic.AtomicLong(System.nanoTime());
         Thread reader = Thread.ofVirtual().start(() -> {
             try (var in = process.inputReader()) {
-                in.lines().forEach(l -> out.append(l).append('\n'));
+                in.lines().forEach(line -> {
+                    synchronized (out) {
+                        out.append(line).append('\n');
+                    }
+                    lastOutput.set(System.nanoTime());
+                });
             } catch (IOException ignored) {
             }
         });
-        if (!process.waitFor(TRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-            process.destroyForcibly();
+
+        long started = System.nanoTime();
+        boolean asked = false;
+        while (process.isAlive()) {
+            if (process.waitFor(200, TimeUnit.MILLISECONDS)) break;
+            long elapsedMs = (System.nanoTime() - started) / 1_000_000L;
+            long quietMs = (System.nanoTime() - lastOutput.get()) / 1_000_000L;
+            if (elapsedMs > TRAIN_TIMEOUT_SECONDS * 1000) {
+                log.accept("the training run did not settle within " + TRAIN_TIMEOUT_SECONDS + "s — stopping it");
+                asked = true;
+            } else if (!asked && elapsedMs >= MIN_RUN_MILLIS && quietMs >= QUIET_MILLIS) {
+                asked = true;
+            }
+            if (asked) {
+                synchronized (out) {
+                    out.append("[jk] settled after ").append(elapsedMs).append("ms — asking it to stop\n");
+                }
+                requestStop(process, runtime, containerName);
+                // The JVM writes the cache from a shutdown hook; give it room to finish.
+                process.waitFor(TRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                break;
+            }
         }
+        boolean killed = process.isAlive();
+        if (killed) process.destroyForcibly();
         reader.join(5_000);
-        return new Output(out.toString(), process.exitValue());
+        synchronized (out) {
+            out.append("[jk] ")
+                    .append(killed ? "did not stop when asked; killed" : "exited " + process.exitValue())
+                    .append('\n');
+        }
+        synchronized (out) {
+            return new Output(out.toString(), process.isAlive() ? -1 : process.exitValue());
+        }
+    }
+
+    /**
+     * SIGTERM, and nothing harsher. {@code destroy()} signals the local JVM; a container needs its
+     * runtime asked, because signalling the client that is streaming its output does not reliably
+     * reach PID 1 inside.
+     */
+    private static void requestStop(Process process, String runtime, String containerName) {
+        if (runtime == null) {
+            process.destroy();
+            return;
+        }
+        try {
+            new ProcessBuilder(runtime, "stop", "--time", String.valueOf(TRAIN_TIMEOUT_SECONDS), containerName)
+                    .redirectErrorStream(true)
+                    .start()
+                    .waitFor(TRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            process.destroy(); // best effort: the forcible kill below still bounds the wait
+        }
     }
 
     private static String tail(String text) {

@@ -234,6 +234,8 @@ public final class PluginDescriptors {
         }
         String deployCommand = packaging.getString("deploy-command");
         String nativeImageSources = packaging.getString("native-image-sources");
+        String appDir = packaging.getString("app-dir");
+        String appJar = packaging.getString("app-jar");
         if (deployCommand != null && !"device".equals(execMode)) {
             throw new JkBuildParseException(
                     displayPath + ".packaging.deploy-command only applies to exec-mode = \"device\"");
@@ -256,6 +258,8 @@ public final class PluginDescriptors {
                 // Default true: a packager owns the module's artifact unless it says otherwise.
                 !Boolean.FALSE.equals(packaging.getBoolean("main-artifact")),
                 nativeImageSources == null ? "" : nativeImageSources,
+                appDir == null ? "" : appDir,
+                appJar == null ? "" : appJar,
                 variants);
     }
 

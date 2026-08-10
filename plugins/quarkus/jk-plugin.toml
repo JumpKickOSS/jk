@@ -13,6 +13,11 @@ protocol-prefix = "##JKQ:"
 
 [packaging]
 packager       = "quarkus-fast-jar"
+# The augment writes a complete runnable tree; an image ships that rather than a classpath
+# assembled from the lock. All jars, relative paths, fixed working directory — which is also the
+# only shape a CDS/AOT cache can be trained against.
+app-dir        = "quarkus-app"
+app-jar        = "quarkus-run.jar"
 # Quarkus computes its own native-image invocation — the entry point is a generated --features
 # class, not [application] main. Asked for a native build without running native-image, it writes
 # this directory: the runner jar, its lib/, and native-image.args. jk runs that list verbatim.
