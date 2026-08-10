@@ -31,7 +31,7 @@ public final class TrainCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Train reachability metadata (and optional AOT cache) from a full-app run";
+        return "Train reachability metadata and an optional AOT cache";
     }
 
     @Override
