@@ -41,6 +41,23 @@ class CommandDispatchTest {
         assertThat(CommandDispatch.commandIndex(List.of("-q", "build"))).isEqualTo(1);
     }
 
+    /**
+     * A group with a default leaf can be invoked with that leaf's options and no subcommand at all
+     * — `jk storage --cache-dir /tmp`. Without the leaf's options in scope the option's VALUE reads
+     * as a subcommand name, and the group rejects its own legal invocation.
+     */
+    @Test
+    void commandIndex_skipsAValueTakingOptionOfTheDefaultSubcommand() {
+        var storage = new cc.jumpkick.command.StorageCommand();
+        assertThat(CommandDispatch.commandIndex(List.of("--cache-dir", "/tmp"), storage.defaultSubcommand()))
+                .as("no subcommand present: the option and its value are not one")
+                .isEqualTo(-1);
+        assertThat(CommandDispatch.commandIndex(List.of("--cache-dir", "/tmp", "clean"), storage.defaultSubcommand()))
+                .isEqualTo(2);
+        // Without the leaf in scope, the value is mistaken for the command.
+        assertThat(CommandDispatch.commandIndex(List.of("--cache-dir", "/tmp"))).isEqualTo(1);
+    }
+
     @Test
     void commandIndex_skipsValueTakingGlobalAndItsArgument() {
         // -C consumes the next token, so the command is at index 2.

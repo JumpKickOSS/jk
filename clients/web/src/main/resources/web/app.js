@@ -1601,7 +1601,7 @@ Vue.createApp({
       return c.actionMaxBytes != null ? c.actionMaxBytes : null;
     },
 
-    /** Artifact store: store CAS + repos/workers + run logs (CLI: jk repo storage). */
+    /** Artifact store: store CAS + repos/workers + run logs (CLI: jk storage). */
     artifactStorageBytes() {
       const c = this.cache;
       if (!c) return null;

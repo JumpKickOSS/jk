@@ -5,7 +5,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
 
 /**
- * Shared chrome for box-drawn TUI tables (JDK list, outdated deps, repo storage, …).
+ * Shared chrome for box-drawn TUI tables (JDK list, outdated deps, storage, …).
  *
  * <p>Title line (replaces the old full-width blue banner under a {@code ╭──╮} top border):
  *

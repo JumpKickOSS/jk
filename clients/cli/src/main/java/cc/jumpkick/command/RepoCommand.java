@@ -40,12 +40,7 @@ public final class RepoCommand extends GroupCommand {
     @Override
     public List<CliCommand> subcommands() {
         return List.of(
-                new RepoStorageRedirect(),
-                new RepoSearchCommand(),
-                new RepoRefreshCommand(),
-                new RepoPruneRedirect(),
-                new RepoLoginCommand(),
-                new RepoLogoutCommand());
+                new RepoSearchCommand(), new RepoRefreshCommand(), new RepoLoginCommand(), new RepoLogoutCommand());
     }
 
     /**
@@ -128,71 +123,6 @@ public final class RepoCommand extends GroupCommand {
             } catch (IOException e) {
                 return List.of("central", "local");
             }
-        }
-    }
-
-    /** Hidden redirect: {@code jk storage clean} → {@code jk storage clean}. */
-    public static final class RepoPruneRedirect implements CliCommand {
-        private final StorageCommand.StorageCleanCommand target = new StorageCommand.StorageCleanCommand();
-
-        @Override
-        public String name() {
-            return "prune";
-        }
-
-        @Override
-        public boolean hidden() {
-            return true;
-        }
-
-        @Override
-        public String description() {
-            return "Moved — use jk storage clean";
-        }
-
-        @Override
-        public List<Opt> options() {
-            return target.options();
-        }
-
-        @Override
-        public int run(Invocation in) throws Exception {
-            CliOutput.err(Theme.colorize(
-                    "note: jk storage clean moved to jk storage clean",
-                    Theme.active().dim()));
-            return target.run(in);
-        }
-    }
-
-    /** Hidden redirect: {@code jk storage} → {@code jk storage}. */
-    public static final class RepoStorageRedirect implements CliCommand {
-        private final StorageCommand.StorageStatusCommand target = new StorageCommand.StorageStatusCommand();
-
-        @Override
-        public String name() {
-            return "storage";
-        }
-
-        @Override
-        public boolean hidden() {
-            return true;
-        }
-
-        @Override
-        public String description() {
-            return "Moved — use jk storage";
-        }
-
-        @Override
-        public List<Opt> options() {
-            return target.options();
-        }
-
-        @Override
-        public int run(Invocation in) throws Exception {
-            CliOutput.err(Theme.colorize(
-                    "note: jk storage moved to jk storage", Theme.active().dim()));
-            return target.run(in);
         }
     }
 

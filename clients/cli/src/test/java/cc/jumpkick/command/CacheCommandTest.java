@@ -206,7 +206,7 @@ class CacheCommandTest {
     }
 
     @Test
-    void repo_storage_reports_cas_and_repos_without_action_cache(@TempDir Path tempDir) throws Exception {
+    void storage_reports_cas_and_repos_without_action_cache(@TempDir Path tempDir) throws Exception {
         // JK-1531: since the CAS split, `jk storage` measures the AMBIENT artifact store —
         // `--cache-dir` moves only the cache tier — so exact byte totals depend on whatever the
         // module-shared store holds and cannot be asserted here. Structural shape only; the
@@ -215,7 +215,7 @@ class CacheCommandTest {
         Path cache = tempDir.resolve("cache");
         writeBlob(cache.resolve("actions/keys/task"), new byte[4096]);
 
-        String plain = TestAnsi.strip(capture(() -> run("repo", "storage", "--cache-dir", cache.toString())));
+        String plain = TestAnsi.strip(capture(() -> run("storage", "--cache-dir", cache.toString())));
         assertThat(plain).contains("Artifact Storage"); // the store holds artifacts, not repos
         assertThat(plain).contains("CAS Blobs");
         assertThat(plain).contains("Worker JARs");

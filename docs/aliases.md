@@ -54,7 +54,6 @@ Exact and prefix-matchable like the primary name, still hidden from help.
 
 `cache info` and `cache search` are pre-split spellings. `cache prune` / `cache purge` /
 `self purge` are renames from the clean/nuke vocabulary. Hidden stubs also forward
-`jk repo storage` → `jk storage` and `jk repo prune` → `jk storage clean` (stderr note).
 
 ## Hidden option aliases
 
@@ -69,8 +68,6 @@ Still functional, but gone from `--help`; the canonical home moved with the stor
 
 | Hidden surface                          | Canonical                  |
 | --------------------------------------- | -------------------------- |
-| `repo prune`                            | `storage clean`            |
-| `repo storage`                          | `storage`                  |
 | `cache clean --sweep`                   | `storage clean`            |
 
 ## Hidden global options
