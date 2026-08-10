@@ -185,4 +185,18 @@ class JkCacheConfigTest {
                 .isCloseTo((5.0 * 0.8) / 2.0, org.assertj.core.api.Assertions.withinPercentage(1));
         org.assertj.core.api.Assertions.assertThat(withOwn).isGreaterThan(withoutOwn);
     }
+
+    @org.junit.jupiter.api.Test
+    void legacy_mb_keys_and_envs_still_pin_the_budget(@org.junit.jupiter.api.io.TempDir Path dir) throws Exception {
+        Path toml = dir.resolve("config.toml");
+        Files.writeString(toml, "[cache]\nmax-cache-size-mb = 512\n");
+        JkCacheConfig fromFile = JkCacheConfig.resolve(toml, k -> null, BIG_DISK);
+        org.assertj.core.api.Assertions.assertThat(fromFile.maxCacheSizeGb())
+                .isCloseTo(0.5, org.assertj.core.api.Assertions.withinPercentage(1));
+
+        JkCacheConfig fromEnv = JkCacheConfig.resolve(
+                dir.resolve("none.toml"), Map.of("JK_MAX_STORE_SIZE_MB", "2048")::get, BIG_DISK);
+        org.assertj.core.api.Assertions.assertThat(fromEnv.maxStoreSizeGb())
+                .isCloseTo(2.0, org.assertj.core.api.Assertions.withinPercentage(1));
+    }
 }

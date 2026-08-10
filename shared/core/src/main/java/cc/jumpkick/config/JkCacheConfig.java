@@ -119,6 +119,20 @@ public record JkCacheConfig(
         Parsed p = parse(userConfig);
         OptionalDouble envStore = envPositiveDouble(env, "JK_MAX_STORE_SIZE_GB");
         OptionalDouble envCache = envPositiveDouble(env, "JK_MAX_CACHE_SIZE_GB");
+        if (envStore.isEmpty()) {
+            OptionalDouble mb = envPositiveDouble(env, "JK_MAX_STORE_SIZE_MB");
+            if (mb.isPresent()) {
+                warnLegacyOnce("JK_MAX_STORE_SIZE_MB is the pre-rename spelling — use JK_MAX_STORE_SIZE_GB");
+                envStore = OptionalDouble.of(mb.getAsDouble() / 1024.0);
+            }
+        }
+        if (envCache.isEmpty()) {
+            OptionalDouble mb = envPositiveDouble(env, "JK_MAX_CACHE_SIZE_MB");
+            if (mb.isPresent()) {
+                warnLegacyOnce("JK_MAX_CACHE_SIZE_MB is the pre-rename spelling — use JK_MAX_CACHE_SIZE_GB");
+                envCache = OptionalDouble.of(mb.getAsDouble() / 1024.0);
+            }
+        }
 
         double logicalCache = isCi(env) ? CI_MAX_CACHE_SIZE_GB : DEFAULT_MAX_CACHE_SIZE_GB;
         double logicalStore = isCi(env) ? CI_MAX_STORE_SIZE_GB : DEFAULT_MAX_STORE_SIZE_GB;
@@ -234,7 +248,9 @@ public record JkCacheConfig(
                 "cache.max-store-size-gb",
                 "cache.prune-interval-days",
                 "cache.record-ttl-days",
-                "cache.max-cache-size-gb");
+                "cache.max-cache-size-gb",
+                "cache.max-store-size-mb",
+                "cache.max-cache-size-mb");
         boolean autoPrune =
                 switch (String.valueOf(scan.get("cache.auto-prune"))) {
                     case "true" -> true;
@@ -245,7 +261,31 @@ public record JkCacheConfig(
         int interval = nonNegative(scanInt(scan, "cache.prune-interval-days")).orElse(DEFAULTS.pruneIntervalDays());
         int ttl = nonNegative(scanInt(scan, "cache.record-ttl-days")).orElse(DEFAULTS.recordTtlDays());
         OptionalDouble cacheGb = positiveDouble(scanDouble(scan, "cache.max-cache-size-gb"));
+        // Pre-rename `-mb` keys still pin the budget (converted) — ignoring them silently would
+        // grow a deliberately small cache to the multi-GiB default on upgrade (JK-1790).
+        if (storeGb.isEmpty()) {
+            storeGb = legacyMbAsGb(scan, "cache.max-store-size-mb");
+        }
+        if (cacheGb.isEmpty()) {
+            cacheGb = legacyMbAsGb(scan, "cache.max-cache-size-mb");
+        }
         return new Parsed(autoPrune, storeGb, interval, ttl, cacheGb);
+    }
+
+    private static OptionalDouble legacyMbAsGb(TomlScan scan, String key) {
+        OptionalDouble mb = positiveDouble(scanDouble(scan, key));
+        if (mb.isEmpty()) return OptionalDouble.empty();
+        warnLegacyOnce(key + " is the pre-rename spelling — use " + key.replace("-mb", "-gb"));
+        return OptionalDouble.of(mb.getAsDouble() / 1024.0);
+    }
+
+    private static final java.util.concurrent.atomic.AtomicBoolean LEGACY_WARNED =
+            new java.util.concurrent.atomic.AtomicBoolean();
+
+    private static void warnLegacyOnce(String message) {
+        if (LEGACY_WARNED.compareAndSet(false, true)) {
+            System.err.println("jk: warning: " + message);
+        }
     }
 
     /** Cache-tier budget in bytes ({@link #maxCacheSizeGb}). */

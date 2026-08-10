@@ -748,7 +748,8 @@ public final class CacheCommand extends GroupCommand {
             int olderThanDays = in.value("older-than").map(Integer::parseInt).orElse(30);
             boolean dryRun = in.isSet("dry-run");
             boolean sweep = in.isSet("sweep");
-            boolean background = in.isSet("background");
+            // --background is parsed for script back-compat but has no distinct behavior since
+            // the engine's idle-boundary prune replaced the detached spawner (JK-1789).
             GlobalOptions global = GlobalOptions.from(in);
 
             Path root = resolveCacheRoot(cacheDir);
@@ -779,9 +780,11 @@ public final class CacheCommand extends GroupCommand {
             try {
                 result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
                         cc.jumpkick.engine.EnginePaths.current(),
+                        // --sweep adds the CAS sweep but must not do LESS cleaning than plain
+                        // clean: Class-C heavy outputs drop either way (JK-1788).
                         sweep
                                 ? new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest(
-                                        "prune", root, olderThanDays, dryRun, true, defaultCacheDir)
+                                        "prune", root, olderThanDays, dryRun, true, defaultCacheDir, null, true)
                                 : cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest.cacheClean(
                                         root, olderThanDays, dryRun, defaultCacheDir),
                         steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
