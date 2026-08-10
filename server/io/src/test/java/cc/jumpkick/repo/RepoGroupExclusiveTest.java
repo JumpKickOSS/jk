@@ -63,6 +63,29 @@ class RepoGroupExclusiveTest {
     }
 
     @Test
+    void unclaimed_group_falls_back_to_specialists_on_a_full_miss(@TempDir Path tmp) throws Exception {
+        // Google Maven hosts groups outside the built-in binding list (com.google.gms, ...).
+        // The fast path skips specialists for unclaimed groups; a full miss must still rescue
+        // through them instead of failing the resolve.
+        Path centralDir = tmp.resolve("central");
+        Path googleDir = tmp.resolve("google");
+        Files.createDirectories(centralDir);
+        writeMeta(googleDir, "com.google.gms", "google-services", "4.4.2");
+        writePom(googleDir, "com.google.gms", "google-services", "4.4.2");
+        Cas cas = new Cas(tmp.resolve("cas"));
+        MavenRepo central = new MavenRepo("central", centralDir.toUri(), new Http(), cas);
+        MavenRepo google = new MavenRepo("google", googleDir.toUri(), new Http(), cas);
+        RepoGroup group = new RepoGroup(List.of(central, google), List.of(List.of(), List.of("androidx.*")));
+
+        assertThat(group.availableVersions(Coordinate.of("com.google.gms", "google-services", "0")))
+                .containsExactly("4.4.2");
+        Optional<RepoGroup.RepoFetched> hit =
+                group.tryFetchPom(Coordinate.of("com.google.gms", "google-services", "4.4.2"));
+        assertThat(hit).isPresent();
+        assertThat(hit.get().repo().name()).isEqualTo("google");
+    }
+
+    @Test
     void prepended_local_repos_preserve_exclusive_bindings(@TempDir Path tmp) throws Exception {
         // Path/git materialize used to rebuild RepoGroup without exclusive groups → jumpkick
         // was tried for every Central GAV. Prepend must keep exclusive specialists exclusive.

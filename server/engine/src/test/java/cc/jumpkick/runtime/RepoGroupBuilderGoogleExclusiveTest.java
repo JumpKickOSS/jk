@@ -26,14 +26,19 @@ class RepoGroupBuilderGoogleExclusiveTest {
     }
 
     @Test
-    void user_explicit_groups_on_google_win() {
+    void user_explicit_groups_on_google_extend_the_defaults() {
+        // Additive, not replacing: binding one extra group must not silently re-open the
+        // AndroidX namespace to other repos (JK-1744).
         RepositorySpec custom = new RepositorySpec(
                 "google",
                 URI.create("https://dl.google.com/dl/android/maven2/"),
                 Optional.empty(),
                 Optional.empty(),
-                List.of("androidx.compose.*"));
-        assertThat(RepoGroupBuilder.exclusiveGroupsFor(custom)).containsExactly("androidx.compose.*");
+                List.of("com.google.gms", "androidx.*"));
+        assertThat(RepoGroupBuilder.exclusiveGroupsFor(custom))
+                .containsAll(RepositorySpec.GOOGLE_ANDROID_EXCLUSIVE_GROUPS)
+                .contains("com.google.gms")
+                .doesNotHaveDuplicates();
     }
 
     @Test

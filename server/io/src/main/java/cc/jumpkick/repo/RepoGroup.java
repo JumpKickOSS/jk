@@ -226,7 +226,10 @@ public final class RepoGroup {
             if (cached != null && !cached.expired()) return cached.versions();
             if (cached != null) VERSIONS_CACHE.remove(key, cached);
         }
-        for (MavenRepo repo : eligibleRepos(coord)) {
+        List<MavenRepo> eligible = eligibleRepos(coord);
+        List<MavenRepo> asked = new ArrayList<>(eligible);
+        asked.addAll(lastResortRepos(coord, eligible));
+        for (MavenRepo repo : asked) {
             List<String> found = repo.availableVersions(coord);
             if (!found.isEmpty()) {
                 List<String> immutable = List.copyOf(found);
@@ -282,6 +285,28 @@ public final class RepoGroup {
     }
 
     /**
+     * Last-resort repos for an <em>unclaimed</em> group after every eligible repo missed:
+     * exclusive specialists that did not claim it. Google Maven hosts plenty of groups outside
+     * the built-in binding list ({@code com.google.gms}, {@code com.google.ar}, {@code
+     * org.chromium.net}, ...) — skipping specialists on the fast path is a perf choice and must
+     * not make those coordinates unresolvable. For a <em>claimed</em> group this is empty: a
+     * miss in the claiming repos stays a miss (dependency-confusion defense).
+     */
+    private List<MavenRepo> lastResortRepos(Coordinate coord, List<MavenRepo> alreadyAsked) {
+        if (!ExclusiveGroups.claimantIndices(exclusiveGroups, coord.group()).isEmpty()) {
+            return List.of();
+        }
+        List<MavenRepo> out = new ArrayList<>();
+        for (int i = priorityCount; i < repos.size(); i++) {
+            MavenRepo r = repos.get(i);
+            if (!exclusiveGroups.get(i).isEmpty() && !alreadyAsked.contains(r)) {
+                out.add(r);
+            }
+        }
+        return out;
+    }
+
+    /**
      * Per-repo local-then-remote, in repo ordereach eligible repo's warm mirror is
      * probed before its remote leg, but a LATER repo's warm mirror can never shadow an EARLIER
      * repo — order is the precedence contract. (The no-HTTP-404 property still holds:
@@ -290,7 +315,17 @@ public final class RepoGroup {
      */
     private Optional<RepoFetched> tryFetch(Coordinate coord, LocalProbe localProbe, Fetcher fetcher)
             throws IOException, InterruptedException {
-        for (MavenRepo repo : eligibleRepos(coord)) {
+        List<MavenRepo> eligible = eligibleRepos(coord);
+        Optional<RepoFetched> found = tryFetchFrom(eligible, coord, localProbe, fetcher);
+        if (found.isPresent()) return found;
+        // Full miss on the fast path: consult non-claiming specialists before giving up.
+        return tryFetchFrom(lastResortRepos(coord, eligible), coord, localProbe, fetcher);
+    }
+
+    private Optional<RepoFetched> tryFetchFrom(
+            List<MavenRepo> candidates, Coordinate coord, LocalProbe localProbe, Fetcher fetcher)
+            throws IOException, InterruptedException {
+        for (MavenRepo repo : candidates) {
             Optional<MavenRepo.Fetched> local = localProbe.probe(repo, coord);
             if (local.isPresent()) {
                 return Optional.of(new RepoFetched(repo, local.get()));

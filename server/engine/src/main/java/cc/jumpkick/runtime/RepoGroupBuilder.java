@@ -17,6 +17,7 @@ import cc.jumpkick.repo.RepoTransports;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -138,13 +139,20 @@ public final class RepoGroupBuilder {
     }
 
     /**
-     * Exclusive patterns for {@code spec}: declared {@code groups} win; otherwise Google Android
-     * Maven gets {@link RepositorySpec#GOOGLE_ANDROID_EXCLUSIVE_GROUPS} so {@code androidx.*}
-     * never double-probes Central.
+     * Exclusive patterns for {@code spec}. Google Android Maven always carries
+     * {@link RepositorySpec#GOOGLE_ANDROID_EXCLUSIVE_GROUPS} so {@code androidx.*} never
+     * double-probes Central; user-declared {@code groups} on that remote are <em>additive</em> —
+     * replacing the built-in list would silently re-open the AndroidX namespace to other repos
+     * the moment a user binds one extra group. Elsewhere, declared groups stand alone.
      */
     static List<String> exclusiveGroupsFor(RepositorySpec spec) {
+        if (isGoogleAndroidMaven(spec)) {
+            if (!spec.hasExclusiveGroups()) return RepositorySpec.GOOGLE_ANDROID_EXCLUSIVE_GROUPS;
+            var merged = new LinkedHashSet<>(RepositorySpec.GOOGLE_ANDROID_EXCLUSIVE_GROUPS);
+            merged.addAll(spec.groups());
+            return List.copyOf(merged);
+        }
         if (spec.hasExclusiveGroups()) return spec.groups();
-        if (isGoogleAndroidMaven(spec)) return RepositorySpec.GOOGLE_ANDROID_EXCLUSIVE_GROUPS;
         return List.of();
     }
 
