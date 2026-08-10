@@ -137,6 +137,10 @@ public final class AssemblyPackager {
     static boolean isExcluded(String name) {
         if (name.equals("module-info.class") || name.endsWith("/module-info.class")) return true;
         if (!name.startsWith("META-INF/")) return false;
+        // INDEX.LIST indexes ONE jar's packages; inherited into a fat jar it lies about every
+        // merged entry and some loaders trust it over scanning. Shadow and Shade both drop it
+        // (JK-1677).
+        if (name.equals("META-INF/INDEX.LIST")) return true;
         String upper = name.toUpperCase(java.util.Locale.ROOT);
         return upper.endsWith(".SF")
                 || upper.endsWith(".RSA")

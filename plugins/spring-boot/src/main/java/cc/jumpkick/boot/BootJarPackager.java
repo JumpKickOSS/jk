@@ -183,6 +183,14 @@ public final class BootJarPackager {
      * launch. STORED requires size + CRC-32 up front, so the file is streamed twice —
      * constant-memory either way.
      */
+    /**
+     * Clamp pre-1980 fixed times to 1980-02-01T00:00:00Z: DOS time cannot represent them, and
+     * preserving epoch 0 costs an 18-byte extended-timestamp extra field per entry (JK-1676).
+     */
+    private static long dosSafe(long epochSeconds) {
+        return Math.max(epochSeconds, 318_211_200L);
+    }
+
     private static void writeStored(JarOutputStream jos, String name, Path file, long epoch) throws IOException {
         long size = Files.size(file);
         CRC32 crc = new CRC32();
@@ -194,7 +202,7 @@ public final class BootJarPackager {
         entry.setSize(size);
         entry.setCompressedSize(size);
         entry.setCrc(crc.getValue());
-        entry.setTimeLocal(LocalDateTime.ofEpochSecond(epoch, 0, ZoneOffset.UTC));
+        entry.setTimeLocal(LocalDateTime.ofEpochSecond(dosSafe(epoch), 0, ZoneOffset.UTC));
         jos.putNextEntry(entry);
         try (InputStream in = Files.newInputStream(file)) {
             in.transferTo(jos);
@@ -215,7 +223,7 @@ public final class BootJarPackager {
             throws IOException {
         if (!written.add(dirName)) return;
         JarEntry entry = new JarEntry(dirName);
-        entry.setTimeLocal(LocalDateTime.ofEpochSecond(epoch, 0, ZoneOffset.UTC));
+        entry.setTimeLocal(LocalDateTime.ofEpochSecond(dosSafe(epoch), 0, ZoneOffset.UTC));
         jos.putNextEntry(entry);
         jos.closeEntry();
     }
@@ -223,7 +231,7 @@ public final class BootJarPackager {
     private static void writeEntry(JarOutputStream jos, String name, byte[] data, long epochSeconds)
             throws IOException {
         JarEntry entry = new JarEntry(name);
-        entry.setTimeLocal(LocalDateTime.ofEpochSecond(epochSeconds, 0, ZoneOffset.UTC));
+        entry.setTimeLocal(LocalDateTime.ofEpochSecond(dosSafe(epochSeconds), 0, ZoneOffset.UTC));
         jos.putNextEntry(entry);
         jos.write(data);
         jos.closeEntry();
@@ -235,7 +243,7 @@ public final class BootJarPackager {
         // site, so a duplicate-entry putNextEntry would otherwise leak the descriptor (JK-1489).
         try (in) {
             JarEntry entry = new JarEntry(name);
-            entry.setTimeLocal(LocalDateTime.ofEpochSecond(epochSeconds, 0, ZoneOffset.UTC));
+            entry.setTimeLocal(LocalDateTime.ofEpochSecond(dosSafe(epochSeconds), 0, ZoneOffset.UTC));
             jos.putNextEntry(entry);
             in.transferTo(jos);
         }
