@@ -1,11 +1,10 @@
 [project]
-name     = "jk-model"
-description = "jk domain model: BuildPlan/Task/BuildPlanListener, Dependency/Coordinate; depends on plugin-sdk (PluginConfig)."
+name = "jk-model"
+description = "Domain model: dependencies, build plans, and coordinates"
 
 [dependencies]
 jk-plugin-sdk.workspace = true
 
 [test-dependencies]
-assertj-core            = "latest"
-junit-jupiter           = "latest"
-junit-platform-launcher = "latest"
+assertj-core = "latest"
+junit-jupiter = "latest"

@@ -1,11 +1,9 @@
 [project]
-name        = "jk-plugin-sdk"
-description = "jk Plugin SPI + HostEvent wire codec. Zero external dependencies (Gradle: no project deps)."
-# SPI floor: workers shade this into jars that must load on the user's test JVM (JDK 17+).
-# Match Gradle plugin-sdk --release 17 so PluginMain is not classfile 69 under pure-jk builds.
-java        = 17
+name = "jk-plugin-sdk"
+description = "Plugin SPI and host-event wire codec"
+# Workers load on user JVMs (JDK 17+); stay on release 17.
+java = 17
 
 [test-dependencies]
-assertj-core            = "latest"
-junit-jupiter           = "latest"
-junit-platform-launcher = "latest"
+assertj-core = "latest"
+junit-jupiter = "latest"

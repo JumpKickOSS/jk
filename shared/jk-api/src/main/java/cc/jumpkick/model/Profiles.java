@@ -28,8 +28,9 @@ public record Profiles(Map<String, Profile> byName) {
     }
 
     /**
-     * Walk the inherits chain and merge — parent fields go first, child appends. Cycle in the chain →
-     * {@link IllegalStateException}.
+     * Walk the inherits chain and merge — javac/JVM args: parent first, child appends. Tag lists:
+     * child replaces parent when the child sets that key; otherwise inherit the parent's list and
+     * set-flag. Cycle in the chain → {@link IllegalStateException}.
      */
     public Profile resolve(String name) {
         if (!byName.containsKey(name)) {
@@ -51,11 +52,11 @@ public record Profiles(Map<String, Profile> byName) {
         mergedJavac.addAll(current.javacArgs());
         List<String> mergedJvm = new ArrayList<>(parent.jvmArgs());
         mergedJvm.addAll(current.jvmArgs());
-        List<String> mergedInclude = new ArrayList<>(parent.includeTags());
-        mergedInclude.addAll(current.includeTags());
-        List<String> mergedExclude = new ArrayList<>(parent.excludeTags());
-        mergedExclude.addAll(current.excludeTags());
-        return new Profile(name, null, mergedJavac, mergedJvm, mergedInclude, mergedExclude);
+        boolean includeSet = current.includeTagsSet() || parent.includeTagsSet();
+        List<String> include = current.includeTagsSet() ? current.includeTags() : parent.includeTags();
+        boolean excludeSet = current.excludeTagsSet() || parent.excludeTagsSet();
+        List<String> exclude = current.excludeTagsSet() ? current.excludeTags() : parent.excludeTags();
+        return new Profile(name, null, mergedJavac, mergedJvm, include, exclude, includeSet, excludeSet);
     }
 
     /** Picks the auto-selected profile name based on env, or {@code null}. */

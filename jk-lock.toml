@@ -1,8 +1,8 @@
 version = 1
 generated-by = "jk 0.11.0"
 resolution-algorithm = "pubgrub-v1"
-jk = { version = "0.11.0", sha256 = "bf634afda99a4e60c8b411ecffa67f0fd1c4cc78e49871c1d6b1d481f40ff787" }
-manifests-sha256 = "0bf4d955dbf2122413f0a9957086f270256b99886432f5b535167aa6b3c6ecb4"
+jk = { version = "0.11.0", sha256 = "1c578653e03eed862167c0ec3102415933c29041a131fe8b61dce42edbc29463" }
+manifests-sha256 = "18567170bf8710d95aeb7e5f8764a4b970cfa042777c5efc46c4230762d34deb"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [[artifact]]
@@ -1989,7 +1989,7 @@ group   = "cc.jumpkick"
 name    = "jk"
 version = "0.11.0"
 java    = 25
-description = "JumpKick - the best damn build tool for the JVM"
+description = "JumpKick: The best damn build system for the JVM"
 
 [[module]]
 path    = "clients/cli"
@@ -1997,7 +1997,7 @@ group   = "cc.jumpkick"
 name    = "jk-cli"
 version = "0.11.0"
 java    = 25
-description = "jk command-line client: verb dispatch, rendering, the thin kernel slice (Stage 5)."
+description = "The CLI (and primary) client for interacting with the JumpKick build system"
 
 [[module]]
 path    = "clients/web"
@@ -2005,7 +2005,7 @@ group   = "cc.jumpkick"
 name    = "jk-web"
 version = "0.11.0"
 java    = 25
-description = "jk web dashboard SPA (static assets under classpath /web/)."
+description = "Web dashboard static assets for the engine UI"
 layout  = "traditional"
 
 [[module]]
@@ -2014,7 +2014,7 @@ group   = "cc.jumpkick"
 name    = "jk-android"
 version = "0.11.0"
 java    = 25
-description = "jk-android: Android packaging plugin worker."
+description = "JumpKick's Android packaging plugin"
 
 [[module]]
 path    = "plugins/auditor"
@@ -2022,7 +2022,7 @@ group   = "cc.jumpkick"
 name    = "jk-auditor"
 version = "0.11.0"
 java    = 25
-description = "jk-auditor: OSV audit plugin worker."
+description = "JumpKick's OSV audit plugin"
 
 [[module]]
 path    = "plugins/compat-bridge"
@@ -2030,7 +2030,7 @@ group   = "cc.jumpkick"
 name    = "jk-compat-bridge"
 version = "0.11.0"
 java    = 25
-description = "jk-compat-bridge: Maven/Gradle compat plugin worker."
+description = "JumpKick's Maven/Gradle compatibility plugin"
 
 [[module]]
 path    = "plugins/formatter"
@@ -2038,7 +2038,7 @@ group   = "cc.jumpkick"
 name    = "jk-formatter"
 version = "0.11.0"
 java    = 25
-description = "jk-formatter: Spotless / OpenRewrite format plugin worker."
+description = "JumpKick's source code formatter plugin"
 
 [[module]]
 path    = "plugins/grails"
@@ -2046,7 +2046,7 @@ group   = "cc.jumpkick"
 name    = "jk-grails"
 version = "0.11.0"
 java    = 25
-description = "jk-grails: Grails packaging plugin worker."
+description = "JumpKick's Grails packaging plugin"
 
 [[module]]
 path    = "plugins/groovy-compiler"
@@ -2054,7 +2054,7 @@ group   = "cc.jumpkick"
 name    = "jk-groovy-compiler"
 version = "0.11.0"
 java    = 25
-description = "jk-groovy-compiler: Groovy 5 in-process compiler worker (PluginMain)."
+description = "JumpKick's Groovy compiler plugin"
 
 [[module]]
 path    = "plugins/image-builder"
@@ -2062,7 +2062,7 @@ group   = "cc.jumpkick"
 name    = "jk-image-builder"
 version = "0.11.0"
 java    = 25
-description = "jk-image-builder: OCI image (Jib) plugin worker."
+description = "JumpKick's OCI image builder plugin"
 
 [[module]]
 path    = "plugins/java-compiler"
@@ -2070,7 +2070,7 @@ group   = "cc.jumpkick"
 name    = "jk-java-compiler"
 version = "0.11.0"
 java    = 25
-description = "jk-java-compiler: child-JVM worker that runs javac in-process and captures AP provenance."
+description = "JumpKick's Java compiler plugin"
 
 [[module]]
 path    = "plugins/kotlin-compiler"
@@ -2078,7 +2078,7 @@ group   = "cc.jumpkick"
 name    = "jk-kotlin-compiler"
 version = "0.11.0"
 java    = 25
-description = "jk-kotlin-compiler: Kotlin Build Tools API worker (PluginMain)."
+description = "JumpKick's Kotlin compiler plugin"
 
 [[module]]
 path    = "plugins/minified"
@@ -2086,7 +2086,7 @@ group   = "cc.jumpkick"
 name    = "jk-minified"
 version = "0.11.0"
 java    = 25
-description = "jk-minified: R8 classfile minify worker (PluginMain)."
+description = "JumpKick's R8 minify plugin"
 
 [[module]]
 path    = "plugins/protobuf"
@@ -2094,7 +2094,7 @@ group   = "cc.jumpkick"
 name    = "jk-protobuf"
 version = "0.11.0"
 java    = 25
-description = "jk-protobuf: protoc integration plugin worker."
+description = "JumpKick's Protobuf plugin"
 
 [[module]]
 path    = "plugins/publisher"
@@ -2102,7 +2102,7 @@ group   = "cc.jumpkick"
 name    = "jk-publisher"
 version = "0.11.0"
 java    = 25
-description = "jk-publisher: Maven publish / signing plugin worker."
+description = "JumpKick's Maven publish plugin"
 
 [[module]]
 path    = "plugins/quarkus"
@@ -2110,6 +2110,7 @@ group   = "cc.jumpkick"
 name    = "jk-quarkus"
 version = "0.11.0"
 java    = 25
+description = "JumpKick's Quarkus packaging plugin"
 
 [[module]]
 path    = "plugins/spring-boot"
@@ -2117,7 +2118,7 @@ group   = "cc.jumpkick"
 name    = "jk-spring-boot"
 version = "0.11.0"
 java    = 25
-description = "jk-spring-boot: Spring Boot packaging plugin worker."
+description = "JumpKick's Spring Boot packaging plugin"
 
 [[module]]
 path    = "plugins/test-runner"
@@ -2125,7 +2126,7 @@ group   = "cc.jumpkick"
 name    = "jk-test-runner"
 version = "0.11.0"
 java    = 17
-description = "jk-test-runner: child-JVM entry that drives JUnit Platform and streams JSONL events."
+description = "JumpKick's JUnit Platform test-runner plugin"
 
 [[module]]
 path    = "server/engine"
@@ -2133,7 +2134,7 @@ group   = "cc.jumpkick"
 name    = "jk-engine"
 version = "0.11.0"
 java    = 25
-description = "jk build engine: BuildPlanner, plugin dispatch, action cache, compile/test machinery."
+description = "Resident build engine: plan, cache, compile, and test"
 
 [[module]]
 path    = "server/io"
@@ -2141,7 +2142,7 @@ group   = "cc.jumpkick"
 name    = "jk-io"
 version = "0.11.0"
 java    = 25
-description = "jk I/O foundations: HTTP client, CAS, repo/Maven access, forge credentials."
+description = "Engine I/O: HTTP client, CAS, and Maven repository access"
 
 [[module]]
 path    = "server/resolver"
@@ -2149,6 +2150,7 @@ group   = "cc.jumpkick"
 name    = "jk-resolver"
 version = "0.11.0"
 java    = 25
+description = "PubGrub dependency resolver"
 
 [[module]]
 path    = "server/toolchain"
@@ -2156,7 +2158,7 @@ group   = "cc.jumpkick"
 name    = "jk-toolchain"
 version = "0.11.0"
 java    = 25
-description = "jk toolchain (engine remainder): resolver-backed tool installs, compat/import machinery."
+description = "Engine toolchain: tool installs and Maven/Gradle import"
 
 [[module]]
 path    = "shared/client-io"
@@ -2164,7 +2166,7 @@ group   = "cc.jumpkick"
 name    = "jk-client-io"
 version = "0.11.0"
 java    = 25
-description = "jk client I/O: plain-JDK HTTP, forge auth, credential files, CAS read/link surface."
+description = "Client-side I/O: HTTP, forge auth, credentials, and CAS"
 
 [[module]]
 path    = "shared/core"
@@ -2172,7 +2174,7 @@ group   = "cc.jumpkick"
 name    = "jk-core"
 version = "0.11.0"
 java    = 25
-description = "jk core foundations: TOML config parser, lockfile, layout, deny policy."
+description = "Core library: config, lockfile, layout, and policy"
 
 [[module]]
 path    = "shared/dynamic-surface"
@@ -2180,7 +2182,7 @@ group   = "cc.jumpkick"
 name    = "jk-dynamic-surface"
 version = "0.11.0"
 java    = 25
-description = "jk dynamic surface: reflection/proxy/resource/service surface modelled once, emitted as R8 keep rules and GraalVM reachability metadata."
+description = "Dynamic surface modeling for R8 keep rules and GraalVM metadata"
 
 [[module]]
 path    = "shared/jk-api"
@@ -2188,7 +2190,7 @@ group   = "cc.jumpkick"
 name    = "jk-model"
 version = "0.11.0"
 java    = 25
-description = "jk domain model: BuildPlan/Task/BuildPlanListener, Dependency/Coordinate; depends on plugin-sdk (PluginConfig)."
+description = "Domain model: dependencies, build plans, and coordinates"
 
 [[module]]
 path    = "shared/plugin-sdk"
@@ -2196,7 +2198,7 @@ group   = "cc.jumpkick"
 name    = "jk-plugin-sdk"
 version = "0.11.0"
 java    = 17
-description = "jk Plugin SPI + HostEvent wire codec. Zero external dependencies (Gradle: no project deps)."
+description = "Plugin SPI and host-event wire codec"
 
 [[module]]
 path    = "shared/toolchain-jdk"
@@ -2204,7 +2206,7 @@ group   = "cc.jumpkick"
 name    = "jk-toolchain-jdk"
 version = "0.11.0"
 java    = 25
-description = "jk toolchain (client slice): JDK flow, discovery probes, launcher shims, exporters."
+description = "Client JDK tooling: discovery, install flow, and launchers"
 
 [[module]]
 path    = "shared/wire"
@@ -2212,4 +2214,4 @@ group   = "cc.jumpkick"
 name    = "jk-engine-api"
 version = "0.11.0"
 java    = 25
-description = "jk engine API: the client<->engine wire contract — protocol codec, paths, build DTOs."
+description = "Client–engine wire protocol and build DTOs"

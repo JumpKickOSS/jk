@@ -1,9 +1,9 @@
 [project]
-name        = "jk-engine"
-description = "jk build engine: BuildPlanner, plugin dispatch, action cache, compile/test machinery."
+name = "jk-engine"
+description = "Resident build engine: plan, cache, compile, and test"
 
 [application]
-main     = "cc.jumpkick.engine.EngineMain"
+main = "cc.jumpkick.engine.EngineMain"
 assembly = true
 
 [dependencies]
@@ -15,15 +15,14 @@ jk-resolver.workspace = true
 jk-toolchain.workspace = true
 jk-dynamic-surface.workspace = true
 jk-web.workspace = true
-asm                     = "latest"
-asm-tree                = "latest"
-asm-commons             = "latest"
-jgit                    = "latest"
+asm = "latest"
+asm-tree = "latest"
+asm-commons = "latest"
+jgit = "latest"
 
 [test-dependencies]
-assertj-core            = "latest"
-junit-jupiter           = "latest"
-junit-platform-launcher = "latest"
+assertj-core = "latest"
+junit-jupiter = "latest"
 
 [build]
 test-plugin-jars = [
@@ -45,4 +44,7 @@ test-plugin-jars = [
 ]
 
 [test]
-default-exclude-tags = ["integration", "slow", "bench", "network"]
+# Exclude the long-running tests for our day-to-day usage.
+# Normal `jk test` should finish in 5 min or less.
+# Run these more comprehensive tests by running `jk test --all`
+exclude-tags = ["integration", "slow", "bench", "network"]

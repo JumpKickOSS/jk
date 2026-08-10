@@ -10,8 +10,11 @@ import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class JkBuildParserTest {
 
@@ -1225,6 +1228,43 @@ class JkBuildParserTest {
                 """);
         assertThat(parsed.profiles().byName().get("dev").javacArgs()).contains("-g");
         assertThat(parsed.profiles().byName().get("ci").inherits()).isEqualTo("dev");
+    }
+
+    @Test
+    void profiles_tag_keys_record_presence_including_empty_lists() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                [profiles.local]
+                exclude-tags = ["slow", "bench"]
+
+                [profiles.ci]
+                exclude-tags = []
+                include-tags = ["smoke"]
+                """);
+        var local = parsed.profiles().byName().get("local");
+        assertThat(local.excludeTagsSet()).isTrue();
+        assertThat(local.includeTagsSet()).isFalse();
+        assertThat(local.excludeTags()).containsExactly("slow", "bench");
+
+        var ci = parsed.profiles().byName().get("ci");
+        assertThat(ci.excludeTagsSet()).isTrue();
+        assertThat(ci.excludeTags()).isEmpty();
+        assertThat(ci.includeTagsSet()).isTrue();
+        assertThat(ci.includeTags()).containsExactly("smoke");
+    }
+
+    @Test
+    void parse_test_tags_reads_include_and_exclude(@TempDir Path dir) throws Exception {
+        Files.writeString(
+                dir.resolve("jk.toml"),
+                PROJECT
+                        + """
+                        [test]
+                        include-tags = ["unit"]
+                        exclude-tags = ["slow", "bench"]
+                        """);
+        var tags = JkBuildParser.parseTestTags(dir.resolve("jk.toml"));
+        assertThat(tags.includeTags()).containsExactly("unit");
+        assertThat(tags.excludeTags()).containsExactly("slow", "bench");
     }
 
     // ───────────────────────────────────────────────────────────────

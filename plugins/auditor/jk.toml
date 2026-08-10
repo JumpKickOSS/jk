@@ -1,16 +1,15 @@
 [project]
-name        = "jk-auditor"
-description = "jk-auditor: OSV audit plugin worker."
+name = "jk-auditor"
+description = "JumpKick's OSV audit plugin"
 
 [application]
-main     = "cc.jumpkick.plugin.process.PluginMain"
+main = "cc.jumpkick.plugin.process.PluginMain"
 
 [dependencies]
 jk-core.workspace = true
 jk-plugin-sdk.workspace = true
-jackson3-databind       = "latest"
+jackson3-databind = "latest"
 
 [test-dependencies]
-assertj-core            = "latest"
-junit-jupiter           = "latest"
-junit-platform-launcher = "latest"
+assertj-core = "latest"
+junit-jupiter = "latest"

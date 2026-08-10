@@ -1415,28 +1415,60 @@ public final class JkBuildParser {
             String inherits = body.getString("inherits");
             List<String> javacArgs = optionalStringList(body, "javac", "profiles." + name + ".javac");
             List<String> jvmArgs = optionalStringList(body, "jvm-args", "profiles." + name + ".jvm-args");
-            List<String> includeTags = optionalStringList(body, "include-tags", "profiles." + name + ".include-tags");
-            List<String> excludeTags = optionalStringList(body, "exclude-tags", "profiles." + name + ".exclude-tags");
-            byName.put(name, new Profile(name, inherits, javacArgs, jvmArgs, includeTags, excludeTags));
+            boolean includeTagsSet = body.contains("include-tags");
+            boolean excludeTagsSet = body.contains("exclude-tags");
+            List<String> includeTags = includeTagsSet
+                    ? optionalStringList(body, "include-tags", "profiles." + name + ".include-tags")
+                    : List.of();
+            List<String> excludeTags = excludeTagsSet
+                    ? optionalStringList(body, "exclude-tags", "profiles." + name + ".exclude-tags")
+                    : List.of();
+            byName.put(
+                    name,
+                    new Profile(
+                            name,
+                            inherits,
+                            javacArgs,
+                            jvmArgs,
+                            includeTags,
+                            excludeTags,
+                            includeTagsSet,
+                            excludeTagsSet));
         }
         return new Profiles(byName);
     }
 
     /**
-     * {@code [test] default-exclude-tags} — applied when CLI did not set {@code --exclude-tag}
-     * . Empty when the table/key is absent.
+     * {@code [test] include-tags} / {@code exclude-tags} — baseline tag filters when no profile or
+     * CLI overrides apply. Empty lists when the table/key is absent.
      */
-    public static List<String> parseDefaultExcludeTags(Path buildFile) {
-        if (buildFile == null || !java.nio.file.Files.isRegularFile(buildFile)) return List.of();
+    public static TestTomlTags parseTestTags(Path buildFile) {
+        if (buildFile == null || !java.nio.file.Files.isRegularFile(buildFile)) return TestTomlTags.EMPTY;
         try {
             String toml = java.nio.file.Files.readString(buildFile);
             TomlParseResult result = Toml.parse(toml);
-            if (result.hasErrors()) return List.of();
+            if (result.hasErrors()) return TestTomlTags.EMPTY;
             TomlTable test = result.getTable("test");
-            if (test == null) return List.of();
-            return optionalStringList(test, "default-exclude-tags", "test.default-exclude-tags");
+            if (test == null) return TestTomlTags.EMPTY;
+            return new TestTomlTags(
+                    optionalStringList(test, "include-tags", "test.include-tags"),
+                    optionalStringList(test, "exclude-tags", "test.exclude-tags"));
         } catch (Exception e) {
-            return List.of();
+            return TestTomlTags.EMPTY;
+        }
+    }
+
+    /** Tag lists from {@code [test]} (baseline before profile/CLI). */
+    public record TestTomlTags(List<String> includeTags, List<String> excludeTags) {
+        public static final TestTomlTags EMPTY = new TestTomlTags(List.of(), List.of());
+
+        public TestTomlTags {
+            includeTags = includeTags == null ? List.of() : List.copyOf(includeTags);
+            excludeTags = excludeTags == null ? List.of() : List.copyOf(excludeTags);
+        }
+
+        public boolean isEmpty() {
+            return includeTags.isEmpty() && excludeTags.isEmpty();
         }
     }
 

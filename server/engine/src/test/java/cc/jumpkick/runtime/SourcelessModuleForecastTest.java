@@ -31,7 +31,13 @@ class SourcelessModuleForecastTest {
         SessionContext.reset();
     }
 
+    /**
+     * @return the sourceless module dir, as a real path — {@link BuildGraph} node identity uses
+     *     {@code toRealPath()}, so assertions must match ({@code /var} vs {@code /private/var} on
+     *     macOS).
+     */
     private static Path workspaceWithSourcelessModule(Path tmp) throws Exception {
+        tmp = tmp.toRealPath();
         Files.writeString(tmp.resolve("jk.toml"), """
                 [project]
                 group = "t"
@@ -43,7 +49,7 @@ class SourcelessModuleForecastTest {
                 [workspace]
                 modules = ["libb"]
                 """);
-        Path libb = Files.createDirectories(tmp.resolve("libb"));
+        Path libb = Files.createDirectories(tmp.resolve("libb")).toRealPath();
         Files.writeString(libb.resolve("jk.toml"), """
                 [project]
                 group = "t"
@@ -60,30 +66,32 @@ class SourcelessModuleForecastTest {
 
     @Test
     void sourceless_module_is_dirty_until_its_jar_exists(@TempDir Path tmp) throws Exception {
-        Path libb = workspaceWithSourcelessModule(tmp);
+        Path root = tmp.toRealPath();
+        Path libb = workspaceWithSourcelessModule(root);
 
         BuildGraph.Result graph =
-                BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
+                BuildGraph.resolve(root, JkBuildParser.parse(Files.readString(root.resolve("jk.toml"))));
         assertThat(graph.hasErrors()).isFalse();
         assertThat(graph.topoOrder()).hasSize(1);
 
         Set<Path> dirty = SessionContext.where(
-                Session.defaults(), () -> BuildService.forecastDirtyDirs(graph, tmp.resolve("cache")));
+                Session.defaults(), () -> BuildService.forecastDirtyDirs(graph, root.resolve("cache")));
         assertThat(dirty).contains(libb);
     }
 
     @Test
     void sourceless_module_is_clean_once_its_jar_exists(@TempDir Path tmp) throws Exception {
-        Path libb = workspaceWithSourcelessModule(tmp);
+        Path root = tmp.toRealPath();
+        Path libb = workspaceWithSourcelessModule(root);
         var build = JkBuildParser.parse(libb.resolve("jk.toml"));
         Path jar = BuildLayout.of(libb, build).mainJar();
         Files.createDirectories(jar.getParent());
         Files.write(jar, new byte[] {0x50, 0x4b, 0x05, 0x06});
 
         BuildGraph.Result graph =
-                BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
+                BuildGraph.resolve(root, JkBuildParser.parse(Files.readString(root.resolve("jk.toml"))));
         Set<Path> dirty = SessionContext.where(
-                Session.defaults(), () -> BuildService.forecastDirtyDirs(graph, tmp.resolve("cache")));
+                Session.defaults(), () -> BuildService.forecastDirtyDirs(graph, root.resolve("cache")));
         assertThat(dirty).doesNotContain(libb);
     }
 }

@@ -1,9 +1,9 @@
 [project]
-group   = "$organization$"
-name    = "$name$"
+group = "$organization$"
+name = "$name$"
 version = "0.1.0"
-java    = $java$
-kotlin  = "2.4.10"
+java = $java$
+kotlin = "2.4.10"
 
 [application]
 main = "$package$.MainKt"

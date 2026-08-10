@@ -1,24 +1,17 @@
 [project]
-name     = "jk-core"
-description = "jk core foundations: TOML config parser, lockfile, layout, deny policy."
+name = "jk-core"
+description = "Core library: config, lockfile, layout, and policy"
 
 [dependencies]
 jk-model.workspace = true
-tomlj                   = "latest"
-# ComparableVersion for Versions.compare — rehomed from jk-resolver with the slim-client stage 5
-# move (mirrors build.gradle.kts).
-maven-artifact          = "latest"
+tomlj = "latest"
+maven-artifact = "latest"
 
 [test-dependencies]
-assertj-core            = "latest"
-junit-jupiter           = "latest"
-junit-platform-launcher = "latest"
+assertj-core = "latest"
+junit-jupiter = "latest"
 
-# The built-in plugin registry. Each plugin's jk-plugin.toml is the blueprint file third parties
-# copy, so it stays the single source of truth and is baked in from there rather than duplicated
-# here — mirrors what build.gradle.kts's processResources block does.
-#
-# The glob auto-registers: dropping in plugins/<id>/jk-plugin.toml makes it built-in.
+# Bake built-in plugin manifests (and optional scaffolds) into the jar.
 [build]
 extra-resources = [
   { from = "../../plugins/*/jk-plugin.toml", into = "cc/jumpkick/plugin/manifest", rename = "{1}.jk-plugin.toml" },

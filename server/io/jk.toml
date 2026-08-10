@@ -1,12 +1,11 @@
 [project]
-name     = "jk-io"
-description = "jk I/O foundations: HTTP client, CAS, repo/Maven access, forge credentials."
+name = "jk-io"
+description = "Engine I/O: HTTP client, CAS, and Maven repository access"
 
 [dependencies]
 jk-core.workspace = true
 jk-client-io.workspace = true
 
 [test-dependencies]
-assertj-core            = "latest"
-junit-jupiter           = "latest"
-junit-platform-launcher = "latest"
+assertj-core = "latest"
+junit-jupiter = "latest"

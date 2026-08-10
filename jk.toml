@@ -1,11 +1,9 @@
-catalog = "bundled"
-
 [project]
-group    = "cc.jumpkick"
-name     = "jk"
-version  = "0.11.0"
-description = "JumpKick - the best damn build tool for the JVM"
-java     = 25
+group = "cc.jumpkick"
+name = "jk"
+version = "0.11.0"
+description = "JumpKick: The best damn build system for the JVM"
+java = 25
 
 [workspace]
 modules = [

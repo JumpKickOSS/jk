@@ -1,44 +1,30 @@
-# Self-host guard (JK-1443): short names resolve from the bundled catalog only,
-# immune to ~/.jk/libs.toml and the downloaded registry mirror.
-catalog = "bundled"
-
 [project]
-name     = "jk-cli"
-description = "jk command-line client: verb dispatch, rendering, the thin kernel slice (Stage 5)."
+name = "jk-cli"
+description = "The CLI (and primary) client for interacting with the JumpKick build system"
 
 [application]
 main = "cc.jumpkick.cli.Jk"
 
-# The slim client's whole kernel surface — NO jk-io, jk-resolver, jk-toolchain, or jk-engine
-# (slim-client Stage 5): heavy verbs reach the engine over the wire.
-# Integration tests under src/test spawn the real :engine shadow jar.
 [dependencies]
 jk-core.workspace = true
 jk-client-io.workspace = true
 jk-toolchain-jdk.workspace = true
 jk-engine-api.workspace = true
 jk-plugin-sdk.workspace = true
-jline-terminal-ffm      = "latest"
+jline-terminal-ffm = "latest"
 
-# ProcessProperties for argv[0] `jkx` dispatch (Argv0) — compile-time only; the
-# native-image builder provides the implementation and JVM mode never loads it.
 [provided-dependencies]
-graalvm-nativeimage     = "latest"
+graalvm-nativeimage = "latest"
 
 [test-dependencies]
-# Mirrors Gradle testImplementation(project(":engine")) — unit tests that touch TestSupport /
-# plan bridges need engine types; production classpath stays engine-free.
 jk-engine.workspace = true
-assertj-core            = "latest"
-junit-jupiter           = "latest"
-junit-platform-launcher = "latest"
-bcpg-jdk18on            = "latest"
+assertj-core = "latest"
+junit-jupiter = "latest"
+bcpg-jdk18on = "latest"
 
 [image]
 main-class = "cc.jumpkick.cli.Jk"
 
-# Opt-in so `jk native` / workspace cascade actually run native-image (not just compile).
-# Size-first flags — parity with clients/cli/build.gradle.kts graalvmNative binaries.main.
 [native]
 always = true
 args = [
@@ -52,11 +38,10 @@ args = [
   "-H:ExcludeResources=org/jline/nativ/.*",
 ]
 
-# Nested engines / shared sockets: keep within-module tests serial (Mill testParallelism=false).
 [test]
+# Serialize the tests for this module.
 workers = 1
-# Parity with Gradle's `test` task, which is explicitly scoped to unit/fast (<5 min) and excludes
-# these tags — the integration/slow/bench suites are long-running, network- and SDK-dependent, and
-# Gradle gives them separate tasks. Self-host ran them unconditionally, so `jk build` was enforcing a
-# stricter contract than CI ever has. Override per-run with `--exclude-tag` / `--include-tag`.
-default-exclude-tags = ["integration", "slow", "bench", "network"]
+# Exclude the long-running tests for our day-to-day usage.
+# Normal `jk test` should finish in 5 min or less.
+# Run these more comprehensive tests by running `jk test --all`
+exclude-tags = ["integration", "slow", "bench", "network"]

@@ -854,31 +854,39 @@ classpath only when that suite is selected (`jk test --suite integration`, `--al
 exist — for example `integration/src/` or `src/integration/java`.
 
 ```bash
-jk test                           # default suite ("test") only
-jk test --suite integration       # only that suite (-s is the short form)
+jk test                              # default suite ("test") only
+jk test --suite integration          # only that suite (-s is the short form)
 jk test -s test -s integration
-jk test --all                     # every discovered suite
-jk test --exclude-tag slow        # JUnit Platform tags (repeatable)
-jk test --include-tag smoke
-jk test --all --exclude-tag bench
+jk test --all                        # every discovered suite
+jk test --exclude-tags slow,bench    # JUnit Platform tags (comma-separated)
+jk test --include-tags smoke
+jk test --all --exclude-tags bench
 ```
 
 `--all` and `--suite`/`-s` cannot be combined. Unknown suite names error with the available list.
 
-Declarative defaults (CLI wins when you pass tags):
+Declarative tag filters (same key names as CLI and profiles):
 
 ```toml
 [test]
 workers = 1
-default-exclude-tags = ["slow", "bench"]
+exclude-tags = ["slow", "bench"]   # local/dev: fast path
 
 [profiles.ci]
-exclude-tags = ["bench"]
-include-tags = []   # optional
+exclude-tags = []                  # key present: clear excludes → broader suite on CI
 ```
 
-`--profile`/`-p` (and CI auto-profile `ci`) merges profile tag filters. Suites and tags are part of
-the test stamp: changing selection re-runs tests even if sources are unchanged.
+**Precedence** (later layer replaces an earlier list only when it speaks for that list):
+
+| Layer | Behavior |
+|-------|----------|
+| `[test] include-tags` / `exclude-tags` | Baseline for bare `jk test` |
+| Active profile (`--profile` / CI auto `ci`) | Replaces a list **only if that key is present** on the profile (including `= []` to clear). Omitted keys leave the `[test]` list as-is. |
+| `--include-tags` / `--exclude-tags` | Fully replace that list for the run |
+
+Auto-profile defers when CLI already set `--include-tags` or `--exclude-tags`. Profile inheritance
+for tags is last-wins (child key replaces parent); javac/JVM args still append. Suites and tags are
+part of the test stamp: changing selection re-runs tests even if sources are unchanged.
 
 ## Quality (format + lint)
 
@@ -1016,7 +1024,7 @@ one per extra suite) and VS Code gets matching `.vscode/tasks.json` entries.
 ```
 
 Fields mirror CLI: `allSuites` ↔ `--all`, `suites` ↔ `--suite`, tags ↔
-`--include-tag` / `--exclude-tag`.
+`--include-tags` / `--exclude-tags`.
 
 **BSP capabilities (stdio `jk bsp serve`):**
 

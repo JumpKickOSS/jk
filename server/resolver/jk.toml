@@ -1,21 +1,18 @@
 [project]
-name     = "jk-resolver"
+name = "jk-resolver"
+description = "PubGrub dependency resolver"
 
 [dependencies]
 jk-core.workspace = true
 jk-io.workspace = true
-# ComparableVersion is the Maven-canonical version comparator (e.g.
-# `1.0-alpha < 1.0-rc < 1.0 < 1.0-sp1`). Used by Versions.compare.
-maven-artifact          = "latest"
+maven-artifact = "latest"
 
 [test-dependencies]
-assertj-core            = "latest"
-junit-jupiter           = "latest"
-junit-platform-launcher = "latest"
+assertj-core = "latest"
+junit-jupiter = "latest"
 
-# Parity with Gradle's `test` task, which is explicitly scoped to unit/fast (<5 min) and excludes
-# these tags — the integration/slow/bench suites are long-running, network- and SDK-dependent, and
-# Gradle gives them separate tasks. Self-host ran them unconditionally, so `jk build` was enforcing a
-# stricter contract than CI ever has. Override per-run with `--exclude-tag` / `--include-tag`.
 [test]
-default-exclude-tags = ["integration", "slow", "bench", "network"]
+# Exclude the long-running tests for our day-to-day usage.
+# Normal `jk test` should finish in 5 min or less.
+# Run these more comprehensive tests by running `jk test --all`
+exclude-tags = ["integration", "slow", "bench", "network"]

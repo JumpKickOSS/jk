@@ -1,11 +1,9 @@
 [project]
-name        = "jk-web"
-description = "jk web dashboard SPA (static assets under classpath /web/)."
-# Resources-only module: traditional tree keeps src/main/resources/web/* on the jar
-# and src/test/java off the main compile classpath (AUTO would otherwise pick SIMPLE).
-layout      = "traditional"
+name = "jk-web"
+description = "Web dashboard static assets for the engine UI"
+# Resources-only module; traditional layout keeps tests off the main compile path.
+layout = "traditional"
 
 [test-dependencies]
-assertj-core            = "latest"
-junit-jupiter           = "latest"
-junit-platform-launcher = "latest"
+assertj-core = "latest"
+junit-jupiter = "latest"

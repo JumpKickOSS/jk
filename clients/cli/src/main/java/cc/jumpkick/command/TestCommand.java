@@ -71,10 +71,10 @@ public final class TestCommand implements CliCommand {
         opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite")
                 .repeat());
         opts.add(Opt.flag("Run every discovered test suite", "--all"));
-        opts.add(Opt.value("<tag>", "JUnit tag to include (repeatable)", "--include-tag")
-                .repeat());
-        opts.add(Opt.value("<tag>", "JUnit tag to exclude (repeatable).", "--exclude-tag")
-                .repeat());
+        opts.add(Opt.value("<tags>", "JUnit tags to include (CSV)", "--include-tags")
+                .splitOn(","));
+        opts.add(Opt.value("<tags>", "JUnit tags to exclude (CSV)", "--exclude-tags")
+                .splitOn(","));
         opts.addAll(VariantSelection.options());
         return opts;
     }
@@ -607,28 +607,36 @@ public final class TestCommand implements CliCommand {
     }
 
     /**
-     * CLI + {@code [test]} defaults → {@link cc.jumpkick.config.TestSelection}. Throws if {@code
-     * --all} and {@code --suite} are both set.
+     * CLI + {@code [test]} / profile tags → {@link cc.jumpkick.config.TestSelection}. Throws if
+     * {@code --all} and {@code --suite} are both set.
+     *
+     * <p>Precedence (each layer replaces the previous for a given list when it speaks):
+     *
+     * <ol>
+     *   <li>{@code [test] include-tags} / {@code exclude-tags} — baseline
+     *   <li>Active profile — replaces a list only when that key is present (empty list clears)
+     *   <li>CLI {@code --include-tags} / {@code --exclude-tags} — replace that list for the run
+     * </ol>
+     *
+     * Auto profile defers when CLI set any tag option so explicit CLI selection is not overridden
+     * by profile filters.
      */
     static cc.jumpkick.config.TestSelection resolveTestSelection(Invocation in) {
         boolean all = in.isSet("all");
         List<String> suites = new ArrayList<>(in.values("suite"));
-        List<String> include = new ArrayList<>(in.values("include-tag"));
-        List<String> exclude = new ArrayList<>(in.values("exclude-tag"));
+        boolean cliInclude = in.has("include-tags");
+        boolean cliExclude = in.has("exclude-tags");
         if (all && !suites.isEmpty()) {
             throw new IllegalArgumentException("--all and --suite cannot be combined");
         }
         Path wd = GlobalOptions.from(in).workingDir();
         Path toml = wd.resolve("jk.toml");
-        // [test] default-exclude-tags when CLI did not set excludes.
-        if (exclude.isEmpty()) {
-            exclude.addAll(cc.jumpkick.config.JkBuildParser.parseDefaultExcludeTags(toml));
-        }
-        // Profile exclude/include tags when a profile is selected / auto. --no-profile skips
-        // entirely, and an AUTO-selected profile defers to explicit CLI tags — on CI,
-        // `jk test --include-tag slow` used to silently run nothing because the ci profile's
-        // exclude beat the explicit include with no escape hatch.
-        boolean cliTags = !include.isEmpty() || !exclude.isEmpty();
+        var baseline = cc.jumpkick.config.JkBuildParser.parseTestTags(toml);
+        List<String> include = new ArrayList<>(baseline.includeTags());
+        List<String> exclude = new ArrayList<>(baseline.excludeTags());
+        // Profile when selected / auto. --no-profile skips. AUTO profile defers when CLI set any
+        // tag option so e.g. `jk test --include-tags slow` is not beaten by profile filters.
+        boolean cliTags = cliInclude || cliExclude;
         try {
             if (!in.isSet("no-profile") && java.nio.file.Files.isRegularFile(toml)) {
                 var build = cc.jumpkick.config.JkBuildParser.parse(toml);
@@ -638,12 +646,22 @@ public final class TestCommand implements CliCommand {
                 boolean apply = name != null && build.profiles().contains(name) && (explicitProfile || !cliTags);
                 if (apply) {
                     var p = build.profiles().resolve(name);
-                    exclude.addAll(p.excludeTags());
-                    if (include.isEmpty()) include.addAll(p.includeTags());
+                    if (p.includeTagsSet()) {
+                        include = new ArrayList<>(p.includeTags());
+                    }
+                    if (p.excludeTagsSet()) {
+                        exclude = new ArrayList<>(p.excludeTags());
+                    }
                 }
             }
         } catch (Exception ignored) {
             // profile optional
+        }
+        if (cliInclude) {
+            include = new ArrayList<>(in.values("include-tags"));
+        }
+        if (cliExclude) {
+            exclude = new ArrayList<>(in.values("exclude-tags"));
         }
         return cc.jumpkick.config.TestSelection.of(suites, all, include, exclude);
     }

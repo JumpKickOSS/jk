@@ -2477,10 +2477,9 @@ public final class BuildPlanner {
                     // toolchain/runner/plugin identity. Unchanged → skip the runner.
                     @SuppressWarnings("unchecked")
                     List<Path> testResDirs = ctx.get(TEST_RESOURCE_DIRS).orElse(java.util.List.of());
-                    // [test] default-exclude-tags reaches jk build / BSP toothe CLI
-                    // resolves defaults only for `jk test`; when the session selection carries
-                    // no tags at all, apply this module's own config defaults here. The
-                    // effective selection feeds BOTH the stamp and the runner.
+                    // [test] exclude-tags for jk build / BSP: CLI resolves tags for `jk test`;
+                    // when the session selection carries no tags at all, apply this module's
+                    // own config here. The effective selection feeds BOTH the stamp and the runner.
                     var effectiveSel = effectiveSelection(in.session().testSelection(), in.dir());
                     String stampKey = cc.jumpkick.task.TestStamp.computeKey(
                             testSrcs,
@@ -4978,16 +4977,17 @@ public final class BuildPlanner {
     }
 
     /**
-     * The selection the runner actually executes: the session's, with this module's
-     * {@code [test] default-exclude-tags} folded in when the session carries no tags at all
-     * (jk build / BSP without data —. `jk test` resolves defaults CLI-side and its
-     * selection already carries them.
+     * The selection the runner actually executes: the session's, with this module's {@code [test]
+     * include-tags} / {@code exclude-tags} folded in when the session carries no tags at all (jk
+     * build / BSP without data). {@code jk test} resolves tags CLI-side and its selection already
+     * carries them.
      */
     static cc.jumpkick.config.TestSelection effectiveSelection(cc.jumpkick.config.TestSelection sel, Path moduleDir) {
         if (!sel.includeTags().isEmpty() || !sel.excludeTags().isEmpty()) return sel;
-        List<String> defaults = cc.jumpkick.config.JkBuildParser.parseDefaultExcludeTags(moduleDir.resolve("jk.toml"));
-        if (defaults.isEmpty()) return sel;
-        return cc.jumpkick.config.TestSelection.of(sel.suites(), sel.allSuites(), List.of(), defaults);
+        var fromToml = cc.jumpkick.config.JkBuildParser.parseTestTags(moduleDir.resolve("jk.toml"));
+        if (fromToml.isEmpty()) return sel;
+        return cc.jumpkick.config.TestSelection.of(
+                sel.suites(), sel.allSuites(), fromToml.includeTags(), fromToml.excludeTags());
     }
 
     /**
