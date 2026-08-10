@@ -76,6 +76,15 @@ public final class Calibration {
     static final long BASELINE_PACKAGE_JAR_MS = 90;
 
     /**
+     * Cold Graal {@code native-image} wall on the reference host (typical app binary, not Hello
+     * World). Prefer slight high — under-weighting makes the bar finish minutes early.
+     */
+    static final long BASELINE_NATIVE_IMAGE_MS = 90_000;
+
+    /** Cold OCI image build wall (Jib-style) on the reference host. */
+    static final long BASELINE_OCI_IMAGE_MS = 30_000;
+
+    /**
      * Uncalibrated / EffortWeights fallback constants — same product baselines (host scale = 1).
      * Kept as aliases so call sites and older comments stay readable.
      */
@@ -353,6 +362,16 @@ public final class Calibration {
         return scaleBaseline(EffortWeights.ASSEMBLY_RUN * (long) EffortWeights.MS_PER_WEIGHT, ioScale());
     }
 
+    /** Cold native-image wall (host-scaled product baseline). */
+    public long nativeImageMs() {
+        return scaleBaseline(BASELINE_NATIVE_IMAGE_MS, cpuScale());
+    }
+
+    /** Cold OCI image wall (host-scaled product baseline). */
+    public long ociImageMs() {
+        return scaleBaseline(BASELINE_OCI_IMAGE_MS, ioScale());
+    }
+
     /**
      * Predicted wall-ms for a cold step with unit {@code count} (source/method count). Learned
      * host rates win; otherwise product baseline × host scale — never the legacy 1.2s/method model
@@ -380,6 +399,8 @@ public final class Calibration {
                 compilePerSourceMs(s) * Math.max(1, n);
             case "package-jar" -> packageJarMs();
             case "package-assembly" -> packageAssemblyMs();
+            case "native-image" -> nativeImageMs();
+            case "write-image" -> ociImageMs();
             default -> 0L;
         };
     }

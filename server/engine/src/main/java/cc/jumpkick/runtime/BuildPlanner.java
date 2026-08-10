@@ -3866,6 +3866,9 @@ public final class BuildPlanner {
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PACKAGE_JAR)
                 .weight(() -> EffortWeights.nativeWeight(dir))
+                // Ease the weight slice over expected wall while Graal stages tick sparsely —
+                // without this the bar sits near 100% for most of a multi-minute native-image.
+                .interpolated()
                 .ticks(10) // preamble(1) + 8 native-image stages + done(1)
                 .execute(ctx -> {
                     // Fail-fast: verify native-image is available before compilation

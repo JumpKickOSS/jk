@@ -58,8 +58,15 @@ public final class EffortWeights {
     static final int PACKAGE_JAR = 5;
     static final int JDK_DOWNLOAD = 70;
     static final int ASSEMBLY_RUN = 10;
-    static final int NATIVE_RUN = 100;
-    static final int OCI_RUN = 40;
+    /**
+     * Cold native-image reservation when no measured walls exist. Graal builds are wall-clock
+     * heavy (often 60–120s+ for a real app); the old 100-unit (~15s) floor made the bar race to
+     * ~100% before native-image finished and left the countdown owning the rest.
+     * {@code 600 × MS_PER_WEIGHT ≈ 90s}.
+     */
+    static final int NATIVE_RUN = 600;
+    /** Cold OCI build floor (~30s). */
+    static final int OCI_RUN = 200;
     static final int OCI_SKIP = 2;
 
     /**
@@ -189,15 +196,23 @@ public final class EffortWeights {
     }
 
     static int learnedFixedWeight(BuildMetrics metrics, String dir, String step, int staticWeight) {
+        // Heavy IO steps (native-image, OCI) are rare and long — one successful wall is enough
+        // to beat the cold floor; waiting for 3 samples left the bar on a 15s token for months.
+        int minSamples = heavyFixedStep(step) ? 1 : MIN_METRICS_SAMPLES;
         var own = metrics.step(dir, metricsStepName(step));
-        if (own.isPresent() && own.get().ok().count() >= MIN_METRICS_SAMPLES) {
+        if (own.isPresent() && own.get().ok().count() >= minSamples) {
             return flatWeight(own.get().ok().avgMillis());
         }
         var host = metrics.step("", metricsStepName(step));
-        if (host.isPresent() && host.get().ok().count() >= MIN_METRICS_SAMPLES) {
+        if (host.isPresent() && host.get().ok().count() >= minSamples) {
             return flatWeight(host.get().ok().avgMillis());
         }
         return staticWeight;
+    }
+
+    private static boolean heavyFixedStep(String step) {
+        String s = metricsStepName(step);
+        return "native-image".equals(s) || "write-image".equals(s) || "package-assembly".equals(s);
     }
 
     /** A whole-step historical average (ms) as a flat bar weight. */
@@ -448,8 +463,10 @@ public final class EffortWeights {
             }
             case "package-jar" -> flatWeight(Calibration.scaleBaseline(Calibration.BASELINE_PACKAGE_JAR_MS, 1.0));
             case "package-assembly" -> ASSEMBLY_RUN;
-            case "native-image" -> NATIVE_RUN;
-            case "write-image" -> OCI_RUN;
+            case "native-image" ->
+                flatWeight(Calibration.scaleBaseline(Calibration.BASELINE_NATIVE_IMAGE_MS, 1.0));
+            case "write-image" ->
+                flatWeight(Calibration.scaleBaseline(Calibration.BASELINE_OCI_IMAGE_MS, 1.0));
             case "resolve-deps",
                     "parse-build",
                     "ensure-jdk",
