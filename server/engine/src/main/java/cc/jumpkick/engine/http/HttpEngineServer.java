@@ -1087,6 +1087,9 @@ public final class HttpEngineServer implements AutoCloseable {
             // Durable project id for dashboard routing (JK-1727+). New rows are stamped at
             // journal.begin (JK-1750); only legacy rows resolve here, through the process memo —
             // a bare resolve is two TOML parses plus up to three git subprocesses per row.
+            // resolve() recovers an existing identity.toml id before hashing (JK-1794), so a
+            // dead checkout's rows route to its recorded project home instead of minting a
+            // fresh unknown:unknown id that 404s on the detail page.
             if (!(m.get("projectId") instanceof String pid) || pid.isBlank()) {
                 if (m.get("dir") instanceof String dir && !dir.isBlank()) {
                     String resolved = cc.jumpkick.runtime.ProjectIds.idOf(dir);
