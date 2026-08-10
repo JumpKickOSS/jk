@@ -203,6 +203,7 @@ public final class ImagePlans {
                                 "classes:" + (classesDir == null ? "" : ClasspathFingerprint.entry(classesDir)),
                                 "main:" + chosen,
                                 "cfg:" + imageConfigToken(config),
+                                "apptree:" + appTreeToken(project, layout),
                                 "worker:" + PluginJar.IMAGE_BUILDER.artifactId() + ":"
                                         + BuildIdentity.cacheKeyVersion());
                         imgTask = ActionKey.qualifiedTaskId(TaskNames.WRITE_IMAGE, tarballPath);
@@ -514,7 +515,28 @@ public final class ImagePlans {
         sb.append("env=").append(new java.util.TreeMap<>(c.env())).append(';');
         sb.append("labels=").append(new java.util.TreeMap<>(c.labels())).append(';');
         sb.append("platforms=").append(new ArrayList<>(c.platforms())).append(';');
+        // aot-cache changes the shipped layers (trained app tree + app.aot) and dockerFile
+        // switches the build path entirely — both are part of what the tarball is a function of.
+        sb.append("aot=").append(c.aotCache()).append(';');
+        sb.append("dockerfile=").append(c.dockerFile()).append(';');
         return sb.toString();
+    }
+
+    /**
+     * Fingerprint of the packager app tree an app-tree image ships (empty when none is
+     * declared). The tree's content is not derivable from the main jar + dep jars tokens — a
+     * packager config flip (e.g. Quarkus fast-jar vs uber-jar) rewrites the tree without
+     * touching either, and a stale cache hit would restore an image missing what the config now
+     * demands.
+     */
+    private static String appTreeToken(JkBuild project, BuildLayout layout) throws IOException {
+        var shape = PluginBuild.shape(project, layout.moduleRoot());
+        String appDir = shape.map(sh -> sh.appDir()).orElse("");
+        String appJar = shape.map(sh -> sh.appJar()).orElse("");
+        if (appDir.isBlank() || appJar.isBlank()) return "";
+        Path appRoot = layout.moduleTargetDir().resolve(appDir);
+        return appDir + "|" + appJar + "|"
+                + (Files.isDirectory(appRoot) ? ClasspathFingerprint.entry(appRoot) : "absent");
     }
 
     /**
