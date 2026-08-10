@@ -182,17 +182,27 @@ final class AotCachePackage {
             } catch (IOException ignored) {
             }
         });
-        if (!process.waitFor(TRAINING_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+        boolean exited = process.waitFor(TRAINING_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        if (!exited) {
             process.destroyForcibly();
+            // A run that never came back proved nothing — reporting it as verified is exactly
+            // the silent-cold-start trap verification exists to close (JK-1783).
+            return "verification run did not exit within " + TRAINING_TIMEOUT_SECONDS
+                    + "s — cache not verified";
         }
         reader.join(5_000);
         for (String line : out.toString().split("\n")) {
             if (!line.contains("[aot]")) continue;
             String lower = line.toLowerCase(Locale.ROOT);
+            // The refusal shapes -Xlog:aot emits — but not per-item noise like "failed to
+            // load class X", which appears on runs where the cache mapped fine (JK-1783).
             if (lower.contains("mismatch")
-                    || lower.contains("failed")
-                    || lower.contains("unable to")
-                    || lower.contains("different version")) {
+                    || lower.contains("different version")
+                    || lower.contains("unable to map")
+                    || lower.contains("unable to use")
+                    || lower.contains("cannot be used")
+                    || lower.contains("disabled")
+                    || ((lower.contains("archive") || lower.contains("cache")) && lower.contains("failed"))) {
                 return line.trim();
             }
         }

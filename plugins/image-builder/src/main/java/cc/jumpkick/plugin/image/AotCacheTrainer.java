@@ -378,14 +378,25 @@ final class AotCacheTrainer {
     }
 
     /** The line explaining why the JVM would not use the cache, or null when it mapped. */
+    /**
+     * A line proving the JVM refused the cache, or null. Matches the specific refusal shapes
+     * {@code -Xlog:aot} emits (cache not loaded/used/mapped, identity mismatches) rather than any
+     * line containing "failed" — AOT logging also narrates non-fatal per-item failures ("failed to
+     * load class ...") on runs where the cache itself mapped fine (JK-1783).
+     */
     static String refusal(String log) {
         for (String line : log.split("\n")) {
             if (!line.contains("[aot")) continue;
             String lower = line.toLowerCase(Locale.ROOT);
+            // The refusal shapes -Xlog:aot emits — but not per-item noise like "failed to
+            // load class X", which appears on runs where the cache mapped fine (JK-1783).
             if (lower.contains("mismatch")
-                    || lower.contains("failed")
-                    || lower.contains("unable to")
-                    || lower.contains("different version")) {
+                    || lower.contains("different version")
+                    || lower.contains("unable to map")
+                    || lower.contains("unable to use")
+                    || lower.contains("cannot be used")
+                    || lower.contains("disabled")
+                    || ((lower.contains("archive") || lower.contains("cache")) && lower.contains("failed"))) {
                 return line.trim();
             }
         }
