@@ -138,6 +138,16 @@ public final class PubGrubResolver implements Resolver {
             // Parallel-load BOM/lock pins before the first decide (warm disk, cold process).
             source.warmUp();
             decisions = solveFor(rootTerms);
+            // Intersection exclusion sets only narrow as paths register, so a package decided
+            // early can have filtered an edge the converged set keeps (clean path discovered
+            // deeper than the excluding one). Re-solve with the converged sets until no decided
+            // expansion is stale — sets only shrink, so this terminates; in practice one extra
+            // round, and only when the order-dependence actually bit.
+            if (source instanceof MavenPackageSource mps) {
+                for (int round = 0; round < 4 && mps.anyExpansionStale(decisions); round++) {
+                    decisions = solveFor(rootTerms);
+                }
+            }
         } finally {
             // Speculative prefetches run on the shared io pool with no handle back here. Let them
             // finish before the caller moves on — otherwise a lock that has already returned is

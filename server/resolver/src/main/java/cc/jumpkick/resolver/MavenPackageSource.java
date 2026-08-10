@@ -85,6 +85,8 @@ public final class MavenPackageSource implements PackageSource {
      * the same set.
      */
     private final ConcurrentHashMap<String, Set<String>> exclusionsWhenExpanding = new ConcurrentHashMap<>();
+    /** pkg@version → edges its last expansion filtered; see {@link #anyExpansionStale}. */
+    private final ConcurrentHashMap<String, Set<String>> filteredAtExpansion = new ConcurrentHashMap<>();
 
     private final Semaphore prefetchSlots = new Semaphore(PREFETCH_PERMITS);
 
@@ -413,8 +415,13 @@ public final class MavenPackageSource implements PackageSource {
         Set<String> excl = exclusionsWhenExpanding.getOrDefault(pkg, Set.of());
         List<RawEdge> raw = rawEdges(pkg, version);
         List<Term> out = new ArrayList<>(raw.size());
+        Set<String> filtered = null;
         for (RawEdge edge : raw) {
-            if (isExcluded(edge.depPkg(), excl)) continue;
+            if (isExcluded(edge.depPkg(), excl)) {
+                if (filtered == null) filtered = new LinkedHashSet<>();
+                filtered.add(edge.depPkg());
+                continue;
+            }
             // Cascade parent exclusions + edge exclusions onto the child. Registered even when
             // empty: an unencumbered path is exactly what has to collapse the child's set to
             // nothing, and staying silent here would leave another path's exclusions standing.
@@ -422,6 +429,15 @@ public final class MavenPackageSource implements PackageSource {
             merged.addAll(edge.edgeExclusions());
             registerExclusions(edge.depPkg(), merged);
             out.add(Term.positive(edge.depPkg(), edge.constraint()));
+        }
+        // Remember what this expansion dropped so the resolver can detect a stale expansion
+        // after the exclusion sets converge (they only ever narrow). Overwrite, not merge: a
+        // re-expansion in a later solve round supersedes the earlier one.
+        String expansionKey = pkg + "@" + version;
+        if (filtered == null) {
+            filteredAtExpansion.remove(expansionKey);
+        } else {
+            filteredAtExpansion.put(expansionKey, Set.copyOf(filtered));
         }
         List<Term> immutable = List.copyOf(out);
         prefetchTransitiveAsync(immutable);
@@ -500,6 +516,26 @@ public final class MavenPackageSource implements PackageSource {
     /** The exclusions currently applied when {@code pkg} expands. Package-visible for tests. */
     Set<String> exclusionsFor(String pkg) {
         return exclusionsWhenExpanding.getOrDefault(pkg, Set.of());
+    }
+
+    /**
+     * Whether any decided package's expansion filtered an edge the converged exclusion set would
+     * keep. Intersection registrations only narrow a package's set, so an expansion taken before
+     * a clean path registered (discovered deeper than the excluding path) can bake a
+     * too-aggressive filter into the solve — the dropped child never enters the resolution and
+     * no conflict ever surfaces it. A stale expansion means the solve must be re-run with the
+     * converged sets. Package-visible for the resolver's fixpoint loop.
+     */
+    boolean anyExpansionStale(Map<String, String> decisions) {
+        for (Map.Entry<String, String> e : decisions.entrySet()) {
+            Set<String> filtered = filteredAtExpansion.get(e.getKey() + "@" + e.getValue());
+            if (filtered == null) continue;
+            Set<String> converged = exclusionsFor(e.getKey());
+            for (String dep : filtered) {
+                if (!isExcluded(dep, converged)) return true;
+            }
+        }
+        return false;
     }
 
     /**
