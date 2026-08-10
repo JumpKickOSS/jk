@@ -142,7 +142,18 @@ public final class WorkspaceClasspath {
             // an IDE module graph depends on declared edges, not on compiled
             // artifacts (IntelliJ compiles the modules itself).
             closureJars.add(siblingJar);
-            addIfPresent(jars, seenPaths, siblingJar, missing, module + " (expected at " + siblingJar + ")");
+            String missingLabel = module + " (expected at " + siblingJar + ")";
+            Path missingSibDir = siblingDirByModule.get(module);
+            if (missingSibDir != null
+                    && !cc.jumpkick.layout.Languages.anySourceUnder(missingSibDir.resolve("src"), ".java")
+                    && !cc.jumpkick.layout.Languages.anySourceUnder(missingSibDir.resolve("src"), ".kt")
+                    && !cc.jumpkick.layout.Languages.anySourceUnder(missingSibDir.resolve("src"), ".groovy")) {
+                // Name the real cause: the sibling was never going to compile anything — its jar
+                // only appears once the module is scheduled and packages empty (JK-1648).
+                missingLabel = module + " has no sources — jk packages an empty jar for it once the"
+                        + " module is scheduled; expected at " + siblingJar;
+            }
+            addIfPresent(jars, seenPaths, siblingJar, missing, missingLabel);
 
             if (testsKinds.contains(module)) {
                 // Main jar is always required for a tests kind (test classes
