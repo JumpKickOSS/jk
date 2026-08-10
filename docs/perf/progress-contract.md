@@ -19,14 +19,16 @@ Status: **normative** for TUI / wire progress. Implementations live under
 ```
 R0            = seed wall ms (jk explain ≡ jk build seed)
 countdown     = max(0, R0 − elapsed)     # open-loop after execute starts (client freezes R0)
-bar           = effort-weight slices     # Σ plan weights; NOT residual R/R0
+bar           = min(99%, elapsedSinceSeed / R0)   # same open-loop oracle as countdown
+weight slices = fallback when R0 unknown; wire annotation / engine calibrate still use weights
 residual R(t) = optional wire annotation # does NOT drive bar or countdown
 ```
 
-**Why bar ≠ residual R/R0:** inflated history floors or residual under-prediction pinned the bar
-at 99% or raced to 100% while work remained. Weight slices track actual plan ticks; the bar
-holds peak fill when the denominator grows (never slides backwards). Correctness comes from
-an **accurate up-front denominator**, not mid-run rewrites.
+**Why open-loop bar (not residual, not Σ weights alone):** residual under-prediction pinned the
+bar at 99–100% while work remained. Σ effort weights front-load multi-module builds (parallel
+weight mass early, serial long pole late). With a good R0 seed, `elapsed / R0` matches the
+countdown so 50% bar ≈ half the wall estimate. Cap at **99%** until settle → 100%. Bar never
+goes backwards (peak hold).
 
 | Situation | Seed (R0) | Bar slice |
 |-----------|-----------|-----------|
@@ -109,17 +111,13 @@ When `parallelTests == false`: `max(scheduled, Σ testWeight)` as serial test fl
 
 ## Progress bar
 
-Clients paint engine `workspace-progress` only (no client re-sum).
-
-- Preflight: small band before execute calibrate.  
-- Execute: `numerator / denominator` from effort-weight slices (preflight band + Σ module weights).  
-- **Never go backwards** — peak fraction is held if the denominator grows mid-run.  
-- `finish()` → 100%.  
-- Residual `remainingMs` / `R0` on the wire are annotations for the countdown; they do not drive bar %.
-
-**Known limitation:** the bar is Σ effort weights, not critical-path wall. Parallel modules can
-advance fill faster than the long pole’s wall clock; with correct native/test weights the long
-pole still holds the end of the bar.
+- **CLI header bar (when R0 seeded):** open-loop `min(99%, elapsedSinceSeed / R0)` — same oracle
+  as the countdown. Advances smoothly on the animator frame even during long opaque steps
+  (native-image) with no new engine events.  
+- **Without R0:** fall back to engine weight-slice `numerator / denominator`.  
+- **Never go backwards** — peak fraction held.  
+- Settle → 100%.  
+- Engine still calibrates and emits weight slices + residual annotations for dashboards / wire.
 
 ## Wire (schema 1, additive fields)
 

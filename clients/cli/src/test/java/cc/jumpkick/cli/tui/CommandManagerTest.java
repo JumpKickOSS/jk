@@ -214,6 +214,35 @@ class CommandManagerTest {
     }
 
     @Test
+    void open_loop_bar_tracks_elapsed_over_R0_not_weight_slices() {
+        var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.setEtaEstimate(100_000); // R0 = 100s from t=0
+        // Weight path would claim 50% immediately; open-loop at 30s is 30%.
+        cm.progress(50, 100);
+        long[] at30 = cm.displayBar(30_000);
+        assertThat(at30[1]).isEqualTo(1000);
+        assertThat(at30[0]).isEqualTo(300); // 30%
+        // At half R0, bar is 50% even if weight numerator races to 90%.
+        cm.progress(90, 100);
+        long[] at50 = cm.displayBar(50_000);
+        assertThat(at50[0]).isEqualTo(500);
+        // Cap at 99% while still running (even past R0 wall).
+        long[] over = cm.displayBar(200_000);
+        assertThat(over[0]).isEqualTo(990);
+    }
+
+    @Test
+    void open_loop_bar_never_goes_backwards() {
+        var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.setEtaEstimate(100_000);
+        long[] a = cm.displayBar(40_000);
+        assertThat(a[0]).isEqualTo(400);
+        // Clock cannot go backwards in real use; peak hold if recompute with smaller elapsed.
+        long[] b = cm.displayBar(20_000);
+        assertThat(b[0]).isGreaterThanOrEqualTo(400);
+    }
+
+    @Test
     void eta_countdown_freezes_at_zero_and_count_up_turns_yellow_on_overrun() {
         var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
