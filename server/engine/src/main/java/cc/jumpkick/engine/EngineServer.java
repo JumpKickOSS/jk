@@ -2068,6 +2068,10 @@ public final class EngineServer implements AutoCloseable {
         System.gc();
     }
 
+    /** Single-flight latch for {@link #runIdleHousekeeping} — see the exactly-once note there. */
+    private final java.util.concurrent.atomic.AtomicBoolean idleHousekeepingRunning =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
     /**
      * Coordinated idle chores. Order is fixed; {@link System#gc()} is always last for the workset.
      * Prune/journal/harvest run here; when warmup is needed a daemon does warmup + the trailing GC
@@ -2076,25 +2080,37 @@ public final class EngineServer implements AutoCloseable {
     private void runIdleHousekeeping() {
         if (shuttingDown) return;
         if (activeBuildPlans.get() != 0) return;
-        drainPendingPrune();
-        pruneJournal();
-        pruneMetrics();
-        // Wait for coalesced MetricsHarvest so trimmed-mean rewrites finish before heap GC.
+        // Exactly-once at the build boundary (JK-1795): every finish path decrements the plan
+        // counter BEFORE publishing request-finish (SSE lockstep, JK-1725), so two
+        // near-simultaneous finishes can both observe 0 and land here — and the 12 h scheduled
+        // path can race a finish, too. tryAcquire admits one runner; the counter is re-checked
+        // under the guard so a build admitted meanwhile skips housekeeping (its own finish
+        // reaches the boundary later).
+        if (!idleHousekeepingRunning.compareAndSet(false, true)) return;
         try {
-            cc.jumpkick.builds.MetricsHarvest.get().awaitIdle(30_000L);
-        } catch (RuntimeException ignored) {
-        }
-        if (activeBuildPlans.get() != 0) return;
+            if (activeBuildPlans.get() != 0) return;
+            drainPendingPrune();
+            pruneJournal();
+            pruneMetrics();
+            // Wait for coalesced MetricsHarvest so trimmed-mean rewrites finish before heap GC.
+            try {
+                cc.jumpkick.builds.MetricsHarvest.get().awaitIdle(30_000L);
+            } catch (RuntimeException ignored) {
+            }
+            if (activeBuildPlans.get() != 0) return;
 
-        if (pendingWarmupForce.get() != null || HostWarmup.needsWork()) {
-            // Ensure a queue entry so kickPendingWarmup has work; that thread owns the trailing GC.
-            pendingWarmupForce.compareAndSet(null, Boolean.FALSE);
-            kickPendingWarmup(/* trailGc */ true);
-            return;
-        }
-        // Trailing heap GC after the entire idle workset (prune, harvest).
-        if (activeBuildPlans.get() == 0 && !warmupRunning.get()) {
-            System.gc();
+            if (pendingWarmupForce.get() != null || HostWarmup.needsWork()) {
+                // Ensure a queue entry so kickPendingWarmup has work; that thread owns the trailing GC.
+                pendingWarmupForce.compareAndSet(null, Boolean.FALSE);
+                kickPendingWarmup(/* trailGc */ true);
+                return;
+            }
+            // Trailing heap GC after the entire idle workset (prune, harvest).
+            if (activeBuildPlans.get() == 0 && !warmupRunning.get()) {
+                System.gc();
+            }
+        } finally {
+            idleHousekeepingRunning.set(false);
         }
     }
 
