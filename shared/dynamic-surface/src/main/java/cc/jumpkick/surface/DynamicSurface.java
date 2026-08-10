@@ -95,6 +95,15 @@ public record DynamicSurface(List<Entry> entries) {
     }
 
     /**
+     * Tag a class name as a serialization {@code customTargetConstructorClass} ({@code c:}) —
+     * carried in {@code members} on a {@link Kind#SERIALIZATION_TYPE} entry so the declared
+     * deserialization constructor survives the round trip (JK-1801).
+     */
+    public static String customConstructorMember(String name) {
+        return "c:" + name;
+    }
+
+    /**
      * One dynamic entry point.
      *
      * @param kind why {@code name} is in the surface

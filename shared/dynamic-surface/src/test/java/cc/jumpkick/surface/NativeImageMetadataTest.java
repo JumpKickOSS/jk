@@ -254,6 +254,30 @@ class NativeImageMetadataTest {
     }
 
     @Test
+    void custom_target_constructor_class_survives_the_round_trip() {
+        // The declared deserialization constructor must reach the native image, and its class's
+        // constructors are invoked reflectively, so R8 keeps them too (JK-1801).
+        String body = """
+                [{"name":"com.acme.S","customTargetConstructorClass":"com.acme.Base"}]
+                """;
+
+        DynamicSurface surface = NativeImageMetadata.parse("x/serialization-config.json", body, "lib");
+
+        assertThat(surface.entries()).singleElement().satisfies(e -> {
+            assertThat(e.kind()).isEqualTo(DynamicSurface.Kind.SERIALIZATION_TYPE);
+            assertThat(e.members()).containsExactly("c:com.acme.Base");
+        });
+        String json = ReachabilityMetadataEmitter.emit(surface);
+        assertThat(json).contains("{\"type\":\"com.acme.S\",\"customTargetConstructorClass\":\"com.acme.Base\"}");
+        assertThat(KeepRuleEmitter.emit(surface)).contains("-keepclassmembers class com.acme.Base { <init>(...); }");
+
+        DynamicSurface back = NativeImageMetadata.parse("x/reachability-metadata.json", json, "lib");
+        assertThat(back.of(DynamicSurface.Kind.SERIALIZATION_TYPE))
+                .singleElement()
+                .satisfies(e -> assertThat(e.members()).containsExactly("c:com.acme.Base"));
+    }
+
+    @Test
     void serialization_members_still_register_the_type_for_serialization() {
         // Serialization registration is per-type in GraalVM's schema; named members must not
         // demote the entry out of the serialization section (JK-1779).

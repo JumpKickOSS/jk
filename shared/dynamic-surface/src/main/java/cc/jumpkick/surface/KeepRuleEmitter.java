@@ -78,11 +78,20 @@ public final class KeepRuleEmitter {
             }
             case SERIALIZATION_TYPE -> {
                 String cls = className(entry.name());
-                yield cls == null
-                        ? null
-                        : "-keepclassmembers class " + cls
-                                + " { java.lang.Object writeReplace(); java.lang.Object readResolve();"
-                                + " <init>(...); }";
+                if (cls == null) yield null;
+                StringBuilder rules = new StringBuilder("-keepclassmembers class ")
+                        .append(cls)
+                        .append(" { java.lang.Object writeReplace(); java.lang.Object readResolve();")
+                        .append(" <init>(...); }");
+                // The declared deserialization constructor lives on another class ("c:" member,
+                // JK-1801); its constructors are invoked reflectively, so they need keeping too.
+                for (String member : entry.members()) {
+                    String ctor = member.startsWith("c:") ? className(member.substring(2)) : null;
+                    if (ctor != null) {
+                        rules.append("\n-keepclassmembers class ").append(ctor).append(" { <init>(...); }");
+                    }
+                }
+                yield rules.toString();
             }
             // Everything else needs the class itself retained, members included.
             case REFLECTIVE_TYPE, GENERIC_REFLECTION, SERVICE_IMPLEMENTATION, JNI_TYPE -> {

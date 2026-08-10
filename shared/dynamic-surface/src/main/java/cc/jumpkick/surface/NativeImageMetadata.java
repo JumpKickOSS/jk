@@ -121,6 +121,15 @@ public final class NativeImageMetadata {
                     || isTrue(item, "allPublicFields")
                     || isTrue(item, "unsafeAllocated");
 
+            if (memberKind == null) {
+                // Serialization mode: the declared deserialization constructor rides along as a
+                // tagged member so it survives the round trip (JK-1801).
+                Set<String> extras = new TreeSet<>();
+                String ctor = Json.str(item, "customTargetConstructorClass");
+                if (ctor != null && !ctor.isBlank()) extras.add(DynamicSurface.customConstructorMember(ctor));
+                out.add(new DynamicSurface.Entry(typeKind, name, extras, origin));
+                continue;
+            }
             out.add(
                     wholeType
                             ? DynamicSurface.Entry.type(typeKind, name, origin)

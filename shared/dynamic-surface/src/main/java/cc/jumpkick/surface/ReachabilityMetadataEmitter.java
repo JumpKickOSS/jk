@@ -33,7 +33,7 @@ public final class ReachabilityMetadataEmitter {
                 case REFLECTIVE_MEMBER -> reflection.add(memberObject(entry));
                 case JNI_TYPE -> jni.add(typeObject(entry.name(), true));
                 case JNI_MEMBER -> jni.add(memberObject(entry));
-                case SERIALIZATION_TYPE -> serialization.add(typeObject(entry.name(), false));
+                case SERIALIZATION_TYPE -> serialization.add(serializationObject(entry));
                 // GraalVM's unified schema: resources are a flat glob array, and a proxy is a
                 // reflection entry with a map-shaped type (JK-1752).
                 case RESOURCE -> resources.add("{\"glob\":" + quote(entry.name()) + "}");
@@ -82,6 +82,21 @@ public final class ReachabilityMetadataEmitter {
             interfaces.append(quote(iface));
         }
         return "{\"type\":{\"proxy\":[" + interfaces + "]}}";
+    }
+
+    /**
+     * A serialization registration, with its declared deserialization constructor when the entry
+     * carries a {@code c:}-tagged member (JK-1801). Merging can in principle union two different
+     * declarations; the first in sorted order wins — the schema has room for one.
+     */
+    private static String serializationObject(DynamicSurface.Entry entry) {
+        for (String member : entry.members()) {
+            if (member.startsWith("c:")) {
+                return "{\"type\":" + quote(entry.name()) + ",\"customTargetConstructorClass\":"
+                        + quote(member.substring(2)) + "}";
+            }
+        }
+        return typeObject(entry.name(), false);
     }
 
     private static String typeObject(String name, boolean allDeclared) {
