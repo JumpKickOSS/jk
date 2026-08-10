@@ -239,6 +239,19 @@ public final class ImageBuilder {
         return layer.build();
     }
 
+    /**
+     * Entrypoint for a packager-produced app tree: {@code java [-XX:AOTCache=app.aot] -jar
+     * <appJar>}. No lock-derived classpath — the tree is the whole program (JK-1722).
+     */
+    static List<String> appTreeEntrypoint(Plan plan, boolean aotCache) {
+        List<String> entry = new ArrayList<>();
+        entry.add("java");
+        if (aotCache) entry.add("-XX:AOTCache=" + AotCacheTrainer.CACHE_FILE);
+        entry.add("-jar");
+        entry.add(plan.appJar());
+        return entry;
+    }
+
     /** Dependency jars at {@code /app/libs}, named by coordinate rather than by CAS digest. */
     private static FileEntriesLayer namedJarLayer(Plan plan, List<Path> jars) {
         FileEntriesLayer.Builder layer = FileEntriesLayer.builder();
@@ -264,17 +277,13 @@ public final class ImageBuilder {
         if (plan.hasAppTree()) {
             builder = builder.addFileEntriesLayer(treeLayer(plan.appDir(), null));
             builder = builder.setWorkingDirectory(AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR));
-            List<String> appEntrypoint = new ArrayList<>(List.of("java"));
-            Path aotFile = null;
-            if (cfg.aotCache()) {
+            boolean aot = cfg.aotCache();
+            if (aot) {
                 AotCacheTrainer.Result trained = AotCacheTrainer.train(
                         plan, plan.mainJar().getParent(), msg -> System.err.println("jk: " + msg));
-                aotFile = trained.cache();
-                builder = builder.addFileEntriesLayer(treeLayer(aotFile, AotCacheTrainer.CACHE_FILE));
-                appEntrypoint.add("-XX:AOTCache=" + AotCacheTrainer.CACHE_FILE);
+                builder = builder.addFileEntriesLayer(treeLayer(trained.cache(), AotCacheTrainer.CACHE_FILE));
             }
-            appEntrypoint.addAll(List.of("-jar", plan.appJar()));
-            builder = builder.setEntrypoint(appEntrypoint);
+            builder = builder.setEntrypoint(appTreeEntrypoint(plan, aot));
             return finish(builder, plan, containerizer);
         }
 

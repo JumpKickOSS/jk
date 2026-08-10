@@ -40,6 +40,25 @@ class AotCacheTrainerTest {
                 .contains("directory");
     }
 
+    /** JK-1722/1723: a packager tree (Quarkus) is always a trainable shape. */
+    @Test
+    void a_packager_app_tree_is_never_refused_for_layout() {
+        ImageBuilder.Plan appTree = new ImageBuilder.Plan(
+                config("bellsoft/liberica-runtime-container:jre-25-slim-glibc"),
+                "svc",
+                "1.0.0",
+                "com.example.Main",
+                Path.of("/w/target/svc-1.0.0.jar"),
+                List.of(),
+                List.of(),
+                null,
+                Map.of(),
+                Path.of("/w/target/quarkus-app"),
+                "quarkus-run.jar");
+        assertThat(appTree.hasAppTree()).isTrue();
+        assertThat(AotCacheTrainer.unsupportedReason(appTree)).isNull();
+    }
+
     /**
      * One fixed order for the training run and the entrypoint. A `*` wildcard expands in directory
      * order, and the training run reads a bind mount while the real run reads an overlay — a

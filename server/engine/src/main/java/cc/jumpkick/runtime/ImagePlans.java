@@ -367,16 +367,30 @@ public final class ImagePlans {
             for (Path dep : snapshotJars) sw.entry(jarName(names, dep), dep, true, null);
             if (classesDir != null) sw.layout(java.util.Map.of("classesDir", classesDir));
             // A packager that produced a complete runnable tree: ship that, not a lock-derived
-            // classpath. Its absence is what makes every other module use the generic layout.
+            // classpath. Declared but missing is a hard error — falling back to the lock classpath
+            // is exactly the broken image JK-1722 fixed (Quarkus needs quarkus-run.jar, not
+            // Application on a 200-jar lock classpath).
             var shape = PluginBuild.shape(project, layout.moduleRoot());
             String appDir = shape.map(sh -> sh.appDir()).orElse("");
             String appJar = shape.map(sh -> sh.appJar()).orElse("");
             if (!appDir.isBlank() && !appJar.isBlank()) {
                 Path appRoot = layout.moduleTargetDir().resolve(appDir);
-                if (Files.isDirectory(appRoot)) {
-                    sw.configString("appDir", appRoot.toAbsolutePath().toString());
-                    sw.configString("appJar", appJar);
+                if (!Files.isDirectory(appRoot)) {
+                    throw new RuntimeException("image needs the packager tree at "
+                            + appRoot
+                            + " (plugin packaging.app-dir="
+                            + appDir
+                            + ") — build the module first so "
+                            + appJar
+                            + " exists");
                 }
+                Path jarInTree = appRoot.resolve(appJar);
+                if (!Files.isRegularFile(jarInTree)) {
+                    throw new RuntimeException(
+                            "image packager tree is missing " + jarInTree + " (packaging.app-jar=" + appJar + ")");
+                }
+                sw.configString("appDir", appRoot.toAbsolutePath().toString());
+                sw.configString("appJar", appJar);
             }
 
             Path spec = Files.createTempFile("jk-image-", ".spec");
