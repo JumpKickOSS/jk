@@ -65,4 +65,23 @@ class TrainConfigParserTest {
         assertThat(c.effectiveProfiles()).hasSize(1);
         assertThat(c.effectiveProfiles().getFirst().name()).isEqualTo("default");
     }
+
+    @org.junit.jupiter.api.Test
+    void profiles_token_is_order_independent_for_env_and_properties() {
+        var a = new TrainConfig(
+                null, null, false, false,
+                java.util.List.of(new TrainConfig.Profile(
+                        "p",
+                        new java.util.LinkedHashMap<>(java.util.Map.of("B", "2", "A", "1")),
+                        new java.util.LinkedHashMap<>(java.util.Map.of("y", "2", "x", "1")),
+                        java.util.List.of())));
+        var b = new TrainConfig(
+                null, null, false, false,
+                java.util.List.of(new TrainConfig.Profile(
+                        "p",
+                        new java.util.LinkedHashMap<>(java.util.Map.of("A", "1", "B", "2")),
+                        new java.util.LinkedHashMap<>(java.util.Map.of("x", "1", "y", "2")),
+                        java.util.List.of())));
+        org.assertj.core.api.Assertions.assertThat(a.profilesToken()).isEqualTo(b.profilesToken());
+    }
 }

@@ -53,9 +53,12 @@ public record TrainConfig(
         StringBuilder sb = new StringBuilder();
         for (Profile p : effectiveProfiles()) {
             sb.append(p.name()).append('|');
-            p.env().forEach((k, v) -> sb.append(k).append('=').append(v).append(';'));
+            // Sorted: Map.copyOf iteration order is salted per JVM, and a token that flaps
+            // across engine restarts spuriously retrains (or, with require-fresh, fails builds).
+            new java.util.TreeMap<>(p.env()).forEach((k, v) -> sb.append(k).append('=').append(v).append(';'));
             sb.append('|');
-            p.properties().forEach((k, v) -> sb.append(k).append('=').append(v).append(';'));
+            new java.util.TreeMap<>(p.properties())
+                    .forEach((k, v) -> sb.append(k).append('=').append(v).append(';'));
             sb.append('|');
             sb.append(String.join(" ", p.args()));
             sb.append('\n');
