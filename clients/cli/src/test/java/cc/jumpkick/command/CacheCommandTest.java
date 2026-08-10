@@ -216,7 +216,7 @@ class CacheCommandTest {
         writeBlob(cache.resolve("actions/keys/task"), new byte[4096]);
 
         String plain = TestAnsi.strip(capture(() -> run("repo", "storage", "--cache-dir", cache.toString())));
-        assertThat(plain).contains("Repo Storage");
+        assertThat(plain).contains("Artifact Storage"); // the store holds artifacts, not repos
         assertThat(plain).contains("CAS Blobs");
         assertThat(plain).contains("Worker JARs");
         assertThat(plain).contains("Run Logs");

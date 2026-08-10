@@ -1058,15 +1058,26 @@ class EngineServerTest {
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body()).isEqualTo("hi from the engine");
 
-        // The REST surface serves the same vitals the socket status-ack carries.
+        String token = Files.readString(p.httpToken()).trim();
+        assertThat(token).isNotEmpty(); // minted alongside the URL file
+
+        // The REST surface serves the same vitals the socket status-ack carries. /api/* is
+        // token-gated even on loopback, so the token is not optional here.
         var apiStatus = httpClient.send(
                 java.net.http.HttpRequest.newBuilder(java.net.URI.create(url + "api/status"))
+                        .header("Authorization", "Bearer " + token)
                         .build(),
                 java.net.http.HttpResponse.BodyHandlers.ofString());
         assertThat(apiStatus.statusCode()).isEqualTo(200);
         assertThat(apiStatus.body()).contains("\"version\":\"1.0\"").contains("\"httpUrl\":\"" + url + "\"");
 
-        assertThat(Files.readString(p.httpToken()).trim()).isNotEmpty(); // minted alongside the URL file
+        var unauthenticated = httpClient.send(
+                java.net.http.HttpRequest.newBuilder(java.net.URI.create(url + "api/status"))
+                        .build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+        assertThat(unauthenticated.statusCode())
+                .as("/api/* fails closed without a token")
+                .isEqualTo(401);
 
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
             String ack = c.send(EngineProtocol.statusRequest());
@@ -1112,6 +1123,13 @@ class EngineServerTest {
         }
     }
 
+    /** The value of a flat {@code "key":"value"} pair — enough for one field of a status body. */
+    private static String jsonString(String json, String key) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"" + key + "\"\\s*:\\s*\"([^\"]*)\"")
+                .matcher(json);
+        return m.find() ? m.group(1) : "";
+    }
+
     @Test
     void http_build_trigger_streams_lifecycle_events_over_sse() throws Exception {
         Path stateDir = shortTempDir();
@@ -1124,22 +1142,48 @@ class EngineServerTest {
         String token = Files.readString(p.httpToken()).trim();
         var httpClient = java.net.http.HttpClient.newHttpClient();
 
-        // Subscribe to the event stream first, so the request events can't race past us.
+        // Subscribe to the event stream first, so the request events can't race past us. The token
+        // rides the query string, which is the only way EventSource can carry it — and the only
+        // path for which the server accepts it there.
         var sse = httpClient.send(
-                java.net.http.HttpRequest.newBuilder(java.net.URI.create(url + "api/events"))
+                java.net.http.HttpRequest.newBuilder(java.net.URI.create(url + "api/events?access_token=" + token))
                         .build(),
                 java.net.http.HttpResponse.BodyHandlers.ofLines());
         assertThat(sse.statusCode()).isEqualTo(200);
         var lines = sse.body().iterator();
+
+        // Anything past bootstrap carries the engine generation, so a dashboard left open across a
+        // restart gets a 409 instead of driving the wrong engine. GET /api/status is bootstrap and
+        // hands it over.
+        var status = httpClient.send(
+                java.net.http.HttpRequest.newBuilder(java.net.URI.create(url + "api/status"))
+                        .header("Authorization", "Bearer " + token)
+                        .build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+        assertThat(status.statusCode()).isEqualTo(200);
+        String epoch = jsonString(status.body(), "engineEpoch");
+        assertThat(epoch).isNotBlank();
 
         // A dir whose jk.toml exists but won't parse: the trigger accepts it (202), the build fails
         // fast and deterministically, and both lifecycle events flow — exactly the plumbing under test.
         Path project = Files.createDirectories(stateDir.resolve("broken-project"));
         Files.writeString(project.resolve("jk.toml"), "this is [not] valid = toml =");
 
+        var staleEpoch = httpClient.send(
+                java.net.http.HttpRequest.newBuilder(java.net.URI.create(url + "api/build"))
+                        .header("Authorization", "Bearer " + token)
+                        .header("X-Jk-Engine-Epoch", "from-a-previous-engine")
+                        .POST(java.net.http.HttpRequest.BodyPublishers.ofString("{\"dir\":\"" + project + "\"}"))
+                        .build(),
+                java.net.http.HttpResponse.BodyHandlers.ofString());
+        assertThat(staleEpoch.statusCode())
+                .as("a request from a previous engine generation is refused")
+                .isEqualTo(409);
+
         var rejected = httpClient.send(
                 java.net.http.HttpRequest.newBuilder(java.net.URI.create(url + "api/build"))
                         .header("Authorization", "Bearer " + token)
+                        .header("X-Jk-Engine-Epoch", epoch)
                         .POST(java.net.http.HttpRequest.BodyPublishers.ofString(
                                 "{\"dir\":\"" + stateDir.resolve("no-such-project") + "\"}"))
                         .build(),
@@ -1149,6 +1193,7 @@ class EngineServerTest {
         var accepted = httpClient.send(
                 java.net.http.HttpRequest.newBuilder(java.net.URI.create(url + "api/build"))
                         .header("Authorization", "Bearer " + token)
+                        .header("X-Jk-Engine-Epoch", epoch)
                         .POST(java.net.http.HttpRequest.BodyPublishers.ofString("{\"dir\":\"" + project + "\"}"))
                         .build(),
                 java.net.http.HttpResponse.BodyHandlers.ofString());
