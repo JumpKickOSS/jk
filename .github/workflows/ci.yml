@@ -11,6 +11,17 @@ env:
   TERM: xterm-256color
 
 jobs:
+  # Guard: commit messages must not carry agent/tool attribution trailers.
+  authorship:
+    name: Commit authorship
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Scan commit messages
+        run: bash scripts/check-no-agent-attribution.sh
+
   # Fast unit tier only — excludes @Tag(integration|slow|bench). Target <5 min.
   test:
     name: Gradle unit test
