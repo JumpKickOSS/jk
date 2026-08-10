@@ -79,7 +79,7 @@ public final class WorkspaceMerge {
                         continue;
                     }
                     List<Dependency> mainList = resolvedByScope.computeIfAbsent(Scope.MAIN, k -> new ArrayList<>());
-                    if (mainList.stream().noneMatch(e -> e.module().equals(r.module()))) {
+                    if (mainList.stream().noneMatch(e -> e.packageKey().equals(r.packageKey()))) {
                         mainList.add(r);
                     }
                 }
@@ -194,17 +194,19 @@ public final class WorkspaceMerge {
 
         Map<Scope, List<Dependency>> mergedByScope = new EnumMap<>(Scope.class);
         for (Scope scope : Scope.values()) {
+            // Dedup on packageKey(), not bare module(): LockOrchestrator roots per package
+            // (e65323f6), so the main jar and the test-jar of one GA are distinct rows here too.
             Map<String, Dependency> dedup = new LinkedHashMap<>();
             for (Dependency d : root.dependencies().of(scope)) {
                 Dependency resolved = resolve(d, siblingByArtifact, wsDeps);
                 if (internal.contains(resolved.module())) continue;
-                dedup.putIfAbsent(resolved.module(), resolved);
+                dedup.putIfAbsent(resolved.packageKey(), resolved);
             }
             for (JkBuild module : modules) {
                 for (Dependency d : module.dependencies().of(scope)) {
                     Dependency resolved = resolve(d, siblingByArtifact, wsDeps);
                     if (internal.contains(resolved.module())) continue;
-                    dedup.putIfAbsent(resolved.module(), resolved);
+                    dedup.putIfAbsent(resolved.packageKey(), resolved);
                 }
             }
             if (!dedup.isEmpty()) {

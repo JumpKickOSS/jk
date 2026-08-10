@@ -89,6 +89,37 @@ class WorkspaceMergeTest {
     }
 
     @Test
+    void merge_keeps_jar_and_test_jar_of_same_ga_as_distinct_rows() {
+        // LockOrchestrator roots per packageKey() (e65323f6): the main jar and the
+        // test-jar of one GA are different packages. The workspace union feeding it
+        // must not collapse them to first-seen-wins on bare GA.
+        Dependency plain = dep("helpers", "com.acme:helpers", "1.2.3");
+        Dependency testsKind = dep("helpers-tests", "com.acme:helpers", "1.2.3").withKind(DependencyKind.TESTS);
+        JkBuild root = newProject("root", Map.of());
+        JkBuild moduleA = newProject("a", Map.of(Scope.TEST, List.of(plain)));
+        JkBuild moduleB = newProject("b", Map.of(Scope.TEST, List.of(testsKind)));
+
+        JkBuild merged = WorkspaceMerge.merge(root, List.of(moduleA, moduleB));
+
+        assertThat(merged.dependencies().of(Scope.TEST))
+                .extracting(Dependency::packageKey)
+                .containsExactlyInAnyOrder("com.acme:helpers:jar:", "com.acme:helpers:test-jar:tests");
+    }
+
+    @Test
+    void merge_still_dedupes_same_package_across_modules() {
+        Dependency inA = dep("helpers", "com.acme:helpers", "1.2.3").withKind(DependencyKind.TESTS);
+        Dependency inB = dep("helpers", "com.acme:helpers", "1.2.3").withKind(DependencyKind.TESTS);
+        JkBuild root = newProject("root", Map.of());
+        JkBuild moduleA = newProject("a", Map.of(Scope.TEST, List.of(inA)));
+        JkBuild moduleB = newProject("b", Map.of(Scope.TEST, List.of(inB)));
+
+        JkBuild merged = WorkspaceMerge.merge(root, List.of(moduleA, moduleB));
+
+        assertThat(merged.dependencies().of(Scope.TEST)).hasSize(1);
+    }
+
+    @Test
     void resolve_sibling_coordinates_preserves_tests_kind() {
         // applyToModule drops sibling edges (lock path). resolveSiblingCoordinates keeps them
         // (publish/POM path) and must retain kind so test-jar edges survive rewrite.
