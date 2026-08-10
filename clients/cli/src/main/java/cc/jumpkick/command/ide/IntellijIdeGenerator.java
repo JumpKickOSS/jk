@@ -357,7 +357,7 @@ public final class IntellijIdeGenerator implements IdeGenerator {
             if (attachTests) {
                 IdeModule sib = byName.get(mr.name());
                 if (sib != null) {
-                    appendTestProductLibrary(sb, moduleDir, sib);
+                    appendTestsKindLibrary(sb, moduleDir, sib);
                 }
             }
         }
@@ -452,11 +452,17 @@ public final class IntellijIdeGenerator implements IdeGenerator {
     /**
      * Sibling tests kind (kind=tests): attach the sibling's test classes dir as a TEST-scoped
      * module-library so IDE test compile sees Mill testModuleDeps / Maven test-jar helpers.
+     * $MODULE_DIR$-relative like every other .iml path — an absolute path breaks a moved or
+     * shared checkout.
      */
-    private static void appendTestProductLibrary(StringBuilder sb, Path moduleDir, IdeModule sibling) {
-        Path testClasses = sibling.testClassesDir();
-        String classesUrl =
-                "file://" + testClasses.toAbsolutePath().normalize().toString().replace('\\', '/');
+    private static void appendTestsKindLibrary(StringBuilder sb, Path moduleDir, IdeModule sibling) {
+        Path testClasses = sibling.testClassesDir().toAbsolutePath().normalize();
+        String classesUrl = "file://$MODULE_DIR$/"
+                + moduleDir.toAbsolutePath()
+                        .normalize()
+                        .relativize(testClasses)
+                        .toString()
+                        .replace('\\', '/');
         sb.append("    <orderEntry type=\"module-library\" scope=\"TEST\">\n");
         sb.append("      <library name=\"")
                 .append(esc(sibling.name() + " (tests)"))

@@ -57,6 +57,10 @@ class SiblingTestsKindGeneratorTest {
         assertThat(iml).containsOnlyOnce("module-name=\"widget-core\"");
         assertThat(iml).contains("<orderEntry type=\"module\" module-name=\"widget-core\" />");
         assertThat(iml).contains("widget-core (tests)");
+        // JK-1644: the tests-kind library rides $MODULE_DIR$ like every other .iml path —
+        // an absolute path breaks a moved or shared checkout.
+        assertThat(iml).contains("file://$MODULE_DIR$/../widget-core/target/test-classes");
+        assertThat(iml).doesNotContain("file://" + ws);
     }
 
     @Test
