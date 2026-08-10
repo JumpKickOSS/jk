@@ -382,8 +382,11 @@ final class AotCachePackage {
             throw new IOException("jarmode extract failed:\n" + tail(out));
         }
         try (var stream = Files.list(outDir)) {
+            // Sorted, like BootLayout.launcherJarIn: Files.list order is filesystem-dependent,
+            // and an unordered pick is nondeterministic if extract ever emits two jars (JK-1784).
             return stream.filter(p -> p.getFileName().toString().endsWith(".jar"))
                     .map(p -> p.getFileName().toString())
+                    .sorted()
                     .findFirst()
                     .orElseThrow(() -> new IOException("jarmode extract produced no app jar in " + outDir));
         }

@@ -403,9 +403,6 @@ final class AotCacheTrainer {
         return null;
     }
 
-    private static boolean isSpringBoot(ImageBuilder.Plan plan) {
-        return plan.mainClass() != null && plan.mainClass().startsWith("org.springframework.boot.loader.");
-    }
 
     private static boolean isSelinux() {
         return Files.isDirectory(Path.of("/sys/fs/selinux"));

@@ -130,7 +130,9 @@ public final class ImagePlans {
                             // exploded — the layer cadence matches how the bytes actually change.
                             List<Path> releases = new ArrayList<>();
                             List<Path> snapshots = new ArrayList<>();
-                            splitBootDependencyJars(projectDir, cache, releases, snapshots);
+                            // Same lock as casJarNames (layout.moduleRoot()) — in a workspace
+                            // these can diverge, and jars then fall back to digest names (JK-1784).
+                            splitBootDependencyJars(layout.moduleRoot(), cache, releases, snapshots);
                             ctx.put(DEP_JARS, releases);
                             ctx.put(SNAPSHOT_JARS, snapshots);
                         } else {
