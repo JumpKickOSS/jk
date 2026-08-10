@@ -4066,7 +4066,11 @@ public final class BuildPlanner {
                     String nKey = ActionKey.forArtifact(
                             nTask, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), nativeTokens);
                     if (!shared && restorePackaged(cache, nKey, out.getParent())) {
+                        // Shrink only: cache restore is a token touch. Never reweight *up* mid-run
+                        // (bar must not jump; accurate native weight is reserved up front).
+                        ctx.reweight(EffortWeights.RESTORE);
                         ctx.label(out.getFileName() + " up-to-date");
+                        ctx.cached();
                         ctx.progress(1);
                         return;
                     }

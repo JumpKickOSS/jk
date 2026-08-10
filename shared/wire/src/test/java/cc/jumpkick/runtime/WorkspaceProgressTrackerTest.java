@@ -69,6 +69,19 @@ class WorkspaceProgressTrackerTest {
         assertThat(t.finish().percent()).isEqualTo(100.0);
     }
 
+    @Test
+    void denominator_growth_never_drops_percent() {
+        // Hard rule: bar never goes backwards. Late reweight must hold the peak fill.
+        // Correct native weight belongs in the up-front calibrate denominator.
+        WorkspaceProgressTracker t = new WorkspaceProgressTracker();
+        t.calibrate(100, 1);
+        t.moduleProgress("cli", 100, 100, 100);
+        assertThat(t.snapshot().percent()).isEqualTo(100.0);
+        t.moduleProgress("cli", 100, 100, 300); // den grows mid-run
+        assertThat(t.snapshot().percent()).isEqualTo(100.0);
+        assertThat(t.snapshot().denominator()).isEqualTo(PF + 300);
+    }
+
     private static String bar(WorkspaceProgressTracker t) {
         var s = t.snapshot();
         return s.numerator() + " of " + s.denominator();

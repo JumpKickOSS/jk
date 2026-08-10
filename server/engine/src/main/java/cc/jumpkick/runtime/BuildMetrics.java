@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TomlValues;
 import cc.jumpkick.plugin.protocol.MiniJson;
 import cc.jumpkick.util.AtomicWrites;
@@ -169,7 +170,7 @@ public final class BuildMetrics {
 
     /** Hydrate invocation/task stats from {@code project-metrics.toml} / {@code host-metrics.toml}. */
     static BuildMetrics fromAggregates() {
-        cc.jumpkick.builds.AggregatedMetrics agg = cc.jumpkick.builds.AggregatedMetrics.loadAll(JkDirs.builds());
+        cc.jumpkick.builds.AggregatedMetrics agg = aggregatesForSession();
         Map<String, Entry> inv = new LinkedHashMap<>();
         Map<String, Entry> steps = new LinkedHashMap<>();
         long now = System.currentTimeMillis();
@@ -177,6 +178,24 @@ public final class BuildMetrics {
         foldAggregateEntries(agg.meanMap(), agg, inv, steps, now, false);
         foldAggregateEntries(agg.hostMeanMap(), agg, inv, steps, now, true);
         return new BuildMetrics(inv, steps);
+    }
+
+    /**
+     * Prefer the session workspace's project metrics so a stale project-identity home for the same
+     * absolute path cannot poison step walls. Fall back to {@link
+     * cc.jumpkick.builds.AggregatedMetrics#loadAll} (count-preferring merge) when no working dir.
+     */
+    static cc.jumpkick.builds.AggregatedMetrics aggregatesForSession() {
+        Path builds = JkDirs.builds();
+        try {
+            Path work = SessionContext.current().workingDir();
+            if (work != null && Files.isDirectory(work)) {
+                return cc.jumpkick.builds.AggregatedMetrics.load(builds, null, work);
+            }
+        } catch (RuntimeException ignored) {
+            // no session / bad path — global merge below
+        }
+        return cc.jumpkick.builds.AggregatedMetrics.loadAll(builds);
     }
 
     /**

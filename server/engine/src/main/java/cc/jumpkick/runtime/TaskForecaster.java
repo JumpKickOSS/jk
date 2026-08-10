@@ -505,18 +505,19 @@ public final class TaskForecaster {
             }
 
             // ---- native-image — [native] always = true (same opt-in as jk build) ----
+            // Hard cascade: jar dirty ⇒ native dirty. Never forecast package-jar RUN +
+            // native-image CACHED (binary mtime vs pre-build jar is not an independent skip).
             if (project.nativeMode() == cc.jumpkick.model.JkBuild.NativeMode.ALWAYS
                     && !(mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty())) {
+                boolean jarDirty = steps.stream()
+                        .anyMatch(s -> "package-jar".equals(s.name()) && !s.cached());
                 Path nativeOut = layout.nativeBinary();
-                boolean hit = Files.isRegularFile(nativeOut) || Files.isRegularFile(layout.nativeLibrary());
-                // Forecast is intentionally coarse: a present binary is treated as cached; a
-                // full native action-key match needs the Graal home the live step resolved.
-                if (compileDirty || !hit) {
+                boolean binaryPresent =
+                        Files.isRegularFile(nativeOut) || Files.isRegularFile(layout.nativeLibrary());
+                if (jarDirty || compileDirty || !binaryPresent) {
+                    String why = jarDirty || compileDirty ? "rebuild · compile changed" : "native-image";
                     steps.add(new TaskForecast.Task(
-                            "native-image",
-                            TaskForecast.Status.RUN,
-                            compileDirty ? "rebuild · compile changed" : "native-image",
-                            null));
+                            "native-image", TaskForecast.Status.RUN, why, null));
                 } else {
                     steps.add(new TaskForecast.Task("native-image", TaskForecast.Status.CACHED, "", null));
                 }
@@ -671,8 +672,19 @@ public final class TaskForecaster {
         // Same jar set as BuildPlanner.assemblyStep (ModuleRuntimeClasspath / JK-1345).
         List<Path> depJars = BuildPlanner.assemblyDependencyJars(dir, project, lockFile, cache);
         String depsTok = fingerprintDepJars(depJars, actionCache, restoredJarShas);
+        // contrib: must match live assemblyStep tokens (same bug class as package-jar).
+        PluginBuild.Declarations pkgDecls;
+        try {
+            pkgDecls = BuildPlanner.pluginDeclarationsFor(project, layout, cache);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+        List<Path> contributed = BuildPlanner.existingContributedDirs(pkgDecls, layout);
+        String contribTok = BuildPlanner.contributionsToken(contributed);
         List<String> tokens = List.of(
                 "classes:" + classesTok,
+                "contrib:" + contribTok,
                 "deps:" + depsTok,
                 "main:" + (project.mainClass() == null ? "" : project.mainClass()),
                 "manifest:" + project.manifest(),

@@ -331,8 +331,8 @@ public final class ExplainCommand implements CliCommand {
 
     /**
      * Header estimate fragment: {@code Build time estimate ~8s}, {@code Build time estimate <1s}
-     * (fully cached / sub-second), or {@code Build time not yet measured} when dirty work has no
-     * host/project timings yet.
+     * (fully cached / sub-second), or {@code Build time estimate not yet measured} when dirty work
+     * has no host/project timings yet.
      */
     static String buildTimeEstimate(long etaMillis, boolean fullyCached, Theme t) {
         // etaMillis is authoritative (same estimateEtaMillis as jk build). Never mask a multi-minute

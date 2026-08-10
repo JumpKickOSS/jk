@@ -1257,10 +1257,17 @@ public final class BuildService {
         BuildPlan.Builder b = BuildPlanner.coreBuilder(inputs, forceRebuild);
         BuildPlanner.appendDeclaredTails(b, inputs);
         BuildPlan plan = b.build();
+        // Bar weight must be live estimatedTotalWeight for dirty prepares: shape-memo weights ignore
+        // source/upstream freshness and under-counted native-image (SKIP while Graal still runs).
+        // Over-reserve tails so native/assembly/OCI reserve full learned walls up front when this
+        // module is dirty (forceRebuild) — reweight may shrink on cache hit, never grow the bar.
+        int weight = forceRebuild
+                ? EffortWeights.withOverReserveTails(plan::estimatedTotalWeight)
+                : plan.estimatedTotalWeight();
         boolean distrust = SessionContext.current().config().forceOr(false)
                 || SessionContext.current().config().rebuildOr(false);
-        int weight;
-        if (!distrust) {
+        if (!distrust && !forceRebuild) {
+            // Clean / ETA-only shape memo is optional; dirty path above never uses it for weight.
             var shapeHit = PreflightMemo.tryLoadShape(req.entryDir(), dir, req.skipTests());
             if (shapeHit.isPresent()) {
                 weight = shapeHit.get().weight();
@@ -1268,12 +1275,11 @@ public final class BuildService {
                     System.err.println("[jk-perf] shape-memo hit " + u.coord() + " weight=" + weight);
                 }
             } else {
-                weight = plan.estimatedTotalWeight();
                 PreflightMemo.storeShape(req.entryDir(), dir, req.skipTests(), PreflightMemo.shapeOf(plan, weight));
             }
-        } else {
-            // Force/rebuild: never trust shape memo fullyCached/weights.
-            weight = plan.estimatedTotalWeight();
+        } else if (!distrust) {
+            // Refresh shape outline from the live over-reserved weight for future ETA-only hits.
+            PreflightMemo.storeShape(req.entryDir(), dir, req.skipTests(), PreflightMemo.shapeOf(plan, weight));
         }
         // Dirty ⇒ not fullyCached for calibration / skip-rate sampling.
         return new ModulePlan(u.dir(), u.coord(), plan, weight, false, req.cache());
@@ -1295,7 +1301,11 @@ public final class BuildService {
         if (ml != null) module.plan().addListener(ml);
         long t0 = System.nanoTime();
         try {
-            BuildPlanResult r = module.plan().run();
+            // Same over-reserve as prepare: BuildPlan.run() re-evaluates step weights into its
+            // denominator. Without this, nativeWeight can still return SKIP (binary looks fresh
+            // vs pre-build jar) and the bar completes before Graal runs. Shrink via reweight on
+            // cache hit; never grow the bar mid-run.
+            BuildPlanResult r = EffortWeights.withOverReserveTails(module.plan()::run);
             long ms = (System.nanoTime() - t0) / 1_000_000;
             int exit = r.success() ? 0 : exitCodeFor(module.plan());
             // Failures always count as work; successes count only when a productive step ran

@@ -233,6 +233,9 @@ public final class WorkspaceProgressTracker {
         long num = numerator;
         long den = denominator;
         double f = den > 0 ? (double) num / (double) den : 0.0;
+        // Hard rule: the bar never goes backwards. If the denominator grows mid-run
+        // (late reweight), hold the peak fraction — do not drop percent. Correctness
+        // comes from an accurate up-front denominator, not from sliding the fill back.
         if (den > peakDenominator) {
             if (peakDenominator > 0 && f < peakFraction) {
                 num = Math.round(peakFraction * den);

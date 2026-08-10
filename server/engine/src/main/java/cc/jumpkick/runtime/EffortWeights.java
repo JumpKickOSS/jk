@@ -29,6 +29,32 @@ public final class EffortWeights {
     private EffortWeights() {}
 
     /**
+     * When set, jar-derived tails (native / assembly / OCI) over-reserve full learned walls even if
+     * outputs look mtime-fresh vs the pre-build jar. Dirty-module prepare always sets this —
+     * upstream-dirty recompile rewrites the jar without touching local source stamps, which is
+     * exactly when a naïve freshness check under-counted native-image to weight 0.
+     */
+    private static final ThreadLocal<Boolean> OVER_RESERVE_TAILS = new ThreadLocal<>();
+
+    /** Run {@code body} with jar-derived tails forced to full bar weight (dirty prepare / run). */
+    public static <T> T withOverReserveTails(java.util.concurrent.Callable<T> body) {
+        OVER_RESERVE_TAILS.set(Boolean.TRUE);
+        try {
+            return body.call();
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        } finally {
+            OVER_RESERVE_TAILS.remove();
+        }
+    }
+
+    static boolean overReserveTails() {
+        return Boolean.TRUE.equals(OVER_RESERVE_TAILS.get());
+    }
+
+    /**
      * Plan/runtime weight when a step is known skip/cache-hit but still appears in the plan
      * . Keeps a non-zero phase tick so the aggregate bar has a denominator without
      * inventing full compile/test cost.
@@ -199,15 +225,27 @@ public final class EffortWeights {
         // Heavy IO steps (native-image, OCI) are rare and long — one successful wall is enough
         // to beat the cold floor; waiting for 3 samples left the bar on a 15s token for months.
         int minSamples = heavyFixedStep(step) ? 1 : MIN_METRICS_SAMPLES;
+        long floorMs = heavyFixedStep(step) ? heavyWallFloorMs(step) : 0;
         var own = metrics.step(dir, metricsStepName(step));
         if (own.isPresent() && own.get().ok().count() >= minSamples) {
-            return flatWeight(own.get().ok().avgMillis());
+            long avg = own.get().ok().avgMillis();
+            // Ignore poisoned cache-restore samples (e.g. native-image "32ms" success).
+            if (avg >= floorMs) return flatWeight(avg);
         }
         var host = metrics.step("", metricsStepName(step));
         if (host.isPresent() && host.get().ok().count() >= minSamples) {
-            return flatWeight(host.get().ok().avgMillis());
+            long avg = host.get().ok().avgMillis();
+            if (avg >= floorMs) return flatWeight(avg);
         }
         return staticWeight;
+    }
+
+    /** Reject absurdly short measured walls for heavy steps (action-cache restore noise). */
+    private static long heavyWallFloorMs(String step) {
+        String s = metricsStepName(step);
+        if ("native-image".equals(s)) return 5_000L;
+        if ("write-image".equals(s)) return 3_000L;
+        return 0L;
     }
 
     private static boolean heavyFixedStep(String step) {
@@ -730,42 +768,164 @@ public final class EffortWeights {
     }
 
     /**
+     * Packaging dirtiness cascade (hard product rule):
+     *
+     * <ul>
+     *   <li>If the main <strong>jar</strong> will change this run, <strong>native</strong> is dirty
+     *       (when the module builds a native image) — never jar-dirty + native-clean.
+     *   <li>If the jar <em>or</em> native output will change, <strong>OCI</strong> is dirty (when
+     *       the module builds an image) — never jar/native-dirty + OCI-clean.
+     * </ul>
+     *
+     * Bar weights and forecast must follow this; mtime of an old binary vs a pre-build jar is not
+     * an independent skip signal.
+     */
+
+    /**
      * Assembly jar present and at least as new as the main jar (and not {@code --force}) → skip.
+     * Jar dirty ⇒ assembly dirty (same cascade family as native).
      */
     public static int assemblyWeight(Path dir) {
+        if (jarWillChange(dir)) {
+            return learnedFixedWeight(dir.toString(), "package-assembly", ASSEMBLY_RUN);
+        }
         return artifactFresh(dir, BuildLayout::assemblyJar)
                 ? SKIP
                 : learnedFixedWeight(dir.toString(), "package-assembly", ASSEMBLY_RUN);
     }
 
-    /** Native binary/library present and fresh → skip; otherwise a full native-image build. */
+    /**
+     * Native binary/library weight for the progress bar and plan denominator — evaluated at
+     * plan-start {@link cc.jumpkick.run.BuildPlan#estimatedTotalWeight} so calibrate sees the full
+     * slice up front (bar never grows mid-run, never goes backwards).
+     *
+     * <p><b>Jar dirty ⇒ native dirty.</b> Never SKIP while the main jar will be rewritten.
+     */
     public static int nativeWeight(Path dir) {
-        return artifactFresh(dir, BuildLayout::nativeBinary) || artifactFresh(dir, BuildLayout::nativeLibrary)
-                ? SKIP
-                : learnedFixedWeight(dir.toString(), "native-image", NATIVE_RUN);
+        if (nativeWillChange(dir)) {
+            return nativeRunWeight(dir);
+        }
+        return SKIP;
     }
 
-    /** OCI image tarball present and fresh → skip (2); otherwise a full image build (40). */
+    /** Full learned/static native weight (measured wall → flatWeight, else cold {@link #NATIVE_RUN}). */
+    public static int nativeRunWeight(Path dir) {
+        return learnedFixedWeight(dir == null ? "" : dir.toString(), "native-image", NATIVE_RUN);
+    }
+
+    /**
+     * OCI image weight. <b>Jar dirty or native dirty ⇒ OCI dirty</b>; never SKIP while either
+     * packaging input will change.
+     */
     public static int ociWeight(Path dir) {
-        return artifactFresh(dir, BuildLayout::ociImageTar)
-                ? OCI_SKIP
-                : learnedFixedWeight(dir.toString(), "write-image", OCI_RUN);
+        if (ociWillChange(dir)) {
+            return learnedFixedWeight(dir.toString(), "write-image", OCI_RUN);
+        }
+        return OCI_SKIP;
+    }
+
+    /** Main jar will be rewritten this run (or dirty-module over-reserve). */
+    public static boolean jarWillChange(Path dir) {
+        return overReserveTails() || mainJarWillChange(dir);
+    }
+
+    /**
+     * Native image will rebuild this run. <b>Jar dirty ⇒ always true</b> (impossible for the jar to
+     * be dirty while native is clean). Also true when the binary is missing or older than the jar.
+     */
+    public static boolean nativeWillChange(Path dir) {
+        if (jarWillChange(dir)) return true;
+        return nativeOutputStaleOrMissing(dir);
+    }
+
+    /**
+     * OCI image will rebuild this run. <b>Jar dirty or native dirty ⇒ always true</b> when those
+     * products exist for the module. Also true when the OCI tarball is missing or older than the
+     * jar.
+     */
+    public static boolean ociWillChange(Path dir) {
+        if (jarWillChange(dir)) return true;
+        if (producesNativeImage(dir) && nativeOutputStaleOrMissing(dir)) return true;
+        return !artifactFresh(dir, BuildLayout::ociImageTar);
+    }
+
+    /** Binary/library missing or older than main jar (does not re-check jar dirtiness). */
+    static boolean nativeOutputStaleOrMissing(Path dir) {
+        return !(artifactFresh(dir, BuildLayout::nativeBinary)
+                || artifactFresh(dir, BuildLayout::nativeLibrary));
+    }
+
+    /** {@code [native] always = true} — module may produce a native-image tail. */
+    static boolean producesNativeImage(Path dir) {
+        try {
+            if (dir == null || !Files.isDirectory(dir)) return false;
+            JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
+            return project.nativeMode() == JkBuild.NativeMode.ALWAYS;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * True when the module's main jar is expected to be rewritten this run: force/rebuild, missing
+     * jar, or main sources not stamp-fresh. Downstream packaging (native / assembly / OCI) must
+     * reserve full weight when this is true — even if their outputs still look newer than the
+     * pre-build jar.
+     */
+    static boolean mainJarWillChange(Path dir) {
+        try {
+            var cfg = cc.jumpkick.config.SessionContext.current().config();
+            if (cfg.rebuildOr(false) || cfg.forceOr(false)) return true;
+            if (dir == null || !Files.isDirectory(dir)) return true;
+            JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
+            BuildLayout layout = BuildLayout.of(dir, project);
+            if (!Files.isRegularFile(layout.mainJar())) return true;
+            boolean compact = cc.jumpkick.layout.ModuleLayout.isCompact(dir);
+            // Java main sources
+            List<Path> javaSrc = CompileSupport.collectJavaSources(
+                    compact ? dir.resolve("src") : dir.resolve("src/main/java"));
+            if (!javaSrc.isEmpty()
+                    && !FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.JAVA_STAMP, javaSrc)) {
+                return true;
+            }
+            // Kotlin
+            List<Path> ktSrc = CompileSupport.collectKotlinSources(dir, compact);
+            if (!ktSrc.isEmpty()
+                    && !FreshnessStamp.looksFresh(
+                            layout.kotlinClassesDir(), FreshnessStamp.KOTLIN_STAMP, ktSrc)) {
+                return true;
+            }
+            // Groovy (stamp in merged classes dir)
+            List<Path> gvSrc = CompileSupport.collectGroovySources(dir, compact);
+            if (!gvSrc.isEmpty()
+                    && !FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.GROOVY_STAMP, gvSrc)) {
+                return true;
+            }
+            return false;
+        } catch (Exception e) {
+            // Unparseable / I/O — over-reserve so the bar never drops a multi-minute step.
+            return true;
+        }
     }
 
     /**
      * True when the artifact selected by {@code artifact} exists, isn't being forced by {@code
      * --force}, and is at least as new as the main jar it's derived from — a cheap "this output is
      * up-to-date" proxy for the artifact-cache skip the step itself performs.
+     *
+     * <p>Callers that reserve progress weight for jar-derived steps must also check {@link
+     * #mainJarWillChange} first — see {@link #nativeWeight}.
      */
     private static boolean artifactFresh(Path dir, java.util.function.Function<BuildLayout, Path> artifact) {
         try {
             if (cc.jumpkick.config.SessionContext.current().config().rebuildOr(false)) return false;
+            if (cc.jumpkick.config.SessionContext.current().config().forceOr(false)) return false;
             JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
             BuildLayout layout = BuildLayout.of(dir, project);
             Path art = artifact.apply(layout);
             if (!Files.isRegularFile(art)) return false;
             Path mainJar = layout.mainJar();
-            if (!Files.isRegularFile(mainJar)) return true; // nothing to compare against
+            if (!Files.isRegularFile(mainJar)) return false; // no jar → not fresh; rebuild inputs first
             return Files.getLastModifiedTime(art).toMillis()
                     >= Files.getLastModifiedTime(mainJar).toMillis();
         } catch (Exception e) {
