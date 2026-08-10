@@ -173,8 +173,13 @@ public final class HeavyActionGc {
                 String k = line.trim();
                 if (!k.isEmpty() && !k.equals(actionKey)) kept.add(k);
             }
+            // Atomic like the writer side (ActionCache.trimGenerations): this engine's GC holds
+            // cacheGate + .prune.lock, but a SECOND engine (upgrade window, different jk version,
+            // same cache) takes neither — a torn plain write here could clobber its concurrent
+            // gens update (JK-1792). The pointer compare-and-delete above stays inherently racy
+            // on POSIX; losing that race only costs a re-run of one heavy task.
             if (kept.isEmpty()) Files.deleteIfExists(gens);
-            else Files.write(gens, kept, StandardCharsets.UTF_8);
+            else cc.jumpkick.util.AtomicWrites.replace(gens, String.join("\n", kept) + "\n");
         }
     }
 
