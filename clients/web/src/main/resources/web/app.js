@@ -1031,7 +1031,15 @@ Vue.createApp({
         return false;
       }
       try {
-        await get('/api/status', { bootstrap: true });
+        const status = await get('/api/status', { bootstrap: true });
+        // Latch the engine epoch from the bootstrap payload BEFORE any gated call (JK-1774).
+        // Without this the next probe carries no X-Jk-Engine-Epoch, the server 409s, and every
+        // fresh tab pays a full reload. A mismatch here means a stale epoch from a previous
+        // engine generation survived in sessionStorage — reload once now, before painting.
+        if (noteEngineEpoch(status) === 'mismatch') {
+          hardRefreshForEpoch();
+          return false;
+        }
       } catch (e) {
         if (e.status === 401) {
           this.markUnauthorized({ clear: true });
