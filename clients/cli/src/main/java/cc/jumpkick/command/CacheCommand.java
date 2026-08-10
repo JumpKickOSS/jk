@@ -154,7 +154,14 @@ public final class CacheCommand extends GroupCommand {
                     }
                     String taskName = taskNameFromKeyBody(body);
                     long[] bucket = bucketCounters(
-                            taskName, classFiles, testResults, normalJars, shadowJars, minifiedJars, nativeBins, ociImages);
+                            taskName,
+                            classFiles,
+                            testResults,
+                            normalJars,
+                            shadowJars,
+                            minifiedJars,
+                            nativeBins,
+                            ociImages);
                     // run-tests mostly stores scalar markers on the key itself (no CAS digests).
                     if (bucket == testResults) {
                         testResults[0]++;
@@ -356,10 +363,7 @@ public final class CacheCommand extends GroupCommand {
 
         Stats workers = walkExclusiveAdding(lib, seen);
         return new StoreUsageStats(
-                new Stats(jarFiles, jarBytes),
-                new Stats(execFiles, execBytes),
-                new Stats(ociFiles, ociBytes),
-                workers);
+                new Stats(jarFiles, jarBytes), new Stats(execFiles, execBytes), new Stats(ociFiles, ociBytes), workers);
     }
 
     /** Content-class for a store CAS blob (or any regular file under the store). */
@@ -942,13 +946,7 @@ public final class CacheCommand extends GroupCommand {
             {"OCI Images", fmtCount(s.ociImages().files), fmtSize(s.ociImages().bytes)},
             {"Format Stamps", fmtCount(s.stamps().files), stampSize},
         };
-        return renderUsageTable(
-                "Cache Storage",
-                rows,
-                s.totalFiles(),
-                s.totalBytes(),
-                maxBytes,
-                lastCleaned);
+        return renderUsageTable("Cache Storage", rows, s.totalFiles(), s.totalBytes(), maxBytes, lastCleaned);
     }
 
     /**
@@ -962,13 +960,7 @@ public final class CacheCommand extends GroupCommand {
             {"OCI Images", fmtCount(s.oci().files), fmtSize(s.oci().bytes)},
             {"Worker JARs", fmtCount(s.workers().files), fmtSize(s.workers().bytes)},
         };
-        return renderUsageTable(
-                "Artifact Storage",
-                rows,
-                s.totalFiles(),
-                s.totalBytes(),
-                maxBytes,
-                lastCleaned);
+        return renderUsageTable("Artifact Storage", rows, s.totalFiles(), s.totalBytes(), maxBytes, lastCleaned);
     }
 
     /** Shared Element / File Count / Size box chrome for cache and store usage reports. */

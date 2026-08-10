@@ -52,6 +52,29 @@ class LruEvictorTest {
     }
 
     @Test
+    void preferEvict_beats_recent_atime(@TempDir Path tempDir) throws IOException {
+        // JK-1721: a hot Class-C native must not displace a cold class blob under size pressure.
+        Cas cas = new Cas(tempDir);
+        Path classBlob = cas.put("class-bytes-payload".getBytes());
+        Path nativeBlob = cas.put("native-binary-payload-xxxxxxxx".getBytes());
+        long now = System.currentTimeMillis();
+        // Class blob is cold; native is hot.
+        Files.setLastModifiedTime(classBlob, FileTime.fromMillis(now - 60_000));
+        Files.setLastModifiedTime(nativeBlob, FileTime.fromMillis(now - 1_000));
+        String nativeHex = cas.hashFromPath(nativeBlob).orElseThrow();
+
+        AccessLedger ledger = new AccessLedger(tempDir.resolve(".access.log"));
+        // Budget keeps only the smaller class blob.
+        long budget = Files.size(classBlob);
+        LruEvictor.evictDownTo(cas, budget, Set.of(), ledger, false, Set.of(), Set.of(nativeHex));
+
+        assertThat(Files.exists(classBlob))
+                .as("high recompute-cost-per-byte class blob")
+                .isTrue();
+        assertThat(Files.exists(nativeBlob)).as("preferred Class-C victim").isFalse();
+    }
+
+    @Test
     void ledger_atime_wins_over_mtime(@TempDir Path tempDir) throws IOException {
         Cas cas = new Cas(tempDir);
         Path olderMtime = cas.put("older-mtime".getBytes());

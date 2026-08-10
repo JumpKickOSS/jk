@@ -145,15 +145,24 @@ public final class CachePlans {
                         // Utilization surfaces (jk cache usage, /api/cache) measure index +
                         // stamps + blobs against this budget, but eviction can only shrink blobs.
                         // Aim the blob pool at what remains after the index overhead so a clean
-                        // can actually bring utilization back under 100% (JK-1526).
+                        // can actually bring utilization back under 100% (JK-1526). Prefer Class-C
+                        // digests as victims so a hot native binary cannot displace cold class files
+                        // (JK-1721 recompute-cost-per-byte ranking).
                         long overheadBytes =
                                 cc.jumpkick.cache.DiskUsage.of(actionsDir).bytes()
                                         + cc.jumpkick.cache.DiskUsage.of(root.resolve("format-stamps"))
                                                 .bytes();
                         long blobBudget = Math.max(0, cacheBudget - overheadBytes);
                         var ledger = cc.jumpkick.task.AccessLedger.atDefaultPath();
+                        var preferClassC = cc.jumpkick.task.HeavyActionGc.liveClassCShas(root, cacheCas);
                         var evict = cc.jumpkick.task.LruEvictor.evictDownTo(
-                                cacheCas, blobBudget, cacheLive, ledger, dryRun, cacheSweep.deletedShas());
+                                cacheCas,
+                                blobBudget,
+                                cacheLive,
+                                ledger,
+                                dryRun,
+                                cacheSweep.deletedShas(),
+                                preferClassC);
                         totalFiles += evict.deleted();
                         totalBytes += evict.freedBytes();
                         reachableEvicted += evict.reachableEvicted();

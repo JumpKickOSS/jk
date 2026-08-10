@@ -34,7 +34,9 @@ public final class KmpRedirects {
      * Process-wide selection memo: Gradle module metadata is immutable per GAV on disk, and the
      * redirect for a given {@code jvmEnvironment} does not change mid-process. Warm re-locks
      * (and the three scope solves) used to re-parse hundreds of {@code .module} files every time.
-     * Keyed by {@code env + '\0' + module@version}.
+     * Keyed by the repositories asked <em>and</em> {@code env + module@version} — which {@code
+     * .module} is fetched depends on the repo set. No TTL: release GAV content is immutable; force
+     * / {@link #clearProcessCache} drop the memo.
      */
     private static final Map<String, Optional<Selection>> PROCESS_CACHE = new ConcurrentHashMap<>();
 
@@ -81,7 +83,7 @@ public final class KmpRedirects {
             local.ifPresent(this::rememberDropped);
             return local;
         }
-        String processKey = jvmEnvironment + "\0" + gaKey;
+        String processKey = repos.processIdentity() + "\0" + jvmEnvironment + "\0" + gaKey;
         // Single-flight: concurrent PubGrub prefetches must not re-parse the same .module.
         long t0 = cc.jumpkick.resolve.ResolveProfile.on() ? System.nanoTime() : 0L;
         Optional<Selection> found = PROCESS_CACHE.computeIfAbsent(processKey, k -> lookup(module, version));

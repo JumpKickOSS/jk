@@ -106,6 +106,20 @@ public final class HeavyActionGc {
 
     private record Entry(Path keyFile, String actionKey, String taskId, List<String> shas, long atime, long bytes) {}
 
+    /**
+     * Digests still referenced by live Class-C action keys. Used by size-cap eviction so heavy ship
+     * outputs are preferred victims over modular compile/test blobs (JK-1721).
+     */
+    public static Set<String> liveClassCShas(Path cacheRoot, Cas cacheCas) throws IOException {
+        Path keysDir = cacheRoot.resolve("actions").resolve("keys");
+        if (!Files.isDirectory(keysDir)) return Set.of();
+        Set<String> shas = new HashSet<>();
+        for (Entry e : collectClassC(cacheCas, keysDir)) {
+            shas.addAll(e.shas);
+        }
+        return shas;
+    }
+
     private static List<Entry> collectClassC(Cas cacheCas, Path keysDir) throws IOException {
         Map<String, Long> atimes = AccessLedger.atDefaultPath().latestByHash();
         List<Entry> heavy = new ArrayList<>();

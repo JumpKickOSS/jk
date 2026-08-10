@@ -3,6 +3,8 @@ package cc.jumpkick.repo;
 
 import cc.jumpkick.model.Coordinate;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -17,13 +19,17 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class RepoGroup {
 
     /**
-     * Process-wide local POM hits (GAV → fetch). Warm multi-repo resolves re-probe Central then
-     * Google for every package; caching the hit path skips thousands of filesystem stats on
-     * first-in-process Android locks. Misses are not cached (may appear mid-session via fetch).
+     * Process-wide local POM hits. Keyed by the repositories asked <em>and</em> GAV — exclusive
+     * bindings and repo order are part of the question (a Central hit must not answer for a
+     * Google-only exclusive group). Misses are not cached (may appear mid-session via fetch).
+     * Entries have no TTL: published release GAVs are immutable; force / {@link #clearProcessFetchCache}
+     * drop the memo when the caller does not trust the view.
      */
     private static final ConcurrentHashMap<String, RepoFetched> POM_HIT_CACHE = new ConcurrentHashMap<>();
 
-    /** Same for non-POM artifacts (Gradle {@code .module}, jars). Keyed by GAVC+type. */
+    /**
+     * Same for non-POM artifacts (Gradle {@code .module}, jars). Keyed by repositories + GAVC+type.
+     */
     private static final ConcurrentHashMap<String, RepoFetched> ARTIFACT_HIT_CACHE = new ConcurrentHashMap<>();
 
     /**
@@ -125,6 +131,14 @@ public final class RepoGroup {
         return repos;
     }
 
+    /**
+     * Stable identity of the repositories this group asks. Part of every process-wide fetch /
+     * versions / effective-POM memo key so one group's answer cannot stand in for another's.
+     */
+    public String processIdentity() {
+        return repoIdentity;
+    }
+
     /** Exclusive group patterns aligned with {@link #repos()}. */
     public List<List<String>> exclusiveGroups() {
         return exclusiveGroups;
@@ -135,8 +149,8 @@ public final class RepoGroup {
     }
 
     public Optional<RepoFetched> tryFetchPom(Coordinate coord) throws IOException, InterruptedException {
-        String key = coord.toGav();
-        RepoFetched hit = POM_HIT_CACHE.get(key);
+        String key = repoIdentity + "|" + coord.toGav();
+        RepoFetched hit = liveHit(POM_HIT_CACHE, key);
         if (hit != null) return Optional.of(hit);
         Optional<RepoFetched> found = tryFetch(coord, MavenRepo::tryLocalPom, MavenRepo::fetchPom);
         if (found.isPresent() && POM_HIT_CACHE.size() < HIT_CACHE_MAX) {
@@ -146,18 +160,33 @@ public final class RepoGroup {
     }
 
     public Optional<RepoFetched> tryFetchArtifact(Coordinate coord) throws IOException, InterruptedException {
-        String key = coord.toGav()
+        String key = repoIdentity
+                + "|"
+                + coord.toGav()
                 + "\0"
                 + (coord.type() == null ? "" : coord.type())
                 + "\0"
                 + (coord.classifier() == null ? "" : coord.classifier());
-        RepoFetched hit = ARTIFACT_HIT_CACHE.get(key);
+        RepoFetched hit = liveHit(ARTIFACT_HIT_CACHE, key);
         if (hit != null) return Optional.of(hit);
         Optional<RepoFetched> found = tryFetch(coord, MavenRepo::tryLocalArtifact, MavenRepo::fetchArtifact);
         if (found.isPresent() && ARTIFACT_HIT_CACHE.size() < HIT_CACHE_MAX) {
             ARTIFACT_HIT_CACHE.putIfAbsent(key, found.get());
         }
         return found;
+    }
+
+    /**
+     * Return a process-memo hit only when its on-disk payload is still present; drop stale paths
+     * (cache GC / manual wipe mid-process).
+     */
+    private static RepoFetched liveHit(ConcurrentHashMap<String, RepoFetched> cache, String key) {
+        RepoFetched hit = cache.get(key);
+        if (hit == null) return null;
+        Path path = hit.fetched().cachePath();
+        if (path != null && Files.isRegularFile(path)) return hit;
+        cache.remove(key, hit);
+        return null;
     }
 
     public Optional<RepoFetched> tryFetchMetadata(Coordinate coord) throws IOException, InterruptedException {

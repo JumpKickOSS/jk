@@ -14,13 +14,14 @@ import java.util.Set;
 import java.util.stream.Stream;
 
 /**
- * LRU-style size-cap eviction over the CAS pool. Runs <em>after</em> {@link CasSweep} — by the time
- * we get here, every survivor is reachable from some root; the only reason to delete more is to
- * respect a user-configured budget.
+ * Size-cap eviction over the CAS pool. Runs <em>after</em> {@link CasSweep} — by the time we get
+ * here, every survivor is reachable from some root; the only reason to delete more is to respect a
+ * user-configured budget.
  *
- * <p>Ordering signal: {@link AccessLedger} latest-touch millis when present; falls back to
- * filesystem mtime for objects the ledger doesn't cover yet (newly added writers, or pre-ledger
- * objects).
+ * <p>Ordering: prefer low recompute-cost-per-byte victims first ({@code preferEvict} — Class-C
+ * heavy ship outputs: natives, OCI tarballs, fat jars), then oldest {@link AccessLedger} touch
+ * (mtime fallback), then larger size. A recently-touched 80 MiB native must not displace a cold
+ * 20 KiB class blob that costs milliseconds to restore (JK-1721).
  *
  * <p>When the budget forces us to delete a still-reachable object, that's counted as {@code
  * reachableEvicted} and surfaced in the report — the user gets a "your budget is below your live
@@ -38,13 +39,13 @@ public final class LruEvictor {
     public record Report(int deleted, long freedBytes, int reachableEvicted, long finalSize) {}
 
     /**
-     * Evict oldest objects until the CAS is at or below {@code maxBytes}. No-op when already under
-     * budget. {@code reachable} is the live set computed by {@link CacheRoots}; only used here to
-     * count how many of the evictees were still in it (for the warning summary).
+     * Evict until the CAS is at or below {@code maxBytes}. No-op when already under budget.
+     * {@code reachable} is the live set computed by {@link CacheRoots}; only used here to count how
+     * many of the evictees were still in it (for the warning summary).
      */
     public static Report evictDownTo(Cas cas, long maxBytes, Set<String> reachable, AccessLedger ledger, boolean dryRun)
             throws IOException {
-        return evictDownTo(cas, maxBytes, reachable, ledger, dryRun, Set.of());
+        return evictDownTo(cas, maxBytes, reachable, ledger, dryRun, Set.of(), Set.of());
     }
 
     /**
@@ -56,16 +57,34 @@ public final class LruEvictor {
     public static Report evictDownTo(
             Cas cas, long maxBytes, Set<String> reachable, AccessLedger ledger, boolean dryRun, Set<String> excluded)
             throws IOException {
+        return evictDownTo(cas, maxBytes, reachable, ledger, dryRun, excluded, Set.of());
+    }
+
+    /**
+     * As {@link #evictDownTo(Cas, long, Set, AccessLedger, boolean, Set)}, but prefer deleting
+     * {@code preferEvict} digests first (Class-C / low recompute-cost-per-byte). Within each
+     * preference band, oldest atime first, then larger size.
+     */
+    public static Report evictDownTo(
+            Cas cas,
+            long maxBytes,
+            Set<String> reachable,
+            AccessLedger ledger,
+            boolean dryRun,
+            Set<String> excluded,
+            Set<String> preferEvict)
+            throws IOException {
         Path shaRoot = cas.root().resolve("sha256");
         if (!Files.isDirectory(shaRoot)) {
             return new Report(0, 0L, 0, 0L);
         }
 
         Map<String, Long> atimes = ledger.latestByHash();
+        Set<String> prefer = preferEvict != null ? preferEvict : Set.of();
 
         // Build the candidate list once. Atime falls back to mtime for
         // anything not in the ledger (most things will be, eventually).
-        record Entry(Path file, String hex, long size, long atime, boolean reachable) {}
+        record Entry(Path file, String hex, long size, long atime, boolean reachable, boolean preferred) {}
         List<Entry> entries = new ArrayList<>();
         long totalSize = 0;
         try (Stream<Path> stream = Files.walk(shaRoot)) {
@@ -80,7 +99,7 @@ public final class LruEvictor {
                 long size = Files.size(file);
                 long atime =
                         atimes.getOrDefault(hex, Files.getLastModifiedTime(file).toMillis());
-                entries.add(new Entry(file, hex, size, atime, reachable.contains(hex)));
+                entries.add(new Entry(file, hex, size, atime, reachable.contains(hex), prefer.contains(hex)));
                 totalSize += size;
             }
         }
@@ -89,9 +108,9 @@ public final class LruEvictor {
             return new Report(0, 0L, 0, totalSize);
         }
 
-        // Oldest atime first; ties broken by size (delete the bigger one
-        // for the same age, so we hit the budget faster).
-        entries.sort(Comparator.<Entry>comparingLong(Entry::atime)
+        // Prefer low recompute-cost-per-byte first; then oldest; then larger for same age.
+        entries.sort(Comparator.<Entry>comparingInt(e -> e.preferred() ? 0 : 1)
+                .thenComparingLong(Entry::atime)
                 .thenComparing(Comparator.comparingLong(Entry::size).reversed()));
 
         int deleted = 0;

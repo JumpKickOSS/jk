@@ -194,10 +194,11 @@ unset defaults are clamped to `(free × 0.8) / 2` each so cache + store claim at
 space. Explicit sizes are never disk-clamped.
 
 The two budgets differ in what they *enforce*. The cache tier is rebuildable, so scheduled
-hygiene LRU-evicts it to its budget (default 4 GiB); the evictor targets the blob pool at the
-budget net of the action-index + stamp overhead. **`jk cache clean`** is the first admin knob:
-it drops **all Class-C** heavy outputs (native / OCI / fat jars) immediately, plus stale keys
-and temps, while keeping modular compile/test cache.
+hygiene size-evicts it to its budget (default 4 GiB); the evictor targets the blob pool at the
+budget net of the action-index + stamp overhead and **prefers Class-C** digests first so a hot
+native binary cannot displace cold compile outputs (recompute-cost-per-byte ranking). **`jk
+cache clean`** is the first admin knob: it drops **all Class-C** heavy outputs (native / OCI /
+fat jars) immediately, plus stale keys and temps, while keeping modular compile/test cache.
 
 **Class-C (heavy ship) action outputs** — `native-image`, `write-image` (OCI), fat
 `package-assembly` / minified jars — use a tighter opportunistic policy so they do not starve
