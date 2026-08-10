@@ -1264,6 +1264,7 @@ public final class EngineServer implements AutoCloseable {
                                             .put("jid", eventRequestId)
                                             .put("kind", eventKind)
                                             .put("dir", eventDir)
+                                            .put("projectId", cc.jumpkick.runtime.ProjectIds.idOf(eventDir))
                                             .put("success", success)
                                             .put("cancelled", cancelled)
                                             .put("millis", elapsedMillis)
@@ -1325,9 +1326,11 @@ public final class EngineServer implements AutoCloseable {
             buildNumber = cc.jumpkick.runtime.BuildNumberAllocator.allocate(canonDir, coord);
         }
         long startedAt = clockMillis.getAsLong();
+        String projectId = cc.jumpkick.runtime.ProjectIds.refresh(canonDir != null ? canonDir : dir);
         String journalId = null;
         if (BuildHistoryKinds.isBuildLike(kind) && historyConfig.enabled() && buildNumber > 0) {
-            journalId = journal.begin(BuildRecord.running(buildNumber, kind, dir, coord, startedAt, version, trigger));
+            journalId = journal.begin(
+                    BuildRecord.running(buildNumber, kind, dir, coord, projectId, startedAt, version, trigger));
         }
         InFlightBuilds.Hold candidate =
                 new InFlightBuilds.Hold(requestId, buildNumber, fp, kind, dir, coord, startedAt, journalId, trigger);
@@ -1834,7 +1837,8 @@ public final class EngineServer implements AutoCloseable {
                 .put("jid", requestId)
                 .put("kind", kind)
                 .put("dir", dir)
-                .put("coord", coord);
+                .put("coord", coord)
+                .put("projectId", cc.jumpkick.runtime.ProjectIds.idOf(dir));
         if (buildNumber > 0) payload = payload.put("buildNumber", buildNumber);
         payload = payload.put("activeBuildPlans", activeBuildPlans.get());
         publishEvent("request-start", withProgress(payload, requestId), dashboardOnly);
@@ -6148,6 +6152,7 @@ public final class EngineServer implements AutoCloseable {
         private final String kind;
         private final String dir;
         private final String coord;
+        private final String projectId;
         private final String trigger; // how the build was started: "cli" (socket) or "web" (dashboard)
         /** Per-request chrome timeline; null when disabled. Same step millis as metrics. */
         private final ChromeTimeline timeline;
@@ -6210,6 +6215,7 @@ public final class EngineServer implements AutoCloseable {
             this.kind = kind;
             this.dir = dir;
             this.coord = coord;
+            this.projectId = cc.jumpkick.runtime.ProjectIds.idOf(dir);
             this.trigger = trigger;
             this.timeline = timeline;
             this.rebuild = rebuild;
@@ -6478,6 +6484,7 @@ public final class EngineServer implements AutoCloseable {
                     kind,
                     dir,
                     coord,
+                    projectId,
                     finishedAt - millis,
                     finishedAt,
                     millis,

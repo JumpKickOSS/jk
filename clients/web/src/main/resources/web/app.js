@@ -1137,14 +1137,10 @@ Vue.createApp({
 
     // ---- the Projects tab (grouped /api/history + live running overlay) ----
 
-    // Pull the raw journal (newest-first, up to 200 records); projectsList groups it per project.
+    // The Projects tab groups the same journal payload the feed seeds from — one GET serves
+    // both (each /api/history hit re-enriches up to 200 rows engine-side; JK-1750).
     async loadProjectHistory() {
-      if (this.authModal) return;
-      try {
-        this.projectHistory = await get('/api/history');
-      } catch (e) {
-        this.handleHttpError(e);
-      }
+      return this.loadHistory();
     },
 
     // The <jk-icon> name for a build/project state (badges + pills). Running gets a play triangle (the
@@ -1696,6 +1692,7 @@ Vue.createApp({
       return this.fetchOnce('history', async () => {
         try {
           const records = await get('/api/history');
+          this.projectHistory = records; // shared with the Projects tab (loadProjectHistory)
           const next = this.cards.slice();
           seedFromHistory(next, records);
           this.cards = next;

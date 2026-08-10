@@ -1071,17 +1071,13 @@ public final class HttpEngineServer implements AutoCloseable {
             if (!(parsed instanceof Map<?, ?> m0)) return raw;
             @SuppressWarnings("unchecked")
             Map<String, Object> m = (Map<String, Object>) m0;
-            // Durable project id for dashboard routing (JK-1727+); derived from checkout path.
+            // Durable project id for dashboard routing (JK-1727+). New rows are stamped at
+            // journal.begin (JK-1750); only legacy rows resolve here, through the process memo —
+            // a bare resolve is two TOML parses plus up to three git subprocesses per row.
             if (!(m.get("projectId") instanceof String pid) || pid.isBlank()) {
                 if (m.get("dir") instanceof String dir && !dir.isBlank()) {
-                    try {
-                        m.put(
-                                "projectId",
-                                cc.jumpkick.builds.ProjectIdentity.resolve(Path.of(dir))
-                                        .id());
-                    } catch (RuntimeException ignored) {
-                        // leave absent
-                    }
+                    String resolved = cc.jumpkick.runtime.ProjectIds.idOf(dir);
+                    if (resolved != null) m.put("projectId", resolved);
                 }
             }
             if (!Boolean.TRUE.equals(m.get("running"))) {

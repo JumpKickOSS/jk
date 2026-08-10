@@ -42,7 +42,7 @@ class EnvSecretRedactionTest {
                 BuildRecord.SCHEMA,
                 "build",
                 tmp.toString(),
-                "g:a",
+                "g:a", null /* projectId */,
                 1_700_000_000_000L,
                 1_700_000_000_100L,
                 100L,
