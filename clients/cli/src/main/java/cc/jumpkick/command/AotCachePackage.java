@@ -354,8 +354,21 @@ final class AotCachePackage {
                 .directory(projectDir.toFile())
                 .redirectErrorStream(true)
                 .start();
-        String out = new String(process.getInputStream().readAllBytes());
-        if (process.waitFor() != 0) {
+        StringBuilder captured = new StringBuilder();
+        Thread reader = Thread.ofVirtual().start(() -> {
+            try (var in = process.inputReader()) {
+                in.lines().forEach(l -> captured.append(l).append('\n'));
+            } catch (IOException ignored) {
+            }
+        });
+        // Bounded: an unresponsive extract must not hang the build forever (JK-1761).
+        if (!process.waitFor(TRAINING_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+            process.destroyForcibly();
+            throw new IOException("Spring Boot extract did not finish within " + TRAINING_TIMEOUT_SECONDS + "s");
+        }
+        reader.join(5_000);
+        String out = captured.toString();
+        if (process.exitValue() != 0) {
             throw new IOException("jarmode extract failed:\n" + tail(out));
         }
         try (var stream = Files.list(outDir)) {

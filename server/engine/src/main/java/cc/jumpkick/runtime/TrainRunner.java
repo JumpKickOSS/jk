@@ -283,14 +283,25 @@ public final class TrainRunner {
         ProcessBuilder pb2 =
                 new ProcessBuilder(create).redirectErrorStream(true).directory(moduleDir.toFile());
         Process p = pb2.start();
+        // Drain the pipe: a chatty assembler fills the 64K buffer, stalls, gets force-killed at
+        // the timeout, and is then misreported as "did not produce a cache" (JK-1761).
+        StringBuilder createOut = new StringBuilder();
+        Thread drain = Thread.ofVirtual().start(() -> {
+            try (var in = p.inputReader()) {
+                in.lines().forEach(l -> createOut.append(l).append('\n'));
+            } catch (java.io.IOException ignored) {
+            }
+        });
         p.waitFor(TRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
         if (p.isAlive()) p.destroyForcibly();
+        drain.join(5_000);
         Files.deleteIfExists(conf);
         if (Files.isRegularFile(cache) && Files.size(cache) > 0) {
             log.accept("AOT cache → " + cache.getFileName() + " (" + Files.size(cache) / (1024 * 1024) + " MiB)");
             return true;
         }
-        log.accept("AOT create did not produce a cache");
+        String tail = createOut.length() > 600 ? createOut.substring(createOut.length() - 600) : createOut.toString();
+        log.accept("AOT create did not produce a cache" + (tail.isBlank() ? "" : ":\n" + tail));
         return false;
     }
 
