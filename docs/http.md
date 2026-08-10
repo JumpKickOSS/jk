@@ -86,8 +86,12 @@ Task Manager.
 
 **Every `/api/*` call requires a valid bearer token**, including loopback binds. There is no
 tokenless “watch-only” mode — a bare browser open without a token must not see live builds or
-history. Static shell assets (`index.html`, JS, CSS, images) stay open so the SPA can show the
-blocking authorization dialog. Non-loopback clients carry the token the same way; `EventSource`
+history. Static content stays open, in two tiers: the classpath shell (`index.html`, JS, CSS,
+images shipped in the jar) is served under the SPA's own CSP so it can show the blocking
+authorization dialog, while files under the on-disk `web-root` (user reports and other
+build-written content) are served with `Content-Security-Policy: sandbox` — a unique opaque
+origin with scripts and forms disabled, so nothing dropped into `web-root` can script the
+dashboard origin or read the stored bearer token. Non-loopback clients carry the token the same way; `EventSource`
 cannot send headers, so SSE passes it as an `access_token` query parameter. The SPA bootstraps
 from a `#t=` fragment. **`jk web`** starts the engine if needed, prints the tokenized URL, and
 opens a browser (`$BROWSER` or the platform default).

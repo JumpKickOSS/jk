@@ -122,6 +122,13 @@ final class StaticContent {
         } catch (IOException e) {
             return false; // deleted between the check and now — fall through to classpath/404
         }
+        // Disk web-root is never token-gated, and builds may write arbitrary user content (HTML
+        // reports) into it. Without a policy, such HTML is same-origin with the SPA and can read
+        // localStorage['jk-http-token'] — the sole credential (JK-1776). A bare CSP `sandbox`
+        // renders it in a unique opaque origin with scripts, forms, and plugins disabled: styles
+        // and images still work (reports stay readable), but nothing under web-root can script
+        // the dashboard origin or exfiltrate the token.
+        exchange.getResponseHeaders().set("Content-Security-Policy", "sandbox");
         exchange.getResponseHeaders().set("Cache-Control", "no-cache");
         exchange.getResponseHeaders().set("Last-Modified", HTTP_DATE.format(lastModified));
         if (notModifiedSince(exchange.getRequestHeaders().getFirst("If-Modified-Since"), lastModified)) {
@@ -162,8 +169,8 @@ final class StaticContent {
         // The shipped SPA's only external resources: Vue + ECharts from unpkg (version-pinned + SRI
         // in index.html) and the JetBrains Mono + Material Icons webfonts from Google Fonts (CSS on
         // fonts.googleapis.com, font files on fonts.gstatic.com).
-        // 'unsafe-eval' is Vue's runtime template compiler. Disk content (user reports, possibly
-        // with inline styles/scripts of their own) is deliberately not CSP-gated.
+        // 'unsafe-eval' is Vue's runtime template compiler. Disk web-root content gets a stricter
+        // sandboxing CSP in serveFromDisk (JK-1776) — only the shipped shell earns this policy.
         exchange.getResponseHeaders()
                 .set(
                         "Content-Security-Policy",

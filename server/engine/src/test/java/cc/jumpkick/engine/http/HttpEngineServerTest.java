@@ -217,6 +217,23 @@ class HttpEngineServerTest {
     }
 
     @Test
+    void disk_content_is_sandboxed_while_the_classpath_shell_is_not() throws Exception {
+        // Disk web-root is tokenless AND build-writable, so any HTML that lands there must not be
+        // able to script the dashboard origin and read localStorage['jk-http-token'] (JK-1776).
+        // A bare `sandbox` CSP forces a unique opaque origin with scripts/forms disabled.
+        Files.writeString(webRoot.resolve("report.html"), "<html><script>alert(1)</script></html>");
+        HttpResponse<String> disk = get("/report.html");
+        assertThat(disk.statusCode()).isEqualTo(200);
+        assertThat(disk.headers().firstValue("Content-Security-Policy")).contains("sandbox");
+        // The shipped shell keeps its own (non-sandbox) CSP — the SPA must still run scripts.
+        HttpResponse<String> shell = get("/app.js");
+        assertThat(shell.headers().firstValue("Content-Security-Policy")).isPresent();
+        assertThat(shell.headers().firstValue("Content-Security-Policy").orElseThrow())
+                .doesNotContain("sandbox")
+                .startsWith("default-src 'self'");
+    }
+
+    @Test
     void serves_index_html_for_directory_requests() throws Exception {
         HttpResponse<String> resp = get("/");
         assertThat(resp.statusCode()).isEqualTo(200);
