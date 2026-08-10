@@ -95,6 +95,75 @@ class PomImporterTest {
     }
 
     @Test
+    void jar_and_test_jar_of_same_ga_yield_two_entries(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>app</artifactId>
+                  <version>1.0.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>org.apache.logging.log4j</groupId>
+                      <artifactId>log4j-core</artifactId>
+                      <version>2.24.0</version>
+                      <scope>test</scope>
+                    </dependency>
+                    <dependency>
+                      <groupId>org.apache.logging.log4j</groupId>
+                      <artifactId>log4j-core</artifactId>
+                      <version>2.24.0</version>
+                      <type>test-jar</type>
+                      <scope>test</scope>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+
+        JkBuild app = PomImporter.importFrom(root.resolve("pom.xml")).jkBuild();
+        List<Dependency> test = app.dependencies().of(Scope.TEST);
+        // Both packages survive with distinct, deterministic handles.
+        assertThat(test)
+                .extracting(Dependency::library)
+                .containsExactly("log4j-core", "log4j-core-tests");
+        assertThat(test)
+                .extracting(Dependency::packageKey)
+                .containsExactly(
+                        "org.apache.logging.log4j:log4j-core:jar:",
+                        "org.apache.logging.log4j:log4j-core:test-jar:tests");
+    }
+
+    @Test
+    void colliding_handles_across_groups_are_uniquified(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>app</artifactId>
+                  <version>1.0.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.a</groupId>
+                      <artifactId>util</artifactId>
+                      <version>1.0.0</version>
+                    </dependency>
+                    <dependency>
+                      <groupId>com.b</groupId>
+                      <artifactId>util</artifactId>
+                      <version>2.0.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+
+        PomImporter.Result result = PomImporter.importFrom(root.resolve("pom.xml"));
+        List<Dependency> main = result.jkBuild().dependencies().of(Scope.MAIN);
+        assertThat(main).extracting(Dependency::library).containsExactly("util", "util-2");
+        assertThat(main).extracting(Dependency::module).containsExactly("com.a:util", "com.b:util");
+        assertThat(result.report().issues()).anyMatch(i -> i.message().contains("`util` collides"));
+    }
+
+    @Test
     void external_test_jar_keeps_kind_tests(@TempDir Path root) throws Exception {
         Files.writeString(root.resolve("pom.xml"), """
                 <project>

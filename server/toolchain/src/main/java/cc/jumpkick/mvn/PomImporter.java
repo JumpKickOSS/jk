@@ -458,7 +458,39 @@ public final class PomImporter {
                         + " Inline the version on the matching `<dependency>` instead.");
             }
         }
+        uniquifyHandles(byScope, report);
         return byScope;
+    }
+
+    /**
+     * The manifest key (dep {@code library} handle) must be unique per scope section — the renderer
+     * keys each section on it, so a collision silently drops an edge. Maven allows same-artifactId
+     * deps in one scope (different groups); disambiguate deterministically in declaration order.
+     */
+    private static void uniquifyHandles(Map<Scope, List<Dependency>> byScope, ImportReport.Builder report) {
+        for (Map.Entry<Scope, List<Dependency>> e : byScope.entrySet()) {
+            List<Dependency> deps = e.getValue();
+            java.util.Set<String> seen = new java.util.HashSet<>();
+            for (int i = 0; i < deps.size(); i++) {
+                Dependency d = deps.get(i);
+                if (seen.add(d.library())) continue;
+                int n = 2;
+                String candidate;
+                do {
+                    candidate = d.library() + "-" + n++;
+                } while (!seen.add(candidate));
+                report.warning("dependency handle `"
+                        + d.library()
+                        + "` collides in ["
+                        + e.getKey().tomlSection()
+                        + "]; "
+                        + d.module()
+                        + " was written as `"
+                        + candidate
+                        + "`.");
+                deps.set(i, Dependency.of(candidate, d.module(), d.version()).withKind(d.kind()));
+            }
+        }
     }
 
     private static Scope mapScope(String mavenScope) {
@@ -485,10 +517,14 @@ public final class PomImporter {
         VersionSelector selector = VersionSelector.parse(version);
         // Maven coordinates have no notion of a manifest "short name"; default
         // the v0.7 `name` field to the artifactId, matching the manifest's
-        // own `artifact`-defaults-to-key rule.
-        Dependency d = Dependency.of(dep.artifactId(), dep.module(), selector);
+        // own `artifact`-defaults-to-key rule. The test-jar package gets a
+        // distinct `-tests` handle so a POM depending on both the jar and the
+        // test-jar of one GA keeps both entries (sections key on the handle).
+        boolean testJar = isTestJar(dep);
+        String library = testJar ? dep.artifactId() + "-tests" : dep.artifactId();
+        Dependency d = Dependency.of(library, dep.module(), selector);
         // Stash test-jar as kind=tests so workspace rewrite can emit kind = "tests".
-        if (isTestJar(dep)) {
+        if (testJar) {
             d = d.withKind(DependencyKind.TESTS);
         }
         return d;
