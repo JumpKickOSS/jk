@@ -367,6 +367,12 @@ public final class EngineProtocol {
     /** Client → server: native-image ({@code jk native}); Graal homes resolved client-side. */
     public static final String NATIVE_REQUEST = "native-request";
 
+    /**
+     * Client → server: observe a full-app run under the tracing agent ({@code jk train}); Graal home
+     * resolved client-side when available.
+     */
+    public static final String TRAIN_REQUEST = "train-request";
+
     /** Client → server: build + cache install ({@code jk install}); launcher write is client-side. */
     public static final String INSTALL_REQUEST = "install-request";
 
@@ -1465,6 +1471,44 @@ public final class EngineProtocol {
                 + offline
                 + ",\"force\":"
                 + force
+                + ",\"verbose\":"
+                + verbose
+                + "}";
+    }
+
+    /**
+     * Observe dynamic surface / optional AOT cache (see {@link #TRAIN_REQUEST}). {@code profile}
+     * selects one {@code [[train.profile]]} or null for all; {@code graalHome} is the client-resolved
+     * GraalVM home that provides the tracing agent (may be null — engine tries JAVA_HOME).
+     */
+    public static String trainRequest(
+            String dir,
+            String cache,
+            String jdksDir,
+            String graalHome,
+            String profile,
+            boolean force,
+            boolean skipTests,
+            boolean offline,
+            boolean verbose) {
+        return "{\"type\":\""
+                + TRAIN_REQUEST
+                + "\",\"dir\":"
+                + Jsonl.quote(dir)
+                + ",\"cache\":"
+                + Jsonl.quote(cache)
+                + ",\"jdksDir\":"
+                + Jsonl.quote(jdksDir)
+                + ",\"graalHome\":"
+                + Jsonl.quote(graalHome)
+                + ",\"profile\":"
+                + Jsonl.quote(profile)
+                + ",\"force\":"
+                + force
+                + ",\"skipTests\":"
+                + skipTests
+                + ",\"offline\":"
+                + offline
                 + ",\"verbose\":"
                 + verbose
                 + "}";
@@ -2805,12 +2849,24 @@ public final class EngineProtocol {
 
     /**
      * Run a cache maintenance operation (see {@link #CACHE_PRUNE_REQUEST}). {@code op} is {@code
-     * prune}/{@code purge}/{@code gc}; {@code olderThanDays}/{@code sweep} apply to {@code prune}
-     * only; {@code includeJkTmp} asks the prune to also sweep {@code state/tmp} (only when the
-     * default cache dir is in use, mirroring the in-process command's behavior).
+     * prune}/{@code purge}/{@code gc}/{@code sweep}; {@code olderThanDays}/{@code sweep}/
+     * {@code dropAllClassC} apply to {@code prune} only; {@code includeJkTmp} asks the prune to also
+     * sweep {@code state/tmp} (only when the default cache dir is in use).
      */
     public static String cachePruneRequest(
             String op, String cache, int olderThanDays, boolean dryRun, boolean sweep, boolean includeJkTmp) {
+        return cachePruneRequest(op, cache, olderThanDays, dryRun, sweep, includeJkTmp, false);
+    }
+
+    /** @param dropAllClassC when true with {@code op=prune}, delete every Class-C action key */
+    public static String cachePruneRequest(
+            String op,
+            String cache,
+            int olderThanDays,
+            boolean dryRun,
+            boolean sweep,
+            boolean includeJkTmp,
+            boolean dropAllClassC) {
         return "{\"type\":\""
                 + CACHE_PRUNE_REQUEST
                 + "\",\"op\":"
@@ -2825,6 +2881,8 @@ public final class EngineProtocol {
                 + sweep
                 + ",\"includeJkTmp\":"
                 + includeJkTmp
+                + ",\"dropAllClassC\":"
+                + dropAllClassC
                 + "}";
     }
 

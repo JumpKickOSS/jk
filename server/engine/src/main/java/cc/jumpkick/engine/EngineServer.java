@@ -89,6 +89,8 @@ public final class EngineServer implements AutoCloseable {
     private final LongSupplier clockMillis;
     private final long pid;
     private final long startedAtMillis;
+    /** Process generation id ({@code version[+buildId]@startedAt}) for web UI hard-refresh. */
+    private final String engineEpoch;
 
     private final Object lifecycleLock = new Object();
     private final AtomicInteger activeConnections = new AtomicInteger();
@@ -137,10 +139,15 @@ public final class EngineServer implements AutoCloseable {
 
     /**
      * Return a slot claimed by {@link #tryStartBuildPlan} when the job never actually ran (admission
-     * rejected). Deliberately not {@code noteBuildPlanFinished}: no work happened, so this must not
+     * rejected). Deliberately not {@link #noteBuildPlanFinished}: no work happened, so this must not
      * trigger the idle-housekeeping that a real plan completion does.
      */
     private void abandonBuildPlanSlot() {
+        activeBuildPlans.decrementAndGet();
+    }
+
+    /** Release a plan slot after work finished — call <em>before</em> publishing {@code request-finish}. */
+    private void noteBuildPlanFinished() {
         activeBuildPlans.decrementAndGet();
     }
 
@@ -316,6 +323,9 @@ public final class EngineServer implements AutoCloseable {
         this.clockMillis = System::currentTimeMillis;
         this.pid = ProcessHandle.current().pid();
         this.startedAtMillis = clockMillis.getAsLong();
+        // Process-scoped generation id for the dashboard hard-refresh contract (JK-1724).
+        String bid = this.buildId.isEmpty() ? "" : "+" + this.buildId;
+        this.engineEpoch = version + bid + "@" + this.startedAtMillis;
     }
 
     /**
@@ -454,6 +464,8 @@ public final class EngineServer implements AutoCloseable {
         engineMaintenance.start();
         // First-start self-heal: feeds → templates → AOT/cal on the idle worker (does not block accept).
         scheduleHostWarmupIfNeeded(false);
+        // Touch resolve/PubGrub classes so the first real lock does not pay classload on the critical path.
+        scheduleResolveClassWarmup();
         startDisplacementWatchdog();
         acceptLoop();
         cleanup();
@@ -858,6 +870,10 @@ public final class EngineServer implements AutoCloseable {
                                 line, reader, writer, "jk-engine-native-", "native", this::runNative);
                         return;
                     }
+                    case EngineProtocol.TRAIN_REQUEST -> {
+                        handleAsyncBuildPlanRequest(line, reader, writer, "jk-engine-train-", "train", this::runTrain);
+                        return;
+                    }
                     case EngineProtocol.INSTALL_REQUEST -> {
                         // jk install's build + cache-install halves; make-install stays client-side.
                         handleAsyncBuildPlanRequest(
@@ -1234,6 +1250,9 @@ public final class EngineServer implements AutoCloseable {
                 // their client loop only ends on plan-finish.
                 sendQuiet(writer, cancelledTerminalLine(workspaceStream, eventDir));
             }
+            // Release the plan slot before request-finish so status SSE carries the post-finish
+            // activeBuildPlans count (JK-1725) — Live activity finishes in the same frame.
+            if (plan) noteBuildPlanFinished();
             publishEvent(
                     "request-finish",
                     withProgress(
@@ -1247,7 +1266,8 @@ public final class EngineServer implements AutoCloseable {
                                             .put("dir", eventDir)
                                             .put("success", success)
                                             .put("cancelled", cancelled)
-                                            .put("millis", elapsedMillis),
+                                            .put("millis", elapsedMillis)
+                                            .put("activeBuildPlans", activeBuildPlans.get()),
                                     eventRequestId),
                             eventRequestId));
             clearProgress(eventRequestId);
@@ -1301,12 +1321,12 @@ public final class EngineServer implements AutoCloseable {
         String canonDir = BuildJobFingerprint.canonicalDir(dir);
         String coord = coordOf(dir);
         long buildNumber = 0L;
-        if (JOURNALED_KINDS.contains(kind) && canonDir != null && !canonDir.isBlank()) {
+        if (BuildHistoryKinds.isBuildLike(kind) && canonDir != null && !canonDir.isBlank()) {
             buildNumber = cc.jumpkick.runtime.BuildNumberAllocator.allocate(canonDir, coord);
         }
         long startedAt = clockMillis.getAsLong();
         String journalId = null;
-        if (JOURNALED_KINDS.contains(kind) && historyConfig.enabled() && buildNumber > 0) {
+        if (BuildHistoryKinds.isBuildLike(kind) && historyConfig.enabled() && buildNumber > 0) {
             journalId = journal.begin(BuildRecord.running(buildNumber, kind, dir, coord, startedAt, version, trigger));
         }
         InFlightBuilds.Hold candidate =
@@ -1816,6 +1836,7 @@ public final class EngineServer implements AutoCloseable {
                 .put("dir", dir)
                 .put("coord", coord);
         if (buildNumber > 0) payload = payload.put("buildNumber", buildNumber);
+        payload = payload.put("activeBuildPlans", activeBuildPlans.get());
         publishEvent("request-start", withProgress(payload, requestId), dashboardOnly);
     }
 
@@ -2016,11 +2037,13 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
-     * After the last in-flight plan finishes: all idle housekeeping, with {@link System#gc()}
-     * strictly last (after prune, journal/metrics retention, metrics harvest, and any host warmup).
+     * After a plan slot was released via {@link #noteBuildPlanFinished}: all idle housekeeping when
+     * nothing remains in flight, with {@link System#gc()} strictly last (after prune, journal/metrics
+     * retention, metrics harvest, and any host warmup). Does <em>not</em> decrement the counter —
+     * the finish path decrements first so status SSE sees the post-finish plan count (JK-1725).
      */
     private void maybeIdleBoundary() {
-        if (activeBuildPlans.decrementAndGet() != 0) return;
+        if (activeBuildPlans.get() != 0) return;
         runIdleHousekeeping();
         // The last in-flight job of a graceful drain just finished — close the listener so run
         // returns and the JVM exits cleanly (assembling the AOT cache), same as a normal stop.
@@ -2120,7 +2143,7 @@ public final class EngineServer implements AutoCloseable {
 
     /**
      * Queue an opportunistic prune of {@code cache} for the next idle boundary if the auto-prune
-     * cadence is due — the engine-internal replacement for the detached {@code jk cache prune
+     * cadence is due — the engine-internal replacement for the detached {@code jk cache clean
      * --background} self-spawn (the engine is the process that did the work, and the idle boundary
      * is the only safe time to mutate the caches it serves).
      */
@@ -2431,6 +2454,7 @@ public final class EngineServer implements AutoCloseable {
             EngineProtocol.SINGLE_BUILD_REQUEST,
             EngineProtocol.COMPILE_REQUEST,
             EngineProtocol.NATIVE_REQUEST,
+            EngineProtocol.TRAIN_REQUEST,
             EngineProtocol.IMAGE_REQUEST,
             EngineProtocol.INSTALL_REQUEST,
             EngineProtocol.PUBLISH_REQUEST);
@@ -3434,6 +3458,44 @@ public final class EngineServer implements AutoCloseable {
     // ---- hosted plan commands -------------------------------------------------------------------
 
     /**
+     * Decode a {@link EngineProtocol#TRAIN_REQUEST} and run {@code jk train}: package then observe
+     * under the tracing agent. Single-module plan (like {@code jk compile}).
+     */
+    private void runTrain(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+        try {
+            boolean verbose = Jsonl.bool(requestLine, "verbose", false);
+            boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
+            boolean force = Jsonl.bool(requestLine, "force", false);
+            String profile = Jsonl.str(requestLine, "profile");
+            String graalHomeStr = Jsonl.str(requestLine, "graalHome");
+            String jdksDirStr = Jsonl.str(requestLine, "jdksDir");
+            Session session = resolveSession(requestLine, cancelToken, false);
+            String dir = EngineProtocol.SINGLE_PLAN_DIR;
+            Path graalHome = graalHomeStr != null && !graalHomeStr.isBlank() ? Path.of(graalHomeStr) : null;
+            Path jdksDir = jdksDirStr != null && !jdksDirStr.isBlank() ? Path.of(jdksDirStr) : null;
+            Path javaHome = Path.of(System.getProperty("java.home"));
+            cc.jumpkick.run.BuildPlan plan = SessionContext.where(session, () -> {
+                JkBuild module = cc.jumpkick.config.JkBuildParser.parse(
+                        session.workingDir().resolve("jk.toml"));
+                return cc.jumpkick.runtime.TrainPlans.moduleBuildPlan(
+                        session.workingDir(),
+                        module,
+                        session.cacheDir(),
+                        jdksDir,
+                        graalHome,
+                        javaHome,
+                        profile,
+                        force,
+                        skipTests,
+                        verbose);
+            });
+            streamSingleBuildPlan(plan, session, writer, result -> EngineProtocol.planFinish(dir, result.success()));
+        } catch (Exception e) {
+            sendQuiet(writer, requestFailedLine(null, e));
+        }
+    }
+
+    /**
      * Decode a {@link EngineProtocol#COMPILE_REQUEST} and run {@code jk compile}'s single
      * compile-only plan in-session — {@link EngineProtocol#TEST_REQUEST}'s exact wire shape with a
      * plain terminal plan-finish (the command has no structured summary beyond success).
@@ -3687,7 +3749,8 @@ public final class EngineServer implements AutoCloseable {
                                                 Jsonl.intValue(requestLine, "olderThanDays", 30),
                                                 dryRun,
                                                 Jsonl.bool(requestLine, "sweep", false),
-                                                Jsonl.bool(requestLine, "includeJkTmp", false));
+                                                Jsonl.bool(requestLine, "includeJkTmp", false),
+                                                Jsonl.bool(requestLine, "dropAllClassC", false));
                                 };
                         Session session = Session.defaults().withCacheDir(cache).withCancel(cancelToken);
                         String dir = EngineProtocol.SINGLE_PLAN_DIR;
@@ -4344,13 +4407,11 @@ public final class EngineServer implements AutoCloseable {
 
     // ---- build-history journal capture (docs: state/builds) ---------------------
 
-    /** Request kinds we journal — the actual "build" commands; lock/sync/tool/etc. are not history. */
-    private static final java.util.Set<String> JOURNALED_KINDS = java.util.Set.of("build", "test");
-
     /**
-     * Open an accumulator for a journaled build kind (no-op for other kinds). Always on — even with
-     * history disabled the accumulator feeds the running {@link BuildMetrics}; only the journal
-     * append itself is gated on {@code historyConfig.enabled}.
+     * Open an accumulator for a journaled build-like kind (no-op for lock/format/tool/etc.). Always
+     * on — even with history disabled the accumulator feeds the running {@link BuildMetrics}; only
+     * the journal append itself is gated on {@code historyConfig.enabled}. See {@link
+     * BuildHistoryKinds}.
      */
     private void registerAccumulator(long requestId, String kind, String dir, String trigger) {
         registerAccumulator(requestId, kind, dir, trigger, false, false, 0L, null);
@@ -4369,7 +4430,7 @@ public final class EngineServer implements AutoCloseable {
             boolean rebuild,
             long buildNumber,
             String journalId) {
-        if (!JOURNALED_KINDS.contains(kind)) return;
+        if (!BuildHistoryKinds.isBuildLike(kind)) return;
         Path projectDir = null;
         try {
             if (dir != null && !dir.isBlank()) projectDir = Path.of(dir);
@@ -4626,6 +4687,26 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
+     * Background classload of resolve/PubGrub hot types after the endpoint is live. Does not run a
+     * real lock (would need a store/project); only reduces first-lock classload latency.
+     */
+    private void scheduleResolveClassWarmup() {
+        if (shuttingDown || draining) return;
+        Thread.ofVirtual().name("jk-resolve-warmup").start(() -> {
+            try {
+                Class.forName("cc.jumpkick.resolver.pubgrub.PubGrubSolver");
+                Class.forName("cc.jumpkick.resolver.pubgrub.PartialSolution");
+                Class.forName("cc.jumpkick.resolver.MavenPackageSource");
+                Class.forName("cc.jumpkick.resolver.LockOrchestrator");
+                Class.forName("cc.jumpkick.repo.EffectivePomBuilder");
+                Class.forName("cc.jumpkick.resolve.ResolveProcessCacheControl");
+            } catch (ClassNotFoundException | LinkageError ignored) {
+                // best-effort
+            }
+        });
+    }
+
+    /**
      * Drain queued host warmup on a daemon thread when no plan is in flight. When {@code
      * trailGc} is true, {@link System#gc()} runs only after warmup (and any nested chores) finish —
      * never mid-workset.
@@ -4784,10 +4865,13 @@ public final class EngineServer implements AutoCloseable {
         int limit = Math.max(1, Jsonl.intValue(requestLine, "limit", 200));
         // Truncate in the journal (synthetic fixtures are already filtered there, JK-1390) rather
         // than materialising every record on disk and then dropping most of them (JK-1481).
-        java.util.List<BuildRecord> records = journal.list(limit);
-        int n = Math.min(records.size(), limit);
-        for (int i = 0; i < n; i++) {
-            BuildRecord r = records.get(i);
+        // Oversample then keep only build-like kinds so lock/format/etc. never dilute history.
+        java.util.List<BuildRecord> records = journal.list(Math.max(limit * 4, limit));
+        int emitted = 0;
+        for (BuildRecord r : records) {
+            if (!BuildHistoryKinds.isBuildLike(r.kind())) continue;
+            if (emitted >= limit) break;
+            emitted++;
             BuildRecord.Tests t = r.tests();
             BuildRecord.CacheBenefit b = r.benefit();
             int failedModules =
@@ -4845,7 +4929,7 @@ public final class EngineServer implements AutoCloseable {
                 writer,
                 JsonOut.object()
                         .put("type", EngineProtocol.HISTORY_DONE)
-                        .put("count", n)
+                        .put("count", emitted)
                         .toString());
     }
 
@@ -5404,6 +5488,8 @@ public final class EngineServer implements AutoCloseable {
                 inFlightBuilds.release(eventRequestId);
                 long elapsedMillis = clockMillis.getAsLong() - startMillis;
                 if (success) lastProgressByRequest.put(eventRequestId, 100.0);
+                // Slot first so request-finish status nudge sees post-finish plan count (JK-1725).
+                noteBuildPlanFinished();
                 publishEvent(
                         "request-finish",
                         withProgress(
@@ -5417,7 +5503,8 @@ public final class EngineServer implements AutoCloseable {
                                                 .put("dir", entryDir.toString())
                                                 .put("success", success)
                                                 .put("cancelled", cancelled)
-                                                .put("millis", elapsedMillis),
+                                                .put("millis", elapsedMillis)
+                                                .put("activeBuildPlans", activeBuildPlans.get()),
                                         eventRequestId),
                                 eventRequestId));
                 clearProgress(eventRequestId);
@@ -5487,6 +5574,7 @@ public final class EngineServer implements AutoCloseable {
                 cacheGate.readLock().unlock();
                 long elapsedMillis = clockMillis.getAsLong() - startMillis;
                 if (success) lastProgressByRequest.put(eventRequestId, 100.0);
+                noteBuildPlanFinished();
                 publishEvent(
                         "request-finish",
                         withProgress(
@@ -5500,7 +5588,8 @@ public final class EngineServer implements AutoCloseable {
                                                 .put("dir", entryDir.toString())
                                                 .put("success", success)
                                                 .put("cancelled", cancelled)
-                                                .put("millis", elapsedMillis),
+                                                .put("millis", elapsedMillis)
+                                                .put("activeBuildPlans", activeBuildPlans.get()),
                                         eventRequestId),
                                 eventRequestId));
                 clearProgress(eventRequestId);
@@ -5806,6 +5895,8 @@ public final class EngineServer implements AutoCloseable {
                 host.totalBytes(),
                 host.availableBytes(),
                 systemCpuLoad(),
+                systemLoadAverage(),
+                engineEpoch,
                 peakActiveConnections.get(),
                 peakActiveBuildPlans.get());
     }
@@ -5820,6 +5911,17 @@ public final class EngineServer implements AutoCloseable {
                     java.lang.management.ManagementFactory.getOperatingSystemMXBean();
             double load = os.getCpuLoad();
             return load >= 0 && load <= 1 ? load : -1;
+        } catch (RuntimeException e) {
+            return -1;
+        }
+    }
+
+    /** OS 1-minute load average, or {@code -1} when the platform bean cannot answer. */
+    private static double systemLoadAverage() {
+        try {
+            double avg = java.lang.management.ManagementFactory.getOperatingSystemMXBean()
+                    .getSystemLoadAverage();
+            return avg >= 0 ? avg : -1;
         } catch (RuntimeException e) {
             return -1;
         }

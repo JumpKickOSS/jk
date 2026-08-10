@@ -31,6 +31,11 @@ public enum BuildStage {
     TEST("test"),
     /** Jar / assembly packaging. */
     PACKAGE("package"),
+    /**
+     * Opt-in {@code jk train}: observe a full-app run under a recorder. Not part of default
+     * {@code jk build}.
+     */
+    TRAIN("train"),
     /** Graal native-image and related. */
     NATIVE("native"),
     /** OCI / image packaging. */
@@ -56,8 +61,15 @@ public enum BuildStage {
     }
 
     /**
-     * Pipeline order for inter-stage {@code requires} checks. Lower runs earlier. {@link #OTHER}
-     * returns {@code -1} (skip cross-stage checks involving OTHER).
+     * Pipeline order for inter-stage {@code requires} checks. Lower runs earlier.
+     *
+     * <p>A total order, and it is meant literally: {@code native-image} consumes what packaging
+     * produced, and an OCI image consumes either the jar or the binary. {@link #NATIVE} and
+     * {@link #IMAGE} are later stages, not siblings of {@link #PACKAGE} — a join over them belongs
+     * at the latest stage it joins.
+     *
+     * <p>{@link #OTHER} returns {@code -1}: it has no position. {@code BuildPlan} derives one for
+     * it from the tasks it waits on rather than exempting it.
      */
     public int pipelineOrder() {
         return switch (this) {
@@ -66,8 +78,9 @@ public enum BuildStage {
             case COMPILE -> 2;
             case TEST -> 3;
             case PACKAGE -> 4;
-            case NATIVE -> 5;
-            case IMAGE -> 6;
+            case TRAIN -> 5;
+            case NATIVE -> 6;
+            case IMAGE -> 7;
             case OTHER -> -1;
         };
     }
@@ -75,6 +88,11 @@ public enum BuildStage {
     /**
      * True when a task in {@code this} stage may {@code require} a task in {@code upstream}.
      * Same stage or earlier is allowed; later stages are not (no backward edges).
+     *
+     * <p>Pairwise only, and {@link #OTHER} is a wildcard on both sides because a single pair
+     * carries no information about where an unpositioned task sits. The graph-wide invariant is
+     * enforced by {@code BuildPlan}, which derives OTHER's position from its upstreams; do not
+     * read a {@code true} here as "this edge is legal in context".
      */
     public boolean mayRequire(BuildStage upstream) {
         if (this == OTHER || upstream == OTHER) return true;
@@ -151,12 +169,14 @@ public enum BuildStage {
             // GENERATE reserved for explicit stage / future before-compile codegen tasks
             case "compile-test", "run-tests" -> TEST;
             case "package-jar", "package-assembly", "embed-sha", "build-logic-before-package" -> PACKAGE;
+            case "train", "train-reachability" -> TRAIN;
             case "native-image", "native-shared" -> NATIVE;
             case "write-image", "image-plan" -> IMAGE;
             default -> {
                 if (t.startsWith("compile")) yield COMPILE;
                 if (t.startsWith("write-stamp")) yield COMPILE;
                 if (t.startsWith("package")) yield PACKAGE;
+                if (t.startsWith("train")) yield TRAIN;
                 if (t.startsWith("native")) yield NATIVE;
                 if (t.startsWith("image") || t.startsWith("write-image")) yield IMAGE;
                 if (t.contains("generat") || t.contains("codegen")) yield GENERATE;

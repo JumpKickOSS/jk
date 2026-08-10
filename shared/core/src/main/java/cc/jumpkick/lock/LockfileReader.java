@@ -156,6 +156,8 @@ public final class LockfileReader {
         }
         String manifestsSha = result.getString("manifests-sha256"); // optional, additive v1
         if (manifestsSha != null && manifestsSha.isBlank()) manifestsSha = null;
+        String projectId = result.getString("project-id"); // optional durable identity (JK-1728)
+        if (projectId != null && projectId.isBlank()) projectId = null;
         return new Lockfile(
                 lockVersion,
                 generatedBy,
@@ -167,7 +169,8 @@ public final class LockfileReader {
                 sdk,
                 modules,
                 jkPin,
-                manifestsSha);
+                manifestsSha,
+                projectId);
     }
 
     private static Lockfile.Artifact toArtifact(TomlTable table) {

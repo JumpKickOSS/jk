@@ -68,10 +68,11 @@ public final class AllowedSet {
     /** True iff every version allowed here is also allowed in {@code other}. */
     public boolean subsetOf(AllowedSet other) {
         requireSameUniverse(other);
-        // bits ⊆ other.bits ⇔ bits & ~other.bits = ∅
-        BitSet leftover = (BitSet) bits.clone();
-        leftover.andNot(other.bits);
-        return leftover.isEmpty();
+        // bits ⊆ other.bits — walk set bits only (no BitSet clone on the hot PubGrub path).
+        for (int i = bits.nextSetBit(0); i >= 0; i = bits.nextSetBit(i + 1)) {
+            if (!other.bits.get(i)) return false;
+        }
+        return true;
     }
 
     /**

@@ -32,6 +32,31 @@ public final class EffectivePomBuilder {
     private final RepoGroup repos;
     private final Map<String, EffectivePom> cache = new ConcurrentHashMap<>();
 
+    /**
+     * Process-wide effective-POM memo. Keyed by the repositories asked <em>and</em> GAV — parent
+     * and BOM walks use this group's repo set, so one group's answer cannot stand in for another's.
+     * No TTL: published release GAVs are immutable; force / {@link #clearProcessCache} drop the
+     * memo. Capped so a long-lived engine cannot retain unbounded POM graphs.
+     */
+    private static final ConcurrentHashMap<String, EffectivePom> PROCESS_CACHE = new ConcurrentHashMap<>();
+
+    /**
+     * In-flight builds keyed by GAV so parallel warm/prefetch workers share one parent/BOM walk
+     * instead of stampeding the same chain.
+     */
+    private static final ConcurrentHashMap<String, CompletableFuture<EffectivePom>> IN_FLIGHT =
+            new ConcurrentHashMap<>();
+
+    private static final int PROCESS_CACHE_MAX = 8_192;
+
+    /** Drop process-wide memo (tests; never required in production). */
+    public static void clearProcessCache() {
+        PROCESS_CACHE.clear();
+        IN_FLIGHT.clear();
+        RepoGroup.clearProcessFetchCache();
+        RepoGroup.clearProcessVersionsCache();
+    }
+
     public EffectivePomBuilder(MavenRepo repo) {
         this(RepoGroup.of(repo));
     }
@@ -45,10 +70,20 @@ public final class EffectivePomBuilder {
      * each call uses its own cycle-detection set so sibling BOM imports can expand in parallel.
      */
     public EffectivePom build(Coordinate coord) throws IOException, InterruptedException {
-        String key = coord.toGav();
-        EffectivePom hit = cache.get(key);
-        if (hit != null) return hit;
-        return buildInternal(coord, new HashSet<>(), 0);
+        boolean profile = cc.jumpkick.resolve.ResolveProfile.on();
+        long t0 = profile ? System.nanoTime() : 0L;
+        String localKey = coord.toGav();
+        String processKey = processKey(coord);
+        boolean known = cache.containsKey(localKey) || PROCESS_CACHE.containsKey(processKey);
+        EffectivePom built = buildInternal(coord, new HashSet<>(), 0);
+        if (profile) {
+            cc.jumpkick.resolve.ResolveProfile.pomBuild(known ? 0L : System.nanoTime() - t0, known);
+        }
+        return built;
+    }
+
+    private String processKey(Coordinate coord) {
+        return repos.processIdentity() + "|" + coord.toGav();
     }
 
     private EffectivePom buildInternal(Coordinate coord, Set<String> visiting, int depth)
@@ -56,22 +91,56 @@ public final class EffectivePomBuilder {
         if (depth > MAX_DEPTH) {
             throw new PomParseException("POM parent / BOM chain deeper than " + MAX_DEPTH + " at " + coord);
         }
-        String key = coord.toGav();
-        EffectivePom cached = cache.get(key);
+        String localKey = coord.toGav();
+        String processKey = processKey(coord);
+        EffectivePom cached = cache.get(localKey);
         if (cached != null) return cached;
-        if (!visiting.add(key)) {
-            throw new PomParseException("cycle in POM chain at " + key + " (already visiting: " + visiting + ")");
+        EffectivePom processHit = PROCESS_CACHE.get(processKey);
+        if (processHit != null) {
+            cache.put(localKey, processHit);
+            return processHit;
         }
+        if (!visiting.add(localKey)) {
+            throw new PomParseException("cycle in POM chain at " + localKey + " (already visiting: " + visiting + ")");
+        }
+
+        // Single-flight: parallel warm workers share one walk of each GAV (parents + BOM imports).
+        // In-flight keys include the repo identity so two groups never share a partial walk.
+        CompletableFuture<EffectivePom> created = new CompletableFuture<>();
+        CompletableFuture<EffectivePom> existing = IN_FLIGHT.putIfAbsent(processKey, created);
+        if (existing != null) {
+            visiting.remove(localKey);
+            try {
+                EffectivePom shared = existing.join();
+                cache.put(localKey, shared);
+                return shared;
+            } catch (CompletionException e) {
+                Throwable c = e.getCause() == null ? e : e.getCause();
+                if (c instanceof IOException io) throw io;
+                if (c instanceof InterruptedException ie) throw ie;
+                if (c instanceof RuntimeException re) throw re;
+                throw new IOException("effective POM build failed for " + localKey, c);
+            }
+        }
+
         try {
             RepoGroup.RepoFetched hit = repos.tryFetchPom(coord)
                     .orElseThrow(() ->
                             new MavenRepo.ArtifactNotFoundException("POM not found in any declared repo: " + coord));
             Pom raw = PomParser.parse(Files.readAllBytes(hit.fetched().cachePath()));
             EffectivePom effective = merge(raw, visiting, depth);
-            cache.put(key, effective);
+            cache.put(localKey, effective);
+            if (PROCESS_CACHE.size() < PROCESS_CACHE_MAX) {
+                PROCESS_CACHE.putIfAbsent(processKey, effective);
+            }
+            created.complete(effective);
             return effective;
+        } catch (IOException | InterruptedException | RuntimeException e) {
+            created.completeExceptionally(e);
+            throw e;
         } finally {
-            visiting.remove(key);
+            visiting.remove(localKey);
+            IN_FLIGHT.remove(processKey, created);
         }
     }
 

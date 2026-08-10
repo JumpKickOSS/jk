@@ -189,8 +189,13 @@ public final class Task {
         }
 
         /**
-         * Wire group label (e.g. {@code compile}). Maps to {@link BuildStage#fromWire}; unknown
-         * non-blank names become {@link BuildStage#OTHER}. Prefer {@link #stage(BuildStage)}.
+         * Wire group label (e.g. {@code compile}). Prefer {@link #stage(BuildStage)}.
+         *
+         * <p>An unknown name is rejected rather than folded into {@link BuildStage#OTHER}: this
+         * value is what the plan's stage-ordering check reads, so a typo would quietly move a task
+         * to the one position that has no ordering of its own. A task that genuinely has no stage
+         * says so with {@code stage(BuildStage.OTHER)}. The lenient parse stays on
+         * {@link BuildStage#fromWire} for UI fold keys.
          */
         public Builder group(String group) {
             if (group == null || group.isBlank()) {
@@ -198,7 +203,10 @@ public final class Task {
                 this.stageExplicit = false;
                 return this;
             }
-            this.stage = BuildStage.fromWire(group);
+            this.stage = BuildStage.fromWireExact(group)
+                    .orElseThrow(() -> new IllegalArgumentException("unknown build stage `" + group
+                            + "` — expected one of " + BuildStage.wireNames()
+                            + ", or stage(BuildStage.OTHER) for a task with no stage"));
             this.stageExplicit = true;
             return this;
         }

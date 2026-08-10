@@ -22,9 +22,8 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * {@code jk repo} — artifact store (store CAS + Maven-layout {@code repos/} mirrors), offline
- * coordinate search, and repository credentials. Distinct from {@code jk cache} (cache tier:
- * rebuildable action outputs under {@code JK_CACHE_DIR}).
+ * {@code jk repo} — offline coordinate search, mirror refresh, and repository credentials. Store
+ * size / clean / nuke live under {@code jk storage} (peer of {@code jk cache}).
  */
 public final class RepoCommand extends GroupCommand {
 
@@ -35,18 +34,13 @@ public final class RepoCommand extends GroupCommand {
 
     @Override
     public String description() {
-        return "Manage the artifact store (deps CAS, repos, credentials)";
+        return "Search mirrors and manage repository credentials";
     }
 
     @Override
     public List<CliCommand> subcommands() {
         return List.of(
-                new RepoStorageCommand(),
-                new RepoSearchCommand(),
-                new RepoRefreshCommand(),
-                new RepoPruneCommand(),
-                new RepoLoginCommand(),
-                new RepoLogoutCommand());
+                new RepoSearchCommand(), new RepoRefreshCommand(), new RepoLoginCommand(), new RepoLogoutCommand());
     }
 
     /**
@@ -129,131 +123,6 @@ public final class RepoCommand extends GroupCommand {
             } catch (IOException e) {
                 return List.of("central", "local");
             }
-        }
-    }
-
-    /**
-     * {@code jk repo prune} — store-side reclamation: sweep unreferenced CAS blobs, drop leftover
-     * CAS temp files, and expire old run logs. Garbage-only — reachable blobs are never evicted,
-     * even over the display budget. Engine-hosted at an idle boundary, like {@code jk cache prune}.
-     */
-    public static final class RepoPruneCommand implements CliCommand {
-        @Override
-        public String name() {
-            return "prune";
-        }
-
-        @Override
-        public String description() {
-            return "Sweep unreferenced CAS blobs and expired run logs";
-        }
-
-        @Override
-        public List<Opt> options() {
-            return List.of(
-                    cc.jumpkick.cli.CommonOpts.cacheDir(),
-                    Opt.flag("Print what would be removed; touch nothing.", "--dry-run"));
-        }
-
-        @Override
-        public int run(Invocation in) {
-            Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
-            boolean dryRun = in.isSet("dry-run");
-            cc.jumpkick.cli.GlobalOptions global = cc.jumpkick.cli.GlobalOptions.from(in);
-            Path root = CacheCommand.resolveCacheRoot(cacheDir);
-
-            // Counts settle from the terminal plan-finish before the console listener renders.
-            var summary = new cc.jumpkick.cli.engine.EngineClient.CacheMaintSummary[1];
-            cc.jumpkick.cli.run.ConsoleSpec spec = sweepSpec(
-                    dryRun,
-                    () -> summary[0] != null ? summary[0].files() : 0L,
-                    () -> summary[0] != null ? summary[0].bytes() : 0L);
-            cc.jumpkick.cli.run.BuildPlanConsole.Mode mode = cc.jumpkick.cli.run.BuildPlanConsole.modeFor(global);
-            cc.jumpkick.run.BuildPlanResult result;
-            try {
-                // olderThanDays = MAX_VALUE: a pre-"sweep" engine falls back to its prune plan;
-                // the huge cutoff keeps action entries untouched while sweep=true still runs the GC.
-                result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
-                        cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest(
-                                "sweep", root, Integer.MAX_VALUE, dryRun, true, false),
-                        steps -> cc.jumpkick.cli.run.BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Repo"),
-                        CacheCommand::printWait,
-                        summary);
-            } catch (IOException e) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Repo", e.getMessage()));
-                return cc.jumpkick.model.command.Exit.SOFTWARE;
-            }
-            if (summary[0] != null) {
-                CacheCommand.CachePruneCommand.warnReachableEvicted(summary[0].reachableEvicted());
-            }
-            return result.success() ? 0 : 1;
-        }
-
-        /** The Repo chip spec; counts are read lazily, at result-line render time. */
-        static cc.jumpkick.cli.run.ConsoleSpec sweepSpec(
-                boolean dryRun, java.util.function.LongSupplier files, java.util.function.LongSupplier bytes) {
-            return new cc.jumpkick.cli.run.ConsoleSpec(
-                    "Repo",
-                    r -> {
-                        long f = Math.max(0, files.getAsLong());
-                        long b = Math.max(0, bytes.getAsLong());
-                        if (dryRun) {
-                            if (f == 0) return "Dry run: nothing to sweep.";
-                            return "Dry run: would remove "
-                                    + f + " " + (f == 1 ? "file" : "files")
-                                    + ", " + CacheCommand.fmtBytes(b) + " reclaimable.";
-                        }
-                        if (f == 0) return "Finished sweeping store. Nothing to clean up.";
-                        return "Finished sweeping store. "
-                                + f + " " + (f == 1 ? "file" : "files")
-                                + " removed, " + CacheCommand.fmtBytes(b) + " reclaimed.";
-                    },
-                    r -> "Failed to sweep the store.",
-                    true);
-        }
-    }
-
-    /**
-     * {@code jk repo storage} — artifact store: store CAS + {@code repos/} mirrors + run logs (not
-     * the cache tier).
-     */
-    public static final class RepoStorageCommand implements CliCommand {
-        @Override
-        public String name() {
-            return "storage";
-        }
-
-        @Override
-        public String description() {
-            return "Show artifact-store size and utilization";
-        }
-
-        @Override
-        public List<Opt> options() {
-            return List.of(cc.jumpkick.cli.CommonOpts.cacheDir());
-        }
-
-        @Override
-        public int run(Invocation in) throws IOException {
-            Path cacheRoot = CacheCommand.resolveCacheRoot(
-                    in.value("cache-dir").map(Path::of).orElse(null));
-            Path storeRoot = JkStores.storeRootFor(cacheRoot);
-            if (!Files.isDirectory(cacheRoot) && !Files.isDirectory(storeRoot)) {
-                CliOutput.out(
-                        "Store directory: " + cc.jumpkick.cli.PathDisplay.styledRaw(storeRoot) + " (not yet created)");
-                return 0;
-            }
-            CacheCommand.SectionStats s = CacheCommand.sectionStats(cacheRoot);
-            var cfg = cc.jumpkick.config.JkCacheConfig.resolve();
-            long maxBytes = cfg.maxStoreSizeBytes();
-            // Last-pruned stamp still lives under the cache root (prune job).
-            String lastPruned = CacheCommand.lastPrunedLabel(cacheRoot);
-            for (String line : CacheCommand.renderRepoStorageTable(
-                    s.cas(), s.repos(), s.runs(), s.repoFiles(), s.repoBytes(), maxBytes, lastPruned)) {
-                CliOutput.out(line);
-            }
-            return 0;
         }
     }
 

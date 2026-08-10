@@ -12,7 +12,7 @@ import java.util.Optional;
 /**
  * Opportunistic cache prune after sync/build: fires when auto-prune is on and
  * {@code .last-pruned} is missing or older than the interval. Spawns detached
- * {@code jk cache prune --background} (parent does not wait). {@link #shouldRun} is also the
+ * {@code jk cache clean --background} (parent does not wait). {@link #shouldRun} is also the
  * engine's idle-path cadence check.
  */
 public final class CachePruneScheduler {
@@ -51,7 +51,7 @@ public final class CachePruneScheduler {
         return (System.currentTimeMillis() - last) > intervalMillis;
     }
 
-    /** Build the equivalent of {@code jk cache prune --background} command line. */
+    /** Build the equivalent of {@code jk cache clean --background} command line. */
     static List<String> commandFor(JkCacheConfig config, Path cacheRoot, String jkExe) {
         List<String> cmd = new java.util.ArrayList<>();
         cmd.add(jkExe);

@@ -11,7 +11,7 @@ import java.util.stream.Stream;
 
 /**
  * Aggressively GC jk's scratch dir ({@code state/tmp/}): delete <em>any</em> file older than {@link
- * #DEFAULT_TTL} (7 days). Invoked by {@code jk cache prune} alongside the other steps.
+ * #DEFAULT_TTL} (7 days). Invoked by {@code jk cache clean} alongside the other steps.
  *
  * <p>The scratch dir holds transient, regenerable artefacts — e.g. {@code jk import} reports.
  * Nothing here is load-bearing, so a flat 7-day age cutoff (no liveness/reachability check) keeps

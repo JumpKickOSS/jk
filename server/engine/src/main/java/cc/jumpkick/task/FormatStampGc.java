@@ -5,57 +5,121 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.List;
+import java.util.function.Function;
 import java.util.stream.Stream;
 
 /**
- * Delete per-file format stamp entries under {@code <cacheRoot>/format-stamps/} that are older
- * than {@link #DEFAULT_TTL} (90 days). Invoked by {@code jk cache prune} alongside the other
- * steps.
+ * Reclaim per-file format stamps under {@code <cacheRoot>/format-stamps/}. Invoked by {@code jk
+ * cache prune} (and the engine's 12 h idle-boundary prune) alongside the other cache-tier steps.
  *
- * <p>Format stamps are keyed by file-content SHA-256, so they become unreachable when a file's
- * content changes (the old stamp is never hit again) or when a file is deleted entirely. They also
- * become unreachable when the formatter config changes (style, version, or OpenRewrite version),
- * since the config hash is baked into the key. A time-to-live sweep is the simplest way to bound
- * growth — any stamp that hasn't been refreshed in 90 days is either orphaned or so infrequently
- * touched that losing it (at most one extra format pass to re-stamp) is acceptable.
+ * <p>Format stamps are empty marker files keyed by SHA-256 of (stamp version + config descriptor +
+ * file bytes). They become unreachable when content or formatter config changes, and hits only
+ * refresh mtime — so growth is orphaned content-address keys plus a live working set.
  *
- * <p>Stamps live under a two-level CAS-style shard tree ({@code AB/CD/<rest>}); after deleting
- * expired entries this class also removes any now-empty shard directories.
+ * <p>Policy (two phases):
+ *
+ * <ol>
+ *   <li><strong>Age</strong> — delete stamps older than {@link #DEFAULT_TTL} (7 days).
+ *   <li><strong>Count cap (LRU)</strong> — if survivors still exceed {@link #resolveMaxFiles()},
+ *       delete oldest-by-mtime until at the cap. Default cap is {@link #DEFAULT_MAX_FILES}
+ *       (512 000); when {@code CI=1} or {@code CI=true}, {@link #CI_MAX_FILES} (1 000 000).
+ * </ol>
+ *
+ * <p>Losing a still-needed stamp costs at most one extra format pass to re-stamp. Empty shard
+ * directories ({@code AB/CD/}) are removed after deletions.
  */
 public final class FormatStampGc {
 
-    /** Standard retention window for format stamps. */
-    public static final Duration DEFAULT_TTL = Duration.ofDays(90);
+    /** Stamps unused for this long are deleted regardless of count. */
+    public static final Duration DEFAULT_TTL = Duration.ofDays(7);
+
+    /** Default max stamp files after the age pass (dev / non-CI). */
+    public static final int DEFAULT_MAX_FILES = 512_000;
+
+    /** Max stamp files when {@code CI=1} or {@code CI=true}. */
+    public static final int CI_MAX_FILES = 1_000_000;
 
     private FormatStampGc() {}
 
-    public record Report(int deleted, long freedBytes) {}
+    /**
+     * @param deleted total stamp files removed (age + cap)
+     * @param freedBytes sum of file sizes removed (empty stamps → usually 0 content bytes)
+     * @param deletedByAge removed because mtime older than TTL
+     * @param deletedByCap removed to enforce the count cap (oldest first)
+     */
+    public record Report(int deleted, long freedBytes, int deletedByAge, int deletedByCap) {
+        public Report(int deleted, long freedBytes) {
+            this(deleted, freedBytes, deleted, 0);
+        }
+    }
+
+    /** Cap for this process: {@link #CI_MAX_FILES} when CI is set, else {@link #DEFAULT_MAX_FILES}. */
+    public static int resolveMaxFiles() {
+        return resolveMaxFiles(System::getenv);
+    }
+
+    /** Testable: {@code CI=1} / {@code CI=true} (case-insensitive) → 1M, otherwise 512k. */
+    public static int resolveMaxFiles(Function<String, String> env) {
+        String ci = env.apply("CI");
+        if ("1".equals(ci) || (ci != null && "true".equalsIgnoreCase(ci))) {
+            return CI_MAX_FILES;
+        }
+        return DEFAULT_MAX_FILES;
+    }
 
     /**
-     * Walk {@code <cacheRoot>/format-stamps/} and delete stamp files older than {@code ttl}.
-     * Cleans up empty shard directories afterwards. Returns counts for the prune summary line.
+     * Sweep with {@link #DEFAULT_TTL} and {@link #resolveMaxFiles()} from the process environment.
      */
-    public static Report sweep(Path cacheRoot, Duration ttl, boolean dryRun) throws IOException {
+    public static Report sweep(Path cacheRoot, boolean dryRun) throws IOException {
+        return sweep(cacheRoot, DEFAULT_TTL, resolveMaxFiles(), dryRun);
+    }
+
+    /**
+     * Walk {@code <cacheRoot>/format-stamps/}: drop entries older than {@code ttl}, then if the
+     * remainder exceeds {@code maxFiles} drop oldest-by-mtime until at the cap. {@code maxFiles <=
+     * 0} means no count cap (age-only). Cleans empty shard directories afterwards.
+     */
+    public static Report sweep(Path cacheRoot, Duration ttl, int maxFiles, boolean dryRun) throws IOException {
         Path stampsDir = cacheRoot.resolve("format-stamps");
-        if (!Files.isDirectory(stampsDir)) return new Report(0, 0L);
+        if (!Files.isDirectory(stampsDir)) return new Report(0, 0L, 0, 0);
         long cutoff = System.currentTimeMillis() - ttl.toMillis();
 
-        int deleted = 0;
+        record Entry(Path path, long mtime, long size) {}
+        List<Entry> survivors = new ArrayList<>();
+        int deletedByAge = 0;
         long freedBytes = 0L;
 
         try (Stream<Path> stream = Files.walk(stampsDir)) {
             for (Path file : (Iterable<Path>) stream.filter(Files::isRegularFile)::iterator) {
-                if (Files.getLastModifiedTime(file).toMillis() < cutoff) {
-                    freedBytes += Files.size(file);
+                long mtime = Files.getLastModifiedTime(file).toMillis();
+                long size = Files.size(file);
+                if (mtime < cutoff) {
+                    freedBytes += size;
                     if (!dryRun) Files.deleteIfExists(file);
-                    deleted++;
+                    deletedByAge++;
+                } else {
+                    survivors.add(new Entry(file, mtime, size));
                 }
             }
         }
 
-        // After deleting expired stamps, remove any now-empty shard directories
-        // (walk deepest-first so children are removed before parents).
+        int deletedByCap = 0;
+        if (maxFiles > 0 && survivors.size() > maxFiles) {
+            survivors.sort(Comparator.comparingLong(Entry::mtime));
+            int toDelete = survivors.size() - maxFiles;
+            for (int i = 0; i < toDelete; i++) {
+                Entry e = survivors.get(i);
+                freedBytes += e.size();
+                if (!dryRun) Files.deleteIfExists(e.path());
+                deletedByCap++;
+            }
+        }
+
+        int deleted = deletedByAge + deletedByCap;
+        // After deleting, remove any now-empty shard directories (deepest-first).
         if (!dryRun && deleted > 0) {
             try (Stream<Path> dirs =
                     Files.walk(stampsDir).filter(Files::isDirectory).sorted(Comparator.reverseOrder())) {
@@ -68,6 +132,6 @@ public final class FormatStampGc {
             }
         }
 
-        return new Report(deleted, freedBytes);
+        return new Report(deleted, freedBytes, deletedByAge, deletedByCap);
     }
 }

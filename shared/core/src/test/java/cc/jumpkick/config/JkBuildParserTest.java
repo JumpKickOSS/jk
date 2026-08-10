@@ -1608,14 +1608,14 @@ class JkBuildParserTest {
     }
 
     @Test
-    void minified_implies_assembly_and_enables_the_shrink_plugin_without_a_table() {
+    void minified_implies_assembly_and_enables_the_minified_plugin_without_a_table() {
         JkBuild parsed = JkBuildParser.parse(PROJECT + "\n[application]\nmain = \"demo.App\"\nminified = true\n");
         assertThat(parsed.isApplication()).isTrue();
         assertThat(parsed.minified()).isTrue();
         assertThat(parsed.assembly())
                 .as("the fat jar is built beside the minified one")
                 .isTrue();
-        assertThat(parsed.pluginConfig("shrink")).isPresent();
+        assertThat(parsed.pluginConfig("minified")).isPresent();
     }
 
     @Test
@@ -1633,14 +1633,14 @@ class JkBuildParserTest {
     }
 
     @Test
-    void artifact_override_minified_injects_the_shrink_plugin() {
+    void artifact_override_minified_injects_the_minified_plugin() {
         JkBuild base = JkBuildParser.parse(PROJECT + "\n[application]\nmain = \"demo.App\"\n");
         assertThat(base.assembly()).isFalse();
 
         JkBuild min = JkBuildParser.withArtifactOverride(base, new JkBuildParser.ArtifactOverride(false, true));
         assertThat(min.minified()).isTrue();
         assertThat(min.assembly()).isTrue();
-        assertThat(min.pluginConfig("shrink")).isPresent();
+        assertThat(min.pluginConfig("minified")).isPresent();
 
         assertThat(JkBuildParser.parseArtifactOverride("fat"))
                 .isEqualTo(new JkBuildParser.ArtifactOverride(true, false));
@@ -1650,14 +1650,14 @@ class JkBuildParserTest {
     }
 
     @Test
-    void artifact_override_fat_strips_the_shrink_plugin() {
+    void artifact_override_fat_strips_the_minified_plugin() {
         JkBuild min = JkBuildParser.parse(PROJECT + "\n[application]\nmain = \"demo.App\"\nminified = true\n");
-        assertThat(min.pluginConfig("shrink")).isPresent();
+        assertThat(min.pluginConfig("minified")).isPresent();
 
         JkBuild fat = JkBuildParser.withArtifactOverride(min, new JkBuildParser.ArtifactOverride(true, false));
         assertThat(fat.assembly()).isTrue();
         assertThat(fat.minified()).isFalse();
-        assertThat(fat.pluginConfig("shrink")).isEmpty();
+        assertThat(fat.pluginConfig("minified")).isEmpty();
     }
 
     @Test

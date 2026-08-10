@@ -276,6 +276,102 @@ class MavenPackageSourceExclusionTest {
     }
 
     /** Excluded on every path that reaches it — still dropped. */
+    /**
+     * The clean path is discovered <em>deeper</em> than the excluding one: root → a → mid
+     * (excludes leaf) → target, and root → c → d → e → target. `target` is decided while only
+     * mid's {leaf} registration exists; e's empty registration arrives after. The resolver's
+     * stale-expansion fixpoint must re-solve with the converged (empty) set so leaf stays.
+     */
+    @Test
+    void a_clean_path_found_deeper_still_restores_the_module(@TempDir Path tempDir) throws Exception {
+        for (String a : List.of("app", "a", "c", "d", "e", "mid", "target", "leaf")) {
+            serveMetadata("/com/foo/" + a + "/maven-metadata.xml", "com.foo", a, List.of("1.0"));
+        }
+        servePom("com.foo", "app", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>app</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>a</artifactId><version>1.0</version>
+                    </dependency>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>c</artifactId><version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        servePom("com.foo", "a", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>a</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>mid</artifactId><version>1.0</version>
+                      <exclusions>
+                        <exclusion><groupId>com.foo</groupId><artifactId>leaf</artifactId></exclusion>
+                      </exclusions>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        servePom("com.foo", "c", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>c</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>d</artifactId><version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        servePom("com.foo", "d", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>d</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>e</artifactId><version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        servePom("com.foo", "e", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>e</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>target</artifactId><version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        servePom("com.foo", "mid", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>mid</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>target</artifactId><version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        servePom("com.foo", "target", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>target</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>leaf</artifactId><version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        servePom("com.foo", "leaf", "1.0", emptyPom("com.foo", "leaf", "1.0"));
+
+        Resolution result = new PubGrubResolver(repoGroup(tempDir))
+                .resolve(List.of(new Dependency("com.foo:app", VersionSelector.parse("=1.0"))));
+
+        assertThat(result.modules()).containsKey("com.foo:leaf:jar:");
+        assertThat(result.modules().get("com.foo:target:jar:").deps()).anyMatch(d -> d.startsWith("com.foo:leaf"));
+    }
+
     @Test
     void an_exclusion_on_every_path_still_drops_the_module(@TempDir Path tempDir) throws Exception {
         serveMetadata("/com/foo/app/maven-metadata.xml", "com.foo", "app", List.of("1.0"));

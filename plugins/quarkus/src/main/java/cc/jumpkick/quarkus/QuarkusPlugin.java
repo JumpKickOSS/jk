@@ -51,9 +51,12 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
 
     @Override
     public void build(BuildContext ctx) {
+        // native-sources is the directory Quarkus writes when asked for a native build without
+        // running native-image: the runner jar, its lib/, and the argument list it computed.
+        // Declared as an output so the engine can find it and the action cache covers it.
         ctx.named(AUGMENT_STEP)
                 .inputs(In.classes(), In.runtimeEntries(), In.config())
-                .outputs("quarkus-app")
+                .outputs("quarkus-app", "native-sources")
                 .run(QuarkusPlugin::runAugment);
     }
 
@@ -70,6 +73,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         }
 
         Path outRoot = exec.outputDir("quarkus-app");
+        Path nativeSourcesOut = exec.outputDir("native-sources");
         Path listFile = exec.scratch().resolve("runtime-jars.tsv");
         List<String> lines = new ArrayList<>();
         for (PackageIo.RuntimeEntry e : exec.runtimeEntries()) {
@@ -115,6 +119,8 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
                 .classpath(cp)
                 .arg("-Djava.util.logging.manager=org.jboss.logmanager.LogManager")
                 .arg("-Djk.quarkus.package.type=" + packageType)
+                .arg("-Djk.quarkus.native.sources=" + exec.project().nativeDeclared())
+                .arg("-Djk.quarkus.native.sources.out=" + nativeSourcesOut)
                 .mainClass(QuarkusAugmentMain.class.getName())
                 .arg(exec.moduleDir().toString())
                 .arg(classes.toString())

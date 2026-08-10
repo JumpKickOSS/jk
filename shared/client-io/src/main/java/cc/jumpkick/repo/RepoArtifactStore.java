@@ -129,8 +129,19 @@ public final class RepoArtifactStore {
     /** SHA-256 hex from the materialised sidecar, if fully stored. */
     public Optional<String> storedSha256(String relativePath) {
         if (root == null || !contains(relativePath)) return Optional.empty();
+        return readSha256Sidecar(relativePath);
+    }
+
+    /**
+     * Read the {@code .sha256} sidecar without re-statting the artifact. Callers that already
+     * {@link #locate}'d the path (warm resolve hot path) skip the extra {@link #contains} stats.
+     */
+    public Optional<String> readSha256Sidecar(String relativePath) {
+        if (root == null) return Optional.empty();
         try {
-            String s = Files.readString(sidecarPath(relativePath)).strip();
+            Path side = sidecarPath(relativePath);
+            if (!Files.isRegularFile(side)) return Optional.empty();
+            String s = Files.readString(side).strip();
             return s.isBlank() ? Optional.empty() : Optional.of(s);
         } catch (IOException e) {
             return Optional.empty();

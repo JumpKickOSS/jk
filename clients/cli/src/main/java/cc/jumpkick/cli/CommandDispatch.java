@@ -54,12 +54,14 @@ import cc.jumpkick.command.SelfCommand;
 import cc.jumpkick.command.ShellCommand;
 import cc.jumpkick.command.ShowCommand;
 import cc.jumpkick.command.StatusCommand;
+import cc.jumpkick.command.StorageCommand;
 import cc.jumpkick.command.SyncCommand;
 import cc.jumpkick.command.TasksCommand;
 import cc.jumpkick.command.TestCommand;
 import cc.jumpkick.command.ToolCommand;
 import cc.jumpkick.command.ToolInstallCommand;
 import cc.jumpkick.command.ToolRunCommand;
+import cc.jumpkick.command.TrainCommand;
 import cc.jumpkick.command.TreeCommand;
 import cc.jumpkick.command.TrustCommand;
 import cc.jumpkick.command.UpdateCommand;
@@ -126,6 +128,7 @@ public final class CommandDispatch {
             new AuditCommand(),
             new AuthCommand(),
             new CacheCommand(),
+            new StorageCommand(),
             new JdkCommand(),
             new ToolCommand(),
             new TrustCommand(),
@@ -151,6 +154,7 @@ public final class CommandDispatch {
             new TestCommand(),
             new FormatCommand(),
             new NativeCommand(),
+            new TrainCommand(),
             new ImageCommand(),
             new MvnCommand(),
             new GradleCommand(),
@@ -211,7 +215,7 @@ public final class CommandDispatch {
     /**
      * Args for the resolved command: the tokens after it, with any global flags that appeared
      * <em>before</em> it carried along so the leaf parse still sees them ({@code jk -y self purge}
-     * must reach {@code Confirm.setAssumeYes} exactly like {@code jk self purge -y}). A literal
+     * must reach {@code Confirm.setAssumeYes} exactly like {@code jk self nuke -y}). A literal
      * {@code --} separator is not carried — it only marked the command boundary.
      */
     private static List<String> carryGlobals(List<String> args, int commandAt) {
@@ -257,10 +261,18 @@ public final class CommandDispatch {
         if (!cmd.subcommands().isEmpty()) {
             int subAt = commandIndex(rest);
             if (subAt < 0) {
-                // No subcommand: print the group's command list. `--help` is a
-                // request (exit 0); bare `jk <group>` is a usage error (64).
+                // Bare group: optional default leaf, else print the subcommand list.
+                // `--help` always shows help.
+                if (helpRequested(cmd, rest)) {
+                    System.out.print(renderHelp(cmd, qualified, ansi));
+                    return 0;
+                }
+                CliCommand def = cmd.defaultSubcommand();
+                if (def != null) {
+                    return dispatch(def, qualified + " " + def.name(), rest, ansi);
+                }
                 System.out.print(renderHelp(cmd, qualified, ansi));
-                return helpRequested(cmd, rest) ? 0 : 64;
+                return 64;
             }
             String subName = rest.get(subAt);
             Abbreviations.Result<CliCommand> r = resolveSub(cmd, subName);

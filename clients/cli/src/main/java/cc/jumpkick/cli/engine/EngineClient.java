@@ -1374,6 +1374,42 @@ public final class EngineClient {
                 .result();
     }
 
+    /** Everything an engine-hosted {@code jk train} needs. */
+    public record TrainRequest(
+            Path entryDir,
+            Path cache,
+            Path jdksDir,
+            Path graalHome,
+            String profile,
+            boolean force,
+            boolean skipTests,
+            boolean offline,
+            boolean verbose) {}
+
+    /** Run {@code jk train}: package then observe under the tracing agent. */
+    public static cc.jumpkick.run.BuildPlanResult runTrain(
+            EnginePaths.Paths paths,
+            TrainRequest req,
+            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
+            throws IOException {
+        return EnginePluginAdapter.stream(
+                        paths,
+                        EngineProtocol.trainRequest(
+                                req.entryDir().toString(),
+                                req.cache().toString(),
+                                req.jdksDir() != null ? req.jdksDir().toString() : null,
+                                req.graalHome() != null ? req.graalHome().toString() : null,
+                                req.profile(),
+                                req.force(),
+                                req.skipTests(),
+                                req.offline(),
+                                req.verbose()),
+                        "train",
+                        listenerFactory,
+                        (type, line) -> {})
+                .result();
+    }
+
     /**
      * Everything an engine-hosted {@code jk native} needs. {@code graalByDir} maps each
      * native-eligible module dir to the GraalVM home the client resolved for it — resolution (and
@@ -1591,8 +1627,8 @@ public final class EngineClient {
 
     /**
      * Everything an engine-hosted cache maintenance op needs ({@code op} = {@code prune}/{@code
-     * purge}/{@code sweep}/{@code gc} — {@code jk cache prune}/{@code purge}, {@code jk repo
-     * prune}, {@code jk clean --cache}). Ops ignore the fields they don't use.
+     * purge}/{@code sweep}/{@code gc}/{@code clear} — {@code jk cache clean}/{@code nuke}, {@code
+     * jk storage clean}, {@code jk clean --force}). Ops ignore the fields they don't use.
      */
     public record CacheMaintRequest(
             String op,
@@ -1601,12 +1637,31 @@ public final class EngineClient {
             boolean dryRun,
             boolean sweep,
             boolean includeJkTmp,
-            Path projectRoot) {
+            Path projectRoot,
+            boolean dropAllClassC) {
 
-        /** Prune/purge/gc request — no project scope. */
+        /** Prune/purge/sweep request — no project scope. */
         public CacheMaintRequest(
                 String op, Path cache, int olderThanDays, boolean dryRun, boolean sweep, boolean includeJkTmp) {
-            this(op, cache, olderThanDays, dryRun, sweep, includeJkTmp, null);
+            this(op, cache, olderThanDays, dryRun, sweep, includeJkTmp, null, false);
+        }
+
+        /** Project-scoped clear / clean-with-Class-C. */
+        public CacheMaintRequest(
+                String op,
+                Path cache,
+                int olderThanDays,
+                boolean dryRun,
+                boolean sweep,
+                boolean includeJkTmp,
+                Path projectRoot) {
+            this(op, cache, olderThanDays, dryRun, sweep, includeJkTmp, projectRoot, false);
+        }
+
+        /** Cache clean ({@code dropAllClassC=true}) or other prune variants. */
+        public static CacheMaintRequest cacheClean(
+                Path cache, int olderThanDays, boolean dryRun, boolean includeJkTmp) {
+            return new CacheMaintRequest("prune", cache, olderThanDays, dryRun, false, includeJkTmp, null, true);
         }
     }
 
@@ -1639,7 +1694,8 @@ public final class EngineClient {
                         req.olderThanDays(),
                         req.dryRun(),
                         req.sweep(),
-                        req.includeJkTmp());
+                        req.includeJkTmp(),
+                        req.dropAllClassC());
         return EnginePluginAdapter.stream(
                         paths,
                         requestLine,

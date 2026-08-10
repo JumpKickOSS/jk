@@ -101,16 +101,25 @@ public final class DependencyGraphModel {
     }
 
     /**
-     * Parse a comma-separated scopes query (canonical names). Empty/null → {@code main} only.
+     * Default scopes match {@code jk tree}: export, main, runtime
+     * ({@link cc.jumpkick.resolver.DependencyTree#defaultScopeOrder()}).
+     */
+    public static List<Scope> defaultScopes() {
+        return List.copyOf(DependencyTree.defaultScopeOrder());
+    }
+
+    /**
+     * Parse a comma-separated scopes query (canonical names). Empty/null → {@link #defaultScopes()}
+     * ({@code export}, {@code main}, {@code runtime} — same as {@code jk tree}).
      *
      * <p>An unrecognized token <strong>throws</strong>. Silently dropping it and falling back to
-     * {@code main} made a whole class of caller bug invisible: the endpoint forgot to
-     * percent-decode this parameter, so {@code main%2Ctest} parsed as one unknown token and the
-     * user got a main-only graph with both boxes still ticked (JK-1607).
+     * a default made a whole class of caller bug invisible: the endpoint forgot to percent-decode
+     * this parameter, so {@code main%2Ctest} parsed as one unknown token and the user got a
+     * wrong graph with boxes still ticked (JK-1607).
      */
     public static List<Scope> parseScopes(String scopesQuery) {
         if (scopesQuery == null || scopesQuery.isBlank()) {
-            return List.of(Scope.MAIN);
+            return defaultScopes();
         }
         LinkedHashSet<Scope> out = new LinkedHashSet<>();
         for (String raw : scopesQuery.split(",")) {
@@ -122,7 +131,7 @@ public final class DependencyGraphModel {
                 throw new IllegalArgumentException("unknown scope '" + raw.trim() + "' (valid: " + validScopes() + ")");
             }
         }
-        if (out.isEmpty()) return List.of(Scope.MAIN);
+        if (out.isEmpty()) return defaultScopes();
         // Stable display order
         List<Scope> ordered = new ArrayList<>();
         for (Scope s : SCOPE_ORDER) {

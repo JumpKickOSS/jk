@@ -138,6 +138,16 @@ public final class QuarkusAugmentMain {
         Properties bsp = new Properties();
         bsp.setProperty("quarkus.package.jar.type", packageType);
         bsp.setProperty("quarkus.analytics.disabled", "true");
+        // Native: ask Quarkus to augment for the closed world and write the source jar plus the
+        // native-image argument list it computed, without invoking native-image. jk owns that
+        // invocation — its own GraalVM toolchain, progress and action cache — and Quarkus owns
+        // knowing what the arguments are.
+        boolean nativeSources = Boolean.getBoolean("jk.quarkus.native.sources");
+        String nativeSourcesOut = System.getProperty("jk.quarkus.native.sources.out", "");
+        if (nativeSources) {
+            bsp.setProperty("quarkus.native.enabled", "true");
+            bsp.setProperty("quarkus.native.sources-only", "true");
+        }
 
         Path augmentOut = Files.createDirectories(scratch.resolve("out"));
         QuarkusBootstrap bs = QuarkusBootstrap.builder()
@@ -163,6 +173,10 @@ public final class QuarkusAugmentMain {
                 producedJar = result.getJar().getPath();
             }
             System.err.println("jk-quarkus-augment: result jar=" + producedJar);
+        }
+
+        if (nativeSources && !nativeSourcesOut.isBlank()) {
+            publishNativeSources(augmentOut, Path.of(nativeSourcesOut));
         }
 
         if ("uber-jar".equals(packageType)) {
@@ -343,6 +357,29 @@ public final class QuarkusAugmentMain {
             out.add(new RuntimeCoord(gav[0], gav[1], gav[2], Path.of(parts[1])));
         }
         return out;
+    }
+
+    /**
+     * Move Quarkus's {@code native-sources/} — runner jar, {@code lib/}, and the
+     * {@code native-image.args} it computed — to the step's declared output, where the engine's
+     * native-image step reads it.
+     */
+    private static void publishNativeSources(Path augmentOut, Path dest) throws IOException {
+        Path found = null;
+        try (var walk = Files.walk(augmentOut, 6)) {
+            found = walk.filter(Files::isDirectory)
+                    .filter(p -> "native-sources".equals(String.valueOf(p.getFileName())))
+                    .filter(p -> Files.isRegularFile(p.resolve("native-image.args")))
+                    .findFirst()
+                    .orElse(null);
+        }
+        if (found == null) {
+            throw new IOException("quarkus.native.sources-only produced no native-sources/ under " + augmentOut
+                    + " — the augment did not run a native build");
+        }
+        Files.createDirectories(dest);
+        copyTree(found, dest);
+        System.err.println("jk-quarkus-augment: native sources -> " + dest);
     }
 
     private static List<RuntimeCoord> discoverExtensions(List<RuntimeCoord> runtime) {

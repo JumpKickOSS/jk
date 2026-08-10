@@ -3,10 +3,13 @@ package cc.jumpkick.repo;
 
 import cc.jumpkick.model.Coordinate;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Ordered {@link MavenRepo}s with try-each / first-hit-wins semantics, plus optional exclusive
@@ -15,7 +18,61 @@ import java.util.Optional;
  */
 public final class RepoGroup {
 
+    /**
+     * Process-wide local POM hits. Keyed by the repositories asked <em>and</em> GAV — exclusive
+     * bindings and repo order are part of the question (a Central hit must not answer for a
+     * Google-only exclusive group). Misses are not cached (may appear mid-session via fetch).
+     * Entries have no TTL: published release GAVs are immutable; force / {@link #clearProcessFetchCache}
+     * drop the memo when the caller does not trust the view.
+     */
+    private static final ConcurrentHashMap<String, RepoFetched> POM_HIT_CACHE = new ConcurrentHashMap<>();
+
+    /**
+     * Same for non-POM artifacts (Gradle {@code .module}, jars). Keyed by repositories + GAVC+type.
+     */
+    private static final ConcurrentHashMap<String, RepoFetched> ARTIFACT_HIT_CACHE = new ConcurrentHashMap<>();
+
+    /**
+     * Process-wide {@link #availableVersions} memo, keyed by the repositories asked <em>and</em> the
+     * {@code group:artifact}. Two groups pointing at different repositories see different version
+     * lists, so the repository set is part of the identity — leaving it out let one group answer
+     * for another.
+     *
+     * <p>Entries expire. {@link MavenMetadataCache} is the layer that decides when a version list is
+     * stale, with a TTL and a conditional GET; this memo only skips re-parsing what that layer
+     * already handed over. Living for the life of the process would put it above that decision, and
+     * in the resident engine "the life of the process" is days — a version published after the
+     * first resolve would stay invisible.
+     */
+    private static final ConcurrentHashMap<String, VersionsEntry> VERSIONS_CACHE = new ConcurrentHashMap<>();
+
+    /** Long enough to cover one build's resolves, short enough that a daemon re-checks. */
+    private static final long VERSIONS_TTL_NANOS =
+            java.time.Duration.ofSeconds(60).toNanos();
+
+    private record VersionsEntry(List<String> versions, long expiresAtNanos) {
+        boolean expired() {
+            return System.nanoTime() - expiresAtNanos >= 0;
+        }
+    }
+
+    private static final int HIT_CACHE_MAX = 16_384;
+    private static final int VERSIONS_CACHE_MAX = 8_192;
+
+    /** Test seam — drop process fetch memos. */
+    public static void clearProcessFetchCache() {
+        POM_HIT_CACHE.clear();
+        ARTIFACT_HIT_CACHE.clear();
+    }
+
+    /** Drop process-wide version lists (force / tests). */
+    public static void clearProcessVersionsCache() {
+        VERSIONS_CACHE.clear();
+    }
+
     private final List<MavenRepo> repos;
+    /** The repositories this group asks, as a stable string — part of every process memo's key. */
+    private final String repoIdentity;
     /** Parallel to {@link #repos}: exclusive group patterns per repo (empty = no exclusive claim). */
     private final List<List<String>> exclusiveGroups;
     /**
@@ -45,6 +102,17 @@ public final class RepoGroup {
         this.repos = List.copyOf(repos);
         this.exclusiveGroups = normalizeExclusive(this.repos.size(), exclusiveGroups);
         this.priorityCount = priorityCount;
+        // Exclusive bindings and the priority prefix change which repos are eligible for a
+        // coordinate, so they are part of the question every memo answers — two groups with the
+        // same URLs but different bindings must never share memo entries.
+        StringBuilder id = new StringBuilder();
+        for (int i = 0; i < this.repos.size(); i++) {
+            if (i > 0) id.append(',');
+            id.append(this.repos.get(i).baseUrl());
+            List<String> excl = this.exclusiveGroups.get(i);
+            if (!excl.isEmpty()) id.append('!').append(String.join(";", excl));
+        }
+        this.repoIdentity = id.append("|p").append(priorityCount).toString();
     }
 
     public static RepoGroup of(MavenRepo single) {
@@ -72,6 +140,14 @@ public final class RepoGroup {
         return repos;
     }
 
+    /**
+     * Stable identity of the repositories this group asks. Part of every process-wide fetch /
+     * versions / effective-POM memo key so one group's answer cannot stand in for another's.
+     */
+    public String processIdentity() {
+        return repoIdentity;
+    }
+
     /** Exclusive group patterns aligned with {@link #repos()}. */
     public List<List<String>> exclusiveGroups() {
         return exclusiveGroups;
@@ -82,11 +158,44 @@ public final class RepoGroup {
     }
 
     public Optional<RepoFetched> tryFetchPom(Coordinate coord) throws IOException, InterruptedException {
-        return tryFetch(coord, MavenRepo::tryLocalPom, MavenRepo::fetchPom);
+        String key = repoIdentity + "|" + coord.toGav();
+        RepoFetched hit = liveHit(POM_HIT_CACHE, key);
+        if (hit != null) return Optional.of(hit);
+        Optional<RepoFetched> found = tryFetch(coord, MavenRepo::tryLocalPom, MavenRepo::fetchPom);
+        if (found.isPresent() && POM_HIT_CACHE.size() < HIT_CACHE_MAX) {
+            POM_HIT_CACHE.putIfAbsent(key, found.get());
+        }
+        return found;
     }
 
     public Optional<RepoFetched> tryFetchArtifact(Coordinate coord) throws IOException, InterruptedException {
-        return tryFetch(coord, MavenRepo::tryLocalArtifact, MavenRepo::fetchArtifact);
+        String key = repoIdentity
+                + "|"
+                + coord.toGav()
+                + "\0"
+                + (coord.type() == null ? "" : coord.type())
+                + "\0"
+                + (coord.classifier() == null ? "" : coord.classifier());
+        RepoFetched hit = liveHit(ARTIFACT_HIT_CACHE, key);
+        if (hit != null) return Optional.of(hit);
+        Optional<RepoFetched> found = tryFetch(coord, MavenRepo::tryLocalArtifact, MavenRepo::fetchArtifact);
+        if (found.isPresent() && ARTIFACT_HIT_CACHE.size() < HIT_CACHE_MAX) {
+            ARTIFACT_HIT_CACHE.putIfAbsent(key, found.get());
+        }
+        return found;
+    }
+
+    /**
+     * Return a process-memo hit only when its on-disk payload is still present; drop stale paths
+     * (cache GC / manual wipe mid-process).
+     */
+    private static RepoFetched liveHit(ConcurrentHashMap<String, RepoFetched> cache, String key) {
+        RepoFetched hit = cache.get(key);
+        if (hit == null) return null;
+        Path path = hit.fetched().cachePath();
+        if (path != null && Files.isRegularFile(path)) return hit;
+        cache.remove(key, hit);
+        return null;
     }
 
     public Optional<RepoFetched> tryFetchMetadata(Coordinate coord) throws IOException, InterruptedException {
@@ -97,12 +206,46 @@ public final class RepoGroup {
      * Union of the versions of {@code coord}'s {@code group:artifact} available across eligible
      * repos (exclusive bindings applied), de-duplicated, preserving first-seen order.
      */
+    /**
+     * Version discovery across eligible remotes. Stops at the first repo that advertises any
+     * versions (repo order is the precedence contract — Central before Google for unbound GAs,
+     * exclusive claimants alone for claimed groups).
+     *
+     * <p>Previously this <em>unioned</em> every eligible remote's metadata, which forced a
+     * second {@code maven-metadata.xml} read (often a 404) on every AndroidX GAV when both
+     * Central and Google were declared — dominant on warm multi-repo locks (NIA). Split version
+     * catalogs across remotes are vanishingly rare for our remotes; exclusive bindings still
+     * restrict which remotes are eligible at all.
+     */
     public List<String> availableVersions(Coordinate coord) throws IOException, InterruptedException {
-        java.util.LinkedHashSet<String> union = new java.util.LinkedHashSet<>();
-        for (MavenRepo repo : eligibleRepos(coord)) {
-            union.addAll(repo.availableVersions(coord));
+        String key = repoIdentity + "|" + coord.group() + ":" + coord.artifact();
+        // Force means the caller does not trust any cached view of what exists.
+        boolean memoable = !MavenMetadataCache.forceRevalidate();
+        if (memoable) {
+            VersionsEntry cached = VERSIONS_CACHE.get(key);
+            if (cached != null && !cached.expired()) return cached.versions();
+            if (cached != null) VERSIONS_CACHE.remove(key, cached);
         }
-        return List.copyOf(union);
+        List<MavenRepo> eligible = eligibleRepos(coord);
+        List<MavenRepo> asked = new ArrayList<>(eligible);
+        asked.addAll(lastResortRepos(coord, eligible));
+        for (MavenRepo repo : asked) {
+            List<String> found = repo.availableVersions(coord);
+            if (!found.isEmpty()) {
+                List<String> immutable = List.copyOf(found);
+                if (memoable && VERSIONS_CACHE.size() < VERSIONS_CACHE_MAX) {
+                    VERSIONS_CACHE.put(key, new VersionsEntry(immutable, System.nanoTime() + VERSIONS_TTL_NANOS));
+                }
+                return immutable;
+            }
+        }
+        // Cache empty only after a full miss — rare; avoids re-statting empty GAs every expand.
+        // Expires like any other entry: an artifact that does not exist yet may exist later.
+        List<String> empty = List.of();
+        if (memoable && VERSIONS_CACHE.size() < VERSIONS_CACHE_MAX) {
+            VERSIONS_CACHE.put(key, new VersionsEntry(empty, System.nanoTime() + VERSIONS_TTL_NANOS));
+        }
+        return empty;
     }
 
     /**
@@ -142,6 +285,28 @@ public final class RepoGroup {
     }
 
     /**
+     * Last-resort repos for an <em>unclaimed</em> group after every eligible repo missed:
+     * exclusive specialists that did not claim it. Google Maven hosts plenty of groups outside
+     * the built-in binding list ({@code com.google.gms}, {@code com.google.ar}, {@code
+     * org.chromium.net}, ...) — skipping specialists on the fast path is a perf choice and must
+     * not make those coordinates unresolvable. For a <em>claimed</em> group this is empty: a
+     * miss in the claiming repos stays a miss (dependency-confusion defense).
+     */
+    private List<MavenRepo> lastResortRepos(Coordinate coord, List<MavenRepo> alreadyAsked) {
+        if (!ExclusiveGroups.claimantIndices(exclusiveGroups, coord.group()).isEmpty()) {
+            return List.of();
+        }
+        List<MavenRepo> out = new ArrayList<>();
+        for (int i = priorityCount; i < repos.size(); i++) {
+            MavenRepo r = repos.get(i);
+            if (!exclusiveGroups.get(i).isEmpty() && !alreadyAsked.contains(r)) {
+                out.add(r);
+            }
+        }
+        return out;
+    }
+
+    /**
      * Per-repo local-then-remote, in repo ordereach eligible repo's warm mirror is
      * probed before its remote leg, but a LATER repo's warm mirror can never shadow an EARLIER
      * repo — order is the precedence contract. (The no-HTTP-404 property still holds:
@@ -150,7 +315,17 @@ public final class RepoGroup {
      */
     private Optional<RepoFetched> tryFetch(Coordinate coord, LocalProbe localProbe, Fetcher fetcher)
             throws IOException, InterruptedException {
-        for (MavenRepo repo : eligibleRepos(coord)) {
+        List<MavenRepo> eligible = eligibleRepos(coord);
+        Optional<RepoFetched> found = tryFetchFrom(eligible, coord, localProbe, fetcher);
+        if (found.isPresent()) return found;
+        // Full miss on the fast path: consult non-claiming specialists before giving up.
+        return tryFetchFrom(lastResortRepos(coord, eligible), coord, localProbe, fetcher);
+    }
+
+    private Optional<RepoFetched> tryFetchFrom(
+            List<MavenRepo> candidates, Coordinate coord, LocalProbe localProbe, Fetcher fetcher)
+            throws IOException, InterruptedException {
+        for (MavenRepo repo : candidates) {
             Optional<MavenRepo.Fetched> local = localProbe.probe(repo, coord);
             if (local.isPresent()) {
                 return Optional.of(new RepoFetched(repo, local.get()));

@@ -30,35 +30,99 @@ class CacheCommandTest {
     }
 
     @Test
-    void storage_summarizes_an_empty_action_cache_without_creating_it(@TempDir Path tempDir) throws Exception {
+    void dir_prints_store_root() {
+        String stdout = capture(() -> run("storage", "dir"));
+        assertThat(stdout.trim()).isEqualTo(cc.jumpkick.cache.JkStores.store().toString());
+    }
+
+    /**
+     * The store is not the cache. {@code jk storage} takes no {@code --cache-dir}: it never
+     * relocated the store, and a flag that is accepted and ignored is worse than one that is
+     * refused. Choosing a cache location is {@code jk cache}'s business.
+     */
+    /** An absent store says so rather than rendering a table of zeros. */
+    @Test
+    void storage_usage_reports_an_absent_store() throws Exception {
+        Path store = cc.jumpkick.cache.JkStores.store();
+        if (Files.isDirectory(store)) return; // the shared harness store already has content
+        String plain = TestAnsi.strip(capture(() -> run("storage", "usage")));
+        assertThat(plain).contains("not yet created");
+    }
+
+    @Test
+    void storage_refuses_a_cache_dir() {
+        assertThat(run("storage", "dir", "--cache-dir", "/tmp")).isNotZero();
+        assertThat(run("storage", "usage", "--cache-dir", "/tmp")).isNotZero();
+        assertThat(run("storage", "clean", "--cache-dir", "/tmp")).isNotZero();
+    }
+
+    @Test
+    void usage_summarizes_an_empty_action_cache_without_creating_it(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
-        String stdout = capture(() -> run("cache", "storage", "--cache-dir", cache.toString()));
+        String stdout = capture(() -> run("cache", "usage", "--cache-dir", cache.toString()));
         assertThat(stdout).contains("not yet created");
         assertThat(Files.exists(cache)).isFalse();
     }
 
     @Test
-    void storage_reports_cache_tier_including_cache_cas(@TempDir Path tempDir) throws Exception {
+    void cache_storage_alias_still_reaches_usage(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
-        // Cache CAS under the same root is part of the cache tier (not the artifact store report).
-        writeBlob(cache.resolve("sha256/ab/cd/deadbeef"), "hello".getBytes(StandardCharsets.UTF_8));
-        writeBlob(cache.resolve("actions/keys/some-task"), new byte[2048]);
+        String stdout = capture(() -> run("cache", "storage", "--cache-dir", cache.toString()));
+        assertThat(stdout).contains("not yet created");
+    }
 
-        String plain = TestAnsi.strip(capture(() -> run("cache", "storage", "--cache-dir", cache.toString())));
+    @Test
+    void usage_reports_content_classes_and_full_tree_total(@TempDir Path tempDir) throws Exception {
+        Path cache = tempDir.resolve("cache");
+        // Class file blob via compile-main action key (64-char hex CAS digest).
+        String classSha = "ab" + "cd" + "e".repeat(60);
+        writeBlob(cache.resolve("sha256/ab/cd/" + "e".repeat(60)), new byte[2048]);
+        writeBlob(
+                cache.resolve("actions/keys/compile-key"),
+                ("TASK compile-main@mod\nKEY compile-key\nOUTPUT " + classSha + " com/Ex.class\n")
+                        .getBytes(StandardCharsets.UTF_8));
+        // Thin jar
+        String jarSha = "11" + "22" + "f".repeat(60);
+        writeBlob(cache.resolve("sha256/11/22/" + "f".repeat(60)), new byte[512]);
+        writeBlob(
+                cache.resolve("actions/keys/jar-key"),
+                ("TASK package-jar@mod\nKEY jar-key\nOUTPUT " + jarSha + " lib.jar\n")
+                        .getBytes(StandardCharsets.UTF_8));
+        // Test result marker (no CAS digest)
+        writeBlob(
+                cache.resolve("actions/keys/test-key"),
+                "TASK run-tests@mod\nKEY test-key\nOUTPUT 3 tests.total\n".getBytes(StandardCharsets.UTF_8));
+        writeBlob(cache.resolve("runs/build-1.jsonl"), new byte[128]);
+        writeBlob(cache.resolve("format-stamps/ab/stamp1"), new byte[0]);
+        // Uncategorized bulk (still in Total): hash-memo entry
+        writeBlob(cache.resolve("hash-memo/aa/memo1"), new byte[4096]);
+
+        String plain = TestAnsi.strip(capture(() -> run("cache", "usage", "--cache-dir", cache.toString())));
         assertThat(plain).contains("Cache Storage");
-        // action key + cache CAS blob (+ intermediate dirs may vary by DiskUsage walk)
+        assertThat(plain).contains("Class Files");
+        assertThat(plain).contains("Test Results");
+        assertThat(plain).contains("Event Logs");
+        assertThat(plain).contains("Normal Jars");
+        assertThat(plain).contains("Shadow Jars");
+        assertThat(plain).contains("Minified Jars");
+        assertThat(plain).contains("Native Bins");
+        assertThat(plain).contains("OCI Images");
+        assertThat(plain).contains("Format Stamps");
+        assertThat(plain).contains("Total");
         assertThat(plain).contains("Utilization");
+        assertThat(plain).contains("Last cleaned:");
         assertThat(plain).doesNotContain("CAS Blobs");
         assertThat(plain).doesNotContain("Worker JARs");
-        // Size includes the 2 KiB action record (cache CAS "hello" is small).
-        assertThat(plain).containsPattern("File Count:\\s*[1-9]");
+        assertThat(plain).doesNotContain("Last Pruned");
+        // Total file count includes hash-memo + keys + stamps + runs + cas blobs (more than zero).
+        assertThat(plain).containsPattern("Total\\s+│\\s*[1-9]");
     }
 
     @Test
     void prune_removes_stale_action_entries_and_cache_tier_tmp_files(@TempDir Path tempDir) throws Exception {
-        // JK-1531: post-split, plain `jk cache prune` is CACHE-tier only. Its temp janitor runs
+        // JK-1531: post-split, plain `jk cache clean` is CACHE-tier only. Its temp janitor runs
         // on the cache root's sha256/ (the cache CAS); the artifact store's temps belong to the
-        // store sweep (`jk repo prune` / scheduled --sweep) and must survive a plain prune.
+        // store sweep (`jk storage clean` / scheduled --sweep) and must survive a plain prune.
         Path cache = tempDir.resolve("cache");
         Path stale = writeBlob(cache.resolve("actions/keys/old"), new byte[256]);
         Path fresh = writeBlob(cache.resolve("actions/keys/new"), new byte[256]);
@@ -69,14 +133,14 @@ class CacheCommandTest {
             // Backdate the stale entry by 60 days.
             Files.setLastModifiedTime(stale, FileTime.from(Instant.now().minus(60, ChronoUnit.DAYS)));
 
-            String stdout = capture(() -> run("cache", "prune", "--cache-dir", cache.toString(), "--older-than", "30"));
+            String stdout = capture(() -> run("cache", "clean", "--cache-dir", cache.toString(), "--older-than", "30"));
 
             assertThat(Files.exists(stale)).isFalse();
             assertThat(Files.exists(fresh)).isTrue();
             assertThat(Files.exists(cacheTmp)).isFalse(); // cache-tier temp: cleaned
             assertThat(Files.exists(storeTmp)).isTrue(); // store-tier temp: not this command's job
             // New summary format breaks the count out by step.
-            assertThat(stdout).contains("Finished pruning cache").contains("removed");
+            assertThat(stdout).contains("Finished cleaning cache").contains("removed");
         } finally {
             Files.deleteIfExists(storeTmp); // do not pollute the module-shared store
         }
@@ -88,7 +152,7 @@ class CacheCommandTest {
         Path stale = writeBlob(cache.resolve("actions/keys/old"), new byte[1024]);
         Files.setLastModifiedTime(stale, FileTime.from(Instant.now().minus(60, ChronoUnit.DAYS)));
 
-        String stdout = capture(() -> run("cache", "prune", "--cache-dir", cache.toString(), "--dry-run"));
+        String stdout = capture(() -> run("cache", "clean", "--cache-dir", cache.toString(), "--dry-run"));
 
         assertThat(Files.exists(stale)).isTrue();
         assertThat(stdout).contains("Dry run: would remove");
@@ -104,9 +168,9 @@ class CacheCommandTest {
         writeBlob(cache.resolve("actions/keys/task1"), new byte[1024]);
         writeBlob(cache.resolve("format-stamps/ab/stamp1"), new byte[128]);
 
-        String stdout = capture(() -> run("cache", "purge", "--cache-dir", cache.toString(), "--yes"));
+        String stdout = capture(() -> run("cache", "nuke", "--cache-dir", cache.toString(), "--yes"));
 
-        assertThat(stdout).contains("Purged");
+        assertThat(stdout).contains("Nuked");
         assertThat(Files.exists(cache.resolve("actions/keys/task1"))).isFalse();
         assertThat(Files.exists(cache.resolve("format-stamps/ab/stamp1"))).isFalse();
         assertThat(Files.exists(cache.resolve("sha256/ab/cd/deadbeef"))).isFalse();
@@ -121,7 +185,7 @@ class CacheCommandTest {
         Path cache = tempDir.resolve("cache");
         writeBlob(cache.resolve("actions/keys/task1"), new byte[4096]);
 
-        String stdout = withStdin("n\n", () -> capture(() -> run("cache", "purge", "--cache-dir", cache.toString())));
+        String stdout = withStdin("n\n", () -> capture(() -> run("cache", "nuke", "--cache-dir", cache.toString())));
 
         assertThat(stdout).contains("aborted");
         assertThat(Files.exists(cache.resolve("actions/keys/task1"))).isTrue();
@@ -132,9 +196,9 @@ class CacheCommandTest {
         Path cache = tempDir.resolve("cache");
         writeBlob(cache.resolve("actions/keys/task1"), new byte[4096]);
 
-        String stdout = withStdin("y\n", () -> capture(() -> run("cache", "purge", "--cache-dir", cache.toString())));
+        String stdout = withStdin("y\n", () -> capture(() -> run("cache", "nuke", "--cache-dir", cache.toString())));
 
-        assertThat(stdout).contains("Purged 1 files");
+        assertThat(stdout).contains("Nuked 1 files");
         assertThat(Files.exists(cache.resolve("actions/keys/task1"))).isFalse();
     }
 
@@ -143,7 +207,7 @@ class CacheCommandTest {
         Path cache = tempDir.resolve("cache");
         writeBlob(cache.resolve("actions/keys/task1"), new byte[4096]);
 
-        String stdout = capture(() -> run("cache", "purge", "--cache-dir", cache.toString(), "--dry-run"));
+        String stdout = capture(() -> run("cache", "nuke", "--cache-dir", cache.toString(), "--dry-run"));
 
         assertThat(stdout).contains("Dry run: would remove");
         assertThat(Files.exists(cache.resolve("actions/keys/task1"))).isTrue();
@@ -152,8 +216,8 @@ class CacheCommandTest {
     @Test
     void purge_missing_cache_dir_is_a_noop(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
-        String stdout = capture(() -> run("cache", "purge", "--cache-dir", cache.toString(), "--yes"));
-        assertThat(stdout).contains("Nothing to purge");
+        String stdout = capture(() -> run("cache", "nuke", "--cache-dir", cache.toString(), "--yes"));
+        assertThat(stdout).contains("Nothing to nuke");
     }
 
     @Test
@@ -162,9 +226,9 @@ class CacheCommandTest {
         // Cache CAS alone is still cache-tier content — purge removes it.
         writeBlob(cache.resolve("sha256/ab/cd/deadbeef"), new byte[4096]);
 
-        String stdout = capture(() -> run("cache", "purge", "--cache-dir", cache.toString(), "--yes"));
+        String stdout = capture(() -> run("cache", "nuke", "--cache-dir", cache.toString(), "--yes"));
 
-        assertThat(stdout).contains("Purged");
+        assertThat(stdout).contains("Nuked");
         assertThat(Files.exists(cache.resolve("sha256/ab/cd/deadbeef"))).isFalse();
     }
 
@@ -173,7 +237,7 @@ class CacheCommandTest {
         Path cache = tempDir.resolve("cache");
         writeBlob(cache.resolve("actions/keys/task1"), new byte[1024]);
 
-        String stdout = capture(() -> run("repo", "prune", "--cache-dir", cache.toString(), "--dry-run"));
+        String stdout = capture(() -> run("storage", "clean", "--dry-run"));
 
         // op "sweep" round-trips the engine; dry run must not touch the action cache.
         assertThat(stdout).contains("Dry run");
@@ -206,122 +270,35 @@ class CacheCommandTest {
     }
 
     @Test
-    void repo_storage_reports_cas_and_repos_without_action_cache(@TempDir Path tempDir) throws Exception {
-        // JK-1531: since the CAS split, `jk repo storage` measures the AMBIENT artifact store —
-        // `--cache-dir` moves only the cache tier — so exact byte totals depend on whatever the
-        // module-shared store holds and cannot be asserted here. Structural shape only; the
-        // hard-link no-double-count arithmetic is covered hermetically by
-        // DiskUsageTest.exclusive_does_not_double_count_hardlinked_cas_and_repos.
-        Path cache = tempDir.resolve("cache");
-        writeBlob(cache.resolve("actions/keys/task"), new byte[4096]);
+    void bare_storage_prints_help_not_usage(@TempDir Path tempDir) {
+        String plain = TestAnsi.strip(capture(() -> run("storage")));
+        assertThat(plain).contains("Usage:");
+        assertThat(plain).contains("usage");
+        assertThat(plain).contains("dir");
+        assertThat(plain).doesNotContain("Artifact Storage");
+    }
 
-        String plain = TestAnsi.strip(capture(() -> run("repo", "storage", "--cache-dir", cache.toString())));
-        assertThat(plain).contains("Repo Storage");
-        assertThat(plain).contains("CAS Blobs");
+    @Test
+    void storage_usage_reports_content_classes_without_action_cache() throws Exception {
+        // JK-1531: since the CAS split, `jk storage usage` measures the AMBIENT artifact store, so
+        // exact byte totals depend on whatever the module-shared store holds and cannot be asserted
+        // here. Structural shape only; the hard-link no-double-count arithmetic is covered
+        // hermetically by DiskUsageTest.exclusive_does_not_double_count_hardlinked_cas_and_repos.
+        // The store has to exist for there to be a table at all — an absent store reports itself.
+        writeBlob(cc.jumpkick.cache.JkStores.store().resolve("sha256/aa/bb/blob"), new byte[4096]);
+
+        String plain = TestAnsi.strip(capture(() -> run("storage", "usage")));
+        assertThat(plain).contains("Artifact Storage");
+        assertThat(plain).contains("Jar Files");
+        assertThat(plain).contains("Native Bins");
+        assertThat(plain).contains("OCI Images");
         assertThat(plain).contains("Worker JARs");
-        assertThat(plain).contains("Run Logs");
         assertThat(plain).contains("Total");
         assertThat(plain).contains("Utilization");
+        assertThat(plain).doesNotContain("Format Stamps");
+        assertThat(plain).doesNotContain("CAS Blobs");
+        assertThat(plain).doesNotContain("Run Logs");
         assertThat(plain).doesNotContain("Action Cache");
-    }
-
-    @Test
-    void clear_requires_a_jk_toml(@TempDir Path tempDir) {
-        Path cache = tempDir.resolve("cache");
-        int exit = run("cache", "clear", "-C", tempDir.toString(), "--cache-dir", cache.toString(), "--yes");
-        // Exit.CONFIG — no jk.toml in the working dir.
-        assertThat(exit).isEqualTo(2);
-    }
-
-    @Test
-    void clear_with_yes_invalidates_this_projects_entries(@TempDir Path tempDir) throws Exception {
-        Path proj = tempDir.resolve("proj");
-        writeProject(proj, "com.example", "proj", "0.1.0");
-        Path cache = tempDir.resolve("cache");
-        String tag = classesTag(proj);
-        seedRecord(cache, "keyProject", "compile-main@" + tag, null);
-        seedRecord(cache, "keyTests", "run-tests@" + tag, null); // path-less: matched by tag
-        seedRecord(cache, "keyOther", "compile-main@ffffffffffff", null); // different project
-
-        String stdout =
-                capture(() -> run("cache", "clear", "-C", proj.toString(), "--cache-dir", cache.toString(), "--yes"));
-
-        assertThat(Files.exists(cache.resolve("actions/keys/keyProject"))).isFalse();
-        assertThat(Files.exists(cache.resolve("actions/keys/keyTests"))).isFalse();
-        assertThat(Files.exists(cache.resolve("actions/tasks/compile-main@" + tag)))
-                .isFalse();
-        assertThat(Files.exists(cache.resolve("actions/keys/keyOther"))).isTrue();
-        // Two records matched (compile + test), each with its tasks/ pointer → 4 files removed.
-        assertThat(stdout).contains("Invalidated").contains("4 cache entries");
-    }
-
-    @Test
-    void clear_matches_records_by_input_path(@TempDir Path tempDir) throws Exception {
-        Path proj = tempDir.resolve("proj");
-        writeProject(proj, "com.example", "proj", "0.1.0");
-        Path cache = tempDir.resolve("cache");
-        // Unknown tag, but an INPUT source path under the project → still this project's.
-        // Build records realpath'd module roots (BuildCommand.toRealPath); seed the same form.
-        String src = proj.toRealPath().resolve("src/main/java/A.java").toString();
-        seedRecord(cache, "keyPath", "compile-main@ffffffffffff", "INPUT abc123 " + src);
-
-        run("cache", "clear", "-C", proj.toString(), "--cache-dir", cache.toString(), "--yes");
-
-        assertThat(Files.exists(cache.resolve("actions/keys/keyPath"))).isFalse();
-        assertThat(Files.exists(cache.resolve("actions/tasks/compile-main@ffffffffffff")))
-                .isFalse();
-    }
-
-    @Test
-    void clear_cascades_to_workspace_modules(@TempDir Path tempDir) throws Exception {
-        Files.writeString(tempDir.resolve("jk.toml"), """
-                [project]
-                group = "com.example"
-                name  = "ws"
-                version = "1.0.0"
-                java = 25
-
-                [workspace]
-                modules = ["mod"]
-                """, StandardCharsets.UTF_8);
-        Path mod = tempDir.resolve("mod");
-        writeProject(mod, "com.example", "mod", "1.0.0");
-        Path cache = tempDir.resolve("cache");
-        seedRecord(cache, "keyMod", "compile-main@" + classesTag(mod), null);
-
-        // Clear from the workspace root — the module's entry must go too (the cascade).
-        run("cache", "clear", "-C", tempDir.toString(), "--cache-dir", cache.toString(), "--yes");
-
-        assertThat(Files.exists(cache.resolve("actions/keys/keyMod"))).isFalse();
-    }
-
-    @Test
-    void clear_dry_run_reports_without_deleting(@TempDir Path tempDir) throws Exception {
-        Path proj = tempDir.resolve("proj");
-        writeProject(proj, "com.example", "proj", "0.1.0");
-        Path cache = tempDir.resolve("cache");
-        seedRecord(cache, "keyProject", "compile-main@" + classesTag(proj), null);
-
-        String stdout = capture(
-                () -> run("cache", "clear", "-C", proj.toString(), "--cache-dir", cache.toString(), "--dry-run"));
-
-        assertThat(Files.exists(cache.resolve("actions/keys/keyProject"))).isTrue();
-        assertThat(stdout).contains("Dry run: would invalidate");
-    }
-
-    @Test
-    void clear_aborts_when_not_confirmed(@TempDir Path tempDir) throws Exception {
-        Path proj = tempDir.resolve("proj");
-        writeProject(proj, "com.example", "proj", "0.1.0");
-        Path cache = tempDir.resolve("cache");
-        seedRecord(cache, "keyProject", "compile-main@" + classesTag(proj), null);
-
-        String stdout = withStdin(
-                "n\n",
-                () -> capture(() -> run("cache", "clear", "-C", proj.toString(), "--cache-dir", cache.toString())));
-
-        assertThat(stdout).contains("aborted");
-        assertThat(Files.exists(cache.resolve("actions/keys/keyProject"))).isTrue();
     }
 
     // --- helpers -----------------------------------------------------------

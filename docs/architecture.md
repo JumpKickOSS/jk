@@ -26,14 +26,15 @@ How jk is structured today. For day-to-day usage see [guide.md](guide.md).
   (`jk run` exec, `jk mvn`/`gradle` interactive). Sub-50 ms cold start; no engine code in the
   native image.
 - **Engine** — dependency resolution, task graph / BuildPlan execution, CAS, toolchains,
-  compiler/test workers, hosted verbs (`build`, `test`, `lock`, `publish`, …). Default heap ceiling **256 MiB**
-  (`~/.config/jk/config.toml` → `[engine] max-heap-mb`, or `JK_ENGINE_MAX_HEAP_MB`).
+  compiler/test workers, hosted verbs (`build`, `test`, `lock`, `publish`, …). Default heap ceiling
+  **256 MiB** (or **512 MiB** when `CI=1`/`true` and unset) via
+  `~/.config/jk/config.toml` → `[engine] max-heap-mb`, or `JK_ENGINE_MAX_HEAP_MB`.
   **Three budgets:** (1) engine heap = thin coordinator (JK-1075 measured ~36 MiB peak on a
   200-module build); (2) worker JVM heaps from free RAM via `HeapPlan`; (3) concurrency via
   **`-j` / `--jobs` / `JK_JOBS` / `[engine] jobs`** (Mill-shaped: `0`=effective cores via
   cgroup quota when present else `availableProcessors()`, `1`=serial, `N`=cap — JK-1084),
-  still RAM-clamped by `PluginSlots`. Do not grow the engine default toward multi-GiB “just
-  in case”; CI may raise `max-heap-mb` when needed.
+  still RAM-clamped by `PluginSlots`. Do not grow the non-CI engine default toward multi-GiB
+  “just in case”; set `max-heap-mb` or run under CI for a higher default.
 - **Load-bearing** — if the engine cannot start, the command fails clearly (no silent
   in-process fallback for hosted work). That is how concurrent builds avoid RAM overcommit.
 - **Lifecycle** — lazy start on first need; stays resident until `jk engine stop` or
@@ -200,7 +201,10 @@ Ship layout (`./gradlew dist`): slim native `jk` + `lib/jk-engine-<version>.jar`
   classpaths select by scope.
 - **POM fidelity:** exclusions and Maven version ranges are honored on expand; optional deps
   stay out until features activate them.
-- **Budgets:** `JK_RESOLVE_MAX_DECISIONS` (default 100 000), `JK_RESOLVE_TIMEOUT_MS` (default 120 s).
+- **Budgets / anti-loop:** `JK_RESOLVE_MAX_DECISIONS` (default 100 000), `JK_RESOLVE_TIMEOUT_MS`
+  (default 120 s). Every prop/conflict step counts toward a step budget
+  (`maxDecisions × 16`). Conflict **watermarks** fingerprint decision maps that already
+  failed so the solver cannot re-enter them (cleared when a universe expands).
 
 Package identity in the solver is `group:artifact:type:classifier` (defaults: type `jar`,
 classifier empty → `g:a:jar:`). Legacy lock rows with bare `g:a` still load. BOM management

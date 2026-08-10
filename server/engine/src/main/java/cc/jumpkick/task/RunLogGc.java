@@ -11,7 +11,7 @@ import java.util.stream.Stream;
 
 /**
  * Delete {@code <cacheRoot>/runs/*.jsonl} entries older than {@link #DEFAULT_TTL} (7 days).
- * Invoked by {@code jk cache prune} alongside the other steps.
+ * Invoked by {@code jk cache clean} alongside the other steps.
  *
  * <p>Run logs are best-effort diagnostic artefacts — the data is useful for "what happened in last
  * week's build?" but doesn't need to persist forever. A weekly cadence keeps the directory bounded

@@ -23,15 +23,28 @@ import java.util.stream.Stream;
  * Persistent action cache: {@code action_key → CAS outputs} plus a project-qualified {@code task
  * → action_key} pointer. Layout: {@code keys/<actionKey>}, {@code tasks/<taskId>}. Store/restore
  * always copy (never hard-link) so compile trees cannot poison CAS blobs.
+ *
+ * <p>Optional {@code storeCas}: Class-C blobs promoted by {@link cc.jumpkick.cache.ActionPromote} /
+ * {@code jk release} may live only in the artifact store — restore falls back there on cache miss.
+ * Class-C tasks also keep a short generation list ({@code tasks/<taskId>.gens}).
  */
 public final class ActionCache {
 
     private final Cas cas;
+    private final Cas storeCas; // nullable — dual-CAS lookup for promoted Class-C blobs
     private final Path root;
 
     public ActionCache(Cas cas, Path root) {
+        this(cas, root, null);
+    }
+
+    /**
+     * @param storeCas optional long-lived store CAS for Class-C blob fallback (may be null)
+     */
+    public ActionCache(Cas cas, Path root, Cas storeCas) {
         this.cas = Objects.requireNonNull(cas, "cas");
         this.root = Objects.requireNonNull(root, "root");
+        this.storeCas = storeCas;
     }
 
     /**
@@ -40,6 +53,21 @@ public final class ActionCache {
      */
     public Cas cas() {
         return cas;
+    }
+
+    /** Resolve a blob path: cache CAS first, then store CAS (promoted Class-C). */
+    Path resolveBlob(String sha) {
+        Path p = cas.pathFor(sha);
+        if (Files.isRegularFile(p)) return p;
+        if (storeCas != null) {
+            Path s = storeCas.pathFor(sha);
+            if (Files.isRegularFile(s)) return s;
+        }
+        return p;
+    }
+
+    private boolean hasBlob(String sha) {
+        return Files.isRegularFile(resolveBlob(sha));
     }
 
     public Optional<ActionRecord> lookup(String actionKey) throws IOException {
@@ -63,6 +91,7 @@ public final class ActionCache {
     public ActionRecord store(String taskId, String actionKey, Map<String, String> inputs, Path outputDir)
             throws IOException {
         Map<String, String> outputs = new TreeMap<>();
+        java.util.Set<String> executables = new java.util.TreeSet<>();
         if (Files.exists(outputDir)) {
             try (Stream<Path> stream = Files.walk(outputDir)) {
                 for (Path file : (Iterable<Path>) stream::iterator) {
@@ -79,6 +108,7 @@ public final class ActionCache {
                     cas.putFile(file, hex);
                     String relPath = outputDir.relativize(file).toString().replace(File.separatorChar, '/');
                     outputs.put(relPath, hex);
+                    if (Files.isExecutable(file)) executables.add(relPath);
                 }
             }
         }
@@ -87,7 +117,7 @@ public final class ActionCache {
         if (outputs.isEmpty() && hasSourceInputs(inputs)) {
             return new ActionRecord(taskId, actionKey, inputs, Map.of(), Map.of());
         }
-        return storeWithOutputs(taskId, actionKey, inputs, outputs);
+        return storeWithOutputs(taskId, actionKey, inputs, outputs, Map.of(), executables);
     }
 
     /** True when any path segment starts with {@code .jk-} — plugin-private scratch, never cached. */
@@ -128,15 +158,76 @@ public final class ActionCache {
             Map<String, String> outputs,
             Map<String, List<String>> units)
             throws IOException {
+        return storeWithOutputs(taskId, actionKey, inputs, outputs, units, java.util.Set.of());
+    }
+
+    /** As above, recording which outputs were executable so a restore can put the bit back. */
+    public ActionRecord storeWithOutputs(
+            String taskId,
+            String actionKey,
+            Map<String, String> inputs,
+            Map<String, String> outputs,
+            Map<String, List<String>> units,
+            java.util.Set<String> executables)
+            throws IOException {
         Files.createDirectories(keysDir());
         Files.createDirectories(tasksDir());
         meter(outputs, true); // every store path funnels here — one place to count cache-in bytes
-        ActionRecord record = new ActionRecord(taskId, actionKey, inputs, outputs, units);
+        ActionRecord record = new ActionRecord(taskId, actionKey, inputs, outputs, units, executables);
         // Atomic temp+move: concurrent store/lookup under cacheGate read mode must never see a
         // truncated keys/ or tasks/ file. Order preserved: key before task pointer.
         AtomicWrites.replace(keysDir().resolve(actionKey), render(record));
-        AtomicWrites.replace(tasksDir().resolve(taskId), actionKey);
+        // Generation trim for Class-C (native / OCI / fat assembly) before flipping the pointer.
+        String previous = null;
+        Path pointer = tasksDir().resolve(taskId);
+        if (Files.isRegularFile(pointer)) {
+            try {
+                previous = Files.readString(pointer).trim();
+            } catch (IOException ignored) {
+                previous = null;
+            }
+        }
+        AtomicWrites.replace(pointer, actionKey);
+        trimGenerations(taskId, actionKey, previous);
         return record;
+    }
+
+    /**
+     * Keep at most {@link HeavyActionPolicy#generations(String)} action keys for Class-C tasks:
+     * current pointer + {@code tasks/<taskId>.gens} (newest first). Older key files are deleted so
+     * {@link CasSweep} can reclaim their blobs.
+     */
+    private void trimGenerations(String taskId, String newKey, String previousKey) throws IOException {
+        int keep = HeavyActionPolicy.generations(taskId);
+        if (keep == Integer.MAX_VALUE) return; // not Class-C
+        Path gens = HeavyActionGc.gensFile(tasksDir(), taskId);
+        List<String> history = new ArrayList<>();
+        if (previousKey != null && !previousKey.isBlank() && !previousKey.equals(newKey)) {
+            history.add(previousKey);
+        }
+        if (Files.isRegularFile(gens)) {
+            for (String line : Files.readAllLines(gens)) {
+                String k = line.trim();
+                if (k.isEmpty() || k.equals(newKey) || history.contains(k)) continue;
+                history.add(k);
+            }
+        }
+        // keep total generations including current (newKey): retain keep-1 predecessors
+        int retain = Math.max(0, keep - 1);
+        List<String> drop = new ArrayList<>();
+        if (history.size() > retain) {
+            drop.addAll(history.subList(retain, history.size()));
+            history = new ArrayList<>(history.subList(0, retain));
+        }
+        for (String k : drop) {
+            Files.deleteIfExists(keysDir().resolve(k));
+        }
+        if (history.isEmpty()) {
+            Files.deleteIfExists(gens);
+        } else {
+            Files.createDirectories(gens.getParent());
+            AtomicWrites.replace(gens, String.join("\n", history) + "\n");
+        }
     }
 
     /**
@@ -148,7 +239,7 @@ public final class ActionCache {
      */
     public boolean restore(ActionRecord record, Path outputDir) throws IOException {
         for (String sha : record.outputs().values()) {
-            if (!Files.isRegularFile(cas.pathFor(sha))) return false;
+            if (!hasBlob(sha)) return false;
         }
         // Build-host compile freshness stamps (.jstamp/.kstamp) live inside the
         // classes tree but are NOT part of the cached compiled output — they're
@@ -180,11 +271,15 @@ public final class ActionCache {
             // Digest while copying: the memo seed below asserts these exact bytes, so a
             // truncated/corrupt blob must surface as a miss here — not as green tests over
             // wrong classes downstream.
-            if (!copyVerified(cas.pathFor(entry.getValue()), target, entry.getValue())) {
+            if (!copyVerified(resolveBlob(entry.getValue()), target, entry.getValue())) {
                 dropCorruptBlob(entry.getValue());
                 deleteRecursively(outputDir);
                 Files.createDirectories(outputDir);
                 return false;
+            }
+            // CAS blobs carry no mode; the record does. Same reason as restoreArtifacts.
+            if (record.executables().contains(entry.getKey())) {
+                target.toFile().setExecutable(true, false);
             }
             // Seed content memo so TestStamp / package keys do not re-hash the whole tree.
             FileHashMemo.rememberContent(target, entry.getValue());
@@ -226,7 +321,7 @@ public final class ActionCache {
     /** A blob whose bytes no longer match its name is garbage — drop it so the next store re-puts. */
     private void dropCorruptBlob(String sha) {
         try {
-            Files.deleteIfExists(cas.pathFor(sha));
+            Files.deleteIfExists(resolveBlob(sha));
         } catch (IOException ignored) {
             // best-effort hygiene
         }
@@ -241,7 +336,7 @@ public final class ActionCache {
     public boolean restoreArtifacts(ActionRecord record, Path baseDir) throws IOException {
         if (record.outputs().isEmpty()) return false;
         for (String sha : record.outputs().values()) {
-            if (!Files.isRegularFile(cas.pathFor(sha))) return false;
+            if (!hasBlob(sha)) return false;
         }
         // Clear the DIRECTORY roots this record owns before copyinga multi-file
         // layout (quarkus fast-jar lib/ app/ quarkus-app/) restored over a dirty target/
@@ -279,11 +374,17 @@ public final class ActionCache {
                 Files.deleteIfExists(target);
                 // COPY, never link: a packager may later rewrite the target in place, and a link
                 // would let that rewrite mutate the blob (see Cas.putFile). Digest while copying —
-                // the memo seed below asserts these exact bytes.
-                if (!copyVerified(cas.pathFor(e.getValue()), target, e.getValue())) {
+                // the memo seed below asserts these exact bytes. Blobs may live in the store CAS
+                // after a release promote (Class-C).
+                if (!copyVerified(resolveBlob(e.getValue()), target, e.getValue())) {
                     dropCorruptBlob(e.getValue());
                     return false;
                 }
+            }
+            // CAS blobs carry no mode; the record does. Applied on every restore, not only the
+            // copying branch — a byte-identical target left alone may still have lost the bit.
+            if (record.executables().contains(e.getKey())) {
+                target.toFile().setExecutable(true, false);
             }
             // Known CAS digest — seed so later ClasspathFingerprint/TestStamp work is free.
             FileHashMemo.rememberContent(target, e.getValue());
@@ -324,7 +425,9 @@ public final class ActionCache {
      */
     private boolean identicalTo(Path target, String sha) throws IOException {
         if (!Files.isRegularFile(target)) return false;
-        if (Files.size(target) != Files.size(cas.pathFor(sha))) return false;
+        Path blob = resolveBlob(sha);
+        if (!Files.isRegularFile(blob)) return false;
+        if (Files.size(target) != Files.size(blob)) return false;
         return sha.equals(Hashing.sha256Hex(target));
     }
 
@@ -338,14 +441,17 @@ public final class ActionCache {
             String taskId, String actionKey, Map<String, String> inputs, Path baseDir, List<Path> artifacts)
             throws IOException {
         Map<String, String> outputs = new TreeMap<>();
+        java.util.Set<String> executables = new java.util.TreeSet<>();
         for (Path a : artifacts) {
             if (!Files.isRegularFile(a)) continue;
             String hex = Hashing.sha256Hex(a);
             cas.putFile(a, hex); // never link a mutable target/ artifact into the CAS
 
-            outputs.put(baseDir.relativize(a).toString().replace(File.separatorChar, '/'), hex);
+            String rel = baseDir.relativize(a).toString().replace(File.separatorChar, '/');
+            outputs.put(rel, hex);
+            if (Files.isExecutable(a)) executables.add(rel);
         }
-        return storeWithOutputs(taskId, actionKey, inputs, outputs);
+        return storeWithOutputs(taskId, actionKey, inputs, outputs, Map.of(), executables);
     }
 
     /**
@@ -359,7 +465,7 @@ public final class ActionCache {
         for (String sha : outputs.values()) {
             // Not every record's values are blob hashes: a marker record (run-tests) parks small
             // scalars here instead, so meter only what is actually a CAS object.
-            if (isSha256Hex(sha)) bytes += IoLedger.sizeOf(cas.pathFor(sha));
+            if (isSha256Hex(sha)) bytes += IoLedger.sizeOf(resolveBlob(sha));
         }
         IoLedger io = SessionContext.current().io();
         if (intoCache) io.localUp(bytes);
@@ -384,13 +490,21 @@ public final class ActionCache {
             String actionKey,
             Map<String, String> inputs,
             Map<String, String> outputs,
-            Map<String, List<String>> units) {
+            Map<String, List<String>> units,
+            /**
+             * Output rel-paths that were executable when stored. CAS blobs carry no mode, so
+             * without this a restored binary comes back 0644 and the artifact is unrunnable from
+             * the second build onwards. Empty for records written before this was recorded, which
+             * restore exactly as they used to.
+             */
+            java.util.Set<String> executables) {
 
         public ActionRecord {
             Objects.requireNonNull(taskId, "taskId");
             Objects.requireNonNull(actionKey, "actionKey");
             inputs = Map.copyOf(inputs);
             outputs = Map.copyOf(outputs);
+            executables = executables == null ? java.util.Set.of() : java.util.Set.copyOf(executables);
             // units: source-abs-path → output relPaths it produced. Populated by
             // an incremental compiler; empty for full rebuilds / legacy records.
             Map<String, List<String>> u = new LinkedHashMap<>();
@@ -398,9 +512,18 @@ public final class ActionCache {
             units = Map.copyOf(u);
         }
 
+        public ActionRecord(
+                String taskId,
+                String actionKey,
+                Map<String, String> inputs,
+                Map<String, String> outputs,
+                Map<String, List<String>> units) {
+            this(taskId, actionKey, inputs, outputs, units, java.util.Set.of());
+        }
+
         /** Back-compat: a record with no per-source unit grouping. */
         public ActionRecord(String taskId, String actionKey, Map<String, String> inputs, Map<String, String> outputs) {
-            this(taskId, actionKey, inputs, outputs, Map.of());
+            this(taskId, actionKey, inputs, outputs, Map.of(), java.util.Set.of());
         }
     }
 
@@ -422,6 +545,10 @@ public final class ActionCache {
                     .append(e.getKey())
                     .append('\n');
         }
+        // EXEC <relPath> — the output was executable when stored.
+        for (String rel : new java.util.TreeSet<>(record.executables())) {
+            sb.append("EXEC ").append(rel).append('\n');
+        }
         // UNIT <relPath> <sourceAbsPath> — relPath is space-free (Java class
         // path), source is the rest of the line so it may contain spaces.
         for (Map.Entry<String, List<String>> e : new TreeMap<>(record.units()).entrySet()) {
@@ -440,6 +567,7 @@ public final class ActionCache {
         Map<String, String> inputs = new LinkedHashMap<>();
         Map<String, String> outputs = new LinkedHashMap<>();
         Map<String, List<String>> units = new LinkedHashMap<>();
+        java.util.Set<String> executables = new java.util.LinkedHashSet<>();
         for (String line : content.split("\n")) {
             if (line.isBlank()) continue;
             if (line.startsWith("TASK ")) {
@@ -454,6 +582,8 @@ public final class ActionCache {
                 String body = line.substring("OUTPUT ".length());
                 int sp = body.indexOf(' ');
                 outputs.put(body.substring(sp + 1), body.substring(0, sp));
+            } else if (line.startsWith("EXEC ")) {
+                executables.add(line.substring("EXEC ".length()).trim());
             } else if (line.startsWith("UNIT ")) {
                 // UNIT <relPath> <sourceAbsPath> — absent in legacy records.
                 String body = line.substring("UNIT ".length());
@@ -468,7 +598,8 @@ public final class ActionCache {
                 Objects.requireNonNull(actionKey, "actionKey in record"),
                 inputs,
                 outputs,
-                units);
+                units,
+                executables);
     }
 
     private Path keysDir() {

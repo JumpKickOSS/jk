@@ -7,7 +7,7 @@ client code without being recorded anywhere.
 
 ## On by default
 
-`[http]` is **enabled by default** — loopback bind, token-gated mutations. It is not opt-in. Turn it
+`[http]` is **enabled by default** — loopback bind, **token-gated `/api/*`** (static shell open). It is not opt-in. Turn it
 off with `[http] enabled = false` in `~/.config/jk/config.toml` or `JK_HTTP_ENABLED=false`; a malformed
 config yields empty and fails closed (no server).
 
@@ -84,29 +84,23 @@ Task Manager.
 
 ## Auth tiers
 
-Loopback binds serve the dashboard without a token; mutations are token-gated. Non-loopback origins
-carry the token — `EventSource` cannot send headers, so streams pass it as an `access_token` query
-parameter, and the SPA bootstraps from a `#t=` fragment. **`jk web`** starts the engine if needed,
-prints the tokenized URL, and opens a browser (`$BROWSER` or the platform default).
+**Every `/api/*` call requires a valid bearer token**, including loopback binds. There is no
+tokenless “watch-only” mode — a bare browser open without a token must not see live builds or
+history. Static shell assets (`index.html`, JS, CSS, images) stay open so the SPA can show the
+blocking authorization dialog. Non-loopback clients carry the token the same way; `EventSource`
+cannot send headers, so SSE passes it as an `access_token` query parameter. The SPA bootstraps
+from a `#t=` fragment. **`jk web`** starts the engine if needed, prints the tokenized URL, and
+opens a browser (`$BROWSER` or the platform default).
 
-**Sensitive reads need the token even on loopback**, because on a shared machine another local
-account must not have the engine owner's filesystem and identity for free:
+Missing or invalid credentials → **401** (plus SPA hard-gate). Engine generation mismatch →
+**409** with `engine-epoch-mismatch` (see below).
 
-| Endpoint | Why |
-|---|---|
-| `GET /api/fs` | lists the filesystem with the owner's permissions |
-| `GET /api/log` | engine log tail |
-| `GET /api/history/artifact` | full on-disk diagnostics / lock snapshots |
-| `GET /api/project` | path-existence oracle |
-| `GET /api/project/graph` | module dependency DAG (workspace layout / module paths) |
-| `GET /api/metrics` | every project dir and coordinate ever built |
-| `GET /api/projects/defaults` | derives from the owner's git identity and home layout |
-| `GET /api/config` | config file path (home layout) + verbatim values (`templates.official` may embed credentials) |
+### `GET /api/project`
 
-Aggregate-only reads (`GET /api/status`, `GET /api/cache`), the activity stream
-(`GET /api/events`), and the **journal list** (`GET /api/history`) stay open on loopback so a
-tokenless dashboard can show live builds **and** rehydrate them after a hard refresh. History
-**artifacts** remain token-gated.
+`GET /api/project?project=<id>` (preferred) or `?dir=<abs-path>`.
+
+Returns `{ projectId, dir, coord, description }`. `project` is the durable identity; `dir` is the
+last-known checkout path for build/graph ops.
 
 ### `GET /api/project/graph`
 
@@ -116,8 +110,8 @@ Dependency graph for the Project page (JK-1542), same idea as `jk tree`:
 
 | Query | Default | Meaning |
 | --- | --- | --- |
-| `dir` | required | Project or workspace root |
-| `scopes` | `main` | Comma-separated canonical scopes (`main`, `test`, `provided`, …). Percent-encoded like any query value; an unknown name is a **400** naming the valid set |
+| `dir` | required | Project or workspace root (checkout path) |
+| `scopes` | `export,main,runtime` | Comma-separated canonical scopes (same default as `jk tree`). Percent-encoded like any query value; an unknown name is a **400** naming the valid set |
 | `transitive` | `false` | When true, expand lockfile transitive deps under each declared root |
 
 Response:
@@ -176,19 +170,29 @@ async — a first-ever connect may briefly carry no `cache` frame until the asyn
 
 ### `event: status`
 
-Core engine/host vitals (same facts as `GET /api/status` heap/load/plans fields). Config knobs
-(`httpUrl`, `maxConcurrentRequests`, …) stay REST-only; the SPA merges SSE into the last REST
-hydrate.
+Core engine/host vitals (same facts as `GET /api/status` heap/load/plans fields), including
+`availableMemoryBytes`, `systemCpuLoad`, `systemLoadAverage` (1‑minute), and `engineEpoch`
+(process generation id). Config knobs (`httpUrl`, `maxConcurrentRequests`, …) stay REST-only;
+the SPA merges SSE into the last REST hydrate.
+
+### Engine generation (`engineEpoch`)
+
+Every process mints a stable `engineEpoch` (`version[+buildId]@startedAtMillis`). It appears on
+`GET /api/status` and every SSE `status` frame. After bootstrap, non-bootstrap `/api/*` calls must
+send `X-Jk-Engine-Epoch: <epoch>` matching the running process; mismatch or missing header →
+**409** `{ "error": "engine-epoch-mismatch", "engineEpoch": "…" }`. Exempt: `GET /api/status` and
+`GET /api/events` (EventSource cannot send headers). Static shell is ungated. The SPA latches the
+epoch and hard-reloads when it changes (engine restart / displacement).
 
 ### `event: cache` and `GET /api/cache`
 
-Two storage surfaces (CLI parity: `jk cache storage` / `jk repo storage`), not one combined
+Two storage surfaces (CLI parity: `jk cache usage` / `jk storage usage`), not one combined
 “cache used” total:
 
 | Surface | Bytes | Budget field |
 | --- | --- | --- |
-| **Cache tier** | action index + cache CAS + format stamps → `cacheBytes` / `actionCacheBytes` | `cacheMaxBytes` / `actionMaxBytes` (`[cache] max-cache-size-mb`, default 1 GiB) |
-| **Artifact store** | store CAS + `repos/` mirrors + run logs → `artifactStorageBytes` | `maxBytes` (`[cache] max-store-size-mb`, default 4 GiB) |
+| **Cache tier** | action index + cache CAS + format stamps → `cacheBytes` / `actionCacheBytes` | `cacheMaxBytes` / `actionMaxBytes` (`[cache] max-cache-size-gb`, default 4 GiB / 8 GiB on CI) |
+| **Artifact store** | store CAS + `repos/` mirrors + run logs → `artifactStorageBytes` | `maxBytes` (`[cache] max-store-size-gb`, default 6 GiB / 12 GiB on CI) |
 
 Full REST also exposes `actionsCount`/`actionsBytes` (index), `cacheCasCount`/`cacheCasBytes`
 (cache CAS), and store section fields. **Live SSE (thin):** `{ "thin": true, cacheBytes,

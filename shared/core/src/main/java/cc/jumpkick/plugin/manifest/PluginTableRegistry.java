@@ -27,7 +27,7 @@ public final class PluginTableRegistry {
             "quarkus.jk-plugin.toml",
             "android.jk-plugin.toml",
             "protobuf.jk-plugin.toml",
-            "shrink.jk-plugin.toml",
+            "minified.jk-plugin.toml",
             "micronaut.jk-plugin.toml");
 
     /** Load a plugin resource relative to its manifest ({@code <id>/<relPath>}). */

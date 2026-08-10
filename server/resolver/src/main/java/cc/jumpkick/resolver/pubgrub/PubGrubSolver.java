@@ -19,10 +19,21 @@ import java.util.function.BiConsumer;
  * intern onto {@link VersionUniverse}/{@link AllowedSet} bitsets; budgets via {@code
  * JK_RESOLVE_MAX_DECISIONS} / {@code JK_RESOLVE_TIMEOUT_MS}.
  *
- * <p>when the positive constraint is an exact singleton, or the source has a soft-prefer
- * pin that already satisfies the constraint, seed a singleton {@link VersionUniverse} without
- * calling {@link PackageSource#versions}. Expand to the full advertised list only when that seed
- * cannot produce a viable candidate.
+ * <p>When the positive constraint is an exact singleton, or the source has a soft-prefer pin that
+ * already satisfies the constraint, seed a singleton {@link VersionUniverse} without calling {@link
+ * PackageSource#versions}. Expand to the full advertised list only when that seed cannot produce a
+ * viable candidate.
+ *
+ * <p><strong>Anti-loop:</strong> correct PubGrub learning should never re-enter a decision
+ * assignment that already conflicted. Large AndroidX/BOM graphs can still thrash (broken POM
+ * floors, incomplete universes, prefer-pin churn). Watermarks and step budgets make that fail
+ * closed instead of spinning for minutes:
+ *
+ * <ul>
+ *   <li>every budget check counts a <em>step</em> (propagation storms included, not only decides)
+ *   <li>re-entering a decision map fingerprint that previously conflicted (cleared on universe
+ *       expand, which can invalidate premature conflicts)
+ * </ul>
  */
 public class PubGrubSolver {
 
@@ -31,6 +42,13 @@ public class PubGrubSolver {
 
     /** Default wall-clock budget in ms; {@code 0} = unlimited (env {@code JK_RESOLVE_TIMEOUT_MS}). */
     public static final long DEFAULT_TIMEOUT_MS = 120_000L;
+
+    /**
+     * Multiplier on {@code maxDecisions} for total solver steps (outer loops, propagation rounds,
+     * conflict-resolution iterations). Propagation-only storms never increment {@code
+     * decisionCount} — steps close that hole.
+     */
+    public static final int STEPS_PER_DECISION = 16;
 
     private static final int AVAILABLE_SAMPLE = 12;
 
@@ -60,14 +78,22 @@ public class PubGrubSolver {
     protected String rootPkg;
 
     private final int maxDecisions;
+    private final int maxSteps;
     private final long deadlineNanos; // Long.MAX_VALUE = unlimited
 
     private int decisionCount;
-    private int loopCount;
+    private int stepCount;
 
     /**
-     * Optional progress hookfired after each successful non-root {@link
-     * PartialSolution#decide}. Listener must be cheap/thread-safe if shared.
+     * Fingerprints of decision maps that already caused a conflict. Re-entering one means learning
+     * failed to exclude that assignment (loop). Cleared when a universe expands (prior conflicts may
+     * have been cap artifacts).
+     */
+    private final Set<Long> conflictedDecisionFingerprints = new HashSet<>();
+
+    /**
+     * Optional progress hook fired after each successful non-root {@link PartialSolution#decide}.
+     * Listener must be cheap/thread-safe if shared.
      */
     private BiConsumer<String, String> onDecision;
 
@@ -83,6 +109,9 @@ public class PubGrubSolver {
             throw new IllegalArgumentException("maxDecisions must be positive: " + maxDecisions);
         }
         this.maxDecisions = maxDecisions;
+        // Saturate on overflow for huge maxDecisions test seams.
+        long steps = (long) maxDecisions * STEPS_PER_DECISION;
+        this.maxSteps = steps > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) steps;
         this.deadlineNanos = timeoutMs <= 0 ? Long.MAX_VALUE : System.nanoTime() + timeoutMs * 1_000_000L;
     }
 
@@ -142,9 +171,11 @@ public class PubGrubSolver {
      */
     public Map<String, String> solve(String rootPkg, String rootVersion, List<Term> rootDeps)
             throws IOException, InterruptedException {
+        long solveT0 = cc.jumpkick.resolve.ResolveProfile.on() ? System.nanoTime() : 0L;
         this.rootPkg = rootPkg;
         this.decisionCount = 0;
-        this.loopCount = 0;
+        this.stepCount = 0;
+        this.conflictedDecisionFingerprints.clear();
         Term rootTerm = Term.positive(rootPkg, VersionSet.exact(rootVersion));
 
         for (Term dep : rootDeps) {
@@ -157,27 +188,35 @@ public class PubGrubSolver {
         solution.bindUniverse(rootPkg);
         solution.decide(rootPkg, rootVersion);
         decisionCount++;
+        noteDecision(rootPkg, rootVersion);
 
         String next = rootPkg;
         while (next != null) {
             checkBudget();
             propagate(next);
             next = makeDecision();
-            loopCount++;
+        }
+        if (cc.jumpkick.resolve.ResolveProfile.on()) {
+            cc.jumpkick.resolve.ResolveProfile.solve(System.nanoTime() - solveT0);
         }
         return solution.decisions();
     }
 
     private void checkBudget() {
+        // Count every entry: unit-prop rounds and conflict-resolution steps, not only decides.
+        stepCount++;
+        if (stepCount > maxSteps) {
+            throwBudget("exceeded solver step budget ("
+                    + stepCount
+                    + " steps, limit "
+                    + maxSteps
+                    + "); set JK_RESOLVE_MAX_DECISIONS to raise");
+        }
         if (decisionCount > maxDecisions) {
             throwBudget("exceeded max decisions (" + maxDecisions + "); set JK_RESOLVE_MAX_DECISIONS to raise");
         }
         if (deadlineNanos != Long.MAX_VALUE && System.nanoTime() > deadlineNanos) {
             throwBudget("exceeded resolve time budget; set JK_RESOLVE_TIMEOUT_MS to raise (0 = unlimited)");
-        }
-        if (loopCount > maxDecisions * 4L) {
-            // Propagation/backtrack storms without new decisions.
-            throwBudget("exceeded solver iteration budget (" + loopCount + " loops)");
         }
     }
 
@@ -185,6 +224,50 @@ public class PubGrubSolver {
         Incompatibility inco = new Incompatibility(
                 List.of(Term.positive(rootPkg, VersionSet.EMPTY)), new Incompatibility.Cause.BudgetExceeded(reason));
         throw new UnsatisfiableException(inco);
+    }
+
+    /**
+     * After {@link PartialSolution#decide}, fail closed if this full decision map already conflicted
+     * (learning failed to exclude it).
+     */
+    private void noteDecision(String pkg, String version) {
+        long fp = decisionFingerprint();
+        if (conflictedDecisionFingerprints.contains(fp)) {
+            throwBudget("solver loop: re-entered conflicted decision assignment (watermark); last decide "
+                    + pkg
+                    + "@"
+                    + version);
+        }
+    }
+
+    /**
+     * Mark the current decision map as known-unsat. Multiple incompatibilities may fire on the same
+     * assignment before a real backtrack — only {@link #noteDecision} fails closed when decides
+     * rebuild this map later.
+     */
+    private void watermarkConflict() {
+        conflictedDecisionFingerprints.add(decisionFingerprint());
+    }
+
+    /** Stable fingerprint of the current package→version decision map (TreeMap order). */
+    private long decisionFingerprint() {
+        long h = 0xcbf29ce484222325L; // FNV-1a offset basis
+        // decisionByPackage is a TreeMap — iteration is sorted by package key.
+        for (Map.Entry<String, String> e : solution.decisionsUnsorted().entrySet()) {
+            h = fnv1a(h, e.getKey());
+            h = fnv1a(h, "\0");
+            h = fnv1a(h, e.getValue());
+            h = fnv1a(h, "\n");
+        }
+        return h;
+    }
+
+    private static long fnv1a(long h, String s) {
+        for (int i = 0; i < s.length(); i++) {
+            h ^= s.charAt(i);
+            h *= 0x100000001b3L;
+        }
+        return h;
     }
 
     // --- unit propagation --------------------------------------------------
@@ -219,6 +302,9 @@ public class PubGrubSolver {
      * Conflict resolution + backtracking, per PubGrub paper §6.
      */
     protected void handleConflict(Incompatibility inco) {
+        // Once per conflict entry (not per resolution step): the decision map at the conflict is
+        // unsat. Resolution may walk several derived incompatibilities before backtracking.
+        watermarkConflict();
         Incompatibility current = inco;
         while (true) {
             checkBudget();
@@ -375,6 +461,7 @@ public class PubGrubSolver {
             }
             solution.decide(pkg, pick);
             decisionCount++;
+            noteDecision(pkg, pick);
             checkBudget();
             if (onDecision != null) {
                 onDecision.accept(pkg, pick);
@@ -458,6 +545,9 @@ public class PubGrubSolver {
         }
         universes.put(pkg, VersionUniverse.of(pkg, versions));
         solution.rebindAfterUniverseExpand(pkg);
+        // Prior conflicts may have been artifacts of a singleton/compact candidate list. Expanding
+        // invalidates those watermarks so a genuine wider solve can rebuild the same decides.
+        conflictedDecisionFingerprints.clear();
     }
 
     /** A universe that can still grow: a lazy singleton or a compact (capped) candidate list. */

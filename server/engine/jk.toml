@@ -41,7 +41,7 @@ test-plugin-jars = [
   "spring-boot",
   "android",
   "protobuf",
-  "shrink",
+  "minified",
   # Gradle gives grails and groovy their own e2e test tasks, each setting -Djk.<x>.plugin.jar;
   # omitting them here is why GrailsBuildE2eTest / GroovyBuildE2eTest could not find a worker jar
   # under self-host. Those two suites run only under jk (Gradle tags them out of :engine:test), so

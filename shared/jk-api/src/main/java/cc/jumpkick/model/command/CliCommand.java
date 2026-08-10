@@ -21,6 +21,15 @@ public interface CliCommand extends Command {
         return List.of();
     }
 
+    /**
+     * Optional default leaf when the user runs a bare group ({@code jk <group>} with no
+     * subcommand). When non-null, the dispatcher runs this instead of printing the group help.
+     * {@code jk <group> --help} still shows the full subcommand list.
+     */
+    default CliCommand defaultSubcommand() {
+        return null;
+    }
+
     /** True when this command has no subcommands. */
     default boolean isLeaf() {
         return subcommands().isEmpty();

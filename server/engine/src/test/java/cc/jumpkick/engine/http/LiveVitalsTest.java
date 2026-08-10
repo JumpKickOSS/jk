@@ -34,8 +34,10 @@ class LiveVitalsTest {
                 base.aotTrainingPid(),
                 base.cores(),
                 base.totalMemoryBytes(),
-                base.freeMemoryBytes(),
+                base.availableMemoryBytes(),
                 base.systemCpuLoad(),
+                base.systemLoadAverage(),
+                base.engineEpoch(),
                 base.peakActiveRequests(),
                 base.peakActiveBuildPlans());
         StatusSnapshot hotter = snap(5L * 1024 * 1024 * 1024, 0.50);
@@ -85,8 +87,10 @@ class LiveVitalsTest {
                     s.aotTrainingPid(),
                     s.cores(),
                     s.totalMemoryBytes(),
-                    s.freeMemoryBytes(),
+                    s.availableMemoryBytes(),
                     s.systemCpuLoad(),
+                    s.systemLoadAverage(),
+                    s.engineEpoch(),
                     s.peakActiveRequests(),
                     s.peakActiveBuildPlans()));
             live.publishStatus(false);
@@ -121,15 +125,16 @@ class LiveVitalsTest {
         String json = c.toJson().toString();
         assertThat(json)
                 .contains("\"actionCacheBytes\":50")
-                .contains("\"artifactStorageBytes\":1230")
+                .contains("\"artifactStorageBytes\":1200")
                 .contains("\"actionMaxBytes\":")
                 .contains("\"maxBytes\":");
-        assertThat(c.artifactStorageBytes()).isEqualTo(1000 + 200 + 30);
+        // Store CAS + worker jars. Run logs are state, not storage, so they are not in the total.
+        assertThat(c.artifactStorageBytes()).isEqualTo(1000 + 200);
         String thin = c.toThinJson().toString();
         assertThat(thin)
                 .contains("\"thin\":true")
                 .contains("\"actionCacheBytes\":50")
-                .contains("\"artifactStorageBytes\":1230")
+                .contains("\"artifactStorageBytes\":1200")
                 .doesNotContain("casCount");
     }
 
@@ -270,6 +275,8 @@ class LiveVitalsTest {
                 16L * 1024 * 1024 * 1024,
                 freeBytes,
                 load,
+                0.5,
+                "0.11.0-test@1",
                 0,
                 0);
     }

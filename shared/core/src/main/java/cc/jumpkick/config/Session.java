@@ -299,7 +299,7 @@ public record Session(
     }
 
     /**
-     * CLI packaging override for this invocation only ({@code fat} / {@code shrink} / empty).
+     * CLI packaging override for this invocation only ({@code fat} / {@code minified} / empty).
      * Does not rewrite {@code jk.toml}.
      */
     public Session withAssemblyOverride(String mode) {

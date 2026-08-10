@@ -5,7 +5,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
 
 /**
- * Shared chrome for box-drawn TUI tables (JDK list, outdated deps, repo storage, …).
+ * Shared chrome for box-drawn TUI tables (JDK list, outdated deps, storage, …).
  *
  * <p>Title line (replaces the old full-width blue banner under a {@code ╭──╮} top border):
  *
@@ -177,7 +177,7 @@ public final class BoxTable {
      * Visible terminal-column width: CSI/OSC sequences are ignored and each code point counts
      * its wcwidth (CJK wide chars are 2 columns, astral chars 1 code point each) so colored and
      * non-ASCII cells pad correctly. Public so custom tables that share this chrome (e.g. {@code
-     * jk repo storage}'s spanning utilization footer) pad with the same rule instead of raw
+     * jk storage usage}'s spanning utilization footer) pad with the same rule instead of raw
      * {@code String.length()}.
      */
     public static int visibleWidth(String s) {

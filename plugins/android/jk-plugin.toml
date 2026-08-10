@@ -47,7 +47,7 @@ deploy-command     = "deploy"
 
 [schema]
 namespace    = { type = "string", required = true, example = "com.example.app", hint = "it names the R class package and the default application id" }
-compile-sdk  = { type = "int", required = true, example = "28" }
+compile-sdk  = { type = "int", required = true, example = "36" }
 min-sdk      = { type = "int", required = true, example = "24" }
 library      = { type = "bool", default = false }   # a library module: packages an AAR, not an APK
 compose      = { type = "bool", default = false }   # adds the Compose compiler plugin (version == Kotlin)
@@ -101,20 +101,21 @@ when = { config = "hilt", equals = "true" }
 # ---- Tool artifacts (fetched engine-side into the cache, handed to steps by name) ----
 
 # aapt2 ships as a per-OS binary wrapped in a Maven jar; ${host.os} picks the classifier.
+# Keep on the latest stable AGP tools line (not alpha) — bump with AGP/aapt2 releases.
 [[contribute.step-dependency]]
 artifact   = "aapt2"
-coordinate = "com.android.tools.build:aapt2:8.7.3-12006047:${host.os}"
+coordinate = "com.android.tools.build:aapt2:9.3.1-15703166:${host.os}"
 
 # d8 lives in the r8 jar (com.android.tools.r8.D8) — a plain JVM tool.
 [[contribute.step-dependency]]
 artifact   = "r8"
-coordinate = "com.android.tools:r8:8.5.35"
+coordinate = "com.android.tools:r8:9.2.23"
 
 # manifest-merger is a JVM library with a real dependency graph — the transitive closure
-# materializes as a lib dir the step forks `java -cp` over. 31.7.3 = the AGP-8.7.x tools line.
+# materializes as a lib dir the step forks `java -cp` over. Align with AGP 9.3 tools (32.3.x).
 [[contribute.step-dependency]]
 artifact   = "manifest-merger"
-coordinate = "com.android.tools.build:manifest-merger:31.7.3"
+coordinate = "com.android.tools.build:manifest-merger:32.3.1"
 transitive = true
 
 # The platform jar: aapt2 -I (framework resources), javac (via provided-classpath below),

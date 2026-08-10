@@ -407,20 +407,18 @@ public final class MavenRepo {
         Optional<Path> located = repoStore.locate(relativePath);
         if (located.isEmpty()) return Optional.empty();
         try {
+            Path path = located.get();
             // Prefer store sidecar when present; otherwise hash once (immutable GAV).
-            String sha = repoStore.storedSha256(relativePath).orElseGet(() -> {
+            // Do NOT reclaim/materialize on this path — warm resolve hits this thousands of
+            // times (NIA ~6k POM builds). Legacy copy→hardlink reclaim belongs on write/fetch.
+            String sha = repoStore.readSha256Sidecar(relativePath).orElseGet(() -> {
                 try {
-                    return Hashing.sha256Hex(Files.readAllBytes(located.get()));
+                    return Hashing.sha256Hex(Files.readAllBytes(path));
                 } catch (IOException e) {
                     return "";
                 }
             });
             if (sha.isBlank()) return Optional.empty();
-            // Reclaim legacy full-copies under repos/ into a hard link when the CAS blob exists.
-            if (cas.contains(sha)) {
-                repoStore.materialize(relativePath, cas.pathFor(sha), sha);
-            }
-            Path path = repoStore.locate(relativePath).orElse(located.get());
             long size = Files.size(path);
             URI uri = baseUrl.resolve(relativePath);
             return Optional.of(new Fetched(uri, path, sha, size));

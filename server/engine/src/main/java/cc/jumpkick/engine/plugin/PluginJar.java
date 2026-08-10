@@ -39,7 +39,7 @@ public enum PluginJar {
     MICRONAUT("jk-micronaut", "jk.micronaut.plugin.jar", ":micronaut:installLocal"),
     ANDROID("jk-android", "jk.android.plugin.jar", ":android:installLocal"),
     PROTOBUF("jk-protobuf", "jk.protobuf.plugin.jar", ":protobuf:installLocal"),
-    SHRINK("jk-shrink", "jk.shrink.plugin.jar", ":shrink:installLocal");
+    MINIFIED("jk-minified", "jk.minified.plugin.jar", ":minified:installLocal");
 
     /** Cache store + remote repo name for the official first-party Maven repo. */
     public static final String OFFICIAL_REPO = "jumpkick";

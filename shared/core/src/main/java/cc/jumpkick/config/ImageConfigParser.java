@@ -31,7 +31,9 @@ public final class ImageConfigParser {
             /** {@code image.docker-executable} — override for the docker/podman CLI. */
             String dockerExecutable,
             /** {@code image.docker-file} — relative path to a Dockerfile; enables Dockerfile mode. */
-            String dockerFile) {}
+            String dockerFile,
+            /** {@code image.aot-cache} — train a JVM AOT cache into the image. */
+            Boolean aotCache) {}
 
     private ImageConfigParser() {}
 
@@ -55,6 +57,7 @@ public final class ImageConfigParser {
         String dockerExecutable =
                 nonBlank(project.dockerExecutable()) != null ? project.dockerExecutable() : global.dockerExecutable();
         String dockerFile = nonBlank(project.dockerFile()) != null ? project.dockerFile() : global.dockerFile();
+        Boolean aotCache = project.aotCache() != null ? project.aotCache() : global.aotCache();
         return new ImageConfigData(
                 base,
                 user,
@@ -66,7 +69,8 @@ public final class ImageConfigParser {
                 platforms,
                 main,
                 dockerExecutable,
-                dockerFile);
+                dockerFile,
+                aotCache);
     }
 
     private static String nonBlank(String s) {
@@ -86,7 +90,7 @@ public final class ImageConfigParser {
         TomlTable image = result.getTable("image");
         if (image == null) {
             return new ImageConfigData(
-                    null, null, List.of(), Map.of(), Map.of(), null, null, List.of(), null, null, null);
+                    null, null, List.of(), Map.of(), Map.of(), null, null, List.of(), null, null, null, null);
         }
         return new ImageConfigData(
                 image.getString("base"),
@@ -99,7 +103,8 @@ public final class ImageConfigParser {
                 optionalStringList(image, "platforms"),
                 image.getString("main"),
                 image.getString("docker-executable"),
-                image.getString("docker-file"));
+                image.getString("docker-file"),
+                image.getBoolean("aot-cache"));
     }
 
     private static List<String> optionalStringList(TomlTable table, String key) {

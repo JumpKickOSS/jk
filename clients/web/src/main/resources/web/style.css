@@ -10,6 +10,8 @@
   --s1: #161d25;
   --s2: #1c2630;
   --s3: #232f3a;
+  /* Hover tips: 60% darker than --s2 so they lift off panels/canvas (JK-1726 chrome). */
+  --tip-bg: #0b0f13;
   --bd: #2a3742;
   --bd2: #1e2830;
   --tx: #cfd8dc;
@@ -39,6 +41,8 @@
   --warn-rgb: 255, 184, 0;
   --cg-rgb: 0, 212, 224;
   --cn-rgb: 0, 240, 255;   /* the neon accent (bright cyan) — drives chrome glows/outlines */
+  /* Keyboard focus: soft cyan halo (matches text fields / checkboxes — not a solid neon border). */
+  --focus-ring: 0 0 0 3px rgba(var(--cn-rgb), 0.18);
   --indigo-rgb: 63, 81, 181;
   --bright-rgb: 236, 239, 241;
   --mu-rgb: 144, 164, 174;
@@ -209,18 +213,21 @@ header {
 
 /* outlined system box: CPU / RAM meters (engine host; live SSE ~2s) */
 .sysbox {
+  --sys-meter-w: 5.625rem; /* fixed bar width — value text must not reflow the track */
   display: flex;
   flex-direction: column;
   gap: 3px;
-  padding: 5px 11px;
+  /* Equal inset so content hugs the same distance from left and right edges. */
+  padding: 5px 8px;
   border: 1px solid var(--bd);
   border-radius: var(--r-md);
   background: rgba(var(--cn-rgb), 0.03);
-  min-width: 11.5rem;
+  min-width: 14.5rem;
 }
 .sysrow {
   display: grid;
-  grid-template-columns: 2.4em 1fr auto;
+  /* Fixed meter column so 6% vs 12% never stretches/shrinks the bar. */
+  grid-template-columns: auto var(--sys-meter-w) auto;
   column-gap: 8px;
   align-items: center;
 }
@@ -229,13 +236,18 @@ header {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--dim);
-  text-align: right;
+  text-align: left;
+  white-space: nowrap;
 }
-/* Compact track: reuses Status-page .meter / .meter-fill.used (cyan). */
+/* Hover target for % / secondary (load, GiB) tooltips. */
+.sysbox .sv[data-tip] { cursor: default; }
 .sysbox .meter {
   display: block;
   height: 7px;
-  min-width: 4.5rem;
+  width: var(--sys-meter-w);
+  min-width: var(--sys-meter-w);
+  max-width: var(--sys-meter-w);
+  box-sizing: border-box;
 }
 .sysrow.warn .meter-fill.used { background: var(--warn); }
 .sysrow.crit .meter-fill.used { background: var(--err); }
@@ -244,10 +256,49 @@ header {
 .sv {
   font: 600 11.5px var(--mono);
   color: var(--bright);
-  text-align: left;
+  text-align: right;
   white-space: nowrap;
-  /* Fits "100%" (or "—"); no wider than the longest value. */
-  width: 4ch;
+  font-variant-numeric: tabular-nums;
+}
+/* Secondary parenthetical matches .sk (dim mono label), not bright .sv (JK-1717). */
+.ssec {
+  font: 600 9px var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+/* Shared floating tooltip chrome (JK-1726) — soft Jk Dark panel like retention/sysbox/io.
+ * Native HTML title= is OS chrome and CANNOT be styled; tip.js shows this layer instead. */
+.jk-tip {
+  font: 11px/1.4 var(--mono);
+  color: var(--tx);
+  background: var(--tip-bg);
+  border: 1px solid var(--bd);
+  border-radius: var(--r-sm);
+  padding: 6px 9px;
+  box-shadow: 0 10px 28px -8px rgba(0, 0, 0, 0.55);
+  max-width: 22rem;
+  white-space: normal;
+  z-index: 40;
+}
+.jk-tip .muted { color: var(--mu); }
+.jk-tip .dim { color: var(--dim); }
+
+/* Single global hover tip (appended to body by tip.js). */
+.jk-tip-float {
+  position: fixed;
+  z-index: 200; /* above modals' content chrome; tips are hover affordances */
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
+  max-width: min(22rem, calc(100vw - 16px));
+}
+.jk-tip-float.jk-tip-visible {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .jk-tip-float { transition: none; }
 }
 
 nav { display: flex; gap: 4px; }
@@ -476,11 +527,7 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 /* Activity feed: outcome badge + coordinates open the project detail page. */
 .to-project { cursor: pointer; }
 .to-project:hover { filter: brightness(1.12); }
-.to-project:focus-visible {
-  outline: 2px solid rgba(var(--cn-rgb), 0.55);
-  outline-offset: 2px;
-  border-radius: var(--r-sm);
-}
+.to-project:focus-visible { border-radius: var(--r-sm); }
 .badge.to-project:focus-visible { border-radius: var(--r-sm); }
 
 .kind { color: var(--mu); font-size: 12px; }
@@ -521,7 +568,8 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 /* Per-run byte counters as a hover tooltip on `.millis`: one row per scope, `scope  N ↑ / N ↓`.
  * Deliberately colourless (mono + muted) — colour on a card means state, and a byte count is not a
  * state. Both numbers are right-aligned in a fixed column with tabular figures so the two rows'
- * digits (and their arrows) line up. Anchored under the duration, right-aligned to it. */
+ * digits (and their arrows) line up. Anchored under the duration, right-aligned to it.
+ * Shares .jk-tip shell (JK-1726). */
 .millis .io {
   position: absolute;
   top: calc(100% + 6px);
@@ -532,7 +580,7 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
   align-items: flex-end;
   gap: 2px;
   padding: 7px 9px;
-  background: var(--s3);
+  background: var(--tip-bg);
   border: 1px solid var(--bd);
   border-radius: var(--r-sm);
   box-shadow: 0 10px 28px -8px rgba(0, 0, 0, 0.55);
@@ -1196,17 +1244,19 @@ table.stats td.err { color: var(--err); }
  * but release to author styles once done, so a later :hover transform (card lift) still applies. */
 .rise-in { animation: fadeSlideIn var(--dur-slow) var(--ease) backwards; }
 
-/* Keyboard focus ring. jk's UA outline is nearly invisible on these dark custom controls; give
- * focus a cyan ring (--cg is jk's accent/identity tone, cf. the .accent utility). :focus-visible
- * so it shows for keyboard / assistive tech but not on mouse click. */
-:focus-visible { outline: 2px solid var(--cg); outline-offset: 2px; }
+/* Keyboard focus ring — same soft cyan halo as text inputs / checkboxes (not a solid neon border).
+ * :focus-visible so it shows for keyboard / assistive tech but not on mouse click. Elements that
+ * already paint their own focus (form fields, themed checkboxes) restate outline:none + the ring. */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+/* Round the ring on dense chrome so it doesn't look square on pill-ish controls. */
 button:focus-visible,
-input:focus-visible,
 .project:focus-visible,
-.fs-entry:focus-visible {
-  outline: 2px solid var(--cg);
-  outline-offset: 2px;
-  box-shadow: 0 0 0 4px rgba(var(--cg-rgb), 0.18);
+.fs-entry:focus-visible,
+a:focus-visible {
+  border-radius: var(--r-sm);
 }
 
 /* Honour the OS "reduce motion" preference: collapse animations/transitions to a near-instant
@@ -1233,7 +1283,7 @@ input:focus-visible,
 
 /* build-dir input — neon accent border + soft ring while focused/typing (mouse or keyboard) */
 .trigger input { transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease); }
-.trigger input:focus { outline: none; border-color: var(--cn); box-shadow: 0 0 0 3px rgba(var(--cn-rgb), 0.18); }
+.trigger input:focus { outline: none; border-color: var(--cn); box-shadow: var(--focus-ring); }
 
 /* small rebuild / delete icon buttons — neon hover (cyan; the delete button goes red) */
 .rebuild { transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease); }
@@ -1434,57 +1484,65 @@ button.browse:hover::before {
   flex: none;
 }
 .auth-body {
-  padding: 14px 16px 4px;
+  padding: 14px 16px; /* even bottom — no footer row on this modal */
   font-size: 13px;
   line-height: 1.45;
   color: var(--tx);
 }
-.auth-body p { margin: 0 0 10px; }
-.auth-steps {
-  margin: 0 0 14px;
-  padding-left: 1.25rem;
-  color: var(--mu);
-}
-.auth-steps li { margin: 4px 0; }
-.auth-steps code,
+.auth-body p { margin: 0 0 12px; }
+.auth-body p:last-child { margin-bottom: 0; }
 .auth-body code {
   font-family: var(--mono);
   font-size: 12px;
   color: var(--cg);
 }
-.auth-paste {
+.auth-denied {
+  margin: 0;
+  font: inherit;
+  color: var(--warn);
+}
+
+/* Framed terminal snippet: non-selectable prompt + selectable command + copy button. */
+.auth-console {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-.auth-paste > span {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--dim);
-}
-.auth-paste input {
-  font-family: var(--mono);
-  font-size: 12.5px;
-  padding: 8px 10px;
-  border-radius: var(--r-md);
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  padding: 10px 10px 10px 12px;
+  background: var(--console-bg);
   border: 1px solid var(--bd);
-  background: var(--s2);
-  color: var(--tx);
+  border-radius: var(--r-md);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
-.auth-paste input:focus {
-  outline: none;
-  border-color: rgba(var(--cg-rgb), 0.55);
+.auth-console-line {
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  font: 12.5px/1.45 var(--mono);
+  color: var(--bright);
+  background: transparent;
+  border: 0;
+  white-space: pre;
+  overflow-x: auto;
 }
-.auth-actions {
-  justify-content: flex-end;
+.auth-console-prompt {
+  color: var(--dim);
+  user-select: none;
+  -webkit-user-select: none;
 }
-.auth-actions .use-folder:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-  box-shadow: none;
+.auth-body .auth-console-cmd {
+  font: inherit;
+  font-size: inherit;
+  color: var(--cn);
+  background: none;
+  padding: 0;
 }
+.auth-copy {
+  flex: none;
+  color: var(--mu);
+}
+.auth-copy:hover { color: var(--bright); }
+.auth-copy .ico { width: 1em; height: 1em; }
 
 /* ---- Help / About modal ---- */
 .modal.about { width: 460px; }
@@ -1535,7 +1593,7 @@ button.browse:hover::before {
 .new-project-form select:focus {
   outline: none;
   border-color: var(--cn);
-  box-shadow: 0 0 0 3px rgba(var(--cn-rgb), 0.18);
+  box-shadow: var(--focus-ring);
 }
 /* Option rows: dark panel so the OS popup doesn't flash white. Highlight colour is still
  * platform-controlled, but color-scheme + these surfaces keep it on-theme on modern browsers. */
@@ -1610,8 +1668,13 @@ label.check input:checked + .check-box {
 label.check input:checked + .check-box::after {
   transform: rotate(45deg) scale(1);
 }
+/* Hide the native (invisible) checkbox ring; paint focus on the themed box instead. */
+label.check input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
 label.check input:focus-visible + .check-box {
-  box-shadow: 0 0 0 3px rgba(var(--cn-rgb), 0.22);
+  box-shadow: var(--focus-ring);
 }
 label.check:hover .check-box {
   border-color: rgba(var(--cn-rgb), 0.65);

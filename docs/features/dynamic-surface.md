@@ -19,13 +19,27 @@ This document is the design the implementation follows.
                         ╱          ╲
               keeps.pro              reachability-metadata.json
                   │                            │
-                R8 shrink              native-image
+              minified jar             native-image
 ```
 
 Each stage is narrower and more expensive than the one above it. Derivation and composition are
 free and cover the mechanical majority; training covers what is left; the user covers what
-nothing can observe. **Consumers only consume** — neither the shrink packager nor the
+nothing can observe. **Consumers only consume** — neither the minified packager nor the
 native-image driver ever runs a recorder.
+
+### Training targets native-image, not R8
+
+The two emitters are not symmetric in what they are worth training for. Derivation and
+composition serve both consumers; `jk train` serves only `native-image` and the JVM AOT cache.
+
+R8 in `--classfile` mode always runs in full mode, and there a class keeps its generic signature
+only if the class is explicitly kept — see [Generic-reflection is its own kind](#generic-reflection-is-its-own-kind) below. An
+application that resolves types by runtime generic matching therefore cannot be shrunk at *any*
+keep setting, so there is no observation a recorder could make that would fix it. Training for R8
+would be training for a consumer that cannot use the result.
+
+The minified jar stays an advanced opt-in for applications that do not work that way, fed by
+derivation, composition and hand-written `[minified] keep` rules.
 
 ### `jk build` never trains
 
@@ -37,13 +51,13 @@ build step. `jk train` is a verb the user types.
 
 | Topic | Decision |
 |---|---|
-| CLI | `jk train`. A verb, not a flag: the artifacts feed two unrelated consumers, so hanging it off `jk native` would misplace it |
+| CLI | `jk train`. A verb, not a flag: one observed run feeds both the reachability metadata and the JVM AOT cache, so hanging it off `jk native` would misplace it |
 | Build target | `train`, matching the verb. Not part of `build`, `test`, `assemble` or `native` |
 | Suite discovery | JUnit `@Tag("train")` by default; `[train] command = "…"` for apps whose exercise is not a test suite |
 | Multi-profile | `[[train.profile]]` tables — `name`, `env`, `properties`, `args`. Each runs the suite; results union |
 | Recorder | GraalVM tracing agent in v1, behind a `Recorder` interface |
 | Output | `target/train/raw/<profile>/` and `target/train/merged/`; promote with `[train] commit-to` |
-| Emit | Graal unified `reachability-metadata.json`, plus ProGuard text for R8 |
+| Emit | Graal unified `reachability-metadata.json` from the train run; ProGuard text for the minified jar from derive + compose + user rules |
 | Precedence | derive → compose → train → user; positive entries union, user directives land last |
 | Fingerprint | lockfile digest, module classes, train suite sources, profile definitions, jk version, recorder version |
 | Strict mode | `[train] require-fresh = true`, or `--require-train-fresh` |
@@ -128,11 +142,16 @@ The suite is the application exercised as a user would exercise it. Unit tests a
 the docs must not imply otherwise: they exercise units in isolation, which is close to the
 opposite of what a whole-application observation needs.
 
+Because the runner owns starting the application and shutting it down, a server is trainable — and
+the same execution can record a JVM AOT cache (JEP 514 on JDK 25+), covering the request paths the
+workload drives rather than startup alone.
+
 ```toml
 [train]
 # command = "./scripts/smoke.sh"      # when the exercise is not a JUnit suite
 # commit-to = "src/train/metadata"    # promote merged output into the repo
 # require-fresh = false
+# aot-cache = true                    # also record a JVM AOT cache from the same run
 
 [[train.profile]]
 name = "default"

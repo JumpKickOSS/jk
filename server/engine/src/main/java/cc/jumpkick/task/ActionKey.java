@@ -237,7 +237,7 @@ public final class ActionKey {
 
     /**
      * The 12-hex-char tag {@link #qualifiedTaskId} appends after {@code @} — a stable hash of a
-     * module-unique directory. Exposed so cache maintenance ({@code jk cache clear}) can recompute
+     * module-unique directory. Exposed so cache maintenance ({@code jk clean --force}) can recompute
      * the tags for a project's output dirs and match every {@code tasks/<base>@<tag>} pointer that
      * belongs to it, regardless of the base task name.
      */

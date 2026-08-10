@@ -10,6 +10,7 @@ jk-core.workspace = true
 jk-io.workspace = true
 jk-plugin-sdk.workspace = true
 jib-core                = "latest"
+commons-compress        = "latest"
 
 [test-dependencies]
 assertj-core            = "latest"

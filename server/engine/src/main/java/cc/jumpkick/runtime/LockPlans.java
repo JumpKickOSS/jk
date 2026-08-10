@@ -139,6 +139,10 @@ public final class LockPlans {
                     ctx.label("Resolving");
                     JkBuild eff = ctx.require(EFFECTIVE);
                     Cas cas = JkStores.cas(cache);
+                    // --force / Session force: drop process resolve memos before any POM/metadata work.
+                    if (SessionContext.current().config().forceOr(false)) {
+                        cc.jumpkick.resolve.ResolveProcessCacheControl.clearAll();
+                    }
                     if (SessionContext.current().offline() && Files.exists(lockFile)) {
                         try {
                             Lockfile existing = LockfileReader.read(lockFile);
@@ -151,6 +155,9 @@ public final class LockPlans {
                             throw new RuntimeException(e);
                         }
                     }
+                    boolean profile = cc.jumpkick.resolve.ResolveProfile.on();
+                    if (profile) cc.jumpkick.resolve.ResolveProfile.reset();
+                    long prepT0 = profile ? System.nanoTime() : 0L;
                     RepoGroup baseRepos = RepoGroupBuilder.buildFor(eff, repoUrl, cas);
                     Lockfile existing = null;
                     if (Files.exists(lockFile)) {
@@ -174,6 +181,7 @@ public final class LockPlans {
                         ctx.error(TaskNames.RESOLVE_DEPS, e.getMessage());
                         throw new RuntimeException(e);
                     }
+                    if (profile) cc.jumpkick.resolve.ResolveProfile.phasePrep(System.nanoTime() - prepT0);
                     RepoGroup repos = pathPrep.repos();
                     // Deliberately no Diagnostics.Palette here — see the class javadoc.
                     LockOrchestrator orchestrator = new LockOrchestrator(repos)
@@ -222,6 +230,7 @@ public final class LockPlans {
                     try {
                         boolean keepPins = conservative && !sources && existing != null;
                         Lockfile lock;
+                        long resolveT0 = profile ? System.nanoTime() : 0L;
                         if (sources) {
                             lock = orchestrator.lockWithSources(
                                     pathPrep.project(),
@@ -238,15 +247,21 @@ public final class LockPlans {
                                     withDefaultFeatures,
                                     wrappedObserver);
                         } else {
-                            // Explicit re-lock must revalidate maven-metadata (same-URL TTL would
-                            // hide newly published versions until --force / next day).
-                            lock = cc.jumpkick.repo.MavenMetadataCache.withForceRevalidate(() -> orchestrator.lock(
+                            // Local maven-metadata within TTL first (default 24h) — do not
+                            // force-revalidate every jk lock (conditional GETs still 429 Central
+                            // on large graphs / back-to-back dogfood). Fresh indexes: jk update
+                            // or -F / --force (Session force → MavenMetadataCache).
+                            lock = orchestrator.lock(
                                     pathPrep.project(),
                                     JkVersion.VERSION,
                                     features,
                                     withDefaultFeatures,
-                                    wrappedObserver));
+                                    wrappedObserver);
                         }
+                        if (profile) {
+                            cc.jumpkick.resolve.ResolveProfile.phaseResolve(System.nanoTime() - resolveT0);
+                        }
+                        long postT0 = profile ? System.nanoTime() : 0L;
                         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
                         String kotlinVersion = keepPins && existing.kotlin() != null
                                 ? existing.kotlin()
@@ -256,6 +271,10 @@ public final class LockPlans {
                             lock = lock.withKotlin(kotlinVersion);
                         }
                         ctx.put(LOCKFILE, lock);
+                        if (profile) {
+                            cc.jumpkick.resolve.ResolveProfile.phasePost(System.nanoTime() - postT0);
+                            System.err.println("jk: " + cc.jumpkick.resolve.ResolveProfile.report());
+                        }
                     } catch (UnsatisfiableException e) {
                         ctx.error("verbatim", e.getMessage());
                         throw new RuntimeException(e);
@@ -439,13 +458,18 @@ public final class LockPlans {
                                 GitSourceResolution.prepare(eff, baseRepos, cas, javaHome, JkVersion.VERSION);
                         PathSourceResolution.Prepared pathPrep = PathSourceResolution.prepare(
                                 prep.project(), prep.repos(), cas, dir, javaHome, JkVersion.VERSION);
-                        Lockfile lock = new LockOrchestrator(pathPrep.repos())
-                                .withProjectDir(dir)
-                                .withJvmEnvironment(cc.jumpkick.plugin.manifest.PluginContributions.jvmEnvironment(
-                                        pathPrep.project(), dir))
-                                .withPlatformPolicy(policy)
-                                .withUnmappedPolicy(pathPrep.project().build().unmappedPolicy())
-                                .lock(pathPrep.project(), JkVersion.VERSION, features, withDefaultFeatures);
+                        // Float-to-latest needs current indexes; revalidate past TTL (conditional
+                        // GET). Normal jk lock stays on the warm disk TTL.
+                        Lockfile lock = cc.jumpkick.repo.MavenMetadataCache.withForceRevalidate(
+                                () -> new LockOrchestrator(pathPrep.repos())
+                                        .withProjectDir(dir)
+                                        .withJvmEnvironment(
+                                                cc.jumpkick.plugin.manifest.PluginContributions.jvmEnvironment(
+                                                        pathPrep.project(), dir))
+                                        .withPlatformPolicy(policy)
+                                        .withUnmappedPolicy(
+                                                pathPrep.project().build().unmappedPolicy())
+                                        .lock(pathPrep.project(), JkVersion.VERSION, features, withDefaultFeatures));
                         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
                         // jk update floats everything — including the Kotlin compiler pin, which
                         // this plan used to drop from the lock entirely (JK-1371).

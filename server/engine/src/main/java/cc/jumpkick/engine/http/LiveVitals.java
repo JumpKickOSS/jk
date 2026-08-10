@@ -228,41 +228,48 @@ public final class LiveVitals implements AutoCloseable {
                 .put("aotTrainingPid", s.aotTrainingPid())
                 .put("cores", s.cores())
                 .put("totalMemoryBytes", s.totalMemoryBytes())
-                .put("freeMemoryBytes", s.freeMemoryBytes())
-                .put("systemCpuLoad", s.systemCpuLoad());
+                .put("availableMemoryBytes", s.availableMemoryBytes())
+                .put("systemCpuLoad", s.systemCpuLoad())
+                .put("systemLoadAverage", s.systemLoadAverage())
+                .put("engineEpoch", s.engineEpoch());
     }
 
     /**
      * Quantized status for equality — available/heap to 1 MiB, CPU load to 1 percentage point,
-     * counters exact. Keeps "still 5.0 GiB available" from spamming the wire.
+     * load average to 0.1, counters exact. Keeps "still 5.0 GiB available" from spamming the wire.
      */
     record PresentStatus(
             int activeBuildPlans,
             int activeRequests,
             int loadPp,
-            long freeMib,
+            int loadAvgTenths,
+            long availableMib,
             long totalMib,
             long heapUsedMib,
             long heapCommittedMib,
             long rssMib,
             int cores,
             long pid,
-            long aotTrainingPid) {
+            long aotTrainingPid,
+            String engineEpoch) {
 
         static PresentStatus of(StatusSnapshot s) {
             int loadPp = s.systemCpuLoad() < 0 ? -1 : (int) Math.round(s.systemCpuLoad() * 100);
+            int loadAvgTenths = s.systemLoadAverage() < 0 ? -1 : (int) Math.round(s.systemLoadAverage() * 10.0);
             return new PresentStatus(
                     s.activeBuildPlans(),
                     s.activeRequests(),
                     loadPp,
-                    mib(s.freeMemoryBytes()),
+                    loadAvgTenths,
+                    mib(s.availableMemoryBytes()),
                     mib(s.totalMemoryBytes()),
                     mib(s.heapUsedBytes()),
                     mib(s.heapCommittedBytes()),
                     mib(s.rssBytes()),
                     s.cores(),
                     s.pid(),
-                    s.aotTrainingPid());
+                    s.aotTrainingPid(),
+                    s.engineEpoch() == null ? "" : s.engineEpoch());
         }
 
         private static long mib(long bytes) {

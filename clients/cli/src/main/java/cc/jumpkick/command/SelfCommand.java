@@ -35,12 +35,12 @@ public final class SelfCommand extends GroupCommand {
 
     @Override
     public String description() {
-        return "Manage this jk installation (update, purge)";
+        return "Manage this jk installation (update, nuke)";
     }
 
     @Override
     public List<CliCommand> subcommands() {
-        return List.of(new UpdateSub(), new MaterializeSub(), new SetupTerminalSub(), new SelfPurgeCommand());
+        return List.of(new UpdateSub(), new MaterializeSub(), new SetupTerminalSub(), new SelfNukeCommand());
     }
 
     /**

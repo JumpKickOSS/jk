@@ -20,9 +20,16 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * On-disk {@code maven-metadata.xml} cache (mutable index — not content-addressed). Served from
- * disk within {@link #DEFAULT_TTL}; then conditional GET ({@code ETag}/{@code Last-Modified}).
- * Network/429 errors reuse a stale copy; 404 becomes {@link MavenRepo.ArtifactNotFoundException}.
+ * On-disk {@code maven-metadata.xml} cache (mutable index — not content-addressed).
+ *
+ * <p><strong>Local first:</strong> within {@link #DEFAULT_TTL} (24h, Maven's daily policy) a
+ * cached body is returned with <em>no</em> HTTP. Past TTL, conditional GET ({@code ETag} /
+ * {@code Last-Modified}); 304 restarts the TTL. Network/429 errors reuse a stale copy; 404 →
+ * {@link MavenRepo.ArtifactNotFoundException}.
+ *
+ * <p>{@link #withForceRevalidate} / {@code -F} skip the TTL short-circuit (still conditional
+ * GET when validators exist). Reserved for {@code jk update} and explicit force — not every
+ * {@code jk lock}, so back-to-back locks do not hammer Central.
  */
 public final class MavenMetadataCache {
 
@@ -31,8 +38,8 @@ public final class MavenMetadataCache {
 
     /**
      * When true on the calling thread, {@link #fetch} skips the TTL short-circuit and revalidates
-     * (conditional GET when validators exist). Used by explicit {@code jk lock} so a same-URL
-     * re-resolve sees newly published versions; conservative freshen leaves the TTL alone.
+     * (conditional GET when validators exist). Used by {@code jk update} and {@code -F}/{@code
+     * --force}; normal {@code jk lock} leaves the TTL alone.
      */
     private static final ThreadLocal<Boolean> FORCE_REVALIDATE = ThreadLocal.withInitial(() -> Boolean.FALSE);
 
@@ -53,7 +60,19 @@ public final class MavenMetadataCache {
     public static <T> T withForceRevalidate(java.util.concurrent.Callable<T> body) throws Exception {
         Boolean prev = FORCE_REVALIDATE.get();
         FORCE_REVALIDATE.set(Boolean.TRUE);
+        // Force means do not trust process-wide resolve memos computed against a prior view.
+        // Concrete clears live on the types themselves so this module stays free of resolver deps.
+        EffectivePomBuilder.clearProcessCache();
+        GradleModuleMetadata.clearParseCache();
         try {
+            // KMP process cache is in resolver — clear via reflective no-op if absent (tests/io-only).
+            try {
+                Class.forName("cc.jumpkick.resolver.KmpRedirects")
+                        .getMethod("clearProcessCache")
+                        .invoke(null);
+            } catch (ReflectiveOperationException ignored) {
+                // io unit tests without resolver on classpath
+            }
             return body.call();
         } finally {
             FORCE_REVALIDATE.set(prev);
@@ -70,8 +89,8 @@ public final class MavenMetadataCache {
         Path body = dir.resolve(Hashing.sha256Hex(uri.toString()));
         Path meta = body.resolveSibling(body.getFileName() + ".h");
 
-        // --force / explicit lock revalidation skip the TTL window: the conditional GET below
-        // still makes an unchanged index cheap (304), but a moved `latest` is picked up now.
+        // -F / withForceRevalidate (jk update) skip the TTL window. Unchanged indexes still
+        // cost only a conditional GET (304); warm TTL hits never leave the disk.
         boolean force = cc.jumpkick.config.SessionContext.current().config().forceOr(false) || forceRevalidate();
         if (!force && fresh(body)) {
             return Files.readAllBytes(body);

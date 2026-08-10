@@ -13,4 +13,6 @@ dependencies {
     // image module deleted; ImageConfig moved to :core
     implementation(project(":plugin-sdk"))  // shared JSONL codec (on the worker runtime classpath (thin jar + sidecar))
     implementation(libs.jib.core)
+    // Unpacking a base image's layers to reach its JRE (BaseJre); jib-core already brings it.
+    implementation(libs.commons.compress)
 }

@@ -7,11 +7,13 @@ package cc.jumpkick.engine.http;
  * status} can never drift apart. Memory fields are best-effort; {@code -1} = unobservable.
  * {@code aotTrainingPid} is the sidecar AOT trainer's pid while one runs, {@code -1} otherwise.
  * {@code cores} is the JVM's available processor count; {@code totalMemoryBytes} /
- * {@code freeMemoryBytes} are host total RAM and <em>available</em> headroom from
+ * {@code availableMemoryBytes} are host total RAM and available headroom from
  * {@link cc.jumpkick.engine.plugin.MemoryProbe} (Linux {@code MemAvailable}, macOS reclaimable
- * pages, else MXBean free — not raw idle free on Linux). Wire name stays {@code freeMemoryBytes}
- * for schema stability; UI labels it available. {@code systemCpuLoad} is recent whole-host CPU
- * utilisation in {@code [0, 1]} ({@code -1} until the first sample or when unavailable).
+ * pages, else MXBean free — not raw idle free on Linux). {@code systemCpuLoad} is recent
+ * whole-host CPU utilisation in {@code [0, 1]} ({@code -1} until the first sample or when
+ * unavailable). {@code systemLoadAverage} is the OS 1-minute load average ({@code -1} when
+ * unsupported). {@code engineEpoch} is a process-scoped generation id (version + build identity +
+ * start time) so the dashboard can hard-refresh when the engine is replaced.
  */
 public record StatusSnapshot(
         String version,
@@ -26,14 +28,16 @@ public record StatusSnapshot(
         long aotTrainingPid,
         int cores,
         long totalMemoryBytes,
-        long freeMemoryBytes,
+        long availableMemoryBytes,
         double systemCpuLoad,
+        double systemLoadAverage,
+        String engineEpoch,
         /** High-water mark of concurrent client connections since engine start. */
         int peakActiveRequests,
         /** High-water mark of concurrent plans since engine start. */
         int peakActiveBuildPlans) {
 
-    /** Back-compat constructor without free/load/peak counters (tests). */
+    /** Compact constructor for tests that omit memory headroom / load / epoch / peaks. */
     public StatusSnapshot(
             String version,
             long pid,
@@ -60,8 +64,10 @@ public record StatusSnapshot(
                 aotTrainingPid,
                 cores,
                 totalMemoryBytes,
-                /* freeMemoryBytes */ -1L,
+                /* availableMemoryBytes */ -1L,
                 /* systemCpuLoad */ -1d,
+                /* systemLoadAverage */ -1d,
+                /* engineEpoch */ version + "@" + startedAtMillis,
                 activeRequests,
                 activeBuildPlans);
     }

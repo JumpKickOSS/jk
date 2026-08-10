@@ -84,7 +84,8 @@ jk lock --cache-dir "$COLD"          # or: JK_CACHE_DIR="$COLD" jk lock
 The engine process is keyed by state directory + store; isolating only the action
 cache leaves CAS reuse intact.
 
-Everything under a cache root — including its `sha256/` blob pool — is **cache tier**: rebuildable, prunable to the cache budget, and wiped by `jk cache purge`.
+Everything under a cache root — including its `sha256/` blob pool — is **cache tier**: rebuildable,
+cleaned with `jk cache clean` (including all Class-C heavy outputs), and wiped by `jk cache nuke`.
 
 ### `jk env` — where values come from
 
@@ -139,53 +140,77 @@ cache, a normal `jk build` should hit action cache for unchanged modules.
 
 | Command | Scope |
 |---------|--------|
-| **`jk cache storage`** | Cache tier: action index + cache CAS (`sha256/` under the cache dir) + format stamps |
-| **`jk cache clear` / `prune` / `purge`** | Invalidate, expire, or wipe the **cache tier** (actions + cache CAS + format stamps). Artifact store CAS and repo mirrors survive |
-| **`jk repo storage`** | Artifact store CAS + `repos/` mirrors + run logs |
-| **`jk repo prune`** | Sweep unreferenced store CAS blobs + expired run logs |
-| **`jk repo search`** | Offline search of locally mirrored coordinates |
-| **`jk repo refresh <coord>`** | Evict a coordinate from the mirror so it re-fetches. The mirror is first-write-wins (Maven Central's immutability contract); this is the escape hatch for an upstream that genuinely republished — see [mirror-verification-decision.md](mirror-verification-decision.md) |
-| **`jk repo login` / `logout`** | Artifact-repository credentials |
-| **`jk self purge`** | Wipe **jk-owned** data only. Never touches the PATH bin dir or JDKs. |
+| **`jk cache usage`** | Cache tier size/utilization (classes, tests, jars, natives, OCI, stamps; total = whole cache root) |
+| **`jk cache dir`** | Print the cache directory path (`JK_CACHE_DIR`) |
+| **`jk cache clean`** | Hygiene: stale action keys, **all Class-C** heavy outputs (native / OCI / fat jars), temps, LRU to budget. Cache tier only |
+| **`jk cache nuke`** | Wipe the **entire cache tier**. Artifact store survives. Confirms first |
+| **`jk storage usage`** | Artifact store size/utilization (jars, natives, OCI, worker jars) |
+| **`jk storage dir`** | Print the artifact store path (`JK_STORE_DIR`) |
+| **`jk storage clean`** | Hygiene: unreferenced store CAS blobs + expired run logs (garbage only) |
+| **`jk storage nuke`** | Wipe the **entire artifact store**. Confirms first |
+| **`jk clean`** | Delete project `target/` outputs; with **`--force`**, also invalidate this project's action-cache entries |
+| **`jk repo search` / `refresh` / `login` / `logout`** | Mirror search, coord re-fetch, credentials |
+| **`jk self nuke`** | Wipe **jk-owned** data only. Never touches the PATH bin dir or JDKs. `--cache` / `--store` share code with `jk cache nuke` / `jk storage nuke` |
 
 ```bash
-jk self purge                     # all targets (default); confirms first
-jk self purge -y                  # skip confirmation
-jk self purge --cache --state -y  # stackable targets
-jk self purge --store --config
+jk cache clean                    # first knob for safe space reclaim
+jk storage clean                  # orphan deps / old run logs
+jk cache nuke -y                  # wipe rebuildable action cache
+jk storage nuke                   # wipe downloaded artifacts (confirms)
+jk self nuke                      # all targets (default); confirms first
+jk self nuke -y                   # skip confirmation
+jk self nuke --cache --state -y   # stackable targets
+jk self nuke --store --config
 ```
 
 | Flag | Deletes | Keeps |
 |------|---------|-------|
 | `--all` | Every target below (default when none named) | — |
-| `--cache` | Cache tier (`~/.cache/jk` — action index + cache CAS) | — |
-| `--store` | Artifact CAS, repo mirrors, store catalogs (`jdks.json`, `libs.global.toml`), shell completions, **old** `versions/*` | **Active** `versions/<this-jk>/`, **`store/lib/`** (latest plugins), forge/repo credentials, live JDK pointer symlinks |
+| `--cache` | Same as **`jk cache nuke`** (action index + cache CAS + stamps) | Artifact store, PATH, JDKs |
+| `--store` | Same as **`jk storage nuke`** (entire artifact store, including `store/lib/`) | Active engine version, forge/repo credentials, PATH, JDKs |
 | `--state` | Engine sockets, AOT, builds, scratch tmp (`~/.local/state/jk`) | — |
 | `--config` | User config (`~/.config/jk`; under `JK_HOME`, only `config.toml`) | — |
 
-Does **not** delete anything under `~/.local/bin` (or `JK_BIN_DIR`) — including `jk`, `jkx`, and every other tool on PATH. Does **not** remove managed JDKs or the running client’s engine install. Never logs you out: forge and repo credentials survive every target (`jk repo logout` removes them). Purged shell completions come back with `jk activate`.
+Does **not** delete anything under `~/.local/bin` (or `JK_BIN_DIR`) — including `jk`, `jkx`, and every other tool on PATH. Does **not** remove managed JDKs or the running client’s engine install. Never logs you out: forge and repo credentials survive every target (`jk repo logout` removes them).
 
 Utilization bars:
 
 | Report | Cap (config) | Default |
 |--------|--------------|---------|
-| `jk cache storage` | `[cache] max-cache-size-mb` / `JK_MAX_CACHE_SIZE_MB` | **1024** (1 GiB) |
-| `jk repo storage` | `[cache] max-store-size-mb` / `JK_MAX_STORE_SIZE_MB` | **4096** (4 GiB) |
+| `jk cache usage` | `[cache] max-cache-size-gb` / `JK_MAX_CACHE_SIZE_GB` | **4** GiB (8 on `CI=1`/`true`) |
+| `jk storage usage` | `[cache] max-store-size-gb` / `JK_MAX_STORE_SIZE_GB` | **6** GiB (12 on `CI=1`/`true`) |
 
 ```toml
 # ~/.config/jk/config.toml
 [cache]
-max-cache-size-mb = 1024    # cache CAS + action index (ephemeral build outputs)
-max-store-size-mb = 4096    # artifact store CAS + repos/ (long-lived deps)
+max-cache-size-gb = 4      # cache CAS + action index (ephemeral build outputs)
+max-store-size-gb = 6      # artifact store CAS + repos/ (long-lived deps)
+# max-cache-size-gb = 0.5  # 512 MiB — sizes are GiB; fractions allowed
 ```
 
 `0` (or a negative value) for either size — file key or env var — means **unset**: the default
-above applies. Both storage reports use the same rule.
+above applies. Both storage reports use the same rule. On volumes with **&lt; 10 GiB total** capacity,
+unset defaults are clamped to `(free × 0.8) / 2` each so cache + store claim at most 80 % of free
+space. Explicit sizes are never disk-clamped.
 
-The two budgets differ in what they *enforce*. The cache tier is rebuildable, so scheduled prunes
-LRU-evict it to its budget (default 1 GiB); the evictor targets the blob pool at the budget net
-of the action-index + stamp overhead, so a prune can bring the utilization bar back under 100%. The artifact store holds long-lived downloads: its
-4 GiB default is display-only — `jk repo prune` never evicts reachable store blobs (even when the store exceeds the display budget). GC only reclaims garbage: leftover `.put-` temps, expired run logs, and unreferenced CAS blobs.
+The two budgets differ in what they *enforce*. The cache tier is rebuildable, so scheduled
+hygiene size-evicts it to its budget (default 4 GiB); the evictor targets the blob pool at the
+budget net of the action-index + stamp overhead and **prefers Class-C** digests first so a hot
+native binary cannot displace cold compile outputs (recompute-cost-per-byte ranking). **`jk
+cache clean`** is the first admin knob: it drops **all Class-C** heavy outputs (native / OCI /
+fat jars) immediately, plus stale keys and temps, while keeping modular compile/test cache.
+
+**Class-C (heavy ship) action outputs** — `native-image`, `write-image` (OCI), fat
+`package-assembly` / minified jars — use a tighter opportunistic policy so they do not starve
+modular compile/test cache between cleans: **50 % of the cache budget** (2 GiB at the 4 GiB
+default), **3-day** unused TTL, **2 generations** of native binaries / fat jars, **1 generation**
+of OCI images. On `jk release`, staged natives and engine fat jars are **promoted** into the
+artifact store CAS (hard-link when possible); restore still hits those blobs via store fallback.
+
+The artifact store holds long-lived downloads: its
+6 GiB default is display-only — `jk storage clean` never evicts reachable store blobs (even when
+the store exceeds the display budget). GC only reclaims garbage: leftover `.put-` temps, expired
+run logs, and unreferenced CAS blobs.
 
 Preflight dirty memo fingerprints use **source content hashes** by default (CI-safe). Opt into
 faster path/size/mtime fingerprints with `JK_PREFLIGHT_MEMO_MTIME=1` if needed.
@@ -248,12 +273,15 @@ auto-refreshes when the lock is missing or out of sync with manifests. Explicit 
 
 | Command | Role |
 |---|---|
-| `jk lock` | Resolve and write `jk-lock.toml` |
+| `jk lock` | Resolve and write `jk-lock.toml` (warm `maven-metadata.xml` within 24h TTL — local first) |
 | `jk sync` | Materialize cache / offline prep (`--offline-prepare`) |
 | `jk outdated` | Read-only: which direct deps have newer versions than the lock |
-| `jk update` | Re-resolve within declared constraints (rewrites the lock) |
+| `jk update` | Re-resolve within declared constraints (rewrites the lock; revalidates metadata) |
 | `jk build` | Builds from the lock — does not re-resolve |
 | `jk tree` / `jk why` | Inspect the graph offline |
+
+Metadata indexes live under the store (`metadata/`, 24h TTL + ETag). Back-to-back `jk lock`
+hits disk only; use `jk update` or `-F` when you need Central’s current version lists today.
 
 **Pre-release pins:** a lock that records an RC/M/beta is kept on conservative re-locks when
 it still satisfies the declared range. A platform BOM pin (including a pre-release line) is
@@ -481,6 +509,10 @@ jk new --template quarkus my-api # Giter8 short name (same single-module shape)
 - Default package is **fast-jar** (`quarkus-run.jar` + `lib/` + `quarkus-app/`). Set
   `package = "uber-jar"` for a single runner. Packaging uses pure bootstrap (no permanent
   `mvn` CLI).
+- **Native:** `[native] always = true` builds the binary through Quarkus's own native-image
+  command. Quarkus computes the argument list — the generated `--features` entry point, the runner
+  jar, the Netty flags — and jk runs it with its own GraalVM toolchain. Nothing jk composes is
+  added on top, because that list is already complete; `[native] args` still applies.
 - Use a plain `main` + `Quarkus.run` (as scaffolded). Avoid `@QuarkusMain` under jk’s
   `target/classes/main` layout — `@QuarkusTest` can report two mains with the same name.
 - Keep `quarkus-junit5` / RestAssured on **`[test-dependencies]`** only so MAIN does not pull
@@ -560,6 +592,62 @@ assembly = true    # adds -all.jar — jk assemble (or jk build)
 ```
 
 R8 is **opt-in** via `minified = true` — never the default.
+
+### JVM startup cache (`jk build --aot-cache`)
+
+```bash
+jk build --aot-cache      # target/aot-cache/ — the app, its jars, and a trained cache
+./target/aot-cache/run.sh # start it
+```
+
+Trains a JEP 514 AOT cache (JDK 25+; an AppCDS archive below that) from one run of the
+application. Measured on the `jk new --spring` scaffold: **771 ms cold, 325 ms cached**.
+
+The cache is pinned to three things, and it is worth knowing which, because a mismatch is not an
+error — the JVM silently starts cold:
+
+- **the exact JVM build.** Same version from another vendor does not count. `run.sh` execs the JVM
+  that trained it; `aot-cache.toml` records its identity.
+- **the absolute paths of the classpath.** Moving `target/aot-cache/` elsewhere voids it. `run.sh`
+  cd's to its own directory for that reason.
+- **the jars themselves.** A build that changes them removes the cache and says so; re-run with
+  `--aot-cache`. A build that changes nothing keeps it.
+
+`jk build --aot-cache` starts the app once with the cache and fails if the JVM refuses it, so a
+cache that exists is a cache that loads.
+
+JVM options go through `JK_JAVA_OPTS` (`"$@"` reaches the application). Flags that change the
+collector or heap shape can cost the cache; the JVM falls back to a cold start rather than
+misbehaving.
+
+Not available for `jk run`: a CDS dump rejects any classpath entry that is a directory, and `jk run`
+launches from `target/classes/`.
+
+### AOT cache in a container image (`[image] aot-cache`)
+
+```toml
+[image]
+base      = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
+aot-cache = true
+```
+
+Trains a JEP 514 AOT cache and ships it as an image layer, with the entrypoint pointing at it.
+Opt-in: it costs a training run at build time and tens of MiB of image.
+
+The cache is only valid for the exact JVM build that produced it — the archive records the OS,
+architecture, build number and even the compiler HotSpot was built with — so jk trains with the
+image's own JVM, never the build JDK. It gets there one of two ways:
+
+- **Host** (Linux, matching the image's architecture): the base image's JRE is unpacked from the
+  layers Jib already pulls and run directly. No container runtime.
+- **Container**: otherwise, the training run executes inside the base image, which needs docker,
+  podman or nerdctl.
+
+Either way the cache is started once and checked before it becomes a layer — a rejected cache is
+silent at default log level, so an unverified one is indistinguishable from a working one.
+
+Not available for the exploded-classes image layout, which currently includes Spring Boot: a CDS
+dump refuses any classpath entry that is a directory, and that restriction is Won't Fix upstream.
 
 ### Grails (`[grails]`)
 
@@ -1171,20 +1259,25 @@ Maven**. Routing is exclusive by group:
 | Coordinates | Where they resolve |
 |-------------|--------------------|
 | `cc.jumpkick`, `cc.jumpkick.*`, `build.jumpkick`, `build.jumpkick.*` | **JumpKick only** (never Central) — dependency-confusion safe |
-| Everything else | **Central then Google** (JumpKick is not probed for third-party GAV 404s) |
+| `androidx.*`, `com.android.*`, `com.google.android.*`, Firebase/ML Kit/Play-related Google Android groups | **Google Maven only** (never Central dual-probe) |
+| Everything else | **Central** (and other non-specialist remotes; JumpKick/Google specialists are not probed for unbound third-party GAs) |
 
 So AndroidX / R8 / apksig resolve without a per-project `[repositories]` table, and first-party
 workers still come from `https://jumpkick.build/repo/`. Local lookup prefers CAS, per-repo
 mirrors under the cache, and `~/.m2` before the network. Corporate mirrors, forge package
 registries, S3/MinIO, and GCS are supported. Prefer `auth = "env:TOKEN"` over secrets in TOML.
 
+Google’s exclusive set applies whenever the Google Android Maven remote is present (built-in or
+declared as `google` / `dl.google.com`). Override with an explicit
+`[repositories.google] groups = [...]` if you must.
+
 Details: [maven-repo.md](maven-repo.md).
 
 ### Exclusive groups (dependency-confusion defense)
 
-Built-in JumpKick groups are already exclusive (table above). When you declare an **internal**
-repository next to a public one, bind *your* Maven namespaces the same way so those
-coordinates are **never** discovered or fetched from other remotes:
+Built-in JumpKick and Google Android groups are already exclusive (table above). When you declare
+an **internal** repository next to a public one, bind *your* Maven namespaces the same way so
+those coordinates are **never** discovered or fetched from other remotes:
 
 ```toml
 [repositories.central]

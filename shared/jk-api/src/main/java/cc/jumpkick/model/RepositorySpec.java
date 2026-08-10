@@ -23,9 +23,39 @@ public record RepositorySpec(
     public static final RepositorySpec MAVEN_CENTRAL =
             new RepositorySpec("central", URI.create("https://repo.maven.apache.org/maven2/"));
 
-    /** Google's Android / Play services Maven repository (after Central in the built-in list). */
-    public static final RepositorySpec GOOGLE_MAVEN =
-            new RepositorySpec("google", URI.create("https://dl.google.com/dl/android/maven2/"));
+    /**
+     * Groups that live on Google's Android Maven (not Maven Central). Applied as exclusive
+     * bindings when the Google remote is present so warm multi-repo locks do not probe Central
+     * for every {@code androidx.*} GAV.
+     */
+    public static final List<String> GOOGLE_ANDROID_EXCLUSIVE_GROUPS = List.of(
+            "androidx",
+            "androidx.*",
+            "com.android",
+            "com.android.*",
+            "com.google.android",
+            "com.google.android.*",
+            "com.google.android.gms",
+            "com.google.android.gms.*",
+            "com.google.android.material",
+            "com.google.android.material.*",
+            "com.google.firebase",
+            "com.google.firebase.*",
+            "com.google.mlkit",
+            "com.google.mlkit.*",
+            "com.google.testing.platform",
+            "com.google.testing.platform.*");
+
+    /**
+     * Google's Android / Play services Maven repository (after Central in the built-in list).
+     * Exclusive for {@link #GOOGLE_ANDROID_EXCLUSIVE_GROUPS} by default.
+     */
+    public static final RepositorySpec GOOGLE_MAVEN = new RepositorySpec(
+            "google",
+            URI.create("https://dl.google.com/dl/android/maven2/"),
+            Optional.empty(),
+            Optional.empty(),
+            GOOGLE_ANDROID_EXCLUSIVE_GROUPS);
 
     /**
      * JumpKick's first-party Maven repository (GCS-backed). Exclusive for {@code cc.jumpkick.*}

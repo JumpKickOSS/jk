@@ -118,32 +118,6 @@ public final class HttpEngineServer implements AutoCloseable {
     }
 
     /**
-     * GET paths that require the bearer token even on loopback. {@code /api/fs} lists the
-     * filesystem with the owner's permissions; {@code /api/log} and {@code /api/history/artifact}
-     * carry full on-disk diagnostics; {@code /api/project} is a path-existence oracle;
-     * {@code /api/project/graph} walks workspace module layout; {@code /api/metrics} emits every
-     * project dir and coordinate ever built; {@code /api/projects/defaults} derives from the
-     * owner's git identity and home layout.
-     *
-     * <p>{@code GET /api/history} (the journal <em>list</em>) is intentionally <strong>not</strong>
-     * here: the activity stream is already open on loopback so a tokenless dashboard can show live
-     * builds, and a hard-refresh must rehydrate that same journal rather than flash "No activity
-     * yet". Artifacts stay gated.
-     */
-    private static final java.util.Set<String> SENSITIVE_READS = java.util.Set.of(
-            "/api/fs",
-            "/api/log",
-            "/api/history/artifact",
-            "/api/project",
-            // Module DAG walk discloses workspace layout / module paths (same class as /api/project).
-            "/api/project/graph",
-            "/api/metrics",
-            "/api/projects/defaults",
-            // Returns the config file path (home layout) and verbatim effective values —
-            // templates.official may carry a credential-embedded URL (JK-1524).
-            "/api/config");
-
-    /**
      * {@code GET /api/templates} response cache — building the index walks every template root
      * (with a deep DFS for catalog-only ids), so repeated modal opens must not rescan the disk
      * (JK-1455). One immutable holder rather than two volatiles: a reader must never pair the old
@@ -155,9 +129,6 @@ public final class HttpEngineServer implements AutoCloseable {
     private static final long TEMPLATES_TTL_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
     private byte[] token;
     private long heartbeatMillis = DEFAULT_HEARTBEAT_MILLIS;
-
-    /** {@code true} when bound beyond loopback — then even {@code /api} reads require the token. */
-    private boolean readsRequireToken;
 
     /**
      * @param webRoot the resolved on-disk static root (the caller resolves {@code web-root} against
@@ -236,7 +207,6 @@ public final class HttpEngineServer implements AutoCloseable {
     public void start() throws IOException {
         loadOrMintToken();
         InetSocketAddress bind = new InetSocketAddress(InetAddress.getByName(config.host()), config.port());
-        readsRequireToken = !bind.getAddress().isLoopbackAddress();
         server = bindWithRetry(bind);
         server.createContext("/", this::handle);
         executor = Executors.newThreadPerTaskExecutor(
@@ -440,10 +410,45 @@ public final class HttpEngineServer implements AutoCloseable {
                 sendText(exchange, 401, "missing or invalid bearer token\n");
                 return;
             }
+            // Generation gate (JK-1724): fail-closed except bootstrap status + SSE (EventSource
+            // cannot send headers). Stale dashboards hard-refresh on 409.
+            if (!engineEpochOk(exchange)) {
+                sendEngineEpochConflict(exchange);
+                return;
+            }
             api.handle(exchange);
             return;
         }
         staticContent.serve(exchange); // static is never token-gated — the dashboard shell has no secrets
+    }
+
+    /**
+     * {@code GET /api/status} and {@code GET /api/events} may omit the epoch header (bootstrap /
+     * EventSource). Every other {@code /api/*} call must send a matching {@code X-Jk-Engine-Epoch}.
+     */
+    private boolean engineEpochOk(HttpExchange exchange) {
+        String path = exchange.getRequestURI().getPath();
+        String method = exchange.getRequestMethod();
+        boolean bootstrap = ("GET".equals(method) || "HEAD".equals(method))
+                && (path.equals("/api/status") || path.equals("/api/events"));
+        if (bootstrap) return true;
+        String presented = exchange.getRequestHeaders().getFirst("X-Jk-Engine-Epoch");
+        if (presented == null || presented.isBlank()) return false;
+        StatusSnapshot s = status.get();
+        String expected = s != null ? s.engineEpoch() : null;
+        return expected != null && expected.equals(presented.trim());
+    }
+
+    private void sendEngineEpochConflict(HttpExchange exchange) throws IOException {
+        StatusSnapshot s = status.get();
+        String epoch = s != null && s.engineEpoch() != null ? s.engineEpoch() : "";
+        String body = JsonOut.object()
+                .put("error", "engine-epoch-mismatch")
+                .put("engineEpoch", epoch)
+                .put("version", s != null ? s.version() : "")
+                .put("startedAt", s != null ? s.startedAtMillis() : 0L)
+                .toString();
+        sendJson(exchange, 409, body);
     }
 
     /**
@@ -591,22 +596,16 @@ public final class HttpEngineServer implements AutoCloseable {
     }
 
     /**
-     * Mutations always need the bearer token (CSRF defense on loopback). Reads need it when bound
-     * beyond loopback; {@code GET /api/events} also accepts {@code ?access_token=} ({@code
-     * EventSource} cannot send headers).
+     * Every {@code /api/*} call needs the bearer token — loopback is not a free pass. A bare
+     * browser open without {@code #t=} or a stored token must not paint live activity (fail-closed).
+     * Static shell assets stay ungated so the SPA can show the authorization dialog. {@code GET
+     * /api/events} also accepts {@code ?access_token=} because {@code EventSource} cannot send
+     * headers.
      */
     private boolean authorized(HttpExchange exchange) {
+        if (tokenValid(bearerToken(exchange.getRequestHeaders().getFirst("Authorization")))) return true;
         String method = exchange.getRequestMethod();
         boolean read = method.equals("GET") || method.equals("HEAD");
-        // Reads that disclose the engine owner's filesystem, identity, or full on-disk artifacts are
-        // never token-exempt: on a shared machine another local user must not have them for free
-        // over loopback (JK-1305, JK-1453, JK-1466). Aggregate-only reads (/api/status,
-        // /api/cache), the activity stream, and the journal list (/api/history) stay open so a
-        // tokenless loopback dashboard can rehydrate past builds after refresh.
-        String path = exchange.getRequestURI().getPath();
-        boolean sensitiveRead = SENSITIVE_READS.contains(path);
-        if (read && !readsRequireToken && !sensitiveRead) return true;
-        if (tokenValid(bearerToken(exchange.getRequestHeaders().getFirst("Authorization")))) return true;
         return read
                 && exchange.getRequestURI().getPath().equals("/api/events")
                 && tokenValid(queryParam(exchange.getRequestURI().getQuery(), "access_token"));
@@ -650,8 +649,10 @@ public final class HttpEngineServer implements AutoCloseable {
                 .put("aotTrainingPid", s.aotTrainingPid())
                 .put("cores", s.cores())
                 .put("totalMemoryBytes", s.totalMemoryBytes())
-                .put("freeMemoryBytes", s.freeMemoryBytes())
+                .put("availableMemoryBytes", s.availableMemoryBytes())
                 .put("systemCpuLoad", s.systemCpuLoad())
+                .put("systemLoadAverage", s.systemLoadAverage())
+                .put("engineEpoch", s.engineEpoch())
                 .put("httpUrl", url())
                 // url already ends with /; avoid //mcp in status/mcpUrl. Null when MCP is off.
                 .put("mcpUrl", config.mcp().enabled() && url() != null ? url().replaceAll("/+$", "") + "/mcp" : null)
@@ -1034,10 +1035,28 @@ public final class HttpEngineServer implements AutoCloseable {
             sendJson(exchange, 200, enrichHistoryJson(Files.readString(record.get(), StandardCharsets.UTF_8)));
             return;
         }
-        List<String> raw = journal.rawRecords(HISTORY_LIST_LIMIT);
-        List<String> parts = new ArrayList<>(raw.size());
-        for (String r : raw) parts.add(enrichHistoryJson(r));
+        // Oversample raw journal rows, keep only build-like kinds (see BuildHistoryKinds).
+        List<String> raw = journal.rawRecords(Math.max(HISTORY_LIST_LIMIT * 4, HISTORY_LIST_LIMIT));
+        List<String> parts = new ArrayList<>(HISTORY_LIST_LIMIT);
+        for (String r : raw) {
+            if (!isBuildLikeHistoryJson(r)) continue;
+            parts.add(enrichHistoryJson(r));
+            if (parts.size() >= HISTORY_LIST_LIMIT) break;
+        }
         sendJson(exchange, 200, "[" + String.join(",", parts) + "]");
+    }
+
+    /** True when a journal JSON blob's {@code kind} is a durable project build. */
+    private static boolean isBuildLikeHistoryJson(String raw) {
+        if (raw == null || raw.isBlank()) return false;
+        try {
+            Object parsed = cc.jumpkick.plugin.protocol.MiniJson.parse(raw);
+            if (!(parsed instanceof Map<?, ?> m)) return false;
+            Object k = m.get("kind");
+            return k instanceof String s && cc.jumpkick.engine.BuildHistoryKinds.isBuildLike(s);
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     /**
@@ -1047,17 +1066,29 @@ public final class HttpEngineServer implements AutoCloseable {
      */
     private String enrichHistoryJson(String raw) {
         if (raw == null || raw.isBlank()) return raw;
-        // Journal records are MiniJson-compact ("running":true, no spaces); finished records —
-        // the vast majority of a 200-row list — skip the parse entirely (JK-1523).
-        if (!raw.contains("\"running\":true")) return raw;
         try {
             Object parsed = cc.jumpkick.plugin.protocol.MiniJson.parse(raw);
             if (!(parsed instanceof Map<?, ?> m0)) return raw;
             @SuppressWarnings("unchecked")
             Map<String, Object> m = (Map<String, Object>) m0;
-            if (!Boolean.TRUE.equals(m.get("running"))) return raw;
+            // Durable project id for dashboard routing (JK-1727+); derived from checkout path.
+            if (!(m.get("projectId") instanceof String pid) || pid.isBlank()) {
+                if (m.get("dir") instanceof String dir && !dir.isBlank()) {
+                    try {
+                        m.put(
+                                "projectId",
+                                cc.jumpkick.builds.ProjectIdentity.resolve(Path.of(dir))
+                                        .id());
+                    } catch (RuntimeException ignored) {
+                        // leave absent
+                    }
+                }
+            }
+            if (!Boolean.TRUE.equals(m.get("running"))) {
+                return cc.jumpkick.plugin.protocol.MiniJson.write(m);
+            }
             LiveRun match = matchLiveRun(m);
-            if (match == null) return raw;
+            if (match == null) return cc.jumpkick.plugin.protocol.MiniJson.write(m);
             m.put("requestId", match.requestId());
             m.put("jid", match.requestId());
             if (!Double.isNaN(match.progress())) m.put("progress", match.progress());
@@ -1135,8 +1166,8 @@ public final class HttpEngineServer implements AutoCloseable {
     }
 
     /**
-     * {@code GET /api/cache} — the cache-directory breakdown (the {@code jk cache storage} /
-     * {@code jk repo storage} sections) as one flat object, for the Status view's Cache panel. Read-tier auth, like every other GET;
+     * {@code GET /api/cache} — the cache-directory breakdown (the {@code jk cache usage} /
+     * {@code jk storage usage} sections) as one flat object, for the Status view's Cache panel. Read-tier auth, like every other GET;
      * IO-shaped (a walk of the cache sections), so it is computed per request, never cached.
      */
     private void handleCache(HttpExchange exchange) throws IOException {
@@ -1144,35 +1175,62 @@ public final class HttpEngineServer implements AutoCloseable {
     }
 
     /**
-     * {@code GET /api/project?dir=…} — live workspace metadata for one project: its {@code coord}
-     * ({@code group:name}) and {@code description}, parsed fresh from the dir's {@code jk.toml}. Not
-     * from the journal — these describe the project as it is on disk now, so the detail page shows the
-     * current description even for a project whose last build predates it. Empty object when the dir
-     * has no parseable {@code jk.toml} (e.g. a deleted workspace). Read-tier auth, like every GET.
+     * {@code GET /api/project?project=&lt;id&gt;} or {@code ?dir=…} — live workspace metadata.
+     * Prefer {@code project=} (durable identity); {@code dir=} remains for direct checkout ops.
+     * Includes {@code projectId}, {@code dir}, {@code coord}, {@code description}.
      */
     private void handleProject(HttpExchange exchange) throws IOException {
-        String dir = decode(queryParam(exchange.getRequestURI().getQuery(), "dir"));
-        if (dir == null || dir.isBlank()) {
+        String q = exchange.getRequestURI().getQuery();
+        String projectId = decode(queryParam(q, "project"));
+        String dir = decode(queryParam(q, "dir"));
+        if ((projectId == null || projectId.isBlank()) && (dir == null || dir.isBlank())) {
             sendJson(
                     exchange,
                     400,
-                    JsonOut.object().put("error", "missing \"dir\"").toString());
+                    JsonOut.object()
+                            .put("error", "missing \"project\" or \"dir\"")
+                            .toString());
             return;
         }
+        if (projectId != null && !projectId.isBlank()) {
+            var path = cc.jumpkick.builds.ProjectIdentity.pathForId(projectId);
+            if (path.isEmpty()) {
+                // Resolve may still work if lock/git present at a path we don't know — try reverse
+                // is not available; report missing checkout.
+                sendJson(
+                        exchange,
+                        404,
+                        JsonOut.object()
+                                .put("error", "unknown project id or checkout path missing: " + projectId)
+                                .put("projectId", projectId)
+                                .toString());
+                return;
+            }
+            dir = path.get().toString();
+        }
         try {
-            var project = cc.jumpkick.config.JkBuildParser.parse(Path.of(dir).resolve("jk.toml"))
+            Path dirPath = Path.of(dir);
+            var identity = cc.jumpkick.builds.ProjectIdentity.resolve(dirPath);
+            var project = cc.jumpkick.config.JkBuildParser.parse(dirPath.resolve("jk.toml"))
                     .project();
             sendJson(
                     exchange,
                     200,
                     JsonOut.object()
                             .put("dir", dir)
+                            .put("projectId", identity.id())
                             .put("coord", project.group() + ":" + project.name())
                             .put("description", project.description())
                             .toString());
         } catch (RuntimeException e) {
             // Unparseable/missing jk.toml (deleted or moved workspace) → empty, never an error.
-            sendJson(exchange, 200, JsonOut.object().put("dir", dir).toString());
+            sendJson(
+                    exchange,
+                    200,
+                    JsonOut.object()
+                            .put("dir", dir)
+                            .put("projectId", projectId == null ? "" : projectId)
+                            .toString());
         }
     }
 

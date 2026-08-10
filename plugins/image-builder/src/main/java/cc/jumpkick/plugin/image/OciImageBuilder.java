@@ -101,14 +101,21 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         String registry = c.stringOpt("registry").orElse(null);
         String tag = c.stringOpt("tag").orElse(null);
         String dockerExecutable = c.stringOpt("dockerExecutable").orElse(null);
+        boolean aotCache = c.bool("aotCache").orElse(false);
 
         Path mainJar = ctx.mainArtifact().orElseThrow(() -> new IOException("image goal needs a built main artifact"));
         List<Path> depJars = new ArrayList<>();
         List<Path> snapshotJars = new ArrayList<>();
+        java.util.Map<Path, String> jarNames = new java.util.LinkedHashMap<>();
         for (PackageIo.RuntimeEntry e : ctx.runtimeEntries()) {
+            if (e.jar() == null) continue;
             (e.snapshot() ? snapshotJars : depJars).add(e.jar());
+            // The entry knows its coordinate; the path is a CAS digest and says nothing.
+            if (e.fileName() != null && !e.fileName().isBlank()) jarNames.put(e.jar(), e.fileName());
         }
         Path classesDir = ctx.classesDir().orElse(null);
+        String appDir = c.stringOpt("appDir").orElse(null);
+        String appJar = c.stringOpt("appJar").orElse(null);
 
         ImageConfig config = new ImageConfig(
                 base,
@@ -121,9 +128,20 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
                 platforms.isEmpty() ? null : platforms,
                 mainClass,
                 dockerExecutable,
-                null);
-        ImageBuilder.Plan plan =
-                new ImageBuilder.Plan(config, artifact, version, mainClass, mainJar, depJars, snapshotJars, classesDir);
+                null,
+                aotCache);
+        ImageBuilder.Plan plan = new ImageBuilder.Plan(
+                config,
+                artifact,
+                version,
+                mainClass,
+                mainJar,
+                depJars,
+                snapshotJars,
+                classesDir,
+                jarNames,
+                appDir == null ? null : Path.of(appDir),
+                appJar);
 
         Optional<String> tarball = c.stringOpt("tarball");
         if (tarball.isPresent()) {

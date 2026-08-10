@@ -2,6 +2,7 @@
 package cc.jumpkick.run;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
 
@@ -42,9 +43,16 @@ class BuildStageTest {
     void task_builder_group_string_maps_to_stage() {
         Task t = Task.builder("x").group("test").build();
         assertThat(t.stage()).isEqualTo(BuildStage.TEST);
-        Task other = Task.builder("y").group("custom-soup-1234").build();
-        assertThat(other.stage()).isEqualTo(BuildStage.OTHER);
-        assertThat(other.group()).contains("other");
+    }
+
+    /** JK-1613: a typo must not become the one stage that opts out of ordering. */
+    @Test
+    void task_builder_group_string_rejects_an_unknown_stage() {
+        org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class, () -> Task.builder("y").group("custom-soup-1234"));
+        Task explicit = Task.builder("y").stage(BuildStage.OTHER).build();
+        assertThat(explicit.stage()).isEqualTo(BuildStage.OTHER);
+        assertThat(explicit.group()).contains("other");
     }
 
     @Test
@@ -54,6 +62,99 @@ class BuildStageTest {
         assertThat(BuildStage.COMPILE.mayRequire(BuildStage.TEST)).isFalse();
         assertThat(BuildStage.PACKAGE.mayRequire(BuildStage.TEST)).isTrue();
         assertThat(BuildStage.OTHER.mayRequire(BuildStage.TEST)).isTrue();
+    }
+
+    /**
+     * JK-1613: an OTHER hop must not launder a backward edge. `mayRequire` says yes to both halves
+     * on its own — the plan is what establishes the invariant across the graph.
+     */
+    @Test
+    void build_plan_rejects_a_backward_edge_through_an_other_hop() {
+        assertThat(BuildStage.OTHER.mayRequire(BuildStage.IMAGE)).isTrue();
+        assertThat(BuildStage.PACKAGE.mayRequire(BuildStage.OTHER)).isTrue();
+
+        Task image = Task.builder("write-image").stage(BuildStage.IMAGE).build();
+        Task hop = Task.builder("bridge")
+                .stage(BuildStage.OTHER)
+                .requires("write-image")
+                .build();
+        Task pkg = Task.builder("package-jar")
+                .stage(BuildStage.PACKAGE)
+                .requires("bridge")
+                .build();
+
+        assertThatThrownBy(() -> BuildPlan.builder("t")
+                        .addTask(image)
+                        .addTask(hop)
+                        .addTask(pkg)
+                        .build())
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("package-jar")
+                .hasMessageContaining("write-image");
+    }
+
+    /** The legal direction through the same hop stays legal. */
+    @Test
+    void an_other_hop_forward_through_the_pipeline_is_fine() {
+        Task compile = Task.builder("compile-java").stage(BuildStage.COMPILE).build();
+        Task hop = Task.builder("bridge")
+                .stage(BuildStage.OTHER)
+                .requires("compile-java")
+                .build();
+        Task image = Task.builder("write-image")
+                .stage(BuildStage.IMAGE)
+                .requires("bridge")
+                .build();
+        assertThat(BuildPlan.builder("t")
+                        .addTask(compile)
+                        .addTask(hop)
+                        .addTask(image)
+                        .build()
+                        .steps())
+                .hasSize(3);
+    }
+
+    /**
+     * JK-1611: assembly and native are both tails of packaging, and the join over them sits at the
+     * later of the two. This is the shape every Micronaut and Quarkus scaffold builds.
+     */
+    @Test
+    void a_join_over_a_package_tail_and_a_native_tail_validates() {
+        Task assembly =
+                Task.builder("package-assembly").stage(BuildStage.PACKAGE).build();
+        Task nativeImage = Task.builder("native-image").stage(BuildStage.NATIVE).build();
+        Task join = Task.builder("deliver")
+                .stage(BuildStage.NATIVE)
+                .requires("package-assembly", "native-image")
+                .build();
+        assertThat(BuildPlan.builder("t")
+                        .addTask(assembly)
+                        .addTask(nativeImage)
+                        .addTask(join)
+                        .build()
+                        .steps())
+                .hasSize(3);
+
+        Task joinTooEarly = Task.builder("deliver")
+                .stage(BuildStage.PACKAGE)
+                .requires("package-assembly", "native-image")
+                .build();
+        assertThatThrownBy(() -> BuildPlan.builder("t")
+                        .addTask(assembly)
+                        .addTask(nativeImage)
+                        .addTask(joinTooEarly)
+                        .build())
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("later BuildStage");
+    }
+
+    /** Every stage is reachable — a constant nothing can carry is a constant that lies. */
+    @Test
+    void every_stage_is_carried_by_some_task() {
+        for (BuildStage stage : BuildStage.values()) {
+            Task t = Task.builder("t-" + stage.wireName()).stage(stage).build();
+            assertThat(t.stage()).isEqualTo(stage);
+        }
     }
 
     @Test

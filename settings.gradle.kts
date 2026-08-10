@@ -119,7 +119,7 @@ include(
     ":micronaut",
     ":android",
     ":protobuf",
-    ":shrink",
+    ":minified",
 )
 
 // shared/ — client-safe contracts + code
@@ -157,4 +157,4 @@ project(":quarkus").projectDir        = file("plugins/quarkus")
 project(":micronaut").projectDir      = file("plugins/micronaut")
 project(":android").projectDir        = file("plugins/android")
 project(":protobuf").projectDir       = file("plugins/protobuf")
-project(":shrink").projectDir         = file("plugins/shrink")
+project(":minified").projectDir       = file("plugins/minified")

@@ -14,8 +14,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Leftover {@code .put-} temps are interrupted downloads. Since the JK-1531 tier split a plain
- * {@code jk cache prune} reclaims the <strong>cache</strong> CAS only — the store's temps belong to
- * {@code jk repo prune} — and the {@code cacheFiles} summary must equal what it actually swept.
+ * {@code jk cache clean} reclaims the <strong>cache</strong> CAS only — the store's temps belong to
+ * {@code jk storage clean} — and the {@code cacheFiles} summary must equal what it actually swept.
  */
 class CachePlansTempSweepTest {
 

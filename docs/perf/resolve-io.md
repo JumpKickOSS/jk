@@ -39,7 +39,10 @@ laptop if the CAS is empty; warm re-lock is seconds. Tips:
 
 Cold `jk lock` for large graphs (Spring Boot ~90 packages) is dominated by:
 
-1. **maven-metadata.xml** per GA (disk TTL 24h + conditional GET when warm) — **skipped on happy path when the constraint is exact (platform pins under enforced) or a lock soft-prefer seeds a singleton**
+1. **maven-metadata.xml** per GA (disk TTL 24h; local-first — **no HTTP** while warm; past TTL
+   conditional GET) — **skipped entirely on happy path when the constraint is exact (platform pins
+   under enforced) or a lock soft-prefer seeds a singleton**. `jk lock` does **not** force-revalidate
+   every run (avoids Central 429); `jk update` / `-F` revalidate past TTL.
 2. **POM + parent chain** fetches per package (online path local-first after first fetch)
 3. **Three scope solves** (main / test / processor) with shared in-memory caches
 4. **Jar download + CAS + upstream checksum** per package (`toArtifact`, parallel with host rate limit)
@@ -62,6 +65,42 @@ work for the chosen GAV.
 | **Parallel lock-time materialize** | `toArtifact` jar fetches on `JkThreads.io()` + `HostRateLimiter` (same pattern as CacheSync) |
 | **POM prefetch for pinned children** | After expanding a package, async full `EffectivePomBuilder.build` for preferred/exact children (parents + imports) |
 | **Concurrent POM builder (JK-1090)** | Dropped global `synchronized` on `build`; multi BOM-import expand in parallel; sibling prefetches walk chains together |
+| **Process-wide POM / GMM / fetch caches** | Warm re-locks and multi-scope solves reuse effective POMs, Gradle `.module` parses, and local POM hit paths |
+| **BOM pin warm + frontier prefetch** | Fire-and-forget parallel `rawEdges` for managed pins before PubGrub; exact-child prefetch during expand |
+| **GMM `available-at` fast path** | Skip MiniJson when `.module` has no redirect |
+| **KMP group filter** | Skip marker scan for groups that never publish Gradle metadata |
+| **Local-mirror hot path** | `tryLocalMirror` returns sidecar+path without reclaim/materialize on every resolve hit |
+| **GA-keyed KMP / raw-deps caches** | `jar:` vs `aar:` share one POM/`.module` memo (BOM warm seeds default jar keys) |
+
+### NIA (Now in Android) warm-disk lock (~286 packages, multi-repo)
+
+| Scenario | Wall (resolve harness) |
+|----------|------------------------|
+| First-in-process (process caches cold, CAS warm) | **~8 s** |
+| Hot re-lock (same process) | **~3 s** |
+
+Target: both under **10 s** without network. Enable `-Djk.resolve.profile=true` / `JK_RESOLVE_PROFILE=1`
+for `pomBuild` / `deps` / `kmp` / `versions` / `solve` counters, plus plan phases
+`phasePrep` / `phaseResolve` / `phasePost` on the engine (printed to stderr when profile is on).
+
+### Force vs process caches
+
+`--force` / `-F` / `jk update` (force-revalidate) **clears** process-wide resolve memos (effective
+POM, GMM parse, KMP selection, local fetch hits, version lists) before resolve so stale answers
+cannot win. Non-force warm re-locks keep the memos.
+
+### Default Google exclusive groups
+
+When the Google Android Maven remote is present, `androidx.*` / `com.android.*` /
+`com.google.android.*` (and related) are exclusively bound to it — Central is not probed for those
+GAs. Override by declaring `[repositories.google] groups = [...]` explicitly (including empty only
+if you intentionally want dual-probe — not recommended).
+
+### Engine first-lock
+
+AOT cache is keyed by engine jar identity + JDK. After the engine endpoint is live, a background
+task classloads PubGrub/resolve types so the first plan pays less classload. Residual first-lock
+cost after `jk engine start` is mostly cold process resolve memos + any remaining JIT.
 
 ## Lazy version universes (metadata skip)
 
@@ -94,12 +133,30 @@ Exact pins **do not** need metadata on the happy path. Existence is proven by th
 
 | Layer | What | Lifetime |
 |-------|------|----------|
-| `MavenMetadataCache` | `maven-metadata.xml` + ETag | 24h TTL under CAS `metadata/` |
+| `MavenMetadataCache` | `maven-metadata.xml` + ETag | 24h TTL under store `metadata/`; force-revalidate only on `jk update` / `-F` |
 | `repos/<name>/` | POM + jar (+ sha256) | Permanent; local-first online |
 | CAS | Content-addressed bytes | Permanent |
 | `MavenPackageSource` version/deps caches | Per lock, shared across scopes | One lock |
 | `EffectivePomBuilder` | Effective POM per GAV | One lock (thread-safe for materialize) |
 | Lazy `VersionUniverse` | Singleton seed | Per scope solve; expand once |
+
+## Warm re-lock cost (NIA-scale, ~288 packages)
+
+Phase split on a warm disk (no HTTP writes), measured 2026-08:
+
+| Phase | Before opts | After |
+|-------|-------------|--------|
+| Graph (PubGrub + POM + KMP) | ~18–20 s | ~5–6 s first process pass; **~3–4 s** re-lock |
+| Materialize (local CAS) | ~1 s | ~0.6–1 s |
+| **Total `jk lock`** | ~30 s | **~4 s** re-lock (engine up); ~20–25 s first after engine start |
+
+Dominant graph costs were not PubGrub bitsets (`relationTo` ~0.6 s / 170k calls) but:
+
+1. **KMP `.module` parse** for every AndroidX multiplatform root (~300 lookups)
+2. **Version list union** across Central+Google (now first non-empty wins)
+3. **Effective POM** parent/BOM walks (process-wide memo across locks in the resident engine)
+
+Enable counters: `-Djk.resolve.profile=true` → `ResolveProfile.report()`.
 
 ## Related
 

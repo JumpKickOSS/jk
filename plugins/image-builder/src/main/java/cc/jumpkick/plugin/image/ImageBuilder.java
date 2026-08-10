@@ -13,6 +13,8 @@ import com.google.cloud.tools.jib.api.RegistryException;
 import com.google.cloud.tools.jib.api.RegistryImage;
 import com.google.cloud.tools.jib.api.TarImage;
 import com.google.cloud.tools.jib.api.buildplan.AbsoluteUnixPath;
+import com.google.cloud.tools.jib.api.buildplan.FileEntriesLayer;
+import com.google.cloud.tools.jib.api.buildplan.FilePermissions;
 import com.google.cloud.tools.jib.api.buildplan.Platform;
 import com.google.cloud.tools.jib.api.buildplan.Port;
 import java.io.IOException;
@@ -42,10 +44,85 @@ public final class ImageBuilder {
             Path mainJar,
             List<Path> dependencyJars,
             List<Path> snapshotJars,
-            Path classesDir) {
+            Path classesDir,
+            /**
+             * Coordinate-derived file name per dependency jar. jk serves the runtime classpath from
+             * the content-addressed store, so a jar's own path is its digest — shipping that into
+             * an image leaves a lib/ directory nobody, and no scanner, can read.
+             */
+            Map<Path, String> jarNames,
+            /**
+             * A self-contained runnable tree the packager produced (Quarkus's {@code quarkus-app/}),
+             * or null. When set it is the whole application: shipped as-is and launched with
+             * {@code java -jar appJar} from its own directory.
+             */
+            Path appDir,
+            /** The jar to run inside {@link #appDir}. */
+            String appJar) {
+
+        /** Without coordinate names: jars keep their on-disk file name. */
+        public Plan(
+                ImageConfig config,
+                String artifact,
+                String version,
+                String mainClass,
+                Path mainJar,
+                List<Path> dependencyJars,
+                List<Path> snapshotJars,
+                Path classesDir) {
+            this(
+                    config,
+                    artifact,
+                    version,
+                    mainClass,
+                    mainJar,
+                    dependencyJars,
+                    snapshotJars,
+                    classesDir,
+                    Map.of(),
+                    null,
+                    null);
+        }
+
+        /** The name this jar should carry in the image. */
+        public String nameOf(Path jar) {
+            String named = jarNames.get(jar);
+            return named != null && !named.isBlank() ? named : jar.getFileName().toString();
+        }
+
+        /** With coordinate names but no packager-produced tree. */
+        public Plan(
+                ImageConfig config,
+                String artifact,
+                String version,
+                String mainClass,
+                Path mainJar,
+                List<Path> dependencyJars,
+                List<Path> snapshotJars,
+                Path classesDir,
+                Map<Path, String> jarNames) {
+            this(
+                    config,
+                    artifact,
+                    version,
+                    mainClass,
+                    mainJar,
+                    dependencyJars,
+                    snapshotJars,
+                    classesDir,
+                    jarNames,
+                    null,
+                    null);
+        }
+
+        /** True when the packager handed over a complete runnable tree. */
+        public boolean hasAppTree() {
+            return appDir != null && appJar != null && !appJar.isBlank();
+        }
 
         public Plan {
             Objects.requireNonNull(config, "config");
+            jarNames = jarNames == null ? Map.of() : Map.copyOf(jarNames);
             Objects.requireNonNull(artifact, "artifact");
             Objects.requireNonNull(version, "version");
             Objects.requireNonNull(mainClass, "mainClass");
@@ -116,6 +193,82 @@ public final class ImageBuilder {
         }
     }
 
+    /**
+     * Ship the trained tree verbatim at {@code /app}, timestamps included. The archive validates
+     * each entry by size and modification time, so the bytes that were trained against and the
+     * bytes that ship have to agree on both.
+     */
+    /** Ship {@code src} under {@code /app}: a directory verbatim, or a single file at {@code as}. */
+    private static FileEntriesLayer treeLayer(Path src, String as) throws IOException {
+        FileEntriesLayer.Builder layer = FileEntriesLayer.builder();
+        if (java.nio.file.Files.isRegularFile(src)) {
+            layer.addEntry(
+                    src,
+                    AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR + "/" + (as == null ? src.getFileName() : as)),
+                    FilePermissions.DEFAULT_FILE_PERMISSIONS,
+                    AotCacheTrainer.LAYER_TIME.toInstant());
+            return layer.build();
+        }
+        try (var walk = java.nio.file.Files.walk(src)) {
+            for (Path file :
+                    walk.filter(java.nio.file.Files::isRegularFile).sorted().toList()) {
+                layer.addEntry(
+                        file,
+                        AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR + "/"
+                                + src.relativize(file).toString().replace('\\', '/')),
+                        FilePermissions.DEFAULT_FILE_PERMISSIONS,
+                        AotCacheTrainer.LAYER_TIME.toInstant());
+            }
+        }
+        return layer.build();
+    }
+
+    private static FileEntriesLayer appTreeLayer(Path root) throws IOException {
+        FileEntriesLayer.Builder layer = FileEntriesLayer.builder();
+        try (var walk = java.nio.file.Files.walk(root)) {
+            for (Path file :
+                    walk.filter(java.nio.file.Files::isRegularFile).sorted().toList()) {
+                layer.addEntry(
+                        file,
+                        AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR + "/"
+                                + root.relativize(file).toString().replace('\\', '/')),
+                        FilePermissions.DEFAULT_FILE_PERMISSIONS,
+                        AotCacheTrainer.LAYER_TIME.toInstant());
+            }
+        }
+        return layer.build();
+    }
+
+    /**
+     * Entrypoint for a packager-produced app tree: {@code java [-XX:AOTCache=app.aot] -jar
+     * <appJar>}. No lock-derived classpath — the tree is the whole program (JK-1722).
+     */
+    static List<String> appTreeEntrypoint(Plan plan, boolean aotCache) {
+        List<String> entry = new ArrayList<>();
+        entry.add("java");
+        if (aotCache) entry.add("-XX:AOTCache=" + AotCacheTrainer.CACHE_FILE);
+        entry.add("-jar");
+        entry.add(plan.appJar());
+        return entry;
+    }
+
+    /** Dependency jars at {@code /app/libs}, named by coordinate rather than by CAS digest. */
+    private static FileEntriesLayer namedJarLayer(Plan plan, List<Path> jars) {
+        FileEntriesLayer.Builder layer = FileEntriesLayer.builder();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (Path jar : jars) {
+            String name = plan.nameOf(jar);
+            // Two entries at one path would extract as "last tar entry wins" — a jar silently
+            // missing from the runtime classpath. The engine disambiguates names; this guards
+            // the fallback (raw file names) and any future naming drift.
+            if (!seen.add(name)) {
+                throw new IllegalStateException("duplicate image jar name /app/libs/" + name);
+            }
+            layer.addEntry(jar, AbsoluteUnixPath.get("/app/libs/" + name));
+        }
+        return layer.build();
+    }
+
     private static JibContainer run(Plan plan, Containerizer containerizer)
             throws IOException, InterruptedException, InvalidImageReferenceException {
         ImageConfig cfg = plan.config();
@@ -126,14 +279,30 @@ public final class ImageBuilder {
             throw new IOException("invalid base image: " + cfg.base(), e);
         }
 
+        // A packager-produced tree is the entire application. Shipping it verbatim is the only
+        // layout that runs — Quarkus enters through its own bootstrap and loads lib/main with its
+        // own class loader, so a lock-derived classpath describes a different program.
+        if (plan.hasAppTree()) {
+            builder = builder.addFileEntriesLayer(treeLayer(plan.appDir(), null));
+            builder = builder.setWorkingDirectory(AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR));
+            boolean aot = cfg.aotCache();
+            if (aot) {
+                AotCacheTrainer.Result trained = AotCacheTrainer.train(
+                        plan, plan.mainJar().getParent(), msg -> System.err.println("jk: " + msg));
+                builder = builder.addFileEntriesLayer(treeLayer(trained.cache(), AotCacheTrainer.CACHE_FILE));
+            }
+            builder = builder.setEntrypoint(appTreeEntrypoint(plan, aot));
+            return finish(builder, plan, containerizer);
+        }
+
         // Layer 1 — release dependency jars (change least often).
         if (!plan.dependencyJars().isEmpty()) {
-            builder = builder.addLayer(plan.dependencyJars(), AbsoluteUnixPath.get("/app/libs"));
+            builder = builder.addFileEntriesLayer(namedJarLayer(plan, plan.dependencyJars()));
         }
         // Layer 2 — SNAPSHOT dependency jars (their own layer: they churn while releases don't,
         // so a snapshot bump never invalidates the big release-deps layer). Boot layer mapping.
         if (!plan.snapshotJars().isEmpty()) {
-            builder = builder.addLayer(plan.snapshotJars(), AbsoluteUnixPath.get("/app/libs"));
+            builder = builder.addFileEntriesLayer(namedJarLayer(plan, plan.snapshotJars()));
         }
         // Layer 3 — the application: either exploded classes (Boot layer mapping — the
         // most-frequently-changing bytes ride the smallest layer) or the classic main jar.
@@ -146,6 +315,20 @@ public final class ImageBuilder {
             appClasspath = "/app/classpath/*:/app/libs/*";
         }
 
+        // AOT cache: the trainer produces the tree to ship at /app, the arguments that run it, and
+        // the cache. Everything is relative to /app with WORKDIR set, so the archive's recorded
+        // paths match wherever the tree lands.
+        AotCacheTrainer.Result aot = null;
+        if (cfg.aotCache()) {
+            String blocked = AotCacheTrainer.unsupportedReason(plan);
+            if (blocked != null) {
+                throw new IOException("[image] aot-cache = true, but " + blocked);
+            }
+            aot = AotCacheTrainer.train(plan, plan.mainJar().getParent(), msg -> System.err.println("jk: " + msg));
+            builder = builder.addFileEntriesLayer(appTreeLayer(aot.stagingRoot()));
+            builder = builder.setWorkingDirectory(AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR));
+        }
+
         // Entrypoint: java -cp <app classpath> <main>
         List<String> entrypoint = new ArrayList<>();
         entrypoint.add("java");
@@ -156,10 +339,22 @@ public final class ImageBuilder {
                 for (String token : javaOpts.trim().split("\\s+")) entrypoint.add(token);
             }
         }
-        entrypoint.add("-cp");
-        entrypoint.add(appClasspath);
-        entrypoint.add(plan.mainClass());
+        if (aot != null) {
+            entrypoint.add("-XX:AOTCache=" + AotCacheTrainer.CACHE_FILE);
+            entrypoint.addAll(aot.runArgs());
+        } else {
+            entrypoint.add("-cp");
+            entrypoint.add(appClasspath);
+            entrypoint.add(plan.mainClass());
+        }
         builder = builder.setEntrypoint(entrypoint);
+        return finish(builder, plan, containerizer);
+    }
+
+    /** Everything after the entrypoint: identity, ports, env, labels, platforms, and the build. */
+    private static JibContainer finish(JibContainerBuilder builder, Plan plan, Containerizer containerizer)
+            throws IOException, InterruptedException, InvalidImageReferenceException {
+        ImageConfig cfg = plan.config();
 
         if (cfg.user() != null && !cfg.user().isBlank()) {
             builder = builder.setUser(cfg.user());

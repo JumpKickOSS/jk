@@ -20,25 +20,27 @@ the doc the shell's source files cite.
 Token bootstrap rides the URL fragment: `jk web` (and `jk engine status`) print a dashboard link
 ending in `#t=<token>`; on load `api.js` stashes the token in `sessionStorage` and `localStorage`
 and scrubs the fragment from the address bar (fragments never leave the browser). Later
-tabs/refreshes reuse the stored token. Every `/api` call then sends `Authorization: Bearer <token>`
-when present. On loopback the journal list (`GET /api/history`) is open without a token so a
-hard-refresh still rehydrates Activity; mutations and sensitive reads stay token-gated (see
-[http.md](http.md)).
+tabs/refreshes reuse the stored token. Every `/api` call then sends `Authorization: Bearer <token>`.
+**All `/api/*` endpoints require a valid token**, including loopback (static shell assets stay open
+so the SPA can render the auth dialog — see [http.md](http.md)).
 
 **`jk web`** ensures the engine is running, prints the authenticated URL as an OSC-8 hyperlink, and
 opens it in a browser (`$BROWSER` when set — word-split, so values with arguments work — else
 `open` / `rundll32 url.dll,FileProtocolHandler` / `xdg-open`). Use `--no-open` to print only.
 
-When a required token is **missing or invalid** (non-loopback binds, a rotated/stale stored token,
-or a `401` from a gated call *while a token is held*), the SPA opens a **blocking authorization
-dialog** and freezes the rest of the UI — it does not half-render open endpoints under a quiet
-“Unauthorized” footer chip. The dialog explains how to recover: run `jk web` (opens a new
-authenticated tab), open the printed URL, or paste the `#t=…` URL / token. Unauthorized is sticky
-until a token is accepted; open loopback reads and SSE must not clear it.
+When a token is **missing or invalid** (bare `http://localhost:8910` with no stored token, a
+rotated/stale token, or any `401` from the engine), the SPA opens a **blocking “Access Denied”
+dialog** and freezes the rest of the UI — it does **not** paint Activity, vitals, or a quiet
+“No activity yet” empty state. There is no paste field and no dismiss: recover by running
+`jk web` (opens an authenticated tab and prints a clickable `#t=…` URL if the browser cannot
+open). The dialog shows a console-style `jk web` snippet with a copy button.
 
-**Tokenless loopback is watch-only, not an error** (JK-1530): the activity stream, journal list,
-status and cache vitals stay live, while gated panels (metrics, engine log, configuration) simply
-degrade — their `401`s never throw the dialog. Pasting a token upgrades the session in place.
+## Tooltips
+
+Native HTML `title=` is **OS chrome** (harsh white-on-black, no radius) and cannot be styled.
+Hover help uses `data-tip="…"` (or `:data-tip`) plus `tip.js`, which paints a fixed `.jk-tip-float`
+panel with the same soft Jk Dark shell as retention / sysbox / the millis I/O tip. Do not reintroduce
+`title=` for user-visible hover text.
 
 ## Dependencies: CDN, pinned, integrity-locked
 
@@ -48,21 +50,28 @@ script a page that can trigger builds. When bumping a pin, update the `integrity
 `index.html` in the same change. There is no bundler and no npm build step: the shell ships as
 static resources inside the engine jar.
 
+## Project routes
+
+Project detail is `#project/<projectId>` — a durable opaque id (from `project-id` in `jk-lock.toml`,
+or hybrid git/path resolution), **not** an absolute filesystem path. `GET /api/project?project=<id>`
+resolves the last-known checkout path via `identity.toml` under the builds state dir.
+
 ## Project page: dependency graph (lazy)
 
-On `#project/<dir>`, the **Dependencies** control opens a panel that renders the module DAG with
+On `#project/<projectId>`, the **Dependencies** control opens a panel that renders the module DAG with
 ECharts (`series-graph`). Complex graphs are expensive server- and client-side, so:
 
 - the panel is **closed by default**;
 - `GET /api/project/graph` runs **only** when the panel opens (`module-dep-graph` mounts then);
-  scope checkboxes (default `main`) and a **Transitive** toggle (off by default) re-fetch with
-  `scopes=` / `transitive=`;
+  scope checkboxes (default **export / main / runtime**, same as `jk tree`) and a **Transitive**
+  toggle (off by default) re-fetch with `scopes=` / `transitive=`;
+- node labels are **name only** (hover shows Group / Name / Version / Kind);
 - `echarts.init` runs only after that payload lands;
 - closing the panel (or leaving the project) unmounts the component (aborts in-flight fetch,
   disposes the chart).
 
-Token-gated like other project metadata; tokenless loopback watch-only shows a local error in the
-panel rather than the global auth dialog.
+Token-gated like other project metadata; without a session token the global auth dialog already
+blocks the shell before the panel opens.
 
 ## Live updates
 
@@ -71,8 +80,12 @@ panel rather than the global auth dialog.
 | Path | Handler |
 | --- | --- |
 | Build activity | `fold.js` → activity cards (hard bounds: `MAX_CARDS`, `MAX_OUTPUT_LINES`, `MAX_DIAGNOSTICS`); `label` events drive the live detail after the running phase node (CLI tree-row parity) |
-| `status` | Header sysbox (CPU / RAM meters) + footer Builds Running / Engine Heap |
+| `status` | Header sysbox (capacity + CPU/RAM % + load avg / used GiB) + footer Builds Running / Engine Heap; latches `engineEpoch` for hard-refresh on engine replace |
 | `cache` | Footer **Cache** + **Store** (thin dual-surface frames); Status panels load full breakdown via REST on view entry |
+
+**Builds Running** stays in lockstep with Live activity (running card count while live). **API
+calls** after the first status hydrate send `X-Jk-Engine-Epoch`; a **409** or a changed epoch on
+status triggers a full page reload so static assets match the new engine.
 
 While the stream is **live**, the SPA does **not** poll `/api/status` or `/api/cache` on a timer.
 REST hydrate runs on load/reconnect. **Offline** status fallback uses stepped backoff (5 s → 30 s

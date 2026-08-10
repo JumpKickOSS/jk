@@ -184,7 +184,7 @@ the default execution model. `jk explain` shows what would run before you spend 
 
 ### A small engine, not a multi-gigabyte daemon
 
-Build work runs in a **resident engine** (plain JVM, default **256 MiB** heap) so concurrent
+Build work runs in a **resident engine** (plain JVM, default **256 MiB** heap, **512 MiB** when `CI=1`/`true`) so concurrent
 `jk build`s share one memory plan. Compilers and tests are **forked workers** that exit with
 the build. The CLI you type is still a **native** `jk` binary — TUI, shell, JDK prompts —
 with a cold start measured in milliseconds.

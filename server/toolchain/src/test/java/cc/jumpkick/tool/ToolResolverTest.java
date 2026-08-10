@@ -36,6 +36,10 @@ class ToolResolverTest {
 
     @BeforeEach
     void start() throws IOException {
+        // Tests re-publish different POMs under the same GAV (immutability broken on purpose).
+        // Drop the process-wide effective-POM memo so suite order cannot leak empty-deps POMs.
+        cc.jumpkick.repo.EffectivePomBuilder.clearProcessCache();
+        served.clear();
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
             byte[] body = served.get(exchange.getRequestURI().getPath());

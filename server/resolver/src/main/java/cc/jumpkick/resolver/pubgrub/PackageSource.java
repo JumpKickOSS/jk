@@ -39,6 +39,12 @@ public interface PackageSource {
     }
 
     /**
+     * Optional pre-solve warm (BOM pins, lock prefs, root exact pins). Default: no-op. Production
+     * Maven sources parallel-load known pins so the first decide frontier is not cold on disk.
+     */
+    default void warmUp() {}
+
+    /**
      * Wait for any speculative work this source started in the background. Called when a solve
      * finishes, so a caller that then deletes the cache directory is not racing a prefetch still
      * writing into it. Default: nothing to wait for.

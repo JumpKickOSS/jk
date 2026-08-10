@@ -6,7 +6,6 @@
 import {
   bootstrapToken,
   token,
-  applyToken,
   clearToken,
   get,
   getText,
@@ -14,6 +13,9 @@ import {
   del,
   events,
   loopback,
+  noteEngineEpoch,
+  hardRefreshForEpoch,
+  echartsTooltipChrome,
 } from './api.js';
 import {
   foldEvent,
@@ -31,6 +33,7 @@ import {
   etaTotalMillis,
   stepTimingLabel,
 } from './fold.js';
+import { installTips } from './tip.js';
 
 bootstrapToken();
 
@@ -66,6 +69,8 @@ const ICON_PATHS = {
   cpu: 'M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM9 9h6v6H9zM9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3',
   'folder-open': 'M6 14l1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2',
   plus: 'M12 5v14M5 12h14',
+  // Two overlapping rectangles — clipboard / copy affordance (lucide-style).
+  copy: 'M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2M8 2h8a1 1 0 0 1 1 1v2H7V3a1 1 0 0 1 1-1z',
 };
 // Icons that read better as a solid shape than an outline at small sizes.
 const ICON_SOLID = {
@@ -102,13 +107,13 @@ const PhaseChain = {
       <div class="phase-live-row">
         <div class="step-chain-wrap">
           <button v-show="!atStart" type="button" class="chain-nav left" @click="page(-1)"
-                  aria-label="show earlier phases" title="earlier phases"><jk-icon name="chevron-left"></jk-icon></button>
+                  aria-label="show earlier phases" data-tip="earlier phases"><jk-icon name="chevron-left"></jk-icon></button>
           <span v-show="!atStart" class="chain-fade left" aria-hidden="true"></span>
           <div class="step-chain" ref="track">
             <template v-for="(p, i) in phases" :key="p.key">
               <span v-if="i > 0" class="step-edge" :class="phases[i - 1].state"></span>
               <button type="button" class="step-node phase-node" :class="[p.state, { open: openKey === p.key }]"
-                      :title="phaseTitle(p)" :aria-expanded="String(openKey === p.key)" @click="toggle(p.key)">
+                      :data-tip="phaseTitle(p)" :aria-expanded="String(openKey === p.key)" @click="toggle(p.key)">
                 <span v-if="p.state === 'running'" class="spin small"></span>
                 <jk-icon v-else-if="p.state === 'success'" name="check" class="step-glyph ok"></jk-icon>
                 <jk-icon v-else-if="p.state === 'failed'" name="x" class="step-glyph err"></jk-icon>
@@ -118,10 +123,10 @@ const PhaseChain = {
           </div>
           <span v-show="!atEnd" class="chain-fade right" aria-hidden="true"></span>
           <button v-show="!atEnd" type="button" class="chain-nav right" @click="page(1)"
-                  aria-label="show later phases" title="later phases"><jk-icon name="chevron-right"></jk-icon></button>
+                  aria-label="show later phases" data-tip="later phases"><jk-icon name="chevron-right"></jk-icon></button>
         </div>
         <!-- Live tick/label after the (blue) running phase — CLI "· detail" segment. -->
-        <span v-if="liveDetail" class="phase-detail" :title="liveDetail">
+        <span v-if="liveDetail" class="phase-detail" :data-tip="liveDetail">
           <span class="phase-detail-sep" aria-hidden="true">·</span>
           <span class="phase-detail-text">
             <span v-for="(seg, i) in liveDetailSegs" :key="i" :class="seg.cls">{{ seg.text }}</span>
@@ -131,7 +136,7 @@ const PhaseChain = {
       <div v-if="openPhase" class="phase-steps">
         <template v-for="(s, i) in openPhase.steps" :key="s.name">
           <span v-if="i > 0" class="step-edge" :class="openPhase.steps[i - 1].state"></span>
-          <span class="step-node" :class="s.state" :title="stepTitle(s)">
+          <span class="step-node" :class="s.state" :data-tip="stepTitle(s)">
             <span v-if="s.state === 'running'" class="spin small"></span>
             <jk-icon v-else-if="s.state === 'success'" name="check" class="step-glyph ok"></jk-icon>
             <jk-icon v-else-if="s.state === 'failed'" name="x" class="step-glyph err"></jk-icon>
@@ -314,12 +319,8 @@ const BuildBars = {
           yAxis: { type: 'value', show: false, min: 0 },
           tooltip: {
             trigger: 'axis',
-            appendToBody: true,
-            backgroundColor: cssVar('--s1', '#161d25'),
-            borderColor: cssVar('--bd', '#2a3742'),
-            borderWidth: 1,
+            ...echartsTooltipChrome(cssVar),
             padding: [4, 8],
-            textStyle: { color: cssVar('--tx', '#cfd8dc'), fontSize: 11, fontFamily: 'var(--mono)' },
             axisPointer: { type: 'none' },
             formatter: (ps) => {
               const b = builds[ps[0].dataIndex];
@@ -347,8 +348,8 @@ const ModuleDepGraph = {
     loading: true,
     error: null,
     graph: null,
-    // Default: main only, no lockfile transitive expansion (matches "direct deps" first look).
-    selectedScopes: { main: true },
+    // Default: export/main/runtime — same as jk tree (DependencyTree.defaultScopeOrder).
+    selectedScopes: { export: true, main: true, runtime: true },
     transitive: false,
     // Filled from the first successful response (server lists all Scope.canonical values).
     availableScopes: [
@@ -373,7 +374,7 @@ const ModuleDepGraph = {
             <span>{{ sc }}</span>
           </label>
         </div>
-        <label class="check dep-transitive" title="Include lockfile transitive dependencies (off by default)">
+        <label class="check dep-transitive" data-tip="Include lockfile transitive dependencies (off by default)">
           <input type="checkbox" :checked="transitive" @change="setTransitive($event)">
           <span class="check-box" aria-hidden="true"></span>
           <span>Transitive</span>
@@ -389,8 +390,8 @@ const ModuleDepGraph = {
         {{ graph.nodes.length }} node{{ graph.nodes.length === 1 ? '' : 's' }}
         · {{ (graph.edges || []).length }} edge{{ (graph.edges || []).length === 1 ? '' : 's' }}
         · pan / zoom · dependent → prereq
-        <span class="swatch declared" title="Workspace module or listed in a selected-scope jk.toml"></span>declared
-        <span class="swatch transitive" title="Transitive only — not listed in any selected-scope jk.toml"></span>transitive
+        <span class="swatch declared" data-tip="Workspace module or listed in a selected-scope jk.toml"></span>declared
+        <span class="swatch transitive" data-tip="Transitive only — not listed in any selected-scope jk.toml"></span>transitive
       </p>
     </div>
   `,
@@ -409,7 +410,7 @@ const ModuleDepGraph = {
     scopesQuery() {
       const order = this.availableScopes;
       const picked = order.filter((s) => this.selectedScopes[s]);
-      return picked.length ? picked.join(',') : 'main';
+      return picked.length ? picked.join(',') : 'export,main,runtime';
     },
     toggleScope(sc, ev) {
       const on = !!(ev && ev.target && ev.target.checked);
@@ -509,23 +510,36 @@ const ModuleDepGraph = {
       this._ro = new ResizeObserver(() => this._chart && this._chart.resize());
       this._ro.observe(el);
 
-      const tx = cssVar('--tx', '#cfd8dc');
       const dim = cssVar('--dim', '#5c6d78');
       const cn = cssVar('--cn', '#00f0ff');
       const indigo = cssVar('--indigo', '#3f51b5');
-      const s1 = cssVar('--s1', '#161d25');
-      const bd = cssVar('--bd', '#2a3742');
       const bright = cssVar('--bright', '#eceff1');
       const mono = cssVar('--mono', 'monospace');
 
       // Cyan: workspace module or declared in a selected-scope jk.toml. Indigo: transitive only.
+      const shortName = (label) => {
+        if (!label) return '';
+        const i = label.indexOf(':');
+        return i < 0 ? label : label.slice(i + 1);
+      };
+      const coordParts = (label) => {
+        if (!label) return { group: '', name: '' };
+        const i = label.indexOf(':');
+        if (i < 0) return { group: '', name: label };
+        return { group: label.slice(0, i), name: label.slice(i + 1) };
+      };
       const nodes = (g.nodes || []).map((n) => {
         const kind = n.kind === 'transitive' ? 'transitive' : n.kind === 'module' ? 'module' : 'declared';
         const isTransitive = kind === 'transitive';
         const accent = isTransitive ? indigo : cn;
+        const fullLabel = n.label || '';
+        const parts = coordParts(fullLabel);
         return {
           id: n.id,
-          name: n.label,
+          name: shortName(fullLabel),
+          fullLabel,
+          group: parts.group,
+          artifactName: parts.name,
           path: n.path,
           version: n.version,
           kind,
@@ -556,18 +570,14 @@ const ModuleDepGraph = {
       const n = nodes.length;
       const repulsion = n > 80 ? 180 : n > 40 ? 320 : n > 15 ? 720 : 1100;
       const edgeLength = n > 80 ? 70 : n > 40 ? 110 : n > 15 ? 220 : 300;
+      const tipChrome = echartsTooltipChrome(cssVar);
 
       this._chart.setOption(
         {
           animationDuration: n > 30 ? 200 : 400,
           tooltip: {
             show: true,
-            appendToBody: true,
-            backgroundColor: s1,
-            borderColor: bd,
-            borderWidth: 1,
-            padding: [6, 10],
-            textStyle: { color: tx, fontSize: 11, fontFamily: mono },
+            ...tipChrome,
             formatter: (p) => {
               if (p.dataType === 'edge') {
                 const s = p.data.source;
@@ -577,18 +587,39 @@ const ModuleDepGraph = {
                 const sc = p.data.scope
                   ? ' <span style="opacity:.65">[' + escapeHtml(p.data.scope) + ']</span>'
                   : '';
-                return escapeHtml(sn ? sn.name : s) + ' → ' + escapeHtml(tn ? tn.name : t) + sc;
+                return (
+                  escapeHtml(sn ? sn.name : s) + ' → ' + escapeHtml(tn ? tn.name : t) + sc
+                );
               }
               const d = p.data || {};
-              const role =
+              const lines = [];
+              if (d.group) {
+                lines.push(
+                  '<span style="opacity:.7">Group:</span> ' + escapeHtml(d.group),
+                );
+              }
+              lines.push(
+                '<span style="opacity:.7">Name:</span> ' +
+                  escapeHtml(d.artifactName || d.name || p.name || ''),
+              );
+              if (d.version) {
+                lines.push(
+                  '<span style="opacity:.7">Version:</span> ' + escapeHtml(d.version),
+                );
+              }
+              const kindLabel =
                 d.kind === 'transitive'
-                  ? '<br/><span style="opacity:.75">transitive</span>'
-                  : d.kind === 'module' || d.path
-                    ? '<br/><span style="opacity:.75">workspace module</span>'
-                    : '<br/><span style="opacity:.75">declared</span>';
-              const ver = d.version ? '<br/><span style="opacity:.7">' + escapeHtml(d.version) + '</span>' : '';
-              const path = d.path ? '<br/><span style="opacity:.7">' + escapeHtml(d.path) + '</span>' : '';
-              return escapeHtml(d.name || p.name || '') + role + ver + path;
+                  ? 'transitive'
+                  : d.kind === 'module'
+                    ? 'module'
+                    : 'declared';
+              lines.push('<span style="opacity:.7">Kind:</span> ' + escapeHtml(kindLabel));
+              if (d.path) {
+                lines.push(
+                  '<span style="opacity:.7">Path:</span> ' + escapeHtml(d.path),
+                );
+              }
+              return lines.join('<br/>');
             },
           },
           series: [
@@ -649,15 +680,17 @@ function recordHasErrorDiag(r) {
 
 /**
  * Parse the location hash into a route. Flat top-level views plus one detail route:
- * `#project/<url-encoded dir>` opens a single project's page (routed by dir — a coord isn't uniquely
- * reversible to a dir). Anything unrecognised falls back to the activity feed.
+ * `#project/<projectId>` — durable identity (not an absolute path). Anything unrecognised falls
+ * back to the activity feed.
  */
 function routeFromHash() {
   const h = location.hash || '';
-  if (h.startsWith('#project/')) return { view: 'project', dir: decodeURIComponent(h.slice('#project/'.length)) };
-  if (h === '#projects') return { view: 'projects', dir: null };
-  if (h === '#status') return { view: 'status', dir: null };
-  return { view: 'activity', dir: null };
+  if (h.startsWith('#project/')) {
+    return { view: 'project', projectId: decodeURIComponent(h.slice('#project/'.length)), dir: null };
+  }
+  if (h === '#projects') return { view: 'projects', projectId: null, dir: null };
+  if (h === '#status') return { view: 'status', projectId: null, dir: null };
+  return { view: 'activity', projectId: null, dir: null };
 }
 
 /** Cached-vs-total step counts for one record → the build's "N of M steps served from cache". */
@@ -690,8 +723,9 @@ function fmtMillis(millis) {
 Vue.createApp({
   data: () => ({
     view: routeFromHash().view, // 'activity' | 'projects' | 'project' | 'status'
-    selectedProjectDir: routeFromHash().dir, // the project whose detail page is open (#project/<dir>)
-    projectMeta: null, // live /api/project payload (coord + description) for the open project
+    selectedProjectId: routeFromHash().projectId, // durable id (#project/<id>)
+    selectedProjectDir: null, // checkout path resolved from project meta
+    projectMeta: null, // live /api/project payload (coord + description + dir) for the open project
     // JK-1542: Dependencies panel on the Project page — closed by default; graph fetch + echarts
     // only when opened (ModuleDepGraph mounts lazily).
     projectGraphOpen: false,
@@ -711,9 +745,8 @@ Vue.createApp({
     help: false, // the header Help/About modal
     // Blocking gate when a required token is missing/invalid — no partial dashboard (docs/webclient.md).
     authModal: false,
-    authTokenInput: '',
-    authError: null,
-    authBusy: false,
+    authCopied: false, // brief "Copied" feedback on the Access Denied console copy button
+    _authCopiedTimer: null,
     newProjectOpen: false,
     newProjectBusy: false,
     newProjectError: null,
@@ -742,7 +775,7 @@ Vue.createApp({
       this.refresh();
       this.loadHistory(); // backfill past builds so a reload/restart doesn't start from an empty feed
       this.loadProjectHistory(); // so the Projects tab is populated the moment it's opened
-      if (this.view === 'project' && this.selectedProjectDir) this.loadProjectMeta(this.selectedProjectDir);
+      if (this.view === 'project' && this.selectedProjectId) this.loadProjectMeta(this.selectedProjectId);
     }
     // Back/forward and any hash change re-derive the route (openProject sets the hash, which lands here).
     window.addEventListener('hashchange', () => this.applyRoute());
@@ -771,17 +804,16 @@ Vue.createApp({
 
     // Group the journal into per-project rows for the Projects tab. A computed (not a method) so it
     // recomputes only when projectHistory or the live cards change — never on the 1s clock tick, so
-    // the ECharts canvases don't re-render every second. Key = coord when the project has one, else
-    // its dir (two dirs sharing a coord fold together; a coord-less project stands on its dir).
+    // the ECharts canvases don't re-render every second. Key = durable projectId (not path/coord).
     projectsList() {
       const RECENT = 30;
       const groups = new Map(); // key → { records[] } (records arrive newest-first from /api/history)
       for (const rec of this.projectHistory || []) {
         if (!rec || !rec.dir) continue;
-        const key = rec.coord && rec.coord.includes(':') ? rec.coord : rec.dir;
+        const key = rec.projectId || (rec.coord && rec.coord.includes(':') ? rec.coord : rec.dir);
         let g = groups.get(key);
         if (!g) {
-          g = { key, records: [] };
+          g = { key, projectId: rec.projectId || key, records: [] };
           groups.set(key, g);
         }
         g.records.push(rec);
@@ -792,7 +824,7 @@ Vue.createApp({
       const runningKeys = new Set();
       for (const c of this.cards || []) {
         if (outcomeOf(c) !== 'running') continue;
-        const key = c.coord && c.coord.includes(':') ? c.coord : c.dir;
+        const key = c.projectId || (c.coord && c.coord.includes(':') ? c.coord : c.dir);
         if (key) runningKeys.add(key);
       }
 
@@ -834,6 +866,7 @@ Vue.createApp({
 
         list.push({
           key: g.key,
+          projectId: g.projectId || latest.projectId || g.key,
           group: parts.group,
           name: parts.name,
           dir: latest.dir,
@@ -855,18 +888,19 @@ Vue.createApp({
     },
 
     // The open project's detail page: identity + aggregate metrics + a build-history table, all
-    // derived from the journal filtered to this project (same coord/dir grouping as projectsList).
+    // derived from the journal filtered to this project (by projectId).
     // Recomputes only when the history, selection, or meta change — not on the 1s clock tick.
     projectDetail() {
-      const dir = this.selectedProjectDir;
-      if (!dir) return null;
+      const id = this.selectedProjectId;
+      const dir = this.selectedProjectDir || (this.projectMeta && this.projectMeta.dir);
+      if (!id && !dir) return null;
       const RECENT = 30;
-      const metaCoord = this.projectMeta && this.projectMeta.coord ? this.projectMeta.coord : null;
-      const key = metaCoord || dir; // match how projectsList groups (coord when present, else dir)
       const records = (this.projectHistory || []).filter((r) => {
-        const rk = r.coord && r.coord.includes(':') ? r.coord : r.dir;
-        return rk === key || r.dir === dir;
+        if (id && r.projectId) return r.projectId === id;
+        return dir && r.dir === dir;
       });
+      // Prefer live /api/project coord (jk.toml), else the newest journal record.
+      const metaCoord = this.projectMeta && this.projectMeta.coord ? this.projectMeta.coord : null;
       const parts = this.coordParts({ coord: metaCoord || (records[0] && records[0].coord), dir });
       const base = {
         dir,
@@ -979,11 +1013,7 @@ Vue.createApp({
     /** True when {@code e} is a 401 — marks unauthorized and returns true so callers can stop. */
     handleHttpError(e) {
       if (e && e.status === 401) {
-        // Tokenless loopback is deliberately open for watch-only (checkAuth's contract): a 401
-        // from a gated panel (metrics/log/config) is expected there, not a session failure —
-        // degrade that panel instead of wiping the cards and throwing the blocking gate
-        // (JK-1530). With a token present, a 401 means the token was rejected — gate as before.
-        if (!token() && loopback()) return true;
+        // Fail closed: any 401 (missing or rejected token) opens the blocking auth dialog.
         this.markUnauthorized({ clear: !!token() });
         return true;
       }
@@ -991,25 +1021,25 @@ Vue.createApp({
     },
 
     /**
-     * Session gate on load (and after a pasted token). Fails closed when:
-     * <ul>
-     *   <li>{@code GET /api/status} is 401 — bind requires a token for all reads (non-loopback)</li>
-     *   <li>a stored token is present but a always-gated probe rejects it</li>
-     * </ul>
-     * Loopback with no token remains open for watch-only (history/events/status).
+     * Session gate on load. Fails closed when there is no token, when {@code GET /api/status} is
+     * 401, or when a stored token is rejected by a gated probe. Loopback is not a free pass —
+     * without a bearer the SPA must not paint Activity (recover via {@code jk web} / status URL).
      */
     async checkAuth() {
+      if (!token()) {
+        this.markUnauthorized({ clear: false });
+        return false;
+      }
       try {
-        await get('/api/status');
+        await get('/api/status', { bootstrap: true });
       } catch (e) {
         if (e.status === 401) {
-          this.markUnauthorized({ clear: !!token() });
+          this.markUnauthorized({ clear: true });
           return false;
         }
-        // engine down / network — not an auth failure
+        // engine down / network — not an auth failure (token is present; reconnect later)
         return true;
       }
-      if (!token()) return true;
       // Prove a stored token still works (stale localStorage after rotate-token is the common case).
       try {
         await getText('/api/log?lines=1');
@@ -1045,6 +1075,11 @@ Vue.createApp({
             return;
           }
           foldEvent(this.cards, { ...event, at: Date.now() });
+          // Keep footer Builds Running in lockstep with activity (JK-1725). Prefer the post-
+          // transition count on the event when present; otherwise derive from running cards.
+          if (event.type === 'request-start' || event.type === 'request-finish') {
+            this.applyActiveBuildPlans(event.data);
+          }
           // The build number + journal record are written just after request-finish (writeJournal),
           // so re-pull history a beat later: it reconciles the live card (tagging its #number) and
           // refreshes the Projects tab. Debounced so a burst of finishes triggers one reload.
@@ -1087,56 +1122,6 @@ Vue.createApp({
           }
         },
       );
-    },
-
-    /** Accept a raw token or a full dashboard URL ending in {@code #t=…}. */
-    parseTokenInput(raw) {
-      const s = (raw || '').trim();
-      if (!s) return null;
-      const fromHash = /#t=([A-Za-z0-9_=-]+)/.exec(s);
-      if (fromHash) return fromHash[1];
-      if (/^[A-Za-z0-9_=-]+$/.test(s)) return s;
-      return null;
-    },
-
-    async submitAuthToken() {
-      const t = this.parseTokenInput(this.authTokenInput);
-      if (!t) {
-        this.authError =
-          'Paste the token or the full URL from `jk web` (it ends with #t=…).';
-        return;
-      }
-      this.authBusy = true;
-      this.authError = null;
-      applyToken(t);
-      try {
-        await get('/api/status');
-        // Status may be open without a token on loopback — prove the bearer is accepted.
-        try {
-          await getText('/api/log?lines=1');
-        } catch (e) {
-          if (e.status === 401) throw e;
-        }
-        this.authModal = false;
-        this.authTokenInput = '';
-        this.connection = 'connecting';
-        this.connectEvents();
-        // Re-derive the route from the hash: URL changes made while the gate was up were
-        // dropped by applyRoute's authModal guard (JK-1530). This also loads the route's data
-        // (project meta / metrics / status refresh).
-        this.applyRoute();
-        this.refresh();
-        this.loadHistory();
-        this.loadProjectHistory();
-      } catch (e) {
-        clearToken();
-        this.authError =
-          e.status === 401
-            ? 'That token was rejected. Run `jk web` for a fresh dashboard URL.'
-            : 'Could not reach the engine.';
-      } finally {
-        this.authBusy = false;
-      }
     },
 
     setView(view) {
@@ -1201,31 +1186,36 @@ Vue.createApp({
       return parts.join(' ') + ' ago';
     },
 
-    // ---- the project detail page (#project/<dir>) ----
+    // ---- the project detail page (#project/<projectId>) ----
 
-    // Open a project's page — set the hash (creating a history entry so Back returns to the list);
-    // the hashchange listener drives applyRoute, which flips the view and loads the metadata.
-    openProject(dir) {
-      if (!dir) return;
-      location.hash = '#project/' + encodeURIComponent(dir);
+    // Open a project's page by durable id — hash creates a history entry so Back returns to the list.
+    openProject(projectId, dir) {
+      if (!projectId && dir) {
+        // Resolve id from a history row when only path is known (rare).
+        const hit = (this.projectHistory || []).find((r) => r.dir === dir && r.projectId);
+        projectId = hit ? hit.projectId : null;
+      }
+      if (!projectId) return;
+      if (dir) this.selectedProjectDir = dir;
+      location.hash = '#project/' + encodeURIComponent(projectId);
     },
 
-    /** Activity card badge / coord → project detail (routed by dir). */
+    /** Activity card badge / coord → project detail (by projectId, with dir fallback). */
     openProjectFromCard(card) {
-      if (!card || !card.dir) return;
-      this.openProject(card.dir);
+      if (!card) return;
+      this.openProject(card.projectId, card.dir);
     },
 
     // Re-derive view + selected project from the hash, loading whatever that route needs.
     applyRoute() {
       if (this.authModal) return;
       const r = routeFromHash();
-      const dirChanged = r.dir !== this.selectedProjectDir;
+      const idChanged = r.projectId !== this.selectedProjectId;
       this.view = r.view;
-      this.selectedProjectDir = r.dir;
+      this.selectedProjectId = r.projectId;
       // Collapse the expensive graph panel when leaving project view or switching projects.
-      if (r.view !== 'project' || dirChanged) this.projectGraphOpen = false;
-      if (r.view === 'project' && r.dir) this.loadProjectMeta(r.dir);
+      if (r.view !== 'project' || idChanged) this.projectGraphOpen = false;
+      if (r.view === 'project' && r.projectId) this.loadProjectMeta(r.projectId);
       if (r.view === 'projects') {
         this.loadProjectHistory();
         this.refreshMetrics();
@@ -1238,12 +1228,15 @@ Vue.createApp({
       this.projectGraphOpen = !this.projectGraphOpen;
     },
 
-    // Live coord + description for the open project, straight from its jk.toml on disk.
-    async loadProjectMeta(dir) {
+    // Live coord + description for the open project (by durable id).
+    async loadProjectMeta(projectId) {
       if (this.authModal) return;
       this.projectMeta = null;
       try {
-        this.projectMeta = await get('/api/project?dir=' + encodeURIComponent(dir));
+        this.projectMeta = await get('/api/project?project=' + encodeURIComponent(projectId));
+        if (this.projectMeta && this.projectMeta.dir) {
+          this.selectedProjectDir = this.projectMeta.dir;
+        }
       } catch (e) {
         this.handleHttpError(e);
       }
@@ -1453,7 +1446,34 @@ Vue.createApp({
     applyStatusEvent(data) {
       if (this.authModal || this.connection === 'unauthorized') return;
       if (!data || typeof data !== 'object') return;
+      if (noteEngineEpoch(data) === 'mismatch') {
+        hardRefreshForEpoch();
+        return;
+      }
       this.status = this.status ? { ...this.status, ...data } : { ...data };
+    },
+
+    /**
+     * Immediate plan-count update from request-start/finish (JK-1725). When the event carries
+     * {@code activeBuildPlans}, use it; otherwise count running activity cards so the footer
+     * never lags the Live feed.
+     */
+    applyActiveBuildPlans(data) {
+      const n =
+        data && typeof data.activeBuildPlans === 'number'
+          ? data.activeBuildPlans
+          : this.runningCardCount();
+      if (!this.status) this.status = {};
+      this.status = { ...this.status, activeBuildPlans: n };
+    },
+
+    /** Number of Live activity cards still in flight. */
+    runningCardCount() {
+      let n = 0;
+      for (const c of this.cards || []) {
+        if (outcomeOf(c) === 'running') n++;
+      }
+      return n;
     },
 
     // Thin live `cache` frames (JK-1502) merge into the last full REST snapshot; full frames replace.
@@ -1473,7 +1493,12 @@ Vue.createApp({
       if (this.authModal) return;
       return this.fetchOnce('status', async () => {
         try {
-          this.status = await get('/api/status');
+          const s = await get('/api/status', { bootstrap: true });
+          if (noteEngineEpoch(s) === 'mismatch') {
+            hardRefreshForEpoch();
+            return;
+          }
+          this.status = s;
         } catch (e) {
           this.handleHttpError(e);
         }
@@ -1560,7 +1585,7 @@ Vue.createApp({
 
     // ---- Status view storage panels (/api/cache + live `cache` SSE) ----
 
-    /** Cache-tier bytes (CLI: jk cache storage) — index + cache CAS + stamps. */
+    /** Cache-tier bytes (CLI: jk cache usage) — index + cache CAS + stamps. */
     actionCacheBytes() {
       const c = this.cache;
       if (!c) return null;
@@ -1576,12 +1601,13 @@ Vue.createApp({
       return c.actionMaxBytes != null ? c.actionMaxBytes : null;
     },
 
-    /** Artifact store: store CAS + repos/workers + run logs (CLI: jk repo storage). */
+    /** Artifact store: store CAS + repos/workers + run logs (CLI: jk storage). */
     artifactStorageBytes() {
       const c = this.cache;
       if (!c) return null;
       if (c.artifactStorageBytes != null) return c.artifactStorageBytes;
-      return (c.casBytes || 0) + (c.workerJarsBytes || 0) + (c.runLogsBytes || 0);
+      // Run logs are state (not storage) — match jk storage usage.
+      return (c.casBytes || 0) + (c.workerJarsBytes || 0);
     },
 
     actionCacheUtilizationPercent() {
@@ -1613,6 +1639,22 @@ Vue.createApp({
 
     count(n) {
       return n == null ? '—' : n.toLocaleString();
+    },
+    /** Format-stamp count cap (512k default / 1M on CI); from API or local fallback. */
+    formatStampsMax() {
+      const m = this.cache?.formatStampsMax;
+      if (m != null && m > 0) return m;
+      return 512000;
+    },
+    formatStampsMaxLabel() {
+      return this.formatStampsMax().toLocaleString();
+    },
+    /** Percent of stamp-file cap in use (one decimal), not byte utilization. */
+    formatStampsUsedPct() {
+      const n = this.cache?.formatStampsCount;
+      const max = this.formatStampsMax();
+      if (n == null || max <= 0) return '—';
+      return ((100 * n) / max).toFixed(1);
     },
 
     // ---- the Status view's build-stats section (running aggregates from /api/metrics) ----
@@ -1886,7 +1928,7 @@ Vue.createApp({
       // to #status — section fields are absent and rendered "NaN MiB" without it (JK-1530).
       return bytes == null || bytes < 0 ? '—' : Math.round(bytes / 1048576) + ' MiB';
     },
-    // System RAM reads naturally in GiB (total / free physical memory the engine's OS reports).
+    // System RAM reads naturally in GiB (total / available physical memory the engine's OS reports).
     gib(bytes) {
       return bytes == null || bytes < 0 ? '—' : (bytes / 1073741824).toFixed(1) + ' GiB';
     },
@@ -1904,17 +1946,55 @@ Vue.createApp({
     },
     /**
      * Host RAM used % for the header sysbox: (total − available) / total.
-     * freeMemoryBytes is available headroom (see StatusSnapshot), not raw free.
+     * availableMemoryBytes is available headroom (see StatusSnapshot).
      */
     ramPercent() {
       const s = this.status;
       if (!s || s.totalMemoryBytes == null || s.totalMemoryBytes <= 0) return null;
-      if (s.freeMemoryBytes == null || s.freeMemoryBytes < 0) return null;
-      const used = Math.max(0, s.totalMemoryBytes - s.freeMemoryBytes);
+      const avail = s.availableMemoryBytes ?? s.freeMemoryBytes;
+      if (avail == null || avail < 0) return null;
+      const used = Math.max(0, s.totalMemoryBytes - avail);
       return Math.min(100, Math.round((100 * used) / s.totalMemoryBytes));
     },
+    /** Used host RAM in bytes (total − available), or null. */
+    ramUsedBytes() {
+      const s = this.status;
+      if (!s || s.totalMemoryBytes == null || s.totalMemoryBytes <= 0) return null;
+      const avail = s.availableMemoryBytes ?? s.freeMemoryBytes;
+      if (avail == null || avail < 0) return null;
+      return Math.max(0, s.totalMemoryBytes - avail);
+    },
+    /** 1-minute load average formatted to one decimal, or null when unobservable. */
+    loadAverageText() {
+      const avg = this.status?.systemLoadAverage;
+      if (avg == null || avg < 0) return null;
+      return avg.toFixed(1);
+    },
+    /** Sysbox percent label ({@code 6%}, {@code 51%}); em-dash when unsampled. */
     sysMeterPct(pct) {
       return pct == null ? '—' : pct + '%';
+    },
+    /**
+     * CPU sysbox tip on the % / load text: total cores + 1m load as "cores used".
+     * Example: {@code 24 cores. 1.4 cores used recently}
+     */
+    cpuSysTip() {
+      const cores = this.status?.cores;
+      const load = this.loadAverageText();
+      if (cores == null && load == null) return '';
+      const c = cores != null ? String(cores) : '—';
+      const l = load != null ? load : '—';
+      return c + ' cores. ' + l + ' cores used recently';
+    },
+    /**
+     * RAM sysbox tip on the % / used text: total + used.
+     * Example: {@code 30.4 GiB total RAM. 15.6 GiB used.}
+     */
+    ramSysTip() {
+      const total = this.status?.totalMemoryBytes;
+      const used = this.ramUsedBytes();
+      if (total == null && used == null) return '';
+      return this.gib(total) + ' total RAM. ' + this.gib(used) + ' used.';
     },
     /** CSS level on a sysrow: cyan default, warn >90%, crit >97%. */
     sysMeterLevel(pct) {
@@ -1927,9 +2007,13 @@ Vue.createApp({
     versionPill() {
       return this.status ? 'v' + String(this.status.version).replace(/-SNAPSHOT$/, '') : '';
     },
-    // Footer "Builds Running": the engine's live plan count (authoritative, always in /api/status).
+    /**
+     * Footer "Builds Running": lockstep with Live activity while live (JK-1725).
+     * Offline falls back to last status snapshot.
+     */
     buildsRunning() {
-      return this.status ? this.status.activeBuildPlans : 0;
+      if (this.connection === 'live') return this.runningCardCount();
+      return this.status?.activeBuildPlans ?? 0;
     },
     heapUsedPercent() {
       return this.percentOfMax(this.status?.heapUsedBytes);
@@ -1997,8 +2081,35 @@ Vue.createApp({
         connecting: 'Connecting…',
         live: 'Live',
         offline: 'Engine stopped — run any jk command to restart it',
-        unauthorized: 'Authorization required — run `jk web` or paste the tokenized URL',
+        unauthorized: 'Access denied — run `jk web` and follow the instructions',
       }[this.connection];
+    },
+    /** Copy `jk web` for the Access Denied console — clipboard only, never the prompt glyph. */
+    async copyJkWeb() {
+      const text = 'jk web';
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed';
+          ta.style.left = '-9999px';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
+        this.authCopied = true;
+        if (this._authCopiedTimer) clearTimeout(this._authCopiedTimer);
+        this._authCopiedTimer = setTimeout(() => {
+          this.authCopied = false;
+          this._authCopiedTimer = null;
+        }, 1500);
+      } catch (_) {
+        // Clipboard blocked — user can still select the command text.
+      }
     },
   },
 })
@@ -2007,3 +2118,6 @@ Vue.createApp({
   .component('build-bars', BuildBars)
   .component('module-dep-graph', ModuleDepGraph)
   .mount('#app');
+
+// Themed tooltips for data-tip / title (native title= is unstyleable OS chrome — JK-1726).
+installTips(document);

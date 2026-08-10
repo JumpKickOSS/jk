@@ -206,10 +206,10 @@ public final class LockFlow {
                         !noDefaultFeatures,
                         cc.jumpkick.resolver.ResolveObserver.NOOP);
             } else {
-                // Explicit jk lock: revalidate maven-metadata so same-URL re-resolves see newly
-                // published versions (TTL alone would hide them until the next day / --force).
-                lock = cc.jumpkick.repo.MavenMetadataCache.withForceRevalidate(() -> orchestrator.lock(
-                        pathPrep.project(), cc.jumpkick.model.JkVersion.VERSION, features, !noDefaultFeatures));
+                // Warm local maven-metadata within TTL (default 24h). Force revalidation is
+                // jk update / -F only — not every lock (avoids Central 429 storms).
+                lock = orchestrator.lock(
+                        pathPrep.project(), cc.jumpkick.model.JkVersion.VERSION, features, !noDefaultFeatures);
             }
         } catch (IOException e) {
             return new Result(
@@ -224,7 +224,6 @@ public final class LockFlow {
             Thread.currentThread().interrupt();
             return new Result(6, "interrupted", null, effective, moduleCount, workspaceLock, lockDir);
         } catch (Exception e) {
-            // withForceRevalidate declares throws Exception; unwrap lock failures.
             Throwable c = e.getCause() != null ? e.getCause() : e;
             if (c instanceof IOException io) {
                 return new Result(

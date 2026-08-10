@@ -23,6 +23,7 @@ dependencies {
     implementation(project(":plugin-sdk"))
     implementation(project(":resolver"))
     implementation(project(":toolchain"))
+    implementation(project(":dynamic-surface"))
     // The web dashboard's static assets ride the engine's runtime classpath as /web/* (served by
     // StaticContent) and get bundled into the jk-engine fat jar. Kept resources-only + runtimeOnly
     // so the assets never touch the compile classpath and the native CLI never links them.
@@ -193,14 +194,14 @@ tasks.withType<Test>().configureEach {
     doFirst { systemProperty("jk.protobuf.plugin.jar", testProtobufWorkerJar.singleFile.absolutePath) }
 }
 
-// Pass the shrink worker jar to tests (the R8 shrunk-jar integration test forks it).
-val testShrinkWorkerJar by configurations.creating {
+// Pass the minified worker jar to tests (the R8 minified-jar integration test forks it).
+val testMinifiedWorkerJar by configurations.creating {
     isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
 }
-dependencies { testShrinkWorkerJar(project(":shrink")) }
+dependencies { testMinifiedWorkerJar(project(":minified")) }
 tasks.withType<Test>().configureEach {
-    dependsOn(testShrinkWorkerJar)
-    doFirst { systemProperty("jk.shrink.plugin.jar", testShrinkWorkerJar.singleFile.absolutePath) }
+    dependsOn(testMinifiedWorkerJar)
+    doFirst { systemProperty("jk.minified.plugin.jar", testMinifiedWorkerJar.singleFile.absolutePath) }
 }
 
 // Pass the kotlin-compiler worker jar to tests (the KSP/Room/Hilt gate compiles Kotlin).

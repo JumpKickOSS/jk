@@ -9,12 +9,13 @@ import java.nio.file.Path;
 
 /**
  * Storage breakdown for {@code GET /api/cache} and live {@code cache} SSE — the same two surfaces
- * the CLI splits as {@code jk cache storage} (cache CAS + action index + format stamps) and {@code
- * jk repo storage} (artifact store: store CAS + repos + run logs).
+ * the CLI splits as {@code jk cache usage} (cache CAS + action index + format stamps) and {@code
+ * jk storage usage} (artifact store: jars / natives / OCI / worker jars; run logs are state).
  *
  * <p>{@code maxBytes} is the <strong>artifact store</strong> budget ({@code [cache]
- * max-store-size-mb}, default 4 GiB). {@code actionMaxBytes} / {@code cacheMaxBytes} is the
- * <strong>cache tier</strong> budget ({@code [cache] max-cache-size-mb}, default 1 GiB).
+ * max-store-size-gb}, default 6 GiB / 12 GiB on CI). {@code actionMaxBytes} / {@code
+ * cacheMaxBytes} is the <strong>cache tier</strong> budget ({@code [cache] max-cache-size-gb},
+ * default 4 GiB / 8 GiB on CI; small disks clamp both defaults).
  *
  * <p>Byte sizes are <em>exclusive</em> across store sections (CAS before repos) so hard-linked
  * {@code repos/} views do not double-count CAS blob allocations — same accounting as the CLI.
@@ -47,7 +48,7 @@ public record CacheSnapshot(
     }
 
     /**
-     * Cache-tier footprint matching {@code jk cache storage}: action index + cache CAS + format
+     * Cache-tier footprint matching {@code jk cache usage}: action index + cache CAS + format
      * stamps.
      */
     public long actionCacheBytes() {
@@ -69,20 +70,20 @@ public record CacheSnapshot(
     }
 
     /**
-     * Artifact / store footprint matching {@code jk repo storage}: store CAS + worker JAR mirrors +
-     * run logs.
+     * Artifact / store footprint matching {@code jk storage usage}: store CAS + worker JAR mirrors.
+     * Run logs are state (not storage) and are excluded from the total.
      */
     public long artifactStorageBytes() {
-        return casBytes + workerJarsBytes + runLogsBytes;
+        return casBytes + workerJarsBytes;
     }
 
     public long artifactStorageCount() {
-        return casCount + workerJarsCount + runLogsCount;
+        return casCount + workerJarsCount;
     }
 
     /**
      * Walk store + cache sections and snapshot their sizes — identical dirs and hardlink-aware
-     * exclusive byte accounting as {@code jk cache storage} / {@code jk repo storage}.
+     * exclusive byte accounting as {@code jk cache usage} / {@code jk storage usage}.
      */
     public static CacheSnapshot capture(Path cacheRoot) {
         Path storeCas = JkStores.resolve(cacheRoot, "sha256");
@@ -165,6 +166,8 @@ public record CacheSnapshot(
                 .put("runLogsBytes", runLogsBytes)
                 .put("formatStampsCount", formatStampsCount)
                 .put("formatStampsBytes", formatStampsBytes)
+                // Count-cap for the stamp tree (512k default / 1M when CI=1|true) — web shows % used, not GiB.
+                .put("formatStampsMax", cc.jumpkick.task.FormatStampGc.resolveMaxFiles())
                 .put("totalCount", totalCount())
                 .put("totalBytes", totalBytes())
                 .put("actionCacheCount", actionCacheCount())

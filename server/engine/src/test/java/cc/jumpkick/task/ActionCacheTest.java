@@ -78,6 +78,55 @@ class ActionCacheTest {
         assertThat(Files.readString(outputs.resolve("a.class"))).isEqualTo("alpha-content");
     }
 
+    /**
+     * JK-1712: CAS blobs carry no mode. Without the record carrying it, a native binary is
+     * runnable on the build that produced it and 0644 on every build after — with the build
+     * still reporting success.
+     */
+    @Test
+    void restore_puts_the_executable_bit_back(@TempDir Path tempDir) throws IOException {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
+
+        Path outputs = tempDir.resolve("outputs");
+        Files.createDirectories(outputs);
+        Path binary = outputs.resolve("app");
+        Path plain = outputs.resolve("app.jar");
+        Files.writeString(binary, "#!/bin/sh\necho hi\n");
+        Files.writeString(plain, "not executable");
+        assertThat(binary.toFile().setExecutable(true)).isTrue();
+
+        cache.store("native-image", "key-exec", Map.of(), outputs);
+
+        Files.delete(binary);
+        Files.delete(plain);
+        cache.restore(cache.lookup("key-exec").orElseThrow(), outputs);
+
+        assertThat(Files.isExecutable(binary)).as("restored binary is runnable").isTrue();
+        assertThat(Files.isExecutable(plain))
+                .as("a plain output does not gain the bit")
+                .isFalse();
+    }
+
+    /** The bit is reapplied even when the target is byte-identical and therefore not re-copied. */
+    @Test
+    void restore_repairs_the_bit_on_an_unchanged_target(@TempDir Path tempDir) throws IOException {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
+
+        Path outputs = tempDir.resolve("outputs");
+        Files.createDirectories(outputs);
+        Path binary = outputs.resolve("app");
+        Files.writeString(binary, "#!/bin/sh\n");
+        assertThat(binary.toFile().setExecutable(true)).isTrue();
+        cache.store("native-image", "key-same", Map.of(), outputs);
+
+        // Same bytes, bit stripped — the restore takes the "leave it alone" path.
+        assertThat(binary.toFile().setExecutable(false)).isTrue();
+        cache.restore(cache.lookup("key-same").orElseThrow(), outputs);
+        assertThat(Files.isExecutable(binary)).isTrue();
+    }
+
     @Test
     void restore_cleans_stale_files(@TempDir Path tempDir) throws IOException {
         Cas cas = new Cas(tempDir.resolve("cas"));

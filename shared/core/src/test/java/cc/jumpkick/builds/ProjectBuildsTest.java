@@ -14,14 +14,17 @@ import org.junit.jupiter.api.io.TempDir;
 class ProjectBuildsTest {
 
     @Test
-    void key_is_stable_and_path_sensitive() {
-        String a = ProjectBuilds.key("g:n", Path.of("/proj"));
-        String b = ProjectBuilds.key("g:n", Path.of("/proj"));
-        String c = ProjectBuilds.key("g:n", Path.of("/other"));
-        String d = ProjectBuilds.key("g:other", Path.of("/proj"));
-        assertThat(a).isEqualTo(b).hasSize(24);
-        assertThat(a).isNotEqualTo(c);
-        assertThat(a).isNotEqualTo(d);
+    void key_is_stable_per_checkout_path(@TempDir Path root) throws Exception {
+        Path aDir = root.resolve("a");
+        Path bDir = root.resolve("b");
+        Files.createDirectories(aDir);
+        Files.createDirectories(bDir);
+        String a = ProjectBuilds.key(aDir);
+        String a2 = ProjectBuilds.key(aDir);
+        String b = ProjectBuilds.key(bDir);
+        assertThat(a).isEqualTo(a2);
+        assertThat(ProjectIdentity.isValidId(a)).isTrue();
+        assertThat(a).isNotEqualTo(b);
     }
 
     @Test

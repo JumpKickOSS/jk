@@ -31,6 +31,21 @@ public final class KmpRedirects {
     private final Map<String, Optional<Selection>> cache = new ConcurrentHashMap<>();
 
     /**
+     * Process-wide selection memo: Gradle module metadata is immutable per GAV on disk, and the
+     * redirect for a given {@code jvmEnvironment} does not change mid-process. Warm re-locks
+     * (and the three scope solves) used to re-parse hundreds of {@code .module} files every time.
+     * Keyed by the repositories asked <em>and</em> {@code env + module@version} — which {@code
+     * .module} is fetched depends on the repo set. No TTL: release GAV content is immutable; force
+     * / {@link #clearProcessCache} drop the memo.
+     */
+    private static final Map<String, Optional<Selection>> PROCESS_CACHE = new ConcurrentHashMap<>();
+
+    /** Test seam: drop process-wide selection memo. */
+    public static void clearProcessCache() {
+        PROCESS_CACHE.clear();
+    }
+
+    /**
      * Every non-selected platform sibling of every redirected root seen this resolve (A5f
      * finding 20). A platform artifact's own POM can name a SIBLING concretely
      * (datastore-core-okio-jvm → datastore-core-jvm) — an edge that is variant-aware in GMM
@@ -56,7 +71,50 @@ public final class KmpRedirects {
     /** The redirect selection for {@code module}:{@code version}, or empty when none applies. */
     public Optional<Selection> selectionFor(String module, String version) {
         if (repos == null) return Optional.empty();
-        return cache.computeIfAbsent(module + "@" + version, k -> lookup(module, version));
+        // Authoritative gate is the POM Gradle-metadata marker (see lookup) — not a group
+        // allowlist. Missing a KMP redirect is a classpath bug; process memo makes plain-Maven
+        // GAs cheap after the first head-scan miss.
+        // Key by GA@ver — type/classifier (jar vs aar) share one POM/.module. BOM warm uses
+        // default jar: keys; AndroidX solver packages are often aar: — separate keys forced a
+        // full cold re-parse of every KMP root on first-in-process locks.
+        String gaKey = gaAt(module, version);
+        Optional<Selection> local = cache.get(gaKey);
+        if (local != null) {
+            local.ifPresent(this::rememberDropped);
+            return local;
+        }
+        String processKey = repos.processIdentity() + "\0" + jvmEnvironment + "\0" + gaKey;
+        // Single-flight: concurrent PubGrub prefetches must not re-parse the same .module.
+        long t0 = cc.jumpkick.resolve.ResolveProfile.on() ? System.nanoTime() : 0L;
+        Optional<Selection> found = PROCESS_CACHE.computeIfAbsent(processKey, k -> lookup(module, version));
+        cache.put(gaKey, found);
+        found.ifPresent(this::rememberDropped);
+        if (cc.jumpkick.resolve.ResolveProfile.on() && t0 != 0L) {
+            // Count wall only when we may have done work (process miss is still inside computeIfAbsent).
+            cc.jumpkick.resolve.ResolveProfile.kmp(System.nanoTime() - t0);
+        }
+        return found;
+    }
+
+    private static String gaAt(String module, String version) {
+        try {
+            if (PackageId.isMavenPackageKey(module)) {
+                return PackageId.parse(module).ga() + "@" + version;
+            }
+        } catch (RuntimeException ignored) {
+            // fall through
+        }
+        return module + "@" + version;
+    }
+
+    private void rememberDropped(Selection selection) {
+        String selected = PackageId.ofGa(
+                        selection.target().group() + ":" + selection.target().module())
+                .key();
+        for (String sibling : selection.allTargets()) {
+            String siblingKey = PackageId.ofGa(sibling).key();
+            if (!siblingKey.equals(selected)) droppedSiblings.put(siblingKey, selected);
+        }
     }
 
     private Optional<Selection> lookup(String module, String version) {
@@ -64,11 +122,12 @@ public final class KmpRedirects {
             PackageId id = PackageId.parse(module);
             Coordinate coord = id.withVersion(version);
             // The POM is already disk-cached by the dependency walk; the marker comment is the
-            // cheap gate that keeps non-KMP modules to zero extra fetches.
+            // cheap gate that keeps non-KMP modules to zero extra fetches. Only the head of the
+            // file is scanned — Gradle writes the marker near the top; reading multi-MB POMs as
+            // full strings dominated warm Android locks (hundreds of KMP roots).
             var pomHit = repos.tryFetchPom(coord);
             if (pomHit.isEmpty()) return Optional.empty();
-            String rawPom = Files.readString(pomHit.get().fetched().cachePath(), StandardCharsets.UTF_8);
-            if (!rawPom.contains(GradleModuleMetadata.POM_MARKER)) return Optional.empty();
+            if (!pomHasGradleMetadataMarker(pomHit.get().fetched().cachePath())) return Optional.empty();
 
             Coordinate moduleCoord = new Coordinate(coord.group(), coord.artifact(), coord.version(), null, "module");
             var moduleHit = repos.tryFetchArtifact(moduleCoord);
@@ -76,18 +135,25 @@ public final class KmpRedirects {
 
             GradleModuleMetadata gmm =
                     GradleModuleMetadata.parse(moduleHit.get().fetched().cachePath());
-            return gmm.runtimeRedirect(jvmEnvironment).map(target -> {
-                String selected =
-                        PackageId.ofGa(target.group() + ":" + target.module()).key();
-                for (String sibling : gmm.redirectTargetModules()) {
-                    String siblingKey = PackageId.ofGa(sibling).key();
-                    if (!siblingKey.equals(selected)) droppedSiblings.put(siblingKey, selected);
-                }
-                return new Selection(target, gmm.redirectTargetModules());
-            });
+            return gmm.runtimeRedirect(jvmEnvironment)
+                    .map(target -> new Selection(target, gmm.redirectTargetModules()));
         } catch (IOException | InterruptedException | RuntimeException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             return Optional.empty(); // fail-soft: plain-Maven view
         }
+    }
+
+    /** True when the POM head contains Gradle's published-with-gradle-metadata marker. */
+    static boolean pomHasGradleMetadataMarker(java.nio.file.Path pomPath) throws IOException {
+        // Marker sits in the first few KB of every Gradle-published POM.
+        final int headBytes = 8192;
+        byte[] buf = new byte[headBytes];
+        int n;
+        try (var in = Files.newInputStream(pomPath)) {
+            n = in.read(buf);
+        }
+        if (n <= 0) return false;
+        String head = new String(buf, 0, n, StandardCharsets.UTF_8);
+        return head.contains(GradleModuleMetadata.POM_MARKER);
     }
 }

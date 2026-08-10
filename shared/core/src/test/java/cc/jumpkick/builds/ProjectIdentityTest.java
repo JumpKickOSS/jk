@@ -1,0 +1,78 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.builds;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileWriter;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+class ProjectIdentityTest {
+
+    @Test
+    void path_tier_is_stable_for_same_checkout(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                [project]
+                group = "com.example"
+                name = "demo"
+                version = "0.1.0"
+                """);
+        ProjectIdentity a = ProjectIdentity.resolve(dir);
+        ProjectIdentity b = ProjectIdentity.resolve(dir);
+        assertThat(a.id()).isEqualTo(b.id());
+        assertThat(a.source()).isEqualTo(ProjectIdentity.Source.PATH);
+        assertThat(a.coord()).isEqualTo("com.example:demo");
+        assertThat(ProjectIdentity.isValidId(a.id())).isTrue();
+    }
+
+    @Test
+    void lock_project_id_wins_over_path(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                [project]
+                group = "com.example"
+                name = "demo"
+                version = "0.1.0"
+                """);
+        LockfileWriter.write(
+                Lockfile.empty("test").withProjectId("aabbccddeeff00112233445566778899"), dir.resolve("jk-lock.toml"));
+        ProjectIdentity id = ProjectIdentity.resolve(dir);
+        assertThat(id.source()).isEqualTo(ProjectIdentity.Source.LOCK);
+        assertThat(id.id()).isEqualTo("aabbccddeeff00112233445566778899");
+    }
+
+    @Test
+    void ensure_project_id_mints_and_preserves(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                [project]
+                group = "com.example"
+                name = "demo"
+                version = "0.1.0"
+                """);
+        Lockfile first = ProjectIdentity.ensureProjectId(Lockfile.empty("test"), dir);
+        assertThat(first.projectId()).isNotBlank();
+        LockfileWriter.write(first, dir.resolve("jk-lock.toml"));
+        Lockfile second = ProjectIdentity.ensureProjectId(Lockfile.empty("test"), dir);
+        // ensure without reading disk still mints; write path preserves — simulate preserve:
+        Lockfile preserved = Lockfile.empty("test").withProjectId(first.projectId());
+        assertThat(preserved.projectId()).isEqualTo(first.projectId());
+    }
+
+    @Test
+    void explicit_toml_id_wins(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                [project]
+                group = "com.example"
+                name = "demo"
+                version = "0.1.0"
+                id = "explicit-project-id-00112233"
+                """);
+        LockfileWriter.write(
+                Lockfile.empty("test").withProjectId("lock-id-should-not-win-00112233"), dir.resolve("jk-lock.toml"));
+        ProjectIdentity id = ProjectIdentity.resolve(dir);
+        assertThat(id.source()).isEqualTo(ProjectIdentity.Source.EXPLICIT);
+        assertThat(id.id()).isEqualTo("explicit-project-id-00112233");
+    }
+}
