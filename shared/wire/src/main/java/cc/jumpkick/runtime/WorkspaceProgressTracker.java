@@ -1,63 +1,55 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
- * Engine-owned workspace aggregate progress driven by remaining wall-work {@code R(t)}.
+ * Engine-owned workspace aggregate progress. Preflight reservation + calibrated module
+ * <strong>effort-weight</strong> slices + concurrent in-flight sum + monotonic peak.
  *
- * <p><b>Model:</b> after {@link #seedWall(long, int)}, the execute band is pure remaining-work:
+ * <p>Bar progress is <em>not</em> residual wall {@code R(t)/R0}. Inflated ETA seeds (history
+ * floors) must not pin the bar at 99% while work remains. Countdown open-loop {@code R0} is
+ * separate (client). Optional {@link #noteRemaining(long, long)} only annotates the snapshot.
  *
- * <pre>
- *   completeFraction = 1 − R / R0
- *   display percent  = min(DISPLAY_CAP, 100 × completeFraction)   // until finish()
- * </pre>
- *
- * so the progress bar mirrors the countdown when both use the same {@link RemainingWork} oracle.
- *
- * <p>Preflight (lock/graph/plan) still paints a small band before {@code R0} is known. Clients must
- * render {@link Snapshot} values — never re-derive workspace % from per-module plan ticks.
+ * <p><b>Smart engine / dumb clients:</b> clients paint {@link Snapshot} — never re-sum plan ticks.
  */
 public final class WorkspaceProgressTracker {
 
-    /** Reserved progress units for all preflight work (before {@link #seedWall}). */
+    /** Reserved progress units for all preflight work (before module plans run). */
     public static final long PREFLIGHT_UNITS = 100;
 
     /**
-     * Provisional execute-band weight before {@link #seedWall}. Sized so a completed preflight band
-     * is ~10% of the bar until we know {@code R0}.
+     * Provisional execute-band weight before {@link #calibrate}. Sized so completed preflight is
+     * ~10% of the bar until execute weight is known.
      */
     public static final long PROVISIONAL_EXECUTE_UNITS = PREFLIGHT_UNITS * 9;
 
-    /**
-     * Execute-band resolution once seeded (weight units representing {@code R0}). Keeps numerator
-     * integer-friendly for wire snapshots.
-     */
-    public static final long EXECUTE_UNITS = 10_000;
-
-    /** Display clamp so the bar never paints 100% until {@link #finish()}. */
-    public static final double DISPLAY_CAP = 99.0;
-
-    /** TTY frame cadence (ms): engine progress-emit throttle and CLI live-region share it. */
+    /** TTY frame cadence (ms). */
     public static final long TTY_FRAME_MS = 80;
 
+    private long completedBase;
+    private long total; // execute aggregate denominator, 0 until calibrated
     private long preflightNum; // 0..PREFLIGHT_UNITS
-    private boolean executeSeeded;
-    private long R0; // seed wall ms
-    private long R; // remaining wall ms
+    private boolean executeCalibrated;
+    private final Map<String, Long> moduleAdvanced = new HashMap<>();
+    private final Map<String, ModuleSlice> modules = new HashMap<>();
+
     private int modulesComplete;
     private int modulesTotal;
 
-    /** Monotonic display peak at a stable total. */
+    /** Optional residual annotation for wire (not used for bar %). */
+    private long annotatedRemainingMs = -1;
+    private long annotatedR0ms;
+
     private double peakFraction;
     private long peakDenominator;
 
     private Snapshot last = Snapshot.unknown();
 
     /**
-     * Immutable aggregate snapshot for wire / SSE / MCP / CLI.
-     *
-     * @param phase {@code preflight}, {@code execute}, or {@code done}
-     * @param remainingMs remaining wall work {@code R(t)}; {@code -1} when unknown (preflight)
-     * @param R0ms seed wall estimate; {@code 0} when not seeded
+     * @param remainingMs optional residual wall ms ({@code -1} unknown); not the bar driver
+     * @param R0ms optional seed wall ms for clients that open-loop the clock
      */
     public record Snapshot(
             long numerator,
@@ -73,103 +65,131 @@ public final class WorkspaceProgressTracker {
             return new Snapshot(0, 0, Double.NaN, "preflight", 0, 0, -1, 0);
         }
 
-        /** True when {@link #percent} is a finite 0–100 value. */
         public boolean hasPercent() {
             return !Double.isNaN(percent);
         }
     }
 
-    /** Drive preflight band. Stage-local {@code done}/{@code total} refine the plan stage. */
+    private static final class ModuleSlice {
+        long slice;
+        long knownDenominator;
+    }
+
     public synchronized Snapshot preflight(String stage, int done, int total) {
         preflightNum = Math.min(PREFLIGHT_UNITS, Math.round(preflightFraction(stage, done, total) * PREFLIGHT_UNITS));
         return recompute();
     }
 
-    /** Mark preflight complete (all PREFLIGHT_UNITS earned) without execute seed yet. */
     public synchronized Snapshot preflightComplete() {
         preflightNum = PREFLIGHT_UNITS;
         return recompute();
     }
 
     /**
-     * Pin execute work to wall seed {@code R0ms}. Progress becomes {@code 1 − R/R0} with
-     * {@code R = R0} initially. Prefer this over legacy weight calibration.
-     *
-     * <p>Resets monotonic peak so a prior preflight paint does not pin the execute bar above 0%.
+     * Pin execute weight after plan. {@code executeWeight} is Σ module plan effort weights (not
+     * wall-ms R0).
      */
-    public synchronized Snapshot seedWall(long R0ms, int modulesTotal) {
+    public synchronized Snapshot calibrate(long executeWeight, int modulesTotal) {
         this.modulesTotal = Math.max(0, modulesTotal);
-        this.R0 = Math.max(0, R0ms);
-        this.R = this.R0;
-        this.executeSeeded = true;
+        long w = Math.max(0, executeWeight);
+        if (w == 0 && this.modulesTotal > 0) w = this.modulesTotal;
+        this.total = w;
+        this.executeCalibrated = true;
         this.preflightNum = PREFLIGHT_UNITS;
-        // Fresh execute band — do not inherit preflight peak fraction.
-        this.peakFraction = 0;
-        this.peakDenominator = 0;
         return recompute();
     }
 
     /**
-     * @deprecated use {@link #seedWall(long, int)} — weight-sum calibration is replaced by wall
-     *     remaining-work.
+     * Record open-loop seed wall for wire annotation. Does <em>not</em> set the bar denominator —
+     * call {@link #calibrate} with plan weights for that.
      */
-    @Deprecated
-    public synchronized Snapshot calibrate(long executeWeight, int modulesTotal) {
-        // Treat legacy weight units as R0 wall-proxy so old call sites still paint.
-        return seedWall(Math.max(0, executeWeight), modulesTotal);
+    public synchronized Snapshot seedWall(long R0ms, int modulesTotal) {
+        this.annotatedR0ms = Math.max(0, R0ms);
+        this.annotatedRemainingMs = this.annotatedR0ms;
+        if (modulesTotal > 0) this.modulesTotal = modulesTotal;
+        return recompute();
     }
 
-    /** Update modules total without reseeding. */
+    /** Annotate residual remaining (wire only); bar stays on weight slices. */
+    public synchronized Snapshot noteRemaining(long remainingMs, long R0ms) {
+        this.annotatedRemainingMs = Math.max(0, remainingMs);
+        if (R0ms > 0) this.annotatedR0ms = R0ms;
+        return recompute();
+    }
+
+    /** @deprecated residual no longer drives the bar; use {@link #noteRemaining}. */
+    @Deprecated
+    public synchronized Snapshot setRemaining(long remainingMs) {
+        return noteRemaining(remainingMs, annotatedR0ms);
+    }
+
     public synchronized void modulesTotal(int modulesTotal) {
         this.modulesTotal = Math.max(0, modulesTotal);
     }
 
     /**
-     * Set remaining wall ms {@code R(t)} from {@link RemainingWork#remaining()}. If remaining
-     * <em>increases</em> (work harder than thought), grows {@code R0} so completed work is
-     * preserved and the bar does not reverse.
+     * In-flight module plan view. {@code sliceHint} is the plan effort weight for first
+     * registration.
      */
-    public synchronized Snapshot setRemaining(long remainingMs) {
-        long rem = Math.max(0, remainingMs);
-        if (!executeSeeded) {
-            // Late remaining without seed — treat as seed.
-            return seedWall(rem, modulesTotal);
-        }
-        if (rem > R) {
-            // Under-predicted mid-run: keep completed wall, stretch R0 around new remaining.
-            long completed = Math.max(0, R0 - R);
-            R0 = completed + rem;
-            R = rem;
+    public synchronized Snapshot moduleProgress(String key, long sliceHint, long numerator, long denominator) {
+        if (key == null || key.isEmpty()) return last;
+        if (executeCalibrated && total > 0) {
+            ModuleSlice m = modules.get(key);
+            if (m == null) {
+                m = new ModuleSlice();
+                m.slice = Math.max(0, sliceHint);
+                m.knownDenominator = denominator > 0 ? denominator : m.slice;
+                modules.put(key, m);
+            } else if (denominator != m.knownDenominator) {
+                long delta = Math.max(denominator - m.knownDenominator, -m.slice);
+                total = Math.max(0, total + delta);
+                m.slice += delta;
+                m.knownDenominator = denominator;
+            }
+            double frac = denominator > 0 ? (double) numerator / (double) denominator : 0.0;
+            if (frac < 0) frac = 0;
+            if (frac > 1) frac = 1;
+            moduleAdvanced.put(key, Math.round(frac * m.slice));
         } else {
-            R = rem;
+            long base = completedBase;
+            long num = base + Math.max(0, numerator);
+            long den = base + Math.max(0, denominator);
+            return storeRaw(num, den, phaseName());
         }
         return recompute();
     }
 
-    /**
-     * @deprecated module slice model removed; use {@link RemainingWork} + {@link #setRemaining}.
-     *     Kept as a no-op progress probe for transitional call sites that still push plan ticks —
-     *     they should call {@link #setRemaining} instead. Returns last snapshot.
-     */
-    @Deprecated
-    public synchronized Snapshot moduleProgress(String key, long sliceHint, long numerator, long denominator) {
-        return last;
-    }
-
-    /** Count a finished module (for {@code modulesComplete} display). Does not change {@code R}. */
     public synchronized Snapshot moduleComplete(String key, long lastDenominator) {
+        if (key == null || key.isEmpty()) return last;
+        ModuleSlice m = modules.remove(key);
+        moduleAdvanced.remove(key);
+        if (executeCalibrated && total > 0) {
+            completedBase += m != null ? m.slice : 0;
+        } else {
+            completedBase += Math.max(0, lastDenominator);
+        }
         modulesComplete++;
         return recompute();
     }
 
-    /** Terminal snapshot (phase {@code done}); forces 100%. */
     public synchronized Snapshot finish() {
-        R = 0;
         Snapshot s = recompute();
-        long den = s.denominator() > 0 ? s.denominator() : PREFLIGHT_UNITS + EXECUTE_UNITS;
-        last = new Snapshot(den, den, 100.0, "done", modulesComplete, modulesTotal, 0, R0);
+        if (s.denominator() > 0) {
+            last = new Snapshot(
+                    s.denominator(),
+                    s.denominator(),
+                    100.0,
+                    "done",
+                    modulesComplete,
+                    modulesTotal,
+                    0,
+                    annotatedR0ms);
+        } else {
+            last = new Snapshot(
+                    s.numerator(), s.denominator(), 100.0, "done", modulesComplete, modulesTotal, 0, annotatedR0ms);
+        }
         peakFraction = 1.0;
-        peakDenominator = den;
+        peakDenominator = last.denominator();
         return last;
     }
 
@@ -177,47 +197,39 @@ public final class WorkspaceProgressTracker {
         return last;
     }
 
-    /** Seed wall ms ({@code R0}); 0 before {@link #seedWall}. */
     public synchronized long executeTotal() {
-        return R0;
+        return total;
     }
 
     public synchronized boolean calibrated() {
-        return executeSeeded;
+        return executeCalibrated;
     }
 
     public synchronized long remainingMs() {
-        return executeSeeded ? R : -1;
+        return annotatedRemainingMs;
     }
 
     public synchronized long R0ms() {
-        return R0;
+        return annotatedR0ms;
     }
 
     private Snapshot recompute() {
+        long execSum = completedBase;
+        for (long v : moduleAdvanced.values()) execSum += v;
         long num;
         long den;
-        long remOut;
-        long r0Out;
-        if (executeSeeded) {
-            // Execute band: EXECUTE_UNITS represent R0; completed = (R0−R)/R0 of that band.
-            // Preflight is fully earned (already past) — paint only execute fraction so bar
-            // mirrors countdown: percent ≈ 100 × (R0−R)/R0 capped at DISPLAY_CAP.
-            double frac = R0 <= 0 ? 1.0 : Math.min(1.0, Math.max(0.0, 1.0 - (double) R / (double) R0));
-            num = Math.round(frac * EXECUTE_UNITS);
-            den = EXECUTE_UNITS;
-            remOut = R;
-            r0Out = R0;
+        if (executeCalibrated) {
+            num = preflightNum + Math.min(execSum, total);
+            den = PREFLIGHT_UNITS + total;
+            if (den <= 0) den = PREFLIGHT_UNITS;
         } else {
             num = preflightNum;
             den = PREFLIGHT_UNITS + PROVISIONAL_EXECUTE_UNITS;
-            remOut = -1;
-            r0Out = 0;
         }
-        return storeRaw(num, den, phaseName(), remOut, r0Out);
+        return storeRaw(num, den, phaseName());
     }
 
-    private Snapshot storeRaw(long numerator, long denominator, String phase, long remainingMs, long R0ms) {
+    private Snapshot storeRaw(long numerator, long denominator, String phase) {
         long num = numerator;
         long den = denominator;
         double f = den > 0 ? (double) num / (double) den : 0.0;
@@ -235,20 +247,22 @@ public final class WorkspaceProgressTracker {
             peakDenominator = den;
         }
         double percent = den > 0 ? percentOf(num, den) : Double.NaN;
-        // Cap display at DISPLAY_CAP until finish() forces 100.
-        if (!"done".equals(phase) && !Double.isNaN(percent) && percent > DISPLAY_CAP) {
-            percent = DISPLAY_CAP;
-            num = Math.round(DISPLAY_CAP / 100.0 * den);
-        }
-        last = new Snapshot(num, den, percent, phase, modulesComplete, modulesTotal, remainingMs, R0ms);
+        last = new Snapshot(
+                num,
+                den,
+                percent,
+                phase,
+                modulesComplete,
+                modulesTotal,
+                annotatedRemainingMs,
+                annotatedR0ms);
         return last;
     }
 
     private String phaseName() {
-        return executeSeeded ? "execute" : "preflight";
+        return executeCalibrated ? "execute" : "preflight";
     }
 
-    /** Map preflight stages onto 0..1 of the reserved band. */
     public static double preflightFraction(String stage, int done, int total) {
         if (stage == null) stage = "";
         return switch (stage) {
@@ -264,20 +278,17 @@ public final class WorkspaceProgressTracker {
         };
     }
 
-    /** 0–100 one-decimal percent, or {@link Double#NaN} when denominator is non-positive. */
     public static double percentOf(long numerator, long denominator) {
         if (denominator <= 0) return Double.NaN;
         return clampPercent(100.0 * (double) numerator / (double) denominator);
     }
 
-    /** Clamp to 0–100 and round to one decimal; {@link Double#NaN} passes through. */
     public static double clampPercent(double raw) {
         if (Double.isNaN(raw)) return raw;
         double v = raw < 0 ? 0 : Math.min(raw, 100);
         return Math.round(v * 10.0) / 10.0;
     }
 
-    /** JSON number token for a percent: {@code null} for NaN, else integer or one-decimal. */
     public static String progressToken(double percent) {
         double p = clampPercent(percent);
         if (Double.isNaN(p)) return "null";

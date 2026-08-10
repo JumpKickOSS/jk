@@ -1727,11 +1727,13 @@ public final class EngineServer implements AutoCloseable {
         double frac = view.denominator() > 0
                 ? Math.min(1.0, Math.max(0.0, (double) view.numerator() / (double) view.denominator()))
                 : 0.0;
+        // Bar: effort-weight slices (plan num/den). Residual is annotation only — never bar driver.
+        long slice = planWeight(requestId, dir);
+        progressTracker(requestId).moduleProgress(dir, slice, view.numerator(), view.denominator());
         cc.jumpkick.runtime.RemainingWork rw = remainingWorks.get(requestId);
         if (rw != null && dir != null) {
             rw.moduleProgress(java.nio.file.Path.of(dir), frac);
-            // Progress bar may track residual work; countdown stays open-loop R0 on the client.
-            progressTracker(requestId).setRemaining(rw.remaining());
+            progressTracker(requestId).noteRemaining(rw.remaining(), rw.R0());
         }
         emitWorkspaceProgress(requestId, writer, forceEmit);
     }
@@ -1741,8 +1743,7 @@ public final class EngineServer implements AutoCloseable {
         cc.jumpkick.runtime.RemainingWork rw = remainingWorks.get(requestId);
         if (rw != null && dir != null) {
             rw.moduleComplete(java.nio.file.Path.of(dir));
-            progressTracker(requestId).setRemaining(rw.remaining());
-            // Do not re-emit eta — open-loop countdown is frozen at R0 on the client.
+            progressTracker(requestId).noteRemaining(rw.remaining(), rw.R0());
         }
         progressTracker(requestId).moduleComplete(dir, lastDen);
         emitWorkspaceProgress(requestId, writer, true);
@@ -4245,6 +4246,7 @@ public final class EngineServer implements AutoCloseable {
                 if (eventRequestId <= 0 || model == null) return;
                 cc.jumpkick.runtime.RemainingWork rw = model.toRemainingWork();
                 remainingWorks.put(eventRequestId, rw);
+                // Annotate R0 for wire/clients; bar denominator is calibrated from plan weights.
                 progressTracker(eventRequestId).seedWall(model.R0(), model.costs().size());
                 emitWorkspaceProgress(eventRequestId, writer, true);
             }
@@ -4275,13 +4277,9 @@ public final class EngineServer implements AutoCloseable {
                     }
                 }
                 sendQuiet(writer, EngineProtocol.planDone(plan.size()));
-                // Bar seed comes from onWorkModel (R0 wall). If work model was empty/missing,
-                // fall back to legacy weight sum so the bar still calibrates.
-                if (eventRequestId > 0 && !remainingWorks.containsKey(eventRequestId)) {
-                    progressTracker(eventRequestId).seedWall(totalWeight, plan.size());
-                    emitWorkspaceProgress(eventRequestId, writer, true);
-                } else if (eventRequestId > 0) {
-                    progressTracker(eventRequestId).modulesTotal(plan.size());
+                // Bar = Σ effort weights (real work + TOKENs), not wall-ms R0.
+                if (eventRequestId > 0) {
+                    progressTracker(eventRequestId).calibrate(totalWeight, plan.size());
                     emitWorkspaceProgress(eventRequestId, writer, true);
                 }
                 publishPlan(eventRequestId, totalWeight);
@@ -5861,11 +5859,8 @@ public final class EngineServer implements AutoCloseable {
                     totalWeight += m.weight();
                     weights.put(m.dir().toString(), (long) m.weight());
                 }
-                if (eventRequestId > 0 && !remainingWorks.containsKey(eventRequestId)) {
-                    progressTracker(eventRequestId).seedWall(totalWeight, plan.size());
-                    emitWorkspaceProgress(eventRequestId, null, true);
-                } else if (eventRequestId > 0) {
-                    progressTracker(eventRequestId).modulesTotal(plan.size());
+                if (eventRequestId > 0) {
+                    progressTracker(eventRequestId).calibrate(totalWeight, plan.size());
                     emitWorkspaceProgress(eventRequestId, null, true);
                 }
                 publishPlan(eventRequestId, totalWeight);

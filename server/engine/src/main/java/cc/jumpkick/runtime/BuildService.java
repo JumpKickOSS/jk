@@ -1061,51 +1061,35 @@ public final class BuildService {
         // the constant only decides when the floor mechanism engages at all. `hist.dirtyModules`
         // always equals costs.size here (historyShapeForCosts at every call site), so one
         // condition suffices.
+        // Full rebuild / monorepo-scale dirty: floor against measured full-build walls when available.
+        // Do NOT hard-floor incremental builds to whole-invocation history — that pulls R0 to stale
+        // slow averages and inflates the open-loop countdown (e.g. 3.5m seed vs 1.5m actual).
         boolean fullWork = hist.rebuild() || hist.dirtyModules() >= 16;
-        int dirtyN = Math.max(0, hist.dirtyModules());
-        boolean multiParallel = !serial && concurrency > 1 && dirtyN >= 3;
-        // Ideal list-schedule over-states parallel efficiency (disk/CAS/GC/heap). Shrink the
-        // concurrency budget when we lack same-shape history to floor against.
-        boolean coldParallel = multiParallel && (okHist == null || okHist.count() == 0);
+        boolean coldFull = fullWork && (okHist == null || okHist.count() == 0);
         int etaConcurrency = concurrency;
-        if (coldParallel) {
+        if (coldFull && !serial && concurrency > 1) {
             // ~75% of jobs: monorepo rebuilds rarely sustain full -j throughput.
             etaConcurrency = Math.max(1, (int) Math.ceil(concurrency * 0.75));
-        } else if (multiParallel && okHist != null && okHist.count() > 0 && okHist.avgMillis() > 0) {
-            // Learned soft shrink: if history walls run longer than a pure schedule would imply,
-            // reduce effective concurrency for this seed only (does not change the live scheduler).
-            etaConcurrency = Math.max(1, (int) Math.ceil(concurrency * 0.85));
         }
         long base =
                 EffortWeights.scheduleMillis(costs, etaConcurrency, serial, parallelTests, EffortWeights.MS_PER_WEIGHT);
-        if (coldParallel && base > 0) {
-            // Modest contention margin — prefer slight high over optimistic under-shoot.
-            base = Math.round(base * 1.10);
-        } else if (multiParallel && base > 0 && (okHist == null || okHist.count() < 2)) {
-            base = Math.round(base * 1.05);
+        if (coldFull && base > 0) {
+            base = Math.round(base * 1.08);
         }
-        // Same-shape history floor: never advertise faster than we've measured for this dirty count.
-        // Full work uses a stronger max blend; incremental uses avg (stable enough for #dN keys).
-        BuildMetrics.Stats plainShape = okHistory(entryDir, new HistoryShape(false, hist.dirtyModules()));
-        BuildMetrics.Stats floorSrc = higherAvg(okHist, plainShape);
-        if (floorSrc != null && floorSrc.count() > 0) {
-            long floor = floorSrc.avgMillis();
-            if (fullWork && floorSrc.count() >= 2 && floorSrc.maxMillis() > floor) {
-                floor = hist.rebuild()
-                        ? Math.round(0.25 * floorSrc.avgMillis() + 0.75 * floorSrc.maxMillis())
-                        : Math.round(0.5 * floorSrc.avgMillis() + 0.5 * floorSrc.maxMillis());
-            }
-            if (floor > base) {
-                if (fullWork) base = floor;
-                else {
-                    // Incremental: blend toward history so a cold step composition cannot under-shoot
-                    // a shape we've already paid for (e.g. #d3 often ~same wall).
-                    base = Math.round(0.55 * base + 0.45 * floor);
-                    if (floor > base) base = floor; // still never below history avg after blend
+        if (fullWork) {
+            BuildMetrics.Stats plainFull = okHistory(entryDir, new HistoryShape(false, hist.dirtyModules()));
+            BuildMetrics.Stats floorSrc = higherAvg(okHist, plainFull);
+            if (floorSrc != null && floorSrc.count() > 0) {
+                long floor = floorSrc.avgMillis();
+                if (floorSrc.count() >= 2 && floorSrc.maxMillis() > floor) {
+                    floor = hist.rebuild()
+                            ? Math.round(0.25 * floorSrc.avgMillis() + 0.75 * floorSrc.maxMillis())
+                            : Math.round(0.5 * floorSrc.avgMillis() + 0.5 * floorSrc.maxMillis());
                 }
+                if (floor > base) base = floor;
             }
         }
-        // One-sided clamp only for absurd over-estimates (never pull partial work up further).
+        // One-sided clamp for absurd over-estimates only (never pull incremental work up to history).
         return applyHistoryPrior(base, okHist);
     }
 

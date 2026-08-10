@@ -20,19 +20,21 @@ Status: **normative** for TUI / wire progress. Implementations live under
 **start** (`jk explain` / first ETA). Mid-run residual must not redefine success.
 
 ```
-R0            = seed wall ms (jk explain ≡ jk build seed; history floors / margins applied)
-ideal0        = WorkSchedule.schedule(costs)          # weight units, first-ready admission
-countdown     = max(0, R0 − elapsed)                  # open-loop after execute starts
-bar (engine)  = optional residual work fraction       # diagnostics / work tracking
-residual R(t) = WorkSchedule.schedule(residual)×scale # does NOT rewrite the client countdown
+R0            = seed wall ms (jk explain ≡ jk build seed)
+countdown     = max(0, R0 − elapsed)     # open-loop after execute starts (client)
+bar           = effort-weight slices     # Σ plan weights; NOT residual R/R0
+residual R(t) = optional wire annotation # does NOT drive bar or countdown
 ```
 
-| Situation | Seed cost | Residual (engine bar only) |
-|-----------|-----------|----------------------------|
-| Module not started | full `ModuleWorkCost` | full |
-| Module in flight | full (in R0) | `cost.residual(planNum/planDen)` |
-| Module complete | in R0 as finished wall | absent |
-| Cache/skip still in plan | TOKEN | TOKEN |
+**Why bar ≠ residual R/R0:** history floors can inflate R0 without increasing residual
+costs. Then residual → 0 early → bar stuck at 99% while work continues. Weight slices track
+actual plan ticks instead.
+
+| Situation | Seed (R0) | Bar slice |
+|-----------|-----------|-----------|
+| Dirty real work | priced walls | full effort weight |
+| Cache/skip in plan | TOKEN in composition | TOKEN |
+| Omitted from plan | absent | absent |
 
 ### HARD INVARIANT: `jk explain` ≡ `jk build` seed `R0`
 
