@@ -60,7 +60,7 @@ public final class TrainRunner {
             throw new IOException("train needs a packaged main jar at " + mainJar + " — build first");
         }
 
-        String fingerprint = fingerprint(moduleDir, project, lockFile, mainJar, config, profiles);
+        String fingerprint = fingerprint(project, lockFile, mainJar, config, profiles);
         Path fpFile = TrainLayout.fingerprint(target);
         if (!force
                 && Files.isRegularFile(fpFile)
@@ -169,7 +169,7 @@ public final class TrainRunner {
             return "train outputs are missing and [train] require-fresh = true — run `jk train`";
         }
         List<TrainConfig.Profile> profiles = config.effectiveProfiles();
-        String expected = fingerprint(moduleDir, project, lockFile, layout.mainJar(), config, profiles);
+        String expected = fingerprint(project, lockFile, layout.mainJar(), config, profiles);
         String actual = Files.readString(fpFile, StandardCharsets.UTF_8).trim();
         if (!expected.equals(actual)) {
             return "train outputs are stale and [train] require-fresh = true — re-run `jk train`";
@@ -177,8 +177,8 @@ public final class TrainRunner {
         return null;
     }
 
-    private static String fingerprint(
-            Path moduleDir,
+    /** Package-visible for tests. */
+    static String fingerprint(
             JkBuild project,
             Path lockFile,
             Path mainJar,
@@ -197,9 +197,12 @@ public final class TrainRunner {
         sb.append("profiles=")
                 .append(Hashing.sha256Hex(config.profilesToken().getBytes(StandardCharsets.UTF_8)))
                 .append('\n');
-        // Classes dir when present
-        Path classes = moduleDir.resolve("target/classes");
-        // Prefer layout-relative if exists under module target from BuildLayout convention
+        // The profiles this run actually observed, not just the configured set: a
+        // `--profile smoke` run merges one profile's surface and must never satisfy the
+        // full-set freshness check that require-fresh and the up-to-date shortcut apply.
+        sb.append("selected=");
+        for (TrainConfig.Profile p : profiles) sb.append(p.name()).append(';');
+        sb.append('\n');
         sb.append("name=").append(project.project().name()).append('\n');
         return Hashing.sha256Hex(sb.toString().getBytes(StandardCharsets.UTF_8));
     }
