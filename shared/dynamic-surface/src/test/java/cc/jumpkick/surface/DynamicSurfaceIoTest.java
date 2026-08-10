@@ -16,10 +16,34 @@ class DynamicSurfaceIoTest {
                 DynamicSurface.Entry.type(DynamicSurface.Kind.REFLECTIVE_TYPE, "com.example.A", "train:default"),
                 DynamicSurface.Entry.type(DynamicSurface.Kind.RESOURCE, "config/*.xml", "index"));
         String json = DynamicSurfaceIo.toJson(s);
+        assertThat(json).contains("\"version\": 2");
         DynamicSurface back = DynamicSurfaceIo.fromJson(json);
         assertThat(back.entries()).hasSize(2);
         assertThat(back.of(DynamicSurface.Kind.REFLECTIVE_TYPE).getFirst().name())
                 .isEqualTo("com.example.A");
+    }
+
+    @Test
+    void older_and_newer_format_versions_still_read() {
+        // v1: untagged members (unknown kind) — must keep reading. Newer-than-current versions
+        // read leniently too: unknown kinds are skipped, the rest is preserved (JK-1802).
+        String v1 = """
+                {"version": 1, "entries": [
+                  {"kind":"REFLECTIVE_MEMBER","name":"com.example.A","origin":"t","members":["run"]}
+                ]}
+                """;
+        DynamicSurface old = DynamicSurfaceIo.fromJson(v1);
+        assertThat(old.entries()).singleElement().satisfies(e -> assertThat(e.members()).containsExactly("run"));
+
+        String v9 = """
+                {"version": 9, "entries": [
+                  {"kind":"REFLECTIVE_TYPE","name":"com.example.B","origin":"t"},
+                  {"kind":"KIND_FROM_THE_FUTURE","name":"com.example.C","origin":"t"}
+                ]}
+                """;
+        DynamicSurface future = DynamicSurfaceIo.fromJson(v9);
+        assertThat(future.entries()).singleElement().satisfies(e -> assertThat(e.name())
+                .isEqualTo("com.example.B"));
     }
 
     @Test

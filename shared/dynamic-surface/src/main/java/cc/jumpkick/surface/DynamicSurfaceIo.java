@@ -19,10 +19,25 @@ public final class DynamicSurfaceIo {
 
     private DynamicSurfaceIo() {}
 
+    /**
+     * The {@code dynamic-surface.json} format version. Version 2 (JK-1802) added member tags —
+     * {@code f:}/{@code m:} for field/method kind (JK-1753), {@code c:} for a serialization
+     * {@code customTargetConstructorClass} (JK-1801) — and comma-joined ordered interface lists
+     * as PROXY_INTERFACE names (JK-1799). Version 1 files read cleanly: untagged members mean
+     * "kind unknown" and single-interface proxy names are one-element lists.
+     *
+     * <p>Readers deliberately do not reject or warn on newer versions: shipped v1 readers
+     * already ignore the field (so a check added now protects nothing older), this module is
+     * dependency-free with no logging channel, and the encoding is designed to degrade safely —
+     * unknown kinds are skipped, unknown member tags read as literal names of unknown kind. The
+     * version is a diagnostic marker for humans and future migrations.
+     */
+    public static final int FORMAT_VERSION = 2;
+
     /** Compact, stable JSON for {@code dynamic-surface.json}. */
     public static String toJson(DynamicSurface surface) {
         StringBuilder sb = new StringBuilder();
-        sb.append("{\n  \"version\": 1,\n  \"entries\": [\n");
+        sb.append("{\n  \"version\": ").append(FORMAT_VERSION).append(",\n  \"entries\": [\n");
         List<DynamicSurface.Entry> entries = surface.entries();
         for (int i = 0; i < entries.size(); i++) {
             DynamicSurface.Entry e = entries.get(i);
