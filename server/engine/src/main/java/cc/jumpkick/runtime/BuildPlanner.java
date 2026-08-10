@@ -3925,6 +3925,19 @@ public final class BuildPlanner {
                     // excluded. `[native] args` and CLI extras still apply: those are the user
                     // speaking, not jk guessing.
                     Path frameworkSources = nativeImageSourcesDir(project, dir, cache, layout);
+                    if (frameworkSources == null && packagerDeclaresNativeSources(project, dir)) {
+                        // The packager owns the native invocation (JK-1710) but its augment ran in
+                        // JVM mode — without a [native] table the build never asked for native
+                        // sources. Falling through to the generic classpath build is exactly the
+                        // "main entry point not found" failure JK-1710 fixed; fail with the cure
+                        // instead (JK-1762).
+                        String msg = "this framework builds its own native image, but no native-image"
+                                + " sources were produced. Add a `[native]` table (it can be empty) to"
+                                + " jk.toml so the framework's augment runs in native mode, then re-run"
+                                + " `jk native`.";
+                        ctx.error("native-sources-missing", msg);
+                        throw new RuntimeException(msg);
+                    }
                     List<String> pluginNativeArgs = frameworkSources != null
                             ? List.of()
                             : cc.jumpkick.plugin.manifest.PluginContributions.nativeArgs(project, dir);
@@ -4114,6 +4127,20 @@ public final class BuildPlanner {
      * declared directory with no {@code native-image.args} means the framework did not run a
      * native build.
      */
+    /** Whether the active packager declares a {@code native-image-sources} output at all. */
+    private static boolean packagerDeclaresNativeSources(JkBuild project, Path dir) {
+        try {
+            var active = PluginBuild.activeCodePlugin(project, dir);
+            if (active.isEmpty()) return false;
+            var packaging = active.get().manifest().packaging();
+            if (packaging == null) return false;
+            String rel = packaging.resolve(active.get().config()).nativeImageSources();
+            return rel != null && !rel.isBlank();
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
     private static Path nativeImageSourcesDir(
             JkBuild project, Path dir, Path cache, cc.jumpkick.layout.BuildLayout layout)
             throws IOException, InterruptedException {
