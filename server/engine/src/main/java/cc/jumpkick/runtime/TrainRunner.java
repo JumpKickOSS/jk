@@ -45,6 +45,7 @@ public final class TrainRunner {
             Path moduleDir,
             JkBuild project,
             BuildLayout layout,
+            Path cache,
             Path lockFile,
             Path graalHome,
             Path javaHome,
@@ -59,6 +60,7 @@ public final class TrainRunner {
         if (!Files.isRegularFile(mainJar)) {
             throw new IOException("train needs a packaged main jar at " + mainJar + " — build first");
         }
+        List<String> launch = launchArgs(project, layout, cache, lockFile, mainJar, log);
 
         String fingerprint = fingerprint(project, lockFile, mainJar, config, profiles);
         Path fpFile = TrainLayout.fingerprint(target);
@@ -83,6 +85,7 @@ public final class TrainRunner {
         }
 
         DynamicSurface merged = DynamicSurface.empty();
+        Output lastRunOutput = null;
         for (TrainConfig.Profile profile : profiles) {
             log.accept("train profile `" + profile.name() + "`");
             Path agentOut = TrainLayout.agentDir(target, profile.name());
@@ -99,8 +102,7 @@ public final class TrainRunner {
                 for (var e : profile.properties().entrySet()) {
                     cmd.add("-D" + e.getKey() + "=" + e.getValue());
                 }
-                cmd.add("-jar");
-                cmd.add(mainJar.toAbsolutePath().toString());
+                cmd.addAll(launch);
                 cmd.addAll(profile.args());
             }
 
@@ -110,6 +112,7 @@ public final class TrainRunner {
                 pb.environment().put(e.getKey(), e.getValue());
             }
             Output out = runUntilSettled(pb, log);
+            lastRunOutput = out;
             DynamicSurface observed = DynamicSurfaceIo.importAgentDir(agentOut, "train:" + profile.name());
             if (observed.entries().isEmpty()) {
                 log.accept("profile `" + profile.name() + "` produced no agent metadata"
@@ -119,10 +122,14 @@ public final class TrainRunner {
         }
 
         if (merged.entries().isEmpty()) {
+            String childTail = lastRunOutput == null || lastRunOutput.text().isBlank()
+                    ? ""
+                    : "\n  Last run output:\n" + tail(lastRunOutput.text());
             throw new IOException("train produced an empty dynamic surface.\n"
                     + "  The suite did not exercise reflective / resource / proxy usage the\n"
                     + "  agent can see. Add a full-app exercise ([train] command or a main\n"
-                    + "  that loads by name) — unit tests in isolation are not enough.");
+                    + "  that loads by name) — unit tests in isolation are not enough."
+                    + childTail);
         }
 
         // Write merged outputs
@@ -135,7 +142,7 @@ public final class TrainRunner {
 
         boolean aotWritten = false;
         if (config.aotCache()) {
-            aotWritten = writeAotCache(mainJar, javaHome, moduleDir, target, log);
+            aotWritten = writeAotCache(launch, javaHome, moduleDir, target, log);
         }
 
         if (config.hasCommitTo()) {
@@ -253,7 +260,64 @@ public final class TrainRunner {
         return List.of("sh", "-c", command);
     }
 
-    private static boolean writeAotCache(Path mainJar, Path javaHome, Path moduleDir, Path target, Consumer<String> log)
+    /**
+     * How to launch the app for observation. A thin jar has no {@code Class-Path} manifest, so
+     * {@code java -jar} dies on the first dependency class and the agent records nothing — the
+     * user then gets pointed at their suite instead of the classpath (JK-1780). Order: a fat
+     * assembly jar if the build produced one; {@code -jar} for a self-contained main artifact
+     * (Boot's launcher layout, or any jar carrying {@code Class-Path}); otherwise the lock's
+     * runtime closure as an explicit {@code -cp}.
+     */
+    static List<String> launchArgs(
+            JkBuild project, BuildLayout layout, Path cache, Path lockFile, Path mainJar, Consumer<String> log)
+            throws IOException {
+        Path assembly = layout.assemblyJar();
+        if (assembly != null && Files.isRegularFile(assembly)) {
+            return List.of("-jar", assembly.toAbsolutePath().toString());
+        }
+        if (isSelfContained(mainJar)) {
+            return List.of("-jar", mainJar.toAbsolutePath().toString());
+        }
+        String mainClass = project.mainClass();
+        if (cache != null && mainClass != null && Files.isRegularFile(lockFile)) {
+            var resolver = new cc.jumpkick.compile.ClasspathResolver(cc.jumpkick.cache.JkStores.cas(cache));
+            var lock = cc.jumpkick.lock.LockfileReader.read(lockFile);
+            StringBuilder cp = new StringBuilder(mainJar.toAbsolutePath().toString());
+            int deps = 0;
+            for (var entry : resolver.entriesFor(lock, cc.jumpkick.compile.ClasspathResolver.RUNTIME)) {
+                if (!Files.exists(entry.jar())) continue;
+                cp.append(java.io.File.pathSeparatorChar).append(entry.jar().toAbsolutePath());
+                deps++;
+            }
+            if (deps > 0) {
+                log.accept("training with the lock's runtime classpath (" + deps + " jars)");
+                return List.of("-cp", cp.toString(), mainClass);
+            }
+        }
+        return List.of("-jar", mainJar.toAbsolutePath().toString());
+    }
+
+    /** Last ~600 chars of child output, for error messages. */
+    private static String tail(String text) {
+        String t = text.strip();
+        return t.length() > 600 ? "…" + t.substring(t.length() - 600) : t;
+    }
+
+    /** Boot launcher layout, or any jar whose manifest names its own {@code Class-Path}. */
+    private static boolean isSelfContained(Path jar) {
+        try (java.util.jar.JarFile jf = new java.util.jar.JarFile(jar.toFile())) {
+            if (jf.getEntry("BOOT-INF/") != null) return true;
+            var manifest = jf.getManifest();
+            if (manifest == null) return false;
+            String cp = manifest.getMainAttributes().getValue("Class-Path");
+            return cp != null && !cp.isBlank();
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private static boolean writeAotCache(
+            List<String> launch, Path javaHome, Path moduleDir, Path target, Consumer<String> log)
             throws IOException, InterruptedException {
         Path cache = TrainLayout.aotCache(target);
         Files.deleteIfExists(cache);
@@ -261,25 +325,21 @@ public final class TrainRunner {
         Files.deleteIfExists(conf);
         Path java = javaBinary(javaHome);
         // Two-step record/create so SIGTERM still yields a cache (same as image trainer).
-        List<String> record = List.of(
-                java.toString(),
-                "-XX:AOTMode=record",
-                "-XX:AOTConfiguration=" + conf.toAbsolutePath(),
-                "-jar",
-                mainJar.toAbsolutePath().toString());
+        List<String> record = new ArrayList<>(List.of(
+                java.toString(), "-XX:AOTMode=record", "-XX:AOTConfiguration=" + conf.toAbsolutePath()));
+        record.addAll(launch);
         ProcessBuilder pb = new ProcessBuilder(record).redirectErrorStream(true).directory(moduleDir.toFile());
         runUntilSettled(pb, log);
         if (!Files.isRegularFile(conf) || Files.size(conf) == 0) {
             log.accept("AOT record produced no configuration — skipping AOT cache");
             return false;
         }
-        List<String> create = List.of(
+        List<String> create = new ArrayList<>(List.of(
                 java.toString(),
                 "-XX:AOTMode=create",
                 "-XX:AOTConfiguration=" + conf.toAbsolutePath(),
-                "-XX:AOTCache=" + cache.toAbsolutePath(),
-                "-jar",
-                mainJar.toAbsolutePath().toString());
+                "-XX:AOTCache=" + cache.toAbsolutePath()));
+        create.addAll(launch);
         ProcessBuilder pb2 =
                 new ProcessBuilder(create).redirectErrorStream(true).directory(moduleDir.toFile());
         Process p = pb2.start();

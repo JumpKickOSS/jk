@@ -83,6 +83,7 @@ public final class TrainPlans {
                                 moduleDir,
                                 module,
                                 layout,
+                                cache,
                                 lockFile,
                                 graalHome,
                                 javaHome,
