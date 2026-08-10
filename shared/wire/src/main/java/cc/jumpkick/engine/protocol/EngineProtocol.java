@@ -367,6 +367,12 @@ public final class EngineProtocol {
     /** Client → server: native-image ({@code jk native}); Graal homes resolved client-side. */
     public static final String NATIVE_REQUEST = "native-request";
 
+    /**
+     * Client → server: observe a full-app run under the tracing agent ({@code jk train}); Graal home
+     * resolved client-side when available.
+     */
+    public static final String TRAIN_REQUEST = "train-request";
+
     /** Client → server: build + cache install ({@code jk install}); launcher write is client-side. */
     public static final String INSTALL_REQUEST = "install-request";
 
@@ -1465,6 +1471,44 @@ public final class EngineProtocol {
                 + offline
                 + ",\"force\":"
                 + force
+                + ",\"verbose\":"
+                + verbose
+                + "}";
+    }
+
+    /**
+     * Observe dynamic surface / optional AOT cache (see {@link #TRAIN_REQUEST}). {@code profile}
+     * selects one {@code [[train.profile]]} or null for all; {@code graalHome} is the client-resolved
+     * GraalVM home that provides the tracing agent (may be null — engine tries JAVA_HOME).
+     */
+    public static String trainRequest(
+            String dir,
+            String cache,
+            String jdksDir,
+            String graalHome,
+            String profile,
+            boolean force,
+            boolean skipTests,
+            boolean offline,
+            boolean verbose) {
+        return "{\"type\":\""
+                + TRAIN_REQUEST
+                + "\",\"dir\":"
+                + Jsonl.quote(dir)
+                + ",\"cache\":"
+                + Jsonl.quote(cache)
+                + ",\"jdksDir\":"
+                + Jsonl.quote(jdksDir)
+                + ",\"graalHome\":"
+                + Jsonl.quote(graalHome)
+                + ",\"profile\":"
+                + Jsonl.quote(profile)
+                + ",\"force\":"
+                + force
+                + ",\"skipTests\":"
+                + skipTests
+                + ",\"offline\":"
+                + offline
                 + ",\"verbose\":"
                 + verbose
                 + "}";

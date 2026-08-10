@@ -61,6 +61,7 @@ import cc.jumpkick.command.TestCommand;
 import cc.jumpkick.command.ToolCommand;
 import cc.jumpkick.command.ToolInstallCommand;
 import cc.jumpkick.command.ToolRunCommand;
+import cc.jumpkick.command.TrainCommand;
 import cc.jumpkick.command.TreeCommand;
 import cc.jumpkick.command.TrustCommand;
 import cc.jumpkick.command.UpdateCommand;
@@ -153,6 +154,7 @@ public final class CommandDispatch {
             new TestCommand(),
             new FormatCommand(),
             new NativeCommand(),
+            new TrainCommand(),
             new ImageCommand(),
             new MvnCommand(),
             new GradleCommand(),

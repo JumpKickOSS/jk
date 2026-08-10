@@ -1709,6 +1709,7 @@ public final class JkBuildParser {
                 "application",
                 "native",
                 "image",
+                "train",
                 "build",
                 "test",
                 "format",

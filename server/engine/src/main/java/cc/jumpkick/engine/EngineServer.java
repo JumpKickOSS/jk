@@ -870,6 +870,10 @@ public final class EngineServer implements AutoCloseable {
                                 line, reader, writer, "jk-engine-native-", "native", this::runNative);
                         return;
                     }
+                    case EngineProtocol.TRAIN_REQUEST -> {
+                        handleAsyncBuildPlanRequest(line, reader, writer, "jk-engine-train-", "train", this::runTrain);
+                        return;
+                    }
                     case EngineProtocol.INSTALL_REQUEST -> {
                         // jk install's build + cache-install halves; make-install stays client-side.
                         handleAsyncBuildPlanRequest(
@@ -2450,6 +2454,7 @@ public final class EngineServer implements AutoCloseable {
             EngineProtocol.SINGLE_BUILD_REQUEST,
             EngineProtocol.COMPILE_REQUEST,
             EngineProtocol.NATIVE_REQUEST,
+            EngineProtocol.TRAIN_REQUEST,
             EngineProtocol.IMAGE_REQUEST,
             EngineProtocol.INSTALL_REQUEST,
             EngineProtocol.PUBLISH_REQUEST);
@@ -3451,6 +3456,44 @@ public final class EngineServer implements AutoCloseable {
     }
 
     // ---- hosted plan commands -------------------------------------------------------------------
+
+    /**
+     * Decode a {@link EngineProtocol#TRAIN_REQUEST} and run {@code jk train}: package then observe
+     * under the tracing agent. Single-module plan (like {@code jk compile}).
+     */
+    private void runTrain(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+        try {
+            boolean verbose = Jsonl.bool(requestLine, "verbose", false);
+            boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
+            boolean force = Jsonl.bool(requestLine, "force", false);
+            String profile = Jsonl.str(requestLine, "profile");
+            String graalHomeStr = Jsonl.str(requestLine, "graalHome");
+            String jdksDirStr = Jsonl.str(requestLine, "jdksDir");
+            Session session = resolveSession(requestLine, cancelToken, false);
+            String dir = EngineProtocol.SINGLE_PLAN_DIR;
+            Path graalHome = graalHomeStr != null && !graalHomeStr.isBlank() ? Path.of(graalHomeStr) : null;
+            Path jdksDir = jdksDirStr != null && !jdksDirStr.isBlank() ? Path.of(jdksDirStr) : null;
+            Path javaHome = Path.of(System.getProperty("java.home"));
+            cc.jumpkick.run.BuildPlan plan = SessionContext.where(session, () -> {
+                JkBuild module = cc.jumpkick.config.JkBuildParser.parse(
+                        session.workingDir().resolve("jk.toml"));
+                return cc.jumpkick.runtime.TrainPlans.moduleBuildPlan(
+                        session.workingDir(),
+                        module,
+                        session.cacheDir(),
+                        jdksDir,
+                        graalHome,
+                        javaHome,
+                        profile,
+                        force,
+                        skipTests,
+                        verbose);
+            });
+            streamSingleBuildPlan(plan, session, writer, result -> EngineProtocol.planFinish(dir, result.success()));
+        } catch (Exception e) {
+            sendQuiet(writer, requestFailedLine(null, e));
+        }
+    }
 
     /**
      * Decode a {@link EngineProtocol#COMPILE_REQUEST} and run {@code jk compile}'s single

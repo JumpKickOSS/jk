@@ -3970,6 +3970,28 @@ public final class BuildPlanner {
                     if (frameworkSources != null) {
                         metadataDirs = List.of();
                     }
+                    // Trained reachability from `jk train` (target/train/merged/reachability).
+                    Path trainReach = layout.moduleTargetDir()
+                            .resolve(cc.jumpkick.surface.TrainLayout.ROOT)
+                            .resolve("merged")
+                            .resolve(cc.jumpkick.surface.TrainLayout.REACHABILITY);
+                    if (Files.isDirectory(trainReach)
+                            && Files.isRegularFile(trainReach.resolve("reachability-metadata.json"))) {
+                        java.util.ArrayList<Path> withTrain = new java.util.ArrayList<>(metadataDirs);
+                        withTrain.add(0, trainReach);
+                        metadataDirs = withTrain;
+                        // Refuse to native-build on stale train outputs when configured.
+                        try {
+                            var trainCfg = cc.jumpkick.config.TrainConfigParser.parse(dir.resolve("jk.toml"));
+                            String stale = TrainRunner.staleReason(dir, project, layout, lockFile, trainCfg);
+                            if (stale != null) {
+                                ctx.error("train-stale", stale);
+                                throw new RuntimeException(stale);
+                            }
+                        } catch (java.io.IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    }
                     if (!metadataDirs.isEmpty()) {
                         StringBuilder dirsArg = new StringBuilder();
                         for (Path d : metadataDirs) {

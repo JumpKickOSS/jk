@@ -38,6 +38,11 @@ public final class TaskNames {
     public static final String LOCK_PLUGINS = "lock-plugins";
     public static final String LOCK_SDK = "lock-sdk";
     public static final String NATIVE_IMAGE = "native-image";
+    /**
+     * Opt-in reachability / AOT observation ({@code jk train}). Not on the default build terminal.
+     */
+    public static final String TRAIN = "train";
+
     public static final String PACKAGE_JAR = "package-jar";
     public static final String PACKAGE_ASSEMBLY = "package-assembly";
 

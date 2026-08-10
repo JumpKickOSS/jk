@@ -120,11 +120,27 @@ final class MinifiedJarPackager {
             cc.jumpkick.surface.DynamicSurface composed = ByNameIndex.composedFromLibraries(program);
             cc.jumpkick.surface.DynamicSurface surface =
                     ByNameIndex.surface(derived).merge(composed);
+            // Optional train observations from `jk train` (target/train/merged/dynamic-surface.json).
+            Path trainSurface = io.artifactPath()
+                    .getParent()
+                    .resolve(cc.jumpkick.surface.TrainLayout.ROOT)
+                    .resolve("merged")
+                    .resolve(cc.jumpkick.surface.TrainLayout.SURFACE_JSON);
+            cc.jumpkick.surface.DynamicSurface trained = cc.jumpkick.surface.DynamicSurface.empty();
+            if (java.nio.file.Files.isRegularFile(trainSurface)) {
+                trained = cc.jumpkick.surface.DynamicSurfaceIo.readJson(trainSurface);
+                surface = surface.merge(trained);
+            }
             if (!surface.entries().isEmpty()) {
-                pro.append("\n# Derived from by-name indexes and library native-image metadata.\n")
+                pro.append("\n# Derived from by-name indexes, library native-image metadata")
+                        .append(trained.entries().isEmpty() ? "" : ", and train observations")
+                        .append(".\n")
                         .append(cc.jumpkick.surface.KeepRuleEmitter.emit(surface));
                 io.label("keep rules: " + derived.size() + " from by-name indexes, "
-                        + composed.entries().size() + " from library metadata");
+                        + composed.entries().size() + " from library metadata"
+                        + (trained.entries().isEmpty()
+                                ? ""
+                                : ", " + trained.entries().size() + " from train"));
             }
 
             for (String rule : io.config().stringList("keep")) {

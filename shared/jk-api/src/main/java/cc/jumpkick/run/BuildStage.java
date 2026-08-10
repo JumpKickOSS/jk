@@ -31,6 +31,11 @@ public enum BuildStage {
     TEST("test"),
     /** Jar / assembly packaging. */
     PACKAGE("package"),
+    /**
+     * Opt-in {@code jk train}: observe a full-app run under a recorder. Not part of default
+     * {@code jk build}.
+     */
+    TRAIN("train"),
     /** Graal native-image and related. */
     NATIVE("native"),
     /** OCI / image packaging. */
@@ -73,8 +78,9 @@ public enum BuildStage {
             case COMPILE -> 2;
             case TEST -> 3;
             case PACKAGE -> 4;
-            case NATIVE -> 5;
-            case IMAGE -> 6;
+            case TRAIN -> 5;
+            case NATIVE -> 6;
+            case IMAGE -> 7;
             case OTHER -> -1;
         };
     }
@@ -163,12 +169,14 @@ public enum BuildStage {
             // GENERATE reserved for explicit stage / future before-compile codegen tasks
             case "compile-test", "run-tests" -> TEST;
             case "package-jar", "package-assembly", "embed-sha", "build-logic-before-package" -> PACKAGE;
+            case "train", "train-reachability" -> TRAIN;
             case "native-image", "native-shared" -> NATIVE;
             case "write-image", "image-plan" -> IMAGE;
             default -> {
                 if (t.startsWith("compile")) yield COMPILE;
                 if (t.startsWith("write-stamp")) yield COMPILE;
                 if (t.startsWith("package")) yield PACKAGE;
+                if (t.startsWith("train")) yield TRAIN;
                 if (t.startsWith("native")) yield NATIVE;
                 if (t.startsWith("image") || t.startsWith("write-image")) yield IMAGE;
                 if (t.contains("generat") || t.contains("codegen")) yield GENERATE;
