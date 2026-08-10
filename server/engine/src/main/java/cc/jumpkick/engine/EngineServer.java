@@ -5138,7 +5138,7 @@ public final class EngineServer implements AutoCloseable {
             String dir,
             BufferedWriter writer,
             java.util.function.Function<BuildPlanResult, String> finishEncoder,
-            boolean flushTimelineOnBuildPlanFinish) {
+            boolean releaseSlotOnBuildPlanFinish) {
         // Created on the runner's thread (directly, or via wireListener's onModuleStart which runs
         // on a scheduler thread — there the ThreadLocal is unset and module events carry the id).
         long eventRequestId = eventRequestId();
@@ -5244,13 +5244,16 @@ public final class EngineServer implements AutoCloseable {
                                     d.test(),
                                     d.exceptionClass()));
                 }
-                // Single-plan builds: timeline before terminal finish. Workspace modules skip
-                // (flush once in runBuild before workspace-finish).
-                if (flushTimelineOnBuildPlanFinish) flushTimelineToClient(eventRequestId, writer);
+                // Timeline before the terminal finish, for every socket request that owns an
+                // accumulator (no-op otherwise): a client that has returned must not observe the
+                // engine still writing target/jk-chrome-profile.json (JK-1714). Workspace modules
+                // flush once in runBuild before workspace-finish; the flushTimeline guard makes a
+                // second call here idempotent.
+                flushTimelineToClient(eventRequestId, writer);
                 // Free exclusive fingerprint before the terminal line so a client that reconnects
                 // immediately is not rejected as already-running (single-plan only; workspace
                 // releases after BuildService.buildWorkspace returns).
-                if (flushTimelineOnBuildPlanFinish) inFlightBuilds.release(eventRequestId);
+                if (releaseSlotOnBuildPlanFinish) inFlightBuilds.release(eventRequestId);
                 sendQuiet(writer, finishEncoder.apply(result));
                 publishBuildPlanFinish(eventRequestId, dir, result.success());
                 if (!result.success()) publishDiagnostics(eventRequestId, dir, result.errors());
