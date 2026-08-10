@@ -5,6 +5,7 @@
 const TOKEN_KEY = 'jk-http-token';
 const EPOCH_KEY = 'jk-engine-epoch';
 const EPOCH_HEADER = 'X-Jk-Engine-Epoch';
+const RELOAD_FLAG = 'jk-epoch-reload';
 
 /**
  * On load, adopt a token from the URL fragment (`#t=…` — printed by `jk engine status`), stash it
@@ -93,20 +94,35 @@ export function noteEngineEpoch(statusOrEpoch) {
   const prev = engineEpoch();
   if (prev == null) {
     sessionStorage.setItem(EPOCH_KEY, next);
+    clearReloadLatch();
     return 'ok';
   }
-  if (prev !== next) return 'mismatch';
+  if (prev !== next) {
+    // Latch the new generation before the caller reloads (mirrors handleEpochConflict) so the
+    // post-reload hydrate sees a consistent epoch and clears the reload latch in one pass.
+    sessionStorage.setItem(EPOCH_KEY, next);
+    return 'mismatch';
+  }
+  // Epoch-consistent hydrate: the tab and engine agree, so any pending reload latch is stale
+  // (JK-1793). Clearing it here keeps the flag purely as an in-flight-reload latch — a genuine
+  // restart after this point must hard-refresh on first detection, not be swallowed.
+  clearReloadLatch();
   return 'ok';
+}
+
+function clearReloadLatch() {
+  sessionStorage.removeItem(RELOAD_FLAG);
 }
 
 /** Full shell reload when the engine generation under this tab has changed. Loop-safe. */
 export function hardRefreshForEpoch() {
-  const flag = 'jk-epoch-reload';
-  if (sessionStorage.getItem(flag) === '1') {
-    sessionStorage.removeItem(flag);
+  if (sessionStorage.getItem(RELOAD_FLAG) === '1') {
+    // A reload for this mismatch is already in flight (or the last one failed to resolve it);
+    // don't loop. The latch is cleared by the next epoch-consistent hydrate (noteEngineEpoch).
+    sessionStorage.removeItem(RELOAD_FLAG);
     return;
   }
-  sessionStorage.setItem(flag, '1');
+  sessionStorage.setItem(RELOAD_FLAG, '1');
   location.reload();
 }
 
