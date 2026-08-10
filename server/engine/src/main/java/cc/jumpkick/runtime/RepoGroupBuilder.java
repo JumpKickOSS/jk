@@ -153,9 +153,7 @@ public final class RepoGroupBuilder {
         if (spec == null) return false;
         if ("google".equalsIgnoreCase(spec.name())) return true;
         String host = spec.url().getHost();
-        return host != null
-                && (host.equalsIgnoreCase("dl.google.com")
-                        || host.equalsIgnoreCase("maven.google.com"));
+        return host != null && (host.equalsIgnoreCase("dl.google.com") || host.equalsIgnoreCase("maven.google.com"));
     }
 
     /**

@@ -154,5 +154,4 @@ public final class KmpRedirects {
         String head = new String(buf, 0, n, StandardCharsets.UTF_8);
         return head.contains(GradleModuleMetadata.POM_MARKER);
     }
-
 }

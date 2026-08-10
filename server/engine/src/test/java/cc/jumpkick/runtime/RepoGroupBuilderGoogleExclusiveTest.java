@@ -38,13 +38,13 @@ class RepoGroupBuilderGoogleExclusiveTest {
 
     @Test
     void central_has_no_default_exclusive() {
-        assertThat(RepoGroupBuilder.exclusiveGroupsFor(RepositorySpec.MAVEN_CENTRAL)).isEmpty();
+        assertThat(RepoGroupBuilder.exclusiveGroupsFor(RepositorySpec.MAVEN_CENTRAL))
+                .isEmpty();
     }
 
     @Test
     void detects_google_by_host() {
-        RepositorySpec mavenGoogle =
-                new RepositorySpec("g", URI.create("https://maven.google.com/"));
+        RepositorySpec mavenGoogle = new RepositorySpec("g", URI.create("https://maven.google.com/"));
         assertThat(RepoGroupBuilder.isGoogleAndroidMaven(mavenGoogle)).isTrue();
     }
 }

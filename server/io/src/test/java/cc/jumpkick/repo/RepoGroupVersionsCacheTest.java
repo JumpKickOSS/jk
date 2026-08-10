@@ -33,19 +33,18 @@ class RepoGroupVersionsCacheTest {
         assertThat(first).containsExactlyInAnyOrder("1.0", "2.0");
 
         // Delete on-disk metadata — process memo must still answer.
-        Files.walk(repoDir)
-                .sorted((a, b) -> b.compareTo(a))
-                .forEach(p -> {
-                    try {
-                        Files.deleteIfExists(p);
-                    } catch (Exception ignored) {
-                    }
-                });
+        Files.walk(repoDir).sorted((a, b) -> b.compareTo(a)).forEach(p -> {
+            try {
+                Files.deleteIfExists(p);
+            } catch (Exception ignored) {
+            }
+        });
         List<String> second = group.availableVersions(Coordinate.of("com.example", "lib", "0"));
         assertThat(second).isEqualTo(first);
 
         RepoGroup.clearProcessVersionsCache();
-        assertThat(group.availableVersions(Coordinate.of("com.example", "lib", "0"))).isEmpty();
+        assertThat(group.availableVersions(Coordinate.of("com.example", "lib", "0")))
+                .isEmpty();
     }
 
     private static void writeMeta(Path root, String group, String artifact, String... versions) throws Exception {
@@ -64,8 +63,7 @@ class RepoGroupVersionsCacheTest {
                 %s    </versions>
                   </versioning>
                 </metadata>
-                """
-                .formatted(group, artifact, vs);
+                """.formatted(group, artifact, vs);
         Files.writeString(dir.resolve("maven-metadata.xml"), body);
     }
 }

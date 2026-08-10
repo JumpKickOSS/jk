@@ -45,8 +45,7 @@ class KmpRedirectsNonAllowlistedTest {
                   <artifactId>%s</artifactId>
                   <version>%s</version>
                 </project>
-                """
-                .formatted(g, a, v);
+                """.formatted(g, a, v);
         Files.writeString(base.resolve(a + "-" + v + ".pom"), pom);
         String module = """
                 {
@@ -69,8 +68,7 @@ class KmpRedirectsNonAllowlistedTest {
                     }
                   ]
                 }
-                """
-                .formatted(g, a, v, g, v);
+                """.formatted(g, a, v, g, v);
         Files.writeString(base.resolve(a + "-" + v + ".module"), module, StandardCharsets.UTF_8);
 
         Cas cas = new Cas(tmp.resolve("cas"));
