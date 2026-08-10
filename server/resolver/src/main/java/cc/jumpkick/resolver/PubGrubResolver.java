@@ -33,6 +33,9 @@ public final class PubGrubResolver implements Resolver {
     private static final String ROOT_VERSION = "0.0.0";
 
     private final PackageSource source;
+
+    /** {@code from->to} pairs already reported this resolve — one relocation line per lock. */
+    private final java.util.Set<String> reportedRelocations = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final EffectivePomBuilder pomBuilder;
     private KmpRedirects kmp = KmpRedirects.NONE;
     /** Optional palette injected by the CLI so diagnostic colors match the live theme. */
@@ -206,6 +209,15 @@ public final class PubGrubResolver implements Resolver {
                             .key();
                     if (decisions.containsKey(toPkg)) {
                         deps.add(toPkg + "@" + decisions.get(toPkg));
+                    }
+                    // The <message> is the mechanism's whole point for the user: upstream retired
+                    // the coordinate and says what to do about it. Following the redirect silently
+                    // leaves jk.toml naming a dead artifact forever (JK-1709). Once per lock.
+                    if (reportedRelocations.add(e.getKey() + "->" + toPkg)) {
+                        String msg = moved.message();
+                        System.err.println("jk: " + e.getKey() + "@" + e.getValue() + " has been relocated to "
+                                + to.group() + ":" + to.artifact()
+                                + (msg == null || msg.isBlank() ? "" : " — " + msg.trim()));
                     }
                     dependsOn.put(e.getKey(), deps);
                     continue;
