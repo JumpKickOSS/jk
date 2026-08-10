@@ -1888,7 +1888,10 @@ Vue.createApp({
         this.newProject.template = '';
         // Keep group + parentDir so the next create is one field away from a sibling project.
         if (path) {
-          this.openProject(path);
+          // Route with the durable projectId from the create response (JK-1775) — never the
+          // filesystem path: #project/<abs-path> lands a broken page in history (isValidId
+          // rejects '/'). Without an id, skip the hash push instead of pushing a dead route.
+          if (res.projectId) this.openProject(res.projectId, path);
           await this.triggerBuild(path);
           this.setView('activity');
         }

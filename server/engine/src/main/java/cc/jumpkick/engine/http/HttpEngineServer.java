@@ -854,13 +854,26 @@ public final class HttpEngineServer implements AutoCloseable {
             var result = cc.jumpkick.engine.runtime.NewProjectOps.create(
                     new cc.jumpkick.engine.runtime.NewProjectOps.Request(
                             name, parentDir, group, lang, layout, template, executable, framework));
-            sendJson(
-                    exchange,
-                    201,
-                    JsonOut.object()
-                            .put("path", result.path().toString())
-                            .put("dir", result.path().toString())
-                            .toString());
+            // Resolve the durable projectId so the SPA can route #project/<id> immediately
+            // (JK-1775) — an absolute path in the hash 404s (isValidId rejects '/'). The
+            // scaffolder writes no lock, so materialize identity.toml under the project home;
+            // without it GET /api/project?project=<id> cannot map the id back to the checkout.
+            String projectId = null;
+            try {
+                var identity = cc.jumpkick.builds.ProjectIdentity.resolve(result.path());
+                cc.jumpkick.builds.ProjectIdentity.IdentityFile.write(
+                        cc.jumpkick.builds.ProjectBuilds.projectHome(identity.id()), identity);
+                cc.jumpkick.runtime.ProjectIds.refresh(result.path().toString());
+                projectId = identity.id();
+            } catch (RuntimeException | IOException e) {
+                // Identity resolution/persist is best-effort — creation succeeded; the SPA
+                // skips the project route when projectId is absent.
+            }
+            JsonOut created = JsonOut.object()
+                    .put("path", result.path().toString())
+                    .put("dir", result.path().toString());
+            if (projectId != null) created.put("projectId", projectId);
+            sendJson(exchange, 201, created.toString());
         } catch (IllegalArgumentException e) {
             sendJson(
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
