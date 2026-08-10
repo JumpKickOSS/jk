@@ -177,7 +177,9 @@ public final class InstallPlans {
         Path jar = layout.mainJar();
         String jarRelPath = cc.jumpkick.repo.MavenLayout.artifactPath(coord);
         String pomRelPath = cc.jumpkick.repo.MavenLayout.pomPath(coord);
-        String pomXml = cc.jumpkick.publish.PublishablePom.render(project, null).xml();
+        String pomXml = cc.jumpkick.publish.PublishablePom.render(
+                        project, null, cc.jumpkick.config.WorkspaceResolve.siblingCoordinates(layout.moduleRoot()))
+                .xml();
         byte[] pomBytes = pomXml.getBytes(java.nio.charset.StandardCharsets.UTF_8);
 
         if (p.m2install()) {
