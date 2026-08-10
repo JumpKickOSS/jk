@@ -3202,6 +3202,20 @@ public final class BuildPlanner {
         // The packager's CODE is an input, same as plugin steps (see pluginTask).
         tokens.add(
                 "worker:" + cc.jumpkick.task.ClasspathFingerprint.entry(PluginBuild.workerJarFor(active, in.cache())));
+        // The minified packager folds `jk train` observations into its keep rules out-of-band
+        // (same path derivation as MinifiedJarPackager.produce). Absence and every content state
+        // must be distinct keys — otherwise a post-train rebuild restores the pre-train jar as
+        // "up-to-date" and training never reaches the shipped artifact (JK-1751).
+        if ("minified-jar".equals(decls.packager().name())) {
+            Path trainSurface = jarPath.getParent()
+                    .resolve(cc.jumpkick.surface.TrainLayout.ROOT)
+                    .resolve("merged")
+                    .resolve(cc.jumpkick.surface.TrainLayout.SURFACE_JSON);
+            tokens.add("train:"
+                    + (Files.isRegularFile(trainSurface)
+                            ? cc.jumpkick.task.ClasspathFingerprint.entry(trainSurface)
+                            : "absent"));
+        }
         String pkgTask = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAR, jarPath);
         String pkgKey = ActionKey.forArtifact(pkgTask, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), tokens);
         if (restorePackaged(in.cache(), pkgKey, jarPath.getParent())) {
