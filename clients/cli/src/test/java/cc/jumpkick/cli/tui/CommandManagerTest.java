@@ -279,36 +279,41 @@ class CommandManagerTest {
     }
 
     @Test
-    void eta_seed_locks_after_a_module_completes_so_reprojections_cannot_jump_the_clock() {
-        // Live re-projections used to overwrite the total mid-build (elapsed + remaining schedule),
-        // so the countdown jumped at module boundaries and count-up reset near zero.
+    void residual_eta_updates_after_modules_finish_without_resetting_count_up() {
+        // Remaining-work R(t) may shrink mid-build; count-up stays run-wide from construction.
+        // Between residual emits the client still subtracts wall elapsed from the last R.
         var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
-        cm.setEtaEstimate(38_000);
-        cm.setModuleProgress(1, 2); // first module finished → lock
-        cm.setEtaEstimate(20_000); // would-be re-projection: ignore
-        // 10s elapsed of a locked 38s seed → 28s remain (not 10s from the rejected re-projection).
+        cm.setEtaEstimate(38_000); // R0 remaining at t≈0 → total ≈ 38s
+        cm.setModuleProgress(1, 2);
+        cm.setEtaEstimate(20_000); // residual: 20s left at t≈0 → total ≈ 20s (not locked at 38)
+        // 10s wall later without a new residual → remaining ≈ 10s (20−10), not open-loop 38−10=28.
         String mid = TestAnsi.strip(cm.renderBuildPlanLines(120, 10_000).get(0));
-        assertThat(mid).contains("ETA ~28s");
+        assertThat(mid).contains("ETA ~10s");
         assertThat(mid).contains("+10s");
-        // Overrun still pure wall-clock from the locked seed: freeze 0s + full elapsed (not re-projected).
+        // Residual hits 0 → freeze countdown at 0s; count-up keeps wall elapsed.
+        cm.setEtaEstimate(0);
         String over = TestAnsi.strip(cm.renderBuildPlanLines(120, 40_000).get(0));
         assertThat(over).contains("ETA 0s");
         assertThat(over).contains("+40s");
     }
 
     @Test
-    void cold_count_up_is_run_wide_and_never_cleared_by_a_zero_eta() {
+    void cold_count_up_is_run_wide_until_a_remaining_seed_arrives() {
         var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
         // No seed → +elapsed for the whole command.
         assertThat(TestAnsi.strip(cm.renderBuildPlanLines(120, 12_000).get(0))).contains("+12s");
-        // A zero ETA must not reset or clear a later positive seed's continuity either.
+        // Positive remaining seeds the dual clock (R=30s at apply time ≈ elapsed 0).
         cm.setEtaEstimate(30_000);
-        cm.setEtaEstimate(0); // ignore clear
         String seeded = TestAnsi.strip(cm.renderBuildPlanLines(120, 12_000).get(0));
         assertThat(seeded).contains("ETA ~18s");
         assertThat(seeded).contains("+12s");
+        // R(t)=0 is a real residual (done), not "unknown" — countdown freezes at 0s.
+        cm.setEtaEstimate(0);
+        String done = TestAnsi.strip(cm.renderBuildPlanLines(120, 12_000).get(0));
+        assertThat(done).contains("ETA 0s");
+        assertThat(done).contains("+12s");
     }
 
     @Test

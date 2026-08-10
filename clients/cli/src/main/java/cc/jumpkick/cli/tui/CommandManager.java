@@ -102,7 +102,16 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     private long numerator;
     private long denominator;
     private double peakFraction; // monotonic-display floor: the bar never renders below this
-    private long etaEstimateMs; // total predicted build wall-clock (the jk explain figure); 0 = no countdown
+    /**
+     * Last residual wall remaining {@code R(t)} from the engine ({@code -1} = unknown / count-up
+     * only). Paired with {@link #remainingSetAtElapsedMs} so paint decays R by wall time between
+     * residual updates without clearing a zero remaining (done) back to unknown.
+     */
+    private long remainingWorkMs = -1;
+    /** {@link #elapsedMillis()} when {@link #remainingWorkMs} was last set. */
+    private long remainingSetAtElapsedMs;
+    /** Run-wide total for notifications: roughly elapsed-at-seed + R0. 0 when never seeded. */
+    private long etaEstimateMs;
     private int modulesComplete;
     private int modulesTotal; // 0 = hide module remaining
     private long finishSeq;
@@ -342,27 +351,31 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      * </ul>
      */
     public void setEtaEstimate(long remainingOrTotalMillis) {
-        // Treat as remaining-work: convert to run-wide total for the existing paint math.
         setRemainingWorkEstimate(remainingOrTotalMillis);
     }
 
     /**
-     * Apply a remaining-work estimate {@code R(t)} (ms). Live residual updates from the engine
-     * replace the previous remaining; elapsed count-up is unchanged.
+     * Apply a remaining-work estimate {@code R(t)} (ms). Live residual updates replace the previous
+     * remaining; count-up elapsed is unchanged. {@code 0} means no work left (still seeded — paints
+     * {@code ETA 0s}), not "unknown". An initial {@code 0} before any positive seed is ignored.
      */
     public void setRemainingWorkEstimate(long remainingMillis) {
         long rem = Math.max(0, remainingMillis);
         synchronized (lock) {
-            // Convert remaining → run-wide total so paint uses total−elapsed ≈ remaining.
-            long next = elapsedMillis() + rem;
-            // Allow residual to shrink remaining (and grow it if under-predicted). Only ignore
-            // a zero remaining when we never had a seed (unknown) — once seeded, R=0 is valid.
-            if (next == 0 && etaEstimateMs <= 0 && rem == 0) return;
-            this.etaEstimateMs = next;
+            // Unknown → still unknown: ignore a bare zero (engine "no estimate").
+            if (remainingWorkMs < 0 && rem == 0) return;
+            long elapsed = elapsedMillis();
+            remainingWorkMs = rem;
+            remainingSetAtElapsedMs = elapsed;
+            // Notifications: run-wide total ≈ elapsed so far + remaining (stable-ish).
+            etaEstimateMs = elapsed + rem;
         }
     }
 
-    /** Seeded ETA total in milliseconds (0 = none). Used for long-build desktop notifications. */
+    /**
+     * Run-wide total estimate in ms for desktop notifications ({@code 0} = never seeded).
+     * Not the live remaining — use the header clock for that.
+     */
     public long etaEstimateMs() {
         synchronized (lock) {
             return etaEstimateMs;
@@ -1603,9 +1616,22 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         // seed's sub-second remainder — often ~100ms after setRemainingWorkEstimate).
         h.append(' ').append(Theme.colorize("·", dim)).append(' ');
         long elapsedSec = Math.max(0L, elapsedMillis) / 1000L;
-        if (etaEstimateMs > 0) {
-            long etaSec = Math.max(0L, etaEstimateMs) / 1000L;
-            long remainingSec = etaSec - elapsedSec;
+        // Dual clock when we have ever received a remaining-work seed (including R=0 done).
+        // Deadline = setAt + R so remainingSec and elapsedSec share whole-second boundaries
+        // (floor(R−Δt) alone desyncs faces by the sub-second remainder of R).
+        long remainingSec;
+        boolean seeded;
+        synchronized (lock) {
+            if (remainingWorkMs < 0) {
+                seeded = false;
+                remainingSec = 0;
+            } else {
+                seeded = true;
+                long deadlineMs = remainingSetAtElapsedMs + remainingWorkMs;
+                remainingSec = Math.max(0L, deadlineMs / 1000L - elapsedSec);
+            }
+        }
+        if (seeded) {
             h.append(Theme.colorize("ETA ", dim.italic()));
             if (remainingSec <= 0) {
                 h.append(Theme.colorize("0s", dim));
