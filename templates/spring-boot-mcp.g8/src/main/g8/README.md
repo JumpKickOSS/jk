@@ -1,6 +1,6 @@
 # $name$
 
-Spring Boot MCP server — exposes `@Tool` methods to MCP clients (Claude, IDEs, agents)
+Spring Boot MCP server — exposes `@Tool` methods to MCP clients (IDEs, agents, and similar)
 over the WebMVC SSE transport. Scaffolded from the jk `spring-boot-mcp` template —
 Spring Boot $spring_boot$, Spring AI $spring_ai$.
 
