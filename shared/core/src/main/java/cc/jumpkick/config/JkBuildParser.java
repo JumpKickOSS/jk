@@ -1742,6 +1742,12 @@ public final class JkBuildParser {
                 if (known.length() > 0) known.append(", ");
                 known.append('[').append(m.table()).append(']');
             }
+            if ("shrink".equals(key)) {
+                // The plugin was renamed (JK-1798); steer pre-rename projects the same way the
+                // `assembly = "shrink"` migration message does.
+                throw new JkBuildParseException(
+                        "[shrink] was renamed — use a [minified] table (and `assembly = \"minified\"`)");
+            }
             throw new JkBuildParseException("[" + key + "] is not owned by any installed plugin — add it under"
                     + " [plugins] (plugin tables installed here: " + (known.length() == 0 ? "none" : known) + ")");
         }

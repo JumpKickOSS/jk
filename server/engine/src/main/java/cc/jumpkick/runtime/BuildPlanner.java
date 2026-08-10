@@ -3680,7 +3680,7 @@ public final class BuildPlanner {
                     BuildLayout layout = ctx.require(LAYOUT);
                     var active = PluginBuild.activeCodePlugin(project, layout.moduleRoot());
                     if (active.isEmpty()) {
-                        throw new IllegalStateException("[application] minified = true requires the shrink plugin"
+                        throw new IllegalStateException("[application] minified = true requires the minified plugin"
                                 + " — add a [minified] table or remove `minified`");
                     }
                     PluginBuild.Declarations decls = PluginBuild.declarations(

@@ -183,8 +183,10 @@ metadata reviewed and versioned rather than regenerated in CI.
 
 ### Freshness
 
-The fingerprint covers the lockfile digest, the module's classes, the train suite's sources, the
-profile definitions, the jk version and the recorder version. Any change makes the outputs stale.
+The fingerprint covers the lockfile digest, the packaged main jar, the profile definitions, the
+profiles a filtered run actually observed, and the jk version (which pins the recorder wiring).
+Suite sources and classes are covered through the jar and lock they produce, not hashed
+directly. Any change makes the outputs stale.
 
 Stale outputs are used with a warning by default — a metadata set that is slightly behind is
 usually better than none. `require-fresh = true` turns that into an error, which is the release
