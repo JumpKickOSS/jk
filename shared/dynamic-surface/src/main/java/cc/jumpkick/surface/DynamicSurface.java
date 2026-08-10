@@ -66,6 +66,13 @@ public record DynamicSurface(List<Entry> entries) {
          * re-emitting a regex as a glob would match nothing (JK-1777).
          */
         RESOURCE_PATTERN,
+        /**
+         * A resource a library's config explicitly excludes; {@code name} is a Java regex.
+         * Re-emitted into the split-format {@code resource-config.json} excludes — native-image
+         * merges includes and excludes across config files and exclusion wins, which is exactly
+         * what happens when the library's own config sits on the image classpath (JK-1800).
+         */
+        RESOURCE_EXCLUDE_PATTERN,
         /** The type crosses a serialization boundary. */
         SERIALIZATION_TYPE,
         /** An implementation named by a service file or marker index. */

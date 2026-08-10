@@ -171,6 +171,39 @@ class NativeImageMetadataTest {
     }
 
     @Test
+    void resource_excludes_are_honored_and_re_emitted() {
+        // A library's excludes are part of its declared surface: native-image merges includes
+        // and excludes across config files and exclusion wins, so dropping them over-included
+        // resources the library asked to keep out (JK-1800). Glob excludes convert exactly.
+        String body = """
+                {"resources":{
+                  "includes":[{"pattern":"\\\\Qapplication.yml\\\\E"}],
+                  "excludes":[{"pattern":".*\\\\.key"},{"glob":"secrets/**"}]
+                }}
+                """;
+
+        DynamicSurface surface = NativeImageMetadata.parse("x/resource-config.json", body, "lib");
+
+        assertThat(surface.of(RESOURCE)).extracting(Entry::name).containsExactly("application.yml");
+        assertThat(surface.of(DynamicSurface.Kind.RESOURCE_EXCLUDE_PATTERN))
+                .extracting(Entry::name)
+                .containsExactly(".*\\.key", "\\Qsecrets/\\E.*");
+        assertThat(ReachabilityMetadataEmitter.emitResourceConfig(surface))
+                .contains("\"excludes\":[")
+                .contains("{\"pattern\":\".*\\\\.key\"}")
+                .contains("{\"pattern\":\"\\\\Qsecrets/\\\\E.*\"}")
+                .doesNotContain("\"includes\"");
+        assertThat(KeepRuleEmitter.emit(surface)).isEmpty();
+    }
+
+    @Test
+    void glob_to_regex_converts_exactly() {
+        assertThat(NativeImageMetadata.globToRegex("secrets/**")).isEqualTo("\\Qsecrets/\\E.*");
+        assertThat(NativeImageMetadata.globToRegex("config/*.yml")).isEqualTo("\\Qconfig/\\E[^/]*\\Q.yml\\E");
+        assertThat(NativeImageMetadata.globToRegex("application.yml")).isEqualTo("\\Qapplication.yml\\E");
+    }
+
+    @Test
     void regex_to_glob_translates_only_the_faithful_forms() {
         assertThat(NativeImageMetadata.regexToGlob("\\Qapplication.yml\\E")).isEqualTo("application.yml");
         assertThat(NativeImageMetadata.regexToGlob("\\Qconfig/\\E.*")).isEqualTo("config/**");

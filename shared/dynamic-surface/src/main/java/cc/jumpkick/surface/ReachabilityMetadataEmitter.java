@@ -38,9 +38,9 @@ public final class ReachabilityMetadataEmitter {
                 // reflection entry with a map-shaped type (JK-1752).
                 case RESOURCE -> resources.add("{\"glob\":" + quote(entry.name()) + "}");
                 case PROXY_INTERFACE -> reflection.add(proxyObject(entry.name()));
-                // The unified schema has no regex resource form; these ride in the split-format
-                // resource-config.json from emitResourceConfig instead (JK-1777).
-                case RESOURCE_PATTERN -> {}
+                // The unified schema has no regex resource form and no excludes; both ride in the
+                // split-format resource-config.json from emitResourceConfig (JK-1777, JK-1800).
+                case RESOURCE_PATTERN, RESOURCE_EXCLUDE_PATTERN -> {}
                 // Graal keeps generic signatures without being told.
                 case GENERIC_REFLECTION -> {}
             }
@@ -55,20 +55,28 @@ public final class ReachabilityMetadataEmitter {
     }
 
     /**
-     * {@link DynamicSurface.Kind#RESOURCE_PATTERN} entries as a legacy split-format {@code
-     * resource-config.json}. The unified schema only has globs, and a regex emitted as a glob
-     * matches nothing; native-image still honors the split pattern form, so untranslatable
-     * regexes ship in this sidecar (JK-1777). Empty string when the surface has none.
+     * {@link DynamicSurface.Kind#RESOURCE_PATTERN} and
+     * {@link DynamicSurface.Kind#RESOURCE_EXCLUDE_PATTERN} entries as a legacy split-format
+     * {@code resource-config.json}. The unified schema only has include globs: a regex emitted
+     * as a glob matches nothing (JK-1777), and excludes have no unified shape at all (JK-1800);
+     * native-image still honors the split form, so both ship in this sidecar. Empty string when
+     * the surface has neither.
      */
     public static String emitResourceConfig(DynamicSurface surface) {
-        List<String> patterns = new ArrayList<>();
+        List<String> includes = new ArrayList<>();
+        List<String> excludes = new ArrayList<>();
         for (DynamicSurface.Entry entry : surface.entries()) {
-            if (entry.kind() == DynamicSurface.Kind.RESOURCE_PATTERN) {
-                patterns.add("{\"pattern\":" + quote(entry.name()) + "}");
+            switch (entry.kind()) {
+                case RESOURCE_PATTERN -> includes.add("{\"pattern\":" + quote(entry.name()) + "}");
+                case RESOURCE_EXCLUDE_PATTERN -> excludes.add("{\"pattern\":" + quote(entry.name()) + "}");
+                default -> {}
             }
         }
-        if (patterns.isEmpty()) return "";
-        return "{\"resources\":{\"includes\":[\n  " + String.join(",\n  ", patterns) + "\n]}}\n";
+        if (includes.isEmpty() && excludes.isEmpty()) return "";
+        List<String> sections = new ArrayList<>();
+        if (!includes.isEmpty()) sections.add("\"includes\":[\n  " + String.join(",\n  ", includes) + "\n]");
+        if (!excludes.isEmpty()) sections.add("\"excludes\":[\n  " + String.join(",\n  ", excludes) + "\n]");
+        return "{\"resources\":{" + String.join(",", sections) + "}}\n";
     }
 
     /**

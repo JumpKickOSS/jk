@@ -186,7 +186,9 @@ public final class NativeImageMetadata {
         Object includes = root;
         if (!(root instanceof List<?>)) {
             Object holder = Json.map(root, "resources");
-            includes = Json.list(holder != null ? holder : root, "includes");
+            Object source = holder != null ? holder : root;
+            includes = Json.list(source, "includes");
+            excludes(Json.list(source, "excludes"), origin, out);
         }
         if (!(includes instanceof List<?> items)) return;
         for (Object include : items) {
@@ -205,6 +207,53 @@ public final class NativeImageMetadata {
                             ? DynamicSurface.Entry.type(RESOURCE, translated, origin)
                             : DynamicSurface.Entry.type(DynamicSurface.Kind.RESOURCE_PATTERN, pattern, origin));
         }
+    }
+
+    /**
+     * A library's declared resource exclusions (JK-1800). Kept in regex form: the split schema
+     * writes excludes as {@code "pattern"} regexes, and the sidecar they are re-emitted into
+     * takes regexes; a glob exclude converts exactly ({@code **} spans levels, {@code *} stays
+     * within one, everything else is quoted).
+     */
+    private static void excludes(Object root, String origin, List<DynamicSurface.Entry> out) {
+        if (!(root instanceof List<?> items)) return;
+        for (Object exclude : items) {
+            String pattern = Json.str(exclude, "pattern");
+            if (pattern == null) {
+                String glob = Json.str(exclude, "glob");
+                if (glob != null && !glob.isBlank()) pattern = globToRegex(glob);
+            }
+            if (pattern != null && !pattern.isBlank()) {
+                out.add(DynamicSurface.Entry.type(DynamicSurface.Kind.RESOURCE_EXCLUDE_PATTERN, pattern, origin));
+            }
+        }
+    }
+
+    /** The exact Java regex for a GraalVM glob — every glob has one, unlike the reverse. */
+    static String globToRegex(String glob) {
+        StringBuilder regex = new StringBuilder();
+        StringBuilder literal = new StringBuilder();
+        for (int i = 0; i < glob.length(); i++) {
+            char c = glob.charAt(i);
+            if (c == '*') {
+                if (!literal.isEmpty()) {
+                    regex.append(java.util.regex.Pattern.quote(literal.toString()));
+                    literal.setLength(0);
+                }
+                if (i + 1 < glob.length() && glob.charAt(i + 1) == '*') {
+                    regex.append(".*");
+                    i++;
+                } else {
+                    regex.append("[^/]*");
+                }
+            } else if (c == '\\' && i + 1 < glob.length()) {
+                literal.append(glob.charAt(++i)); // glob escape: the next character is literal
+            } else {
+                literal.append(c);
+            }
+        }
+        if (!literal.isEmpty()) regex.append(java.util.regex.Pattern.quote(literal.toString()));
+        return regex.toString();
     }
 
     /**
