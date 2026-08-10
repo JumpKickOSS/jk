@@ -100,10 +100,19 @@ public final class RepoGroup {
             throw new IllegalArgumentException("RepoGroup must contain at least one repo");
         }
         this.repos = List.copyOf(repos);
-        this.repoIdentity =
-                this.repos.stream().map(r -> r.baseUrl().toString()).collect(java.util.stream.Collectors.joining(","));
         this.exclusiveGroups = normalizeExclusive(this.repos.size(), exclusiveGroups);
         this.priorityCount = priorityCount;
+        // Exclusive bindings and the priority prefix change which repos are eligible for a
+        // coordinate, so they are part of the question every memo answers — two groups with the
+        // same URLs but different bindings must never share memo entries.
+        StringBuilder id = new StringBuilder();
+        for (int i = 0; i < this.repos.size(); i++) {
+            if (i > 0) id.append(',');
+            id.append(this.repos.get(i).baseUrl());
+            List<String> excl = this.exclusiveGroups.get(i);
+            if (!excl.isEmpty()) id.append('!').append(String.join(";", excl));
+        }
+        this.repoIdentity = id.append("|p").append(priorityCount).toString();
     }
 
     public static RepoGroup of(MavenRepo single) {

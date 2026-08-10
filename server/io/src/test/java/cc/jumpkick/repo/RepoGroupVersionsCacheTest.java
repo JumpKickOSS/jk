@@ -83,6 +83,31 @@ class RepoGroupVersionsCacheTest {
         assertThat(b).contains("from-b");
     }
 
+    @Test
+    void memo_is_scoped_to_exclusive_bindings(@TempDir Path tmp) throws Exception {
+        Path general = tmp.resolve("general");
+        Path special = tmp.resolve("special");
+        writeMeta(general, "com.example", "lib", "1.0");
+        writeMeta(special, "com.example", "lib", "2.0");
+        Cas cas = new Cas(tmp.resolve("cas"));
+        Http http = new Http();
+        List<MavenRepo> repos = List.of(
+                new MavenRepo("general", general.toUri(), http, cas),
+                new MavenRepo("special", special.toUri(), http, cas));
+
+        RepoGroup unbound = new RepoGroup(repos);
+        RepoGroup bound = new RepoGroup(repos, List.of(List.of(), List.of("com.example")));
+        assertThat(unbound.processIdentity()).isNotEqualTo(bound.processIdentity());
+
+        // Unbound group answers first-hit-wins from the general repo and memoizes it.
+        assertThat(unbound.availableVersions(Coordinate.of("com.example", "lib", "0")))
+                .containsExactly("1.0");
+        // The exclusive-bound group must not be served that memo: com.example is claimed by
+        // the specialist, so only 2.0 is a legal answer.
+        assertThat(bound.availableVersions(Coordinate.of("com.example", "lib", "0")))
+                .containsExactly("2.0");
+    }
+
     private static void writeMeta(Path root, String group, String artifact, String... versions) throws Exception {
         Path dir = root.resolve(group.replace('.', '/')).resolve(artifact);
         Files.createDirectories(dir);
