@@ -4048,7 +4048,13 @@ public final class BuildPlanner {
                             "main:" + (mainClass == null ? "" : mainClass),
                             "shared:" + shared,
                             "out:" + out.getFileName(),
-                            "graal:" + graalTok);
+                            "graal:" + graalTok,
+                            // Framework mode consumes the whole native-sources tree (computed args,
+                            // runner jar) — a plugin-only change to it must miss the cache (JK-1782).
+                            "framework:"
+                                    + (frameworkSources == null
+                                            ? ""
+                                            : cc.jumpkick.task.ClasspathFingerprint.entry(frameworkSources)));
                     String nTask = ActionKey.qualifiedTaskId(TaskNames.NATIVE_IMAGE, out);
                     String nKey = ActionKey.forArtifact(
                             nTask, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), nativeTokens);
