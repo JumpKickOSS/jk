@@ -135,9 +135,11 @@ public final class CachePlans {
                             : cc.jumpkick.task.HeavyActionGc.sweep(
                                     root, cacheCas, cacheBudget, cc.jumpkick.task.HeavyActionPolicy.TTL, dryRun);
                     totalFiles += heavy.deletedKeys();
-                    // Always reclaim unreferenced action payloads from the cache CAS.
+                    // Always reclaim unreferenced action payloads from the cache CAS. The dropped
+                    // (or dry-run: would-be-dropped) Class-C keys are not roots — dry-run and the
+                    // real clean must report the same reclaimable bytes (JK-1770).
                     var cacheLive = cc.jumpkick.task.CacheRoots.collect(
-                            cacheCas, root.resolve("actions"), root.resolve("tools"));
+                            cacheCas, root.resolve("actions"), root.resolve("tools"), heavy.keyFiles());
                     var cacheSweep = cc.jumpkick.task.CasSweep.sweep(cacheCas, cacheLive, dryRun);
                     totalFiles += cacheSweep.deleted();
                     totalBytes += cacheSweep.freedBytes();

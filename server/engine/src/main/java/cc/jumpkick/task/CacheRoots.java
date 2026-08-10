@@ -27,15 +27,26 @@ public final class CacheRoots {
      * touched.
      */
     public static Set<String> collect(Cas cas, Path actionsDir, Path toolsDir) throws IOException {
+        return collect(cas, actionsDir, toolsDir, Set.of());
+    }
+
+    /**
+     * Like {@link #collect(Cas, Path, Path)}, but treating {@code ignoreKeyFiles} as already
+     * deleted. Dry-run parity: a dry Class-C purge leaves its key files on disk, and counting
+     * them as roots hides every heavy blob from the following dry sweep — the real run then
+     * frees GiB a dry run reported as "40 MiB reclaimable" (JK-1770).
+     */
+    public static Set<String> collect(Cas cas, Path actionsDir, Path toolsDir, Set<Path> ignoreKeyFiles)
+            throws IOException {
         Set<String> refs = new HashSet<>();
         if (Files.isDirectory(actionsDir.resolve("keys"))) {
-            scanTextFilesRecursively(actionsDir.resolve("keys"), cas, refs);
+            scanTextFilesRecursively(actionsDir.resolve("keys"), cas, refs, ignoreKeyFiles);
         }
         if (Files.isDirectory(actionsDir.resolve(Sweep.SYNCED_SUBDIR))) {
-            scanTextFilesRecursively(actionsDir.resolve(Sweep.SYNCED_SUBDIR), cas, refs);
+            scanTextFilesRecursively(actionsDir.resolve(Sweep.SYNCED_SUBDIR), cas, refs, Set.of());
         }
         if (Files.isDirectory(toolsDir.resolve("envs"))) {
-            scanTextFilesRecursively(toolsDir.resolve("envs"), cas, refs);
+            scanTextFilesRecursively(toolsDir.resolve("envs"), cas, refs, Set.of());
         }
         // repos/local is a PUBLISH DESTINATION (installLocal / jk publish local), not a derived
         // cache: a freshly published dev artifact is legitimately unreferenced by any action or
@@ -105,10 +116,12 @@ public final class CacheRoots {
      * Walk {@code dir}, read every regular file as text, pull explicit sha tokens AND any CAS-style
      * path fragments into {@code refs}.
      */
-    private static void scanTextFilesRecursively(Path dir, Cas cas, Set<String> refs) throws IOException {
+    private static void scanTextFilesRecursively(Path dir, Cas cas, Set<String> refs, Set<Path> ignore)
+            throws IOException {
         try (Stream<Path> stream = Files.walk(dir)) {
             for (Path file : (Iterable<Path>) stream::iterator) {
                 if (!Files.isRegularFile(file)) continue;
+                if (!ignore.isEmpty() && ignore.contains(file)) continue;
                 String body;
                 try {
                     body = Files.readString(file, StandardCharsets.UTF_8);
