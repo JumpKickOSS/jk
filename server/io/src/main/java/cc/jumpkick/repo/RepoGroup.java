@@ -27,10 +27,28 @@ public final class RepoGroup {
     private static final ConcurrentHashMap<String, RepoFetched> ARTIFACT_HIT_CACHE = new ConcurrentHashMap<>();
 
     /**
-     * Process-wide {@link #availableVersions} memo keyed by {@code group:artifact}. Metadata is
-     * immutable within the TTL window; force (see {@link #clearProcessVersionsCache}) drops this.
+     * Process-wide {@link #availableVersions} memo, keyed by the repositories asked <em>and</em> the
+     * {@code group:artifact}. Two groups pointing at different repositories see different version
+     * lists, so the repository set is part of the identity — leaving it out let one group answer
+     * for another.
+     *
+     * <p>Entries expire. {@link MavenMetadataCache} is the layer that decides when a version list is
+     * stale, with a TTL and a conditional GET; this memo only skips re-parsing what that layer
+     * already handed over. Living for the life of the process would put it above that decision, and
+     * in the resident engine "the life of the process" is days — a version published after the
+     * first resolve would stay invisible.
      */
-    private static final ConcurrentHashMap<String, List<String>> VERSIONS_CACHE = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, VersionsEntry> VERSIONS_CACHE = new ConcurrentHashMap<>();
+
+    /** Long enough to cover one build's resolves, short enough that a daemon re-checks. */
+    private static final long VERSIONS_TTL_NANOS =
+            java.time.Duration.ofSeconds(60).toNanos();
+
+    private record VersionsEntry(List<String> versions, long expiresAtNanos) {
+        boolean expired() {
+            return System.nanoTime() - expiresAtNanos >= 0;
+        }
+    }
 
     private static final int HIT_CACHE_MAX = 16_384;
     private static final int VERSIONS_CACHE_MAX = 8_192;
@@ -47,6 +65,8 @@ public final class RepoGroup {
     }
 
     private final List<MavenRepo> repos;
+    /** The repositories this group asks, as a stable string — part of every process memo's key. */
+    private final String repoIdentity;
     /** Parallel to {@link #repos}: exclusive group patterns per repo (empty = no exclusive claim). */
     private final List<List<String>> exclusiveGroups;
     /**
@@ -74,6 +94,8 @@ public final class RepoGroup {
             throw new IllegalArgumentException("RepoGroup must contain at least one repo");
         }
         this.repos = List.copyOf(repos);
+        this.repoIdentity =
+                this.repos.stream().map(r -> r.baseUrl().toString()).collect(java.util.stream.Collectors.joining(","));
         this.exclusiveGroups = normalizeExclusive(this.repos.size(), exclusiveGroups);
         this.priorityCount = priorityCount;
     }
@@ -158,23 +180,29 @@ public final class RepoGroup {
      * restrict which remotes are eligible at all.
      */
     public List<String> availableVersions(Coordinate coord) throws IOException, InterruptedException {
-        String ga = coord.group() + ":" + coord.artifact();
-        List<String> cached = VERSIONS_CACHE.get(ga);
-        if (cached != null) return cached;
+        String key = repoIdentity + "|" + coord.group() + ":" + coord.artifact();
+        // Force means the caller does not trust any cached view of what exists.
+        boolean memoable = !MavenMetadataCache.forceRevalidate();
+        if (memoable) {
+            VersionsEntry cached = VERSIONS_CACHE.get(key);
+            if (cached != null && !cached.expired()) return cached.versions();
+            if (cached != null) VERSIONS_CACHE.remove(key, cached);
+        }
         for (MavenRepo repo : eligibleRepos(coord)) {
             List<String> found = repo.availableVersions(coord);
             if (!found.isEmpty()) {
                 List<String> immutable = List.copyOf(found);
-                if (VERSIONS_CACHE.size() < VERSIONS_CACHE_MAX) {
-                    VERSIONS_CACHE.putIfAbsent(ga, immutable);
+                if (memoable && VERSIONS_CACHE.size() < VERSIONS_CACHE_MAX) {
+                    VERSIONS_CACHE.put(key, new VersionsEntry(immutable, System.nanoTime() + VERSIONS_TTL_NANOS));
                 }
                 return immutable;
             }
         }
         // Cache empty only after a full miss — rare; avoids re-statting empty GAs every expand.
+        // Expires like any other entry: an artifact that does not exist yet may exist later.
         List<String> empty = List.of();
-        if (VERSIONS_CACHE.size() < VERSIONS_CACHE_MAX) {
-            VERSIONS_CACHE.putIfAbsent(ga, empty);
+        if (memoable && VERSIONS_CACHE.size() < VERSIONS_CACHE_MAX) {
+            VERSIONS_CACHE.put(key, new VersionsEntry(empty, System.nanoTime() + VERSIONS_TTL_NANOS));
         }
         return empty;
     }
