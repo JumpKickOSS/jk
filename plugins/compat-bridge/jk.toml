@@ -1,9 +1,9 @@
 [project]
-name        = "jk-compat-bridge"
-description = "jk-compat-bridge: Maven/Gradle compat plugin worker."
+name = "jk-compat-bridge"
+description = "JumpKick's Maven/Gradle compatibility plugin"
 
 [application]
-main     = "cc.jumpkick.plugin.process.PluginMain"
+main = "cc.jumpkick.plugin.process.PluginMain"
 
 [dependencies]
 jk-core.workspace = true
@@ -12,6 +12,5 @@ jk-toolchain.workspace = true
 jk-plugin-sdk.workspace = true
 
 [test-dependencies]
-assertj-core            = "latest"
-junit-jupiter           = "latest"
-junit-platform-launcher = "latest"
+assertj-core = "latest"
+junit-jupiter = "latest"

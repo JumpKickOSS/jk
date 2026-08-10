@@ -429,7 +429,14 @@ public final class TaskForecaster {
             // compile action record + resource roots (same merge the live build produces) so we
             // still hit the packaging action cache instead of forecasting perpetual "repackage".
             if (mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty()) {
-                // Source-less aggregator module — nothing to package.
+                // Source-less registered module: the live build still runs package-jar and
+                // produces an (empty) jar that sibling classpaths demand. Forecasting "nothing
+                // to package" left the module unscheduled forever while consumers failed with
+                // "sibling not built" (JK-1648) — schedule it until its jar exists.
+                if (!Files.isRegularFile(layout.mainJar())) {
+                    steps.add(new TaskForecast.Task(
+                            "package-jar", TaskForecast.Status.RUN, "package · module has no sources", null));
+                }
             } else if (compileDirty) {
                 steps.add(new TaskForecast.Task(
                         "package-jar", TaskForecast.Status.RUN, "repackage · compile changed", null));

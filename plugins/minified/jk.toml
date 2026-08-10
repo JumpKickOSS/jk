@@ -1,15 +1,14 @@
 [project]
-name        = "jk-minified"
-description = "jk-minified: R8 classfile minify worker (PluginMain)."
+name = "jk-minified"
+description = "JumpKick's R8 minify plugin"
 
 [application]
-main     = "cc.jumpkick.plugin.process.PluginMain"
+main = "cc.jumpkick.plugin.process.PluginMain"
 
 [dependencies]
 jk-plugin-sdk.workspace = true
 jk-dynamic-surface.workspace = true
 
 [test-dependencies]
-assertj-core            = "latest"
-junit-jupiter           = "latest"
-junit-platform-launcher = "latest"
+assertj-core = "latest"
+junit-jupiter = "latest"

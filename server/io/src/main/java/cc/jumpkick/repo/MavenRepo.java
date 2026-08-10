@@ -173,7 +173,18 @@ public final class MavenRepo {
     }
 
     public Fetched fetchArtifact(Coordinate coord) throws IOException, InterruptedException {
-        return fetch(coord, MavenLayout.artifactPath(coord), true, Leg.ARTIFACT);
+        return fetchArtifact(coord, NO_ABORT);
+    }
+
+    /**
+     * As {@link #fetchArtifact(Coordinate)}, aborting cooperatively at leg boundaries when
+     * {@code abort} turns true (JK-1786: a lock that already failed must not start more
+     * downloads). A leg in progress always completes cleanly — the check runs only before the
+     * network leg starts and right after the host permit is granted, never mid-download.
+     */
+    public Fetched fetchArtifact(Coordinate coord, java.util.function.BooleanSupplier abort)
+            throws IOException, InterruptedException {
+        return fetch(coord, MavenLayout.artifactPath(coord), true, Leg.ARTIFACT, abort);
     }
 
     /**
@@ -234,7 +245,20 @@ public final class MavenRepo {
         ARTIFACT
     }
 
+    /** Abort supplier for callers with no abort semantics (POM / metadata legs). */
+    private static final java.util.function.BooleanSupplier NO_ABORT = () -> false;
+
     private Fetched fetch(Coordinate coord, String relativePath, boolean mirror, Leg leg)
+            throws IOException, InterruptedException {
+        return fetch(coord, relativePath, mirror, leg, NO_ABORT);
+    }
+
+    private Fetched fetch(
+            Coordinate coord,
+            String relativePath,
+            boolean mirror,
+            Leg leg,
+            java.util.function.BooleanSupplier abort)
             throws IOException, InterruptedException {
         if (cc.jumpkick.config.SessionContext.current().config().offlineOr(false)) {
             return fetchOffline(coord, relativePath);
@@ -260,14 +284,27 @@ public final class MavenRepo {
         // Per-host cap around the NETWORK leg onlywarm mirror hits short-circuit
         // above, so re-locks stay uncapped, but a cold lock's fan-out (hundreds of concurrent
         // virtual-thread downloads + sidecar GETs) is bounded to what the host tolerates.
+        // JK-1786: boundary checks before host-permit acquisition and again once the permit is
+        // granted — a task that queued behind slow downloads must not start a fetch for a lock
+        // that failed while it waited. Never checked mid-download (JK-1700: legs finish cleanly).
+        checkAbort(abort, coord);
         Cas.Stored stored;
         try {
-            stored = rateLimited(primary, () -> downloadAndVerify(coord, primary, relativePath, mirror));
+            stored = rateLimited(primary, () -> {
+                checkAbort(abort, coord);
+                return downloadAndVerify(coord, primary, relativePath, mirror);
+            });
+        } catch (FetchAbortedException e) {
+            throw e;
         } catch (IOException e) {
             // The mirror can lag or simply not carry something Central has. Falling back keeps a
             // preference from becoming a dependency.
             if (primary.equals(uri)) throw e;
-            stored = rateLimited(uri, () -> downloadAndVerify(coord, uri, relativePath, mirror));
+            checkAbort(abort, coord);
+            stored = rateLimited(uri, () -> {
+                checkAbort(abort, coord);
+                return downloadAndVerify(coord, uri, relativePath, mirror);
+            });
         }
         // Metered off the blob at rest, not the stream: this is the run's only artifact download leg
         // (warm mirror hits returned above), so every jar/pom/metadata byte off the network lands here.
@@ -549,6 +586,24 @@ public final class MavenRepo {
     /** Thrown when the requested artifact returns 404 from this repo. */
     public static final class ArtifactNotFoundException extends IOException {
         public ArtifactNotFoundException(String message) {
+            super(message);
+        }
+    }
+
+    private static void checkAbort(java.util.function.BooleanSupplier abort, Coordinate coord)
+            throws FetchAbortedException {
+        if (abort.getAsBoolean()) {
+            throw new FetchAbortedException("fetch aborted before starting " + coord + " (lock already failed)");
+        }
+    }
+
+    /**
+     * Thrown when a fetch is cooperatively skipped at a leg boundary because the caller's abort
+     * signal (JK-1786: first materialize failure) turned true. Never wraps a real transfer
+     * failure — callers use it to tell abort noise apart from the root cause.
+     */
+    public static final class FetchAbortedException extends IOException {
+        public FetchAbortedException(String message) {
             super(message);
         }
     }

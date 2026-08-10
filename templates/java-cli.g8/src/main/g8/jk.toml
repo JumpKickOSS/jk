@@ -1,8 +1,8 @@
 [project]
-group   = "$organization$"
-name    = "$name$"
+group = "$organization$"
+name = "$name$"
 version = "0.1.0"
-java    = $java$
+java = $java$
 
 [application]
 main = "$package$.Main"

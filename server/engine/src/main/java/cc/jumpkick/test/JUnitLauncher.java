@@ -311,8 +311,8 @@ public final class JUnitLauncher {
 
     private List<String> withTagArgs(List<String> base) {
         var out = new ArrayList<>(base);
-        if (!includeTags.isEmpty()) out.add("--include-tag=" + String.join(",", includeTags));
-        if (!excludeTags.isEmpty()) out.add("--exclude-tag=" + String.join(",", excludeTags));
+        if (!includeTags.isEmpty()) out.add("--include-tags=" + String.join(",", includeTags));
+        if (!excludeTags.isEmpty()) out.add("--exclude-tags=" + String.join(",", excludeTags));
         return out;
     }
 

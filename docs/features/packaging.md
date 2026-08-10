@@ -212,8 +212,9 @@ Keep the class itself to fix it:
 keep = ["-keep class com.example.GenericThing { *; }"]
 ```
 
-Both of these are what [`jk train`](dynamic-surface.md) exists to discover by observing a real
-run, rather than by guessing.
+By-name discovery (the Logback case) is what [`jk train`](dynamic-surface.md) can discover by
+observing a real run. Generic-signature resolution is not — the tracing agent cannot record
+`getTypeParameters()` (a documented recorder gap), so those classes need hand-written keeps.
 
 Sample: [examples/minified-cli/](examples/minified-cli/).
 

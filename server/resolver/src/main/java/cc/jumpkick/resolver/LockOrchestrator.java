@@ -419,7 +419,8 @@ public final class LockOrchestrator {
                             () -> {
                                 try {
                                     if (failed.get()) {
-                                        throw new CompletionException(new IOException("lock already failed — skipped"));
+                                        throw new CompletionException(new MavenRepo.FetchAbortedException(
+                                                "lock already failed — skipped"));
                                     }
                                     return toArtifact(
                                             e.getValue(),
@@ -429,7 +430,8 @@ public final class LockOrchestrator {
                                             fallbackSource,
                                             bomConstraints,
                                             constraintProvenance,
-                                            ResolveObserver.NOOP);
+                                            ResolveObserver.NOOP,
+                                            failed::get);
                                 } catch (IOException | InterruptedException ex) {
                                     throw new CompletionException(ex);
                                 }
@@ -458,13 +460,27 @@ public final class LockOrchestrator {
             }
             if (d.error != null) {
                 // Siblings are still on the io pool writing into the CAS. Let them wind down
-                // before the failure propagates — `failed` makes the unstarted ones return at
-                // once, so this is bounded by whatever is mid-download. Escaping here leaves
-                // threads mutating a store the caller believes it has finished with.
+                // before the failure propagates — `failed` makes unstarted tasks return at once
+                // and in-flight ones abort at their next leg boundary (JK-1786), so this is
+                // bounded by whatever is mid-download. Escaping here leaves threads mutating a
+                // store the caller believes it has finished with.
                 failed.set(true);
                 settle(inFlight);
-                Throwable c = d.error.getCause() != null ? d.error.getCause() : d.error;
-                if (c instanceof CompletionException ce && ce.getCause() != null) c = ce.getCause();
+                Throwable c = unwrapMaterialize(d.error);
+                // Abort noise can beat the root cause into the queue (a sibling parked at a leg
+                // boundary observes `failed` between the failing task's set and offer). Every
+                // task has settled by now, so the real failure is in the queue — prefer it.
+                if (c instanceof MavenRepo.FetchAbortedException) {
+                    MaterializeDone later;
+                    while ((later = doneQ.poll()) != null) {
+                        if (later.error == null) continue;
+                        Throwable candidate = unwrapMaterialize(later.error);
+                        if (!(candidate instanceof MavenRepo.FetchAbortedException)) {
+                            c = candidate;
+                            break;
+                        }
+                    }
+                }
                 if (c instanceof IOException io) throw io;
                 if (c instanceof InterruptedException ie) {
                     Thread.currentThread().interrupt();
@@ -583,6 +599,9 @@ public final class LockOrchestrator {
         if (sharedSource != null && sharedPomBuilder != null) {
             sharedSource.setLockedVersionPrefs(prefs);
             sharedSource.setSnapshotPackages(snapshotModules(roots));
+            // JK-1787: exclusion state is per-graph; main's clean paths must not bleed into
+            // the test/processor solves.
+            sharedSource.resetSolveScopedState();
             PubGrubResolver r = new PubGrubResolver(sharedSource, sharedPomBuilder, kmp).withOnDecision(liveGraph);
             if (diagnosticPalette != null) r.palette = diagnosticPalette;
             return r.resolve(roots);
@@ -592,10 +611,18 @@ public final class LockOrchestrator {
         return r.resolve(roots);
     }
 
+    /** Unwrap the layered CompletionExceptions around a materialize failure. */
+    private static Throwable unwrapMaterialize(Throwable error) {
+        Throwable c = error.getCause() != null ? error.getCause() : error;
+        if (c instanceof CompletionException ce && ce.getCause() != null) c = ce.getCause();
+        return c;
+    }
+
     /**
      * Wait for every materialize task to finish, discarding outcomes. Called when the lock is
      * already lost, so the only thing that matters is that no task is still touching the CAS when
-     * this returns.
+     * this returns. Bounded: unstarted tasks skip at their gate and in-flight ones abort at
+     * their next leg boundary (JK-1786) — only legs already in progress run to completion.
      */
     private static void settle(List<CompletableFuture<?>> inFlight) {
         for (CompletableFuture<?> f : inFlight) {
@@ -809,7 +836,8 @@ public final class LockOrchestrator {
             String fallbackSource,
             Map<String, String> bomConstraints,
             Map<String, String> constraintProvenance,
-            ResolveObserver observer)
+            ResolveObserver observer,
+            java.util.function.BooleanSupplier abort)
             throws IOException, InterruptedException {
         Coordinate coord = mod.coordinate();
         // Stream GA to lock-package events for human-readable UI; lock row name stays package key.
@@ -838,7 +866,7 @@ public final class LockOrchestrator {
         String source = fallbackSource;
         String checksum = null;
         RepoGroup.RepoFetched hit =
-                kmpAlias ? null : repos.tryFetchArtifact(coord).orElse(null);
+                kmpAlias ? null : repos.tryFetchArtifact(coord, abort).orElse(null);
         if (hit == null
                 && !kmpAlias
                 && (coord.type() == null || "jar".equals(coord.type()))
@@ -852,7 +880,7 @@ public final class LockOrchestrator {
                     packageName = PackageId.of(coord.group(), coord.artifact(), "aar", "")
                             .key();
                     artifactFile = coord.artifact() + "-" + coord.version() + ".aar";
-                    hit = repos.tryFetchArtifact(coord).orElse(null);
+                    hit = repos.tryFetchArtifact(coord, abort).orElse(null);
                 }
             } catch (Exception ignored) {
                 // no POM / unparseable — keep the jar coordinate

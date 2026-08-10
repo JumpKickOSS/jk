@@ -14,7 +14,15 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,6 +33,8 @@ class EffectivePomBuilderTest {
     private HttpServer server;
     private URI base;
     private final Map<String, byte[]> poms = new HashMap<>();
+    /** When set, invoked with the request path before a registered POM is served (may block). */
+    private volatile Consumer<String> beforeServe;
 
     @BeforeEach
     void start() throws IOException {
@@ -36,6 +46,8 @@ class EffectivePomBuilderTest {
             if (body == null) {
                 exchange.sendResponseHeaders(404, -1);
             } else {
+                Consumer<String> gate = beforeServe;
+                if (gate != null) gate.accept(exchange.getRequestURI().getPath());
                 exchange.sendResponseHeaders(200, body.length);
                 exchange.getResponseBody().write(body);
             }
@@ -380,6 +392,67 @@ class EffectivePomBuilderTest {
         assertThatThrownBy(() -> newBuilder(tempDir).build(Coordinate.of("org.example", "a", "1.0")))
                 .isInstanceOf(PomParseException.class)
                 .hasMessageContaining("cycle");
+    }
+
+    @Test
+    void concurrent_walkers_on_a_parent_cycle_fail_loudly_instead_of_deadlocking(@TempDir Path tempDir)
+            throws Exception {
+        // a's parent is b and b's parent is a. Two concurrent builders each claim one half of the
+        // cycle in the IN_FLIGHT map, then cross-join the other's flight — before JK-1764 both
+        // parked forever. The waits-for check must degrade one (or both) to an in-line walk whose
+        // visiting set throws the loud cycle diagnostic, which then propagates to the joiner too.
+        registerPom("org.example", "a", "1.0", """
+                <project>
+                  <parent>
+                    <groupId>org.example</groupId>
+                    <artifactId>b</artifactId>
+                    <version>1.0</version>
+                  </parent>
+                  <artifactId>a</artifactId>
+                </project>
+                """);
+        registerPom("org.example", "b", "1.0", """
+                <project>
+                  <parent>
+                    <groupId>org.example</groupId>
+                    <artifactId>a</artifactId>
+                    <version>1.0</version>
+                  </parent>
+                  <artifactId>b</artifactId>
+                </project>
+                """);
+
+        // Hold each top-level POM response until BOTH walkers have their first fetch in flight —
+        // by then each owns its own IN_FLIGHT entry, so the cross-join is guaranteed.
+        CountDownLatch bothFetching = new CountDownLatch(2);
+        beforeServe = path -> {
+            bothFetching.countDown();
+            try {
+                bothFetching.await(5, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        };
+
+        Cas cas = new Cas(tempDir.resolve("cache"));
+        MavenRepo repo = new MavenRepo("local", base, new Http(), cas);
+        EffectivePomBuilder builder1 = new EffectivePomBuilder(repo);
+        EffectivePomBuilder builder2 = new EffectivePomBuilder(repo);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<EffectivePom> fa = pool.submit(() -> builder1.build(Coordinate.of("org.example", "a", "1.0")));
+            Future<EffectivePom> fb = pool.submit(() -> builder2.build(Coordinate.of("org.example", "b", "1.0")));
+            for (Future<EffectivePom> f : List.of(fa, fb)) {
+                assertThatThrownBy(() -> f.get(20, TimeUnit.SECONDS))
+                        .isInstanceOf(ExecutionException.class)
+                        .cause()
+                        .isInstanceOf(PomParseException.class)
+                        .hasMessageContaining("cycle");
+            }
+        } finally {
+            beforeServe = null;
+            pool.shutdownNow();
+        }
     }
 
     @Test

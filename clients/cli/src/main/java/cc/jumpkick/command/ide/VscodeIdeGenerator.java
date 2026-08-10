@@ -7,6 +7,7 @@ import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.engine.protocol.IdeWireModel;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.util.MinimalXml;
@@ -142,7 +143,7 @@ public final class VscodeIdeGenerator implements IdeGenerator {
         return sb.toString();
     }
 
-    private static String dotClasspath(IdeModel model, Path moduleDir, IdeModule module, int level) {
+    static String dotClasspath(IdeModel model, Path moduleDir, IdeModule module, int level) {
         String outMain = rel(moduleDir, module.jdtClassesDir());
         String outTest = rel(moduleDir, module.jdtTestClassesDir());
 
@@ -175,14 +176,19 @@ public final class VscodeIdeGenerator implements IdeGenerator {
         Map<String, IdeModule> byName = new LinkedHashMap<>();
         for (IdeModule m : model.allModules().values()) byName.put(m.name(), m);
         for (ModuleRef mr : model.siblingRefs().getOrDefault(moduleDir, List.of())) {
-            boolean testScope = "TEST".equals(mr.scope()) || "TEST_KIND".equals(mr.scope());
+            boolean testScope = IdeWireModel.SCOPE_TEST.equals(mr.scope())
+                    || IdeWireModel.SCOPE_TEST_KIND.equals(mr.scope());
+            boolean attachTests = IdeWireModel.SCOPE_TEST_KIND.equals(mr.scope())
+                    || IdeWireModel.SCOPE_COMPILE_TEST_KIND.equals(mr.scope());
             sb.append("  <classpathentry combineaccessrules=\"false\" kind=\"src\" path=\"/")
                     .append(esc(mr.name()))
                     .append("\"");
             if (testScope) sb.append(" ").append(testAttr());
             sb.append("/>\n");
             // kind=tests: sibling test classes on the test classpath (Maven test-jar parity).
-            if ("TEST_KIND".equals(mr.scope())) {
+            // COMPILE+TEST_KIND keeps the single src entry above (main classpath) and only adds
+            // the test-classes lib — JDT rejects duplicate classpath entries for one project.
+            if (attachTests) {
                 IdeModule sib = byName.get(mr.name());
                 if (sib != null) {
                     String abs = abs(sib.testClassesDir());

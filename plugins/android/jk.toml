@@ -1,24 +1,15 @@
-# Self-host guard (JK-1443): short names resolve from the bundled catalog only,
-# immune to ~/.jk/libs.toml and the downloaded registry mirror.
-catalog = "bundled"
-
 [project]
-name        = "jk-android"
-description = "jk-android: Android packaging plugin worker."
-
-[repositories]
-central = "https://repo.maven.apache.org/maven2/"
-google  = "https://dl.google.com/dl/android/maven2/"
+name = "jk-android"
+description = "JumpKick's Android packaging plugin"
 
 [application]
-main     = "cc.jumpkick.plugin.process.PluginMain"
+main = "cc.jumpkick.plugin.process.PluginMain"
 
 [dependencies]
 jk-plugin-sdk.workspace = true
-apksig                  = "latest"
-asm                     = "latest"
+apksig = "latest"
+asm = "latest"
 
 [test-dependencies]
-assertj-core            = "latest"
-junit-jupiter           = "latest"
-junit-platform-launcher = "latest"
+assertj-core = "latest"
+junit-jupiter = "latest"

@@ -37,6 +37,7 @@ public final class ActionPromote {
             boolean storeHit = Files.isRegularFile(storePath);
             if (!cacheHit && !storeHit) continue;
             if (storeHit && !cacheHit) {
+                markDurable(storeCas, sha);
                 already++;
                 continue;
             }
@@ -44,6 +45,7 @@ public final class ActionPromote {
                 // Already durable — drop the cache link/copy so Class-C budget free space returns.
                 long sz = Files.size(cachePath);
                 Files.deleteIfExists(cachePath);
+                markDurable(storeCas, sha);
                 already++;
                 bytes += sz;
                 continue;
@@ -52,10 +54,28 @@ public final class ActionPromote {
             long sz = Files.size(cachePath);
             Linking.linkOrCopy(cachePath, storePath);
             Files.deleteIfExists(cachePath);
+            markDurable(storeCas, sha);
             promoted++;
             bytes += sz;
         }
         return new Report(promoted, already, bytes);
+    }
+
+    /** Directory of durability markers under the store root; file name = blob sha. */
+    public static final String PROMOTED_DIR = "promoted";
+
+    /**
+     * Root the promoted blob against the store sweep. Without this a promoted blob's only root is
+     * the Class-C action key that named it — which {@code jk cache clean} unconditionally drops —
+     * so the documented {@code cache clean} → {@code storage clean} sequence would delete the very
+     * blobs promotion made "durable". The marker's mtime refreshes on every re-promotion; the
+     * store sweep expires markers by age, so promoted blobs still age out by their own policy
+     * rather than living forever.
+     */
+    private static void markDurable(Cas storeCas, String sha) throws IOException {
+        Path dir = storeCas.root().resolve(PROMOTED_DIR);
+        Files.createDirectories(dir);
+        Files.writeString(dir.resolve(sha), String.valueOf(System.currentTimeMillis()));
     }
 
     /**

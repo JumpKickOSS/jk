@@ -49,16 +49,65 @@ public record DynamicSurface(List<Entry> entries) {
          * native-image emitter skips it.
          */
         GENERIC_REFLECTION,
-        /** A {@code java.lang.reflect.Proxy} interface. */
+        /**
+         * A {@code java.lang.reflect.Proxy} declaration. {@code name} is the proxy's ordered,
+         * comma-joined interface list ({@code "a.B,c.D"} — class names cannot contain a comma):
+         * GraalVM matches proxy registrations by the exact ordered list, so splitting a
+         * multi-interface proxy into per-interface entries would register proxies that never
+         * match the runtime lookup (JK-1799).
+         */
         PROXY_INTERFACE,
-        /** A resource loaded by name or pattern. {@code name} is the resource path or regex. */
+        /** A resource loaded by name or glob. {@code name} is the resource path or glob. */
         RESOURCE,
+        /**
+         * A resource in the legacy split-schema Java-regex syntax that has no faithful glob
+         * translation; {@code name} is the regex. Emitted as a split-format {@code
+         * resource-config.json} beside the unified file, which native-image still honors —
+         * re-emitting a regex as a glob would match nothing (JK-1777).
+         */
+        RESOURCE_PATTERN,
+        /**
+         * A resource a library's config explicitly excludes; {@code name} is a Java regex.
+         * Re-emitted into the split-format {@code resource-config.json} excludes — native-image
+         * merges includes and excludes across config files and exclusion wins, which is exactly
+         * what happens when the library's own config sits on the image classpath (JK-1800).
+         */
+        RESOURCE_EXCLUDE_PATTERN,
         /** The type crosses a serialization boundary. */
         SERIALIZATION_TYPE,
         /** An implementation named by a service file or marker index. */
         SERVICE_IMPLEMENTATION,
         /** The type is reached from native code. */
-        JNI_TYPE
+        JNI_TYPE,
+        /**
+         * A specific field or method is accessed from native code; {@code members} names it.
+         * Distinct from {@link #REFLECTIVE_MEMBER} so the entry lands in the {@code jni} section
+         * of reachability metadata, not {@code reflection} (JK-1779).
+         */
+        JNI_MEMBER
+    }
+
+    /**
+     * Tag a member name as a field ({@code f:}). Members carry their kind as a prefix so a
+     * recorded {@code Field} access is not re-emitted as a method registration (JK-1753); a
+     * bare, untagged name (older surface JSON) means "unknown — emit both forms".
+     */
+    public static String fieldMember(String name) {
+        return "f:" + name;
+    }
+
+    /** Tag a member name as a method ({@code m:}). See {@link #fieldMember}. */
+    public static String methodMember(String name) {
+        return "m:" + name;
+    }
+
+    /**
+     * Tag a class name as a serialization {@code customTargetConstructorClass} ({@code c:}) —
+     * carried in {@code members} on a {@link Kind#SERIALIZATION_TYPE} entry so the declared
+     * deserialization constructor survives the round trip (JK-1801).
+     */
+    public static String customConstructorMember(String name) {
+        return "c:" + name;
     }
 
     /**
@@ -66,7 +115,9 @@ public record DynamicSurface(List<Entry> entries) {
      *
      * @param kind why {@code name} is in the surface
      * @param name a fully-qualified class name, or a resource path for {@link Kind#RESOURCE}
-     * @param members member names for {@link Kind#REFLECTIVE_MEMBER}; empty means the whole type
+     * @param members member names for {@link Kind#REFLECTIVE_MEMBER}; empty means the whole type.
+     *     Names are tagged {@code f:}/{@code m:} when the member kind is known (see
+     *     {@link #fieldMember}); an untagged name is a member of unknown kind
      * @param origin where this came from ({@code index}, {@code library}, {@code train:<profile>},
      *     {@code user}) — carried so a surprising rule can be traced back
      */

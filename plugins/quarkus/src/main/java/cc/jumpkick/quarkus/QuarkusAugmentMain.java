@@ -70,14 +70,21 @@ public final class QuarkusAugmentMain {
         Path appJar = scratch.resolve("app.jar");
         jarDir(classesDir, appJar);
 
-        // Prefer jk CAS + user m2 as tails so already-fetched jars are reused.
-        String jkCentral = Path.of(System.getProperty("user.home"), ".jk/cache/repos/central")
-                .toString();
-        String m2 = Path.of(System.getProperty("user.home"), ".m2/repository").toString();
+        // Reuse already-fetched jars: jk's repo mirrors are derived from the runtime jar paths
+        // the engine handed us — they ARE store paths, and rebuilding product dirs from
+        // user.home guesses wrong the moment JK_STORE_DIR (or the platform default) differs
+        // (JK-1707). ~/.m2 honors maven.repo.local for the same reason.
+        List<String> tails = new ArrayList<>();
+        for (Path reposRoot : mirrorRepoRoots(runtime)) {
+            tails.add(reposRoot.toString());
+        }
+        tails.add(System.getProperty(
+                "maven.repo.local",
+                Path.of(System.getProperty("user.home"), ".m2", "repository").toString()));
 
         var cfg = BootstrapMavenContext.config()
                 .setLocalRepository(localRepo.toString())
-                .setLocalRepositoryTail(jkCentral, m2)
+                .setLocalRepositoryTail(tails.toArray(String[]::new))
                 .setWorkspaceDiscovery(false);
         MavenArtifactResolver maven = new MavenArtifactResolver(new BootstrapMavenContext(cfg));
         BootstrapAppModelResolver modelResolver = new BootstrapAppModelResolver(maven);
@@ -132,7 +139,7 @@ public final class QuarkusAugmentMain {
                 "jk-quarkus-augment: model deps=" + model.getDependencies().size());
 
         // Platform properties + descriptor (required for config expansion + alignment checks).
-        injectPlatform(model, quarkusVersion, jkCentral, m2, maven);
+        injectPlatform(model, quarkusVersion, tails, maven);
 
         String packageType = normalizePackageType(System.getProperty("jk.quarkus.package.type", "fast-jar"));
         Properties bsp = new Properties();
@@ -242,8 +249,7 @@ public final class QuarkusAugmentMain {
     private static void injectPlatform(
             io.quarkus.bootstrap.model.ApplicationModel model,
             String quarkusVersion,
-            String jkCentral,
-            String m2,
+            List<String> tails,
             MavenArtifactResolver maven)
             throws Exception {
         if (!(model.getPlatforms() instanceof PlatformImportsImpl platforms)) {
@@ -253,19 +259,19 @@ public final class QuarkusAugmentMain {
                             : model.getPlatforms().getClass().getName()) + ")");
             return;
         }
-        Path propsPath = Path.of(
-                jkCentral,
-                "io/quarkus/platform/quarkus-bom-quarkus-platform-properties",
-                quarkusVersion,
-                "quarkus-bom-quarkus-platform-properties-" + quarkusVersion + ".properties");
-        if (!Files.isRegularFile(propsPath)) {
-            propsPath = Path.of(
-                    m2,
+        Path propsPath = null;
+        for (String tail : tails) {
+            Path candidate = Path.of(
+                    tail,
                     "io/quarkus/platform/quarkus-bom-quarkus-platform-properties",
                     quarkusVersion,
                     "quarkus-bom-quarkus-platform-properties-" + quarkusVersion + ".properties");
+            if (Files.isRegularFile(candidate)) {
+                propsPath = candidate;
+                break;
+            }
         }
-        if (!Files.isRegularFile(propsPath)) {
+        if (propsPath == null) {
             var art = new org.eclipse.aether.artifact.DefaultArtifact(
                     "io.quarkus.platform", "quarkus-bom-quarkus-platform-properties", "", "properties", quarkusVersion);
             propsPath = resolvedArtifactPath(maven.resolve(art).getArtifact());
@@ -340,6 +346,33 @@ public final class QuarkusAugmentMain {
         }
         String group = "jk.workspace";
         return new RuntimeCoord(group, artifact, version, r.jar());
+    }
+
+    /**
+     * Maven-layout mirror roots under jk's store, derived from the runtime jars' own locations
+     * ({@code <store>/repos/<name>/...}). Every sibling repo dir is a valid resolver tail.
+     */
+    private static List<Path> mirrorRepoRoots(List<RuntimeCoord> runtime) {
+        List<Path> out = new ArrayList<>();
+        java.util.Set<Path> seen = new java.util.LinkedHashSet<>();
+        String marker = java.io.File.separator + "repos" + java.io.File.separator;
+        for (RuntimeCoord r : runtime) {
+            if (r.jar() == null) continue;
+            String sp = r.jar().toString();
+            int i = sp.indexOf(marker);
+            if (i <= 0) continue;
+            Path reposRoot = Path.of(sp.substring(0, i)).resolve("repos");
+            if (!Files.isDirectory(reposRoot)) continue;
+            try (var kids = Files.list(reposRoot)) {
+                for (Path repo : kids.filter(Files::isDirectory).sorted().toList()) {
+                    if (seen.add(repo)) out.add(repo);
+                }
+            } catch (IOException ignored) {
+                // unreadable mirror root — resolver just goes to the network
+            }
+            break;
+        }
+        return out;
     }
 
     private static List<RuntimeCoord> parseRuntimeList(Path file) throws Exception {

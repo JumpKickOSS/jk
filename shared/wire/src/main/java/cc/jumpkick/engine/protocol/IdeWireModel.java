@@ -49,6 +49,25 @@ public record IdeWireModel(
         String defSdkVersion,
         List<String> sdkEntries) {
 
+    /** Sibling-ref scope: on the main (and thus test) classpath. */
+    public static final String SCOPE_COMPILE = "COMPILE";
+
+    /** Sibling-ref scope: on the test classpath only. */
+    public static final String SCOPE_TEST = "TEST";
+
+    /**
+     * Sibling-ref scope: {@code kind = "tests"} edge (Mill testModuleDeps / Maven test-jar) — the
+     * sibling module ref is test-scoped AND its test classes join the test classpath.
+     */
+    public static final String SCOPE_TEST_KIND = "TEST_KIND";
+
+    /**
+     * Sibling-ref scope: the sibling is both a main dep and a tests-kind dep. One compile-scoped
+     * module ref, plus the sibling's test classes on the test classpath — generators must never
+     * emit a second module entry for the same sibling (Eclipse JDT rejects duplicates).
+     */
+    public static final String SCOPE_COMPILE_TEST_KIND = "COMPILE+TEST_KIND";
+
     public static IdeWireModel error(String message) {
         return new IdeWireModel(
                 message, "", "", false, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),

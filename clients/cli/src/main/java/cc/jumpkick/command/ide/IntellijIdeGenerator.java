@@ -7,6 +7,7 @@ import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.engine.protocol.IdeWireModel;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.util.MinimalXml;
@@ -273,7 +274,7 @@ public final class IntellijIdeGenerator implements IdeGenerator {
         return sb.toString();
     }
 
-    private static String imlXml(
+    static String imlXml(
             Path moduleDir,
             IdeModule module,
             List<ModuleRef> modRefs,
@@ -341,17 +342,22 @@ public final class IntellijIdeGenerator implements IdeGenerator {
         for (IdeModule m : allModules.values()) byName.put(m.name(), m);
 
         for (ModuleRef mr : modRefs) {
-            boolean testScope = "TEST".equals(mr.scope()) || "TEST_KIND".equals(mr.scope());
+            boolean testScope = IdeWireModel.SCOPE_TEST.equals(mr.scope())
+                    || IdeWireModel.SCOPE_TEST_KIND.equals(mr.scope());
+            boolean attachTests = IdeWireModel.SCOPE_TEST_KIND.equals(mr.scope())
+                    || IdeWireModel.SCOPE_COMPILE_TEST_KIND.equals(mr.scope());
             sb.append("    <orderEntry type=\"module\" module-name=\"")
                     .append(esc(mr.name()))
                     .append("\"");
             if (testScope) sb.append(" scope=\"TEST\"");
             sb.append(" />\n");
             // kind=tests: sibling test classes as a module-library (Maven test-jar parity).
-            if ("TEST_KIND".equals(mr.scope())) {
+            // COMPILE+TEST_KIND keeps the single compile-scoped module entry above and only
+            // attaches the test classes — never a second module ref for the same sibling.
+            if (attachTests) {
                 IdeModule sib = byName.get(mr.name());
                 if (sib != null) {
-                    appendTestProductLibrary(sb, moduleDir, sib);
+                    appendTestsKindLibrary(sb, moduleDir, sib);
                 }
             }
         }
@@ -446,11 +452,17 @@ public final class IntellijIdeGenerator implements IdeGenerator {
     /**
      * Sibling tests kind (kind=tests): attach the sibling's test classes dir as a TEST-scoped
      * module-library so IDE test compile sees Mill testModuleDeps / Maven test-jar helpers.
+     * $MODULE_DIR$-relative like every other .iml path — an absolute path breaks a moved or
+     * shared checkout.
      */
-    private static void appendTestProductLibrary(StringBuilder sb, Path moduleDir, IdeModule sibling) {
-        Path testClasses = sibling.testClassesDir();
-        String classesUrl =
-                "file://" + testClasses.toAbsolutePath().normalize().toString().replace('\\', '/');
+    private static void appendTestsKindLibrary(StringBuilder sb, Path moduleDir, IdeModule sibling) {
+        Path testClasses = sibling.testClassesDir().toAbsolutePath().normalize();
+        String classesUrl = "file://$MODULE_DIR$/"
+                + moduleDir.toAbsolutePath()
+                        .normalize()
+                        .relativize(testClasses)
+                        .toString()
+                        .replace('\\', '/');
         sb.append("    <orderEntry type=\"module-library\" scope=\"TEST\">\n");
         sb.append("      <library name=\"")
                 .append(esc(sibling.name() + " (tests)"))

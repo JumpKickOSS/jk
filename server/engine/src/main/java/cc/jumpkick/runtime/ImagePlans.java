@@ -130,7 +130,9 @@ public final class ImagePlans {
                             // exploded — the layer cadence matches how the bytes actually change.
                             List<Path> releases = new ArrayList<>();
                             List<Path> snapshots = new ArrayList<>();
-                            splitBootDependencyJars(projectDir, cache, releases, snapshots);
+                            // Same lock as casJarNames (layout.moduleRoot()) — in a workspace
+                            // these can diverge, and jars then fall back to digest names (JK-1784).
+                            splitBootDependencyJars(layout.moduleRoot(), cache, releases, snapshots);
                             ctx.put(DEP_JARS, releases);
                             ctx.put(SNAPSHOT_JARS, snapshots);
                         } else {
@@ -485,8 +487,9 @@ public final class ImagePlans {
 
     /**
      * Auto-detect the local container runtime by probing {@code docker} then {@code podman} on
-     * {@code PATH}. Falls back to {@code "docker"} if neither responds — the plugin will fail with a
-     * clear error in that case rather than silently choosing wrong.
+     * {@code PATH}. Returns null when neither responds: sending a made-up {@code "docker"}
+     * downstream made the trainer's carefully written no-runtime diagnostic unreachable — the
+     * plugin auto-detects (docker/podman/nerdctl) when nothing is configured (JK-1759).
      */
     private static String detectDockerExecutable() {
         for (String candidate : new String[] {"docker", "podman"}) {
@@ -501,7 +504,7 @@ public final class ImagePlans {
             } catch (Exception ignored) {
             }
         }
-        return "docker";
+        return null;
     }
 
     /** Stable serialization of the image config for the packaging cache key. */

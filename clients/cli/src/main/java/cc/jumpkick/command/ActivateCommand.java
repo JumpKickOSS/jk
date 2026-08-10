@@ -26,7 +26,7 @@ import java.util.Optional;
 import org.jline.terminal.Terminal;
 
 /**
- * {@code jk activate [<shell>]} — print hook scripts or install a grok-style rc block (PATH +
+ * {@code jk activate [<shell>]} — print hook scripts or install a marker-bounded rc block (PATH +
  * hook-env eval + completions).
  */
 public final class ActivateCommand implements CliCommand {

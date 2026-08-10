@@ -538,6 +538,17 @@ public final class CacheCommand extends GroupCommand {
      * @param skipConfirm when true, do not prompt (caller already confirmed)
      */
     static int runNuke(Path root, boolean dryRun, GlobalOptions global, boolean skipConfirm) throws IOException {
+        return runNuke(root, dryRun, global, skipConfirm, false);
+    }
+
+    /**
+     * @param localOnly skip the engine-hosted purge and wipe in-process. Set by {@code jk self
+     *     nuke} multi-target runs: the fleet was just stopped, and the hosted path's
+     *     {@code ensureRunning} would boot a fresh engine only for STATE deletion to pull the
+     *     state dir (sockets included) out from under it (JK-1773).
+     */
+    static int runNuke(Path root, boolean dryRun, GlobalOptions global, boolean skipConfirm, boolean localOnly)
+            throws IOException {
         boolean nerdfont = cc.jumpkick.config.GlobalConfig.nerdfont();
         if (!Files.isDirectory(root)) {
             CommandWedge.printOk("Cache", "Nothing to nuke — cache directory does not exist.");
@@ -560,25 +571,32 @@ public final class CacheCommand extends GroupCommand {
                     cc.jumpkick.cli.tui.BuildPlanWedge.chipLine(Glyphs.CROSS, "Cache", nerdfont, "Nuke aborted."));
             return 1;
         }
-        // Prefer engine idle-boundary wipe; fall back to in-process delete (unit tests, engine down).
-        try {
-            long[] result = {stats.files(), stats.bytes()};
-            ConsoleSpec spec = new ConsoleSpec(
-                    "Cache",
-                    r -> "Nuked " + fmtCount(result[0]) + " files, " + fmtBytes(result[1]) + " freed.",
-                    r -> "Failed to nuke cache.",
-                    true);
-            BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
-            var planResult = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest("purge", root, 0, false, false, false),
-                    steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
-                    CacheCommand::printWait,
-                    new cc.jumpkick.cli.engine.EngineClient.CacheMaintSummary[1]);
-            if (planResult.success()) return 0;
-            // Engine refused / failed — still reclaim disk with a local wipe.
-        } catch (IOException | RuntimeException ignored) {
-            // fall through to local wipe
+        // Prefer engine idle-boundary wipe; fall back to in-process delete only when no engine
+        // is reachable (unit tests, engine down). A LIVE engine whose purge plan failed keeps
+        // admitting builds — racing it with a client-side recursive delete is how a nuke ends
+        // half-done on top of fresh writes (JK-1791).
+        if (!localOnly) {
+            try {
+                long[] result = {stats.files(), stats.bytes()};
+                ConsoleSpec spec = new ConsoleSpec(
+                        "Cache",
+                        r -> "Nuked " + fmtCount(result[0]) + " files, " + fmtBytes(result[1]) + " freed.",
+                        r -> "Failed to nuke cache.",
+                        true);
+                BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
+                var planResult = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
+                        cc.jumpkick.engine.EnginePaths.current(),
+                        new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest(
+                                "purge", root, 0, false, false, false),
+                        steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
+                        CacheCommand::printWait,
+                        new cc.jumpkick.cli.engine.EngineClient.CacheMaintSummary[1]);
+                if (planResult.success()) return 0;
+                CommandWedge.printFail("Cache", "The engine's purge failed — not racing it with a local wipe.");
+                return 1;
+            } catch (IOException | RuntimeException ignored) {
+                // engine unreachable — fall through to local wipe
+            }
         }
         wipeCacheTier(root);
         CommandWedge.printOk(
@@ -730,7 +748,8 @@ public final class CacheCommand extends GroupCommand {
             int olderThanDays = in.value("older-than").map(Integer::parseInt).orElse(30);
             boolean dryRun = in.isSet("dry-run");
             boolean sweep = in.isSet("sweep");
-            boolean background = in.isSet("background");
+            // --background is parsed for script back-compat but has no distinct behavior since
+            // the engine's idle-boundary prune replaced the detached spawner (JK-1789).
             GlobalOptions global = GlobalOptions.from(in);
 
             Path root = resolveCacheRoot(cacheDir);
@@ -761,9 +780,11 @@ public final class CacheCommand extends GroupCommand {
             try {
                 result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
                         cc.jumpkick.engine.EnginePaths.current(),
+                        // --sweep adds the CAS sweep but must not do LESS cleaning than plain
+                        // clean: Class-C heavy outputs drop either way (JK-1788).
                         sweep
                                 ? new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest(
-                                        "prune", root, olderThanDays, dryRun, true, defaultCacheDir)
+                                        "prune", root, olderThanDays, dryRun, true, defaultCacheDir, null, true)
                                 : cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest.cacheClean(
                                         root, olderThanDays, dryRun, defaultCacheDir),
                         steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Cache"),

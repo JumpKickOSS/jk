@@ -54,7 +54,7 @@ public final class TestRunner implements Plugin {
             System.err.println("jk-test-runner: " + e.getMessage());
             System.err.println("usage: jk-test-runner --scan-classpath=<dir> "
                     + "[--list-only] [--pull --worker=<id>] [--filter=<regex>] "
-                    + "[--include-tag=a,b] [--exclude-tag=c,d]");
+                    + "[--include-tags=a,b] [--exclude-tags=c,d]");
             return 2;
         }
 
@@ -465,10 +465,10 @@ public final class TestRunner implements Plugin {
                     pull = true;
                 } else if (a.startsWith("--worker=")) {
                     workerId = Integer.parseInt(a.substring("--worker=".length()));
-                } else if (a.startsWith("--include-tag=")) {
-                    splitCsv(a.substring("--include-tag=".length()), includeTags);
-                } else if (a.startsWith("--exclude-tag=")) {
-                    splitCsv(a.substring("--exclude-tag=".length()), excludeTags);
+                } else if (a.startsWith("--include-tags=")) {
+                    splitCsv(a.substring("--include-tags=".length()), includeTags);
+                } else if (a.startsWith("--exclude-tags=")) {
+                    splitCsv(a.substring("--exclude-tags=".length()), excludeTags);
                 } else if (a.equals("--fail-fast")) {
                     // accepted but currently a no-op — wired in a follow-up
                 } else {

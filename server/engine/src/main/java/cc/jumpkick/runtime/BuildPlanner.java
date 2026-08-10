@@ -2477,10 +2477,9 @@ public final class BuildPlanner {
                     // toolchain/runner/plugin identity. Unchanged → skip the runner.
                     @SuppressWarnings("unchecked")
                     List<Path> testResDirs = ctx.get(TEST_RESOURCE_DIRS).orElse(java.util.List.of());
-                    // [test] default-exclude-tags reaches jk build / BSP toothe CLI
-                    // resolves defaults only for `jk test`; when the session selection carries
-                    // no tags at all, apply this module's own config defaults here. The
-                    // effective selection feeds BOTH the stamp and the runner.
+                    // [test] exclude-tags for jk build / BSP: CLI resolves tags for `jk test`;
+                    // when the session selection carries no tags at all, apply this module's
+                    // own config here. The effective selection feeds BOTH the stamp and the runner.
                     var effectiveSel = effectiveSelection(in.session().testSelection(), in.dir());
                     String stampKey = cc.jumpkick.task.TestStamp.computeKey(
                             testSrcs,
@@ -3202,6 +3201,20 @@ public final class BuildPlanner {
         // The packager's CODE is an input, same as plugin steps (see pluginTask).
         tokens.add(
                 "worker:" + cc.jumpkick.task.ClasspathFingerprint.entry(PluginBuild.workerJarFor(active, in.cache())));
+        // The minified packager folds `jk train` observations into its keep rules out-of-band
+        // (same path derivation as MinifiedJarPackager.produce). Absence and every content state
+        // must be distinct keys — otherwise a post-train rebuild restores the pre-train jar as
+        // "up-to-date" and training never reaches the shipped artifact (JK-1751).
+        if ("minified-jar".equals(decls.packager().name())) {
+            Path trainSurface = jarPath.getParent()
+                    .resolve(cc.jumpkick.surface.TrainLayout.ROOT)
+                    .resolve("merged")
+                    .resolve(cc.jumpkick.surface.TrainLayout.SURFACE_JSON);
+            tokens.add("train:"
+                    + (Files.isRegularFile(trainSurface)
+                            ? cc.jumpkick.task.ClasspathFingerprint.entry(trainSurface)
+                            : "absent"));
+        }
         String pkgTask = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAR, jarPath);
         String pkgKey = ActionKey.forArtifact(pkgTask, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), tokens);
         if (restorePackaged(in.cache(), pkgKey, jarPath.getParent())) {
@@ -3601,7 +3614,11 @@ public final class BuildPlanner {
                     })
                     .build());
             b.terminal(DELIVER_JOIN);
-        } catch (Exception ignored) {
+        } catch (cc.jumpkick.config.JkBuildParseException | java.io.IOException ignored) {
+            // Core planning parses the same file and has already reported an unreadable or
+            // malformed jk.toml loudly; re-reporting here would double the diagnostic. Anything
+            // else must propagate — swallowing it silently dropped -all.jar/-min.jar/native
+            // tails from the plan while the build still reported success (JK-1781).
         }
     }
 
@@ -3666,7 +3683,7 @@ public final class BuildPlanner {
                     BuildLayout layout = ctx.require(LAYOUT);
                     var active = PluginBuild.activeCodePlugin(project, layout.moduleRoot());
                     if (active.isEmpty()) {
-                        throw new IllegalStateException("[application] minified = true requires the shrink plugin"
+                        throw new IllegalStateException("[application] minified = true requires the minified plugin"
                                 + " — add a [minified] table or remove `minified`");
                     }
                     PluginBuild.Declarations decls = PluginBuild.declarations(
@@ -3911,6 +3928,19 @@ public final class BuildPlanner {
                     // excluded. `[native] args` and CLI extras still apply: those are the user
                     // speaking, not jk guessing.
                     Path frameworkSources = nativeImageSourcesDir(project, dir, cache, layout);
+                    if (frameworkSources == null && packagerDeclaresNativeSources(project, dir)) {
+                        // The packager owns the native invocation (JK-1710) but its augment ran in
+                        // JVM mode — without a [native] table the build never asked for native
+                        // sources. Falling through to the generic classpath build is exactly the
+                        // "main entry point not found" failure JK-1710 fixed; fail with the cure
+                        // instead (JK-1762).
+                        String msg = "this framework builds its own native image, but no native-image"
+                                + " sources were produced. Add a `[native]` table (it can be empty) to"
+                                + " jk.toml so the framework's augment runs in native mode, then re-run"
+                                + " `jk native`.";
+                        ctx.error("native-sources-missing", msg);
+                        throw new RuntimeException(msg);
+                    }
                     List<String> pluginNativeArgs = frameworkSources != null
                             ? List.of()
                             : cc.jumpkick.plugin.manifest.PluginContributions.nativeArgs(project, dir);
@@ -3983,7 +4013,8 @@ public final class BuildPlanner {
                         // Refuse to native-build on stale train outputs when configured.
                         try {
                             var trainCfg = cc.jumpkick.config.TrainConfigParser.parse(dir.resolve("jk.toml"));
-                            String stale = TrainRunner.staleReason(dir, project, layout, lockFile, trainCfg);
+                            String stale = TrainRunner.staleReason(
+                                    dir, project, layout, lockFile, javaHomeEarly, trainCfg);
                             if (stale != null) {
                                 ctx.error("train-stale", stale);
                                 throw new RuntimeException(stale);
@@ -4021,7 +4052,13 @@ public final class BuildPlanner {
                             "main:" + (mainClass == null ? "" : mainClass),
                             "shared:" + shared,
                             "out:" + out.getFileName(),
-                            "graal:" + graalTok);
+                            "graal:" + graalTok,
+                            // Framework mode consumes the whole native-sources tree (computed args,
+                            // runner jar) — a plugin-only change to it must miss the cache (JK-1782).
+                            "framework:"
+                                    + (frameworkSources == null
+                                            ? ""
+                                            : cc.jumpkick.task.ClasspathFingerprint.entry(frameworkSources)));
                     String nTask = ActionKey.qualifiedTaskId(TaskNames.NATIVE_IMAGE, out);
                     String nKey = ActionKey.forArtifact(
                             nTask, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), nativeTokens);
@@ -4100,6 +4137,20 @@ public final class BuildPlanner {
      * declared directory with no {@code native-image.args} means the framework did not run a
      * native build.
      */
+    /** Whether the active packager declares a {@code native-image-sources} output at all. */
+    private static boolean packagerDeclaresNativeSources(JkBuild project, Path dir) {
+        try {
+            var active = PluginBuild.activeCodePlugin(project, dir);
+            if (active.isEmpty()) return false;
+            var packaging = active.get().manifest().packaging();
+            if (packaging == null) return false;
+            String rel = packaging.resolve(active.get().config()).nativeImageSources();
+            return rel != null && !rel.isBlank();
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
     private static Path nativeImageSourcesDir(
             JkBuild project, Path dir, Path cache, cc.jumpkick.layout.BuildLayout layout)
             throws IOException, InterruptedException {
@@ -4926,16 +4977,17 @@ public final class BuildPlanner {
     }
 
     /**
-     * The selection the runner actually executes: the session's, with this module's
-     * {@code [test] default-exclude-tags} folded in when the session carries no tags at all
-     * (jk build / BSP without data —. `jk test` resolves defaults CLI-side and its
-     * selection already carries them.
+     * The selection the runner actually executes: the session's, with this module's {@code [test]
+     * include-tags} / {@code exclude-tags} folded in when the session carries no tags at all (jk
+     * build / BSP without data). {@code jk test} resolves tags CLI-side and its selection already
+     * carries them.
      */
     static cc.jumpkick.config.TestSelection effectiveSelection(cc.jumpkick.config.TestSelection sel, Path moduleDir) {
         if (!sel.includeTags().isEmpty() || !sel.excludeTags().isEmpty()) return sel;
-        List<String> defaults = cc.jumpkick.config.JkBuildParser.parseDefaultExcludeTags(moduleDir.resolve("jk.toml"));
-        if (defaults.isEmpty()) return sel;
-        return cc.jumpkick.config.TestSelection.of(sel.suites(), sel.allSuites(), List.of(), defaults);
+        var fromToml = cc.jumpkick.config.JkBuildParser.parseTestTags(moduleDir.resolve("jk.toml"));
+        if (fromToml.isEmpty()) return sel;
+        return cc.jumpkick.config.TestSelection.of(
+                sel.suites(), sel.allSuites(), fromToml.includeTags(), fromToml.excludeTags());
     }
 
     /**

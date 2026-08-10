@@ -53,7 +53,8 @@ final class AotCacheTrainer {
      * and Quarkus all do it — the archive records each entry as given, so a relative classpath run
      * from a fixed directory matches wherever the tree ends up.
      */
-    record Result(Path stagingRoot, List<String> runArgs, Path cache) {}
+    /** {@code stagedFiles} = staging-relative paths present BEFORE the record run. */
+    record Result(Path stagingRoot, List<String> runArgs, Path cache, java.util.Set<String> stagedFiles) {}
 
     private static final long TRAIN_TIMEOUT_SECONDS = 300;
 
@@ -70,13 +71,9 @@ final class AotCacheTrainer {
 
     /** Why an AOT cache cannot be trained for this image, or null when it can. */
     static String unsupportedReason(ImageBuilder.Plan plan) {
-        if (plan.hasAppTree()) return null;
-        if (plan.classesDir() != null && !BootLayout.isBootJar(plan.mainJar())) {
-            return "this module's image is an exploded-classes layout and its main artifact is not a"
-                    + " Spring Boot jar, so there is nothing to unpack into a trainable shape. A CDS"
-                    + " dump refuses any classpath entry that is a directory (JDK-8329980, Won't"
-                    + " Fix)";
-        }
+        // The runtime probe applies to EVERY layout — an app tree trains in a container exactly
+        // like a jar layout when the host cannot execute the image's JVM, and skipping the probe
+        // used to surface as a raw `Cannot run program "docker"` mid-train (JK-1759).
         if (containerRuntime(plan.config().dockerExecutable()) == null
                 && !BaseJre.hostCanExecute(plan.config().platforms())) {
             return "this host can neither run the image's JVM directly (it builds for "
@@ -86,6 +83,13 @@ final class AotCacheTrainer {
                     + ") nor find a container runtime (docker, podman, nerdctl). The cache is only"
                     + " valid for the exact JVM build that produced it, so training needs one or the"
                     + " other";
+        }
+        if (plan.hasAppTree()) return null;
+        if (plan.classesDir() != null && !BootLayout.isBootJar(plan.mainJar())) {
+            return "this module's image is an exploded-classes layout and its main artifact is not a"
+                    + " Spring Boot jar, so there is nothing to unpack into a trainable shape. A CDS"
+                    + " dump refuses any classpath entry that is a directory (JDK-8329980, Won't"
+                    + " Fix)";
         }
         return null;
     }
@@ -131,6 +135,10 @@ final class AotCacheTrainer {
             runArgs = List.of("-cp", relativeClasspath(plan), plan.mainClass());
         }
         stamp(staging);
+        // Snapshot what was staged before any training process runs: whatever the app writes
+        // during record/assemble (logs, embedded-DB files) is not application content and must
+        // not become image bytes (JK-1758).
+        java.util.Set<String> stagedFiles = snapshotRelative(staging);
 
         // A container has to be addressable to be stopped; the local path signals the process
         // directly. Each run gets its own name so the training and verifying containers cannot
@@ -198,7 +206,19 @@ final class AotCacheTrainer {
             throw new IOException("the AOT cache was trained but the JVM refused it:\n  " + refusal);
         }
         log.accept("AOT cache verified (" + Files.size(cache) / (1024 * 1024) + " MiB)");
-        return new Result(staging, runArgs, cache);
+        return new Result(staging, runArgs, cache, stagedFiles);
+    }
+
+    private static java.util.Set<String> snapshotRelative(Path root) throws IOException {
+        java.util.Set<String> out = new java.util.TreeSet<>();
+        try (var walk = Files.walk(root)) {
+            for (Path f : walk.toList()) {
+                if (Files.isRegularFile(f)) {
+                    out.add(root.relativize(f).toString().replace('\\', '/'));
+                }
+            }
+        }
+        return out;
     }
 
     private static long sizeOrZero(Path p) {
@@ -299,12 +319,51 @@ final class AotCacheTrainer {
     /** {@code <runtime> run --rm -v <staging>:/app -w /app <base>} — everything before the java command. */
     private static List<String> containerPrefix(String runtime, Path staging, String base, String name) {
         List<String> cmd = new ArrayList<>(List.of(runtime, "run", "--rm", "--name", name));
+        // Rootful docker writes app.aot/app.aotconf into the bind mount as root:root — the
+        // follow-up setLastModifiedTime/delete then fails AFTER a successful training run, and
+        // the root-owned staging dir breaks the next build's cleanup (JK-1760). Rootless podman
+        // and rootless docker map container-root to the invoking user, so --user there would
+        // remap through subuids and break instead — only rootful docker gets the flag.
+        if (rootfulDocker(runtime)) {
+            String user = unixUserGroup(staging);
+            if (user != null) cmd.addAll(List.of("--user", user));
+        }
         // :z relabels for SELinux and is meaningless (and rejected) elsewhere.
         String mount = staging.toAbsolutePath() + ":/app";
         cmd.addAll(List.of("-v", isSelinux() ? mount + ":z" : mount));
         cmd.addAll(List.of("-w", "/app"));
         cmd.add(base);
         return cmd;
+    }
+
+    /** True for a docker CLI fronting a rootful daemon (probe fails → assume rootful). */
+    private static boolean rootfulDocker(String runtime) {
+        String name = Path.of(runtime).getFileName().toString();
+        if (!name.startsWith("docker")) return false;
+        try {
+            Process p = new ProcessBuilder(runtime, "info", "--format", "{{.SecurityOptions}}")
+                    .redirectErrorStream(true)
+                    .start();
+            String out = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+            return !out.contains("rootless");
+        } catch (IOException e) {
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return true;
+        }
+    }
+
+    /** {@code uid:gid} of the invoking user (owner of {@code probe}), or null off POSIX. */
+    private static String unixUserGroup(Path probe) {
+        try {
+            Object uid = Files.getAttribute(probe, "unix:uid");
+            Object gid = Files.getAttribute(probe, "unix:gid");
+            return uid + ":" + gid;
+        } catch (IOException | UnsupportedOperationException e) {
+            return null;
+        }
     }
 
     /** Stamp every staged file so the training run records the times the image will carry. */
@@ -319,23 +378,31 @@ final class AotCacheTrainer {
     }
 
     /** The line explaining why the JVM would not use the cache, or null when it mapped. */
+    /**
+     * A line proving the JVM refused the cache, or null. Matches the specific refusal shapes
+     * {@code -Xlog:aot} emits (cache not loaded/used/mapped, identity mismatches) rather than any
+     * line containing "failed" — AOT logging also narrates non-fatal per-item failures ("failed to
+     * load class ...") on runs where the cache itself mapped fine (JK-1783).
+     */
     static String refusal(String log) {
         for (String line : log.split("\n")) {
             if (!line.contains("[aot")) continue;
             String lower = line.toLowerCase(Locale.ROOT);
+            // The refusal shapes -Xlog:aot emits — but not per-item noise like "failed to
+            // load class X", which appears on runs where the cache mapped fine (JK-1783).
             if (lower.contains("mismatch")
-                    || lower.contains("failed")
-                    || lower.contains("unable to")
-                    || lower.contains("different version")) {
+                    || lower.contains("different version")
+                    || lower.contains("unable to map")
+                    || lower.contains("unable to use")
+                    || lower.contains("cannot be used")
+                    || lower.contains("disabled")
+                    || ((lower.contains("archive") || lower.contains("cache")) && lower.contains("failed"))) {
                 return line.trim();
             }
         }
         return null;
     }
 
-    private static boolean isSpringBoot(ImageBuilder.Plan plan) {
-        return plan.mainClass() != null && plan.mainClass().startsWith("org.springframework.boot.loader.");
-    }
 
     private static boolean isSelinux() {
         return Files.isDirectory(Path.of("/sys/fs/selinux"));

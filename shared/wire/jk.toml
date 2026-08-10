@@ -1,6 +1,6 @@
 [project]
-name     = "jk-engine-api"
-description = "jk engine API: the client<->engine wire contract — protocol codec, paths, build DTOs."
+name = "jk-engine-api"
+description = "Client–engine wire protocol and build DTOs"
 
 [dependencies]
 jk-model.workspace = true
@@ -8,6 +8,5 @@ jk-core.workspace = true
 jk-plugin-sdk.workspace = true
 
 [test-dependencies]
-assertj-core            = "latest"
-junit-jupiter           = "latest"
-junit-platform-launcher = "latest"
+assertj-core = "latest"
+junit-jupiter = "latest"

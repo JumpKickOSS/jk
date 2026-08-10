@@ -87,6 +87,30 @@ public final class WorkspaceResolve {
         }
     }
 
+    /**
+     * The enclosing workspace's unit coordinates ({@code group:artifact} for the root and every
+     * member), or an empty set when {@code moduleDir} is standalone or the workspace cannot be
+     * read. Publish paths use this to recognize sibling edges after
+     * {@link WorkspaceMerge#resolveSiblingCoordinates} has rewritten them to real coordinates —
+     * e.g. to omit tests-kind sibling edges whose test-jar jk never produces (JK-1643).
+     */
+    public static java.util.Set<String> siblingCoordinates(Path moduleDir) {
+        try {
+            var rootDir = WorkspaceLocator.findRoot(moduleDir);
+            if (rootDir.isEmpty()) return java.util.Set.of();
+            JkBuild root = JkBuildParser.parseLocal(rootDir.get().resolve("jk.toml"));
+            if (!root.isWorkspaceRoot()) return java.util.Set.of();
+            java.util.Set<String> out = new java.util.LinkedHashSet<>();
+            out.add(root.project().group() + ":" + root.project().name());
+            for (JkBuild m : WorkspaceLoader.loadModules(rootDir.get(), root).values()) {
+                out.add(m.project().group() + ":" + m.project().name());
+            }
+            return out;
+        } catch (Exception e) {
+            return java.util.Set.of(); // best-effort, same policy as applyWorkspace
+        }
+    }
+
     /** True when any declared dependency is a {@code workspace:<name>} sibling placeholder. */
     private static boolean hasWorkspaceDeps(JkBuild module) {
         for (cc.jumpkick.model.Scope scope : cc.jumpkick.model.Scope.values()) {

@@ -36,6 +36,7 @@ export function foldEvent(cards, event) {
       if (existing) {
         existing.id = d.requestId; // prefer live request id for subsequent SSE
         if (d.coord) existing.coord = d.coord;
+        if (d.projectId) existing.projectId = d.projectId;
         break;
       }
       cards.unshift({
@@ -43,6 +44,7 @@ export function foldEvent(cards, event) {
         kind: d.kind || 'request',
         dir: d.dir || '',
         coord: d.coord || null,
+        projectId: d.projectId || null,
         buildNumber: d.buildNumber || null,
         state: 'running',
         startedAt: event.at ?? null,
@@ -189,6 +191,7 @@ export function foldEvent(cards, event) {
     case 'request-finish': {
       const card = resolveCard(cards, d);
       if (card) {
+        if (d.projectId && !card.projectId) card.projectId = d.projectId;
         card.state = 'finished';
         card.finishedAt = event.at ?? null;
         card.millis = d.millis ?? null;
@@ -282,6 +285,7 @@ export function seedFromHistory(cards, records) {
     if (live) {
       live.historyId = rec.id; // reconcile: the live card is this run — make it deletable
       if (rec.buildNumber) live.buildNumber = rec.buildNumber; // and pick up its assigned #number
+      if (rec.projectId && !live.projectId) live.projectId = rec.projectId;
       if (rec.running) live.state = 'running';
       // Enriched history may carry the engine requestId — rebind a journal stub for SSE.
       const liveId = rec.requestId ?? rec.jid;
@@ -323,6 +327,7 @@ function historyCard(rec) {
     kind: rec.kind || 'build',
     dir: rec.dir || '',
     coord: rec.coord || null,
+    projectId: rec.projectId || null,
     state: running ? 'running' : 'finished',
     startedAt: rec.startedAt ?? null,
     finishedAt: running ? null : rec.finishedAt ?? null,

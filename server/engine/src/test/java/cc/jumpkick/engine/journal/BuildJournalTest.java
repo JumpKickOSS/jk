@@ -25,7 +25,7 @@ class BuildJournalTest {
                 BuildRecord.SCHEMA,
                 "build",
                 "/proj",
-                coord,
+                coord, null /* projectId */,
                 finishedAt - 100,
                 finishedAt,
                 100,
@@ -47,7 +47,7 @@ class BuildJournalTest {
     @Test
     void begin_then_complete_keeps_id_and_clears_running() {
         BuildJournal j = new BuildJournal(dir);
-        BuildRecord run = BuildRecord.running(27, "build", "/proj", "g:a", 1_700_000_000_000L, "9.9", "cli");
+        BuildRecord run = BuildRecord.running(27, "build", "/proj", "g:a", null, 1_700_000_000_000L, "9.9", "cli");
         String locator = j.begin(run);
         assertThat(locator).isEqualTo("27"); // directory name = build number
         assertThat(j.get(locator)).isPresent();
@@ -241,7 +241,7 @@ class BuildJournalTest {
     void prune_never_reaps_a_running_entry() {
         BuildJournal j = new BuildJournal(dir);
         // Old enough that any age budget would sweep it, but still running.
-        String live = j.begin(BuildRecord.running(1, "build", "/proj", "g:a", 1L, "9.9", "cli"));
+        String live = j.begin(BuildRecord.running(1, "build", "/proj", "g:a", null, 1L, "9.9", "cli"));
         assertThat(live).isNotNull();
         BuildJournal.PruneResult r = j.prune(1, 1, 1_700_000_000_000L);
         assertThat(r.removedEntries()).isZero();
@@ -272,8 +272,8 @@ class BuildJournalTest {
     @Test
     void scoped_delete_does_not_touch_another_projects_run_of_the_same_number() {
         BuildJournal j = new BuildJournal(dir);
-        j.begin(BuildRecord.running(8, "build", "/projA", "g:a", 1_700_000_000_000L, "9.9", "cli"));
-        j.begin(BuildRecord.running(8, "build", "/projB", "g:b", 1_700_000_000_000L, "9.9", "cli"));
+        j.begin(BuildRecord.running(8, "build", "/projA", "g:a", null, 1_700_000_000_000L, "9.9", "cli"));
+        j.begin(BuildRecord.running(8, "build", "/projB", "g:b", null, 1_700_000_000_000L, "9.9", "cli"));
         assertThat(j.runDir("g:a", "/projA", 8)).isPresent();
         assertThat(j.runDir("g:b", "/projB", 8)).isPresent();
 
@@ -288,7 +288,7 @@ class BuildJournalTest {
     @Test
     void scoped_delete_of_a_number_absent_from_that_project_is_a_no_op() {
         BuildJournal j = new BuildJournal(dir);
-        j.begin(BuildRecord.running(8, "build", "/projA", "g:a", 1_700_000_000_000L, "9.9", "cli"));
+        j.begin(BuildRecord.running(8, "build", "/projA", "g:a", null, 1_700_000_000_000L, "9.9", "cli"));
         assertThat(j.delete("8", "g:b", "/projB")).isFalse();
         assertThat(j.runDir("g:a", "/projA", 8)).isPresent();
     }
@@ -301,7 +301,7 @@ class BuildJournalTest {
                 BuildRecord.SCHEMA,
                 base.kind(),
                 base.dir(),
-                base.coord(),
+                base.coord(), null /* projectId */,
                 base.startedAt(),
                 base.finishedAt(),
                 base.millis(),

@@ -1,23 +1,20 @@
 [project]
-name        = "jk-test-runner"
-description = "jk-test-runner: child-JVM entry that drives JUnit Platform and streams JSONL events."
-# Rides the user's test JVM (project floor is JDK 17+); keep bytecode at 17.
-java        = 17
+name = "jk-test-runner"
+description = "JumpKick's JUnit Platform test-runner plugin"
+# Workers load on user JVMs (JDK 17+); stay on release 17.
+java = 17
 
 [application]
-main       = "cc.jumpkick.plugin.process.PluginMain"
+main = "cc.jumpkick.plugin.process.PluginMain"
 
 [dependencies]
 jk-plugin-sdk.workspace = true
 
-# Compile against the platform engine API; do not shade — the forked test JVM supplies engines.
-# The launcher is compile-only for the same reason, and additionally so the forked JVM uses the
-# project's own version: Quarkus hooks LauncherSessionListener on it.
+# Compile-only: forked test JVM supplies the real engines/launcher.
 [provided-dependencies]
-junit-platform-engine   = "latest"
+junit-platform-engine = "latest"
 junit-platform-launcher = "latest"
 
 [test-dependencies]
-assertj-core            = "latest"
-junit-jupiter           = "latest"
-junit-platform-launcher = "latest"
+assertj-core = "latest"
+junit-jupiter = "latest"

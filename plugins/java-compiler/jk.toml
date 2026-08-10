@@ -1,14 +1,13 @@
 [project]
-name        = "jk-java-compiler"
-description = "jk-java-compiler: child-JVM worker that runs javac in-process and captures AP provenance."
+name = "jk-java-compiler"
+description = "JumpKick's Java compiler plugin"
 
 [application]
-main       = "cc.jumpkick.plugin.process.PluginMain"
+main = "cc.jumpkick.plugin.process.PluginMain"
 
 [dependencies]
 jk-plugin-sdk.workspace = true
 
 [test-dependencies]
-assertj-core            = "latest"
-junit-jupiter           = "latest"
-junit-platform-launcher = "latest"
+assertj-core = "latest"
+junit-jupiter = "latest"

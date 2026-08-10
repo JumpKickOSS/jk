@@ -1,25 +1,17 @@
-# Self-host guard (JK-1443): short names resolve from the bundled catalog only,
-# immune to ~/.jk/libs.toml and the downloaded registry mirror.
-catalog = "bundled"
-
 [project]
-name        = "jk-groovy-compiler"
-description = "jk-groovy-compiler: Groovy 5 in-process compiler worker (PluginMain)."
+name = "jk-groovy-compiler"
+description = "JumpKick's Groovy compiler plugin"
 
 [application]
-main     = "cc.jumpkick.plugin.process.PluginMain"
+main = "cc.jumpkick.plugin.process.PluginMain"
 
-# Codec only in the assembly; the Groovy closure is resolved at runtime onto the worker CP.
 [dependencies]
 jk-plugin-sdk.workspace = true
 
 [provided-dependencies]
-groovy                  = "latest"
+groovy = "latest"
 
 [test-dependencies]
-# Groovy must be on the test CP: when jk test runs this plugin module, ServiceLoader also sees
-# GroovyCompiler (Plugin SPI) and must load it without ClassNotFoundException.
-groovy                  = "latest"
-assertj-core            = "latest"
-junit-jupiter           = "latest"
-junit-platform-launcher = "latest"
+groovy = "latest"
+assertj-core = "latest"
+junit-jupiter = "latest"

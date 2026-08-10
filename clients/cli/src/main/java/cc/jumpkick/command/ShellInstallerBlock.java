@@ -6,8 +6,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Marker-bounded shell rc / profile block (grok-style). Ensures platform bin on PATH, evals hook
- * integration, and wires completions under the data directory.
+ * Marker-bounded shell rc / profile block. Ensures platform bin on PATH, evals hook integration,
+ * and wires completions under the data directory.
  */
 public final class ShellInstallerBlock {
 

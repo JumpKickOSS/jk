@@ -156,7 +156,9 @@ public final class LocalProjectBuilder {
 
         // 4. Render the POM, stamped with the published coordinate + version.
         String pomXml = PublishablePom.render(
-                        withCoordinate(project, group, artifact, version), PublishablePom.Metadata.empty())
+                        withCoordinate(project, group, artifact, version),
+                        PublishablePom.Metadata.empty(),
+                        cc.jumpkick.config.WorkspaceResolve.siblingCoordinates(projectDir))
                 .xml();
 
         return new Built(group, artifact, version, jarOut, pomXml);

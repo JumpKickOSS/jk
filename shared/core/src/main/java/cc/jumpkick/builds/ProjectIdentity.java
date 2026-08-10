@@ -27,9 +27,13 @@ import java.util.stream.Stream;
  * <ol>
  *   <li>Explicit {@code [project] id} in {@code jk.toml} (rare override)
  *   <li>{@code project-id} in root {@code jk-lock.toml} (normal auto-id)
- *   <li>Git remote + path relative to worktree root + coord
- *   <li>Coord + absolute path (last resort)
+ *   <li>Recovered id from an existing {@code identity.toml} (path or git match — JK-1794)
+ *   <li>Git remote + path relative to worktree root
+ *   <li>Absolute path (last resort)
  * </ol>
+ *
+ * <p>Coord ({@code group:name}) is display metadata and is deliberately absent from the hash
+ * material — renaming a project must not split its identity (JK-1794).
  *
  * <p>The opaque {@link #id()} is URL-safe and is the sole key under {@code builds/projects/&lt;id&gt;/}.
  * Absolute path is operational (where to build), not the identity.
@@ -73,13 +77,31 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
         }
 
         Optional<GitInfo> git = gitInfo(abs);
+
+        // Before minting a hash, recover an id already recorded for this checkout (identity.toml
+        // path or git match). This keeps locked/previously-built projects on one id even when the
+        // checkout has no lock right now — including dead checkouts (deleted workspace) whose
+        // history rows must still route to the existing project home, not a fresh
+        // unknown:unknown hash (JK-1794).
+        Optional<String> recovered = recoverId(abs, git);
+        if (recovered.isPresent()) {
+            if (git.isPresent()) {
+                return new ProjectIdentity(
+                        recovered.get(), coord, abs, Source.GIT, git.get().remote(), git.get().relPath());
+            }
+            return new ProjectIdentity(recovered.get(), coord, abs, Source.PATH, null, null);
+        }
+
+        // Coord ([project] group:name) is display metadata, NOT identity material: hashing it in
+        // would split a lockless project's identity on rename (JK-1794). The remote+relPath (GIT)
+        // or the absolute path (PATH) alone are the identity.
         if (git.isPresent()) {
             GitInfo g = git.get();
-            String material = "git\0" + g.remote() + "\0" + g.relPath() + "\0" + coord;
+            String material = "git\0" + g.remote() + "\0" + g.relPath();
             return new ProjectIdentity(hashId(material), coord, abs, Source.GIT, g.remote(), g.relPath());
         }
 
-        String material = "path\0" + coord + "\0" + abs;
+        String material = "path\0" + abs;
         return new ProjectIdentity(hashId(material), coord, abs, Source.PATH, null, null);
     }
 
@@ -139,9 +161,13 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
      */
     public static Optional<String> recoverId(Path projectDir) {
         Path abs = projectDir.toAbsolutePath().normalize();
+        return recoverId(abs, gitInfo(abs));
+    }
+
+    /** {@link #recoverId(Path)} with git info the caller already computed (resolve's hot path). */
+    private static Optional<String> recoverId(Path abs, Optional<GitInfo> git) {
         Path root = ProjectBuilds.projectsRoot();
         if (!Files.isDirectory(root)) return Optional.empty();
-        Optional<GitInfo> git = gitInfo(abs);
         try (Stream<Path> homes = Files.list(root)) {
             for (Path home : homes.toList()) {
                 if (!Files.isDirectory(home)) continue;

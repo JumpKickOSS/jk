@@ -40,7 +40,17 @@ public enum BuildStage {
     NATIVE("native"),
     /** OCI / image packaging. */
     IMAGE("image"),
-    /** Escape hatch: unknown or plugin-private; UI parks under Other. */
+    /**
+     * Publishing what the pipeline produced: {@code jk install}, {@code jk publish},
+     * {@code jk release}. Sits after every artifact-producing stage — installing is not
+     * packaging, it just follows it (JK-1715; Maven's package → install → deploy).
+     */
+    PUBLISH("publish"),
+    /**
+     * Not a pipeline task: command plans that are no module build (wizard, scaffold, admin
+     * queries) where pipeline order is meaningless rather than unknown. {@code BuildPlan}
+     * derives a position from upstreams when one of these lands inside a module plan.
+     */
     OTHER("other");
 
     private final String wire;
@@ -81,6 +91,7 @@ public enum BuildStage {
             case TRAIN -> 5;
             case NATIVE -> 6;
             case IMAGE -> 7;
+            case PUBLISH -> 8;
             case OTHER -> -1;
         };
     }
@@ -153,7 +164,29 @@ public enum BuildStage {
             return COMPILE;
         }
         return switch (t) {
-            case "parse-build", "resolve-deps", "ensure-jdk", "sync-deps", "read-lock", "parse-lock" -> RESOLVE;
+                // Acquisition: parse, lock, fetch, sync, toolchain — all "get the module ready".
+            case "parse-build",
+                    "resolve-deps",
+                    "ensure-jdk",
+                    "sync-deps",
+                    "read-lock",
+                    "parse-lock",
+                    "fetch-catalog",
+                    "fetch-git",
+                    "lock-plugins",
+                    "lock-sdk",
+                    "resolve-coord",
+                    "resolve-formatters",
+                    "resolve-jar-deps",
+                    "resolve-kotlinc",
+                    "write-lockfile",
+                    "install-jdk",
+                    "prewarm",
+                    "sync-cas",
+                    "sync-modules",
+                    "sync-plugins",
+                    "sync-sources",
+                    "sync-workers" -> RESOLVE;
             case "build-logic-before-compile" -> GENERATE;
             case "compile-java",
                     "compile-kotlin",
@@ -172,6 +205,7 @@ public enum BuildStage {
             case "train", "train-reachability" -> TRAIN;
             case "native-image", "native-shared" -> NATIVE;
             case "write-image", "image-plan" -> IMAGE;
+            case "install", "cache-install" -> PUBLISH;
             default -> {
                 if (t.startsWith("compile")) yield COMPILE;
                 if (t.startsWith("write-stamp")) yield COMPILE;

@@ -8,4 +8,4 @@ java = 25
 main = "demo.App"
 assembly = true
 
-# Runnable assembly jar: jk assemble  (or jk build)
+# Runnable assembly jar: jk assemble (or jk build)

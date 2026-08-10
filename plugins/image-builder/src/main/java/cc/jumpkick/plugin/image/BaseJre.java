@@ -56,30 +56,42 @@ final class BaseJre {
         return a;
     }
 
+    /** How long a mutable-tag extraction is trusted before the registry is re-asked. */
+    private static final long REVALIDATE_MILLIS = 24L * 60 * 60 * 1000;
+
     /**
      * Materialize {@code base}'s JRE under {@code cacheRoot} and return its {@code java}, or null
-     * when the image carries none. Cached by image reference — the extraction costs one pull and an
-     * untar, and neither is worth repeating per build.
+     * when the image carries none. Cached by image reference, validated by the <em>resolved</em>
+     * digest: a republished tag must not keep training (and verifying!) with the previous JVM —
+     * the shipped image would carry an AOT cache the runtime silently rejects (JK-1757).
+     * Digest-pinned references never re-validate; mutable tags re-resolve after
+     * {@link #REVALIDATE_MILLIS} (Jib's layer cache makes an unchanged re-pull cheap).
      */
     static Path javaBinary(String base, Path cacheRoot) throws IOException, InterruptedException {
         Path root = cacheRoot.resolve("base-jre").resolve(digest(base));
         Path marker = root.resolve(".extracted");
-        if (!Files.isRegularFile(marker)) {
-            extract(base, root);
-            Files.writeString(marker, base);
+        boolean pinned = base.contains("@sha256:");
+        if (Files.isRegularFile(marker)) {
+            long age = System.currentTimeMillis()
+                    - Files.getLastModifiedTime(marker).toMillis();
+            if (pinned || age < REVALIDATE_MILLIS) return findJava(root);
         }
+        extractIfChanged(base, root, marker);
         return findJava(root);
     }
 
     /**
      * Write the base image to a tarball with Jib — the same pull Jib performs for the real build,
-     * through the public API and the same layer cache — then unpack its layers.
+     * through the public API and the same layer cache — then unpack its layers into a fresh tree
+     * and swap it in. Skips the unpack when the registry still serves the digest already
+     * extracted.
      */
-    private static void extract(String base, Path root) throws IOException, InterruptedException {
+    private static void extractIfChanged(String base, Path root, Path marker) throws IOException {
+        Files.createDirectories(root.getParent());
         Path tar = root.resolveSibling(root.getFileName() + ".tar");
-        Files.createDirectories(root);
+        com.google.cloud.tools.jib.api.JibContainer pulled;
         try {
-            Jib.from(RegistryImage.named(base))
+            pulled = Jib.from(RegistryImage.named(base))
                     .setEntrypoint("/bin/sh")
                     .containerize(Containerizer.to(TarImage.at(tar).named("jk-base-jre")));
         } catch (InvalidImageReferenceException | RegistryException e) {
@@ -87,19 +99,90 @@ final class BaseJre {
         } catch (com.google.cloud.tools.jib.api.CacheDirectoryCreationException
                 | java.util.concurrent.ExecutionException e) {
             throw new IOException("cannot extract base image " + base + ": " + e.getMessage(), e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("base image pull interrupted", e);
         }
-        // An image tarball is a tar of layer tarballs plus metadata; unpack every layer over the
-        // same root, in order, so later layers win the way the runtime filesystem would resolve them.
+        String resolved = pulled.getDigest().toString();
+        String previous = null;
+        if (Files.isRegularFile(marker)) {
+            String[] lines = Files.readString(marker).split("\n");
+            if (lines.length > 1) previous = lines[1].trim();
+        }
+        if (resolved.equals(previous)) {
+            // Same bytes — refresh the trust window and keep the tree.
+            Files.setLastModifiedTime(marker, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis()));
+            Files.deleteIfExists(tar);
+            return;
+        }
+        Path fresh = root.resolveSibling(root.getFileName() + ".fresh");
+        deleteRecursively(fresh);
+        Files.createDirectories(fresh);
+        unpackImage(tar, fresh);
+        Files.deleteIfExists(tar);
+        deleteRecursively(root);
+        Files.move(fresh, root);
+        Files.writeString(root.resolve(".extracted"), base + "\n" + resolved + "\n");
+    }
+
+    /**
+     * Unpack a docker-archive tarball: layers applied in <em>manifest order</em> (not file-name
+     * order — digest-lexicographic ordering has no relation to layer order) with OCI whiteouts
+     * honored, so "later layer wins" matches the runtime filesystem.
+     */
+    private static void unpackImage(Path tar, Path root) throws IOException {
         Path layers = Files.createTempDirectory(root, "layers-");
         unpack(tar, layers, false);
-        try (var walk = Files.walk(layers)) {
-            for (Path candidate : walk.filter(Files::isRegularFile).sorted().toList()) {
-                if (isGzip(candidate) || candidate.getFileName().toString().endsWith(".tar")) {
-                    unpack(candidate, root, true);
-                }
+        List<Path> ordered = manifestLayerOrder(layers);
+        if (ordered.isEmpty()) {
+            // No manifest.json (not a docker archive?) — fall back to name order, old behavior.
+            try (var walk = Files.walk(layers)) {
+                ordered = walk.filter(Files::isRegularFile)
+                        .filter(c -> {
+                            try {
+                                return isGzip(c) || c.getFileName().toString().endsWith(".tar");
+                            } catch (IOException e) {
+                                return false;
+                            }
+                        })
+                        .sorted()
+                        .toList();
             }
         }
-        Files.deleteIfExists(tar);
+        for (Path layer : ordered) {
+            unpack(layer, root, true);
+        }
+        deleteRecursively(layers);
+    }
+
+    /**
+     * The {@code Layers} list from the archive's {@code manifest.json}, resolved to files. The
+     * docker-archive manifest is a stable one-object format; the plugin carries no JSON
+     * dependency, so the list is pulled with a scoped regex.
+     */
+    private static List<Path> manifestLayerOrder(Path layers) throws IOException {
+        Path manifest = layers.resolve("manifest.json");
+        if (!Files.isRegularFile(manifest)) return List.of();
+        String body = Files.readString(manifest);
+        var m = java.util.regex.Pattern.compile("\"Layers\"\\s*:\\s*\\[(.*?)]", java.util.regex.Pattern.DOTALL)
+                .matcher(body);
+        if (!m.find()) return List.of();
+        List<Path> out = new java.util.ArrayList<>();
+        var entry = java.util.regex.Pattern.compile("\"([^\"]+)\"").matcher(m.group(1));
+        while (entry.find()) {
+            Path layer = layers.resolve(entry.group(1)).normalize();
+            if (layer.startsWith(layers) && Files.isRegularFile(layer)) out.add(layer);
+        }
+        return out;
+    }
+
+    private static void deleteRecursively(Path root) throws IOException {
+        if (!Files.exists(root)) return;
+        try (var walk = Files.walk(root)) {
+            for (Path p : walk.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(p);
+            }
+        }
     }
 
     private static boolean isGzip(Path file) throws IOException {
@@ -118,6 +201,24 @@ final class BaseJre {
             while ((entry = tar.getNextEntry()) != null) {
                 Path target = dest.resolve(entry.getName()).normalize();
                 if (!target.startsWith(dest)) continue; // path traversal in an untrusted archive
+                String name = target.getFileName() == null ? "" : target.getFileName().toString();
+                // OCI whiteouts: `.wh..wh..opq` clears the directory it sits in; `.wh.<x>`
+                // deletes <x> from lower layers. Ignoring them resurrects files the image
+                // deliberately removed.
+                if (name.equals(".wh..wh..opq")) {
+                    Path dir = target.getParent();
+                    if (dir != null && Files.isDirectory(dir) && dir.startsWith(dest)) {
+                        try (var children = Files.list(dir)) {
+                            for (Path child : children.toList()) deleteRecursively(child);
+                        }
+                    }
+                    continue;
+                }
+                if (name.startsWith(".wh.")) {
+                    Path victim = target.resolveSibling(name.substring(".wh.".length()));
+                    if (victim.startsWith(dest)) deleteRecursively(victim);
+                    continue;
+                }
                 if (entry.isDirectory()) {
                     Files.createDirectories(target);
                     continue;

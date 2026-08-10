@@ -30,7 +30,12 @@ public final class HeavyActionGc {
 
     private HeavyActionGc() {}
 
-    public record Report(int deletedKeys, long classCBytesBefore, long classCBytesAfter) {}
+    /** {@code keyFiles} = the key files deleted (or, dry-run, the ones that would be). */
+    public record Report(int deletedKeys, long classCBytesBefore, long classCBytesAfter, Set<Path> keyFiles) {
+        public Report {
+            keyFiles = keyFiles == null ? Set.of() : Set.copyOf(keyFiles);
+        }
+    }
 
     /**
      * Delete <em>every</em> Class-C action key (native / OCI / fat assembly). Used by {@code jk
@@ -40,15 +45,17 @@ public final class HeavyActionGc {
     public static Report purgeAll(Path cacheRoot, Cas cacheCas, boolean dryRun) throws IOException {
         Path keysDir = cacheRoot.resolve("actions").resolve("keys");
         Path tasksDir = cacheRoot.resolve("actions").resolve("tasks");
-        if (!Files.isDirectory(keysDir)) return new Report(0, 0L, 0L);
+        if (!Files.isDirectory(keysDir)) return new Report(0, 0L, 0L, Set.of());
         List<Entry> heavy = collectClassC(cacheCas, keysDir);
         long before = heavy.stream().mapToLong(Entry::bytes).sum();
         int deleted = 0;
+        Set<Path> keyFiles = new HashSet<>();
         for (Entry e : heavy) {
             if (!dryRun) deleteKey(keysDir, tasksDir, e.actionKey, e.taskId);
+            keyFiles.add(e.keyFile);
             deleted++;
         }
-        return new Report(deleted, before, 0L);
+        return new Report(deleted, before, 0L, keyFiles);
     }
 
     /**
@@ -61,7 +68,7 @@ public final class HeavyActionGc {
             throws IOException {
         Path keysDir = cacheRoot.resolve("actions").resolve("keys");
         Path tasksDir = cacheRoot.resolve("actions").resolve("tasks");
-        if (!Files.isDirectory(keysDir)) return new Report(0, 0L, 0L);
+        if (!Files.isDirectory(keysDir)) return new Report(0, 0L, 0L, Set.of());
 
         long cutoff = System.currentTimeMillis() - ttl.toMillis();
         List<Entry> heavy = collectClassC(cacheCas, keysDir);
@@ -98,10 +105,12 @@ public final class HeavyActionGc {
         }
 
         long after = 0L;
+        Set<Path> keyFiles = new HashSet<>();
         for (Entry e : heavy) {
             if (!deletedKeys.contains(e.actionKey)) after += e.bytes;
+            else keyFiles.add(e.keyFile);
         }
-        return new Report(deleted, before, after);
+        return new Report(deleted, before, after, keyFiles);
     }
 
     private record Entry(Path keyFile, String actionKey, String taskId, List<String> shas, long atime, long bytes) {}
@@ -164,8 +173,13 @@ public final class HeavyActionGc {
                 String k = line.trim();
                 if (!k.isEmpty() && !k.equals(actionKey)) kept.add(k);
             }
+            // Atomic like the writer side (ActionCache.trimGenerations): this engine's GC holds
+            // cacheGate + .prune.lock, but a SECOND engine (upgrade window, different jk version,
+            // same cache) takes neither — a torn plain write here could clobber its concurrent
+            // gens update (JK-1792). The pointer compare-and-delete above stays inherently racy
+            // on POSIX; losing that race only costs a re-run of one heavy task.
             if (kept.isEmpty()) Files.deleteIfExists(gens);
-            else Files.write(gens, kept, StandardCharsets.UTF_8);
+            else cc.jumpkick.util.AtomicWrites.replace(gens, String.join("\n", kept) + "\n");
         }
     }
 

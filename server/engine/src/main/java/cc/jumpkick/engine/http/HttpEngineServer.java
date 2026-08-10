@@ -854,13 +854,26 @@ public final class HttpEngineServer implements AutoCloseable {
             var result = cc.jumpkick.engine.runtime.NewProjectOps.create(
                     new cc.jumpkick.engine.runtime.NewProjectOps.Request(
                             name, parentDir, group, lang, layout, template, executable, framework));
-            sendJson(
-                    exchange,
-                    201,
-                    JsonOut.object()
-                            .put("path", result.path().toString())
-                            .put("dir", result.path().toString())
-                            .toString());
+            // Resolve the durable projectId so the SPA can route #project/<id> immediately
+            // (JK-1775) — an absolute path in the hash 404s (isValidId rejects '/'). The
+            // scaffolder writes no lock, so materialize identity.toml under the project home;
+            // without it GET /api/project?project=<id> cannot map the id back to the checkout.
+            String projectId = null;
+            try {
+                var identity = cc.jumpkick.builds.ProjectIdentity.resolve(result.path());
+                cc.jumpkick.builds.ProjectIdentity.IdentityFile.write(
+                        cc.jumpkick.builds.ProjectBuilds.projectHome(identity.id()), identity);
+                cc.jumpkick.runtime.ProjectIds.refresh(result.path().toString());
+                projectId = identity.id();
+            } catch (RuntimeException | IOException e) {
+                // Identity resolution/persist is best-effort — creation succeeded; the SPA
+                // skips the project route when projectId is absent.
+            }
+            JsonOut created = JsonOut.object()
+                    .put("path", result.path().toString())
+                    .put("dir", result.path().toString());
+            if (projectId != null) created.put("projectId", projectId);
+            sendJson(exchange, 201, created.toString());
         } catch (IllegalArgumentException e) {
             sendJson(
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
@@ -1071,17 +1084,16 @@ public final class HttpEngineServer implements AutoCloseable {
             if (!(parsed instanceof Map<?, ?> m0)) return raw;
             @SuppressWarnings("unchecked")
             Map<String, Object> m = (Map<String, Object>) m0;
-            // Durable project id for dashboard routing (JK-1727+); derived from checkout path.
+            // Durable project id for dashboard routing (JK-1727+). New rows are stamped at
+            // journal.begin (JK-1750); only legacy rows resolve here, through the process memo —
+            // a bare resolve is two TOML parses plus up to three git subprocesses per row.
+            // resolve() recovers an existing identity.toml id before hashing (JK-1794), so a
+            // dead checkout's rows route to its recorded project home instead of minting a
+            // fresh unknown:unknown id that 404s on the detail page.
             if (!(m.get("projectId") instanceof String pid) || pid.isBlank()) {
                 if (m.get("dir") instanceof String dir && !dir.isBlank()) {
-                    try {
-                        m.put(
-                                "projectId",
-                                cc.jumpkick.builds.ProjectIdentity.resolve(Path.of(dir))
-                                        .id());
-                    } catch (RuntimeException ignored) {
-                        // leave absent
-                    }
+                    String resolved = cc.jumpkick.runtime.ProjectIds.idOf(dir);
+                    if (resolved != null) m.put("projectId", resolved);
                 }
             }
             if (!Boolean.TRUE.equals(m.get("running"))) {
@@ -1208,17 +1220,24 @@ public final class HttpEngineServer implements AutoCloseable {
             }
             dir = path.get().toString();
         }
+        // Resolve identity BEFORE the jk.toml parse: resolution succeeds without a parseable
+        // manifest (lock / identity.toml / hash), so a ?dir= call on a broken or deleted
+        // workspace still gets its durable projectId in the fallback branch (JK-1796).
+        String resolvedId = projectId;
         try {
-            Path dirPath = Path.of(dir);
-            var identity = cc.jumpkick.builds.ProjectIdentity.resolve(dirPath);
-            var project = cc.jumpkick.config.JkBuildParser.parse(dirPath.resolve("jk.toml"))
+            resolvedId = cc.jumpkick.builds.ProjectIdentity.resolve(Path.of(dir)).id();
+        } catch (RuntimeException e) {
+            // Invalid path — keep whatever the caller supplied (empty for ?dir= calls).
+        }
+        try {
+            var project = cc.jumpkick.config.JkBuildParser.parse(Path.of(dir).resolve("jk.toml"))
                     .project();
             sendJson(
                     exchange,
                     200,
                     JsonOut.object()
                             .put("dir", dir)
-                            .put("projectId", identity.id())
+                            .put("projectId", resolvedId)
                             .put("coord", project.group() + ":" + project.name())
                             .put("description", project.description())
                             .toString());
@@ -1229,7 +1248,7 @@ public final class HttpEngineServer implements AutoCloseable {
                     200,
                     JsonOut.object()
                             .put("dir", dir)
-                            .put("projectId", projectId == null ? "" : projectId)
+                            .put("projectId", resolvedId == null ? "" : resolvedId)
                             .toString());
         }
     }
@@ -1237,8 +1256,9 @@ public final class HttpEngineServer implements AutoCloseable {
     /**
      * {@code GET /api/project/graph?dir=…[&scopes=main,test][&transitive=0|1]} — dependency graph
      * for the Project page ECharts panel (JK-1542). Workspace modules plus declared external deps
-     * for the selected scopes (default {@code main}); optional lockfile transitive expansion.
-     * On-demand only (SPA lazy-loads). Token-gated like {@code /api/project}.
+     * for the selected scopes (default {@code export,main,runtime}, same as {@code jk tree});
+     * optional lockfile transitive expansion. On-demand only (SPA lazy-loads). Token-gated like
+     * {@code /api/project}.
      */
     private void handleProjectGraph(HttpExchange exchange) throws IOException {
         String query = exchange.getRequestURI().getQuery();
@@ -1266,7 +1286,18 @@ public final class HttpEngineServer implements AutoCloseable {
             return;
         }
         boolean transitive = parseTruthy(queryParam(query, "transitive"));
-        var data = cc.jumpkick.resolver.DependencyGraphModel.forProjectDir(projectDir, scopes, transitive);
+        cc.jumpkick.resolver.DependencyGraphModel.Graph data;
+        try {
+            data = cc.jumpkick.resolver.DependencyGraphModel.forProjectDir(projectDir, scopes, transitive);
+        } catch (IOException | cc.jumpkick.config.JkBuildParseException e) {
+            // A broken project (malformed jk.toml, workspace member missing its jk.toml, IO
+            // trouble) must NOT come back as 200 + empty nodes — the SPA would tell the user the
+            // project has no dependencies (JK-1624). 422: the request was well-formed, the
+            // project is not.
+            String msg = e.getMessage() == null || e.getMessage().isBlank() ? e.toString() : e.getMessage();
+            sendJson(exchange, 422, JsonOut.object().put("error", msg).toString());
+            return;
+        }
         List<Map<String, Object>> nodes = new ArrayList<>(data.nodes().size());
         for (var n : data.nodes()) {
             Map<String, Object> row = new LinkedHashMap<>();
@@ -1290,6 +1321,7 @@ public final class HttpEngineServer implements AutoCloseable {
         body.put("workspace", data.workspace());
         body.put("scopes", data.scopes());
         body.put("transitive", data.transitive());
+        body.put("truncated", data.truncated());
         body.put("availableScopes", data.availableScopes());
         body.put("nodes", nodes);
         body.put("edges", edges);

@@ -125,12 +125,6 @@ class SelfHostingTomlTest {
     }
 
     @Test
-    void root_declares_central_and_google_repositories() throws Exception {
-        JkBuild root = JkBuildParser.parse(REPO.resolve("jk.toml"));
-        assertThat(root.repositories()).extracting(r -> r.name()).contains("central", "google");
-    }
-
-    @Test
     void web_module_is_resources_library() throws Exception {
         JkBuild web = JkBuildParser.parse(REPO.resolve("clients/web/jk.toml"));
         assertThat(web.project().name()).isEqualTo("jk-web");
@@ -141,9 +135,10 @@ class SelfHostingTomlTest {
     }
 
     @Test
-    void android_plugin_declares_google_maven_for_apksig() throws Exception {
+    void android_plugin_depends_on_apksig() throws Exception {
         JkBuild android = JkBuildParser.parse(REPO.resolve("plugins/android/jk.toml"));
-        assertThat(android.repositories()).extracting(r -> r.name()).contains("google");
+        // Google Maven is a built-in remote — no need to redeclare [repositories].
+        assertThat(android.repositories()).isEmpty();
         assertThat(android.dependencies().of(Scope.MAIN).stream()
                         .map(d -> d.module())
                         .toList())

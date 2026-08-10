@@ -27,6 +27,7 @@ final class Json {
         o.put("kind", r.kind());
         o.put("dir", r.dir());
         o.put("coord", r.coord());
+        o.put("projectId", r.projectId());
         o.put("startedAt", r.startedAt());
         o.put("finishedAt", r.finishedAt());
         o.put("millis", r.millis());
@@ -181,6 +182,7 @@ final class Json {
                 str(o, "kind"),
                 str(o, "dir"),
                 str(o, "coord"),
+                str(o, "projectId"),
                 lng(o, "startedAt"),
                 lng(o, "finishedAt"),
                 lng(o, "millis"),

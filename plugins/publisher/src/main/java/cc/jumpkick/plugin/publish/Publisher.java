@@ -111,7 +111,10 @@ public final class Publisher implements Plugin, PublishExtension {
         artifacts.add(new MavenPublisher.Artifact(".jar", jarBytes));
         ctx.label("artifact " + jar.getFileName() + " (" + jarBytes.length + " bytes)");
 
-        PublishablePom.Pom pom = PublishablePom.render(project, PublishablePom.Metadata.empty());
+        PublishablePom.Pom pom = PublishablePom.render(
+                project,
+                PublishablePom.Metadata.empty(),
+                cc.jumpkick.config.WorkspaceResolve.siblingCoordinates(projectDir));
         byte[] pomBytes = pom.xml().getBytes(StandardCharsets.UTF_8);
         artifacts.add(new MavenPublisher.Artifact(".pom", pomBytes));
         ctx.label(

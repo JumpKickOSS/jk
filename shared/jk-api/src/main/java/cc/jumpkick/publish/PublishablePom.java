@@ -9,6 +9,7 @@ import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.pom.PomXml;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Publish-grade {@code pom.xml}: coords, standard scopes, BOM import for PLATFORM; no
@@ -47,8 +48,21 @@ public final class PublishablePom {
     private PublishablePom() {}
 
     public static Pom render(JkBuild jkBuild, Metadata meta) {
+        return render(jkBuild, meta, Set.of());
+    }
+
+    /**
+     * As {@link #render(JkBuild, Metadata)}, with the workspace's sibling coordinates
+     * ({@code group:artifact}, see {@code WorkspaceResolve.siblingCoordinates}). A tests-kind edge
+     * to a sibling would publish as {@code <type>test-jar</type><classifier>tests</classifier>}
+     * against an artifact jk never produces (there is no test-jar packaging task), so those edges
+     * are omitted; tests-kind edges to external coordinates are kept — their test-jars exist
+     * upstream.
+     */
+    public static Pom render(JkBuild jkBuild, Metadata meta, Set<String> workspaceSiblings) {
         Objects.requireNonNull(jkBuild, "jkBuild");
         if (meta == null) meta = Metadata.empty();
+        if (workspaceSiblings == null) workspaceSiblings = Set.of();
 
         StringBuilder sb = new StringBuilder(512);
         PomXml.appendPreamble(sb);
@@ -76,7 +90,7 @@ public final class PublishablePom {
         appendScm(sb, meta.scm());
 
         PomXml.appendDependencyManagement(sb, jkBuild.dependencies().of(Scope.PLATFORM), d -> versionOf(d.version()));
-        appendDependencies(sb, jkBuild);
+        appendDependencies(sb, jkBuild, workspaceSiblings);
 
         sb.append("</project>\n");
         return new Pom(sb.toString());
@@ -131,7 +145,7 @@ public final class PublishablePom {
         sb.append("  </scm>\n");
     }
 
-    private static void appendDependencies(StringBuilder sb, JkBuild jkBuild) {
+    private static void appendDependencies(StringBuilder sb, JkBuild jkBuild, Set<String> workspaceSiblings) {
         Scope[] order = {Scope.MAIN, Scope.RUNTIME, Scope.PROVIDED, Scope.TEST};
         boolean any = false;
         for (Scope s : order) {
@@ -151,6 +165,11 @@ public final class PublishablePom {
                 // publish` rejects it up front; skip here as a safety net so a stray caller
                 // never emits a broken <version>=branch=...</version>.
                 if (d.isGit() && d.gitSource().ref() instanceof GitRefSpec.Branch) {
+                    continue;
+                }
+                // A tests-kind sibling edge names the sibling's test-jar — an artifact jk never
+                // publishes (JK-1643). Test scope is not transitive, so consumers lose nothing.
+                if (d.isTestsKind() && workspaceSiblings.contains(d.module())) {
                     continue;
                 }
                 PomXml.appendDependency(sb, d, versionOf(d.version()), mavenScope);

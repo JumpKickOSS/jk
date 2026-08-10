@@ -1,9 +1,9 @@
 [project]
-group   = "$organization$"
-name    = "$name$"
+group = "$organization$"
+name = "$name$"
 version = "0.1.0"
-java    = $java$
-layout  = "simple"
+java = $java$
+layout = "simple"
 
 [application]
 main = "$package$.Main"

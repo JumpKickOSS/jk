@@ -111,7 +111,7 @@ public final class PublishPlans {
                 .build();
 
         Task publish = Task.builder("publish")
-                .stage(BuildStage.OTHER)
+                .stage(BuildStage.PUBLISH)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_BUILD)
                 .ticks(1)

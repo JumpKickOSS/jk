@@ -167,6 +167,25 @@ public final class SpringBootPlugin implements Plugin, BuildExtension, PackageEx
                 if (Files.isDirectory(dir)) aotDirs.add(dir);
             }
         });
+        // A jar carrying AOT artifacts the runtime never reads is paid-for dead weight: Boot
+        // only uses them under spring.aot.enabled=true, which nothing sets on a plain
+        // `java -jar` (JK-1706). SpringProperties reads classpath-root spring.properties, so
+        // activation can ship inside the jar. App files win collisions in the packager, so a
+        // user-authored spring.properties is respected — with a warning when it forgot the key.
+        if (!aotDirs.isEmpty()) {
+            Path userProps = io.classesDir().resolve("spring.properties");
+            if (!Files.isRegularFile(userProps)) {
+                Path activate = Files.createDirectories(io.artifactPath().getParent().resolve(".jk-aot-activate"));
+                Files.writeString(
+                        activate.resolve("spring.properties"),
+                        "# Written by jk: activate the AOT artifacts built into this jar (JK-1706).\n"
+                                + "spring.aot.enabled=true\n");
+                aotDirs.add(activate);
+            } else if (!Files.readString(userProps).contains("spring.aot.enabled")) {
+                io.label("warning: spring.properties lacks spring.aot.enabled=true — the built AOT"
+                        + " artifacts will be ignored at runtime");
+            }
+        }
 
         io.label("package " + io.artifactPath().getFileName() + " (boot)");
         Map<String, String> attributes = new LinkedHashMap<>(io.project().manifest());

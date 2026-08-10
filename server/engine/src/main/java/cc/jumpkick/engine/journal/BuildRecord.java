@@ -23,6 +23,7 @@ public record BuildRecord(
         String kind,
         String dir,
         String coord,
+        String projectId,
         long startedAt,
         long finishedAt,
         long millis,
@@ -64,6 +65,7 @@ public record BuildRecord(
                 kind,
                 dir,
                 coord,
+                projectId,
                 startedAt,
                 finishedAt,
                 millis,
@@ -91,6 +93,7 @@ public record BuildRecord(
                 kind,
                 dir,
                 coord,
+                projectId,
                 startedAt,
                 finishedAt,
                 millis,
@@ -122,7 +125,14 @@ public record BuildRecord(
 
     /** In-flight stub at admission. */
     public static BuildRecord running(
-            long buildNumber, String kind, String dir, String coord, long startedAt, String jkVersion, String trigger) {
+            long buildNumber,
+            String kind,
+            String dir,
+            String coord,
+            String projectId,
+            long startedAt,
+            String jkVersion,
+            String trigger) {
         return new BuildRecord(
                 null,
                 buildNumber,
@@ -130,6 +140,7 @@ public record BuildRecord(
                 kind,
                 dir,
                 coord,
+                projectId,
                 startedAt,
                 0L,
                 0L,

@@ -51,19 +51,6 @@ class CachePruneSchedulerTest {
     }
 
     @Test
-    void command_is_background_prune(@TempDir Path cacheRoot) {
-        var cmd = CachePruneScheduler.commandFor(ON, cacheRoot, "/usr/local/bin/jk");
-        assertThat(cmd).contains("--background").doesNotContain("--sweep", "--max-size");
-        assertThat(cmd).contains("--cache-dir", cacheRoot.toAbsolutePath().toString());
-    }
-
-    @Test
-    void maybe_run_no_op_when_auto_prune_off(@TempDir Path cacheRoot) {
-        JkCacheConfig off = new JkCacheConfig(false, 6.0, 7, 30, 4.0);
-        CachePruneScheduler.maybeRun(off, cacheRoot, "/usr/local/bin/jk");
-    }
-
-    @Test
     void jvm_install_layout_resolves_bin_jk_from_lib_classpath(@TempDir Path home) throws IOException {
         Path lib = home.resolve("lib");
         Path bin = home.resolve("bin");

@@ -5,8 +5,5 @@ version = "0.0.1"
 java = "25"
 layout = "simple"
 
-[dependencies]
-# none for main
-
 [test-dependencies]
 junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version = "=5.11.4" }

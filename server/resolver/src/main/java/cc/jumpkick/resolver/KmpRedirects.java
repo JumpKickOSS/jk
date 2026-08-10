@@ -37,8 +37,17 @@ public final class KmpRedirects {
      * Keyed by the repositories asked <em>and</em> {@code env + module@version} — which {@code
      * .module} is fetched depends on the repo set. No TTL: release GAV content is immutable; force
      * / {@link #clearProcessCache} drop the memo.
+     *
+     * <p>Values are futures, not results (JK-1785): the winner parks a future and runs the
+     * network lookup <em>outside</em> the map, so unrelated keys sharing a CHM bin never
+     * serialize behind a slow {@code .module} fetch the way {@code computeIfAbsent} made them.
+     * Completed futures stay as the memo. Bounded like the sibling process memos; past the cap
+     * lookups run uncached.
      */
-    private static final Map<String, Optional<Selection>> PROCESS_CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, java.util.concurrent.CompletableFuture<Optional<Selection>>> PROCESS_CACHE =
+            new ConcurrentHashMap<>();
+
+    private static final int PROCESS_CACHE_MAX = 8_192;
 
     /** Test seam: drop process-wide selection memo. */
     public static void clearProcessCache() {
@@ -86,7 +95,7 @@ public final class KmpRedirects {
         String processKey = repos.processIdentity() + "\0" + jvmEnvironment + "\0" + gaKey;
         // Single-flight: concurrent PubGrub prefetches must not re-parse the same .module.
         long t0 = cc.jumpkick.resolve.ResolveProfile.on() ? System.nanoTime() : 0L;
-        Optional<Selection> found = PROCESS_CACHE.computeIfAbsent(processKey, k -> lookup(module, version));
+        Optional<Selection> found = processMemoized(processKey, module, version);
         cache.put(gaKey, found);
         found.ifPresent(this::rememberDropped);
         if (cc.jumpkick.resolve.ResolveProfile.on() && t0 != 0L) {
@@ -117,6 +126,37 @@ public final class KmpRedirects {
         }
     }
 
+    /**
+     * Future-based single-flight around {@link #lookup}: joiners wait on the winner's future
+     * while the network lookup runs outside any map lock. No cycle risk here (unlike the
+     * EffectivePomBuilder single-flight, JK-1764): lookup never re-enters {@code selectionFor}.
+     * {@code lookup} is fail-soft, so the future always completes normally; the finally guard
+     * only fires on an {@link Error}, unparking joiners without memoizing a guess.
+     */
+    private Optional<Selection> processMemoized(String processKey, String module, String version) {
+        java.util.concurrent.CompletableFuture<Optional<Selection>> flight = PROCESS_CACHE.get(processKey);
+        if (flight == null && PROCESS_CACHE.size() < PROCESS_CACHE_MAX) {
+            java.util.concurrent.CompletableFuture<Optional<Selection>> mine =
+                    new java.util.concurrent.CompletableFuture<>();
+            java.util.concurrent.CompletableFuture<Optional<Selection>> raced =
+                    PROCESS_CACHE.putIfAbsent(processKey, mine);
+            if (raced != null) {
+                flight = raced;
+            } else {
+                try {
+                    mine.complete(lookup(module, version));
+                } finally {
+                    if (!mine.isDone()) {
+                        mine.complete(Optional.empty());
+                        PROCESS_CACHE.remove(processKey, mine);
+                    }
+                }
+                flight = mine;
+            }
+        }
+        return flight != null ? flight.join() : lookup(module, version);
+    }
+
     private Optional<Selection> lookup(String module, String version) {
         try {
             PackageId id = PackageId.parse(module);
@@ -143,17 +183,39 @@ public final class KmpRedirects {
         }
     }
 
-    /** True when the POM head contains Gradle's published-with-gradle-metadata marker. */
+    /** Chunk size for the marker scan; the marker sits in the first few KB of most POMs. */
+    private static final int MARKER_SCAN_CHUNK = 8192;
+
+    /** Hard cap on how far the preamble scan will go on a pathological file. */
+    private static final int MARKER_SCAN_MAX = 256 * 1024;
+
+    /**
+     * True when the POM head contains Gradle's published-with-gradle-metadata marker. Reads full
+     * chunks via {@code readNBytes} (a bare {@code read} may return fewer bytes than available and
+     * silently drop a redirect) and carries an overlap across chunk boundaries so a straddling
+     * marker is still seen. The marker comment always precedes the POM's content, so scanning
+     * stops one chunk after the root element appears — a long license header pushes the marker
+     * past the first chunk, but a plain-Maven POM still costs at most one extra chunk.
+     */
     static boolean pomHasGradleMetadataMarker(java.nio.file.Path pomPath) throws IOException {
-        // Marker sits in the first few KB of every Gradle-published POM.
-        final int headBytes = 8192;
-        byte[] buf = new byte[headBytes];
-        int n;
+        // Overlap enough to reassemble a marker split across a chunk boundary (ASCII marker:
+        // byte-aligned regardless of surrounding multi-byte sequences).
+        final int overlap = GradleModuleMetadata.POM_MARKER.length() - 1;
         try (var in = Files.newInputStream(pomPath)) {
-            n = in.read(buf);
+            String carry = "";
+            boolean sawRoot = false;
+            int scanned = 0;
+            while (scanned < MARKER_SCAN_MAX) {
+                byte[] buf = in.readNBytes(MARKER_SCAN_CHUNK);
+                if (buf.length == 0) return false;
+                scanned += buf.length;
+                String text = carry + new String(buf, StandardCharsets.UTF_8);
+                if (text.contains(GradleModuleMetadata.POM_MARKER)) return true;
+                if (sawRoot) return false; // marker precedes content; one chunk past <project is enough
+                sawRoot = text.contains("<project");
+                carry = text.length() <= overlap ? text : text.substring(text.length() - overlap);
+            }
+            return false;
         }
-        if (n <= 0) return false;
-        String head = new String(buf, 0, n, StandardCharsets.UTF_8);
-        return head.contains(GradleModuleMetadata.POM_MARKER);
     }
 }

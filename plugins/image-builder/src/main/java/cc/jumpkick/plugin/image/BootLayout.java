@@ -64,11 +64,25 @@ final class BootLayout {
                 "--destination",
                 dest.toAbsolutePath().toString());
         Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-        String output = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        // Drain on a separate thread: readAllBytes() on this thread blocks to EOF, which makes
+        // the timeout below unreachable while the child holds its pipe open (JK-1761).
+        StringBuilder captured = new StringBuilder();
+        Thread reader = Thread.ofVirtual().start(() -> {
+            try (var in = process.inputReader(java.nio.charset.StandardCharsets.UTF_8)) {
+                in.lines().forEach(l -> captured.append(l).append('\n'));
+            } catch (IOException ignored) {
+            }
+        });
         if (!process.waitFor(EXTRACT_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
             process.destroyForcibly();
             throw new IOException("`-Djarmode=tools extract` did not finish within " + EXTRACT_TIMEOUT_SECONDS + "s");
         }
+        try {
+            reader.join(5_000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        String output = captured.toString();
         if (process.exitValue() != 0) {
             throw new IOException("`-Djarmode=tools extract` failed (exit " + process.exitValue() + "):\n" + output);
         }

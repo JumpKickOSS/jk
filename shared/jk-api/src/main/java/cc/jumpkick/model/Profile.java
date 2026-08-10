@@ -6,17 +6,23 @@ import java.util.Objects;
 
 /**
  * Build profile: javac/JVM args, optional test tag filters, and optional {@code inherits}
- * (parent-then-child merge). Selected via {@code --profile}; {@code ci} auto-selects in CI.
+ * (parent-then-child merge for args; tag lists are last-wins when the child sets the key).
+ * Selected via {@code --profile}; {@code ci} auto-selects in CI.
+ *
+ * <p>{@link #includeTagsSet()} / {@link #excludeTagsSet()} record whether the TOML key was present
+ * so an empty list can clear {@code [test]} filters when the profile is applied.
  */
 public record Profile(
         String name,
         String inherits,
         List<String> javacArgs,
         List<String> jvmArgs,
-        /** JUnit tags to include when this profile is active. */
+        /** JUnit tags to include when this profile is active (meaningful when {@link #includeTagsSet}). */
         List<String> includeTags,
-        /** JUnit tags to exclude when this profile is active. */
-        List<String> excludeTags) {
+        /** JUnit tags to exclude when this profile is active (meaningful when {@link #excludeTagsSet}). */
+        List<String> excludeTags,
+        boolean includeTagsSet,
+        boolean excludeTagsSet) {
 
     public Profile {
         Objects.requireNonNull(name, "name");
@@ -28,12 +34,26 @@ public record Profile(
         excludeTags = excludeTags == null ? List.of() : List.copyOf(excludeTags);
     }
 
-    /** Backward-compatible: no tag filters. */
+    /** No tag keys set (profile does not override {@code [test]} tag filters). */
     public Profile(String name, String inherits, List<String> javacArgs, List<String> jvmArgs) {
-        this(name, inherits, javacArgs, jvmArgs, List.of(), List.of());
+        this(name, inherits, javacArgs, jvmArgs, List.of(), List.of(), false, false);
+    }
+
+    /**
+     * Both tag keys treated as set (tests / callers that pass explicit lists). Prefer the full
+     * constructor with set-flags when empty must mean “clear filters”.
+     */
+    public Profile(
+            String name,
+            String inherits,
+            List<String> javacArgs,
+            List<String> jvmArgs,
+            List<String> includeTags,
+            List<String> excludeTags) {
+        this(name, inherits, javacArgs, jvmArgs, includeTags, excludeTags, true, true);
     }
 
     public static Profile of(String name) {
-        return new Profile(name, null, List.of(), List.of(), List.of(), List.of());
+        return new Profile(name, null, List.of(), List.of());
     }
 }

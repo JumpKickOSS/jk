@@ -1,6 +1,6 @@
 [project]
-name     = "jk-toolchain"
-description = "jk toolchain (engine remainder): resolver-backed tool installs, compat/import machinery."
+name = "jk-toolchain"
+description = "Engine toolchain: tool installs and Maven/Gradle import"
 
 [dependencies]
 jk-core.workspace = true
@@ -9,6 +9,5 @@ jk-resolver.workspace = true
 jk-toolchain-jdk.workspace = true
 
 [test-dependencies]
-assertj-core            = "latest"
-junit-jupiter           = "latest"
-junit-platform-launcher = "latest"
+assertj-core = "latest"
+junit-jupiter = "latest"

@@ -452,6 +452,74 @@ class MavenPackageSourceExclusionTest {
     }
 
     /**
+     * JK-1787: one shared source serves the main → test → processor scope solves. A clean
+     * main-scope path collapses target's exclusion set to empty (intersection semantics); the
+     * per-solve reset must keep that from bleeding into the test solve, where EVERY path
+     * excludes leaf — otherwise the test graph over-includes it.
+     */
+    @Test
+    void a_later_scope_solve_honors_its_own_exclusions_after_a_clean_main_path(@TempDir Path tempDir)
+            throws Exception {
+        for (String a : List.of("clean", "excluder", "target", "leaf")) {
+            serveMetadata("/com/foo/" + a + "/maven-metadata.xml", "com.foo", a, List.of("1.0"));
+        }
+        servePom("com.foo", "clean", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>clean</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>target</artifactId><version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        servePom("com.foo", "excluder", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>excluder</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>target</artifactId><version>1.0</version>
+                      <exclusions>
+                        <exclusion><groupId>com.foo</groupId><artifactId>leaf</artifactId></exclusion>
+                      </exclusions>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        servePom("com.foo", "target", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>target</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>leaf</artifactId><version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        servePom("com.foo", "leaf", "1.0", emptyPom("com.foo", "leaf", "1.0"));
+
+        RepoGroup repos = repoGroup(tempDir);
+        cc.jumpkick.repo.EffectivePomBuilder pomBuilder = new cc.jumpkick.repo.EffectivePomBuilder(repos);
+        MavenPackageSource shared = new MavenPackageSource(repos, pomBuilder);
+
+        // Main scope: the only path to target is clean, so leaf stays (and target's exclusion
+        // set converges to empty).
+        Resolution main = new PubGrubResolver(shared, pomBuilder, KmpRedirects.NONE)
+                .resolve(List.of(new Dependency("com.foo:clean", VersionSelector.parse("=1.0"))));
+        assertThat(main.modules()).containsKey("com.foo:leaf:jar:");
+
+        // The orchestrator's per-solve reset between scope solves.
+        shared.resetSolveScopedState();
+
+        // Test scope: every path to target excludes leaf — it must be dropped, not inherited
+        // from main's clean-path registration.
+        Resolution test = new PubGrubResolver(shared, pomBuilder, KmpRedirects.NONE)
+                .resolve(List.of(new Dependency("com.foo:excluder", VersionSelector.parse("=1.0"))));
+        assertThat(test.modules()).containsKeys("com.foo:excluder:jar:", "com.foo:target:jar:");
+        assertThat(test.modules()).doesNotContainKey("com.foo:leaf:jar:");
+    }
+
+    /**
      * JK-1708: {@code <distributionManagement><relocation>} moves a coordinate. The stub carries no
      * classes and no dependencies, so anything that stops there resolves to nothing. Maven and
      * Gradle both render the stub with a single edge to its target; so does jk.

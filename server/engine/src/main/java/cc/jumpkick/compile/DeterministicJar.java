@@ -24,8 +24,20 @@ final class DeterministicJar {
 
     private DeterministicJar() {}
 
+    /**
+     * 1980-02-01T00:00:00Z — the canonical fixed jar timestamp (Gradle uses the same instant).
+     * DOS time, which the ZIP local header stores, cannot represent anything before 1980; a
+     * pre-1980 fixed time (epoch 0) makes the JDK preserve the value in an extended-timestamp
+     * extra field on EVERY entry — 18 wasted bytes per entry in both the local header and the
+     * central directory, for a timestamp nobody reads (JK-1676).
+     */
+    public static final long DEFAULT_EPOCH_SECONDS = 318_211_200L;
+
     /** A {@link JarEntry} for {@code name} stamped with the fixed {@code epochSeconds} time. */
     static JarEntry entry(String name, long epochSeconds) {
+        // Clamp pre-DOS-epoch times to the canonical instant so no caller can reintroduce the
+        // extra-field bloat; every fixed timestamp below 1980 means "the deterministic default".
+        if (epochSeconds < DEFAULT_EPOCH_SECONDS) epochSeconds = DEFAULT_EPOCH_SECONDS;
         JarEntry entry = new JarEntry(name);
         entry.setTimeLocal(LocalDateTime.ofEpochSecond(epochSeconds, 0, ZoneOffset.UTC));
         return entry;

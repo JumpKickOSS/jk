@@ -1,8 +1,8 @@
 [project]
-group   = "demo"
-name    = "line-count-build"
+group = "demo"
+name = "line-count-build"
 version = "0.0.1"
-java    = 25
+java = 25
 
 [application]
 main = "demo.App"

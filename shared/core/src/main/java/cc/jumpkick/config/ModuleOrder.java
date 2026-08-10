@@ -54,6 +54,22 @@ public final class ModuleOrder {
     }
 
     /**
+     * The canonical workspace-sibling match for a declared dependency: its {@code group:artifact}
+     * coordinate, or — for unresolved {@code workspace = true} placeholders only — its bare sibling
+     * name. Deliberately no fallback on the TOML table key ({@code Dependency.library()}): a table
+     * key that happens to equal a module's name (e.g. an external, published release of a
+     * first-party artifact) must stay an external artifact, not become a module edge (JK-1623).
+     * Shared by build ordering and the dependency graph so both draw identical module edges.
+     */
+    public static <T> T resolveSibling(Dependency d, Map<String, T> byCoord, Map<String, T> byName) {
+        T hit = byCoord.get(d.module());
+        if (hit == null && d.isWorkspace()) {
+            hit = byName.get(d.workspaceName());
+        }
+        return hit;
+    }
+
+    /**
      * Sibling-dep + {@code [build].order-after} prereqs (self-refs dropped). Shared edge primitive.
      */
     public static Set<Path> modulePrereqs(
@@ -61,12 +77,7 @@ public final class ModuleOrder {
         Set<Path> prereqs = new LinkedHashSet<>();
         for (Scope scope : Scope.values()) {
             for (Dependency d : m.dependencies().of(scope)) {
-                String module = d.module();
-                Path depDir = dirByCoord.get(module);
-                // workspace placeholders resolve by their bare sibling name
-                if (depDir == null && d.isWorkspace()) {
-                    depDir = dirByName.get(d.workspaceName());
-                }
+                Path depDir = resolveSibling(d, dirByCoord, dirByName);
                 if (depDir != null && !depDir.equals(moduleDir)) prereqs.add(depDir);
             }
         }

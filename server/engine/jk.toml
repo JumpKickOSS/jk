@@ -1,10 +1,9 @@
 [project]
-name        = "jk-engine"
-description = "jk build engine: BuildPlanner, plugin dispatch, action cache, compile/test machinery."
+name = "jk-engine"
+description = "Resident build engine: plan, cache, compile, and test"
 
 [application]
-main     = "cc.jumpkick.engine.EngineMain"
-# Fat ship jar (replaces Gradle shadowJar for self-host): runtime deps + web SPA assets.
+main = "cc.jumpkick.engine.EngineMain"
 assembly = true
 
 [dependencies]
@@ -14,20 +13,17 @@ jk-io.workspace = true
 jk-plugin-sdk.workspace = true
 jk-resolver.workspace = true
 jk-toolchain.workspace = true
-# Dashboard static assets (classpath /web/*) — Gradle used runtimeOnly(project(":web")).
+jk-dynamic-surface.workspace = true
 jk-web.workspace = true
-asm                     = "latest"
-asm-tree                = "latest"
-asm-commons             = "latest"
-jgit                    = "latest"
+asm = "latest"
+asm-tree = "latest"
+asm-commons = "latest"
+jgit = "latest"
 
 [test-dependencies]
-assertj-core            = "latest"
-junit-jupiter           = "latest"
-junit-platform-launcher = "latest"
+assertj-core = "latest"
+junit-jupiter = "latest"
 
-# Self-host: engine tests fork workers via -Djk.<worker>.plugin.jar from sibling assemblies
-# (or install-local / CAS). Prefer short names that match plugins/<name> modules.
 [build]
 test-plugin-jars = [
   "test-runner",
@@ -42,18 +38,13 @@ test-plugin-jars = [
   "android",
   "protobuf",
   "minified",
-  # Gradle gives grails and groovy their own e2e test tasks, each setting -Djk.<x>.plugin.jar;
-  # omitting them here is why GrailsBuildE2eTest / GroovyBuildE2eTest could not find a worker jar
-  # under self-host. Those two suites run only under jk (Gradle tags them out of :engine:test), so
-  # nothing else catches the gap.
   "grails",
   "groovy-compiler",
   "quarkus",
 ]
 
-# Parity with Gradle's `test` task, which is explicitly scoped to unit/fast (<5 min) and excludes
-# these tags — the integration/slow/bench suites are long-running, network- and SDK-dependent, and
-# Gradle gives them separate tasks. Self-host ran them unconditionally, so `jk build` was enforcing a
-# stricter contract than CI ever has. Override per-run with `--exclude-tag` / `--include-tag`.
 [test]
-default-exclude-tags = ["integration", "slow", "bench", "network"]
+# Exclude the long-running tests for our day-to-day usage.
+# Normal `jk test` should finish in 5 min or less.
+# Run these more comprehensive tests by running `jk test --all`
+exclude-tags = ["integration", "slow", "bench", "network"]

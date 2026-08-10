@@ -16,6 +16,9 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -42,10 +45,33 @@ public final class EffectivePomBuilder {
 
     /**
      * In-flight builds keyed by GAV so parallel warm/prefetch workers share one parent/BOM walk
-     * instead of stampeding the same chain.
+     * instead of stampeding the same chain. Each entry is tagged with its owner thread so a
+     * would-be joiner can detect a cross-thread wait cycle (two walkers each owning one half of a
+     * mutually-referencing parent chain) and fall through to an independent in-line walk instead
+     * of parking forever — the caller's own {@code visiting} set then trips the loud cycle
+     * diagnostic.
      */
-    private static final ConcurrentHashMap<String, CompletableFuture<EffectivePom>> IN_FLIGHT =
-            new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Flight> IN_FLIGHT = new ConcurrentHashMap<>();
+
+    /** An in-flight single-flight build and the thread performing it. */
+    private record Flight(CompletableFuture<EffectivePom> future, Thread owner) {}
+
+    /**
+     * Process key each thread is currently parked on in {@link #awaitShared}. Together with the
+     * {@link Flight#owner()} tags this forms a waits-for graph: joiner → key → owner → key → …;
+     * a chain that reaches the joiner itself means joining would deadlock.
+     */
+    private static final ConcurrentHashMap<Thread, String> WAITING_ON = new ConcurrentHashMap<>();
+
+    /** Poll interval for in-flight joins; each wake re-checks the waits-for graph. */
+    private static final long JOIN_POLL_MS = 25;
+
+    /**
+     * Hard cap on waiting for someone else's walk. The waits-for graph cannot see waits that pass
+     * through plain futures (e.g. the parallel BOM fan-out), so after this bound we degrade to an
+     * independent walk — at worst duplicate work, never a hang.
+     */
+    private static final long JOIN_FALLBACK_MS = 30_000;
 
     private static final int PROCESS_CACHE_MAX = 8_192;
 
@@ -106,42 +132,108 @@ public final class EffectivePomBuilder {
 
         // Single-flight: parallel warm workers share one walk of each GAV (parents + BOM imports).
         // In-flight keys include the repo identity so two groups never share a partial walk.
-        CompletableFuture<EffectivePom> created = new CompletableFuture<>();
-        CompletableFuture<EffectivePom> existing = IN_FLIGHT.putIfAbsent(processKey, created);
-        if (existing != null) {
-            visiting.remove(localKey);
-            try {
-                EffectivePom shared = existing.join();
-                cache.put(localKey, shared);
-                return shared;
-            } catch (CompletionException e) {
-                Throwable c = e.getCause() == null ? e : e.getCause();
-                if (c instanceof IOException io) throw io;
-                if (c instanceof InterruptedException ie) throw ie;
-                if (c instanceof RuntimeException re) throw re;
-                throw new IOException("effective POM build failed for " + localKey, c);
-            }
-        }
-
         try {
-            RepoGroup.RepoFetched hit = repos.tryFetchPom(coord)
-                    .orElseThrow(() ->
-                            new MavenRepo.ArtifactNotFoundException("POM not found in any declared repo: " + coord));
-            Pom raw = PomParser.parse(Files.readAllBytes(hit.fetched().cachePath()));
-            EffectivePom effective = merge(raw, visiting, depth);
-            cache.put(localKey, effective);
-            if (PROCESS_CACHE.size() < PROCESS_CACHE_MAX) {
-                PROCESS_CACHE.putIfAbsent(processKey, effective);
+            Flight mine = new Flight(new CompletableFuture<>(), Thread.currentThread());
+            Flight existing = IN_FLIGHT.putIfAbsent(processKey, mine);
+            if (existing != null) {
+                EffectivePom shared = awaitShared(localKey, processKey, existing);
+                if (shared != null) {
+                    cache.put(localKey, shared);
+                    return shared;
+                }
+                // Joining would deadlock (the owner chain waits back on us) or the owner died
+                // without completing. Build in-line with our own visiting set — still registered
+                // above — so a real POM cycle trips the single-thread check and throws the loud
+                // cycle diagnostic instead of parking forever. Worst case: duplicate work.
+                return fetchAndMerge(coord, localKey, processKey, visiting, depth, null);
             }
-            created.complete(effective);
-            return effective;
-        } catch (IOException | InterruptedException | RuntimeException e) {
-            created.completeExceptionally(e);
-            throw e;
+            try {
+                return fetchAndMerge(coord, localKey, processKey, visiting, depth, mine.future());
+            } catch (IOException | InterruptedException | RuntimeException e) {
+                mine.future().completeExceptionally(e);
+                throw e;
+            } finally {
+                IN_FLIGHT.remove(processKey, mine);
+            }
         } finally {
             visiting.remove(localKey);
-            IN_FLIGHT.remove(processKey, created);
         }
+    }
+
+    /** Fetch + merge one GAV; publishes to caches and completes {@code flight} when non-null. */
+    private EffectivePom fetchAndMerge(
+            Coordinate coord,
+            String localKey,
+            String processKey,
+            Set<String> visiting,
+            int depth,
+            CompletableFuture<EffectivePom> flight)
+            throws IOException, InterruptedException {
+        RepoGroup.RepoFetched hit = repos.tryFetchPom(coord)
+                .orElseThrow(
+                        () -> new MavenRepo.ArtifactNotFoundException("POM not found in any declared repo: " + coord));
+        Pom raw = PomParser.parse(Files.readAllBytes(hit.fetched().cachePath()));
+        EffectivePom effective = merge(raw, visiting, depth);
+        cache.put(localKey, effective);
+        if (PROCESS_CACHE.size() < PROCESS_CACHE_MAX) {
+            PROCESS_CACHE.putIfAbsent(processKey, effective);
+        }
+        if (flight != null) {
+            flight.complete(effective);
+        }
+        return effective;
+    }
+
+    /**
+     * Wait on another thread's in-flight walk. Returns the shared result, or {@code null} when
+     * joining is unsafe — the waits-for chain loops back to this thread, the owner died without
+     * completing, or the generous {@link #JOIN_FALLBACK_MS} bound elapsed — in which case the
+     * caller degrades to an independent in-line walk.
+     */
+    private static EffectivePom awaitShared(String localKey, String processKey, Flight flight)
+            throws IOException, InterruptedException {
+        Thread self = Thread.currentThread();
+        WAITING_ON.put(self, processKey);
+        try {
+            long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(JOIN_FALLBACK_MS);
+            while (true) {
+                if (joinWouldDeadlock(self, flight)) return null;
+                if (!flight.future().isDone() && !flight.owner().isAlive()) return null;
+                if (!flight.future().isDone() && System.nanoTime() - deadline > 0) return null;
+                try {
+                    return flight.future().get(JOIN_POLL_MS, TimeUnit.MILLISECONDS);
+                } catch (TimeoutException e) {
+                    // Re-check the waits-for graph and owner liveness, then park again.
+                } catch (ExecutionException e) {
+                    Throwable c = e.getCause() == null ? e : e.getCause();
+                    if (c instanceof IOException io) throw io;
+                    if (c instanceof InterruptedException ie) throw ie;
+                    if (c instanceof RuntimeException re) throw re;
+                    if (c instanceof Error err) throw err;
+                    throw new IOException("effective POM build failed for " + localKey, c);
+                }
+            }
+        } finally {
+            WAITING_ON.remove(self);
+        }
+    }
+
+    /**
+     * Walks the waits-for graph (joiner → in-flight key → owner thread → …) from {@code flight}'s
+     * owner; reaching {@code self} means parking on this flight can never end.
+     */
+    private static boolean joinWouldDeadlock(Thread self, Flight flight) {
+        Thread owner = flight.owner();
+        Set<Thread> seen = new HashSet<>();
+        while (owner != null && seen.add(owner)) {
+            if (owner == self) return true;
+            String key = WAITING_ON.get(owner);
+            if (key == null) return false;
+            Flight next = IN_FLIGHT.get(key);
+            if (next == null) return false;
+            owner = next.owner();
+        }
+        return false;
     }
 
     private EffectivePom merge(Pom child, Set<String> visiting, int depth) throws IOException, InterruptedException {

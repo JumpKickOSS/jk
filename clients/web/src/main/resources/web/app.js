@@ -386,9 +386,13 @@ const ModuleDepGraph = {
         No dependencies for the selected scopes.
       </p>
       <div v-show="graph && (graph.nodes || []).length" class="dep-graph-canvas" ref="el"></div>
+      <p v-if="graph && graph.truncated" class="dep-graph-status warn small">
+        Graph truncated at the node/edge cap — untick scopes or Transitive to see a complete graph.
+      </p>
       <p v-if="graph && (graph.nodes || []).length" class="dep-graph-hint dim small mono">
         {{ graph.nodes.length }} node{{ graph.nodes.length === 1 ? '' : 's' }}
         · {{ (graph.edges || []).length }} edge{{ (graph.edges || []).length === 1 ? '' : 's' }}
+        <template v-if="graph.truncated"> (truncated)</template>
         · pan / zoom · dependent → prereq
         <span class="swatch declared" data-tip="Workspace module or listed in a selected-scope jk.toml"></span>declared
         <span class="swatch transitive" data-tip="Transitive only — not listed in any selected-scope jk.toml"></span>transitive
@@ -418,13 +422,26 @@ const ModuleDepGraph = {
       const next = { ...this.selectedScopes, [sc]: on };
       if (!Object.values(next).some(Boolean)) next.main = true;
       this.selectedScopes = next;
-      this.load();
+      this.scheduleLoad();
     },
     setTransitive(ev) {
       this.transitive = !!(ev && ev.target && ev.target.checked);
-      this.load();
+      this.scheduleLoad();
+    },
+    /** Debounced load: ticking several scope boxes in a row fires ONE request, not one per click
+     * (each transitive graph walk is real server work — JK-1625). */
+    scheduleLoad() {
+      if (this._loadTimer) clearTimeout(this._loadTimer);
+      this._loadTimer = setTimeout(() => {
+        this._loadTimer = null;
+        this.load();
+      }, 250);
     },
     teardown() {
+      if (this._loadTimer) {
+        clearTimeout(this._loadTimer);
+        this._loadTimer = null;
+      }
       if (this._abort) {
         this._abort.abort();
         this._abort = null;
@@ -477,6 +494,9 @@ const ModuleDepGraph = {
         this.loading = false;
         if (e && e.status === 401) {
           this.error = 'Authorization required to load the graph';
+        } else if (e && e.error) {
+          // The engine names what is broken (malformed jk.toml, missing workspace member — JK-1624).
+          this.error = e.error;
         } else if (e && e.status) {
           this.error = 'Failed to load graph (HTTP ' + e.status + ')';
         } else {
@@ -1031,7 +1051,15 @@ Vue.createApp({
         return false;
       }
       try {
-        await get('/api/status', { bootstrap: true });
+        const status = await get('/api/status', { bootstrap: true });
+        // Latch the engine epoch from the bootstrap payload BEFORE any gated call (JK-1774).
+        // Without this the next probe carries no X-Jk-Engine-Epoch, the server 409s, and every
+        // fresh tab pays a full reload. A mismatch here means a stale epoch from a previous
+        // engine generation survived in sessionStorage — reload once now, before painting.
+        if (noteEngineEpoch(status) === 'mismatch') {
+          hardRefreshForEpoch();
+          return false;
+        }
       } catch (e) {
         if (e.status === 401) {
           this.markUnauthorized({ clear: true });
@@ -1137,14 +1165,10 @@ Vue.createApp({
 
     // ---- the Projects tab (grouped /api/history + live running overlay) ----
 
-    // Pull the raw journal (newest-first, up to 200 records); projectsList groups it per project.
+    // The Projects tab groups the same journal payload the feed seeds from — one GET serves
+    // both (each /api/history hit re-enriches up to 200 rows engine-side; JK-1750).
     async loadProjectHistory() {
-      if (this.authModal) return;
-      try {
-        this.projectHistory = await get('/api/history');
-      } catch (e) {
-        this.handleHttpError(e);
-      }
+      return this.loadHistory();
     },
 
     // The <jk-icon> name for a build/project state (badges + pills). Running gets a play triangle (the
@@ -1696,6 +1720,7 @@ Vue.createApp({
       return this.fetchOnce('history', async () => {
         try {
           const records = await get('/api/history');
+          this.projectHistory = records; // shared with the Projects tab (loadProjectHistory)
           const next = this.cards.slice();
           seedFromHistory(next, records);
           this.cards = next;
@@ -1883,7 +1908,10 @@ Vue.createApp({
         this.newProject.template = '';
         // Keep group + parentDir so the next create is one field away from a sibling project.
         if (path) {
-          this.openProject(path);
+          // Route with the durable projectId from the create response (JK-1775) — never the
+          // filesystem path: #project/<abs-path> lands a broken page in history (isValidId
+          // rejects '/'). Without an id, skip the hash push instead of pushing a dead route.
+          if (res.projectId) this.openProject(res.projectId, path);
           await this.triggerBuild(path);
           this.setView('activity');
         }

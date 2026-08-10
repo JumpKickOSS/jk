@@ -1,11 +1,10 @@
 [project]
-name     = "jk-client-io"
-description = "jk client I/O: plain-JDK HTTP, forge auth, credential files, CAS read/link surface."
+name = "jk-client-io"
+description = "Client-side I/O: HTTP, forge auth, credentials, and CAS"
 
 [dependencies]
 jk-core.workspace = true
 
 [test-dependencies]
-assertj-core            = "latest"
-junit-jupiter           = "latest"
-junit-platform-launcher = "latest"
+assertj-core = "latest"
+junit-jupiter = "latest"

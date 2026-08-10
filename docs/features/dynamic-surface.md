@@ -27,16 +27,20 @@ free and cover the mechanical majority; training covers what is left; the user c
 nothing can observe. **Consumers only consume** — neither the minified packager nor the
 native-image driver ever runs a recorder.
 
-### Training targets native-image, not R8
+### Training primarily targets native-image
 
-The two emitters are not symmetric in what they are worth training for. Derivation and
-composition serve both consumers; `jk train` serves only `native-image` and the JVM AOT cache.
+The two emitters are not symmetric in what training is worth. Derivation and composition serve
+both consumers; `jk train` exists for `native-image` and the JVM AOT cache — but its merged
+surface (reflection / resource kinds) also feeds the minified packager's keep rules when
+`target/train/merged/dynamic-surface.json` is present, and the surface file participates in the
+minified jar's action key.
 
 R8 in `--classfile` mode always runs in full mode, and there a class keeps its generic signature
 only if the class is explicitly kept — see [Generic-reflection is its own kind](#generic-reflection-is-its-own-kind) below. An
 application that resolves types by runtime generic matching therefore cannot be shrunk at *any*
-keep setting, so there is no observation a recorder could make that would fix it. Training for R8
-would be training for a consumer that cannot use the result.
+keep setting, so there is no observation a recorder could make that would fix it. For generic-reflection
+apps, training cannot rescue R8 — the by-name and resource observations it can contribute are a
+bonus, not the reason to run it.
 
 The minified jar stays an advanced opt-in for applications that do not work that way, fed by
 derivation, composition and hand-written `[minified] keep` rules.
@@ -179,8 +183,10 @@ metadata reviewed and versioned rather than regenerated in CI.
 
 ### Freshness
 
-The fingerprint covers the lockfile digest, the module's classes, the train suite's sources, the
-profile definitions, the jk version and the recorder version. Any change makes the outputs stale.
+The fingerprint covers the lockfile digest, the packaged main jar, the profile definitions, the
+profiles a filtered run actually observed, and the jk version (which pins the recorder wiring).
+Suite sources and classes are covered through the jar and lock they produce, not hashed
+directly. Any change makes the outputs stale.
 
 Stale outputs are used with a warning by default — a metadata set that is slightly behind is
 usually better than none. `require-fresh = true` turns that into an error, which is the release

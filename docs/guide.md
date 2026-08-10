@@ -553,6 +553,10 @@ Without a platform BOM, bare transitive POM versions still use **highest-version
 (not Maven nearest-wins), with PubGrub prose on conflict. Main, test, and processor graphs are
 solved separately so annotation-processor constraints do not force main classpath versions.
 
+**Maven relocations are followed**: a POM whose `<distributionManagement><relocation>` points at
+a new coordinate resolves to the relocation target (chains follow to the end; cycles terminate
+as ordinary dependency cycles), the same way Maven and Gradle render the moved artifact.
+
 **Export a freeze of the lock as a Maven BOM** (library / platform authors):
 
 ```bash
@@ -646,8 +650,10 @@ image's own JVM, never the build JDK. It gets there one of two ways:
 Either way the cache is started once and checked before it becomes a layer — a rejected cache is
 silent at default log level, so an unverified one is indistinguishable from a working one.
 
-Not available for the exploded-classes image layout, which currently includes Spring Boot: a CDS
-dump refuses any classpath entry that is a directory, and that restriction is Won't Fix upstream.
+Spring Boot images are unpacked into Boot's own CDS/AOT-friendly layout first (thin launcher
+jar + `lib/`), so they train like any jar-based image. Only a non-Boot exploded-classes layout
+remains unsupported: a CDS dump refuses any classpath entry that is a directory, and that
+restriction is Won't Fix upstream.
 
 ### Grails (`[grails]`)
 
@@ -848,31 +854,39 @@ classpath only when that suite is selected (`jk test --suite integration`, `--al
 exist — for example `integration/src/` or `src/integration/java`.
 
 ```bash
-jk test                           # default suite ("test") only
-jk test --suite integration       # only that suite (-s is the short form)
+jk test                              # default suite ("test") only
+jk test --suite integration          # only that suite (-s is the short form)
 jk test -s test -s integration
-jk test --all                     # every discovered suite
-jk test --exclude-tag slow        # JUnit Platform tags (repeatable)
-jk test --include-tag smoke
-jk test --all --exclude-tag bench
+jk test --all                        # every discovered suite
+jk test --exclude-tags slow,bench    # JUnit Platform tags (comma-separated)
+jk test --include-tags smoke
+jk test --all --exclude-tags bench
 ```
 
 `--all` and `--suite`/`-s` cannot be combined. Unknown suite names error with the available list.
 
-Declarative defaults (CLI wins when you pass tags):
+Declarative tag filters (same key names as CLI and profiles):
 
 ```toml
 [test]
 workers = 1
-default-exclude-tags = ["slow", "bench"]
+exclude-tags = ["slow", "bench"]   # local/dev: fast path
 
 [profiles.ci]
-exclude-tags = ["bench"]
-include-tags = []   # optional
+exclude-tags = []                  # key present: clear excludes → broader suite on CI
 ```
 
-`--profile`/`-p` (and CI auto-profile `ci`) merges profile tag filters. Suites and tags are part of
-the test stamp: changing selection re-runs tests even if sources are unchanged.
+**Precedence** (later layer replaces an earlier list only when it speaks for that list):
+
+| Layer | Behavior |
+|-------|----------|
+| `[test] include-tags` / `exclude-tags` | Baseline for bare `jk test` |
+| Active profile (`--profile` / CI auto `ci`) | Replaces a list **only if that key is present** on the profile (including `= []` to clear). Omitted keys leave the `[test]` list as-is. |
+| `--include-tags` / `--exclude-tags` | Fully replace that list for the run |
+
+Auto-profile defers when CLI already set `--include-tags` or `--exclude-tags`. Profile inheritance
+for tags is last-wins (child key replaces parent); javac/JVM args still append. Suites and tags are
+part of the test stamp: changing selection re-runs tests even if sources are unchanged.
 
 ## Quality (format + lint)
 
@@ -1010,7 +1024,7 @@ one per extra suite) and VS Code gets matching `.vscode/tasks.json` entries.
 ```
 
 Fields mirror CLI: `allSuites` ↔ `--all`, `suites` ↔ `--suite`, tags ↔
-`--include-tag` / `--exclude-tag`.
+`--include-tags` / `--exclude-tags`.
 
 **BSP capabilities (stdio `jk bsp serve`):**
 
@@ -1292,7 +1306,12 @@ groups = ["com.acme", "com.acme.*"]
 
 - **Bound group** → solver only sees versions from claiming repos (a higher version planted on
   Central cannot win at `jk lock` / `jk update`).
-- **Unbound group** → all remotes union as before.
+- **Unbound group** → general (unbound) remotes are asked in declared order and the first repo
+  advertising any version answers — no union, no probing of exclusive specialists on the fast
+  path. Only when every general remote misses entirely does jk fall back to the non-claiming
+  specialists, so a Google-Maven-only group outside the built-in binding list still resolves.
+- Declared `groups` on the built-in Google remote are **additive** to the default Android
+  bindings — binding one extra group never re-opens `androidx.*` to other repos.
 - **Already locked** artifacts keep their lockfile source pin until you re-resolve that line
   (`jk update` re-opens discovery for updated/new deps).
 - If you configure **multiple repositories without any `groups`**, jk **warns once** per lock

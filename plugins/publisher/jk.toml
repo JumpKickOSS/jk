@@ -1,18 +1,17 @@
 [project]
-name        = "jk-publisher"
-description = "jk-publisher: Maven publish / signing plugin worker."
+name = "jk-publisher"
+description = "JumpKick's Maven publish plugin"
 
 [application]
-main     = "cc.jumpkick.plugin.process.PluginMain"
+main = "cc.jumpkick.plugin.process.PluginMain"
 
 [dependencies]
 jk-core.workspace = true
 jk-io.workspace = true
 jk-plugin-sdk.workspace = true
-bcpg-jdk18on            = "latest"
-sigstore-java           = "latest"
+bcpg-jdk18on = "latest"
+sigstore-java = "latest"
 
 [test-dependencies]
-assertj-core            = "latest"
-junit-jupiter           = "latest"
-junit-platform-launcher = "latest"
+assertj-core = "latest"
+junit-jupiter = "latest"

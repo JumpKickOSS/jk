@@ -2,7 +2,9 @@
 package cc.jumpkick.resolver;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.config.WorkspaceLoader;
+import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -68,13 +70,19 @@ public final class DependencyGraphModel {
         }
     }
 
+    /**
+     * {@code truncated} is true when the transitive expansion hit {@link #MAX_NODES} /
+     * {@link #MAX_EDGES} and the graph is a prefix of the full closure (JK-1625). Consumers should
+     * surface it — a silently clipped graph reads as "these are all the dependencies".
+     */
     public record Graph(
             boolean workspace,
             List<String> scopes,
             boolean transitive,
             List<String> availableScopes,
             List<Node> nodes,
-            List<Edge> edges) {
+            List<Edge> edges,
+            boolean truncated) {
         public Graph {
             scopes = List.copyOf(scopes);
             availableScopes = List.copyOf(availableScopes);
@@ -83,9 +91,19 @@ public final class DependencyGraphModel {
         }
 
         public static Graph empty(List<String> scopes, boolean transitive) {
-            return new Graph(false, scopes, transitive, availableScopeNames(), List.of(), List.of());
+            return new Graph(false, scopes, transitive, availableScopeNames(), List.of(), List.of(), false);
         }
     }
+
+    /**
+     * Transitive-expansion caps (JK-1625): a 1000+ artifact lock with every scope ticked would
+     * otherwise hand the browser a force-layout simulation it cannot finish. Workspace modules and
+     * declared deps are never clipped — only lockfile expansion stops at the cap, with
+     * {@link Graph#truncated()} set.
+     */
+    public static final int MAX_NODES = 500;
+
+    public static final int MAX_EDGES = 2000;
 
     private DependencyGraphModel() {}
 
@@ -141,32 +159,34 @@ public final class DependencyGraphModel {
     }
 
     /**
-     * Build the graph for {@code projectDir}. Missing / unparseable {@code jk.toml} → empty graph
-     * (never throws for absent files). Missing lockfile still shows modules + declared externals
-     * (versions may be null).
+     * Build the graph for {@code projectDir}. An <em>absent</em> root {@code jk.toml} → empty graph
+     * (a deleted or non-jk checkout is not an error). Everything else that fails — malformed toml,
+     * a workspace member whose {@code jk.toml} is missing, IO trouble — <strong>throws</strong>
+     * ({@link cc.jumpkick.config.JkBuildParseException} / {@link IOException}) so callers surface
+     * the message instead of telling the user their project has no dependencies (JK-1624). A
+     * missing lockfile still shows modules + declared externals (versions may be null).
+     *
+     * <p>Default scopes (null/empty {@code scopes}) are {@link #defaultScopes()} — the same
+     * {@code export, main, runtime} set {@code jk tree} uses, from the same definition (JK-1638).
      */
-    public static Graph forProjectDir(Path projectDir, List<Scope> scopes, boolean transitive) {
+    public static Graph forProjectDir(Path projectDir, List<Scope> scopes, boolean transitive) throws IOException {
         Objects.requireNonNull(projectDir, "projectDir");
-        List<Scope> scopeList = scopes == null || scopes.isEmpty() ? List.of(Scope.MAIN) : List.copyOf(scopes);
+        List<Scope> scopeList = scopes == null || scopes.isEmpty() ? defaultScopes() : List.copyOf(scopes);
         List<String> scopeNames = scopeList.stream().map(Scope::canonical).toList();
         Path root = projectDir.toAbsolutePath().normalize();
         Path toml = root.resolve("jk.toml");
         if (!Files.isRegularFile(toml)) {
             return Graph.empty(scopeNames, transitive);
         }
-        try {
-            JkBuild entry = JkBuildParser.parse(toml);
-            Lockfile lock = readLock(root);
-            Map<String, Lockfile.Artifact> byModule = lock == null ? Map.of() : DependencyTree.indexByModule(lock);
+        JkBuild entry = JkBuildParser.parse(toml);
+        Lockfile lock = readLock(root);
+        Map<String, Lockfile.Artifact> byModule = lock == null ? Map.of() : DependencyTree.indexByModule(lock);
 
-            if (entry.isWorkspaceRoot()) {
-                Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(root, entry);
-                return buildWorkspace(root, modules, scopeList, transitive, byModule);
-            }
-            return buildStandalone(root, entry, scopeList, transitive, byModule);
-        } catch (IOException | RuntimeException e) {
-            return Graph.empty(scopeNames, transitive);
+        if (entry.isWorkspaceRoot()) {
+            Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(root, entry);
+            return buildWorkspace(root, entry, modules, scopeList, transitive, byModule);
         }
+        return buildStandalone(root, entry, scopeList, transitive, byModule);
     }
 
     private static Lockfile readLock(Path projectDir) {
@@ -179,9 +199,28 @@ public final class DependencyGraphModel {
         return null;
     }
 
+    /**
+     * Single-project graph. When {@code dir} is a member of a workspace (the dashboard hands module
+     * dirs straight from journal records), sibling modules the project depends on are drawn as
+     * {@code module} nodes — not as version-less external artifacts (JK-1639). Sibling discovery is
+     * best-effort: a broken workspace root never blocks the module's own graph.
+     */
     private static Graph buildStandalone(
             Path dir, JkBuild build, List<Scope> scopes, boolean transitive, Map<String, Lockfile.Artifact> byModule) {
         Builder b = new Builder(scopes, transitive, byModule);
+        try {
+            Path wsRoot = WorkspaceLocator.findRoot(dir).orElse(null);
+            if (wsRoot != null) {
+                JkBuild rootBuild = JkBuildParser.parse(wsRoot.resolve("jk.toml"));
+                for (var e : WorkspaceLoader.loadModules(wsRoot, rootBuild).entrySet()) {
+                    Path modDir = e.getKey().toAbsolutePath().normalize();
+                    if (modDir.equals(dir)) continue;
+                    b.sibling(modDir, e.getValue(), relLabel(dir, modDir));
+                }
+            }
+        } catch (IOException | RuntimeException ignored) {
+            // Sibling enrichment only — the module graph itself must still render.
+        }
         String rootId = b.moduleNode(dir, build, ".");
         b.addDeclaredDeps(rootId, build, scopes);
         return b.finish(false);
@@ -189,31 +228,26 @@ public final class DependencyGraphModel {
 
     private static Graph buildWorkspace(
             Path root,
+            JkBuild rootBuild,
             Map<Path, JkBuild> modulesByDir,
             List<Scope> scopes,
             boolean transitive,
             Map<String, Lockfile.Artifact> byModule) {
         Builder b = new Builder(scopes, transitive, byModule);
-        Map<String, String> idByCoord = new LinkedHashMap<>();
-        Map<String, String> idByName = new LinkedHashMap<>();
         Map<Path, String> idByDir = new LinkedHashMap<>();
 
+        // The workspace root is a node too: its own [dependencies] are part of the build and were
+        // previously invisible (JK-1639).
+        String rootId = b.moduleNode(root, rootBuild, ".");
         for (var e : modulesByDir.entrySet()) {
             Path dir = e.getKey().toAbsolutePath().normalize();
-            JkBuild build = e.getValue();
-            String rel = relLabel(root, dir);
-            String id = b.moduleNode(dir, build, rel);
-            idByDir.put(dir, id);
-            String coord = build.project().group() + ":" + build.project().name();
-            idByCoord.put(coord, id);
-            idByName.put(build.project().name(), id);
+            idByDir.put(dir, b.moduleNode(dir, e.getValue(), relLabel(root, dir)));
         }
 
+        b.addDeclaredDeps(rootId, rootBuild, scopes);
         for (var e : modulesByDir.entrySet()) {
             Path dir = e.getKey().toAbsolutePath().normalize();
-            String fromId = idByDir.get(dir);
-            JkBuild build = e.getValue();
-            b.addDeclaredDeps(fromId, build, scopes, idByCoord, idByName);
+            b.addDeclaredDeps(idByDir.get(dir), e.getValue(), scopes);
         }
         return b.finish(true);
     }
@@ -228,23 +262,44 @@ public final class DependencyGraphModel {
         }
     }
 
-    private static String gaLabel(String moduleOrKey) {
-        if (moduleOrKey == null) return "";
+    /**
+     * Canonical node identity for an external artifact (JK-1636): the full package key
+     * ({@code g:a:type:classifier}), so a test-jar and the main jar of one GA — or two classifier
+     * variants — stay distinct nodes. Falls back to the raw key for non-Maven (git/path/workspace
+     * placeholder) modules.
+     */
+    private static String canonicalKey(String moduleOrKey) {
+        if (moduleOrKey == null || moduleOrKey.isEmpty()) return "";
         if (PackageId.isMavenPackageKey(moduleOrKey)) {
             try {
-                return PackageId.parse(moduleOrKey).ga();
+                return PackageId.parse(moduleOrKey).key();
             } catch (RuntimeException ignored) {
                 // fall through
             }
         }
-        // Strip classifier/type if present as g:a:jar:
-        String s = moduleOrKey;
+        return moduleOrKey;
+    }
+
+    /** Display label: {@code g:a} for a default jar, with a classifier/type badge otherwise. */
+    private static String nodeLabel(String key) {
+        if (key == null) return "";
+        if (PackageId.isMavenPackageKey(key)) {
+            try {
+                return PackageId.parse(key).display();
+            } catch (RuntimeException ignored) {
+                // fall through
+            }
+        }
+        String s = key;
         int at = s.indexOf('@');
         if (at > 0) s = s.substring(0, at);
         String[] parts = s.split(":");
         if (parts.length >= 2) return parts[0] + ":" + parts[1];
         return s;
     }
+
+    /** A workspace sibling not yet in the graph — materialized only when a dep references it. */
+    private record SiblingModule(Path dir, JkBuild build, String path) {}
 
     private static final class Builder {
         private final List<Scope> scopes;
@@ -253,8 +308,24 @@ public final class DependencyGraphModel {
         private final Map<String, Node> nodes = new LinkedHashMap<>();
         private final List<Edge> edges = new ArrayList<>();
         private final Set<String> edgeKeys = new LinkedHashSet<>();
-        /** External modules declared in a selected scope (GA keys). */
-        private final Set<String> declaredGas = new LinkedHashSet<>();
+        /** External packages declared in a selected scope (canonical package keys). */
+        private final Set<String> declaredKeys = new LinkedHashSet<>();
+        /** Materialized module nodes by {@code group:artifact} coordinate / bare project name. */
+        private final Map<String, String> idByCoord = new LinkedHashMap<>();
+
+        private final Map<String, String> idByName = new LinkedHashMap<>();
+        /** Lazily materialized siblings (module-dir graphs, JK-1639). */
+        private final Map<String, SiblingModule> siblingByCoord = new LinkedHashMap<>();
+
+        private final Map<String, SiblingModule> siblingByName = new LinkedHashMap<>();
+        /**
+         * Packages whose lockfile deps have already been emitted — shared across the whole
+         * expansion, so the reachable closure is walked once instead of once per declared root
+         * (JK-1625).
+         */
+        private final Set<String> expanded = new LinkedHashSet<>();
+
+        private boolean truncated;
 
         Builder(List<Scope> scopes, boolean transitive, Map<String, Lockfile.Artifact> byModule) {
             this.scopes = scopes;
@@ -270,98 +341,109 @@ public final class DependencyGraphModel {
             String id = "m" + nodes.size();
             String version = build.project().version();
             nodes.put(id, new Node(id, label, version, path, "module"));
+            idByCoord.put(build.project().group() + ":" + build.project().name(), id);
+            idByName.put(build.project().name(), id);
             return id;
         }
 
-        void addDeclaredDeps(String fromId, JkBuild build, List<Scope> scopes) {
-            addDeclaredDeps(fromId, build, scopes, Map.of(), Map.of());
+        /** Register a sibling for lazy materialization (drawn only if a dep references it). */
+        void sibling(Path dir, JkBuild build, String path) {
+            SiblingModule s = new SiblingModule(dir, build, path);
+            siblingByCoord.put(build.project().group() + ":" + build.project().name(), s);
+            siblingByName.put(build.project().name(), s);
         }
 
-        void addDeclaredDeps(
-                String fromId,
-                JkBuild build,
-                List<Scope> scopes,
-                Map<String, String> idByCoord,
-                Map<String, String> idByName) {
+        void addDeclaredDeps(String fromId, JkBuild build, List<Scope> scopes) {
             for (Scope scope : scopes) {
                 String scopeName = scope.canonical();
                 for (Dependency d : build.dependencies().of(scope)) {
                     // Workspace sibling → edge to module node
-                    String wsId = resolveWorkspaceId(d, idByCoord, idByName);
+                    String wsId = resolveWorkspaceId(d);
                     if (wsId != null) {
                         addEdge(fromId, wsId, scopeName);
                         continue;
                     }
-                    String ga = gaLabel(d.module());
-                    if (ga.isEmpty()) continue;
-                    declaredGas.add(ga);
-                    String toId = externalNode(ga, "declared");
+                    String key = canonicalKey(d.packageKey());
+                    if (key.isEmpty()) continue;
+                    declaredKeys.add(key);
+                    String toId = externalNode(key, "declared");
                     addEdge(fromId, toId, scopeName);
                     if (transitive) {
-                        expandTransitive(toId, ga);
+                        expandTransitive(key);
                     }
                 }
             }
         }
 
-        private String resolveWorkspaceId(Dependency d, Map<String, String> idByCoord, Map<String, String> idByName) {
-            if (idByCoord.isEmpty() && idByName.isEmpty()) return null;
-            String id = idByCoord.get(d.module());
+        /**
+         * Workspace identity matches on {@code group:artifact} coordinate or (for unresolved
+         * {@code workspace = true} placeholders) bare sibling name — the same
+         * {@link ModuleOrder#resolveSibling} rule the build order uses. No table-key fallback: a
+         * declared external whose TOML key happens to equal a module's name stays external
+         * (JK-1623).
+         */
+        private String resolveWorkspaceId(Dependency d) {
+            String id = ModuleOrder.resolveSibling(d, idByCoord, idByName);
             if (id != null) return id;
-            if (d.isWorkspace()) {
-                id = idByName.get(d.workspaceName());
-                if (id != null) return id;
+            SiblingModule sib = ModuleOrder.resolveSibling(d, siblingByCoord, siblingByName);
+            if (sib != null) {
+                return moduleNode(sib.dir(), sib.build(), sib.path());
             }
-            // Bare project name match (library handle sometimes equals module name)
-            return idByName.get(d.library());
+            return null;
         }
 
-        private String externalNode(String ga, String kind) {
-            // Stable id by GA so diamond edges converge
-            String id = "a:" + ga;
+        private String externalNode(String key, String kind) {
+            // Stable id by canonical package key so diamond edges converge
+            String id = "a:" + key;
             Node existing = nodes.get(id);
             if (existing != null) {
                 // Prefer declared over transitive if both appear
                 if ("transitive".equals(existing.kind()) && "declared".equals(kind)) {
-                    nodes.put(id, new Node(id, ga, existing.version(), null, "declared"));
+                    nodes.put(id, new Node(id, existing.label(), existing.version(), null, "declared"));
                 }
                 return id;
             }
             String version = null;
-            Lockfile.Artifact art = byModule.get(ga);
+            Lockfile.Artifact art = byModule.get(key);
             if (art != null) version = art.version();
-            nodes.put(id, new Node(id, ga, version, null, kind));
+            nodes.put(id, new Node(id, nodeLabel(key), version, null, kind));
             return id;
         }
 
-        private void expandTransitive(String fromId, String fromGa) {
+        /**
+         * BFS over lockfile deps from one declared root. {@code expanded} is shared across every
+         * root, so a subgraph reachable from several declared deps is walked once; its edges are
+         * already in the graph from the first walk. Node/edge caps set {@code truncated} instead of
+         * growing without bound (JK-1625).
+         */
+        private void expandTransitive(String fromKey) {
+            if (!expanded.add(fromKey)) return;
             Queue<String> q = new ArrayDeque<>();
-            Set<String> seen = new LinkedHashSet<>();
-            q.add(fromGa);
-            seen.add(fromGa);
+            q.add(fromKey);
             while (!q.isEmpty()) {
-                String parentGa = q.remove();
-                String parentId = parentGa.equals(fromGa) ? fromId : externalNode(parentGa, kindFor(parentGa));
-                Lockfile.Artifact art = byModule.get(parentGa);
-                if (art == null) {
-                    // Try full package key lookup via index (already in byModule under several keys)
-                    continue;
-                }
+                String parentKey = q.remove();
+                Lockfile.Artifact art = byModule.get(parentKey);
+                if (art == null) continue;
+                String parentId = "a:" + parentKey;
                 for (String depRef : art.deps()) {
-                    String childKey = DependencyTree.stripVersion(depRef);
-                    String childGa = gaLabel(childKey);
-                    if (childGa.isEmpty()) continue;
-                    String childId = externalNode(childGa, kindFor(childGa));
+                    String childKey = canonicalKey(DependencyTree.stripVersion(depRef));
+                    if (childKey.isEmpty()) continue;
+                    boolean isNewNode = !nodes.containsKey("a:" + childKey);
+                    if ((isNewNode && nodes.size() >= MAX_NODES) || edges.size() >= MAX_EDGES) {
+                        truncated = true;
+                        continue;
+                    }
+                    String childId = externalNode(childKey, kindFor(childKey));
                     addEdge(parentId, childId, null);
-                    if (seen.add(childGa)) {
-                        q.add(childGa);
+                    if (expanded.add(childKey)) {
+                        q.add(childKey);
                     }
                 }
             }
         }
 
-        private String kindFor(String ga) {
-            return declaredGas.contains(ga) ? "declared" : "transitive";
+        private String kindFor(String key) {
+            return declaredKeys.contains(key) ? "declared" : "transitive";
         }
 
         private void addEdge(String from, String to, String scope) {
@@ -374,7 +456,13 @@ public final class DependencyGraphModel {
         Graph finish(boolean workspace) {
             List<String> scopeNames = scopes.stream().map(Scope::canonical).toList();
             return new Graph(
-                    workspace, scopeNames, transitive, availableScopeNames(), new ArrayList<>(nodes.values()), edges);
+                    workspace,
+                    scopeNames,
+                    transitive,
+                    availableScopeNames(),
+                    new ArrayList<>(nodes.values()),
+                    edges,
+                    truncated);
         }
     }
 }

@@ -223,15 +223,18 @@ public final class ImageBuilder {
         return layer.build();
     }
 
-    private static FileEntriesLayer appTreeLayer(Path root) throws IOException {
+    /** Only the files staged before training — the cache ships as its own layer. */
+    private static FileEntriesLayer stagedTreeLayer(AotCacheTrainer.Result aot) throws IOException {
+        Path root = aot.stagingRoot();
         FileEntriesLayer.Builder layer = FileEntriesLayer.builder();
         try (var walk = java.nio.file.Files.walk(root)) {
             for (Path file :
                     walk.filter(java.nio.file.Files::isRegularFile).sorted().toList()) {
+                String rel = root.relativize(file).toString().replace('\\', '/');
+                if (!aot.stagedFiles().contains(rel)) continue; // training-run droppings
                 layer.addEntry(
                         file,
-                        AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR + "/"
-                                + root.relativize(file).toString().replace('\\', '/')),
+                        AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR + "/" + rel),
                         FilePermissions.DEFAULT_FILE_PERMISSIONS,
                         AotCacheTrainer.LAYER_TIME.toInstant());
             }
@@ -295,38 +298,40 @@ public final class ImageBuilder {
             return finish(builder, plan, containerizer);
         }
 
-        // Layer 1 — release dependency jars (change least often).
-        if (!plan.dependencyJars().isEmpty()) {
-            builder = builder.addFileEntriesLayer(namedJarLayer(plan, plan.dependencyJars()));
-        }
-        // Layer 2 — SNAPSHOT dependency jars (their own layer: they churn while releases don't,
-        // so a snapshot bump never invalidates the big release-deps layer). Boot layer mapping.
-        if (!plan.snapshotJars().isEmpty()) {
-            builder = builder.addFileEntriesLayer(namedJarLayer(plan, plan.snapshotJars()));
-        }
-        // Layer 3 — the application: either exploded classes (Boot layer mapping — the
-        // most-frequently-changing bytes ride the smallest layer) or the classic main jar.
-        String appClasspath;
-        if (plan.classesDir() != null) {
-            builder = builder.addFileEntriesLayer(classesLayer(plan.classesDir()));
-            appClasspath = "/app/classes:/app/libs/*";
-        } else {
-            builder = builder.addLayer(List.of(plan.mainJar()), AbsoluteUnixPath.get("/app/classpath"));
-            appClasspath = "/app/classpath/*:/app/libs/*";
-        }
-
-        // AOT cache: the trainer produces the tree to ship at /app, the arguments that run it, and
-        // the cache. Everything is relative to /app with WORKDIR set, so the archive's recorded
-        // paths match wherever the tree lands.
+        // AOT cache: the trainer stages the runnable layout at /app, trains, and hands back the
+        // staged manifest + cache. The staged tree IS the application — shipping layers 1-3 as
+        // well would double every byte, and shipping the whole post-training staging root would
+        // embed whatever the app wrote during the record run (JK-1758).
         AotCacheTrainer.Result aot = null;
+        String appClasspath = null;
         if (cfg.aotCache()) {
             String blocked = AotCacheTrainer.unsupportedReason(plan);
             if (blocked != null) {
                 throw new IOException("[image] aot-cache = true, but " + blocked);
             }
             aot = AotCacheTrainer.train(plan, plan.mainJar().getParent(), msg -> System.err.println("jk: " + msg));
-            builder = builder.addFileEntriesLayer(appTreeLayer(aot.stagingRoot()));
+            builder = builder.addFileEntriesLayer(stagedTreeLayer(aot));
+            builder = builder.addFileEntriesLayer(treeLayer(aot.cache(), AotCacheTrainer.CACHE_FILE));
             builder = builder.setWorkingDirectory(AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR));
+        } else {
+            // Layer 1 — release dependency jars (change least often).
+            if (!plan.dependencyJars().isEmpty()) {
+                builder = builder.addFileEntriesLayer(namedJarLayer(plan, plan.dependencyJars()));
+            }
+            // Layer 2 — SNAPSHOT dependency jars (their own layer: they churn while releases
+            // don't, so a snapshot bump never invalidates the big release-deps layer).
+            if (!plan.snapshotJars().isEmpty()) {
+                builder = builder.addFileEntriesLayer(namedJarLayer(plan, plan.snapshotJars()));
+            }
+            // Layer 3 — the application: either exploded classes (Boot layer mapping — the
+            // most-frequently-changing bytes ride the smallest layer) or the classic main jar.
+            if (plan.classesDir() != null) {
+                builder = builder.addFileEntriesLayer(classesLayer(plan.classesDir()));
+                appClasspath = "/app/classes:/app/libs/*";
+            } else {
+                builder = builder.addLayer(List.of(plan.mainJar()), AbsoluteUnixPath.get("/app/classpath"));
+                appClasspath = "/app/classpath/*:/app/libs/*";
+            }
         }
 
         // Entrypoint: java -cp <app classpath> <main>

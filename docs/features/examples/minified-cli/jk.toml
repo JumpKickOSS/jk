@@ -5,9 +5,9 @@ version = "0.0.1"
 java = 25
 
 [application]
-main     = "demo.Cli"
-assembly = true      # target/minified-cli-0.0.1-all.jar
-minified = true      # target/minified-cli-0.0.1-min.jar via R8 (implies assembly)
+main = "demo.Cli"
+assembly = true # target/minified-cli-0.0.1-all.jar
+minified = true # target/minified-cli-0.0.1-min.jar via R8 (implies assembly)
 
 # Keep rules and R8 settings for the minified jar, when it needs them:
 # [minified]

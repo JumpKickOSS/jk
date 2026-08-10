@@ -375,9 +375,11 @@ public final class IdeOps {
     // =========================================================================
 
     /**
-     * Workspace siblings this module directly depends on, as {@code {name, COMPILE|TEST|TEST_KIND}}.
-     * {@code TEST_KIND} is Mill testModuleDeps / Maven test-jar ({@code kind = "tests"}) — IDE
-     * generators must also put the sibling's test classes on the test classpath.
+     * Workspace siblings this module directly depends on, as {@code {name, scope}} using the
+     * {@link IdeWireModel} scope vocabulary ({@code SCOPE_COMPILE|SCOPE_TEST|SCOPE_TEST_KIND|
+     * SCOPE_COMPILE_TEST_KIND}). Tests-kind scopes are Mill testModuleDeps / Maven test-jar
+     * ({@code kind = "tests"}) — IDE generators must also put the sibling's test classes on the
+     * test classpath. At most one row per sibling.
      */
     private static List<String[]> siblingModuleRefs(Path moduleDir, JkBuild module, Map<Path, JkBuild> modules)
             throws IOException {
@@ -404,13 +406,15 @@ public final class IdeOps {
         Set<String> added = new LinkedHashSet<>();
         for (Path sj : mainCp.siblingClosureJars()) {
             String name = jarToModule.get(sj);
-            if (name != null && added.add(name)) result.add(new String[] {name, "COMPILE"});
+            if (name != null && added.add(name)) result.add(new String[] {name, IdeWireModel.SCOPE_COMPILE});
         }
         for (Path sj : testCp.siblingClosureJars()) {
             String name = jarToModule.get(sj);
-            if (name != null && added.add(name)) result.add(new String[] {name, "TEST"});
+            if (name != null && added.add(name)) result.add(new String[] {name, IdeWireModel.SCOPE_TEST});
         }
-        // kind=tests edges: upgrade/add TEST_KIND so generators expose sibling test output.
+        // kind=tests edges: upgrade the existing row in place so generators expose sibling test
+        // output without ever emitting a second module entry for the same sibling (JK-1622 —
+        // Eclipse JDT rejects duplicate classpath entries).
         Set<String> testsKinds = new LinkedHashSet<>();
         for (Scope scope : EnumSet.of(Scope.TEST, Scope.TEST_DEV)) {
             for (Dependency d : module.dependencies().of(scope)) {
@@ -420,17 +424,20 @@ public final class IdeOps {
             }
         }
         for (String name : testsKinds) {
-            // Replace plain TEST with TEST_KIND when present; else append.
-            boolean replaced = false;
+            boolean upgraded = false;
             for (int i = 0; i < result.size(); i++) {
-                if (name.equals(result.get(i)[0]) && "TEST".equals(result.get(i)[1])) {
-                    result.set(i, new String[] {name, "TEST_KIND"});
-                    replaced = true;
-                    break;
+                String[] row = result.get(i);
+                if (!name.equals(row[0])) continue;
+                if (IdeWireModel.SCOPE_TEST.equals(row[1])) {
+                    result.set(i, new String[] {name, IdeWireModel.SCOPE_TEST_KIND});
+                } else if (IdeWireModel.SCOPE_COMPILE.equals(row[1])) {
+                    result.set(i, new String[] {name, IdeWireModel.SCOPE_COMPILE_TEST_KIND});
                 }
+                upgraded = true;
+                break;
             }
-            if (!replaced && added.add(name + "|TEST_KIND")) {
-                result.add(new String[] {name, "TEST_KIND"});
+            if (!upgraded && added.add(name)) {
+                result.add(new String[] {name, IdeWireModel.SCOPE_TEST_KIND});
             }
         }
         return result;

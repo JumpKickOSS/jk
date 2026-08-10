@@ -1,23 +1,18 @@
-# Self-host guard (JK-1443): short names resolve from the bundled catalog only,
-# immune to ~/.jk/libs.toml and the downloaded registry mirror.
-catalog = "bundled"
-
 [project]
-name        = "jk-formatter"
-description = "jk-formatter: Spotless / OpenRewrite format plugin worker."
+name = "jk-formatter"
+description = "JumpKick's source code formatter plugin"
 
 [application]
-main     = "cc.jumpkick.plugin.process.PluginMain"
+main = "cc.jumpkick.plugin.process.PluginMain"
 
 [dependencies]
 jk-plugin-sdk.workspace = true
-spotless-lib            = "latest"
-openrewrite-java        = "latest"
-openrewrite-java21      = "latest"
-slf4j-api               = "latest"
-slf4j-nop               = "latest"
+spotless-lib = "latest"
+openrewrite-java = "latest"
+openrewrite-java21 = "latest"
+slf4j-api = "latest"
+slf4j-nop = "latest"
 
 [test-dependencies]
-assertj-core            = "latest"
-junit-jupiter           = "latest"
-junit-platform-launcher = "latest"
+assertj-core = "latest"
+junit-jupiter = "latest"

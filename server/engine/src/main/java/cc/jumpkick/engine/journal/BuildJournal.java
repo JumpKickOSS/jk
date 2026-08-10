@@ -422,6 +422,7 @@ public final class BuildJournal {
                     r.kind(),
                     r.dir(),
                     r.coord(),
+                    r.projectId(),
                     r.startedAt(),
                     now,
                     Math.max(0, now - r.startedAt()),

@@ -1264,6 +1264,7 @@ public final class EngineServer implements AutoCloseable {
                                             .put("jid", eventRequestId)
                                             .put("kind", eventKind)
                                             .put("dir", eventDir)
+                                            .put("projectId", cc.jumpkick.runtime.ProjectIds.idOf(eventDir))
                                             .put("success", success)
                                             .put("cancelled", cancelled)
                                             .put("millis", elapsedMillis)
@@ -1325,9 +1326,11 @@ public final class EngineServer implements AutoCloseable {
             buildNumber = cc.jumpkick.runtime.BuildNumberAllocator.allocate(canonDir, coord);
         }
         long startedAt = clockMillis.getAsLong();
+        String projectId = cc.jumpkick.runtime.ProjectIds.refresh(canonDir != null ? canonDir : dir);
         String journalId = null;
         if (BuildHistoryKinds.isBuildLike(kind) && historyConfig.enabled() && buildNumber > 0) {
-            journalId = journal.begin(BuildRecord.running(buildNumber, kind, dir, coord, startedAt, version, trigger));
+            journalId = journal.begin(
+                    BuildRecord.running(buildNumber, kind, dir, coord, projectId, startedAt, version, trigger));
         }
         InFlightBuilds.Hold candidate =
                 new InFlightBuilds.Hold(requestId, buildNumber, fp, kind, dir, coord, startedAt, journalId, trigger);
@@ -1834,7 +1837,8 @@ public final class EngineServer implements AutoCloseable {
                 .put("jid", requestId)
                 .put("kind", kind)
                 .put("dir", dir)
-                .put("coord", coord);
+                .put("coord", coord)
+                .put("projectId", cc.jumpkick.runtime.ProjectIds.idOf(dir));
         if (buildNumber > 0) payload = payload.put("buildNumber", buildNumber);
         payload = payload.put("activeBuildPlans", activeBuildPlans.get());
         publishEvent("request-start", withProgress(payload, requestId), dashboardOnly);
@@ -2064,6 +2068,10 @@ public final class EngineServer implements AutoCloseable {
         System.gc();
     }
 
+    /** Single-flight latch for {@link #runIdleHousekeeping} — see the exactly-once note there. */
+    private final java.util.concurrent.atomic.AtomicBoolean idleHousekeepingRunning =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
     /**
      * Coordinated idle chores. Order is fixed; {@link System#gc()} is always last for the workset.
      * Prune/journal/harvest run here; when warmup is needed a daemon does warmup + the trailing GC
@@ -2072,25 +2080,37 @@ public final class EngineServer implements AutoCloseable {
     private void runIdleHousekeeping() {
         if (shuttingDown) return;
         if (activeBuildPlans.get() != 0) return;
-        drainPendingPrune();
-        pruneJournal();
-        pruneMetrics();
-        // Wait for coalesced MetricsHarvest so trimmed-mean rewrites finish before heap GC.
+        // Exactly-once at the build boundary (JK-1795): every finish path decrements the plan
+        // counter BEFORE publishing request-finish (SSE lockstep, JK-1725), so two
+        // near-simultaneous finishes can both observe 0 and land here — and the 12 h scheduled
+        // path can race a finish, too. tryAcquire admits one runner; the counter is re-checked
+        // under the guard so a build admitted meanwhile skips housekeeping (its own finish
+        // reaches the boundary later).
+        if (!idleHousekeepingRunning.compareAndSet(false, true)) return;
         try {
-            cc.jumpkick.builds.MetricsHarvest.get().awaitIdle(30_000L);
-        } catch (RuntimeException ignored) {
-        }
-        if (activeBuildPlans.get() != 0) return;
+            if (activeBuildPlans.get() != 0) return;
+            drainPendingPrune();
+            pruneJournal();
+            pruneMetrics();
+            // Wait for coalesced MetricsHarvest so trimmed-mean rewrites finish before heap GC.
+            try {
+                cc.jumpkick.builds.MetricsHarvest.get().awaitIdle(30_000L);
+            } catch (RuntimeException ignored) {
+            }
+            if (activeBuildPlans.get() != 0) return;
 
-        if (pendingWarmupForce.get() != null || HostWarmup.needsWork()) {
-            // Ensure a queue entry so kickPendingWarmup has work; that thread owns the trailing GC.
-            pendingWarmupForce.compareAndSet(null, Boolean.FALSE);
-            kickPendingWarmup(/* trailGc */ true);
-            return;
-        }
-        // Trailing heap GC after the entire idle workset (prune, harvest).
-        if (activeBuildPlans.get() == 0 && !warmupRunning.get()) {
-            System.gc();
+            if (pendingWarmupForce.get() != null || HostWarmup.needsWork()) {
+                // Ensure a queue entry so kickPendingWarmup has work; that thread owns the trailing GC.
+                pendingWarmupForce.compareAndSet(null, Boolean.FALSE);
+                kickPendingWarmup(/* trailGc */ true);
+                return;
+            }
+            // Trailing heap GC after the entire idle workset (prune, harvest).
+            if (activeBuildPlans.get() == 0 && !warmupRunning.get()) {
+                System.gc();
+            }
+        } finally {
+            idleHousekeepingRunning.set(false);
         }
     }
 
@@ -3754,21 +3774,30 @@ public final class EngineServer implements AutoCloseable {
                                 };
                         Session session = Session.defaults().withCacheDir(cache).withCancel(cancelToken);
                         String dir = EngineProtocol.SINGLE_PLAN_DIR;
-                        streamSingleBuildPlan(
-                                plan,
-                                session,
-                                writer,
-                                result -> EngineProtocol.planFinishCache(
-                                        dir,
-                                        result.success(),
-                                        plan.get(cc.jumpkick.runtime.CachePlans.FILES)
-                                                .orElse(-1L),
-                                        plan.get(cc.jumpkick.runtime.CachePlans.BYTES)
-                                                .orElse(-1L),
-                                        plan.get(cc.jumpkick.runtime.CachePlans.REACHABLE_EVICTED)
-                                                .orElse(-1L),
-                                        plan.get(cc.jumpkick.runtime.CachePlans.REPO_LINKS)
-                                                .orElse(-1L)));
+                        streamSingleBuildPlan(plan, session, writer, result -> {
+                            // An explicit clean IS a prune — stamp it, or `usage` keeps warning
+                            // "Last cleaned: never" right after a successful clean and the idle
+                            // scheduler re-runs work the user just did (JK-1771). Same file for
+                            // the store tier: its usage footer reads from its own root.
+                            if (result.success() && !dryRun && ("prune".equals(op) || "sweep".equals(op))) {
+                                try {
+                                    Files.writeString(
+                                            cache.resolve(cc.jumpkick.task.CachePruneScheduler.LAST_PRUNED_FILE),
+                                            Long.toString(clockMillis.getAsLong()),
+                                            StandardCharsets.UTF_8);
+                                } catch (IOException ignored) {
+                                    // best-effort stamp; the clean itself succeeded
+                                }
+                            }
+                            return EngineProtocol.planFinishCache(
+                                    dir,
+                                    result.success(),
+                                    plan.get(cc.jumpkick.runtime.CachePlans.FILES).orElse(-1L),
+                                    plan.get(cc.jumpkick.runtime.CachePlans.BYTES).orElse(-1L),
+                                    plan.get(cc.jumpkick.runtime.CachePlans.REACHABLE_EVICTED)
+                                            .orElse(-1L),
+                                    plan.get(cc.jumpkick.runtime.CachePlans.REPO_LINKS).orElse(-1L));
+                        });
                     } finally {
                         pruneLock.release();
                     }
@@ -5109,7 +5138,7 @@ public final class EngineServer implements AutoCloseable {
             String dir,
             BufferedWriter writer,
             java.util.function.Function<BuildPlanResult, String> finishEncoder,
-            boolean flushTimelineOnBuildPlanFinish) {
+            boolean releaseSlotOnBuildPlanFinish) {
         // Created on the runner's thread (directly, or via wireListener's onModuleStart which runs
         // on a scheduler thread — there the ThreadLocal is unset and module events carry the id).
         long eventRequestId = eventRequestId();
@@ -5215,13 +5244,16 @@ public final class EngineServer implements AutoCloseable {
                                     d.test(),
                                     d.exceptionClass()));
                 }
-                // Single-plan builds: timeline before terminal finish. Workspace modules skip
-                // (flush once in runBuild before workspace-finish).
-                if (flushTimelineOnBuildPlanFinish) flushTimelineToClient(eventRequestId, writer);
+                // Timeline before the terminal finish, for every socket request that owns an
+                // accumulator (no-op otherwise): a client that has returned must not observe the
+                // engine still writing target/jk-chrome-profile.json (JK-1714). Workspace modules
+                // flush once in runBuild before workspace-finish; the flushTimeline guard makes a
+                // second call here idempotent.
+                flushTimelineToClient(eventRequestId, writer);
                 // Free exclusive fingerprint before the terminal line so a client that reconnects
                 // immediately is not rejected as already-running (single-plan only; workspace
                 // releases after BuildService.buildWorkspace returns).
-                if (flushTimelineOnBuildPlanFinish) inFlightBuilds.release(eventRequestId);
+                if (releaseSlotOnBuildPlanFinish) inFlightBuilds.release(eventRequestId);
                 sendQuiet(writer, finishEncoder.apply(result));
                 publishBuildPlanFinish(eventRequestId, dir, result.success());
                 if (!result.success()) publishDiagnostics(eventRequestId, dir, result.errors());
@@ -6148,6 +6180,7 @@ public final class EngineServer implements AutoCloseable {
         private final String kind;
         private final String dir;
         private final String coord;
+        private final String projectId;
         private final String trigger; // how the build was started: "cli" (socket) or "web" (dashboard)
         /** Per-request chrome timeline; null when disabled. Same step millis as metrics. */
         private final ChromeTimeline timeline;
@@ -6210,6 +6243,7 @@ public final class EngineServer implements AutoCloseable {
             this.kind = kind;
             this.dir = dir;
             this.coord = coord;
+            this.projectId = cc.jumpkick.runtime.ProjectIds.idOf(dir);
             this.trigger = trigger;
             this.timeline = timeline;
             this.rebuild = rebuild;
@@ -6478,6 +6512,7 @@ public final class EngineServer implements AutoCloseable {
                     kind,
                     dir,
                     coord,
+                    projectId,
                     finishedAt - millis,
                     finishedAt,
                     millis,

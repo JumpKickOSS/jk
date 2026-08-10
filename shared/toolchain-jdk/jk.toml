@@ -1,12 +1,11 @@
 [project]
-name     = "jk-toolchain-jdk"
-description = "jk toolchain (client slice): JDK flow, discovery probes, launcher shims, exporters."
+name = "jk-toolchain-jdk"
+description = "Client JDK tooling: discovery, install flow, and launchers"
 
 [dependencies]
 jk-core.workspace = true
 jk-client-io.workspace = true
 
 [test-dependencies]
-assertj-core            = "latest"
-junit-jupiter           = "latest"
-junit-platform-launcher = "latest"
+assertj-core = "latest"
+junit-jupiter = "latest"

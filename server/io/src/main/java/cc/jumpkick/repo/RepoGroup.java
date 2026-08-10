@@ -169,6 +169,17 @@ public final class RepoGroup {
     }
 
     public Optional<RepoFetched> tryFetchArtifact(Coordinate coord) throws IOException, InterruptedException {
+        return tryFetchArtifact(coord, NO_ABORT);
+    }
+
+    /**
+     * As {@link #tryFetchArtifact(Coordinate)} with a cooperative abort signal (JK-1786): once
+     * {@code abort} turns true the fetch stops at the next leg boundary — after a local probe,
+     * before the network leg, before/after host-permit acquisition — with a
+     * {@link MavenRepo.FetchAbortedException}. Legs in progress always complete cleanly.
+     */
+    public Optional<RepoFetched> tryFetchArtifact(Coordinate coord, java.util.function.BooleanSupplier abort)
+            throws IOException, InterruptedException {
         String key = repoIdentity
                 + "|"
                 + coord.toGav()
@@ -178,7 +189,8 @@ public final class RepoGroup {
                 + (coord.classifier() == null ? "" : coord.classifier());
         RepoFetched hit = liveHit(ARTIFACT_HIT_CACHE, key);
         if (hit != null) return Optional.of(hit);
-        Optional<RepoFetched> found = tryFetch(coord, MavenRepo::tryLocalArtifact, MavenRepo::fetchArtifact);
+        Optional<RepoFetched> found =
+                tryFetch(coord, MavenRepo::tryLocalArtifact, (repo, c) -> repo.fetchArtifact(c, abort), abort);
         if (found.isPresent() && ARTIFACT_HIT_CACHE.size() < HIT_CACHE_MAX) {
             ARTIFACT_HIT_CACHE.putIfAbsent(key, found.get());
         }
@@ -218,7 +230,12 @@ public final class RepoGroup {
      * restrict which remotes are eligible at all.
      */
     public List<String> availableVersions(Coordinate coord) throws IOException, InterruptedException {
-        String key = repoIdentity + "|" + coord.group() + ":" + coord.artifact();
+        // The session's offline flag changes what MavenRepo.availableVersions even measures
+        // (local store listing vs remote metadata), so it is part of the question: an --offline
+        // session's [] must not poison an online session for the TTL, nor may network-derived
+        // lists leak into offline resolves.
+        boolean offline = cc.jumpkick.config.SessionContext.current().config().offlineOr(false);
+        String key = (offline ? "offline|" : "online|") + repoIdentity + "|" + coord.group() + ":" + coord.artifact();
         // Force means the caller does not trust any cached view of what exists.
         boolean memoable = !MavenMetadataCache.forceRevalidate();
         if (memoable) {
@@ -315,20 +332,36 @@ public final class RepoGroup {
      */
     private Optional<RepoFetched> tryFetch(Coordinate coord, LocalProbe localProbe, Fetcher fetcher)
             throws IOException, InterruptedException {
+        return tryFetch(coord, localProbe, fetcher, NO_ABORT);
+    }
+
+    private Optional<RepoFetched> tryFetch(
+            Coordinate coord, LocalProbe localProbe, Fetcher fetcher, java.util.function.BooleanSupplier abort)
+            throws IOException, InterruptedException {
         List<MavenRepo> eligible = eligibleRepos(coord);
-        Optional<RepoFetched> found = tryFetchFrom(eligible, coord, localProbe, fetcher);
+        Optional<RepoFetched> found = tryFetchFrom(eligible, coord, localProbe, fetcher, abort);
         if (found.isPresent()) return found;
         // Full miss on the fast path: consult non-claiming specialists before giving up.
-        return tryFetchFrom(lastResortRepos(coord, eligible), coord, localProbe, fetcher);
+        return tryFetchFrom(lastResortRepos(coord, eligible), coord, localProbe, fetcher, abort);
     }
 
     private Optional<RepoFetched> tryFetchFrom(
-            List<MavenRepo> candidates, Coordinate coord, LocalProbe localProbe, Fetcher fetcher)
+            List<MavenRepo> candidates,
+            Coordinate coord,
+            LocalProbe localProbe,
+            Fetcher fetcher,
+            java.util.function.BooleanSupplier abort)
             throws IOException, InterruptedException {
         for (MavenRepo repo : candidates) {
             Optional<MavenRepo.Fetched> local = localProbe.probe(repo, coord);
             if (local.isPresent()) {
                 return Optional.of(new RepoFetched(repo, local.get()));
+            }
+            // JK-1786: boundary between the local-probe leg and the network leg — a lock that
+            // already failed must not start another download; the probe above still completed.
+            if (abort.getAsBoolean()) {
+                throw new MavenRepo.FetchAbortedException(
+                        "fetch aborted before network leg for " + coord + " (lock already failed)");
             }
             try {
                 MavenRepo.Fetched f = fetcher.fetch(repo, coord);
@@ -339,6 +372,9 @@ public final class RepoGroup {
         }
         return Optional.empty();
     }
+
+    /** Abort supplier for fetch paths with no abort semantics (POM / metadata). */
+    private static final java.util.function.BooleanSupplier NO_ABORT = () -> false;
 
     private static List<List<String>> normalizeExclusive(int n, List<List<String>> raw) {
         List<List<String>> out = new ArrayList<>(n);

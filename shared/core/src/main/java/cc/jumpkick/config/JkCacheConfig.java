@@ -84,7 +84,12 @@ public record JkCacheConfig(
 
     /** Effective machine config: user-global file + env overrides + CI/disk defaults. */
     public static JkCacheConfig resolve() {
-        return resolve(JkDirs.userConfigFile(), System::getenv, () -> DiskSpace.probe(JkDirs.cache()));
+        // Each tier's clamp probes its own volume — JK_STORE_DIR may live elsewhere (JK-1772).
+        return resolve(
+                JkDirs.userConfigFile(),
+                System::getenv,
+                () -> DiskSpace.probe(JkDirs.cache()),
+                () -> DiskSpace.probe(JkDirs.store()));
     }
 
     /** As {@link #resolve()} but against an explicit config file + env — probes {@link JkDirs#cache()}. */
@@ -102,16 +107,39 @@ public record JkCacheConfig(
     }
 
     static JkCacheConfig resolve(Path userConfig, Function<String, String> env, Supplier<DiskSpace> disk) {
+        return resolve(userConfig, env, disk, disk);
+    }
+
+    static JkCacheConfig resolve(
+            Path userConfig,
+            Function<String, String> env,
+            Supplier<DiskSpace> cacheDisk,
+            Supplier<DiskSpace> storeDisk) {
         Objects.requireNonNull(env, "env");
         Parsed p = parse(userConfig);
         OptionalDouble envStore = envPositiveDouble(env, "JK_MAX_STORE_SIZE_GB");
         OptionalDouble envCache = envPositiveDouble(env, "JK_MAX_CACHE_SIZE_GB");
+        if (envStore.isEmpty()) {
+            OptionalDouble mb = envPositiveDouble(env, "JK_MAX_STORE_SIZE_MB");
+            if (mb.isPresent()) {
+                warnLegacyOnce("JK_MAX_STORE_SIZE_MB is the pre-rename spelling — use JK_MAX_STORE_SIZE_GB");
+                envStore = OptionalDouble.of(mb.getAsDouble() / 1024.0);
+            }
+        }
+        if (envCache.isEmpty()) {
+            OptionalDouble mb = envPositiveDouble(env, "JK_MAX_CACHE_SIZE_MB");
+            if (mb.isPresent()) {
+                warnLegacyOnce("JK_MAX_CACHE_SIZE_MB is the pre-rename spelling — use JK_MAX_CACHE_SIZE_GB");
+                envCache = OptionalDouble.of(mb.getAsDouble() / 1024.0);
+            }
+        }
 
         double logicalCache = isCi(env) ? CI_MAX_CACHE_SIZE_GB : DEFAULT_MAX_CACHE_SIZE_GB;
         double logicalStore = isCi(env) ? CI_MAX_STORE_SIZE_GB : DEFAULT_MAX_STORE_SIZE_GB;
-        DiskSpace space = disk != null ? disk.get() : null;
-        double defaultCache = clampDefaultGb(logicalCache, space);
-        double defaultStore = clampDefaultGb(logicalStore, space);
+        DiskSpace cacheSpace = cacheDisk != null ? cacheDisk.get() : null;
+        DiskSpace storeSpace = storeDisk != null ? storeDisk.get() : null;
+        double defaultCache = clampDefaultGb(logicalCache, cacheSpace, () -> usedBytes(JkDirs.cache()));
+        double defaultStore = clampDefaultGb(logicalStore, storeSpace, () -> usedBytes(JkDirs.store()));
 
         double storeGb =
                 envStore.isPresent() ? envStore.getAsDouble() : p.storeGb().orElse(defaultStore);
@@ -143,13 +171,36 @@ public record JkCacheConfig(
      * free split evenly). Otherwise the logical default is kept. Explicit config never goes through
      * this path.
      */
-    static double clampDefaultGb(double logicalGb, DiskSpace disk) {
+    static double clampDefaultGb(double logicalGb, DiskSpace disk, java.util.function.LongSupplier tierUsedBytes) {
         if (disk == null || disk.totalBytes() >= SMALL_DISK_THRESHOLD_BYTES) {
             return logicalGb;
         }
-        double shareGb = (disk.freeBytes() * 0.8) / 2.0 / (double) GIB;
+        // The tier's own footprint counts as reclaimable headroom — clamping on raw free makes
+        // the budget shrink as the tier fills (evict → free rises → budget grows → refill) and
+        // converge far below the 80%-of-free intent (JK-1772). The usage walk runs only on
+        // small volumes, where the tier is small by construction.
+        long own = tierUsedBytes == null ? 0L : Math.max(0L, tierUsedBytes.getAsLong());
+        double shareGb = ((disk.freeBytes() + own) * 0.8) / 2.0 / (double) GIB;
         if (shareGb < MIN_CLAMPED_GB) return MIN_CLAMPED_GB;
         return shareGb;
+    }
+
+    /** Best-effort recursive size of {@code root}; 0 when absent or unreadable. */
+    static long usedBytes(Path root) {
+        if (root == null || !Files.isDirectory(root)) return 0L;
+        long[] total = {0L};
+        try (var walk = Files.walk(root)) {
+            walk.forEach(f -> {
+                try {
+                    if (Files.isRegularFile(f)) total[0] += Files.size(f);
+                } catch (Exception ignored) {
+                    // vanished mid-walk
+                }
+            });
+        } catch (Exception ignored) {
+            // unreadable tree — treat as empty
+        }
+        return total[0];
     }
 
     static boolean isCi(Function<String, String> env) {
@@ -197,7 +248,9 @@ public record JkCacheConfig(
                 "cache.max-store-size-gb",
                 "cache.prune-interval-days",
                 "cache.record-ttl-days",
-                "cache.max-cache-size-gb");
+                "cache.max-cache-size-gb",
+                "cache.max-store-size-mb",
+                "cache.max-cache-size-mb");
         boolean autoPrune =
                 switch (String.valueOf(scan.get("cache.auto-prune"))) {
                     case "true" -> true;
@@ -208,7 +261,31 @@ public record JkCacheConfig(
         int interval = nonNegative(scanInt(scan, "cache.prune-interval-days")).orElse(DEFAULTS.pruneIntervalDays());
         int ttl = nonNegative(scanInt(scan, "cache.record-ttl-days")).orElse(DEFAULTS.recordTtlDays());
         OptionalDouble cacheGb = positiveDouble(scanDouble(scan, "cache.max-cache-size-gb"));
+        // Pre-rename `-mb` keys still pin the budget (converted) — ignoring them silently would
+        // grow a deliberately small cache to the multi-GiB default on upgrade (JK-1790).
+        if (storeGb.isEmpty()) {
+            storeGb = legacyMbAsGb(scan, "cache.max-store-size-mb");
+        }
+        if (cacheGb.isEmpty()) {
+            cacheGb = legacyMbAsGb(scan, "cache.max-cache-size-mb");
+        }
         return new Parsed(autoPrune, storeGb, interval, ttl, cacheGb);
+    }
+
+    private static OptionalDouble legacyMbAsGb(TomlScan scan, String key) {
+        OptionalDouble mb = positiveDouble(scanDouble(scan, key));
+        if (mb.isEmpty()) return OptionalDouble.empty();
+        warnLegacyOnce(key + " is the pre-rename spelling — use " + key.replace("-mb", "-gb"));
+        return OptionalDouble.of(mb.getAsDouble() / 1024.0);
+    }
+
+    private static final java.util.concurrent.atomic.AtomicBoolean LEGACY_WARNED =
+            new java.util.concurrent.atomic.AtomicBoolean();
+
+    private static void warnLegacyOnce(String message) {
+        if (LEGACY_WARNED.compareAndSet(false, true)) {
+            System.err.println("jk: warning: " + message);
+        }
     }
 
     /** Cache-tier budget in bytes ({@link #maxCacheSizeGb}). */

@@ -52,7 +52,9 @@ class BuildStageTest {
                 IllegalArgumentException.class, () -> Task.builder("y").group("custom-soup-1234"));
         Task explicit = Task.builder("y").stage(BuildStage.OTHER).build();
         assertThat(explicit.stage()).isEqualTo(BuildStage.OTHER);
-        assertThat(explicit.group()).contains("other");
+        // OTHER folds per-step (empty group → step-key fallback), not into one "Other" row
+        // (JK-1612).
+        assertThat(explicit.group()).isEmpty();
     }
 
     @Test

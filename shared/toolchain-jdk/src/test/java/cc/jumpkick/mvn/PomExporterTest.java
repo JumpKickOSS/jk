@@ -95,6 +95,37 @@ class PomExporterTest {
     }
 
     @Test
+    void locked_version_matches_full_package_keys_for_plain_and_tests_kind() {
+        // The engine's lock map keys on the full package id (g:a:type:classifier) — the
+        // exporter must hit it for the plain jar AND the tests-kind test-jar edge (JK-1642).
+        JkBuild b = parse("""
+                [project]
+                group = "com.example"
+                name  = "app"
+                version = "1.0.0"
+                java = 25
+
+                [dependencies]
+                guava = { group = "com.google.guava", name = "guava", version = "^33.0.0-jre" }
+
+                [test-dependencies]
+                helpers = { group = "com.acme", name = "helpers", version = "^1.0.0", kind = "tests" }
+                """);
+
+        PomExporter.Result result = PomExporter.export(
+                b,
+                Map.of(
+                        "com.google.guava:guava:jar:", "33.4.0-jre",
+                        "com.acme:helpers:test-jar:tests", "1.2.3"));
+
+        assertThat(result.xml()).contains("<version>33.4.0-jre</version>");
+        assertThat(result.xml()).contains("<version>1.2.3</version>");
+        assertThat(result.xml()).doesNotContain("33.0.0-jre");
+        // The collapsed-selector fallback warning fires only when genuinely unlocked.
+        assertThat(result.report().issues()).noneMatch(i -> i.message().contains("caret"));
+    }
+
+    @Test
     void jdk_emits_toolchains_plugin_and_main_emits_jar_plugin() {
         JkBuild b = parse("""
                 [project]

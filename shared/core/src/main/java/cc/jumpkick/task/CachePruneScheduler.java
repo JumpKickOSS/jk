@@ -10,10 +10,8 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Opportunistic cache prune after sync/build: fires when auto-prune is on and
- * {@code .last-pruned} is missing or older than the interval. Spawns detached
- * {@code jk cache clean --background} (parent does not wait). {@link #shouldRun} is also the
- * engine's idle-path cadence check.
+ * Cache-prune cadence: {@code .last-pruned} bookkeeping consulted by the engine's idle-boundary
+ * prune (which replaced the old detached {@code jk cache prune --background} spawner — JK-1789).
  */
 public final class CachePruneScheduler {
 
@@ -21,20 +19,6 @@ public final class CachePruneScheduler {
     public static final String LAST_PRUNED_FILE = ".last-pruned";
 
     private CachePruneScheduler() {}
-
-    /**
-     * Run if cued; do nothing otherwise. Errors are swallowed — the opportunistic prune is a hygiene
-     * optimisation, never load-bearing.
-     */
-    public static void maybeRun(JkCacheConfig config, Path cacheRoot, String jkExe) {
-        if (!config.autoPrune()) return;
-        try {
-            if (!shouldRun(config, cacheRoot)) return;
-            spawnDetached(config, cacheRoot, jkExe);
-        } catch (IOException ignored) {
-            // Best-effort.
-        }
-    }
 
     /** True if the configured cadence calls for a prune now. */
     public static boolean shouldRun(JkCacheConfig config, Path cacheRoot) throws IOException {
@@ -49,32 +33,6 @@ public final class CachePruneScheduler {
         }
         long intervalMillis = (long) config.pruneIntervalDays() * 24L * 60L * 60L * 1000L;
         return (System.currentTimeMillis() - last) > intervalMillis;
-    }
-
-    /** Build the equivalent of {@code jk cache clean --background} command line. */
-    static List<String> commandFor(JkCacheConfig config, Path cacheRoot, String jkExe) {
-        List<String> cmd = new java.util.ArrayList<>();
-        cmd.add(jkExe);
-        cmd.add("cache");
-        cmd.add("prune");
-        cmd.add("--background");
-        cmd.add("--cache-dir");
-        cmd.add(cacheRoot.toAbsolutePath().toString());
-        cmd.add("--older-than");
-        cmd.add(Integer.toString(config.recordTtlDays()));
-        return cmd;
-    }
-
-    private static void spawnDetached(JkCacheConfig config, Path cacheRoot, String jkExe) throws IOException {
-        if (jkExe == null || jkExe.isBlank()) return;
-        ProcessBuilder pb = new ProcessBuilder(commandFor(config, cacheRoot, jkExe));
-        pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
-        pb.redirectError(ProcessBuilder.Redirect.DISCARD);
-        pb.redirectInput(ProcessBuilder.Redirect.PIPE);
-        Process p = pb.start();
-        // Close stdin so the child sees EOF immediately on any read.
-        // The parent doesn't wait for the child — it'll outlive us.
-        p.getOutputStream().close();
     }
 
     /**

@@ -53,6 +53,43 @@ class PublishablePomTest {
     }
 
     @Test
+    void tests_kind_sibling_edge_is_omitted_but_external_test_jar_is_kept() {
+        // JK-1643: jk has no test-jar packaging task, so a tests-kind edge to a workspace
+        // sibling names an artifact that exists in no repository — omit it. External
+        // test-jars exist upstream and stay.
+        EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        Dependency siblingTests = Dependency.of("lib", "com.example:lib", VersionSelector.parse("=1.0.0"))
+                .withKind(cc.jumpkick.model.DependencyKind.TESTS);
+        Dependency externalTests = Dependency.of("helpers", "com.acme:helpers", VersionSelector.parse("=1.2.3"))
+                .withKind(cc.jumpkick.model.DependencyKind.TESTS);
+        byScope.put(Scope.TEST, List.of(siblingTests, externalTests));
+        JkBuild project = new JkBuild(
+                new JkBuild.Project("com.example", "widget", "1.0.0", 21), new JkBuild.Dependencies(byScope));
+
+        String xml = PublishablePom.render(project, null, java.util.Set.of("com.example:lib"))
+                .xml();
+
+        assertThat(xml).doesNotContain("<artifactId>lib</artifactId>");
+        assertThat(xml).contains("<artifactId>helpers</artifactId>");
+        assertThat(xml).contains("<type>test-jar</type>");
+        assertThat(xml).contains("<classifier>tests</classifier>");
+    }
+
+    @Test
+    void tests_kind_sibling_edge_survives_without_sibling_context() {
+        // Without workspace context (legacy 2-arg render) behavior is unchanged.
+        EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.put(
+                Scope.TEST,
+                List.of(Dependency.of("lib", "com.example:lib", VersionSelector.parse("=1.0.0"))
+                        .withKind(cc.jumpkick.model.DependencyKind.TESTS)));
+        JkBuild project = new JkBuild(
+                new JkBuild.Project("com.example", "widget", "1.0.0", 21), new JkBuild.Dependencies(byScope));
+
+        assertThat(PublishablePom.render(project, null).xml()).contains("<artifactId>lib</artifactId>");
+    }
+
+    @Test
     void emits_dependency_management_for_platform_scope() {
         Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
         byScope.put(

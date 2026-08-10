@@ -171,4 +171,32 @@ class JkCacheConfigTest {
         assertThat(c.maxStoreSizeBytes()).isEqualTo(Math.round(0.5 * JkCacheConfig.GIB));
         assertThat(JkCacheConfig.DEFAULTS.maxStoreSizeBytes()).isEqualTo(Math.round(6.0 * JkCacheConfig.GIB));
     }
+
+    @org.junit.jupiter.api.Test
+    void small_disk_clamp_counts_the_tiers_own_bytes_as_headroom() {
+        // JK-1772: an 8 GiB volume with 2 GiB free where the cache itself holds 3 GiB must
+        // budget from 5 GiB of reclaimable space, not 2 — otherwise the budget chases its own
+        // eviction downward.
+        long gib = 1024L * 1024 * 1024;
+        var disk = new JkCacheConfig.DiskSpace(8 * gib, 2 * gib);
+        double withOwn = JkCacheConfig.clampDefaultGb(6.0, disk, () -> 3 * gib);
+        double withoutOwn = JkCacheConfig.clampDefaultGb(6.0, disk, () -> 0L);
+        org.assertj.core.api.Assertions.assertThat(withOwn)
+                .isCloseTo((5.0 * 0.8) / 2.0, org.assertj.core.api.Assertions.withinPercentage(1));
+        org.assertj.core.api.Assertions.assertThat(withOwn).isGreaterThan(withoutOwn);
+    }
+
+    @org.junit.jupiter.api.Test
+    void legacy_mb_keys_and_envs_still_pin_the_budget(@org.junit.jupiter.api.io.TempDir Path dir) throws Exception {
+        Path toml = dir.resolve("config.toml");
+        Files.writeString(toml, "[cache]\nmax-cache-size-mb = 512\n");
+        JkCacheConfig fromFile = JkCacheConfig.resolve(toml, k -> null, BIG_DISK);
+        org.assertj.core.api.Assertions.assertThat(fromFile.maxCacheSizeGb())
+                .isCloseTo(0.5, org.assertj.core.api.Assertions.withinPercentage(1));
+
+        JkCacheConfig fromEnv = JkCacheConfig.resolve(
+                dir.resolve("none.toml"), Map.of("JK_MAX_STORE_SIZE_MB", "2048")::get, BIG_DISK);
+        org.assertj.core.api.Assertions.assertThat(fromEnv.maxStoreSizeGb())
+                .isCloseTo(2.0, org.assertj.core.api.Assertions.withinPercentage(1));
+    }
 }
