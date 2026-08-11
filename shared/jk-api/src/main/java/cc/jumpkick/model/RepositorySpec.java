@@ -33,7 +33,10 @@ public record RepositorySpec(
             "androidx.*",
             "com.android",
             "com.android.*",
-            "com.google.android",
+            // NOT the bare "com.google.android" group: its artifacts (com.google.android:annotations,
+            // a grpc-core runtime dep) are hosted only on Central — claiming the bare group made
+            // grpc-netty-shaded's closure unresolvable and the b1a1e7d9 re-lock silently dropped
+            // it (JK-1811). Subgroups below stay exclusive.
             "com.google.android.*",
             "com.google.android.gms",
             "com.google.android.gms.*",

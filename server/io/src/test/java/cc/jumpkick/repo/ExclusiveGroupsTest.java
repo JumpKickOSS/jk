@@ -12,7 +12,8 @@ class ExclusiveGroupsTest {
     void exact_and_star_patterns() {
         assertThat(ExclusiveGroups.matches("com.acme", "com.acme")).isTrue();
         assertThat(ExclusiveGroups.matches("com.acme", "com.acme.util")).isFalse();
-        assertThat(ExclusiveGroups.matches("com.acme.*", "com.acme")).isTrue();
+        // x.* claims subgroups only — the bare group needs its own entry (JK-1811).
+        assertThat(ExclusiveGroups.matches("com.acme.*", "com.acme")).isFalse();
         assertThat(ExclusiveGroups.matches("com.acme.*", "com.acme.util")).isTrue();
         assertThat(ExclusiveGroups.matches("com.acme.*", "com.other")).isFalse();
         assertThat(ExclusiveGroups.matches("*", "anything")).isTrue();
