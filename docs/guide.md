@@ -888,6 +888,11 @@ Auto-profile defers when CLI already set `--include-tags` or `--exclude-tags`. P
 for tags is last-wins (child key replaces parent); javac/JVM args still append. Suites and tags are
 part of the test stamp: changing selection re-runs tests even if sources are unchanged.
 
+An explicitly cleared list travels to the engine as-is: once any layer speaks (baseline key,
+profile key — including `= []` — or a CLI flag), the resolved lists are final and per-module
+`[test]` tags are not folded back in. `--exclude-tags ""` (or `--include-tags ""`) is the CLI
+form of a clear. When no layer speaks, each workspace module's own `[test]` filters still apply.
+
 ## Quality (format + lint)
 
 | Concern | Path |

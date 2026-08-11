@@ -5003,6 +5003,9 @@ public final class BuildPlanner {
      * carries them.
      */
     static cc.jumpkick.config.TestSelection effectiveSelection(cc.jumpkick.config.TestSelection sel, Path moduleDir) {
+        // tagsResolved: the CLI already applied baseline/profile/flag layers — an empty list may
+        // be an explicit clear ([profiles.x] exclude-tags = []) and must stay empty (JK-1809).
+        if (sel.tagsResolved()) return sel;
         if (!sel.includeTags().isEmpty() || !sel.excludeTags().isEmpty()) return sel;
         var fromToml = cc.jumpkick.config.JkBuildParser.parseTestTags(moduleDir.resolve("jk.toml"));
         if (fromToml.isEmpty()) return sel;

@@ -986,6 +986,7 @@ public final class EngineProtocol {
         sb.append(",\"suites\":").append(jsonStringArray(s.suites()));
         sb.append(",\"includeTags\":").append(jsonStringArray(s.includeTags()));
         sb.append(",\"excludeTags\":").append(jsonStringArray(s.excludeTags()));
+        sb.append(",\"tagsResolved\":").append(s.tagsResolved());
         return sb.toString();
     }
 
@@ -995,7 +996,8 @@ public final class EngineProtocol {
         List<String> suites = stringArrayField(json, "suites");
         List<String> include = stringArrayField(json, "includeTags");
         List<String> exclude = stringArrayField(json, "excludeTags");
-        return cc.jumpkick.config.TestSelection.of(suites, all, include, exclude);
+        boolean tagsResolved = Jsonl.bool(json, "tagsResolved", false);
+        return cc.jumpkick.config.TestSelection.of(suites, all, include, exclude, tagsResolved);
     }
 
     private static String jsonStringArray(List<String> values) {
