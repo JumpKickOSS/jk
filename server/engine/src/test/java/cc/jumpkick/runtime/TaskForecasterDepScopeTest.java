@@ -123,4 +123,48 @@ class TaskForecasterDepScopeTest {
         assertThat(d.compileDepDirty()).isFalse();
         assertThat(d.testDepDirty()).isFalse();
     }
+
+    @Test
+    void order_after_only_dirty_prereq_is_orderDepDirty(@TempDir Path tmp) throws Exception {
+        // A dirty order-after-only sibling (incl. test-plugin-jars) prices no compile/test work
+        // but must schedule the dependent so real action keys re-check out-of-band outputs
+        // (JK-1810).
+        Path gen = tmp.resolve("gen");
+        Path app = tmp.resolve("app");
+        Files.createDirectories(gen);
+        Files.createDirectories(app);
+        Files.writeString(
+                gen.resolve("jk.toml"),
+                """
+                [project]
+                group = "cc.example"
+                name = "gen"
+                version = "1.0.0"
+                java = 25
+                """);
+        Files.writeString(
+                app.resolve("jk.toml"),
+                """
+                [project]
+                group = "cc.example"
+                name = "app"
+                version = "1.0.0"
+                java = 25
+
+                [build]
+                order-after = ["gen"]
+                """);
+        JkBuild appBuild = JkBuildParser.parse(app.resolve("jk.toml"));
+        var unit = new BuildGraph.BuildUnit(app, appBuild, "cc.example:app", BuildGraph.Origin.MODULE);
+        Map<String, Path> byCoord = Map.of("cc.example:app", app, "cc.example:gen", gen);
+        Map<String, Path> byName = Map.of("app", app, "gen", gen);
+
+        var d = TaskForecaster.depDirtiness(unit, Set.of(gen), Set.of(gen), byCoord, byName);
+        assertThat(d.compileDepDirty()).isFalse();
+        assertThat(d.testDepDirty()).isFalse();
+        assertThat(d.orderDepDirty()).isTrue();
+
+        // An order-check RUN task is material, so the dependent schedules.
+        assertThat(cc.jumpkick.runtime.TaskForecast.Module.isMaterialWork("order-check")).isTrue();
+    }
 }

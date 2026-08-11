@@ -109,11 +109,16 @@ public final class TaskForecaster {
     }
 
     /**
-     * Which dirty prereqs affect this module's main compile vs tests only. {@code order-after}
-     * edges without a classpath dep are neither (scheduling only).
+     * Which dirty prereqs affect this module's main compile vs tests only. A dirty prereq
+     * reachable only via {@code order-after} (incl. {@code test-plugin-jars}) forces no
+     * compile/test pricing, but still marks {@link #orderDepDirty} — the dependent must
+     * <em>schedule</em> so its real action keys re-check the prereq's out-of-band outputs
+     * (test-plugin jars ride the run-tests stamp; users add order-after precisely for
+     * consumption the classpath cannot express). Pricing nothing keeps ETA honest; skipping
+     * the module entirely shipped stale outputs (JK-1810).
      */
-    record DepDirtiness(boolean compileDepDirty, boolean testDepDirty) {
-        static final DepDirtiness NONE = new DepDirtiness(false, false);
+    record DepDirtiness(boolean compileDepDirty, boolean testDepDirty, boolean orderDepDirty) {
+        static final DepDirtiness NONE = new DepDirtiness(false, false, false);
     }
 
     static DepDirtiness depDirtiness(
@@ -125,6 +130,7 @@ public final class TaskForecaster {
         if (prereqs == null || prereqs.isEmpty() || dirty.isEmpty()) return DepDirtiness.NONE;
         boolean compile = false;
         boolean test = false;
+        boolean order = false;
         JkBuild m = u.manifest();
         for (Path dep : prereqs) {
             if (!dirty.contains(dep)) continue;
@@ -140,9 +146,9 @@ public final class TaskForecaster {
             }
             if (viaCompile) compile = true;
             else if (viaTest) test = true;
-            // order-after-only prereq: neither — no classpath impact
+            else order = true; // order-after-only prereq: schedule, price nothing
         }
-        return new DepDirtiness(compile, test);
+        return new DepDirtiness(compile, test, order);
     }
 
     /**
@@ -628,6 +634,16 @@ public final class TaskForecaster {
                     steps.add(new TaskForecast.Task(
                             "restore-outputs", TaskForecast.Status.RUN, "restore from cache", null));
                 }
+            }
+
+            // ---- order-after gate ----
+            // A dirty order-after-only prereq prices nothing, but the module must still schedule:
+            // its real action keys are what re-check the prereq's out-of-band outputs (e.g. a
+            // rebuilt test-plugin jar hashed by the run-tests stamp). Unchanged inputs resolve as
+            // cheap cache hits at execute (JK-1810).
+            if (dep.orderDepDirty() && steps.stream().allMatch(TaskForecast.Task::cached)) {
+                steps.add(new TaskForecast.Task(
+                        "order-check", TaskForecast.Status.RUN, "ordered-after sibling rebuilding", null));
             }
         } catch (Exception e) {
             // Degrade gracefully — never crash explain over one unparseable module.
