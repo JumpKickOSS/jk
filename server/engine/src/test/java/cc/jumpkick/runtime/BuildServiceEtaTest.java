@@ -15,6 +15,15 @@ class BuildServiceEtaTest {
     }
 
     @Test
+    void open_loop_prefers_one_percent_over_estimate() {
+        assertThat(BuildService.preferSlightOverEstimate(0)).isZero();
+        assertThat(BuildService.preferSlightOverEstimate(68_000)).isEqualTo(68_680);
+        assertThat(BuildService.preferSlightOverEstimate(100_000)).isEqualTo(101_000);
+        // ~1%, not ~2.5%
+        assertThat(BuildService.preferSlightOverEstimate(70_000)).isLessThan(70_000 + 1_750);
+    }
+
+    @Test
     void no_history_leaves_the_base_untouched() {
         assertThat(BuildService.applyHistoryPrior(0, null)).isZero();
         assertThat(BuildService.applyHistoryPrior(0, BuildMetrics.Stats.EMPTY)).isZero();

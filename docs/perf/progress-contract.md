@@ -62,6 +62,7 @@ jar. Runtime may **shrink** on cache hit (`RESTORE`); never reweight *up* mid-ru
 | **Price material steps only** | ETA costs skip bookkeeping steps even when the plan still runs them. Cascade-forced compile/package/**native** (`dependency changed` / `main changed` / `compile changed` without local *compile* content) are recheck tokens, not suite/native walls. Resource-only modules (copy/package resources) price package+copy only — never unlock compile/test suite walls. `run-tests` stays full when the module has local compile content, no compile steps (test-dep only), or a heavy packaging tail forecast (cli-shaped); pure cascade modules discount tests. |
 | **Same concurrency** | `etaConcurrency(...)` matches workspace scheduler clamp. |
 | **Open-loop clock** | Client freezes `R0` when execute starts; residual ETA events are not applied mid-run. |
+| **Mild over-estimate** | After schedule + history clamp, non-zero `R0` gets `×1.01` (`preferSlightOverEstimate`) so a hair high is preferred over a hair low — not a multi-minute floor. |
 | **Seed quality KPI** | `|R0 − execute_wall| / execute_wall` on success (`jk: eta-seed quality …` when serious or `JK_ETA_SEED_LOG=1`). |
 | **Fully-cached fast path** | Empty dirty → `R0 = 0`, skip forecast walk. |
 

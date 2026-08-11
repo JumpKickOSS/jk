@@ -1245,7 +1245,20 @@ public final class BuildService {
             }
         }
         // One-sided clamp for absurd over-estimates only (never pull incremental work up to history).
-        return applyHistoryPrior(base, okHist);
+        // Then a tiny open-loop preference for mild over-estimate (finishing early feels worse than late).
+        return preferSlightOverEstimate(applyHistoryPrior(base, okHist));
+    }
+
+    /**
+     * Open-loop R0 prefers a hair high over a hair low. Pure {@code ×1.01} on non-zero seeds —
+     * enough to absorb small schedule/bookkeeping under-shoot without the multi-minute floors we
+     * removed. Intentionally not ~2.5% (that overshoots the product budget on mid-length builds).
+     */
+    static final double OPEN_LOOP_OVER_ESTIMATE = 1.01;
+
+    static long preferSlightOverEstimate(long baseMs) {
+        if (baseMs <= 0) return baseMs;
+        return Math.round(baseMs * OPEN_LOOP_OVER_ESTIMATE);
     }
 
     /** Prefer the stats row with the higher successful average (and samples). */
