@@ -58,6 +58,8 @@ public final class JobWorkers {
     private static final ConcurrentHashMap<Long, Set<Process>> BY_REQUEST = new ConcurrentHashMap<>();
 
     static {
+        // SessionContext's static init uses bind() (displaces); force it to land before our add().
+        cc.jumpkick.config.SessionContext.current();
         cc.jumpkick.run.ContextPropagator.add(new cc.jumpkick.run.ContextPropagator.Propagator() {
             @Override
             public Runnable wrapRunnable(Runnable r) {

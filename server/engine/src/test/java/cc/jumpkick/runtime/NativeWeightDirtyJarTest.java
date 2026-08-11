@@ -109,5 +109,18 @@ class NativeWeightDirtyJarTest {
         // With over-reserve (dirty prepare), full learned/cold wall is reserved up front.
         int reserved = EffortWeights.withOverReserveTails(() -> EffortWeights.nativeWeight(dir));
         assertThat(reserved).isGreaterThanOrEqualTo(100);
+
+        // The production path (BuildPlan.estimatedTotalWeight) evaluates weight suppliers on
+        // JkThreads.io() workers — the flag must survive that hop (JK-1807).
+        int reservedViaPool = EffortWeights.withOverReserveTails(() -> java.util.concurrent.CompletableFuture
+                .supplyAsync(() -> EffortWeights.nativeWeight(dir), cc.jumpkick.run.JkThreads.io())
+                .join());
+        assertThat(reservedViaPool).isGreaterThanOrEqualTo(100);
+
+        // And a worker outside the scope must NOT see the flag (no leak into pooled threads).
+        boolean leaked = java.util.concurrent.CompletableFuture.supplyAsync(
+                        EffortWeights::overReserveTails, cc.jumpkick.run.JkThreads.io())
+                .join();
+        assertThat(leaked).isFalse();
     }
 }

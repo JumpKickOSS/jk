@@ -36,6 +36,42 @@ public final class EffortWeights {
      */
     private static final ThreadLocal<Boolean> OVER_RESERVE_TAILS = new ThreadLocal<>();
 
+    static {
+        // BuildPlan.estimatedTotalWeight()/run() evaluate weight suppliers on JkThreads pool
+        // workers; the flag must ride that hop like the session context does (JK-1807). Capture
+        // happens on the submitting thread (inside withOverReserveTails), restore on the worker;
+        // remove() in finally keeps shared cpu() workers clean.
+        // SessionContext's static init uses bind() (displaces); force it to land before our add().
+        cc.jumpkick.config.SessionContext.current();
+        cc.jumpkick.run.ContextPropagator.add(new cc.jumpkick.run.ContextPropagator.Propagator() {
+            @Override
+            public Runnable wrapRunnable(Runnable r) {
+                if (!overReserveTails()) return r;
+                return () -> {
+                    OVER_RESERVE_TAILS.set(Boolean.TRUE);
+                    try {
+                        r.run();
+                    } finally {
+                        OVER_RESERVE_TAILS.remove();
+                    }
+                };
+            }
+
+            @Override
+            public <T> java.util.concurrent.Callable<T> wrapCallable(java.util.concurrent.Callable<T> c) {
+                if (!overReserveTails()) return c;
+                return () -> {
+                    OVER_RESERVE_TAILS.set(Boolean.TRUE);
+                    try {
+                        return c.call();
+                    } finally {
+                        OVER_RESERVE_TAILS.remove();
+                    }
+                };
+            }
+        });
+    }
+
     /** Run {@code body} with jar-derived tails forced to full bar weight (dirty prepare / run). */
     public static <T> T withOverReserveTails(java.util.concurrent.Callable<T> body) {
         OVER_RESERVE_TAILS.set(Boolean.TRUE);
