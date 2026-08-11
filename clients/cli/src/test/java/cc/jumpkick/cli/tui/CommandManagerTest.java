@@ -258,17 +258,18 @@ class CommandManagerTest {
     }
 
     @Test
-    void eta_countdown_freezes_at_zero_and_count_up_turns_yellow_on_overrun() {
+    void eta_countdown_freezes_at_zero_and_count_up_turns_mid_gray_on_overrun() {
         var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
         cm.setEtaEstimate(10_000); // 10s estimate
-        // 15s elapsed → countdown freezes at dim 0s; count-up is full elapsed (yellow).
+        // 15s elapsed → countdown freezes at dim 0s; count-up is full elapsed in mid-gray
+        // (same role as the active countdown color — not warning yellow).
         String header = cm.renderBuildPlanLines(120, 15_000).get(0);
         String plain = TestAnsi.strip(header);
         assertThat(plain).contains("ETA 0s");
         assertThat(plain).contains("+15s");
         assertThat(header).contains(Theme.colorize("0s", Theme.active().darkGray()));
-        assertThat(header).contains(Theme.colorize("+15s", Theme.active().warning()));
+        assertThat(header).contains(Theme.colorize("+15s", Theme.active().midGray()));
     }
 
     @Test
@@ -316,7 +317,7 @@ class CommandManagerTest {
         String at30 = TestAnsi.strip(cm.renderBuildPlanLines(120, 30_000).get(0));
         assertThat(at30).contains("ETA ~1m 30s");
         assertThat(at30).contains("+30s");
-        // At end of remaining work (elapsed 120s) → frozen 0s + yellow full elapsed.
+        // At end of remaining work (elapsed 120s) → frozen 0s + mid-gray full elapsed.
         String done = TestAnsi.strip(cm.renderBuildPlanLines(120, 120_000).get(0));
         assertThat(done).contains("ETA 0s");
         assertThat(done).contains("+2m 00s");
@@ -504,7 +505,7 @@ class CommandManagerTest {
     }
 
     @Test
-    void header_countdown_is_mid_gray_count_up_is_dim_then_yellow() {
+    void header_countdown_is_mid_gray_count_up_is_dim_then_mid_gray_on_overrun() {
         Theme t = Theme.active();
         // Seeded ETA with remaining > 0 → dim italic "ETA " + mid-gray "~remaining" · dim "+elapsed".
         var down = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
@@ -528,7 +529,7 @@ class CommandManagerTest {
         assertThat(TestAnsi.strip(upHeader)).doesNotContain("ETA ");
         assertThat(upHeader).contains(Theme.colorize("+12s", t.warning()));
 
-        // Seed overrun → frozen dim 0s + yellow full elapsed (still keeps ETA prefix).
+        // Seed overrun → frozen dim 0s + mid-gray full elapsed (countdown's former color).
         var over = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         over.nerdfont = false;
         over.progress(90, 100);
@@ -538,7 +539,8 @@ class CommandManagerTest {
         assertThat(TestAnsi.strip(overHeader)).contains("+15s");
         assertThat(overHeader).contains(Theme.colorize("ETA ", t.darkGray().italic()));
         assertThat(overHeader).contains(Theme.colorize("0s", t.darkGray()));
-        assertThat(overHeader).contains(Theme.colorize("+15s", t.warning()));
+        assertThat(overHeader).contains(Theme.colorize("+15s", t.midGray()));
+        assertThat(overHeader).doesNotContain(Theme.colorize("+15s", t.warning()));
     }
 
     @Test
