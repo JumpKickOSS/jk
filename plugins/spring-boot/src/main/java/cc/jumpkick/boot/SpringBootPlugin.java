@@ -175,7 +175,8 @@ public final class SpringBootPlugin implements Plugin, BuildExtension, PackageEx
         if (!aotDirs.isEmpty()) {
             Path userProps = io.classesDir().resolve("spring.properties");
             if (!Files.isRegularFile(userProps)) {
-                Path activate = Files.createDirectories(io.artifactPath().getParent().resolve(".jk-aot-activate"));
+                Path activate =
+                        Files.createDirectories(io.artifactPath().getParent().resolve(".jk-aot-activate"));
                 Files.writeString(
                         activate.resolve("spring.properties"),
                         "# Written by jk: activate the AOT artifacts built into this jar (JK-1706).\n"

@@ -4,7 +4,6 @@ package cc.jumpkick.cli.run;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Badge;
-import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.config.GlobalConfig;
 import java.util.ArrayList;
 import java.util.List;
@@ -44,14 +43,11 @@ public final class TestFailureHighlight {
     /** Heavy vertical box-drawing used as the failure rail (U+2503). */
     public static final String RAIL = "┃";
 
-    private static final Pattern FAILED_LINE =
-            Pattern.compile("^(?<indent>[ \\t]*)FAILED  (?<rest>.+)$");
-    private static final Pattern CLASS_LINE =
-            Pattern.compile("^(?<indent>[ \\t]*)class: (?<fqcn>.+)$");
+    private static final Pattern FAILED_LINE = Pattern.compile("^(?<indent>[ \\t]*)FAILED  (?<rest>.+)$");
+    private static final Pattern CLASS_LINE = Pattern.compile("^(?<indent>[ \\t]*)class: (?<fqcn>.+)$");
     private static final Pattern FQCN_LINE =
             Pattern.compile("^(?<indent>[ \\t]*)(?<fqcn>[a-zA-Z_][\\w$]*(?:\\.[a-zA-Z_][\\w$]*)+)$");
-    private static final Pattern COUNT_LINE =
-            Pattern.compile("^(\\d+) test(s?) failed:$");
+    private static final Pattern COUNT_LINE = Pattern.compile("^(\\d+) test(s?) failed:$");
 
     private TestFailureHighlight() {}
 
@@ -69,7 +65,8 @@ public final class TestFailureHighlight {
             // Skip leading blanks before a failure header so only one blank remains under the prompt.
             if ((raw == null || raw.isEmpty())
                     && i + 1 < lines.size()
-                    && HEADER_SENTINEL.equals(lines.get(i + 1) != null ? lines.get(i + 1).strip() : null)) {
+                    && HEADER_SENTINEL.equals(
+                            lines.get(i + 1) != null ? lines.get(i + 1).strip() : null)) {
                 i++;
                 continue;
             }
@@ -236,8 +233,7 @@ public final class TestFailureHighlight {
 
         Matcher fqcn = FQCN_LINE.matcher(raw);
         if (fqcn.matches() && looksLikeExceptionOrClass(fqcn.group("fqcn"))) {
-            return Theme.colorize(fqcn.group("indent"), t.midGray())
-                    + paintFqcn(fqcn.group("fqcn"), t);
+            return Theme.colorize(fqcn.group("indent"), t.midGray()) + paintFqcn(fqcn.group("fqcn"), t);
         }
 
         // Stack frames — reuse the shared highlighter (keeps frame colors consistent).

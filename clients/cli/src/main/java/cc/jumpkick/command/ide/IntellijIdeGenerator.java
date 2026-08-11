@@ -342,8 +342,8 @@ public final class IntellijIdeGenerator implements IdeGenerator {
         for (IdeModule m : allModules.values()) byName.put(m.name(), m);
 
         for (ModuleRef mr : modRefs) {
-            boolean testScope = IdeWireModel.SCOPE_TEST.equals(mr.scope())
-                    || IdeWireModel.SCOPE_TEST_KIND.equals(mr.scope());
+            boolean testScope =
+                    IdeWireModel.SCOPE_TEST.equals(mr.scope()) || IdeWireModel.SCOPE_TEST_KIND.equals(mr.scope());
             boolean attachTests = IdeWireModel.SCOPE_TEST_KIND.equals(mr.scope())
                     || IdeWireModel.SCOPE_COMPILE_TEST_KIND.equals(mr.scope());
             sb.append("    <orderEntry type=\"module\" module-name=\"")
@@ -458,7 +458,8 @@ public final class IntellijIdeGenerator implements IdeGenerator {
     private static void appendTestsKindLibrary(StringBuilder sb, Path moduleDir, IdeModule sibling) {
         Path testClasses = sibling.testClassesDir().toAbsolutePath().normalize();
         String classesUrl = "file://$MODULE_DIR$/"
-                + moduleDir.toAbsolutePath()
+                + moduleDir
+                        .toAbsolutePath()
                         .normalize()
                         .relativize(testClasses)
                         .toString()

@@ -4016,8 +4016,8 @@ public final class BuildPlanner {
                         // Refuse to native-build on stale train outputs when configured.
                         try {
                             var trainCfg = cc.jumpkick.config.TrainConfigParser.parse(dir.resolve("jk.toml"));
-                            String stale = TrainRunner.staleReason(
-                                    dir, project, layout, lockFile, javaHomeEarly, trainCfg);
+                            String stale =
+                                    TrainRunner.staleReason(dir, project, layout, lockFile, javaHomeEarly, trainCfg);
                             if (stale != null) {
                                 ctx.error("train-stale", stale);
                                 throw new RuntimeException(stale);
@@ -4091,9 +4091,10 @@ public final class BuildPlanner {
                     long classpathBytes = NativeEffort.sumExistingBytes(classpath);
                     long labelBytes = classpathBytes > 0 ? classpathBytes : effectiveBytes;
                     String binName = nativeOutputDisplayName(out, shared);
-                    ctx.label(labelBytes > 0
-                            ? binName + " · classpath input size: ~" + formatNativeInputMib(labelBytes) + " MiB"
-                            : binName);
+                    ctx.label(
+                            labelBytes > 0
+                                    ? binName + " · classpath input size: ~" + formatNativeInputMib(labelBytes) + " MiB"
+                                    : binName);
 
                     // Progress listener: parse [N/M] headers from native-image stdout.
                     // ticks(10) is declared upfront (preamble + 8 GraalVM stages + done).
@@ -4130,8 +4131,7 @@ public final class BuildPlanner {
                     }
                     // Capture Graal stdout/stderr for progress parsing + a durable report.
                     // Console: only --verbose or a non-zero exit (happy path stays quiet).
-                    java.util.List<String> niLog =
-                            java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+                    java.util.List<String> niLog = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
                     int exit = cc.jumpkick.tool.NativeImageDriver.run(request, listener, niLog::add);
                     Path niReport = layout.reportsDir().resolve("native-image.out");
                     try {
@@ -4149,9 +4149,7 @@ public final class BuildPlanner {
                         ctx.error(
                                 "native",
                                 "native-image exited " + exit
-                                        + (Files.isRegularFile(niReport)
-                                                ? " (full log: " + niReport + ")"
-                                                : ""));
+                                        + (Files.isRegularFile(niReport) ? " (full log: " + niReport + ")" : ""));
                         throw new RuntimeException("native-image failed (exit " + exit + ")");
                     }
                     // The framework's args name their own output, inside its sources dir.
@@ -4244,9 +4242,7 @@ public final class BuildPlanner {
         String name = out.getFileName().toString();
         if (shared) return name;
         String os = System.getProperty("os.name", "");
-        if (os.toLowerCase(java.util.Locale.ROOT).contains("win")
-                && !name.endsWith(".exe")
-                && !name.endsWith(".EXE")) {
+        if (os.toLowerCase(java.util.Locale.ROOT).contains("win") && !name.endsWith(".exe") && !name.endsWith(".EXE")) {
             return name + ".exe";
         }
         return name;

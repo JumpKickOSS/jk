@@ -1873,9 +1873,8 @@ public final class JkBuildParser {
         // the slow/integration tests the config meant to exclude with no signal (JK-1825).
         if (test != null) {
             if (test.contains("default-exclude-tags")) {
-                throw new JkBuildParseException(
-                        "[test].default-exclude-tags was renamed to exclude-tags "
-                                + "(profiles and --exclude-tags replace it per run; `exclude-tags = []` clears)");
+                throw new JkBuildParseException("[test].default-exclude-tags was renamed to exclude-tags "
+                        + "(profiles and --exclude-tags replace it per run; `exclude-tags = []` clears)");
             }
             if (test.contains("include-tag") || test.contains("exclude-tag")) {
                 throw new JkBuildParseException("[test] tag keys are plural: include-tags / exclude-tags");

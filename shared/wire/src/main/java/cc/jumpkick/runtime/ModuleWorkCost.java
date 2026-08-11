@@ -24,11 +24,7 @@ public record ModuleWorkCost(Path dir, Set<Path> prereqs, int weight, int testWe
     /** Residual cost after {@code fracDone} of the module's work has finished (0..1). */
     public ModuleWorkCost residual(double fracDone) {
         double left = 1.0 - clamp01(fracDone);
-        return new ModuleWorkCost(
-                dir,
-                prereqs,
-                scale(weight, left),
-                scale(testWeight, left));
+        return new ModuleWorkCost(dir, prereqs, scale(weight, left), scale(testWeight, left));
     }
 
     private static int scale(int w, double left) {

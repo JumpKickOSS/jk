@@ -97,8 +97,7 @@ public final class ClasspathFingerprint {
      * {@code resourceRoots} over it. Starts from on-disk class/non-resource files, then overlays
      * source resource roots — same content the live package step hashes once the copy has run.
      */
-    public static String entryProjectedAfterResourceCopy(Path classesDir, List<Path> resourceRoots)
-            throws IOException {
+    public static String entryProjectedAfterResourceCopy(Path classesDir, List<Path> resourceRoots) throws IOException {
         Map<String, String> digests = new TreeMap<>();
         if (classesDir != null && Files.isDirectory(classesDir)) {
             try (Stream<Path> walk = Files.walk(classesDir)) {

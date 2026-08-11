@@ -87,7 +87,12 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
         if (recovered.isPresent()) {
             if (git.isPresent()) {
                 return new ProjectIdentity(
-                        recovered.get(), coord, abs, Source.GIT, git.get().remote(), git.get().relPath());
+                        recovered.get(),
+                        coord,
+                        abs,
+                        Source.GIT,
+                        git.get().remote(),
+                        git.get().relPath());
             }
             return new ProjectIdentity(recovered.get(), coord, abs, Source.PATH, null, null);
         }

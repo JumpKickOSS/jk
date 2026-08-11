@@ -201,7 +201,8 @@ final class BaseJre {
             while ((entry = tar.getNextEntry()) != null) {
                 Path target = dest.resolve(entry.getName()).normalize();
                 if (!target.startsWith(dest)) continue; // path traversal in an untrusted archive
-                String name = target.getFileName() == null ? "" : target.getFileName().toString();
+                String name =
+                        target.getFileName() == null ? "" : target.getFileName().toString();
                 // OCI whiteouts: `.wh..wh..opq` clears the directory it sits in; `.wh.<x>`
                 // deletes <x> from lower layers. Ignoring them resurrects files the image
                 // deliberately removed.

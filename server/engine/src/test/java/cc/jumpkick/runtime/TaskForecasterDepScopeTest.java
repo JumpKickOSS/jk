@@ -25,18 +25,14 @@ class TaskForecasterDepScopeTest {
         Path cli = tmp.resolve("cli");
         Files.createDirectories(eng);
         Files.createDirectories(cli);
-        Files.writeString(
-                eng.resolve("jk.toml"),
-                """
+        Files.writeString(eng.resolve("jk.toml"), """
                 [project]
                 group = "cc.example"
                 name = "engine"
                 version = "1.0.0"
                 java = 25
                 """);
-        Files.writeString(
-                cli.resolve("jk.toml"),
-                """
+        Files.writeString(cli.resolve("jk.toml"), """
                 [project]
                 group = "cc.example"
                 name = "cli"
@@ -51,9 +47,7 @@ class TaskForecasterDepScopeTest {
                 """);
         Path core = tmp.resolve("core");
         Files.createDirectories(core);
-        Files.writeString(
-                core.resolve("jk.toml"),
-                """
+        Files.writeString(core.resolve("jk.toml"), """
                 [project]
                 group = "cc.example"
                 name = "core"
@@ -94,18 +88,14 @@ class TaskForecasterDepScopeTest {
         Path app = tmp.resolve("app");
         Files.createDirectories(lib);
         Files.createDirectories(app);
-        Files.writeString(
-                lib.resolve("jk.toml"),
-                """
+        Files.writeString(lib.resolve("jk.toml"), """
                 [project]
                 group = "cc.example"
                 name = "lib"
                 version = "1.0.0"
                 java = 25
                 """);
-        Files.writeString(
-                app.resolve("jk.toml"),
-                """
+        Files.writeString(app.resolve("jk.toml"), """
                 [project]
                 group = "cc.example"
                 name = "app"
@@ -133,18 +123,14 @@ class TaskForecasterDepScopeTest {
         Path app = tmp.resolve("app");
         Files.createDirectories(gen);
         Files.createDirectories(app);
-        Files.writeString(
-                gen.resolve("jk.toml"),
-                """
+        Files.writeString(gen.resolve("jk.toml"), """
                 [project]
                 group = "cc.example"
                 name = "gen"
                 version = "1.0.0"
                 java = 25
                 """);
-        Files.writeString(
-                app.resolve("jk.toml"),
-                """
+        Files.writeString(app.resolve("jk.toml"), """
                 [project]
                 group = "cc.example"
                 name = "app"
@@ -165,6 +151,7 @@ class TaskForecasterDepScopeTest {
         assertThat(d.orderDepDirty()).isTrue();
 
         // An order-check RUN task is material, so the dependent schedules.
-        assertThat(cc.jumpkick.runtime.TaskForecast.Module.isMaterialWork("order-check")).isTrue();
+        assertThat(cc.jumpkick.runtime.TaskForecast.Module.isMaterialWork("order-check"))
+                .isTrue();
     }
 }

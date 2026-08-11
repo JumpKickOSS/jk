@@ -288,12 +288,10 @@ public final class MetricsHarvest {
                 .append(fmt(trimmedMean(e.getValue())))
                 .append('\n'));
         // Continuous rates not present in this harvest pass (run keys always win on collision).
-        continuousMean.entrySet().stream()
-                .sorted(Map.Entry.comparingByKey())
-                .forEach(e -> {
-                    if (samples.containsKey(e.getKey())) return;
-                    sb.append(e.getKey()).append(" = ").append(fmt(e.getValue())).append('\n');
-                });
+        continuousMean.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(e -> {
+            if (samples.containsKey(e.getKey())) return;
+            sb.append(e.getKey()).append(" = ").append(fmt(e.getValue())).append('\n');
+        });
         if (!preserved.isBlank()) sb.append(preserved);
         if (!byLanguage.isBlank()) sb.append(byLanguage);
         Files.createDirectories(file.getParent());

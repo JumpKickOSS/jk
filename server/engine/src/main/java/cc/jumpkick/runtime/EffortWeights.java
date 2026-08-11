@@ -128,6 +128,7 @@ public final class EffortWeights {
     static final int NATIVE_RUN = 600;
     /** Cold OCI build floor (~30s). */
     static final int OCI_RUN = 200;
+
     static final int OCI_SKIP = 2;
 
     /**
@@ -584,10 +585,8 @@ public final class EffortWeights {
             }
             case "package-jar" -> flatWeight(Calibration.scaleBaseline(Calibration.BASELINE_PACKAGE_JAR_MS, 1.0));
             case "package-assembly" -> ASSEMBLY_RUN;
-            case "native-image" ->
-                flatWeight(Calibration.scaleBaseline(Calibration.BASELINE_NATIVE_IMAGE_MS, 1.0));
-            case "write-image" ->
-                flatWeight(Calibration.scaleBaseline(Calibration.BASELINE_OCI_IMAGE_MS, 1.0));
+            case "native-image" -> flatWeight(Calibration.scaleBaseline(Calibration.BASELINE_NATIVE_IMAGE_MS, 1.0));
+            case "write-image" -> flatWeight(Calibration.scaleBaseline(Calibration.BASELINE_OCI_IMAGE_MS, 1.0));
             case "resolve-deps",
                     "parse-build",
                     "ensure-jdk",
@@ -938,8 +937,7 @@ public final class EffortWeights {
 
     /** Binary/library missing or older than main jar (does not re-check jar dirtiness). */
     static boolean nativeOutputStaleOrMissing(Path dir) {
-        return !(artifactFresh(dir, BuildLayout::nativeBinary)
-                || artifactFresh(dir, BuildLayout::nativeLibrary));
+        return !(artifactFresh(dir, BuildLayout::nativeBinary) || artifactFresh(dir, BuildLayout::nativeLibrary));
     }
 
     /** {@code [native] always = true} — module may produce a native-image tail. */
@@ -969,8 +967,8 @@ public final class EffortWeights {
             if (!Files.isRegularFile(layout.mainJar())) return true;
             boolean compact = cc.jumpkick.layout.ModuleLayout.isCompact(dir);
             // Java main sources
-            List<Path> javaSrc = CompileSupport.collectJavaSources(
-                    compact ? dir.resolve("src") : dir.resolve("src/main/java"));
+            List<Path> javaSrc =
+                    CompileSupport.collectJavaSources(compact ? dir.resolve("src") : dir.resolve("src/main/java"));
             if (!javaSrc.isEmpty()
                     && !FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.JAVA_STAMP, javaSrc)) {
                 return true;
@@ -978,8 +976,7 @@ public final class EffortWeights {
             // Kotlin
             List<Path> ktSrc = CompileSupport.collectKotlinSources(dir, compact);
             if (!ktSrc.isEmpty()
-                    && !FreshnessStamp.looksFresh(
-                            layout.kotlinClassesDir(), FreshnessStamp.KOTLIN_STAMP, ktSrc)) {
+                    && !FreshnessStamp.looksFresh(layout.kotlinClassesDir(), FreshnessStamp.KOTLIN_STAMP, ktSrc)) {
                 return true;
             }
             // Groovy (stamp in merged classes dir)

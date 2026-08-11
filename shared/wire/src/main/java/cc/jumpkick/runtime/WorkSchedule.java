@@ -27,8 +27,7 @@ public final class WorkSchedule {
      * Schedule wall cost in the same units as {@link ModuleWorkCost#weight()} (multiply by
      * ms-per-weight externally when those units are not already milliseconds).
      */
-    public static long schedule(
-            List<ModuleWorkCost> mods, int concurrency, boolean serial, boolean parallelTests) {
+    public static long schedule(List<ModuleWorkCost> mods, int concurrency, boolean serial, boolean parallelTests) {
         if (mods == null || mods.isEmpty()) return 0;
         long serialSum = 0;
         long testSum = 0;

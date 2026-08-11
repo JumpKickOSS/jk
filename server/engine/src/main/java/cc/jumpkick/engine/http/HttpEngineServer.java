@@ -1225,7 +1225,8 @@ public final class HttpEngineServer implements AutoCloseable {
         // workspace still gets its durable projectId in the fallback branch (JK-1796).
         String resolvedId = projectId;
         try {
-            resolvedId = cc.jumpkick.builds.ProjectIdentity.resolve(Path.of(dir)).id();
+            resolvedId =
+                    cc.jumpkick.builds.ProjectIdentity.resolve(Path.of(dir)).id();
         } catch (RuntimeException e) {
             // Invalid path — keep whatever the caller supplied (empty for ?dir= calls).
         }

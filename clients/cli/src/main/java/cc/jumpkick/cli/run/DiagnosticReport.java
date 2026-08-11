@@ -35,12 +35,11 @@ public final class DiagnosticReport {
      * Absolute or clearly path-like tokens in free-form messages. Stops at whitespace or common
      * closers ({@code )}, {@code ]}, {@code ,}).
      */
-    private static final Pattern PATH_TOKEN = Pattern.compile(
-            "(?:"
-                    + "(?:[A-Za-z]:)?[/\\\\][^\\s\\]\\),]+" // absolute unix / windows
-                    + "|(?:\\./|\\.\\./)[^\\s\\]\\),]+" // relative with ./
-                    + "|target/[^\\s\\]\\),]+" // monorepo targets
-                    + ")");
+    private static final Pattern PATH_TOKEN = Pattern.compile("(?:"
+            + "(?:[A-Za-z]:)?[/\\\\][^\\s\\]\\),]+" // absolute unix / windows
+            + "|(?:\\./|\\.\\./)[^\\s\\]\\),]+" // relative with ./
+            + "|target/[^\\s\\]\\),]+" // monorepo targets
+            + ")");
 
     /** {@code group:artifact} or GAV (no whitespace). */
     private static final Pattern COORD_TOKEN =
@@ -56,7 +55,8 @@ public final class DiagnosticReport {
         if ("verbatim".equals(code)) return message == null ? "" : message;
         String title = titleFor(step, code);
         if (ConsoleSpec.isCompilerCode(code)) {
-            return header(title, Role.ERROR) + "\n" + railBlock(CompilerDiagnostic.render(nullToEmpty(message)), Role.ERROR);
+            return header(title, Role.ERROR) + "\n"
+                    + railBlock(CompilerDiagnostic.render(nullToEmpty(message)), Role.ERROR);
         }
         return header(title, Role.ERROR) + "\n" + railBlock(paintProse(nullToEmpty(message)), Role.ERROR);
     }
@@ -99,7 +99,9 @@ public final class DiagnosticReport {
             if (p.isEmpty()) continue;
             if (!sb.isEmpty()) sb.append(' ');
             if (p.length() == 1) sb.append(Character.toUpperCase(p.charAt(0)));
-            else sb.append(Character.toUpperCase(p.charAt(0))).append(p.substring(1).toLowerCase(Locale.ROOT));
+            else
+                sb.append(Character.toUpperCase(p.charAt(0)))
+                        .append(p.substring(1).toLowerCase(Locale.ROOT));
         }
         return sb.toString();
     }
@@ -122,7 +124,8 @@ public final class DiagnosticReport {
         AttributedStyle body = t.withBackground(t.bright(255, 255, 255), chipRgb);
         AttributedStyle caps = t.bright(chipRgb);
         String pill = Badge.pill(title, GlobalConfig.nerdfont(), body, caps);
-        AttributedStyle wordStyle = role == Role.ERROR ? t.error().bold() : t.warning().bold();
+        AttributedStyle wordStyle =
+                role == Role.ERROR ? t.error().bold() : t.warning().bold();
         return pill + " " + Theme.colorize(word, wordStyle);
     }
 

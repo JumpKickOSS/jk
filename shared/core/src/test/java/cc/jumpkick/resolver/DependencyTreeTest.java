@@ -234,8 +234,7 @@ class DependencyTreeTest {
                 new JkBuild.Dependencies(Map.of(
                         Scope.TEST,
                                 List.of(new Dependency("org.junit:junit", new VersionSelector.Exact("=5.0", "5.0"))),
-                        Scope.DEV,
-                                List.of(new Dependency("com.foo:tool", new VersionSelector.Exact("=1.0", "1.0"))))));
+                        Scope.DEV, List.of(new Dependency("com.foo:tool", new VersionSelector.Exact("=1.0", "1.0"))))));
         String two = DependencyTree.render(testAndDev, lock, tmp, Integer.MAX_VALUE, DependencyTree.Styling.plain());
         assertThat(two).contains("found in: test, dev").contains("-s all");
 

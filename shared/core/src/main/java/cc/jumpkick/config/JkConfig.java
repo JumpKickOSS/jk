@@ -105,20 +105,22 @@ public record JkConfig(
                 Optional.empty());
     }
 
-
     // --- withers: one-field copies so callers (tests especially) never restate the
     // 11-positional-Optional constructor (JK-1805). ---
 
     public JkConfig withColor(Optional<ColorChoice> v) {
-        return new JkConfig(v, offline, rebuild, noProgress, quiet, verbose, directory, force, noAnsi, noOsc, notifyPolicy);
+        return new JkConfig(
+                v, offline, rebuild, noProgress, quiet, verbose, directory, force, noAnsi, noOsc, notifyPolicy);
     }
 
     public JkConfig withOffline(Optional<Boolean> v) {
-        return new JkConfig(color, v, rebuild, noProgress, quiet, verbose, directory, force, noAnsi, noOsc, notifyPolicy);
+        return new JkConfig(
+                color, v, rebuild, noProgress, quiet, verbose, directory, force, noAnsi, noOsc, notifyPolicy);
     }
 
     public JkConfig withRebuild(Optional<Boolean> v) {
-        return new JkConfig(color, offline, v, noProgress, quiet, verbose, directory, force, noAnsi, noOsc, notifyPolicy);
+        return new JkConfig(
+                color, offline, v, noProgress, quiet, verbose, directory, force, noAnsi, noOsc, notifyPolicy);
     }
 
     public JkConfig withNoProgress(Optional<Boolean> v) {
@@ -126,11 +128,13 @@ public record JkConfig(
     }
 
     public JkConfig withQuiet(Optional<Boolean> v) {
-        return new JkConfig(color, offline, rebuild, noProgress, v, verbose, directory, force, noAnsi, noOsc, notifyPolicy);
+        return new JkConfig(
+                color, offline, rebuild, noProgress, v, verbose, directory, force, noAnsi, noOsc, notifyPolicy);
     }
 
     public JkConfig withVerbose(Optional<Boolean> v) {
-        return new JkConfig(color, offline, rebuild, noProgress, quiet, v, directory, force, noAnsi, noOsc, notifyPolicy);
+        return new JkConfig(
+                color, offline, rebuild, noProgress, quiet, v, directory, force, noAnsi, noOsc, notifyPolicy);
     }
 
     public JkConfig withDirectory(Optional<java.nio.file.Path> v) {
@@ -138,15 +142,18 @@ public record JkConfig(
     }
 
     public JkConfig withForce(Optional<Boolean> v) {
-        return new JkConfig(color, offline, rebuild, noProgress, quiet, verbose, directory, v, noAnsi, noOsc, notifyPolicy);
+        return new JkConfig(
+                color, offline, rebuild, noProgress, quiet, verbose, directory, v, noAnsi, noOsc, notifyPolicy);
     }
 
     public JkConfig withNoAnsi(Optional<Boolean> v) {
-        return new JkConfig(color, offline, rebuild, noProgress, quiet, verbose, directory, force, v, noOsc, notifyPolicy);
+        return new JkConfig(
+                color, offline, rebuild, noProgress, quiet, verbose, directory, force, v, noOsc, notifyPolicy);
     }
 
     public JkConfig withNoOsc(Optional<Boolean> v) {
-        return new JkConfig(color, offline, rebuild, noProgress, quiet, verbose, directory, force, noAnsi, v, notifyPolicy);
+        return new JkConfig(
+                color, offline, rebuild, noProgress, quiet, verbose, directory, force, noAnsi, v, notifyPolicy);
     }
 
     public JkConfig withNotifyPolicy(Optional<NotifyChoice> v) {

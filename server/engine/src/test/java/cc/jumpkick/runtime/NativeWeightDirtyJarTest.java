@@ -17,9 +17,7 @@ class NativeWeightDirtyJarTest {
 
     @Test
     void nativeWeight_over_reserves_when_main_sources_are_dirty(@TempDir Path dir) throws Exception {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 name = "demo"
                 group = "t"
@@ -56,9 +54,7 @@ class NativeWeightDirtyJarTest {
 
     @Test
     void jar_dirty_implies_native_and_oci_dirty(@TempDir Path dir) throws Exception {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 name = "demo"
                 group = "t"
@@ -80,9 +76,7 @@ class NativeWeightDirtyJarTest {
 
     @Test
     void overReserveTails_forces_full_native_even_when_binary_looks_fresh(@TempDir Path dir) throws Exception {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 name = "demo"
                 group = "t"
@@ -112,9 +106,10 @@ class NativeWeightDirtyJarTest {
 
         // The production path (BuildPlan.estimatedTotalWeight) evaluates weight suppliers on
         // JkThreads.io() workers — the flag must survive that hop (JK-1807).
-        int reservedViaPool = EffortWeights.withOverReserveTails(() -> java.util.concurrent.CompletableFuture
-                .supplyAsync(() -> EffortWeights.nativeWeight(dir), cc.jumpkick.run.JkThreads.io())
-                .join());
+        int reservedViaPool =
+                EffortWeights.withOverReserveTails(() -> java.util.concurrent.CompletableFuture.supplyAsync(
+                                () -> EffortWeights.nativeWeight(dir), cc.jumpkick.run.JkThreads.io())
+                        .join());
         assertThat(reservedViaPool).isGreaterThanOrEqualTo(100);
 
         // And a worker outside the scope must NOT see the flag (no leak into pooled threads).

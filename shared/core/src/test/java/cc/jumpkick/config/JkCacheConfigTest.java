@@ -194,8 +194,8 @@ class JkCacheConfigTest {
         org.assertj.core.api.Assertions.assertThat(fromFile.maxCacheSizeGb())
                 .isCloseTo(0.5, org.assertj.core.api.Assertions.withinPercentage(1));
 
-        JkCacheConfig fromEnv = JkCacheConfig.resolve(
-                dir.resolve("none.toml"), Map.of("JK_MAX_STORE_SIZE_MB", "2048")::get, BIG_DISK);
+        JkCacheConfig fromEnv =
+                JkCacheConfig.resolve(dir.resolve("none.toml"), Map.of("JK_MAX_STORE_SIZE_MB", "2048")::get, BIG_DISK);
         org.assertj.core.api.Assertions.assertThat(fromEnv.maxStoreSizeGb())
                 .isCloseTo(2.0, org.assertj.core.api.Assertions.withinPercentage(1));
     }

@@ -59,11 +59,9 @@ class NativeEffortTest {
         long eff = NativeEffort.effectiveInputBytes(app, deps);
         double mib = eff / (1024.0 * 1024.0);
         Calibration cal = Calibration.load();
-        double scale =
-                cal.hasColdPriors() ? NativeEffort.nativeColdScale(cal.cpuScale()) : 1.0;
-        long expected = Math.round(
-                (NativeEffort.REF_FLOOR_MS * scale + NativeEffort.REF_MS_PER_MIB * scale * mib)
-                        * NativeEffort.MODEL_PAD);
+        double scale = cal.hasColdPriors() ? NativeEffort.nativeColdScale(cal.cpuScale()) : 1.0;
+        long expected = Math.round((NativeEffort.REF_FLOOR_MS * scale + NativeEffort.REF_MS_PER_MIB * scale * mib)
+                * NativeEffort.MODEL_PAD);
         expected = Math.max(NativeEffort.WALL_FLOOR_MS, Math.min(NativeEffort.MAX_NATIVE_MS, expected));
 
         long ms = NativeEffort.sizeModelWallMs(eff);

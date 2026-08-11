@@ -75,21 +75,23 @@ class MetricsHarvestTest {
 
     @Test
     void isContinuousMeanKey_excludes_run_harvest() {
-        assertThat(MetricsHarvest.isContinuousMeanKey("native-image-ms-per-mib")).isTrue();
+        assertThat(MetricsHarvest.isContinuousMeanKey("native-image-ms-per-mib"))
+                .isTrue();
         assertThat(MetricsHarvest.isContinuousMeanKey("native-image-floor-ms")).isTrue();
-        assertThat(MetricsHarvest.isContinuousMeanKey("compile-java-per-source-ms")).isTrue();
-        assertThat(MetricsHarvest.isContinuousMeanKey("task.native-image.wall-ms")).isFalse();
+        assertThat(MetricsHarvest.isContinuousMeanKey("compile-java-per-source-ms"))
+                .isTrue();
+        assertThat(MetricsHarvest.isContinuousMeanKey("task.native-image.wall-ms"))
+                .isFalse();
         assertThat(MetricsHarvest.isContinuousMeanKey("phase.native.wall-ms")).isFalse();
-        assertThat(MetricsHarvest.isContinuousMeanKey("module./p.task.native-image.wall-ms")).isFalse();
+        assertThat(MetricsHarvest.isContinuousMeanKey("module./p.task.native-image.wall-ms"))
+                .isFalse();
     }
 
     @Test
     void harvest_preserves_continuous_native_rates(@TempDir Path root) throws Exception {
         Path host = ProjectBuilds.hostMetricsFile(root);
         Files.createDirectories(host.getParent());
-        Files.writeString(
-                host,
-                """
+        Files.writeString(host, """
                 # host-metrics
                 [mean]
                 task.compile-java.wall-ms = 100
@@ -113,22 +115,20 @@ class MetricsHarvestTest {
 
     @Test
     void isImplausibleHeavyWall_drops_native_restore_blips() {
-        assertThat(MetricsHarvest.isImplausibleHeavyWall(
-                        "module./p.task.native-image.wall-ms", 32.0))
+        assertThat(MetricsHarvest.isImplausibleHeavyWall("module./p.task.native-image.wall-ms", 32.0))
                 .isTrue();
-        assertThat(MetricsHarvest.isImplausibleHeavyWall(
-                        "module./p.task.native-image.wall-ms", 32_000.0))
+        assertThat(MetricsHarvest.isImplausibleHeavyWall("module./p.task.native-image.wall-ms", 32_000.0))
                 .isFalse();
-        assertThat(MetricsHarvest.isImplausibleHeavyWall("task.write-image.wall-ms", 100.0)).isTrue();
-        assertThat(MetricsHarvest.isImplausibleHeavyWall("task.run-tests.wall-ms", 50.0)).isFalse();
+        assertThat(MetricsHarvest.isImplausibleHeavyWall("task.write-image.wall-ms", 100.0))
+                .isTrue();
+        assertThat(MetricsHarvest.isImplausibleHeavyWall("task.run-tests.wall-ms", 50.0))
+                .isFalse();
     }
 
     @Test
     void harvest_skips_implausible_native_walls(@TempDir Path root) throws Exception {
         ProjectBuilds.RunDir run = ProjectBuilds.openRun(root, "g:demo", root.resolve("proj"));
-        Files.writeString(
-                run.metricsFile(),
-                """
+        Files.writeString(run.metricsFile(), """
                 module./p.task.native-image.wall-ms = 32
                 module./p.task.run-tests.wall-ms = 28000
                 """);

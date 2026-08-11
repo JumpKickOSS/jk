@@ -29,9 +29,7 @@ public final class WeightedProgressStrategy implements HeaderProgressStrategy {
     @Override
     public long[] display(HeaderProgressState state) {
         if (state.settled() && denominator > 0) return new long[] {denominator, denominator};
-        long num = state.weightNumerator() > 0 || state.weightDenominator() > 0
-                ? state.weightNumerator()
-                : numerator;
+        long num = state.weightNumerator() > 0 || state.weightDenominator() > 0 ? state.weightNumerator() : numerator;
         long den = state.weightDenominator() > 0 ? state.weightDenominator() : denominator;
         if (den <= 0) return new long[] {0, 0};
         return clampToPeak(num, den);

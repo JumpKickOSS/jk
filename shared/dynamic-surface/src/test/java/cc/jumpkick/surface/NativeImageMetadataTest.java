@@ -34,9 +34,7 @@ class NativeImageMetadataTest {
             assertThat(e.members()).containsExactly("f:consumerIndex");
             assertThat(e.origin()).isEqualTo("library:http-netty");
         });
-        assertThat(KeepRuleEmitter.emit(surface))
-                .contains("*** consumerIndex;")
-                .doesNotContain("consumerIndex(...)");
+        assertThat(KeepRuleEmitter.emit(surface)).contains("*** consumerIndex;").doesNotContain("consumerIndex(...)");
         // A recorded field access round-trips to a `fields` entry, not a guessed method (JK-1753).
         assertThat(ReachabilityMetadataEmitter.emit(surface))
                 .contains("\"fields\":[{\"name\":\"consumerIndex\"}]")

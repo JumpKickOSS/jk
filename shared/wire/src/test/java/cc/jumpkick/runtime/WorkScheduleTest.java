@@ -15,10 +15,7 @@ class WorkScheduleTest {
         Path a = Path.of("/a");
         Path b = Path.of("/b");
         long s = WorkSchedule.schedule(
-                List.of(new ModuleWorkCost(a, Set.of(), 10, 0), new ModuleWorkCost(b, Set.of(), 20, 0)),
-                4,
-                true,
-                true);
+                List.of(new ModuleWorkCost(a, Set.of(), 10, 0), new ModuleWorkCost(b, Set.of(), 20, 0)), 4, true, true);
         assertThat(s).isEqualTo(30);
     }
 

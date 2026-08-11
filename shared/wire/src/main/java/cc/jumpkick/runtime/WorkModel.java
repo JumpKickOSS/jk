@@ -8,8 +8,7 @@ import java.util.Objects;
  * Plan-time remaining-work model: seed wall ms {@link #R0()}, schedule knobs, and per-module costs
  * in declaration order (topo order). Used to construct {@link RemainingWork}.
  */
-public record WorkModel(
-        long R0, int concurrency, boolean serial, boolean parallelTests, List<ModuleWorkCost> costs) {
+public record WorkModel(long R0, int concurrency, boolean serial, boolean parallelTests, List<ModuleWorkCost> costs) {
 
     public WorkModel {
         costs = costs == null ? List.of() : List.copyOf(costs);

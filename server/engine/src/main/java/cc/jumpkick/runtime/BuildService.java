@@ -605,8 +605,7 @@ public final class BuildService {
             // when native itself is cascade-discounted below.
             boolean keepFullTests = localCompile
                     || hasHeavyPackagingTail(m)
-                    || m.steps().stream()
-                            .noneMatch(s -> (distrust || !s.cached()) && isCompileStepName(s.name()));
+                    || m.steps().stream().noneMatch(s -> (distrust || !s.cached()) && isCompileStepName(s.name()));
             List<String> running = new ArrayList<>();
             int cascadeRecheck = 0;
             for (TaskForecast.Task s : m.steps()) {
@@ -646,8 +645,7 @@ public final class BuildService {
             EffortWeights.ModuleCost priced = EffortWeights.costFromRunningSteps(
                     mdir, prereqs, running, metrics, timings, projectDirs, counts, testW);
             if (cascadeRecheck > 0) {
-                priced = EffortWeights.costOf(
-                        mdir, prereqs, priced.weight() + cascadeRecheck, priced.testWeight());
+                priced = EffortWeights.costOf(mdir, prereqs, priced.weight() + cascadeRecheck, priced.testWeight());
             }
             costs.add(priced);
         }
@@ -745,9 +743,7 @@ public final class BuildService {
     static boolean isCascadeForcedStep(TaskForecast.Task s) {
         if (s == null || s.cached()) return false;
         String t = s.text() == null ? "" : s.text();
-        return t.contains("dependency changed")
-                || t.contains("main changed")
-                || t.contains("compile changed");
+        return t.contains("dependency changed") || t.contains("main changed") || t.contains("compile changed");
     }
 
     static boolean isCompileStepName(String name) {
@@ -761,9 +757,7 @@ public final class BuildService {
 
     static boolean isCompileOrPackageStep(String name) {
         if (name == null) return false;
-        return isCompileStepName(name)
-                || "package-jar".equals(name)
-                || "package-assembly".equals(name);
+        return isCompileStepName(name) || "package-jar".equals(name) || "package-assembly".equals(name);
     }
 
     // =========================================================================

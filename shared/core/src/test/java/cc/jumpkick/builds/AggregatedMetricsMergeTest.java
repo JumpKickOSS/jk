@@ -24,19 +24,9 @@ class AggregatedMetricsMergeTest {
         String key = "module./Users/me/jk/server/engine.task.run-tests.wall-ms";
 
         AggregatedMetrics.mergePreferHigherCount(
-                mean,
-                last,
-                count,
-                Map.of(key, 33_460.0),
-                Map.of(key, 33_525.0),
-                Map.of(key, 5L));
+                mean, last, count, Map.of(key, 33_460.0), Map.of(key, 33_525.0), Map.of(key, 5L));
         AggregatedMetrics.mergePreferHigherCount(
-                mean,
-                last,
-                count,
-                Map.of(key, 126_019.0),
-                Map.of(key, 126_019.0),
-                Map.of(key, 1L));
+                mean, last, count, Map.of(key, 126_019.0), Map.of(key, 126_019.0), Map.of(key, 1L));
 
         assertThat(mean.get(key)).isEqualTo(33_460.0);
         assertThat(last.get(key)).isEqualTo(33_525.0);
@@ -76,28 +66,22 @@ class AggregatedMetricsMergeTest {
         Files.createDirectories(homeA);
         Files.createDirectories(homeB);
         String key = "module./Users/me/jk/server/engine.task.run-tests.wall-ms";
-        Files.writeString(
-                homeA.resolve(ProjectBuilds.PROJECT_METRICS),
-                """
+        Files.writeString(homeA.resolve(ProjectBuilds.PROJECT_METRICS), """
                 [mean]
                 %s = 33460.2
                 [last]
                 %s = 33525
                 [count]
                 %s = 5
-                """
-                        .formatted(key, key, key));
-        Files.writeString(
-                homeB.resolve(ProjectBuilds.PROJECT_METRICS),
-                """
+                """.formatted(key, key, key));
+        Files.writeString(homeB.resolve(ProjectBuilds.PROJECT_METRICS), """
                 [mean]
                 %s = 126019
                 [last]
                 %s = 126019
                 [count]
                 %s = 1
-                """
-                        .formatted(key, key, key));
+                """.formatted(key, key, key));
 
         AggregatedMetrics agg = AggregatedMetrics.loadAll(root);
         assertThat(agg.mean(key)).hasValue(33_460.2);
@@ -116,14 +100,18 @@ class AggregatedMetricsMergeTest {
 
         // Seed: k1 full row (mean+last, count 3); k3 mean-only row (count 2).
         AggregatedMetrics.mergePreferHigherCount(
-                mean, last, count,
+                mean,
+                last,
+                count,
                 java.util.Map.of("k1", 100.0, "k3", 40.0),
                 java.util.Map.of("k1", 90.0),
                 java.util.Map.of("k1", 3L, "k3", 2L));
 
         // (a) mixed file: mean for k1 only, last-only for k2 — k2 must still fold.
         AggregatedMetrics.mergePreferHigherCount(
-                mean, last, count,
+                mean,
+                last,
+                count,
                 java.util.Map.of("k1", 200.0),
                 java.util.Map.of("k2", 55.0),
                 java.util.Map.of("k1", 5L, "k2", 1L));
@@ -135,10 +123,7 @@ class AggregatedMetricsMergeTest {
 
         // (c) a last-only row with a huge count must not displace k3's real mean.
         AggregatedMetrics.mergePreferHigherCount(
-                mean, last, count,
-                java.util.Map.of(),
-                java.util.Map.of("k3", 9_999.0),
-                java.util.Map.of("k3", 50L));
+                mean, last, count, java.util.Map.of(), java.util.Map.of("k3", 9_999.0), java.util.Map.of("k3", 50L));
         assertThat(mean).containsEntry("k3", 40.0);
         assertThat(last).doesNotContainKey("k3");
     }

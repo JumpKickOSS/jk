@@ -36,6 +36,7 @@ public final class PubGrubResolver implements Resolver {
 
     /** {@code from->to} pairs already reported this resolve — one relocation line per lock. */
     private final java.util.Set<String> reportedRelocations = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     private final EffectivePomBuilder pomBuilder;
     private KmpRedirects kmp = KmpRedirects.NONE;
     /** Optional palette injected by the CLI so diagnostic colors match the live theme. */

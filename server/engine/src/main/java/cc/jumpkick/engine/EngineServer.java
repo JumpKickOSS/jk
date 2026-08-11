@@ -3834,11 +3834,14 @@ public final class EngineServer implements AutoCloseable {
                             return EngineProtocol.planFinishCache(
                                     dir,
                                     result.success(),
-                                    plan.get(cc.jumpkick.runtime.CachePlans.FILES).orElse(-1L),
-                                    plan.get(cc.jumpkick.runtime.CachePlans.BYTES).orElse(-1L),
+                                    plan.get(cc.jumpkick.runtime.CachePlans.FILES)
+                                            .orElse(-1L),
+                                    plan.get(cc.jumpkick.runtime.CachePlans.BYTES)
+                                            .orElse(-1L),
                                     plan.get(cc.jumpkick.runtime.CachePlans.REACHABLE_EVICTED)
                                             .orElse(-1L),
-                                    plan.get(cc.jumpkick.runtime.CachePlans.REPO_LINKS).orElse(-1L));
+                                    plan.get(cc.jumpkick.runtime.CachePlans.REPO_LINKS)
+                                            .orElse(-1L));
                         });
                     } finally {
                         pruneLock.release();
@@ -4266,7 +4269,8 @@ public final class EngineServer implements AutoCloseable {
                 cc.jumpkick.runtime.RemainingWork rw = model.toRemainingWork();
                 remainingWorks.put(eventRequestId, rw);
                 // Annotate R0 for wire/clients; bar denominator is calibrated from plan weights.
-                progressTracker(eventRequestId).seedWall(model.R0(), model.costs().size());
+                progressTracker(eventRequestId)
+                        .seedWall(model.R0(), model.costs().size());
                 emitWorkspaceProgress(eventRequestId, writer, true);
             }
 
@@ -5859,7 +5863,8 @@ public final class EngineServer implements AutoCloseable {
             public void onWorkModel(cc.jumpkick.runtime.WorkModel model) {
                 if (eventRequestId <= 0 || model == null) return;
                 remainingWorks.put(eventRequestId, model.toRemainingWork());
-                progressTracker(eventRequestId).seedWall(model.R0(), model.costs().size());
+                progressTracker(eventRequestId)
+                        .seedWall(model.R0(), model.costs().size());
                 emitWorkspaceProgress(eventRequestId, null, true);
             }
 

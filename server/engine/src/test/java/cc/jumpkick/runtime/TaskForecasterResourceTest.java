@@ -10,6 +10,7 @@ import cc.jumpkick.task.ClasspathFingerprint;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -72,9 +73,7 @@ class TaskForecasterResourceTest {
         Path module = tmp.resolve("mod");
         Files.createDirectories(module.resolve("src/main/java"));
         Files.createDirectories(module.resolve("src/main/resources"));
-        Files.writeString(
-                module.resolve("jk.toml"),
-                """
+        Files.writeString(module.resolve("jk.toml"), """
                 [project]
                 group = "ex"
                 name = "mod"
@@ -103,11 +102,10 @@ class TaskForecasterResourceTest {
         var producer = new TaskForecast.Module(
                 Path.of("/core"),
                 "g:core",
-                java.util.List.of(
+                List.of(
                         new TaskForecast.Task("compile-main", TaskForecast.Status.CACHED, "", "abc"),
                         new TaskForecast.Task("package-jar", TaskForecast.Status.CACHED, "", "def"),
-                        new TaskForecast.Task(
-                                "copy-resources", TaskForecast.Status.RUN, "resources changed", null)),
+                        new TaskForecast.Task("copy-resources", TaskForecast.Status.RUN, "resources changed", null)),
                 1,
                 0,
                 true,
@@ -119,12 +117,11 @@ class TaskForecasterResourceTest {
         var repackage = new TaskForecast.Module(
                 Path.of("/core"),
                 "g:core",
-                java.util.List.of(
+                List.of(
                         new TaskForecast.Task("compile-main", TaskForecast.Status.CACHED, "", "abc"),
                         new TaskForecast.Task(
                                 "package-jar", TaskForecast.Status.RUN, "repackage · resources changed", null),
-                        new TaskForecast.Task(
-                                "copy-resources", TaskForecast.Status.RUN, "resources changed", null)),
+                        new TaskForecast.Task("copy-resources", TaskForecast.Status.RUN, "resources changed", null)),
                 1,
                 0,
                 true,

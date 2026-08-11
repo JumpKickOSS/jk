@@ -29,16 +29,16 @@ class PubGrubUnresolvableSubtreeTest {
     @Test
     void transitive_empty_universe_fails_the_solve() {
         PackageSource src = chainWithEmptyLeaf();
-        assertThatThrownBy(() ->
-                        new PubGrubSolver(src).solve("root", "1.0", List.of(Term.positive("a", VersionSet.atLeast("1.0", true)))))
+        assertThatThrownBy(() -> new PubGrubSolver(src)
+                        .solve("root", "1.0", List.of(Term.positive("a", VersionSet.atLeast("1.0", true)))))
                 .isInstanceOf(UnsatisfiableException.class);
     }
 
     @Test
     void transitive_empty_universe_fails_the_solve_with_exact_root_pin() {
         PackageSource src = chainWithEmptyLeaf();
-        assertThatThrownBy(() ->
-                        new PubGrubSolver(src).solve("root", "1.0", List.of(Term.positive("a", VersionSet.exact("1.0")))))
+        assertThatThrownBy(() -> new PubGrubSolver(src)
+                        .solve("root", "1.0", List.of(Term.positive("a", VersionSet.exact("1.0")))))
                 .isInstanceOf(UnsatisfiableException.class);
     }
 
@@ -54,8 +54,8 @@ class PubGrubUnresolvableSubtreeTest {
             builder.version("b", bv, d -> d.require("c", VersionSet.atLeast("1.0", true)));
         }
         PackageSource src = builder.build();
-        assertThatThrownBy(() ->
-                        new PubGrubSolver(src).solve("root", "1.0", List.of(Term.positive("a", VersionSet.atLeast("1.0", true)))))
+        assertThatThrownBy(() -> new PubGrubSolver(src)
+                        .solve("root", "1.0", List.of(Term.positive("a", VersionSet.atLeast("1.0", true)))))
                 .isInstanceOf(UnsatisfiableException.class);
     }
 }

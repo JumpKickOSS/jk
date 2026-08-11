@@ -44,8 +44,7 @@ class MinifiedJarPackagerTest {
         Path shrunk = tmp.resolve("shrunk.jar");
         try (OutputStream out = Files.newOutputStream(shrunk);
                 JarOutputStream jos = new JarOutputStream(out)) {
-            for (String name :
-                    List.of("com/ex/A.class", "META-INF/micronaut/io.acme.Marker/com.ex.Impl", "root.txt")) {
+            for (String name : List.of("com/ex/A.class", "META-INF/micronaut/io.acme.Marker/com.ex.Impl", "root.txt")) {
                 jos.putNextEntry(new JarEntry(name));
                 jos.write(new byte[] {1});
                 jos.closeEntry();

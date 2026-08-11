@@ -164,7 +164,7 @@ public enum BuildStage {
             return COMPILE;
         }
         return switch (t) {
-                // Acquisition: parse, lock, fetch, sync, toolchain — all "get the module ready".
+            // Acquisition: parse, lock, fetch, sync, toolchain — all "get the module ready".
             case "parse-build",
                     "resolve-deps",
                     "ensure-jdk",

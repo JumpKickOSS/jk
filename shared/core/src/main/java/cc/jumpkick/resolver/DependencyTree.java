@@ -341,7 +341,8 @@ public final class DependencyTree {
         for (Scope s : allScopeOrder()) {
             if (selected.contains(s)) continue;
             boolean populated = project.isWorkspaceRoot()
-                    ? modules.stream().anyMatch(m -> !m.build().dependencies().of(s).isEmpty())
+                    ? modules.stream()
+                            .anyMatch(m -> !m.build().dependencies().of(s).isEmpty())
                     : !project.dependencies().of(s).isEmpty();
             if (populated) elsewhere.add(s);
         }
@@ -349,7 +350,9 @@ public final class DependencyTree {
         if (elsewhere.isEmpty()) {
             msg = "(no dependencies)";
         } else {
-            String names = elsewhere.stream().map(DependencyTree::scopeLabel).collect(java.util.stream.Collectors.joining(", "));
+            String names = elsewhere.stream()
+                    .map(DependencyTree::scopeLabel)
+                    .collect(java.util.stream.Collectors.joining(", "));
             String flag = elsewhere.size() == 1 ? "-s " + scopeLabel(elsewhere.get(0)) : "-s all";
             msg = "(no dependencies in the selected scopes — found in: " + names + "; try `" + flag + "`)";
         }

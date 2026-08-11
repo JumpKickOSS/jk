@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
-import java.util.List;
 import org.jline.utils.AttributedString;
 import org.junit.jupiter.api.Test;
 
@@ -46,18 +45,23 @@ class DiagnosticReportTest {
         if (Theme.active().isAnsi()) {
             assertThat(report).contains(DiagnosticReport.RAIL);
             assertThat(report).contains(Coords.ga("cc.jumpkick", "jk-plugin-sdk"));
-            assertThat(report).contains(Theme.colorize("target/shared/plugin-sdk/lib/jk-plugin-sdk-0.11.0.jar", Theme.active().path()));
+            assertThat(report)
+                    .contains(Theme.colorize(
+                            "target/shared/plugin-sdk/lib/jk-plugin-sdk-0.11.0.jar",
+                            Theme.active().path()));
         }
     }
 
     @Test
     void test_failure_code_is_suppressed() {
-        assertThat(DiagnosticReport.renderError("run-tests", "test-failure", "boom")).isEmpty();
+        assertThat(DiagnosticReport.renderError("run-tests", "test-failure", "boom"))
+                .isEmpty();
     }
 
     @Test
     void console_spec_delegates() {
-        String r = ConsoleSpec.renderError("parse-build", "workspace", "sibling not built — g:a (expected at /tmp/x.jar)");
+        String r =
+                ConsoleSpec.renderError("parse-build", "workspace", "sibling not built — g:a (expected at /tmp/x.jar)");
         assertThat(plain(r)).contains("Parse Build").contains("Failure").contains("sibling not built");
     }
 
@@ -66,6 +70,7 @@ class DiagnosticReportTest {
         // paintProse still relativizes; header is [Title] Failure when ansi off — hard to force
         // Theme off in-unit, so just assert titleCase helpers and structure when ansi is on.
         assertThat(DiagnosticReport.titleCaseWords("parse build")).isEqualTo("Parse Build");
-        assertThat(DiagnosticReport.titleCaseWords("ensure-jdk".replace('-', ' '))).isEqualTo("Ensure Jdk");
+        assertThat(DiagnosticReport.titleCaseWords("ensure-jdk".replace('-', ' ')))
+                .isEqualTo("Ensure Jdk");
     }
 }

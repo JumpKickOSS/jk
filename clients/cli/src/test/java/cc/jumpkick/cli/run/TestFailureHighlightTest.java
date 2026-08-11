@@ -22,7 +22,8 @@ class TestFailureHighlightTest {
         assertThat(plain(h)).contains("Test").contains("Failure");
         if (Theme.active().isAnsi()) {
             assertThat(h).contains("\u001b");
-            assertThat(h).contains(Theme.colorize("Failure", Theme.active().error().bold()));
+            assertThat(h)
+                    .contains(Theme.colorize("Failure", Theme.active().error().bold()));
         }
     }
 
@@ -43,7 +44,8 @@ class TestFailureHighlightTest {
                 "  [28000L, 45000L]",
                 ""); // trailing blank must be stripped so the settle wedge sits tight
         List<String> painted = TestFailureHighlight.paintLines(raw);
-        String all = String.join("\n", painted.stream().map(TestFailureHighlightTest::plain).toList());
+        String all = String.join(
+                "\n", painted.stream().map(TestFailureHighlightTest::plain).toList());
 
         assertThat(all).contains("Test");
         assertThat(all).contains("Failure");
@@ -63,7 +65,9 @@ class TestFailureHighlightTest {
         if (Theme.active().isAnsi()) {
             Theme t = Theme.active();
             // Rail on body lines
-            assertThat(painted.stream().filter(l -> l != null && l.contains(TestFailureHighlight.RAIL)).count())
+            assertThat(painted.stream()
+                            .filter(l -> l != null && l.contains(TestFailureHighlight.RAIL))
+                            .count())
                     .isGreaterThan(3);
             // Coord uses theme segments
             assertThat(String.join("", painted)).contains(Coords.ga("cc.jumpkick", "jk-engine"));

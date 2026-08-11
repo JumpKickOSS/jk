@@ -338,8 +338,7 @@ public final class ExplainCommand implements CliCommand {
         // etaMillis is authoritative (same estimateEtaMillis as jk build). Never mask a multi-minute
         // eta behind Fully Cached / <1s — that hid empty-cost → history-average bugs.
         if (etaMillis <= 0) {
-            return "Build time estimate "
-                    + Theme.colorize(fullyCached ? "<1s" : "not yet measured", t.warning());
+            return "Build time estimate " + Theme.colorize(fullyCached ? "<1s" : "not yet measured", t.warning());
         }
         if (etaMillis < 1000) {
             return "Build time estimate " + Theme.colorize("<1s", t.warning());

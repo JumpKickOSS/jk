@@ -150,4 +150,3 @@ public final class TaskForecast {
         }
     }
 }
-

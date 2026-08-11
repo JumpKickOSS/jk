@@ -45,6 +45,7 @@ public final class WorkspaceProgressTracker {
     private long annotatedR0ms;
     /** Elapsed base when R0 was seeded (millis, same clock as {@link #elapsedClockMs}). */
     private long seedAtElapsedMs;
+
     private long elapsedClockMs;
     private boolean settled;
 
@@ -59,8 +60,7 @@ public final class WorkspaceProgressTracker {
         this.mode = mode == null ? ProgressBarMode.fromEnvironment() : mode;
     }
     /** One monotonic floor across the strategy pair — the AUTO takeover must not repaint backwards. */
-    private final cc.jumpkick.runtime.progress.SharedPeak displayedPeak =
-            new cc.jumpkick.runtime.progress.SharedPeak();
+    private final cc.jumpkick.runtime.progress.SharedPeak displayedPeak = new cc.jumpkick.runtime.progress.SharedPeak();
 
     private final ClockProgressStrategy clock = new ClockProgressStrategy(displayedPeak);
     private final WeightedProgressStrategy weighted = new WeightedProgressStrategy(displayedPeak);
@@ -207,14 +207,7 @@ public final class WorkspaceProgressTracker {
         tickElapsed();
         Snapshot s = recompute();
         last = new Snapshot(
-                s.numerator(),
-                s.denominator(),
-                100.0,
-                "done",
-                modulesComplete,
-                modulesTotal,
-                0,
-                annotatedR0ms);
+                s.numerator(), s.denominator(), 100.0, "done", modulesComplete, modulesTotal, 0, annotatedR0ms);
         return last;
     }
 
@@ -284,13 +277,7 @@ public final class WorkspaceProgressTracker {
         // or noteRemaining refreshed it (same field). Always pass it: elapsed/(elapsed+R) at t=0
         // is 0, matching open-loop.
         HeaderProgressState st = new HeaderProgressState(
-                weightNum,
-                weightDen,
-                annotatedR0ms,
-                seedAtElapsedMs,
-                elapsedClockMs,
-                residual,
-                settled);
+                weightNum, weightDen, annotatedR0ms, seedAtElapsedMs, elapsedClockMs, residual, settled);
         // Feed weights so weighted strategy peak tracks; clock uses residual + elapsed.
         long[] d = strat.onWeightProgress(st, weightNum, weightDen);
         // Prefer strategy display pair for percent; keep weight units on the wire for den/num
@@ -304,14 +291,7 @@ public final class WorkspaceProgressTracker {
         double percent = den > 0 ? percentOf(num, den) : Double.NaN;
         if (settled) percent = 100.0;
         last = new Snapshot(
-                num,
-                den,
-                percent,
-                phase,
-                modulesComplete,
-                modulesTotal,
-                annotatedRemainingMs,
-                annotatedR0ms);
+                num, den, percent, phase, modulesComplete, modulesTotal, annotatedRemainingMs, annotatedR0ms);
         return last;
     }
 

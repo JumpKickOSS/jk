@@ -12,6 +12,7 @@ import cc.jumpkick.model.VersionSelector;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class PublishablePomTest {
@@ -66,8 +67,8 @@ class PublishablePomTest {
         JkBuild project = new JkBuild(
                 new JkBuild.Project("com.example", "widget", "1.0.0", 21), new JkBuild.Dependencies(byScope));
 
-        String xml = PublishablePom.render(project, null, java.util.Set.of("com.example:lib"))
-                .xml();
+        String xml =
+                PublishablePom.render(project, null, Set.of("com.example:lib")).xml();
 
         assertThat(xml).doesNotContain("<artifactId>lib</artifactId>");
         assertThat(xml).contains("<artifactId>helpers</artifactId>");

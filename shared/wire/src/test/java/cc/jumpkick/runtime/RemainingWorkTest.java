@@ -14,9 +14,8 @@ class RemainingWorkTest {
     void residual_tracks_in_flight_and_complete() {
         Path a = Path.of("/a");
         Path b = Path.of("/b");
-        List<ModuleWorkCost> costs = List.of(
-                new ModuleWorkCost(a, Set.of(), 100, 0),
-                new ModuleWorkCost(b, Set.of(), 100, 0));
+        List<ModuleWorkCost> costs =
+                List.of(new ModuleWorkCost(a, Set.of(), 100, 0), new ModuleWorkCost(b, Set.of(), 100, 0));
         // Serial: R0 = 200 weight units. Seed R0ms = 200 so weightToMs = 1.
         RemainingWork rw = RemainingWork.seed(costs, 200, 1, true, true);
         assertThat(rw.R0()).isEqualTo(200);
@@ -51,9 +50,8 @@ class RemainingWorkTest {
     void parallel_schedule_is_not_serial_sum() {
         Path a = Path.of("/a");
         Path b = Path.of("/b");
-        List<ModuleWorkCost> costs = List.of(
-                new ModuleWorkCost(a, Set.of(), 100, 0),
-                new ModuleWorkCost(b, Set.of(), 100, 0));
+        List<ModuleWorkCost> costs =
+                List.of(new ModuleWorkCost(a, Set.of(), 100, 0), new ModuleWorkCost(b, Set.of(), 100, 0));
         // concurrency 2, independent: schedule = 100
         RemainingWork rw = RemainingWork.seed(costs, 100, 2, false, true);
         assertThat(rw.remaining()).isEqualTo(100);
@@ -69,9 +67,8 @@ class RemainingWorkTest {
         // drain per module — not filter every residual to 0 and peg the clock bar (JK-1814).
         Path a = Path.of("/a");
         Path b = Path.of("/b");
-        List<ModuleWorkCost> costs = List.of(
-                new ModuleWorkCost(a, Set.of(), 0, 0),
-                new ModuleWorkCost(b, Set.of(), 0, 0));
+        List<ModuleWorkCost> costs =
+                List.of(new ModuleWorkCost(a, Set.of(), 0, 0), new ModuleWorkCost(b, Set.of(), 0, 0));
         RemainingWork rw = RemainingWork.seed(costs, 60_000, 1, true, true);
         assertThat(rw.R0()).isEqualTo(60_000);
         assertThat(rw.remaining()).isEqualTo(60_000);

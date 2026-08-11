@@ -2022,13 +2022,7 @@ public final class EngineProtocol {
      * (JK-1831).
      */
     public static String eta(long remainingMs) {
-        return "{\"type\":\""
-                + ETA
-                + "\",\"millis\":"
-                + remainingMs
-                + ",\"remainingMs\":"
-                + remainingMs
-                + "}";
+        return "{\"type\":\"" + ETA + "\",\"millis\":" + remainingMs + ",\"remainingMs\":" + remainingMs + "}";
     }
 
     /**
@@ -2052,15 +2046,7 @@ public final class EngineProtocol {
             long remainingMs,
             long R0ms) {
         return workspaceProgress(
-                dir,
-                numerator,
-                denominator,
-                phase,
-                modulesComplete,
-                modulesTotal,
-                remainingMs,
-                R0ms,
-                Double.NaN);
+                dir, numerator, denominator, phase, modulesComplete, modulesTotal, remainingMs, R0ms, Double.NaN);
     }
 
     /**

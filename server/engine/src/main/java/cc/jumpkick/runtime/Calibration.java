@@ -375,12 +375,8 @@ public final class Calibration {
         // If we only have learned rates without size, use floor + slope×1MiB as a typical app.
         if (learnedFloor.isPresent() || learnedSlope.isPresent()) {
             double scale = NativeEffort.nativeColdScale(cpuScale());
-            double floor = learnedFloor.isPresent()
-                    ? learnedFloor.getAsDouble()
-                    : NativeEffort.REF_FLOOR_MS * scale;
-            double slope = learnedSlope.isPresent()
-                    ? learnedSlope.getAsDouble()
-                    : NativeEffort.REF_MS_PER_MIB * scale;
+            double floor = learnedFloor.isPresent() ? learnedFloor.getAsDouble() : NativeEffort.REF_FLOOR_MS * scale;
+            double slope = learnedSlope.isPresent() ? learnedSlope.getAsDouble() : NativeEffort.REF_MS_PER_MIB * scale;
             long ms = Math.round(floor + slope * 1.0); // 1 MiB reference app
             return Math.max(NativeEffort.WALL_FLOOR_MS, Math.min(NativeEffort.MAX_NATIVE_MS, ms));
         }

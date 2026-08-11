@@ -4,7 +4,10 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /** The whole-build history prior: a sanity anchor for the seeded ETA, one-sided by design. */
@@ -94,7 +97,7 @@ class BuildServiceEtaTest {
         var cascade = new TaskForecast.Module(
                 Path.of("/lib"),
                 "g:lib",
-                java.util.List.of(
+                List.of(
                         new TaskForecast.Task(
                                 "compile-main", TaskForecast.Status.RUN, "recompile · dependency changed", null),
                         new TaskForecast.Task(
@@ -114,13 +117,10 @@ class BuildServiceEtaTest {
         var resourceOnly = new TaskForecast.Module(
                 Path.of("/core"),
                 "g:core",
-                java.util.List.of(
+                List.of(
                         new TaskForecast.Task("compile-main", TaskForecast.Status.CACHED, "", "k"),
                         new TaskForecast.Task(
-                                "compile-test",
-                                TaskForecast.Status.PARTIAL,
-                                "compile · 0 sources changed",
-                                null),
+                                "compile-test", TaskForecast.Status.PARTIAL, "compile · 0 sources changed", null),
                         new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~792 tests", null),
                         new TaskForecast.Task(
                                 "package-jar", TaskForecast.Status.RUN, "repackage · resources changed", null),
@@ -136,12 +136,9 @@ class BuildServiceEtaTest {
         var local = new TaskForecast.Module(
                 Path.of("/engine"),
                 "g:engine",
-                java.util.List.of(
+                List.of(
                         new TaskForecast.Task(
-                                "compile-main",
-                                TaskForecast.Status.PARTIAL,
-                                "compile · 3 sources changed",
-                                null),
+                                "compile-main", TaskForecast.Status.PARTIAL, "compile · 3 sources changed", null),
                         new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~1000 tests", null)),
                 100,
                 1000,
@@ -152,7 +149,7 @@ class BuildServiceEtaTest {
         var cliShaped = new TaskForecast.Module(
                 Path.of("/cli"),
                 "g:cli",
-                java.util.List.of(
+                List.of(
                         new TaskForecast.Task(
                                 "compile-main", TaskForecast.Status.RUN, "recompile · dependency changed", null),
                         new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~1000 tests", null),
@@ -175,13 +172,10 @@ class BuildServiceEtaTest {
         var coreMod = new TaskForecast.Module(
                 core,
                 "g:core",
-                java.util.List.of(
+                List.of(
                         new TaskForecast.Task("compile-main", TaskForecast.Status.CACHED, "", "k"),
                         new TaskForecast.Task(
-                                "compile-test",
-                                TaskForecast.Status.PARTIAL,
-                                "compile · 0 sources changed",
-                                null),
+                                "compile-test", TaskForecast.Status.PARTIAL, "compile · 0 sources changed", null),
                         new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~792 tests", null),
                         new TaskForecast.Task(
                                 "package-jar", TaskForecast.Status.RUN, "repackage · resources changed", null),
@@ -194,7 +188,7 @@ class BuildServiceEtaTest {
         var cascadeMod = new TaskForecast.Module(
                 a,
                 "g:a",
-                java.util.List.of(
+                List.of(
                         new TaskForecast.Task(
                                 "compile-main", TaskForecast.Status.RUN, "recompile · dependency changed", null),
                         new TaskForecast.Task(
@@ -209,12 +203,9 @@ class BuildServiceEtaTest {
         var engineMod = new TaskForecast.Module(
                 eng,
                 "g:eng",
-                java.util.List.of(
+                List.of(
                         new TaskForecast.Task(
-                                "compile-main",
-                                TaskForecast.Status.PARTIAL,
-                                "compile · 1 source changed",
-                                null),
+                                "compile-main", TaskForecast.Status.PARTIAL, "compile · 1 source changed", null),
                         new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~1000 tests", null),
                         new TaskForecast.Task(
                                 "package-jar", TaskForecast.Status.RUN, "repackage · compile changed", null),
@@ -227,7 +218,7 @@ class BuildServiceEtaTest {
         var cliMod = new TaskForecast.Module(
                 cli,
                 "g:cli",
-                java.util.List.of(
+                List.of(
                         new TaskForecast.Task(
                                 "compile-main", TaskForecast.Status.RUN, "recompile · dependency changed", null),
                         new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~1098 tests", null),
@@ -240,18 +231,10 @@ class BuildServiceEtaTest {
                 true,
                 false);
         var plan = new ExplainPlan(
-                java.util.List.of(coreMod, cascadeMod, engineMod, cliMod),
-                java.util.Map.of(
-                        core,
-                        java.util.Set.of(),
-                        a,
-                        java.util.Set.of(core),
-                        eng,
-                        java.util.Set.of(a),
-                        cli,
-                        java.util.Set.of(eng)),
+                List.of(coreMod, cascadeMod, engineMod, cliMod),
+                Map.of(core, Set.of(), a, Set.of(core), eng, Set.of(a), cli, Set.of(eng)),
                 4,
-                java.util.List.of());
+                List.of());
         List<EffortWeights.ModuleCost> costs = cc.jumpkick.config.SessionContext.where(
                 cc.jumpkick.config.Session.defaults(),
                 () -> BuildService.etaCostsFromExplainPlan(
@@ -283,25 +266,26 @@ class BuildServiceEtaTest {
     void full_work_shape_needs_depth_not_just_width() {
         // 28 lightly dirty modules (cascade / parse-heavy) must NOT look like a full rebuild.
         var wideShallow = new BuildService.HistoryShape(false, 28);
-        List<EffortWeights.ModuleCost> shallow = new java.util.ArrayList<>();
+        List<EffortWeights.ModuleCost> shallow = new ArrayList<>();
         for (int i = 0; i < 28; i++) {
             // weight 5 ≪ 5s threshold — token/bookkeeping class
-            shallow.add(EffortWeights.costOf(Path.of("/m" + i), java.util.Set.of(), 5, 0));
+            shallow.add(EffortWeights.costOf(Path.of("/m" + i), Set.of(), 5, 0));
         }
         // Two heavy modules (engine tests + cli tests+native) — still not "full work."
-        List<EffortWeights.ModuleCost> twoHeavy = new java.util.ArrayList<>(shallow.subList(0, 26));
-        twoHeavy.add(EffortWeights.costOf(Path.of("/engine"), java.util.Set.of(), 400, 350));
-        twoHeavy.add(EffortWeights.costOf(Path.of("/cli"), java.util.Set.of(), 350, 200));
+        List<EffortWeights.ModuleCost> twoHeavy = new ArrayList<>(shallow.subList(0, 26));
+        twoHeavy.add(EffortWeights.costOf(Path.of("/engine"), Set.of(), 400, 350));
+        twoHeavy.add(EffortWeights.costOf(Path.of("/cli"), Set.of(), 350, 200));
         assertThat(BuildService.isFullWorkShape(wideShallow, shallow)).isFalse();
         assertThat(BuildService.isFullWorkShape(wideShallow, twoHeavy)).isFalse();
 
         // Explicit rebuild always floors.
-        assertThat(BuildService.isFullWorkShape(new BuildService.HistoryShape(true, 2), twoHeavy)).isTrue();
+        assertThat(BuildService.isFullWorkShape(new BuildService.HistoryShape(true, 2), twoHeavy))
+                .isTrue();
 
         // Wide + many substantial modules → full work (true monorepo suite).
-        List<EffortWeights.ModuleCost> deep = new java.util.ArrayList<>();
+        List<EffortWeights.ModuleCost> deep = new ArrayList<>();
         for (int i = 0; i < 20; i++) {
-            deep.add(EffortWeights.costOf(Path.of("/m" + i), java.util.Set.of(), 80, 60));
+            deep.add(EffortWeights.costOf(Path.of("/m" + i), Set.of(), 80, 60));
         }
         assertThat(BuildService.isFullWorkShape(wideShallow, deep)).isTrue();
     }

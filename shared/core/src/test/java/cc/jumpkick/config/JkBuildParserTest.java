@@ -1271,10 +1271,7 @@ class JkBuildParserTest {
 
     @Test
     void parse_test_tags_reads_include_and_exclude(@TempDir Path dir) throws Exception {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                PROJECT
-                        + """
+        Files.writeString(dir.resolve("jk.toml"), PROJECT + """
                         [test]
                         include-tags = ["unit"]
                         exclude-tags = ["slow", "bench"]

@@ -121,9 +121,7 @@ class HeavyActionGcTest {
             for (Path f : (Iterable<Path>) walk::iterator) {
                 if (Files.isRegularFile(f)) {
                     Files.setLastModifiedTime(
-                            f,
-                            java.nio.file.attribute.FileTime.fromMillis(
-                                    System.currentTimeMillis() - 24L * 60 * 60 * 1000));
+                            f, FileTime.fromMillis(System.currentTimeMillis() - 24L * 60 * 60 * 1000));
                 }
             }
         }

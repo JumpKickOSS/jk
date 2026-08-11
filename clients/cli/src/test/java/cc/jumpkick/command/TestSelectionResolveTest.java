@@ -44,9 +44,7 @@ class TestSelectionResolveTest {
     }
 
     private static void writeToml(Path dir, String body) throws Exception {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 name = "demo"
                 group = "t"
@@ -58,9 +56,7 @@ class TestSelectionResolveTest {
 
     @Test
     void profile_empty_list_clears_and_is_final(@TempDir Path dir) throws Exception {
-        writeToml(
-                dir,
-                """
+        writeToml(dir, """
                 [test]
                 exclude-tags = ["slow", "integration"]
 
@@ -74,9 +70,7 @@ class TestSelectionResolveTest {
 
     @Test
     void baseline_tags_are_final(@TempDir Path dir) throws Exception {
-        writeToml(
-                dir,
-                """
+        writeToml(dir, """
                 [test]
                 exclude-tags = ["slow"]
                 """);
@@ -87,9 +81,7 @@ class TestSelectionResolveTest {
 
     @Test
     void cli_blank_value_clears_and_is_final(@TempDir Path dir) throws Exception {
-        writeToml(
-                dir,
-                """
+        writeToml(dir, """
                 [test]
                 exclude-tags = ["slow"]
                 """);

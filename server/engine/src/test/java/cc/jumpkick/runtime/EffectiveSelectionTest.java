@@ -18,9 +18,7 @@ import org.junit.jupiter.api.io.TempDir;
 class EffectiveSelectionTest {
 
     private static Path moduleWithExcludes(Path dir) throws Exception {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 name = "demo"
                 group = "t"
@@ -58,7 +56,8 @@ class EffectiveSelectionTest {
         assertThat(decoded.tagsResolved()).isTrue();
         assertThat(BuildPlanner.effectiveSelection(decoded, dir).excludeTags()).isEmpty();
 
-        String defJson = "{" + EngineProtocol.testSelectionFields(TestSelection.DEFAULT).substring(1) + "}";
+        String defJson =
+                "{" + EngineProtocol.testSelectionFields(TestSelection.DEFAULT).substring(1) + "}";
         assertThat(EngineProtocol.testSelectionOf(defJson).tagsResolved()).isFalse();
     }
 }

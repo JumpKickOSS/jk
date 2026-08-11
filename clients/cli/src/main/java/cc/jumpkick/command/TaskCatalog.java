@@ -37,7 +37,12 @@ final class TaskCatalog {
             def(TaskNames.RESOLVE_DEPS, "Resolve dependencies / lock materialize", null),
             def(TaskNames.ENSURE_JDK, "Ensure configured JDK is available", null),
             def("build-logic-before-compile", "Project build-logic SPI (BEFORE_COMPILE)", null),
-            def(TaskNames.COMPILE_JAVA, "Compile main Java sources", BuildLayout::classesDir, "compile-main", "compile"),
+            def(
+                    TaskNames.COMPILE_JAVA,
+                    "Compile main Java sources",
+                    BuildLayout::classesDir,
+                    "compile-main",
+                    "compile"),
             def(TaskNames.COMPILE_KOTLIN, "Compile main Kotlin sources", BuildLayout::kotlinClassesDir),
             def(TaskNames.COMPILE_GROOVY, "Compile main Groovy sources", BuildLayout::groovyClassesDir),
             def(TaskNames.ASSEMBLE_CLASSES, "Merge language outputs into classes/main", BuildLayout::classesDir),
@@ -87,8 +92,7 @@ final class TaskCatalog {
         return m;
     }
 
-    private static TaskDef def(
-            String name, String description, Function<BuildLayout, Path> out, String... aliases) {
+    private static TaskDef def(String name, String description, Function<BuildLayout, Path> out, String... aliases) {
         // Stage comes from the one taxonomy the whole system speaks (JK-1651): the catalog once
         // said `setup` where BuildStage says `resolve`, and hand-assigned stages drifted from
         // the inference (`write-stamp` is COMPILE, not package).

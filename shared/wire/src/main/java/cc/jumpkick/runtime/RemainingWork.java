@@ -33,6 +33,7 @@ public final class RemainingWork {
     private final boolean parallelTests;
     /** Multiplier from schedule weight units → wall ms (includes history/contention scale). */
     private final double weightToMs;
+
     private final long R0;
 
     /** Modules not yet complete — full original cost; residual applies via {@link #doneFrac}. */
@@ -65,11 +66,7 @@ public final class RemainingWork {
      * track {@code R0}.
      */
     public static RemainingWork seed(
-            List<ModuleWorkCost> costs,
-            long R0ms,
-            int concurrency,
-            boolean serial,
-            boolean parallelTests) {
+            List<ModuleWorkCost> costs, long R0ms, int concurrency, boolean serial, boolean parallelTests) {
         Objects.requireNonNull(costs, "costs");
         long ideal0 = WorkSchedule.schedule(costs, concurrency, serial, parallelTests);
         long r0 = Math.max(0, R0ms);

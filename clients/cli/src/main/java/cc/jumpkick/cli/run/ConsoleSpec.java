@@ -2,7 +2,6 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.Glyphs;
 // Theme used for ANSI styling of took / errors
 import cc.jumpkick.run.BuildPlanResult;
 import java.time.Duration;

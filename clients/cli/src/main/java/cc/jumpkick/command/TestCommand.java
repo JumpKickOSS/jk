@@ -643,7 +643,8 @@ public final class TestCommand implements CliCommand {
         // Track whether any layer explicitly resolved the tag lists. Only then is the selection
         // final (tagsResolved) — otherwise the engine may still fold per-module [test] tags in
         // for workspace members (a root with no tags must not erase a module's own filters).
-        boolean spoke = !baseline.includeTags().isEmpty() || !baseline.excludeTags().isEmpty();
+        boolean spoke =
+                !baseline.includeTags().isEmpty() || !baseline.excludeTags().isEmpty();
         // Profile when selected / auto. --no-profile skips. AUTO profile defers when CLI set any
         // tag option so e.g. `jk test --include-tags slow` is not beaten by profile filters.
         boolean cliTags = cliInclude || cliExclude;

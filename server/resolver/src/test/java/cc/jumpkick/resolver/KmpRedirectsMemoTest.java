@@ -40,6 +40,7 @@ class KmpRedirectsMemoTest {
     private final Map<String, AtomicInteger> hits = new ConcurrentHashMap<>();
     /** Paths whose response is held until {@link #release} opens. */
     private volatile String heldPathPrefix;
+
     private final CountDownLatch heldArrived = new CountDownLatch(1);
     private final CountDownLatch release = new CountDownLatch(1);
 
@@ -170,7 +171,8 @@ class KmpRedirectsMemoTest {
                   <version>%s</version>
                 </project>
                 """.formatted(group, artifact, version);
-        String module = """
+        String module =
+                """
                 {
                   "formatVersion": "1.1",
                   "component": { "group": "%s", "module": "%s", "version": "%s" },
@@ -191,9 +193,7 @@ class KmpRedirectsMemoTest {
                     }
                   ]
                 }
-                """
-                .formatted(
-                        group, artifact, version, artifact, version, artifact, version, group, artifact, version);
+                """.formatted(group, artifact, version, artifact, version, artifact, version, group, artifact, version);
         served.put(dir + artifact + "-" + version + ".pom", pom.getBytes(StandardCharsets.UTF_8));
         served.put(dir + artifact + "-" + version + ".module", module.getBytes(StandardCharsets.UTF_8));
     }

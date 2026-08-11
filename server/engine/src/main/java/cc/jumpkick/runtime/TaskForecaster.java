@@ -76,10 +76,10 @@ public final class TaskForecaster {
             // must not force compile/package/native — only tests re-run against the new jar.
             // Treating every graph edge as compile-dirty was pricing full native-image (~35s)
             // on dogfood engine edits while live builds skipped compile+package+native.
-            DepDirtiness dep = depDirtiness(u, graph.edges().getOrDefault(u.dir(), Set.of()), dirty, dirByCoord, dirByName);
+            DepDirtiness dep =
+                    depDirtiness(u, graph.edges().getOrDefault(u.dir(), Set.of()), dirty, dirByCoord, dirByName);
             long t0 = Perf.start();
-            TaskForecast.Module m =
-                    forecastModule(u, dep, force, skipTests, cas, actionCache, cache, restoredJarShas);
+            TaskForecast.Module m = forecastModule(u, dep, force, skipTests, cas, actionCache, cache, restoredJarShas);
             Perf.end("forecast " + u.coord(), t0);
             // Seed main-output dirtiness for *compile* consumers only when this module's
             // consumed jar/classes will change — not when only test-scope work is dirty.
@@ -547,8 +547,7 @@ public final class TaskForecaster {
                 }
                 // classesTokenForPackage projects post-copy content when resources drifted so
                 // package CACHED/RUN matches the live step after copy-resources.
-                String classesTok =
-                        classesTokenForPackage(dir, compact, layout, project, actionCache, compileMainKey);
+                String classesTok = classesTokenForPackage(dir, compact, layout, project, actionCache, compileMainKey);
                 // Must match BuildPlanner.packageJarStep tokens exactly — omitting contrib: made
                 // every module forecast permanent "repackage", cascade depDirty, and price a full
                 // monorepo rebuild (~3.5m) while live builds hit the package cache and SKIPPED.
@@ -608,15 +607,12 @@ public final class TaskForecaster {
             // native-image CACHED (binary mtime vs pre-build jar is not an independent skip).
             if (project.nativeMode() == cc.jumpkick.model.JkBuild.NativeMode.ALWAYS
                     && !(mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty())) {
-                boolean jarDirty = steps.stream()
-                        .anyMatch(s -> "package-jar".equals(s.name()) && !s.cached());
+                boolean jarDirty = steps.stream().anyMatch(s -> "package-jar".equals(s.name()) && !s.cached());
                 Path nativeOut = layout.nativeBinary();
-                boolean binaryPresent =
-                        Files.isRegularFile(nativeOut) || Files.isRegularFile(layout.nativeLibrary());
+                boolean binaryPresent = Files.isRegularFile(nativeOut) || Files.isRegularFile(layout.nativeLibrary());
                 if (jarDirty || compileDirty || !binaryPresent) {
                     String why = jarDirty || compileDirty ? "rebuild · compile changed" : "native-image";
-                    steps.add(new TaskForecast.Task(
-                            "native-image", TaskForecast.Status.RUN, why, null));
+                    steps.add(new TaskForecast.Task("native-image", TaskForecast.Status.RUN, why, null));
                 } else {
                     steps.add(new TaskForecast.Task("native-image", TaskForecast.Status.CACHED, "", null));
                 }
@@ -740,8 +736,8 @@ public final class TaskForecaster {
      * copy step has run — used when main resources are out of sync so package CACHED/RUN does not
      * lie about a pre-copy tree.
      */
-    static String classesTokenProjectedAfterResourceCopy(
-            Path dir, boolean compact, BuildLayout layout, JkBuild project) throws IOException {
+    static String classesTokenProjectedAfterResourceCopy(Path dir, boolean compact, BuildLayout layout, JkBuild project)
+            throws IOException {
         return ClasspathFingerprint.entryProjectedAfterResourceCopy(
                 layout.classesDir(), packageResourceRoots(dir, compact, project));
     }

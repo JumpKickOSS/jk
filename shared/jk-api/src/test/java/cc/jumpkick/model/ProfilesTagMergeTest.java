@@ -11,10 +11,8 @@ class ProfilesTagMergeTest {
 
     @Test
     void resolve_child_replaces_parent_exclude_tags_when_child_sets_key() {
-        Profile parent = new Profile(
-                "dev", null, List.of(), List.of(), List.of(), List.of("slow"), false, true);
-        Profile child = new Profile(
-                "ci", "dev", List.of(), List.of(), List.of("smoke"), List.of("bench"), true, true);
+        Profile parent = new Profile("dev", null, List.of(), List.of(), List.of(), List.of("slow"), false, true);
+        Profile child = new Profile("ci", "dev", List.of(), List.of(), List.of("smoke"), List.of("bench"), true, true);
         Profiles profiles = new Profiles(Map.of("dev", parent, "ci", child));
         Profile resolved = profiles.resolve("ci");
         assertThat(resolved.excludeTags()).containsExactly("bench");
@@ -25,8 +23,8 @@ class ProfilesTagMergeTest {
 
     @Test
     void resolve_inherits_parent_tags_when_child_omits_keys() {
-        Profile parent = new Profile(
-                "dev", null, List.of(), List.of(), List.of(), List.of("slow", "bench"), false, true);
+        Profile parent =
+                new Profile("dev", null, List.of(), List.of(), List.of(), List.of("slow", "bench"), false, true);
         Profile child = new Profile("ci", "dev", List.of("-Werror"), List.of());
         Profiles profiles = new Profiles(Map.of("dev", parent, "ci", child));
         Profile resolved = profiles.resolve("ci");
@@ -38,8 +36,7 @@ class ProfilesTagMergeTest {
 
     @Test
     void resolve_child_empty_exclude_clears_parent_excludes() {
-        Profile parent = new Profile(
-                "dev", null, List.of(), List.of(), List.of(), List.of("slow"), false, true);
+        Profile parent = new Profile("dev", null, List.of(), List.of(), List.of(), List.of("slow"), false, true);
         Profile child = new Profile("ci", "dev", List.of(), List.of(), List.of(), List.of(), false, true);
         Profiles profiles = new Profiles(Map.of("dev", parent, "ci", child));
         Profile resolved = profiles.resolve("ci");

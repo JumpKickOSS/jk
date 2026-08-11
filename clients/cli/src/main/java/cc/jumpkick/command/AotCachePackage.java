@@ -187,8 +187,7 @@ final class AotCachePackage {
             process.destroyForcibly();
             // A run that never came back proved nothing — reporting it as verified is exactly
             // the silent-cold-start trap verification exists to close (JK-1783).
-            return "verification run did not exit within " + TRAINING_TIMEOUT_SECONDS
-                    + "s — cache not verified";
+            return "verification run did not exit within " + TRAINING_TIMEOUT_SECONDS + "s — cache not verified";
         }
         reader.join(5_000);
         for (String line : out.toString().split("\n")) {
