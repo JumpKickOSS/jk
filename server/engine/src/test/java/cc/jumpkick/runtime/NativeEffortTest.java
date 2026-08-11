@@ -6,10 +6,36 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class NativeEffortTest {
+
+    @TempDir
+    Path stateDir;
+
+    private String prevStateDir;
+
+    @BeforeEach
+    void isolateHostState() {
+        // The size model consults learned calibration and harvested metrics — pin the state dir
+        // so a host with real learned native samples cannot move the assertions (JK-1818). The
+        // dogfood-conditional test below opts back in explicitly.
+        prevStateDir = System.getProperty("jk.env.JK_STATE_DIR");
+        System.setProperty("jk.env.JK_STATE_DIR", stateDir.toString());
+        Calibration.invalidateMemo();
+        BuildMetrics.clearSessionAggregatesMemo();
+    }
+
+    @AfterEach
+    void restoreHostState() {
+        if (prevStateDir == null) System.clearProperty("jk.env.JK_STATE_DIR");
+        else System.setProperty("jk.env.JK_STATE_DIR", prevStateDir);
+        Calibration.invalidateMemo();
+        BuildMetrics.clearSessionAggregatesMemo();
+    }
 
     @Test
     void effective_bytes_discount_deps() {
@@ -57,6 +83,9 @@ class NativeEffortTest {
 
     @Test
     void own_wall_wins_without_pad_when_metrics_present() {
+        // Dogfood-conditional: opts back into the real host state the class-level isolation
+        // hides (every assertion below is guarded by early returns / relative bounds).
+        restoreHostState();
         Path cli = Path.of("clients/cli").toAbsolutePath().normalize();
         if (!Files.isRegularFile(cli.resolve("jk.toml"))) return;
         long own = EffortWeights.stepOkAvgMillisOwn(

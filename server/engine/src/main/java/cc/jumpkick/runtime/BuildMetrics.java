@@ -184,18 +184,44 @@ public final class BuildMetrics {
      * Prefer the session workspace's project metrics so a stale project-identity home for the same
      * absolute path cannot poison step walls. Fall back to {@link
      * cc.jumpkick.builds.AggregatedMetrics#loadAll} (count-preferring merge) when no working dir.
+     *
+     * <p>Memoized for a short TTL keyed by (builds root, working dir): every priced step consults
+     * this (own + host tiers), so one ETA seed on a dirty monorepo issued hundreds of identical
+     * TOML parses (JK-1818). Harvest rewrites land between builds, well past the TTL.
      */
     static cc.jumpkick.builds.AggregatedMetrics aggregatesForSession() {
         Path builds = JkDirs.builds();
+        Path work = null;
         try {
-            Path work = SessionContext.current().workingDir();
-            if (work != null && Files.isDirectory(work)) {
-                return cc.jumpkick.builds.AggregatedMetrics.load(builds, null, work);
-            }
+            Path w = SessionContext.current().workingDir();
+            if (w != null && Files.isDirectory(w)) work = w;
         } catch (RuntimeException ignored) {
             // no session / bad path — global merge below
         }
-        return cc.jumpkick.builds.AggregatedMetrics.loadAll(builds);
+        long now = System.currentTimeMillis();
+        AggMemo memo = AGG_MEMO.get();
+        if (memo != null
+                && memo.builds().equals(builds)
+                && java.util.Objects.equals(memo.work(), work)
+                && now - memo.atMillis() < AGG_MEMO_TTL_MS) {
+            return memo.agg();
+        }
+        cc.jumpkick.builds.AggregatedMetrics agg = work != null
+                ? cc.jumpkick.builds.AggregatedMetrics.load(builds, null, work)
+                : cc.jumpkick.builds.AggregatedMetrics.loadAll(builds);
+        AGG_MEMO.set(new AggMemo(builds, work, now, agg));
+        return agg;
+    }
+
+    private record AggMemo(Path builds, Path work, long atMillis, cc.jumpkick.builds.AggregatedMetrics agg) {}
+
+    private static final java.util.concurrent.atomic.AtomicReference<AggMemo> AGG_MEMO =
+            new java.util.concurrent.atomic.AtomicReference<>();
+    private static final long AGG_MEMO_TTL_MS = 3_000;
+
+    /** Test seam: drop the session-aggregate memo (tests repoint JK_STATE_DIR between cases). */
+    public static void clearSessionAggregatesMemo() {
+        AGG_MEMO.set(null);
     }
 
     /**
