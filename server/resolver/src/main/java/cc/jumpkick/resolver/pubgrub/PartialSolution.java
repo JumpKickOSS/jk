@@ -216,6 +216,14 @@ public final class PartialSolution {
     public boolean contradicts(Term term) {
         PackageState s = byPackage.get(term.pkg());
         if (s == null || !s.mentioned) return false;
+        // A NEGATIVE term is also satisfied by the package being absent entirely (paper §Terms:
+        // "¬foo ^1.0 is satisfied ... or if no version of foo is selected at all"). A package
+        // mentioned only negatively (e.g. ¬b{1.2} learned during conflict resolution) may still
+        // end up unselected, so set-projection "contradiction" — which assumes presence — must
+        // not fire. Without this, a dependency incompatibility {a, ¬b[range]} went permanently
+        // INCONCLUSIVE after a backjump, b's positive term was never re-derived, and the solve
+        // terminated WITHOUT the mandatory subtree (JK-1832 / the JK-1811 silent drop).
+        if (!term.positive() && !s.hasPositive) return false;
         String decided = decisionByPackage.get(term.pkg());
         if (decided != null) {
             return !term.effectiveVersions().contains(decided);
