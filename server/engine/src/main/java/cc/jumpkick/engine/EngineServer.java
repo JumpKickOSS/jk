@@ -4311,10 +4311,7 @@ public final class EngineServer implements AutoCloseable {
 
             @Override
             public void onEtaEstimate(long remainingMs) {
-                long r0 = 0;
-                cc.jumpkick.runtime.RemainingWork rw = remainingWorks.get(eventRequestId);
-                if (rw != null) r0 = rw.R0();
-                sendQuiet(writer, EngineProtocol.eta(remainingMs, r0));
+                sendQuiet(writer, EngineProtocol.eta(remainingMs));
                 publishEta(eventRequestId, remainingMs);
             }
 

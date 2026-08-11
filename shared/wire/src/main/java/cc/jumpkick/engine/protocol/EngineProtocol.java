@@ -2016,22 +2016,18 @@ public final class EngineProtocol {
     }
 
     /**
-     * Remaining wall-work {@code R(t)} in ms. {@code millis} is the remaining estimate (same as
-     * {@code remainingMs}); {@code R0} is the seed wall estimate when known ({@code 0} if not).
+     * Remaining wall-work {@code R(t)} in ms. {@code millis} duplicates {@code remainingMs} for
+     * older readers. No {@code R0} field: nothing consumed it (the CLI seeds from remainingMs,
+     * the web from workspace-progress), and at emit time it either equaled remainingMs or was 0
+     * (JK-1831).
      */
     public static String eta(long remainingMs) {
-        return eta(remainingMs, 0);
-    }
-
-    public static String eta(long remainingMs, long R0ms) {
         return "{\"type\":\""
                 + ETA
                 + "\",\"millis\":"
                 + remainingMs
                 + ",\"remainingMs\":"
                 + remainingMs
-                + ",\"R0\":"
-                + Math.max(0, R0ms)
                 + "}";
     }
 

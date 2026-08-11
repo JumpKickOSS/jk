@@ -218,12 +218,6 @@ public final class NativeEffort {
         return v == null ? 0 : v;
     }
 
-    public static long peekLastInputBytes(String moduleDir) {
-        if (moduleDir == null) return 0;
-        Long v = LAST_INPUT_BYTES.get(moduleDir);
-        return v == null ? 0 : v;
-    }
-
     /**
      * Host samples from a real native SUCCESS. {@code inputBytes} should be {@link
      * #estimateInputBytes effective} bytes so slope matches prediction units.
