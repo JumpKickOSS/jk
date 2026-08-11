@@ -1778,18 +1778,19 @@ public final class EngineServer implements AutoCloseable {
             cc.jumpkick.runtime.WorkspaceProgressTracker tracker = progressTrackers.get(requestId);
             if (tracker == null) return;
             var snap = tracker.snapshot();
+            double heldPct = Double.NaN;
             if (snap.hasPercent()) {
                 // Peak-hold machine progressnever publish a lower % than already
                 // emitted — but rebase when the denominator grew (calibrate), or the preflight
                 // peak pins the rider for the whole execute phase.
                 Double prevPct = lastProgressByRequest.get(requestId);
                 Long prevDen = lastProgressDenByRequest.get(requestId);
-                double pct = snap.percent();
+                heldPct = snap.percent();
                 boolean denGrew = prevDen != null && snap.denominator() > prevDen;
-                if (!denGrew && prevPct != null && pct + 1e-9 < prevPct) {
-                    pct = prevPct;
+                if (!denGrew && prevPct != null && heldPct + 1e-9 < prevPct) {
+                    heldPct = prevPct;
                 }
-                lastProgressByRequest.put(requestId, pct);
+                lastProgressByRequest.put(requestId, heldPct);
                 lastProgressDenByRequest.put(requestId, snap.denominator());
             }
             if (!force && !shouldEmitWorkspaceProgress(requestId, snap)) return;
@@ -1799,7 +1800,9 @@ public final class EngineServer implements AutoCloseable {
             long den = snap.denominator();
             long rem = snap.remainingMs();
             long r0 = snap.R0ms();
-            double pct = snap.hasPercent() ? snap.percent() : Double.NaN;
+            // The HELD percent goes on both wire surfaces — the JSONL line used to carry the raw
+            // (possibly regressing) value while SSE got the held one via withProgress (JK-1821).
+            double pct = heldPct;
             String line = EngineProtocol.workspaceProgress(
                     dir, num, den, snap.phase(), snap.modulesComplete(), snap.modulesTotal(), rem, r0, pct);
             if (writer != null) sendQuiet(writer, line);
