@@ -128,12 +128,8 @@ public final class WorkspaceProgressTracker {
         this.annotatedRemainingMs = r0;
         if (modulesTotal > 0) this.modulesTotal = modulesTotal;
         tickElapsed();
-        if (r0 > 0 && seedAtElapsedMs == 0 && elapsedClockMs == 0) {
-            // First seed: base at 0 on the tracker clock (elapsed advances via tickElapsed).
-            seedAtElapsedMs = 0;
-        } else if (r0 > 0 && seedAtElapsedMs == 0) {
-            seedAtElapsedMs = elapsedClockMs;
-        }
+        // First seed bases at the current tracker-clock elapsed (0 when seeded immediately).
+        if (r0 > 0 && seedAtElapsedMs == 0) seedAtElapsedMs = elapsedClockMs;
         return recompute();
     }
 
@@ -250,18 +246,19 @@ public final class WorkspaceProgressTracker {
     }
 
     private void tickElapsed() {
-        // Monotonic synthetic clock: advance by wall time between calls via System.nanoTime base.
-        // First call establishes epoch.
-        long now = System.currentTimeMillis();
-        if (elapsedEpochMs == 0) {
-            elapsedEpochMs = now;
+        // Monotonic synthetic clock via a System.nanoTime base — wall clock jumps (NTP steps)
+        // inflated or froze elapsed when this used currentTimeMillis (JK-1829). First call
+        // establishes the epoch.
+        long nowNanos = System.nanoTime();
+        if (elapsedEpochNanos == 0) {
+            elapsedEpochNanos = nowNanos;
             elapsedClockMs = 0;
         } else {
-            elapsedClockMs = Math.max(elapsedClockMs, now - elapsedEpochMs);
+            elapsedClockMs = Math.max(elapsedClockMs, (nowNanos - elapsedEpochNanos) / 1_000_000L);
         }
     }
 
-    private long elapsedEpochMs;
+    private long elapsedEpochNanos;
 
     private Snapshot recompute() {
         long execSum = completedBase;

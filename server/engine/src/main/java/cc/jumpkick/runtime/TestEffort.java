@@ -8,9 +8,12 @@ import java.util.OptionalDouble;
 /**
  * Prices the {@code run-tests} task for progress weights and ETA.
  *
- * <p><strong>Prefer class walls</strong> when every selected class has a measured wall — then the
- * estimate is suite-startup + Σ class walls and <em>no method count is required</em>. Otherwise use
+ * <p>Ladder (first hit wins): <strong>module-own measured suite wall</strong> (harvested metrics —
+ * a real full-suite wall for this module beats any reconstruction, but note it prices the whole
+ * suite even for a one-class selection); then <strong>Σ class walls</strong> when every selected
+ * class has one (no method count required); then a full-suite Σ of all known class walls; then
  * methods × hierarchical method-ms (module → project → host → calibration baseline) + startup.
+ * Matches the ladder table in {@code docs/perf/progress-contract.md}.
  */
 public final class TestEffort {
 
@@ -22,7 +25,8 @@ public final class TestEffort {
      * @param moduleDir module path string (ledger key)
      * @param classWallsMs measured walls for FQCNs (may be empty)
      * @param classesToRun FQCNs expected to run this time; when non-empty and every entry has a wall
-     *     in {@code classWallsMs}, methodCount is ignored
+     *     in {@code classWallsMs}, methodCount is ignored — but a module-own suite wall still
+     *     outranks the class sum (a selection-priced caller gets full-suite walls; see class doc)
      * @param methodCount successful-method estimate; used only when class coverage is incomplete;
      *     pass 0 when unknown (do not invent a count)
      * @param testWorkers within-module workers for cold parallel body only
