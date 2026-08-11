@@ -1342,9 +1342,16 @@ Vue.createApp({
       return Math.max(0, Math.floor(card.r0Ms / 1000));
     },
     etaOverdue(card) {
+      // Countdown has frozen at 0s (open-loop R0 exhausted).
       if (!this.hasEta(card)) return false;
       const since = Math.max(0, this.now - card.r0At);
       return since >= card.r0Ms;
+    },
+    /** Count-up mid-gray only after 2s past R0 — matches CLI COUNT_UP_PROMOTE_GRACE_MS. */
+    etaCountUpPromoted(card) {
+      if (!this.hasEta(card)) return false;
+      const since = Math.max(0, this.now - card.r0At);
+      return since >= card.r0Ms + 2000;
     },
     etaCountdown(card) {
       if (!this.hasEta(card)) return '';

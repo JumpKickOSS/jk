@@ -118,8 +118,8 @@
           <button v-if="outcome(card) !== 'running' && card.historyId" class="rebuild icon danger"
                   @click="deleteCard(card)" aria-label="Delete" data-tip="Delete this run from history"><jk-icon name="trash"></jk-icon></button>
           <!-- Dual clock (CLI parity): italic/dim "ETA" + mid-gray ~remaining (freezes dim at 0s on
-               overrun). Count-up: dim while remaining > 0; mid-gray on overrun (countdown's former
-               color). No seed → yellow count-up only. -->
+               overrun). Count-up stays dim for 2s past R0, then mid-gray (countdown's former color).
+               No seed → yellow count-up only. -->
           <span v-if="outcome(card) === 'running' && hasEta(card)" class="eta" data-tip="estimated time remaining">
             <span class="eta-label">ETA</span>
             <span class="eta-cd" :class="{ zero: etaOverdue(card) }">{{ etaCountdown(card) }}</span>
@@ -129,8 +129,8 @@
                No traffic → no tip. tabindex + aria-label keep it keyboard/SR reachable. -->
           <span class="millis" :class="{
                   'has-io': ioLines(card).length,
-                  'elapsed-dim': outcome(card) === 'running' && hasEta(card) && !etaOverdue(card),
-                  'elapsed-mid': outcome(card) === 'running' && hasEta(card) && etaOverdue(card),
+                  'elapsed-dim': outcome(card) === 'running' && hasEta(card) && !etaCountUpPromoted(card),
+                  'elapsed-mid': outcome(card) === 'running' && hasEta(card) && etaCountUpPromoted(card),
                   'elapsed-warn': outcome(card) === 'running' && !hasEta(card)
                 }"
                 :tabindex="ioLines(card).length ? 0 : null"

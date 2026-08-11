@@ -258,18 +258,28 @@ class CommandManagerTest {
     }
 
     @Test
-    void eta_countdown_freezes_at_zero_and_count_up_turns_mid_gray_on_overrun() {
+    void eta_countdown_freezes_at_zero_and_count_up_promotes_after_grace() {
         var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
         cm.setEtaEstimate(10_000); // 10s estimate
-        // 15s elapsed → countdown freezes at dim 0s; count-up is full elapsed in mid-gray
-        // (same role as the active countdown color — not warning yellow).
-        String header = cm.renderBuildPlanLines(120, 15_000).get(0);
-        String plain = TestAnsi.strip(header);
-        assertThat(plain).contains("ETA 0s");
-        assertThat(plain).contains("+15s");
-        assertThat(header).contains(Theme.colorize("0s", Theme.active().darkGray()));
-        assertThat(header).contains(Theme.colorize("+15s", Theme.active().midGray()));
+        Theme t = Theme.active();
+
+        // Just past deadline: countdown at dim 0s; count-up still dim (grace window).
+        String early = cm.renderBuildPlanLines(120, 11_000).get(0);
+        assertThat(TestAnsi.strip(early)).contains("ETA 0s").contains("+11s");
+        assertThat(early).contains(Theme.colorize("0s", t.darkGray()));
+        assertThat(early).contains(Theme.colorize("+11s", t.darkGray()));
+        assertThat(early).doesNotContain(Theme.colorize("+11s", t.midGray()));
+
+        // At grace boundary still dim (strictly >= 2s promotes).
+        String atGrace = cm.renderBuildPlanLines(120, 11_999).get(0);
+        assertThat(atGrace).contains(Theme.colorize("+11s", t.darkGray()));
+
+        // 2s past deadline → count-up mid-gray (countdown's former color).
+        String promoted = cm.renderBuildPlanLines(120, 12_000).get(0);
+        assertThat(TestAnsi.strip(promoted)).contains("ETA 0s").contains("+12s");
+        assertThat(promoted).contains(Theme.colorize("+12s", t.midGray()));
+        assertThat(promoted).doesNotContain(Theme.colorize("+12s", t.warning()));
     }
 
     @Test
@@ -529,7 +539,17 @@ class CommandManagerTest {
         assertThat(TestAnsi.strip(upHeader)).doesNotContain("ETA ");
         assertThat(upHeader).contains(Theme.colorize("+12s", t.warning()));
 
-        // Seed overrun → frozen dim 0s + mid-gray full elapsed (countdown's former color).
+        // Seed overrun within grace → frozen dim 0s + still-dim count-up.
+        var earlyOver = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
+        earlyOver.nerdfont = false;
+        earlyOver.progress(90, 100);
+        earlyOver.setEtaEstimate(10_000);
+        String earlyHeader = earlyOver.renderBuildPlanLines(120, 11_000).get(0);
+        assertThat(TestAnsi.strip(earlyHeader)).contains("ETA 0s").contains("+11s");
+        assertThat(earlyHeader).contains(Theme.colorize("0s", t.darkGray()));
+        assertThat(earlyHeader).contains(Theme.colorize("+11s", t.darkGray()));
+
+        // Past grace → mid-gray full elapsed (countdown's former color).
         var over = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         over.nerdfont = false;
         over.progress(90, 100);

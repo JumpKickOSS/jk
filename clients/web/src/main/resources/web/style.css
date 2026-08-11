@@ -540,8 +540,8 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
   font-size: 12px;
   font-family: var(--mono);
 }
-/* Running count-up: dim while ETA remaining > 0; mid-gray once countdown freezes at 0 (CLI parity);
-   yellow only when there is no ETA seed (single count-up). */
+/* Running count-up: dim while ETA remaining > 0 and for 2s after freeze at 0; then mid-gray
+   (CLI COUNT_UP_PROMOTE_GRACE_MS). Yellow only when there is no ETA seed (single count-up). */
 .millis.elapsed-dim { color: var(--dim); }
 .millis.elapsed-mid { color: var(--det-mid); } /* #a0a0a0 — CLI midGray / countdown's former color */
 .millis.elapsed-warn { color: var(--warn); }

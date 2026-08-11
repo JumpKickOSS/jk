@@ -115,6 +115,11 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      * {@link ClockProgressStrategy} when R0 is seeded, else {@link WeightedProgressStrategy}.
      */
     private long remainingWorkMs = -1;
+    /**
+     * Hold the dual-clock count-up at dim for this long after countdown freezes at {@code 0s}, so a
+     * 1–2s bar/wrap-up lag does not flash mid-gray and draw attention.
+     */
+    static final long COUNT_UP_PROMOTE_GRACE_MS = 2_000L;
     /** {@link #elapsedMillis()} when the open-loop seed was taken. */
     private long remainingSetAtElapsedMs;
     /**
@@ -1675,9 +1680,10 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         }
         // After the bar's percent: a bright-black middle dot, then the run-wide build clock.
         // Seeded: dim italic "ETA " + mid-gray "~remaining" · dim "+elapsed". When remaining hits 0
-        // the countdown freezes dim at "0s" and count-up steps up to mid-gray (the countdown's
-        // former color) — not yellow. No seed: single yellow "+elapsed" count-up. Never resets on
-        // phase/module boundaries. Module n/m is only on tree rows below — not repeated here.
+        // the countdown freezes dim at "0s"; count-up stays dim for {@link #COUNT_UP_PROMOTE_GRACE_MS}
+        // then steps to mid-gray (the countdown's former color) — not yellow. The grace covers the
+        // common 1–2s bar-done / wrap-up lag so a brief 0s window does not recolor and draw the eye.
+        // No seed: single yellow "+elapsed" count-up.
         //
         // Both faces are derived from the same whole-second elapsed counter so they tick on the
         // same paint (flooring remaining-ms and elapsed-ms independently desynced them by the
@@ -1689,6 +1695,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         // (floor(R−Δt) alone desyncs faces by the sub-second remainder of R).
         long remainingSec;
         boolean seeded;
+        long overrunMs = 0;
         synchronized (lock) {
             if (remainingWorkMs < 0) {
                 seeded = false;
@@ -1697,6 +1704,9 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 seeded = true;
                 long deadlineMs = remainingSetAtElapsedMs + remainingWorkMs;
                 remainingSec = Math.max(0L, deadlineMs / 1000L - elapsedSec);
+                if (remainingSec <= 0) {
+                    overrunMs = Math.max(0L, elapsedMillis - deadlineMs);
+                }
             }
         }
         if (seeded) {
@@ -1707,8 +1717,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 h.append(Theme.colorize("~" + fmtClockSeconds(remainingSec), t.midGray()));
             }
             h.append(' ').append(Theme.colorize("·", dim)).append(' ');
-            // Overrun: promote count-up to mid-gray (countdown's pre-zero color), not warning yellow.
-            AttributedStyle up = remainingSec <= 0 ? t.midGray() : dim;
+            // Promote count-up only after grace past deadline (not at the first 0s paint).
+            AttributedStyle up = remainingSec <= 0 && overrunMs >= COUNT_UP_PROMOTE_GRACE_MS ? t.midGray() : dim;
             h.append(Theme.colorize("+" + fmtClockSeconds(elapsedSec), up));
         } else {
             h.append(Theme.colorize("+" + fmtClockSeconds(elapsedSec), t.warning()));
