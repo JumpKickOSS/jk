@@ -13,6 +13,7 @@ import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.EventLogListener;
 import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.run.SessionMirrorListener;
+import cc.jumpkick.cli.run.TestFailureHighlight;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandManager;
 import cc.jumpkick.model.JkBuild;
@@ -362,14 +363,17 @@ public final class TestCommand implements CliCommand {
                                     o.success(), completed.incrementAndGet(), total[0], o.coord(), o.millis());
                             if (view.animating()) {
                                 view.addCompletion(completion);
+                                // Raw lines — snapshot() paints once for the settle dump.
                                 synchronized (buf) {
                                     if (!buf.isEmpty()) deferredOutput.addAll(buf);
                                 }
                             } else {
-                                StringBuilder block = new StringBuilder();
+                                List<String> painted;
                                 synchronized (buf) {
-                                    for (String l : buf) block.append(l).append('\n');
+                                    painted = TestFailureHighlight.paintLines(buf);
                                 }
+                                StringBuilder block = new StringBuilder();
+                                for (String l : painted) block.append(l).append('\n');
                                 block.append(completion);
                                 view.writeAbove(block.toString());
                             }
@@ -486,6 +490,7 @@ public final class TestCommand implements CliCommand {
 
                                 @Override
                                 public synchronized void error(String step, String code, String message) {
+                                    if ("test-failure".equals(code)) return;
                                     buf.add("  " + cc.jumpkick.cli.tui.Glyphs.CROSS + " " + step + ": " + message);
                                 }
                             };
@@ -500,8 +505,9 @@ public final class TestCommand implements CliCommand {
                                     json);
                             if (json) return;
                             List<String> buf = buffers.getOrDefault(o.dir(), List.of());
+                            List<String> painted = TestFailureHighlight.paintLines(buf);
                             synchronized (BuildCommand.OUT_LOCK) {
-                                for (String line : buf) CliOutput.out(line);
+                                for (String line : painted) CliOutput.out(line);
                                 CliOutput.out(BuildCommand.completionLine(
                                         o.success(), done.incrementAndGet(), total[0], o.coord(), o.millis()));
                             }
@@ -561,7 +567,7 @@ public final class TestCommand implements CliCommand {
 
     private static List<String> snapshot(List<String> deferred) {
         synchronized (deferred) {
-            return new ArrayList<>(deferred);
+            return new ArrayList<>(cc.jumpkick.cli.run.TestFailureHighlight.paintLines(deferred));
         }
     }
 

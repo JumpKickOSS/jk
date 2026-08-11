@@ -58,6 +58,7 @@ class StackTraceHighlightTest {
             "boom",
             "1 test failed:",
             "  FAILED  cc.jumpkick.FooTest > bar()",
+            "Test Failure",
             "Note: Recompile with -Xlint",
             "Building project..."
         }) {

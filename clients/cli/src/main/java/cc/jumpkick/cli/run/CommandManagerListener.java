@@ -102,15 +102,32 @@ public final class CommandManagerListener implements BuildPlanListener {
         cm.stepMessage(module, step, label);
     }
 
+    /** True while painting a {@link TestFailureHighlight} block from run-tests output. */
+    private boolean inTestFailure;
+
+    private final TestFailureHighlight.Stream testFailStream = new TestFailureHighlight.Stream();
+
     @Override
     public void output(String step, String line) {
-        cm.writeAbove(line);
+        if (TestFailureHighlight.isHeader(line)) {
+            inTestFailure = true;
+            testFailStream.reset();
+            cm.writeAbove(TestFailureHighlight.paintHeader());
+            return;
+        }
+        if (inTestFailure) {
+            cm.writeAbove(testFailStream.line(line));
+            return;
+        }
+        cm.writeAbove(StackTraceHighlight.line(line));
     }
 
     @Override
     public void error(String step, String code, String message) {
         String brief = message == null || message.isBlank() ? (code != null ? code : "Failed") : message;
         cm.attachPhaseError(module, step, "", brief);
+        // Styled "Test Failure" block already covers per-test failures; keep JSON diagnostics only.
+        if ("test-failure".equals(code)) return;
         cm.writeAbove((code != null && !code.isEmpty() ? code + ": " : "") + (message != null ? message : ""));
     }
 
@@ -128,6 +145,7 @@ public final class CommandManagerListener implements BuildPlanListener {
 
     @Override
     public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
+        inTestFailure = false;
         // SKIPPED = cache hit / up-to-date — green terminal, same as SUCCESS.
         boolean ok = status == TaskStatus.SUCCESS || status == TaskStatus.SKIPPED;
         cm.stepDone(module, step, ok, group == null ? "" : group);
@@ -154,7 +172,8 @@ public final class CommandManagerListener implements BuildPlanListener {
             above.add(ConsoleSpec.renderWarning(d));
         }
         for (BuildPlanResult.Diagnostic d : result.errors()) {
-            above.add(ConsoleSpec.renderError(d));
+            String rendered = ConsoleSpec.renderError(d);
+            if (rendered != null && !rendered.isEmpty()) above.add(rendered);
         }
         // A soft failure overrides an otherwise-successful result: the plan itself is fine, but the
         // command discovered afterward that it can't proceed (e.g. jk run found no runnable entry

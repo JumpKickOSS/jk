@@ -413,6 +413,8 @@ public final class BuildCommand implements CliCommand {
 
                                 @Override
                                 public synchronized void error(String step, String code, String message) {
+                                    // test-failure is rendered as the styled output block, not an error line.
+                                    if ("test-failure".equals(code)) return;
                                     buf.add("  " + Glyphs.CROSS + " " + step + ": " + message);
                                 }
                             };
@@ -429,8 +431,9 @@ public final class BuildCommand implements CliCommand {
                                     json);
                             if (json) return;
                             List<String> buf = buffers.getOrDefault(o.dir(), List.of());
+                            List<String> painted = cc.jumpkick.cli.run.TestFailureHighlight.paintLines(buf);
                             synchronized (OUT_LOCK) {
-                                for (String line : buf) CliOutput.out(line);
+                                for (String line : painted) CliOutput.out(line);
                                 CliOutput.out(completionLine(
                                         o.success(), done.incrementAndGet(), total[0], o.coord(), o.millis()));
                             }
@@ -635,14 +638,17 @@ public final class BuildCommand implements CliCommand {
                             completionLine(o.success(), completed.incrementAndGet(), total[0], o.coord(), o.millis());
                     if (view.animating()) {
                         view.addCompletion(completion);
+                        // Raw lines — snapshot() paints once for the settle dump.
                         synchronized (buf) {
                             if (!buf.isEmpty()) deferredOutput.addAll(buf);
                         }
                     } else {
-                        StringBuilder block = new StringBuilder();
+                        List<String> painted;
                         synchronized (buf) {
-                            for (String l : buf) block.append(l).append('\n');
+                            painted = cc.jumpkick.cli.run.TestFailureHighlight.paintLines(buf);
                         }
+                        StringBuilder block = new StringBuilder();
+                        for (String l : painted) block.append(l).append('\n');
                         block.append(completion);
                         view.writeAbove(block.toString());
                     }
@@ -731,7 +737,9 @@ public final class BuildCommand implements CliCommand {
     /** Stable copy of the concurrently-appended deferred-output buffer. */
     private static List<String> snapshot(List<String> deferred) {
         synchronized (deferred) {
-            return new ArrayList<>(deferred);
+            // Lines may already be painted when flushed from module buffers; paintLines is
+            // idempotent for non-sentinel content (stack frames re-highlight safely).
+            return new ArrayList<>(cc.jumpkick.cli.run.TestFailureHighlight.paintLines(deferred));
         }
     }
 

@@ -26,6 +26,11 @@ public final class AggregateModuleListener implements BuildPlanListener {
     /** Parallel-build output buffer; caller flushes when the module finishes. */
     private List<String> outBuffer;
 
+    /** True while painting a {@link TestFailureHighlight} block from run-tests output. */
+    private boolean inTestFailure;
+
+    private final TestFailureHighlight.Stream testFailStream = new TestFailureHighlight.Stream();
+
     /** Route this module's output into {@code buffer} (parallel build); see field doc. */
     public void bufferOutputInto(List<String> buffer) {
         this.outBuffer = buffer;
@@ -66,7 +71,24 @@ public final class AggregateModuleListener implements BuildPlanListener {
 
     @Override
     public void output(String step, String line) {
-        emit(line);
+        // Buffered path keeps raw lines; paint when the buffer is flushed (BuildCommand/TestCommand).
+        if (outBuffer != null) {
+            emit(line);
+            return;
+        }
+        emit(paintOutputLine(line));
+    }
+
+    private String paintOutputLine(String line) {
+        if (TestFailureHighlight.isHeader(line)) {
+            inTestFailure = true;
+            testFailStream.reset();
+            return TestFailureHighlight.paintHeader();
+        }
+        if (inTestFailure) {
+            return testFailStream.line(line);
+        }
+        return StackTraceHighlight.line(line);
     }
 
     @Override
@@ -87,6 +109,9 @@ public final class AggregateModuleListener implements BuildPlanListener {
     public void error(String step, String code, String message) {
         String brief = message == null || message.isBlank() ? (code != null ? code : "Failed") : message;
         cm.attachPhaseError(module, step, "", brief);
+        // Per-test failures are fully rendered by run-tests output (styled "Test Failure" block).
+        // Do not also print "✘ Error [run-tests/test-failure]: …" — keep the diagnostic for JSON.
+        if ("test-failure".equals(code)) return;
         emit(renderDiagnostic(
                 Glyphs.CROSS + " Error",
                 cc.jumpkick.cli.theme.Theme.active().error().bold(),
@@ -155,6 +180,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
 
     @Override
     public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
+        inTestFailure = false;
         // SKIPPED = cache hit / up-to-date — still a green terminal (matches BuildPlan.isOk).
         // Treating it as failure painted the live tree red with "Failed" while the build
         // succeeded.

@@ -80,6 +80,9 @@ public record ConsoleSpec(
 
     /** Render an error diagnostic from its parts (used by live + summary paths alike). */
     public static String renderError(String step, String code, String message) {
+        // Per-test failures are already shown as the styled "Test Failure" block from run-tests
+        // output; re-printing them as "✘ Error [run-tests/test-failure]" is pure noise.
+        if ("test-failure".equals(code)) return "";
         if ("verbatim".equals(code)) return message;
         if (isCompilerCode(code)) return CompilerDiagnostic.render(message);
         return errorLine(step, message);

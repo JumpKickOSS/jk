@@ -151,15 +151,31 @@ public final class TestSupport {
     }
 
     /**
-     * Render a failed test run as console lines — each failing test's name followed by its full stack
-     * trace, indented. Mirrors what Maven/Gradle print on failure so {@code jk} doesn't just report a
-     * count. Returns an empty list when nothing failed.
+     * Plain-text failure report for the CLI to paint. Layout (no ANSI — the client styles it):
+     *
+     * <pre>
+     * Test Failure
+     * 1 test failed:
+     *
+     *   FAILED  group:artifact :: method()
+     *     class: fqcn
+     *     java.lang.AssertionError
+     *
+     * Expecting actual:
+     *   21670L
+     * …
+     * 	at …
+     * </pre>
+     *
+     * <p>Returns empty when nothing failed. The leading {@code Test Failure} title is a fixed sentinel
+     * the CLI rewrites into a red pill + "Failure".
      */
     public static List<String> renderFailures(TestSummary result) {
         List<String> out = new ArrayList<>();
         List<TestSummary.Failure> failures = result.failures();
         if (failures.isEmpty()) return out;
         out.add("");
+        out.add("Test Failure");
         out.add(failures.size() + " test" + (failures.size() == 1 ? "" : "s") + " failed:");
         for (TestSummary.Failure f : failures) {
             out.add("");
@@ -170,19 +186,76 @@ public final class TestSupport {
                     && !f.headline().contains(f.className())) {
                 out.add("    class: " + f.className());
             }
-            if (f.details() != null && !f.details().isBlank()) {
-                for (String line : f.details().split("\n", -1)) {
-                    if (!line.isEmpty()) out.add("    " + line);
-                }
-            } else {
-                // No stack trace: surface the exception class and message on
-                // their own lines rather than gluing them into one summary.
-                if (!f.exceptionClass().isEmpty()) out.add("    " + f.exceptionClass());
-                if (!f.message().isEmpty()) out.add("    " + f.message());
+            if (!f.exceptionClass().isEmpty()) {
+                out.add("    " + f.exceptionClass());
+            }
+            // Assertion / failure body (prefer discrete message; else extract from stack).
+            List<String> body = failureBodyLines(f);
+            if (!body.isEmpty()) {
+                out.add("");
+                out.addAll(body);
+            }
+            // Stack frames only (skip exception header already printed above).
+            List<String> frames = failureStackFrames(f);
+            if (!frames.isEmpty()) {
+                out.add("");
+                out.addAll(frames);
             }
         }
         out.add("");
         return out;
+    }
+
+    /** Human-facing assertion / message lines (no stack frames, no exception FQCN prefix). */
+    static List<String> failureBodyLines(TestSummary.Failure f) {
+        String msg = f.message() == null ? "" : f.message().strip();
+        if (!msg.isEmpty()) {
+            List<String> lines = new ArrayList<>();
+            for (String line : msg.split("\n", -1)) {
+                lines.add(line); // keep indent; CLI paints
+            }
+            // Drop a trailing blank.
+            while (!lines.isEmpty() && lines.getLast().isBlank()) lines.removeLast();
+            return lines;
+        }
+        // Fall back: stack's message section between "Exception: " and first "at ".
+        String details = f.details() == null ? "" : f.details();
+        if (details.isBlank()) return List.of();
+        List<String> lines = new ArrayList<>();
+        boolean started = false;
+        for (String line : details.split("\n", -1)) {
+            String t = line.stripLeading();
+            if (t.startsWith("at ") || t.startsWith("...")) break;
+            if (!started) {
+                // Skip "fqcn: message" first line's FQCN; keep rest of message if any.
+                String ex = f.exceptionClass();
+                if (ex != null && !ex.isEmpty() && t.startsWith(ex)) {
+                    int colon = t.indexOf(':');
+                    if (colon >= 0 && colon + 1 < t.length()) {
+                        String rest = t.substring(colon + 1).stripLeading();
+                        if (!rest.isEmpty()) lines.add(rest);
+                    }
+                    started = true;
+                    continue;
+                }
+                started = true;
+            }
+            lines.add(line);
+        }
+        while (!lines.isEmpty() && lines.getLast().isBlank()) lines.removeLast();
+        return lines;
+    }
+
+    /** {@code at …} / {@code ... N more} lines from the stack, preserving original indent. */
+    static List<String> failureStackFrames(TestSummary.Failure f) {
+        String details = f.details() == null ? "" : f.details();
+        if (details.isBlank()) return List.of();
+        List<String> frames = new ArrayList<>();
+        for (String line : details.split("\n", -1)) {
+            String t = line.stripLeading();
+            if (t.startsWith("at ") || t.startsWith("...")) frames.add(line);
+        }
+        return frames;
     }
 
     /**
