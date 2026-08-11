@@ -130,7 +130,9 @@ Web override (browser cannot read process env): `localStorage.jkProgressMode = '
 
 - Engine emits `progress` from the strategy on every `workspace-progress` event.  
 - Web also recomputes clock client-side from `R0` + `r0At` so the bar stays smooth between events.  
-- **Never go backwards** — peak hold inside strategies. Settle → 100%.
+- **Never go backwards** — one `SharedPeak` fraction floor per clock/weighted pair (JK-1815), so
+  neither the AUTO weighted→clock takeover nor a denominator growth (calibrate/reweight) repaints
+  lower; the web clamps per card (`card.peakPct`). Settle → 100%.
 
 ## Wire (schema 1, additive fields)
 

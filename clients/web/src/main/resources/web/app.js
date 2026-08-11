@@ -1290,6 +1290,14 @@ Vue.createApp({
     },
     progress(card) {
       if (this.outcome(card) !== 'running') return 100;
+      const pct = this.rawProgress(card);
+      // Monotonic floor across the weighted→clock takeover (JK-1815): the clock fill starts
+      // near 0 when R0 seeds mid-preflight — never repaint below the card's displayed peak.
+      if (typeof card.peakPct === 'number' && card.peakPct > pct) return card.peakPct;
+      card.peakPct = pct;
+      return pct;
+    },
+    rawProgress(card) {
       const mode = this.progressMode();
       const useClock =
         mode === 'clock' ||

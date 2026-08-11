@@ -21,7 +21,16 @@ public final class ClockProgressStrategy implements HeaderProgressStrategy {
     public static final double DISPLAY_CAP = 0.99;
     private static final long SCALE = 1000L;
 
-    private double peakFraction;
+    /** Cross-strategy monotonic floor — shared with the paired weighted strategy (JK-1815). */
+    private final SharedPeak peak;
+
+    public ClockProgressStrategy() {
+        this(new SharedPeak());
+    }
+
+    public ClockProgressStrategy(SharedPeak peak) {
+        this.peak = peak == null ? new SharedPeak() : peak;
+    }
 
     @Override
     public long[] display(HeaderProgressState state) {
@@ -42,8 +51,7 @@ public final class ClockProgressStrategy implements HeaderProgressStrategy {
         }
         if (raw < 0) raw = 0;
         if (raw > DISPLAY_CAP) raw = DISPLAY_CAP;
-        if (raw < peakFraction) raw = peakFraction;
-        else peakFraction = raw;
+        raw = peak.raise(raw);
         return new long[] {Math.round(raw * SCALE), SCALE};
     }
 
@@ -58,6 +66,6 @@ public final class ClockProgressStrategy implements HeaderProgressStrategy {
     }
 
     public void reset() {
-        peakFraction = 0;
+        peak.reset();
     }
 }

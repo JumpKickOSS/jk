@@ -1,12 +1,30 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.progress;
 
-/** Effort-weight bar: engine plan numerator/denominator with monotonic peak hold. */
+/**
+ * Effort-weight bar: engine plan numerator/denominator with a monotonic displayed fraction.
+ *
+ * <p>The peak is fraction-space and shared with the paired clock strategy ({@link SharedPeak},
+ * JK-1815), so neither a denominator growth (calibrate, mid-run reweight) nor an AUTO
+ * clock-takeover can paint the bar backwards — the contract's "bar never goes backwards" is
+ * absolute (JK-1823). When the denominator grows, the fraction holds at the floor until real
+ * progress passes it; both {@link #display} and {@link #onWeightProgress} share the same clamp.
+ */
 public final class WeightedProgressStrategy implements HeaderProgressStrategy {
 
     private long numerator;
     private long denominator;
-    private double peakFraction;
+
+    /** Cross-strategy monotonic floor — shared with the paired clock strategy (JK-1815). */
+    private final SharedPeak peak;
+
+    public WeightedProgressStrategy() {
+        this(new SharedPeak());
+    }
+
+    public WeightedProgressStrategy(SharedPeak peak) {
+        this.peak = peak == null ? new SharedPeak() : peak;
+    }
 
     @Override
     public long[] display(HeaderProgressState state) {
@@ -15,30 +33,28 @@ public final class WeightedProgressStrategy implements HeaderProgressStrategy {
                 ? state.weightNumerator()
                 : numerator;
         long den = state.weightDenominator() > 0 ? state.weightDenominator() : denominator;
-        return applyPeak(num, den);
+        if (den <= 0) return new long[] {0, 0};
+        return clampToPeak(num, den);
     }
 
     @Override
     public long[] onWeightProgress(HeaderProgressState state, long num, long den) {
-        double f = den > 0 ? (double) num / (double) den : 0.0;
-        if (den > this.denominator) {
-            peakFraction = f;
-        } else if (den > 0 && f < peakFraction) {
-            num = Math.round(peakFraction * den);
-        } else {
-            peakFraction = f;
+        if (den <= 0) {
+            this.numerator = Math.max(0, num);
+            this.denominator = 0;
+            return new long[] {this.numerator, 0};
         }
-        this.numerator = Math.max(0, num);
-        this.denominator = Math.max(0, den);
-        return new long[] {this.numerator, this.denominator};
+        long[] out = clampToPeak(num, den);
+        this.numerator = out[0];
+        this.denominator = out[1];
+        return out;
     }
 
-    private long[] applyPeak(long num, long den) {
-        if (den <= 0) return new long[] {0, 0};
-        double f = (double) num / (double) den;
-        if (f < peakFraction) num = Math.round(peakFraction * den);
-        else peakFraction = f;
-        return new long[] {num, den};
+    private long[] clampToPeak(long num, long den) {
+        double f = Math.max(0, (double) num / (double) den);
+        double held = peak.raise(f);
+        if (held > f) num = Math.round(held * den);
+        return new long[] {Math.max(0, num), den};
     }
 
     @Override
@@ -49,6 +65,6 @@ public final class WeightedProgressStrategy implements HeaderProgressStrategy {
     public void reset() {
         numerator = 0;
         denominator = 0;
-        peakFraction = 0;
+        peak.reset();
     }
 }

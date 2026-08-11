@@ -132,8 +132,12 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     /** Run-wide total for notifications: elapsed-at-seed + R0. 0 when never seeded. */
     private long etaEstimateMs;
     private final ProgressBarMode progressMode = ProgressBarMode.fromEnvironment();
-    private final ClockProgressStrategy clockProgress = new ClockProgressStrategy();
-    private final WeightedProgressStrategy weightedProgress = new WeightedProgressStrategy();
+    /** One monotonic floor across the strategy pair — the AUTO takeover must not repaint backwards. */
+    private final cc.jumpkick.runtime.progress.SharedPeak displayedPeak =
+            new cc.jumpkick.runtime.progress.SharedPeak();
+
+    private final ClockProgressStrategy clockProgress = new ClockProgressStrategy(displayedPeak);
+    private final WeightedProgressStrategy weightedProgress = new WeightedProgressStrategy(displayedPeak);
     private int modulesComplete;
     private int modulesTotal; // 0 = hide module remaining
     private long finishSeq;

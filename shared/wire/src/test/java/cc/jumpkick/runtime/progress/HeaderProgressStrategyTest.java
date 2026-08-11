@@ -42,4 +42,31 @@ class HeaderProgressStrategyTest {
         assertThat(w.onWeightProgress(st, 50, 100)[0]).isEqualTo(50);
         assertThat(w.onWeightProgress(st, 30, 100)[0]).isEqualTo(50);
     }
+
+    @Test
+    void weighted_denominator_growth_does_not_paint_backwards() {
+        // Calibrate grows the denominator (preflight 100/1000 → 100/5100 ≈ 2%): the displayed
+        // fraction must hold the 10% floor, not rebase down (JK-1815/JK-1823).
+        var w = new WeightedProgressStrategy();
+        var st = new HeaderProgressState(0, 0, -1, 0, 0, -1, false);
+        assertThat(w.onWeightProgress(st, 100, 1000)[0]).isEqualTo(100);
+        long[] grown = w.onWeightProgress(st, 110, 5100);
+        assertThat((double) grown[0] / grown[1]).isGreaterThanOrEqualTo(0.099);
+    }
+
+    @Test
+    void clock_takeover_carries_the_weighted_peak() {
+        // AUTO switch: weighted climbs to 10% during preflight, then R0 seeds and clock takes
+        // over near 0 elapsed — the shared peak keeps the paint monotonic (JK-1815).
+        var peak = new SharedPeak();
+        var w = new WeightedProgressStrategy(peak);
+        var clock = new ClockProgressStrategy(peak);
+        var pre = new HeaderProgressState(0, 0, -1, 0, 0, -1, false);
+        w.onWeightProgress(pre, 100, 1000); // 10%
+        long[] first = clock.display(new HeaderProgressState(0, 0, 100_000, 0, 500, -1, false)); // 0.5% raw
+        assertThat((double) first[0] / first[1]).isGreaterThanOrEqualTo(0.10);
+        // And clock still advances past the floor normally.
+        long[] later = clock.display(new HeaderProgressState(0, 0, 100_000, 0, 30_000, -1, false));
+        assertThat(later[0]).isEqualTo(300);
+    }
 }

@@ -49,8 +49,12 @@ public final class WorkspaceProgressTracker {
     private boolean settled;
 
     private final ProgressBarMode mode = ProgressBarMode.fromEnvironment();
-    private final ClockProgressStrategy clock = new ClockProgressStrategy();
-    private final WeightedProgressStrategy weighted = new WeightedProgressStrategy();
+    /** One monotonic floor across the strategy pair — the AUTO takeover must not repaint backwards. */
+    private final cc.jumpkick.runtime.progress.SharedPeak displayedPeak =
+            new cc.jumpkick.runtime.progress.SharedPeak();
+
+    private final ClockProgressStrategy clock = new ClockProgressStrategy(displayedPeak);
+    private final WeightedProgressStrategy weighted = new WeightedProgressStrategy(displayedPeak);
 
     private Snapshot last = Snapshot.unknown();
 
