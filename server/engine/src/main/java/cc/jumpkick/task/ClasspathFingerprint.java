@@ -92,6 +92,28 @@ public final class ClasspathFingerprint {
         return entryFromOutputDigests(digests);
     }
 
+    /**
+     * Projected directory token for a live classes tree after {@code copy-resources} would merge
+     * {@code resourceRoots} over it. Starts from on-disk class/non-resource files, then overlays
+     * source resource roots — same content the live package step hashes once the copy has run.
+     */
+    public static String entryProjectedAfterResourceCopy(Path classesDir, List<Path> resourceRoots)
+            throws IOException {
+        Map<String, String> digests = new TreeMap<>();
+        if (classesDir != null && Files.isDirectory(classesDir)) {
+            try (Stream<Path> walk = Files.walk(classesDir)) {
+                for (Path f : (Iterable<Path>) walk::iterator) {
+                    if (!Files.isRegularFile(f)) continue;
+                    if (isBuildMetadata(f.getFileName().toString())) continue;
+                    Path rel = classesDir.relativize(f);
+                    if (ActionCache.hasJkScratchSegment(rel)) continue;
+                    digests.put(rel.toString().replace('\\', '/'), Hashing.sha256Hex(f));
+                }
+            }
+        }
+        return entryFromCompileAndResources(digests, resourceRoots);
+    }
+
     /** Content identity of a single entry (CAS blob, jar, classes dir, or missing). */
     public static String entry(Path p) throws IOException {
         String abs = p.toAbsolutePath().normalize().toString();

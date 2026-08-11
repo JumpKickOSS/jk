@@ -86,26 +86,35 @@ public final class TaskForecaster {
             // Package matters on its own: a consumer's compile classpath hashes sibling JAR
             // *content*, so an upstream whose compile is cached but whose jar is stale
             // repackages and invalidates the consumer.
-            boolean mainOutputDirty = m.steps().stream()
-                    .anyMatch(p -> !p.cached()
-                            && (p.name().startsWith("compile-main")
-                                    || p.name().startsWith("compile-java")
-                                    || p.name().startsWith("compile-kotlin")
-                                    || p.name().startsWith("compile-groovy")
-                                    || "package-jar".equals(p.name())
-                                    || "package-assembly".equals(p.name())
-                                    // Main/extra resource drift re-copies + repackages, changing
-                                    // the jar bytes compile consumers hash (JK-1808). Test-resource
-                                    // drift is emitted as copy-test-resources and does not cascade.
-                                    || "copy-resources".equals(p.name())));
+            //
             // Also seed when a compile-scope dep is dirty even if predictors still look cached
             // against pre-rebuild sibling jars (pessimistic; avoids under-reserve).
-            if (mainOutputDirty || dep.compileDepDirty()) {
+            if (seedsCompileConsumerCascade(m) || dep.compileDepDirty()) {
                 dirty.add(u.dir());
             }
             out.add(m);
         }
         return out;
+    }
+
+    /**
+     * Whether this module's forecast should force compile-scope dependents dirty.
+     *
+     * <p>True when compile or package will change the jar/classes consumers hash. False for
+     * resource-only drift ({@code copy-resources} RUN + package CACHED): the producer still
+     * schedules via {@link TaskForecast.Module#dirty()}, but dependents must not inherit full
+     * recompile+test ETA while the packaged jar stays byte-identical.
+     */
+    static boolean seedsCompileConsumerCascade(TaskForecast.Module m) {
+        if (m == null || m.steps() == null) return false;
+        return m.steps().stream()
+                .anyMatch(p -> !p.cached()
+                        && (p.name().startsWith("compile-main")
+                                || p.name().startsWith("compile-java")
+                                || p.name().startsWith("compile-kotlin")
+                                || p.name().startsWith("compile-groovy")
+                                || "package-jar".equals(p.name())
+                                || "package-assembly".equals(p.name())));
     }
 
     /**
@@ -484,6 +493,29 @@ public final class TaskForecaster {
                 }
             }
 
+            // ---- resource drift (before package so the jar key projects post-copy content) ----
+            // Live package-jar fingerprints classes *after* copy-resources. Forecasting package
+            // against a stale on-disk tree leaves package CACHED while copy-resources is RUN, then
+            // either under-cascades (jar will change) or — with copy-resources seeding cascade —
+            // over-cascades every compile consumer. Detect drift first; package uses a projected
+            // post-copy token when drift is present.
+            boolean mainResourceDrift = false;
+            boolean testResourceDrift = false;
+            if (!compileDirty && Files.isDirectory(layout.classesDir())) {
+                if (resourcesOutOfSync(
+                        cc.jumpkick.layout.ModuleLayout.mainResourcesDir(dir, compact), layout.classesDir())) {
+                    mainResourceDrift = true;
+                } else if (extraResourcesOutOfSync(project, dir, layout.classesDir())) {
+                    mainResourceDrift = true;
+                }
+                if (haveTests && !skipTests && !testDirty && Files.isDirectory(layout.testClassesDir())) {
+                    Path resTest = cc.jumpkick.layout.ModuleLayout.testResourcesDir(dir, compact);
+                    if (resourcesOutOfSync(resTest, layout.testClassesDir())) {
+                        testResourceDrift = true;
+                    }
+                }
+            }
+
             // ---- package-jar ----
             // Tokens MUST match BuildPlanner.packageJarStep (classes/main/sbom/manifest).
             // After jk clean the classes tree is gone: reconstruct the classes: token from the
@@ -513,7 +545,10 @@ public final class TaskForecaster {
                         // best-effort: missing SBOM → key still includes empty sbom: like a null sbom
                     }
                 }
-                String classesTok = classesTokenForPackage(dir, compact, layout, project, actionCache, compileMainKey);
+                // classesTokenForPackage projects post-copy content when resources drifted so
+                // package CACHED/RUN matches the live step after copy-resources.
+                String classesTok =
+                        classesTokenForPackage(dir, compact, layout, project, actionCache, compileMainKey);
                 // Must match BuildPlanner.packageJarStep tokens exactly — omitting contrib: made
                 // every module forecast permanent "repackage", cascade depDirty, and price a full
                 // monorepo rebuild (~3.5m) while live builds hit the package cache and SKIPPED.
@@ -533,7 +568,11 @@ public final class TaskForecaster {
                 steps.add(
                         hit
                                 ? new TaskForecast.Task("package-jar", TaskForecast.Status.CACHED, "", key8(pkgKey))
-                                : new TaskForecast.Task("package-jar", TaskForecast.Status.RUN, "repackage", null));
+                                : new TaskForecast.Task(
+                                        "package-jar",
+                                        TaskForecast.Status.RUN,
+                                        mainResourceDrift ? "repackage · resources changed" : "repackage",
+                                        null));
                 if (hit && !Files.isRegularFile(jar)) {
                     // Publish the wiped jar's content sha from THIS key's record so downstream
                     // assembly forecasts fingerprint the same bytes the live restore produces.
@@ -583,33 +622,24 @@ public final class TaskForecaster {
                 }
             }
 
-            // ---- resource drift ----
-            // The scheduled build re-copies resource trees unconditionally (main → classes, test →
-            // test classes) and its package/test keys then see the fresh bytes; a clean-skipped
-            // module never does. Any drift ⇒ dirty.
-            // After jk clean the classes tree is gone — missing copies are not "drift", they are
-            // the restore path. Only compare when an output tree is present.
-            if (!compileDirty && Files.isDirectory(layout.classesDir())) {
-                if (resourcesOutOfSync(
-                        cc.jumpkick.layout.ModuleLayout.mainResourcesDir(dir, compact), layout.classesDir())) {
-                    steps.add(new TaskForecast.Task(
-                            "copy-resources", TaskForecast.Status.RUN, "resources changed", null));
-                } else if (extraResourcesOutOfSync(project, dir, layout.classesDir())) {
-                    // extra-resources come from OUTSIDE the module, so the resource-root walk above
-                    // cannot see them. Editing a plugin's jk-plugin.toml must still rebuild
-                    // whatever bakes it in.
-                    steps.add(new TaskForecast.Task(
-                            "copy-resources", TaskForecast.Status.RUN, "extra resources changed", null));
-                }
-                if (haveTests && !skipTests && !testDirty && Files.isDirectory(layout.testClassesDir())) {
-                    Path resTest = cc.jumpkick.layout.ModuleLayout.testResourcesDir(dir, compact);
-                    if (resourcesOutOfSync(resTest, layout.testClassesDir())) {
-                        // Distinct name: test-resource drift schedules the module (material) but
-                        // must not seed the compile-consumer cascade like main-resource drift.
-                        steps.add(new TaskForecast.Task(
-                                "copy-test-resources", TaskForecast.Status.RUN, "test resources changed", null));
-                    }
-                }
+            // ---- emit resource-drift steps (detected before package) ----
+            // Main/extra resource drift schedules the module so the jar ships fresh bytes (JK-1808).
+            // Cascade to compile consumers is owned by package-jar above, not by these steps.
+            if (mainResourceDrift) {
+                boolean extraOnly = !resourcesOutOfSync(
+                                cc.jumpkick.layout.ModuleLayout.mainResourcesDir(dir, compact), layout.classesDir())
+                        && extraResourcesOutOfSync(project, dir, layout.classesDir());
+                steps.add(new TaskForecast.Task(
+                        "copy-resources",
+                        TaskForecast.Status.RUN,
+                        extraOnly ? "extra resources changed" : "resources changed",
+                        null));
+            }
+            if (testResourceDrift) {
+                // Distinct name: test-resource drift schedules the module (material) but
+                // must not seed the compile-consumer cascade like main-resource drift.
+                steps.add(new TaskForecast.Task(
+                        "copy-test-resources", TaskForecast.Status.RUN, "test resources changed", null));
             }
 
             // ---- restore gate ----
@@ -663,6 +693,10 @@ public final class TaskForecaster {
      * revert → clean, the last record names the other edit's outputs while the live build would
      * restore the reverted ones — reconstruction must match the live restore or the forecast
      * flips to false CACHED/RUN.
+     *
+     * <p>When the live classes tree is present but main/extra resources have drifted, projects the
+     * post-{@code copy-resources} tree (class files + source resource roots) so package CACHED/RUN
+     * matches the live package step after the copy — not the stale pre-copy classes dir.
      */
     static String classesTokenForPackage(
             Path dir,
@@ -674,6 +708,9 @@ public final class TaskForecaster {
             throws IOException {
         Path classesDir = layout.classesDir();
         if (classesDirHasContent(classesDir)) {
+            if (mainResourcesOutOfSync(dir, compact, project, classesDir)) {
+                return classesTokenProjectedAfterResourceCopy(dir, compact, layout, project);
+            }
             return ClasspathFingerprint.entry(classesDir);
         }
         Map<String, String> compileOut = compileMainKey == null
@@ -687,6 +724,26 @@ public final class TaskForecaster {
             return ClasspathFingerprint.entry(classesDir); // missing:… — package key will miss
         }
         return ClasspathFingerprint.entryFromCompileAndResources(compileOut, resRoots);
+    }
+
+    /** Main or extra resource roots differ from their copies under {@code classesDir}. */
+    static boolean mainResourcesOutOfSync(Path dir, boolean compact, JkBuild project, Path classesDir) {
+        if (resourcesOutOfSync(cc.jumpkick.layout.ModuleLayout.mainResourcesDir(dir, compact), classesDir)) {
+            return true;
+        }
+        return extraResourcesOutOfSync(project, dir, classesDir);
+    }
+
+    /**
+     * Projected {@code classes:} token after {@code copy-resources} would merge source resource
+     * roots over the current classes tree. Matches the live package-jar fingerprint once the
+     * copy step has run — used when main resources are out of sync so package CACHED/RUN does not
+     * lie about a pre-copy tree.
+     */
+    static String classesTokenProjectedAfterResourceCopy(
+            Path dir, boolean compact, BuildLayout layout, JkBuild project) throws IOException {
+        return ClasspathFingerprint.entryProjectedAfterResourceCopy(
+                layout.classesDir(), packageResourceRoots(dir, compact, project));
     }
 
     /** Resource roots that {@code copy-resources} merges into {@code classes/} (main + plugin + extra). */

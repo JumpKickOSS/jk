@@ -128,6 +128,8 @@ public final class TaskForecast {
          * <p>{@code copy-resources}/{@code copy-test-resources} are deliberately NOT here: the
          * forecaster emits them only on real resource drift (never as always-run bookkeeping), and
          * a drifted resource must schedule the module or the jar ships stale bytes (JK-1808).
+         * Compile-consumer cascade still requires package/compile dirtiness — resource-only drift
+         * does not alone force dependents to recompile.
          */
         public static boolean isBookkeepingStep(String stepName) {
             if (stepName == null) return true;

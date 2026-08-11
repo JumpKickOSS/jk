@@ -107,13 +107,13 @@ public final class NativeImageDriver {
      * <p>The subprocess's stdout and stderr are forwarded line-by-line to {@code out} (both streams
      * share the sink, preserving the interleaved order the user would see on a console). stdout is
      * additionally parsed for {@code [N/M]} step headers; each header fires {@link
-     * ProgressListener#onStep} on the stdout-reader thread. The engine passes {@code
-     * TaskContext::output} so lines reach the view layer above the progress bar — this driver never
-     * touches {@code System.out}/{@code System.err}.
+     * ProgressListener#onStep} on the stdout-reader thread. Callers typically buffer lines (for a
+     * report file + optional console replay) rather than writing the console live — this driver
+     * never touches {@code System.out}/{@code System.err}.
      *
      * <p>{@code listener} may be {@code null} — output still flows to {@code out} but no callbacks are
-     * invoked. {@code out} may be {@code null} — output is then discarded (no console writes). The
-     * sink is invoked from the reader daemon threads, so callers must tolerate that.
+     * invoked. {@code out} may be {@code null} — output is then discarded. The sink is invoked from
+     * the reader daemon threads, so callers must tolerate that.
      */
     public static int run(Request request, ProgressListener listener, Consumer<String> out)
             throws IOException, InterruptedException {

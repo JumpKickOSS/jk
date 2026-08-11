@@ -597,12 +597,27 @@ public final class BuildService {
             if (!distrust && !m.dirty()) continue;
             Path mdir = m.dir();
             Set<Path> prereqs = plan.edges().getOrDefault(mdir, Set.of());
+            // Local *compile* content only — resource drift must not unlock suite walls (core's
+            // "extra resources changed" was pricing ~792 tests while live only re-copied).
+            boolean localCompile = hasLocalCompileContent(m);
+            boolean resourceDrift = hasResourceDriftWork(m);
+            // Native/assembly in the forecast keeps run-tests full (cli ← engine test-dep) even
+            // when native itself is cascade-discounted below.
+            boolean keepFullTests = localCompile
+                    || hasHeavyPackagingTail(m)
+                    || m.steps().stream()
+                            .noneMatch(s -> (distrust || !s.cached()) && isCompileStepName(s.name()));
             List<String> running = new ArrayList<>();
+            int cascadeRecheck = 0;
             for (TaskForecast.Task s : m.steps()) {
                 if (!distrust && s.cached()) continue;
                 // Price material work only — bookkeeping steps (parse-build, stamps, …) are not
                 // cache hits but must not inflate ETA toward a full monorepo wall.
                 if (!distrust && TaskForecast.Module.isBookkeepingStep(s.name())) continue;
+                if (!distrust && shouldDiscountCascadeStep(s, localCompile, resourceDrift, keepFullTests)) {
+                    cascadeRecheck++;
+                    continue;
+                }
                 running.add(s.name());
             }
             // Rebuild with an empty step list still means "all work" — fall back to plan shape.
@@ -613,6 +628,12 @@ public final class BuildService {
                 BuildPlanner.appendDeclaredTails(builder, inputs);
                 for (cc.jumpkick.run.Task s : builder.build().steps()) running.add(s.name());
             }
+            if (running.isEmpty()) {
+                // Resource-only producer or pure cascade recheck — milliseconds, not suite walls.
+                int w = Math.max(EffortWeights.TOKEN, cascadeRecheck + (m.dirty() ? 1 : 0));
+                costs.add(EffortWeights.costOf(mdir, prereqs, w, 0));
+                continue;
+            }
             java.util.Map<String, Integer> counts = new java.util.HashMap<>();
             if (m.testCount() > 0) counts.put("run-tests", m.testCount());
             if (m.sourceCount() > 0) {
@@ -622,10 +643,127 @@ public final class BuildService {
             int classGuess = m.testCount() > 0 ? Math.max(1, m.testCount() / 3) : 0;
             // workers: 0 = auto (same as bare jk build -w omit)
             int testW = cc.jumpkick.test.TestWorkers.resolve(workers, classGuess, jobsBudget);
-            costs.add(EffortWeights.costFromRunningSteps(
-                    mdir, prereqs, running, metrics, timings, projectDirs, counts, testW));
+            EffortWeights.ModuleCost priced = EffortWeights.costFromRunningSteps(
+                    mdir, prereqs, running, metrics, timings, projectDirs, counts, testW);
+            if (cascadeRecheck > 0) {
+                priced = EffortWeights.costOf(
+                        mdir, prereqs, priced.weight() + cascadeRecheck, priced.testWeight());
+            }
+            costs.add(priced);
         }
         return costs;
+    }
+
+    /**
+     * Steps that should not contribute full historical walls to open-loop ETA. Cascade-forced
+     * compile/package/native and resource-only producers almost always action-cache hit for
+     * compile/test; billing suite walls for them was the multi-minute dogfood miss.
+     */
+    static boolean shouldDiscountCascadeStep(
+            TaskForecast.Task s, boolean localCompile, boolean resourceDrift, boolean keepFullTests) {
+        if (s == null || s.cached()) return false;
+        String name = s.name();
+        // Cascade-forced compile/package without local source edits.
+        if (!localCompile && isCascadeForcedStep(s) && isCompileOrPackageStep(name)) {
+            return true;
+        }
+        // Cascade-forced native ("rebuild · compile changed") without local compile — cli native
+        // often SKIPPED while tests still run (dogfood: priced ~34s native, actual SKIPPED).
+        if (!localCompile && isCascadeForcedStep(s) && "native-image".equals(name)) {
+            return true;
+        }
+        // Resource drift schedules copy/package only — never a full compile/test suite.
+        if (!localCompile && resourceDrift && (isCompileStepName(name) || "run-tests".equals(name))) {
+            return true;
+        }
+        // Pure cascade module: discount tests. Cli keeps tests when a heavy tail is forecast
+        // (test-dep on a dirty engine) even if native itself is discounted.
+        if (!localCompile && !keepFullTests && "run-tests".equals(name)) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * True when the module has real local compile content (sources/options/classpath) — not
+     * resource drift alone, and not a zero-source partial.
+     */
+    static boolean hasLocalCompileContent(TaskForecast.Module m) {
+        if (m == null || m.steps() == null) return false;
+        for (TaskForecast.Task s : m.steps()) {
+            if (s.cached() || !isCompileStepName(s.name())) continue;
+            String t = s.text() == null ? "" : s.text();
+            // "compile · 0 sources changed" is not material work.
+            if (t.contains("0 source")) continue;
+            if (s.status() == TaskForecast.Status.PARTIAL || s.status() == TaskForecast.Status.FULL) {
+                return true;
+            }
+            if (t.contains("source changed")
+                    || t.contains("sources")
+                    || t.contains("no incremental")
+                    || t.contains("classpath")
+                    || t.contains("options")
+                    || t.contains("not locked")
+                    || t.contains("jk.toml")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Local compile content or resource drift (tests / call sites that need either). */
+    static boolean hasLocalContentWork(TaskForecast.Module m) {
+        return hasLocalCompileContent(m) || hasResourceDriftWork(m);
+    }
+
+    /** copy-resources / package-jar dirtied by resource drift (not compile cascade). */
+    static boolean hasResourceDriftWork(TaskForecast.Module m) {
+        if (m == null || m.steps() == null) return false;
+        for (TaskForecast.Task s : m.steps()) {
+            if (s.cached()) continue;
+            if ("copy-resources".equals(s.name()) || "copy-test-resources".equals(s.name())) return true;
+            String t = s.text() == null ? "" : s.text();
+            if ("package-jar".equals(s.name()) && t.contains("resources changed")) return true;
+        }
+        return false;
+    }
+
+    /** Native / assembly / OCI tails — signal to keep full run-tests (cli-shaped test-dep). */
+    static boolean hasHeavyPackagingTail(TaskForecast.Module m) {
+        if (m == null || m.steps() == null) return false;
+        return m.steps().stream()
+                .anyMatch(s -> !s.cached()
+                        && ("native-image".equals(s.name())
+                                || "write-image".equals(s.name())
+                                || "package-assembly".equals(s.name())));
+    }
+
+    /**
+     * Forecast forced RUN because an upstream compile-scope sibling is dirty (action key still
+     * hashed the pre-rebuild jar). Live keys usually hit when the upstream jar is byte-identical.
+     */
+    static boolean isCascadeForcedStep(TaskForecast.Task s) {
+        if (s == null || s.cached()) return false;
+        String t = s.text() == null ? "" : s.text();
+        return t.contains("dependency changed")
+                || t.contains("main changed")
+                || t.contains("compile changed");
+    }
+
+    static boolean isCompileStepName(String name) {
+        if (name == null) return false;
+        return name.startsWith("compile-main")
+                || name.startsWith("compile-java")
+                || name.startsWith("compile-kotlin")
+                || name.startsWith("compile-groovy")
+                || name.startsWith("compile-test");
+    }
+
+    static boolean isCompileOrPackageStep(String name) {
+        if (name == null) return false;
+        return isCompileStepName(name)
+                || "package-jar".equals(name)
+                || "package-assembly".equals(name);
     }
 
     // =========================================================================
@@ -1076,20 +1214,12 @@ public final class BuildService {
         // (flatWeight(avgMs) round-trips with ×150) or residual/static units trained in that same
         // reference frame.
         BuildMetrics.Stats okHist = okHistory(entryDir, hist);
-        // Full rebuild / monorepo-scale dirty: never estimate *below* measured full-build walls.
-        // List-scheduling step averages can under-shoot (CPU contention, missing steps). Invocation
-        // history is ground truth for "jk build --redo takes ~2m30s". Also consult plain `build`
-        // full-dirty rows — organic 27-module runs are the same work as --redo.
-        // The 16-dirty threshold is deliberately ABSOLUTE, not workspace-relativethe
-        // floor source below is keyed by dirty count (`#dN`), so a wide-but-cheap incremental
-        // build is floored against other builds of ITS OWN shape, not against full-rebuild walls
-        // the constant only decides when the floor mechanism engages at all. `hist.dirtyModules`
-        // always equals costs.size here (historyShapeForCosts at every call site), so one
-        // condition suffices.
-        // Full rebuild / monorepo-scale dirty: floor against measured full-build walls when available.
-        // Do NOT hard-floor incremental builds to whole-invocation history — that pulls R0 to stale
-        // slow averages and inflates the open-loop countdown (e.g. 3.5m seed vs 1.5m actual).
-        boolean fullWork = hist.rebuild() || hist.dirtyModules() >= 16;
+        // Whole-build history floor only for true full rebuilds — not merely "many modules are
+        // dirty." Wide+shallow forecasts (cascade dirties 20+ modules but only 1–2 schedule real
+        // tests/native) used to hit dirtyModules>=16 and get floored to multi-minute full-rebuild
+        // walls (~40s over on dogfood when most run-tests SKIPPED). Require substantial scheduled
+        // weight breadth, or an explicit --force/--rebuild.
+        boolean fullWork = isFullWorkShape(hist, costs);
         boolean coldFull = fullWork && (okHist == null || okHist.count() == 0);
         int etaConcurrency = concurrency;
         if (coldFull && !serial && concurrency > 1) {
@@ -1123,6 +1253,40 @@ public final class BuildService {
         if (a == null || a.count() == 0) return b;
         if (b == null || b.count() == 0) return a;
         return a.avgMillis() >= b.avgMillis() ? a : b;
+    }
+
+    /**
+     * Whether to floor ETA against whole-build invocation history.
+     *
+     * <ul>
+     *   <li>{@code --force}/{@code --rebuild} — always (list-scheduling under-shoots contention)
+     *   <li>Otherwise: many dirty modules <em>and</em> several with substantial scheduled weight
+     *       (not bookkeeping-only cascade width)
+     * </ul>
+     *
+     * <p>Weight threshold ≈ 5s at {@link EffortWeights#MS_PER_WEIGHT} so token/parse modules do not
+     * count as "deep." Need ≥8 such modules so a 2-module test+native hot path does not inherit a
+     * 28-module full-rebuild floor.
+     */
+    static boolean isFullWorkShape(HistoryShape hist, List<EffortWeights.ModuleCost> costs) {
+        if (hist != null && hist.rebuild()) return true;
+        int dirty = hist == null ? 0 : hist.dirtyModules();
+        if (dirty < 16) return false;
+        return substantialModuleCount(costs) >= 8;
+    }
+
+    /**
+     * Modules whose scheduled weight exceeds ~5s wall ({@code MS_PER_WEIGHT × 34 ≈ 5.1s}). Token and
+     * bookkeeping-only costs sit far below this.
+     */
+    static int substantialModuleCount(List<EffortWeights.ModuleCost> costs) {
+        if (costs == null || costs.isEmpty()) return 0;
+        int thr = Math.max(10, 5_000 / EffortWeights.MS_PER_WEIGHT);
+        int n = 0;
+        for (EffortWeights.ModuleCost c : costs) {
+            if (c != null && c.weight() >= thr) n++;
+        }
+        return n;
     }
 
     /**

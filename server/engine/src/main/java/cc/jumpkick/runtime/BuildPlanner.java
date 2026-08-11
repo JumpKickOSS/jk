@@ -4128,9 +4128,30 @@ public final class BuildPlanner {
                                         .orElse("plugin")
                                 + " sources");
                     }
-                    int exit = cc.jumpkick.tool.NativeImageDriver.run(request, listener, ctx::output);
+                    // Capture Graal stdout/stderr for progress parsing + a durable report.
+                    // Console: only --verbose or a non-zero exit (happy path stays quiet).
+                    java.util.List<String> niLog =
+                            java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+                    int exit = cc.jumpkick.tool.NativeImageDriver.run(request, listener, niLog::add);
+                    Path niReport = layout.reportsDir().resolve("native-image.out");
+                    try {
+                        Files.createDirectories(niReport.getParent());
+                        String body = niLog.isEmpty() ? "" : String.join("\n", niLog) + "\n";
+                        Files.writeString(niReport, body);
+                    } catch (IOException ioe) {
+                        // Best-effort report; never fail the image over log write.
+                    }
+                    boolean showNiLog = SessionContext.current().verbose() || exit != 0;
+                    if (showNiLog) {
+                        for (String line : niLog) ctx.output(line);
+                    }
                     if (exit != 0) {
-                        ctx.error("native", "native-image exited " + exit);
+                        ctx.error(
+                                "native",
+                                "native-image exited " + exit
+                                        + (Files.isRegularFile(niReport)
+                                                ? " (full log: " + niReport + ")"
+                                                : ""));
                         throw new RuntimeException("native-image failed (exit " + exit + ")");
                     }
                     // The framework's args name their own output, inside its sources dir.
