@@ -547,7 +547,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
 
     /** Active strategy for tests/diagnostics. */
     HeaderProgressStrategy activeProgressStrategy() {
-        return progressMode.select(clockProgress, weightedProgress, remainingWorkMs);
+        return progressMode.select(clockProgress, weightedProgress, remainingWorkMs, residualRemainingMs);
     }
 
     ProgressBarMode progressMode() {
