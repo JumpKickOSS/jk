@@ -345,12 +345,15 @@ class CommandManagerTest {
         // Without residual: open-loop 38s seed at 10s elapsed → ~28s.
         String openLoop = TestAnsi.strip(cm.renderBuildPlanLines(120, 10_000).get(0));
         assertThat(openLoop).contains("ETA ~28s");
-        // Residual re-anchor at ~0 wall: 20s left → at 10s elapsed, ~10s remain.
+        // Same-second residual re-anchor is held by the 1s jitter buffer (still ~28s).
         cm.setBarResidualRemaining(20_000);
-        String mid = TestAnsi.strip(cm.renderBuildPlanLines(120, 10_000).get(0));
-        assertThat(mid).contains("ETA ~10s");
-        assertThat(mid).contains("+10s");
-        // Residual 0 → countdown freezes at 0s; count-up keeps wall elapsed.
+        String held = TestAnsi.strip(cm.renderBuildPlanLines(120, 10_000).get(0));
+        assertThat(held).contains("ETA ~28s");
+        // Next whole second samples the latest residual: 20s re-anchor at ~0 → ~9s at 11s elapsed.
+        String mid = TestAnsi.strip(cm.renderBuildPlanLines(120, 11_000).get(0));
+        assertThat(mid).contains("ETA ~9s");
+        assertThat(mid).contains("+11s");
+        // Residual 0 snaps to 0s immediately (end on time — no 1s hold on zero).
         cm.setBarResidualRemaining(0);
         String done = TestAnsi.strip(cm.renderBuildPlanLines(120, 40_000).get(0));
         assertThat(done).contains("ETA 0s");
@@ -363,7 +366,7 @@ class CommandManagerTest {
         cm.nerdfont = false;
         cm.setEtaEstimate(100_000); // R0 = 100s
         cm.setModuleProgress(1, 3);
-        // Residual re-anchor near t=0 with 20s left (work finishing early).
+        // Residual re-anchor near t=0 with 20s left (work finishing early). First paint samples it.
         // Open-loop R0 at 10s would still show ~90s; residual-anchored shows ~10s.
         cm.setBarResidualRemaining(20_000);
         String header = TestAnsi.strip(cm.renderBuildPlanLines(120, 10_000).get(0));
@@ -372,6 +375,27 @@ class CommandManagerTest {
         // Bar also speeds up from residual (raw residual, not wall-decayed).
         long[] bar = cm.displayBar(10_000);
         assertThat(bar[0]).isEqualTo(333); // 10/(10+20)
+    }
+
+    @Test
+    void countdown_jitter_buffer_samples_latest_target_once_per_second() {
+        // Residual may thrash several times inside one whole second; the painted face holds the
+        // first sample for that second, then commits the latest target on the next elapsedSec.
+        var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdfont = false;
+        cm.setEtaEstimate(60_000); // R0 = 60s
+        // First paint at +4s samples open-loop ~56s.
+        assertThat(TestAnsi.strip(cm.renderBuildPlanLines(120, 4_000).get(0))).contains("ETA ~56s");
+        // Three residual re-anchors inside the same second — face must not thrash.
+        cm.setBarResidualRemaining(40_000);
+        cm.setBarResidualRemaining(25_000);
+        cm.setBarResidualRemaining(12_000);
+        assertThat(TestAnsi.strip(cm.renderBuildPlanLines(120, 4_100).get(0))).contains("ETA ~56s");
+        assertThat(TestAnsi.strip(cm.renderBuildPlanLines(120, 4_900).get(0))).contains("ETA ~56s");
+        // Next second samples the latest residual (12s at ~0 wall → ~7s at +5s).
+        assertThat(TestAnsi.strip(cm.renderBuildPlanLines(120, 5_000).get(0))).contains("ETA ~7s");
+        // Open-loop decay of that residual on the following second (no new residual).
+        assertThat(TestAnsi.strip(cm.renderBuildPlanLines(120, 6_000).get(0))).contains("ETA ~6s");
     }
 
     @Test

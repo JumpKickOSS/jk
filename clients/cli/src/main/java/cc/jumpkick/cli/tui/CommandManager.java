@@ -3,12 +3,12 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.runtime.progress.ClockProgressStrategy;
 import cc.jumpkick.runtime.progress.HeaderProgressState;
 import cc.jumpkick.runtime.progress.HeaderProgressStrategy;
 import cc.jumpkick.runtime.progress.ProgressBarMode;
 import cc.jumpkick.runtime.progress.WeightedProgressStrategy;
-import cc.jumpkick.config.GlobalConfig;
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
@@ -133,16 +133,28 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      */
     private long residualSetAtElapsedMs;
     /**
+     * Jitter buffer for the painted countdown face: residual may re-anchor many times inside one
+     * whole second, but the header only commits a new remaining figure when {@link
+     * #countdownDisplayElapsedSec} advances (or on first paint / seed / snap-to-zero). Holds the
+     * last painted remaining seconds.
+     */
+    private long countdownDisplayRemainingSec;
+    /**
+     * Whole-second elapsed for which {@link #countdownDisplayRemainingSec} was sampled ({@code -1}
+     * = never painted — next planHeader samples the latest target immediately).
+     */
+    private long countdownDisplayElapsedSec = -1;
+    /**
      * True once execute has begun — the explain seed path ({@link #setRemainingWorkEstimate}) no
      * longer replaces R0. Residual re-anchors for display still apply.
      */
     private boolean openLoopLocked;
     /** Run-wide total for notifications: elapsed-at-seed + R0. 0 when never seeded. */
     private long etaEstimateMs;
+
     private final ProgressBarMode progressMode = ProgressBarMode.fromEnvironment();
     /** One monotonic floor across the strategy pair — the AUTO takeover must not repaint backwards. */
-    private final cc.jumpkick.runtime.progress.SharedPeak displayedPeak =
-            new cc.jumpkick.runtime.progress.SharedPeak();
+    private final cc.jumpkick.runtime.progress.SharedPeak displayedPeak = new cc.jumpkick.runtime.progress.SharedPeak();
 
     private final ClockProgressStrategy clockProgress = new ClockProgressStrategy(displayedPeak);
     private final WeightedProgressStrategy weightedProgress = new WeightedProgressStrategy(displayedPeak);
@@ -406,6 +418,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             // until live RemainingWork updates arrive (provisional → post-forecast).
             residualRemainingMs = rem;
             residualSetAtElapsedMs = elapsed;
+            // Force the countdown face to re-sample on next paint (seed is intentional, not jitter).
+            countdownDisplayElapsedSec = -1;
             // R0 is enough to drive the adaptive bar (drop preflight solve label).
             if (rem > 0) this.solveLabel = "";
         }
@@ -1748,9 +1762,10 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         }
         // After the bar's percent: a bright-black middle dot, then the run-wide build clock.
         // Seeded: dim italic "ETA " + mid-gray "~remaining" · dim "+elapsed". Residual re-anchors
-        // remaining so the countdown eases into R(t) and freezes at dim "0s" with residual → 0;
-        // count-up stays dim for {@link #COUNT_UP_PROMOTE_GRACE_MS} then mid-gray. No seed: single
-        // yellow "+elapsed" count-up.
+        // the target remaining so the countdown eases into R(t); a 1s jitter buffer commits that
+        // target at most once per whole-second tick so multi residual emits do not thrash the face.
+        // Freezes at dim "0s" with residual → 0 (snap, no hold); count-up stays dim for {@link
+        // #COUNT_UP_PROMOTE_GRACE_MS} then mid-gray. No seed: single yellow "+elapsed" count-up.
         //
         // Both faces are derived from the same whole-second elapsed counter so they tick on the
         // same paint (flooring remaining-ms and elapsed-ms independently desynced them by the
@@ -1759,7 +1774,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         long elapsedSec = Math.max(0L, elapsedMillis) / 1000L;
         // Dual clock when we have ever received a remaining-work seed (including residual 0 done).
         // Prefer residual re-anchor (eases into R(t), ends on time); else frozen R0 − elapsed.
-        // Deadline = setAt + R so remainingSec and elapsedSec share whole-second boundaries.
+        // Deadline = setAt + R so target remainingSec and elapsedSec share whole-second boundaries.
         long remainingSec;
         boolean seeded;
         long overrunMs = 0;
@@ -1782,12 +1797,22 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             }
             if (seeded) {
                 long deadlineMs = anchorAt + anchorRem;
-                remainingSec = Math.max(0L, deadlineMs / 1000L - elapsedSec);
+                long targetSec = Math.max(0L, deadlineMs / 1000L - elapsedSec);
+                // Jitter buffer: sample latest target at most once per whole-second elapsed tick.
+                // Same-second residual re-anchors update the private target only; the painted face
+                // holds until elapsedSec advances (or first paint / seed / snap-to-zero).
+                if (countdownDisplayElapsedSec < 0 || elapsedSec != countdownDisplayElapsedSec || targetSec == 0) {
+                    countdownDisplayRemainingSec = targetSec;
+                    countdownDisplayElapsedSec = elapsedSec;
+                }
+                remainingSec = countdownDisplayRemainingSec;
                 if (remainingSec <= 0) {
+                    // Overrun from the true residual/R0 deadline (not the held face).
                     overrunMs = Math.max(0L, elapsedMillis - deadlineMs);
                 }
             } else {
                 remainingSec = 0;
+                countdownDisplayElapsedSec = -1;
             }
         }
         if (seeded) {

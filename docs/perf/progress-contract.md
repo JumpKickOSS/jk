@@ -25,9 +25,12 @@ weight slices = fallback when R0 unknown
 ```
 
 **Countdown and bar share residual.** Seed path freezes R0 once execute starts (provisional
-eta thrash guard; seed quality KPI stays honest). Mid-run residual re-anchors the painted
+eta thrash guard; seed quality KPI stays honest). Mid-run residual re-anchors the *target*
 countdown so remaining eases into R(t) and hits 0 with residual → 0 (always end on time).
-Between residual samples the client open-loop-decays the last re-anchor by wall time.
+Between residual samples the client open-loop-decays the last re-anchor by wall time. A
+**1s jitter buffer** commits the painted remaining face at most once per whole-second
+elapsed tick (sample latest target when `elapsedSec` advances; hold within the second;
+snap to `0s` immediately).
 
 **Bar** uses residual: when work finishes faster than R0, R(t) shrinks and the bar speeds up;
 when residual is larger, it slows. Formula `elapsed / (elapsed + residual)` hits ~100% as
