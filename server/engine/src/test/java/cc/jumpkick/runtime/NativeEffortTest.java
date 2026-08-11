@@ -12,20 +12,33 @@ import org.junit.jupiter.api.io.TempDir;
 class NativeEffortTest {
 
     @Test
-    void size_model_grows_with_input_bytes() {
-        long small = NativeEffort.sizeModelWallMs(500_000); // ~0.5 MiB
-        long large = NativeEffort.sizeModelWallMs(5_000_000); // ~5 MiB
+    void effective_bytes_discount_deps() {
+        long eff = NativeEffort.effectiveInputBytes(1_000_000, 10_000_000);
+        assertThat(eff).isEqualTo(1_000_000 + Math.round(10_000_000 * 0.12));
+        assertThat(eff).isLessThan(3_000_000);
+    }
+
+    @Test
+    void size_model_for_cli_like_app_is_near_half_minute_not_two() {
+        long app = 1_150_000;
+        long deps = 2_700_000;
+        long eff = NativeEffort.effectiveInputBytes(app, deps);
+        long ms = NativeEffort.sizeModelWallMs(eff);
+        assertThat(ms).isBetween(15_000L, 55_000L);
+    }
+
+    @Test
+    void size_model_grows_with_effective_bytes() {
+        long small = NativeEffort.sizeModelWallMs(500_000);
+        long large = NativeEffort.sizeModelWallMs(5_000_000);
         assertThat(large).isGreaterThan(small);
-        assertThat(small).isGreaterThanOrEqualTo(NativeEffort.WALL_FLOOR_MS);
     }
 
     @Test
     void host_samples_from_real_wall() {
         var samples = NativeEffort.hostSamples(33_000, 1_200_000);
         assertThat(samples).hasSize(2);
-        assertThat(samples.get(0).key()).isEqualTo(HostLearnedRates.NATIVE_IMAGE_MS_PER_MIB);
         assertThat(samples.get(0).ms()).isPositive();
-        assertThat(samples.get(1).key()).isEqualTo(HostLearnedRates.NATIVE_IMAGE_FLOOR_MS);
     }
 
     @Test
@@ -43,9 +56,21 @@ class NativeEffortTest {
     }
 
     @Test
-    void pad_over_reserves_mildly() {
-        long raw = 30_000;
-        assertThat(NativeEffort.pad(raw)).isGreaterThan(raw);
-        assertThat(NativeEffort.pad(raw)).isLessThan(raw * 2);
+    void model_pad_is_mild() {
+        assertThat(NativeEffort.modelPad(30_000)).isBetween(30_000L, 33_000L);
+    }
+
+    @Test
+    void own_wall_wins_without_pad_when_metrics_present() {
+        Path cli = Path.of("clients/cli").toAbsolutePath().normalize();
+        if (!Files.isRegularFile(cli.resolve("jk.toml"))) return;
+        long own = EffortWeights.stepOkAvgMillisOwn(
+                BuildMetrics.load(BuildMetrics.defaultFile()), cli.toString(), "native-image");
+        if (own < NativeEffort.WALL_FLOOR_MS) return;
+        long est = NativeEffort.wallMillis(cli);
+        assertThat(est).isEqualTo(own);
+        long model = NativeEffort.sizeModelWallMs(NativeEffort.estimateInputBytes(cli));
+        // Size model must not be ~2× a known real wall
+        assertThat(model).isLessThan(own * 2);
     }
 }

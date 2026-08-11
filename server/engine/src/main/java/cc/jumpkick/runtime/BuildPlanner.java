@@ -4075,19 +4075,19 @@ public final class BuildPlanner {
                         return;
                     }
 
-                    // Closed-world size for ETA learning (and optional shrink-only reweight later).
-                    long inputBytes = NativeEffort.sumExistingBytes(classpath);
+                    // Effective input size (app full + discounted deps) for learning / optional reweight.
+                    long inputBytes = NativeEffort.estimateInputBytes(dir);
+                    if (inputBytes < 1024) inputBytes = NativeEffort.sumExistingBytes(classpath);
                     NativeEffort.recordSuccessInputBytes(dir, inputBytes);
-                    // Size-aware reservation (own wall / size model); shrink if over-reserved only.
+                    // Size-aware reservation; reweight may shrink only (never grow the bar).
                     int sized = NativeEffort.weight(dir);
                     try {
                         ctx.reweight(sized);
                     } catch (RuntimeException ignored) {
-                        // reweight is best-effort
                     }
                     ctx.label("native-image " + out.getFileName()
                             + (inputBytes > 0
-                                    ? " · " + Math.max(1, inputBytes / (1024 * 1024)) + " MiB input"
+                                    ? " · ~" + Math.max(1, inputBytes / (1024 * 1024)) + " MiB eff"
                                     : ""));
 
                     // Progress listener: parse [N/M] headers from native-image stdout.

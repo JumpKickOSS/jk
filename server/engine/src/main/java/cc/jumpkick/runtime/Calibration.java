@@ -76,10 +76,11 @@ public final class Calibration {
     static final long BASELINE_PACKAGE_JAR_MS = 90;
 
     /**
-     * Cold Graal {@code native-image} wall on the reference host (typical app binary, not Hello
-     * World). Prefer slight high — under-weighting makes the bar finish minutes early.
+     * Cold Graal {@code native-image} wall on the reference host for a typical ~1 MiB app when
+     * size is unknown. Prefer {@link NativeEffort} size model when classpath bytes are known.
+     * Kept nearer dogfood reality (~35s) than the old 90s flat (which double-counted with size).
      */
-    static final long BASELINE_NATIVE_IMAGE_MS = 90_000;
+    static final long BASELINE_NATIVE_IMAGE_MS = 40_000;
 
     /** Cold OCI image build wall (Jib-style) on the reference host. */
     static final long BASELINE_OCI_IMAGE_MS = 30_000;
