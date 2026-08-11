@@ -328,6 +328,9 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             r.state = RowState.ACTIVE;
             this.target = module;
             touchPhaseStart(phaseKey);
+            // First module task starting = execute has begun: freeze the open-loop seed so
+            // mid-run rewrites cannot paper over a bad estimate (JK-1806).
+            if (remainingWorkMs >= 0) openLoopLocked = true;
         }
     }
 
@@ -359,9 +362,10 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
 
     /**
      * Seed the open-loop countdown with remaining wall work {@code R0} (ms). Same figure as
-     * {@code jk explain}. After execute starts ({@link #setModuleProgress}), further updates are
-     * ignored so the clock is pure {@code R0 − elapsed} — residual rewrites cannot paper over a
-     * bad seed. Pre-execute re-seeds (post-prepare) are still allowed while unlocked.
+     * {@code jk explain}. After execute starts (first {@link #stepRunning} or a completed module in
+     * {@link #setModuleProgress}), further updates are ignored so the clock is pure
+     * {@code R0 − elapsed} — residual rewrites cannot paper over a bad seed. Pre-execute re-seeds
+     * (post-forecast, post-prepare) replace a provisional lock-window seed while unlocked.
      */
     public void setEtaEstimate(long remainingOrTotalMillis) {
         setRemainingWorkEstimate(remainingOrTotalMillis);
@@ -427,8 +431,10 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         synchronized (lock) {
             this.modulesComplete = Math.max(0, complete);
             this.modulesTotal = Math.max(0, total);
-            // First module activity freezes the open-loop seed (R0 − elapsed).
-            if ((this.modulesComplete > 0 || this.modulesTotal > 0) && remainingWorkMs >= 0) {
+            // A completed module means execute is underway — freeze the open-loop seed.
+            // modulesTotal alone arrives with the work model *before* the engine's real
+            // post-forecast seed (`eta` line), so it must not lock (JK-1806).
+            if (this.modulesComplete > 0 && remainingWorkMs >= 0) {
                 openLoopLocked = true;
             }
         }
@@ -518,7 +524,6 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             }
             if (this.denominator > 0 || st.hasR0()) {
                 this.solveLabel = "";
-                if (st.hasR0()) openLoopLocked = true;
             }
             if (animate && !Theme.active().isAnsi() && d[1] > 0) {
                 emitPlainProgressDecades(d[0], d[1]);

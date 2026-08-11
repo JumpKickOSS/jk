@@ -352,6 +352,24 @@ class CommandManagerTest {
     }
 
     @Test
+    void provisional_lock_window_seed_is_replaced_by_the_real_forecast_seed() {
+        // Stale-lock builds get a coarse provisional ETA before preflight. Preflight progress
+        // events (clock strategy active, work model published) must NOT freeze it: the real
+        // post-forecast seed replaces it, and only execute activity locks (JK-1806).
+        var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdfont = false;
+        cm.setEtaEstimate(138_000); // provisional: lockEta + history prior
+        cm.progress(100, 1000); // preflight band workspace-progress with R0 seeded
+        cm.setModuleProgress(0, 4); // work model publishes modulesTotal before the real seed
+        cm.setEtaEstimate(26_000); // real post-forecast seed must win
+        assertThat(TestAnsi.strip(cm.renderBuildPlanLines(120, 6_000).get(0))).contains("ETA ~20s");
+        // First module task starting freezes the seed; later rewrites are ignored.
+        cm.stepRunning("app", "compile", "compile");
+        cm.setEtaEstimate(90_000);
+        assertThat(TestAnsi.strip(cm.renderBuildPlanLines(120, 6_000).get(0))).contains("ETA ~20s");
+    }
+
+    @Test
     void cold_count_up_is_run_wide_until_a_remaining_seed_arrives() {
         var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
