@@ -472,7 +472,11 @@ public final class TestRunner implements Plugin {
                 } else if (a.equals("--fail-fast")) {
                     // accepted but currently a no-op — wired in a follow-up
                 } else {
-                    throw new IllegalArgumentException("unknown arg: " + a);
+                    // A stale installed jk-test-runner driven by a newer engine lands here —
+                    // name the likely cause instead of a bare unknown-arg (JK-1825).
+                    throw new IllegalArgumentException("unknown arg: " + a
+                            + " (engine/test-runner version mismatch? reinstall jk so jk-test-runner"
+                            + " matches the engine)");
                 }
             }
             if (scan == null) {

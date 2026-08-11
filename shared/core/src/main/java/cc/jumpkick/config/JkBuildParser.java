@@ -1869,6 +1869,18 @@ public final class JkBuildParser {
         TomlTable build = root.getTable("build");
         TomlTable test = root.getTable("test");
         TomlTable resolve = root.getTable("resolve");
+        // Dead/renamed [test] keys fail loudly: silently ignoring default-exclude-tags would run
+        // the slow/integration tests the config meant to exclude with no signal (JK-1825).
+        if (test != null) {
+            if (test.contains("default-exclude-tags")) {
+                throw new JkBuildParseException(
+                        "[test].default-exclude-tags was renamed to exclude-tags "
+                                + "(profiles and --exclude-tags replace it per run; `exclude-tags = []` clears)");
+            }
+            if (test.contains("include-tag") || test.contains("exclude-tag")) {
+                throw new JkBuildParseException("[test] tag keys are plural: include-tags / exclude-tags");
+            }
+        }
         PlatformPolicy platformPolicy = PlatformPolicy.ENFORCED;
         cc.jumpkick.model.UnmappedPolicy unmappedPolicy = cc.jumpkick.model.UnmappedPolicy.MEDIATE;
         if (resolve != null && resolve.contains("platform")) {
