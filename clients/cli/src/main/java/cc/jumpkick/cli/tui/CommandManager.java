@@ -1765,7 +1765,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         // the target remaining so the countdown eases into R(t); a 1s jitter buffer commits that
         // target at most once per whole-second tick so multi residual emits do not thrash the face.
         // Freezes at dim "0s" with residual → 0 (snap, no hold); count-up stays dim for {@link
-        // #COUNT_UP_PROMOTE_GRACE_MS} then mid-gray. No seed: single yellow "+elapsed" count-up.
+        // #COUNT_UP_PROMOTE_GRACE_MS} then mid-gray. No seed: single mid-gray "+elapsed" count-up
+        // (same shade as the seeded countdown face).
         //
         // Both faces are derived from the same whole-second elapsed counter so they tick on the
         // same paint (flooring remaining-ms and elapsed-ms independently desynced them by the
@@ -1827,7 +1828,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             AttributedStyle up = remainingSec <= 0 && overrunMs >= COUNT_UP_PROMOTE_GRACE_MS ? t.midGray() : dim;
             h.append(Theme.colorize("+" + fmtClockSeconds(elapsedSec), up));
         } else {
-            h.append(Theme.colorize("+" + fmtClockSeconds(elapsedSec), t.warning()));
+            h.append(Theme.colorize("+" + fmtClockSeconds(elapsedSec), t.midGray()));
         }
         return h.toString();
     }

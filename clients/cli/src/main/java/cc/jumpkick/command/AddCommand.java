@@ -433,7 +433,7 @@ public final class AddCommand implements CliCommand {
             if (firstColon < 0) {
                 // Bare short name, optionally with an `@version` suffix
                 // (e.g. `jackson3-core` or `jackson3-core@3.1.0`). The layered
-                // library catalog (project + user + downloaded + bundled) supplies
+                // library catalog (workspace jk-libs.toml + global + bundled) supplies
                 // group + artifact for curated names. The version comes from
                 // --ver, else the `@version` suffix (caret-floating, like the
                 // group:artifact@version coord form), else defaults to floating
@@ -447,7 +447,8 @@ public final class AddCommand implements CliCommand {
                     throw new IllegalArgumentException("empty version after '@' in: " + coord);
                 }
                 String library = nonBlank(libraryFlag, libraryKey);
-                var catalog = cc.jumpkick.library.LibraryCatalog.layered(CliOutput.stderr()::println);
+                var catalog = cc.jumpkick.library.LibraryCatalog.forProject(
+                        Path.of(".").toAbsolutePath().normalize(), CliOutput.stderr()::println);
                 var catalogHit = catalog.lookup(libraryKey);
                 String group = nonBlank(
                         groupFlag,

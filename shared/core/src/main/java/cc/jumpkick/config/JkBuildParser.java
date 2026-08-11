@@ -99,10 +99,14 @@ public final class JkBuildParser {
         if (cached != null && cached.size() == attrs.size() && cached.modified().equals(attrs.lastModifiedTime())) {
             return cached.value();
         }
-        JkBuild parsed = parse(
-                Files.readString(file),
-                LibraryCatalog.layered(),
-                file.toAbsolutePath().getParent());
+        Path moduleDir = file.toAbsolutePath().normalize().getParent();
+        LibraryCatalog catalog;
+        try {
+            catalog = LibraryCatalog.forProject(moduleDir);
+        } catch (IllegalStateException e) {
+            throw new JkBuildParseException(e.getMessage(), e);
+        }
+        JkBuild parsed = parse(Files.readString(file), catalog, moduleDir);
         PARSE_CACHE.put(key, new Cached(attrs.size(), attrs.lastModifiedTime(), parsed));
         return parsed;
     }
@@ -140,9 +144,9 @@ public final class JkBuildParser {
     }
 
     /**
-     * Test seam: parse against a synthetic library catalog instead of the default layered one. The
-     * manifest's own {@code [libraries]} table is still layered on top via {@link
-     * LibraryCatalog#withProjectOverrides}.
+     * Test seam: parse against a synthetic library catalog instead of the default layered one.
+     * Project short names come from {@code jk-libs.toml} at the workspace root when parsing from
+     * disk; string parses use {@code catalog} as-is.
      */
     public static JkBuild parse(String toml, LibraryCatalog catalog) {
         return parse(toml, catalog, null);
@@ -150,7 +154,8 @@ public final class JkBuildParser {
 
     /**
      * Full parse. {@code moduleDir} may be null (string parses); when set, loads third-party
-     * manifests from {@link PluginDescriptorStore}.
+     * manifests from {@link PluginDescriptorStore}. Short-name resolution uses the catalog the
+     * caller supplied (disk parse passes {@link LibraryCatalog#forProject}).
      */
     private static JkBuild parse(String toml, LibraryCatalog catalog, Path moduleDir) {
         Objects.requireNonNull(toml, "toml");
@@ -164,10 +169,11 @@ public final class JkBuildParser {
         // the message names the position rather than surfacing later as a bewildering "no such
         // version".
         Interpolation.guard(result);
+        rejectRemovedCatalogConfig(result);
         // Workspace roots keep concrete [project] defaults; members may omit fields and inherit.
         boolean workspaceRoot = hasWorkspaceModules(result);
         JkBuild.Project project = parseProject(result, workspaceRoot);
-        LibraryCatalog effective = catalogBase(result, catalog).withProjectOverrides(parseProjectLibraries(result));
+        LibraryCatalog effective = catalog;
         Workspace workspace = parseWorkspace(result, effective);
         JkBuild.Dependencies deps = parseDependencies(result, workspace, effective);
         List<RepositorySpec> repos = parseRepositories(result);
@@ -353,19 +359,25 @@ public final class JkBuildParser {
 
     /**
      * Parse the optional {@code [format]} table — the styles {@code jk format} uses. {@code style} is
-     * a cross-language preset; {@code java} / {@code kotlin} are per-language overrides. All are
-     * plain strings, validated downstream by {@code jk format} (the model + parser stay
-     * tool-agnostic). Absent → EMPTY.
+     * a cross-language preset; {@code java} / {@code kotlin} are per-language overrides. Boolean
+     * hygiene toggles ({@code optimize-imports}, {@code import-order}, {@code
+     * remove-unused-imports}) are tri-state: absent → null (built-in default). Absent table → EMPTY.
      */
     private static JkBuild.FormatConfig parseFormat(TomlTable root) {
         TomlTable format = root.getTable("format");
         if (format == null) return JkBuild.FormatConfig.EMPTY;
-        Boolean optimizeImports = format.contains("optimize-imports") ? format.getBoolean("optimize-imports") : null;
         return new JkBuild.FormatConfig(
                 stringOrThrow(format, "style", "format.style"),
                 stringOrThrow(format, "java", "format.java"),
                 stringOrThrow(format, "kotlin", "format.kotlin"),
-                optimizeImports);
+                optionalBool(format, "optimize-imports"),
+                optionalBool(format, "import-order"),
+                optionalBool(format, "remove-unused-imports"));
+    }
+
+    /** Present boolean key → its value; absent → null (caller applies the default). */
+    private static Boolean optionalBool(TomlTable table, String key) {
+        return table.contains(key) ? table.getBoolean(key) : null;
     }
 
     /** Read an optional string key; present-but-non-string is a parse error; absent → null. */
@@ -401,17 +413,20 @@ public final class JkBuildParser {
     }
 
     /**
-     * Parse the optional top-level {@code [libraries]} table. Empty map when absent. Validated
-     * through {@link LibraryCatalog#parseLibrariesTable} so the schema matches the bundled and user
-     * files.
+     * Reject removed catalog knobs. Project short names live in workspace-root {@code jk-libs.toml};
+     * the system catalog is always global → bundled (no host-local file, no {@code catalog=} pin).
      */
-    private static java.util.Map<String, LibraryCatalog.Module> parseProjectLibraries(TomlTable root) {
-        TomlTable libraries = root.getTable("libraries");
-        if (libraries == null) return java.util.Map.of();
-        try {
-            return LibraryCatalog.parseLibrariesTable(libraries, "jk.toml");
-        } catch (IllegalStateException e) {
-            throw new JkBuildParseException(e.getMessage(), e);
+    private static void rejectRemovedCatalogConfig(TomlTable root) {
+        if (root.contains("catalog")) {
+            throw new JkBuildParseException("catalog = … was removed — short names always resolve through the system "
+                    + "catalog (global + bundled) plus optional workspace-root "
+                    + LibraryCatalog.PROJECT_FILE);
+        }
+        if (root.getTable("libraries") != null) {
+            throw new JkBuildParseException(
+                    "[libraries] in jk.toml was removed — put short-name → group:artifact entries in "
+                            + LibraryCatalog.PROJECT_FILE
+                            + " at the workspace root (standalone: project root)");
         }
     }
 
@@ -901,27 +916,6 @@ public final class JkBuildParser {
     }
 
     /** Unknown short-name error, with catalog "did you mean" suggestions when available. */
-    /**
-     * Top-level {@code catalog = "bundled" | "layered"} (default layered). {@code bundled} pins
-     * short-name resolution to the catalog shipped inside this jk build, immune to
-     * {@code ~/.jk/libs.toml} and the downloaded registry mirror — jk's own manifests use it so a
-     * machine-local catalog entry can never repoint self-host dependencies at re-lock. The
-     * manifest's own {@code [libraries]} table still layers on top either way.
-     */
-    private static LibraryCatalog catalogBase(TomlParseResult result, LibraryCatalog fallback) {
-        if (!result.contains("catalog")) return fallback;
-        if (!result.isString("catalog")) {
-            throw new JkBuildParseException("catalog must be a string: \"bundled\" or \"layered\"");
-        }
-        String mode = result.getString("catalog");
-        return switch (mode) {
-            case "bundled" -> LibraryCatalog.bundled();
-            case "layered" -> fallback;
-            default ->
-                throw new JkBuildParseException("catalog must be \"bundled\" or \"layered\", got \"" + mode + "\"");
-        };
-    }
-
     private static String unknownLibraryMessage(String displayPath, String name, LibraryCatalog catalog) {
         StringBuilder msg = new StringBuilder(displayPath)
                 .append(" — unknown short name `")
@@ -1747,7 +1741,6 @@ public final class JkBuildParser {
                 "format",
                 "resolve",
                 "variants",
-                "libraries",
                 "jvm",
                 "deny",
                 "config",

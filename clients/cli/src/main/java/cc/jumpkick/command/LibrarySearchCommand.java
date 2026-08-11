@@ -62,7 +62,7 @@ public final class LibrarySearchCommand implements CliCommand {
         Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
         GlobalOptions global = GlobalOptions.from(in);
 
-        LibraryCatalog catalog = LibraryCatalog.layered(CliOutput.stderr()::println);
+        LibraryCatalog catalog = LibraryCatalog.forProject(global.workingDir(), CliOutput.stderr()::println);
         Path cacheRoot = cacheDir != null ? cacheDir : JkDirs.cache();
         List<String> lowerTerms =
                 terms.stream().map(t -> t.toLowerCase(Locale.ROOT)).toList();

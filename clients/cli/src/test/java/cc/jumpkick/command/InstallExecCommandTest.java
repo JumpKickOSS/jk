@@ -222,15 +222,14 @@ class InstallExecCommandTest {
     }
 
     @Test
-    void tool_install_catalog_short_name_resolves_via_libs_toml(@TempDir Path tempDir) throws Exception {
+    void tool_install_catalog_short_name_resolves_via_global_libs(@TempDir Path tempDir) throws Exception {
         serveMetadata("com.example", "widget-cli", "1.0.0");
         servePom("com.example", "widget-cli", "1.0.0");
         serveJar("com.example", "widget-cli", "1.0.0", "com.example.Main");
 
-        // The user-local catalog layer (JK_HOME is redirected per-module by the build).
-        Path jkHome = Path.of(System.getenv("JK_HOME"));
-        Files.createDirectories(jkHome);
-        Path libsToml = jkHome.resolve("libs.toml");
+        // System global catalog layer (store/libs.global.toml — JK_HOME is redirected in tests).
+        Path libsToml = cc.jumpkick.library.LibraryCatalog.downloadedFile();
+        Files.createDirectories(libsToml.getParent());
         Files.writeString(libsToml, "[libraries]\ntesttool-fixture = \"com.example:widget-cli\"\n");
         try {
             Path bin = tempDir.resolve("bin");

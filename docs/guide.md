@@ -901,10 +901,29 @@ form of a clear. When no layer speaks, each workspace module's own `[test]` filt
 | **Java lint** (analysis) | Documented **Checkstyle recipe** via `jk tool install` (ticket-1033) |
 | **Kotlin analysis** | **Deferred** — use `jk format` for style; detekt later as the same recipe pattern |
 
-`jk format` also optimizes imports by default (shortens FQCNs, adds the imports): opt out per
-run with `--no-optimize-imports`, per project with `[format] optimize-imports = false`, or via
-`JK_FORMAT_OPTIMIZE_IMPORTS=false`. `--rewrite-config <file>` (or `JK_FORMAT_REWRITE_CONFIG`)
-points at an OpenRewrite YAML that overrides/extends the recipes.
+`jk format` optimizes imports by default (shortens FQCNs, adds the imports) and runs Spotless
+**import order** + **remove unused imports** before the style formatter. Preferred style is
+short names + import statements — FQCNs only when there is a real collision.
+
+| Toggle | CLI | `jk.toml` `[format]` | Env | Default |
+|---|---|---|---|---|
+| Shorten FQCNs | `--optimize-imports` / `--no-optimize-imports` | `optimize-imports` | `JK_FORMAT_OPTIMIZE_IMPORTS` | on |
+| Sort imports | `--import-order` / `--no-import-order` | `import-order` | `JK_FORMAT_IMPORT_ORDER` | on |
+| Drop unused imports | `--remove-unused-imports` / `--no-remove-unused-imports` | `remove-unused-imports` | `JK_FORMAT_REMOVE_UNUSED_IMPORTS` | on |
+
+Precedence: CLI flag → env var → `[format]` → default. `--rewrite-config <file>` (or
+`JK_FORMAT_REWRITE_CONFIG`) points at an OpenRewrite YAML that overrides/extends the recipes;
+supplying it also enables optimize-imports when nothing else said otherwise.
+
+```toml
+[format]
+style = "standard"              # optional alias → palantir + kotlinlang
+# java = "google"               # per-language override
+# kotlin = "meta"
+optimize-imports = true         # OpenRewrite FQCN shorten (default)
+import-order = true             # Spotless importOrder (default)
+remove-unused-imports = true    # Spotless removeUnusedImports (default)
+```
 
 ```bash
 jk format

@@ -48,6 +48,8 @@ final class FormatStamp {
             String kotlinStyle,
             String kotlinVersion,
             boolean optimizeImports,
+            boolean importOrder,
+            boolean removeUnusedImports,
             String workerJarSha,
             Path rewriteConfigFile) {
         String rewriteHash = "none";
@@ -66,6 +68,8 @@ final class FormatStamp {
                 "kotlin-style:" + kotlinStyle,
                 "kotlin-version:" + kotlinVersion,
                 "optimize-imports:" + optimizeImports,
+                "import-order:" + importOrder,
+                "remove-unused-imports:" + removeUnusedImports,
                 "worker-sha:" + workerJarSha,
                 "rewrite-config-hash:" + rewriteHash);
     }

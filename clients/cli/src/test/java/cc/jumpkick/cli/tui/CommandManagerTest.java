@@ -197,7 +197,7 @@ class CommandManagerTest {
         cm.nerdfont = false;
         cm.progress(50, 100);
 
-        // No estimate set → single yellow count-up from construction.
+        // No estimate set → single mid-gray count-up from construction.
         String up = cm.renderBuildPlanLines(120, 4_000).get(0);
         assertThat(TestAnsi.strip(up)).contains("+4s");
 
@@ -595,14 +595,15 @@ class CommandManagerTest {
         assertThat(downHeader).contains(Theme.colorize("+4s", t.darkGray()));
         assertThat(downHeader).doesNotContain(Theme.colorize("+4s", t.warning()));
 
-        // No seed → +elapsed count-up (yellow), no ETA prefix.
+        // No seed → +elapsed count-up (mid-gray, same as countdown), no ETA prefix.
         var up = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         up.nerdfont = false;
         up.progress(10, 100);
         String upHeader = up.renderBuildPlanLines(120, 12_000).get(0);
         assertThat(TestAnsi.strip(upHeader)).contains("+12s");
         assertThat(TestAnsi.strip(upHeader)).doesNotContain("ETA ");
-        assertThat(upHeader).contains(Theme.colorize("+12s", t.warning()));
+        assertThat(upHeader).contains(Theme.colorize("+12s", t.midGray()));
+        assertThat(upHeader).doesNotContain(Theme.colorize("+12s", t.warning()));
 
         // Seed overrun within grace → frozen dim 0s + still-dim count-up.
         var earlyOver = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);

@@ -998,10 +998,19 @@ public record JkBuild(
         }
     }
 
-    /** {@code [format]} block: optional style preset and per-language overrides (raw strings). */
-    public record FormatConfig(String style, String java, String kotlin, Boolean optimizeImports) {
+    /**
+     * {@code [format]} block: optional style preset, per-language overrides, and import-hygiene
+     * toggles. Boolean fields are tri-state ({@code null} = use the built-in default).
+     */
+    public record FormatConfig(
+            String style,
+            String java,
+            String kotlin,
+            Boolean optimizeImports,
+            Boolean importOrder,
+            Boolean removeUnusedImports) {
 
-        public static final FormatConfig EMPTY = new FormatConfig(null, null, null, null);
+        public static final FormatConfig EMPTY = new FormatConfig(null, null, null, null, null, null);
 
         public FormatConfig {
             if (style != null && style.isBlank()) style = null;

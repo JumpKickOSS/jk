@@ -1,8 +1,3 @@
-# Self-host guard (JK-1443/JK-1812): short names resolve from the bundled catalog only,
-# immune to ~/.jk/libs.toml and the downloaded registry mirror. Not a redundant default —
-# the product default is "layered".
-catalog = "bundled"
-
 [project]
 name = "jk-kotlin-compiler"
 description = "JumpKick's Kotlin compiler plugin"

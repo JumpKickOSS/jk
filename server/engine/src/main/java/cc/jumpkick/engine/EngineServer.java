@@ -3281,6 +3281,8 @@ public final class EngineServer implements AutoCloseable {
             String javaStyle = Jsonl.str(requestLine, "javaStyle");
             String kotlinStyle = Jsonl.str(requestLine, "kotlinStyle");
             boolean optimizeImports = Jsonl.bool(requestLine, "optimizeImports", true);
+            boolean importOrder = Jsonl.bool(requestLine, "importOrder", true);
+            boolean removeUnusedImports = Jsonl.bool(requestLine, "removeUnusedImports", true);
             String rewriteConfig = Jsonl.str(requestLine, "rewriteConfig");
             Session session = resolveSession(requestLine, cancelToken, false);
             String dir = EngineProtocol.SINGLE_PLAN_DIR;
@@ -3291,6 +3293,8 @@ public final class EngineServer implements AutoCloseable {
                     javaStyle,
                     kotlinStyle,
                     optimizeImports,
+                    importOrder,
+                    removeUnusedImports,
                     rewriteConfig != null ? Path.of(rewriteConfig) : null,
                     (path, status, message, index, total) ->
                             sendQuiet(writer, EngineProtocol.formatFile(dir, path, status, message, index, total)));

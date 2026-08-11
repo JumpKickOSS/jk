@@ -118,7 +118,7 @@ public final class DrainView implements LiveRegion, AutoCloseable {
         int n = jobs;
         String elapsed = Theme.colorize(
                 "+" + fmtElapsed((System.nanoTime() - startNanos) / 1_000_000),
-                Theme.active().warning());
+                Theme.active().midGray());
         String l1 = BuildPlanWedge.chipLine(
                 Spinner.PULSE_GLYPH,
                 "Engine",

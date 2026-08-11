@@ -1277,9 +1277,9 @@ public final class EngineProtocol {
     }
 
     /**
-     * Format sources (see {@link #FORMAT_REQUEST}). Style names arrive already resolved (flags +
-     * env + the {@code [format]} block are client-side concerns); {@code rewriteConfig} may be
-     * {@code null}.
+     * Format sources (see {@link #FORMAT_REQUEST}). Style names and hygiene toggles arrive already
+     * resolved (flags + env + the {@code [format]} block are client-side concerns); {@code
+     * rewriteConfig} may be {@code null}.
      */
     public static String formatRequest(
             String dir,
@@ -1288,6 +1288,8 @@ public final class EngineProtocol {
             String javaStyle,
             String kotlinStyle,
             boolean optimizeImports,
+            boolean importOrder,
+            boolean removeUnusedImports,
             String rewriteConfig,
             boolean offline,
             boolean verbose) {
@@ -1305,6 +1307,10 @@ public final class EngineProtocol {
                 + Jsonl.quote(kotlinStyle)
                 + ",\"optimizeImports\":"
                 + optimizeImports
+                + ",\"importOrder\":"
+                + importOrder
+                + ",\"removeUnusedImports\":"
+                + removeUnusedImports
                 + ",\"rewriteConfig\":"
                 + Jsonl.quote(rewriteConfig)
                 + ",\"offline\":"

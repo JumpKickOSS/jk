@@ -2,6 +2,7 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
@@ -10,7 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
-/** {@code jk library list} — print every library known to the layered catalog. */
+/** {@code jk library list} — print every library known to the catalog. */
 public final class LibraryListCommand implements CliCommand {
 
     @Override
@@ -20,7 +21,7 @@ public final class LibraryListCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "List every library the layered catalog resolves";
+        return "List every library the catalog resolves";
     }
 
     @Override
@@ -31,7 +32,7 @@ public final class LibraryListCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<layer>", "Filter to one layer (project|local|global|bundled)", "--layer"),
+                Opt.value("<layer>", "Filter to one layer (project|global|bundled)", "--layer"),
                 Opt.flag("Append the source layer to each row.", "--show-layer"),
                 Opt.flag("Group libraries under a heading per source layer.", "--group-by-layer"));
     }
@@ -46,7 +47,8 @@ public final class LibraryListCommand implements CliCommand {
         this.showLayer = in.isSet("show-layer");
         this.groupByLayer = in.isSet("group-by-layer");
 
-        LibraryCatalog catalog = LibraryCatalog.layered(CliOutput.stderr()::println);
+        LibraryCatalog catalog =
+                LibraryCatalog.forProject(GlobalOptions.from(in).workingDir(), CliOutput.stderr()::println);
         Set<String> names = catalog.names();
         if (names.isEmpty()) {
             CliOutput.out("(no libraries registered)");

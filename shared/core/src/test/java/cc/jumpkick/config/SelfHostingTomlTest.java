@@ -114,11 +114,9 @@ class SelfHostingTomlTest {
     }
 
     @Test
-    void short_name_manifests_pin_the_bundled_catalog() throws Exception {
-        // JK-1443/JK-1812: the parser default is LAYERED (user ~/.jk/libs.toml + downloaded
-        // registry can shadow bundled mappings), so manifests that resolve catalog short names
-        // must pin catalog = "bundled" or a machine-local entry silently repoints self-host
-        // deps at the next re-lock. This is NOT a redundant default — do not "normalize" it away.
+    void short_name_manifests_do_not_use_removed_catalog_pin() throws Exception {
+        // catalog = … and host-local libs.toml are gone; short names resolve through the system
+        // catalog (global + bundled) only. Self-host manifests must not resurrect the old pin.
         for (String rel : java.util.List.of(
                 "jk.toml",
                 "clients/cli/jk.toml",
@@ -128,9 +126,7 @@ class SelfHostingTomlTest {
                 "plugins/kotlin-compiler/jk.toml",
                 "plugins/quarkus/jk.toml")) {
             String text = java.nio.file.Files.readString(REPO.resolve(rel));
-            assertThat(text)
-                    .as("%s must pin catalog = \"bundled\" (JK-1443)", rel)
-                    .contains("catalog = \"bundled\"");
+            assertThat(text).as("%s must not set catalog = (removed)", rel).doesNotContain("catalog =");
         }
     }
 

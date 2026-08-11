@@ -7,6 +7,10 @@ import java.util.List;
 /**
  * One-shot parsed-project summary ({@link EngineProtocol#PROJECT_INFO_REQUEST}): flat scalars and
  * string lists. Non-null {@code error} is printable and other fields are defaulted.
+ *
+ * <p>Format hygiene flags ({@code formatOptimizeImports}, {@code formatImportOrder}, {@code
+ * formatRemoveUnusedImports}) are tri-state: {@code null} means the {@code [format]} key was
+ * absent (client applies the built-in default); non-null is the explicit toml value.
  */
 public record ProjectInfo(
         String error,
@@ -33,7 +37,9 @@ public record ProjectInfo(
         String formatStyle,
         String formatJava,
         String formatKotlin,
-        boolean formatOptimizeImports,
+        Boolean formatOptimizeImports,
+        Boolean formatImportOrder,
+        Boolean formatRemoveUnusedImports,
         boolean hasLock,
         String lockJdk,
         String mainJarPath,
@@ -76,7 +82,9 @@ public record ProjectInfo(
                 "",
                 "",
                 "",
-                false,
+                null,
+                null,
+                null,
                 false,
                 "",
                 "",
@@ -115,7 +123,9 @@ public record ProjectInfo(
                 + ",\"formatStyle\":" + Jsonl.quote(formatStyle)
                 + ",\"formatJava\":" + Jsonl.quote(formatJava)
                 + ",\"formatKotlin\":" + Jsonl.quote(formatKotlin)
-                + ",\"formatOptimizeImports\":" + formatOptimizeImports
+                + optionalBoolJson("formatOptimizeImports", formatOptimizeImports)
+                + optionalBoolJson("formatImportOrder", formatImportOrder)
+                + optionalBoolJson("formatRemoveUnusedImports", formatRemoveUnusedImports)
                 + ",\"hasLock\":" + hasLock
                 + ",\"lockJdk\":" + Jsonl.quote(lockJdk)
                 + ",\"mainJarPath\":" + Jsonl.quote(mainJarPath)
@@ -156,7 +166,9 @@ public record ProjectInfo(
                 orEmpty(Jsonl.str(line, "formatStyle")),
                 orEmpty(Jsonl.str(line, "formatJava")),
                 orEmpty(Jsonl.str(line, "formatKotlin")),
-                Jsonl.bool(line, "formatOptimizeImports", false),
+                optionalBool(line, "formatOptimizeImports"),
+                optionalBool(line, "formatImportOrder"),
+                optionalBool(line, "formatRemoveUnusedImports"),
                 Jsonl.bool(line, "hasLock", false),
                 orEmpty(Jsonl.str(line, "lockJdk")),
                 orEmpty(Jsonl.str(line, "mainJarPath")),
@@ -167,6 +179,18 @@ public record ProjectInfo(
                 orEmpty(Jsonl.str(line, "sourcesJarPath")),
                 orEmpty(Jsonl.str(line, "javadocJarPath")),
                 Jsonl.strArray(line, "envRefs"));
+    }
+
+    /** {@code ,"key":true|false} when set; empty string when unset (tri-state). */
+    private static String optionalBoolJson(String key, Boolean value) {
+        if (value == null) return "";
+        return ",\"" + key + "\":" + value;
+    }
+
+    /** Present JSON boolean → its value; absent → {@code null}. */
+    private static Boolean optionalBool(String json, String key) {
+        if (!Jsonl.has(json, key)) return null;
+        return Jsonl.bool(json, key, false);
     }
 
     private static String quoteOrNull(String s) {
