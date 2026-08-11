@@ -1742,8 +1742,14 @@ public final class EngineServer implements AutoCloseable {
         progressTracker(requestId).moduleProgress(dir, slice, view.numerator(), view.denominator());
         cc.jumpkick.runtime.RemainingWork rw = remainingWorks.get(requestId);
         if (rw != null && dir != null) {
-            rw.moduleProgress(java.nio.file.Path.of(dir), frac);
-            progressTracker(requestId).noteRemaining(rw.remaining(), rw.R0());
+            // Atomic update+recompute+note per request: two scheduler threads interleaving
+            // (T1 computes 10s, T2 computes 9s and notes it, T1 notes 10s last) regressed the
+            // wire remainingMs (JK-1830). rw's own methods synchronize on rw, so this monitor
+            // is reentrant and orders the notes with their computations.
+            synchronized (rw) {
+                rw.moduleProgress(java.nio.file.Path.of(dir), frac);
+                progressTracker(requestId).noteRemaining(rw.remaining(), rw.R0());
+            }
         }
         emitWorkspaceProgress(requestId, writer, forceEmit);
     }
@@ -1752,8 +1758,10 @@ public final class EngineServer implements AutoCloseable {
         if (requestId <= 0) return;
         cc.jumpkick.runtime.RemainingWork rw = remainingWorks.get(requestId);
         if (rw != null && dir != null) {
-            rw.moduleComplete(java.nio.file.Path.of(dir));
-            progressTracker(requestId).noteRemaining(rw.remaining(), rw.R0());
+            synchronized (rw) {
+                rw.moduleComplete(java.nio.file.Path.of(dir));
+                progressTracker(requestId).noteRemaining(rw.remaining(), rw.R0());
+            }
         }
         progressTracker(requestId).moduleComplete(dir, lastDen);
         emitWorkspaceProgress(requestId, writer, true);
