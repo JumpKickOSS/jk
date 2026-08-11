@@ -3,6 +3,11 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.progress.ClockProgressStrategy;
+import cc.jumpkick.cli.tui.progress.HeaderProgressState;
+import cc.jumpkick.cli.tui.progress.HeaderProgressStrategy;
+import cc.jumpkick.cli.tui.progress.ProgressBarMode;
+import cc.jumpkick.cli.tui.progress.WeightedProgressStrategy;
 import cc.jumpkick.config.GlobalConfig;
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
@@ -101,24 +106,24 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     private long startNanos;
     private long numerator;
     private long denominator;
-    private double peakFraction; // monotonic-display floor: the bar never renders below this
     /**
      * Open-loop seed remaining at seed time ({@code -1} = unknown / count-up only). Paired with
      * {@link #remainingSetAtElapsedMs}. After {@link #openLoopLocked}, mid-run residual rewrites
      * are ignored so the clock measures seed quality (R0 − elapsed), not just-in-time fixes.
      *
-     * <p>When {@code remainingWorkMs > 0}, the progress <em>bar</em> also uses open-loop
-     * {@code min(99%, elapsedSinceSeed / R0)} so it tracks the countdown (not Σ module weights).
+     * <p>Header bar mode: {@link ProgressBarMode} ({@code JK_PROGRESS_MODE}) — default AUTO uses
+     * {@link ClockProgressStrategy} when R0 is seeded, else {@link WeightedProgressStrategy}.
      */
     private long remainingWorkMs = -1;
     /** {@link #elapsedMillis()} when the open-loop seed was taken. */
     private long remainingSetAtElapsedMs;
     /** True once execute has begun (module progress) — seed is frozen for the countdown. */
     private boolean openLoopLocked;
-    /** Display cap until {@link #finishSuccess}/{@link #finishFailure} (open-loop bar). */
-    private static final double OPEN_LOOP_DISPLAY_CAP = 0.99;
     /** Run-wide total for notifications: elapsed-at-seed + R0. 0 when never seeded. */
     private long etaEstimateMs;
+    private final ProgressBarMode progressMode = ProgressBarMode.fromEnvironment();
+    private final ClockProgressStrategy clockProgress = new ClockProgressStrategy();
+    private final WeightedProgressStrategy weightedProgress = new WeightedProgressStrategy();
     private int modulesComplete;
     private int modulesTotal; // 0 = hide module remaining
     private long finishSeq;
@@ -472,70 +477,51 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         }
     }
 
-    /** Set the aggregate progress numerator/denominator for the bar (weight-slice fallback). */
+    /** Set the aggregate progress numerator/denominator (engine weight slices). */
     public void progress(long numerator, long denominator) {
         synchronized (lock) {
-            // When open-loop R0 drives the bar, still record weight slices for fallback / den>0,
-            // but do not let weight peakFraction race the open-loop paint.
-            if (remainingWorkMs > 0) {
-                this.numerator = Math.max(0, numerator);
-                this.denominator = Math.max(0, denominator);
-                if (denominator > 0) {
-                    this.solveLabel = "";
-                    openLoopLocked = true;
-                }
-                if (animate && !Theme.active().isAnsi()) {
-                    long[] od = openLoopBar(elapsedMillis());
-                    emitPlainProgressDecades(od[0], od[1]);
-                }
-                return;
+            this.numerator = Math.max(0, numerator);
+            this.denominator = Math.max(0, denominator);
+            HeaderProgressState st = progressState(elapsedMillis());
+            HeaderProgressStrategy strat = activeProgressStrategy();
+            long[] d = strat.onWeightProgress(st, this.numerator, this.denominator);
+            // Weighted strategy owns monotonic peak; keep fields in sync for tests.
+            if ("weighted".equals(strat.id()) && d[1] > 0) {
+                this.numerator = d[0];
+                this.denominator = d[1];
             }
-            // Weight-slice path (no R0 seed): monotonic display guard.
-            double f = denominator > 0 ? (double) numerator / denominator : 0.0;
-            if (denominator > this.denominator) {
-                peakFraction = f; // total grew → rebase
-            } else if (denominator > 0 && f < peakFraction) {
-                numerator = Math.round(peakFraction * denominator); // hold the peak
-            } else {
-                peakFraction = f;
+            if (this.denominator > 0 || st.hasR0()) {
+                this.solveLabel = "";
+                if (st.hasR0()) openLoopLocked = true;
             }
-            this.numerator = numerator;
-            this.denominator = denominator;
-            // Prefer the bar over the text-only solve label once we have a denominator.
-            if (denominator > 0) this.solveLabel = "";
-            // Plain multi-line: emit 0% then each newly crossed 10% decade (JK-1379).
-            if (animate && !Theme.active().isAnsi() && denominator > 0) {
-                emitPlainProgressDecades(this.numerator, this.denominator);
+            if (animate && !Theme.active().isAnsi() && d[1] > 0) {
+                emitPlainProgressDecades(d[0], d[1]);
             }
         }
     }
 
     /**
-     * Numerator/denominator for the painted bar. When R0 is seeded, open-loop
-     * {@code elapsedSinceSeed / R0} (capped at 99% until settle) so the bar matches the countdown.
-     * Otherwise weight slices from {@link #progress}.
+     * Numerator/denominator for the painted bar via {@link ProgressBarMode} strategy (clock when
+     * R0 seeded under AUTO, else weighted; override with {@code JK_PROGRESS_MODE}).
      */
     long[] displayBar(long elapsedMillis) {
         synchronized (lock) {
-            if (remainingWorkMs > 0) return openLoopBar(elapsedMillis);
-            return new long[] {numerator, denominator};
+            return activeProgressStrategy().display(progressState(elapsedMillis));
         }
     }
 
-    /** Must hold {@link #lock}. Open-loop fill from seed time; never backwards; cap 99% until done. */
-    private long[] openLoopBar(long elapsedMillis) {
-        long r0 = remainingWorkMs;
-        if (r0 <= 0) return new long[] {numerator, denominator};
-        if (done) return new long[] {r0, r0};
-        long since = Math.max(0L, elapsedMillis - remainingSetAtElapsedMs);
-        double raw = (double) since / (double) r0;
-        if (raw < 0) raw = 0;
-        if (raw > OPEN_LOOP_DISPLAY_CAP) raw = OPEN_LOOP_DISPLAY_CAP;
-        if (raw < peakFraction) raw = peakFraction;
-        else peakFraction = raw;
-        long den = 1000L;
-        long num = Math.round(raw * den);
-        return new long[] {num, den};
+    /** Active strategy for tests/diagnostics. */
+    HeaderProgressStrategy activeProgressStrategy() {
+        return progressMode.select(clockProgress, weightedProgress, remainingWorkMs);
+    }
+
+    ProgressBarMode progressMode() {
+        return progressMode;
+    }
+
+    private HeaderProgressState progressState(long elapsedMillis) {
+        return new HeaderProgressState(
+                numerator, denominator, remainingWorkMs, remainingSetAtElapsedMs, elapsedMillis, done);
     }
 
     /**

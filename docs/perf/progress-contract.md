@@ -111,13 +111,23 @@ When `parallelTests == false`: `max(scheduled, Σ testWeight)` as serial test fl
 
 ## Progress bar
 
-- **CLI header bar (when R0 seeded):** open-loop `min(99%, elapsedSinceSeed / R0)` — same oracle
-  as the countdown. Advances smoothly on the animator frame even during long opaque steps
-  (native-image) with no new engine events.  
-- **Without R0:** fall back to engine weight-slice `numerator / denominator`.  
-- **Never go backwards** — peak fraction held.  
+CLI header bar strategies (`cc.jumpkick.cli.tui.progress`):
+
+| Mode | Strategy | When |
+|------|----------|------|
+| **clock** (default via AUTO) | `ClockProgressStrategy` — `min(99%, elapsedSinceSeed / R0)` | R0 seeded (AUTO) or `JK_PROGRESS_MODE=clock` |
+| **weighted** | `WeightedProgressStrategy` — engine Σ effort weights | No R0 (AUTO) or `JK_PROGRESS_MODE=weighted` |
+
+```bash
+JK_PROGRESS_MODE=clock      # force open-loop (needs R0; empty bar until seeded)
+JK_PROGRESS_MODE=weighted   # force weight slices even when R0 is good
+# unset / auto              # clock when R0 > 0, else weighted
+```
+
+- **Never go backwards** — peak hold inside each strategy.  
 - Settle → 100%.  
-- Engine still calibrates and emits weight slices + residual annotations for dashboards / wire.
+- Clock advances on the animator frame (smooth through native-image).  
+- Engine still calibrates and emits weight slices for dashboards / wire.
 
 ## Wire (schema 1, additive fields)
 

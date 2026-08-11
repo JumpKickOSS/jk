@@ -217,6 +217,7 @@ class CommandManagerTest {
     void open_loop_bar_tracks_elapsed_over_R0_not_weight_slices() {
         var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         cm.setEtaEstimate(100_000); // R0 = 100s from t=0
+        assertThat(cm.activeProgressStrategy().id()).isEqualTo("clock");
         // Weight path would claim 50% immediately; open-loop at 30s is 30%.
         cm.progress(50, 100);
         long[] at30 = cm.displayBar(30_000);
@@ -240,6 +241,16 @@ class CommandManagerTest {
         // Clock cannot go backwards in real use; peak hold if recompute with smaller elapsed.
         long[] b = cm.displayBar(20_000);
         assertThat(b[0]).isGreaterThanOrEqualTo(400);
+    }
+
+    @Test
+    void without_r0_auto_uses_weighted_strategy() {
+        var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
+        assertThat(cm.activeProgressStrategy().id()).isEqualTo("weighted");
+        cm.progress(50, 100);
+        long[] d = cm.displayBar(0);
+        assertThat(d[0]).isEqualTo(50);
+        assertThat(d[1]).isEqualTo(100);
     }
 
     @Test
