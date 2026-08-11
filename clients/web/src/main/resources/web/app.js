@@ -1344,6 +1344,15 @@ Vue.createApp({
       if (card.startedAt == null) return 0;
       return Math.max(0, Math.floor((this.now - card.startedAt) / 1000));
     },
+    // Whole-second countdown deadline on the SAME counter as elapsedSeconds (startedAt epoch).
+    // Deriving both faces from one counter is what keeps them ticking on the same paint — the
+    // CLI learned this the hard way (CommandManager.planHeader); flooring remaining-ms and
+    // elapsed-ms independently against two epochs desynced them sub-second (JK-1822).
+    etaDeadlineSeconds(card) {
+      if (!this.hasEta(card)) return null;
+      const base = card.startedAt != null ? card.startedAt : card.r0At;
+      return Math.floor((card.r0At - base + card.r0Ms) / 1000);
+    },
     etaSeconds(card) {
       // Open-loop total: elapsed-at-seed + R0 ≈ r0Ms when seed is near start; use r0Ms as remaining seed.
       if (typeof card.r0Ms !== 'number' || card.r0Ms <= 0 || card.r0At == null) {
@@ -1353,22 +1362,20 @@ Vue.createApp({
       return Math.max(0, Math.floor(card.r0Ms / 1000));
     },
     etaOverdue(card) {
-      // Countdown has frozen at 0s (open-loop R0 exhausted).
-      if (!this.hasEta(card)) return false;
-      const since = Math.max(0, this.now - card.r0At);
-      return since >= card.r0Ms;
+      // Countdown has frozen at 0s (open-loop R0 exhausted). Same whole-second counter as the
+      // faces so the freeze and the paint flip together.
+      const deadline = this.etaDeadlineSeconds(card);
+      return deadline != null && this.elapsedSeconds(card) >= deadline;
     },
     /** Count-up mid-gray only after 2s past R0 — matches CLI COUNT_UP_PROMOTE_GRACE_MS. */
     etaCountUpPromoted(card) {
-      if (!this.hasEta(card)) return false;
-      const since = Math.max(0, this.now - card.r0At);
-      return since >= card.r0Ms + 2000;
+      const deadline = this.etaDeadlineSeconds(card);
+      return deadline != null && this.elapsedSeconds(card) >= deadline + 2;
     },
     etaCountdown(card) {
-      if (!this.hasEta(card)) return '';
-      const since = Math.max(0, this.now - card.r0At);
-      const remMs = card.r0Ms - since;
-      const rem = Math.max(0, Math.floor(remMs / 1000));
+      const deadline = this.etaDeadlineSeconds(card);
+      if (deadline == null) return '';
+      const rem = deadline - this.elapsedSeconds(card);
       return rem <= 0 ? '0s' : '~' + this.fmtClockSeconds(rem);
     },
     // Back-compat alias used by older snapshots/tests: bare countdown string (no "ETA " label).
