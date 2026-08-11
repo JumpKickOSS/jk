@@ -25,6 +25,10 @@ import org.junit.jupiter.api.io.TempDir;
  * Drives a real {@link HttpEngineServer} bound to an OS-assigned loopback port with the JDK's
  * {@link HttpClient} — plus a raw socket where the client won't cooperate (forged {@code Host}
  * headers, literal {@code..} request targets).
+ *
+ * <p>Runs under {@code :engine:integrationTest} — the unit-tier {@code test} task excludes
+ * {@code @Tag("integration")}, so a {@code test --tests} filter naming this class matches nothing
+ * (JK-1803).
  */
 @Tag("integration")
 class HttpEngineServerTest {
