@@ -117,6 +117,11 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     private long remainingWorkMs = -1;
     /** {@link #elapsedMillis()} when the open-loop seed was taken. */
     private long remainingSetAtElapsedMs;
+    /**
+     * Private residual remaining for the bar only ({@code -1} unknown). Updated from engine
+     * workspace-progress; never rewrites the open-loop countdown seed.
+     */
+    private long residualRemainingMs = -1;
     /** True once execute has begun (module progress) — seed is frozen for the countdown. */
     private boolean openLoopLocked;
     /** Run-wide total for notifications: elapsed-at-seed + R0. 0 when never seeded. */
@@ -373,8 +378,24 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             remainingWorkMs = rem;
             remainingSetAtElapsedMs = elapsed;
             etaEstimateMs = elapsed + rem;
+            // Seed residual to R0 until engine residual updates arrive.
+            if (residualRemainingMs < 0) residualRemainingMs = rem;
             // R0 is enough to drive the open-loop bar (drop preflight solve label).
             if (rem > 0) this.solveLabel = "";
+        }
+    }
+
+    /**
+     * Update the bar's private residual remaining (from engine RemainingWork). Does <em>not</em>
+     * change the open-loop countdown seed. Pass {@code -1} to clear.
+     */
+    public void setBarResidualRemaining(long residualMillis) {
+        synchronized (lock) {
+            if (residualMillis < 0) {
+                residualRemainingMs = -1;
+                return;
+            }
+            residualRemainingMs = residualMillis;
         }
     }
 
@@ -521,7 +542,13 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
 
     private HeaderProgressState progressState(long elapsedMillis) {
         return new HeaderProgressState(
-                numerator, denominator, remainingWorkMs, remainingSetAtElapsedMs, elapsedMillis, done);
+                numerator,
+                denominator,
+                remainingWorkMs,
+                remainingSetAtElapsedMs,
+                elapsedMillis,
+                residualRemainingMs,
+                done);
     }
 
     /**

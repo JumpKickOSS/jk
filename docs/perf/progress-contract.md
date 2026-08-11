@@ -17,18 +17,19 @@ Status: **normative** for TUI / wire progress. Implementations live under
 ## Model
 
 ```
-R0            = seed wall ms (jk explain ≡ jk build seed)
-countdown     = max(0, R0 − elapsed)     # open-loop after execute starts (client freezes R0)
-bar           = min(99%, elapsedSinceSeed / R0)   # same open-loop oracle as countdown
-weight slices = fallback when R0 unknown; wire annotation / engine calibrate still use weights
-residual R(t) = optional wire annotation # does NOT drive bar or countdown
+R0            = seed wall ms (jk explain ≡ jk build seed) — frozen for countdown
+countdown     = max(0, R0 − elapsed)     # open-loop; never rewritten mid-run
+residual R(t) = private remaining wall from schedule of unfinished work (RemainingWork)
+bar (clock)   = min(99%, elapsed / (elapsed + R(t)))   # adaptive; falls back to elapsed/R0
+weight slices = fallback when R0 unknown
 ```
 
-**Why open-loop bar (not residual, not Σ weights alone):** residual under-prediction pinned the
-bar at 99–100% while work remained. Σ effort weights front-load multi-module builds (parallel
-weight mass early, serial long pole late). With a good R0 seed, `elapsed / R0` matches the
-countdown so 50% bar ≈ half the wall estimate. Cap at **99%** until settle → 100%. Bar never
-goes backwards (peak hold).
+**Countdown** stays pure open-loop so the seed quality KPI stays honest.
+
+**Bar** uses residual as a *private* estimate: when work finishes faster than R0, R(t)
+shrinks and the bar speeds up; when residual is larger, it slows. Formula
+`elapsed / (elapsed + residual)` hits ~100% as residual → 0 without rewriting the countdown.
+Cap **99%** until settle; peak hold never goes backwards.
 
 | Situation | Seed (R0) | Bar slice |
 |-----------|-----------|-----------|
@@ -116,7 +117,7 @@ workspace-progress**, **CLI header**, and **web dashboard**:
 
 | Mode | Strategy | When |
 |------|----------|------|
-| **clock** (default via AUTO) | `ClockProgressStrategy` — `min(99%, elapsedSinceSeed / R0)` | R0 &gt; 0 (AUTO) or force clock |
+| **clock** (default via AUTO) | `ClockProgressStrategy` — `elapsed/(elapsed+R(t))` when residual known, else `elapsed/R0` | R0 &gt; 0 (AUTO) or force clock |
 | **weighted** | `WeightedProgressStrategy` — Σ effort weights | R0 absent (AUTO) or force weighted |
 
 ```bash

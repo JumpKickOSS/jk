@@ -2,8 +2,19 @@
 package cc.jumpkick.runtime.progress;
 
 /**
- * Open-loop wall fill: {@code min(99%, elapsedSinceSeed / R0)} until settle → 100%. Same oracle as
- * the countdown. Never goes backwards.
+ * Adaptive open-loop wall fill for the progress bar.
+ *
+ * <p><b>Countdown</b> stays pure open-loop {@code R0 − elapsed} (not this class).
+ *
+ * <p><b>Bar</b> uses a private residual remaining estimate when available:
+ *
+ * <pre>
+ *   frac = elapsed / (elapsed + residualRemaining)
+ * </pre>
+ *
+ * so the fill speeds up when work finishes faster than R0 and slows when residual grows — never
+ * rewrites the public countdown. Without residual, falls back to {@code elapsed / R0}. Cap 99%
+ * until settle; never goes backwards.
  */
 public final class ClockProgressStrategy implements HeaderProgressStrategy {
 
@@ -14,9 +25,21 @@ public final class ClockProgressStrategy implements HeaderProgressStrategy {
 
     @Override
     public long[] display(HeaderProgressState state) {
-        if (!state.hasR0()) return new long[] {0, 0};
+        if (!state.hasR0() && !state.hasResidual()) return new long[] {0, 0};
         if (state.settled()) return new long[] {SCALE, SCALE};
-        double raw = (double) state.elapsedSinceSeed() / (double) state.r0Ms();
+
+        long elapsed = state.elapsedSinceSeed();
+        double raw;
+        if (state.hasResidual()) {
+            // Adaptive: remaining work firming up mid-run (private estimate only).
+            long residual = Math.max(0L, state.residualRemainingMs());
+            long denom = elapsed + residual;
+            if (denom <= 0) raw = DISPLAY_CAP;
+            else raw = (double) elapsed / (double) denom;
+        } else {
+            // Pure open-loop until residual is available.
+            raw = (double) elapsed / (double) state.r0Ms();
+        }
         if (raw < 0) raw = 0;
         if (raw > DISPLAY_CAP) raw = DISPLAY_CAP;
         if (raw < peakFraction) raw = peakFraction;

@@ -268,9 +268,20 @@ public final class WorkspaceProgressTracker {
 
     private Snapshot storeWeightAndStrategy(long weightNum, long weightDen, String phase) {
         HeaderProgressStrategy strat = mode.select(clock, weighted, annotatedR0ms);
+        // residualRemainingMs: private bar estimate (RemainingWork); -1 until first noteRemaining.
+        long residual = annotatedRemainingMs; // already -1 or >=0
+        // After seed, remaining was set to R0 — treat as residual only once work has progressed
+        // or noteRemaining refreshed it (same field). Always pass it: elapsed/(elapsed+R) at t=0
+        // is 0, matching open-loop.
         HeaderProgressState st = new HeaderProgressState(
-                weightNum, weightDen, annotatedR0ms, seedAtElapsedMs, elapsedClockMs, settled);
-        // Feed weights so weighted strategy peak tracks; clock ignores.
+                weightNum,
+                weightDen,
+                annotatedR0ms,
+                seedAtElapsedMs,
+                elapsedClockMs,
+                residual,
+                settled);
+        // Feed weights so weighted strategy peak tracks; clock uses residual + elapsed.
         long[] d = strat.onWeightProgress(st, weightNum, weightDen);
         // Prefer strategy display pair for percent; keep weight units on the wire for den/num
         // when weighted, or synthetic scale when clock.

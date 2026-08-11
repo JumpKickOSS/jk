@@ -1296,7 +1296,16 @@ Vue.createApp({
         (mode === 'auto' && typeof card.r0Ms === 'number' && card.r0Ms > 0 && card.r0At != null);
       if (useClock && card.r0Ms > 0 && card.r0At != null) {
         const since = Math.max(0, this.now - card.r0At);
-        const raw = Math.min(0.99, since / card.r0Ms);
+        // Adaptive: elapsed / (elapsed + residual). Residual firms up as work completes;
+        // open-loop countdown still uses frozen r0Ms only.
+        let raw;
+        if (typeof card.residualRemainingMs === 'number' && card.residualRemainingMs >= 0) {
+          const denom = since + card.residualRemainingMs;
+          raw = denom <= 0 ? 0.99 : since / denom;
+        } else {
+          raw = since / card.r0Ms;
+        }
+        raw = Math.min(0.99, Math.max(0, raw));
         return Math.min(99, Math.round(raw * 100));
       }
       // Weighted fallback (or forced weighted): engine progressPercent / num/den
@@ -1312,11 +1321,12 @@ Vue.createApp({
     // tick on the same paint — flooring remaining-ms and elapsed-ms independently desynced them.
     // Countdown freezes at "0s" on overrun; count-up is always full elapsed. No seed → count-up only.
     hasEta(card) {
+      // Open-loop countdown from frozen R0 (not residual rewrites).
       return (
         this.outcome(card) === 'running' &&
-        card.etaMillis != null &&
-        card.etaMillis > 0 &&
-        card.startedAt != null
+        typeof card.r0Ms === 'number' &&
+        card.r0Ms > 0 &&
+        card.r0At != null
       );
     },
     elapsedSeconds(card) {
@@ -1324,16 +1334,23 @@ Vue.createApp({
       return Math.max(0, Math.floor((this.now - card.startedAt) / 1000));
     },
     etaSeconds(card) {
-      // Run-wide total from the remaining-work etaMillis (see fold.etaTotalMillis, JK-1517).
-      const total = etaTotalMillis(card);
-      return total == null ? 0 : Math.max(0, Math.floor(total / 1000));
+      // Open-loop total: elapsed-at-seed + R0 ≈ r0Ms when seed is near start; use r0Ms as remaining seed.
+      if (typeof card.r0Ms !== 'number' || card.r0Ms <= 0 || card.r0At == null) {
+        const total = etaTotalMillis(card);
+        return total == null ? 0 : Math.max(0, Math.floor(total / 1000));
+      }
+      return Math.max(0, Math.floor(card.r0Ms / 1000));
     },
     etaOverdue(card) {
-      return this.hasEta(card) && this.elapsedSeconds(card) >= this.etaSeconds(card);
+      if (!this.hasEta(card)) return false;
+      const since = Math.max(0, this.now - card.r0At);
+      return since >= card.r0Ms;
     },
     etaCountdown(card) {
       if (!this.hasEta(card)) return '';
-      const rem = this.etaSeconds(card) - this.elapsedSeconds(card);
+      const since = Math.max(0, this.now - card.r0At);
+      const remMs = card.r0Ms - since;
+      const rem = Math.max(0, Math.floor(remMs / 1000));
       return rem <= 0 ? '0s' : '~' + this.fmtClockSeconds(rem);
     },
     // Back-compat alias used by older snapshots/tests: bare countdown string (no "ETA " label).

@@ -216,18 +216,20 @@ class CommandManagerTest {
     @Test
     void open_loop_bar_tracks_elapsed_over_R0_not_weight_slices() {
         var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.setEtaEstimate(100_000); // R0 = 100s from t=0
+        cm.setEtaEstimate(100_000); // R0 = 100s; residual starts at R0
         assertThat(cm.activeProgressStrategy().id()).isEqualTo("clock");
-        // Weight path would claim 50% immediately; open-loop at 30s is 30%.
+        // Weight path would claim 50% immediately; adaptive: 30s/(30s+70s residual) after residual update.
         cm.progress(50, 100);
+        cm.setBarResidualRemaining(70_000);
         long[] at30 = cm.displayBar(30_000);
         assertThat(at30[1]).isEqualTo(1000);
         assertThat(at30[0]).isEqualTo(300); // 30%
-        // At half R0, bar is 50% even if weight numerator races to 90%.
-        cm.progress(90, 100);
-        long[] at50 = cm.displayBar(50_000);
-        assertThat(at50[0]).isEqualTo(500);
-        // Cap at 99% while still running (even past R0 wall).
+        // Residual shrinks → bar speeds up at same elapsed.
+        cm.setBarResidualRemaining(10_000);
+        long[] sped = cm.displayBar(30_000);
+        assertThat(sped[0]).isEqualTo(750); // 30/(30+10)
+        // Cap at 99% while still running (residual 0, long elapsed).
+        cm.setBarResidualRemaining(0);
         long[] over = cm.displayBar(200_000);
         assertThat(over[0]).isEqualTo(990);
     }
@@ -236,11 +238,13 @@ class CommandManagerTest {
     void open_loop_bar_never_goes_backwards() {
         var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         cm.setEtaEstimate(100_000);
+        cm.setBarResidualRemaining(0); // residual 0 at 40s → ~99% (capped)
         long[] a = cm.displayBar(40_000);
-        assertThat(a[0]).isEqualTo(400);
-        // Clock cannot go backwards in real use; peak hold if recompute with smaller elapsed.
-        long[] b = cm.displayBar(20_000);
-        assertThat(b[0]).isGreaterThanOrEqualTo(400);
+        assertThat(a[0]).isEqualTo(990);
+        // Peak hold if residual suddenly grows (would otherwise drop fill).
+        cm.setBarResidualRemaining(200_000);
+        long[] b = cm.displayBar(40_000);
+        assertThat(b[0]).isGreaterThanOrEqualTo(990);
     }
 
     @Test

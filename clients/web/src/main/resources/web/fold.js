@@ -132,14 +132,20 @@ export function foldEvent(cards, event) {
         else if (card.progressDen > 0) {
           card.progressPercent = Math.min(100, Math.round((100 * card.progressNum) / card.progressDen));
         }
-        // Seed R0 for client-side clock bar (same as CLI open-loop).
+        // Freeze open-loop R0 once; residual remaining is private for adaptive bar only.
         if (typeof d.R0 === 'number' && d.R0 > 0) {
-          card.r0Ms = d.R0;
-          if (card.r0At == null) card.r0At = event.at ?? Date.now();
+          if (card.r0Ms == null) {
+            card.r0Ms = d.R0;
+            card.r0At = event.at ?? Date.now();
+          }
         }
         if (typeof d.remainingMs === 'number' && d.remainingMs >= 0) {
-          card.etaMillis = d.remainingMs;
-          card.etaAt = event.at ?? card.etaAt;
+          card.residualRemainingMs = d.remainingMs;
+          // First remaining with no R0 yet: seed open-loop from it once.
+          if (card.r0Ms == null && d.remainingMs > 0) {
+            card.r0Ms = d.remainingMs;
+            card.r0At = event.at ?? Date.now();
+          }
         }
       }
       break;
@@ -147,12 +153,15 @@ export function foldEvent(cards, event) {
     case 'eta': {
       const card = resolveCard(cards, d);
       if (card) {
-        card.etaMillis = typeof d.millis === 'number' ? d.millis : null;
-        card.etaAt = event.at ?? null;
-        // Treat first ETA as R0 seed for clock progress when not yet set.
-        if (card.etaMillis != null && card.etaMillis > 0 && card.r0Ms == null) {
-          card.r0Ms = card.etaMillis;
-          card.r0At = card.etaAt;
+        // Open-loop countdown seed only once (do not rewrite from residual mid-run).
+        if (typeof d.millis === 'number' && d.millis > 0 && card.r0Ms == null) {
+          card.r0Ms = d.millis;
+          card.r0At = event.at ?? Date.now();
+          card.etaMillis = d.millis;
+          card.etaAt = card.r0At;
+        } else if (typeof d.millis === 'number' && card.r0Ms == null) {
+          card.etaMillis = d.millis;
+          card.etaAt = event.at ?? null;
         }
       }
       break;
