@@ -91,37 +91,33 @@ public final class AggregatedMetrics {
             Map<String, Double> srcMean,
             Map<String, Double> srcLast,
             Map<String, Long> srcCount) {
-        if (srcMean == null || srcMean.isEmpty()) {
-            // Still fold last-only / count-only keys when present.
-            if (srcLast != null) {
-                for (var e : srcLast.entrySet()) {
-                    String key = e.getKey();
-                    long newC = Math.max(1L, srcCount != null ? srcCount.getOrDefault(key, 1L) : 1L);
-                    long oldC = count.getOrDefault(key, 0L);
-                    if (newC > oldC || oldC == 0) {
-                        last.put(key, e.getValue());
-                        count.put(key, newC);
-                    }
-                }
-            }
-            return;
-        }
-        for (var e : srcMean.entrySet()) {
-            String key = e.getKey();
-            double newMean = e.getValue();
-            if (!(newMean > 0)) continue;
+        // Uniform per-key merge over the union of the source's keys (JK-1827): the old shape
+        // branched on whether srcMean was empty, dropping last-only keys in mixed files, leaving
+        // a loser's `last` beside a winner's mean, and letting a mean-less row's count beat real
+        // data. A key's mean/last/count now move together, and rows with a real mean outrank
+        // mean-less rows regardless of count (count describes the mean's sample size).
+        java.util.LinkedHashSet<String> keys = new java.util.LinkedHashSet<>();
+        if (srcMean != null) keys.addAll(srcMean.keySet());
+        if (srcLast != null) keys.addAll(srcLast.keySet());
+        for (String key : keys) {
+            Double newMean = srcMean != null ? srcMean.get(key) : null;
+            Double newLast = srcLast != null ? srcLast.get(key) : null;
+            boolean newHasMean = newMean != null && newMean > 0;
+            boolean newHasLast = newLast != null && newLast > 0;
+            if (!newHasMean && !newHasLast) continue;
             long newC = Math.max(1L, srcCount != null ? srcCount.getOrDefault(key, 1L) : 1L);
             long oldC = count.getOrDefault(key, 0L);
-            if (newC > oldC || oldC == 0) {
-                mean.put(key, newMean);
-                count.put(key, newC);
-                if (srcLast != null && srcLast.containsKey(key)) {
-                    last.put(key, srcLast.get(key));
-                }
-            }
-            // else keep the higher-count row (mean + last + count)
+            boolean oldHasMean = mean.containsKey(key);
+            boolean win = newC > oldC || oldC == 0;
+            if (newHasMean && !oldHasMean) win = true;
+            if (!newHasMean && oldHasMean) win = false;
+            if (!win) continue;
+            if (newHasMean) mean.put(key, newMean);
+            else mean.remove(key);
+            if (newHasLast) last.put(key, newLast);
+            else last.remove(key);
+            count.put(key, newC);
         }
-        // last values for keys that lost the mean contest stay with the winner.
     }
 
     /**

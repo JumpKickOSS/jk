@@ -104,4 +104,42 @@ class AggregatedMetricsMergeTest {
         assertThat(agg.last(key)).hasValue(33_525.0);
         assertThat(agg.count(key)).isEqualTo(5L);
     }
+
+    @Test
+    void partial_rows_merge_per_key_and_move_together() {
+        // JK-1827: (a) last-only keys fold even when the file has a [mean] section for OTHER
+        // keys; (b) a count-winner missing [last] clears the loser's last (no mixed rows);
+        // (c) a mean-less row never beats a row with a real mean, regardless of count.
+        var mean = new java.util.LinkedHashMap<String, Double>();
+        var last = new java.util.LinkedHashMap<String, Double>();
+        var count = new java.util.LinkedHashMap<String, Long>();
+
+        // Seed: k1 full row (mean+last, count 3); k3 mean-only row (count 2).
+        AggregatedMetrics.mergePreferHigherCount(
+                mean, last, count,
+                java.util.Map.of("k1", 100.0, "k3", 40.0),
+                java.util.Map.of("k1", 90.0),
+                java.util.Map.of("k1", 3L, "k3", 2L));
+
+        // (a) mixed file: mean for k1 only, last-only for k2 — k2 must still fold.
+        AggregatedMetrics.mergePreferHigherCount(
+                mean, last, count,
+                java.util.Map.of("k1", 200.0),
+                java.util.Map.of("k2", 55.0),
+                java.util.Map.of("k1", 5L, "k2", 1L));
+        assertThat(last).containsEntry("k2", 55.0);
+        // (b) k1's winner had no [last] entry — the old last must not survive beside the new mean.
+        assertThat(mean).containsEntry("k1", 200.0);
+        assertThat(last).doesNotContainKey("k1");
+        assertThat(count).containsEntry("k1", 5L);
+
+        // (c) a last-only row with a huge count must not displace k3's real mean.
+        AggregatedMetrics.mergePreferHigherCount(
+                mean, last, count,
+                java.util.Map.of(),
+                java.util.Map.of("k3", 9_999.0),
+                java.util.Map.of("k3", 50L));
+        assertThat(mean).containsEntry("k3", 40.0);
+        assertThat(last).doesNotContainKey("k3");
+    }
 }
