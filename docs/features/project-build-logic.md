@@ -1,6 +1,6 @@
 # Project build logic (`.jk-build/`)
 
-**Tickets:** JK-1026 (design), JK-1037 (MVP), JK-1039 (multi-task), **JK-1044** (graph SPI / anchors) — [kanartist](https://github.com/jkbuild/kanartist) project `jk`  
+**Tickets:** JK-1026 (design), JK-1037 (MVP), JK-1039 (multi-task), **JK-1044** (graph SPI / anchors) — [kanartist](https://github.com/JumpKickOSS/kanartist) project `jk`  
 **Related:** [mill-comparison.md](../mill-comparison.md) §6
 
 ## Intent

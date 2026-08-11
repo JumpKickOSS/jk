@@ -2,7 +2,7 @@
 <idea-plugin>
   <id>cc.jumpkick.idea</id>
   <name>JumpKick</name>
-  <vendor url="https://github.com/jkbuild/jk">JumpKick</vendor>
+  <vendor url="https://github.com/JumpKickOSS/jk">JumpKick</vendor>
   <description><![CDATA[
     JumpKick for IntelliJ (wire-only): <b>Sync</b> imports modules and classpath from the
     engine <code>ide-model</code> (via the <code>jk</code> CLI — never loads engine jars),

@@ -25,7 +25,7 @@ class GitForgeDetectorTest {
 
     @Test
     void detects_github_from_https_remote(@TempDir Path repo) throws Exception {
-        gitOrigin(repo, "https://github.com/jkbuild/jk.git");
+        gitOrigin(repo, "https://github.com/JumpKickOSS/jk.git");
         assertThat(GitForgeDetector.detect(repo, null)).hasValueSatisfying(r -> {
             assertThat(r.kind()).isEqualTo(ForgeKind.GITHUB);
             assertThat(r.host()).isEqualTo("github.com");
@@ -34,7 +34,7 @@ class GitForgeDetectorTest {
 
     @Test
     void detects_github_from_scp_ssh_remote(@TempDir Path repo) throws Exception {
-        gitOrigin(repo, "git@github.com:jkbuild/jk.git");
+        gitOrigin(repo, "git@github.com:JumpKickOSS/jk.git");
         assertThat(GitForgeDetector.detect(repo, null))
                 .hasValueSatisfying(r -> assertThat(r.kind()).isEqualTo(ForgeKind.GITHUB));
     }
@@ -55,7 +55,7 @@ class GitForgeDetectorTest {
     @Test
     void resolves_ssh_alias_to_real_host(@TempDir Path repo, @TempDir Path sshHome) throws Exception {
         // Remote uses an alias; ~/.ssh/config maps it to github.com.
-        gitOrigin(repo, "git@work-gh:jkbuild/jk.git");
+        gitOrigin(repo, "git@work-gh:JumpKickOSS/jk.git");
         Path sshConfig = sshHome.resolve("config");
         Files.writeString(sshConfig, """
                 Host work-gh
@@ -83,7 +83,7 @@ class GitForgeDetectorTest {
 
     @Test
     void walks_up_to_find_repo_root(@TempDir Path repo) throws Exception {
-        gitOrigin(repo, "https://github.com/jkbuild/jk.git");
+        gitOrigin(repo, "https://github.com/JumpKickOSS/jk.git");
         Path nested = repo.resolve("a/b/c");
         Files.createDirectories(nested);
         assertThat(GitForgeDetector.detect(nested, null))
@@ -95,7 +95,7 @@ class GitForgeDetectorTest {
         // .git is a file pointing at the real git dir (worktree/submodule form).
         Files.writeString(realGitDir.resolve("config"), """
                 [remote "origin"]
-                    url = https://github.com/jkbuild/jk.git
+                    url = https://github.com/JumpKickOSS/jk.git
                 """);
         Files.writeString(repo.resolve(".git"), "gitdir: " + realGitDir + "\n");
 

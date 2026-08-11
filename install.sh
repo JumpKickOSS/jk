@@ -251,7 +251,7 @@ run_jk activate --yes || note "'jk activate --yes' failed; run 'jk activate' (or
 # `curl|bash` and `bash install.sh build/dist/jk` (local) flows.
 if have git; then
   # jk-templates: shallow clone (replace if exists) – mirrors OfficialTemplatesFreshen dest
-  _jk_templates_url="${JK_TEMPLATES_URL:-https://github.com/jkbuild/jk-templates.git}"
+  _jk_templates_url="${JK_TEMPLATES_URL:-https://github.com/JumpKickOSS/jk-templates.git}"
   _jk_cache_templates=""
   if [ -d "${HOME}/.jk/cache/templates" ] || [ -d "${HOME}/.jk" ]; then
     _jk_cache_templates="${HOME}/.jk/cache/templates"
@@ -278,7 +278,7 @@ if have git; then
 fi
 # jk-libraries: conditional fetch of libraries.toml (ETag-aware in LibraryRegistrySync, but prefetch raw)
 if have curl; then
-  _jk_libs_url="${JK_LIBRARIES_URL:-https://raw.githubusercontent.com/jkbuild/jk-libraries/refs/heads/main/libraries.toml}"
+  _jk_libs_url="${JK_LIBRARIES_URL:-https://raw.githubusercontent.com/JumpKickOSS/jk-libraries/refs/heads/main/libraries.toml}"
   _jk_libs_dest=""
   if [ -n "${JK_CACHE_DIR:-}" ]; then
     _jk_libs_dest="${JK_CACHE_DIR}/libs.global.toml"
@@ -295,7 +295,7 @@ if have curl; then
   curl -fsSL "$_jk_libs_url" -o "$_jk_libs_dest.tmp" >/dev/null 2>&1 && mv -f "$_jk_libs_dest.tmp" "$_jk_libs_dest" 2>/dev/null && cp -f "$_jk_libs_dest" "$_jk_store_libs" 2>/dev/null || rm -f "$_jk_libs_dest.tmp" 2>/dev/null || true
   unset _jk_libs_url _jk_libs_dest _jk_store_libs
 elif have wget; then
-  _jk_libs_url="${JK_LIBRARIES_URL:-https://raw.githubusercontent.com/jkbuild/jk-libraries/refs/heads/main/libraries.toml}"
+  _jk_libs_url="${JK_LIBRARIES_URL:-https://raw.githubusercontent.com/JumpKickOSS/jk-libraries/refs/heads/main/libraries.toml}"
   _jk_libs_dest="${JK_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME}/.cache}/jk}/libs.global.toml"
   _jk_store_libs="${HOME}/.local/share/jk/store/libs.global.toml"
   if [ -n "${JK_STORE_DIR:-}" ]; then _jk_store_libs="${JK_STORE_DIR}/libs.global.toml"; fi

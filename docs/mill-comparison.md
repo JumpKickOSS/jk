@@ -371,7 +371,7 @@ These are the axes where beating Mill means **doubling down**, not converging.
 
 ## Priority recommendations (Mill → JumpKick backlog)
 
-Live tickets: **`JK-NNNN`** in [kanartist](https://github.com/jkbuild/kanartist) (`projects/jk/`). Snapshot of themes at migration time (status may have moved — check the board):
+Live tickets: **`JK-NNNN`** in [kanartist](https://github.com/JumpKickOSS/kanartist) (`projects/jk/`). Snapshot of themes at migration time (status may have moved — check the board):
 
 | Priority | Ticket | Theme | Kind |
 |---|---|---|---|
@@ -437,7 +437,7 @@ That keeps Cargo ergonomics and a reviewable manifest while closing Mill’s “
 
 - Mill docs: [mill-build.org](https://mill-build.org/mill/index.html) (1.1.7) — design principles, caching, process architecture, performance comparisons, selective execution, testing, packaging, IDE install, migration  
 - Mill source: `../mill` (fetched main; core eval/exec, javalib, scalalib, kotlinlib, runner)  
-- JumpKick: [README.md](../README.md), [docs/architecture.md](architecture.md), [docs/guide.md](guide.md); planning board in [kanartist](https://github.com/jkbuild/kanartist) (`JK-NNNN`)
+- JumpKick: [README.md](../README.md), [docs/architecture.md](architecture.md), [docs/guide.md](guide.md); planning board in [kanartist](https://github.com/JumpKickOSS/kanartist) (`JK-NNNN`)
 
 ---
 
@@ -445,4 +445,4 @@ That keeps Cargo ergonomics and a reviewable manifest while closing Mill’s “
 
 - Revisit when JumpKick approaches 1.0 or when Mill ships major 1.2+ features.  
 - Keep this file **adversarial and actionable**; do not turn it into a public marketing page unless product strategy asks for it.  
-- Actionable work is tracked as **`JK-NNNN`** tickets in [kanartist](https://github.com/jkbuild/kanartist) (project `jk`); update that board when priorities shift rather than re-litigating this essay.
+- Actionable work is tracked as **`JK-NNNN`** tickets in [kanartist](https://github.com/JumpKickOSS/kanartist) (project `jk`); update that board when priorities shift rather than re-litigating this essay.

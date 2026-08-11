@@ -8,7 +8,7 @@ Guidance for anyone (human or agent) working in this repository.
 
 Product docs: [README.md](README.md), [docs/guide.md](docs/guide.md), [docs/architecture.md](docs/architecture.md), [docs/features/](docs/features/) (packaging, Giter8, BOMs). Build/layout: [CONTRIBUTING.md](CONTRIBUTING.md).
 
-**Out-of-tree black-box suite / adopter examples:** [jkbuild/jk-examples](https://github.com/jkbuild/jk-examples) (sibling checkout `../jk-examples`). Real multi-module and plugin scenarios used to validate and benchmark product changes and to show idiomatic JumpKick to early adopters. Not a substitute for `./gradlew test` — re-run the scenarios that touch surfaces you change (workspaces, Boot, Kotlin, packaging, resolve, …).
+**Out-of-tree black-box suite / adopter examples:** [JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples) (sibling checkout `../jk-examples`). Real multi-module and plugin scenarios used to validate and benchmark product changes and to show idiomatic JumpKick to early adopters. Not a substitute for `./gradlew test` — re-run the scenarios that touch surfaces you change (workspaces, Boot, Kotlin, packaging, resolve, …).
 
 ## Goals
 
@@ -108,9 +108,9 @@ Needs a GraalVM-capable JDK for `dist` (see [CONTRIBUTING.md](CONTRIBUTING.md) /
 
 ## Planning / tickets (KanArtist — not this repo)
 
-**Live board:** org planning repo **[kanartist](https://github.com/jkbuild/kanartist)** (`jkbuild/kanartist`), project key **`jk`**, ticket ids **`JK-NNNN`**.
+**Live board:** org planning repo **[kanartist](https://github.com/JumpKickOSS/kanartist)** (`JumpKickOSS/kanartist`), project key **`jk`**, ticket ids **`JK-NNNN`**.
 
-- Protocol: that repo’s [`AGENTS.md`](https://github.com/jkbuild/kanartist/blob/main/AGENTS.md).
+- Protocol: that repo’s [`AGENTS.md`](https://github.com/JumpKickOSS/kanartist/blob/main/AGENTS.md).
 - Tickets: `projects/jk/tickets/JK-NNNN-*.md` (status lives on the ticket file; board views are generated).
 - Sibling checkout assumed: `../kanartist` next to this repo (or set `KANARTIST_WORKSPACE_ROOT`).
 

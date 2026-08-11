@@ -22,10 +22,10 @@ class Giter8GitTest {
 
     @Test
     void parse_github_shorthand_to_https() throws Exception {
-        var p = Giter8Git.parse("jkbuild/java-cli.g8#main");
-        assertThat(p.url()).isEqualTo("https://github.com/jkbuild/java-cli.git");
+        var p = Giter8Git.parse("JumpKickOSS/java-cli.g8#main");
+        assertThat(p.url()).isEqualTo("https://github.com/JumpKickOSS/java-cli.git");
         assertThat(p.rev()).isEqualTo("main");
-        assertThat(p.cacheKey()).contains("github.com_jkbuild_java-cli");
+        assertThat(p.cacheKey()).contains("github.com_jumpkickoss_java-cli");
     }
 
     @Test

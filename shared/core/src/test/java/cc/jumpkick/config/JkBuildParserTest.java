@@ -1125,7 +1125,7 @@ class JkBuildParserTest {
     void parses_inline_token_and_basic_credentials() {
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
                 [repositories.ghp]
-                url = "https://maven.pkg.github.com/jkbuild/jk"
+                url = "https://maven.pkg.github.com/JumpKickOSS/jk"
                 token = "ghp_literaltoken"
 
                 [repositories.nexus]

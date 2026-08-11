@@ -521,7 +521,7 @@ jk new --template quarkus my-api # Giter8 short name (same single-module shape)
   module. Prefer a small `@ApplicationScoped` holder in the app module over CDI producers
   whose return types live only in sibling jars (Jandex). Synthetic `pom.xml` is for tooling
   only — JumpKick owns resolve via `jk-lock.toml`. Dogfood:
-  [jk-examples](https://github.com/jkbuild/jk-examples) (`micronaut/hello-http`, Quarkus/Boot petshops, …).
+  [jk-examples](https://github.com/JumpKickOSS/jk-examples) (`micronaut/hello-http`, Quarkus/Boot petshops, …).
 - Cold first lock of the Quarkus platform is large; warm CAS re-locks are fast. See
   [perf/resolve-io.md](perf/resolve-io.md).
 

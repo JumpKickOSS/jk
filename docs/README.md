@@ -16,9 +16,9 @@ Public docs for [jk](../README.md) — a modern build tool for Java, Kotlin, and
 | [**Maven repo**](maven-repo.md) | Official first-party repo (`/repo/…`); exclusive routing for `cc`/`build.jumpkick` |
 | [**Mirror verification**](mirror-verification-decision.md) | Decision: store-hit checksum policy, first-write-wins, `jk repo refresh` (JK-1451) |
 
-Project planning (not product docs): [kanartist](https://github.com/jkbuild/kanartist) project `jk` (`JK-NNNN`).
+Project planning (not product docs): [kanartist](https://github.com/JumpKickOSS/kanartist) project `jk` (`JK-NNNN`).
 
-**Black-box scenarios & adopter examples** (separate repo): [jkbuild/jk-examples](https://github.com/jkbuild/jk-examples) — real projects used for end-to-end validation, benchmarking, and teaching.
+**Black-box scenarios & adopter examples** (separate repo): [JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples) — real projects used for end-to-end validation, benchmarking, and teaching.
 
 Competitive notes (maintainers): [mill-comparison.md](mill-comparison.md) — adversarial gap analysis vs Mill.
 

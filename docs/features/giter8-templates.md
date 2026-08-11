@@ -13,7 +13,7 @@ is an alternate G8 shape of the same single-module app (not a multi-module works
 
 ### Official templates repo
 
-First-party Giter8 content lives in **[jkbuild/jk-templates](https://github.com/jkbuild/jk-templates)**
+First-party Giter8 content lives in **[JumpKickOSS/jk-templates](https://github.com/JumpKickOSS/jk-templates)**
 (overridable via config). Layout: monorepo with nested `*.g8` directories (or `templates/*.g8`).
 
 In-tree `templates/*.g8` is **dev dogfood** (walk-up from cwd, not bundled). Production templates
@@ -26,8 +26,8 @@ itself, it only reads the cache the engine just refreshed.
 
 ```toml
 [templates]
-# optional; default is https://github.com/jkbuild/jk-templates
-official = "https://github.com/jkbuild/jk-templates"
+# optional; default is https://github.com/JumpKickOSS/jk-templates
+official = "https://github.com/JumpKickOSS/jk-templates"
 
 [templates.sources]
 acme = "https://github.com/acme/jk-g8"
@@ -41,7 +41,7 @@ paths and before the official monorepo. One-shot CLI sources:
 jk new --template my-starter --template-source https://github.com/acme/jk-g8
 ```
 
-Complex multi-module dogfood also lives in **[jk-examples](https://github.com/jkbuild/jk-examples)** (e.g. `spring-boot/petshop`, `kotlin/ktor-petshop`).
+Complex multi-module dogfood also lives in **[jk-examples](https://github.com/JumpKickOSS/jk-examples)** (e.g. `spring-boot/petshop`, `kotlin/ktor-petshop`).
 
 ## CLI surface
 
@@ -58,7 +58,7 @@ jk new --template <ref> --param key=value   # non-interactive props (repeatable)
 | Order | Form | Status |
 |------:|------|--------|
 | 1 | **Local path** — directory or `…/template.g8` with `src/main/g8/` (or G8 root layout) | **Shipped** (JK-1182) |
-| 2 | **Short name** — `$JK_TEMPLATES`, `~/.jk/templates`, walk-up dogfood, **config sources**, **official [jk-templates](https://github.com/jkbuild/jk-templates)** (engine-refreshed shallow clone) | **Shipped** (JK-1380; requires `git` for remote) |
+| 2 | **Short name** — `$JK_TEMPLATES`, `~/.jk/templates`, walk-up dogfood, **config sources**, **official [jk-templates](https://github.com/JumpKickOSS/jk-templates)** (engine-refreshed shallow clone) | **Shipped** (JK-1380; requires `git` for remote) |
 | 3 | **GitHub shorthand** — `owner/repo` or `owner/repo.g8` | **Shipped** (JK-1203; requires `git`) |
 | 4 | **Full git/HTTPS URI** — optional `#branch` or `@tag` | **Shipped** (JK-1203; requires `git`) |
 

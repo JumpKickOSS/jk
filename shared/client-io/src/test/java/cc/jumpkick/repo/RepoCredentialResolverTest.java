@@ -94,7 +94,7 @@ class RepoCredentialResolverTest {
                 forge(forgeStore),
                 octocat);
 
-        RepoCredential cred = r.resolve("ghp", URI.create("https://maven.pkg.github.com/jkbuild/jk"), Optional.empty());
+        RepoCredential cred = r.resolve("ghp", URI.create("https://maven.pkg.github.com/JumpKickOSS/jk"), Optional.empty());
         assertThat(cred).isEqualTo(new RepoCredential.Basic("octocat", "gho_pkgtoken"));
     }
 
@@ -109,7 +109,7 @@ class RepoCredentialResolverTest {
                 new RepoCredentialStore(dir.resolve("repocreds")),
                 forge(forgeStore)); // NO_IDENTITY
 
-        RepoCredential cred = r.resolve("ghp", URI.create("https://maven.pkg.github.com/jkbuild/jk"), Optional.empty());
+        RepoCredential cred = r.resolve("ghp", URI.create("https://maven.pkg.github.com/JumpKickOSS/jk"), Optional.empty());
         assertThat(cred).isEqualTo(new RepoCredential.Bearer("gho_pkgtoken"));
     }
 

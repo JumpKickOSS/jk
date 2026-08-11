@@ -8,7 +8,7 @@ not multi-hour unit suites).
 
 | Tree | Location |
 |------|----------|
-| JumpKick port | [jk-examples](https://github.com/jkbuild/jk-examples) `jvm/netty/checkout` |
+| JumpKick port | [jk-examples](https://github.com/JumpKickOSS/jk-examples) `jvm/netty/checkout` |
 | Mill workspace | same pin under `jvm/netty/mill-workspace` (gitignored; from `scripts/prepare-mill-netty.sh`) |
 | Mill source | `../mill` (com-lihaoyi/mill), `example/thirdparty/netty/build.mill` |
 

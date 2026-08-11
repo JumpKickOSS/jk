@@ -14,8 +14,8 @@ import org.tomlj.TomlTable;
  *
  * <pre>{@code
  * [templates]
- * # Optional override of the official monorepo (default: jkbuild/jk-templates).
- * official = "https://github.com/jkbuild/jk-templates"
+ * # Optional override of the official monorepo (default: JumpKickOSS/jk-templates).
+ * official = "https://github.com/JumpKickOSS/jk-templates"
  *
  * # Third-party monorepos or single-template git roots (name → url or table).
  * [templates.sources]
@@ -29,7 +29,7 @@ import org.tomlj.TomlTable;
 public record JkTemplatesConfig(String officialUrl, List<Source> sources) {
 
     /** Default official first-party templates monorepo. */
-    public static final String DEFAULT_OFFICIAL = "https://github.com/jkbuild/jk-templates";
+    public static final String DEFAULT_OFFICIAL = "https://github.com/JumpKickOSS/jk-templates";
 
     /**
      * A named third-party (or extra) git template source. {@code rev} is an optional branch/tag for

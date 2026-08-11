@@ -33,7 +33,7 @@ foojay resolver on first use.
 
 ### Black-box examples (sibling repo)
 
-End-to-end scenarios and early-adopter samples live in **[jkbuild/jk-examples](https://github.com/jkbuild/jk-examples)** (checkout next to this repo as `../jk-examples`). After product changes to lock/resolve/packaging/plugins/workspaces, reinstall local jk and run the relevant scenarios there (`jk lock && jk build && jk test`). They are the out-of-tree acceptance surface, not a replacement for `./gradlew test`.
+End-to-end scenarios and early-adopter samples live in **[JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples)** (checkout next to this repo as `../jk-examples`). After product changes to lock/resolve/packaging/plugins/workspaces, reinstall local jk and run the relevant scenarios there (`jk lock && jk build && jk test`). They are the out-of-tree acceptance surface, not a replacement for `./gradlew test`.
 
 `dist` builds the slim GraalVM native `jk` client and the engine fat jar
 (`lib/jk-engine-<version>.jar`). The engine runs as a normal JVM app on a
@@ -217,7 +217,7 @@ blank envelope, script-mode allowlist, nerd/ansi/plain): [docs/tui.md](docs/tui.
 ## Docs and planning
 
 - Public docs live under [`docs/`](docs/README.md) (keep the set small and accurate).
-- Engineering board: **[kanartist](https://github.com/jkbuild/kanartist)** project `jk` (`JK-NNNN`). Claim/work rules and Done criteria: root [`AGENTS.md`](AGENTS.md).
+- Engineering board: **[kanartist](https://github.com/JumpKickOSS/kanartist)** project `jk` (`JK-NNNN`). Claim/work rules and Done criteria: root [`AGENTS.md`](AGENTS.md).
 
 ## Commit authorship
 
