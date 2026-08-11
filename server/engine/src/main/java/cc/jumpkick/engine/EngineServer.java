@@ -177,11 +177,19 @@ public final class EngineServer implements AutoCloseable {
     private final java.util.concurrent.ConcurrentHashMap<Long, cc.jumpkick.runtime.WorkspaceProgressTracker>
             progressTrackers = new java.util.concurrent.ConcurrentHashMap<>();
 
+    /** Per-request progress mode from the request wire (JK-1816). */
+    private final java.util.concurrent.ConcurrentHashMap<Long, cc.jumpkick.runtime.progress.ProgressBarMode>
+            progressModes = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Per-request residual wall-work oracle {@code R(t)} — shared by bar and countdown. */
+    private final java.util.concurrent.ConcurrentHashMap<Long, cc.jumpkick.runtime.RemainingWork> remainingWorks =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     /** Workspace root dir for {@code workspace-progress} events. */
     private final java.util.concurrent.ConcurrentHashMap<Long, String> progressRoots =
             new java.util.concurrent.ConcurrentHashMap<>();
 
-    /** Plan weight per module dir, for slice calibration. */
+    /** Plan weight per module dir (legacy slice hints; residual schedule is authoritative). */
     private final java.util.concurrent.ConcurrentHashMap<Long, java.util.concurrent.ConcurrentHashMap<String, Long>>
             progressWeights = new java.util.concurrent.ConcurrentHashMap<>();
 
@@ -1022,6 +1030,9 @@ public final class EngineServer implements AutoCloseable {
         Session.CancelToken cancelToken = Session.CancelToken.live();
         CountDownLatch done = new CountDownLatch(1);
         long eventRequestId = requestIds.incrementAndGet();
+        // The requesting shell's JK_PROGRESS_MODE rides the request — the resident engine's own
+        // startup env is not the client's (JK-1816).
+        progressModes.put(eventRequestId, EngineProtocol.progressModeOf(requestLine));
         // The kind rides explicitly from the dispatch site (never parsed back out of a thread
         // name); the journal dir falls back to a request's specific location field so non-build
         // requests never record the literal string "null".
@@ -1682,6 +1693,8 @@ public final class EngineServer implements AutoCloseable {
         lastProgressByRequest.remove(requestId);
         lastProgressDenByRequest.remove(requestId);
         progressTrackers.remove(requestId);
+        progressModes.remove(requestId);
+        remainingWorks.remove(requestId);
         progressRoots.remove(requestId);
         progressWeights.remove(requestId);
         progressEmitState.remove(requestId);
@@ -1700,8 +1713,10 @@ public final class EngineServer implements AutoCloseable {
      * object to update (no null checks at eight call sites) and the update goes nowhere.
      */
     private cc.jumpkick.runtime.WorkspaceProgressTracker progressTracker(long requestId) {
-        if (progressRetired(requestId)) return new cc.jumpkick.runtime.WorkspaceProgressTracker();
-        return progressTrackers.computeIfAbsent(requestId, id -> new cc.jumpkick.runtime.WorkspaceProgressTracker());
+        var mode = progressModes.get(requestId);
+        if (progressRetired(requestId)) return new cc.jumpkick.runtime.WorkspaceProgressTracker(mode);
+        return progressTrackers.computeIfAbsent(
+                requestId, id -> new cc.jumpkick.runtime.WorkspaceProgressTracker(mode));
     }
 
     private long planWeight(long requestId, String dir) {
@@ -1713,19 +1728,41 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
-     * Feed module plan ticks into the workspace tracker and optionally emit {@code
-     * workspace-progress}.
+     * Feed module plan ticks into residual {@code R(t)} and the workspace bar, then emit
+     * {@code workspace-progress} + updated remaining ETA.
      */
     private void trackModuleBuildPlan(
             long requestId, String dir, BuildPlanView view, java.io.BufferedWriter writer, boolean forceEmit) {
         if (requestId <= 0 || view == null) return;
-        progressTracker(requestId)
-                .moduleProgress(dir, planWeight(requestId, dir), view.numerator(), view.denominator());
+        double frac = view.denominator() > 0
+                ? Math.min(1.0, Math.max(0.0, (double) view.numerator() / (double) view.denominator()))
+                : 0.0;
+        // Bar: effort-weight slices (plan num/den) + residual annotation for adaptive clock/countdown.
+        long slice = planWeight(requestId, dir);
+        progressTracker(requestId).moduleProgress(dir, slice, view.numerator(), view.denominator());
+        cc.jumpkick.runtime.RemainingWork rw = remainingWorks.get(requestId);
+        if (rw != null && dir != null) {
+            // Atomic update+recompute+note per request: two scheduler threads interleaving
+            // (T1 computes 10s, T2 computes 9s and notes it, T1 notes 10s last) regressed the
+            // wire remainingMs (JK-1830). rw's own methods synchronize on rw, so this monitor
+            // is reentrant and orders the notes with their computations.
+            synchronized (rw) {
+                rw.moduleProgress(java.nio.file.Path.of(dir), frac);
+                progressTracker(requestId).noteRemaining(rw.remaining(), rw.R0());
+            }
+        }
         emitWorkspaceProgress(requestId, writer, forceEmit);
     }
 
     private void trackModuleComplete(long requestId, String dir, long lastDen, java.io.BufferedWriter writer) {
         if (requestId <= 0) return;
+        cc.jumpkick.runtime.RemainingWork rw = remainingWorks.get(requestId);
+        if (rw != null && dir != null) {
+            synchronized (rw) {
+                rw.moduleComplete(java.nio.file.Path.of(dir));
+                progressTracker(requestId).noteRemaining(rw.remaining(), rw.R0());
+            }
+        }
         progressTracker(requestId).moduleComplete(dir, lastDen);
         emitWorkspaceProgress(requestId, writer, true);
     }
@@ -1749,44 +1786,49 @@ public final class EngineServer implements AutoCloseable {
             cc.jumpkick.runtime.WorkspaceProgressTracker tracker = progressTrackers.get(requestId);
             if (tracker == null) return;
             var snap = tracker.snapshot();
+            double heldPct = Double.NaN;
             if (snap.hasPercent()) {
                 // Peak-hold machine progressnever publish a lower % than already
                 // emitted — but rebase when the denominator grew (calibrate), or the preflight
                 // peak pins the rider for the whole execute phase.
                 Double prevPct = lastProgressByRequest.get(requestId);
                 Long prevDen = lastProgressDenByRequest.get(requestId);
-                double pct = snap.percent();
+                heldPct = snap.percent();
                 boolean denGrew = prevDen != null && snap.denominator() > prevDen;
-                if (!denGrew && prevPct != null && pct + 1e-9 < prevPct) {
-                    pct = prevPct;
+                if (!denGrew && prevPct != null && heldPct + 1e-9 < prevPct) {
+                    heldPct = prevPct;
                 }
-                lastProgressByRequest.put(requestId, pct);
+                lastProgressByRequest.put(requestId, heldPct);
                 lastProgressDenByRequest.put(requestId, snap.denominator());
             }
             if (!force && !shouldEmitWorkspaceProgress(requestId, snap)) return;
             String dir = progressRoots.getOrDefault(requestId, "");
+            // snapshot() recomputes open-loop percent when R0 is set (clock strategy).
             long num = snap.numerator();
             long den = snap.denominator();
-            // If peak-holding percent, still emit the snapped phase counters but progress rider uses peak.
+            long rem = snap.remainingMs();
+            long r0 = snap.R0ms();
+            // The HELD percent goes on both wire surfaces — the JSONL line used to carry the raw
+            // (possibly regressing) value while SSE got the held one via withProgress (JK-1821).
+            double pct = heldPct;
             String line = EngineProtocol.workspaceProgress(
-                    dir, num, den, snap.phase(), snap.modulesComplete(), snap.modulesTotal());
+                    dir, num, den, snap.phase(), snap.modulesComplete(), snap.modulesTotal(), rem, r0, pct);
             if (writer != null) sendQuiet(writer, line);
             if (eventsWanted()) {
-                publishEvent(
-                        "workspace-progress",
-                        withProgress(
-                                cc.jumpkick.engine.http.JsonOut.object()
-                                        .put("schema", 1)
-                                        .put("type", "workspace-progress")
-                                        .put("requestId", requestId)
-                                        .put("dir", dir)
-                                        .put("numerator", num)
-                                        .put("denominator", den)
-                                        .put("phase", snap.phase())
-                                        .put("modulesComplete", snap.modulesComplete())
-                                        .put("modulesTotal", snap.modulesTotal()),
-                                requestId),
-                        dashboardOnly);
+                var body = cc.jumpkick.engine.http.JsonOut.object()
+                        .put("schema", 1)
+                        .put("type", "workspace-progress")
+                        .put("requestId", requestId)
+                        .put("dir", dir)
+                        .put("numerator", num)
+                        .put("denominator", den)
+                        .put("phase", snap.phase())
+                        .put("modulesComplete", snap.modulesComplete())
+                        .put("modulesTotal", snap.modulesTotal())
+                        .put("remainingMs", rem)
+                        .put("R0", r0);
+                if (!Double.isNaN(pct)) body.put("progress", pct);
+                publishEvent("workspace-progress", withProgress(body, requestId), dashboardOnly);
             }
             Double held = lastProgressByRequest.get(requestId);
             long pctMillis = held != null
@@ -3239,6 +3281,8 @@ public final class EngineServer implements AutoCloseable {
             String javaStyle = Jsonl.str(requestLine, "javaStyle");
             String kotlinStyle = Jsonl.str(requestLine, "kotlinStyle");
             boolean optimizeImports = Jsonl.bool(requestLine, "optimizeImports", true);
+            boolean importOrder = Jsonl.bool(requestLine, "importOrder", true);
+            boolean removeUnusedImports = Jsonl.bool(requestLine, "removeUnusedImports", true);
             String rewriteConfig = Jsonl.str(requestLine, "rewriteConfig");
             Session session = resolveSession(requestLine, cancelToken, false);
             String dir = EngineProtocol.SINGLE_PLAN_DIR;
@@ -3249,6 +3293,8 @@ public final class EngineServer implements AutoCloseable {
                     javaStyle,
                     kotlinStyle,
                     optimizeImports,
+                    importOrder,
+                    removeUnusedImports,
                     rewriteConfig != null ? Path.of(rewriteConfig) : null,
                     (path, status, message, index, total) ->
                             sendQuiet(writer, EngineProtocol.formatFile(dir, path, status, message, index, total)));
@@ -3792,11 +3838,14 @@ public final class EngineServer implements AutoCloseable {
                             return EngineProtocol.planFinishCache(
                                     dir,
                                     result.success(),
-                                    plan.get(cc.jumpkick.runtime.CachePlans.FILES).orElse(-1L),
-                                    plan.get(cc.jumpkick.runtime.CachePlans.BYTES).orElse(-1L),
+                                    plan.get(cc.jumpkick.runtime.CachePlans.FILES)
+                                            .orElse(-1L),
+                                    plan.get(cc.jumpkick.runtime.CachePlans.BYTES)
+                                            .orElse(-1L),
                                     plan.get(cc.jumpkick.runtime.CachePlans.REACHABLE_EVICTED)
                                             .orElse(-1L),
-                                    plan.get(cc.jumpkick.runtime.CachePlans.REPO_LINKS).orElse(-1L));
+                                    plan.get(cc.jumpkick.runtime.CachePlans.REPO_LINKS)
+                                            .orElse(-1L));
                         });
                     } finally {
                         pruneLock.release();
@@ -4219,6 +4268,17 @@ public final class EngineServer implements AutoCloseable {
             }
 
             @Override
+            public void onWorkModel(cc.jumpkick.runtime.WorkModel model) {
+                if (eventRequestId <= 0 || model == null) return;
+                cc.jumpkick.runtime.RemainingWork rw = model.toRemainingWork();
+                remainingWorks.put(eventRequestId, rw);
+                // Annotate R0 for wire/clients; bar denominator is calibrated from plan weights.
+                progressTracker(eventRequestId)
+                        .seedWall(model.R0(), model.costs().size());
+                emitWorkspaceProgress(eventRequestId, writer, true);
+            }
+
+            @Override
             public void onPlan(java.util.List<ModulePlan> plan) {
                 long totalWeight = 0;
                 // Id-less builds must not insert a key clearProgress can never remove.
@@ -4244,6 +4304,7 @@ public final class EngineServer implements AutoCloseable {
                     }
                 }
                 sendQuiet(writer, EngineProtocol.planDone(plan.size()));
+                // Bar = Σ effort weights (real work + TOKENs), not wall-ms R0.
                 if (eventRequestId > 0) {
                     progressTracker(eventRequestId).calibrate(totalWeight, plan.size());
                     emitWorkspaceProgress(eventRequestId, writer, true);
@@ -4257,9 +4318,9 @@ public final class EngineServer implements AutoCloseable {
             }
 
             @Override
-            public void onEtaEstimate(long millis) {
-                sendQuiet(writer, EngineProtocol.eta(millis));
-                publishEta(eventRequestId, millis);
+            public void onEtaEstimate(long remainingMs) {
+                sendQuiet(writer, EngineProtocol.eta(remainingMs));
+                publishEta(eventRequestId, remainingMs);
             }
 
             @Override
@@ -5803,6 +5864,15 @@ public final class EngineServer implements AutoCloseable {
             }
 
             @Override
+            public void onWorkModel(cc.jumpkick.runtime.WorkModel model) {
+                if (eventRequestId <= 0 || model == null) return;
+                remainingWorks.put(eventRequestId, model.toRemainingWork());
+                progressTracker(eventRequestId)
+                        .seedWall(model.R0(), model.costs().size());
+                emitWorkspaceProgress(eventRequestId, null, true);
+            }
+
+            @Override
             public void onPlan(java.util.List<ModulePlan> plan) {
                 long totalWeight = 0;
                 // Id-less builds must not insert a key clearProgress can never remove.
@@ -5827,8 +5897,8 @@ public final class EngineServer implements AutoCloseable {
             }
 
             @Override
-            public void onEtaEstimate(long millis) {
-                publishEta(eventRequestId, millis);
+            public void onEtaEstimate(long remainingMs) {
+                publishEta(eventRequestId, remainingMs);
             }
 
             @Override

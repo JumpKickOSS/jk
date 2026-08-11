@@ -27,33 +27,11 @@ class BuildServiceForecastDirtyTest {
     }
 
     private static JkConfig withRebuild(boolean rebuild) {
-        return new JkConfig(
-                Optional.empty(),
-                Optional.empty(),
-                Optional.of(rebuild),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty());
+        return JkConfig.empty().withRebuild(Optional.of(rebuild));
     }
 
     private static JkConfig withForce(boolean force) {
-        return new JkConfig(
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.of(force),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty());
+        return JkConfig.empty().withForce(Optional.of(force));
     }
 
     @Test

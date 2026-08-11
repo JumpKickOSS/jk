@@ -18,10 +18,10 @@ Maven path (standard):
 repo/
   cc/jumpkick/
     jk-test-runner/
-      0.11.0/
-        jk-test-runner-0.11.0.jar
-        jk-test-runner-0.11.0.jar.sha256
-        jk-test-runner-0.11.0.pom
+      0.12.0/
+        jk-test-runner-0.12.0.jar
+        jk-test-runner-0.12.0.jar.sha256
+        jk-test-runner-0.12.0.pom
       maven-metadata.xml
     jk-kotlin-compiler/
       …
@@ -52,9 +52,9 @@ User guide (exclusive groups + custom internal repos): [guide.md](guide.md#auth-
 ```bash
 ./gradlew clean dist installLocal
 export JK_RELEASE_SIGNING_KEY=…   # optional for binary .sig
-scripts/assemble-release-dir.sh build/release/0.11.0
+scripts/assemble-release-dir.sh build/release/0.12.0
 # upload releases/
-gsutil -m rsync -r build/release/0.11.0/ gs://jkbuild-releases/releases/0.11.0/
+gsutil -m rsync -r build/release/0.12.0/ gs://jkbuild-releases/releases/0.12.0/
 # upload first-party Maven modules
 scripts/publish-maven-repo.sh
 ```

@@ -46,10 +46,10 @@ class LiveProgressTest {
     @Test
     void apply_snapshot_uses_units_then_falls_back_to_percent() {
         LiveProgress p = LiveProgress.get();
-        p.apply(new WorkspaceProgressTracker.Snapshot(50, 200, 25.0, "execute", 0, 4));
+        p.apply(new WorkspaceProgressTracker.Snapshot(50, 200, 25.0, "execute", 0, 4, 75_000, 100_000));
         assertThat(p.percent()).isEqualTo(25.0);
         // Percent-only snapshot (denominator 0) still lands.
-        p.apply(new WorkspaceProgressTracker.Snapshot(0, 0, 60.0, "execute", 2, 4));
+        p.apply(new WorkspaceProgressTracker.Snapshot(0, 0, 60.0, "execute", 2, 4, -1, 0));
         assertThat(p.percent()).isEqualTo(60.0);
     }
 }

@@ -28,6 +28,23 @@ class JkBuildParserTest {
             """;
 
     @Test
+    void dead_test_tag_keys_fail_with_a_migration_message() {
+        // JK-1825: silently ignoring the renamed keys would run the tests the config excluded.
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                        [test]
+                        default-exclude-tags = ["slow"]
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("renamed to exclude-tags");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                        [test]
+                        exclude-tag = ["slow"]
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("plural");
+    }
+
+    @Test
     void platform_policy_survives_kotlin_plugins_rebuild() {
         // the kotlin-plugins fold used a ctor that hard-reset platformPolicy to ENFORCED.
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
@@ -288,6 +305,27 @@ class JkBuildParserTest {
         assertThat(parsed.format().style()).isEqualTo("standard");
         assertThat(parsed.format().java()).isEqualTo("palantir");
         assertThat(parsed.format().kotlin()).isEqualTo("kotlinlang");
+        assertThat(parsed.format().optimizeImports()).isNull();
+        assertThat(parsed.format().importOrder()).isNull();
+        assertThat(parsed.format().removeUnusedImports()).isNull();
+    }
+
+    @Test
+    void parses_format_hygiene_toggles() {
+        JkBuild parsed = JkBuildParser.parse("""
+                [project]
+                group    = "com.example"
+                name     = "widget"
+                version  = "1.0.0"
+
+                [format]
+                optimize-imports       = false
+                import-order           = false
+                remove-unused-imports  = true
+                """);
+        assertThat(parsed.format().optimizeImports()).isFalse();
+        assertThat(parsed.format().importOrder()).isFalse();
+        assertThat(parsed.format().removeUnusedImports()).isTrue();
     }
 
     @Test
@@ -1108,7 +1146,7 @@ class JkBuildParserTest {
     void parses_inline_token_and_basic_credentials() {
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
                 [repositories.ghp]
-                url = "https://maven.pkg.github.com/jkbuild/jk"
+                url = "https://maven.pkg.github.com/JumpKickOSS/jk"
                 token = "ghp_literaltoken"
 
                 [repositories.nexus]
@@ -1254,10 +1292,7 @@ class JkBuildParserTest {
 
     @Test
     void parse_test_tags_reads_include_and_exclude(@TempDir Path dir) throws Exception {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                PROJECT
-                        + """
+        Files.writeString(dir.resolve("jk.toml"), PROJECT + """
                         [test]
                         include-tags = ["unit"]
                         exclude-tags = ["slow", "bench"]
@@ -1277,24 +1312,20 @@ class JkBuildParserTest {
             "picocli", new LibraryCatalog.Module("info.picocli", "picocli")));
 
     @Test
-    void catalog_bundled_pin_ignores_shadowing_layers() {
-        // A user/downloaded layer entry shadowing "groovy" must not repoint a manifest that pins
-        // catalog = "bundled" (JK-1443: jk's own manifests use this).
-        LibraryCatalog shadowing =
-                LibraryCatalog.of(Map.of("groovy", new LibraryCatalog.Module("evil.example", "groovy")));
-        JkBuild parsed = JkBuildParser.parse("catalog = \"bundled\"\n" + PROJECT + """
-                [dependencies]
-                groovy = "latest"
-                """, shadowing);
-        var dep = parsed.dependencies().of(Scope.MAIN).getFirst();
-        assertThat(dep.module()).startsWith("org.apache.groovy:");
+    void catalog_key_is_rejected() {
+        assertThatThrownBy(() -> JkBuildParser.parse("catalog = \"bundled\"\n" + PROJECT))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("catalog = … was removed");
     }
 
     @Test
-    void catalog_key_rejects_unknown_values() {
-        assertThatThrownBy(() -> JkBuildParser.parse("catalog = \"wild\"\n" + PROJECT))
+    void libraries_table_in_jk_toml_is_rejected() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                [libraries]
+                picocli = "io.fork:picocli"
+                """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("bundled");
+                .hasMessageContaining("jk-libs.toml");
     }
 
     @Test
@@ -1550,42 +1581,78 @@ class JkBuildParserTest {
     }
 
     @Test
-    void project_libraries_table_overrides_passed_in_catalog() {
-        // The project-local [libraries] table is the top of the lookup chain;
-        // it shadows the catalog passed by callers (including the bundled
-        // one in production).
-        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+    void project_jk_libs_toml_overrides_passed_in_catalog(@TempDir Path tmp) throws Exception {
+        // Workspace-root jk-libs.toml is the top of the lookup chain when parsing from disk.
+        Files.writeString(tmp.resolve("jk.toml"), PROJECT + """
+                        [dependencies]
+                        picocli = "4.7.7"
+                        """);
+        Files.writeString(tmp.resolve("jk-libs.toml"), """
                 [libraries]
                 picocli = "io.fork:picocli"
-
-                [dependencies]
-                picocli = "4.7.7"
-                """, TEST_CATALOG);
+                """);
+        JkBuild parsed = JkBuildParser.parse(tmp.resolve("jk.toml"));
         var dep = parsed.dependencies().of(Scope.MAIN).getFirst();
         assertThat(dep.module()).isEqualTo("io.fork:picocli");
     }
 
     @Test
-    void project_libraries_can_introduce_a_brand_new_short_name() {
-        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+    void project_jk_libs_toml_can_introduce_a_brand_new_short_name(@TempDir Path tmp) throws Exception {
+        Files.writeString(tmp.resolve("jk.toml"), PROJECT + """
+                        [dependencies]
+                        internal-widget = "0.1.0"
+                        """);
+        Files.writeString(tmp.resolve("jk-libs.toml"), """
                 [libraries]
                 internal-widget = "com.acme:internal-widget"
-
-                [dependencies]
-                internal-widget = "0.1.0"
-                """, TEST_CATALOG);
+                """);
+        JkBuild parsed = JkBuildParser.parse(tmp.resolve("jk.toml"));
         var dep = parsed.dependencies().of(Scope.MAIN).getFirst();
         assertThat(dep.module()).isEqualTo("com.acme:internal-widget");
     }
 
     @Test
-    void project_libraries_with_versioned_coord_is_rejected() {
-        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+    void project_jk_libs_toml_with_versioned_coord_is_ignored_with_warning(@TempDir Path tmp) throws Exception {
+        // Malformed project layer is fail-soft (warn + skip), same as a bad global layer.
+        Files.writeString(tmp.resolve("jk.toml"), PROJECT + """
+                        [dependencies]
+                        picocli = "4.7.7"
+                        """);
+        Files.writeString(tmp.resolve("jk-libs.toml"), """
                 [libraries]
                 bad = "com.acme:bad:1.0.0"
-                """, TEST_CATALOG))
+                """);
+        // picocli resolves through the system catalog (bundled), not the skipped project layer.
+        JkBuild parsed = JkBuildParser.parse(tmp.resolve("jk.toml"));
+        var dep = parsed.dependencies().of(Scope.MAIN).getFirst();
+        assertThat(dep.module()).isEqualTo("info.picocli:picocli");
+    }
+
+    @Test
+    void module_may_not_have_jk_libs_toml(@TempDir Path tmp) throws Exception {
+        Path root = tmp.resolve("ws");
+        Path mod = root.resolve("lib");
+        Files.createDirectories(mod);
+        Files.writeString(root.resolve("jk.toml"), """
+                [project]
+                group = "com.example"
+                name = "ws"
+                version = "1.0.0"
+
+                [workspace]
+                modules = ["lib"]
+                """);
+        Files.writeString(mod.resolve("jk.toml"), """
+                [project]
+                name = "lib"
+                """);
+        Files.writeString(mod.resolve("jk-libs.toml"), """
+                [libraries]
+                x = "com.acme:x"
+                """);
+        assertThatThrownBy(() -> JkBuildParser.parse(mod.resolve("jk.toml")))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("carries a version");
+                .hasMessageContaining("only allowed at the workspace root");
     }
 
     @Test

@@ -363,19 +363,42 @@ public final class EffectivePomBuilder {
                             JkThreads.io()));
         }
         Map<String, EffectivePom> out = new LinkedHashMap<>();
+        Thread self = Thread.currentThread();
         for (var e : futures.entrySet()) {
+            // Register the join in the waits-for graph (JK-1804): a worker whose own await chain
+            // reaches this thread could not see joins through these futures, so neither side
+            // detected the cycle — the worker parked for the full JOIN_FALLBACK_MS while this
+            // thread sat in an unbounded join(). With the edge recorded, the worker's
+            // joinWouldDeadlock fires immediately; and if WE detect the loop (or the bound
+            // elapses), the entry is simply left out and merge()'s serial-expand fallback builds
+            // the BOM in-line with this thread's visiting set — a real POM cycle then throws the
+            // loud cycle diagnostic.
+            String bomKey = processKey(unique.get(e.getKey()));
+            WAITING_ON.put(self, bomKey);
             try {
-                out.put(e.getKey(), e.getValue().join());
-            } catch (CompletionException ex) {
-                Throwable c = ex.getCause() != null ? ex.getCause() : ex;
-                if (c instanceof IOException io) throw io;
-                if (c instanceof InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    throw ie;
+                long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(JOIN_FALLBACK_MS);
+                while (true) {
+                    try {
+                        out.put(e.getKey(), e.getValue().get(JOIN_POLL_MS, TimeUnit.MILLISECONDS));
+                        break;
+                    } catch (TimeoutException te) {
+                        Flight f = IN_FLIGHT.get(bomKey);
+                        if (f != null && f.owner() != self && joinWouldDeadlock(self, f)) break;
+                        if (System.nanoTime() - deadline > 0) break;
+                    } catch (ExecutionException ex) {
+                        Throwable c = ex.getCause() != null ? ex.getCause() : ex;
+                        if (c instanceof IOException io) throw io;
+                        if (c instanceof InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                            throw ie;
+                        }
+                        if (c instanceof RuntimeException re) throw re;
+                        if (c instanceof Error err) throw err;
+                        throw new IOException(c);
+                    }
                 }
-                if (c instanceof RuntimeException re) throw re;
-                if (c instanceof Error err) throw err;
-                throw new IOException(c);
+            } finally {
+                WAITING_ON.remove(self);
             }
         }
         return out;

@@ -33,6 +33,10 @@ public final class HostLearnedRates {
     public static final String COMPILE_GROOVY_PER_SOURCE_MS = "compile-groovy-per-source-ms";
     public static final String PACKAGE_JAR_MS = "package-jar-ms";
     public static final String PACKAGE_ASSEMBLY_MS = "package-assembly-ms";
+    /** Learned native-image cold slope: ms per MiB of closed-world classpath input. */
+    public static final String NATIVE_IMAGE_MS_PER_MIB = "native-image-ms-per-mib";
+    /** Learned native-image fixed floor (analysis/startup) in ms. */
+    public static final String NATIVE_IMAGE_FLOOR_MS = "native-image-floor-ms";
 
     private final Map<String, List<Double>> samplesByKey;
 
@@ -141,7 +145,9 @@ public final class HostLearnedRates {
             COMPILE_KOTLIN_PER_SOURCE_MS,
             COMPILE_GROOVY_PER_SOURCE_MS,
             PACKAGE_JAR_MS,
-            PACKAGE_ASSEMBLY_MS);
+            PACKAGE_ASSEMBLY_MS,
+            NATIVE_IMAGE_MS_PER_MIB,
+            NATIVE_IMAGE_FLOOR_MS);
 
     /** Parse {@code learned-<key> = [ … ]} arrays from a calibration TOML root. */
     public static HostLearnedRates readFrom(TomlParseResult t) {

@@ -23,30 +23,12 @@ class JkConfigLoaderTest {
 
     @Test
     void mergedWith_overlays_set_values() {
-        JkConfig base = new JkConfig(
-                Optional.of(JkConfig.ColorChoice.NEVER),
-                Optional.of(true),
-                Optional.empty(), // rebuild
-                Optional.empty(), // noProgress
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(), // force
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty()); // noAnsi
-        JkConfig over = new JkConfig(
-                Optional.of(JkConfig.ColorChoice.ALWAYS),
-                Optional.empty(),
-                Optional.empty(), // rebuild
-                Optional.of(true), // noProgress — over sets it
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(), // force
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty()); // noAnsi
+        JkConfig base = JkConfig.empty()
+                .withColor(Optional.of(JkConfig.ColorChoice.NEVER))
+                .withOffline(Optional.of(true)); // noAnsi
+        JkConfig over = JkConfig.empty()
+                .withColor(Optional.of(JkConfig.ColorChoice.ALWAYS))
+                .withNoProgress(Optional.of(true)); // noAnsi
         JkConfig merged = base.mergedWith(over);
         assertThat(merged.color()).hasValue(JkConfig.ColorChoice.ALWAYS); // over wins
         assertThat(merged.offline()).hasValue(true); // base passes through

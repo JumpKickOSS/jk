@@ -114,6 +114,23 @@ class SelfHostingTomlTest {
     }
 
     @Test
+    void short_name_manifests_do_not_use_removed_catalog_pin() throws Exception {
+        // catalog = … and host-local libs.toml are gone; short names resolve through the system
+        // catalog (global + bundled) only. Self-host manifests must not resurrect the old pin.
+        for (String rel : java.util.List.of(
+                "jk.toml",
+                "clients/cli/jk.toml",
+                "plugins/android/jk.toml",
+                "plugins/formatter/jk.toml",
+                "plugins/groovy-compiler/jk.toml",
+                "plugins/kotlin-compiler/jk.toml",
+                "plugins/quarkus/jk.toml")) {
+            String text = java.nio.file.Files.readString(REPO.resolve(rel));
+            assertThat(text).as("%s must not set catalog = (removed)", rel).doesNotContain("catalog =");
+        }
+    }
+
+    @Test
     void engine_is_assembly_app_and_depends_on_web() throws Exception {
         JkBuild engine = JkBuildParser.parse(REPO.resolve("server/engine/jk.toml"));
         assertThat(engine.assembly()).isTrue();

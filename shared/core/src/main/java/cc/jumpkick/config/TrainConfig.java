@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 /**
  * Parsed {@code [train]} / {@code [[train.profile]]} from {@code jk.toml}.
@@ -55,9 +51,10 @@ public record TrainConfig(
             sb.append(p.name()).append('|');
             // Sorted: Map.copyOf iteration order is salted per JVM, and a token that flaps
             // across engine restarts spuriously retrains (or, with require-fresh, fails builds).
-            new java.util.TreeMap<>(p.env()).forEach((k, v) -> sb.append(k).append('=').append(v).append(';'));
+            new TreeMap<>(p.env())
+                    .forEach((k, v) -> sb.append(k).append('=').append(v).append(';'));
             sb.append('|');
-            new java.util.TreeMap<>(p.properties())
+            new TreeMap<>(p.properties())
                     .forEach((k, v) -> sb.append(k).append('=').append(v).append(';'));
             sb.append('|');
             sb.append(String.join(" ", p.args()));

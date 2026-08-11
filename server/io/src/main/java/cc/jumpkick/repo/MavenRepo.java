@@ -254,11 +254,7 @@ public final class MavenRepo {
     }
 
     private Fetched fetch(
-            Coordinate coord,
-            String relativePath,
-            boolean mirror,
-            Leg leg,
-            java.util.function.BooleanSupplier abort)
+            Coordinate coord, String relativePath, boolean mirror, Leg leg, java.util.function.BooleanSupplier abort)
             throws IOException, InterruptedException {
         if (cc.jumpkick.config.SessionContext.current().config().offlineOr(false)) {
             return fetchOffline(coord, relativePath);

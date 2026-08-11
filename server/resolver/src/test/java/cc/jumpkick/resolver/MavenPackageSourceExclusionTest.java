@@ -458,8 +458,7 @@ class MavenPackageSourceExclusionTest {
      * excludes leaf — otherwise the test graph over-includes it.
      */
     @Test
-    void a_later_scope_solve_honors_its_own_exclusions_after_a_clean_main_path(@TempDir Path tempDir)
-            throws Exception {
+    void a_later_scope_solve_honors_its_own_exclusions_after_a_clean_main_path(@TempDir Path tempDir) throws Exception {
         for (String a : List.of("clean", "excluder", "target", "leaf")) {
             serveMetadata("/com/foo/" + a + "/maven-metadata.xml", "com.foo", a, List.of("1.0"));
         }

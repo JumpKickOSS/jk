@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
@@ -77,11 +78,14 @@ public final class FormatPlans {
             String javaStyle,
             String kotlinStyle,
             boolean optimizeImports,
+            boolean importOrder,
+            boolean removeUnusedImports,
             Path rewriteConfig,
             FileObserver observer) {
         BuildPlanKey<List> javaFilesKey = BuildPlanKey.of("format-java-files", List.class);
         BuildPlanKey<List> kotlinFilesKey = BuildPlanKey.of("format-kotlin-files", List.class);
         BuildPlanKey<List> javaJarsKey = BuildPlanKey.of("format-java-jars", List.class);
+        BuildPlanKey<List> removeUnusedJarsKey = BuildPlanKey.of("format-remove-unused-jars", List.class);
         BuildPlanKey<List> kotlinJarsKey = BuildPlanKey.of("format-kotlin-jars", List.class);
 
         Task collect = Task.builder(TaskNames.COLLECT_SOURCES)
@@ -109,6 +113,7 @@ public final class FormatPlans {
                     List<Path> kotlinFiles = (List<Path>) ctx.require(kotlinFilesKey);
                     if (javaFiles.isEmpty() && kotlinFiles.isEmpty()) {
                         ctx.put(javaJarsKey, List.of());
+                        ctx.put(removeUnusedJarsKey, List.of());
                         ctx.put(kotlinJarsKey, List.of());
                         ctx.progress(1);
                         return;
@@ -116,12 +121,33 @@ public final class FormatPlans {
                     ctx.label("resolve formatter jars");
                     var resolver = ToolResolver.mavenCentral(new Http(), JkStores.cas(cache));
                     try {
-                        ctx.put(
-                                javaJarsKey,
-                                javaFiles.isEmpty()
-                                        ? List.of()
-                                        : resolver.resolve(javaCoord(javaStyle), "java-format", "ignored")
+                        if (javaFiles.isEmpty()) {
+                            ctx.put(javaJarsKey, List.of());
+                            ctx.put(removeUnusedJarsKey, List.of());
+                        } else {
+                            List<Path> styleJars = resolver.resolve(javaCoord(javaStyle), "java-format", "ignored")
+                                    .classpath();
+                            ctx.put(javaJarsKey, styleJars);
+                            // removeUnusedImports uses google-java-format under the hood; skip the
+                            // extra resolve when the step is off. When style is already GJF
+                            // (google/aosp) reuse those jars; Palantir needs a separate GJF resolve.
+                            if (!removeUnusedImports) {
+                                ctx.put(removeUnusedJarsKey, List.of());
+                            } else if ("palantir".equals(javaStyle)) {
+                                ctx.put(
+                                        removeUnusedJarsKey,
+                                        resolver.resolve(
+                                                        Coordinate.of(
+                                                                "com.google.googlejavaformat",
+                                                                "google-java-format",
+                                                                GOOGLE_VERSION),
+                                                        "java-format-remove-unused",
+                                                        "ignored")
                                                 .classpath());
+                            } else {
+                                ctx.put(removeUnusedJarsKey, styleJars);
+                            }
+                        }
                         ctx.put(
                                 kotlinJarsKey,
                                 kotlinFiles.isEmpty()
@@ -161,6 +187,8 @@ public final class FormatPlans {
                     @SuppressWarnings("unchecked")
                     List<Path> javaJars = (List<Path>) ctx.require(javaJarsKey);
                     @SuppressWarnings("unchecked")
+                    List<Path> removeUnusedJars = (List<Path>) ctx.require(removeUnusedJarsKey);
+                    @SuppressWarnings("unchecked")
                     List<Path> kotlinJars = (List<Path>) ctx.require(kotlinJarsKey);
 
                     Path workerJar = PluginJar.FORMATTER.locate(JkStores.cas(cache));
@@ -170,9 +198,12 @@ public final class FormatPlans {
                             kotlinStyle,
                             javaFiles,
                             javaJars,
+                            removeUnusedJars,
                             kotlinFiles,
                             kotlinJars,
                             optimizeImports,
+                            importOrder,
+                            removeUnusedImports,
                             rewriteConfig,
                             cache);
                     try {
@@ -233,9 +264,12 @@ public final class FormatPlans {
             String kotlinStyle,
             List<Path> javaFiles,
             List<Path> javaJars,
+            List<Path> removeUnusedJars,
             List<Path> kotlinFiles,
             List<Path> kotlinJars,
             boolean optimizeImports,
+            boolean importOrder,
+            boolean removeUnusedImports,
             Path rewriteConfig,
             Path cacheDir)
             throws IOException {
@@ -246,7 +280,17 @@ public final class FormatPlans {
             w.configString("javaStyle", javaStyle)
                     .configString("javaVersion", javaVersion(javaStyle))
                     .configList("javaJars", absPaths(javaJars))
-                    .configList("javaFiles", absPaths(javaFiles));
+                    .configList("javaFiles", absPaths(javaFiles))
+                    .configBool("importOrder", importOrder)
+                    .configBool("removeUnusedImports", removeUnusedImports);
+            // Distinct GJF classpath for removeUnusedImports when style is Palantir; empty when the
+            // style jars already are GJF (plugin falls back to javaJars).
+            if (removeUnusedImports
+                    && removeUnusedJars != null
+                    && !removeUnusedJars.isEmpty()
+                    && !samePaths(javaJars, removeUnusedJars)) {
+                w.configList("removeUnusedJars", absPaths(removeUnusedJars));
+            }
         }
         if (!kotlinFiles.isEmpty()) {
             w.configString("kotlinStyle", kotlinStyle)
@@ -271,6 +315,17 @@ public final class FormatPlans {
 
     private static List<String> absPaths(List<Path> paths) {
         return paths.stream().map(p -> p.toAbsolutePath().toString()).toList();
+    }
+
+    /** True when both lists contain the same absolute paths (order-insensitive). */
+    private static boolean samePaths(List<Path> a, List<Path> b) {
+        if (a == b) return true;
+        if (a == null || b == null || a.size() != b.size()) return false;
+        var left = new LinkedHashSet<String>();
+        for (Path p : a) left.add(p.toAbsolutePath().toString());
+        var right = new LinkedHashSet<String>();
+        for (Path p : b) right.add(p.toAbsolutePath().toString());
+        return left.equals(right);
     }
 
     /** Collect project source files with the given extension, skipping build/VCS output dirs. */

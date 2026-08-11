@@ -63,7 +63,7 @@ VS Code extension  ──spawn──►  jk CLI  ──wire (UDS/TCP)──►  
 ```
 
 See the JumpKick repo docs: `docs/architecture.md` (IDE sequence) and `docs/guide.md` (IDE
-section). Online: https://github.com/jkbuild/jk
+section). Online: https://github.com/JumpKickOSS/jk
 
 ## Open questions (resolved for this MVP)
 

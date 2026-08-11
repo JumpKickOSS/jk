@@ -269,7 +269,9 @@ class DependencyGraphModelTest {
                 """);
         for (int i = 0; i < artifacts; i++) {
             lock.append("\n[[artifact]]\n")
-                    .append("name = \"com.bench:a").append(i).append("\"\n")
+                    .append("name = \"com.bench:a")
+                    .append(i)
+                    .append("\"\n")
                     .append("version = \"1\"\n")
                     .append("source = \"central+https://repo.maven.apache.org/maven2/\"\n")
                     .append("checksum = \"sha256:dummy\"\n")
@@ -366,9 +368,8 @@ class DependencyGraphModelTest {
                 .map(DependencyGraphModel.Node::id)
                 .findFirst()
                 .orElseThrow();
-        long edgesFromRoot = g.edges().stream()
-                .filter(e -> e.from().equals(rootId))
-                .count();
+        long edgesFromRoot =
+                g.edges().stream().filter(e -> e.from().equals(rootId)).count();
         assertThat(edgesFromRoot).isEqualTo(2);
         // … and BOTH subtrees expanded, not just whichever the bare GA resolved to.
         assertThat(labels(g)).contains("com.foo:main-leaf").contains("com.foo:test-leaf");

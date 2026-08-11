@@ -13,7 +13,9 @@ import com.diffplug.spotless.FormatterStep;
 import com.diffplug.spotless.LineEnding;
 import com.diffplug.spotless.Provisioner;
 import com.diffplug.spotless.java.GoogleJavaFormatStep;
+import com.diffplug.spotless.java.ImportOrderStep;
 import com.diffplug.spotless.java.PalantirJavaFormatStep;
+import com.diffplug.spotless.java.RemoveUnusedImportsStep;
 import com.diffplug.spotless.kotlin.KtfmtStep;
 import java.io.File;
 import java.io.FileInputStream;
@@ -45,6 +47,10 @@ import org.openrewrite.java.ShortenFullyQualifiedTypeReferences;
 /**
  * {@code jk-formatter} plugin: optional OpenRewrite import pass, then Spotless. Host forks with a
  * tab-delimited spec file; emits {@code ##JKFMT:} JSONL per file + summary.
+ *
+ * <p>Java Spotless pipeline (always on): {@code importOrder} → {@code removeUnusedImports} →
+ * Palantir / Google / AOSP style. Matches the usual Spotless recipe; FQCN shortening is the
+ * separate OpenRewrite {@code optimizeImports} pass.
  */
 public final class CodeFormatter implements Plugin {
 
@@ -72,6 +78,8 @@ public final class CodeFormatter implements Plugin {
                         spec.kotlinStyle,
                         spec.kotlinVersion,
                         spec.optimizeImports,
+                        spec.importOrder,
+                        spec.removeUnusedImports,
                         FormatStamp.workerJarSha(),
                         spec.rewriteConfigFile != null ? spec.rewriteConfigFile.toPath() : null)
                 : null;
@@ -84,7 +92,7 @@ public final class CodeFormatter implements Plugin {
                 : Formatter.builder()
                         .lineEndingsPolicy(LineEnding.UNIX.createPolicy())
                         .encoding(StandardCharsets.UTF_8)
-                        .steps(List.of(javaStep(spec)))
+                        .steps(javaSteps(spec))
                         .build();
 
         Formatter kotlinFmt = spec.kotlinJars.isEmpty()
@@ -239,12 +247,32 @@ public final class CodeFormatter implements Plugin {
     }
 
     /**
-     * The Java step for the chosen style: {@code palantir} → palantir-java-format (PALANTIR); {@code
-     * google}/{@code aosp} → google-java-format (GOOGLE/AOSP). The version is whatever jk resolved
-     * and put in the spec.
+     * Java steps in Spotless order: optional import order, optional remove-unused, then the chosen
+     * style formatter. {@code removeUnusedImports} uses google-java-format under the hood, so when
+     * the style is Palantir the host also passes GJF jars in {@link Spec#removeUnusedJars}.
      */
-    private static FormatterStep javaStep(Spec spec) {
-        Provisioner prov = provisioner(spec.javaJars);
+    static List<FormatterStep> javaSteps(Spec spec) {
+        Provisioner styleProv = provisioner(spec.javaJars);
+        var steps = new ArrayList<FormatterStep>();
+        if (spec.importOrder) {
+            // Empty groups = Spotless default: static imports, then everything else
+            // (alphabetical within each block, blank line between).
+            steps.add(ImportOrderStep.forJava().createFrom());
+        }
+        if (spec.removeUnusedImports) {
+            Set<File> removeUnusedJars = spec.removeUnusedJars.isEmpty() ? spec.javaJars : spec.removeUnusedJars;
+            steps.add(RemoveUnusedImportsStep.create(provisioner(removeUnusedJars)));
+        }
+        steps.add(styleStep(spec, styleProv));
+        return List.copyOf(steps);
+    }
+
+    /**
+     * The style step: {@code palantir} → palantir-java-format (PALANTIR); {@code google}/{@code
+     * aosp} → google-java-format (GOOGLE/AOSP). The version is whatever jk resolved and put in the
+     * spec.
+     */
+    private static FormatterStep styleStep(Spec spec, Provisioner prov) {
         if ("palantir".equalsIgnoreCase(spec.javaStyle)) {
             return PalantirJavaFormatStep.create(spec.javaVersion, "PALANTIR", /* formatJavadoc */ false, prov);
         }
@@ -286,17 +314,26 @@ public final class CodeFormatter implements Plugin {
     private record FileRef(boolean kotlin, File file) {}
 
     /** Parsed spec: modes, per-language style/version/jars, rewrite flags, and the file list. */
-    private static final class Spec {
+    static final class Spec {
         boolean apply = true;
         String javaStyle = "palantir";
         String javaVersion = PalantirJavaFormatStep.defaultVersion();
         Set<File> javaJars = new LinkedHashSet<>();
+        /**
+         * Classpath for {@link RemoveUnusedImportsStep} (google-java-format). Empty means reuse
+         * {@link #javaJars} (already GJF when style is google/aosp).
+         */
+        Set<File> removeUnusedJars = new LinkedHashSet<>();
+
         String kotlinStyle = "kotlinlang";
         String kotlinVersion = KtfmtStep.defaultVersion();
         int kotlinMaxWidth = 0;
         Set<File> kotlinJars = new LinkedHashSet<>();
         // OpenRewrite fields
         boolean optimizeImports = false;
+        // Spotless import hygiene (defaults on — host always sends explicit values)
+        boolean importOrder = true;
+        boolean removeUnusedImports = true;
         File rewriteConfigFile = null;
         // Stamp cache: null when the host didn't pass a cache-dir (no caching).
         Path cacheDir = null;
@@ -313,11 +350,14 @@ public final class CodeFormatter implements Plugin {
             s.javaStyle = c.stringOpt("javaStyle").orElse(s.javaStyle);
             s.javaVersion = c.stringOpt("javaVersion").orElse(s.javaVersion);
             s.javaJars = jars(c.stringList("javaJars"));
+            s.removeUnusedJars = jars(c.stringList("removeUnusedJars"));
             s.kotlinStyle = c.stringOpt("kotlinStyle").orElse(s.kotlinStyle);
             s.kotlinVersion = c.stringOpt("kotlinVersion").orElse(s.kotlinVersion);
             s.kotlinMaxWidth = (int) c.intValue("kotlinMaxWidth", 0);
             s.kotlinJars = jars(c.stringList("kotlinJars"));
             s.optimizeImports = c.bool("optimizeImports", false);
+            s.importOrder = c.bool("importOrder", true);
+            s.removeUnusedImports = c.bool("removeUnusedImports", true);
             c.stringOpt("rewriteConfigFile").ifPresent(p -> s.rewriteConfigFile = new File(p));
             c.stringOpt("cacheDir").ifPresent(p -> s.cacheDir = Path.of(p));
             for (String f : c.stringList("javaFiles")) s.files.add(new FileRef(false, new File(f)));

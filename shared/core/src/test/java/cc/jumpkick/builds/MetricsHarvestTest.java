@@ -67,7 +67,74 @@ class MetricsHarvestTest {
         assertThat(MetricsHarvest.isHostKey("host.x")).isTrue();
         assertThat(MetricsHarvest.isHostKey("step.compile-java.wall-ms")).isTrue();
         assertThat(MetricsHarvest.isHostKey("run-tests-per-method-ms")).isTrue();
+        assertThat(MetricsHarvest.isHostKey("native-image-ms-per-mib")).isTrue();
+        assertThat(MetricsHarvest.isHostKey("native-image-floor-ms")).isTrue();
         assertThat(MetricsHarvest.isHostKey("workspace.wall-ms")).isFalse();
         assertThat(MetricsHarvest.isHostKey("module./p.step.x.wall-ms")).isFalse();
+    }
+
+    @Test
+    void isContinuousMeanKey_excludes_run_harvest() {
+        assertThat(MetricsHarvest.isContinuousMeanKey("native-image-ms-per-mib"))
+                .isTrue();
+        assertThat(MetricsHarvest.isContinuousMeanKey("native-image-floor-ms")).isTrue();
+        assertThat(MetricsHarvest.isContinuousMeanKey("compile-java-per-source-ms"))
+                .isTrue();
+        assertThat(MetricsHarvest.isContinuousMeanKey("task.native-image.wall-ms"))
+                .isFalse();
+        assertThat(MetricsHarvest.isContinuousMeanKey("phase.native.wall-ms")).isFalse();
+        assertThat(MetricsHarvest.isContinuousMeanKey("module./p.task.native-image.wall-ms"))
+                .isFalse();
+    }
+
+    @Test
+    void harvest_preserves_continuous_native_rates(@TempDir Path root) throws Exception {
+        Path host = ProjectBuilds.hostMetricsFile(root);
+        Files.createDirectories(host.getParent());
+        Files.writeString(host, """
+                # host-metrics
+                [mean]
+                task.compile-java.wall-ms = 100
+                native-image-ms-per-mib = 14500.5
+                native-image-floor-ms = 11200
+
+                [calibration]
+                schema = 4
+                ms-per-weight = 150
+                """);
+        ProjectBuilds.RunDir run = ProjectBuilds.openRun(root, "g:demo", root.resolve("proj"));
+        Files.writeString(run.metricsFile(), "step.compile-java.wall-ms = 220\n");
+        MetricsHarvest.get().configure(50, 90);
+        MetricsHarvest.get().runOnce(root);
+        String hm = Files.readString(host);
+        assertThat(hm)
+                .contains("native-image-ms-per-mib = 14500.5")
+                .contains("native-image-floor-ms = 11200")
+                .contains("step.compile-java.wall-ms");
+    }
+
+    @Test
+    void isImplausibleHeavyWall_drops_native_restore_blips() {
+        assertThat(MetricsHarvest.isImplausibleHeavyWall("module./p.task.native-image.wall-ms", 32.0))
+                .isTrue();
+        assertThat(MetricsHarvest.isImplausibleHeavyWall("module./p.task.native-image.wall-ms", 32_000.0))
+                .isFalse();
+        assertThat(MetricsHarvest.isImplausibleHeavyWall("task.write-image.wall-ms", 100.0))
+                .isTrue();
+        assertThat(MetricsHarvest.isImplausibleHeavyWall("task.run-tests.wall-ms", 50.0))
+                .isFalse();
+    }
+
+    @Test
+    void harvest_skips_implausible_native_walls(@TempDir Path root) throws Exception {
+        ProjectBuilds.RunDir run = ProjectBuilds.openRun(root, "g:demo", root.resolve("proj"));
+        Files.writeString(run.metricsFile(), """
+                module./p.task.native-image.wall-ms = 32
+                module./p.task.run-tests.wall-ms = 28000
+                """);
+        MetricsHarvest.get().configure(50, 90);
+        MetricsHarvest.get().runOnce(root);
+        String pm = Files.readString(run.projectHome().resolve(ProjectBuilds.PROJECT_METRICS));
+        assertThat(pm).contains("run-tests").doesNotContain("native-image");
     }
 }

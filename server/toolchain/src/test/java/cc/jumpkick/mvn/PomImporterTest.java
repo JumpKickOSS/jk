@@ -123,9 +123,7 @@ class PomImporterTest {
         JkBuild app = PomImporter.importFrom(root.resolve("pom.xml")).jkBuild();
         List<Dependency> test = app.dependencies().of(Scope.TEST);
         // Both packages survive with distinct, deterministic handles.
-        assertThat(test)
-                .extracting(Dependency::library)
-                .containsExactly("log4j-core", "log4j-core-tests");
+        assertThat(test).extracting(Dependency::library).containsExactly("log4j-core", "log4j-core-tests");
         assertThat(test)
                 .extracting(Dependency::packageKey)
                 .containsExactly(

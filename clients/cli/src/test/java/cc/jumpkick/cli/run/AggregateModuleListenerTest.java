@@ -37,7 +37,7 @@ class AggregateModuleListenerTest {
         b.stepStart("test", "test", 10);
 
         // Engine snapshot paints the bar (not module progress callbacks).
-        agg.applySnapshot(new WorkspaceProgressTracker.Snapshot(75, 100, 75.0, "execute", 1, 2));
+        agg.applySnapshot(new WorkspaceProgressTracker.Snapshot(75, 100, 75.0, "execute", 1, 2, 10_000, 40_000));
 
         String all = String.join(
                 "\n",
@@ -66,7 +66,7 @@ class AggregateModuleListenerTest {
         b.stepStart("test", "test", 10);
 
         // 110/120 → ProgressBar.percent rounds to 92
-        agg.applySnapshot(new WorkspaceProgressTracker.Snapshot(110, 120, 91.7, "execute", 0, 2));
+        agg.applySnapshot(new WorkspaceProgressTracker.Snapshot(110, 120, 91.7, "execute", 0, 2, 5_000, 60_000));
 
         String all = String.join(
                 "\n",

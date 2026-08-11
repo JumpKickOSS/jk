@@ -69,8 +69,8 @@ class MavenImportRoundTripTest {
 
     @Test
     void non_test_scope_test_jar_moves_to_test_dependencies() {
-        var result = PomImporter.importFromBytes(
-                pom("compile", null, "test-jar").getBytes(StandardCharsets.UTF_8));
+        var result =
+                PomImporter.importFromBytes(pom("compile", null, "test-jar").getBytes(StandardCharsets.UTF_8));
         JkBuild reparsed = JkBuildParser.parse(JkBuildRenderer.render(result.jkBuild()));
         assertThat(reparsed.dependencies().of(Scope.MAIN)).isEmpty();
         assertThat(reparsed.dependencies().of(Scope.TEST))
@@ -95,9 +95,11 @@ class MavenImportRoundTripTest {
                     try {
                         JkBuildParser.parse(rendered);
                     } catch (RuntimeException e) {
-                        throw new AssertionError("import emitted jk.toml that jk rejects for scope="
-                                + scope + " classifier=" + classifier + " type=" + type + "\n---\n"
-                                + rendered, e);
+                        throw new AssertionError(
+                                "import emitted jk.toml that jk rejects for scope="
+                                        + scope + " classifier=" + classifier + " type=" + type + "\n---\n"
+                                        + rendered,
+                                e);
                     }
                 }
             }
@@ -112,7 +114,8 @@ class MavenImportRoundTripTest {
                       <version>1.2.3</version>
                 """);
         if (scope != null) dep.append("      <scope>").append(scope).append("</scope>\n");
-        if (classifier != null) dep.append("      <classifier>").append(classifier).append("</classifier>\n");
+        if (classifier != null)
+            dep.append("      <classifier>").append(classifier).append("</classifier>\n");
         if (type != null) dep.append("      <type>").append(type).append("</type>\n");
         dep.append("    </dependency>");
         return """

@@ -261,7 +261,7 @@ class LiveVitalsTest {
 
     private static StatusSnapshot snap(long freeBytes, double load) {
         return new StatusSnapshot(
-                "0.11.0-test",
+                "0.12.0-test",
                 1L,
                 System.currentTimeMillis() - 60_000,
                 0,
@@ -276,7 +276,7 @@ class LiveVitalsTest {
                 freeBytes,
                 load,
                 0.5,
-                "0.11.0-test@1",
+                "0.12.0-test@1",
                 0,
                 0);
     }

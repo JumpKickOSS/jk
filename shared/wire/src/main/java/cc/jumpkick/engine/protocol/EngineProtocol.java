@@ -877,7 +877,26 @@ public final class EngineProtocol {
                 + (testOnly ? ",\"testOnly\":true" : "")
                 + (dirtyHint != null && !dirtyHint.isEmpty() ? ",\"dirtyHint\":" + jsonStringArray(dirtyHint) : "")
                 + triggerJsonSuffix()
+                + progressModeJsonSuffix()
                 + "}";
+    }
+
+    /**
+     * The client's {@code JK_PROGRESS_MODE} rides each request so the resident engine paints the
+     * requesting shell's mode, not whatever env the daemon happened to start with (JK-1816).
+     * Emitted only when non-AUTO so older engines see an unchanged request.
+     */
+    static String progressModeJsonSuffix() {
+        var mode = cc.jumpkick.runtime.progress.ProgressBarMode.fromEnvironment();
+        if (mode == cc.jumpkick.runtime.progress.ProgressBarMode.AUTO) return "";
+        return ",\"progressMode\":" + Jsonl.quote(mode.wireName());
+    }
+
+    /** Per-request progress mode; engine-env fallback when the client sent none. */
+    public static cc.jumpkick.runtime.progress.ProgressBarMode progressModeOf(String json) {
+        String raw = Jsonl.str(json, "progressMode");
+        if (raw == null || raw.isBlank()) return cc.jumpkick.runtime.progress.ProgressBarMode.fromEnvironment();
+        return cc.jumpkick.runtime.progress.ProgressBarMode.parse(raw);
     }
 
     /**
@@ -975,6 +994,7 @@ public final class EngineProtocol {
                 + parallelTests
                 + testSelectionFields(selection)
                 + triggerJsonSuffix()
+                + progressModeJsonSuffix()
                 + "}";
     }
 
@@ -986,6 +1006,7 @@ public final class EngineProtocol {
         sb.append(",\"suites\":").append(jsonStringArray(s.suites()));
         sb.append(",\"includeTags\":").append(jsonStringArray(s.includeTags()));
         sb.append(",\"excludeTags\":").append(jsonStringArray(s.excludeTags()));
+        sb.append(",\"tagsResolved\":").append(s.tagsResolved());
         return sb.toString();
     }
 
@@ -995,7 +1016,8 @@ public final class EngineProtocol {
         List<String> suites = stringArrayField(json, "suites");
         List<String> include = stringArrayField(json, "includeTags");
         List<String> exclude = stringArrayField(json, "excludeTags");
-        return cc.jumpkick.config.TestSelection.of(suites, all, include, exclude);
+        boolean tagsResolved = Jsonl.bool(json, "tagsResolved", false);
+        return cc.jumpkick.config.TestSelection.of(suites, all, include, exclude, tagsResolved);
     }
 
     private static String jsonStringArray(List<String> values) {
@@ -1255,9 +1277,9 @@ public final class EngineProtocol {
     }
 
     /**
-     * Format sources (see {@link #FORMAT_REQUEST}). Style names arrive already resolved (flags +
-     * env + the {@code [format]} block are client-side concerns); {@code rewriteConfig} may be
-     * {@code null}.
+     * Format sources (see {@link #FORMAT_REQUEST}). Style names and hygiene toggles arrive already
+     * resolved (flags + env + the {@code [format]} block are client-side concerns); {@code
+     * rewriteConfig} may be {@code null}.
      */
     public static String formatRequest(
             String dir,
@@ -1266,6 +1288,8 @@ public final class EngineProtocol {
             String javaStyle,
             String kotlinStyle,
             boolean optimizeImports,
+            boolean importOrder,
+            boolean removeUnusedImports,
             String rewriteConfig,
             boolean offline,
             boolean verbose) {
@@ -1283,6 +1307,10 @@ public final class EngineProtocol {
                 + Jsonl.quote(kotlinStyle)
                 + ",\"optimizeImports\":"
                 + optimizeImports
+                + ",\"importOrder\":"
+                + importOrder
+                + ",\"removeUnusedImports\":"
+                + removeUnusedImports
                 + ",\"rewriteConfig\":"
                 + Jsonl.quote(rewriteConfig)
                 + ",\"offline\":"
@@ -1993,17 +2021,58 @@ public final class EngineProtocol {
         return "{\"type\":\"" + PLAN_DONE + "\",\"count\":" + count + "}";
     }
 
-    public static String eta(long millis) {
-        return "{\"type\":\"" + ETA + "\",\"millis\":" + millis + "}";
+    /**
+     * Remaining wall-work {@code R(t)} in ms. {@code millis} duplicates {@code remainingMs} for
+     * older readers. No {@code R0} field: nothing consumed it (the CLI seeds from remainingMs,
+     * the web from workspace-progress), and at emit time it either equaled remainingMs or was 0
+     * (JK-1831).
+     */
+    public static String eta(long remainingMs) {
+        return "{\"type\":\"" + ETA + "\",\"millis\":" + remainingMs + ",\"remainingMs\":" + remainingMs + "}";
     }
 
     /**
      * Workspace aggregate progress. {@code progress} is 0–100 (one decimal) from the
      * engine tracker; {@code numerator}/{@code denominator} are the same abstract bar units.
      * {@code phase} is {@code preflight}, {@code execute}, or {@code done}.
+     * {@code remainingMs}/{@code R0} mirror the ETA remaining-work oracle when seeded.
      */
     public static String workspaceProgress(
             String dir, long numerator, long denominator, String phase, int modulesComplete, int modulesTotal) {
+        return workspaceProgress(dir, numerator, denominator, phase, modulesComplete, modulesTotal, -1, 0);
+    }
+
+    public static String workspaceProgress(
+            String dir,
+            long numerator,
+            long denominator,
+            String phase,
+            int modulesComplete,
+            int modulesTotal,
+            long remainingMs,
+            long R0ms) {
+        return workspaceProgress(
+                dir, numerator, denominator, phase, modulesComplete, modulesTotal, remainingMs, R0ms, Double.NaN);
+    }
+
+    /**
+     * @param progressPercent explicit aggregate % from {@link
+     *     cc.jumpkick.runtime.WorkspaceProgressTracker} (clock or weighted); {@link Double#NaN}
+     *     falls back to num/den
+     */
+    public static String workspaceProgress(
+            String dir,
+            long numerator,
+            long denominator,
+            String phase,
+            int modulesComplete,
+            int modulesTotal,
+            long remainingMs,
+            long R0ms,
+            double progressPercent) {
+        String prog = Double.isNaN(progressPercent)
+                ? progressPercent(numerator, denominator)
+                : cc.jumpkick.runtime.WorkspaceProgressTracker.progressToken(progressPercent);
         return "{\"schema\":1,\"type\":\""
                 + WORKSPACE_PROGRESS
                 + "\",\"dir\":"
@@ -2013,13 +2082,17 @@ public final class EngineProtocol {
                 + ",\"denominator\":"
                 + denominator
                 + ",\"progress\":"
-                + progressPercent(numerator, denominator)
+                + prog
                 + ",\"phase\":"
                 + Jsonl.quote(phase == null ? "" : phase)
                 + ",\"modulesComplete\":"
                 + modulesComplete
                 + ",\"modulesTotal\":"
                 + modulesTotal
+                + ",\"remainingMs\":"
+                + remainingMs
+                + ",\"R0\":"
+                + Math.max(0, R0ms)
                 + "}";
     }
 

@@ -7,7 +7,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jkbuild/jk.git",
+    "url": "https://github.com/JumpKickOSS/jk.git",
     "directory": "clients/vscode"
   },
   "engines": {

@@ -97,7 +97,7 @@ public enum ForgeKind {
      */
     public Optional<String> defaultOAuthClientId() {
         return switch (this) {
-            // Registered under github.com/jkbuild.
+            // Registered under github.com/JumpKickOSS.
             case GITHUB -> Optional.of("Ov23liOYrWd84ZK2Eg2n");
             case GITLAB, GITEA, BITBUCKET -> Optional.empty();
         };

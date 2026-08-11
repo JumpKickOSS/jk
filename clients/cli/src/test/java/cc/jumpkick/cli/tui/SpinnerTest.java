@@ -280,18 +280,7 @@ class SpinnerTest {
     }
 
     private static <T> T withNoAnsi(Supplier<T> body) throws Exception {
-        JkConfig noAnsi = new JkConfig(
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.of(true),
-                Optional.empty(),
-                Optional.empty());
+        JkConfig noAnsi = JkConfig.empty().withNoAnsi(Optional.of(true));
         Session original = SessionContext.current();
         try {
             return SessionContext.where(original.withConfig(noAnsi), body::get);

@@ -197,7 +197,7 @@ class CommandManagerTest {
         cm.nerdfont = false;
         cm.progress(50, 100);
 
-        // No estimate set → single yellow count-up from construction.
+        // No estimate set → single mid-gray count-up from construction.
         String up = cm.renderBuildPlanLines(120, 4_000).get(0);
         assertThat(TestAnsi.strip(up)).contains("+4s");
 
@@ -214,17 +214,72 @@ class CommandManagerTest {
     }
 
     @Test
-    void eta_countdown_freezes_at_zero_and_count_up_turns_yellow_on_overrun() {
+    void open_loop_bar_tracks_elapsed_over_R0_not_weight_slices() {
+        var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.setEtaEstimate(100_000); // R0 = 100s; residual starts at R0
+        assertThat(cm.activeProgressStrategy().id()).isEqualTo("clock");
+        // Weight path would claim 50% immediately; adaptive: 30s/(30s+70s residual) after residual update.
+        cm.progress(50, 100);
+        cm.setBarResidualRemaining(70_000);
+        long[] at30 = cm.displayBar(30_000);
+        assertThat(at30[1]).isEqualTo(1000);
+        assertThat(at30[0]).isEqualTo(300); // 30%
+        // Residual shrinks → bar speeds up at same elapsed.
+        cm.setBarResidualRemaining(10_000);
+        long[] sped = cm.displayBar(30_000);
+        assertThat(sped[0]).isEqualTo(750); // 30/(30+10)
+        // Cap at 99% while still running (residual 0, long elapsed).
+        cm.setBarResidualRemaining(0);
+        long[] over = cm.displayBar(200_000);
+        assertThat(over[0]).isEqualTo(990);
+    }
+
+    @Test
+    void open_loop_bar_never_goes_backwards() {
+        var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.setEtaEstimate(100_000);
+        cm.setBarResidualRemaining(0); // residual 0 at 40s → ~99% (capped)
+        long[] a = cm.displayBar(40_000);
+        assertThat(a[0]).isEqualTo(990);
+        // Peak hold if residual suddenly grows (would otherwise drop fill).
+        cm.setBarResidualRemaining(200_000);
+        long[] b = cm.displayBar(40_000);
+        assertThat(b[0]).isGreaterThanOrEqualTo(990);
+    }
+
+    @Test
+    void without_r0_auto_uses_weighted_strategy() {
+        var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
+        assertThat(cm.activeProgressStrategy().id()).isEqualTo("weighted");
+        cm.progress(50, 100);
+        long[] d = cm.displayBar(0);
+        assertThat(d[0]).isEqualTo(50);
+        assertThat(d[1]).isEqualTo(100);
+    }
+
+    @Test
+    void eta_countdown_freezes_at_zero_and_count_up_promotes_after_grace() {
         var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
         cm.setEtaEstimate(10_000); // 10s estimate
-        // 15s elapsed → countdown freezes at dim 0s; count-up is full elapsed (yellow).
-        String header = cm.renderBuildPlanLines(120, 15_000).get(0);
-        String plain = TestAnsi.strip(header);
-        assertThat(plain).contains("ETA 0s");
-        assertThat(plain).contains("+15s");
-        assertThat(header).contains(Theme.colorize("0s", Theme.active().darkGray()));
-        assertThat(header).contains(Theme.colorize("+15s", Theme.active().warning()));
+        Theme t = Theme.active();
+
+        // Just past deadline: countdown at dim 0s; count-up still dim (grace window).
+        String early = cm.renderBuildPlanLines(120, 11_000).get(0);
+        assertThat(TestAnsi.strip(early)).contains("ETA 0s").contains("+11s");
+        assertThat(early).contains(Theme.colorize("0s", t.darkGray()));
+        assertThat(early).contains(Theme.colorize("+11s", t.darkGray()));
+        assertThat(early).doesNotContain(Theme.colorize("+11s", t.midGray()));
+
+        // Past the 2s grace → count-up mid-gray (countdown's former color). Rendered at +3s
+        // past deadline, not the exact 2 000 ms boundary: the seed's set-at base is real wall
+        // clock (nanoTime since plan()), so an exact-boundary assertion flaked whenever ≥1 ms
+        // elapsed between plan() and setEtaEstimate() (JK-1824). The strictly->= boundary
+        // itself is covered by the clock-injected sibling test.
+        String promoted = cm.renderBuildPlanLines(120, 13_000).get(0);
+        assertThat(TestAnsi.strip(promoted)).contains("ETA 0s").contains("+13s");
+        assertThat(promoted).contains(Theme.colorize("+13s", t.midGray()));
+        assertThat(promoted).doesNotContain(Theme.colorize("+13s", t.warning()));
     }
 
     @Test
@@ -272,43 +327,111 @@ class CommandManagerTest {
         String at30 = TestAnsi.strip(cm.renderBuildPlanLines(120, 30_000).get(0));
         assertThat(at30).contains("ETA ~1m 30s");
         assertThat(at30).contains("+30s");
-        // At end of remaining work (elapsed 120s) → frozen 0s + yellow full elapsed.
+        // At end of remaining work (elapsed 120s) → frozen 0s + mid-gray full elapsed.
         String done = TestAnsi.strip(cm.renderBuildPlanLines(120, 120_000).get(0));
         assertThat(done).contains("ETA 0s");
         assertThat(done).contains("+2m 00s");
     }
 
     @Test
-    void eta_seed_locks_after_a_module_completes_so_reprojections_cannot_jump_the_clock() {
-        // Live re-projections used to overwrite the total mid-build (elapsed + remaining schedule),
-        // so the countdown jumped at module boundaries and count-up reset near zero.
+    void seed_path_locks_after_execute_but_residual_reanchors_countdown() {
+        // R0 seed path freezes once a module completes (provisional eta thrash guard). Live
+        // residual still re-anchors the countdown so ETA eases into R(t) and ends on time.
         var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
-        cm.setEtaEstimate(38_000);
-        cm.setModuleProgress(1, 2); // first module finished → lock
-        cm.setEtaEstimate(20_000); // would-be re-projection: ignore
-        // 10s elapsed of a locked 38s seed → 28s remain (not 10s from the rejected re-projection).
-        String mid = TestAnsi.strip(cm.renderBuildPlanLines(120, 10_000).get(0));
-        assertThat(mid).contains("ETA ~28s");
-        assertThat(mid).contains("+10s");
-        // Overrun still pure wall-clock from the locked seed: freeze 0s + full elapsed (not re-projected).
-        String over = TestAnsi.strip(cm.renderBuildPlanLines(120, 40_000).get(0));
-        assertThat(over).contains("ETA 0s");
-        assertThat(over).contains("+40s");
+        cm.setEtaEstimate(38_000); // R0
+        cm.setModuleProgress(1, 2); // locks seed path
+        cm.setEtaEstimate(5_000); // seed-path rewrite — ignored
+        // Without residual: open-loop 38s seed at 10s elapsed → ~28s.
+        String openLoop = TestAnsi.strip(cm.renderBuildPlanLines(120, 10_000).get(0));
+        assertThat(openLoop).contains("ETA ~28s");
+        // Same-second residual re-anchor is held by the 1s jitter buffer (still ~28s).
+        cm.setBarResidualRemaining(20_000);
+        String held = TestAnsi.strip(cm.renderBuildPlanLines(120, 10_000).get(0));
+        assertThat(held).contains("ETA ~28s");
+        // Next whole second samples the latest residual: 20s re-anchor at ~0 → ~9s at 11s elapsed.
+        String mid = TestAnsi.strip(cm.renderBuildPlanLines(120, 11_000).get(0));
+        assertThat(mid).contains("ETA ~9s");
+        assertThat(mid).contains("+11s");
+        // Residual 0 snaps to 0s immediately (end on time — no 1s hold on zero).
+        cm.setBarResidualRemaining(0);
+        String done = TestAnsi.strip(cm.renderBuildPlanLines(120, 40_000).get(0));
+        assertThat(done).contains("ETA 0s");
+        assertThat(done).contains("+40s");
     }
 
     @Test
-    void cold_count_up_is_run_wide_and_never_cleared_by_a_zero_eta() {
+    void residual_speeds_up_countdown_when_work_finishes_early() {
+        var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdfont = false;
+        cm.setEtaEstimate(100_000); // R0 = 100s
+        cm.setModuleProgress(1, 3);
+        // Residual re-anchor near t=0 with 20s left (work finishing early). First paint samples it.
+        // Open-loop R0 at 10s would still show ~90s; residual-anchored shows ~10s.
+        cm.setBarResidualRemaining(20_000);
+        String header = TestAnsi.strip(cm.renderBuildPlanLines(120, 10_000).get(0));
+        assertThat(header).contains("ETA ~10s");
+        assertThat(header).contains("+10s");
+        // Bar also speeds up from residual (raw residual, not wall-decayed).
+        long[] bar = cm.displayBar(10_000);
+        assertThat(bar[0]).isEqualTo(333); // 10/(10+20)
+    }
+
+    @Test
+    void countdown_jitter_buffer_samples_latest_target_once_per_second() {
+        // Residual may thrash several times inside one whole second; the painted face holds the
+        // first sample for that second, then commits the latest target on the next elapsedSec.
+        var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdfont = false;
+        cm.setEtaEstimate(60_000); // R0 = 60s
+        // First paint at +4s samples open-loop ~56s.
+        assertThat(TestAnsi.strip(cm.renderBuildPlanLines(120, 4_000).get(0))).contains("ETA ~56s");
+        // Three residual re-anchors inside the same second — face must not thrash.
+        cm.setBarResidualRemaining(40_000);
+        cm.setBarResidualRemaining(25_000);
+        cm.setBarResidualRemaining(12_000);
+        assertThat(TestAnsi.strip(cm.renderBuildPlanLines(120, 4_100).get(0))).contains("ETA ~56s");
+        assertThat(TestAnsi.strip(cm.renderBuildPlanLines(120, 4_900).get(0))).contains("ETA ~56s");
+        // Next second samples the latest residual (12s at ~0 wall → ~7s at +5s).
+        assertThat(TestAnsi.strip(cm.renderBuildPlanLines(120, 5_000).get(0))).contains("ETA ~7s");
+        // Open-loop decay of that residual on the following second (no new residual).
+        assertThat(TestAnsi.strip(cm.renderBuildPlanLines(120, 6_000).get(0))).contains("ETA ~6s");
+    }
+
+    @Test
+    void provisional_lock_window_seed_is_replaced_by_the_real_forecast_seed() {
+        // Stale-lock builds get a coarse provisional ETA before preflight. Preflight progress
+        // events (clock strategy active, work model published) must NOT freeze it: the real
+        // post-forecast seed replaces it, and only execute activity locks (JK-1806).
+        var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdfont = false;
+        cm.setEtaEstimate(138_000); // provisional: lockEta + history prior
+        cm.progress(100, 1000); // preflight band workspace-progress with R0 seeded
+        cm.setModuleProgress(0, 4); // work model publishes modulesTotal before the real seed
+        cm.setEtaEstimate(26_000); // real post-forecast seed must win
+        assertThat(TestAnsi.strip(cm.renderBuildPlanLines(120, 6_000).get(0))).contains("ETA ~20s");
+        // First module task starting freezes the seed; later rewrites are ignored.
+        cm.stepRunning("app", "compile", "compile");
+        cm.setEtaEstimate(90_000);
+        assertThat(TestAnsi.strip(cm.renderBuildPlanLines(120, 6_000).get(0))).contains("ETA ~20s");
+    }
+
+    @Test
+    void cold_count_up_is_run_wide_until_a_remaining_seed_arrives() {
         var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
         // No seed → +elapsed for the whole command.
         assertThat(TestAnsi.strip(cm.renderBuildPlanLines(120, 12_000).get(0))).contains("+12s");
-        // A zero ETA must not reset or clear a later positive seed's continuity either.
+        // Positive remaining seeds the dual clock (R0=30s at apply time ≈ elapsed 0).
         cm.setEtaEstimate(30_000);
-        cm.setEtaEstimate(0); // ignore clear
         String seeded = TestAnsi.strip(cm.renderBuildPlanLines(120, 12_000).get(0));
         assertThat(seeded).contains("ETA ~18s");
         assertThat(seeded).contains("+12s");
+        // Zero before lock is ignored (unknown clear) — seed remains open-loop.
+        cm.setEtaEstimate(0);
+        String still = TestAnsi.strip(cm.renderBuildPlanLines(120, 12_000).get(0));
+        assertThat(still).contains("ETA ~18s");
+        assertThat(still).contains("+12s");
     }
 
     @Test
@@ -335,10 +458,10 @@ class CommandManagerTest {
     void setWindowTitle_emits_osc0_and_clears_on_settle() {
         var buf = new ByteArrayOutputStream();
         var cm = CommandManager.plan(stream(buf), "Build", true);
-        cm.setWindowTitle("JumpKick - Building cc.jumpkick:jk:0.11.0...");
+        cm.setWindowTitle("JumpKick - Building cc.jumpkick:jk:0.12.0...");
         String set = buf.toString(StandardCharsets.UTF_8);
         // OSC 0: fill-circle glyph + base, terminated with ST (ESC \), not BEL.
-        String expected = "\033]0;" + Spinner.fillGlyph(0) + " JumpKick - Building cc.jumpkick:jk:0.11.0...\033\\";
+        String expected = "\033]0;" + Spinner.fillGlyph(0) + " JumpKick - Building cc.jumpkick:jk:0.12.0...\033\\";
         assertThat(set).contains(expected);
         buf.reset();
         cm.finishBuildPlanSuccess("ok", List.of());
@@ -457,7 +580,7 @@ class CommandManagerTest {
     }
 
     @Test
-    void header_countdown_is_mid_gray_count_up_is_dim_then_yellow() {
+    void header_countdown_is_mid_gray_count_up_is_dim_then_mid_gray_on_overrun() {
         Theme t = Theme.active();
         // Seeded ETA with remaining > 0 → dim italic "ETA " + mid-gray "~remaining" · dim "+elapsed".
         var down = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
@@ -472,16 +595,27 @@ class CommandManagerTest {
         assertThat(downHeader).contains(Theme.colorize("+4s", t.darkGray()));
         assertThat(downHeader).doesNotContain(Theme.colorize("+4s", t.warning()));
 
-        // No seed → +elapsed count-up (yellow), no ETA prefix.
+        // No seed → +elapsed count-up (mid-gray, same as countdown), no ETA prefix.
         var up = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         up.nerdfont = false;
         up.progress(10, 100);
         String upHeader = up.renderBuildPlanLines(120, 12_000).get(0);
         assertThat(TestAnsi.strip(upHeader)).contains("+12s");
         assertThat(TestAnsi.strip(upHeader)).doesNotContain("ETA ");
-        assertThat(upHeader).contains(Theme.colorize("+12s", t.warning()));
+        assertThat(upHeader).contains(Theme.colorize("+12s", t.midGray()));
+        assertThat(upHeader).doesNotContain(Theme.colorize("+12s", t.warning()));
 
-        // Seed overrun → frozen dim 0s + yellow full elapsed (still keeps ETA prefix).
+        // Seed overrun within grace → frozen dim 0s + still-dim count-up.
+        var earlyOver = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
+        earlyOver.nerdfont = false;
+        earlyOver.progress(90, 100);
+        earlyOver.setEtaEstimate(10_000);
+        String earlyHeader = earlyOver.renderBuildPlanLines(120, 11_000).get(0);
+        assertThat(TestAnsi.strip(earlyHeader)).contains("ETA 0s").contains("+11s");
+        assertThat(earlyHeader).contains(Theme.colorize("0s", t.darkGray()));
+        assertThat(earlyHeader).contains(Theme.colorize("+11s", t.darkGray()));
+
+        // Past grace → mid-gray full elapsed (countdown's former color).
         var over = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         over.nerdfont = false;
         over.progress(90, 100);
@@ -491,7 +625,8 @@ class CommandManagerTest {
         assertThat(TestAnsi.strip(overHeader)).contains("+15s");
         assertThat(overHeader).contains(Theme.colorize("ETA ", t.darkGray().italic()));
         assertThat(overHeader).contains(Theme.colorize("0s", t.darkGray()));
-        assertThat(overHeader).contains(Theme.colorize("+15s", t.warning()));
+        assertThat(overHeader).contains(Theme.colorize("+15s", t.midGray()));
+        assertThat(overHeader).doesNotContain(Theme.colorize("+15s", t.warning()));
     }
 
     @Test
@@ -708,10 +843,10 @@ class CommandManagerTest {
     @Test
     void package_detail_uses_path_color_for_jar_name() {
         Theme t = Theme.active();
-        String painted = CommandManager.colorDetail("Package", "package jk-engine-0.11.0.jar", t);
-        assertThat(TestAnsi.strip(painted)).isEqualTo("package jk-engine-0.11.0.jar");
+        String painted = CommandManager.colorDetail("Package", "package jk-engine-0.12.0.jar", t);
+        assertThat(TestAnsi.strip(painted)).isEqualTo("package jk-engine-0.12.0.jar");
         assertThat(painted).contains(Theme.colorize("package", t.midGray()));
-        assertThat(painted).contains(Theme.colorize("jk-engine-0.11.0.jar", t.path()));
+        assertThat(painted).contains(Theme.colorize("jk-engine-0.12.0.jar", t.path()));
     }
 
     @Test
@@ -777,6 +912,31 @@ class CommandManagerTest {
         assertThat(CommandManager.looksLikePathOrArtifact("target/classes")).isTrue();
         assertThat(CommandManager.looksLikePathOrArtifact("sources")).isFalse();
         assertThat(CommandManager.looksLikePathOrArtifact("up-to-date")).isFalse();
+    }
+
+    @Test
+    void native_classpath_size_detail_uses_path_and_bold_white() {
+        Theme t = Theme.active();
+        String detail = "jk-cli · classpath input size: ~3.8 MiB";
+        String painted = CommandManager.colorDetail("Native", detail, t);
+        assertThat(TestAnsi.strip(painted)).isEqualTo(detail);
+        // Filename: Theme.path (periwinkle #969DD4) — same as other file/path designations.
+        assertThat(painted).contains(Theme.colorize("jk-cli", t.path()));
+        // Size number: focused = bold + bright white (not count-yellow).
+        assertThat(painted).contains(Theme.colorize("~3.8", t.focused()));
+        assertThat(painted).doesNotContain(Theme.colorize("~3.8", t.warning()));
+        assertThat(painted).contains(Theme.colorize(" MiB", t.midGray()));
+        assertThat(painted).contains(Theme.colorize(" · classpath input size: ", t.midGray()));
+    }
+
+    @Test
+    void native_classpath_size_detail_win_exe_basename() {
+        Theme t = Theme.active();
+        String detail = "cli.exe · classpath input size: ~1.2 MiB";
+        String painted = CommandManager.colorDetail("Native", detail, t);
+        assertThat(TestAnsi.strip(painted)).isEqualTo(detail);
+        assertThat(painted).contains(Theme.colorize("cli.exe", t.path()));
+        assertThat(painted).contains(Theme.colorize("~1.2", t.focused()));
     }
 
     @Test

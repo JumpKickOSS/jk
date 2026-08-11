@@ -33,7 +33,8 @@ class DynamicSurfaceIoTest {
                 ]}
                 """;
         DynamicSurface old = DynamicSurfaceIo.fromJson(v1);
-        assertThat(old.entries()).singleElement().satisfies(e -> assertThat(e.members()).containsExactly("run"));
+        assertThat(old.entries()).singleElement().satisfies(e -> assertThat(e.members())
+                .containsExactly("run"));
 
         String v9 = """
                 {"version": 9, "entries": [

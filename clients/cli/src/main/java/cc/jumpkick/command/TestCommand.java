@@ -13,6 +13,7 @@ import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.EventLogListener;
 import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.run.SessionMirrorListener;
+import cc.jumpkick.cli.run.TestFailureHighlight;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandManager;
 import cc.jumpkick.model.JkBuild;
@@ -362,14 +363,17 @@ public final class TestCommand implements CliCommand {
                                     o.success(), completed.incrementAndGet(), total[0], o.coord(), o.millis());
                             if (view.animating()) {
                                 view.addCompletion(completion);
+                                // Raw lines — snapshot() paints once for the settle dump.
                                 synchronized (buf) {
                                     if (!buf.isEmpty()) deferredOutput.addAll(buf);
                                 }
                             } else {
-                                StringBuilder block = new StringBuilder();
+                                List<String> painted;
                                 synchronized (buf) {
-                                    for (String l : buf) block.append(l).append('\n');
+                                    painted = TestFailureHighlight.paintLines(buf);
                                 }
+                                StringBuilder block = new StringBuilder();
+                                for (String l : painted) block.append(l).append('\n');
                                 block.append(completion);
                                 view.writeAbove(block.toString());
                             }
@@ -486,6 +490,7 @@ public final class TestCommand implements CliCommand {
 
                                 @Override
                                 public synchronized void error(String step, String code, String message) {
+                                    if ("test-failure".equals(code)) return;
                                     buf.add("  " + cc.jumpkick.cli.tui.Glyphs.CROSS + " " + step + ": " + message);
                                 }
                             };
@@ -500,8 +505,9 @@ public final class TestCommand implements CliCommand {
                                     json);
                             if (json) return;
                             List<String> buf = buffers.getOrDefault(o.dir(), List.of());
+                            List<String> painted = TestFailureHighlight.paintLines(buf);
                             synchronized (BuildCommand.OUT_LOCK) {
-                                for (String line : buf) CliOutput.out(line);
+                                for (String line : painted) CliOutput.out(line);
                                 CliOutput.out(BuildCommand.completionLine(
                                         o.success(), done.incrementAndGet(), total[0], o.coord(), o.millis()));
                             }
@@ -561,7 +567,7 @@ public final class TestCommand implements CliCommand {
 
     private static List<String> snapshot(List<String> deferred) {
         synchronized (deferred) {
-            return new ArrayList<>(deferred);
+            return new ArrayList<>(cc.jumpkick.cli.run.TestFailureHighlight.paintLines(deferred));
         }
     }
 
@@ -634,6 +640,11 @@ public final class TestCommand implements CliCommand {
         var baseline = cc.jumpkick.config.JkBuildParser.parseTestTags(toml);
         List<String> include = new ArrayList<>(baseline.includeTags());
         List<String> exclude = new ArrayList<>(baseline.excludeTags());
+        // Track whether any layer explicitly resolved the tag lists. Only then is the selection
+        // final (tagsResolved) — otherwise the engine may still fold per-module [test] tags in
+        // for workspace members (a root with no tags must not erase a module's own filters).
+        boolean spoke =
+                !baseline.includeTags().isEmpty() || !baseline.excludeTags().isEmpty();
         // Profile when selected / auto. --no-profile skips. AUTO profile defers when CLI set any
         // tag option so e.g. `jk test --include-tags slow` is not beaten by profile filters.
         boolean cliTags = cliInclude || cliExclude;
@@ -648,9 +659,11 @@ public final class TestCommand implements CliCommand {
                     var p = build.profiles().resolve(name);
                     if (p.includeTagsSet()) {
                         include = new ArrayList<>(p.includeTags());
+                        spoke = true; // present-but-empty clears — must survive to the runner
                     }
                     if (p.excludeTagsSet()) {
                         exclude = new ArrayList<>(p.excludeTags());
+                        spoke = true;
                     }
                 }
             }
@@ -659,10 +672,14 @@ public final class TestCommand implements CliCommand {
         }
         if (cliInclude) {
             include = new ArrayList<>(in.values("include-tags"));
+            spoke = true;
         }
         if (cliExclude) {
+            // `--exclude-tags ""` is the explicit CLI clear: blank values normalize away, the
+            // spoke flag keeps the empty result authoritative.
             exclude = new ArrayList<>(in.values("exclude-tags"));
+            spoke = true;
         }
-        return cc.jumpkick.config.TestSelection.of(suites, all, include, exclude);
+        return cc.jumpkick.config.TestSelection.of(suites, all, include, exclude, spoke);
     }
 }

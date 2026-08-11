@@ -76,6 +76,16 @@ public final class Calibration {
     static final long BASELINE_PACKAGE_JAR_MS = 90;
 
     /**
+     * Reference-host cold Graal wall for a typical ~1–1.5 MiB-effective app when size is unknown.
+     * Always × {@link #cpuScale()} via {@link #nativeImageMs()} — not used raw. Prefer {@link
+     * NativeEffort} size model when classpath bytes are known. Dogfood at scale=1 is mid-30s.
+     */
+    static final long BASELINE_NATIVE_IMAGE_MS = 35_000;
+
+    /** Cold OCI image build wall (Jib-style) on the reference host. */
+    static final long BASELINE_OCI_IMAGE_MS = 30_000;
+
+    /**
      * Uncalibrated / EffortWeights fallback constants — same product baselines (host scale = 1).
      * Kept as aliases so call sites and older comments stay readable.
      */
@@ -354,6 +364,31 @@ public final class Calibration {
     }
 
     /**
+     * Cold native-image wall when input size is unknown. Prefer {@link NativeEffort} when classpath
+     * bytes are known. Host-learned size rates (floor/slope at 1 MiB) win; else reference product
+     * baseline × full {@link #cpuScale()} (install never probes Graal — this is the available
+     * host-speed signal).
+     */
+    public long nativeImageMs() {
+        OptionalDouble learnedFloor = this.learned.meanMs(HostLearnedRates.NATIVE_IMAGE_FLOOR_MS);
+        OptionalDouble learnedSlope = this.learned.meanMs(HostLearnedRates.NATIVE_IMAGE_MS_PER_MIB);
+        // If we only have learned rates without size, use floor + slope×1MiB as a typical app.
+        if (learnedFloor.isPresent() || learnedSlope.isPresent()) {
+            double scale = NativeEffort.nativeColdScale(cpuScale());
+            double floor = learnedFloor.isPresent() ? learnedFloor.getAsDouble() : NativeEffort.REF_FLOOR_MS * scale;
+            double slope = learnedSlope.isPresent() ? learnedSlope.getAsDouble() : NativeEffort.REF_MS_PER_MIB * scale;
+            long ms = Math.round(floor + slope * 1.0); // 1 MiB reference app
+            return Math.max(NativeEffort.WALL_FLOOR_MS, Math.min(NativeEffort.MAX_NATIVE_MS, ms));
+        }
+        return scaleBaseline(BASELINE_NATIVE_IMAGE_MS, cpuScale());
+    }
+
+    /** Cold OCI image wall (host-scaled product baseline). */
+    public long ociImageMs() {
+        return scaleBaseline(BASELINE_OCI_IMAGE_MS, ioScale());
+    }
+
+    /**
      * Predicted wall-ms for a cold step with unit {@code count} (source/method count). Learned
      * host rates win; otherwise product baseline × host scale — never the legacy 1.2s/method model
      * and never empty-probe residual as absolute ms.
@@ -380,6 +415,8 @@ public final class Calibration {
                 compilePerSourceMs(s) * Math.max(1, n);
             case "package-jar" -> packageJarMs();
             case "package-assembly" -> packageAssemblyMs();
+            case "native-image" -> nativeImageMs();
+            case "write-image" -> ociImageMs();
             default -> 0L;
         };
     }
@@ -1012,11 +1049,13 @@ public final class Calibration {
             long updated = cal.getLong("updated") != null ? cal.getLong("updated") : 0L;
             String version = cal.getString("jk-version");
             HostLearnedRates learned = HostLearnedRates.readFrom(t);
-            // Also fold scalar [mean] host rates as single-sample learned priors.
+            // Fold continuous [mean] scalars (native-image-ms-per-mib, compile-*-per-source-ms, …)
+            // as single-sample learned priors. Skip run-harvest keys (task.*/phase.*/module.*).
             if (t.getTable("mean") != null) {
                 org.tomlj.TomlTable mean = t.getTable("mean");
                 Map<String, List<Double>> rings = new java.util.LinkedHashMap<>(learned.samples());
                 for (String key : mean.keySet()) {
+                    if (!cc.jumpkick.builds.MetricsHarvest.isContinuousMeanKey(key)) continue;
                     Object v = mean.get(key);
                     if (v instanceof Number n && n.doubleValue() > 0) {
                         rings.putIfAbsent(key, List.of(n.doubleValue()));

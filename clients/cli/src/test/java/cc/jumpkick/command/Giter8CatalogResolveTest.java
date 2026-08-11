@@ -9,7 +9,6 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
-// Optional used for JkTemplatesConfig.Source rev
 import org.junit.jupiter.api.io.TempDir;
 
 class Giter8CatalogResolveTest {

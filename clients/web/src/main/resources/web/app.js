@@ -1278,10 +1278,48 @@ Vue.createApp({
       return { web: 'Web build', cli: 'CLI build' }[trigger] || '—';
     },
 
-    // Progress % for a running card — engine workspace-progress (JK-1120). Dumb client: prefer
-    // progressPercent from the aggregate event; fall back to num/den. Clamped to 99% while running.
+    // Progress % — same strategies as CLI (clock vs weighted). Default AUTO: open-loop
+    // elapsed/R0 when R0 is known (smooth + aligned with countdown); else weight slices.
+    // Override: localStorage.jkProgressMode = 'clock' | 'weighted' | 'auto'
+    progressMode() {
+      try {
+        const m = (localStorage.getItem('jkProgressMode') || 'auto').toLowerCase();
+        if (m === 'clock' || m === 'weighted' || m === 'auto') return m;
+      } catch (_) {}
+      return 'auto';
+    },
     progress(card) {
       if (this.outcome(card) !== 'running') return 100;
+      const pct = this.rawProgress(card);
+      // Monotonic floor across the weighted→clock takeover (JK-1815): the clock fill starts
+      // near 0 when R0 seeds mid-preflight — never repaint below the card's displayed peak.
+      if (typeof card.peakPct === 'number' && card.peakPct > pct) return card.peakPct;
+      card.peakPct = pct;
+      return pct;
+    },
+    rawProgress(card) {
+      const mode = this.progressMode();
+      const haveR0 = typeof card.r0Ms === 'number' && card.r0Ms > 0 && card.r0At != null;
+      const haveResidual = typeof card.residualRemainingMs === 'number' && card.residualRemainingMs >= 0;
+      // Forced clock also paints from residual alone (no R0 seed) — same fallback ladder as the
+      // engine/CLI ProgressBarMode.select (JK-1816); with neither signal, weighted below.
+      const useClock = (mode === 'clock' && (haveR0 || haveResidual)) || (mode === 'auto' && haveR0);
+      if (useClock) {
+        const base = haveR0 ? card.r0At : card.startedAt;
+        const since = Math.max(0, this.now - (base != null ? base : this.now));
+        // Adaptive: elapsed / (elapsed + residual). Residual firms up as work completes —
+        // same oracle the countdown re-anchors to (ends on time with residual → 0).
+        let raw;
+        if (haveResidual) {
+          const denom = since + card.residualRemainingMs;
+          raw = denom <= 0 ? 0.99 : since / denom;
+        } else {
+          raw = since / card.r0Ms;
+        }
+        raw = Math.min(0.99, Math.max(0, raw));
+        return Math.min(99, Math.round(raw * 100));
+      }
+      // Weighted fallback (or forced weighted): engine progressPercent / num/den
       if (typeof card.progressPercent === 'number') {
         return Math.min(99, Math.round(card.progressPercent));
       }
@@ -1292,30 +1330,65 @@ Vue.createApp({
 
     // Live ETA dual-clock (CLI parity). Both faces share one whole-second elapsed counter so they
     // tick on the same paint — flooring remaining-ms and elapsed-ms independently desynced them.
-    // Countdown freezes at "0s" on overrun; count-up is always full elapsed. No seed → count-up only.
+    // Countdown re-anchors to residual RemainingWork so it eases into R(t) and freezes at "0s"
+    // with residual → 0; count-up is always full elapsed. No seed → count-up only.
     hasEta(card) {
-      return (
-        this.outcome(card) === 'running' &&
-        card.etaMillis != null &&
-        card.etaMillis > 0 &&
-        card.startedAt != null
-      );
+      if (this.outcome(card) !== 'running') return false;
+      const haveR0 = typeof card.r0Ms === 'number' && card.r0Ms > 0 && card.r0At != null;
+      const haveResidual =
+        typeof card.residualRemainingMs === 'number' &&
+        card.residualRemainingMs >= 0 &&
+        card.residualAt != null;
+      return haveR0 || haveResidual;
     },
     elapsedSeconds(card) {
       if (card.startedAt == null) return 0;
       return Math.max(0, Math.floor((this.now - card.startedAt) / 1000));
     },
+    // Whole-second countdown deadline on the SAME counter as elapsedSeconds (startedAt epoch).
+    // Prefer residual re-anchor when known (CLI setBarResidualRemaining); fall back to frozen R0.
+    // Deriving both faces from one counter keeps them ticking on the same paint (JK-1822).
+    etaDeadlineSeconds(card) {
+      if (!this.hasEta(card)) return null;
+      const base = card.startedAt != null ? card.startedAt : (card.residualAt != null ? card.residualAt : card.r0At);
+      if (base == null) return null;
+      // Residual re-anchor: deadline = residualAt + residualRemaining (open-loop decay between samples).
+      if (
+        typeof card.residualRemainingMs === 'number' &&
+        card.residualRemainingMs >= 0 &&
+        card.residualAt != null
+      ) {
+        return Math.floor((card.residualAt - base + card.residualRemainingMs) / 1000);
+      }
+      // Seed-only: deadline = r0At + r0Ms.
+      if (typeof card.r0Ms === 'number' && card.r0Ms > 0 && card.r0At != null) {
+        return Math.floor((card.r0At - base + card.r0Ms) / 1000);
+      }
+      return null;
+    },
     etaSeconds(card) {
-      // Run-wide total from the remaining-work etaMillis (see fold.etaTotalMillis, JK-1517).
+      const deadline = this.etaDeadlineSeconds(card);
+      if (deadline != null) {
+        return Math.max(0, deadline - this.elapsedSeconds(card));
+      }
       const total = etaTotalMillis(card);
       return total == null ? 0 : Math.max(0, Math.floor(total / 1000));
     },
     etaOverdue(card) {
-      return this.hasEta(card) && this.elapsedSeconds(card) >= this.etaSeconds(card);
+      // Countdown has frozen at 0s (residual/R0 exhausted). Same whole-second counter as the
+      // faces so the freeze and the paint flip together.
+      const deadline = this.etaDeadlineSeconds(card);
+      return deadline != null && this.elapsedSeconds(card) >= deadline;
+    },
+    /** Count-up mid-gray only after 2s past deadline — matches CLI COUNT_UP_PROMOTE_GRACE_MS. */
+    etaCountUpPromoted(card) {
+      const deadline = this.etaDeadlineSeconds(card);
+      return deadline != null && this.elapsedSeconds(card) >= deadline + 2;
     },
     etaCountdown(card) {
-      if (!this.hasEta(card)) return '';
-      const rem = this.etaSeconds(card) - this.elapsedSeconds(card);
+      const deadline = this.etaDeadlineSeconds(card);
+      if (deadline == null) return '';
+      const rem = deadline - this.elapsedSeconds(card);
       return rem <= 0 ? '0s' : '~' + this.fmtClockSeconds(rem);
     },
     // Back-compat alias used by older snapshots/tests: bare countdown string (no "ETA " label).

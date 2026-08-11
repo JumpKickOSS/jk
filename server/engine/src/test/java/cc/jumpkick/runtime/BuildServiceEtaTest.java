@@ -4,7 +4,10 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /** The whole-build history prior: a sanity anchor for the seeded ETA, one-sided by design. */
@@ -12,6 +15,15 @@ class BuildServiceEtaTest {
 
     private static BuildMetrics.Stats ok(long count, long avg, long min, long max) {
         return new BuildMetrics.Stats(count, count * avg, min, max);
+    }
+
+    @Test
+    void open_loop_prefers_one_percent_over_estimate() {
+        assertThat(BuildService.preferSlightOverEstimate(0)).isZero();
+        assertThat(BuildService.preferSlightOverEstimate(68_000)).isEqualTo(68_680);
+        assertThat(BuildService.preferSlightOverEstimate(100_000)).isEqualTo(101_000);
+        // ~1%, not ~2.5%
+        assertThat(BuildService.preferSlightOverEstimate(70_000)).isLessThan(70_000 + 1_750);
     }
 
     @Test
@@ -78,6 +90,204 @@ class BuildServiceEtaTest {
         // One-sided clamp still applies for absurd over-estimates with settled history.
         assertThat(BuildService.applyHistoryPrior(60_000, ok(5, 2000, 800, 6000), false))
                 .isEqualTo(12_000);
+    }
+
+    @Test
+    void cascade_and_resource_drift_are_not_local_compile_content() {
+        var cascade = new TaskForecast.Module(
+                Path.of("/lib"),
+                "g:lib",
+                List.of(
+                        new TaskForecast.Task(
+                                "compile-main", TaskForecast.Status.RUN, "recompile · dependency changed", null),
+                        new TaskForecast.Task(
+                                "compile-test", TaskForecast.Status.RUN, "recompile · main changed", null),
+                        new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~100 tests", null),
+                        new TaskForecast.Task(
+                                "package-jar", TaskForecast.Status.RUN, "repackage · compile changed", null)),
+                10,
+                100,
+                true,
+                false);
+        assertThat(BuildService.hasLocalCompileContent(cascade)).isFalse();
+        assertThat(BuildService.hasResourceDriftWork(cascade)).isFalse();
+        assertThat(BuildService.hasHeavyPackagingTail(cascade)).isFalse();
+        assertThat(BuildService.isCascadeForcedStep(cascade.steps().get(0))).isTrue();
+
+        var resourceOnly = new TaskForecast.Module(
+                Path.of("/core"),
+                "g:core",
+                List.of(
+                        new TaskForecast.Task("compile-main", TaskForecast.Status.CACHED, "", "k"),
+                        new TaskForecast.Task(
+                                "compile-test", TaskForecast.Status.PARTIAL, "compile · 0 sources changed", null),
+                        new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~792 tests", null),
+                        new TaskForecast.Task(
+                                "package-jar", TaskForecast.Status.RUN, "repackage · resources changed", null),
+                        new TaskForecast.Task(
+                                "copy-resources", TaskForecast.Status.RUN, "extra resources changed", null)),
+                50,
+                792,
+                true,
+                false);
+        assertThat(BuildService.hasLocalCompileContent(resourceOnly)).isFalse();
+        assertThat(BuildService.hasResourceDriftWork(resourceOnly)).isTrue();
+
+        var local = new TaskForecast.Module(
+                Path.of("/engine"),
+                "g:engine",
+                List.of(
+                        new TaskForecast.Task(
+                                "compile-main", TaskForecast.Status.PARTIAL, "compile · 3 sources changed", null),
+                        new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~1000 tests", null)),
+                100,
+                1000,
+                true,
+                false);
+        assertThat(BuildService.hasLocalCompileContent(local)).isTrue();
+
+        var cliShaped = new TaskForecast.Module(
+                Path.of("/cli"),
+                "g:cli",
+                List.of(
+                        new TaskForecast.Task(
+                                "compile-main", TaskForecast.Status.RUN, "recompile · dependency changed", null),
+                        new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~1000 tests", null),
+                        new TaskForecast.Task(
+                                "native-image", TaskForecast.Status.RUN, "rebuild · compile changed", null)),
+                50,
+                1000,
+                true,
+                false);
+        assertThat(BuildService.hasLocalCompileContent(cliShaped)).isFalse();
+        assertThat(BuildService.hasHeavyPackagingTail(cliShaped)).isTrue();
+    }
+
+    @Test
+    void eta_discounts_cascade_and_resource_suites_keeps_cli_tests_not_native() throws Exception {
+        Path core = Path.of("/core");
+        Path a = Path.of("/a");
+        Path cli = Path.of("/cli");
+        Path eng = Path.of("/eng");
+        var coreMod = new TaskForecast.Module(
+                core,
+                "g:core",
+                List.of(
+                        new TaskForecast.Task("compile-main", TaskForecast.Status.CACHED, "", "k"),
+                        new TaskForecast.Task(
+                                "compile-test", TaskForecast.Status.PARTIAL, "compile · 0 sources changed", null),
+                        new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~792 tests", null),
+                        new TaskForecast.Task(
+                                "package-jar", TaskForecast.Status.RUN, "repackage · resources changed", null),
+                        new TaskForecast.Task(
+                                "copy-resources", TaskForecast.Status.RUN, "extra resources changed", null)),
+                50,
+                792,
+                true,
+                false);
+        var cascadeMod = new TaskForecast.Module(
+                a,
+                "g:a",
+                List.of(
+                        new TaskForecast.Task(
+                                "compile-main", TaskForecast.Status.RUN, "recompile · dependency changed", null),
+                        new TaskForecast.Task(
+                                "compile-test", TaskForecast.Status.RUN, "recompile · main changed", null),
+                        new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~188 tests", null),
+                        new TaskForecast.Task(
+                                "package-jar", TaskForecast.Status.RUN, "repackage · compile changed", null)),
+                20,
+                188,
+                true,
+                false);
+        var engineMod = new TaskForecast.Module(
+                eng,
+                "g:eng",
+                List.of(
+                        new TaskForecast.Task(
+                                "compile-main", TaskForecast.Status.PARTIAL, "compile · 1 source changed", null),
+                        new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~1000 tests", null),
+                        new TaskForecast.Task(
+                                "package-jar", TaskForecast.Status.RUN, "repackage · compile changed", null),
+                        new TaskForecast.Task(
+                                "package-assembly", TaskForecast.Status.RUN, "repackage · compile changed", null)),
+                200,
+                1000,
+                true,
+                false);
+        var cliMod = new TaskForecast.Module(
+                cli,
+                "g:cli",
+                List.of(
+                        new TaskForecast.Task(
+                                "compile-main", TaskForecast.Status.RUN, "recompile · dependency changed", null),
+                        new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~1098 tests", null),
+                        new TaskForecast.Task(
+                                "package-jar", TaskForecast.Status.RUN, "repackage · compile changed", null),
+                        new TaskForecast.Task(
+                                "native-image", TaskForecast.Status.RUN, "rebuild · compile changed", null)),
+                100,
+                1098,
+                true,
+                false);
+        var plan = new ExplainPlan(
+                List.of(coreMod, cascadeMod, engineMod, cliMod),
+                Map.of(core, Set.of(), a, Set.of(core), eng, Set.of(a), cli, Set.of(eng)),
+                4,
+                List.of());
+        List<EffortWeights.ModuleCost> costs = cc.jumpkick.config.SessionContext.where(
+                cc.jumpkick.config.Session.defaults(),
+                () -> BuildService.etaCostsFromExplainPlan(
+                        plan, Path.of("/tmp/jk-eta-cascade-test-cache"), 1, null, null, false, false));
+        EffortWeights.ModuleCost coreCost =
+                costs.stream().filter(c -> c.dir().equals(core)).findFirst().orElseThrow();
+        EffortWeights.ModuleCost cascadeCost =
+                costs.stream().filter(c -> c.dir().equals(a)).findFirst().orElseThrow();
+        EffortWeights.ModuleCost engineCost =
+                costs.stream().filter(c -> c.dir().equals(eng)).findFirst().orElseThrow();
+        EffortWeights.ModuleCost cliCost =
+                costs.stream().filter(c -> c.dir().equals(cli)).findFirst().orElseThrow();
+        // Core resource drift: package/copy only — not 792-test suite.
+        assertThat(coreCost.testWeight()).isZero();
+        assertThat(coreCost.weight()).isLessThan(50);
+        // Pure cascade: only recheck tokens.
+        assertThat(cascadeCost.weight()).isLessThan(20);
+        assertThat(cascadeCost.testWeight()).isZero();
+        // Engine local compile keeps substantial weight.
+        assertThat(engineCost.weight()).isGreaterThan(cascadeCost.weight() * 5);
+        assertThat(engineCost.testWeight()).isGreaterThan(0);
+        // Cli: full tests (heavy-tail signal), native cascade-discounted (not full ~30s wall).
+        assertThat(cliCost.testWeight()).isGreaterThan(0);
+        // Without native wall, cli weight is dominated by tests — close to testWeight.
+        assertThat(cliCost.weight()).isLessThan(cliCost.testWeight() + 30);
+    }
+
+    @Test
+    void full_work_shape_needs_depth_not_just_width() {
+        // 28 lightly dirty modules (cascade / parse-heavy) must NOT look like a full rebuild.
+        var wideShallow = new BuildService.HistoryShape(false, 28);
+        List<EffortWeights.ModuleCost> shallow = new ArrayList<>();
+        for (int i = 0; i < 28; i++) {
+            // weight 5 ≪ 5s threshold — token/bookkeeping class
+            shallow.add(EffortWeights.costOf(Path.of("/m" + i), Set.of(), 5, 0));
+        }
+        // Two heavy modules (engine tests + cli tests+native) — still not "full work."
+        List<EffortWeights.ModuleCost> twoHeavy = new ArrayList<>(shallow.subList(0, 26));
+        twoHeavy.add(EffortWeights.costOf(Path.of("/engine"), Set.of(), 400, 350));
+        twoHeavy.add(EffortWeights.costOf(Path.of("/cli"), Set.of(), 350, 200));
+        assertThat(BuildService.isFullWorkShape(wideShallow, shallow)).isFalse();
+        assertThat(BuildService.isFullWorkShape(wideShallow, twoHeavy)).isFalse();
+
+        // Explicit rebuild always floors.
+        assertThat(BuildService.isFullWorkShape(new BuildService.HistoryShape(true, 2), twoHeavy))
+                .isTrue();
+
+        // Wide + many substantial modules → full work (true monorepo suite).
+        List<EffortWeights.ModuleCost> deep = new ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            deep.add(EffortWeights.costOf(Path.of("/m" + i), Set.of(), 80, 60));
+        }
+        assertThat(BuildService.isFullWorkShape(wideShallow, deep)).isTrue();
     }
 
     @Test

@@ -219,9 +219,9 @@ public final class ExplainCommand implements CliCommand {
         // then the build-time estimate.
         String header =
                 cc.jumpkick.cli.tui.BuildPlanWedge.planChip(cc.jumpkick.cli.tui.Glyphs.MENU, "Build Plan", nerdfont);
-        // Fully-cached plans report eta 0 from the engine ("no work") — that is not unknown;
-        // a pure cache verify is sub-second. Only show "unknown" when there is real
-        // work but no learned timings yet.
+        // Display the engine ETA as returned — same number as jk build countdown seed.
+        // Do NOT mask a non-zero eta behind "Fully Cached / <1s": that hid the empty-cost →
+        // whole-build history bug (engine returned ~3.5m while the UI said <1s).
         boolean fullyCached = !modules.isEmpty() && modules.stream().noneMatch(TaskForecast.Module::dirty);
         String estimate = buildTimeEstimate(etaMillis, fullyCached, t);
         // Leading blank once per command (prep lock wedge may already have opened it).
@@ -331,15 +331,17 @@ public final class ExplainCommand implements CliCommand {
 
     /**
      * Header estimate fragment: {@code Build time estimate ~8s}, {@code Build time estimate <1s}
-     * (fully cached / sub-second), or {@code Build time not yet measured} when dirty work has no
-     * host/project timings yet.
+     * (fully cached / sub-second), or {@code Build time estimate not yet measured} when dirty work
+     * has no host/project timings yet.
      */
     static String buildTimeEstimate(long etaMillis, boolean fullyCached, Theme t) {
-        if (fullyCached || (etaMillis > 0 && etaMillis < 1000)) {
-            return "Build time estimate " + Theme.colorize("<1s", t.warning());
-        }
+        // etaMillis is authoritative (same estimateEtaMillis as jk build). Never mask a multi-minute
+        // eta behind Fully Cached / <1s — that hid empty-cost → history-average bugs.
         if (etaMillis <= 0) {
-            return "Build time " + Theme.colorize("not yet measured", t.warning());
+            return "Build time estimate " + Theme.colorize(fullyCached ? "<1s" : "not yet measured", t.warning());
+        }
+        if (etaMillis < 1000) {
+            return "Build time estimate " + Theme.colorize("<1s", t.warning());
         }
         return "Build time estimate " + Theme.colorize("~" + fmtDuration(etaMillis), t.warning());
     }

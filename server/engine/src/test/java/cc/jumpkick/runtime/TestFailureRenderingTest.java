@@ -31,9 +31,11 @@ class TestFailureRenderingTest {
         List<String> lines = TestSupport.renderFailures(result);
         String text = String.join("\n", lines);
 
+        assertThat(lines).anyMatch(l -> l.equals("Test Failure"));
         assertThat(lines).anyMatch(l -> l.equals("1 test failed:"));
         assertThat(lines).anyMatch(l -> l.contains("FAILED  cc.jumpkick.FooTest > bar()"));
-        assertThat(text).contains("AssertionFailedError: expected: <1> but was: <2>");
+        assertThat(lines).anyMatch(l -> l.contains("org.opentest4j.AssertionFailedError"));
+        assertThat(text).contains("expected: <1> but was: <2>");
         assertThat(text).contains("at cc.jumpkick.FooTest.bar(FooTest.java:42)");
     }
 
@@ -44,6 +46,7 @@ class TestFailureRenderingTest {
         var result = new TestSummary(2, 0, 2, 0, List.of(a, b));
 
         List<String> lines = TestSupport.renderFailures(result);
+        assertThat(lines).anyMatch(l -> l.equals("Test Failure"));
         assertThat(lines).anyMatch(l -> l.equals("2 tests failed:"));
         // The stack-less failure falls back to its one-line message.
         assertThat(lines).anyMatch(l -> l.contains("FAILED  (test run)"));
@@ -63,6 +66,8 @@ class TestFailureRenderingTest {
         assertThat(f.headline()).isEqualTo("cc.jumpkick:jk-core :: FooTest > bar()  [w2]");
         List<String> lines = TestSupport.renderFailures(new TestSummary(1, 0, 1, 0, List.of(f)));
         assertThat(lines).anyMatch(l -> l.contains("FAILED  cc.jumpkick:jk-core :: FooTest > bar()  [w2]"));
+        assertThat(lines).anyMatch(l -> l.contains("class: cc.jumpkick.FooTest"));
+        assertThat(lines).anyMatch(l -> l.strip().equals("java.lang.AssertionError"));
     }
 
     @Test

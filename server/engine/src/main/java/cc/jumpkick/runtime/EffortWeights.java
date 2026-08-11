@@ -29,6 +29,68 @@ public final class EffortWeights {
     private EffortWeights() {}
 
     /**
+     * When set, jar-derived tails (native / assembly / OCI) over-reserve full learned walls even if
+     * outputs look mtime-fresh vs the pre-build jar. Dirty-module prepare always sets this —
+     * upstream-dirty recompile rewrites the jar without touching local source stamps, which is
+     * exactly when a naïve freshness check under-counted native-image to weight 0.
+     */
+    private static final ThreadLocal<Boolean> OVER_RESERVE_TAILS = new ThreadLocal<>();
+
+    static {
+        // BuildPlan.estimatedTotalWeight()/run() evaluate weight suppliers on JkThreads pool
+        // workers; the flag must ride that hop like the session context does (JK-1807). Capture
+        // happens on the submitting thread (inside withOverReserveTails), restore on the worker;
+        // remove() in finally keeps shared cpu() workers clean.
+        // SessionContext's static init uses bind() (displaces); force it to land before our add().
+        cc.jumpkick.config.SessionContext.current();
+        cc.jumpkick.run.ContextPropagator.add(new cc.jumpkick.run.ContextPropagator.Propagator() {
+            @Override
+            public Runnable wrapRunnable(Runnable r) {
+                if (!overReserveTails()) return r;
+                return () -> {
+                    OVER_RESERVE_TAILS.set(Boolean.TRUE);
+                    try {
+                        r.run();
+                    } finally {
+                        OVER_RESERVE_TAILS.remove();
+                    }
+                };
+            }
+
+            @Override
+            public <T> java.util.concurrent.Callable<T> wrapCallable(java.util.concurrent.Callable<T> c) {
+                if (!overReserveTails()) return c;
+                return () -> {
+                    OVER_RESERVE_TAILS.set(Boolean.TRUE);
+                    try {
+                        return c.call();
+                    } finally {
+                        OVER_RESERVE_TAILS.remove();
+                    }
+                };
+            }
+        });
+    }
+
+    /** Run {@code body} with jar-derived tails forced to full bar weight (dirty prepare / run). */
+    public static <T> T withOverReserveTails(java.util.concurrent.Callable<T> body) {
+        OVER_RESERVE_TAILS.set(Boolean.TRUE);
+        try {
+            return body.call();
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        } finally {
+            OVER_RESERVE_TAILS.remove();
+        }
+    }
+
+    static boolean overReserveTails() {
+        return Boolean.TRUE.equals(OVER_RESERVE_TAILS.get());
+    }
+
+    /**
      * Plan/runtime weight when a step is known skip/cache-hit but still appears in the plan
      * . Keeps a non-zero phase tick so the aggregate bar has a denominator without
      * inventing full compile/test cost.
@@ -58,8 +120,15 @@ public final class EffortWeights {
     static final int PACKAGE_JAR = 5;
     static final int JDK_DOWNLOAD = 70;
     static final int ASSEMBLY_RUN = 10;
-    static final int NATIVE_RUN = 100;
-    static final int OCI_RUN = 40;
+    /**
+     * Cold native-image reservation when size/metrics unknown. Prefer {@link NativeEffort} which
+     * sizes by classpath bytes and calibration host scale; this flat weight is the last-resort
+     * floor (~90s at {@link #MS_PER_WEIGHT}).
+     */
+    static final int NATIVE_RUN = 600;
+    /** Cold OCI build floor (~30s). */
+    static final int OCI_RUN = 200;
+
     static final int OCI_SKIP = 2;
 
     /**
@@ -158,9 +227,12 @@ public final class EffortWeights {
 
     /** Module-own tier of {@link #stepOkAvgMillis} — 0 when this module never ran the step here. */
     static long stepOkAvgMillisOwn(BuildMetrics metrics, String dir, String step) {
-        if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
         String key = metricsStepName(step);
         if (key.isEmpty()) return 0;
+        // Prefer last successful wall (more recent than trimmed mean) when credible.
+        long fromAgg = stepWallFromAggregates(dir == null ? "" : dir, key, true);
+        if (fromAgg > 0) return fromAgg;
+        if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
         var own = metrics.step(dir == null ? "" : dir, key);
         if (own.isPresent() && own.get().ok().count() >= 1 && own.get().ok().avgMillis() > 0) {
             return own.get().ok().avgMillis();
@@ -170,14 +242,57 @@ public final class EffortWeights {
 
     /** Host tier of {@link #stepOkAvgMillis}: the cross-module average wall for {@code step}. */
     static long stepOkAvgMillisHost(BuildMetrics metrics, String step) {
-        if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
         String key = metricsStepName(step);
         if (key.isEmpty()) return 0;
+        long fromAgg = stepWallFromAggregates("", key, true);
+        if (fromAgg > 0) return fromAgg;
+        if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
         var host = metrics.step("", key);
         if (host.isPresent() && host.get().ok().count() >= 1 && host.get().ok().avgMillis() > 0) {
             return host.get().ok().avgMillis();
         }
         return 0;
+    }
+
+    /**
+     * Read last/mean step wall from harvested metrics. Prefer <strong>last</strong> when it is not
+     * a restore blip relative to the mean (heavy steps). Recency beats multi-sample mean for ETA
+     * after the suite has been getting faster.
+     */
+    static long stepWallFromAggregates(String dir, String step, boolean preferLast) {
+        try {
+            var agg = BuildMetrics.aggregatesForSession();
+            String task = metricsStepName(step);
+            if (task.isEmpty()) return 0;
+            String key;
+            if (dir == null || dir.isBlank()) {
+                key = "task." + task + ".wall-ms";
+            } else {
+                key = "module." + cc.jumpkick.builds.AggregatedMetrics.sanitize(dir) + ".task." + task + ".wall-ms";
+            }
+            Double mean = agg.meanMap().get(key);
+            Double last = agg.lastMap().get(key);
+            long floor = heavyWallFloorMs(task);
+            if (preferLast && last != null && last > 0 && last >= floor) {
+                // Reject last if it is a tiny fraction of mean (cache-restore / mostly-warmed
+                // noise). The old `|| last >= 5_000` escape made this rejection dead for heavy
+                // steps (their floor is already 5s), so one 6s over-floor outlier replaced a
+                // stable 60s native mean and under-reserved the slice ~10× (JK-1828).
+                if (mean == null || mean <= 0 || last >= mean * 0.25) {
+                    return Math.round(last);
+                }
+            }
+            if (mean != null && mean > 0 && mean >= floor) return Math.round(mean);
+            if (last != null && last > 0 && last >= floor) return Math.round(last);
+            // Non-heavy steps: no floor
+            if (floor == 0) {
+                if (preferLast && last != null && last > 0) return Math.round(last);
+                if (mean != null && mean > 0) return Math.round(mean);
+            }
+            return 0;
+        } catch (RuntimeException e) {
+            return 0;
+        }
     }
 
     /**
@@ -189,15 +304,35 @@ public final class EffortWeights {
     }
 
     static int learnedFixedWeight(BuildMetrics metrics, String dir, String step, int staticWeight) {
+        // Heavy IO steps (native-image, OCI) are rare and long — one successful wall is enough
+        // to beat the cold floor; waiting for 3 samples left the bar on a 15s token for months.
+        int minSamples = heavyFixedStep(step) ? 1 : MIN_METRICS_SAMPLES;
+        long floorMs = heavyFixedStep(step) ? heavyWallFloorMs(step) : 0;
         var own = metrics.step(dir, metricsStepName(step));
-        if (own.isPresent() && own.get().ok().count() >= MIN_METRICS_SAMPLES) {
-            return flatWeight(own.get().ok().avgMillis());
+        if (own.isPresent() && own.get().ok().count() >= minSamples) {
+            long avg = own.get().ok().avgMillis();
+            // Ignore poisoned cache-restore samples (e.g. native-image "32ms" success).
+            if (avg >= floorMs) return flatWeight(avg);
         }
         var host = metrics.step("", metricsStepName(step));
-        if (host.isPresent() && host.get().ok().count() >= MIN_METRICS_SAMPLES) {
-            return flatWeight(host.get().ok().avgMillis());
+        if (host.isPresent() && host.get().ok().count() >= minSamples) {
+            long avg = host.get().ok().avgMillis();
+            if (avg >= floorMs) return flatWeight(avg);
         }
         return staticWeight;
+    }
+
+    /** Reject absurdly short measured walls for heavy steps (action-cache restore noise). */
+    private static long heavyWallFloorMs(String step) {
+        String s = metricsStepName(step);
+        if ("native-image".equals(s)) return 5_000L;
+        if ("write-image".equals(s)) return 3_000L;
+        return 0L;
+    }
+
+    private static boolean heavyFixedStep(String step) {
+        String s = metricsStepName(step);
+        return "native-image".equals(s) || "write-image".equals(s) || "package-assembly".equals(s);
     }
 
     /** A whole-step historical average (ms) as a flat bar weight. */
@@ -368,6 +503,8 @@ public final class EffortWeights {
                 Map<String, Long> walls = loadClassWalls(mod);
                 // classesToRun unknown at plan time → empty; TestEffort falls through to walls-own/method path
                 w = TestEffort.weight(mod, walls, List.of(), methods, timings, projectDirs, metrics, wWorkers);
+            } else if ("native-image".equals(step)) {
+                w = NativeEffort.weight(dir);
             } else {
                 // Prefer this module's own measured whole-task wall; count-scaled/host/static tiers
                 // (via learned) only when the module is cold here.
@@ -448,12 +585,13 @@ public final class EffortWeights {
             }
             case "package-jar" -> flatWeight(Calibration.scaleBaseline(Calibration.BASELINE_PACKAGE_JAR_MS, 1.0));
             case "package-assembly" -> ASSEMBLY_RUN;
-            case "native-image" -> NATIVE_RUN;
-            case "write-image" -> OCI_RUN;
+            case "native-image" -> flatWeight(Calibration.scaleBaseline(Calibration.BASELINE_NATIVE_IMAGE_MS, 1.0));
+            case "write-image" -> flatWeight(Calibration.scaleBaseline(Calibration.BASELINE_OCI_IMAGE_MS, 1.0));
             case "resolve-deps",
                     "parse-build",
                     "ensure-jdk",
                     "copy-resources",
+                    "copy-test-resources",
                     "write-stamp",
                     "write-stamp-kotlin",
                     "write-stamp-groovy",
@@ -713,42 +851,165 @@ public final class EffortWeights {
     }
 
     /**
+     * Packaging dirtiness cascade (hard product rule):
+     *
+     * <ul>
+     *   <li>If the main <strong>jar</strong> will change this run, <strong>native</strong> is dirty
+     *       (when the module builds a native image) — never jar-dirty + native-clean.
+     *   <li>If the jar <em>or</em> native output will change, <strong>OCI</strong> is dirty (when
+     *       the module builds an image) — never jar/native-dirty + OCI-clean.
+     * </ul>
+     *
+     * Bar weights and forecast must follow this; mtime of an old binary vs a pre-build jar is not
+     * an independent skip signal.
+     */
+
+    /**
      * Assembly jar present and at least as new as the main jar (and not {@code --force}) → skip.
+     * Jar dirty ⇒ assembly dirty (same cascade family as native).
      */
     public static int assemblyWeight(Path dir) {
+        if (jarWillChange(dir)) {
+            return learnedFixedWeight(dir.toString(), "package-assembly", ASSEMBLY_RUN);
+        }
         return artifactFresh(dir, BuildLayout::assemblyJar)
                 ? SKIP
                 : learnedFixedWeight(dir.toString(), "package-assembly", ASSEMBLY_RUN);
     }
 
-    /** Native binary/library present and fresh → skip; otherwise a full native-image build. */
+    /**
+     * Native binary/library weight for the progress bar and plan denominator — evaluated at
+     * plan-start {@link cc.jumpkick.run.BuildPlan#estimatedTotalWeight} so calibrate sees the full
+     * slice up front (bar never grows mid-run, never goes backwards).
+     *
+     * <p><b>Jar dirty ⇒ native dirty.</b> Never SKIP while the main jar will be rewritten.
+     */
     public static int nativeWeight(Path dir) {
-        return artifactFresh(dir, BuildLayout::nativeBinary) || artifactFresh(dir, BuildLayout::nativeLibrary)
-                ? SKIP
-                : learnedFixedWeight(dir.toString(), "native-image", NATIVE_RUN);
+        if (nativeWillChange(dir)) {
+            return nativeRunWeight(dir);
+        }
+        return SKIP;
     }
 
-    /** OCI image tarball present and fresh → skip (2); otherwise a full image build (40). */
+    /**
+     * Native-image bar/ETA weight via {@link NativeEffort}: own wall → size-normalized host/product
+     * model → host absolute only when size unknown → cold calibrated baseline.
+     */
+    public static int nativeRunWeight(Path dir) {
+        return NativeEffort.weight(dir);
+    }
+
+    /**
+     * OCI image weight. <b>Jar dirty or native dirty ⇒ OCI dirty</b>; never SKIP while either
+     * packaging input will change.
+     */
     public static int ociWeight(Path dir) {
-        return artifactFresh(dir, BuildLayout::ociImageTar)
-                ? OCI_SKIP
-                : learnedFixedWeight(dir.toString(), "write-image", OCI_RUN);
+        if (ociWillChange(dir)) {
+            return learnedFixedWeight(dir.toString(), "write-image", OCI_RUN);
+        }
+        return OCI_SKIP;
+    }
+
+    /** Main jar will be rewritten this run (or dirty-module over-reserve). */
+    public static boolean jarWillChange(Path dir) {
+        return overReserveTails() || mainJarWillChange(dir);
+    }
+
+    /**
+     * Native image will rebuild this run. <b>Jar dirty ⇒ always true</b> (impossible for the jar to
+     * be dirty while native is clean). Also true when the binary is missing or older than the jar.
+     */
+    public static boolean nativeWillChange(Path dir) {
+        if (jarWillChange(dir)) return true;
+        return nativeOutputStaleOrMissing(dir);
+    }
+
+    /**
+     * OCI image will rebuild this run. <b>Jar dirty or native dirty ⇒ always true</b> when those
+     * products exist for the module. Also true when the OCI tarball is missing or older than the
+     * jar.
+     */
+    public static boolean ociWillChange(Path dir) {
+        if (jarWillChange(dir)) return true;
+        if (producesNativeImage(dir) && nativeOutputStaleOrMissing(dir)) return true;
+        return !artifactFresh(dir, BuildLayout::ociImageTar);
+    }
+
+    /** Binary/library missing or older than main jar (does not re-check jar dirtiness). */
+    static boolean nativeOutputStaleOrMissing(Path dir) {
+        return !(artifactFresh(dir, BuildLayout::nativeBinary) || artifactFresh(dir, BuildLayout::nativeLibrary));
+    }
+
+    /** {@code [native] always = true} — module may produce a native-image tail. */
+    static boolean producesNativeImage(Path dir) {
+        try {
+            if (dir == null || !Files.isDirectory(dir)) return false;
+            JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
+            return project.nativeMode() == JkBuild.NativeMode.ALWAYS;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * True when the module's main jar is expected to be rewritten this run: force/rebuild, missing
+     * jar, or main sources not stamp-fresh. Downstream packaging (native / assembly / OCI) must
+     * reserve full weight when this is true — even if their outputs still look newer than the
+     * pre-build jar.
+     */
+    static boolean mainJarWillChange(Path dir) {
+        try {
+            var cfg = cc.jumpkick.config.SessionContext.current().config();
+            if (cfg.rebuildOr(false) || cfg.forceOr(false)) return true;
+            if (dir == null || !Files.isDirectory(dir)) return true;
+            JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
+            BuildLayout layout = BuildLayout.of(dir, project);
+            if (!Files.isRegularFile(layout.mainJar())) return true;
+            boolean compact = cc.jumpkick.layout.ModuleLayout.isCompact(dir);
+            // Java main sources
+            List<Path> javaSrc =
+                    CompileSupport.collectJavaSources(compact ? dir.resolve("src") : dir.resolve("src/main/java"));
+            if (!javaSrc.isEmpty()
+                    && !FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.JAVA_STAMP, javaSrc)) {
+                return true;
+            }
+            // Kotlin
+            List<Path> ktSrc = CompileSupport.collectKotlinSources(dir, compact);
+            if (!ktSrc.isEmpty()
+                    && !FreshnessStamp.looksFresh(layout.kotlinClassesDir(), FreshnessStamp.KOTLIN_STAMP, ktSrc)) {
+                return true;
+            }
+            // Groovy (stamp in merged classes dir)
+            List<Path> gvSrc = CompileSupport.collectGroovySources(dir, compact);
+            if (!gvSrc.isEmpty()
+                    && !FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.GROOVY_STAMP, gvSrc)) {
+                return true;
+            }
+            return false;
+        } catch (Exception e) {
+            // Unparseable / I/O — over-reserve so the bar never drops a multi-minute step.
+            return true;
+        }
     }
 
     /**
      * True when the artifact selected by {@code artifact} exists, isn't being forced by {@code
      * --force}, and is at least as new as the main jar it's derived from — a cheap "this output is
      * up-to-date" proxy for the artifact-cache skip the step itself performs.
+     *
+     * <p>Callers that reserve progress weight for jar-derived steps must also check {@link
+     * #mainJarWillChange} first — see {@link #nativeWeight}.
      */
     private static boolean artifactFresh(Path dir, java.util.function.Function<BuildLayout, Path> artifact) {
         try {
             if (cc.jumpkick.config.SessionContext.current().config().rebuildOr(false)) return false;
+            if (cc.jumpkick.config.SessionContext.current().config().forceOr(false)) return false;
             JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
             BuildLayout layout = BuildLayout.of(dir, project);
             Path art = artifact.apply(layout);
             if (!Files.isRegularFile(art)) return false;
             Path mainJar = layout.mainJar();
-            if (!Files.isRegularFile(mainJar)) return true; // nothing to compare against
+            if (!Files.isRegularFile(mainJar)) return false; // no jar → not fresh; rebuild inputs first
             return Files.getLastModifiedTime(art).toMillis()
                     >= Files.getLastModifiedTime(mainJar).toMillis();
         } catch (Exception e) {
@@ -866,19 +1127,10 @@ public final class EffortWeights {
     public static long scheduleMillis(
             List<ModuleCost> mods, int concurrency, boolean serial, boolean parallelTests, long msPerWeight) {
         if (mods == null || mods.isEmpty()) return 0;
-        long serialSum = 0;
-        long testSum = 0;
-        for (ModuleCost m : mods) {
-            serialSum += m.weight();
-            testSum += m.testWeight();
-        }
-        if (serial || concurrency <= 1) return serialSum * msPerWeight;
-        // List-schedule with the same dep rule as WorkspaceScheduler (full prereq completion) and
-        // a rolling concurrency window. Pure DAG critical-path alone under-estimates monorepo
-        // rebuilds (many heavy independent modules share a finite worker pool).
-        long scheduled = listSchedule(mods, Math.max(1, concurrency));
-        long testFloor = parallelTests ? 0 : testSum;
-        return Math.max(scheduled, testFloor) * msPerWeight;
+        long rate = Math.max(1, msPerWeight);
+        // Shared first-ready schedule (matches WorkspaceScheduler admission).
+        long weights = WorkSchedule.schedule(toWorkCosts(mods), concurrency, serial, parallelTests);
+        return weights * rate;
     }
 
     /**
@@ -915,72 +1167,23 @@ public final class EffortWeights {
         return (int) Math.max(0, Math.min(Integer.MAX_VALUE, ms));
     }
 
+    /** Convert engine costs to the shared schedule DTO (preserves list order). */
+    public static List<ModuleWorkCost> toWorkCosts(List<ModuleCost> mods) {
+        if (mods == null || mods.isEmpty()) return List.of();
+        List<ModuleWorkCost> out = new ArrayList<>(mods.size());
+        for (ModuleCost m : mods) {
+            if (m == null || m.dir() == null) continue;
+            out.add(new ModuleWorkCost(m.dir(), m.prereqs(), m.weight(), m.testWeight()));
+        }
+        return out;
+    }
+
     /**
-     * Rolling-window list schedule matching {@link WorkspaceScheduler} (bounded path):
-     *
-     * <ul>
-     * <li>A module is ready only when every dirty prereq has fully finished (entire weight).
-     * <li>At most {@code concurrency} modules run at once.
-     * <li>Ready modules are admitted longest-first (stable heuristic).
-     * </ul>
+     * Rolling-window list schedule matching {@link WorkspaceScheduler} (first-ready admission).
      *
      * @return scheduled duration in the same units as {@link ModuleCost#weight}
      */
     static long listSchedule(List<ModuleCost> mods, int concurrency) {
-        if (mods == null || mods.isEmpty()) return 0;
-        int slots = Math.max(1, concurrency);
-        java.util.Map<Path, ModuleCost> byDir = new java.util.HashMap<>();
-        for (ModuleCost m : mods) {
-            if (m != null && m.dir() != null) byDir.put(m.dir(), m);
-        }
-        if (byDir.isEmpty()) return 0;
-
-        java.util.Set<Path> remaining = new java.util.LinkedHashSet<>(byDir.keySet());
-        java.util.Map<Path, Long> doneAt = new java.util.HashMap<>();
-        record Flight(long finish, Path dir) {}
-        java.util.PriorityQueue<Flight> inFlight =
-                new java.util.PriorityQueue<>(java.util.Comparator.comparingLong(Flight::finish));
-        long t = 0;
-        int free = slots;
-
-        while (!remaining.isEmpty() || !inFlight.isEmpty()) {
-            while (free > 0 && !remaining.isEmpty()) {
-                Path next = null;
-                int bestW = -1;
-                for (Path d : remaining) {
-                    ModuleCost m = byDir.get(d);
-                    if (!prereqsDone(m, byDir.keySet(), doneAt)) continue;
-                    if (m.weight() > bestW) {
-                        bestW = m.weight();
-                        next = d;
-                    }
-                }
-                if (next == null) break;
-                remaining.remove(next);
-                long fin = t + Math.max(0, byDir.get(next).weight());
-                inFlight.add(new Flight(fin, next));
-                free--;
-            }
-            if (inFlight.isEmpty()) {
-                // Deadlock / missing edge: fall back to serial remainder.
-                long extra = 0;
-                for (Path d : remaining) extra += Math.max(0, byDir.get(d).weight());
-                return t + extra;
-            }
-            Flight done = inFlight.poll();
-            t = done.finish();
-            doneAt.put(done.dir(), t);
-            free++;
-        }
-        return t;
-    }
-
-    private static boolean prereqsDone(ModuleCost m, java.util.Set<Path> dirtyDirs, java.util.Map<Path, Long> doneAt) {
-        if (m.prereqs() == null) return true;
-        for (Path p : m.prereqs()) {
-            if (!dirtyDirs.contains(p)) continue; // clean prereq — already built
-            if (!doneAt.containsKey(p)) return false;
-        }
-        return true;
+        return WorkSchedule.schedule(toWorkCosts(mods), concurrency, false, true);
     }
 }

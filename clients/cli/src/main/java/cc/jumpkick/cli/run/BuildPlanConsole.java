@@ -195,12 +195,13 @@ public final class BuildPlanConsole {
 
             @Override
             public synchronized void error(String step, String code, String message) {
+                if ("test-failure".equals(code)) return;
                 lines.add("  " + Glyphs.CROSS + " " + step + ": " + message);
             }
         });
         BuildPlanResult r = plan.run();
         synchronized (lines) { // visibility barrier after the plan's threads finish
-            return new Buffered(r, new java.util.ArrayList<>(lines));
+            return new Buffered(r, new java.util.ArrayList<>(TestFailureHighlight.paintLines(lines)));
         }
     }
 

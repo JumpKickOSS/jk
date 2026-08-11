@@ -14,7 +14,7 @@ class JkTemplatesConfigTest {
     @Test
     void defaults_point_at_jk_templates() {
         var d = JkTemplatesConfig.defaults();
-        assertThat(d.officialUrl()).isEqualTo("https://github.com/jkbuild/jk-templates");
+        assertThat(d.officialUrl()).isEqualTo("https://github.com/JumpKickOSS/jk-templates");
         assertThat(d.sources()).isEmpty();
     }
 

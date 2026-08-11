@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 /**
- * Shallow clone / fetch of the official Giter8 monorepo ({@code jkbuild/jk-templates}) for engine
+ * Shallow clone / fetch of the official Giter8 monorepo ({@code JumpKickOSS/jk-templates}) for engine
  * self-heal and short-name resolution. Fail-fast, quiet, no retries — next 12 h cycle or engine
  * restart will try again.
  *

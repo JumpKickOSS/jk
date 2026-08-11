@@ -43,7 +43,14 @@ public final class ExclusiveGroups {
         return out;
     }
 
-    /** {@code true} if {@code pattern} claims {@code groupId}. */
+    /**
+     * {@code true} if {@code pattern} claims {@code groupId}. {@code x.*} claims subgroups ONLY —
+     * never the bare group {@code x}; claim both with the pair {@code ["x", "x.*"]} (as the
+     * built-in lists do). The old bare-inclusive wildcard made it impossible to bind subgroups
+     * without also capturing the bare group, and Google's Android Maven exclusively captured
+     * {@code com.google.android:annotations} (Central-only) that way, silently dropping
+     * grpc-netty-shaded's closure from locks (JK-1811).
+     */
     public static boolean matches(String pattern, String groupId) {
         if (pattern == null || pattern.isBlank() || groupId == null || groupId.isBlank()) return false;
         String p = pattern.trim();
@@ -51,7 +58,7 @@ public final class ExclusiveGroups {
         if (p.endsWith(".*")) {
             String prefix = p.substring(0, p.length() - 2);
             if (prefix.isEmpty()) return true;
-            return groupId.equals(prefix) || groupId.startsWith(prefix + ".");
+            return groupId.startsWith(prefix + ".");
         }
         return groupId.equals(p);
     }

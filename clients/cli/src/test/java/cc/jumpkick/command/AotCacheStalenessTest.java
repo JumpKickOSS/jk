@@ -19,15 +19,13 @@ class AotCacheStalenessTest {
         Files.createDirectories(jar.getParent());
         Files.writeString(jar, "jar-bytes");
         Path outDir = Files.createDirectories(projectDir.resolve("target").resolve("aot-cache"));
-        Files.writeString(
-                outDir.resolve(AotCachePackage.MANIFEST),
-                """
+        Files.writeString(outDir.resolve(AotCachePackage.MANIFEST), """
                 cache        = "app.aot"
                 built-from   = "%s"
                 app-sha256   = "%s"
                 lock-sha256  = "%s"
-                """
-                        .formatted(jar.toAbsolutePath(), cc.jumpkick.util.Hashing.sha256Hex(jar), lockSha));
+                """.formatted(
+                        jar.toAbsolutePath(), cc.jumpkick.util.Hashing.sha256Hex(jar), lockSha));
     }
 
     @Test

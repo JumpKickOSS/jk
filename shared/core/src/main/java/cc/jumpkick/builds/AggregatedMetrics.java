@@ -55,29 +55,94 @@ public final class AggregatedMetrics {
         return new AggregatedMetrics(mean, last, count, hostMean);
     }
 
-    /** Scan every project's metrics (for global step tiers / dashboards). */
+    /**
+     * Scan every project's metrics (for global step tiers / dashboards).
+     *
+     * <p>Module paths are absolute, so the same checkout can appear under multiple project
+     * identity keys (stale re-key, old hash). Naïve last-wins would let a one-sample outlier
+     * (e.g. 126s {@code run-tests}) overwrite a well-sampled ~33s mean and inflate ETA. Merge
+     * prefers the row with the higher {@code [count]}.
+     */
     public static AggregatedMetrics loadAll(Path buildsRoot) {
         Map<String, Double> mean = new LinkedHashMap<>();
         Map<String, Double> last = new LinkedHashMap<>();
         Map<String, Long> count = new LinkedHashMap<>();
-        for (Path home : ProjectBuilds.listProjectHomes(buildsRoot)) {
-            parseProjectFile(home.resolve(ProjectBuilds.PROJECT_METRICS), mean, last, count);
+        // Prefer one home per checkout path so stale re-keyed identities do not re-enter.
+        for (Path home : ProjectBuilds.listProjectHomesForMetrics(buildsRoot)) {
+            Map<String, Double> m = new LinkedHashMap<>();
+            Map<String, Double> l = new LinkedHashMap<>();
+            Map<String, Long> c = new LinkedHashMap<>();
+            parseProjectFile(home.resolve(ProjectBuilds.PROJECT_METRICS), m, l, c);
+            mergePreferHigherCount(mean, last, count, m, l, c);
         }
         Map<String, Double> hostMean = new LinkedHashMap<>();
         parseHostMean(ProjectBuilds.hostMetricsFile(buildsRoot), hostMean);
         return new AggregatedMetrics(mean, last, count, hostMean);
     }
 
-    /** Prefer last-success, then trimmed mean. */
+    /**
+     * Fold one project's scalars into the global maps. Prefer higher sample {@code count} so a
+     * stale project identity cannot poison ETA with a single long wall.
+     */
+    static void mergePreferHigherCount(
+            Map<String, Double> mean,
+            Map<String, Double> last,
+            Map<String, Long> count,
+            Map<String, Double> srcMean,
+            Map<String, Double> srcLast,
+            Map<String, Long> srcCount) {
+        // Uniform per-key merge over the union of the source's keys (JK-1827): the old shape
+        // branched on whether srcMean was empty, dropping last-only keys in mixed files, leaving
+        // a loser's `last` beside a winner's mean, and letting a mean-less row's count beat real
+        // data. A key's mean/last/count now move together, and rows with a real mean outrank
+        // mean-less rows regardless of count (count describes the mean's sample size).
+        java.util.LinkedHashSet<String> keys = new java.util.LinkedHashSet<>();
+        if (srcMean != null) keys.addAll(srcMean.keySet());
+        if (srcLast != null) keys.addAll(srcLast.keySet());
+        for (String key : keys) {
+            Double newMean = srcMean != null ? srcMean.get(key) : null;
+            Double newLast = srcLast != null ? srcLast.get(key) : null;
+            boolean newHasMean = newMean != null && newMean > 0;
+            boolean newHasLast = newLast != null && newLast > 0;
+            if (!newHasMean && !newHasLast) continue;
+            long newC = Math.max(1L, srcCount != null ? srcCount.getOrDefault(key, 1L) : 1L);
+            long oldC = count.getOrDefault(key, 0L);
+            boolean oldHasMean = mean.containsKey(key);
+            boolean win = newC > oldC || oldC == 0;
+            if (newHasMean && !oldHasMean) win = true;
+            if (!newHasMean && oldHasMean) win = false;
+            if (!win) continue;
+            if (newHasMean) mean.put(key, newMean);
+            else mean.remove(key);
+            if (newHasLast) last.put(key, newLast);
+            else last.remove(key);
+            count.put(key, newC);
+        }
+    }
+
+    /**
+     * Prefer last-success, then trimmed mean — but reject a last sample that is an obvious
+     * cache-restore blip relative to the mean (e.g. native-image {@code 32ms} after real
+     * {@code ~32s} walls). Those poison ETA when action-cache hits are recorded as SUCCESS.
+     */
     public OptionalDouble value(String key) {
         if (key == null) return OptionalDouble.empty();
         Double l = last.get(key);
-        if (l != null && l > 0) return OptionalDouble.of(l);
         Double m = mean.get(key);
+        if (l != null && l > 0 && isCredibleLast(l, m)) return OptionalDouble.of(l);
         if (m != null && m > 0) return OptionalDouble.of(m);
         Double h = hostMean.get(key);
         if (h != null && h > 0) return OptionalDouble.of(h);
         return OptionalDouble.empty();
+    }
+
+    /** {@code last} is usable when mean is unknown, or last is not a tiny fraction of mean. */
+    static boolean isCredibleLast(double lastMs, Double meanMs) {
+        if (!(lastMs > 0)) return false;
+        if (meanMs == null || !(meanMs > 0)) return true;
+        // Cache-restore / skip mis-recorded as SUCCESS: 32ms last vs 32s mean.
+        if (meanMs >= 5_000.0 && lastMs < meanMs * 0.2 && lastMs < 5_000.0) return false;
+        return true;
     }
 
     public OptionalDouble mean(String key) {

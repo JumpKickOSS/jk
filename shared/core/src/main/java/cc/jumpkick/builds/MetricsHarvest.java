@@ -119,8 +119,11 @@ public final class MetricsHarvest {
     public void runOnce(Path buildsRoot) throws IOException {
         long now = System.currentTimeMillis();
         Map<String, List<Double>> hostSamples = new LinkedHashMap<>();
+        // Reap every home; harvest only preferred homes per checkout path (stale re-keyed ids).
         for (Path home : ProjectBuilds.listProjectHomes(buildsRoot)) {
             reapProject(home, now);
+        }
+        for (Path home : ProjectBuilds.listProjectHomesForMetrics(buildsRoot)) {
             Map<String, Agg> project = new LinkedHashMap<>();
             Map<String, Double> last = new LinkedHashMap<>();
             Map<String, Long> counts = new LinkedHashMap<>();
@@ -168,6 +171,9 @@ public final class MetricsHarvest {
                 String key = m.group(1);
                 double v = Double.parseDouble(m.group(2));
                 if (v < 0 || Double.isNaN(v) || Double.isInfinite(v)) continue;
+                // Drop cache-restore blips for heavy steps (native-image "32ms" SUCCESS) so they
+                // never enter [mean]/[last]/[count] and poison ETA.
+                if (isImplausibleHeavyWall(key, v)) continue;
                 project.computeIfAbsent(key, k -> new Agg()).add(v);
                 // Newest-first listing → first write wins as last-success.
                 last.putIfAbsent(key, v);
@@ -195,9 +201,23 @@ public final class MetricsHarvest {
         return key.endsWith("-per-method-ms")
                 || key.endsWith("-per-source-ms")
                 || key.endsWith("-suite-startup-ms")
+                || key.endsWith("-ms-per-mib")
+                || key.equals("native-image-floor-ms")
                 || key.equals("package-jar-ms")
                 || key.equals("package-assembly-ms")
                 || key.equals("ms-per-weight");
+    }
+
+    /**
+     * Heavy-step walls below these floors are action-cache restore noise, not real work. Must stay
+     * aligned with journal {@code isImplausibleHeavyWall} and EffortWeights heavy floors.
+     */
+    static boolean isImplausibleHeavyWall(String key, double ms) {
+        if (key == null || !(ms > 0)) return false;
+        String k = key.toLowerCase(Locale.ROOT);
+        if (k.contains("native-image") || k.contains(".phase.native.")) return ms < 5_000.0;
+        if (k.contains("write-image") || k.contains(".phase.image.")) return ms < 3_000.0;
+        return false;
     }
 
     private static void writeProjectMetrics(
@@ -229,6 +249,9 @@ public final class MetricsHarvest {
         // Preserve bootstrap/probe/lock/fetch/calibration + language buckets (jk optimize).
         String preserved = "";
         String byLanguage = "";
+        // Continuous Calibration rates (native-image-ms-per-mib, compile-*-per-source-ms, …)
+        // live under [mean] but are not run-harvested — keep them across harvest rewrites.
+        Map<String, Double> continuousMean = new LinkedHashMap<>();
         if (Files.isRegularFile(file)) {
             try {
                 String existing = Files.readString(file, StandardCharsets.UTF_8);
@@ -241,6 +264,7 @@ public final class MetricsHarvest {
                         if (!block.isBlank()) preserved += "\n" + block.strip() + "\n";
                     }
                 }
+                continuousMean.putAll(parseContinuousMeanKeys(existing));
                 // Keep [mean.by_language.*] tables (JK-1389) — not harvested from runs.
                 StringBuilder lang = new StringBuilder();
                 boolean inLang = false;
@@ -263,10 +287,57 @@ public final class MetricsHarvest {
                 .append(" = ")
                 .append(fmt(trimmedMean(e.getValue())))
                 .append('\n'));
+        // Continuous rates not present in this harvest pass (run keys always win on collision).
+        continuousMean.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(e -> {
+            if (samples.containsKey(e.getKey())) return;
+            sb.append(e.getKey()).append(" = ").append(fmt(e.getValue())).append('\n');
+        });
         if (!preserved.isBlank()) sb.append(preserved);
         if (!byLanguage.isBlank()) sb.append(byLanguage);
         Files.createDirectories(file.getParent());
         AtomicWrites.replace(file, sb.toString());
+    }
+
+    /**
+     * Mean keys written by continuous host learning ({@code Calibration.learnFromSuccess}), not by
+     * run harvest. Harvested keys look like {@code task.*} / {@code phase.*} / {@code module.*}.
+     */
+    public static boolean isContinuousMeanKey(String key) {
+        if (key == null || key.isBlank()) return false;
+        if (key.startsWith("task.")
+                || key.startsWith("phase.")
+                || key.startsWith("step.")
+                || key.startsWith("module.")
+                || key.startsWith("invocation.")
+                || key.startsWith("workspace.")) {
+            return false;
+        }
+        return true;
+    }
+
+    /** Parse continuous (non-run) scalars from every {@code [mean]} block in {@code existing}. */
+    static Map<String, Double> parseContinuousMeanKeys(String existing) {
+        Map<String, Double> out = new LinkedHashMap<>();
+        if (existing == null || existing.isBlank()) return out;
+        boolean inMean = false;
+        for (String line : existing.split("\n", -1)) {
+            String t = line.trim();
+            if (t.startsWith("[")) {
+                inMean = t.equals("[mean]");
+                continue;
+            }
+            if (!inMean || t.isEmpty() || t.startsWith("#")) continue;
+            Matcher m = KEY_EQ_NUM.matcher(t);
+            if (!m.matches()) continue;
+            String key = m.group(1);
+            if (!isContinuousMeanKey(key)) continue;
+            try {
+                double v = Double.parseDouble(m.group(2));
+                if (v > 0 && Double.isFinite(v)) out.put(key, v);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return out;
     }
 
     /** Trimmed mean: drop top/bottom 10% when n ≥ 10. */

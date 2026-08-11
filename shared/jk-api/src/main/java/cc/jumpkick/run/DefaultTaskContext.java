@@ -108,6 +108,10 @@ final class DefaultTaskContext implements TaskContext {
     public synchronized void reweight(int newWeight) {
         if (!weighted || newWeight < 0) return;
         long old = weight;
+        // Shrink-only, enforced: the reservation was priced at plan time; a runtime re-estimate
+        // (e.g. native-image sized against the post-package jar) may only release weight. Growing
+        // the plan denominator mid-run backslides the workspace bar (JK-1819).
+        if (newWeight > old) return;
         if (newWeight == old) return;
         plan.denominatorRef().add(newWeight - old);
         // Keep the per-weight interpolation duration constant as the slice resizes.

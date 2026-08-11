@@ -1,7 +1,7 @@
 [project]
 group = "cc.jumpkick"
 name = "jk"
-version = "0.11.0"
+version = "0.12.0"
 description = "JumpKick: The best damn build system for the JVM"
 java = 25
 

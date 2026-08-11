@@ -26,7 +26,8 @@ import java.util.function.Consumer;
 
 /**
  * {@code jk format} — format Java/Kotlin sources (Spotless worker, engine-hosted). Defaults:
- * Palantir + ktfmt KOTLINLANG (4-space / 120-col); {@code --check} exits non-zero if unformatted.
+ * Palantir + ktfmt KOTLINLANG (4-space / 120-col); Java also runs importOrder + removeUnusedImports
+ * before the style step (each toggleable); {@code --check} exits non-zero if unformatted.
  */
 public final class FormatCommand implements CliCommand {
 
@@ -49,6 +50,10 @@ public final class FormatCommand implements CliCommand {
                 Opt.value("<preset>", "Cross-language preset for both: standard.", "--style"),
                 Opt.flag("Shorten FQCNs and add imports (default on).", "--optimize-imports"),
                 Opt.flag("Skip FQCN-to-import optimization.", "--no-optimize-imports"),
+                Opt.flag("Sort imports (default on).", "--import-order"),
+                Opt.flag("Skip import sorting.", "--no-import-order"),
+                Opt.flag("Remove unused imports (default on).", "--remove-unused-imports"),
+                Opt.flag("Keep unused imports.", "--no-remove-unused-imports"),
                 Opt.value("<file>", "OpenRewrite YAML config for recipes", "--rewrite-config"));
     }
 
@@ -74,10 +79,11 @@ public final class FormatCommand implements CliCommand {
             return Exit.CONFIG;
         }
 
-        // --optimize-imports / --no-optimize-imports / env var / jk.toml / default true
-        Boolean cliOptimize = in.isSet("optimize-imports")
-                ? Boolean.TRUE
-                : in.isSet("no-optimize-imports") ? Boolean.FALSE : envBool("JK_FORMAT_OPTIMIZE_IMPORTS");
+        // Hygiene toggles: --flag / --no-flag / env var / jk.toml / default true
+        Boolean cliOptimize = triFlag(in, "optimize-imports", "no-optimize-imports", "JK_FORMAT_OPTIMIZE_IMPORTS");
+        Boolean cliImportOrder = triFlag(in, "import-order", "no-import-order", "JK_FORMAT_IMPORT_ORDER");
+        Boolean cliRemoveUnused =
+                triFlag(in, "remove-unused-imports", "no-remove-unused-imports", "JK_FORMAT_REMOVE_UNUSED_IMPORTS");
         // --rewrite-config / env var
         Path rewriteConfig = in.value("rewrite-config")
                 .or(() -> java.util.Optional.ofNullable(System.getenv("JK_FORMAT_REWRITE_CONFIG")))
@@ -91,11 +97,15 @@ public final class FormatCommand implements CliCommand {
                     in.value("kotlin-style").orElse(null),
                     in.value("style").orElse(null),
                     cliOptimize,
+                    cliImportOrder,
+                    cliRemoveUnused,
                     new cc.jumpkick.model.JkBuild.FormatConfig(
                             emptyToNull(build.formatStyle()),
                             emptyToNull(build.formatJava()),
                             emptyToNull(build.formatKotlin()),
-                            build.formatOptimizeImports() ? Boolean.TRUE : null));
+                            build.formatOptimizeImports(),
+                            build.formatImportOrder(),
+                            build.formatRemoveUnusedImports()));
         } catch (IllegalArgumentException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Format", e.getMessage()));
             return Exit.USAGE;
@@ -150,6 +160,8 @@ public final class FormatCommand implements CliCommand {
                         check,
                         styles,
                         optimizeImports,
+                        styles.importOrder(),
+                        styles.removeUnusedImports(),
                         rewriteConfig,
                         global,
                         observer,
@@ -210,6 +222,8 @@ public final class FormatCommand implements CliCommand {
                         false,
                         styles,
                         optimizeImports,
+                        styles.importOrder(),
+                        styles.removeUnusedImports(),
                         rewriteConfig,
                         global,
                         observer,
@@ -265,6 +279,8 @@ public final class FormatCommand implements CliCommand {
             boolean check,
             FormatStyles.Resolved styles,
             boolean optimizeImports,
+            boolean importOrder,
+            boolean removeUnusedImports,
             Path rewriteConfig,
             GlobalOptions global,
             HostedEvents.FileObserver observer,
@@ -281,6 +297,8 @@ public final class FormatCommand implements CliCommand {
                         styles.java(),
                         styles.kotlin(),
                         optimizeImports,
+                        importOrder,
+                        removeUnusedImports,
                         rewriteConfig,
                         session.offline(),
                         global.verbose),
@@ -293,6 +311,16 @@ public final class FormatCommand implements CliCommand {
                 outcome.errors(),
                 outcome.total(),
                 outcome.workerExit());
+    }
+
+    /**
+     * CLI tri-state for a yes/no flag pair: {@code --name} → true, {@code --no-name} → false,
+     * otherwise the env var (if set), otherwise {@code null} (fall through to toml / default).
+     */
+    private static Boolean triFlag(Invocation in, String on, String off, String envVar) {
+        if (in.isSet(on)) return Boolean.TRUE;
+        if (in.isSet(off)) return Boolean.FALSE;
+        return envBool(envVar);
     }
 
     /** A plan listener that surfaces the worker's passthrough chatter under {@code --verbose}. */

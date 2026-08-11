@@ -14,5 +14,5 @@ junit-jupiter = "latest"
 [test]
 # Exclude the long-running tests for our day-to-day usage.
 # Normal `jk test` should finish in 5 min or less.
-# Run these more comprehensive tests by running `jk test --all`
+# Run the excluded tags too with `jk test --exclude-tags ""` (--all only widens suites).
 exclude-tags = ["integration", "slow", "bench", "network"]

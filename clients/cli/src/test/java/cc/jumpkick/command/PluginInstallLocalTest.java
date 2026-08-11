@@ -22,7 +22,7 @@ class PluginInstallLocalTest {
             [project]
             group = "cc.jumpkick"
             name = "jk-test-runner"
-            version = "0.11.0"
+            version = "0.12.0"
             jdk = 25
             java = 25
             [application]
@@ -44,7 +44,7 @@ class PluginInstallLocalTest {
                 modules = ["plugins/worker"]
                 """);
         Files.writeString(mod.resolve("jk.toml"), WORKER_TOML);
-        Path jar = dir.resolve("target/plugins/worker/jk-test-runner-0.11.0.jar");
+        Path jar = dir.resolve("target/plugins/worker/jk-test-runner-0.12.0.jar");
         Files.createDirectories(jar.getParent());
         Files.writeString(jar, "fake-worker-jar");
 
@@ -58,7 +58,7 @@ class PluginInstallLocalTest {
             System.setOut(orig);
         }
         assertThat(exit).isZero();
-        Path dest = cache.resolve("repos/local/cc/jumpkick/jk-test-runner/0.11.0/jk-test-runner-0.11.0.jar");
+        Path dest = cache.resolve("repos/local/cc/jumpkick/jk-test-runner/0.12.0/jk-test-runner-0.12.0.jar");
         assertThat(dest).exists();
         assertThat(Files.readString(dest)).isEqualTo("fake-worker-jar");
         assertThat(Path.of(dest + ".sha256")).exists();
@@ -87,7 +87,7 @@ class PluginInstallLocalTest {
                 [project]
                 group = "cc.jumpkick"
                 name = "jk-test-runner"
-                version = "0.11.0"
+                version = "0.12.0"
                 jdk = 25
                 java = 25
                 [application]
@@ -95,7 +95,7 @@ class PluginInstallLocalTest {
                 [dependencies]
                 gson = { group = "com.google.code.gson", name = "gson", version = "2.11.0" }
                 """);
-        Path jar = dir.resolve("target/plugins/worker/jk-test-runner-0.11.0.jar");
+        Path jar = dir.resolve("target/plugins/worker/jk-test-runner-0.12.0.jar");
         Files.createDirectories(jar.getParent());
         Files.writeString(jar, "fake-worker-jar");
 
@@ -122,7 +122,7 @@ class PluginInstallLocalTest {
 
         assertThat(Jk.execute("plugin", "install-local", "-C", dir.toString(), "--cache-dir", cache.toString()))
                 .isZero();
-        Path dest = cache.resolve("repos/local/cc/jumpkick/jk-test-runner/0.11.0/jk-test-runner-0.11.0.jar");
+        Path dest = cache.resolve("repos/local/cc/jumpkick/jk-test-runner/0.12.0/jk-test-runner-0.12.0.jar");
         Path destSidecar = Path.of(dest + ".classpath");
         assertThat(destSidecar).exists();
         long depLines = Files.readAllLines(destSidecar).stream()
@@ -163,7 +163,7 @@ class PluginInstallLocalTest {
                 """);
         Files.writeString(mod.resolve("jk.toml"), WORKER_TOML);
         Files.createDirectories(dir.resolve("target/plugins/worker"));
-        Files.writeString(dir.resolve("target/plugins/worker/jk-test-runner-0.11.0.jar"), "x");
+        Files.writeString(dir.resolve("target/plugins/worker/jk-test-runner-0.12.0.jar"), "x");
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         PrintStream orig = System.out;
@@ -200,7 +200,7 @@ class PluginInstallLocalTest {
                 [project]
                 group = "cc.jumpkick"
                 name = "jk-alpha"
-                version = "0.11.0"
+                version = "0.12.0"
                 jdk = 25
                 java = 25
                 [application]
@@ -210,7 +210,7 @@ class PluginInstallLocalTest {
                 [project]
                 group = "cc.jumpkick"
                 name = "jk-beta"
-                version = "0.11.0"
+                version = "0.12.0"
                 jdk = 25
                 java = 25
                 [application]
@@ -218,8 +218,8 @@ class PluginInstallLocalTest {
                 """);
         Files.createDirectories(dir.resolve("target/plugins/alpha"));
         Files.createDirectories(dir.resolve("target/plugins/beta"));
-        Files.writeString(dir.resolve("target/plugins/alpha/jk-alpha-0.11.0.jar"), "A");
-        Files.writeString(dir.resolve("target/plugins/beta/jk-beta-0.11.0.jar"), "B");
+        Files.writeString(dir.resolve("target/plugins/alpha/jk-alpha-0.12.0.jar"), "A");
+        Files.writeString(dir.resolve("target/plugins/beta/jk-beta-0.12.0.jar"), "B");
 
         assertThat(Jk.execute(
                         "plugin",
@@ -231,9 +231,9 @@ class PluginInstallLocalTest {
                         "--modules",
                         "alpha"))
                 .isZero();
-        assertThat(cache.resolve("repos/local/cc/jumpkick/jk-alpha/0.11.0/jk-alpha-0.11.0.jar"))
+        assertThat(cache.resolve("repos/local/cc/jumpkick/jk-alpha/0.12.0/jk-alpha-0.12.0.jar"))
                 .exists();
-        assertThat(cache.resolve("repos/local/cc/jumpkick/jk-beta/0.11.0/jk-beta-0.11.0.jar"))
+        assertThat(cache.resolve("repos/local/cc/jumpkick/jk-beta/0.12.0/jk-beta-0.12.0.jar"))
                 .doesNotExist();
     }
 
@@ -257,19 +257,19 @@ class PluginInstallLocalTest {
                 [project]
                 group = "cc.jumpkick"
                 name = "jk-iso-worker"
-                version = "0.11.0"
+                version = "0.12.0"
                 jdk = 25
                 java = 25
                 [application]
                 main = "cc.jumpkick.plugin.process.PluginMain"
                 """);
-        Path jar = dir.resolve("target/plugins/worker/jk-iso-worker-0.11.0.jar");
+        Path jar = dir.resolve("target/plugins/worker/jk-iso-worker-0.12.0.jar");
         Files.createDirectories(jar.getParent());
         Files.writeString(jar, "fake-worker-jar");
 
         assertThat(Jk.execute("plugin", "install-local", "-C", dir.toString(), "--cache-dir", cache.toString()))
                 .isZero();
-        assertThat(cache.resolve("repos/local/cc/jumpkick/jk-iso-worker/0.11.0/jk-iso-worker-0.11.0.jar"))
+        assertThat(cache.resolve("repos/local/cc/jumpkick/jk-iso-worker/0.12.0/jk-iso-worker-0.12.0.jar"))
                 .exists();
         assertThat(Files.exists(cc.jumpkick.compile.WorkerLib.dir("jk-iso-worker")))
                 .isFalse();
@@ -291,7 +291,7 @@ class PluginInstallLocalTest {
                 modules = ["plugins/worker"]
                 """);
         Files.writeString(mod.resolve("jk.toml"), WORKER_TOML);
-        Path jar = dir.resolve("target/plugins/worker/jk-test-runner-0.11.0.jar");
+        Path jar = dir.resolve("target/plugins/worker/jk-test-runner-0.12.0.jar");
         Files.createDirectories(jar.getParent());
         Files.writeString(jar, "fake-worker-jar");
 

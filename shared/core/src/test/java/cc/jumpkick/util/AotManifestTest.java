@@ -92,13 +92,13 @@ class AotManifestTest {
 
     @Test
     void remove_and_reconcile_drop_gone_files() throws Exception {
-        Path cache = Files.writeString(dir.resolve("engine-0.11.0-bbbbbbbbbbbbbbbb.aot"), "x");
+        Path cache = Files.writeString(dir.resolve("engine-0.12.0-bbbbbbbbbbbbbbbb.aot"), "x");
         AotManifest.upsert(
                 dir,
                 AotManifest.Entry.builder(cache.getFileName().toString())
                         .tool("engine")
                         .key("bbbbbbbbbbbbbbbb")
-                        .jkVersion("0.11.0")
+                        .jkVersion("0.12.0")
                         .status("ready")
                         .build());
         AotManifest.upsert(
@@ -120,20 +120,20 @@ class AotManifestTest {
 
     @Test
     void fillToolKey_parses_engine_and_worker_names() {
-        AotManifest.Entry.Builder eng = AotManifest.Entry.builder("engine-0.11.0-178d424d005e0594.aot");
-        AotManifest.fillToolKey(eng, "engine-0.11.0-178d424d005e0594.aot");
+        AotManifest.Entry.Builder eng = AotManifest.Entry.builder("engine-0.12.0-178d424d005e0594.aot");
+        AotManifest.fillToolKey(eng, "engine-0.12.0-178d424d005e0594.aot");
         AotManifest.Entry e = eng.build();
         assertThat(e.tool()).isEqualTo("engine");
         assertThat(e.key()).isEqualTo("178d424d005e0594");
-        assertThat(e.jkVersion()).isEqualTo("0.11.0");
+        assertThat(e.jkVersion()).isEqualTo("0.12.0");
 
         // Versioned worker (JK-1452): java-compiler-<jk-version>-<16hex>
-        AotManifest.Entry.Builder w = AotManifest.Entry.builder("java-compiler-0.11.0-0ce11dbb0a66be53.aot");
-        AotManifest.fillToolKey(w, "java-compiler-0.11.0-0ce11dbb0a66be53.aot");
+        AotManifest.Entry.Builder w = AotManifest.Entry.builder("java-compiler-0.12.0-0ce11dbb0a66be53.aot");
+        AotManifest.fillToolKey(w, "java-compiler-0.12.0-0ce11dbb0a66be53.aot");
         AotManifest.Entry we = w.build();
         assertThat(we.tool()).isEqualTo("java-compiler");
         assertThat(we.key()).isEqualTo("0ce11dbb0a66be53");
-        assertThat(we.jkVersion()).isEqualTo("0.11.0");
+        assertThat(we.jkVersion()).isEqualTo("0.12.0");
 
         // Legacy unversioned worker name still parses tool+key
         AotManifest.Entry.Builder legacy = AotManifest.Entry.builder("java-compiler-0ce11dbb0a66be53.aot");
@@ -162,19 +162,19 @@ class AotManifestTest {
         Files.writeString(dir.resolve("kotlinc-ffffffffffffffff.aot.noaot"), "");
         AotManifest.upsert(
                 dir,
-                AotManifest.Entry.builder("engine-0.11.0-aaaaaaaaaaaaaaaa.aot")
+                AotManifest.Entry.builder("engine-0.12.0-aaaaaaaaaaaaaaaa.aot")
                         .tool("engine")
                         .key("aaaaaaaaaaaaaaaa")
                         .status("pending")
                         .jdkVersion("25.0.3")
                         .build());
-        Files.writeString(dir.resolve("engine-0.11.0-aaaaaaaaaaaaaaaa.aot"), "engine-bytes");
+        Files.writeString(dir.resolve("engine-0.12.0-aaaaaaaaaaaaaaaa.aot"), "engine-bytes");
 
         List<AotManifest.Entry> listed = AotManifest.list(dir);
         assertThat(listed)
                 .extracting(AotManifest.Entry::file)
                 .containsExactlyInAnyOrder(
-                        "engine-0.11.0-aaaaaaaaaaaaaaaa.aot",
+                        "engine-0.12.0-aaaaaaaaaaaaaaaa.aot",
                         "java-compiler-eeeeeeeeeeeeeeee.aot",
                         "kotlinc-ffffffffffffffff.aot");
 
@@ -294,7 +294,7 @@ class AotManifestTest {
     void engine_noaot_row_keeps_recorded_manifest_details() throws Exception {
         AotManifest.upsert(
                 dir,
-                AotManifest.Entry.builder("engine-0.11.0-ab12.aot")
+                AotManifest.Entry.builder("engine-0.12.0-ab12.aot")
                         .status("pending")
                         .jdkHome("/opt/jdk-25")
                         .jdkVendor("TEMURIN")
@@ -302,11 +302,11 @@ class AotManifestTest {
                         .gc("serial")
                         .build());
         // Sticky marker present, .aot file absent — the exact state after a failed engine train.
-        Files.writeString(dir.resolve("engine-0.11.0-ab12.noaot"), "");
+        Files.writeString(dir.resolve("engine-0.12.0-ab12.noaot"), "");
 
         var listed = AotManifest.list(dir);
         AotManifest.Entry e = listed.stream()
-                .filter(x -> x.file().equals("engine-0.11.0-ab12.aot"))
+                .filter(x -> x.file().equals("engine-0.12.0-ab12.aot"))
                 .findFirst()
                 .orElseThrow();
         assertThat(e.status()).isEqualTo("noaot");
@@ -320,7 +320,7 @@ class AotManifestTest {
         // Pending = train in flight; its .aot deliberately doesn't exist yet.
         AotManifest.upsert(
                 dir,
-                AotManifest.Entry.builder("engine-0.11.0-cd34.aot")
+                AotManifest.Entry.builder("engine-0.12.0-cd34.aot")
                         .status("pending")
                         .build());
         AotManifest.upsert(
@@ -329,7 +329,7 @@ class AotManifestTest {
         AotManifest.reconcile(dir);
 
         var files = AotManifest.load(dir).stream().map(AotManifest.Entry::file).toList();
-        assertThat(files).contains("engine-0.11.0-cd34.aot");
+        assertThat(files).contains("engine-0.12.0-cd34.aot");
         assertThat(files).doesNotContain("stale.aot");
     }
 

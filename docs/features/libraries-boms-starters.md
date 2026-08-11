@@ -2,7 +2,7 @@
 
 **Status:** accepted (design frozen for implementation)  
 **Audience:** implementers, importers, first-party plugins, kanartist tickets (`JK-NNNN`) 
-**Related code:** `LibraryCatalog`, `LibraryRegistryClient`, `JkBuildParser` `[libraries]`,
+**Related code:** `LibraryCatalog`, `LibraryRegistryClient`, `JkBuildParser` / `jk-libs.toml`,
 `[platform-dependencies]`, `GradleVersionCatalog` / `GradleImporter`, Boot plugin / `jk new --spring`
 
 ---
@@ -27,7 +27,7 @@ support” means for 1.0-quality adoption.
    (optional). Features stay on the dependency graph, not in the catalog.
 2. **Platform-friendly** — Spring/Quarkus (and similar) adopt via **their** Maven BOMs +
    starter/extension artifacts + jk plugins/scaffold, not a parallel starter format.
-3. **Layered short names** — project → host-local → admin-global → bundled, all **name → GA only**.
+3. **Layered short names** — workspace `jk-libs.toml` → system global → bundled, all **name → GA only**.
 4. **Import alignment** — Gradle version catalogs feed coords/versions; short names normalize
    through the existing catalog stack when possible.
 5. **Lockfile-first** — versions and reproducibility live in deps / platform pins / `jk-lock.toml`,
@@ -37,7 +37,7 @@ support” means for 1.0-quality adoption.
 
 1. **Do not** put versions into the library catalog (any layer). Reject `group:artifact:version`
    in catalog files (already enforced).
-2. **Do not** turn `libs.global.toml` / host local / `[libraries]` into a versioned mega-BOM or
+2. **Do not** turn `libs.global.toml` / `jk-libs.toml` into a versioned mega-BOM or
    multi-GA “super starter” graph maintained by jk admins.
 3. **Do not** reimplement Spring Boot starters or Quarkus extensions as jk-only meta-packages
    that lag upstream releases.
@@ -72,10 +72,13 @@ Precedence **high → low** (first hit wins on lookup):
 
 | Layer | Source | Owner | Scope |
 |---|---|---|---|
-| **project** | `jk.toml` `[libraries]` | Repo | One project / workspace |
-| **local** | `~/.local/share/jk/libs.toml` (layer name `"local"`) | Human / host | All projects on this machine |
-| **global** | `~/.local/share/jk/store/libs.global.toml` | engine (quiet 12 h revalidation) + `jk library update` | Downloaded registry |
+| **project** | `jk-libs.toml` at workspace root (or standalone project root) | Repo | One project / workspace |
+| **global** | `<store>/libs.global.toml` | engine (quiet 12 h revalidation) + `jk library update` | Downloaded registry |
 | **bundled** | classpath `libraries.toml` | Ship with the binary | Offline cold start |
+
+There is **no** host-local catalog (`~/.jk/libs.toml` / data-root `libs.toml`) and **no**
+`catalog =` pin in `jk.toml`. Modules must **not** ship `jk-libs.toml` — only the workspace
+root (or standalone project root) may.
 
 ### 5.1 Schema (all layers)
 
@@ -95,8 +98,7 @@ junit-jupiter = "org.junit.jupiter:junit-jupiter"   # name = "group:artifact" on
 | Need | Layer |
 |---|---|
 | Public curated short names | **global** (+ **bundled** subset) |
-| Host/org conventions without committing to every repo | **local** |
-| Repo-specific renames / private GAs | **project** `[libraries]` |
+| Repo-specific renames / private GAs | **project** `jk-libs.toml` (workspace root only) |
 | “What version do we use?” | **Not the catalog** — dep / BOM / lock / optional future `[versions]` |
 
 ### 5.3 Commands
@@ -104,7 +106,7 @@ junit-jupiter = "org.junit.jupiter:junit-jupiter"   # name = "group:artifact" on
 - `jk library list|search|update` — inspect layers; refresh global from the registry URL.
 - `jk add <short-name>@…` / shorthand deps in `jk.toml` — resolve names through the layered catalog.
 - Optional later: `jk library import` from Gradle `libs.versions.toml` writes **GA aliases only**
-  into **project** (default) or **local** (`--user`); never into global by default.
+  into **project** `jk-libs.toml`; never into global by default.
 
 ---
 
@@ -251,8 +253,7 @@ Import must **not** write versions into any catalog layer.
 
 ### 10.2 Optional `jk library import`
 
-- Default write target: **project** `[libraries]` (GA only).
-- Host-wide: **local** layer with an explicit flag.
+- Default write target: **project** `jk-libs.toml` (GA only) at the workspace root.
 - Never overwrite **global** from a random project catalog by default.
 
 ---
@@ -264,7 +265,7 @@ version *strings*. That is **not** a catalog layer and **not** a BOM:
 
 - Does not manage other modules’ versions the way a Maven BOM does.
 - Does not replace `[platform-dependencies]` for Boot/Quarkus.
-- Must not be stored in global/local library catalog files.
+- Must not be stored in the system global library catalog.
 
 ---
 
@@ -274,7 +275,7 @@ version *strings*. That is **not** a catalog layer and **not** a BOM:
 
 | ID | Requirement |
 |---|---|
-| R1 | Catalog remains layered name→GA only (project / local / global / bundled). |
+| R1 | Catalog remains layered name→GA only (project `jk-libs.toml` / global / bundled). |
 | R2 | Platform BOMs are enforced at resolve (managed GAs + bare EffectivePom fills); lockfile is law for builds. |
 | R3 | Starters are normal Maven deps; golden path documented with BOM + versionless roots. |
 | R4 | User/docs vocabulary distinguishes catalog, platform, starter, bundle, feature. |
@@ -295,7 +296,7 @@ version *strings*. That is **not** a catalog layer and **not** a BOM:
 | ID | Requirement |
 |---|---|
 | C1 | Versionless bundles (parse expand). |
-| C2 | `jk library import` from Gradle catalog into project/local layers. |
+| C2 | `jk library import` from Gradle catalog into project `jk-libs.toml`. |
 | C3 | Project/workspace `[versions]` refs. |
 | C4 | Cross-package features for Maven-coord libraries (beyond path). |
 
@@ -306,7 +307,7 @@ version *strings*. That is **not** a catalog layer and **not** a BOM:
 kanartist tickets (`JK-NNNN`) should link this PRD when touching:
 
 - Library catalog layers, registry, `jk library *`
-- `[libraries]`, shorthand deps, `jk add` short names
+- `jk-libs.toml`, shorthand deps, `jk add` short names
 - `[platform-dependencies]`, enforced platform BOMs, platform-managed roots
 - Gradle/Maven import of catalogs, version-less deps, bundles
 - Spring/Quarkus scaffold and “starter” UX wording
@@ -320,7 +321,8 @@ Examples: JK-1008 (import fidelity), platform/BOM work, catalog registry curatio
 
 | Date | Decision |
 |---|---|
-| 2026-07 | Catalog is versionless name→GA at all layers; project `[libraries]` is the top layer (already implemented). |
+| 2026-07 | Catalog is versionless name→GA at all layers; project layer is top (then local/global/bundled — later simplified). |
+| 2026-08 | Host-local catalog and `catalog =` removed; project layer is workspace-root `jk-libs.toml` only (global + bundled system). |
 | 2026-07 | Starter support = BOM + vendor Maven starters + plugins/scaffold — **not** a jk-native versioned starter graph in the catalog. |
 | 2026-07 | Bundles are optional and secondary; do not call them starters. |
 | 2026-07 | Default platform policy **enforced**; opt-in **floor** (`[resolve] platform` / `jk update --platform=floor`) — JK-1206. |

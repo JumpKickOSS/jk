@@ -22,7 +22,7 @@ import java.util.Optional;
  *   <li>Walk up from cwd looking for {@code templates/&lt;name&gt;.g8} (dev checkout dogfood)
  *   <li>Configured third-party git sources ({@code [templates.sources]} in config.toml, plus any
  *       CLI {@code --template-source} extras)
- *   <li>Official monorepo {@code jkbuild/jk-templates} (overridable via {@code [templates]
+ *   <li>Official monorepo {@code JumpKickOSS/jk-templates} (overridable via {@code [templates]
  *       official} – shallow-cloned to the templates cache, preemptive on install)
  * </ol>
  *

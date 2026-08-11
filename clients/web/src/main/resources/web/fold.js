@@ -132,14 +132,44 @@ export function foldEvent(cards, event) {
         else if (card.progressDen > 0) {
           card.progressPercent = Math.min(100, Math.round((100 * card.progressNum) / card.progressDen));
         }
+        // Residual RemainingWork: adaptive bar + countdown re-anchor. Prefer CURRENT remainingMs
+        // for first seed (reconnect/late join — JK-1820): seeding from original R0 restarted a
+        // full-length countdown mid-build. A fresh run's first snapshot has remainingMs == R0.
+        const rem = typeof d.remainingMs === 'number' && d.remainingMs >= 0 ? d.remainingMs : null;
+        if (rem != null) {
+          card.residualRemainingMs = rem;
+          card.residualAt = event.at ?? Date.now();
+        }
+        if (card.r0Ms == null) {
+          if (rem != null) {
+            // remainingMs 0 = effectively done — leave unseeded rather than count down R0.
+            if (rem > 0) {
+              card.r0Ms = rem;
+              card.r0At = event.at ?? Date.now();
+            }
+          } else if (typeof d.R0 === 'number' && d.R0 > 0) {
+            card.r0Ms = d.R0;
+            card.r0At = event.at ?? Date.now();
+          }
+        }
       }
       break;
     }
     case 'eta': {
       const card = resolveCard(cards, d);
-      if (card) {
-        card.etaMillis = typeof d.millis === 'number' ? d.millis : null;
+      if (card && typeof d.millis === 'number') {
+        // Always record remaining@emission for etaTotalMillis (JK-1517 re-projections).
+        card.etaMillis = d.millis;
         card.etaAt = event.at ?? null;
+        // Seed R0 once; residual mid-run re-anchors via residualRemainingMs/residualAt.
+        if (d.millis > 0 && card.r0Ms == null) {
+          card.r0Ms = d.millis;
+          card.r0At = event.at ?? Date.now();
+          if (card.residualRemainingMs == null) {
+            card.residualRemainingMs = d.millis;
+            card.residualAt = card.r0At;
+          }
+        }
       }
       break;
     }

@@ -109,7 +109,8 @@ public final class StepTimings {
 
     /** Hydrate per-unit rates from harvested project/host metrics. */
     static StepTimings fromAggregates() {
-        cc.jumpkick.builds.AggregatedMetrics agg = cc.jumpkick.builds.AggregatedMetrics.loadAll(JkDirs.builds());
+        // Same project-preferring aggregates as BuildMetrics (stale identity homes must not poison rates).
+        cc.jumpkick.builds.AggregatedMetrics agg = BuildMetrics.aggregatesForSession();
         Map<String, Entry> m = new HashMap<>();
         long now = System.currentTimeMillis();
         for (var e : agg.meanMap().entrySet()) {

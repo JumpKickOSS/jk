@@ -4,6 +4,9 @@ package cc.jumpkick.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class TrainConfigParserTest {
@@ -69,19 +72,25 @@ class TrainConfigParserTest {
     @org.junit.jupiter.api.Test
     void profiles_token_is_order_independent_for_env_and_properties() {
         var a = new TrainConfig(
-                null, null, false, false,
-                java.util.List.of(new TrainConfig.Profile(
+                null,
+                null,
+                false,
+                false,
+                List.of(new TrainConfig.Profile(
                         "p",
-                        new java.util.LinkedHashMap<>(java.util.Map.of("B", "2", "A", "1")),
-                        new java.util.LinkedHashMap<>(java.util.Map.of("y", "2", "x", "1")),
-                        java.util.List.of())));
+                        new LinkedHashMap<>(Map.of("B", "2", "A", "1")),
+                        new LinkedHashMap<>(Map.of("y", "2", "x", "1")),
+                        List.of())));
         var b = new TrainConfig(
-                null, null, false, false,
-                java.util.List.of(new TrainConfig.Profile(
+                null,
+                null,
+                false,
+                false,
+                List.of(new TrainConfig.Profile(
                         "p",
-                        new java.util.LinkedHashMap<>(java.util.Map.of("A", "1", "B", "2")),
-                        new java.util.LinkedHashMap<>(java.util.Map.of("x", "1", "y", "2")),
-                        java.util.List.of())));
+                        new LinkedHashMap<>(Map.of("A", "1", "B", "2")),
+                        new LinkedHashMap<>(Map.of("x", "1", "y", "2")),
+                        List.of())));
         org.assertj.core.api.Assertions.assertThat(a.profilesToken()).isEqualTo(b.profilesToken());
     }
 }

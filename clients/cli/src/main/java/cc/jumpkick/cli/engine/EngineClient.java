@@ -1091,6 +1091,8 @@ public final class EngineClient {
             String javaStyle,
             String kotlinStyle,
             boolean optimizeImports,
+            boolean importOrder,
+            boolean removeUnusedImports,
             Path rewriteConfig,
             boolean offline,
             boolean verbose) {}
@@ -1119,6 +1121,8 @@ public final class EngineClient {
                         req.javaStyle(),
                         req.kotlinStyle(),
                         req.optimizeImports(),
+                        req.importOrder(),
+                        req.removeUnusedImports(),
                         req.rewriteConfig() != null ? req.rewriteConfig().toString() : null,
                         req.offline(),
                         req.verbose()),

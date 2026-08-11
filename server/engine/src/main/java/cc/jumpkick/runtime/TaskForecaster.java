@@ -7,11 +7,13 @@ import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.JavacLint;
 import cc.jumpkick.config.ImageConfigParser;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.BuildIdentity;
+import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.task.ActionCache;
@@ -23,6 +25,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -61,40 +64,100 @@ public final class TaskForecaster {
         // consumers fingerprint wiped sibling jars from here, never from an unvalidated
         // last-record pointer (which may name a different edit of the sibling).
         Map<Path, String> restoredJarShas = new java.util.HashMap<>();
+        // Sibling lookup for scope-aware dirtiness (coord + bare name → dir).
+        Map<String, Path> dirByCoord = new HashMap<>();
+        Map<String, Path> dirByName = new HashMap<>();
+        for (BuildGraph.BuildUnit unit : graph.topoOrder()) {
+            dirByCoord.put(unit.coord(), unit.dir());
+            dirByName.put(unit.manifest().project().name(), unit.dir());
+        }
         for (BuildGraph.BuildUnit u : graph.topoOrder()) {
-            boolean depDirty = false;
-            for (Path dep : graph.edges().getOrDefault(u.dir(), Set.of())) {
-                if (dirty.contains(dep)) {
-                    depDirty = true;
-                    break;
-                }
-            }
+            // Scope-aware: a dirty *test-only* sibling (e.g. cli → engine via test-dependencies)
+            // must not force compile/package/native — only tests re-run against the new jar.
+            // Treating every graph edge as compile-dirty was pricing full native-image (~35s)
+            // on dogfood engine edits while live builds skipped compile+package+native.
+            DepDirtiness dep =
+                    depDirtiness(u, graph.edges().getOrDefault(u.dir(), Set.of()), dirty, dirByCoord, dirByName);
             long t0 = Perf.start();
-            TaskForecast.Module m =
-                    forecastModule(u, depDirty, force, skipTests, cas, actionCache, cache, restoredJarShas);
+            TaskForecast.Module m = forecastModule(u, dep, force, skipTests, cas, actionCache, cache, restoredJarShas);
             Perf.end("forecast " + u.coord(), t0);
-            // A module's consumed output changes — and so seeds downstream dirtiness
-            // when its compile does real work (classes change) OR its jar will be
-            // (re)packaged, or a dependency already changed. Package matters on its own:
-            // a consumer's run-tests/compile classpath hashes the *content* of sibling
-            // JARs, so an upstream whose compile is cached but whose jar is stale
-            // repackages to a new jar and silently invalidates the consumer — which a
-            // per-module lookup against the current (stale) jar would miss, falsely
-            // reporting "cached". The build then reruns those steps and the live bar,
-            // having reserved nothing for them, backslides. Seeding on package too keeps
-            // the forecast pessimistic (safe) for the consumer.
-            if (m.steps().stream()
-                            .anyMatch(p -> !p.cached()
-                                    && (p.name().startsWith("compile-main")
-                                            || p.name().startsWith("compile-kotlin")
-                                            || p.name().startsWith("compile-groovy")
-                                            || p.name().startsWith("package-jar")))
-                    || depDirty) {
+            // Seed main-output dirtiness for *compile* consumers only when this module's
+            // consumed jar/classes will change — not when only test-scope work is dirty.
+            // Package matters on its own: a consumer's compile classpath hashes sibling JAR
+            // *content*, so an upstream whose compile is cached but whose jar is stale
+            // repackages and invalidates the consumer.
+            //
+            // Also seed when a compile-scope dep is dirty even if predictors still look cached
+            // against pre-rebuild sibling jars (pessimistic; avoids under-reserve).
+            if (seedsCompileConsumerCascade(m) || dep.compileDepDirty()) {
                 dirty.add(u.dir());
             }
             out.add(m);
         }
         return out;
+    }
+
+    /**
+     * Whether this module's forecast should force compile-scope dependents dirty.
+     *
+     * <p>True when compile or package will change the jar/classes consumers hash. False for
+     * resource-only drift ({@code copy-resources} RUN + package CACHED): the producer still
+     * schedules via {@link TaskForecast.Module#dirty()}, but dependents must not inherit full
+     * recompile+test ETA while the packaged jar stays byte-identical.
+     */
+    static boolean seedsCompileConsumerCascade(TaskForecast.Module m) {
+        if (m == null || m.steps() == null) return false;
+        return m.steps().stream()
+                .anyMatch(p -> !p.cached()
+                        && (p.name().startsWith("compile-main")
+                                || p.name().startsWith("compile-java")
+                                || p.name().startsWith("compile-kotlin")
+                                || p.name().startsWith("compile-groovy")
+                                || "package-jar".equals(p.name())
+                                || "package-assembly".equals(p.name())));
+    }
+
+    /**
+     * Which dirty prereqs affect this module's main compile vs tests only. A dirty prereq
+     * reachable only via {@code order-after} (incl. {@code test-plugin-jars}) forces no
+     * compile/test pricing, but still marks {@link #orderDepDirty} — the dependent must
+     * <em>schedule</em> so its real action keys re-check the prereq's out-of-band outputs
+     * (test-plugin jars ride the run-tests stamp; users add order-after precisely for
+     * consumption the classpath cannot express). Pricing nothing keeps ETA honest; skipping
+     * the module entirely shipped stale outputs (JK-1810).
+     */
+    record DepDirtiness(boolean compileDepDirty, boolean testDepDirty, boolean orderDepDirty) {
+        static final DepDirtiness NONE = new DepDirtiness(false, false, false);
+    }
+
+    static DepDirtiness depDirtiness(
+            BuildGraph.BuildUnit u,
+            Set<Path> prereqs,
+            Set<Path> dirty,
+            Map<String, Path> dirByCoord,
+            Map<String, Path> dirByName) {
+        if (prereqs == null || prereqs.isEmpty() || dirty.isEmpty()) return DepDirtiness.NONE;
+        boolean compile = false;
+        boolean test = false;
+        boolean order = false;
+        JkBuild m = u.manifest();
+        for (Path dep : prereqs) {
+            if (!dirty.contains(dep)) continue;
+            boolean viaCompile = false;
+            boolean viaTest = false;
+            for (Scope scope : Scope.values()) {
+                for (Dependency d : m.dependencies().of(scope)) {
+                    Path hit = ModuleOrder.resolveSibling(d, dirByCoord, dirByName);
+                    if (hit == null || !hit.equals(dep)) continue;
+                    if (scope == Scope.TEST || scope == Scope.TEST_DEV) viaTest = true;
+                    else viaCompile = true;
+                }
+            }
+            if (viaCompile) compile = true;
+            else if (viaTest) test = true;
+            else order = true; // order-after-only prereq: schedule, price nothing
+        }
+        return new DepDirtiness(compile, test, order);
     }
 
     /**
@@ -177,13 +240,16 @@ public final class TaskForecaster {
 
     private static TaskForecast.Module forecastModule(
             BuildGraph.BuildUnit u,
-            boolean depDirty,
+            DepDirtiness dep,
             boolean force,
             boolean skipTests,
             Cas cas,
             ActionCache actionCache,
             Path cache,
             Map<Path, String> restoredJarShas) {
+        if (dep == null) dep = DepDirtiness.NONE;
+        boolean compileDepDirty = dep.compileDepDirty();
+        boolean testDepDirty = dep.testDepDirty();
         JkBuild project = u.manifest();
         Path dir = u.dir();
         List<TaskForecast.Task> steps = new ArrayList<>();
@@ -221,7 +287,9 @@ public final class TaskForecaster {
             List<Path> processorCp = BuildPlanner.processorClasspath(
                     lock, resolver, WorkspaceClasspath.resolve(dir, project, Set.of(Scope.PROCESSOR)));
 
-            boolean compileDirty = depDirty || force;
+            // Only compile-scope dirty siblings force main recompile (and package/native cascade).
+            // Test-only siblings (cli's jk-engine test-dep) leave main clean.
+            boolean compileDirty = compileDepDirty || force;
             // The CURRENT compile-main action key when the content predictor ran — post-clean
             // reconstruction must resolve the record for this key, never lastFor (the last
             // record may belong to a different edit of the sources; see the revert scenario in
@@ -265,7 +333,7 @@ public final class TaskForecaster {
                 List<Path> stampInputs =
                         BuildPlanner.mainStampClasspath(cp, processorCp, mixedKotlin, mixedGroovy, layout, groovyJar);
                 boolean stampFresh = false;
-                if (!depDirty && !force && !groovyJarUnavailable) {
+                if (!compileDepDirty && !force && !groovyJarUnavailable) {
                     try {
                         stampFresh =
                                 FreshnessStamp.isFresh(out, FreshnessStamp.JAVA_STAMP, mainSrc, stampInputs, release);
@@ -292,7 +360,7 @@ public final class TaskForecaster {
                             taskId, req, BuildIdentity.cacheKeyVersion(), actionCache, stateDir);
                     Perf.end("  predict-compile-main", tc);
                     compileMainKey = pred.actionKey();
-                    steps.add(compileStep("compile-main", pred, depDirty || force));
+                    steps.add(compileStep("compile-main", pred, compileDepDirty || force));
                     if (!steps.get(steps.size() - 1).cached()) compileDirty = true;
                 }
             }
@@ -303,7 +371,7 @@ public final class TaskForecaster {
                 // MAIN_CLASSES), not in kotlinc's incremental workspace under target/kotlin/main.
                 // Reading the wrong directory never found a stamp, so every Kotlin module
                 // forecast a full compile no matter how cached the build actually was.
-                boolean fresh = !depDirty
+                boolean fresh = !compileDepDirty
                         && !force
                         && FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.KOTLIN_STAMP, ktSrc);
                 steps.add(
@@ -321,7 +389,7 @@ public final class TaskForecaster {
             // The groovy stamp lives in the merged classes dir (where write-stamp-groovy
             // writes it), unlike Kotlin's forecast probe of kotlinClassesDir.
             if (!gvSrc.isEmpty()) {
-                boolean fresh = !depDirty
+                boolean fresh = !compileDepDirty
                         && !force
                         && FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.GROOVY_STAMP, gvSrc);
                 steps.add(
@@ -402,7 +470,9 @@ public final class TaskForecaster {
                 int estimated = TestSupport.estimateAllSuiteTestCount(dir, compact);
                 testCount = estimated;
                 String tests = estimated > 0 ? "~" + count(estimated, "test") : "tests";
-                if (compileDirty || testDirty) {
+                // testDepDirty: sibling on test classpath is rebuilding — suite must re-run even
+                // when main compile stays cached (cli ← engine test-dep dogfood).
+                if (compileDirty || testDirty || testDepDirty) {
                     steps.add(
                             new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · " + tests, null));
                 } else {
@@ -420,6 +490,29 @@ public final class TaskForecaster {
                                     ? new TaskForecast.Task("run-tests", TaskForecast.Status.CACHED, "· " + tests, null)
                                     : new TaskForecast.Task(
                                             "run-tests", TaskForecast.Status.RUN, "run tests · " + tests, null));
+                }
+            }
+
+            // ---- resource drift (before package so the jar key projects post-copy content) ----
+            // Live package-jar fingerprints classes *after* copy-resources. Forecasting package
+            // against a stale on-disk tree leaves package CACHED while copy-resources is RUN, then
+            // either under-cascades (jar will change) or — with copy-resources seeding cascade —
+            // over-cascades every compile consumer. Detect drift first; package uses a projected
+            // post-copy token when drift is present.
+            boolean mainResourceDrift = false;
+            boolean testResourceDrift = false;
+            if (!compileDirty && Files.isDirectory(layout.classesDir())) {
+                if (resourcesOutOfSync(
+                        cc.jumpkick.layout.ModuleLayout.mainResourcesDir(dir, compact), layout.classesDir())) {
+                    mainResourceDrift = true;
+                } else if (extraResourcesOutOfSync(project, dir, layout.classesDir())) {
+                    mainResourceDrift = true;
+                }
+                if (haveTests && !skipTests && !testDirty && Files.isDirectory(layout.testClassesDir())) {
+                    Path resTest = cc.jumpkick.layout.ModuleLayout.testResourcesDir(dir, compact);
+                    if (resourcesOutOfSync(resTest, layout.testClassesDir())) {
+                        testResourceDrift = true;
+                    }
                 }
             }
 
@@ -452,9 +545,18 @@ public final class TaskForecaster {
                         // best-effort: missing SBOM → key still includes empty sbom: like a null sbom
                     }
                 }
+                // classesTokenForPackage projects post-copy content when resources drifted so
+                // package CACHED/RUN matches the live step after copy-resources.
                 String classesTok = classesTokenForPackage(dir, compact, layout, project, actionCache, compileMainKey);
+                // Must match BuildPlanner.packageJarStep tokens exactly — omitting contrib: made
+                // every module forecast permanent "repackage", cascade depDirty, and price a full
+                // monorepo rebuild (~3.5m) while live builds hit the package cache and SKIPPED.
+                PluginBuild.Declarations pkgDecls = BuildPlanner.pluginDeclarationsFor(project, layout, cache);
+                List<Path> contributed = BuildPlanner.existingContributedDirs(pkgDecls, layout);
+                String contribTok = BuildPlanner.contributionsToken(contributed);
                 List<String> tokens = List.of(
                         "classes:" + classesTok,
+                        "contrib:" + contribTok,
                         "main:" + (mainClass == null ? "" : mainClass),
                         "sbom:" + (sbom == null ? "" : cc.jumpkick.util.Hashing.sha256Hex(sbom)),
                         "manifest:" + project.manifest());
@@ -465,7 +567,11 @@ public final class TaskForecaster {
                 steps.add(
                         hit
                                 ? new TaskForecast.Task("package-jar", TaskForecast.Status.CACHED, "", key8(pkgKey))
-                                : new TaskForecast.Task("package-jar", TaskForecast.Status.RUN, "repackage", null));
+                                : new TaskForecast.Task(
+                                        "package-jar",
+                                        TaskForecast.Status.RUN,
+                                        mainResourceDrift ? "repackage · resources changed" : "repackage",
+                                        null));
                 if (hit && !Files.isRegularFile(jar)) {
                     // Publish the wiped jar's content sha from THIS key's record so downstream
                     // assembly forecasts fingerprint the same bytes the live restore produces.
@@ -497,48 +603,39 @@ public final class TaskForecaster {
             }
 
             // ---- native-image — [native] always = true (same opt-in as jk build) ----
+            // Hard cascade: jar dirty ⇒ native dirty. Never forecast package-jar RUN +
+            // native-image CACHED (binary mtime vs pre-build jar is not an independent skip).
             if (project.nativeMode() == cc.jumpkick.model.JkBuild.NativeMode.ALWAYS
                     && !(mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty())) {
+                boolean jarDirty = steps.stream().anyMatch(s -> "package-jar".equals(s.name()) && !s.cached());
                 Path nativeOut = layout.nativeBinary();
-                boolean hit = Files.isRegularFile(nativeOut) || Files.isRegularFile(layout.nativeLibrary());
-                // Forecast is intentionally coarse: a present binary is treated as cached; a
-                // full native action-key match needs the Graal home the live step resolved.
-                if (compileDirty || !hit) {
-                    steps.add(new TaskForecast.Task(
-                            "native-image",
-                            TaskForecast.Status.RUN,
-                            compileDirty ? "rebuild · compile changed" : "native-image",
-                            null));
+                boolean binaryPresent = Files.isRegularFile(nativeOut) || Files.isRegularFile(layout.nativeLibrary());
+                if (jarDirty || compileDirty || !binaryPresent) {
+                    String why = jarDirty || compileDirty ? "rebuild · compile changed" : "native-image";
+                    steps.add(new TaskForecast.Task("native-image", TaskForecast.Status.RUN, why, null));
                 } else {
                     steps.add(new TaskForecast.Task("native-image", TaskForecast.Status.CACHED, "", null));
                 }
             }
 
-            // ---- resource drift ----
-            // The scheduled build re-copies resource trees unconditionally (main → classes, test →
-            // test classes) and its package/test keys then see the fresh bytes; a clean-skipped
-            // module never does. Any drift ⇒ dirty.
-            // After jk clean the classes tree is gone — missing copies are not "drift", they are
-            // the restore path. Only compare when an output tree is present.
-            if (!compileDirty && Files.isDirectory(layout.classesDir())) {
-                if (resourcesOutOfSync(
-                        cc.jumpkick.layout.ModuleLayout.mainResourcesDir(dir, compact), layout.classesDir())) {
-                    steps.add(new TaskForecast.Task(
-                            "copy-resources", TaskForecast.Status.RUN, "resources changed", null));
-                } else if (extraResourcesOutOfSync(project, dir, layout.classesDir())) {
-                    // extra-resources come from OUTSIDE the module, so the resource-root walk above
-                    // cannot see them. Editing a plugin's jk-plugin.toml must still rebuild
-                    // whatever bakes it in.
-                    steps.add(new TaskForecast.Task(
-                            "copy-resources", TaskForecast.Status.RUN, "extra resources changed", null));
-                }
-                if (haveTests && !skipTests && !testDirty && Files.isDirectory(layout.testClassesDir())) {
-                    Path resTest = cc.jumpkick.layout.ModuleLayout.testResourcesDir(dir, compact);
-                    if (resourcesOutOfSync(resTest, layout.testClassesDir())) {
-                        steps.add(new TaskForecast.Task(
-                                "copy-resources", TaskForecast.Status.RUN, "test resources changed", null));
-                    }
-                }
+            // ---- emit resource-drift steps (detected before package) ----
+            // Main/extra resource drift schedules the module so the jar ships fresh bytes (JK-1808).
+            // Cascade to compile consumers is owned by package-jar above, not by these steps.
+            if (mainResourceDrift) {
+                boolean extraOnly = !resourcesOutOfSync(
+                                cc.jumpkick.layout.ModuleLayout.mainResourcesDir(dir, compact), layout.classesDir())
+                        && extraResourcesOutOfSync(project, dir, layout.classesDir());
+                steps.add(new TaskForecast.Task(
+                        "copy-resources",
+                        TaskForecast.Status.RUN,
+                        extraOnly ? "extra resources changed" : "resources changed",
+                        null));
+            }
+            if (testResourceDrift) {
+                // Distinct name: test-resource drift schedules the module (material) but
+                // must not seed the compile-consumer cascade like main-resource drift.
+                steps.add(new TaskForecast.Task(
+                        "copy-test-resources", TaskForecast.Status.RUN, "test resources changed", null));
             }
 
             // ---- restore gate ----
@@ -564,6 +661,16 @@ public final class TaskForecaster {
                             "restore-outputs", TaskForecast.Status.RUN, "restore from cache", null));
                 }
             }
+
+            // ---- order-after gate ----
+            // A dirty order-after-only prereq prices nothing, but the module must still schedule:
+            // its real action keys are what re-check the prereq's out-of-band outputs (e.g. a
+            // rebuilt test-plugin jar hashed by the run-tests stamp). Unchanged inputs resolve as
+            // cheap cache hits at execute (JK-1810).
+            if (dep.orderDepDirty() && steps.stream().allMatch(TaskForecast.Task::cached)) {
+                steps.add(new TaskForecast.Task(
+                        "order-check", TaskForecast.Status.RUN, "ordered-after sibling rebuilding", null));
+            }
         } catch (Exception e) {
             // Degrade gracefully — never crash explain over one unparseable module.
             steps.add(new TaskForecast.Task(
@@ -582,6 +689,10 @@ public final class TaskForecaster {
      * revert → clean, the last record names the other edit's outputs while the live build would
      * restore the reverted ones — reconstruction must match the live restore or the forecast
      * flips to false CACHED/RUN.
+     *
+     * <p>When the live classes tree is present but main/extra resources have drifted, projects the
+     * post-{@code copy-resources} tree (class files + source resource roots) so package CACHED/RUN
+     * matches the live package step after the copy — not the stale pre-copy classes dir.
      */
     static String classesTokenForPackage(
             Path dir,
@@ -593,6 +704,9 @@ public final class TaskForecaster {
             throws IOException {
         Path classesDir = layout.classesDir();
         if (classesDirHasContent(classesDir)) {
+            if (mainResourcesOutOfSync(dir, compact, project, classesDir)) {
+                return classesTokenProjectedAfterResourceCopy(dir, compact, layout, project);
+            }
             return ClasspathFingerprint.entry(classesDir);
         }
         Map<String, String> compileOut = compileMainKey == null
@@ -606,6 +720,26 @@ public final class TaskForecaster {
             return ClasspathFingerprint.entry(classesDir); // missing:… — package key will miss
         }
         return ClasspathFingerprint.entryFromCompileAndResources(compileOut, resRoots);
+    }
+
+    /** Main or extra resource roots differ from their copies under {@code classesDir}. */
+    static boolean mainResourcesOutOfSync(Path dir, boolean compact, JkBuild project, Path classesDir) {
+        if (resourcesOutOfSync(cc.jumpkick.layout.ModuleLayout.mainResourcesDir(dir, compact), classesDir)) {
+            return true;
+        }
+        return extraResourcesOutOfSync(project, dir, classesDir);
+    }
+
+    /**
+     * Projected {@code classes:} token after {@code copy-resources} would merge source resource
+     * roots over the current classes tree. Matches the live package-jar fingerprint once the
+     * copy step has run — used when main resources are out of sync so package CACHED/RUN does not
+     * lie about a pre-copy tree.
+     */
+    static String classesTokenProjectedAfterResourceCopy(Path dir, boolean compact, BuildLayout layout, JkBuild project)
+            throws IOException {
+        return ClasspathFingerprint.entryProjectedAfterResourceCopy(
+                layout.classesDir(), packageResourceRoots(dir, compact, project));
     }
 
     /** Resource roots that {@code copy-resources} merges into {@code classes/} (main + plugin + extra). */
@@ -663,8 +797,19 @@ public final class TaskForecaster {
         // Same jar set as BuildPlanner.assemblyStep (ModuleRuntimeClasspath / JK-1345).
         List<Path> depJars = BuildPlanner.assemblyDependencyJars(dir, project, lockFile, cache);
         String depsTok = fingerprintDepJars(depJars, actionCache, restoredJarShas);
+        // contrib: must match live assemblyStep tokens (same bug class as package-jar).
+        PluginBuild.Declarations pkgDecls;
+        try {
+            pkgDecls = BuildPlanner.pluginDeclarationsFor(project, layout, cache);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+        List<Path> contributed = BuildPlanner.existingContributedDirs(pkgDecls, layout);
+        String contribTok = BuildPlanner.contributionsToken(contributed);
         List<String> tokens = List.of(
                 "classes:" + classesTok,
+                "contrib:" + contribTok,
                 "deps:" + depsTok,
                 "main:" + (project.mainClass() == null ? "" : project.mainClass()),
                 "manifest:" + project.manifest(),
@@ -752,10 +897,12 @@ public final class TaskForecaster {
 
     /** Map a {@link JavaIncrementalCompile.Prediction} to a step, honoring upstream dirtiness. */
     private static TaskForecast.Task compileStep(
-            String name, JavaIncrementalCompile.Prediction pred, boolean depDirty) {
+            String name, JavaIncrementalCompile.Prediction pred, boolean compileDepDirty) {
         return switch (pred.outcome()) {
             case CACHE_HIT ->
-                depDirty
+                // Only force RUN when a *compile-scope* sibling is dirty (action key still sees
+                // the pre-rebuild jar). Test-only siblings never reach here as compileDepDirty.
+                compileDepDirty
                         ? new TaskForecast.Task(name, TaskForecast.Status.RUN, "recompile · dependency changed", null)
                         : new TaskForecast.Task(name, TaskForecast.Status.CACHED, "", key8(pred.actionKey()));
             case INCREMENTAL -> {

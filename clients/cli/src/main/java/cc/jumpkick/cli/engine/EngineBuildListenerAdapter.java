@@ -860,13 +860,29 @@ final class EngineBuildListenerAdapter {
                         String phase = Jsonl.str(line, "phase");
                         int mc = Jsonl.intValue(line, "modulesComplete", 0);
                         int mt = Jsonl.intValue(line, "modulesTotal", 0);
-                        double pct =
-                                den > 0 ? cc.jumpkick.runtime.WorkspaceProgressTracker.percentOf(num, den) : Double.NaN;
+                        long rem = Jsonl.longValue(line, "remainingMs", -1);
+                        long r0 = Jsonl.longValue(line, "R0", 0);
+                        // Prefer engine strategy percent (clock when R0 set); fall back to num/den.
+                        double pct = Jsonl.has(line, "progress")
+                                ? Jsonl.doubleValue(line, "progress", Double.NaN)
+                                : (den > 0
+                                        ? cc.jumpkick.runtime.WorkspaceProgressTracker.percentOf(num, den)
+                                        : Double.NaN);
+                        if (Double.isNaN(pct) && den > 0) {
+                            pct = cc.jumpkick.runtime.WorkspaceProgressTracker.percentOf(num, den);
+                        }
                         listener.onWorkspaceProgress(new cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot(
-                                num, den, pct, phase == null ? "" : phase, mc, mt));
+                                num, den, pct, phase == null ? "" : phase, mc, mt, rem, r0));
+                        // Residual remainingMs rides the snapshot; AggregateContext re-anchors
+                        // the countdown + adaptive bar (seed path stays on eta events only).
                     }
                     case EngineProtocol.PLAN_DONE -> listener.onPlan(buildModulePlans(planByDir, cache));
-                    case EngineProtocol.ETA -> listener.onEtaEstimate(Jsonl.longValue(line, "millis", 0));
+                    case EngineProtocol.ETA -> {
+                        // Seed / re-seed only (R0). Client locks after execute starts.
+                        long rem = Jsonl.longValue(line, "remainingMs", -1);
+                        if (rem < 0) rem = Jsonl.longValue(line, "millis", 0);
+                        listener.onEtaEstimate(rem);
+                    }
                     case EngineProtocol.MODULE_START -> {
                         ModulePlan plan = buildModulePlan(dir, planByDir.get(dir), cache);
                         BuildPlanListener gl = listener.onModuleStart(plan);

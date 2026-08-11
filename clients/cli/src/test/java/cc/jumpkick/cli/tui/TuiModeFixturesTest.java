@@ -100,18 +100,7 @@ class TuiModeFixturesTest {
     }
 
     private static JkConfig noAnsiConfig() {
-        return new JkConfig(
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.of(true), // noAnsi
-                Optional.empty(),
-                Optional.empty());
+        return JkConfig.empty().withNoAnsi(Optional.of(true));
     }
 
     private static <T> T withConfig(JkConfig cfg, Supplier<T> body) throws Exception {

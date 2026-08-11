@@ -1,8 +1,8 @@
 version = 1
-generated-by = "jk 0.11.0"
+generated-by = "jk 0.12.0"
 resolution-algorithm = "pubgrub-v1"
-jk = { version = "0.11.0", sha256 = "1c578653e03eed862167c0ec3102415933c29041a131fe8b61dce42edbc29463" }
-manifests-sha256 = "18567170bf8710d95aeb7e5f8764a4b970cfa042777c5efc46c4230762d34deb"
+jk = { version = "0.12.0", sha256 = "8fe54be6f8e65f777b95090a71065f798567953474d31fa14af37c18e6002553" }
+manifests-sha256 = "7114f1bef1eaded977f953ba4a831cefc1543d08e7890fd9b8a76cfaca99e1ae"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [[artifact]]
@@ -105,6 +105,13 @@ deps = [
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
   "org.jspecify:jspecify:jar:@1.0.1",
 ]
+
+[[artifact]]
+name     = "com.google.android:annotations:jar:"
+version  = "4.1.1.4"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:ba734e1e84c09d615af6a09d33034b4f0442f8772dec120efb376d86a565ae15"
+scopes   = ["main"]
 
 [[artifact]]
 name     = "com.google.api.grpc:proto-google-common-protos:jar:"
@@ -414,6 +421,7 @@ deps = [
   "com.google.protobuf:protobuf-java-util:jar:@4.35.1",
   "commons-codec:commons-codec:jar:@1.22.1",
   "io.github.erdtman:java-json-canonicalization:jar:@1.1",
+  "io.grpc:grpc-netty-shaded:jar:@1.83.1",
   "io.grpc:grpc-protobuf:jar:@1.83.1",
   "io.grpc:grpc-stub:jar:@1.83.1",
   "org.bouncycastle:bcpkix-jdk18on:jar:@1.85",
@@ -457,6 +465,39 @@ deps = [
 ]
 
 [[artifact]]
+name     = "io.grpc:grpc-core:jar:"
+version  = "1.83.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:e417d5fe3b273aba8e24c5bf8edaf400297ae88a2ede828a2b75c3403b3d13e3"
+scopes   = ["main"]
+deps = [
+  "com.google.android:annotations:jar:@4.1.1.4",
+  "com.google.code.gson:gson:jar:@2.14.0",
+  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
+  "com.google.guava:guava:jar:@33.6.0-jre",
+  "io.grpc:grpc-api:jar:@1.83.1",
+  "io.grpc:grpc-context:jar:@1.83.1",
+  "io.perfmark:perfmark-api:jar:@0.27.0",
+  "org.codehaus.mojo:animal-sniffer-annotations:jar:@1.27",
+]
+
+[[artifact]]
+name     = "io.grpc:grpc-netty-shaded:jar:"
+version  = "1.83.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:fc7a54cca004df57d8d416f335e851d53b188926b598151c5714498ff60dced5"
+scopes   = ["main"]
+deps = [
+  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
+  "com.google.guava:guava:jar:@33.6.0-jre",
+  "io.grpc:grpc-api:jar:@1.83.1",
+  "io.grpc:grpc-core:jar:@1.83.1",
+  "io.grpc:grpc-util:jar:@1.83.1",
+  "io.perfmark:perfmark-api:jar:@0.27.0",
+  "org.codehaus.mojo:animal-sniffer-annotations:jar:@1.27",
+]
+
+[[artifact]]
 name     = "io.grpc:grpc-protobuf-lite:jar:"
 version  = "1.83.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
@@ -493,6 +534,19 @@ deps = [
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
   "com.google.guava:guava:jar:@33.6.0-jre",
   "io.grpc:grpc-api:jar:@1.83.1",
+  "org.codehaus.mojo:animal-sniffer-annotations:jar:@1.27",
+]
+
+[[artifact]]
+name     = "io.grpc:grpc-util:jar:"
+version  = "1.83.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:4e722bf41a8d305e0436f16e69f7787ce5a227dc0dac45be06e8c197f08275e4"
+scopes   = ["main"]
+deps = [
+  "com.google.guava:guava:jar:@33.6.0-jre",
+  "io.grpc:grpc-api:jar:@1.83.1",
+  "io.grpc:grpc-core:jar:@1.83.1",
   "org.codehaus.mojo:animal-sniffer-annotations:jar:@1.27",
 ]
 
@@ -563,6 +617,13 @@ deps = [
   "com.google.guava:guava:jar:@33.6.0-jre",
   "io.opencensus:opencensus-api:jar:@0.31.1",
 ]
+
+[[artifact]]
+name     = "io.perfmark:perfmark-api:jar:"
+version  = "0.27.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:c7b478503ec524e55df19b424d46d27c8a68aeb801664fadd4f069b71f52d0f6"
+scopes   = ["main"]
 
 [[artifact]]
 name     = "io.quarkus.gizmo:gizmo:jar:"
@@ -1723,9 +1784,9 @@ deps = [
 
 [[artifact]]
 name     = "org.openrewrite.tools:jgit:jar:"
-version  = "1.4.2"
+version  = "1.5.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:4743e1ceb21a797bc1786e96b3d86454e9bad2d434730d7050e96aef344856fe"
+checksum = "sha256:50c68d603cb8d7f2585d3d98824dc509fdfd95812adb4ac93d6cec4db095b29c"
 scopes   = ["main"]
 deps = [
   "com.googlecode.javaewah:JavaEWAH:jar:@1.2.3",
@@ -1734,9 +1795,9 @@ deps = [
 
 [[artifact]]
 name     = "org.openrewrite:rewrite-core:jar:"
-version  = "8.88.3"
+version  = "8.88.4"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:4bf34e401876971f6f0ffc0383fcbd23ee8686e81e034730559b6371ec5c12b6"
+checksum = "sha256:3ce55e949aa1e73b624ae719be26bb4f1ab8a219eadb16abb128e125708e15c3"
 scopes   = ["main"]
 deps = [
   "com.fasterxml.jackson.core:jackson-core:jar:@2.22.1",
@@ -1755,7 +1816,7 @@ deps = [
   "org.jspecify:jspecify:jar:@1.0.1",
   "org.objenesis:objenesis:jar:@3.6",
   "org.openrewrite.tools:java-object-diff:jar:@1.0.1",
-  "org.openrewrite.tools:jgit:jar:@1.4.2",
+  "org.openrewrite.tools:jgit:jar:@1.5.0",
   "org.ow2.asm:asm-analysis:jar:@9.10.1",
   "org.ow2.asm:asm-tree:jar:@9.10.1",
   "org.ow2.asm:asm-util:jar:@9.10.1",
@@ -1765,37 +1826,37 @@ deps = [
 
 [[artifact]]
 name     = "org.openrewrite:rewrite-java-21:jar:"
-version  = "8.88.3"
+version  = "8.88.4"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:82d3c9e7d5dff7ffb1e0f8e9181f446e8270e0842957e7311f19ff0d859a9860"
+checksum = "sha256:800b3695936aab94576df7e94064f7bad4952f6608cfe1efde3dc87ff748955d"
 scopes   = ["main"]
 deps = [
   "io.github.classgraph:classgraph:jar:@4.8.189",
   "io.micrometer:micrometer-core:jar:@1.17.0",
   "org.jetbrains:annotations:jar:@26.1.0",
-  "org.openrewrite:rewrite-core:jar:@8.88.3",
-  "org.openrewrite:rewrite-java-lombok:jar:@8.88.3",
-  "org.openrewrite:rewrite-java:jar:@8.88.3",
+  "org.openrewrite:rewrite-core:jar:@8.88.4",
+  "org.openrewrite:rewrite-java-lombok:jar:@8.88.4",
+  "org.openrewrite:rewrite-java:jar:@8.88.4",
   "org.ow2.asm:asm:jar:@9.10.1",
 ]
 
 [[artifact]]
 name     = "org.openrewrite:rewrite-java-lombok:jar:"
-version  = "8.88.3"
+version  = "8.88.4"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:d94b139d6a212ba1fe873840c60ae3b2f44767ca9ea37944f3d66937efe0b528"
+checksum = "sha256:79b07b0c32d604ecc0f5ff1399bbc6090da18d6edae42cc80d39313399132921"
 scopes   = ["main"]
 deps = [
   "org.jetbrains:annotations:jar:@26.1.0",
-  "org.openrewrite:rewrite-core:jar:@8.88.3",
+  "org.openrewrite:rewrite-core:jar:@8.88.4",
   "org.projectlombok:lombok:jar:@1.18.46",
 ]
 
 [[artifact]]
 name     = "org.openrewrite:rewrite-java:jar:"
-version  = "8.88.3"
+version  = "8.88.4"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:90a8d2355a174665616d4b5937c045c830c35f40b6c228419f31b0fea6122bb6"
+checksum = "sha256:00a1cfe93e3d843af0728f32b4a86e97a5474b2697b46af1ad9f39b0dbbe1b77"
 scopes   = ["main"]
 deps = [
   "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
@@ -1804,32 +1865,32 @@ deps = [
   "org.antlr:antlr4-runtime:jar:@4.13.2",
   "org.apache.commons:commons-text:jar:@1.15.0",
   "org.jetbrains:annotations:jar:@26.1.0",
-  "org.openrewrite:rewrite-core:jar:@8.88.3",
-  "org.openrewrite:rewrite-properties:jar:@8.88.3",
-  "org.openrewrite:rewrite-xml:jar:@8.88.3",
-  "org.openrewrite:rewrite-yaml:jar:@8.88.3",
+  "org.openrewrite:rewrite-core:jar:@8.88.4",
+  "org.openrewrite:rewrite-properties:jar:@8.88.4",
+  "org.openrewrite:rewrite-xml:jar:@8.88.4",
+  "org.openrewrite:rewrite-yaml:jar:@8.88.4",
   "org.ow2.asm:asm-util:jar:@9.10.1",
   "org.ow2.asm:asm:jar:@9.10.1",
 ]
 
 [[artifact]]
 name     = "org.openrewrite:rewrite-properties:jar:"
-version  = "8.88.3"
+version  = "8.88.4"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:cd830ea2a45010f78295f1c01286a5d7d0708726e47680f15f10fbf5b4b4b692"
+checksum = "sha256:c8d3227b6fcd6ee63b958636675db2e380132dfa5a3e5f99e464f39158f45759"
 scopes   = ["main"]
 deps = [
   "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
   "io.micrometer:micrometer-core:jar:@1.17.0",
   "org.jetbrains:annotations:jar:@26.1.0",
-  "org.openrewrite:rewrite-core:jar:@8.88.3",
+  "org.openrewrite:rewrite-core:jar:@8.88.4",
 ]
 
 [[artifact]]
 name     = "org.openrewrite:rewrite-xml:jar:"
-version  = "8.88.3"
+version  = "8.88.4"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:948cb16876282e5e768a51e2a411790da133399e1140dd5563f6738937a1ccb0"
+checksum = "sha256:abc1dc3441e81ca2ba3d07df8799e83946fdf580f78a2bbded63379df1492260"
 scopes   = ["main"]
 deps = [
   "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
@@ -1838,21 +1899,21 @@ deps = [
   "org.antlr:antlr4-runtime:jar:@4.13.2",
   "org.apache.commons:commons-text:jar:@1.15.0",
   "org.jetbrains:annotations:jar:@26.1.0",
-  "org.openrewrite:rewrite-core:jar:@8.88.3",
+  "org.openrewrite:rewrite-core:jar:@8.88.4",
 ]
 
 [[artifact]]
 name     = "org.openrewrite:rewrite-yaml:jar:"
-version  = "8.88.3"
+version  = "8.88.4"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:632d7530a6d8688b964bd77475a7f1aa8be5d9d1301bb901ed6254fdef7482ad"
+checksum = "sha256:7083977140397c0ab90ad9d13bc0c8c19b7ea534c551e3c2fe5bbed3ee1ca7a5"
 scopes   = ["main"]
 deps = [
   "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
   "io.micrometer:micrometer-core:jar:@1.17.0",
   "org.antlr:antlr4-runtime:jar:@4.13.2",
   "org.jetbrains:annotations:jar:@26.1.0",
-  "org.openrewrite:rewrite-core:jar:@8.88.3",
+  "org.openrewrite:rewrite-core:jar:@8.88.4",
   "org.yaml:snakeyaml:jar:@2.6",
 ]
 
@@ -1987,7 +2048,7 @@ deps = [
 path    = "."
 group   = "cc.jumpkick"
 name    = "jk"
-version = "0.11.0"
+version = "0.12.0"
 java    = 25
 description = "JumpKick: The best damn build system for the JVM"
 
@@ -1995,7 +2056,7 @@ description = "JumpKick: The best damn build system for the JVM"
 path    = "clients/cli"
 group   = "cc.jumpkick"
 name    = "jk-cli"
-version = "0.11.0"
+version = "0.12.0"
 java    = 25
 description = "The CLI (and primary) client for interacting with the JumpKick build system"
 
@@ -2003,7 +2064,7 @@ description = "The CLI (and primary) client for interacting with the JumpKick bu
 path    = "clients/web"
 group   = "cc.jumpkick"
 name    = "jk-web"
-version = "0.11.0"
+version = "0.12.0"
 java    = 25
 description = "Web dashboard static assets for the engine UI"
 layout  = "traditional"
@@ -2012,7 +2073,7 @@ layout  = "traditional"
 path    = "plugins/android"
 group   = "cc.jumpkick"
 name    = "jk-android"
-version = "0.11.0"
+version = "0.12.0"
 java    = 25
 description = "JumpKick's Android packaging plugin"
 
@@ -2020,7 +2081,7 @@ description = "JumpKick's Android packaging plugin"
 path    = "plugins/auditor"
 group   = "cc.jumpkick"
 name    = "jk-auditor"
-version = "0.11.0"
+version = "0.12.0"
 java    = 25
 description = "JumpKick's OSV audit plugin"
 
@@ -2028,7 +2089,7 @@ description = "JumpKick's OSV audit plugin"
 path    = "plugins/compat-bridge"
 group   = "cc.jumpkick"
 name    = "jk-compat-bridge"
-version = "0.11.0"
+version = "0.12.0"
 java    = 25
 description = "JumpKick's Maven/Gradle compatibility plugin"
 
@@ -2036,7 +2097,7 @@ description = "JumpKick's Maven/Gradle compatibility plugin"
 path    = "plugins/formatter"
 group   = "cc.jumpkick"
 name    = "jk-formatter"
-version = "0.11.0"
+version = "0.12.0"
 java    = 25
 description = "JumpKick's source code formatter plugin"
 
@@ -2044,7 +2105,7 @@ description = "JumpKick's source code formatter plugin"
 path    = "plugins/grails"
 group   = "cc.jumpkick"
 name    = "jk-grails"
-version = "0.11.0"
+version = "0.12.0"
 java    = 25
 description = "JumpKick's Grails packaging plugin"
 
@@ -2052,7 +2113,7 @@ description = "JumpKick's Grails packaging plugin"
 path    = "plugins/groovy-compiler"
 group   = "cc.jumpkick"
 name    = "jk-groovy-compiler"
-version = "0.11.0"
+version = "0.12.0"
 java    = 25
 description = "JumpKick's Groovy compiler plugin"
 
@@ -2060,7 +2121,7 @@ description = "JumpKick's Groovy compiler plugin"
 path    = "plugins/image-builder"
 group   = "cc.jumpkick"
 name    = "jk-image-builder"
-version = "0.11.0"
+version = "0.12.0"
 java    = 25
 description = "JumpKick's OCI image builder plugin"
 
@@ -2068,7 +2129,7 @@ description = "JumpKick's OCI image builder plugin"
 path    = "plugins/java-compiler"
 group   = "cc.jumpkick"
 name    = "jk-java-compiler"
-version = "0.11.0"
+version = "0.12.0"
 java    = 25
 description = "JumpKick's Java compiler plugin"
 
@@ -2076,7 +2137,7 @@ description = "JumpKick's Java compiler plugin"
 path    = "plugins/kotlin-compiler"
 group   = "cc.jumpkick"
 name    = "jk-kotlin-compiler"
-version = "0.11.0"
+version = "0.12.0"
 java    = 25
 description = "JumpKick's Kotlin compiler plugin"
 
@@ -2084,7 +2145,7 @@ description = "JumpKick's Kotlin compiler plugin"
 path    = "plugins/minified"
 group   = "cc.jumpkick"
 name    = "jk-minified"
-version = "0.11.0"
+version = "0.12.0"
 java    = 25
 description = "JumpKick's R8 minify plugin"
 
@@ -2092,7 +2153,7 @@ description = "JumpKick's R8 minify plugin"
 path    = "plugins/protobuf"
 group   = "cc.jumpkick"
 name    = "jk-protobuf"
-version = "0.11.0"
+version = "0.12.0"
 java    = 25
 description = "JumpKick's Protobuf plugin"
 
@@ -2100,7 +2161,7 @@ description = "JumpKick's Protobuf plugin"
 path    = "plugins/publisher"
 group   = "cc.jumpkick"
 name    = "jk-publisher"
-version = "0.11.0"
+version = "0.12.0"
 java    = 25
 description = "JumpKick's Maven publish plugin"
 
@@ -2108,7 +2169,7 @@ description = "JumpKick's Maven publish plugin"
 path    = "plugins/quarkus"
 group   = "cc.jumpkick"
 name    = "jk-quarkus"
-version = "0.11.0"
+version = "0.12.0"
 java    = 25
 description = "JumpKick's Quarkus packaging plugin"
 
@@ -2116,7 +2177,7 @@ description = "JumpKick's Quarkus packaging plugin"
 path    = "plugins/spring-boot"
 group   = "cc.jumpkick"
 name    = "jk-spring-boot"
-version = "0.11.0"
+version = "0.12.0"
 java    = 25
 description = "JumpKick's Spring Boot packaging plugin"
 
@@ -2124,7 +2185,7 @@ description = "JumpKick's Spring Boot packaging plugin"
 path    = "plugins/test-runner"
 group   = "cc.jumpkick"
 name    = "jk-test-runner"
-version = "0.11.0"
+version = "0.12.0"
 java    = 17
 description = "JumpKick's JUnit Platform test-runner plugin"
 
@@ -2132,7 +2193,7 @@ description = "JumpKick's JUnit Platform test-runner plugin"
 path    = "server/engine"
 group   = "cc.jumpkick"
 name    = "jk-engine"
-version = "0.11.0"
+version = "0.12.0"
 java    = 25
 description = "Resident build engine: plan, cache, compile, and test"
 
@@ -2140,7 +2201,7 @@ description = "Resident build engine: plan, cache, compile, and test"
 path    = "server/io"
 group   = "cc.jumpkick"
 name    = "jk-io"
-version = "0.11.0"
+version = "0.12.0"
 java    = 25
 description = "Engine I/O: HTTP client, CAS, and Maven repository access"
 
@@ -2148,7 +2209,7 @@ description = "Engine I/O: HTTP client, CAS, and Maven repository access"
 path    = "server/resolver"
 group   = "cc.jumpkick"
 name    = "jk-resolver"
-version = "0.11.0"
+version = "0.12.0"
 java    = 25
 description = "PubGrub dependency resolver"
 
@@ -2156,7 +2217,7 @@ description = "PubGrub dependency resolver"
 path    = "server/toolchain"
 group   = "cc.jumpkick"
 name    = "jk-toolchain"
-version = "0.11.0"
+version = "0.12.0"
 java    = 25
 description = "Engine toolchain: tool installs and Maven/Gradle import"
 
@@ -2164,7 +2225,7 @@ description = "Engine toolchain: tool installs and Maven/Gradle import"
 path    = "shared/client-io"
 group   = "cc.jumpkick"
 name    = "jk-client-io"
-version = "0.11.0"
+version = "0.12.0"
 java    = 25
 description = "Client-side I/O: HTTP, forge auth, credentials, and CAS"
 
@@ -2172,7 +2233,7 @@ description = "Client-side I/O: HTTP, forge auth, credentials, and CAS"
 path    = "shared/core"
 group   = "cc.jumpkick"
 name    = "jk-core"
-version = "0.11.0"
+version = "0.12.0"
 java    = 25
 description = "Core library: config, lockfile, layout, and policy"
 
@@ -2180,7 +2241,7 @@ description = "Core library: config, lockfile, layout, and policy"
 path    = "shared/dynamic-surface"
 group   = "cc.jumpkick"
 name    = "jk-dynamic-surface"
-version = "0.11.0"
+version = "0.12.0"
 java    = 25
 description = "Dynamic surface modeling for R8 keep rules and GraalVM metadata"
 
@@ -2188,7 +2249,7 @@ description = "Dynamic surface modeling for R8 keep rules and GraalVM metadata"
 path    = "shared/jk-api"
 group   = "cc.jumpkick"
 name    = "jk-model"
-version = "0.11.0"
+version = "0.12.0"
 java    = 25
 description = "Domain model: dependencies, build plans, and coordinates"
 
@@ -2196,7 +2257,7 @@ description = "Domain model: dependencies, build plans, and coordinates"
 path    = "shared/plugin-sdk"
 group   = "cc.jumpkick"
 name    = "jk-plugin-sdk"
-version = "0.11.0"
+version = "0.12.0"
 java    = 17
 description = "Plugin SPI and host-event wire codec"
 
@@ -2204,7 +2265,7 @@ description = "Plugin SPI and host-event wire codec"
 path    = "shared/toolchain-jdk"
 group   = "cc.jumpkick"
 name    = "jk-toolchain-jdk"
-version = "0.11.0"
+version = "0.12.0"
 java    = 25
 description = "Client JDK tooling: discovery, install flow, and launchers"
 
@@ -2212,6 +2273,6 @@ description = "Client JDK tooling: discovery, install flow, and launchers"
 path    = "shared/wire"
 group   = "cc.jumpkick"
 name    = "jk-engine-api"
-version = "0.11.0"
+version = "0.12.0"
 java    = 25
 description = "Client–engine wire protocol and build DTOs"

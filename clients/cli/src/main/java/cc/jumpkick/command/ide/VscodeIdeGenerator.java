@@ -176,8 +176,8 @@ public final class VscodeIdeGenerator implements IdeGenerator {
         Map<String, IdeModule> byName = new LinkedHashMap<>();
         for (IdeModule m : model.allModules().values()) byName.put(m.name(), m);
         for (ModuleRef mr : model.siblingRefs().getOrDefault(moduleDir, List.of())) {
-            boolean testScope = IdeWireModel.SCOPE_TEST.equals(mr.scope())
-                    || IdeWireModel.SCOPE_TEST_KIND.equals(mr.scope());
+            boolean testScope =
+                    IdeWireModel.SCOPE_TEST.equals(mr.scope()) || IdeWireModel.SCOPE_TEST_KIND.equals(mr.scope());
             boolean attachTests = IdeWireModel.SCOPE_TEST_KIND.equals(mr.scope())
                     || IdeWireModel.SCOPE_COMPILE_TEST_KIND.equals(mr.scope());
             sb.append("  <classpathentry combineaccessrules=\"false\" kind=\"src\" path=\"/")

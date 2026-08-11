@@ -18,9 +18,17 @@ public record TestSelection(
         /** When true, run every discovered suite (ignores {@link #suites} for selection). */
         boolean allSuites,
         List<String> includeTags,
-        List<String> excludeTags) {
+        List<String> excludeTags,
+        /**
+         * When true, {@link #includeTags}/{@link #excludeTags} are final — some layer (module
+         * {@code [test]} baseline, a profile key, or a CLI flag) explicitly resolved them, so the
+         * engine must not fold per-module {@code [test]} tags back in even when both lists are
+         * empty. An explicitly cleared filter ({@code exclude-tags = []} in a profile, or
+         * {@code --exclude-tags ""}) is only representable through this flag (JK-1809).
+         */
+        boolean tagsResolved) {
 
-    public static final TestSelection DEFAULT = new TestSelection(List.of(), false, List.of(), List.of());
+    public static final TestSelection DEFAULT = new TestSelection(List.of(), false, List.of(), List.of(), false);
 
     public TestSelection {
         suites = normalizeNames(suites);
@@ -30,11 +38,21 @@ public record TestSelection(
 
     public static TestSelection of(
             List<String> suites, boolean allSuites, List<String> includeTags, List<String> excludeTags) {
+        return of(suites, allSuites, includeTags, excludeTags, false);
+    }
+
+    public static TestSelection of(
+            List<String> suites,
+            boolean allSuites,
+            List<String> includeTags,
+            List<String> excludeTags,
+            boolean tagsResolved) {
         return new TestSelection(
                 suites == null ? List.of() : suites,
                 allSuites,
                 includeTags == null ? List.of() : includeTags,
-                excludeTags == null ? List.of() : excludeTags);
+                excludeTags == null ? List.of() : excludeTags,
+                tagsResolved);
     }
 
     /** Resolve concrete suite names for a module (validates unknown names). */
@@ -78,14 +96,14 @@ public record TestSelection(
         if (more == null || more.isEmpty()) return this;
         LinkedHashSet<String> merged = new LinkedHashSet<>(excludeTags);
         merged.addAll(normalizeNames(more));
-        return new TestSelection(suites, allSuites, includeTags, List.copyOf(merged));
+        return new TestSelection(suites, allSuites, includeTags, List.copyOf(merged), tagsResolved);
     }
 
     public TestSelection withIncludeTags(List<String> more) {
         if (more == null || more.isEmpty()) return this;
         LinkedHashSet<String> merged = new LinkedHashSet<>(includeTags);
         merged.addAll(normalizeNames(more));
-        return new TestSelection(suites, allSuites, List.copyOf(merged), excludeTags);
+        return new TestSelection(suites, allSuites, List.copyOf(merged), excludeTags, tagsResolved);
     }
 
     private static List<String> normalizeNames(List<String> in) {

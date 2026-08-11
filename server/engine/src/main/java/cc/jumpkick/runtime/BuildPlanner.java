@@ -3866,6 +3866,9 @@ public final class BuildPlanner {
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PACKAGE_JAR)
                 .weight(() -> EffortWeights.nativeWeight(dir))
+                // Ease the weight slice over expected wall while Graal stages tick sparsely —
+                // without this the bar sits near 100% for most of a multi-minute native-image.
+                .interpolated()
                 .ticks(10) // preamble(1) + 8 native-image stages + done(1)
                 .execute(ctx -> {
                     // Fail-fast: verify native-image is available before compilation
@@ -4013,8 +4016,8 @@ public final class BuildPlanner {
                         // Refuse to native-build on stale train outputs when configured.
                         try {
                             var trainCfg = cc.jumpkick.config.TrainConfigParser.parse(dir.resolve("jk.toml"));
-                            String stale = TrainRunner.staleReason(
-                                    dir, project, layout, lockFile, javaHomeEarly, trainCfg);
+                            String stale =
+                                    TrainRunner.staleReason(dir, project, layout, lockFile, javaHomeEarly, trainCfg);
                             if (stale != null) {
                                 ctx.error("train-stale", stale);
                                 throw new RuntimeException(stale);
@@ -4063,12 +4066,35 @@ public final class BuildPlanner {
                     String nKey = ActionKey.forArtifact(
                             nTask, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), nativeTokens);
                     if (!shared && restorePackaged(cache, nKey, out.getParent())) {
+                        // Shrink only: cache restore is a token touch. Never reweight *up* mid-run
+                        // (bar must not jump; accurate native weight is reserved up front).
+                        ctx.reweight(EffortWeights.RESTORE);
                         ctx.label(out.getFileName() + " up-to-date");
+                        ctx.cached();
                         ctx.progress(1);
                         return;
                     }
 
-                    ctx.label("native-image " + out.getFileName());
+                    // Effective size (app full + discounted deps) for ETA learning / reweight.
+                    long effectiveBytes = NativeEffort.estimateInputBytes(dir);
+                    if (effectiveBytes < 1024) effectiveBytes = NativeEffort.sumExistingBytes(classpath);
+                    NativeEffort.recordSuccessInputBytes(dir, effectiveBytes);
+                    // Size-aware reservation; reweight may shrink only (never grow the bar).
+                    int sized = NativeEffort.weight(dir);
+                    try {
+                        ctx.reweight(sized);
+                    } catch (RuntimeException ignored) {
+                    }
+                    // Human label: output binary basename + full classpath byte sum.
+                    // CLI colors filename with Theme.path (periwinkle) and the size as bold white.
+                    // Effective/discounted bytes stay internal for ETA learning.
+                    long classpathBytes = NativeEffort.sumExistingBytes(classpath);
+                    long labelBytes = classpathBytes > 0 ? classpathBytes : effectiveBytes;
+                    String binName = nativeOutputDisplayName(out, shared);
+                    ctx.label(
+                            labelBytes > 0
+                                    ? binName + " · classpath input size: ~" + formatNativeInputMib(labelBytes) + " MiB"
+                                    : binName);
 
                     // Progress listener: parse [N/M] headers from native-image stdout.
                     // ticks(10) is declared upfront (preamble + 8 GraalVM stages + done).
@@ -4103,9 +4129,27 @@ public final class BuildPlanner {
                                         .orElse("plugin")
                                 + " sources");
                     }
-                    int exit = cc.jumpkick.tool.NativeImageDriver.run(request, listener, ctx::output);
+                    // Capture Graal stdout/stderr for progress parsing + a durable report.
+                    // Console: only --verbose or a non-zero exit (happy path stays quiet).
+                    java.util.List<String> niLog = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+                    int exit = cc.jumpkick.tool.NativeImageDriver.run(request, listener, niLog::add);
+                    Path niReport = layout.reportsDir().resolve("native-image.out");
+                    try {
+                        Files.createDirectories(niReport.getParent());
+                        String body = niLog.isEmpty() ? "" : String.join("\n", niLog) + "\n";
+                        Files.writeString(niReport, body);
+                    } catch (IOException ioe) {
+                        // Best-effort report; never fail the image over log write.
+                    }
+                    boolean showNiLog = SessionContext.current().verbose() || exit != 0;
+                    if (showNiLog) {
+                        for (String line : niLog) ctx.output(line);
+                    }
                     if (exit != 0) {
-                        ctx.error("native", "native-image exited " + exit);
+                        ctx.error(
+                                "native",
+                                "native-image exited " + exit
+                                        + (Files.isRegularFile(niReport) ? " (full log: " + niReport + ")" : ""));
                         throw new RuntimeException("native-image failed (exit " + exit + ")");
                     }
                     // The framework's args name their own output, inside its sources dir.
@@ -4178,6 +4222,31 @@ public final class BuildPlanner {
     }
 
     static final String NATIVE_IMAGE_ARGS = "native-image.args";
+
+    /** Human MiB for native-image step labels (one decimal under 10 MiB so ~1.4 does not become 1). */
+    static String formatNativeInputMib(long bytes) {
+        if (bytes <= 0) return "0";
+        double mib = bytes / (1024.0 * 1024.0);
+        if (mib < 10.0) {
+            return String.format(java.util.Locale.ROOT, "%.1f", Math.max(0.1, mib));
+        }
+        return Long.toString(Math.max(1L, Math.round(mib)));
+    }
+
+    /**
+     * Basename shown in the native-image step label — the {@code -o} target, with the platform
+     * executable suffix on Windows ({@code .exe}) so the UI matches what lands on disk.
+     */
+    static String nativeOutputDisplayName(Path out, boolean shared) {
+        if (out == null || out.getFileName() == null) return "native";
+        String name = out.getFileName().toString();
+        if (shared) return name;
+        String os = System.getProperty("os.name", "");
+        if (os.toLowerCase(java.util.Locale.ROOT).contains("win") && !name.endsWith(".exe") && !name.endsWith(".EXE")) {
+            return name + ".exe";
+        }
+        return name;
+    }
 
     /**
      * The framework's argument list, plus jk's own extras last so {@code [native] args} and CLI
@@ -4983,6 +5052,9 @@ public final class BuildPlanner {
      * carries them.
      */
     static cc.jumpkick.config.TestSelection effectiveSelection(cc.jumpkick.config.TestSelection sel, Path moduleDir) {
+        // tagsResolved: the CLI already applied baseline/profile/flag layers — an empty list may
+        // be an explicit clear ([profiles.x] exclude-tags = []) and must stay empty (JK-1809).
+        if (sel.tagsResolved()) return sel;
         if (!sel.includeTags().isEmpty() || !sel.excludeTags().isEmpty()) return sel;
         var fromToml = cc.jumpkick.config.JkBuildParser.parseTestTags(moduleDir.resolve("jk.toml"));
         if (fromToml.isEmpty()) return sel;
@@ -5123,7 +5195,8 @@ public final class BuildPlanner {
         return extras;
     }
 
-    private static PluginBuild.Declarations pluginDeclarationsFor(JkBuild project, BuildLayout layout, Path cache)
+    /** Package-private for {@link TaskForecaster} package-jar key parity with the live step. */
+    static PluginBuild.Declarations pluginDeclarationsFor(JkBuild project, BuildLayout layout, Path cache)
             throws java.io.IOException, InterruptedException {
         var active = PluginBuild.activeCodePlugin(project, layout.moduleRoot());
         if (active.isEmpty()) return null;
@@ -5152,8 +5225,9 @@ public final class BuildPlanner {
      * Cache-key token covering the contributed dirs. Order-sensitive on purpose: contributions
      * merge first-wins, so declaration order is part of what the packaged output depends on.
      */
-    private static String contributionsToken(List<Path> contributed) throws java.io.IOException {
-        if (contributed.isEmpty()) return "";
+    /** Package-private for {@link TaskForecaster} package-jar key parity. */
+    static String contributionsToken(List<Path> contributed) throws java.io.IOException {
+        if (contributed == null || contributed.isEmpty()) return "";
         StringBuilder sb = new StringBuilder();
         for (Path dir : contributed) {
             sb.append(cc.jumpkick.task.ClasspathFingerprint.entry(dir)).append('\n');

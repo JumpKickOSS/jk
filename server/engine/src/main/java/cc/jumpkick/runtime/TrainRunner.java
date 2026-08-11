@@ -343,8 +343,8 @@ public final class TrainRunner {
         Files.deleteIfExists(conf);
         Path java = javaBinary(javaHome);
         // Two-step record/create so SIGTERM still yields a cache (same as image trainer).
-        List<String> record = new ArrayList<>(List.of(
-                java.toString(), "-XX:AOTMode=record", "-XX:AOTConfiguration=" + conf.toAbsolutePath()));
+        List<String> record = new ArrayList<>(
+                List.of(java.toString(), "-XX:AOTMode=record", "-XX:AOTConfiguration=" + conf.toAbsolutePath()));
         record.addAll(launch);
         ProcessBuilder pb = new ProcessBuilder(record).redirectErrorStream(true).directory(moduleDir.toFile());
         runUntilSettled(pb, log);

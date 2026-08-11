@@ -8,7 +8,7 @@ import java.util.Map;
 
 /**
  * Resolves the effective Java/Kotlin formatter styles {@code jk format} hands to the {@code
- * jk-formatter} worker, plus the cross-language aliases.
+ * jk-formatter} worker, plus the cross-language aliases and import-hygiene toggles.
  *
  * <p>Style names are the worker's contract (it maps them onto Spotless steps): Java {@code
  * palantir} / {@code google} / {@code aosp}; Kotlin {@code kotlinlang} / {@code google} / {@code
@@ -18,6 +18,10 @@ import java.util.Map;
  * <p>Per-language precedence: a {@code --java-style}/{@code --kotlin-style} flag wins, then a
  * {@code --style} alias, then {@code format.java}/{@code format.kotlin} in jk.toml, then the {@code
  * format.style} alias, then the built-in default.
+ *
+ * <p>Boolean hygiene flags ({@code optimize-imports}, {@code import-order}, {@code
+ * remove-unused-imports}) share precedence: CLI flag → env var (caller-resolved into the CLI
+ * Boolean) → {@code [format]} → built-in default ({@code true} for all three).
  */
 final class FormatStyles {
 
@@ -29,33 +33,42 @@ final class FormatStyles {
     static final List<String> JAVA_STYLES = List.of("palantir", "google", "aosp");
     static final List<String> KOTLIN_STYLES = List.of("kotlinlang", "google", "meta");
 
-    /** Cross-language presets: alias → (java, kotlin). */
-    private static final Map<String, Resolved> ALIASES = buildAliases();
+    /** Cross-language presets: alias → (java, kotlin). Booleans are resolved separately. */
+    private static final Map<String, StylePair> ALIASES = buildAliases();
 
-    private static Map<String, Resolved> buildAliases() {
-        var m = new LinkedHashMap<String, Resolved>();
-        // Aliases carry style names only; boolean flags are resolved separately.
-        m.put("standard", new Resolved("palantir", "kotlinlang", DEFAULT_OPTIMIZE_IMPORTS));
+    private static Map<String, StylePair> buildAliases() {
+        var m = new LinkedHashMap<String, StylePair>();
+        m.put("standard", new StylePair("palantir", "kotlinlang"));
         return Map.copyOf(m);
     }
 
     static final boolean DEFAULT_OPTIMIZE_IMPORTS = true;
+    static final boolean DEFAULT_IMPORT_ORDER = true;
+    static final boolean DEFAULT_REMOVE_UNUSED_IMPORTS = true;
 
-    /** The chosen concrete styles and OpenRewrite flags for each language. */
-    record Resolved(String java, String kotlin, boolean optimizeImports) {}
+    private record StylePair(String java, String kotlin) {}
+
+    /** The chosen concrete styles and hygiene flags for a format run. */
+    record Resolved(
+            String java, String kotlin, boolean optimizeImports, boolean importOrder, boolean removeUnusedImports) {}
 
     /**
-     * Resolve the effective styles from (CLI flags) + (jk.toml {@code [format]}). {@code cliAlias} is
-     * {@code --style}; {@code cliJava}/{@code cliKotlin} are {@code --java-style}/{@code
-     * --kotlin-style}. Any of these may be {@code null}.
+     * Resolve the effective styles and hygiene flags from (CLI flags) + (jk.toml {@code [format]}).
+     * Style args may be {@code null}; boolean CLI args may be {@code null} (unset).
      *
      * @throws IllegalArgumentException on an unknown style or alias (message is user-facing)
      */
     static Resolved resolve(
-            String cliJava, String cliKotlin, String cliAlias, Boolean cliOptimizeImports, JkBuild.FormatConfig cfg) {
+            String cliJava,
+            String cliKotlin,
+            String cliAlias,
+            Boolean cliOptimizeImports,
+            Boolean cliImportOrder,
+            Boolean cliRemoveUnusedImports,
+            JkBuild.FormatConfig cfg) {
         JkBuild.FormatConfig fmt = cfg == null ? JkBuild.FormatConfig.EMPTY : cfg;
-        Resolved cliAliasPair = alias(cliAlias, "--style");
-        Resolved tomlAliasPair = alias(fmt.style(), "format.style");
+        StylePair cliAliasPair = alias(cliAlias, "--style");
+        StylePair tomlAliasPair = alias(fmt.style(), "format.style");
 
         String java = firstNonNull(
                 cliJava,
@@ -75,8 +88,11 @@ final class FormatStyles {
 
         // Flag precedence: CLI → env var (caller-resolved) → jk.toml → default.
         boolean optimizeImports = firstNonNullBool(cliOptimizeImports, fmt.optimizeImports(), DEFAULT_OPTIMIZE_IMPORTS);
+        boolean importOrder = firstNonNullBool(cliImportOrder, fmt.importOrder(), DEFAULT_IMPORT_ORDER);
+        boolean removeUnusedImports =
+                firstNonNullBool(cliRemoveUnusedImports, fmt.removeUnusedImports(), DEFAULT_REMOVE_UNUSED_IMPORTS);
 
-        return new Resolved(java, kotlin, optimizeImports);
+        return new Resolved(java, kotlin, optimizeImports, importOrder, removeUnusedImports);
     }
 
     private static boolean firstNonNullBool(Boolean... vals) {
@@ -86,9 +102,9 @@ final class FormatStyles {
         return false; // unreachable: last arg is always a non-null default
     }
 
-    private static Resolved alias(String name, String source) {
+    private static StylePair alias(String name, String source) {
         if (name == null || name.isBlank()) return null;
-        Resolved pair = ALIASES.get(name.trim().toLowerCase(java.util.Locale.ROOT));
+        StylePair pair = ALIASES.get(name.trim().toLowerCase(java.util.Locale.ROOT));
         if (pair == null) {
             throw new IllegalArgumentException(source
                     + " = \""

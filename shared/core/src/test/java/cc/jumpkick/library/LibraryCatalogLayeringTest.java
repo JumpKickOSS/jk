@@ -2,9 +2,13 @@
 package cc.jumpkick.library;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class LibraryCatalogLayeringTest {
 
@@ -58,5 +62,69 @@ class LibraryCatalogLayeringTest {
         LibraryCatalog withProject =
                 bundled.withProjectOverrides(Map.of("a", new LibraryCatalog.Module("project", "a")));
         assertThat(withProject.layerNames()).containsExactly("project", "test");
+    }
+
+    @Test
+    void system_layered_has_no_local_layer() {
+        assertThat(LibraryCatalog.layered().layerNames()).doesNotContain("local");
+    }
+
+    @Test
+    void for_project_loads_workspace_root_jk_libs(@TempDir Path tmp) throws Exception {
+        Path root = tmp.resolve("ws");
+        Path mod = root.resolve("app");
+        Files.createDirectories(mod);
+        Files.writeString(root.resolve("jk.toml"), """
+                [project]
+                group = "com.example"
+                name = "ws"
+                version = "1.0.0"
+
+                [workspace]
+                modules = ["app"]
+                """);
+        Files.writeString(mod.resolve("jk.toml"), """
+                [project]
+                name = "app"
+                """);
+        Files.writeString(root.resolve("jk-libs.toml"), """
+                [libraries]
+                internal = "com.acme:internal"
+                """);
+
+        LibraryCatalog catalog = LibraryCatalog.forProject(mod);
+        assertThat(catalog.lookup("internal"))
+                .get()
+                .extracting(LibraryCatalog.Module::moduleKey)
+                .isEqualTo("com.acme:internal");
+        assertThat(catalog.source("internal"))
+                .get()
+                .extracting(LibraryCatalog.Source::layer)
+                .isEqualTo("project");
+    }
+
+    @Test
+    void for_project_rejects_module_local_jk_libs(@TempDir Path tmp) throws Exception {
+        Path root = tmp.resolve("ws");
+        Path mod = root.resolve("app");
+        Files.createDirectories(mod);
+        Files.writeString(root.resolve("jk.toml"), """
+                [project]
+                group = "com.example"
+                name = "ws"
+                version = "1.0.0"
+
+                [workspace]
+                modules = ["app"]
+                """);
+        Files.writeString(mod.resolve("jk.toml"), "[project]\nname = \"app\"\n");
+        Files.writeString(mod.resolve("jk-libs.toml"), """
+                [libraries]
+                x = "com.acme:x"
+                """);
+
+        assertThatThrownBy(() -> LibraryCatalog.forProject(mod))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("only allowed at the workspace root");
     }
 }

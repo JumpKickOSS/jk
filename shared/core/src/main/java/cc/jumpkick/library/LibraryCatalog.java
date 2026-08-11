@@ -16,12 +16,19 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Consumer;
 import org.tomlj.TomlTable;
 
 /**
- * Short-name → {@code group:artifact} catalog. Layers (high → low): project {@code [libraries]},
- * {@code ~/.jk/libs.toml}, downloaded {@code store/libs.global.toml}, bundled resource. Per-name
- * shadowing; only the bundled layer is guaranteed present.
+ * Short-name → {@code group:artifact} catalog. Layers (high → low):
+ *
+ * <ol>
+ *   <li>{@code jk-libs.toml} at the workspace root (or standalone project root) — optional
+ *   <li>system global ({@code <store>/libs.global.toml}) — managed by {@code jk library update}
+ *   <li>bundled classpath resource — offline floor
+ * </ol>
+ *
+ * <p>Per-name shadowing; the bundled layer is always present. There is no host-local catalog file.
  */
 public final class LibraryCatalog {
 
@@ -30,17 +37,18 @@ public final class LibraryCatalog {
     /** Basename under {@link JkDirs#store()}. */
     public static final String DOWNLOADED_BASENAME = "libs.global.toml";
 
+    /**
+     * Optional project/workspace short-name map. Allowed only at the workspace root (or standalone
+     * project root) — never under a workspace module.
+     */
+    public static final String PROJECT_FILE = "jk-libs.toml";
+
     private static volatile LibraryCatalog bundled;
 
     private final List<Layer> layers;
 
     private LibraryCatalog(List<Layer> layers) {
         this.layers = List.copyOf(Objects.requireNonNull(layers, "layers"));
-    }
-
-    /** Per-user manual override layer: {@code ~/.jk/libs.toml}. */
-    public static Path userFile() {
-        return JkDirs.home().resolve("libs.toml");
     }
 
     /** Downloaded registry mirror: {@code <store>/libs.global.toml}. */
@@ -58,7 +66,12 @@ public final class LibraryCatalog {
         return etagFileFor(downloadedFile());
     }
 
-    /** Bundled-only catalog (lazy singleton); ignores user/global layers. */
+    /** Path of the project/workspace catalog file under {@code root}. */
+    public static Path projectFile(Path root) {
+        return root.resolve(PROJECT_FILE);
+    }
+
+    /** Bundled-only catalog (lazy singleton); ignores system/project layers. */
     public static LibraryCatalog bundled() {
         LibraryCatalog local = bundled;
         if (local != null) return local;
@@ -69,18 +82,115 @@ public final class LibraryCatalog {
         }
     }
 
-    /** Local → global → bundled (no project layer; see {@link #withProjectOverrides}). */
+    /** System catalog only: global → bundled (no project layer). */
     public static LibraryCatalog layered() {
         return layered(w -> {});
     }
 
     /** As {@link #layered()}, reporting skipped-malformed-layer warnings to {@code warn}. */
-    public static LibraryCatalog layered(java.util.function.Consumer<String> warn) {
+    public static LibraryCatalog layered(Consumer<String> warn) {
         List<Layer> chain = new ArrayList<>();
-        loadFileLayer(userFile(), "local", warn).ifPresent(chain::add);
         loadFileLayer(downloadedFile(), "global", warn).ifPresent(chain::add);
         chain.add(loadBundledLayer());
         return new LibraryCatalog(chain);
+    }
+
+    /**
+     * System catalog plus optional {@code jk-libs.toml} for the project/workspace that owns {@code
+     * dir}. {@code dir} is typically a module directory or standalone project root.
+     *
+     * <p>If {@code dir} is a workspace <em>module</em> and contains its own {@code jk-libs.toml},
+     * that is an error — the file is only legal at the workspace root.
+     */
+    public static LibraryCatalog forProject(Path dir) {
+        return forProject(dir, w -> {});
+    }
+
+    /** As {@link #forProject(Path)}, reporting skipped-malformed-layer warnings to {@code warn}. */
+    public static LibraryCatalog forProject(Path dir, Consumer<String> warn) {
+        Objects.requireNonNull(dir, "dir");
+        Objects.requireNonNull(warn, "warn");
+        Path root = catalogRoot(dir);
+        Path moduleLibs = dir.toAbsolutePath().normalize().resolve(PROJECT_FILE);
+        Path rootLibs = projectFile(root);
+        if (!moduleLibs.equals(rootLibs) && Files.isRegularFile(moduleLibs)) {
+            throw new IllegalStateException(
+                    PROJECT_FILE + " is only allowed at the workspace root (" + rootLibs + "); found " + moduleLibs);
+        }
+        LibraryCatalog base = layered(warn);
+        return loadFileLayer(rootLibs, "project", warn)
+                .map(layer -> base.withProjectOverrides(layer.libraries))
+                .orElse(base);
+    }
+
+    /**
+     * Catalog root for {@code dir}: nearest ancestor workspace root (has {@code jk.toml} with
+     * {@code [workspace] modules}), else the nearest ancestor that has {@code jk.toml} (standalone),
+     * else {@code dir} itself.
+     */
+    public static Path catalogRoot(Path dir) {
+        Path normalized = dir.toAbsolutePath().normalize();
+        Path candidate = normalized;
+        Path nearestJkTomlDir = null;
+        for (int depth = 0; depth < 8192 && candidate != null; depth++) {
+            Path jkToml = candidate.resolve("jk.toml");
+            if (Files.isRegularFile(jkToml)) {
+                if (nearestJkTomlDir == null) nearestJkTomlDir = candidate;
+                if (declaresWorkspaceModules(jkToml)) {
+                    return candidate;
+                }
+            }
+            candidate = candidate.getParent();
+        }
+        return nearestJkTomlDir != null ? nearestJkTomlDir : normalized;
+    }
+
+    /**
+     * Lightweight probe: does {@code jkToml} declare a non-empty {@code [workspace] modules}
+     * array? Line-scanned so catalog loading never re-enters full {@code JkBuild} parse. Handles
+     * both single-line ({@code modules = ["a"]}) and multi-line array forms.
+     */
+    static boolean declaresWorkspaceModules(Path jkToml) {
+        try {
+            boolean inWorkspace = false;
+            boolean inModulesArray = false;
+            for (String raw : Files.readString(jkToml, StandardCharsets.UTF_8).split("\n", -1)) {
+                String line = raw.strip();
+                if (line.isEmpty() || line.startsWith("#")) continue;
+                if (line.startsWith("[")) {
+                    int close = line.indexOf(']');
+                    String section = close > 1
+                            ? line.substring(line.startsWith("[[") ? 2 : 1, close)
+                                    .replace("]", "")
+                                    .strip()
+                            : "";
+                    inWorkspace = section.equals("workspace");
+                    inModulesArray = false;
+                    continue;
+                }
+                if (!inWorkspace) continue;
+                if (line.startsWith("modules")) {
+                    int open = line.indexOf('[');
+                    if (open < 0) continue;
+                    int end = line.lastIndexOf(']');
+                    if (end > open) {
+                        // modules = [ "a", "b" ] on one line
+                        if (!line.substring(open + 1, end).strip().isEmpty()) return true;
+                        continue;
+                    }
+                    // modules = [  … multi-line
+                    inModulesArray = true;
+                    continue;
+                }
+                if (inModulesArray) {
+                    if (line.contains("\"")) return true; // at least one quoted module path
+                    if (line.contains("]")) inModulesArray = false;
+                }
+            }
+            return false;
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     /** Test seam: build a catalog from a single in-memory map. */
@@ -93,7 +203,7 @@ public final class LibraryCatalog {
         return new LibraryCatalog(List.of(new Layer("inline", parseTable(toml, "inline"))));
     }
 
-    /** View with project {@code [libraries]} as the top layer. */
+    /** View with project {@code jk-libs.toml} entries as the top layer. */
     public LibraryCatalog withProjectOverrides(Map<String, Module> projectLibraries) {
         if (projectLibraries == null || projectLibraries.isEmpty()) return this;
         List<Layer> chain = new ArrayList<>(layers.size() + 1);
@@ -215,16 +325,14 @@ public final class LibraryCatalog {
         }
     }
 
-    private static Optional<Layer> loadFileLayer(
-            Path file, String layerName, java.util.function.Consumer<String> warn) {
+    private static Optional<Layer> loadFileLayer(Path file, String layerName, Consumer<String> warn) {
         if (!Files.isRegularFile(file)) return Optional.empty();
         try {
             String text = Files.readString(file, StandardCharsets.UTF_8);
             return Optional.of(new Layer(layerName, parseTable(text, file.toString())));
         } catch (IOException | IllegalStateException e) {
-            // Fail soft: a malformed user/downloaded layer should warn, not
-            // break every jk invocation. Hand the message to the caller's sink
-            // (the CLI routes it to stderr) and skip the layer.
+            // Fail soft: a malformed downloaded/project layer should warn, not break every jk
+            // invocation. Hand the message to the caller's sink and skip the layer.
             warn.accept("warning: ignoring library catalog layer at " + file + " — " + e.getMessage());
             return Optional.empty();
         }
@@ -232,11 +340,10 @@ public final class LibraryCatalog {
 
     /**
      * Parse a {@code [libraries]} table from catalog TOML source. A line scanner, not tomlj: the
-     * catalog files (bundled resource, {@code ~/.jk/libs.toml}, the downloaded layer) are a
-     * jk-owned flat format — {@code name = "group:artifact"} — and this parse runs client-side
-     * (list/search/suggestions, tool targets, scaffold), where the thin client ships no TOML
-     * parser. Validation is per-entry and as strict as the old parse: a malformed entry throws
-     * with the same messages.
+     * catalog files (bundled resource, system global, {@code jk-libs.toml}) are a jk-owned flat
+     * format — {@code name = "group:artifact"} — and this parse runs client-side (list/search/
+     * suggestions, tool targets, scaffold), where the thin client ships no TOML parser. Validation
+     * is per-entry and strict: a malformed entry throws with a path-qualified message.
      */
     static Map<String, Module> parseTable(String toml, String displayPath) {
         Map<String, Module> out = new LinkedHashMap<>();
@@ -302,8 +409,8 @@ public final class LibraryCatalog {
     }
 
     /**
-     * Parse an already-located {@code [libraries]} sub-table. Used by the jk.toml parser, which has
-     * already navigated to the table.
+     * Parse an already-located {@code [libraries]} sub-table. Used when a caller already navigated
+     * to the table (tests / importers).
      */
     public static Map<String, Module> parseLibrariesTable(TomlTable table, String displayPath) {
         Map<String, Module> out = new LinkedHashMap<>();

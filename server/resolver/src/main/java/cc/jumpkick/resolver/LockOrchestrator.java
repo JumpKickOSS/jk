@@ -419,8 +419,8 @@ public final class LockOrchestrator {
                             () -> {
                                 try {
                                     if (failed.get()) {
-                                        throw new CompletionException(new MavenRepo.FetchAbortedException(
-                                                "lock already failed — skipped"));
+                                        throw new CompletionException(
+                                                new MavenRepo.FetchAbortedException("lock already failed — skipped"));
                                     }
                                     return toArtifact(
                                             e.getValue(),

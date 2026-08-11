@@ -4,6 +4,11 @@ package cc.jumpkick.cli.tui;
 import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.runtime.progress.ClockProgressStrategy;
+import cc.jumpkick.runtime.progress.HeaderProgressState;
+import cc.jumpkick.runtime.progress.HeaderProgressStrategy;
+import cc.jumpkick.runtime.progress.ProgressBarMode;
+import cc.jumpkick.runtime.progress.WeightedProgressStrategy;
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
@@ -101,8 +106,58 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     private long startNanos;
     private long numerator;
     private long denominator;
-    private double peakFraction; // monotonic-display floor: the bar never renders below this
-    private long etaEstimateMs; // total predicted build wall-clock (the jk explain figure); 0 = no countdown
+    /**
+     * Frozen seed remaining {@code R0} at seed time ({@code -1} = unknown / count-up only). Paired
+     * with {@link #remainingSetAtElapsedMs}. Explain-identical; seed path freezes after execute.
+     * Strategy AUTO uses this to pick clock; bar falls back to {@code elapsed/R0} without residual.
+     *
+     * <p>Header bar mode: {@link ProgressBarMode} ({@code JK_PROGRESS_MODE}) — default AUTO uses
+     * {@link ClockProgressStrategy} when R0 is seeded, else {@link WeightedProgressStrategy}.
+     */
+    private long remainingWorkMs = -1;
+    /**
+     * Hold the dual-clock count-up at dim for this long after countdown freezes at {@code 0s}, so a
+     * 1–2s bar/wrap-up lag does not flash mid-gray and draw attention.
+     */
+    static final long COUNT_UP_PROMOTE_GRACE_MS = 2_000L;
+    /** {@link #elapsedMillis()} when the R0 seed was taken. */
+    private long remainingSetAtElapsedMs;
+    /**
+     * Live residual remaining from engine RemainingWork ({@code -1} unknown). Drives the adaptive
+     * clock bar ({@code elapsed/(elapsed+residual)}) and the painted countdown (re-anchored).
+     */
+    private long residualRemainingMs = -1;
+    /**
+     * {@link #elapsedMillis()} when {@link #residualRemainingMs} was last applied — countdown
+     * open-loop-decays residual between samples so it eases into R(t) and hits 0 with residual.
+     */
+    private long residualSetAtElapsedMs;
+    /**
+     * Jitter buffer for the painted countdown face: residual may re-anchor many times inside one
+     * whole second, but the header only commits a new remaining figure when {@link
+     * #countdownDisplayElapsedSec} advances (or on first paint / seed / snap-to-zero). Holds the
+     * last painted remaining seconds.
+     */
+    private long countdownDisplayRemainingSec;
+    /**
+     * Whole-second elapsed for which {@link #countdownDisplayRemainingSec} was sampled ({@code -1}
+     * = never painted — next planHeader samples the latest target immediately).
+     */
+    private long countdownDisplayElapsedSec = -1;
+    /**
+     * True once execute has begun — the explain seed path ({@link #setRemainingWorkEstimate}) no
+     * longer replaces R0. Residual re-anchors for display still apply.
+     */
+    private boolean openLoopLocked;
+    /** Run-wide total for notifications: elapsed-at-seed + R0. 0 when never seeded. */
+    private long etaEstimateMs;
+
+    private final ProgressBarMode progressMode = ProgressBarMode.fromEnvironment();
+    /** One monotonic floor across the strategy pair — the AUTO takeover must not repaint backwards. */
+    private final cc.jumpkick.runtime.progress.SharedPeak displayedPeak = new cc.jumpkick.runtime.progress.SharedPeak();
+
+    private final ClockProgressStrategy clockProgress = new ClockProgressStrategy(displayedPeak);
+    private final WeightedProgressStrategy weightedProgress = new WeightedProgressStrategy(displayedPeak);
     private int modulesComplete;
     private int modulesTotal; // 0 = hide module remaining
     private long finishSeq;
@@ -297,6 +352,10 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             r.state = RowState.ACTIVE;
             this.target = module;
             touchPhaseStart(phaseKey);
+            // First module task starting = execute has begun: freeze the R0 seed path so
+            // provisional eta rewrites cannot thrash the total (JK-1806). Residual still
+            // re-anchors the painted countdown.
+            if (remainingWorkMs >= 0) openLoopLocked = true;
         }
     }
 
@@ -327,48 +386,79 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     /**
-     * Seed the header clock with the total predicted build wall-clock from command start. The clock
-     * is <em>run-wide</em> pure wall-clock from {@link #plan(PrintStream, String, boolean)
-     * construction}:
-     *
-     * <ul>
-     * <li>With a seed {@code > 0}: show both {@code ETA ~remaining} (countdown) and {@code +elapsed}
-     * (count-up). When remaining hits zero the countdown freezes at dim {@code 0s} and the count-up
-     * turns yellow; it does not switch to an excess-only display.
-     * <li>With no seed ({@code 0}): count up {@code +Ns} from {@code +0s} for the whole command
-     * (yellow).
-     * </ul>
-     *
-     * <p>Early + post-prepare seeds may refine the total while no module has finished yet. Once
-     * execute has completed any module, further updates are ignored so mid-build re-projections
-     * cannot jump the countdown or reset count-up at module boundaries.
-     *
-     * <p>Prefer {@link #setRemainingWorkEstimate} when the engine reports work still to do after
-     * elapsed preflight (lock/graph) — that keeps the explain figure and the live countdown equal.
+     * Seed the countdown with remaining wall work {@code R0} (ms). Same figure as {@code jk
+     * explain}. After execute starts (first {@link #stepRunning} or a completed module in {@link
+     * #setModuleProgress}), further seed-path updates are ignored so a provisional lock-window
+     * figure cannot thrash mid-run. Live residual still re-anchors display via {@link
+     * #setBarResidualRemaining}. Pre-execute re-seeds (post-forecast, post-prepare) replace a
+     * provisional seed while unlocked.
      */
-    public void setEtaEstimate(long totalMillis) {
+    public void setEtaEstimate(long remainingOrTotalMillis) {
+        setRemainingWorkEstimate(remainingOrTotalMillis);
+    }
+
+    /**
+     * Apply a seed remaining estimate (R0 path). {@code 0} before any seed is ignored (unknown).
+     * After execute locks the seed path, updates are ignored — residual mid-run uses {@link
+     * #setBarResidualRemaining} instead.
+     */
+    public void setRemainingWorkEstimate(long remainingMillis) {
+        long rem = Math.max(0, remainingMillis);
         synchronized (lock) {
-            long next = Math.max(0, totalMillis);
-            // Never clear a positive seed with 0 (unknown) mid-run.
-            if (next == 0 && etaEstimateMs > 0) return;
-            // After any module finishes, lock the seed for pure wall-clock display.
-            if (etaEstimateMs > 0 && modulesComplete > 0) return;
-            this.etaEstimateMs = next;
+            if (openLoopLocked) return;
+            // Unknown → still unknown: ignore a bare zero (engine "no estimate").
+            if (remainingWorkMs < 0 && rem == 0) return;
+            // Already seeded: ignore zero (do not clear R0). Positive re-seeds allowed pre-execute.
+            if (remainingWorkMs >= 0 && rem == 0) return;
+            long elapsed = elapsedMillis();
+            remainingWorkMs = rem;
+            remainingSetAtElapsedMs = elapsed;
+            etaEstimateMs = elapsed + rem;
+            // Pre-execute re-seed also refreshes residual so countdown tracks the refined R0
+            // until live RemainingWork updates arrive (provisional → post-forecast).
+            residualRemainingMs = rem;
+            residualSetAtElapsedMs = elapsed;
+            // Force the countdown face to re-sample on next paint (seed is intentional, not jitter).
+            countdownDisplayElapsedSec = -1;
+            // R0 is enough to drive the adaptive bar (drop preflight solve label).
+            if (rem > 0) this.solveLabel = "";
         }
     }
 
     /**
-     * Seed from a <em>remaining-work</em> estimate (what {@code jk explain} prints after lock).
-     * Converts to a run-wide total: {@code elapsed + remaining} so lock/preflight time already spent
-     * is not subtracted twice and the countdown ends near zero when the estimate is accurate.
+     * Apply live residual remaining from engine RemainingWork. Updates the adaptive clock bar and
+     * re-anchors the countdown so painted remaining eases toward residual and hits 0 with it.
+     * Between residual samples the paint open-loop-decays residual by wall time. Pass {@code -1}
+     * to clear residual (countdown falls back to frozen R0 − elapsed).
      */
-    public void setRemainingWorkEstimate(long remainingMillis) {
-        long rem = Math.max(0, remainingMillis);
-        if (rem == 0) return;
-        setEtaEstimate(elapsedMillis() + rem);
+    public void setBarResidualRemaining(long residualMillis) {
+        synchronized (lock) {
+            if (residualMillis < 0) {
+                residualRemainingMs = -1;
+                return;
+            }
+            long rem = residualMillis;
+            // Bare residual 0 with no R0 seed: do not invent a dual clock from "done".
+            if (remainingWorkMs < 0 && rem == 0) return;
+            long elapsed = elapsedMillis();
+            residualRemainingMs = rem;
+            residualSetAtElapsedMs = elapsed;
+            // Reconnect / residual-before-seed: seed R0 from first positive residual (JK-1820).
+            if (remainingWorkMs < 0 && rem > 0) {
+                remainingWorkMs = rem;
+                remainingSetAtElapsedMs = elapsed;
+            }
+            if (etaEstimateMs == 0 && rem > 0) {
+                etaEstimateMs = elapsed + rem;
+            }
+            if (rem > 0) this.solveLabel = "";
+        }
     }
 
-    /** Seeded ETA total in milliseconds (0 = none). Used for long-build desktop notifications. */
+    /**
+     * Run-wide total estimate in ms for desktop notifications ({@code 0} = never seeded).
+     * Live countdown prefers residual re-anchor; falls back to R0 − elapsed.
+     */
     public long etaEstimateMs() {
         synchronized (lock) {
             return etaEstimateMs;
@@ -388,6 +478,13 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         synchronized (lock) {
             this.modulesComplete = Math.max(0, complete);
             this.modulesTotal = Math.max(0, total);
+            // A completed module means execute is underway — freeze the R0 seed path.
+            // modulesTotal alone arrives with the work model *before* the engine's real
+            // post-forecast seed (`eta` line), so it must not lock (JK-1806). Residual
+            // re-anchors for display still apply after lock.
+            if (this.modulesComplete > 0 && remainingWorkMs >= 0) {
+                openLoopLocked = true;
+            }
         }
     }
 
@@ -460,33 +557,56 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         }
     }
 
-    /** Set the aggregate progress numerator/denominator for the bar. */
+    /** Set the aggregate progress numerator/denominator (engine weight slices). */
     public void progress(long numerator, long denominator) {
         synchronized (lock) {
-            // Monotonic display guard: at a STABLE total, never let the rendered
-            // fraction slide backward — a residual reweight that drops num/den holds
-            // at the peak until real progress passes it. But when the total GROWS
-            // (the uncalibrated path discovering more modules, or genuine new work)
-            // the fraction legitimately rebases, so reset the peak instead of pinning
-            // at 100%. The calibrated workspace build fixes its total up front
-            // (Step 1.5), so there the total is stable and the guard is always live.
-            double f = denominator > 0 ? (double) numerator / denominator : 0.0;
-            if (denominator > this.denominator) {
-                peakFraction = f; // total grew → rebase
-            } else if (denominator > 0 && f < peakFraction) {
-                numerator = Math.round(peakFraction * denominator); // hold the peak
-            } else {
-                peakFraction = f;
+            this.numerator = Math.max(0, numerator);
+            this.denominator = Math.max(0, denominator);
+            HeaderProgressState st = progressState(elapsedMillis());
+            HeaderProgressStrategy strat = activeProgressStrategy();
+            long[] d = strat.onWeightProgress(st, this.numerator, this.denominator);
+            // Weighted strategy owns monotonic peak; keep fields in sync for tests.
+            if ("weighted".equals(strat.id()) && d[1] > 0) {
+                this.numerator = d[0];
+                this.denominator = d[1];
             }
-            this.numerator = numerator;
-            this.denominator = denominator;
-            // Prefer the bar over the text-only solve label once we have a denominator.
-            if (denominator > 0) this.solveLabel = "";
-            // Plain multi-line: emit 0% then each newly crossed 10% decade (JK-1379).
-            if (animate && !Theme.active().isAnsi() && denominator > 0) {
-                emitPlainProgressDecades();
+            if (this.denominator > 0 || st.hasR0()) {
+                this.solveLabel = "";
+            }
+            if (animate && !Theme.active().isAnsi() && d[1] > 0) {
+                emitPlainProgressDecades(d[0], d[1]);
             }
         }
+    }
+
+    /**
+     * Numerator/denominator for the painted bar via {@link ProgressBarMode} strategy (clock when
+     * R0 seeded under AUTO, else weighted; override with {@code JK_PROGRESS_MODE}).
+     */
+    long[] displayBar(long elapsedMillis) {
+        synchronized (lock) {
+            return activeProgressStrategy().display(progressState(elapsedMillis));
+        }
+    }
+
+    /** Active strategy for tests/diagnostics. */
+    HeaderProgressStrategy activeProgressStrategy() {
+        return progressMode.select(clockProgress, weightedProgress, remainingWorkMs, residualRemainingMs);
+    }
+
+    ProgressBarMode progressMode() {
+        return progressMode;
+    }
+
+    private HeaderProgressState progressState(long elapsedMillis) {
+        return new HeaderProgressState(
+                numerator,
+                denominator,
+                remainingWorkMs,
+                remainingSetAtElapsedMs,
+                elapsedMillis,
+                residualRemainingMs,
+                done);
     }
 
     /**
@@ -683,12 +803,12 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      * Emit plain progress lines for every newly crossed 10% decade up to (and not past) 90%.
      * Must hold {@link #lock}. First call always prints the mandatory 0% start line.
      */
-    private void emitPlainProgressDecades() {
-        if (done || denominator <= 0) return;
+    private void emitPlainProgressDecades(long num, long den) {
+        if (done || den <= 0) return;
         plainProgressMode = true;
         // Decade 0..9 while working; 100% only on settle as done.
-        long cappedNum = Math.min(numerator, denominator);
-        int decade = (int) Math.min(9, (cappedNum * 10) / denominator);
+        long cappedNum = Math.min(num, den);
+        int decade = (int) Math.min(9, (cappedNum * 10) / den);
         if (plainLastDecade < 0) {
             out.println(plainProgressLine(0, false));
             plainLastDecade = 0;
@@ -973,7 +1093,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      * left behind.
      */
     private void paintBuildPlan() {
-        List<String> lines = renderBuildPlanLines(width, elapsedMillis());
+        long elapsed = elapsedMillis();
+        List<String> lines = renderBuildPlanLines(width, elapsed);
         int prev = lastLines.size();
         if (prev > 0) out.print(Ansi.cursorUp(prev)); // to the top of the region
         for (int i = 0; i < lines.size(); i++) {
@@ -987,7 +1108,14 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         }
         // A shorter region than last time: erase the orphaned lines below.
         if (prev > lines.size()) out.print(Ansi.ERASE_DISPLAY_TO_END);
-        out.print(Ansi.taskbarProgress(ProgressBar.percent(numerator, denominator)));
+        long[] bd = displayBar(elapsed);
+        out.print(Ansi.taskbarProgress(ProgressBar.percent(bd[0], bd[1])));
+        // Plain decades can cross between weight events when open-loop R0 drives the bar.
+        if (animate && !Theme.active().isAnsi() && bd[1] > 0) {
+            synchronized (lock) {
+                emitPlainProgressDecades(bd[0], bd[1]);
+            }
+        }
         lastLines = lines;
         linesDrawn = lines.size();
     }
@@ -1184,6 +1312,11 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             body = detail.substring(0, w);
             worker = detail.substring(w);
         }
+        // native-image: "{bin} · classpath input size: ~N MiB" — path color + bold white size.
+        String nativePainted = colorNativeClasspathSizeDetail(body, t);
+        if (nativePainted != null) {
+            return worker.isEmpty() ? nativePainted : nativePainted + Theme.colorize(worker, t.midGray());
+        }
         // Only syntax-highlight true member refs (FooTest.bar). Phase "Test" also hosts
         // compile-test labels like "compiling 12 sources" — those must stay mid-gray prose
         // (SyntaxHighlight paints unmatched text as terminal default/white).
@@ -1192,6 +1325,30 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 : colorProseDetail(body, t);
         if (worker.isEmpty()) return painted;
         return painted + Theme.colorize(worker, t.midGray());
+    }
+
+    /**
+     * Paint {@code {filename} · classpath input size: ~N MiB}: filename in {@link Theme#path}
+     * (periwinkle), size number bold bright-white, prose mid-gray. Returns null when the detail
+     * is not this shape so the generic prose painter handles it.
+     */
+    static String colorNativeClasspathSizeDetail(String detail, Theme t) {
+        if (detail == null) return null;
+        final String marker = " · classpath input size: ~";
+        int sep = detail.indexOf(marker);
+        if (sep <= 0) return null;
+        String name = detail.substring(0, sep);
+        String after = detail.substring(sep + marker.length()); // "1.4 MiB" or "12 MiB"
+        int sp = after.indexOf(' ');
+        if (sp <= 0) return null;
+        String num = after.substring(0, sp);
+        String unitAndRest = after.substring(sp); // " MiB" (+ anything after)
+        if (!Character.isDigit(num.charAt(0))) return null;
+        // focused() = bold + bright white (same as focused option labels / input buffer).
+        return Theme.colorize(name, t.path())
+                + Theme.colorize(marker.substring(0, marker.length() - 1), t.midGray()) // " · classpath input size: "
+                + Theme.colorize("~" + num, t.focused())
+                + Theme.colorize(unitAndRest, t.midGray());
     }
 
     /**
@@ -1554,10 +1711,15 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     private String planHeader(long elapsedMillis) {
         Theme t = Theme.active();
         AttributedStyle dim = t.darkGray();
-        String barStr = bar.render(numerator, denominator);
+        long[] bd = displayBar(elapsedMillis);
+        long barNum = bd[0];
+        long barDen = bd[1];
+        // Open-loop R0 alone is enough to show the bar (even before weight calibrate).
+        boolean hasBar = barDen > 0 || denominator > 0;
+        String barStr = hasBar ? bar.render(barNum, Math.max(1, barDen)) : bar.render(0, 0);
         StringBuilder h = new StringBuilder();
         String sl = solveLabel;
-        boolean phase1 = denominator == 0 && !sl.isEmpty();
+        boolean phase1 = !hasBar && !sl.isEmpty();
         AttributedStyle chip = t.planChip();
         // Pulse glyph: FG lerps white→chip blue; BG stays chip blue so it sits in the pill.
         AttributedStyle pulse =
@@ -1584,7 +1746,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                         .append(Theme.colorize(sl, t.brightWhite()));
             } else {
                 AttributedStyle cap =
-                        t.withBackground(t.bright(t.planBadgeColor()), bar.leadColor(numerator, denominator));
+                        t.withBackground(t.bright(t.planBadgeColor()), bar.leadColor(barNum, Math.max(1, barDen)));
                 h.append(Theme.colorize(Glyphs.SEGMENT_END_NERD, cap)).append(barStr);
             }
         } else {
@@ -1599,19 +1761,62 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             }
         }
         // After the bar's percent: a bright-black middle dot, then the run-wide build clock.
-        // Seeded: dim italic "ETA " + mid-gray "~remaining" · dim "+elapsed". When remaining hits 0
-        // the countdown freezes dim at "0s" and count-up turns yellow. No seed: both modes collapse
-        // to a single yellow "+elapsed" count-up. Never resets on phase/module boundaries. Module
-        // n/m is only on tree rows below — not repeated here.
+        // Seeded: dim italic "ETA " + mid-gray "~remaining" · dim "+elapsed". Residual re-anchors
+        // the target remaining so the countdown eases into R(t); a 1s jitter buffer commits that
+        // target at most once per whole-second tick so multi residual emits do not thrash the face.
+        // Freezes at dim "0s" with residual → 0 (snap, no hold); count-up stays dim for {@link
+        // #COUNT_UP_PROMOTE_GRACE_MS} then mid-gray. No seed: single mid-gray "+elapsed" count-up
+        // (same shade as the seeded countdown face).
         //
         // Both faces are derived from the same whole-second elapsed counter so they tick on the
         // same paint (flooring remaining-ms and elapsed-ms independently desynced them by the
         // seed's sub-second remainder — often ~100ms after setRemainingWorkEstimate).
         h.append(' ').append(Theme.colorize("·", dim)).append(' ');
         long elapsedSec = Math.max(0L, elapsedMillis) / 1000L;
-        if (etaEstimateMs > 0) {
-            long etaSec = Math.max(0L, etaEstimateMs) / 1000L;
-            long remainingSec = etaSec - elapsedSec;
+        // Dual clock when we have ever received a remaining-work seed (including residual 0 done).
+        // Prefer residual re-anchor (eases into R(t), ends on time); else frozen R0 − elapsed.
+        // Deadline = setAt + R so target remainingSec and elapsedSec share whole-second boundaries.
+        long remainingSec;
+        boolean seeded;
+        long overrunMs = 0;
+        synchronized (lock) {
+            long anchorRem;
+            long anchorAt;
+            if (residualRemainingMs >= 0 && (remainingWorkMs >= 0 || residualRemainingMs > 0)) {
+                // Residual known (including 0 after R0 was seeded) — countdown tracks R(t).
+                seeded = true;
+                anchorRem = residualRemainingMs;
+                anchorAt = residualSetAtElapsedMs;
+            } else if (remainingWorkMs >= 0) {
+                seeded = true;
+                anchorRem = remainingWorkMs;
+                anchorAt = remainingSetAtElapsedMs;
+            } else {
+                seeded = false;
+                anchorRem = 0;
+                anchorAt = 0;
+            }
+            if (seeded) {
+                long deadlineMs = anchorAt + anchorRem;
+                long targetSec = Math.max(0L, deadlineMs / 1000L - elapsedSec);
+                // Jitter buffer: sample latest target at most once per whole-second elapsed tick.
+                // Same-second residual re-anchors update the private target only; the painted face
+                // holds until elapsedSec advances (or first paint / seed / snap-to-zero).
+                if (countdownDisplayElapsedSec < 0 || elapsedSec != countdownDisplayElapsedSec || targetSec == 0) {
+                    countdownDisplayRemainingSec = targetSec;
+                    countdownDisplayElapsedSec = elapsedSec;
+                }
+                remainingSec = countdownDisplayRemainingSec;
+                if (remainingSec <= 0) {
+                    // Overrun from the true residual/R0 deadline (not the held face).
+                    overrunMs = Math.max(0L, elapsedMillis - deadlineMs);
+                }
+            } else {
+                remainingSec = 0;
+                countdownDisplayElapsedSec = -1;
+            }
+        }
+        if (seeded) {
             h.append(Theme.colorize("ETA ", dim.italic()));
             if (remainingSec <= 0) {
                 h.append(Theme.colorize("0s", dim));
@@ -1619,10 +1824,11 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 h.append(Theme.colorize("~" + fmtClockSeconds(remainingSec), t.midGray()));
             }
             h.append(' ').append(Theme.colorize("·", dim)).append(' ');
-            AttributedStyle up = remainingSec <= 0 ? t.warning() : dim;
+            // Promote count-up only after grace past deadline (not at the first 0s paint).
+            AttributedStyle up = remainingSec <= 0 && overrunMs >= COUNT_UP_PROMOTE_GRACE_MS ? t.midGray() : dim;
             h.append(Theme.colorize("+" + fmtClockSeconds(elapsedSec), up));
         } else {
-            h.append(Theme.colorize("+" + fmtClockSeconds(elapsedSec), t.warning()));
+            h.append(Theme.colorize("+" + fmtClockSeconds(elapsedSec), t.midGray()));
         }
         return h.toString();
     }

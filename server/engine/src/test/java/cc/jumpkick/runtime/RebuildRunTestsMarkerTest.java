@@ -34,18 +34,7 @@ import org.junit.jupiter.api.io.TempDir;
 class RebuildRunTestsMarkerTest {
 
     private static JkConfig rebuildConfig() {
-        return new JkConfig(
-                Optional.empty(),
-                Optional.empty(),
-                Optional.of(true), // rebuild
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty());
+        return JkConfig.empty().withRebuild(Optional.of(true));
     }
 
     @Test

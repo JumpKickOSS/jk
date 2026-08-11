@@ -647,8 +647,8 @@ public final class ImagePlans {
             for (Path jar : e.getValue()) {
                 String withGroup = rows.get(jar).moduleGroup() + "-" + e.getKey();
                 if (!qualified.add(withGroup)) {
-                    throw new IOException("image dependency jar name collision: multiple lock rows map to "
-                            + withGroup + " — cannot lay out /app/libs without losing one");
+                    throw new IOException("image dependency jar name collision: multiple lock rows map to " + withGroup
+                            + " — cannot lay out /app/libs without losing one");
                 }
                 names.put(jar, withGroup);
             }
@@ -662,11 +662,7 @@ public final class ImagePlans {
             String c = cc.jumpkick.model.PackageId.parse(pkg.name()).classifier();
             if (c != null) classifier = c;
         }
-        return pkg.moduleArtifact()
-                + "-"
-                + pkg.version()
-                + (classifier.isEmpty() ? "" : "-" + classifier)
-                + ".jar";
+        return pkg.moduleArtifact() + "-" + pkg.version() + (classifier.isEmpty() ? "" : "-" + classifier) + ".jar";
     }
 
     private static String jarName(java.util.Map<Path, String> names, Path jar) {

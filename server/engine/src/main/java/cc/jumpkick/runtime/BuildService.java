@@ -422,16 +422,53 @@ public final class BuildService {
             boolean verbose,
             boolean parallelTests,
             int maxModuleConcurrency) {
+        return estimateEtaModel(
+                        plan,
+                        entryDir,
+                        cache,
+                        workers,
+                        jdksDir,
+                        profile,
+                        skipTests,
+                        verbose,
+                        parallelTests,
+                        maxModuleConcurrency)
+                .etaMs();
+    }
+
+    /**
+     * ETA seed plus the cost assembly it was computed from — the single assembly both the estimate
+     * and the {@link WorkModel} consume (JK-1817: the model wiring used to re-run
+     * {@code etaCostsFromExplainPlan} unguarded, so an exception the estimate swallowed could fail
+     * the whole build over an estimate, and {@code --force} paid the per-module walk twice).
+     */
+    public record EtaModel(long etaMs, List<EffortWeights.ModuleCost> costs, int concurrency, boolean serial) {
+        static EtaModel empty() {
+            return new EtaModel(0, List.of(), 1, true);
+        }
+    }
+
+    public static EtaModel estimateEtaModel(
+            ExplainPlan plan,
+            Path entryDir,
+            Path cache,
+            int workers,
+            Path jdksDir,
+            String profile,
+            boolean skipTests,
+            boolean verbose,
+            boolean parallelTests,
+            int maxModuleConcurrency) {
         try {
             // Host calibration: cheap when present; bootstrap probe once when missing (network
             // unless --offline). Host scale then multiplies product baselines for cold steps.
             Calibration.ensure(jdksDir);
             List<EffortWeights.ModuleCost> costs =
                     etaCostsFromExplainPlan(plan, cache, workers, jdksDir, profile, skipTests, verbose);
-            if (costs.isEmpty()) return 0;
             int concurrency = etaConcurrency(plan.maxReadyWidth(), workers, parallelTests, maxModuleConcurrency);
             boolean serialEta = concurrency <= 1;
-            return seedEta(
+            if (costs.isEmpty()) return new EtaModel(0, costs, concurrency, serialEta);
+            long etaMs = seedEta(
                     entryDir,
                     costs,
                     costDirs(costs),
@@ -441,10 +478,11 @@ public final class BuildService {
                     cache,
                     jdksDir,
                     historyShapeForCosts(costs.size()));
+            return new EtaModel(etaMs, costs, concurrency, serialEta);
         } catch (RuntimeException e) {
-            // Never fail explain over the estimate — but do not silently advertise 0s/empty.
+            // Never fail explain/build over the estimate — but do not silently advertise 0s/empty.
             System.err.println("jk: ETA estimate failed: " + e.getClass().getSimpleName() + ": " + e.getMessage());
-            return 0;
+            return EtaModel.empty();
         }
     }
 
@@ -509,6 +547,34 @@ public final class BuildService {
         return new ExplainPlan(kept, edges, plan.maxReadyWidth(), plan.errors());
     }
 
+    /**
+     * Order module costs in the same sequence as {@code units} (workspace topo / dirty list) so
+     * first-ready schedule admission matches {@link WorkspaceScheduler}.
+     */
+    static List<ModuleWorkCost> orderCostsLikeUnits(
+            List<BuildGraph.BuildUnit> units, List<EffortWeights.ModuleCost> costs) {
+        Map<Path, EffortWeights.ModuleCost> byDir = new LinkedHashMap<>();
+        if (costs != null) {
+            for (EffortWeights.ModuleCost c : costs) {
+                if (c != null && c.dir() != null) byDir.put(c.dir(), c);
+            }
+        }
+        List<ModuleWorkCost> ordered = new ArrayList<>();
+        if (units != null) {
+            for (BuildGraph.BuildUnit u : units) {
+                EffortWeights.ModuleCost c = byDir.remove(u.dir());
+                if (c != null) {
+                    ordered.add(new ModuleWorkCost(c.dir(), c.prereqs(), c.weight(), c.testWeight()));
+                }
+            }
+        }
+        // Any leftover (shouldn't happen) — append in original cost order.
+        for (EffortWeights.ModuleCost c : byDir.values()) {
+            ordered.add(new ModuleWorkCost(c.dir(), c.prereqs(), c.weight(), c.testWeight()));
+        }
+        return ordered;
+    }
+
     static List<EffortWeights.ModuleCost> etaCostsFromExplainPlan(
             ExplainPlan plan,
             Path cache,
@@ -531,9 +597,26 @@ public final class BuildService {
             if (!distrust && !m.dirty()) continue;
             Path mdir = m.dir();
             Set<Path> prereqs = plan.edges().getOrDefault(mdir, Set.of());
+            // Local *compile* content only — resource drift must not unlock suite walls (core's
+            // "extra resources changed" was pricing ~792 tests while live only re-copied).
+            boolean localCompile = hasLocalCompileContent(m);
+            boolean resourceDrift = hasResourceDriftWork(m);
+            // Native/assembly in the forecast keeps run-tests full (cli ← engine test-dep) even
+            // when native itself is cascade-discounted below.
+            boolean keepFullTests = localCompile
+                    || hasHeavyPackagingTail(m)
+                    || m.steps().stream().noneMatch(s -> (distrust || !s.cached()) && isCompileStepName(s.name()));
             List<String> running = new ArrayList<>();
+            int cascadeRecheck = 0;
             for (TaskForecast.Task s : m.steps()) {
                 if (!distrust && s.cached()) continue;
+                // Price material work only — bookkeeping steps (parse-build, stamps, …) are not
+                // cache hits but must not inflate ETA toward a full monorepo wall.
+                if (!distrust && TaskForecast.Module.isBookkeepingStep(s.name())) continue;
+                if (!distrust && shouldDiscountCascadeStep(s, localCompile, resourceDrift, keepFullTests)) {
+                    cascadeRecheck++;
+                    continue;
+                }
                 running.add(s.name());
             }
             // Rebuild with an empty step list still means "all work" — fall back to plan shape.
@@ -544,6 +627,12 @@ public final class BuildService {
                 BuildPlanner.appendDeclaredTails(builder, inputs);
                 for (cc.jumpkick.run.Task s : builder.build().steps()) running.add(s.name());
             }
+            if (running.isEmpty()) {
+                // Resource-only producer or pure cascade recheck — milliseconds, not suite walls.
+                int w = Math.max(EffortWeights.TOKEN, cascadeRecheck + (m.dirty() ? 1 : 0));
+                costs.add(EffortWeights.costOf(mdir, prereqs, w, 0));
+                continue;
+            }
             java.util.Map<String, Integer> counts = new java.util.HashMap<>();
             if (m.testCount() > 0) counts.put("run-tests", m.testCount());
             if (m.sourceCount() > 0) {
@@ -553,10 +642,122 @@ public final class BuildService {
             int classGuess = m.testCount() > 0 ? Math.max(1, m.testCount() / 3) : 0;
             // workers: 0 = auto (same as bare jk build -w omit)
             int testW = cc.jumpkick.test.TestWorkers.resolve(workers, classGuess, jobsBudget);
-            costs.add(EffortWeights.costFromRunningSteps(
-                    mdir, prereqs, running, metrics, timings, projectDirs, counts, testW));
+            EffortWeights.ModuleCost priced = EffortWeights.costFromRunningSteps(
+                    mdir, prereqs, running, metrics, timings, projectDirs, counts, testW);
+            if (cascadeRecheck > 0) {
+                priced = EffortWeights.costOf(mdir, prereqs, priced.weight() + cascadeRecheck, priced.testWeight());
+            }
+            costs.add(priced);
         }
         return costs;
+    }
+
+    /**
+     * Steps that should not contribute full historical walls to open-loop ETA. Cascade-forced
+     * compile/package/native and resource-only producers almost always action-cache hit for
+     * compile/test; billing suite walls for them was the multi-minute dogfood miss.
+     */
+    static boolean shouldDiscountCascadeStep(
+            TaskForecast.Task s, boolean localCompile, boolean resourceDrift, boolean keepFullTests) {
+        if (s == null || s.cached()) return false;
+        String name = s.name();
+        // Cascade-forced compile/package without local source edits.
+        if (!localCompile && isCascadeForcedStep(s) && isCompileOrPackageStep(name)) {
+            return true;
+        }
+        // Cascade-forced native ("rebuild · compile changed") without local compile — cli native
+        // often SKIPPED while tests still run (dogfood: priced ~34s native, actual SKIPPED).
+        if (!localCompile && isCascadeForcedStep(s) && "native-image".equals(name)) {
+            return true;
+        }
+        // Resource drift schedules copy/package only — never a full compile/test suite.
+        if (!localCompile && resourceDrift && (isCompileStepName(name) || "run-tests".equals(name))) {
+            return true;
+        }
+        // Pure cascade module: discount tests. Cli keeps tests when a heavy tail is forecast
+        // (test-dep on a dirty engine) even if native itself is discounted.
+        if (!localCompile && !keepFullTests && "run-tests".equals(name)) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * True when the module has real local compile content (sources/options/classpath) — not
+     * resource drift alone, and not a zero-source partial.
+     */
+    static boolean hasLocalCompileContent(TaskForecast.Module m) {
+        if (m == null || m.steps() == null) return false;
+        for (TaskForecast.Task s : m.steps()) {
+            if (s.cached() || !isCompileStepName(s.name())) continue;
+            String t = s.text() == null ? "" : s.text();
+            // "compile · 0 sources changed" is not material work.
+            if (t.contains("0 source")) continue;
+            if (s.status() == TaskForecast.Status.PARTIAL || s.status() == TaskForecast.Status.FULL) {
+                return true;
+            }
+            if (t.contains("source changed")
+                    || t.contains("sources")
+                    || t.contains("no incremental")
+                    || t.contains("classpath")
+                    || t.contains("options")
+                    || t.contains("not locked")
+                    || t.contains("jk.toml")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Local compile content or resource drift (tests / call sites that need either). */
+    static boolean hasLocalContentWork(TaskForecast.Module m) {
+        return hasLocalCompileContent(m) || hasResourceDriftWork(m);
+    }
+
+    /** copy-resources / package-jar dirtied by resource drift (not compile cascade). */
+    static boolean hasResourceDriftWork(TaskForecast.Module m) {
+        if (m == null || m.steps() == null) return false;
+        for (TaskForecast.Task s : m.steps()) {
+            if (s.cached()) continue;
+            if ("copy-resources".equals(s.name()) || "copy-test-resources".equals(s.name())) return true;
+            String t = s.text() == null ? "" : s.text();
+            if ("package-jar".equals(s.name()) && t.contains("resources changed")) return true;
+        }
+        return false;
+    }
+
+    /** Native / assembly / OCI tails — signal to keep full run-tests (cli-shaped test-dep). */
+    static boolean hasHeavyPackagingTail(TaskForecast.Module m) {
+        if (m == null || m.steps() == null) return false;
+        return m.steps().stream()
+                .anyMatch(s -> !s.cached()
+                        && ("native-image".equals(s.name())
+                                || "write-image".equals(s.name())
+                                || "package-assembly".equals(s.name())));
+    }
+
+    /**
+     * Forecast forced RUN because an upstream compile-scope sibling is dirty (action key still
+     * hashed the pre-rebuild jar). Live keys usually hit when the upstream jar is byte-identical.
+     */
+    static boolean isCascadeForcedStep(TaskForecast.Task s) {
+        if (s == null || s.cached()) return false;
+        String t = s.text() == null ? "" : s.text();
+        return t.contains("dependency changed") || t.contains("main changed") || t.contains("compile changed");
+    }
+
+    static boolean isCompileStepName(String name) {
+        if (name == null) return false;
+        return name.startsWith("compile-main")
+                || name.startsWith("compile-java")
+                || name.startsWith("compile-kotlin")
+                || name.startsWith("compile-groovy")
+                || name.startsWith("compile-test");
+    }
+
+    static boolean isCompileOrPackageStep(String name) {
+        if (name == null) return false;
+        return isCompileStepName(name) || "package-jar".equals(name) || "package-assembly".equals(name);
     }
 
     // =========================================================================
@@ -761,49 +962,40 @@ public final class BuildService {
             else cleanUnits.add(u);
         }
 
-        // ---- ETA seed (HARD INVARIANT: same estimateEtaMillis as `jk explain`) ----
-        // Fully cached: skip TaskForecaster entirely (was ~1–2s on monorepos). ETA is 0.
-        // When there is work: one forecast walk (reuse preflight modules when present).
-        long etaMs = 0;
-        if (!dirtyUnits.isEmpty()) {
-            ExplainPlan etaPlan;
-            boolean distrust = SessionContext.current().config().forceOr(false)
-                    || SessionContext.current().config().rebuildOr(false);
-            if (preflight != null && !preflight.modules().isEmpty()) {
-                etaPlan = new ExplainPlan(preflight.modules(), graph.edges(), graph.maxReadyWidth(), List.of());
-            } else {
-                if (distrust) {
-                    // --force/--redo: every step runs by definition — the TaskForecaster walk's
-                    // per-step verdicts would all say RUN, yet its content prediction hashes
-                    // sources+classpath for every module (a multi-second stall on monorepos).
-                    // Ship a shape-only plan; etaCostsFromExplainPlan's distrust fallback prices
-                    // each module from its full plan shape.
-                    etaPlan = fullyCachedExplainPlan(graph);
-                } else {
-                    etaPlan = explainFromGraph(graph, req.cache(), req.skipTests());
-                }
-                if (req.dirtyHint() != null) {
-                    // Selection build (-m / --affected-since): the seed must price exactly the
-                    // scheduled set — the whole-graph forecast would bill dirty modules this
-                    // build will never run.
-                    etaPlan = restrictToSelection(etaPlan, dirty);
-                }
-            }
-            etaMs = estimateEtaMillis(
-                    etaPlan,
-                    req.entryDir(),
-                    req.cache(),
-                    req.workers(),
-                    req.jdksDir(),
-                    req.profile(),
-                    req.skipTests(),
-                    req.verbose(),
-                    parallelTests,
-                    req.maxModuleConcurrency());
-            listener.onEtaEstimate(etaMs);
+        // ---- R0 seed: SAME path as jk explain (HARD INVARIANT) ----
+        // One ExplainPlan + estimateEtaMillis — never a second divergent cost assembly.
+        // When preflight already walked TaskForecaster, reuse those modules; otherwise explain.
+        ExplainPlan etaPlan;
+        boolean distrust = SessionContext.current().config().forceOr(false)
+                || SessionContext.current().config().rebuildOr(false);
+        if (preflight != null && !preflight.modules().isEmpty()) {
+            // Same TaskForecaster walk already done for dirty-set — do not re-walk.
+            etaPlan = new ExplainPlan(preflight.modules(), graph.edges(), graph.maxReadyWidth(), List.of());
+        } else if (dirtyUnits.isEmpty() && !distrust) {
+            // Fully cached — same as explain's empty-memo fast path.
+            etaPlan = fullyCachedExplainPlan(graph);
         } else {
-            listener.onEtaEstimate(0);
+            // Memo hit with dirty set but no modules, or force/rebuild: one explain walk.
+            etaPlan = explainFromGraph(graph, req.cache(), req.skipTests());
         }
+        if (req.dirtyHint() != null) {
+            etaPlan = restrictToSelection(etaPlan, dirty);
+        }
+        EtaModel etaModel = estimateEtaModel(
+                etaPlan,
+                req.entryDir(),
+                req.cache(),
+                req.workers(),
+                req.jdksDir(),
+                req.profile(),
+                req.skipTests(),
+                req.verbose(),
+                parallelTests,
+                req.maxModuleConcurrency());
+        long etaMs = etaModel.etaMs();
+        List<ModuleWorkCost> ordered = orderCostsLikeUnits(dirtyUnits, etaModel.costs());
+        listener.onWorkModel(WorkModel.of(etaMs, etaModel.concurrency(), etaModel.serial(), parallelTests, ordered));
+        listener.onEtaEstimate(etaMs);
 
         long tp = Perf.start();
         int nPrepare = dirtyUnits.size();
@@ -827,8 +1019,8 @@ public final class BuildService {
         listener.onPlan(List.copyOf(plans.values()));
         listener.onModuleGraph(graph.edges());
 
-        // Re-emit the *same* seed (not a second cost assembly). Live remaining time still
-        // subtracts elapsed on the client; the absolute seed must stay explain-identical.
+        // Re-emit R0 after prepare (seed path; client freezes seed once execute starts; residual
+        // still re-anchors the painted countdown mid-run).
         listener.onEtaEstimate(etaMs);
 
         // Workspace artifact links for the whole graph (clean modules still own jars from prior builds).
@@ -840,6 +1032,7 @@ public final class BuildService {
         List<ModuleOutcome> outcomes = Collections.synchronizedList(new ArrayList<>());
         List<Double> observedRates = Collections.synchronizedList(new ArrayList<>());
         long tsched = Perf.start();
+        long executeStartMs = System.currentTimeMillis();
         ModuleOutcome failure = null;
         if (!dirtyUnits.isEmpty()) {
             failure = WorkspaceScheduler.run(
@@ -858,20 +1051,20 @@ public final class BuildService {
                             if (p != null && !p.fullyCached() && p.weight() > 0 && o.millis() > 0)
                                 observedRates.add(o.millis() / (double) p.weight());
                         }
-                        // No mid-execute onEtaEstimate: TUI clock is pure wall-clock from the seed
-                        // (jk explain figure). Live re-projections jumped countdown / reset count-up.
-                        // Throughput still folds into Calibration + StepTimings on success below.
                         return null;
                     },
                     req.maxModuleConcurrency());
         }
         Perf.end("ws-schedule-run", tsched);
+        long executeWallMs = Math.max(0L, System.currentTimeMillis() - executeStartMs);
         // Session cancel (Ctrl-C / jk cancel / web) may finish modules with a non-success exit
         // without a distinct flag — fold SessionCancel into the aggregate so clients settle as
         // cancelled rather than a generic failure.
         boolean cancelled = cc.jumpkick.run.SessionCancel.cancelled();
         boolean ok = failure == null && !cancelled;
         if (ok) {
+            // Primary seed-quality KPI: |R0 − execute wall| / wall (never improved by residual).
+            logSeedQuality(etaMs, executeWallMs, dirtyUnits.size());
             // Fold this run's step durations + measured throughput into the learned ledger + host
             // calibration (EWMA) so the next build's estimate is time-accurate. Failed and cancelled
             // builds never train — truncated walls poison ETA priors.
@@ -1006,44 +1199,37 @@ public final class BuildService {
             HistoryShape shape) {
         HistoryShape hist = shape == null ? historyShape() : shape;
         if (costs == null || costs.isEmpty()) {
-            // No dirty work modeled — only then fall back to a coarse whole-build average.
-            return applyHistoryPrior(0, okHistory(entryDir, hist));
+            // No material dirty work in the forecast — ETA is 0 (cache verify only).
+            // NEVER fall back to whole-build history here: that produced a phantom multi-minute
+            // seed whenever every step was CACHED / bookkeeping-only, while `jk explain` hid the
+            // lie behind "Fully Cached / <1s". History floors apply only when there is real work.
+            return 0;
         }
         // Always convert at MS_PER_WEIGHT. Costs are priced either as absolute step walls
         // (flatWeight(avgMs) round-trips with ×150) or residual/static units trained in that same
         // reference frame.
         BuildMetrics.Stats okHist = okHistory(entryDir, hist);
-        // Full rebuild / monorepo-scale dirty: never estimate *below* measured full-build walls.
-        // List-scheduling step averages can under-shoot (CPU contention, missing steps). Invocation
-        // history is ground truth for "jk build --redo takes ~2m30s". Also consult plain `build`
-        // full-dirty rows — organic 27-module runs are the same work as --redo.
-        // The 16-dirty threshold is deliberately ABSOLUTE, not workspace-relativethe
-        // floor source below is keyed by dirty count (`#dN`), so a wide-but-cheap incremental
-        // build is floored against other builds of ITS OWN shape, not against full-rebuild walls
-        // the constant only decides when the floor mechanism engages at all. `hist.dirtyModules`
-        // always equals costs.size here (historyShapeForCosts at every call site), so one
-        // condition suffices.
-        boolean fullWork = hist.rebuild() || hist.dirtyModules() >= 16;
-        // Cold full rebuilds: ideal list-schedule over-states parallel efficiency (disk/CAS/GC).
-        // Shrink concurrency and apply a contention margin when we have no invocation floor yet.
+        // Whole-build history floor only for true full rebuilds — not merely "many modules are
+        // dirty." Wide+shallow forecasts (cascade dirties 20+ modules but only 1–2 schedule real
+        // tests/native) used to hit dirtyModules>=16 and get floored to multi-minute full-rebuild
+        // walls (~40s over on dogfood when most run-tests SKIPPED). Require substantial scheduled
+        // weight breadth, or an explicit --force/--rebuild.
+        boolean fullWork = isFullWorkShape(hist, costs);
         boolean coldFull = fullWork && (okHist == null || okHist.count() == 0);
         int etaConcurrency = concurrency;
         if (coldFull && !serial && concurrency > 1) {
-            // ~75% of jobs: monorepo rebuilds rarely sustain full -j throughput (provisional; n=1 jk).
+            // ~75% of jobs: monorepo rebuilds rarely sustain full -j throughput.
             etaConcurrency = Math.max(1, (int) Math.ceil(concurrency * 0.75));
         }
         long base =
                 EffortWeights.scheduleMillis(costs, etaConcurrency, serial, parallelTests, EffortWeights.MS_PER_WEIGHT);
         if (coldFull && base > 0) {
-            // Modest contention margin — main fit is baselines; keep this thin (prefer mild high).
             base = Math.round(base * 1.08);
         }
         if (fullWork) {
             BuildMetrics.Stats plainFull = okHistory(entryDir, new HistoryShape(false, hist.dirtyModules()));
             BuildMetrics.Stats floorSrc = higherAvg(okHist, plainFull);
             if (floorSrc != null && floorSrc.count() > 0) {
-                // Rebuilds are stable full work — weight recent max so a consistent ~2m30s wall is
-                // not pulled down by older shorter averages (EWMA still trains avg for other uses).
                 long floor = floorSrc.avgMillis();
                 if (floorSrc.count() >= 2 && floorSrc.maxMillis() > floor) {
                     floor = hist.rebuild()
@@ -1053,8 +1239,21 @@ public final class BuildService {
                 if (floor > base) base = floor;
             }
         }
-        // One-sided clamp only for absurd over-estimates (never pull partial work up).
-        return applyHistoryPrior(base, okHist);
+        // One-sided clamp for absurd over-estimates only (never pull incremental work up to history).
+        // Then a tiny open-loop preference for mild over-estimate (finishing early feels worse than late).
+        return preferSlightOverEstimate(applyHistoryPrior(base, okHist));
+    }
+
+    /**
+     * Open-loop R0 prefers a hair high over a hair low. Pure {@code ×1.01} on non-zero seeds —
+     * enough to absorb small schedule/bookkeeping under-shoot without the multi-minute floors we
+     * removed. Intentionally not ~2.5% (that overshoots the product budget on mid-length builds).
+     */
+    static final double OPEN_LOOP_OVER_ESTIMATE = 1.01;
+
+    static long preferSlightOverEstimate(long baseMs) {
+        if (baseMs <= 0) return baseMs;
+        return Math.round(baseMs * OPEN_LOOP_OVER_ESTIMATE);
     }
 
     /** Prefer the stats row with the higher successful average (and samples). */
@@ -1062,6 +1261,59 @@ public final class BuildService {
         if (a == null || a.count() == 0) return b;
         if (b == null || b.count() == 0) return a;
         return a.avgMillis() >= b.avgMillis() ? a : b;
+    }
+
+    /**
+     * Whether to floor ETA against whole-build invocation history.
+     *
+     * <ul>
+     *   <li>{@code --force}/{@code --rebuild} — always (list-scheduling under-shoots contention)
+     *   <li>Otherwise: many dirty modules <em>and</em> several with substantial scheduled weight
+     *       (not bookkeeping-only cascade width)
+     * </ul>
+     *
+     * <p>Weight threshold ≈ 5s at {@link EffortWeights#MS_PER_WEIGHT} so token/parse modules do not
+     * count as "deep." Need ≥8 such modules so a 2-module test+native hot path does not inherit a
+     * 28-module full-rebuild floor.
+     */
+    static boolean isFullWorkShape(HistoryShape hist, List<EffortWeights.ModuleCost> costs) {
+        if (hist != null && hist.rebuild()) return true;
+        int dirty = hist == null ? 0 : hist.dirtyModules();
+        if (dirty < 16) return false;
+        return substantialModuleCount(costs) >= 8;
+    }
+
+    /**
+     * Modules whose scheduled weight exceeds ~5s wall ({@code MS_PER_WEIGHT × 34 ≈ 5.1s}). Token and
+     * bookkeeping-only costs sit far below this.
+     */
+    static int substantialModuleCount(List<EffortWeights.ModuleCost> costs) {
+        if (costs == null || costs.isEmpty()) return 0;
+        int thr = Math.max(10, 5_000 / EffortWeights.MS_PER_WEIGHT);
+        int n = 0;
+        for (EffortWeights.ModuleCost c : costs) {
+            if (c != null && c.weight() >= thr) n++;
+        }
+        return n;
+    }
+
+    /**
+     * Log seed quality for dogfood / diagnosis. Always when {@code JK_ETA_SEED_LOG} is set; on large
+     * relative error when Perf is enabled. Residual mid-run updates must not hide this KPI.
+     */
+    static void logSeedQuality(long seedMs, long actualExecuteMs, int dirtyModules) {
+        if (seedMs <= 0 || actualExecuteMs <= 0) return;
+        double ratio = (double) seedMs / (double) actualExecuteMs;
+        double relErr = Math.abs(seedMs - actualExecuteMs) / (double) actualExecuteMs;
+        boolean verbose = "1".equals(System.getenv("JK_ETA_SEED_LOG"))
+                || "true".equalsIgnoreCase(System.getenv("JK_ETA_SEED_LOG"))
+                || Perf.ENABLED;
+        // Always note serious misses so they show up in engine logs without env.
+        boolean serious = relErr >= 0.35 && actualExecuteMs >= 5_000L;
+        if (!verbose && !serious) return;
+        System.err.printf(
+                "jk: eta-seed quality R0=%dms actual=%dms ratio=%.2f relErr=%.0f%% dirty=%d%n",
+                seedMs, actualExecuteMs, ratio, relErr * 100.0, dirtyModules);
     }
 
     /** History key with known dirty-module count so explain and build share the same prior tier. */
@@ -1211,10 +1463,17 @@ public final class BuildService {
         BuildPlan.Builder b = BuildPlanner.coreBuilder(inputs, forceRebuild);
         BuildPlanner.appendDeclaredTails(b, inputs);
         BuildPlan plan = b.build();
+        // Bar weight must be live estimatedTotalWeight for dirty prepares: shape-memo weights ignore
+        // source/upstream freshness and under-counted native-image (SKIP while Graal still runs).
+        // Over-reserve tails so native/assembly/OCI reserve full learned walls up front when this
+        // module is dirty (forceRebuild) — reweight may shrink on cache hit, never grow the bar.
+        int weight = forceRebuild
+                ? EffortWeights.withOverReserveTails(plan::estimatedTotalWeight)
+                : plan.estimatedTotalWeight();
         boolean distrust = SessionContext.current().config().forceOr(false)
                 || SessionContext.current().config().rebuildOr(false);
-        int weight;
-        if (!distrust) {
+        if (!distrust && !forceRebuild) {
+            // Clean / ETA-only shape memo is optional; dirty path above never uses it for weight.
             var shapeHit = PreflightMemo.tryLoadShape(req.entryDir(), dir, req.skipTests());
             if (shapeHit.isPresent()) {
                 weight = shapeHit.get().weight();
@@ -1222,12 +1481,11 @@ public final class BuildService {
                     System.err.println("[jk-perf] shape-memo hit " + u.coord() + " weight=" + weight);
                 }
             } else {
-                weight = plan.estimatedTotalWeight();
                 PreflightMemo.storeShape(req.entryDir(), dir, req.skipTests(), PreflightMemo.shapeOf(plan, weight));
             }
-        } else {
-            // Force/rebuild: never trust shape memo fullyCached/weights.
-            weight = plan.estimatedTotalWeight();
+        } else if (!distrust) {
+            // Refresh shape outline from the live over-reserved weight for future ETA-only hits.
+            PreflightMemo.storeShape(req.entryDir(), dir, req.skipTests(), PreflightMemo.shapeOf(plan, weight));
         }
         // Dirty ⇒ not fullyCached for calibration / skip-rate sampling.
         return new ModulePlan(u.dir(), u.coord(), plan, weight, false, req.cache());
@@ -1249,7 +1507,11 @@ public final class BuildService {
         if (ml != null) module.plan().addListener(ml);
         long t0 = System.nanoTime();
         try {
-            BuildPlanResult r = module.plan().run();
+            // Same over-reserve as prepare: BuildPlan.run() re-evaluates step weights into its
+            // denominator. Without this, nativeWeight can still return SKIP (binary looks fresh
+            // vs pre-build jar) and the bar completes before Graal runs. Shrink via reweight on
+            // cache hit; never grow the bar mid-run.
+            BuildPlanResult r = EffortWeights.withOverReserveTails(module.plan()::run);
             long ms = (System.nanoTime() - t0) / 1_000_000;
             int exit = r.success() ? 0 : exitCodeFor(module.plan());
             // Failures always count as work; successes count only when a productive step ran

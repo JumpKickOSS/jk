@@ -150,7 +150,7 @@ public final class NewProjectOps {
     /**
      * Resolve a template ref: absolute/relative path, short name via {@link
      * Giter8TemplateIndex#resolveShortName} (local roots + monorepo dogfood + official cache
-     * freshen from the public {@code jkbuild/jk-templates} repo).
+     * freshen from the public {@code JumpKickOSS/jk-templates} repo).
      */
     static Path resolveTemplate(String ref, Path cwd) throws IOException {
         Path asPath = Path.of(ref);

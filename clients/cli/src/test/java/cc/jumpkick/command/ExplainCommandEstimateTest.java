@@ -20,7 +20,7 @@ class ExplainCommandEstimateTest {
     @Test
     void dirty_with_no_eta_is_not_yet_measured() {
         String label = TestAnsi.strip(ExplainCommand.buildTimeEstimate(0, false, Theme.active()));
-        assertThat(label).isEqualTo("Build time not yet measured");
+        assertThat(label).isEqualTo("Build time estimate not yet measured");
         assertThat(label).doesNotContain("unknown");
     }
 

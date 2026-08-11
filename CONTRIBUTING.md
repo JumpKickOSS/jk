@@ -33,7 +33,7 @@ foojay resolver on first use.
 
 ### Black-box examples (sibling repo)
 
-End-to-end scenarios and early-adopter samples live in **[jkbuild/jk-examples](https://github.com/jkbuild/jk-examples)** (checkout next to this repo as `../jk-examples`). After product changes to lock/resolve/packaging/plugins/workspaces, reinstall local jk and run the relevant scenarios there (`jk lock && jk build && jk test`). They are the out-of-tree acceptance surface, not a replacement for `./gradlew test`.
+End-to-end scenarios and early-adopter samples live in **[JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples)** (checkout next to this repo as `../jk-examples`). After product changes to lock/resolve/packaging/plugins/workspaces, reinstall local jk and run the relevant scenarios there (`jk lock && jk build && jk test`). They are the out-of-tree acceptance surface, not a replacement for `./gradlew test`.
 
 `dist` builds the slim GraalVM native `jk` client and the engine fat jar
 (`lib/jk-engine-<version>.jar`). The engine runs as a normal JVM app on a
@@ -54,11 +54,9 @@ you want one, `jk format --check` is the command, but the CI gate is what's auth
 Long-form dogfood and the `jk-jk` worktree: **[docs/self-host.md](docs/self-host.md)**.
 Bootstrap helper: `./scripts/bootstrap-from-gradle.sh`.
 
-jk's own manifests pin **`catalog = "bundled"`** (top-level key, JK-1443): catalog short names
-(`groovy = "latest"`, …) resolve only against the catalog bundled into this build, never
-`~/.jk/libs.toml` or the downloaded registry mirror — so a machine-local catalog entry can't
-silently repoint self-host dependencies at re-lock. Keep the key when adding module manifests
-that use short names; user projects default to the normal layered resolution.
+Catalog short names resolve through the **system catalog** (downloaded global registry +
+bundled offline floor) plus optional workspace-root **`jk-libs.toml`**. There is no host-local
+catalog file and no `catalog =` pin in `jk.toml`.
 
 The repo is a jk **workspace** (root `jk.toml` + per-module manifests under `shared/`,
 `server/`, `clients/`, and all first-party `plugins/*`). `clients/web` is a resources module;
@@ -217,7 +215,7 @@ blank envelope, script-mode allowlist, nerd/ansi/plain): [docs/tui.md](docs/tui.
 ## Docs and planning
 
 - Public docs live under [`docs/`](docs/README.md) (keep the set small and accurate).
-- Engineering board: **[kanartist](https://github.com/jkbuild/kanartist)** project `jk` (`JK-NNNN`). Claim/work rules and Done criteria: root [`AGENTS.md`](AGENTS.md).
+- Engineering board: **[kanartist](https://github.com/JumpKickOSS/kanartist)** project `jk` (`JK-NNNN`). Claim/work rules and Done criteria: root [`AGENTS.md`](AGENTS.md).
 
 ## Commit authorship
 

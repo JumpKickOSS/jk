@@ -40,8 +40,8 @@ class NiaWarmLockTimingTest {
         // Wall-clock budgets are only meaningful on an uncontended machine; a full parallel
         // suite run (~16 workers sharing CPU, disk, and network) blows them by 5x+ without any
         // resolver regression. Sample the load before the passes start.
-        double startLoad =
-                java.lang.management.ManagementFactory.getOperatingSystemMXBean().getSystemLoadAverage();
+        double startLoad = java.lang.management.ManagementFactory.getOperatingSystemMXBean()
+                .getSystemLoadAverage();
         boolean quietMachine =
                 startLoad >= 0 && startLoad < Runtime.getRuntime().availableProcessors() * 0.5;
 

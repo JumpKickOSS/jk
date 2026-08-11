@@ -1,6 +1,6 @@
 # Packaging matrix (thin / fat / minified / Boot / Quarkus / Grails)
 
-**Ticket:** JK-1032 ([kanartist](https://github.com/jkbuild/kanartist) project `jk`); Quarkus JK-1160/1202
+**Ticket:** JK-1032 ([kanartist](https://github.com/JumpKickOSS/kanartist) project `jk`); Quarkus JK-1160/1202
 
 JumpKick has **six** intentional packaging paths. Pick one product story; do not enable R8 by
 default.

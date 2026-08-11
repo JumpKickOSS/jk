@@ -296,8 +296,7 @@ public final class NativeImageMetadata {
                 // `.*` crosses `/`, so only `**` is faithful — and GraalVM requires `**` to be
                 // a whole level: nothing or `/` before it, and end or `/` after it.
                 boolean levelStart = glob.isEmpty() || glob.charAt(glob.length() - 1) == '/';
-                boolean levelEnd =
-                        i + 2 >= n || regex.charAt(i + 2) == '/' || regex.startsWith("\\Q/", i + 2);
+                boolean levelEnd = i + 2 >= n || regex.charAt(i + 2) == '/' || regex.startsWith("\\Q/", i + 2);
                 if (!levelStart || !levelEnd) return null;
                 glob.append("**");
                 i += 2;

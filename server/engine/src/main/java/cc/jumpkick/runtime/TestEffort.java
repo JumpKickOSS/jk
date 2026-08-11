@@ -8,9 +8,12 @@ import java.util.OptionalDouble;
 /**
  * Prices the {@code run-tests} task for progress weights and ETA.
  *
- * <p><strong>Prefer class walls</strong> when every selected class has a measured wall — then the
- * estimate is suite-startup + Σ class walls and <em>no method count is required</em>. Otherwise use
+ * <p>Ladder (first hit wins): <strong>module-own measured suite wall</strong> (harvested metrics —
+ * a real full-suite wall for this module beats any reconstruction, but note it prices the whole
+ * suite even for a one-class selection); then <strong>Σ class walls</strong> when every selected
+ * class has one (no method count required); then a full-suite Σ of all known class walls; then
  * methods × hierarchical method-ms (module → project → host → calibration baseline) + startup.
+ * Matches the ladder table in {@code docs/perf/progress-contract.md}.
  */
 public final class TestEffort {
 
@@ -22,7 +25,8 @@ public final class TestEffort {
      * @param moduleDir module path string (ledger key)
      * @param classWallsMs measured walls for FQCNs (may be empty)
      * @param classesToRun FQCNs expected to run this time; when non-empty and every entry has a wall
-     *     in {@code classWallsMs}, methodCount is ignored
+     *     in {@code classWallsMs}, methodCount is ignored — but a module-own suite wall still
+     *     outranks the class sum (a selection-priced caller gets full-suite walls; see class doc)
      * @param methodCount successful-method estimate; used only when class coverage is incomplete;
      *     pass 0 when unknown (do not invent a count)
      * @param testWorkers within-module workers for cold parallel body only
@@ -52,6 +56,13 @@ public final class TestEffort {
             BuildMetrics metrics,
             int testWorkers) {
         long startup = suiteStartupMs();
+        // This module's own measured suite wall first — always beats methodCount × cold method-ms
+        // for a known module. (Host-tier suite average is NOT a substitute: it mixes tiny and huge
+        // suites and under-prices a cold 1000-test module.)
+        if (metrics != null && moduleDir != null && !moduleDir.isBlank()) {
+            long own = EffortWeights.stepOkAvgMillisOwn(metrics, moduleDir, "run-tests");
+            if (own > 0) return own;
+        }
         // Class-wall path: complete selection coverage → Σ walls (no method count).
         if (classesToRun != null && !classesToRun.isEmpty() && classWallsMs != null && !classWallsMs.isEmpty()) {
             long sum = 0;
@@ -80,19 +91,16 @@ public final class TestEffort {
             }
             if (sum > 0) return startup + sum;
         }
-        // Whole-task wall for this module beats a cold method product when available.
-        if (metrics != null && moduleDir != null && !moduleDir.isBlank()) {
-            long own = EffortWeights.stepOkAvgMillisOwn(metrics, moduleDir, "run-tests");
-            if (own > 0) return own;
-        }
         int methods = Math.max(0, methodCount);
         if (methods <= 0) {
+            // Unknown size: host whole-task wall is better than inventing a method count.
             if (metrics != null) {
                 long host = EffortWeights.stepOkAvgMillisHost(metrics, "run-tests");
                 if (host > 0) return host;
             }
             return Math.max(startup, Calibration.STATIC_SUITE_STARTUP_MS);
         }
+        // Known method count on a cold module → hierarchical method-ms product (not host suite avg).
         double perMethod = methodMs(moduleDir, timings, projectDirs);
         int w = Math.max(1, testWorkers);
         long body = Math.round(methods * perMethod);

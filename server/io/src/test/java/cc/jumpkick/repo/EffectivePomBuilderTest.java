@@ -456,6 +456,93 @@ class EffectivePomBuilderTest {
     }
 
     @Test
+    void bom_import_join_cycle_fails_loudly_instead_of_stalling(@TempDir Path tempDir) throws Exception {
+        // JK-1804: builder1 walks `a`, whose TWO bom imports (x, y) expand on pool workers via
+        // futures builder1 then joins; builder2 walks `x` directly, and x's parent is `a`. The
+        // waits-for graph could not see builder1's future joins, so builder2 parked for the full
+        // join-fallback bound instead of detecting the loop and degrading to the in-line walk
+        // whose visiting set throws the loud cycle diagnostic. Both sides must fail fast.
+        registerPom("org.example", "a", "1.0", """
+                <project>
+                  <groupId>org.example</groupId>
+                  <artifactId>a</artifactId>
+                  <version>1.0</version>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>org.example</groupId>
+                        <artifactId>x</artifactId>
+                        <version>1.0</version>
+                        <type>pom</type>
+                        <scope>import</scope>
+                      </dependency>
+                      <dependency>
+                        <groupId>org.example</groupId>
+                        <artifactId>y</artifactId>
+                        <version>1.0</version>
+                        <type>pom</type>
+                        <scope>import</scope>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+        registerPom("org.example", "x", "1.0", """
+                <project>
+                  <parent>
+                    <groupId>org.example</groupId>
+                    <artifactId>a</artifactId>
+                    <version>1.0</version>
+                  </parent>
+                  <artifactId>x</artifactId>
+                  <packaging>pom</packaging>
+                </project>
+                """);
+        registerPom("org.example", "y", "1.0", """
+                <project>
+                  <groupId>org.example</groupId>
+                  <artifactId>y</artifactId>
+                  <version>1.0</version>
+                  <packaging>pom</packaging>
+                </project>
+                """);
+
+        // Hold a and x until both walkers have their first fetch in flight, so builder1 owns
+        // IN_FLIGHT[a] and builder2 owns IN_FLIGHT[x] before either expands.
+        CountDownLatch bothFetching = new CountDownLatch(2);
+        beforeServe = path -> {
+            if (path.contains("/a/") || path.contains("/x/")) {
+                bothFetching.countDown();
+                try {
+                    bothFetching.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        };
+
+        Cas cas = new Cas(tempDir.resolve("cache"));
+        MavenRepo repo = new MavenRepo("local", base, new Http(), cas);
+        EffectivePomBuilder builder1 = new EffectivePomBuilder(repo);
+        EffectivePomBuilder builder2 = new EffectivePomBuilder(repo);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<EffectivePom> fa = pool.submit(() -> builder1.build(Coordinate.of("org.example", "a", "1.0")));
+            Future<EffectivePom> fx = pool.submit(() -> builder2.build(Coordinate.of("org.example", "x", "1.0")));
+            for (Future<EffectivePom> f : List.of(fa, fx)) {
+                assertThatThrownBy(() -> f.get(20, TimeUnit.SECONDS))
+                        .isInstanceOf(ExecutionException.class)
+                        .cause()
+                        .isInstanceOf(PomParseException.class)
+                        .hasMessageContaining("cycle");
+            }
+        } finally {
+            beforeServe = null;
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
     void test_jar_variant_does_not_shadow_the_real_dependency(@TempDir Path tempDir) throws Exception {
         // The logback shape: the parent manages logback-core twice (jar + test-jar), and the
         // child depends on both (plain compile dep + test-scoped test-jar). Maven's dependency

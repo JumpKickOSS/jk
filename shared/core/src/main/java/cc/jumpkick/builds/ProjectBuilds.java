@@ -9,7 +9,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Stream;
@@ -247,6 +249,72 @@ public final class ProjectBuilds {
         } catch (IOException e) {
             return List.of();
         }
+    }
+
+    /**
+     * Project homes to use for metrics harvest / global loadAll — at most one home per absolute
+     * checkout path. When lock re-key left a stale sibling home for the same path (different id),
+     * keep the preferred one (source=lock, then most runs, then newest identity) so one-sample
+     * outliers cannot re-enter aggregates.
+     */
+    public static List<Path> listProjectHomesForMetrics(Path buildsRoot) {
+        List<Path> all = listProjectHomes(buildsRoot);
+        if (all.size() <= 1) return all;
+        Map<String, Path> bestByPath = new java.util.LinkedHashMap<>();
+        Map<String, Long> scoreByPath = new HashMap<>();
+        List<Path> noPath = new ArrayList<>();
+        for (Path home : all) {
+            var idf = ProjectIdentity.IdentityFile.read(home);
+            if (idf.isEmpty() || idf.get().path() == null || idf.get().path().isBlank()) {
+                noPath.add(home);
+                continue;
+            }
+            String pathKey;
+            try {
+                pathKey = Path.of(idf.get().path()).toAbsolutePath().normalize().toString();
+            } catch (RuntimeException e) {
+                noPath.add(home);
+                continue;
+            }
+            long score = metricsHomeScore(home, idf.get());
+            Long prev = scoreByPath.get(pathKey);
+            if (prev == null || score > prev) {
+                scoreByPath.put(pathKey, score);
+                bestByPath.put(pathKey, home);
+            }
+        }
+        List<Path> out = new ArrayList<>(bestByPath.values());
+        out.addAll(noPath);
+        out.sort(Comparator.naturalOrder());
+        return out;
+    }
+
+    /**
+     * Higher is better: source (lock > git > path), then complete id, then <em>recency</em>
+     * (newest run's mtime), then run count. Recency outranks run count on equal-source ties: a
+     * lock→lock re-key leaves the stale home with more accumulated runs than the active one, and
+     * preferring raw count starved the active home of harvest until its samples were reaped
+     * (JK-1813). Run number is not comparable across homes (each restarts at 1), so wall mtime is
+     * the recency signal.
+     */
+    static long metricsHomeScore(Path home, ProjectIdentity.IdentityFile idf) {
+        long score = 0;
+        if (idf.source() != null && "lock".equalsIgnoreCase(idf.source())) score += 4_000_000_000_000_000L;
+        if (idf.source() != null && "git".equalsIgnoreCase(idf.source())) score += 2_000_000_000_000_000L;
+        if (idf.id() != null && !idf.id().isBlank()) score += 1_000_000_000_000_000L;
+        List<Path> runs = listRuns(home);
+        long newestSec = 0;
+        if (!runs.isEmpty()) {
+            try {
+                newestSec = Files.getLastModifiedTime(runs.getFirst()).to(java.util.concurrent.TimeUnit.SECONDS);
+            } catch (IOException ignored) {
+                // recency unavailable — fall through to run count
+            }
+        }
+        // epoch seconds (< ~4.3e9 until year 2106) * 1e4 stays well under the 1e15 id tier.
+        score += Math.max(0, Math.min(newestSec, 4_294_967_295L)) * 10_000L;
+        score += Math.min(runs.size(), 9_999);
+        return score;
     }
 
     /** Newest-first run directories for a project (by numeric build number). */

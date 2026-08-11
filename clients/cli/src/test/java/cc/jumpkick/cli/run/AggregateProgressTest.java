@@ -26,7 +26,7 @@ class AggregateProgressTest {
         LiveProgress.get().clear();
         CommandManager cm = CommandManager.plan(new PrintStream(new ByteArrayOutputStream()), "Build", false);
         AggregateContext agg = new AggregateContext(cm);
-        var snap = new WorkspaceProgressTracker.Snapshot(150, 200, 75.0, "execute", 1, 2);
+        var snap = new WorkspaceProgressTracker.Snapshot(150, 200, 75.0, "execute", 1, 2, 25_000, 100_000);
         agg.applySnapshot(snap);
         assertThat(cm.numerator()).isEqualTo(150);
         assertThat(cm.denominator()).isEqualTo(200);

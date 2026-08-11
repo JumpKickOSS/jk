@@ -25,6 +25,10 @@ import org.junit.jupiter.api.io.TempDir;
  * Drives a real {@link HttpEngineServer} bound to an OS-assigned loopback port with the JDK's
  * {@link HttpClient} — plus a raw socket where the client won't cooperate (forged {@code Host}
  * headers, literal {@code..} request targets).
+ *
+ * <p>Runs under {@code :engine:integrationTest} — the unit-tier {@code test} task excludes
+ * {@code @Tag("integration")}, so a {@code test --tests} filter naming this class matches nothing
+ * (JK-1803).
  */
 @Tag("integration")
 class HttpEngineServerTest {
@@ -297,7 +301,7 @@ class HttpEngineServerTest {
                 webRoot,
                 stateDir.resolve("snap.http-token"),
                 stateDir.resolve("snap.log"),
-                "0.11.0-SNAPSHOT",
+                "0.12.0-SNAPSHOT",
                 () -> SNAPSHOT,
                 new HttpEvents(),
                 stubJobs,

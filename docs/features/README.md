@@ -15,4 +15,4 @@ boundaries so agents and humans stay aligned.
 | [**CLI ↔ web visual alignment**](cli-web-visual-alignment.md) | Color-means-state contract; web CSS ↔ `JkDarkTheme` token map (JK-1081) |
 | [**Exclusive builds + durable in-flight**](exclusive-builds.md) | Same-fingerprint reject (`Build #N already running`); start-time numbers; journal `running` for web refresh (JK-1248–1251) |
 
-Planning board: [kanartist](https://github.com/jkbuild/kanartist) project `jk` (`JK-NNNN`).
+Planning board: [kanartist](https://github.com/JumpKickOSS/kanartist) project `jk` (`JK-NNNN`).

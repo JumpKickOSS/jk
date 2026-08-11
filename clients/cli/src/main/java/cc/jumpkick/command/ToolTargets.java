@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.ToolCoordSpec;
 import cc.jumpkick.tool.ToolTarget;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -70,7 +71,8 @@ final class ToolTargets {
     }
 
     private static Resolved resolveCatalogName(ToolTarget.CatalogName c) {
-        LibraryCatalog catalog = LibraryCatalog.layered();
+        LibraryCatalog catalog =
+                LibraryCatalog.forProject(Path.of(".").toAbsolutePath().normalize());
         var module = catalog.lookup(c.name()).orElseThrow(() -> catalogMiss(catalog, c));
         // Validate the suffix now (it rides the wire verbatim).
         if (c.suffix() != null) {

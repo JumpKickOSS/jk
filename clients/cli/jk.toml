@@ -27,6 +27,8 @@ main-class = "cc.jumpkick.cli.Jk"
 
 [native]
 always = true
+# Installable client binary (PATH entry is `jk` / `jk.exe`), not the Maven artifact name.
+name = "jk"
 args = [
   "-Os",
   "--gc=serial",
@@ -43,5 +45,5 @@ args = [
 workers = 1
 # Exclude the long-running tests for our day-to-day usage.
 # Normal `jk test` should finish in 5 min or less.
-# Run these more comprehensive tests by running `jk test --all`
+# Run the excluded tags too with `jk test --exclude-tags ""` (--all only widens suites).
 exclude-tags = ["integration", "slow", "bench", "network"]

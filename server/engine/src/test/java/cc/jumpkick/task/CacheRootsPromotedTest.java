@@ -38,7 +38,9 @@ class CacheRootsPromotedTest {
                 storeCas.pathFor(hex), FileTime.fromMillis(System.currentTimeMillis() - 24L * 60 * 60 * 1000));
 
         Set<String> roots = CacheRoots.collect(
-                storeCas, tmp.resolve("store").resolve("actions"), tmp.resolve("store").resolve("tools"));
+                storeCas,
+                tmp.resolve("store").resolve("actions"),
+                tmp.resolve("store").resolve("tools"));
         assertThat(roots).contains(hex);
         CasSweep.sweep(storeCas, roots, false);
         assertThat(Files.isRegularFile(storeCas.pathFor(hex))).isTrue();
@@ -59,7 +61,9 @@ class CacheRootsPromotedTest {
 
         assertThat(CacheRoots.pruneExpiredPromotedMarkers(storeCas)).isEqualTo(1);
         Set<String> roots = CacheRoots.collect(
-                storeCas, tmp.resolve("store").resolve("actions"), tmp.resolve("store").resolve("tools"));
+                storeCas,
+                tmp.resolve("store").resolve("actions"),
+                tmp.resolve("store").resolve("tools"));
         assertThat(roots).doesNotContain(hex);
     }
 }
