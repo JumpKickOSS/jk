@@ -334,21 +334,44 @@ class CommandManagerTest {
     }
 
     @Test
-    void open_loop_seed_locks_after_execute_so_residual_cannot_rewrite_the_clock() {
-        // R0 is frozen once a module completes; residual rewrites are ignored (seed quality KPI).
+    void seed_path_locks_after_execute_but_residual_reanchors_countdown() {
+        // R0 seed path freezes once a module completes (provisional eta thrash guard). Live
+        // residual still re-anchors the countdown so ETA eases into R(t) and ends on time.
         var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
         cm.setEtaEstimate(38_000); // R0
-        cm.setModuleProgress(1, 2); // locks open-loop seed
-        cm.setEtaEstimate(20_000); // residual rewrite — ignored
-        // 10s elapsed of locked 38s seed → ~28s remain (not residual 20−10).
+        cm.setModuleProgress(1, 2); // locks seed path
+        cm.setEtaEstimate(5_000); // seed-path rewrite — ignored
+        // Without residual: open-loop 38s seed at 10s elapsed → ~28s.
+        String openLoop = TestAnsi.strip(cm.renderBuildPlanLines(120, 10_000).get(0));
+        assertThat(openLoop).contains("ETA ~28s");
+        // Residual re-anchor at ~0 wall: 20s left → at 10s elapsed, ~10s remain.
+        cm.setBarResidualRemaining(20_000);
         String mid = TestAnsi.strip(cm.renderBuildPlanLines(120, 10_000).get(0));
-        assertThat(mid).contains("ETA ~28s");
+        assertThat(mid).contains("ETA ~10s");
         assertThat(mid).contains("+10s");
-        // Overrun freezes at 0s; count-up keeps wall elapsed.
-        String over = TestAnsi.strip(cm.renderBuildPlanLines(120, 40_000).get(0));
-        assertThat(over).contains("ETA 0s");
-        assertThat(over).contains("+40s");
+        // Residual 0 → countdown freezes at 0s; count-up keeps wall elapsed.
+        cm.setBarResidualRemaining(0);
+        String done = TestAnsi.strip(cm.renderBuildPlanLines(120, 40_000).get(0));
+        assertThat(done).contains("ETA 0s");
+        assertThat(done).contains("+40s");
+    }
+
+    @Test
+    void residual_speeds_up_countdown_when_work_finishes_early() {
+        var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdfont = false;
+        cm.setEtaEstimate(100_000); // R0 = 100s
+        cm.setModuleProgress(1, 3);
+        // Residual re-anchor near t=0 with 20s left (work finishing early).
+        // Open-loop R0 at 10s would still show ~90s; residual-anchored shows ~10s.
+        cm.setBarResidualRemaining(20_000);
+        String header = TestAnsi.strip(cm.renderBuildPlanLines(120, 10_000).get(0));
+        assertThat(header).contains("ETA ~10s");
+        assertThat(header).contains("+10s");
+        // Bar also speeds up from residual (raw residual, not wall-decayed).
+        long[] bar = cm.displayBar(10_000);
+        assertThat(bar[0]).isEqualTo(333); // 10/(10+20)
     }
 
     @Test

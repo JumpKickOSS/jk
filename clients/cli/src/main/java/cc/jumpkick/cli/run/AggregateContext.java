@@ -34,7 +34,7 @@ public final class AggregateContext {
     public void applySnapshot(WorkspaceProgressTracker.Snapshot snap) {
         if (snap == null) return;
         if (snap.denominator() > 0) cm.progress(snap.numerator(), snap.denominator());
-        // Private residual for adaptive clock bar — never rewrites open-loop countdown R0.
+        // Residual RemainingWork: adaptive clock bar + countdown re-anchor (ends on time with R(t)).
         if (snap.remainingMs() >= 0) cm.setBarResidualRemaining(snap.remainingMs());
         // run-wide module remaining next to the wall-clock ETA.
         if (snap.modulesTotal() > 0) {

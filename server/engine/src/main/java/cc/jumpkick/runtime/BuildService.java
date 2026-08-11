@@ -1025,7 +1025,8 @@ public final class BuildService {
         listener.onPlan(List.copyOf(plans.values()));
         listener.onModuleGraph(graph.edges());
 
-        // Re-emit R0 after prepare (open-loop seed; client freezes it when execute starts).
+        // Re-emit R0 after prepare (seed path; client freezes seed once execute starts; residual
+        // still re-anchors the painted countdown mid-run).
         listener.onEtaEstimate(etaMs);
 
         // Workspace artifact links for the whole graph (clean modules still own jars from prior builds).

@@ -5,16 +5,19 @@ package cc.jumpkick.runtime.progress;
 public record HeaderProgressState(
         long weightNumerator,
         long weightDenominator,
-        /** Open-loop seed remaining at seed time ({@code -1} unknown). Countdown uses this only. */
+        /**
+         * Seed remaining at seed time ({@code -1} unknown). Countdown starts from this; residual
+         * re-anchors mid-run on the client.
+         */
         long r0Ms,
         /** Elapsed ms when R0 was taken (same clock as {@link #elapsedMs}). */
         long seedAtElapsedMs,
         /** Current elapsed ms on the same clock as {@link #seedAtElapsedMs}. */
         long elapsedMs,
         /**
-         * Private residual remaining wall estimate for the bar ({@code -1} = unknown). Updated as
-         * work completes; never shown as the countdown. When known, clock fill is {@code elapsed /
-         * (elapsed + residual)} so the bar can speed up or slow down without rewriting R0.
+         * Live residual remaining wall estimate ({@code -1} = unknown). When known, clock fill is
+         * {@code elapsed / (elapsed + residual)} so the bar ends with residual → 0. The client
+         * countdown re-anchors to the same residual.
          */
         long residualRemainingMs,
         boolean settled) {

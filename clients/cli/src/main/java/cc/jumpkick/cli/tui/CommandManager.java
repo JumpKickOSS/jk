@@ -107,9 +107,9 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     private long numerator;
     private long denominator;
     /**
-     * Open-loop seed remaining at seed time ({@code -1} = unknown / count-up only). Paired with
-     * {@link #remainingSetAtElapsedMs}. After {@link #openLoopLocked}, mid-run residual rewrites
-     * are ignored so the clock measures seed quality (R0 − elapsed), not just-in-time fixes.
+     * Frozen seed remaining {@code R0} at seed time ({@code -1} = unknown / count-up only). Paired
+     * with {@link #remainingSetAtElapsedMs}. Explain-identical; seed path freezes after execute.
+     * Strategy AUTO uses this to pick clock; bar falls back to {@code elapsed/R0} without residual.
      *
      * <p>Header bar mode: {@link ProgressBarMode} ({@code JK_PROGRESS_MODE}) — default AUTO uses
      * {@link ClockProgressStrategy} when R0 is seeded, else {@link WeightedProgressStrategy}.
@@ -120,14 +120,22 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      * 1–2s bar/wrap-up lag does not flash mid-gray and draw attention.
      */
     static final long COUNT_UP_PROMOTE_GRACE_MS = 2_000L;
-    /** {@link #elapsedMillis()} when the open-loop seed was taken. */
+    /** {@link #elapsedMillis()} when the R0 seed was taken. */
     private long remainingSetAtElapsedMs;
     /**
-     * Private residual remaining for the bar only ({@code -1} unknown). Updated from engine
-     * workspace-progress; never rewrites the open-loop countdown seed.
+     * Live residual remaining from engine RemainingWork ({@code -1} unknown). Drives the adaptive
+     * clock bar ({@code elapsed/(elapsed+residual)}) and the painted countdown (re-anchored).
      */
     private long residualRemainingMs = -1;
-    /** True once execute has begun (module progress) — seed is frozen for the countdown. */
+    /**
+     * {@link #elapsedMillis()} when {@link #residualRemainingMs} was last applied — countdown
+     * open-loop-decays residual between samples so it eases into R(t) and hits 0 with residual.
+     */
+    private long residualSetAtElapsedMs;
+    /**
+     * True once execute has begun — the explain seed path ({@link #setRemainingWorkEstimate}) no
+     * longer replaces R0. Residual re-anchors for display still apply.
+     */
     private boolean openLoopLocked;
     /** Run-wide total for notifications: elapsed-at-seed + R0. 0 when never seeded. */
     private long etaEstimateMs;
@@ -332,8 +340,9 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             r.state = RowState.ACTIVE;
             this.target = module;
             touchPhaseStart(phaseKey);
-            // First module task starting = execute has begun: freeze the open-loop seed so
-            // mid-run rewrites cannot paper over a bad estimate (JK-1806).
+            // First module task starting = execute has begun: freeze the R0 seed path so
+            // provisional eta rewrites cannot thrash the total (JK-1806). Residual still
+            // re-anchors the painted countdown.
             if (remainingWorkMs >= 0) openLoopLocked = true;
         }
     }
@@ -365,19 +374,21 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     /**
-     * Seed the open-loop countdown with remaining wall work {@code R0} (ms). Same figure as
-     * {@code jk explain}. After execute starts (first {@link #stepRunning} or a completed module in
-     * {@link #setModuleProgress}), further updates are ignored so the clock is pure
-     * {@code R0 − elapsed} — residual rewrites cannot paper over a bad seed. Pre-execute re-seeds
-     * (post-forecast, post-prepare) replace a provisional lock-window seed while unlocked.
+     * Seed the countdown with remaining wall work {@code R0} (ms). Same figure as {@code jk
+     * explain}. After execute starts (first {@link #stepRunning} or a completed module in {@link
+     * #setModuleProgress}), further seed-path updates are ignored so a provisional lock-window
+     * figure cannot thrash mid-run. Live residual still re-anchors display via {@link
+     * #setBarResidualRemaining}. Pre-execute re-seeds (post-forecast, post-prepare) replace a
+     * provisional seed while unlocked.
      */
     public void setEtaEstimate(long remainingOrTotalMillis) {
         setRemainingWorkEstimate(remainingOrTotalMillis);
     }
 
     /**
-     * Apply a seed remaining estimate. {@code 0} before any seed is ignored (unknown). After the
-     * open-loop seed is locked, updates are ignored (including residual mid-run).
+     * Apply a seed remaining estimate (R0 path). {@code 0} before any seed is ignored (unknown).
+     * After execute locks the seed path, updates are ignored — residual mid-run uses {@link
+     * #setBarResidualRemaining} instead.
      */
     public void setRemainingWorkEstimate(long remainingMillis) {
         long rem = Math.max(0, remainingMillis);
@@ -391,16 +402,20 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             remainingWorkMs = rem;
             remainingSetAtElapsedMs = elapsed;
             etaEstimateMs = elapsed + rem;
-            // Seed residual to R0 until engine residual updates arrive.
-            if (residualRemainingMs < 0) residualRemainingMs = rem;
-            // R0 is enough to drive the open-loop bar (drop preflight solve label).
+            // Pre-execute re-seed also refreshes residual so countdown tracks the refined R0
+            // until live RemainingWork updates arrive (provisional → post-forecast).
+            residualRemainingMs = rem;
+            residualSetAtElapsedMs = elapsed;
+            // R0 is enough to drive the adaptive bar (drop preflight solve label).
             if (rem > 0) this.solveLabel = "";
         }
     }
 
     /**
-     * Update the bar's private residual remaining (from engine RemainingWork). Does <em>not</em>
-     * change the open-loop countdown seed. Pass {@code -1} to clear.
+     * Apply live residual remaining from engine RemainingWork. Updates the adaptive clock bar and
+     * re-anchors the countdown so painted remaining eases toward residual and hits 0 with it.
+     * Between residual samples the paint open-loop-decays residual by wall time. Pass {@code -1}
+     * to clear residual (countdown falls back to frozen R0 − elapsed).
      */
     public void setBarResidualRemaining(long residualMillis) {
         synchronized (lock) {
@@ -408,13 +423,27 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 residualRemainingMs = -1;
                 return;
             }
-            residualRemainingMs = residualMillis;
+            long rem = residualMillis;
+            // Bare residual 0 with no R0 seed: do not invent a dual clock from "done".
+            if (remainingWorkMs < 0 && rem == 0) return;
+            long elapsed = elapsedMillis();
+            residualRemainingMs = rem;
+            residualSetAtElapsedMs = elapsed;
+            // Reconnect / residual-before-seed: seed R0 from first positive residual (JK-1820).
+            if (remainingWorkMs < 0 && rem > 0) {
+                remainingWorkMs = rem;
+                remainingSetAtElapsedMs = elapsed;
+            }
+            if (etaEstimateMs == 0 && rem > 0) {
+                etaEstimateMs = elapsed + rem;
+            }
+            if (rem > 0) this.solveLabel = "";
         }
     }
 
     /**
      * Run-wide total estimate in ms for desktop notifications ({@code 0} = never seeded).
-     * Open-loop countdown uses {@link #remainingWorkMs} + set-at elapsed, not this alone.
+     * Live countdown prefers residual re-anchor; falls back to R0 − elapsed.
      */
     public long etaEstimateMs() {
         synchronized (lock) {
@@ -435,9 +464,10 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         synchronized (lock) {
             this.modulesComplete = Math.max(0, complete);
             this.modulesTotal = Math.max(0, total);
-            // A completed module means execute is underway — freeze the open-loop seed.
+            // A completed module means execute is underway — freeze the R0 seed path.
             // modulesTotal alone arrives with the work model *before* the engine's real
-            // post-forecast seed (`eta` line), so it must not lock (JK-1806).
+            // post-forecast seed (`eta` line), so it must not lock (JK-1806). Residual
+            // re-anchors for display still apply after lock.
             if (this.modulesComplete > 0 && remainingWorkMs >= 0) {
                 openLoopLocked = true;
             }
@@ -1717,34 +1747,47 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             }
         }
         // After the bar's percent: a bright-black middle dot, then the run-wide build clock.
-        // Seeded: dim italic "ETA " + mid-gray "~remaining" · dim "+elapsed". When remaining hits 0
-        // the countdown freezes dim at "0s"; count-up stays dim for {@link #COUNT_UP_PROMOTE_GRACE_MS}
-        // then steps to mid-gray (the countdown's former color) — not yellow. The grace covers the
-        // common 1–2s bar-done / wrap-up lag so a brief 0s window does not recolor and draw the eye.
-        // No seed: single yellow "+elapsed" count-up.
+        // Seeded: dim italic "ETA " + mid-gray "~remaining" · dim "+elapsed". Residual re-anchors
+        // remaining so the countdown eases into R(t) and freezes at dim "0s" with residual → 0;
+        // count-up stays dim for {@link #COUNT_UP_PROMOTE_GRACE_MS} then mid-gray. No seed: single
+        // yellow "+elapsed" count-up.
         //
         // Both faces are derived from the same whole-second elapsed counter so they tick on the
         // same paint (flooring remaining-ms and elapsed-ms independently desynced them by the
         // seed's sub-second remainder — often ~100ms after setRemainingWorkEstimate).
         h.append(' ').append(Theme.colorize("·", dim)).append(' ');
         long elapsedSec = Math.max(0L, elapsedMillis) / 1000L;
-        // Dual clock when we have ever received a remaining-work seed (including R=0 done).
-        // Deadline = setAt + R so remainingSec and elapsedSec share whole-second boundaries
-        // (floor(R−Δt) alone desyncs faces by the sub-second remainder of R).
+        // Dual clock when we have ever received a remaining-work seed (including residual 0 done).
+        // Prefer residual re-anchor (eases into R(t), ends on time); else frozen R0 − elapsed.
+        // Deadline = setAt + R so remainingSec and elapsedSec share whole-second boundaries.
         long remainingSec;
         boolean seeded;
         long overrunMs = 0;
         synchronized (lock) {
-            if (remainingWorkMs < 0) {
-                seeded = false;
-                remainingSec = 0;
-            } else {
+            long anchorRem;
+            long anchorAt;
+            if (residualRemainingMs >= 0 && (remainingWorkMs >= 0 || residualRemainingMs > 0)) {
+                // Residual known (including 0 after R0 was seeded) — countdown tracks R(t).
                 seeded = true;
-                long deadlineMs = remainingSetAtElapsedMs + remainingWorkMs;
+                anchorRem = residualRemainingMs;
+                anchorAt = residualSetAtElapsedMs;
+            } else if (remainingWorkMs >= 0) {
+                seeded = true;
+                anchorRem = remainingWorkMs;
+                anchorAt = remainingSetAtElapsedMs;
+            } else {
+                seeded = false;
+                anchorRem = 0;
+                anchorAt = 0;
+            }
+            if (seeded) {
+                long deadlineMs = anchorAt + anchorRem;
                 remainingSec = Math.max(0L, deadlineMs / 1000L - elapsedSec);
                 if (remainingSec <= 0) {
                     overrunMs = Math.max(0L, elapsedMillis - deadlineMs);
                 }
+            } else {
+                remainingSec = 0;
             }
         }
         if (seeded) {

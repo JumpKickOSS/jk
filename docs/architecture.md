@@ -337,8 +337,8 @@ Two fixed taxonomies (do not collapse them):
 
 Countdown and the aggregate progress bar share one oracle: residual schedule of unfinished
 module costs (`RemainingWork` / `WorkSchedule`). Seed `R0` ≡ `jk explain`; live `R(t)` updates
-as modules progress/finish. Bar percent ≈ `min(99, 100 × (1 − R/R0))` until finish.
-See [perf/progress-contract.md](perf/progress-contract.md).
+as modules progress/finish. Bar ≈ `elapsed / (elapsed + R(t))` (cap 99%); countdown re-anchors
+to residual so both end on time with `R → 0`. See [perf/progress-contract.md](perf/progress-contract.md).
 
 ### Project build logic (`.jk-build/`, ticket-1037)
 

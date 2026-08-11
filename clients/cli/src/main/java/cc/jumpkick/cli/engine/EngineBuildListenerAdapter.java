@@ -873,7 +873,8 @@ final class EngineBuildListenerAdapter {
                         }
                         listener.onWorkspaceProgress(new cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot(
                                 num, den, pct, phase == null ? "" : phase, mc, mt, rem, r0));
-                        // Do not rewrite the open-loop countdown from residual progress events.
+                        // Residual remainingMs rides the snapshot; AggregateContext re-anchors
+                        // the countdown + adaptive bar (seed path stays on eta events only).
                     }
                     case EngineProtocol.PLAN_DONE -> listener.onPlan(buildModulePlans(planByDir, cache));
                     case EngineProtocol.ETA -> {

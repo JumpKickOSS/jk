@@ -152,7 +152,8 @@ test('rehydrate seeds the countdown from current remaining, not original R0 (JK-
   assert.equal(cards[0].r0Ms, 60_000);
   assert.equal(cards[0].r0At, 10_000);
   assert.equal(cards[0].residualRemainingMs, 60_000);
-  // Frozen once: later snapshots do not re-seed.
+  assert.equal(cards[0].residualAt, 10_000);
+  // R0 seed freezes once; residual re-anchors mid-run for countdown + bar.
   foldEvent(cards, {
     type: 'workspace-progress',
     at: 20_000,
@@ -160,6 +161,7 @@ test('rehydrate seeds the countdown from current remaining, not original R0 (JK-
   });
   assert.equal(cards[0].r0Ms, 60_000);
   assert.equal(cards[0].residualRemainingMs, 30_000);
+  assert.equal(cards[0].residualAt, 20_000);
 });
 
 test('fresh start seeds from the first snapshot where remaining equals R0', () => {

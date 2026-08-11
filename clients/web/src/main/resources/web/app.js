@@ -1307,8 +1307,8 @@ Vue.createApp({
       if (useClock) {
         const base = haveR0 ? card.r0At : card.startedAt;
         const since = Math.max(0, this.now - (base != null ? base : this.now));
-        // Adaptive: elapsed / (elapsed + residual). Residual firms up as work completes;
-        // open-loop countdown still uses frozen r0Ms only.
+        // Adaptive: elapsed / (elapsed + residual). Residual firms up as work completes —
+        // same oracle the countdown re-anchors to (ends on time with residual → 0).
         let raw;
         if (haveResidual) {
           const denom = since + card.residualRemainingMs;
@@ -1330,44 +1330,57 @@ Vue.createApp({
 
     // Live ETA dual-clock (CLI parity). Both faces share one whole-second elapsed counter so they
     // tick on the same paint — flooring remaining-ms and elapsed-ms independently desynced them.
-    // Countdown freezes at "0s" on overrun; count-up is always full elapsed. No seed → count-up only.
+    // Countdown re-anchors to residual RemainingWork so it eases into R(t) and freezes at "0s"
+    // with residual → 0; count-up is always full elapsed. No seed → count-up only.
     hasEta(card) {
-      // Open-loop countdown from frozen R0 (not residual rewrites).
-      return (
-        this.outcome(card) === 'running' &&
-        typeof card.r0Ms === 'number' &&
-        card.r0Ms > 0 &&
-        card.r0At != null
-      );
+      if (this.outcome(card) !== 'running') return false;
+      const haveR0 = typeof card.r0Ms === 'number' && card.r0Ms > 0 && card.r0At != null;
+      const haveResidual =
+        typeof card.residualRemainingMs === 'number' &&
+        card.residualRemainingMs >= 0 &&
+        card.residualAt != null;
+      return haveR0 || haveResidual;
     },
     elapsedSeconds(card) {
       if (card.startedAt == null) return 0;
       return Math.max(0, Math.floor((this.now - card.startedAt) / 1000));
     },
     // Whole-second countdown deadline on the SAME counter as elapsedSeconds (startedAt epoch).
-    // Deriving both faces from one counter is what keeps them ticking on the same paint — the
-    // CLI learned this the hard way (CommandManager.planHeader); flooring remaining-ms and
-    // elapsed-ms independently against two epochs desynced them sub-second (JK-1822).
+    // Prefer residual re-anchor when known (CLI setBarResidualRemaining); fall back to frozen R0.
+    // Deriving both faces from one counter keeps them ticking on the same paint (JK-1822).
     etaDeadlineSeconds(card) {
       if (!this.hasEta(card)) return null;
-      const base = card.startedAt != null ? card.startedAt : card.r0At;
-      return Math.floor((card.r0At - base + card.r0Ms) / 1000);
+      const base = card.startedAt != null ? card.startedAt : (card.residualAt != null ? card.residualAt : card.r0At);
+      if (base == null) return null;
+      // Residual re-anchor: deadline = residualAt + residualRemaining (open-loop decay between samples).
+      if (
+        typeof card.residualRemainingMs === 'number' &&
+        card.residualRemainingMs >= 0 &&
+        card.residualAt != null
+      ) {
+        return Math.floor((card.residualAt - base + card.residualRemainingMs) / 1000);
+      }
+      // Seed-only: deadline = r0At + r0Ms.
+      if (typeof card.r0Ms === 'number' && card.r0Ms > 0 && card.r0At != null) {
+        return Math.floor((card.r0At - base + card.r0Ms) / 1000);
+      }
+      return null;
     },
     etaSeconds(card) {
-      // Open-loop total: elapsed-at-seed + R0 ≈ r0Ms when seed is near start; use r0Ms as remaining seed.
-      if (typeof card.r0Ms !== 'number' || card.r0Ms <= 0 || card.r0At == null) {
-        const total = etaTotalMillis(card);
-        return total == null ? 0 : Math.max(0, Math.floor(total / 1000));
+      const deadline = this.etaDeadlineSeconds(card);
+      if (deadline != null) {
+        return Math.max(0, deadline - this.elapsedSeconds(card));
       }
-      return Math.max(0, Math.floor(card.r0Ms / 1000));
+      const total = etaTotalMillis(card);
+      return total == null ? 0 : Math.max(0, Math.floor(total / 1000));
     },
     etaOverdue(card) {
-      // Countdown has frozen at 0s (open-loop R0 exhausted). Same whole-second counter as the
+      // Countdown has frozen at 0s (residual/R0 exhausted). Same whole-second counter as the
       // faces so the freeze and the paint flip together.
       const deadline = this.etaDeadlineSeconds(card);
       return deadline != null && this.elapsedSeconds(card) >= deadline;
     },
-    /** Count-up mid-gray only after 2s past R0 — matches CLI COUNT_UP_PROMOTE_GRACE_MS. */
+    /** Count-up mid-gray only after 2s past deadline — matches CLI COUNT_UP_PROMOTE_GRACE_MS. */
     etaCountUpPromoted(card) {
       const deadline = this.etaDeadlineSeconds(card);
       return deadline != null && this.elapsedSeconds(card) >= deadline + 2;

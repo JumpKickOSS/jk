@@ -1,4 +1,4 @@
-# Progress contract — open-loop ETA and effort-weight bar
+# Progress contract — adaptive residual ETA and effort-weight bar
 
 Status: **normative** for TUI / wire progress. Implementations live under
 `shared/wire` (`WorkSchedule`, `WorkspaceProgressTracker`, `RemainingWork`) and
@@ -7,29 +7,31 @@ Status: **normative** for TUI / wire progress. Implementations live under
 ## Goals
 
 1. **One aggregate** for the whole request (single module, selection subset, or monorepo).
-2. **Open-loop seed `R0`** — wall-ms estimate at plan start (`jk explain` ≡ `jk build`). Users plan from the start; mid-run residual must not redefine the countdown.
+2. **Open-loop seed `R0`** — wall-ms estimate at plan start (`jk explain` ≡ `jk build`). Users plan from the start; seed quality is measured against this figure.
 3. **Effort-weight progress bar** — denominator is Σ plan step weights (measured walls preferred). Cache/skip → TOKEN. Bar **never goes backwards**.
 4. **Real-work only** — bookkeeping steps do not inflate dirty set or ETA.
 5. **Hierarchical learning** — test method → test class → task → stage → module → workspace.
-6. **Dual clock** — countdown from open-loop `R0 − elapsed`; dim `+elapsed` count-up from command start.
+6. **Dual clock** — countdown from residual-reanchored remaining (starts as `R0`); dim `+elapsed` count-up from command start.
 7. **details.jsonl** carries fine events; the header bar/clock stay run-wide.
 
 ## Model
 
 ```
-R0            = seed wall ms (jk explain ≡ jk build seed) — frozen for countdown
-countdown     = max(0, R0 − elapsed)     # open-loop; never rewritten mid-run
-residual R(t) = private remaining wall from schedule of unfinished work (RemainingWork)
+R0            = seed wall ms (jk explain ≡ jk build seed) — seed-quality KPI; initial countdown
+residual R(t) = remaining wall from schedule of unfinished work (RemainingWork)
+countdown     = max(0, R_anchor − Δelapsed)   # re-anchor when residual updates; start R_anchor=R0
 bar (clock)   = min(99%, elapsed / (elapsed + R(t)))   # adaptive; falls back to elapsed/R0
 weight slices = fallback when R0 unknown
 ```
 
-**Countdown** stays pure open-loop so the seed quality KPI stays honest.
+**Countdown and bar share residual.** Seed path freezes R0 once execute starts (provisional
+eta thrash guard; seed quality KPI stays honest). Mid-run residual re-anchors the painted
+countdown so remaining eases into R(t) and hits 0 with residual → 0 (always end on time).
+Between residual samples the client open-loop-decays the last re-anchor by wall time.
 
-**Bar** uses residual as a *private* estimate: when work finishes faster than R0, R(t)
-shrinks and the bar speeds up; when residual is larger, it slows. Formula
-`elapsed / (elapsed + residual)` hits ~100% as residual → 0 without rewriting the countdown.
-Cap **99%** until settle; peak hold never goes backwards.
+**Bar** uses residual: when work finishes faster than R0, R(t) shrinks and the bar speeds up;
+when residual is larger, it slows. Formula `elapsed / (elapsed + residual)` hits ~100% as
+residual → 0. Cap **99%** until settle; peak hold never goes backwards.
 
 | Situation | Seed (R0) | Bar slice |
 |-----------|-----------|-----------|
@@ -61,9 +63,9 @@ jar. Runtime may **shrink** on cache hit (`RESTORE`); never reweight *up* mid-ru
 | **Material dirty only** | A module is dirty only if a *material* step (compile/test/package/native/…) is not CACHED — not parse-build / resolve-deps / write-stamp bookkeeping. Resource drift is material: the forecaster emits `copy-resources` (main/extra) or `copy-test-resources` (test scope) only when trees actually drifted, and either schedules the module. Compile-consumer cascade seeds from **compile/package** only (not `copy-resources` alone): consumers hash the packaged jar; package is forecast against a post-copy projection when resources drifted. A dirty `order-after`-only prereq adds an unpriced `order-check` task: the dependent schedules (real action keys re-check out-of-band outputs) but contributes nothing to ETA. |
 | **Price material steps only** | ETA costs skip bookkeeping steps even when the plan still runs them. Cascade-forced compile/package/**native** (`dependency changed` / `main changed` / `compile changed` without local *compile* content) are recheck tokens, not suite/native walls. Resource-only modules (copy/package resources) price package+copy only — never unlock compile/test suite walls. `run-tests` stays full when the module has local compile content, no compile steps (test-dep only), or a heavy packaging tail forecast (cli-shaped); pure cascade modules discount tests. |
 | **Same concurrency** | `etaConcurrency(...)` matches workspace scheduler clamp. |
-| **Open-loop clock** | Client freezes `R0` when execute starts; residual ETA events are not applied mid-run. |
+| **Seed path lock** | Client freezes the R0 *seed path* when execute starts (provisional eta thrash guard). Residual still re-anchors the painted countdown mid-run. |
 | **Mild over-estimate** | After schedule + history clamp, non-zero `R0` gets `×1.01` (`preferSlightOverEstimate`) so a hair high is preferred over a hair low — not a multi-minute floor. |
-| **Seed quality KPI** | `|R0 − execute_wall| / execute_wall` on success (`jk: eta-seed quality …` when serious or `JK_ETA_SEED_LOG=1`). |
+| **Seed quality KPI** | `|R0 − execute_wall| / execute_wall` on success (`jk: eta-seed quality …` when serious or `JK_ETA_SEED_LOG=1`) — residual display does not rewrite R0 for this KPI. |
 | **Fully-cached fast path** | Empty dirty → `R0 = 0`, skip forecast walk. |
 
 ### Schedule admission (ETA ≡ live)
@@ -130,7 +132,8 @@ JK_PROGRESS_MODE=weighted   # force weight slices
 Web override (browser cannot read process env): `localStorage.jkProgressMode = 'clock'|'weighted'|'auto'`.
 
 - Engine emits `progress` from the strategy on every `workspace-progress` event.  
-- Web also recomputes clock client-side from `R0` + `r0At` so the bar stays smooth between events.  
+- Web recomputes clock client-side from residual (+ `R0` fallback) so the bar stays smooth between
+  events; countdown re-anchors on each residual sample (`residualAt` + `remainingMs`).  
 - **Never go backwards** — one `SharedPeak` fraction floor per clock/weighted pair (JK-1815), so
   neither the AUTO weighted→clock takeover nor a denominator growth (calibrate/reweight) repaints
   lower; the web clamps per card (`card.peakPct`). Settle → 100%.

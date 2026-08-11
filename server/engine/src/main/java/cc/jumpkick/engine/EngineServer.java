@@ -1737,7 +1737,7 @@ public final class EngineServer implements AutoCloseable {
         double frac = view.denominator() > 0
                 ? Math.min(1.0, Math.max(0.0, (double) view.numerator() / (double) view.denominator()))
                 : 0.0;
-        // Bar: effort-weight slices (plan num/den). Residual is annotation only — never bar driver.
+        // Bar: effort-weight slices (plan num/den) + residual annotation for adaptive clock/countdown.
         long slice = planWeight(requestId, dir);
         progressTracker(requestId).moduleProgress(dir, slice, view.numerator(), view.denominator());
         cc.jumpkick.runtime.RemainingWork rw = remainingWorks.get(requestId);

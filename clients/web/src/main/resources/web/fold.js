@@ -132,12 +132,14 @@ export function foldEvent(cards, event) {
         else if (card.progressDen > 0) {
           card.progressPercent = Math.min(100, Math.round((100 * card.progressNum) / card.progressDen));
         }
-        // Freeze the open-loop countdown once. Prefer CURRENT remainingMs over the run's
-        // original R0: a reconnect/late join replays a snapshot carrying both, and seeding
-        // from R0 restarted a full-length countdown mid-build (JK-1820). A fresh run's first
-        // snapshot has remainingMs == R0, so this is identical for live starts.
+        // Residual RemainingWork: adaptive bar + countdown re-anchor. Prefer CURRENT remainingMs
+        // for first seed (reconnect/late join — JK-1820): seeding from original R0 restarted a
+        // full-length countdown mid-build. A fresh run's first snapshot has remainingMs == R0.
         const rem = typeof d.remainingMs === 'number' && d.remainingMs >= 0 ? d.remainingMs : null;
-        if (rem != null) card.residualRemainingMs = rem;
+        if (rem != null) {
+          card.residualRemainingMs = rem;
+          card.residualAt = event.at ?? Date.now();
+        }
         if (card.r0Ms == null) {
           if (rem != null) {
             // remainingMs 0 = effectively done — leave unseeded rather than count down R0.
@@ -159,10 +161,14 @@ export function foldEvent(cards, event) {
         // Always record remaining@emission for etaTotalMillis (JK-1517 re-projections).
         card.etaMillis = d.millis;
         card.etaAt = event.at ?? null;
-        // Open-loop countdown freezes R0 once — never rewrite r0Ms from residual mid-run.
+        // Seed R0 once; residual mid-run re-anchors via residualRemainingMs/residualAt.
         if (d.millis > 0 && card.r0Ms == null) {
           card.r0Ms = d.millis;
           card.r0At = event.at ?? Date.now();
+          if (card.residualRemainingMs == null) {
+            card.residualRemainingMs = d.millis;
+            card.residualAt = card.r0At;
+          }
         }
       }
       break;

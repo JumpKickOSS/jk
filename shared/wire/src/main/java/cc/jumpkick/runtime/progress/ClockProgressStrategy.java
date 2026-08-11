@@ -2,19 +2,17 @@
 package cc.jumpkick.runtime.progress;
 
 /**
- * Adaptive open-loop wall fill for the progress bar.
+ * Adaptive wall fill for the progress bar from residual remaining work.
  *
- * <p><b>Countdown</b> stays pure open-loop {@code R0 − elapsed} (not this class).
- *
- * <p><b>Bar</b> uses a private residual remaining estimate when available:
+ * <p>When residual is known:
  *
  * <pre>
  *   frac = elapsed / (elapsed + residualRemaining)
  * </pre>
  *
- * so the fill speeds up when work finishes faster than R0 and slows when residual grows — never
- * rewrites the public countdown. Without residual, falls back to {@code elapsed / R0}. Cap 99%
- * until settle; never goes backwards.
+ * so the fill speeds up when work finishes faster than R0 and slows when residual grows — hits
+ * ~100% as residual → 0 (same oracle the countdown re-anchors to). Without residual, falls back
+ * to {@code elapsed / R0}. Cap 99% until settle; never goes backwards.
  */
 public final class ClockProgressStrategy implements HeaderProgressStrategy {
 

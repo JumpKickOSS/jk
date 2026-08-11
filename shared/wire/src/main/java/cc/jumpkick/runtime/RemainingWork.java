@@ -13,8 +13,8 @@ import java.util.Objects;
  * including partial residual for in-flight modules.
  *
  * <p>{@link #R0()} is the seed wall estimate (same number as {@code jk explain} / initial
- * countdown). {@link #remaining()} is recomputed as modules progress/finish. Progress fraction is
- * {@code 1 - remaining/R0} so the bar and countdown share one oracle.
+ * countdown). {@link #remaining()} is recomputed as modules progress/finish. Bar and countdown
+ * share this residual oracle: bar ≈ {@code elapsed/(elapsed+R)}; countdown re-anchors to {@code R}.
  *
  * <p>When the ideal schedule of the initial cost set differs from {@code R0} (history floors,
  * contention margins), {@code weightToMs} bakes that into every residual schedule so mid-run
