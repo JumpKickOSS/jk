@@ -122,14 +122,19 @@ public final class TaskForecast {
             return !isBookkeepingStep(stepName);
         }
 
-        /** Always-run / stamp-check steps that must not alone mark a module dirty. */
+        /**
+         * Always-run / stamp-check steps that must not alone mark a module dirty.
+         *
+         * <p>{@code copy-resources}/{@code copy-test-resources} are deliberately NOT here: the
+         * forecaster emits them only on real resource drift (never as always-run bookkeeping), and
+         * a drifted resource must schedule the module or the jar ships stale bytes (JK-1808).
+         */
         public static boolean isBookkeepingStep(String stepName) {
             if (stepName == null) return true;
             return switch (stepName) {
                 case "parse-build",
                         "ensure-jdk",
                         "resolve-deps",
-                        "copy-resources",
                         "write-stamp",
                         "write-stamp-kotlin",
                         "write-stamp-groovy",

@@ -589,6 +589,7 @@ public final class EffortWeights {
                     "parse-build",
                     "ensure-jdk",
                     "copy-resources",
+                    "copy-test-resources",
                     "write-stamp",
                     "write-stamp-kotlin",
                     "write-stamp-groovy",

@@ -46,6 +46,41 @@ class TaskForecastDirtyTest {
     }
 
     @Test
+    void resource_drift_is_dirty() {
+        // copy-resources is emitted only on real drift — it must schedule the module or the
+        // jar ships stale resource bytes while the build reports up-to-date (JK-1808).
+        var m = new TaskForecast.Module(
+                Path.of("/m"),
+                "g:a",
+                List.of(
+                        new TaskForecast.Task("compile-java", TaskForecast.Status.CACHED, "hit", "abcd"),
+                        new TaskForecast.Task("copy-resources", TaskForecast.Status.RUN, "resources changed", null),
+                        new TaskForecast.Task("package-jar", TaskForecast.Status.CACHED, "hit", "ijkl")),
+                10,
+                5,
+                true,
+                false);
+        assertThat(m.dirty()).isTrue();
+    }
+
+    @Test
+    void test_resource_drift_is_dirty() {
+        var m = new TaskForecast.Module(
+                Path.of("/m"),
+                "g:a",
+                List.of(
+                        new TaskForecast.Task("compile-java", TaskForecast.Status.CACHED, "hit", "abcd"),
+                        new TaskForecast.Task(
+                                "copy-test-resources", TaskForecast.Status.RUN, "test resources changed", null),
+                        new TaskForecast.Task("run-tests", TaskForecast.Status.CACHED, "hit", "efgh")),
+                10,
+                5,
+                true,
+                false);
+        assertThat(m.dirty()).isTrue();
+    }
+
+    @Test
     void native_image_run_is_dirty() {
         var m = new TaskForecast.Module(
                 Path.of("/m"),

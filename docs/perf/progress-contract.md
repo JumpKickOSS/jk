@@ -58,7 +58,7 @@ jar. Runtime may **shrink** on cache hit (`RESTORE`); never reweight *up* mid-ru
 |------|--------|
 | **One function** | Both call `BuildService.estimateEtaMillis` only for `R0`. |
 | **One forecast** | Costs from `TaskForecaster` / `ExplainPlan` only. |
-| **Material dirty only** | A module is dirty only if a *material* step (compile/test/package/native/…) is not CACHED — not parse-build / resolve-deps / write-stamp bookkeeping. |
+| **Material dirty only** | A module is dirty only if a *material* step (compile/test/package/native/…) is not CACHED — not parse-build / resolve-deps / write-stamp bookkeeping. Resource drift is material: the forecaster emits `copy-resources` (main/extra, seeds the compile-consumer cascade) or `copy-test-resources` (test scope, no cascade) only when trees actually drifted, and either schedules the module. |
 | **Price material steps only** | ETA costs skip bookkeeping steps even when the plan still runs them. |
 | **Same concurrency** | `etaConcurrency(...)` matches workspace scheduler clamp. |
 | **Open-loop clock** | Client freezes `R0` when execute starts; residual ETA events are not applied mid-run. |

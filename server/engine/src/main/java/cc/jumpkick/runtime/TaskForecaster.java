@@ -93,7 +93,11 @@ public final class TaskForecaster {
                                     || p.name().startsWith("compile-kotlin")
                                     || p.name().startsWith("compile-groovy")
                                     || "package-jar".equals(p.name())
-                                    || "package-assembly".equals(p.name())));
+                                    || "package-assembly".equals(p.name())
+                                    // Main/extra resource drift re-copies + repackages, changing
+                                    // the jar bytes compile consumers hash (JK-1808). Test-resource
+                                    // drift is emitted as copy-test-resources and does not cascade.
+                                    || "copy-resources".equals(p.name())));
             // Also seed when a compile-scope dep is dirty even if predictors still look cached
             // against pre-rebuild sibling jars (pessimistic; avoids under-reserve).
             if (mainOutputDirty || dep.compileDepDirty()) {
@@ -594,8 +598,10 @@ public final class TaskForecaster {
                 if (haveTests && !skipTests && !testDirty && Files.isDirectory(layout.testClassesDir())) {
                     Path resTest = cc.jumpkick.layout.ModuleLayout.testResourcesDir(dir, compact);
                     if (resourcesOutOfSync(resTest, layout.testClassesDir())) {
+                        // Distinct name: test-resource drift schedules the module (material) but
+                        // must not seed the compile-consumer cascade like main-resource drift.
                         steps.add(new TaskForecast.Task(
-                                "copy-resources", TaskForecast.Status.RUN, "test resources changed", null));
+                                "copy-test-resources", TaskForecast.Status.RUN, "test resources changed", null));
                     }
                 }
             }
