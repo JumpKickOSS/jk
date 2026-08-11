@@ -140,6 +140,39 @@ test('workspace-progress sets request-level aggregate percent (JK-1120)', () => 
   assert.equal(cards[0].progressDen, 200);
 });
 
+test('rehydrate seeds the countdown from current remaining, not original R0 (JK-1820)', () => {
+  const cards = [];
+  foldEvent(cards, start(7, '/w'));
+  // Late join: the rehydrated snapshot carries the run's original R0 AND current remaining.
+  foldEvent(cards, {
+    type: 'workspace-progress',
+    at: 10_000,
+    data: { requestId: 7, dir: '/w', numerator: 800, denominator: 1000, R0: 180_000, remainingMs: 60_000 },
+  });
+  assert.equal(cards[0].r0Ms, 60_000);
+  assert.equal(cards[0].r0At, 10_000);
+  assert.equal(cards[0].residualRemainingMs, 60_000);
+  // Frozen once: later snapshots do not re-seed.
+  foldEvent(cards, {
+    type: 'workspace-progress',
+    at: 20_000,
+    data: { requestId: 7, dir: '/w', numerator: 900, denominator: 1000, R0: 180_000, remainingMs: 30_000 },
+  });
+  assert.equal(cards[0].r0Ms, 60_000);
+  assert.equal(cards[0].residualRemainingMs, 30_000);
+});
+
+test('fresh start seeds from the first snapshot where remaining equals R0', () => {
+  const cards = [];
+  foldEvent(cards, start(8, '/w'));
+  foldEvent(cards, {
+    type: 'workspace-progress',
+    at: 1_000,
+    data: { requestId: 8, dir: '/w', numerator: 0, denominator: 1000, R0: 90_000, remainingMs: 90_000 },
+  });
+  assert.equal(cards[0].r0Ms, 90_000);
+});
+
 test('the feed is bounded at MAX_CARDS', () => {
   const cards = [];
   for (let i = 1; i <= MAX_CARDS + 7; i++) foldEvent(cards, start(i, '/w/' + i));

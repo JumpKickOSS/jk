@@ -132,18 +132,21 @@ export function foldEvent(cards, event) {
         else if (card.progressDen > 0) {
           card.progressPercent = Math.min(100, Math.round((100 * card.progressNum) / card.progressDen));
         }
-        // Freeze open-loop R0 once; residual remaining is private for adaptive bar only.
-        if (typeof d.R0 === 'number' && d.R0 > 0) {
-          if (card.r0Ms == null) {
+        // Freeze the open-loop countdown once. Prefer CURRENT remainingMs over the run's
+        // original R0: a reconnect/late join replays a snapshot carrying both, and seeding
+        // from R0 restarted a full-length countdown mid-build (JK-1820). A fresh run's first
+        // snapshot has remainingMs == R0, so this is identical for live starts.
+        const rem = typeof d.remainingMs === 'number' && d.remainingMs >= 0 ? d.remainingMs : null;
+        if (rem != null) card.residualRemainingMs = rem;
+        if (card.r0Ms == null) {
+          if (rem != null) {
+            // remainingMs 0 = effectively done — leave unseeded rather than count down R0.
+            if (rem > 0) {
+              card.r0Ms = rem;
+              card.r0At = event.at ?? Date.now();
+            }
+          } else if (typeof d.R0 === 'number' && d.R0 > 0) {
             card.r0Ms = d.R0;
-            card.r0At = event.at ?? Date.now();
-          }
-        }
-        if (typeof d.remainingMs === 'number' && d.remainingMs >= 0) {
-          card.residualRemainingMs = d.remainingMs;
-          // First remaining with no R0 yet: seed open-loop from it once.
-          if (card.r0Ms == null && d.remainingMs > 0) {
-            card.r0Ms = d.remainingMs;
             card.r0At = event.at ?? Date.now();
           }
         }
