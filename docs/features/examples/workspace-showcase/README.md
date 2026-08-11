@@ -14,7 +14,7 @@ workspace-showcase/
 ```bash
 # from repo root, after bootstrap:
 ./gradlew clean dist installLocal && ./install.sh build/dist/jk
-export PATH="$HOME/.jk/versions/0.11.0/bin:$PATH"   # or ~/.local/bin
+export PATH="$HOME/.jk/versions/0.12.0/bin:$PATH"   # or ~/.local/bin
 
 cd docs/features/examples/workspace-showcase
 jk lock

@@ -17,7 +17,7 @@ class VersionStoreTest {
         Path jar = Files.writeString(tmp.resolve("engine.jar"), "engine-bytes");
         Path bin = Files.writeString(tmp.resolve("jk"), "client-bytes");
 
-        var m = store.materializeFromFiles("0.11.0", cas, jar, bin);
+        var m = store.materializeFromFiles("0.12.0", cas, jar, bin);
         assertThat(m.engineJar()).hasContent("engine-bytes");
         assertThat(m.clientBin()).isPresent();
         assertThat(m.clientBin().get()).hasContent("client-bytes");
@@ -27,13 +27,14 @@ class VersionStoreTest {
                 .isFalse();
 
         // Idempotent: a second materialization returns the existing dir untouched.
-        var again = store.materializeFromFiles("0.11.0", cas, jar, bin);
+        var again = store.materializeFromFiles("0.12.0", cas, jar, bin);
         assertThat(again.root()).isEqualTo(m.root());
 
         // A manifest-less dir is an aborted materialization: invisible to readers.
-        Path aborted = Files.createDirectories(store.versionsDir().resolve("0.12.0/lib"));
+        // Use a different version than the complete install above so the path is empty.
+        Path aborted = Files.createDirectories(store.versionsDir().resolve("0.13.0/lib"));
         Files.writeString(aborted.resolve("jk-engine.jar"), "half");
-        assertThat(store.resolve("0.12.0")).isEmpty();
+        assertThat(store.resolve("0.13.0")).isEmpty();
     }
 
     @Test
@@ -41,12 +42,12 @@ class VersionStoreTest {
         Cas cas = new Cas(Files.createDirectories(tmp.resolve("cache")));
         VersionStore store = new VersionStore(tmp.resolve("versions"));
         Path jar = Files.writeString(tmp.resolve("engine.jar"), "e");
-        for (String v : new String[] {"0.9.2", "0.10.0", "0.11.0-SNAPSHOT"}) {
+        for (String v : new String[] {"0.9.2", "0.10.0", "0.12.0-SNAPSHOT"}) {
             store.materializeFromFiles(v, cas, jar, null);
         }
-        assertThat(store.newest().orElseThrow().version()).isEqualTo("0.11.0-SNAPSHOT");
-        store.materializeFromFiles("0.11.0", cas, jar, null);
-        assertThat(store.newest().orElseThrow().version()).isEqualTo("0.11.0");
+        assertThat(store.newest().orElseThrow().version()).isEqualTo("0.12.0-SNAPSHOT");
+        store.materializeFromFiles("0.12.0", cas, jar, null);
+        assertThat(store.newest().orElseThrow().version()).isEqualTo("0.12.0");
 
         assertThat(VersionStore.compare("0.10.0", "0.9.9")).isPositive();
         assertThat(VersionStore.compare("1.0.0-SNAPSHOT", "1.0.0")).isNegative();
@@ -112,11 +113,11 @@ class VersionStoreTest {
         Path clientV2 = dir.resolve("jk-v2");
         Files.writeString(clientV2, "client bytes v2 (new dist)");
 
-        var first = store.materializeFromFiles("0.11.0", cas, jar, clientV1);
+        var first = store.materializeFromFiles("0.12.0", cas, jar, clientV1);
         assertThat(first.clientBin()).isPresent();
         assertThat(first.clientBin().get()).hasContent("client bytes v1");
 
-        var second = store.materializeFromFiles("0.11.0", cas, jar, clientV2);
+        var second = store.materializeFromFiles("0.12.0", cas, jar, clientV2);
         assertThat(second.clientBin()).isPresent();
         assertThat(second.clientBin().get()).hasContent("client bytes v2 (new dist)");
     }
@@ -156,11 +157,11 @@ class VersionStoreTest {
     @Test
     void wipe_aot_directory_keeps_live_version_only(@TempDir Path home) throws Exception {
         Path aot = Files.createDirectories(home.resolve("aot"));
-        Path liveEng = Files.writeString(aot.resolve("engine-0.11.0-aaaaaaaaaaaaaaaa.aot"), "e");
-        Path liveWorker = Files.writeString(aot.resolve("java-compiler-0.11.0-bbbbbbbbbbbbbbbb.aot"), "w");
+        Path liveEng = Files.writeString(aot.resolve("engine-0.12.0-aaaaaaaaaaaaaaaa.aot"), "e");
+        Path liveWorker = Files.writeString(aot.resolve("java-compiler-0.12.0-bbbbbbbbbbbbbbbb.aot"), "w");
         Path oldEng = Files.writeString(aot.resolve("engine-0.10.1-cccccccccccccccc.aot"), "old");
         Path legacyWorker = Files.writeString(aot.resolve("java-compiler-dddddddddddddddd.aot"), "legacy");
-        Path snap = Files.writeString(aot.resolve("engine-0.11.0-SNAPSHOT-eeeeeeeeeeeeeeee.aot"), "snap");
+        Path snap = Files.writeString(aot.resolve("engine-0.12.0-SNAPSHOT-eeeeeeeeeeeeeeee.aot"), "snap");
         Path lock = Files.writeString(aot.resolve("aot.toml.lock"), "");
         cc.jumpkick.util.AotManifest.upsert(
                 aot,
@@ -169,7 +170,7 @@ class VersionStoreTest {
                         .status("ready")
                         .build());
 
-        int removed = VersionStore.wipeAotDirectory(aot, "0.11.0");
+        int removed = VersionStore.wipeAotDirectory(aot, "0.12.0");
 
         assertThat(removed).isEqualTo(3); // old eng, legacy worker, snapshot
         assertThat(liveEng).exists();
@@ -183,8 +184,8 @@ class VersionStoreTest {
     @Test
     void wipe_aot_without_keep_version_removes_everything(@TempDir Path home) throws Exception {
         Path aot = Files.createDirectories(home.resolve("aot"));
-        Path eng = Files.writeString(aot.resolve("engine-0.11.0-aaaaaaaaaaaaaaaa.aot"), "e");
-        Path worker = Files.writeString(aot.resolve("java-compiler-0.11.0-bbbbbbbbbbbbbbbb.aot"), "w");
+        Path eng = Files.writeString(aot.resolve("engine-0.12.0-aaaaaaaaaaaaaaaa.aot"), "e");
+        Path worker = Files.writeString(aot.resolve("java-compiler-0.12.0-bbbbbbbbbbbbbbbb.aot"), "w");
         assertThat(VersionStore.wipeAotDirectory(aot)).isEqualTo(2);
         assertThat(eng).doesNotExist();
         assertThat(worker).doesNotExist();
@@ -194,21 +195,21 @@ class VersionStoreTest {
     void wipe_aot_is_noop_when_dir_missing(@TempDir Path home) {
         assertThat(VersionStore.wipeAotDirectory(home.resolve("nope"))).isZero();
         assertThat(VersionStore.wipeAotDirectory(null)).isZero();
-        assertThat(VersionStore.deleteSupersededEngineAot(home.resolve("nope"), "0.11.0"))
+        assertThat(VersionStore.deleteSupersededEngineAot(home.resolve("nope"), "0.12.0"))
                 .isZero();
     }
 
     @Test
     void belongs_to_product_version_requires_hex_key_after_version() {
-        assertThat(VersionStore.belongsToProductVersion("java-compiler-0.11.0-7aa4b5ac124595f3.aot", "0.11.0"))
+        assertThat(VersionStore.belongsToProductVersion("java-compiler-0.12.0-7aa4b5ac124595f3.aot", "0.12.0"))
                 .isTrue();
-        assertThat(VersionStore.belongsToProductVersion("engine-0.11.0-e7e6bff34867f44e.aot", "0.11.0"))
+        assertThat(VersionStore.belongsToProductVersion("engine-0.12.0-e7e6bff34867f44e.aot", "0.12.0"))
                 .isTrue();
-        assertThat(VersionStore.belongsToProductVersion("engine-0.11.0-SNAPSHOT-aaaaaaaaaaaaaaaa.aot", "0.11.0"))
+        assertThat(VersionStore.belongsToProductVersion("engine-0.12.0-SNAPSHOT-aaaaaaaaaaaaaaaa.aot", "0.12.0"))
                 .isFalse();
-        assertThat(VersionStore.belongsToProductVersion("java-compiler-7aa4b5ac124595f3.aot", "0.11.0"))
+        assertThat(VersionStore.belongsToProductVersion("java-compiler-7aa4b5ac124595f3.aot", "0.12.0"))
                 .isFalse();
-        assertThat(VersionStore.isPrimaryAotCacheName("java-compiler-0.11.0-abc.aot"))
+        assertThat(VersionStore.isPrimaryAotCacheName("java-compiler-0.12.0-abc.aot"))
                 .isTrue();
         assertThat(VersionStore.isPrimaryAotCacheName("java-compiler-abc.aot.noaot"))
                 .isFalse();

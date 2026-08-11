@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
+import java.nio.file.Path;
 import org.jline.utils.AttributedString;
 import org.junit.jupiter.api.Test;
 
@@ -25,7 +26,10 @@ class DiagnosticReportTest {
 
     @Test
     void sibling_not_built_report_has_pill_rail_coord_and_relative_path() {
-        String abs = "/Users/bryan.sant/src/oss/jk/target/shared/plugin-sdk/lib/jk-plugin-sdk-0.11.0.jar";
+        // Build an absolute path under the real project root so PathDisplay can relativize on any
+        // machine (a hard-coded foreign home path stays absolute outside all anchors).
+        String rel = "target/shared/plugin-sdk/lib/jk-plugin-sdk-0.12.0.jar";
+        String abs = Path.of(rel).toAbsolutePath().normalize().toString();
         String msg = "sibling not built — cc.jumpkick:jk-plugin-sdk (expected at " + abs + ")";
         String report = DiagnosticReport.renderError("parse-build", "workspace", msg);
         String plain = plain(report);
@@ -34,9 +38,9 @@ class DiagnosticReportTest {
         assertThat(plain).contains("Failure");
         assertThat(plain).contains("sibling not built");
         assertThat(plain).contains("cc.jumpkick:jk-plugin-sdk");
-        // Project-relative path, not absolute home path.
-        assertThat(plain).contains("target/shared/plugin-sdk/lib/jk-plugin-sdk-0.11.0.jar");
-        assertThat(plain).doesNotContain("/Users/bryan.sant/src/oss/jk/target");
+        // Project-relative path, not absolute workspace path.
+        assertThat(plain).contains(rel);
+        assertThat(plain).doesNotContain(abs);
         // No legacy Error banner.
         assertThat(plain).doesNotContain("Error [parse-build]");
         assertThat(plain).doesNotContain("✘ Error");
@@ -45,10 +49,7 @@ class DiagnosticReportTest {
         if (Theme.active().isAnsi()) {
             assertThat(report).contains(DiagnosticReport.RAIL);
             assertThat(report).contains(Coords.ga("cc.jumpkick", "jk-plugin-sdk"));
-            assertThat(report)
-                    .contains(Theme.colorize(
-                            "target/shared/plugin-sdk/lib/jk-plugin-sdk-0.11.0.jar",
-                            Theme.active().path()));
+            assertThat(report).contains(Theme.colorize(rel, Theme.active().path()));
         }
     }
 

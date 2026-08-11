@@ -477,7 +477,7 @@ public final class PluginAot {
      * are version-lifecycle-owned (EngineClient sweep + VersionStore.prune) — never touched here.
      *
      * <p>Names are {@code <tool>-<jk-version>-<16hex>.aot}; the pool is one product version of one
-     * tool (e.g. {@code java-compiler-0.11.0-*}).
+     * tool (e.g. {@code java-compiler-0.12.0-*}).
      */
     private static void sweepTool(Path cache) {
         // "<tool>-<version>-<16 hex>.aot" → strip fixed-width key suffix, not up to the first

@@ -6,10 +6,10 @@ How JumpKick ships installable binaries (JK-1066). For day-to-day use see [guide
 
 | Line | Meaning |
 |------|---------|
-| **`0.11.0`** | Current product version (no `-SNAPSHOT` on `main`) |
-| Tag **`v0.11.0`** | Next public release cut from that line |
-| Prior | **`0.10.1`** — first public line; store migration shim lived through this release |
-| Later | Semver-ish: `0.11.1`, `0.12.0`, … |
+| **`0.12.0`** | Current product version (no `-SNAPSHOT` on `main`) |
+| Tag **`v0.12.0`** | Next public release cut from that line |
+| Prior | **`0.11.0`** — previous product line; **`0.10.1`** first public (store migration shim) |
+| Later | Semver-ish: `0.12.1`, `0.13.0`, … |
 
 Bump `JkVersion.VERSION`, Gradle `version` in plugin conventions, and workspace `jk.toml`
 coordinates together (search for the old version string).
@@ -41,14 +41,14 @@ Layout under the bucket (and under the CDN path `/releases`):
 ```text
 releases/
   latest/
-    VERSION                 # single line, e.g. 0.11.0  (Cache-Control: no-cache)
-  0.11.0/
+    VERSION                 # single line, e.g. 0.12.0  (Cache-Control: no-cache)
+  0.12.0/
     jk-linux-x86_64.xz
     jk-linux-aarch64.xz
     jk-macos-x86_64.xz
     jk-macos-aarch64.xz
     jk-windows-x86_64.zip   # or .exe
-    jk-engine-0.11.0.jar
+    jk-engine-0.12.0.jar
     SHA256SUMS              # coreutils: <hex>  <filename>
     SHA256SUMS.sig          # base64 Ed25519 signature over SHA256SUMS bytes
 ```
@@ -75,7 +75,7 @@ or required. Do not ship releases without `.sig` once the baked-in key is non-em
 
 Workflow: [`.github/workflows/release.yml`](../.github/workflows/release.yml)
 
-1. Push tag `v0.11.0` (must match `JkVersion` without the `v` prefix, or set `JK_VERSION`).
+1. Push tag `v0.12.0` (must match `JkVersion` without the `v` prefix, or set `JK_VERSION`).
 2. Matrix builds native client + engine jar per OS/arch.
 3. `scripts/assemble-release-dir.sh` produces per-platform dirs + `SHA256SUMS` + `.sig`.
 4. Merge job re-signs the combined tree, then **`gsutil rsync`** to GCS when secrets are set.
@@ -96,8 +96,8 @@ workflow artifacts for a staged dry-run.
 
 ```bash
 # After assemble-release-dir.sh (or downloading the merged workflow artifact):
-gsutil -m rsync -r -d build/release/0.11.0/ gs://$BUCKET/releases/0.11.0/
-echo 0.11.0 | gsutil -h "Cache-Control:no-cache,max-age=0" cp - \
+gsutil -m rsync -r -d build/release/0.12.0/ gs://$BUCKET/releases/0.12.0/
+echo 0.12.0 | gsutil -h "Cache-Control:no-cache,max-age=0" cp - \
   gs://$BUCKET/releases/latest/VERSION
 ```
 
@@ -107,7 +107,7 @@ echo 0.11.0 | gsutil -h "Cache-Control:no-cache,max-age=0" cp - \
 ./gradlew clean dist
 export JK_RELEASE_SIGNING_KEY='…'   # optional for .sig
 scripts/assemble-release-dir.sh
-# inspect build/release/0.11.0/
+# inspect build/release/0.12.0/
 ```
 
 ## Rotation

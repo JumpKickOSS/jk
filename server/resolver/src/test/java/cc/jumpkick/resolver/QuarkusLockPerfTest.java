@@ -98,7 +98,7 @@ class QuarkusLockPerfTest {
     }
 
     private static Lockfile lock(MavenRepo central, Path dir, JkBuild project) throws Exception {
-        return new LockOrchestrator(RepoGroup.of(central)).withProjectDir(dir).lock(project, "0.11.0-test");
+        return new LockOrchestrator(RepoGroup.of(central)).withProjectDir(dir).lock(project, "0.12.0-test");
     }
 
     /**

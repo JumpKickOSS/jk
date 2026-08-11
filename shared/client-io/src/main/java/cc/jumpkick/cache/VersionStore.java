@@ -160,7 +160,7 @@ public final class VersionStore {
     /**
      * True when {@code name} is an AOT artifact for product version {@code ver}: a 16-hex key
      * immediately after {@code -}<ver>{@code -}. Does not match a longer qualifier (e.g. keep
-     * {@code 0.11.0} does not match {@code engine-0.11.0-SNAPSHOT-…}).
+     * {@code 0.12.0} does not match {@code engine-0.12.0-SNAPSHOT-…}).
      */
     static boolean belongsToProductVersion(String name, String ver) {
         if (name == null || ver == null || ver.isBlank()) return false;

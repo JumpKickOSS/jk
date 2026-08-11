@@ -93,7 +93,7 @@ jobs:
         run: |
           ./gradlew dist installLocal --no-daemon
           ./install.sh build/dist/jk
-          echo "$HOME/.jk/versions/0.11.0/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.jk/versions/0.12.0/bin" >> "$GITHUB_PATH"
 
       - name: jk lock + build + install-local + library tests
         env:
