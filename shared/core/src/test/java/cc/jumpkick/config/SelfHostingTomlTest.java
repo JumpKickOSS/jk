@@ -114,6 +114,27 @@ class SelfHostingTomlTest {
     }
 
     @Test
+    void short_name_manifests_pin_the_bundled_catalog() throws Exception {
+        // JK-1443/JK-1812: the parser default is LAYERED (user ~/.jk/libs.toml + downloaded
+        // registry can shadow bundled mappings), so manifests that resolve catalog short names
+        // must pin catalog = "bundled" or a machine-local entry silently repoints self-host
+        // deps at the next re-lock. This is NOT a redundant default — do not "normalize" it away.
+        for (String rel : java.util.List.of(
+                "jk.toml",
+                "clients/cli/jk.toml",
+                "plugins/android/jk.toml",
+                "plugins/formatter/jk.toml",
+                "plugins/groovy-compiler/jk.toml",
+                "plugins/kotlin-compiler/jk.toml",
+                "plugins/quarkus/jk.toml")) {
+            String text = java.nio.file.Files.readString(REPO.resolve(rel));
+            assertThat(text)
+                    .as("%s must pin catalog = \"bundled\" (JK-1443)", rel)
+                    .contains("catalog = \"bundled\"");
+        }
+    }
+
+    @Test
     void engine_is_assembly_app_and_depends_on_web() throws Exception {
         JkBuild engine = JkBuildParser.parse(REPO.resolve("server/engine/jk.toml"));
         assertThat(engine.assembly()).isTrue();
