@@ -170,7 +170,7 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
         if (!Files.isDirectory(root)) return Optional.empty();
         // Prefer lock-sourced / higher-run homes when multiple ids claim the same path (re-key churn).
         String bestId = null;
-        int bestScore = Integer.MIN_VALUE;
+        long bestScore = Long.MIN_VALUE;
         try (Stream<Path> homes = Files.list(root)) {
             for (Path home : homes.toList()) {
                 if (!Files.isDirectory(home)) continue;
@@ -189,7 +189,7 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
                         && git.get().remote().equals(f.gitRemote())
                         && git.get().relPath().equals(f.gitRelPath());
                 if (!pathMatch && !gitMatch) continue;
-                int score = ProjectBuilds.metricsHomeScore(home, f);
+                long score = ProjectBuilds.metricsHomeScore(home, f);
                 if (score > bestScore) {
                     bestScore = score;
                     bestId = f.id();

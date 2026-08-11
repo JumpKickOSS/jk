@@ -261,7 +261,7 @@ public final class ProjectBuilds {
         List<Path> all = listProjectHomes(buildsRoot);
         if (all.size() <= 1) return all;
         Map<String, Path> bestByPath = new java.util.LinkedHashMap<>();
-        Map<String, Integer> scoreByPath = new HashMap<>();
+        Map<String, Long> scoreByPath = new HashMap<>();
         List<Path> noPath = new ArrayList<>();
         for (Path home : all) {
             var idf = ProjectIdentity.IdentityFile.read(home);
@@ -276,8 +276,8 @@ public final class ProjectBuilds {
                 noPath.add(home);
                 continue;
             }
-            int score = metricsHomeScore(home, idf.get());
-            Integer prev = scoreByPath.get(pathKey);
+            long score = metricsHomeScore(home, idf.get());
+            Long prev = scoreByPath.get(pathKey);
             if (prev == null || score > prev) {
                 scoreByPath.put(pathKey, score);
                 bestByPath.put(pathKey, home);
@@ -289,13 +289,31 @@ public final class ProjectBuilds {
         return out;
     }
 
-    /** Higher is better: lock source, then run count, then has complete id. */
-    static int metricsHomeScore(Path home, ProjectIdentity.IdentityFile idf) {
-        int score = 0;
-        if (idf.source() != null && "lock".equalsIgnoreCase(idf.source())) score += 1_000_000;
-        if (idf.source() != null && "git".equalsIgnoreCase(idf.source())) score += 100_000;
-        if (idf.id() != null && !idf.id().isBlank()) score += 10_000;
-        score += (int) Math.min(listRuns(home).size(), 9_999);
+    /**
+     * Higher is better: source (lock > git > path), then complete id, then <em>recency</em>
+     * (newest run's mtime), then run count. Recency outranks run count on equal-source ties: a
+     * lock→lock re-key leaves the stale home with more accumulated runs than the active one, and
+     * preferring raw count starved the active home of harvest until its samples were reaped
+     * (JK-1813). Run number is not comparable across homes (each restarts at 1), so wall mtime is
+     * the recency signal.
+     */
+    static long metricsHomeScore(Path home, ProjectIdentity.IdentityFile idf) {
+        long score = 0;
+        if (idf.source() != null && "lock".equalsIgnoreCase(idf.source())) score += 4_000_000_000_000_000L;
+        if (idf.source() != null && "git".equalsIgnoreCase(idf.source())) score += 2_000_000_000_000_000L;
+        if (idf.id() != null && !idf.id().isBlank()) score += 1_000_000_000_000_000L;
+        List<Path> runs = listRuns(home);
+        long newestSec = 0;
+        if (!runs.isEmpty()) {
+            try {
+                newestSec = Files.getLastModifiedTime(runs.getFirst()).to(java.util.concurrent.TimeUnit.SECONDS);
+            } catch (IOException ignored) {
+                // recency unavailable — fall through to run count
+            }
+        }
+        // epoch seconds (< ~4.3e9 until year 2106) * 1e4 stays well under the 1e15 id tier.
+        score += Math.max(0, Math.min(newestSec, 4_294_967_295L)) * 10_000L;
+        score += Math.min(runs.size(), 9_999);
         return score;
     }
 
