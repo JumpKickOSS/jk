@@ -56,11 +56,6 @@ class NativeEffortTest {
     }
 
     @Test
-    void model_pad_is_mild() {
-        assertThat(NativeEffort.modelPad(30_000)).isBetween(30_000L, 33_000L);
-    }
-
-    @Test
     void own_wall_wins_without_pad_when_metrics_present() {
         Path cli = Path.of("clients/cli").toAbsolutePath().normalize();
         if (!Files.isRegularFile(cli.resolve("jk.toml"))) return;

@@ -7,11 +7,13 @@ import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.JavacLint;
 import cc.jumpkick.config.ImageConfigParser;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.BuildIdentity;
+import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.task.ActionCache;
@@ -23,6 +25,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -61,41 +64,81 @@ public final class TaskForecaster {
         // consumers fingerprint wiped sibling jars from here, never from an unvalidated
         // last-record pointer (which may name a different edit of the sibling).
         Map<Path, String> restoredJarShas = new java.util.HashMap<>();
+        // Sibling lookup for scope-aware dirtiness (coord + bare name → dir).
+        Map<String, Path> dirByCoord = new HashMap<>();
+        Map<String, Path> dirByName = new HashMap<>();
+        for (BuildGraph.BuildUnit unit : graph.topoOrder()) {
+            dirByCoord.put(unit.coord(), unit.dir());
+            dirByName.put(unit.manifest().project().name(), unit.dir());
+        }
         for (BuildGraph.BuildUnit u : graph.topoOrder()) {
-            boolean depDirty = false;
-            for (Path dep : graph.edges().getOrDefault(u.dir(), Set.of())) {
-                if (dirty.contains(dep)) {
-                    depDirty = true;
-                    break;
-                }
-            }
+            // Scope-aware: a dirty *test-only* sibling (e.g. cli → engine via test-dependencies)
+            // must not force compile/package/native — only tests re-run against the new jar.
+            // Treating every graph edge as compile-dirty was pricing full native-image (~35s)
+            // on dogfood engine edits while live builds skipped compile+package+native.
+            DepDirtiness dep = depDirtiness(u, graph.edges().getOrDefault(u.dir(), Set.of()), dirty, dirByCoord, dirByName);
             long t0 = Perf.start();
             TaskForecast.Module m =
-                    forecastModule(u, depDirty, force, skipTests, cas, actionCache, cache, restoredJarShas);
+                    forecastModule(u, dep, force, skipTests, cas, actionCache, cache, restoredJarShas);
             Perf.end("forecast " + u.coord(), t0);
-            // A module's consumed output changes — and so seeds downstream dirtiness
-            // when its compile does real work (classes change) OR its jar will be
-            // (re)packaged, or a dependency already changed. Package matters on its own:
-            // a consumer's run-tests/compile classpath hashes the *content* of sibling
-            // JARs, so an upstream whose compile is cached but whose jar is stale
-            // repackages to a new jar and silently invalidates the consumer — which a
-            // per-module lookup against the current (stale) jar would miss, falsely
-            // reporting "cached". The build then reruns those steps and the live bar,
-            // having reserved nothing for them, backslides. Seeding on package too keeps
-            // the forecast pessimistic (safe) for the consumer.
-            // Seed downstream dirtiness only when this module's *consumed outputs* change —
-            // material compile/package work, not always-run parse/stamp bookkeeping.
-            if (m.steps().stream()
-                            .anyMatch(p -> !p.cached()
-                                    && (p.name().startsWith("compile-")
-                                            || p.name().startsWith("package-jar")
-                                            || p.name().equals("package-jar")))
-                    || depDirty) {
+            // Seed main-output dirtiness for *compile* consumers only when this module's
+            // consumed jar/classes will change — not when only test-scope work is dirty.
+            // Package matters on its own: a consumer's compile classpath hashes sibling JAR
+            // *content*, so an upstream whose compile is cached but whose jar is stale
+            // repackages and invalidates the consumer.
+            boolean mainOutputDirty = m.steps().stream()
+                    .anyMatch(p -> !p.cached()
+                            && (p.name().startsWith("compile-main")
+                                    || p.name().startsWith("compile-java")
+                                    || p.name().startsWith("compile-kotlin")
+                                    || p.name().startsWith("compile-groovy")
+                                    || "package-jar".equals(p.name())
+                                    || "package-assembly".equals(p.name())));
+            // Also seed when a compile-scope dep is dirty even if predictors still look cached
+            // against pre-rebuild sibling jars (pessimistic; avoids under-reserve).
+            if (mainOutputDirty || dep.compileDepDirty()) {
                 dirty.add(u.dir());
             }
             out.add(m);
         }
         return out;
+    }
+
+    /**
+     * Which dirty prereqs affect this module's main compile vs tests only. {@code order-after}
+     * edges without a classpath dep are neither (scheduling only).
+     */
+    record DepDirtiness(boolean compileDepDirty, boolean testDepDirty) {
+        static final DepDirtiness NONE = new DepDirtiness(false, false);
+    }
+
+    static DepDirtiness depDirtiness(
+            BuildGraph.BuildUnit u,
+            Set<Path> prereqs,
+            Set<Path> dirty,
+            Map<String, Path> dirByCoord,
+            Map<String, Path> dirByName) {
+        if (prereqs == null || prereqs.isEmpty() || dirty.isEmpty()) return DepDirtiness.NONE;
+        boolean compile = false;
+        boolean test = false;
+        JkBuild m = u.manifest();
+        for (Path dep : prereqs) {
+            if (!dirty.contains(dep)) continue;
+            boolean viaCompile = false;
+            boolean viaTest = false;
+            for (Scope scope : Scope.values()) {
+                for (Dependency d : m.dependencies().of(scope)) {
+                    Path hit = ModuleOrder.resolveSibling(d, dirByCoord, dirByName);
+                    if (hit == null || !hit.equals(dep)) continue;
+                    if (scope == Scope.TEST || scope == Scope.TEST_DEV) viaTest = true;
+                    else viaCompile = true;
+                }
+            }
+            if (viaCompile) compile = true;
+            else if (viaTest) test = true;
+            // order-after-only prereq: neither — no classpath impact
+        }
+        return new DepDirtiness(compile, test);
     }
 
     /**
@@ -178,13 +221,16 @@ public final class TaskForecaster {
 
     private static TaskForecast.Module forecastModule(
             BuildGraph.BuildUnit u,
-            boolean depDirty,
+            DepDirtiness dep,
             boolean force,
             boolean skipTests,
             Cas cas,
             ActionCache actionCache,
             Path cache,
             Map<Path, String> restoredJarShas) {
+        if (dep == null) dep = DepDirtiness.NONE;
+        boolean compileDepDirty = dep.compileDepDirty();
+        boolean testDepDirty = dep.testDepDirty();
         JkBuild project = u.manifest();
         Path dir = u.dir();
         List<TaskForecast.Task> steps = new ArrayList<>();
@@ -222,7 +268,9 @@ public final class TaskForecaster {
             List<Path> processorCp = BuildPlanner.processorClasspath(
                     lock, resolver, WorkspaceClasspath.resolve(dir, project, Set.of(Scope.PROCESSOR)));
 
-            boolean compileDirty = depDirty || force;
+            // Only compile-scope dirty siblings force main recompile (and package/native cascade).
+            // Test-only siblings (cli's jk-engine test-dep) leave main clean.
+            boolean compileDirty = compileDepDirty || force;
             // The CURRENT compile-main action key when the content predictor ran — post-clean
             // reconstruction must resolve the record for this key, never lastFor (the last
             // record may belong to a different edit of the sources; see the revert scenario in
@@ -266,7 +314,7 @@ public final class TaskForecaster {
                 List<Path> stampInputs =
                         BuildPlanner.mainStampClasspath(cp, processorCp, mixedKotlin, mixedGroovy, layout, groovyJar);
                 boolean stampFresh = false;
-                if (!depDirty && !force && !groovyJarUnavailable) {
+                if (!compileDepDirty && !force && !groovyJarUnavailable) {
                     try {
                         stampFresh =
                                 FreshnessStamp.isFresh(out, FreshnessStamp.JAVA_STAMP, mainSrc, stampInputs, release);
@@ -293,7 +341,7 @@ public final class TaskForecaster {
                             taskId, req, BuildIdentity.cacheKeyVersion(), actionCache, stateDir);
                     Perf.end("  predict-compile-main", tc);
                     compileMainKey = pred.actionKey();
-                    steps.add(compileStep("compile-main", pred, depDirty || force));
+                    steps.add(compileStep("compile-main", pred, compileDepDirty || force));
                     if (!steps.get(steps.size() - 1).cached()) compileDirty = true;
                 }
             }
@@ -304,7 +352,7 @@ public final class TaskForecaster {
                 // MAIN_CLASSES), not in kotlinc's incremental workspace under target/kotlin/main.
                 // Reading the wrong directory never found a stamp, so every Kotlin module
                 // forecast a full compile no matter how cached the build actually was.
-                boolean fresh = !depDirty
+                boolean fresh = !compileDepDirty
                         && !force
                         && FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.KOTLIN_STAMP, ktSrc);
                 steps.add(
@@ -322,7 +370,7 @@ public final class TaskForecaster {
             // The groovy stamp lives in the merged classes dir (where write-stamp-groovy
             // writes it), unlike Kotlin's forecast probe of kotlinClassesDir.
             if (!gvSrc.isEmpty()) {
-                boolean fresh = !depDirty
+                boolean fresh = !compileDepDirty
                         && !force
                         && FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.GROOVY_STAMP, gvSrc);
                 steps.add(
@@ -403,7 +451,9 @@ public final class TaskForecaster {
                 int estimated = TestSupport.estimateAllSuiteTestCount(dir, compact);
                 testCount = estimated;
                 String tests = estimated > 0 ? "~" + count(estimated, "test") : "tests";
-                if (compileDirty || testDirty) {
+                // testDepDirty: sibling on test classpath is rebuilding — suite must re-run even
+                // when main compile stays cached (cli ← engine test-dep dogfood).
+                if (compileDirty || testDirty || testDepDirty) {
                     steps.add(
                             new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · " + tests, null));
                 } else {
@@ -772,10 +822,12 @@ public final class TaskForecaster {
 
     /** Map a {@link JavaIncrementalCompile.Prediction} to a step, honoring upstream dirtiness. */
     private static TaskForecast.Task compileStep(
-            String name, JavaIncrementalCompile.Prediction pred, boolean depDirty) {
+            String name, JavaIncrementalCompile.Prediction pred, boolean compileDepDirty) {
         return switch (pred.outcome()) {
             case CACHE_HIT ->
-                depDirty
+                // Only force RUN when a *compile-scope* sibling is dirty (action key still sees
+                // the pre-rebuild jar). Test-only siblings never reach here as compileDepDirty.
+                compileDepDirty
                         ? new TaskForecast.Task(name, TaskForecast.Status.RUN, "recompile · dependency changed", null)
                         : new TaskForecast.Task(name, TaskForecast.Status.CACHED, "", key8(pred.actionKey()));
             case INCREMENTAL -> {

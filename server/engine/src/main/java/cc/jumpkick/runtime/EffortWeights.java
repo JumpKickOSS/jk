@@ -190,9 +190,12 @@ public final class EffortWeights {
 
     /** Module-own tier of {@link #stepOkAvgMillis} — 0 when this module never ran the step here. */
     static long stepOkAvgMillisOwn(BuildMetrics metrics, String dir, String step) {
-        if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
         String key = metricsStepName(step);
         if (key.isEmpty()) return 0;
+        // Prefer last successful wall (more recent than trimmed mean) when credible.
+        long fromAgg = stepWallFromAggregates(dir == null ? "" : dir, key, true);
+        if (fromAgg > 0) return fromAgg;
+        if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
         var own = metrics.step(dir == null ? "" : dir, key);
         if (own.isPresent() && own.get().ok().count() >= 1 && own.get().ok().avgMillis() > 0) {
             return own.get().ok().avgMillis();
@@ -202,14 +205,54 @@ public final class EffortWeights {
 
     /** Host tier of {@link #stepOkAvgMillis}: the cross-module average wall for {@code step}. */
     static long stepOkAvgMillisHost(BuildMetrics metrics, String step) {
-        if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
         String key = metricsStepName(step);
         if (key.isEmpty()) return 0;
+        long fromAgg = stepWallFromAggregates("", key, true);
+        if (fromAgg > 0) return fromAgg;
+        if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
         var host = metrics.step("", key);
         if (host.isPresent() && host.get().ok().count() >= 1 && host.get().ok().avgMillis() > 0) {
             return host.get().ok().avgMillis();
         }
         return 0;
+    }
+
+    /**
+     * Read last/mean step wall from harvested metrics. Prefer <strong>last</strong> when it is not
+     * a restore blip relative to the mean (heavy steps). Recency beats multi-sample mean for ETA
+     * after the suite has been getting faster.
+     */
+    static long stepWallFromAggregates(String dir, String step, boolean preferLast) {
+        try {
+            var agg = BuildMetrics.aggregatesForSession();
+            String task = metricsStepName(step);
+            if (task.isEmpty()) return 0;
+            String key;
+            if (dir == null || dir.isBlank()) {
+                key = "task." + task + ".wall-ms";
+            } else {
+                key = "module." + cc.jumpkick.builds.AggregatedMetrics.sanitize(dir) + ".task." + task + ".wall-ms";
+            }
+            Double mean = agg.meanMap().get(key);
+            Double last = agg.lastMap().get(key);
+            long floor = heavyWallFloorMs(task);
+            if (preferLast && last != null && last > 0 && last >= floor) {
+                // Reject last if it is a tiny fraction of mean (cache-restore noise).
+                if (mean == null || mean <= 0 || last >= mean * 0.25 || last >= 5_000) {
+                    return Math.round(last);
+                }
+            }
+            if (mean != null && mean > 0 && mean >= floor) return Math.round(mean);
+            if (last != null && last > 0 && last >= floor) return Math.round(last);
+            // Non-heavy steps: no floor
+            if (floor == 0) {
+                if (preferLast && last != null && last > 0) return Math.round(last);
+                if (mean != null && mean > 0) return Math.round(mean);
+            }
+            return 0;
+        } catch (RuntimeException e) {
+            return 0;
+        }
     }
 
     /**

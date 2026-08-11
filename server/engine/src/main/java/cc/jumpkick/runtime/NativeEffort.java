@@ -46,9 +46,6 @@ public final class NativeEffort {
      */
     static final double DEP_BYTE_WEIGHT = 0.12;
 
-    /** Mild pad only for cold/size models — never pad measured walls. */
-    static final double MODEL_PAD = 1.05;
-
     /** Cap absurd predictions. */
     static final long MAX_NATIVE_MS = 20 * 60_000L;
 
@@ -80,19 +77,19 @@ public final class NativeEffort {
         long host = EffortWeights.stepOkAvgMillisHost(metrics, "native-image");
         if (host < WALL_FLOOR_MS) host = 0;
 
-        // 2) Size model (effective bytes)
-        long fromSize = sizeModelWallMs(effective);
-
-        // 3) Prefer host wall when size model is much fatter (size model still learning)
-        if (host > 0 && fromSize > 0 && fromSize > host * 1.2) {
+        // 2) Prefer host absolute wall when present — no pad.
+        if (host > 0) {
+            long fromSize = sizeModelWallMs(effective);
+            if (fromSize > 0 && fromSize < host * 1.15) return fromSize;
             return host;
         }
-        if (fromSize > 0) return modelPad(fromSize);
 
-        if (host > 0) return host;
+        // 3) Size model when no host sample
+        long fromSize = sizeModelWallMs(effective);
+        if (fromSize > 0) return fromSize;
 
         // 4) Cold flat × cpuScale
-        return modelPad(coldFlatMs());
+        return coldFlatMs();
     }
 
     /**
@@ -203,15 +200,6 @@ public final class NativeEffort {
         } catch (RuntimeException e) {
             return clampNativeMs(Calibration.BASELINE_NATIVE_IMAGE_MS);
         }
-    }
-
-    static long modelPad(long ms) {
-        return clampNativeMs(Math.round(ms * MODEL_PAD));
-    }
-
-    /** @deprecated use {@link #modelPad}; kept for tests that called pad */
-    static long pad(long ms) {
-        return modelPad(ms);
     }
 
     static long clampNativeMs(long ms) {
