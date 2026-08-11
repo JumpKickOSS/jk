@@ -271,15 +271,15 @@ class CommandManagerTest {
         assertThat(early).contains(Theme.colorize("+11s", t.darkGray()));
         assertThat(early).doesNotContain(Theme.colorize("+11s", t.midGray()));
 
-        // At grace boundary still dim (strictly >= 2s promotes).
-        String atGrace = cm.renderBuildPlanLines(120, 11_999).get(0);
-        assertThat(atGrace).contains(Theme.colorize("+11s", t.darkGray()));
-
-        // 2s past deadline → count-up mid-gray (countdown's former color).
-        String promoted = cm.renderBuildPlanLines(120, 12_000).get(0);
-        assertThat(TestAnsi.strip(promoted)).contains("ETA 0s").contains("+12s");
-        assertThat(promoted).contains(Theme.colorize("+12s", t.midGray()));
-        assertThat(promoted).doesNotContain(Theme.colorize("+12s", t.warning()));
+        // Past the 2s grace → count-up mid-gray (countdown's former color). Rendered at +3s
+        // past deadline, not the exact 2 000 ms boundary: the seed's set-at base is real wall
+        // clock (nanoTime since plan()), so an exact-boundary assertion flaked whenever ≥1 ms
+        // elapsed between plan() and setEtaEstimate() (JK-1824). The strictly->= boundary
+        // itself is covered by the clock-injected sibling test.
+        String promoted = cm.renderBuildPlanLines(120, 13_000).get(0);
+        assertThat(TestAnsi.strip(promoted)).contains("ETA 0s").contains("+13s");
+        assertThat(promoted).contains(Theme.colorize("+13s", t.midGray()));
+        assertThat(promoted).doesNotContain(Theme.colorize("+13s", t.warning()));
     }
 
     @Test
