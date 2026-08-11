@@ -1784,32 +1784,30 @@ public final class EngineServer implements AutoCloseable {
             }
             if (!force && !shouldEmitWorkspaceProgress(requestId, snap)) return;
             String dir = progressRoots.getOrDefault(requestId, "");
+            // snapshot() recomputes open-loop percent when R0 is set (clock strategy).
             long num = snap.numerator();
             long den = snap.denominator();
             long rem = snap.remainingMs();
             long r0 = snap.R0ms();
-            // If peak-holding percent, still emit the snapped phase counters but progress rider uses peak.
+            double pct = snap.hasPercent() ? snap.percent() : Double.NaN;
             String line = EngineProtocol.workspaceProgress(
-                    dir, num, den, snap.phase(), snap.modulesComplete(), snap.modulesTotal(), rem, r0);
+                    dir, num, den, snap.phase(), snap.modulesComplete(), snap.modulesTotal(), rem, r0, pct);
             if (writer != null) sendQuiet(writer, line);
             if (eventsWanted()) {
-                publishEvent(
-                        "workspace-progress",
-                        withProgress(
-                                cc.jumpkick.engine.http.JsonOut.object()
-                                        .put("schema", 1)
-                                        .put("type", "workspace-progress")
-                                        .put("requestId", requestId)
-                                        .put("dir", dir)
-                                        .put("numerator", num)
-                                        .put("denominator", den)
-                                        .put("phase", snap.phase())
-                                        .put("modulesComplete", snap.modulesComplete())
-                                        .put("modulesTotal", snap.modulesTotal())
-                                        .put("remainingMs", rem)
-                                        .put("R0", r0),
-                                requestId),
-                        dashboardOnly);
+                var body = cc.jumpkick.engine.http.JsonOut.object()
+                        .put("schema", 1)
+                        .put("type", "workspace-progress")
+                        .put("requestId", requestId)
+                        .put("dir", dir)
+                        .put("numerator", num)
+                        .put("denominator", den)
+                        .put("phase", snap.phase())
+                        .put("modulesComplete", snap.modulesComplete())
+                        .put("modulesTotal", snap.modulesTotal())
+                        .put("remainingMs", rem)
+                        .put("R0", r0);
+                if (!Double.isNaN(pct)) body.put("progress", pct);
+                publishEvent("workspace-progress", withProgress(body, requestId), dashboardOnly);
             }
             Double held = lastProgressByRequest.get(requestId);
             long pctMillis = held != null

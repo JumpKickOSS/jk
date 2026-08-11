@@ -3,11 +3,11 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.progress.ClockProgressStrategy;
-import cc.jumpkick.cli.tui.progress.HeaderProgressState;
-import cc.jumpkick.cli.tui.progress.HeaderProgressStrategy;
-import cc.jumpkick.cli.tui.progress.ProgressBarMode;
-import cc.jumpkick.cli.tui.progress.WeightedProgressStrategy;
+import cc.jumpkick.runtime.progress.ClockProgressStrategy;
+import cc.jumpkick.runtime.progress.HeaderProgressState;
+import cc.jumpkick.runtime.progress.HeaderProgressStrategy;
+import cc.jumpkick.runtime.progress.ProgressBarMode;
+import cc.jumpkick.runtime.progress.WeightedProgressStrategy;
 import cc.jumpkick.config.GlobalConfig;
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;

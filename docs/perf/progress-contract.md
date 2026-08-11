@@ -111,23 +111,25 @@ When `parallelTests == false`: `max(scheduled, Σ testWeight)` as serial test fl
 
 ## Progress bar
 
-CLI header bar strategies (`cc.jumpkick.cli.tui.progress`):
+Shared strategies (`cc.jumpkick.runtime.progress` in `:wire`) — used by **engine
+workspace-progress**, **CLI header**, and **web dashboard**:
 
 | Mode | Strategy | When |
 |------|----------|------|
-| **clock** (default via AUTO) | `ClockProgressStrategy` — `min(99%, elapsedSinceSeed / R0)` | R0 seeded (AUTO) or `JK_PROGRESS_MODE=clock` |
-| **weighted** | `WeightedProgressStrategy` — engine Σ effort weights | No R0 (AUTO) or `JK_PROGRESS_MODE=weighted` |
+| **clock** (default via AUTO) | `ClockProgressStrategy` — `min(99%, elapsedSinceSeed / R0)` | R0 &gt; 0 (AUTO) or force clock |
+| **weighted** | `WeightedProgressStrategy` — Σ effort weights | R0 absent (AUTO) or force weighted |
 
 ```bash
-JK_PROGRESS_MODE=clock      # force open-loop (needs R0; empty bar until seeded)
-JK_PROGRESS_MODE=weighted   # force weight slices even when R0 is good
+JK_PROGRESS_MODE=clock      # force open-loop (engine + CLI)
+JK_PROGRESS_MODE=weighted   # force weight slices
 # unset / auto              # clock when R0 > 0, else weighted
 ```
 
-- **Never go backwards** — peak hold inside each strategy.  
-- Settle → 100%.  
-- Clock advances on the animator frame (smooth through native-image).  
-- Engine still calibrates and emits weight slices for dashboards / wire.
+Web override (browser cannot read process env): `localStorage.jkProgressMode = 'clock'|'weighted'|'auto'`.
+
+- Engine emits `progress` from the strategy on every `workspace-progress` event.  
+- Web also recomputes clock client-side from `R0` + `r0At` so the bar stays smooth between events.  
+- **Never go backwards** — peak hold inside strategies. Settle → 100%.
 
 ## Wire (schema 1, additive fields)
 

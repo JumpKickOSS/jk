@@ -2033,6 +2033,36 @@ public final class EngineProtocol {
             int modulesTotal,
             long remainingMs,
             long R0ms) {
+        return workspaceProgress(
+                dir,
+                numerator,
+                denominator,
+                phase,
+                modulesComplete,
+                modulesTotal,
+                remainingMs,
+                R0ms,
+                Double.NaN);
+    }
+
+    /**
+     * @param progressPercent explicit aggregate % from {@link
+     *     cc.jumpkick.runtime.WorkspaceProgressTracker} (clock or weighted); {@link Double#NaN}
+     *     falls back to num/den
+     */
+    public static String workspaceProgress(
+            String dir,
+            long numerator,
+            long denominator,
+            String phase,
+            int modulesComplete,
+            int modulesTotal,
+            long remainingMs,
+            long R0ms,
+            double progressPercent) {
+        String prog = Double.isNaN(progressPercent)
+                ? progressPercent(numerator, denominator)
+                : cc.jumpkick.runtime.WorkspaceProgressTracker.progressToken(progressPercent);
         return "{\"schema\":1,\"type\":\""
                 + WORKSPACE_PROGRESS
                 + "\",\"dir\":"
@@ -2042,7 +2072,7 @@ public final class EngineProtocol {
                 + ",\"denominator\":"
                 + denominator
                 + ",\"progress\":"
-                + progressPercent(numerator, denominator)
+                + prog
                 + ",\"phase\":"
                 + Jsonl.quote(phase == null ? "" : phase)
                 + ",\"modulesComplete\":"

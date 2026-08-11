@@ -88,6 +88,37 @@ public final class Jsonl {
         }
     }
 
+    /** Extract a JSON number field (int or decimal), returning {@code defaultVal} when absent. */
+    public static double doubleValue(String json, String key, double defaultVal) {
+        if (json == null) return defaultVal;
+        String needle = "\"" + key + "\":";
+        int start = json.indexOf(needle);
+        if (start < 0) return defaultVal;
+        start += needle.length();
+        while (start < json.length() && json.charAt(start) == ' ') start++;
+        if (json.startsWith("null", start)) return defaultVal;
+        int end = start;
+        if (end < json.length() && (json.charAt(end) == '-' || json.charAt(end) == '+')) end++;
+        boolean sawDigit = false;
+        while (end < json.length()) {
+            char c = json.charAt(end);
+            if (Character.isDigit(c)) {
+                sawDigit = true;
+                end++;
+            } else if (c == '.' || c == 'e' || c == 'E' || c == '+' || c == '-') {
+                end++;
+            } else {
+                break;
+            }
+        }
+        if (!sawDigit) return defaultVal;
+        try {
+            return Double.parseDouble(json.substring(start, end));
+        } catch (NumberFormatException ignored) {
+            return defaultVal;
+        }
+    }
+
     /** Extract a JSON boolean field, returning {@code defaultVal} when absent. */
     public static boolean bool(String json, String key, boolean defaultVal) {
         if (json == null) return defaultVal;

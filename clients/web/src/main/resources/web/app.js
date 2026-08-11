@@ -1278,10 +1278,28 @@ Vue.createApp({
       return { web: 'Web build', cli: 'CLI build' }[trigger] || '—';
     },
 
-    // Progress % for a running card — engine workspace-progress (JK-1120). Dumb client: prefer
-    // progressPercent from the aggregate event; fall back to num/den. Clamped to 99% while running.
+    // Progress % — same strategies as CLI (clock vs weighted). Default AUTO: open-loop
+    // elapsed/R0 when R0 is known (smooth + aligned with countdown); else weight slices.
+    // Override: localStorage.jkProgressMode = 'clock' | 'weighted' | 'auto'
+    progressMode() {
+      try {
+        const m = (localStorage.getItem('jkProgressMode') || 'auto').toLowerCase();
+        if (m === 'clock' || m === 'weighted' || m === 'auto') return m;
+      } catch (_) {}
+      return 'auto';
+    },
     progress(card) {
       if (this.outcome(card) !== 'running') return 100;
+      const mode = this.progressMode();
+      const useClock =
+        mode === 'clock' ||
+        (mode === 'auto' && typeof card.r0Ms === 'number' && card.r0Ms > 0 && card.r0At != null);
+      if (useClock && card.r0Ms > 0 && card.r0At != null) {
+        const since = Math.max(0, this.now - card.r0At);
+        const raw = Math.min(0.99, since / card.r0Ms);
+        return Math.min(99, Math.round(raw * 100));
+      }
+      // Weighted fallback (or forced weighted): engine progressPercent / num/den
       if (typeof card.progressPercent === 'number') {
         return Math.min(99, Math.round(card.progressPercent));
       }

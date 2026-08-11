@@ -132,6 +132,15 @@ export function foldEvent(cards, event) {
         else if (card.progressDen > 0) {
           card.progressPercent = Math.min(100, Math.round((100 * card.progressNum) / card.progressDen));
         }
+        // Seed R0 for client-side clock bar (same as CLI open-loop).
+        if (typeof d.R0 === 'number' && d.R0 > 0) {
+          card.r0Ms = d.R0;
+          if (card.r0At == null) card.r0At = event.at ?? Date.now();
+        }
+        if (typeof d.remainingMs === 'number' && d.remainingMs >= 0) {
+          card.etaMillis = d.remainingMs;
+          card.etaAt = event.at ?? card.etaAt;
+        }
       }
       break;
     }
@@ -140,6 +149,11 @@ export function foldEvent(cards, event) {
       if (card) {
         card.etaMillis = typeof d.millis === 'number' ? d.millis : null;
         card.etaAt = event.at ?? null;
+        // Treat first ETA as R0 seed for clock progress when not yet set.
+        if (card.etaMillis != null && card.etaMillis > 0 && card.r0Ms == null) {
+          card.r0Ms = card.etaMillis;
+          card.r0At = card.etaAt;
+        }
       }
       break;
     }

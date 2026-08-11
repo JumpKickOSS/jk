@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.cli.tui.progress;
+package cc.jumpkick.runtime.progress;
 
-/**
- * Effort-weight bar: engine {@code numerator / denominator} (Σ plan slices). Monotonic peak hold
- * when the total is stable; rebases peak when the denominator grows (new work discovered).
- */
+/** Effort-weight bar: engine plan numerator/denominator with monotonic peak hold. */
 public final class WeightedProgressStrategy implements HeaderProgressStrategy {
 
     private long numerator;
@@ -14,7 +11,6 @@ public final class WeightedProgressStrategy implements HeaderProgressStrategy {
     @Override
     public long[] display(HeaderProgressState state) {
         if (state.settled() && denominator > 0) return new long[] {denominator, denominator};
-        // Prefer live state fields when present (caller may pass latest weights).
         long num = state.weightNumerator() > 0 || state.weightDenominator() > 0
                 ? state.weightNumerator()
                 : numerator;
@@ -26,7 +22,7 @@ public final class WeightedProgressStrategy implements HeaderProgressStrategy {
     public long[] onWeightProgress(HeaderProgressState state, long num, long den) {
         double f = den > 0 ? (double) num / (double) den : 0.0;
         if (den > this.denominator) {
-            peakFraction = f; // total grew → rebase
+            peakFraction = f;
         } else if (den > 0 && f < peakFraction) {
             num = Math.round(peakFraction * den);
         } else {

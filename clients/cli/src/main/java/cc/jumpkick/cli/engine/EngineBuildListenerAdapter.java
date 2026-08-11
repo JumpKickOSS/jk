@@ -862,8 +862,15 @@ final class EngineBuildListenerAdapter {
                         int mt = Jsonl.intValue(line, "modulesTotal", 0);
                         long rem = Jsonl.longValue(line, "remainingMs", -1);
                         long r0 = Jsonl.longValue(line, "R0", 0);
-                        double pct =
-                                den > 0 ? cc.jumpkick.runtime.WorkspaceProgressTracker.percentOf(num, den) : Double.NaN;
+                        // Prefer engine strategy percent (clock when R0 set); fall back to num/den.
+                        double pct = Jsonl.has(line, "progress")
+                                ? Jsonl.doubleValue(line, "progress", Double.NaN)
+                                : (den > 0
+                                        ? cc.jumpkick.runtime.WorkspaceProgressTracker.percentOf(num, den)
+                                        : Double.NaN);
+                        if (Double.isNaN(pct) && den > 0) {
+                            pct = cc.jumpkick.runtime.WorkspaceProgressTracker.percentOf(num, den);
+                        }
                         listener.onWorkspaceProgress(new cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot(
                                 num, den, pct, phase == null ? "" : phase, mc, mt, rem, r0));
                         // Do not rewrite the open-loop countdown from residual progress events.
