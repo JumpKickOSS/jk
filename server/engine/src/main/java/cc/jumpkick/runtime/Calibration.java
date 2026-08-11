@@ -362,8 +362,21 @@ public final class Calibration {
         return scaleBaseline(EffortWeights.ASSEMBLY_RUN * (long) EffortWeights.MS_PER_WEIGHT, ioScale());
     }
 
-    /** Cold native-image wall (host-scaled product baseline). */
+    /**
+     * Cold native-image wall when input size is unknown: product baseline × {@link #cpuScale()}
+     * (javac/hash probes vs reference host). Prefer {@link NativeEffort} when classpath bytes are
+     * known — that path uses size + learned ms/MB with the same host scale.
+     */
     public long nativeImageMs() {
+        OptionalDouble learnedFloor = this.learned.meanMs(HostLearnedRates.NATIVE_IMAGE_FLOOR_MS);
+        OptionalDouble learnedSlope = this.learned.meanMs(HostLearnedRates.NATIVE_IMAGE_MS_PER_MIB);
+        // If we only have learned rates without size, use floor + slope×1MiB as a typical app.
+        if (learnedFloor.isPresent() || learnedSlope.isPresent()) {
+            double floor = learnedFloor.isPresent() ? learnedFloor.getAsDouble() : NativeEffort.BASELINE_FLOOR_MS;
+            double slope = learnedSlope.isPresent() ? learnedSlope.getAsDouble() : NativeEffort.BASELINE_MS_PER_MIB;
+            long ms = Math.round(floor + slope * 1.0); // 1 MiB reference app
+            return Math.max(NativeEffort.WALL_FLOOR_MS, Math.min(NativeEffort.MAX_NATIVE_MS, ms));
+        }
         return scaleBaseline(BASELINE_NATIVE_IMAGE_MS, cpuScale());
     }
 

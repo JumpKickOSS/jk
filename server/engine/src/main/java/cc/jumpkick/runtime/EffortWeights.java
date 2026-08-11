@@ -85,10 +85,9 @@ public final class EffortWeights {
     static final int JDK_DOWNLOAD = 70;
     static final int ASSEMBLY_RUN = 10;
     /**
-     * Cold native-image reservation when no measured walls exist. Graal builds are wall-clock
-     * heavy (often 60–120s+ for a real app); the old 100-unit (~15s) floor made the bar race to
-     * ~100% before native-image finished and left the countdown owning the rest.
-     * {@code 600 × MS_PER_WEIGHT ≈ 90s}.
+     * Cold native-image reservation when size/metrics unknown. Prefer {@link NativeEffort} which
+     * sizes by classpath bytes and calibration host scale; this flat weight is the last-resort
+     * floor (~90s at {@link #MS_PER_WEIGHT}).
      */
     static final int NATIVE_RUN = 600;
     /** Cold OCI build floor (~30s). */
@@ -421,6 +420,8 @@ public final class EffortWeights {
                 Map<String, Long> walls = loadClassWalls(mod);
                 // classesToRun unknown at plan time → empty; TestEffort falls through to walls-own/method path
                 w = TestEffort.weight(mod, walls, List.of(), methods, timings, projectDirs, metrics, wWorkers);
+            } else if ("native-image".equals(step)) {
+                w = NativeEffort.weight(dir);
             } else {
                 // Prefer this module's own measured whole-task wall; count-scaled/host/static tiers
                 // (via learned) only when the module is cold here.
@@ -808,9 +809,12 @@ public final class EffortWeights {
         return SKIP;
     }
 
-    /** Full learned/static native weight (measured wall → flatWeight, else cold {@link #NATIVE_RUN}). */
+    /**
+     * Native-image bar/ETA weight via {@link NativeEffort}: own wall → size model → host → cold
+     * calibrated baseline.
+     */
     public static int nativeRunWeight(Path dir) {
-        return learnedFixedWeight(dir == null ? "" : dir.toString(), "native-image", NATIVE_RUN);
+        return NativeEffort.weight(dir);
     }
 
     /**

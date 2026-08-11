@@ -404,6 +404,26 @@ public final class BuildJournal {
                     .append(".wall-ms = ")
                     .append(s.millis())
                     .append('\n');
+            // Native closed-world size for size-conditioned ETA (host ms/MB learning).
+            if ("native-image".equals(task) || task.endsWith("native-image")) {
+                long bytes = cc.jumpkick.runtime.NativeEffort.peekLastInputBytes(moduleDir);
+                if (bytes <= 0) {
+                    try {
+                        bytes = cc.jumpkick.runtime.NativeEffort.estimateInputBytes(java.nio.file.Path.of(moduleDir));
+                    } catch (RuntimeException ignored) {
+                        bytes = 0;
+                    }
+                }
+                if (bytes >= 1024) {
+                    sb.append("module.")
+                            .append(mod)
+                            .append(".task.")
+                            .append(task)
+                            .append(".input-bytes = ")
+                            .append(bytes)
+                            .append('\n');
+                }
+            }
             modulePhaseTotals.computeIfAbsent(mod, k -> new LinkedHashMap<>()).merge(phase, s.millis(), Long::sum);
         }
     }

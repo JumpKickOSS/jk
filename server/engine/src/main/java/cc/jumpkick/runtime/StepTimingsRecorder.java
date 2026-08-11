@@ -5,6 +5,7 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestSummary;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -154,6 +155,14 @@ public final class StepTimingsRecorder implements BuildPlanListener {
             case "package-assembly" ->
                 hostSink.add(
                         new HostLearnedRates.HostSample(HostLearnedRates.PACKAGE_ASSEMBLY_MS, wallMs, MAX_PACKAGE_MS));
+            case "native-image" -> {
+                // Size-conditioned host rates when this process recorded input bytes for the module.
+                long bytes = NativeEffort.takeLastInputBytes(moduleKey);
+                if (bytes <= 0) bytes = NativeEffort.estimateInputBytes(Path.of(moduleKey));
+                for (HostLearnedRates.HostSample s : NativeEffort.hostSamples(wallMs, bytes)) {
+                    hostSink.add(s);
+                }
+            }
             default -> {}
         }
     }
@@ -181,7 +190,8 @@ public final class StepTimingsRecorder implements BuildPlanListener {
                     "compile-test",
                     "run-tests",
                     "package-jar",
-                    "package-assembly" -> true;
+                    "package-assembly",
+                    "native-image" -> true;
             default -> false;
         };
     }
