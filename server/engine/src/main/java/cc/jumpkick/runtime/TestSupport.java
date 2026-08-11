@@ -174,7 +174,7 @@ public final class TestSupport {
         List<String> out = new ArrayList<>();
         List<TestSummary.Failure> failures = result.failures();
         if (failures.isEmpty()) return out;
-        out.add("");
+        // No leading blank — the CLI leaves a single blank under the prompt / live region.
         out.add("Test Failure");
         out.add(failures.size() + " test" + (failures.size() == 1 ? "" : "s") + " failed:");
         for (TestSummary.Failure f : failures) {
@@ -202,7 +202,7 @@ public final class TestSupport {
                 out.addAll(frames);
             }
         }
-        out.add("");
+        // No trailing blank — the settle wedge ("✘ Build …") follows immediately.
         return out;
     }
 

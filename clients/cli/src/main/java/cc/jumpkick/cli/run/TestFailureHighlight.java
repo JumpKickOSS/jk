@@ -66,10 +66,19 @@ public final class TestFailureHighlight {
         int i = 0;
         while (i < lines.size()) {
             String raw = lines.get(i);
+            // Skip leading blanks before a failure header so only one blank remains under the prompt.
+            if ((raw == null || raw.isEmpty())
+                    && i + 1 < lines.size()
+                    && HEADER_SENTINEL.equals(lines.get(i + 1) != null ? lines.get(i + 1).strip() : null)) {
+                i++;
+                continue;
+            }
             if (HEADER_SENTINEL.equals(raw != null ? raw.strip() : null)) {
                 int end = findBlockEnd(lines, i);
                 out.addAll(paintBlock(lines.subList(i, end)));
                 i = end;
+                // Drop trailing blanks after the block so the settle wedge sits tight under it.
+                while (i < lines.size() && (lines.get(i) == null || lines.get(i).isEmpty())) i++;
                 continue;
             }
             out.add(StackTraceHighlight.line(raw));
@@ -139,6 +148,7 @@ public final class TestFailureHighlight {
             nextValue = updateValueRole(raw, nextValue);
             out.add(rail(paintContent(raw, t, nextValue), t));
         }
+        out.add(DiagnosticReport.errorFooter());
         return out;
     }
 
@@ -164,7 +174,8 @@ public final class TestFailureHighlight {
     /**
      * End index (exclusive) of the failure block starting at {@code start}. Internal blanks (between
      * the count line and FAILED, between metadata and assertion body, between failures) are kept;
-     * we stop after a trailing blank that is not followed by more failure content.
+     * a trailing blank after the last content is dropped so the settle wedge sits tight under the
+     * report.
      */
     static int findBlockEnd(List<String> lines, int start) {
         boolean sawFailed = false;
@@ -174,10 +185,10 @@ public final class TestFailureHighlight {
             if (s == null || !s.isEmpty()) continue;
             // blank line
             if (!sawFailed) continue; // blanks before the first FAILED stay in the block
-            if (i + 1 >= lines.size()) return i + 1;
+            if (i + 1 >= lines.size()) return i; // drop trailing blank at EOF
             String next = lines.get(i + 1);
             if (next == null || next.isEmpty() || !isFailureContinuation(next)) {
-                return i + 1; // include this trailing blank
+                return i; // drop trailing blank before non-failure content
             }
         }
         return lines.size();

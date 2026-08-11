@@ -57,20 +57,11 @@ public record ConsoleSpec(
     }
 
     /**
-     * A diagnostic error line: red {@code ‼ Error} (or plain {@code ! Error}), the step in
-     * brackets, then the message on its own line.
+     * A diagnostic error report: red phase pill + "Failure" and a railed body (coords / paths
+     * painted). Prefer {@link #renderError(String, String, String)} when a code is available.
      */
     public static String errorLine(String step, String message) {
-        Theme t = Theme.active();
-        if (!t.isAnsi()) {
-            return Glyphs.CROSS_PLAIN + " Error [" + step + "]:" + System.lineSeparator() + message;
-        }
-        return Theme.colorize(Glyphs.CROSS + " Error", t.error())
-                + " ["
-                + step
-                + "]:"
-                + System.lineSeparator()
-                + message;
+        return DiagnosticReport.renderError(step, null, message);
     }
 
     /** Render an error diagnostic for the console, per its {@code code}. */
@@ -80,32 +71,24 @@ public record ConsoleSpec(
 
     /** Render an error diagnostic from its parts (used by live + summary paths alike). */
     public static String renderError(String step, String code, String message) {
-        // Per-test failures are already shown as the styled "Test Failure" block from run-tests
-        // output; re-printing them as "✘ Error [run-tests/test-failure]" is pure noise.
-        if ("test-failure".equals(code)) return "";
-        if ("verbatim".equals(code)) return message;
-        if (isCompilerCode(code)) return CompilerDiagnostic.render(message);
-        return errorLine(step, message);
+        return DiagnosticReport.renderError(step, code, message);
     }
 
     /** Render a warning diagnostic for the console, per its {@code code}. */
     public static String renderWarning(BuildPlanResult.Diagnostic d) {
-        if (isCompilerCode(d.code())) return compilerWarning(d.step(), d.message());
-        return Theme.colorize(Glyphs.BANG + " Warning", Theme.active().warning()) + " [" + d.step() + "]: "
-                + d.message();
+        return renderWarning(d.step(), d.code(), d.message());
+    }
+
+    /** Warning report: yellow phase pill + railed body. */
+    public static String renderWarning(String step, String code, String message) {
+        return DiagnosticReport.renderWarning(step, code, message);
     }
 
     /**
-     * A compiler warning: a yellow {@code ‼ Warning [step]:} header, then the compiler's verbatim
-     * block colorized like an error (relative paths, etc.).
+     * A compiler warning under a yellow phase pill (legacy name kept for call sites).
      */
     public static String compilerWarning(String step, String message) {
-        return Theme.colorize(Glyphs.BANG + " Warning", Theme.active().warning())
-                + " ["
-                + step
-                + "]:"
-                + System.lineSeparator()
-                + CompilerDiagnostic.render(message);
+        return DiagnosticReport.renderWarning(step, "javac", message);
     }
 
     /** Compiler diagnostics (javac/kotlinc) carry a verbatim multi-line block. */

@@ -41,7 +41,7 @@ class TestFailureHighlightTest {
                 "  21670L",
                 "to be between:",
                 "  [28000L, 45000L]",
-                "");
+                ""); // trailing blank must be stripped so the settle wedge sits tight
         List<String> painted = TestFailureHighlight.paintLines(raw);
         String all = String.join("\n", painted.stream().map(TestFailureHighlightTest::plain).toList());
 
@@ -53,6 +53,9 @@ class TestFailureHighlightTest {
         assertThat(all).contains("size_model_for_cli_like_app_tracks_reference_at_scale_one()");
         assertThat(all).contains("class: cc.jumpkick.runtime.NativeEffortTest");
         assertThat(all).contains("21670L");
+        assertThat(all).contains("[28000L, 45000L]");
+        // Closes with heavy rail footer; no trailing blank after it.
+        assertThat(plain(painted.getLast()).strip()).isEqualTo(DiagnosticReport.FOOTER);
         assertThat(all).contains("[28000L, 45000L]");
         // No redundant Error banner.
         assertThat(all).doesNotContain("Error [run-tests");

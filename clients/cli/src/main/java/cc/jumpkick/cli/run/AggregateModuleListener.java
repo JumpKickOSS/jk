@@ -2,7 +2,6 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.tui.CommandManager;
-import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
@@ -93,16 +92,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
 
     @Override
     public void warn(String step, String code, String message) {
-        if (ConsoleSpec.isCompilerCode(code)) {
-            emit(ConsoleSpec.compilerWarning(step, message));
-        } else {
-            emit(renderDiagnostic(
-                    Glyphs.BANG + " Warning",
-                    cc.jumpkick.cli.theme.Theme.active().warning().bold(),
-                    step,
-                    code,
-                    message));
-        }
+        emit(ConsoleSpec.renderWarning(step, code, message));
     }
 
     @Override
@@ -110,52 +100,10 @@ public final class AggregateModuleListener implements BuildPlanListener {
         String brief = message == null || message.isBlank() ? (code != null ? code : "Failed") : message;
         cm.attachPhaseError(module, step, "", brief);
         // Per-test failures are fully rendered by run-tests output (styled "Test Failure" block).
-        // Do not also print "✘ Error [run-tests/test-failure]: …" — keep the diagnostic for JSON.
+        // Do not also print a second report — keep the diagnostic for JSON.
         if ("test-failure".equals(code)) return;
-        emit(renderDiagnostic(
-                Glyphs.CROSS + " Error",
-                cc.jumpkick.cli.theme.Theme.active().error().bold(),
-                step,
-                code,
-                message));
-    }
-
-    /** Styled {@code ! Warning [step/code]: Summary — detail} diagnostic line. */
-    static String renderDiagnostic(
-            String prefix, org.jline.utils.AttributedStyle prefixStyle, String step, String code, String message) {
-        String summary = message == null ? "" : message;
-        String detail = null;
-        int sep = summary.indexOf(" — ");
-        if (sep >= 0) {
-            detail = capitalize(summary.substring(sep + 3));
-            summary = summary.substring(0, sep);
-        }
-        // Only capitalize when the summary looks like a sentence start (first char
-        // is a plain letter not followed by a hyphen — artifact names like
-        // "jk-audit-runner" should stay lowercase).
-        if (!summary.isEmpty()
-                && Character.isLowerCase(summary.charAt(0))
-                && (summary.length() < 2 || summary.charAt(1) != '-')) {
-            summary = capitalize(summary);
-        }
-        var sb = new org.jline.utils.AttributedStringBuilder();
-        sb.append(prefix, prefixStyle);
-        // Omit [step/code] when code is absent — keeps simple informational
-        // warnings (e.g. missing worker jars) uncluttered.
-        if (code != null && !code.isBlank()) {
-            sb.append(" [").append(step).append("/").append(code).append("]");
-        }
-        sb.append(": ");
-        sb.append(summary, cc.jumpkick.cli.theme.Theme.active().focused());
-        if (detail != null)
-            sb.append(" — ").append(detail, cc.jumpkick.cli.theme.Theme.active().activeStep());
-        return sb.toAnsi();
-    }
-
-    private static String capitalize(String s) {
-        if (s == null || s.isEmpty()) return s == null ? "" : s;
-        char first = s.charAt(0);
-        return Character.isLowerCase(first) ? Character.toUpperCase(first) + s.substring(1) : s;
+        String report = ConsoleSpec.renderError(step, code, message);
+        if (report != null && !report.isEmpty()) emit(report);
     }
 
     private void emit(String line) {
@@ -180,7 +128,11 @@ public final class AggregateModuleListener implements BuildPlanListener {
 
     @Override
     public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
+        if (inTestFailure && outBuffer == null) {
+            emit(DiagnosticReport.errorFooter());
+        }
         inTestFailure = false;
+        testFailStream.reset();
         // SKIPPED = cache hit / up-to-date — still a green terminal (matches BuildPlan.isOk).
         // Treating it as failure painted the live tree red with "Failed" while the build
         // succeeded.

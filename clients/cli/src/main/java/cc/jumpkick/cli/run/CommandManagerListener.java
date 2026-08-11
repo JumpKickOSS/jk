@@ -128,7 +128,8 @@ public final class CommandManagerListener implements BuildPlanListener {
         cm.attachPhaseError(module, step, "", brief);
         // Styled "Test Failure" block already covers per-test failures; keep JSON diagnostics only.
         if ("test-failure".equals(code)) return;
-        cm.writeAbove((code != null && !code.isEmpty() ? code + ": " : "") + (message != null ? message : ""));
+        String report = ConsoleSpec.renderError(step, code, message);
+        if (report != null && !report.isEmpty()) cm.writeAbove(report);
     }
 
     @Override
@@ -145,7 +146,11 @@ public final class CommandManagerListener implements BuildPlanListener {
 
     @Override
     public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
+        if (inTestFailure) {
+            cm.writeAbove(DiagnosticReport.errorFooter());
+        }
         inTestFailure = false;
+        testFailStream.reset();
         // SKIPPED = cache hit / up-to-date — green terminal, same as SUCCESS.
         boolean ok = status == TaskStatus.SUCCESS || status == TaskStatus.SKIPPED;
         cm.stepDone(module, step, ok, group == null ? "" : group);
