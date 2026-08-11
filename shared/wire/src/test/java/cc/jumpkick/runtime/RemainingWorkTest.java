@@ -62,4 +62,32 @@ class RemainingWorkTest {
         // residual 50+50 parallel → 50
         assertThat(rw.remaining()).isEqualTo(50);
     }
+
+    @Test
+    void history_only_seed_reports_r0_and_drains_on_completes() {
+        // Zero-weight costs with R0 > 0 (history-only seed): remaining() must report R0 and
+        // drain per module — not filter every residual to 0 and peg the clock bar (JK-1814).
+        Path a = Path.of("/a");
+        Path b = Path.of("/b");
+        List<ModuleWorkCost> costs = List.of(
+                new ModuleWorkCost(a, Set.of(), 0, 0),
+                new ModuleWorkCost(b, Set.of(), 0, 0));
+        RemainingWork rw = RemainingWork.seed(costs, 60_000, 1, true, true);
+        assertThat(rw.R0()).isEqualTo(60_000);
+        assertThat(rw.remaining()).isEqualTo(60_000);
+        assertThat(rw.completeFraction()).isEqualTo(0.0);
+        rw.moduleComplete(a);
+        assertThat(rw.remaining()).isEqualTo(30_000);
+        rw.moduleComplete(b);
+        assertThat(rw.remaining()).isEqualTo(0);
+        assertThat(rw.completeFraction()).isEqualTo(1.0);
+    }
+
+    @Test
+    void history_only_seed_with_no_costs_holds_r0_until_finish() {
+        RemainingWork rw = RemainingWork.seed(List.of(), 45_000, 1, true, true);
+        assertThat(rw.R0()).isEqualTo(45_000);
+        assertThat(rw.remaining()).isEqualTo(45_000);
+        assertThat(rw.completeFraction()).isEqualTo(0.0);
+    }
 }

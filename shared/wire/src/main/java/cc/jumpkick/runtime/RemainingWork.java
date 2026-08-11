@@ -73,20 +73,29 @@ public final class RemainingWork {
         Objects.requireNonNull(costs, "costs");
         long ideal0 = WorkSchedule.schedule(costs, concurrency, serial, parallelTests);
         long r0 = Math.max(0, R0ms);
-        double w2ms;
         if (ideal0 <= 0) {
-            w2ms = 1.0;
             if (r0 == 0) {
                 // Nothing modeled — empty remaining forever.
                 return new RemainingWork(0, 1.0, concurrency, serial, parallelTests, List.of());
             }
-            // Costs empty/zero but R0 > 0 (history-only seed): treat as a single synthetic blob
-            // that drains only via complete-all (no per-module residual). Callers should still
-            // pass real costs when available.
-            w2ms = r0;
-            return new RemainingWork(r0, w2ms, concurrency, serial, parallelTests, costs);
+            // Costs empty/zero but R0 > 0 (history-only seed): synthesize unit weights so
+            // remaining() actually reports R0 and drains as modules complete. The old path kept
+            // the zero-weight costs, remaining() filtered them all, and the clock bar pegged to
+            // 99% from the first tick while the countdown still showed R0 (JK-1814). With no
+            // module list at all, one synthetic blob holds R0 until the build finishes.
+            List<ModuleWorkCost> synth = new ArrayList<>();
+            for (ModuleWorkCost c : costs) {
+                if (c == null || c.dir() == null) continue;
+                synth.add(new ModuleWorkCost(c.dir(), c.prereqs(), Math.max(1, c.weight()), c.testWeight()));
+            }
+            if (synth.isEmpty()) {
+                synth.add(new ModuleWorkCost(Path.of("<history-seed>"), null, 1, 0));
+            }
+            long idealSynth = WorkSchedule.schedule(synth, concurrency, serial, parallelTests);
+            double w2 = idealSynth > 0 ? (double) r0 / (double) idealSynth : r0;
+            return new RemainingWork(r0, w2, concurrency, serial, parallelTests, synth);
         }
-        w2ms = (double) r0 / (double) ideal0;
+        double w2ms = (double) r0 / (double) ideal0;
         return new RemainingWork(r0, w2ms, concurrency, serial, parallelTests, costs);
     }
 
