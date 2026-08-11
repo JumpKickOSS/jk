@@ -422,16 +422,53 @@ public final class BuildService {
             boolean verbose,
             boolean parallelTests,
             int maxModuleConcurrency) {
+        return estimateEtaModel(
+                        plan,
+                        entryDir,
+                        cache,
+                        workers,
+                        jdksDir,
+                        profile,
+                        skipTests,
+                        verbose,
+                        parallelTests,
+                        maxModuleConcurrency)
+                .etaMs();
+    }
+
+    /**
+     * ETA seed plus the cost assembly it was computed from — the single assembly both the estimate
+     * and the {@link WorkModel} consume (JK-1817: the model wiring used to re-run
+     * {@code etaCostsFromExplainPlan} unguarded, so an exception the estimate swallowed could fail
+     * the whole build over an estimate, and {@code --force} paid the per-module walk twice).
+     */
+    public record EtaModel(long etaMs, List<EffortWeights.ModuleCost> costs, int concurrency, boolean serial) {
+        static EtaModel empty() {
+            return new EtaModel(0, List.of(), 1, true);
+        }
+    }
+
+    public static EtaModel estimateEtaModel(
+            ExplainPlan plan,
+            Path entryDir,
+            Path cache,
+            int workers,
+            Path jdksDir,
+            String profile,
+            boolean skipTests,
+            boolean verbose,
+            boolean parallelTests,
+            int maxModuleConcurrency) {
         try {
             // Host calibration: cheap when present; bootstrap probe once when missing (network
             // unless --offline). Host scale then multiplies product baselines for cold steps.
             Calibration.ensure(jdksDir);
             List<EffortWeights.ModuleCost> costs =
                     etaCostsFromExplainPlan(plan, cache, workers, jdksDir, profile, skipTests, verbose);
-            if (costs.isEmpty()) return 0;
             int concurrency = etaConcurrency(plan.maxReadyWidth(), workers, parallelTests, maxModuleConcurrency);
             boolean serialEta = concurrency <= 1;
-            return seedEta(
+            if (costs.isEmpty()) return new EtaModel(0, costs, concurrency, serialEta);
+            long etaMs = seedEta(
                     entryDir,
                     costs,
                     costDirs(costs),
@@ -441,10 +478,11 @@ public final class BuildService {
                     cache,
                     jdksDir,
                     historyShapeForCosts(costs.size()));
+            return new EtaModel(etaMs, costs, concurrency, serialEta);
         } catch (RuntimeException e) {
-            // Never fail explain over the estimate — but do not silently advertise 0s/empty.
+            // Never fail explain/build over the estimate — but do not silently advertise 0s/empty.
             System.err.println("jk: ETA estimate failed: " + e.getClass().getSimpleName() + ": " + e.getMessage());
-            return 0;
+            return EtaModel.empty();
         }
     }
 
@@ -811,7 +849,7 @@ public final class BuildService {
         if (req.dirtyHint() != null) {
             etaPlan = restrictToSelection(etaPlan, dirty);
         }
-        long etaMs = estimateEtaMillis(
+        EtaModel etaModel = estimateEtaModel(
                 etaPlan,
                 req.entryDir(),
                 req.cache(),
@@ -822,13 +860,9 @@ public final class BuildService {
                 req.verbose(),
                 parallelTests,
                 req.maxModuleConcurrency());
-        int concurrency =
-                etaConcurrency(etaPlan.maxReadyWidth(), req.workers(), parallelTests, req.maxModuleConcurrency());
-        boolean serialEta = concurrency <= 1;
-        List<EffortWeights.ModuleCost> costs = etaCostsFromExplainPlan(
-                etaPlan, req.cache(), req.workers(), req.jdksDir(), req.profile(), req.skipTests(), req.verbose());
-        List<ModuleWorkCost> ordered = orderCostsLikeUnits(dirtyUnits, costs);
-        listener.onWorkModel(WorkModel.of(etaMs, concurrency, serialEta, parallelTests, ordered));
+        long etaMs = etaModel.etaMs();
+        List<ModuleWorkCost> ordered = orderCostsLikeUnits(dirtyUnits, etaModel.costs());
+        listener.onWorkModel(WorkModel.of(etaMs, etaModel.concurrency(), etaModel.serial(), parallelTests, ordered));
         listener.onEtaEstimate(etaMs);
 
         long tp = Perf.start();
