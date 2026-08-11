@@ -273,8 +273,11 @@ public final class EffortWeights {
             Double last = agg.lastMap().get(key);
             long floor = heavyWallFloorMs(task);
             if (preferLast && last != null && last > 0 && last >= floor) {
-                // Reject last if it is a tiny fraction of mean (cache-restore noise).
-                if (mean == null || mean <= 0 || last >= mean * 0.25 || last >= 5_000) {
+                // Reject last if it is a tiny fraction of mean (cache-restore / mostly-warmed
+                // noise). The old `|| last >= 5_000` escape made this rejection dead for heavy
+                // steps (their floor is already 5s), so one 6s over-floor outlier replaced a
+                // stable 60s native mean and under-reserved the slice ~10× (JK-1828).
+                if (mean == null || mean <= 0 || last >= mean * 0.25) {
                     return Math.round(last);
                 }
             }

@@ -342,4 +342,41 @@ class EffortWeightsTest {
         assertThat(EffortWeights.scheduleMillis(mods, 1, true, false, d -> 50.0))
                 .isEqualTo(EffortWeights.scheduleMillis(mods, 1, true, false, 50));
     }
+
+    @Test
+    void heavy_step_blip_rejection_prefers_the_mean_over_a_fast_over_floor_last(
+            @org.junit.jupiter.api.io.TempDir java.nio.file.Path state) throws Exception {
+        // JK-1828: the old `|| last >= 5_000` escape made the mean*0.25 rejection dead for heavy
+        // steps — one 6s mostly-warmed native run replaced a stable 60s mean.
+        String prev = System.getProperty("jk.env.JK_STATE_DIR");
+        System.setProperty("jk.env.JK_STATE_DIR", state.resolve("state").toString());
+        BuildMetrics.clearSessionAggregatesMemo();
+        try {
+            java.nio.file.Path moduleDir = java.nio.file.Files.createDirectories(state.resolve("app"));
+            java.nio.file.Path home = cc.jumpkick.builds.ProjectBuilds.projectHome(
+                    cc.jumpkick.util.JkDirs.builds(), null, moduleDir);
+            java.nio.file.Files.createDirectories(home);
+            String key = "module." + cc.jumpkick.builds.AggregatedMetrics.sanitize(moduleDir.toString())
+                    + ".task.native-image.wall-ms";
+            java.nio.file.Files.writeString(
+                    home.resolve(cc.jumpkick.builds.ProjectBuilds.PROJECT_METRICS),
+                    """
+                    [mean]
+                    %s = 60000
+                    [last]
+                    %s = 6000
+                    [count]
+                    %s = 5
+                    """
+                            .formatted(key, key, key));
+            long wall = cc.jumpkick.config.SessionContext.where(
+                    cc.jumpkick.config.Session.defaults().withWorkingDir(moduleDir),
+                    () -> EffortWeights.stepOkAvgMillisOwn(null, moduleDir.toString(), "native-image"));
+            assertThat(wall).isEqualTo(60_000L);
+        } finally {
+            if (prev == null) System.clearProperty("jk.env.JK_STATE_DIR");
+            else System.setProperty("jk.env.JK_STATE_DIR", prev);
+            BuildMetrics.clearSessionAggregatesMemo();
+        }
+    }
 }
