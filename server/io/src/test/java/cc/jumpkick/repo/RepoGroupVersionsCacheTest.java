@@ -141,18 +141,7 @@ class RepoGroupVersionsCacheTest {
     }
 
     private static void goOffline() {
-        SessionContext.installConfig(new JkConfig(
-                Optional.empty(),
-                Optional.of(true),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty()));
+        SessionContext.installConfig(JkConfig.empty().withOffline(Optional.of(true)));
     }
 
     private static void writeMeta(Path root, String group, String artifact, String... versions) throws Exception {

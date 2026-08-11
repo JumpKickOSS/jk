@@ -49,18 +49,7 @@ class MavenRepoTest {
     }
 
     private static void goOffline() {
-        cc.jumpkick.config.SessionContext.installConfig(new JkConfig(
-                Optional.empty(),
-                Optional.of(true),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty()));
+        cc.jumpkick.config.SessionContext.installConfig(JkConfig.empty().withOffline(Optional.of(true)));
     }
 
     @Test
