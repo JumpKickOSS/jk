@@ -137,6 +137,25 @@ class TaskWeightTest {
     }
 
     @Test
+    void reweight_up_is_ignored_the_denominator_never_grows_mid_run() {
+        // A runtime re-estimate (native-image sized against the post-package jar) may only
+        // release weight — growing the denominator mid-run backslides the bar (JK-1819).
+        BuildPlan plan = BuildPlan.builder("g")
+                .addTask(Task.builder("a")
+                        .weight(40)
+                        .ticks(1)
+                        .execute(ctx -> {
+                            ctx.reweight(400); // ignored — shrink-only
+                            ctx.progress(1);
+                        })
+                        .build())
+                .build();
+        plan.run();
+        assertThat(plan.snapshot().denominator()).isEqualTo(40);
+        assertThat(plan.snapshot().numerator()).isEqualTo(40);
+    }
+
+    @Test
     void interpolation_eases_toward_the_weight_and_caps() {
         // A weighted, interpolated step with expected duration 1ms and weight 100.
         // Driving tick() with controlled timestamps eases the slice toward
