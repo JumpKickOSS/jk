@@ -152,16 +152,14 @@ export function foldEvent(cards, event) {
     }
     case 'eta': {
       const card = resolveCard(cards, d);
-      if (card) {
-        // Open-loop countdown seed only once (do not rewrite from residual mid-run).
-        if (typeof d.millis === 'number' && d.millis > 0 && card.r0Ms == null) {
+      if (card && typeof d.millis === 'number') {
+        // Always record remaining@emission for etaTotalMillis (JK-1517 re-projections).
+        card.etaMillis = d.millis;
+        card.etaAt = event.at ?? null;
+        // Open-loop countdown freezes R0 once — never rewrite r0Ms from residual mid-run.
+        if (d.millis > 0 && card.r0Ms == null) {
           card.r0Ms = d.millis;
           card.r0At = event.at ?? Date.now();
-          card.etaMillis = d.millis;
-          card.etaAt = card.r0At;
-        } else if (typeof d.millis === 'number' && card.r0Ms == null) {
-          card.etaMillis = d.millis;
-          card.etaAt = event.at ?? null;
         }
       }
       break;
