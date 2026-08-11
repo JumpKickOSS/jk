@@ -34,9 +34,25 @@ public enum ProgressBarMode {
         };
     }
 
+    /** Wire name for the per-request {@code progressMode} field. */
+    public String wireName() {
+        return name().toLowerCase(java.util.Locale.ROOT);
+    }
+
     public HeaderProgressStrategy select(HeaderProgressStrategy clock, HeaderProgressStrategy weighted, long r0Ms) {
+        return select(clock, weighted, r0Ms, -1);
+    }
+
+    /**
+     * Pick the painting strategy. Forced CLOCK falls back to weighted when the clock has nothing
+     * to paint from (no R0 seed and no residual) — the alternative was a visible bar frozen at 0%
+     * on first-ever builds, and the web already fell back, so the three front-ends disagreed
+     * (JK-1816).
+     */
+    public HeaderProgressStrategy select(
+            HeaderProgressStrategy clock, HeaderProgressStrategy weighted, long r0Ms, long residualRemainingMs) {
         return switch (this) {
-            case CLOCK -> clock;
+            case CLOCK -> r0Ms > 0 || residualRemainingMs >= 0 ? clock : weighted;
             case WEIGHTED -> weighted;
             case AUTO -> r0Ms > 0 ? clock : weighted;
         };

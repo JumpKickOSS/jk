@@ -1299,15 +1299,18 @@ Vue.createApp({
     },
     rawProgress(card) {
       const mode = this.progressMode();
-      const useClock =
-        mode === 'clock' ||
-        (mode === 'auto' && typeof card.r0Ms === 'number' && card.r0Ms > 0 && card.r0At != null);
-      if (useClock && card.r0Ms > 0 && card.r0At != null) {
-        const since = Math.max(0, this.now - card.r0At);
+      const haveR0 = typeof card.r0Ms === 'number' && card.r0Ms > 0 && card.r0At != null;
+      const haveResidual = typeof card.residualRemainingMs === 'number' && card.residualRemainingMs >= 0;
+      // Forced clock also paints from residual alone (no R0 seed) — same fallback ladder as the
+      // engine/CLI ProgressBarMode.select (JK-1816); with neither signal, weighted below.
+      const useClock = (mode === 'clock' && (haveR0 || haveResidual)) || (mode === 'auto' && haveR0);
+      if (useClock) {
+        const base = haveR0 ? card.r0At : card.startedAt;
+        const since = Math.max(0, this.now - (base != null ? base : this.now));
         // Adaptive: elapsed / (elapsed + residual). Residual firms up as work completes;
         // open-loop countdown still uses frozen r0Ms only.
         let raw;
-        if (typeof card.residualRemainingMs === 'number' && card.residualRemainingMs >= 0) {
+        if (haveResidual) {
           const denom = since + card.residualRemainingMs;
           raw = denom <= 0 ? 0.99 : since / denom;
         } else {

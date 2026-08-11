@@ -877,7 +877,26 @@ public final class EngineProtocol {
                 + (testOnly ? ",\"testOnly\":true" : "")
                 + (dirtyHint != null && !dirtyHint.isEmpty() ? ",\"dirtyHint\":" + jsonStringArray(dirtyHint) : "")
                 + triggerJsonSuffix()
+                + progressModeJsonSuffix()
                 + "}";
+    }
+
+    /**
+     * The client's {@code JK_PROGRESS_MODE} rides each request so the resident engine paints the
+     * requesting shell's mode, not whatever env the daemon happened to start with (JK-1816).
+     * Emitted only when non-AUTO so older engines see an unchanged request.
+     */
+    static String progressModeJsonSuffix() {
+        var mode = cc.jumpkick.runtime.progress.ProgressBarMode.fromEnvironment();
+        if (mode == cc.jumpkick.runtime.progress.ProgressBarMode.AUTO) return "";
+        return ",\"progressMode\":" + Jsonl.quote(mode.wireName());
+    }
+
+    /** Per-request progress mode; engine-env fallback when the client sent none. */
+    public static cc.jumpkick.runtime.progress.ProgressBarMode progressModeOf(String json) {
+        String raw = Jsonl.str(json, "progressMode");
+        if (raw == null || raw.isBlank()) return cc.jumpkick.runtime.progress.ProgressBarMode.fromEnvironment();
+        return cc.jumpkick.runtime.progress.ProgressBarMode.parse(raw);
     }
 
     /**
@@ -975,6 +994,7 @@ public final class EngineProtocol {
                 + parallelTests
                 + testSelectionFields(selection)
                 + triggerJsonSuffix()
+                + progressModeJsonSuffix()
                 + "}";
     }
 

@@ -177,6 +177,10 @@ public final class EngineServer implements AutoCloseable {
     private final java.util.concurrent.ConcurrentHashMap<Long, cc.jumpkick.runtime.WorkspaceProgressTracker>
             progressTrackers = new java.util.concurrent.ConcurrentHashMap<>();
 
+    /** Per-request progress mode from the request wire (JK-1816). */
+    private final java.util.concurrent.ConcurrentHashMap<Long, cc.jumpkick.runtime.progress.ProgressBarMode>
+            progressModes = new java.util.concurrent.ConcurrentHashMap<>();
+
     /** Per-request residual wall-work oracle {@code R(t)} — shared by bar and countdown. */
     private final java.util.concurrent.ConcurrentHashMap<Long, cc.jumpkick.runtime.RemainingWork> remainingWorks =
             new java.util.concurrent.ConcurrentHashMap<>();
@@ -1026,6 +1030,9 @@ public final class EngineServer implements AutoCloseable {
         Session.CancelToken cancelToken = Session.CancelToken.live();
         CountDownLatch done = new CountDownLatch(1);
         long eventRequestId = requestIds.incrementAndGet();
+        // The requesting shell's JK_PROGRESS_MODE rides the request — the resident engine's own
+        // startup env is not the client's (JK-1816).
+        progressModes.put(eventRequestId, EngineProtocol.progressModeOf(requestLine));
         // The kind rides explicitly from the dispatch site (never parsed back out of a thread
         // name); the journal dir falls back to a request's specific location field so non-build
         // requests never record the literal string "null".
@@ -1686,6 +1693,7 @@ public final class EngineServer implements AutoCloseable {
         lastProgressByRequest.remove(requestId);
         lastProgressDenByRequest.remove(requestId);
         progressTrackers.remove(requestId);
+        progressModes.remove(requestId);
         remainingWorks.remove(requestId);
         progressRoots.remove(requestId);
         progressWeights.remove(requestId);
@@ -1705,8 +1713,10 @@ public final class EngineServer implements AutoCloseable {
      * object to update (no null checks at eight call sites) and the update goes nowhere.
      */
     private cc.jumpkick.runtime.WorkspaceProgressTracker progressTracker(long requestId) {
-        if (progressRetired(requestId)) return new cc.jumpkick.runtime.WorkspaceProgressTracker();
-        return progressTrackers.computeIfAbsent(requestId, id -> new cc.jumpkick.runtime.WorkspaceProgressTracker());
+        var mode = progressModes.get(requestId);
+        if (progressRetired(requestId)) return new cc.jumpkick.runtime.WorkspaceProgressTracker(mode);
+        return progressTrackers.computeIfAbsent(
+                requestId, id -> new cc.jumpkick.runtime.WorkspaceProgressTracker(mode));
     }
 
     private long planWeight(long requestId, String dir) {

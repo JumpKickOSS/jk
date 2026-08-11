@@ -48,7 +48,16 @@ public final class WorkspaceProgressTracker {
     private long elapsedClockMs;
     private boolean settled;
 
-    private final ProgressBarMode mode = ProgressBarMode.fromEnvironment();
+    private final ProgressBarMode mode;
+
+    public WorkspaceProgressTracker() {
+        this(ProgressBarMode.fromEnvironment());
+    }
+
+    /** Per-request mode from the wire (JK-1816); falls back to the process env when absent. */
+    public WorkspaceProgressTracker(ProgressBarMode mode) {
+        this.mode = mode == null ? ProgressBarMode.fromEnvironment() : mode;
+    }
     /** One monotonic floor across the strategy pair — the AUTO takeover must not repaint backwards. */
     private final cc.jumpkick.runtime.progress.SharedPeak displayedPeak =
             new cc.jumpkick.runtime.progress.SharedPeak();
@@ -237,7 +246,7 @@ public final class WorkspaceProgressTracker {
 
     /** Active strategy id for tests ({@code clock} / {@code weighted}). */
     public synchronized String progressStrategyId() {
-        return mode.select(clock, weighted, annotatedR0ms).id();
+        return mode.select(clock, weighted, annotatedR0ms, annotatedRemainingMs).id();
     }
 
     private void tickElapsed() {
@@ -271,7 +280,7 @@ public final class WorkspaceProgressTracker {
     }
 
     private Snapshot storeWeightAndStrategy(long weightNum, long weightDen, String phase) {
-        HeaderProgressStrategy strat = mode.select(clock, weighted, annotatedR0ms);
+        HeaderProgressStrategy strat = mode.select(clock, weighted, annotatedR0ms, annotatedRemainingMs);
         // residualRemainingMs: private bar estimate (RemainingWork); -1 until first noteRemaining.
         long residual = annotatedRemainingMs; // already -1 or >=0
         // After seed, remaining was set to R0 — treat as residual only once work has progressed
