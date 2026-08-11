@@ -67,8 +67,48 @@ class MetricsHarvestTest {
         assertThat(MetricsHarvest.isHostKey("host.x")).isTrue();
         assertThat(MetricsHarvest.isHostKey("step.compile-java.wall-ms")).isTrue();
         assertThat(MetricsHarvest.isHostKey("run-tests-per-method-ms")).isTrue();
+        assertThat(MetricsHarvest.isHostKey("native-image-ms-per-mib")).isTrue();
+        assertThat(MetricsHarvest.isHostKey("native-image-floor-ms")).isTrue();
         assertThat(MetricsHarvest.isHostKey("workspace.wall-ms")).isFalse();
         assertThat(MetricsHarvest.isHostKey("module./p.step.x.wall-ms")).isFalse();
+    }
+
+    @Test
+    void isContinuousMeanKey_excludes_run_harvest() {
+        assertThat(MetricsHarvest.isContinuousMeanKey("native-image-ms-per-mib")).isTrue();
+        assertThat(MetricsHarvest.isContinuousMeanKey("native-image-floor-ms")).isTrue();
+        assertThat(MetricsHarvest.isContinuousMeanKey("compile-java-per-source-ms")).isTrue();
+        assertThat(MetricsHarvest.isContinuousMeanKey("task.native-image.wall-ms")).isFalse();
+        assertThat(MetricsHarvest.isContinuousMeanKey("phase.native.wall-ms")).isFalse();
+        assertThat(MetricsHarvest.isContinuousMeanKey("module./p.task.native-image.wall-ms")).isFalse();
+    }
+
+    @Test
+    void harvest_preserves_continuous_native_rates(@TempDir Path root) throws Exception {
+        Path host = ProjectBuilds.hostMetricsFile(root);
+        Files.createDirectories(host.getParent());
+        Files.writeString(
+                host,
+                """
+                # host-metrics
+                [mean]
+                task.compile-java.wall-ms = 100
+                native-image-ms-per-mib = 14500.5
+                native-image-floor-ms = 11200
+
+                [calibration]
+                schema = 4
+                ms-per-weight = 150
+                """);
+        ProjectBuilds.RunDir run = ProjectBuilds.openRun(root, "g:demo", root.resolve("proj"));
+        Files.writeString(run.metricsFile(), "step.compile-java.wall-ms = 220\n");
+        MetricsHarvest.get().configure(50, 90);
+        MetricsHarvest.get().runOnce(root);
+        String hm = Files.readString(host);
+        assertThat(hm)
+                .contains("native-image-ms-per-mib = 14500.5")
+                .contains("native-image-floor-ms = 11200")
+                .contains("step.compile-java.wall-ms");
     }
 
     @Test

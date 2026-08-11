@@ -201,6 +201,8 @@ public final class MetricsHarvest {
         return key.endsWith("-per-method-ms")
                 || key.endsWith("-per-source-ms")
                 || key.endsWith("-suite-startup-ms")
+                || key.endsWith("-ms-per-mib")
+                || key.equals("native-image-floor-ms")
                 || key.equals("package-jar-ms")
                 || key.equals("package-assembly-ms")
                 || key.equals("ms-per-weight");
@@ -247,6 +249,9 @@ public final class MetricsHarvest {
         // Preserve bootstrap/probe/lock/fetch/calibration + language buckets (jk optimize).
         String preserved = "";
         String byLanguage = "";
+        // Continuous Calibration rates (native-image-ms-per-mib, compile-*-per-source-ms, …)
+        // live under [mean] but are not run-harvested — keep them across harvest rewrites.
+        Map<String, Double> continuousMean = new LinkedHashMap<>();
         if (Files.isRegularFile(file)) {
             try {
                 String existing = Files.readString(file, StandardCharsets.UTF_8);
@@ -259,6 +264,7 @@ public final class MetricsHarvest {
                         if (!block.isBlank()) preserved += "\n" + block.strip() + "\n";
                     }
                 }
+                continuousMean.putAll(parseContinuousMeanKeys(existing));
                 // Keep [mean.by_language.*] tables (JK-1389) — not harvested from runs.
                 StringBuilder lang = new StringBuilder();
                 boolean inLang = false;
@@ -281,10 +287,59 @@ public final class MetricsHarvest {
                 .append(" = ")
                 .append(fmt(trimmedMean(e.getValue())))
                 .append('\n'));
+        // Continuous rates not present in this harvest pass (run keys always win on collision).
+        continuousMean.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(e -> {
+                    if (samples.containsKey(e.getKey())) return;
+                    sb.append(e.getKey()).append(" = ").append(fmt(e.getValue())).append('\n');
+                });
         if (!preserved.isBlank()) sb.append(preserved);
         if (!byLanguage.isBlank()) sb.append(byLanguage);
         Files.createDirectories(file.getParent());
         AtomicWrites.replace(file, sb.toString());
+    }
+
+    /**
+     * Mean keys written by continuous host learning ({@code Calibration.learnFromSuccess}), not by
+     * run harvest. Harvested keys look like {@code task.*} / {@code phase.*} / {@code module.*}.
+     */
+    public static boolean isContinuousMeanKey(String key) {
+        if (key == null || key.isBlank()) return false;
+        if (key.startsWith("task.")
+                || key.startsWith("phase.")
+                || key.startsWith("step.")
+                || key.startsWith("module.")
+                || key.startsWith("invocation.")
+                || key.startsWith("workspace.")) {
+            return false;
+        }
+        return true;
+    }
+
+    /** Parse continuous (non-run) scalars from every {@code [mean]} block in {@code existing}. */
+    static Map<String, Double> parseContinuousMeanKeys(String existing) {
+        Map<String, Double> out = new LinkedHashMap<>();
+        if (existing == null || existing.isBlank()) return out;
+        boolean inMean = false;
+        for (String line : existing.split("\n", -1)) {
+            String t = line.trim();
+            if (t.startsWith("[")) {
+                inMean = t.equals("[mean]");
+                continue;
+            }
+            if (!inMean || t.isEmpty() || t.startsWith("#")) continue;
+            Matcher m = KEY_EQ_NUM.matcher(t);
+            if (!m.matches()) continue;
+            String key = m.group(1);
+            if (!isContinuousMeanKey(key)) continue;
+            try {
+                double v = Double.parseDouble(m.group(2));
+                if (v > 0 && Double.isFinite(v)) out.put(key, v);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return out;
     }
 
     /** Trimmed mean: drop top/bottom 10% when n ≥ 10. */

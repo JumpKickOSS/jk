@@ -76,11 +76,11 @@ public final class Calibration {
     static final long BASELINE_PACKAGE_JAR_MS = 90;
 
     /**
-     * Cold Graal {@code native-image} wall on the reference host for a typical ~1 MiB app when
-     * size is unknown. Prefer {@link NativeEffort} size model when classpath bytes are known.
-     * Kept nearer dogfood reality (~35s) than the old 90s flat (which double-counted with size).
+     * Reference-host cold Graal wall for a typical ~1–1.5 MiB-effective app when size is unknown.
+     * Always × {@link #cpuScale()} via {@link #nativeImageMs()} — not used raw. Prefer {@link
+     * NativeEffort} size model when classpath bytes are known. Dogfood at scale=1 is mid-30s.
      */
-    static final long BASELINE_NATIVE_IMAGE_MS = 40_000;
+    static final long BASELINE_NATIVE_IMAGE_MS = 35_000;
 
     /** Cold OCI image build wall (Jib-style) on the reference host. */
     static final long BASELINE_OCI_IMAGE_MS = 30_000;
@@ -364,17 +364,23 @@ public final class Calibration {
     }
 
     /**
-     * Cold native-image wall when input size is unknown: product baseline × {@link #cpuScale()}
-     * (javac/hash probes vs reference host). Prefer {@link NativeEffort} when classpath bytes are
-     * known — that path uses size + learned ms/MB with the same host scale.
+     * Cold native-image wall when input size is unknown. Prefer {@link NativeEffort} when classpath
+     * bytes are known. Host-learned size rates (floor/slope at 1 MiB) win; else reference product
+     * baseline × full {@link #cpuScale()} (install never probes Graal — this is the available
+     * host-speed signal).
      */
     public long nativeImageMs() {
         OptionalDouble learnedFloor = this.learned.meanMs(HostLearnedRates.NATIVE_IMAGE_FLOOR_MS);
         OptionalDouble learnedSlope = this.learned.meanMs(HostLearnedRates.NATIVE_IMAGE_MS_PER_MIB);
         // If we only have learned rates without size, use floor + slope×1MiB as a typical app.
         if (learnedFloor.isPresent() || learnedSlope.isPresent()) {
-            double floor = learnedFloor.isPresent() ? learnedFloor.getAsDouble() : NativeEffort.BASELINE_FLOOR_MS;
-            double slope = learnedSlope.isPresent() ? learnedSlope.getAsDouble() : NativeEffort.BASELINE_MS_PER_MIB;
+            double scale = NativeEffort.nativeColdScale(cpuScale());
+            double floor = learnedFloor.isPresent()
+                    ? learnedFloor.getAsDouble()
+                    : NativeEffort.REF_FLOOR_MS * scale;
+            double slope = learnedSlope.isPresent()
+                    ? learnedSlope.getAsDouble()
+                    : NativeEffort.REF_MS_PER_MIB * scale;
             long ms = Math.round(floor + slope * 1.0); // 1 MiB reference app
             return Math.max(NativeEffort.WALL_FLOOR_MS, Math.min(NativeEffort.MAX_NATIVE_MS, ms));
         }
@@ -1047,11 +1053,13 @@ public final class Calibration {
             long updated = cal.getLong("updated") != null ? cal.getLong("updated") : 0L;
             String version = cal.getString("jk-version");
             HostLearnedRates learned = HostLearnedRates.readFrom(t);
-            // Also fold scalar [mean] host rates as single-sample learned priors.
+            // Fold continuous [mean] scalars (native-image-ms-per-mib, compile-*-per-source-ms, …)
+            // as single-sample learned priors. Skip run-harvest keys (task.*/phase.*/module.*).
             if (t.getTable("mean") != null) {
                 org.tomlj.TomlTable mean = t.getTable("mean");
                 Map<String, List<Double>> rings = new java.util.LinkedHashMap<>(learned.samples());
                 for (String key : mean.keySet()) {
+                    if (!cc.jumpkick.builds.MetricsHarvest.isContinuousMeanKey(key)) continue;
                     Object v = mean.get(key);
                     if (v instanceof Number n && n.doubleValue() > 0) {
                         rings.putIfAbsent(key, List.of(n.doubleValue()));

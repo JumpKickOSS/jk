@@ -32,6 +32,8 @@ main-class = "cc.jumpkick.cli.Jk"
 
 [native]
 always = true
+# Installable client binary (PATH entry is `jk` / `jk.exe`), not the Maven artifact name.
+name = "jk"
 args = [
   "-Os",
   "--gc=serial",

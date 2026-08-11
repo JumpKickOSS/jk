@@ -8,7 +8,6 @@ import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.OptionalDouble;
 
@@ -16,15 +15,25 @@ import java.util.OptionalDouble;
  * Prices {@code native-image} wall time for ETA and bar weights.
  *
  * <ol>
- *   <li>Module-own measured wall (success, ≥ floor) — unpadded, best
- *   <li>Host absolute native wall (unpadded) when size model is not clearly better
- *   <li>Size model on <em>effective</em> input bytes (app full + deps discounted)
- *   <li>Cold flat baseline × calibration {@link Calibration#cpuScale()}
+ *   <li><b>Module-own</b> measured wall (success, ≥ floor) — unpadded, always wins
+ *   <li><b>Size model</b> on effective input bytes — host-learned floor/slope when present,
+ *       else <em>reference</em> product anchors × calibration {@link Calibration#cpuScale()}
+ *   <li><b>Host absolute</b> native wall — only when size is unknown (no jar/deps yet); raw
+ *       cross-project mean is <em>not</em> size-normalized, so it must not beat the size model
+ *   <li><b>Cold flat</b> product baseline × cpuScale when nothing else is available
  * </ol>
  *
- * <p>Dependency jars are counted at a discount: full classpath byte-sum over-predicted badly
- * (many MiB of jars ≠ linear Graal time). App jar/classes dominate the size signal.
- * Calibration {@code cpuScale()} shapes cold floor/slope only (not measured walls).
+ * <p>There is <strong>no</strong> install-time {@code native-image} probe. Reference product
+ * anchors ({@link #REF_FLOOR_MS}, {@link #REF_MS_PER_MIB}) are dogfood guesses for a mid-range
+ * laptop; they are never used raw — cold paths always scale them by host probe {@code
+ * cpuScale()} (javac/hash vs reference). That is imperfect vs Graal, but tracks M-series vs
+ * slow Windows hosts far better than a fixed 14 s floor.
+ *
+ * <p>Successful runs record size-normalized host samples ({@code native-image-ms-per-mib} +
+ * {@code native-image-floor-ms}) so alien projects on the same machine get a sized prior without
+ * a huge monorepo native wall poisoning a tiny app (and vice versa).
+ *
+ * <p>Effective bytes = full app jar/classes + discounted runtime dep jars.
  */
 public final class NativeEffort {
 
@@ -32,19 +41,29 @@ public final class NativeEffort {
     public static final long WALL_FLOOR_MS = 5_000L;
 
     /**
-     * Product cold floor (analysis/startup). Tuned with slope so ~1.1 MiB app + discounted deps ≈
-     * mid-30s on a reference laptop (matches dogfood jk-cli).
+     * Reference-host product floor (analysis/startup) — <em>not</em> a measured constant for
+     * every machine. Scaled by {@link Calibration#cpuScale()} on cold paths. Chosen so that with
+     * {@link #REF_MS_PER_MIB} a ~1.4 MiB-effective dogfood CLI lands mid-30s at scale=1.
      */
-    static final long BASELINE_FLOOR_MS = 12_000L;
+    static final long REF_FLOOR_MS = 14_000L;
 
-    /** Product cold slope: ms per effective MiB (see {@link #effectiveInputBytes}). */
-    static final double BASELINE_MS_PER_MIB = 12_000.0;
+    /**
+     * Reference-host product slope: ms per effective MiB. Scaled by {@code cpuScale()} on cold
+     * paths. See {@link #REF_FLOOR_MS}.
+     */
+    static final double REF_MS_PER_MIB = 12_000.0;
 
     /**
      * Dep jars contribute this fraction of their bytes to the size model. Full-weight dep sum was
      * the main over-estimate (3–4 MiB raw → 50–80s model vs ~33s actual).
      */
     static final double DEP_BYTE_WEIGHT = 0.12;
+
+    /**
+     * Mild over-reserve on cold / size-model paths only (never on measured own walls). Reweight
+     * can shrink mid-run; the bar cannot grow.
+     */
+    static final double MODEL_PAD = 1.08;
 
     /** Cap absurd predictions. */
     static final long MAX_NATIVE_MS = 20 * 60_000L;
@@ -69,26 +88,22 @@ public final class NativeEffort {
         String mod = moduleDir == null ? "" : moduleDir.toString();
         if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
 
-        // 1) Module-own measured wall — truth, no pad
+        // 1) Module-own measured wall — project history supersedes host / baselines
         long own = EffortWeights.stepOkAvgMillisOwn(metrics, mod, "native-image");
         if (own >= WALL_FLOOR_MS) return own;
 
         long effective = estimateInputBytes(moduleDir);
-        long host = EffortWeights.stepOkAvgMillisHost(metrics, "native-image");
-        if (host < WALL_FLOOR_MS) host = 0;
 
-        // 2) Prefer host absolute wall when present — no pad.
-        if (host > 0) {
-            long fromSize = sizeModelWallMs(effective);
-            if (fromSize > 0 && fromSize < host * 1.15) return fromSize;
-            return host;
-        }
-
-        // 3) Size model when no host sample
+        // 2) Size-normalized model (learned host rates → reference × cpuScale)
         long fromSize = sizeModelWallMs(effective);
         if (fromSize > 0) return fromSize;
 
-        // 4) Cold flat × cpuScale
+        // 3) Host absolute wall only when we cannot size the closed world (no jar/deps yet).
+        // Raw task.native-image.wall-ms is not size-normalized — do not use it when bytes exist.
+        long host = EffortWeights.stepOkAvgMillisHost(metrics, "native-image");
+        if (host >= WALL_FLOOR_MS) return host;
+
+        // 4) Cold flat: reference × cpuScale
         return coldFlatMs();
     }
 
@@ -162,16 +177,24 @@ public final class NativeEffort {
     }
 
     /**
-     * Size model on effective MiB. Learned slope/floor when present; else product × cpuScale.
-     * Never multiplies both learned rates and cpuScale (double scale).
+     * Size model on effective MiB. Preference:
+     *
+     * <ol>
+     *   <li>Host-learned floor and/or slope (size-normalized continuous rates) — already
+     *       host-shaped; never also × cpuScale
+     *   <li>Reference product anchors × full {@link Calibration#cpuScale()} (both inflate and
+     *       deflate) so cold ETA tracks calibration rather than a magic fixed floor
+     * </ol>
+     *
+     * Mild {@link #MODEL_PAD}. Returns 0 when {@code effectiveBytes ≤ 0}.
      */
     static long sizeModelWallMs(long effectiveBytes) {
         if (effectiveBytes <= 0) return 0;
         double mib = effectiveBytes / (double) MIB;
         try {
             Calibration cal = Calibration.load();
-            double floor = BASELINE_FLOOR_MS;
-            double slope = BASELINE_MS_PER_MIB;
+            double floor = REF_FLOOR_MS;
+            double slope = REF_MS_PER_MIB;
             OptionalDouble learnedSlope = cal.learned().meanMs(HostLearnedRates.NATIVE_IMAGE_MS_PER_MIB);
             OptionalDouble learnedFloor = cal.learned().meanMs(HostLearnedRates.NATIVE_IMAGE_FLOOR_MS);
             boolean learned = false;
@@ -183,23 +206,44 @@ public final class NativeEffort {
                 floor = learnedFloor.getAsDouble();
                 learned = true;
             }
-            if (!learned && cal.hasColdPriors()) {
-                double scale = cal.cpuScale();
-                floor = BASELINE_FLOOR_MS * scale;
-                slope = BASELINE_MS_PER_MIB * scale;
+            if (!learned) {
+                // Full host scale (min..max): faster probe → lower cold native ETA; slower → higher.
+                // No native-image install probe exists — javac/hash is the available host signal.
+                double scale = nativeColdScale(cal.hasColdPriors() ? cal.cpuScale() : 1.0);
+                floor = REF_FLOOR_MS * scale;
+                slope = REF_MS_PER_MIB * scale;
+            } else if (learnedSlope.isEmpty() || learnedFloor.isEmpty()) {
+                // Partial learn: fill the missing side from scaled reference so one rate cannot
+                // leave the other stuck at an unscaled dogfood constant.
+                double scale = nativeColdScale(cal.hasColdPriors() ? cal.cpuScale() : 1.0);
+                if (learnedSlope.isEmpty()) slope = REF_MS_PER_MIB * scale;
+                if (learnedFloor.isEmpty()) floor = REF_FLOOR_MS * scale;
             }
-            return clampNativeMs(Math.round(floor + slope * mib));
+            return modelPad(Math.round(floor + slope * mib));
         } catch (RuntimeException e) {
-            return clampNativeMs(Math.round(BASELINE_FLOOR_MS + BASELINE_MS_PER_MIB * mib));
+            return modelPad(Math.round(REF_FLOOR_MS + REF_MS_PER_MIB * mib));
         }
     }
 
     static long coldFlatMs() {
         try {
-            return clampNativeMs(Calibration.load().nativeImageMs());
+            return modelPad(Calibration.load().nativeImageMs());
         } catch (RuntimeException e) {
-            return clampNativeMs(Calibration.BASELINE_NATIVE_IMAGE_MS);
+            return modelPad(Calibration.BASELINE_NATIVE_IMAGE_MS);
         }
+    }
+
+    /**
+     * Host scale for cold native product anchors: full {@link Calibration#clampScale} range so
+     * calibration probe data shapes the guess (faster host → lower; slower → higher).
+     */
+    static double nativeColdScale(double cpuScale) {
+        return Calibration.clampScale(cpuScale);
+    }
+
+    /** Apply mild cold/size pad and clamp. */
+    static long modelPad(long ms) {
+        return clampNativeMs(Math.round(ms * MODEL_PAD));
     }
 
     static long clampNativeMs(long ms) {
@@ -220,7 +264,8 @@ public final class NativeEffort {
 
     /**
      * Host samples from a real native SUCCESS. {@code inputBytes} should be {@link
-     * #estimateInputBytes effective} bytes so slope matches prediction units.
+     * #estimateInputBytes effective} bytes so slope matches prediction units. These are the
+     * size-normalized host priors alien projects reuse.
      */
     public static List<HostLearnedRates.HostSample> hostSamples(long wallMs, long inputBytes) {
         if (wallMs < WALL_FLOOR_MS || inputBytes < 1024) return List.of();

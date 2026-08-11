@@ -893,8 +893,8 @@ public final class EffortWeights {
     }
 
     /**
-     * Native-image bar/ETA weight via {@link NativeEffort}: own wall → size model → host → cold
-     * calibrated baseline.
+     * Native-image bar/ETA weight via {@link NativeEffort}: own wall → size-normalized host/product
+     * model → host absolute only when size unknown → cold calibrated baseline.
      */
     public static int nativeRunWeight(Path dir) {
         return NativeEffort.weight(dir);

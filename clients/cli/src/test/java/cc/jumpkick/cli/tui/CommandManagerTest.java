@@ -867,6 +867,31 @@ class CommandManagerTest {
     }
 
     @Test
+    void native_classpath_size_detail_uses_path_and_bold_white() {
+        Theme t = Theme.active();
+        String detail = "jk-cli · classpath input size: ~3.8 MiB";
+        String painted = CommandManager.colorDetail("Native", detail, t);
+        assertThat(TestAnsi.strip(painted)).isEqualTo(detail);
+        // Filename: Theme.path (periwinkle #969DD4) — same as other file/path designations.
+        assertThat(painted).contains(Theme.colorize("jk-cli", t.path()));
+        // Size number: focused = bold + bright white (not count-yellow).
+        assertThat(painted).contains(Theme.colorize("~3.8", t.focused()));
+        assertThat(painted).doesNotContain(Theme.colorize("~3.8", t.warning()));
+        assertThat(painted).contains(Theme.colorize(" MiB", t.midGray()));
+        assertThat(painted).contains(Theme.colorize(" · classpath input size: ", t.midGray()));
+    }
+
+    @Test
+    void native_classpath_size_detail_win_exe_basename() {
+        Theme t = Theme.active();
+        String detail = "cli.exe · classpath input size: ~1.2 MiB";
+        String painted = CommandManager.colorDetail("Native", detail, t);
+        assertThat(TestAnsi.strip(painted)).isEqualTo(detail);
+        assertThat(painted).contains(Theme.colorize("cli.exe", t.path()));
+        assertThat(painted).contains(Theme.colorize("~1.2", t.focused()));
+    }
+
+    @Test
     void looksLikeCoord_detects_gav() {
         assertThat(CommandManager.looksLikeCoord("com.foo:bar:1.0")).isTrue();
         assertThat(CommandManager.looksLikeCoord("com.foo:bar")).isTrue();

@@ -1268,6 +1268,11 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             body = detail.substring(0, w);
             worker = detail.substring(w);
         }
+        // native-image: "{bin} · classpath input size: ~N MiB" — path color + bold white size.
+        String nativePainted = colorNativeClasspathSizeDetail(body, t);
+        if (nativePainted != null) {
+            return worker.isEmpty() ? nativePainted : nativePainted + Theme.colorize(worker, t.midGray());
+        }
         // Only syntax-highlight true member refs (FooTest.bar). Phase "Test" also hosts
         // compile-test labels like "compiling 12 sources" — those must stay mid-gray prose
         // (SyntaxHighlight paints unmatched text as terminal default/white).
@@ -1276,6 +1281,30 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 : colorProseDetail(body, t);
         if (worker.isEmpty()) return painted;
         return painted + Theme.colorize(worker, t.midGray());
+    }
+
+    /**
+     * Paint {@code {filename} · classpath input size: ~N MiB}: filename in {@link Theme#path}
+     * (periwinkle), size number bold bright-white, prose mid-gray. Returns null when the detail
+     * is not this shape so the generic prose painter handles it.
+     */
+    static String colorNativeClasspathSizeDetail(String detail, Theme t) {
+        if (detail == null) return null;
+        final String marker = " · classpath input size: ~";
+        int sep = detail.indexOf(marker);
+        if (sep <= 0) return null;
+        String name = detail.substring(0, sep);
+        String after = detail.substring(sep + marker.length()); // "1.4 MiB" or "12 MiB"
+        int sp = after.indexOf(' ');
+        if (sp <= 0) return null;
+        String num = after.substring(0, sp);
+        String unitAndRest = after.substring(sp); // " MiB" (+ anything after)
+        if (!Character.isDigit(num.charAt(0))) return null;
+        // focused() = bold + bright white (same as focused option labels / input buffer).
+        return Theme.colorize(name, t.path())
+                + Theme.colorize(marker.substring(0, marker.length() - 1), t.midGray()) // " · classpath input size: "
+                + Theme.colorize("~" + num, t.focused())
+                + Theme.colorize(unitAndRest, t.midGray());
     }
 
     /**
