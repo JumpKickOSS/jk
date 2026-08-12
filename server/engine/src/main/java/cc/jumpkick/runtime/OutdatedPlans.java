@@ -61,7 +61,7 @@ public final class OutdatedPlans {
         }
 
         boolean workspace = scopes.size() > 1;
-        Map<String, String> shortNames = reverseCatalog();
+        Map<String, String> shortNames = reverseCatalog(dir);
         GitFetcher git = new GitFetcher(JkStores.resolve(cache, "git"));
         Map<String, GitFetcher.RemoteRefs> gitRefsCache = new HashMap<>();
 
@@ -205,9 +205,11 @@ public final class OutdatedPlans {
     // ---- shared -------------------------------------------------------------
 
     /** Build a {@code group:artifact -> short catalog name} index; shortest name wins per coord. */
-    private static Map<String, String> reverseCatalog() {
+    private static Map<String, String> reverseCatalog(Path dir) {
         Map<String, String> reverse = new HashMap<>();
-        LibraryCatalog catalog = LibraryCatalog.layered();
+        // Full chain incl. the workspace jk-libs.toml layer — the system-only view hid
+        // project-layer names and showed stale system mappings for overridden ones (JK-1856).
+        LibraryCatalog catalog = LibraryCatalog.forProject(dir);
         for (String name : catalog.names()) {
             var mod = catalog.lookup(name);
             if (mod.isEmpty()) continue;
