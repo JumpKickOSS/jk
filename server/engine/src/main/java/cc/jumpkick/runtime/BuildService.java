@@ -615,7 +615,8 @@ public final class BuildService {
                 // cache hits but must not inflate ETA toward a full monorepo wall.
                 if (!distrust && TaskForecast.Module.isBookkeepingStep(s.name())) continue;
                 if (!distrust
-                        && shouldDiscountCascadeStep(s, localCompile, resourceDrift, keepFullTests, testResourceDrift)) {
+                        && shouldDiscountCascadeStep(
+                                s, localCompile, resourceDrift, keepFullTests, testResourceDrift)) {
                     cascadeRecheck++;
                     continue;
                 }

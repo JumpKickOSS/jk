@@ -5510,8 +5510,7 @@ public final class EngineServer implements AutoCloseable {
         candidate.setLiveRunSupport(this::liveRunsSnapshot, this::rehydrateLiveRunsOnSseConnect);
         // Combined-connection peak observed at every admission point (UDS accept bumps it too) —
         // not only when a status snapshot happens to run (JK-1861).
-        candidate.setOnSseAdmitted(
-                () -> peakActiveConnections.accumulateAndGet(liveConnectionCount(), Math::max));
+        candidate.setOnSseAdmitted(() -> peakActiveConnections.accumulateAndGet(liveConnectionCount(), Math::max));
         try {
             candidate.start();
             Files.writeString(paths.http(), candidate.url());

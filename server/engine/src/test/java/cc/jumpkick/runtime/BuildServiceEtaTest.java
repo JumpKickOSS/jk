@@ -149,11 +149,14 @@ class BuildServiceEtaTest {
                 false);
         assertThat(BuildService.hasTestResourceDriftWork(testResourceOnly)).isTrue();
         var suite = testResourceOnly.steps().get(1);
-        assertThat(BuildService.shouldDiscountCascadeStep(suite, false, true, true, true)).isFalse();
+        assertThat(BuildService.shouldDiscountCascadeStep(suite, false, true, true, true))
+                .isFalse();
         // Rule 4 (pure cascade) is also vetoed by test-resource drift.
-        assertThat(BuildService.shouldDiscountCascadeStep(suite, false, true, false, true)).isFalse();
+        assertThat(BuildService.shouldDiscountCascadeStep(suite, false, true, false, true))
+                .isFalse();
         // Main-resource-only drift still discounts the suite (no test-resource signal).
-        assertThat(BuildService.shouldDiscountCascadeStep(suite, false, true, true, false)).isTrue();
+        assertThat(BuildService.shouldDiscountCascadeStep(suite, false, true, true, false))
+                .isTrue();
 
         var local = new TaskForecast.Module(
                 Path.of("/engine"),

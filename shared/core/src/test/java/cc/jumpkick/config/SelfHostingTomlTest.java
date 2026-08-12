@@ -145,7 +145,8 @@ class SelfHostingTomlTest {
         JkBuild root = JkBuildParser.parseLocal(REPO.resolve("jk.toml"));
         java.util.List<Path> manifests = new java.util.ArrayList<>();
         manifests.add(REPO.resolve("jk.toml"));
-        for (Path moduleDir : cc.jumpkick.config.WorkspaceLoader.loadModules(REPO, root).keySet()) {
+        for (Path moduleDir :
+                cc.jumpkick.config.WorkspaceLoader.loadModules(REPO, root).keySet()) {
             Path mt = moduleDir.resolve("jk.toml");
             if (Files.isRegularFile(mt)) manifests.add(mt);
         }
@@ -175,7 +176,9 @@ class SelfHostingTomlTest {
         cc.jumpkick.library.LibraryCatalog chain = cc.jumpkick.library.LibraryCatalog.forProject(REPO);
         for (String name : shortNames) {
             var expected = bundled.lookup(name);
-            assertThat(expected).as("%s must exist in the bundled catalog", name).isPresent();
+            assertThat(expected)
+                    .as("%s must exist in the bundled catalog", name)
+                    .isPresent();
             assertThat(pins.lookup(name))
                     .as("jk-libs.toml must pin %s (add it with the bundled GA)", name)
                     .contains(expected.get());
