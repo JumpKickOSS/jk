@@ -70,7 +70,7 @@ public final class EngineAotCommand implements cc.jumpkick.model.command.CliComm
                     nullToDash(e.status()),
                     e.sizeBytes() != null ? CacheCommand.fmtBytes(e.sizeBytes()) : "—"));
         }
-        for (String line : cc.jumpkick.cli.tui.BoxTable.render("AOT Caches", headers, rows)) {
+        for (String line : cc.jumpkick.cli.tui.Table.render("AOT Caches", headers, rows)) {
             CliOutput.out(line);
         }
         CliOutput.out("  Directory: " + cc.jumpkick.cli.PathDisplay.styledRaw(aotDir));

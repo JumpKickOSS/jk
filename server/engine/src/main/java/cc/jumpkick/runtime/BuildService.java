@@ -988,7 +988,7 @@ public final class BuildService {
         }
         Calibration.ensure(req.jdksDir());
         if (probing) {
-            // complete=true drops the preflight row from the live tree (CommandManager.preflight).
+            // complete=true drops the preflight row from the live tree (JkManager.preflight).
             listener.onPreflight("calibrate", 1, 1, "Calibrating host…");
         }
         // only fully prepare modules that will execute (dirty). Clean modules skip prepare

@@ -125,7 +125,7 @@ public final class LibrarySearchCommand implements CliCommand {
             rows.add(cells);
         }
         cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
-        for (String line : cc.jumpkick.cli.tui.BoxTable.render(title, headers, rows)) {
+        for (String line : cc.jumpkick.cli.tui.Table.render(title, headers, rows)) {
             CliOutput.out(line);
         }
     }

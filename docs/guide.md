@@ -457,7 +457,10 @@ jk outdated                      # Current / Compatible / Latest table
 jk outdated --exclude-up-to-date # only rows that can move
 jk outdated --output json        # machine-readable array of rows
 jk why com.foo:bar               # why a pin is there
-jk tree                          # export/main/runtime graph (see -s for scopes)
+jk tree                          # workspace graph (even from a member dir)
+jk tree :foo                     # one workspace module
+jk tree foo/bar                  # module path
+jk tree -t                       # include transitive lockfile deps
 jk update                        # re-resolve on purpose, then commit jk-lock.toml
 ```
 

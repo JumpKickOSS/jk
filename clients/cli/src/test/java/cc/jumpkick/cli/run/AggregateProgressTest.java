@@ -3,7 +3,7 @@ package cc.jumpkick.cli.run;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.tui.CommandManager;
+import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.runtime.WorkspaceProgressTracker;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -24,7 +24,7 @@ class AggregateProgressTest {
     @Test
     void apply_snapshot_paints_bar_and_live_progress() {
         LiveProgress.get().clear();
-        CommandManager cm = CommandManager.plan(new PrintStream(new ByteArrayOutputStream()), "Build", false);
+        JkManager cm = JkManager.plan(new PrintStream(new ByteArrayOutputStream()), "Build", false);
         AggregateContext agg = new AggregateContext(cm);
         var snap = new WorkspaceProgressTracker.Snapshot(150, 200, 75.0, "execute", 1, 2, 25_000, 100_000);
         agg.applySnapshot(snap);
@@ -60,7 +60,7 @@ class AggregateProgressTest {
     @Test
     void preflight_only_sets_labels_not_percent() {
         LiveProgress.get().clear();
-        CommandManager cm = CommandManager.plan(new PrintStream(new ByteArrayOutputStream()), "Build", false);
+        JkManager cm = JkManager.plan(new PrintStream(new ByteArrayOutputStream()), "Build", false);
         AggregateContext agg = new AggregateContext(cm);
         agg.preflight("plan", 0, 10, "Preparing…");
         // No snapshot yet → LiveProgress stays unset; bar den may still be 0.

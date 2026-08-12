@@ -19,7 +19,7 @@ import org.jline.utils.AttributedStyle;
  *   <li><b>Open</b> ({@link #show}) — brand blue ↔ almost-black blue on the terminal background:
  *       {@code ● message}.
  *   <li><b>Wedge / chip</b> ({@link #showWedge}) — white ↔ chip blue on the CommandWedge pill
- *       (same chrome as {@link CommandManager}'s plan header): {@code ● Status  message}.
+ *       (same chrome as {@link JkManager}'s plan header): {@code ● Status  message}.
  * </ul>
  *
  * <p>Cursor hidden between {@link #show}/{@link #showWedge} and {@link #close()}. Thread-safe
@@ -270,14 +270,14 @@ public final class Spinner implements AutoCloseable {
         String msg = (message == null || message.isBlank()) ? "working" : message;
         String tail = msg + " - working...";
         if (command == null) return " " + Glyphs.PULSE_PLAIN + " " + tail;
-        return BuildPlanWedge.plainWedge(Glyphs.PULSE_PLAIN, command, tail);
+        return JkWedge.plainWedge(Glyphs.PULSE_PLAIN, command, tail);
     }
 
     static String plainDoneLine(String command, String message) {
         String msg = (message == null || message.isBlank()) ? "working" : message;
         String tail = msg + " - done.";
         if (command == null) return " " + Glyphs.PULSE_PLAIN + " " + tail;
-        return BuildPlanWedge.plainWedge(Glyphs.PULSE_PLAIN, command, tail);
+        return JkWedge.plainWedge(Glyphs.PULSE_PLAIN, command, tail);
     }
 
     /**
@@ -286,26 +286,11 @@ public final class Spinner implements AutoCloseable {
      */
     static String renderWedgeFrame(
             int frame, String command, String message, boolean nerdfont, AttributedStyle[] pulseFg) {
-        Theme t = Theme.active();
-        String name = command == null ? "" : command;
-        String msg = message == null ? "" : message;
-        if (!t.isAnsi()) {
-            // " * Status > Analyzing…"
-            return BuildPlanWedge.plainWedge(Glyphs.PULSE_PLAIN, name, msg);
-        }
-        AttributedStyle chip = t.planChip();
-        AttributedStyle pulse = t.withBackground(pulseFg[Math.floorMod(frame, pulseFg.length)], t.planBadgeColor());
-        // Nerd: " {●} {name} " + powerline; ansi-no-nerd: " {●} {name}  " (two trailing bg spaces).
-        StringBuilder h = new StringBuilder();
-        h.append(Theme.colorize(" ", chip)).append(Theme.colorize(PULSE_GLYPH, pulse));
-        if (nerdfont) {
-            h.append(Theme.colorize(name.isEmpty() ? " " : " " + name + " ", chip));
-            h.append(BuildPlanWedge.cap(t.planBadgeColor(), true));
-        } else {
-            h.append(Theme.colorize(name.isEmpty() ? "  " : " " + name + "  ", chip));
-        }
-        h.append(' ').append(msg);
-        return h.toString();
+        RenderContext ctx = RenderContext.current().withNerd(nerdfont).withFrame(frame);
+        return new JkWedge(
+                        Icon.spinner(), command == null ? "" : command, RichText.ansi(message == null ? "" : message))
+                .variant(JkWedge.Variant.WORK)
+                .renderLine(ctx);
     }
 
     @Override

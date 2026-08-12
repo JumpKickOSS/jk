@@ -1414,7 +1414,8 @@ public final class HttpEngineServer implements AutoCloseable {
      * {@code GET /api/project/graph?dir=…[&scopes=main,test][&transitive=0|1]} — dependency graph
      * for the Project page ECharts panel (JK-1542). Workspace modules plus declared external deps
      * for the selected scopes (default {@code export,main,runtime}, same as {@code jk tree});
-     * optional lockfile transitive expansion. On-demand only (SPA lazy-loads). Token-gated like
+     * optional lockfile transitive expansion ({@code jk tree -t}). On-demand only (SPA
+     * lazy-loads). Token-gated like
      * {@code /api/project}.
      */
     private void handleProjectGraph(HttpExchange exchange) throws IOException {

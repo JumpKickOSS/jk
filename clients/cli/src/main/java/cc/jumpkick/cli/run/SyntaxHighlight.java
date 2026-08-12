@@ -19,7 +19,8 @@ public final class SyntaxHighlight {
     /** Which Prism grammar to colorize with. */
     public enum Language {
         JAVA,
-        KOTLIN
+        KOTLIN,
+        GROOVY
     }
 
     /** A colorable token class; maps to a {@link Theme} style via {@link #styleFor}. */
@@ -139,6 +140,37 @@ public final class SyntaxHighlight {
             Rule.of("(?:`[^`\\r\\n]+`|\\b[A-Za-z_]\\w*)(?=\\s*\\()", Role.FUNCTION),
             PUNCTUATION);
 
+    // --- Groovy grammar (java-like + def/trait/in) -----------------------
+
+    private static final List<Rule> GROOVY_RULES = List.of(
+            BLOCK_COMMENT,
+            LINE_COMMENT,
+            OPEN_COMMENT,
+            Rule.of("'(?:\\\\.|[^'\\\\\\r\\n]){1,6}'", Role.STRING),
+            Rule.of("'''[\\s\\S]*?'''", Role.STRING),
+            Rule.of("\"\"\"[\\s\\S]*?\"\"\"", Role.STRING),
+            Rule.of("\"(?:\\\\.|[^\"\\\\\\r\\n])*\"", Role.STRING),
+            Rule.of("\"(?:\\\\.|[^\"\\\\\\r\\n])*", Role.STRING),
+            Rule.of("(?<!\\.)@[A-Za-z_]\\w*(?:\\s*\\.\\s*\\w+)*", Role.ANNOTATION),
+            Rule.of(
+                    "\\b0b[01][01_]*[lgG]?\\b"
+                            + "|\\b0x(?:\\.[\\da-f_p+-]+|[\\da-f_]+(?:\\.[\\da-f_p+-]+)?)\\b"
+                            + "|(?:\\b\\d[\\d_]*(?:\\.[\\d_]*)?|\\B\\.\\d[\\d_]*)(?:e[+-]?\\d[\\d_]*)?[dfl]?",
+                    Pattern.CASE_INSENSITIVE,
+                    Role.NUMBER),
+            Rule.of(
+                    "\\b(?:abstract|as|assert|boolean|break|byte|case|catch|char|class|const"
+                            + "|continue|def|default|do|double|else|enum|extends|final|finally|float"
+                            + "|for|goto|if|implements|import|in|instanceof|int|interface|long|native"
+                            + "|new|null|package|private|protected|public|return|short|static|super"
+                            + "|switch|synchronized|this|throw|throws|trait|transient|try|void"
+                            + "|volatile|while|true|false)\\b",
+                    Role.KEYWORD),
+            Rule.of("\\b[A-Z][A-Z_\\d]+\\b", Role.CONSTANT),
+            Rule.of("\\b[A-Z]\\w*\\b", Role.TYPE),
+            Rule.of("\\b[A-Za-z_]\\w*(?=\\s*\\()", Role.FUNCTION),
+            PUNCTUATION);
+
     /**
      * Highlight {@code src} as Java, underlining the character at {@code caretCol}. Convenience
      * overload for the common case.
@@ -153,7 +185,21 @@ public final class SyntaxHighlight {
      * without an underline.
      */
     public static String highlight(String src, int caretCol, Language lang) {
-        return render(src, caretCol, lang == Language.KOTLIN ? KOTLIN_RULES : JAVA_RULES);
+        return render(src, caretCol, rulesFor(lang));
+    }
+
+    /** One RichText run of highlighted {@code src} (no caret underline). */
+    public static cc.jumpkick.cli.tui.RichText highlightRich(String src, Language lang) {
+        if (src == null || src.isEmpty()) return cc.jumpkick.cli.tui.RichText.empty();
+        return cc.jumpkick.cli.tui.RichText.ansi(render(src, -1, rulesFor(lang)));
+    }
+
+    static List<Rule> rulesFor(Language lang) {
+        return switch (lang) {
+            case KOTLIN -> KOTLIN_RULES;
+            case GROOVY -> GROOVY_RULES;
+            case JAVA -> JAVA_RULES;
+        };
     }
 
     /** First-match-wins ordered rules; caret column optionally underlined. SGR only. */

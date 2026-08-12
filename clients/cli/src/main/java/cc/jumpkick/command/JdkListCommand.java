@@ -4,6 +4,9 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.RenderContext;
+import cc.jumpkick.cli.tui.RichText;
+import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.ActiveJavac;
 import cc.jumpkick.jdk.GlobalDefaultJdk;
@@ -429,188 +432,69 @@ public final class JdkListCommand implements CliCommand {
     // Rendering
     // ---------------------------------------------------------------
 
-    private static final String[] HEADERS = {"Version", "Vendor", "Spec", "Status", "Source"};
-
     /** Render the table as a sequence of ANSI-styled lines, ready to println. */
     static List<String> renderTable(List<Row> rows, String title) {
-        int[] widths = computeWidths(rows);
-        int inner = innerWidth(widths);
-
-        List<String> out = new ArrayList<>();
-        // Title: blue menu CommandWedge + ─ fill + ╮ (no separate ╭──╮ top border).
-        out.add(cc.jumpkick.cli.tui.BoxTable.titleBar(title, inner + 2));
-        out.add(divider("├", "┬", "┤", widths)); // ├─┬─┤
-        out.add(headerRow(widths)); // │ Version │ ...
-        out.add(divider("├", "┼", "┤", widths)); // ├─┼─┤
-
-        // Group rows by major, in their already-sorted order.
+        Table table = new Table(title)
+                .columns(
+                        new Table.Column("Version", Table.Align.CENTER),
+                        new Table.Column("Vendor"),
+                        new Table.Column("Spec"),
+                        new Table.Column("Status"),
+                        new Table.Column("Source"));
         Map<Integer, List<Row>> grouped = new TreeMap<>(Comparator.reverseOrder());
         for (Row r : rows)
             grouped.computeIfAbsent(r.major(), k -> new ArrayList<>()).add(r);
-
         boolean firstGroup = true;
         for (var entry : grouped.entrySet()) {
-            if (!firstGroup) {
-                out.add(divider("├", "┼", "┤", widths)); // ├─┼─┤ between groups
-            }
+            if (!firstGroup) table.row(Table.Row.separator());
             firstGroup = false;
             var groupRows = entry.getValue();
             for (int i = 0; i < groupRows.size(); i++) {
                 Row r = groupRows.get(i);
-                String versionCell = (i == 0) ? String.valueOf(r.major()) : "";
-                out.add(dataRow(versionCell, r, widths));
+                String version = i == 0 ? String.valueOf(r.major()) : "";
+                table.row(jdkRow(version, r));
             }
         }
-
-        out.add(divider("╰", "┴", "╯", widths)); // ╰─┴─╯ closes cols
-        return out;
+        return table.render(RenderContext.current());
     }
 
-    private static int[] computeWidths(List<Row> rows) {
-        int[] w = new int[5];
-        for (int i = 0; i < HEADERS.length; i++) w[i] = HEADERS[i].length();
-        for (Row r : rows) {
-            w[0] = Math.max(w[0], String.valueOf(r.major()).length());
-            w[1] = Math.max(w[1], r.vendor() == null ? 0 : r.vendor().length());
-            w[2] = Math.max(w[2], r.spec().length());
-            w[3] = Math.max(w[3], r.statusLabel().length());
-            w[4] = Math.max(w[4], r.location() == null ? 0 : r.location().length());
-        }
-        return w;
-    }
-
-    private static int innerWidth(int[] widths) {
-        // 5 cells, each ` content ` (content + 2 padding), with 4 internal │ separators.
-        int sum = 0;
-        for (int c : widths) sum += c + 2;
-        return sum + 4;
-    }
-
-    // We compose lines as raw Strings via Theme.colorize() (which wraps the
-    // text in SGR codes manually) rather than going through
-    // AttributedString.toAnsi() — the latter translates single-line
-    // box-drawing chars (─ ┬ ┴ ├ ┤) into ASCII (- +) when no terminal is
-    // supplied, which mangles this table.
-
-    private static String divider(String left, String junction, String right, int[] widths) {
-        boolean ansi = Theme.active().isAnsi();
-        var sb = new StringBuilder(ansi ? left : "+");
-        for (int i = 0; i < widths.length; i++) {
-            sb.append((ansi ? "─" : "-").repeat(widths[i] + 2));
-            sb.append(i == widths.length - 1 ? (ansi ? right : "+") : (ansi ? junction : "+"));
-        }
-        return ansi ? Theme.colorize(sb.toString(), Theme.active().darkGray()) : sb.toString();
-    }
-
-    private static String headerRow(int[] widths) {
-        String bar =
-                Theme.active().isAnsi() ? Theme.colorize("│", Theme.active().darkGray()) : "|";
-        var sb = new StringBuilder(bar);
-        for (int i = 0; i < HEADERS.length; i++) {
-            sb.append(" ");
-            sb.append(cc.jumpkick.cli.tui.BoxTable.headerCell(pad(HEADERS[i], widths[i], i == 0)));
-            sb.append(" ");
-            sb.append(bar);
-        }
-        return sb.toString();
-    }
-
-    private static String dataRow(String version, Row r, int[] widths) {
-        Status status = r.status();
-        // Row-level emphasis: the active JDK is BOLD and sits on an indigo band;
-        // the default JDK is italic. A JDK that's both gets bold + italic. Derived
-        // from the composite status label since one JDK can hold several roles at
-        // once (e.g. "active/default").
+    private static Table.Row jdkRow(String version, Row r) {
         String label = r.statusLabel();
         boolean active = label.contains("active");
-        boolean bold = active;
         boolean italic = label.contains("default");
-        // The active row's interior carries a dark-black background band, spanning
-        // everything between the outer rails (cells, padding, inner separators).
+        boolean bold = active;
         Rgb band = active ? Theme.active().darkBlackColor() : null;
-
-        // The │ rails always stay. On a Nerd-Font banded row, pill-cap glyphs replace
-        // the single padding space immediately inside each rail, so the background band
-        // tapers into the terminal background with rounded edges — same as BuildPlanWedge.cap().
-        boolean nerdfont = cc.jumpkick.config.GlobalConfig.nerdfont();
-        boolean ansi = Theme.active().isAnsi();
-        String outerBar = ansi ? Theme.colorize("│", Theme.active().darkGray()) : "|";
-        String innerBar = ansi
-                ? (band == null
-                        ? outerBar
-                        : Theme.colorize("│", banded(Theme.active().darkGray(), band)))
-                : "|";
-        String sp = bandSpaces(1, band);
-        // leftPad / rightPad: normally a single (possibly banded) space; with nerdfont+band
-        // becomes the pill cap (foreground = band color, no background — it IS the cap).
-        String leftPad = (ansi && nerdfont && band != null)
-                ? Theme.colorize(
-                        cc.jumpkick.cli.tui.Glyphs.PILL_LEFT_NERD,
-                        Theme.active().bright(band))
-                : sp;
-        String rightPad = (ansi && nerdfont && band != null)
-                ? Theme.colorize(
-                        cc.jumpkick.cli.tui.Glyphs.PILL_RIGHT_NERD,
-                        Theme.active().bright(band))
-                : sp;
-
-        String versionCell =
-                Theme.colorize(center(version, widths[0]), banded(deco(AttributedStyle.DEFAULT, italic, bold), band));
-        String vendor = r.vendor() == null ? "" : r.vendor();
-        String vendorCell =
-                Theme.colorize(padRight(vendor, widths[1]), banded(deco(AttributedStyle.DEFAULT, italic, bold), band));
-        String specCell = Theme.colorize(
-                padRight(r.spec(), widths[2]), banded(deco(Theme.active().settled(), italic, bold), band));
-
+        Status status = r.status();
+        RichText loc;
         String location = r.location();
-        String locStyled;
         if (location == null || location.isEmpty()) {
-            locStyled = bandSpaces(widths[4], band);
+            loc = RichText.empty();
         } else {
-            // AVAILABLE rows render the source ("download") in the same dark-gray
-            // as their status, so the entire catalog-only row reads as de-emphasised
-            // relative to actually-installed JDKs.
-            AttributedStyle locStyle = status == Status.AVAILABLE
+            var locStyle = status == Status.AVAILABLE
                     ? Theme.active().darkGray()
                     : Theme.active().path();
-            locStyled = Theme.colorize(location, banded(deco(locStyle, italic, bold), band))
-                    + bandSpaces(widths[4] - location.length(), band);
+            loc = painted(location, locStyle, italic, bold, band);
         }
-        return outerBar
-                + leftPad
-                + versionCell
-                + sp
-                + innerBar
-                + sp
-                + vendorCell
-                + sp
-                + innerBar
-                + sp
-                + specCell
-                + sp
-                + innerBar
-                + sp
-                + statusCell(label, widths[3], italic, bold, band)
-                + sp
-                + innerBar
-                + sp
-                + locStyled
-                + rightPad
-                + outerBar;
+        Table.Row row = Table.Row.data(
+                painted(version, AttributedStyle.DEFAULT, italic, bold, band),
+                painted(r.vendor() == null ? "" : r.vendor(), AttributedStyle.DEFAULT, italic, bold, band),
+                painted(r.spec(), Theme.active().settled(), italic, bold, band),
+                RichText.ansi(statusPainted(label, italic, bold, band)),
+                loc);
+        return active ? row.emphasized() : row;
+    }
+
+    private static RichText painted(String text, AttributedStyle base, boolean italic, boolean bold, Rgb band) {
+        String s = text == null ? "" : text;
+        if (!Theme.active().isAnsi()) return RichText.plain(s);
+        AttributedStyle style = deco(base, italic, bold);
+        if (band != null) style = Theme.active().withBackground(style, band);
+        return RichText.ansi(Theme.colorize(s, style));
     }
 
     /** Layer the active-row indigo band background onto a cell style (no-op when not banded). */
     private static AttributedStyle banded(AttributedStyle base, Rgb band) {
         return band == null ? base : Theme.active().withBackground(base, band);
-    }
-
-    /** {@code n} spaces, carrying the active-row band background when set. */
-    private static String bandSpaces(int n, Rgb band) {
-        if (n <= 0) return "";
-        String spaces = " ".repeat(n);
-        return band == null
-                ? spaces
-                : Theme.colorize(spaces, Theme.active().withBackground(AttributedStyle.DEFAULT, band));
     }
 
     /** Layer the row-level italic (active) / bold (default) attributes onto a cell style. */
@@ -626,15 +510,13 @@ public final class JdkListCommand implements CliCommand {
      * padded to the column width. The row's italic/bold emphasis is layered on so the whole line
      * reads uniformly.
      */
-    private static String statusCell(String label, int width, boolean italic, boolean bold, Rgb band) {
+    private static String statusPainted(String label, boolean italic, boolean bold, Rgb band) {
         String[] parts = label.split("/");
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < parts.length; i++) {
             if (i > 0) sb.append(Theme.colorize("/", banded(Theme.active().darkGray(), band)));
             sb.append(Theme.colorize(parts[i], banded(deco(segmentStyle(parts[i]), italic, bold), band)));
         }
-        int pad = width - label.length();
-        if (pad > 0) sb.append(bandSpaces(pad, band));
         return sb.toString();
     }
 
@@ -647,23 +529,6 @@ public final class JdkListCommand implements CliCommand {
             case "available" -> Theme.active().darkGray();
             default -> Theme.active().completedStep(); // "installed"
         };
-    }
-
-    private static String pad(String s, int width, boolean center) {
-        return center ? center(s, width) : padRight(s, width);
-    }
-
-    private static String padRight(String s, int width) {
-        if (s.length() >= width) return s;
-        return s + " ".repeat(width - s.length());
-    }
-
-    private static String center(String s, int width) {
-        if (s.length() >= width) return s;
-        int total = width - s.length();
-        int left = total / 2;
-        int right = total - left;
-        return " ".repeat(left) + s + " ".repeat(right);
     }
 
     // ---------------------------------------------------------------

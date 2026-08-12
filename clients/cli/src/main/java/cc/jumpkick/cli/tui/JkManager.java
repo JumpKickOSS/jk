@@ -24,7 +24,7 @@ import org.jline.utils.AttributedStyle;
  * with pulse + {@link ProgressBar} + compact module/phase tree). Animates on a TTY; under pipes/{@code
  * --quiet}/{@code --no-progress} only prints the final result. Active {@link LiveRegion} for Ctrl-C.
  */
-public final class CommandManager implements AutoCloseable, LiveRegion {
+public final class JkManager implements AutoCloseable, LiveRegion {
 
     private static final String PULSE = Spinner.PULSE_GLYPH;
     private static final int PULSE_FRAMES = Spinner.PULSE_FRAMES;
@@ -71,12 +71,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     private final AttributedStyle[] openPulseColors = Spinner.buildOpenPulseStyles(PULSE_FRAMES);
 
     /** Chip pulse (white↔chip blue) — plan header pill only; FG sits on solid chip BG. */
-    private final AttributedStyle[] chipPulseColors =
-            Spinner.buildChipPulseStyles(PULSE_FRAMES, Theme.active().planBadgeColor());
-
-    private final ProgressBar bar = new ProgressBar();
-
     private final Object lock = new Object();
+
     private volatile boolean stopped; // animator should stop
     private boolean done; // a terminal render already happened
     private int frame;
@@ -86,8 +82,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     private boolean leadingBlankPrinted;
 
     /**
-     * Plain ({@code --no-ansi}) multi-line progress: last printed 10% decade (0..9), or -1 before
-     * the mandatory 0% start line. 100% is only emitted as a done line on settle (JK-1379).
+     * Plain ({@code --no-ansi}) multi-line progress: last printed 20% step (0, 20, …, 80), or -1
+     * before the mandatory 0% start line. 100% is only emitted as a done line on settle (JK-1379).
      */
     private int plainLastDecade = -1;
 
@@ -103,7 +99,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     // plan mode
     private String name = "";
     private String target = "";
-    // Package-private: CommandManagerTest rewinds the wall anchor to simulate elapsed time.
+    // Package-private: JkManagerTest rewinds the wall anchor to simulate elapsed time.
     long startNanos;
     private long numerator;
     private long denominator;
@@ -197,7 +193,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     private volatile LineSink sink; // read by the animator thread for stale flushing
     private boolean capturing;
 
-    CommandManager(PrintStream out, boolean animate, boolean planMode, int width) {
+    JkManager(PrintStream out, boolean animate, boolean planMode, int width) {
         // PlainAscii.wrap is identity under ANSI; under --no-ansi rewrites …/•/● in messages.
         this.out = PlainAscii.wrap(out);
         this.animate = animate;
@@ -206,15 +202,15 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     /** Package-private convenience for simple-mode tests. */
-    CommandManager(PrintStream out, boolean animate) {
+    JkManager(PrintStream out, boolean animate) {
         this(out, animate, false, DEFAULT_WIDTH);
     }
 
     // --- simple-task mode -------------------------------------------------
 
     /** Start simple-task mode: spinner (when {@code animate}) + {@code command}. */
-    public static CommandManager simple(PrintStream out, String command, boolean animate) {
-        CommandManager cm = new CommandManager(out, animate, false, DEFAULT_WIDTH);
+    public static JkManager simple(PrintStream out, String command, boolean animate) {
+        JkManager cm = new JkManager(out, animate, false, DEFAULT_WIDTH);
         cm.label = command;
         LiveRegion.setActive(cm);
         cm.ensureLeadingBlank(); // JK-1373: blank line before human chrome
@@ -242,9 +238,9 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      * Start plan-oriented mode. {@code name} is the command shown in the header (e.g. {@code
      * "Building"}); set the active module with {@link #target}.
      */
-    public static CommandManager plan(PrintStream out, String name, boolean animate) {
+    public static JkManager plan(PrintStream out, String name, boolean animate) {
         int[] size = animate ? detectSize() : new int[] {DEFAULT_HEIGHT, DEFAULT_WIDTH};
-        CommandManager cm = new CommandManager(out, animate, true, size[1]);
+        JkManager cm = new JkManager(out, animate, true, size[1]);
         cm.height = size[0];
         cm.name = name;
         cm.startNanos = System.nanoTime();
@@ -664,7 +660,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      * + cap + command. See {@link BuildPlanWedge}.
      */
     public void finishBuildPlanSuccess(String tail, List<String> above) {
-        settle(BuildPlanWedge.chipLine(Glyphs.CHECK, planName(), nerdfont, tail), above);
+        settle(JkWedge.ok(planName(), tail).renderLine(headerContext()), above);
     }
 
     /** {@link #finishBuildPlanSuccess(String, List)} with no buffered output above. */
@@ -681,7 +677,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      * trailing blank — settles never add one; see {@link #settle}).
      */
     public void finishBuildPlanExec(String tail, List<String> above) {
-        settle(BuildPlanWedge.chipLine(Glyphs.PLAY, planName(), nerdfont, tail), above);
+        settle(JkWedge.work(planName(), tail).renderLine(headerContext()), above);
     }
 
     /** {@link #finishBuildPlanExec(String, List)} with no buffered output above. */
@@ -691,7 +687,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
 
     /** Settle the build plan with the red chip: {@code ‼ Build ▶ Failure <tail>}. */
     public void finishBuildPlanFailure(String tail, List<String> above) {
-        settle(BuildPlanWedge.failureLine(planName(), nerdfont, tail), above);
+        settle(JkWedge.failedTo(planName(), tail).renderLine(headerContext()), above);
     }
 
     /** {@link #finishBuildPlanFailure(String, List)} with no buffered output above. */
@@ -705,7 +701,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      */
     public void finishBuildPlanCancelled(List<String> above) {
         String took = cc.jumpkick.cli.run.ConsoleSpec.took(java.time.Duration.ofMillis(elapsedMillis()));
-        settle(BuildPlanWedge.cancelledJobLine(planName(), nerdfont, false, took), above);
+        settle(JkWedge.cancelled(planName(), false, took).renderLine(headerContext()), above);
     }
 
     /** {@link #finishBuildPlanCancelled(List)} with no buffered output above. */
@@ -719,7 +715,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      * BuildPlanWedge#failureLineCustom}.
      */
     public void finishBuildPlanFailureCustom(String sentence, List<String> above) {
-        settle(BuildPlanWedge.failureLineCustom(planName(), nerdfont, sentence), above);
+        settle(JkWedge.fail(planName(), RichText.ansi(sentence)).renderLine(headerContext()), above);
     }
 
     /** Settle with a red cross and a failure message. */
@@ -811,15 +807,13 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     // --- plain multi-line chrome (JK-1379) ---------------------------------
 
     /**
-     * Emit plain progress lines for every newly crossed 10% decade up to (and not past) 90%.
+     * Emit plain progress lines for every newly crossed 20% step up to (and not past) 80%.
      * Must hold {@link #lock}. First call always prints the mandatory 0% start line.
      */
     private void emitPlainProgressDecades(long num, long den) {
         if (done || den <= 0) return;
         plainProgressMode = true;
-        // Decade 0..9 while working; 100% only on settle as done.
-        long cappedNum = Math.min(num, den);
-        int decade = (int) Math.min(9, (cappedNum * 10) / den);
+        int decade = new Progress(num, den).plainDecade();
         if (plainLastDecade < 0) {
             out.println(plainProgressLine(0, false));
             plainLastDecade = 0;
@@ -827,8 +821,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             out.flush();
         }
         while (plainLastDecade < decade) {
-            plainLastDecade++;
-            out.println(plainProgressLine(plainLastDecade * 10, false));
+            plainLastDecade += Progress.PLAIN_STEP_PERCENT;
+            out.println(plainProgressLine(plainLastDecade, false));
             out.flush();
         }
     }
@@ -849,7 +843,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     private void printPlainDone() {
         if (!animate) return;
         if (plainProgressMode) {
-            // Catch up any remaining decades so a fast finish still shows 0→…→90 then 100 done.
+            // Catch up so a fast finish still shows 0% then 100% done.
             if (plainLastDecade < 0) {
                 out.println(plainProgressLine(0, false));
                 plainLastDecade = 0;
@@ -879,11 +873,16 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     static String plainProgressLine(String command, String message, int percent, boolean done) {
         String msg = (message == null || message.isBlank()) ? "working" : message;
         String tail = msg + " - " + percent + "% - " + (done ? "done." : "working...");
-        return BuildPlanWedge.plainWedge(Glyphs.PULSE_PLAIN, command == null ? "" : command, tail);
+        return JkWedge.plainWedge(Glyphs.PULSE_PLAIN, command == null ? "" : command, tail);
     }
 
     private String plainProgressLine(int percent, boolean doneLine) {
-        return plainProgressLine(planName(), plainWorkMessage(), percent, doneLine);
+        String msg = plainWorkMessage();
+        if (!doneLine && remainingWorkMs >= 0) {
+            long rem = Math.max(0L, remainingWorkMs - Math.max(0L, elapsedMillis() - remainingSetAtElapsedMs));
+            msg = msg + " - ETA ~" + fmtClock(rem);
+        }
+        return plainProgressLine(planName(), msg, percent, doneLine);
     }
 
     /** {@code " * Format > Examining source files - working..."} / {@code … - done.}. */
@@ -893,7 +892,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         if (command == null || command.isEmpty()) {
             return " " + Glyphs.PULSE_PLAIN + " " + tail;
         }
-        return BuildPlanWedge.plainWedge(Glyphs.PULSE_PLAIN, command, tail);
+        return JkWedge.plainWedge(Glyphs.PULSE_PLAIN, command, tail);
     }
 
     private String plainIndeterminateLine(boolean doneLine) {
@@ -964,7 +963,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 }
                 // Ctrl-C: "by user" + took duration.
                 String took = cc.jumpkick.cli.run.ConsoleSpec.took(java.time.Duration.ofMillis(elapsedMillis()));
-                out.println(BuildPlanWedge.cancelledJobLine(planName(), nerdfont, true, took));
+                out.println(JkWedge.cancelled(planName(), true, took).renderLine(headerContext()));
                 out.flush();
                 return true;
             }
@@ -1061,7 +1060,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
 
     /**
      * Print {@code text} as a permanent line <em>above</em> the live region, then repaint the region
-     * just below it — so process/step output scrolls up and the {@code CommandManager} view stays
+     * just below it — so process/step output scrolls up and the {@code JkManager} view stays
      * pinned to the bottom. No-op-ish (plain {@code println}) when not animating or already settled.
      */
     public void writeAbove(String text) {
@@ -1152,22 +1151,23 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         // Budget leaves the header line and one margin so the region stays inside the viewport.
         int budget = Math.max(1, height - 2);
         List<TreeEntry> visible = collectVisibleTree();
+        Tree work = Tree.untitled().gap(Tree.Gap.NONE);
         int shown = 0;
         for (int i = 0; i < visible.size() && budget > 0; i++) {
             TreeEntry entry = visible.get(i);
-            boolean last = i == visible.size() - 1;
-            String branch = Theme.colorize(last ? " ╰─" : " ├─", dim);
-            lines.add(branch + entry.line);
+            String label = entry.line == null ? "" : entry.line.stripLeading();
+            Tree.Node node = Tree.node(RichText.ansi(label));
             budget--;
             shown++;
             if (entry.briefError != null && !entry.briefError.isEmpty() && budget > 0) {
-                // Under ├─ continue the rail; under ╰─ use spaces (no dangling │) —.
-                // Only the message is red; the rail/indent stays dim like the branch glyphs.
-                lines.add(renderBriefErrorLine(last, entry.briefError));
+                node.body(RichText.ansi(Theme.colorize(entry.briefError, Theme.active().error())))
+                        .bodyFit(Tree.BodyFit.INDENT);
                 budget--;
             }
+            work.child(node);
             if (shown >= MAX_ROWS) break;
         }
+        lines.addAll(work.render(RenderContext.current()));
 
         // 3. Completed unit tail (newest first), if room remains
         if (completedCount > 0 && budget > 0) {
@@ -1715,13 +1715,15 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         return JAVA_MEMBER.matcher(s).matches();
     }
 
+    private RenderContext headerContext() {
+        return RenderContext.current().withNerd(nerdfont).withFrame(frame);
+    }
+
     /**
      * BuildPlan header: pulse circle + name on the chip, powerline (or plain) cap, bar, clock.
-     * The circle FG breathes white↔chip-blue while sitting on the chip background.
+     * Painted via {@link JkWedge} so live and settled chrome share one renderer.
      */
     private String planHeader(long elapsedMillis) {
-        Theme t = Theme.active();
-        AttributedStyle dim = t.darkGray();
         long[] bd = displayBar(elapsedMillis);
         long barNum = bd[0];
         long barDen = bd[1];
@@ -1733,63 +1735,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             den = denominator;
             sl = solveLabel;
         }
-        // Open-loop R0 alone is enough to show the bar (even before weight calibrate).
         boolean hasBar = barDen > 0 || den > 0;
-        String barStr = hasBar ? bar.render(barNum, Math.max(1, barDen)) : bar.render(0, 0);
-        StringBuilder h = new StringBuilder();
         boolean phase1 = !hasBar && !sl.isEmpty();
-        AttributedStyle chip = t.planChip();
-        // Pulse glyph: FG lerps white→chip blue; BG stays chip blue so it sits in the pill.
-        AttributedStyle pulse =
-                t.withBackground(chipPulseColors[Math.floorMod(frame, chipPulseColors.length)], t.planBadgeColor());
-        if (!t.isAnsi()) {
-            // " * Build >" then bar/clock plain text.
-            h.append(BuildPlanWedge.plainWedge(Glyphs.PULSE_PLAIN, name, null));
-            if (phase1) {
-                h.append(' ').append(sl);
-            } else {
-                h.append(barStr);
-            }
-        } else if (nerdfont) {
-            // " {●} {name} " + powerline
-            h.append(Theme.colorize(" ", chip))
-                    .append(Theme.colorize(PULSE, pulse))
-                    .append(Theme.colorize(" ", chip))
-                    .append(Theme.colorize(name, chip))
-                    .append(Theme.colorize(" ", chip));
-            if (phase1) {
-                AttributedStyle phase1Cap = t.bright(t.planBadgeColor());
-                h.append(Theme.colorize(Glyphs.SEGMENT_END_NERD, phase1Cap))
-                        .append(' ')
-                        .append(Theme.colorize(sl, t.brightWhite()));
-            } else {
-                AttributedStyle cap =
-                        t.withBackground(t.bright(t.planBadgeColor()), bar.leadColor(barNum, Math.max(1, barDen)));
-                h.append(Theme.colorize(Glyphs.SEGMENT_END_NERD, cap)).append(barStr);
-            }
-        } else {
-            // " {●} {name}  " — two trailing spaces on the chip bg (no PUA).
-            h.append(Theme.colorize(" ", chip))
-                    .append(Theme.colorize(PULSE, pulse))
-                    .append(Theme.colorize(" " + name + "  ", chip));
-            if (phase1) {
-                h.append(' ').append(Theme.colorize(sl, t.brightWhite()));
-            } else {
-                h.append(barStr);
-            }
-        }
-        // After the bar's percent: a bright-black middle dot, then the run-wide build clock.
-        // Seeded: dim italic "ETA " + mid-gray "~remaining" · dim "+elapsed". Residual re-anchors
-        // the target remaining so the countdown eases into R(t); a 1s jitter buffer commits that
-        // target at most once per whole-second tick so multi residual emits do not thrash the face.
-        // Freezes at dim "0s" with residual → 0 (snap, no hold); count-up stays dim for {@link
-        // #COUNT_UP_PROMOTE_GRACE_MS} then mid-gray. No seed: single mid-gray "+elapsed" count-up
-        // (same shade as the seeded countdown face).
-        //
-        // Both faces are derived from the same whole-second elapsed counter so they tick on the
-        // same paint (flooring remaining-ms and elapsed-ms independently desynced them by the
-        // seed's sub-second remainder — often ~100ms after setRemainingWorkEstimate).
-        h.append(' ').append(Theme.colorize("·", dim)).append(' ');
         long elapsedSec = Math.max(0L, elapsedMillis) / 1000L;
         // Dual clock when we have ever received a remaining-work seed (including residual 0 done).
         // Prefer residual re-anchor (eases into R(t), ends on time); else frozen R0 − elapsed.
@@ -1841,21 +1788,30 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 countdownDisplayElapsedSec = -1;
             }
         }
-        if (seeded) {
-            h.append(Theme.colorize("ETA ", dim.italic()));
-            if (remainingSec <= 0) {
-                h.append(Theme.colorize("0s", dim));
-            } else {
-                h.append(Theme.colorize("~" + fmtClockSeconds(remainingSec), t.midGray()));
-            }
-            h.append(' ').append(Theme.colorize("·", dim)).append(' ');
-            // Promote count-up only after grace past deadline (not at the first 0s paint).
-            AttributedStyle up = remainingSec <= 0 && overrunMs >= COUNT_UP_PROMOTE_GRACE_MS ? t.midGray() : dim;
-            h.append(Theme.colorize("+" + fmtClockSeconds(elapsedSec), up));
-        } else {
-            h.append(Theme.colorize("+" + fmtClockSeconds(elapsedSec), t.midGray()));
+        RichText clock = clockFace(seeded, remainingSec, overrunMs, elapsedSec);
+        RenderContext ctx = headerContext();
+        if (phase1) {
+            RichText msg = RichText.of(
+                    RichText.ansi(Theme.colorize(sl, Theme.active().brightWhite())), RichText.plain(" "), clock);
+            return new JkWedge(Icon.spinner(), name, msg)
+                    .variant(JkWedge.Variant.WORK)
+                    .renderLine(ctx);
         }
-        return h.toString();
+        return new JkWedge(Icon.spinner(), name, RichText.empty())
+                .variant(JkWedge.Variant.WORK)
+                .progress(new Progress(hasBar ? barNum : 0, hasBar ? Math.max(1, barDen) : 0).suffix(clock))
+                .renderLine(ctx);
+    }
+
+    private RichText clockFace(boolean seeded, long remainingSec, long overrunMs, long elapsedSec) {
+        String elapsed = fmtClockSeconds(elapsedSec);
+        if (!seeded) {
+            return RichText.parse("[dark-gray]·[/] [mid-gray]+" + elapsed + "[/]");
+        }
+        String rem = remainingSec <= 0 ? "[dark-gray]0s[/]" : "[mid-gray]~" + fmtClockSeconds(remainingSec) + "[/]";
+        String up = remainingSec <= 0 && overrunMs >= COUNT_UP_PROMOTE_GRACE_MS ? "mid-gray" : "dark-gray";
+        return RichText.parse(
+                "[dark-gray]·[/] [dark-gray italic]ETA [/]" + rem + " [dark-gray]·[/] [" + up + "]+" + elapsed + "[/]");
     }
 
     /**
@@ -2171,11 +2127,11 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
 
     /** Buffers redirected bytes and forwards each completed line to {@link #writeAbove}. */
     private static final class LineSink extends OutputStream {
-        private final CommandManager cm;
+        private final JkManager cm;
         private final ByteArrayOutputStream buf = new ByteArrayOutputStream();
         private long lastWriteNanos; // when the current partial line last grew
 
-        LineSink(CommandManager cm) {
+        LineSink(JkManager cm) {
             this.cm = cm;
         }
 

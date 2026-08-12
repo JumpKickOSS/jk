@@ -372,7 +372,7 @@ public final class NewCommand implements CliCommand {
         try {
             int n = Giter8LocalApply.apply(template, target, params);
             cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
-            CliOutput.out(cc.jumpkick.cli.tui.BuildPlanWedge.chipLine(
+            CliOutput.out(cc.jumpkick.cli.tui.JkWedge.chipLine(
                     cc.jumpkick.cli.tui.Glyphs.CHECK,
                     "New Project",
                     cc.jumpkick.config.GlobalConfig.nerdfont(),
@@ -854,7 +854,7 @@ public final class NewCommand implements CliCommand {
         String bareName = colon > 0 ? coord.substring(colon + 1) : coord;
         String failTail = "Failed to " + (isInit ? "initialize" : "create") + " " + noun + " " + bareName
                 + ". Project already exists.";
-        String chipLine = cc.jumpkick.cli.tui.BuildPlanWedge.chipLine(Glyphs.CROSS, chipCommand, nerdfont, failTail);
+        String chipLine = cc.jumpkick.cli.tui.JkWedge.chipLine(Glyphs.CROSS, chipCommand, nerdfont, failTail);
 
         if (terminal != null) {
             var writer = terminal.writer();
@@ -1389,14 +1389,13 @@ public final class NewCommand implements CliCommand {
                     + Theme.colorize(inputs.name(), accent)
                     + Theme.colorize(" added to project ", Theme.active().normalGray())
                     + Theme.colorize(module.projectName(), accent);
-            return cc.jumpkick.cli.tui.BuildPlanWedge.chipLine(
+            return cc.jumpkick.cli.tui.JkWedge.chipLine(
                     cc.jumpkick.cli.tui.Glyphs.CHECK, "New Module", nerdfont, message);
         }
         String chipCommand = isInit ? "Init" : "New Project";
         String action = isInit ? "Initialized" : "Created new";
         String message = action + " project " + Theme.colorize(inputs.name(), accent);
-        return cc.jumpkick.cli.tui.BuildPlanWedge.chipLine(
-                cc.jumpkick.cli.tui.Glyphs.CHECK, chipCommand, nerdfont, message);
+        return cc.jumpkick.cli.tui.JkWedge.chipLine(cc.jumpkick.cli.tui.Glyphs.CHECK, chipCommand, nerdfont, message);
     }
 
     private static final List<String> CURATED_IDS =

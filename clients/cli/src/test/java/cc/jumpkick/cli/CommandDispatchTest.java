@@ -12,7 +12,7 @@ class CommandDispatchTest {
     void escaping_exception_sweep_closes_active_live_region() {
         // A RuntimeException escaping a command must not leave the live region owning the terminal
         // (hidden cursor, animator, taskbar progress) — dispatch sweeps the active region closed.
-        var cm = cc.jumpkick.cli.tui.CommandManager.plan(
+        var cm = cc.jumpkick.cli.tui.JkManager.plan(
                 new java.io.PrintStream(new java.io.ByteArrayOutputStream()), "Build", false);
         assertThat(cc.jumpkick.cli.tui.LiveRegion.active()).isSameAs(cm);
         CommandDispatch.closeActiveLiveRegion();

@@ -110,8 +110,8 @@ public interface Theme {
     AttributedStyle coordVersion();
 
     /**
-     * Chip / pill badge (jk tree scope sections, jk explain unit indices) — black on a bright-black
-     * background.
+     * Chip / pill badge (jk tree scope sections, jk explain Fully Cached / Rebuild) — black on a
+     * bright-black background.
      */
     AttributedStyle scopeBadge();
 
@@ -314,6 +314,56 @@ public interface Theme {
                 yield nc == null || nc.isEmpty();
             }
         };
+    }
+
+    /**
+     * Resolve a RichText color token to a style. Accepts theme role names ({@code success},
+     * {@code path}, {@code mid-gray}, …) and CSS aliases ({@code yellow} → warning amber, {@code
+     * red} → error). Underscores and case are ignored. Returns {@code null} for unknown names
+     * (hex colors are not looked up here).
+     */
+    default AttributedStyle styleNamedOrNull(String name) {
+        if (name == null || name.isBlank()) return null;
+        String key = name.trim().toLowerCase(java.util.Locale.ROOT).replace('_', '-');
+        return switch (key) {
+            case "dim" -> dim();
+            case "dark-gray", "darkgray" -> darkGray();
+            case "dark-black", "darkblack" -> darkBlack();
+            case "mid-gray", "midgray" -> midGray();
+            case "normal-gray", "normalgray" -> normalGray();
+            case "gray" -> gray();
+            case "focused" -> focused();
+            case "settled" -> settled();
+            case "white", "bright-white", "brightwhite" -> brightWhite();
+            case "error", "red" -> error();
+            case "success", "green" -> success();
+            case "warning", "yellow" -> warning();
+            case "blue" -> blue();
+            case "primary", "plan" -> primary();
+            case "cyan" -> cyan();
+            case "black" -> black();
+            case "bright-green", "brightgreen" -> brightGreen();
+            case "bright-cyan", "brightcyan" -> brightCyan();
+            case "bright-yellow", "brightyellow" -> brightYellow();
+            case "path" -> path();
+            case "shell" -> shell();
+            case "highlight" -> highlight();
+            case "coord-group", "coordgroup" -> coordGroup();
+            case "coord-name", "coordname" -> coordName();
+            case "coord-version", "coordversion" -> coordVersion();
+            // Web --prog-b neon violet; Theme has no magenta() getter.
+            case "magenta" -> bright(0xC0, 0x4D, 0xFF);
+            default -> null;
+        };
+    }
+
+    /** {@link #styleNamedOrNull} or {@link IllegalArgumentException} for an unknown token. */
+    default AttributedStyle styleNamed(String name) {
+        AttributedStyle style = styleNamedOrNull(name);
+        if (style == null) {
+            throw new IllegalArgumentException("unknown style name: " + name);
+        }
+        return style;
     }
 
     /**

@@ -165,7 +165,9 @@ which constraint blocked which package — so you can fix the declaration instea
 
 ```bash
 jk why com.google.guava:guava
-jk tree
+jk tree          # declared deps (whole workspace)
+jk tree :foo     # one module
+jk tree -t       # + transitives
 ```
 
 ### Action cache + CAS: skip work you can prove is done

@@ -11,6 +11,10 @@ import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.Progress;
+import cc.jumpkick.cli.tui.RenderContext;
+import cc.jumpkick.cli.tui.RichText;
+import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.GroupCommand;
 import cc.jumpkick.model.command.Invocation;
@@ -567,8 +571,7 @@ public final class CacheCommand extends GroupCommand {
         }
         if (!skipConfirm && !CacheNukeCommand.confirmNuke(root, stats)) {
             CommandWedge.envelopeStart();
-            CliOutput.out(
-                    cc.jumpkick.cli.tui.BuildPlanWedge.chipLine(Glyphs.CROSS, "Cache", nerdfont, "Nuke aborted."));
+            CliOutput.out(cc.jumpkick.cli.tui.JkWedge.chipLine(Glyphs.CROSS, "Cache", nerdfont, "Nuke aborted."));
             return 1;
         }
         // Prefer engine idle-boundary wipe; fall back to in-process delete only when no engine
@@ -948,8 +951,6 @@ public final class CacheCommand extends GroupCommand {
 
     // ---- shared table chrome for jk cache / storage usage -----------------------------
 
-    private static final String[] USAGE_HEADERS = {"Element", "File Count", "Size"};
-
     /**
      * Box table for {@code jk cache usage}: content classes + full-tree total; utilization vs
      * cache {@code max-cache-size-gb}; last-cleaned footer.
@@ -987,109 +988,33 @@ public final class CacheCommand extends GroupCommand {
     /** Shared Element / File Count / Size box chrome for cache and store usage reports. */
     private static List<String> renderUsageTable(
             String title, String[][] rows, long totalFiles, long totalBytes, long maxBytes, String lastCleaned) {
-        String[] total = {"Total", fmtCount(totalFiles), fmtSize(totalBytes)};
-
-        int[] w = new int[3];
-        for (int i = 0; i < 3; i++) w[i] = cc.jumpkick.cli.tui.BoxTable.visibleWidth(USAGE_HEADERS[i]);
-        for (String[] r : rows)
-            for (int i = 0; i < 3; i++) w[i] = Math.max(w[i], cc.jumpkick.cli.tui.BoxTable.visibleWidth(r[i]));
-        for (int i = 0; i < 3; i++) w[i] = Math.max(w[i], cc.jumpkick.cli.tui.BoxTable.visibleWidth(total[i]));
-        // Inner width between outer rails: each cell is " " + pad + " ", plus one rail between cols.
-        int inner = (w[0] + 2) + 1 + (w[1] + 2) + 1 + (w[2] + 2);
-
-        List<String> out = new ArrayList<>();
-        out.add(cc.jumpkick.cli.tui.BoxTable.titleBar(title, inner + 2));
-        out.add(divider("├", "┬", "┤", w));
-        out.add(headerRow(USAGE_HEADERS, w));
-        out.add(divider("├", "┼", "┤", w));
-        for (String[] r : rows) out.add(metricRow(r, w));
-        out.add(divider("├", "┼", "┤", w));
-        out.add(metricRow(total, w));
-        out.add(divider("├", "┴", "┤", w));
-        out.add(utilizationRow(totalBytes, maxBytes, inner));
-        out.add(border("╰", "╯", inner));
+        Table table = new Table(title)
+                .columns(
+                        new Table.Column("Element"),
+                        new Table.Column("File Count", Table.Align.RIGHT),
+                        new Table.Column("Size", Table.Align.RIGHT));
+        for (String[] r : rows) {
+            table.row(styledMetricRow(r));
+        }
+        table.row(Table.Row.separator());
+        table.row(styledMetricRow(new String[] {"Total", fmtCount(totalFiles), fmtSize(totalBytes)}));
+        String util = utilizationContent(totalBytes, maxBytes);
+        table.row(Table.Row.span(Table.Cell.of(RichText.ansi(util)).span(3)));
+        List<String> out = new ArrayList<>(table.render(RenderContext.current()));
         Theme t = Theme.active();
         out.add("  Last cleaned: "
                 + Theme.colorize(lastCleaned, "never".equals(lastCleaned) ? t.warning() : t.normalGray()));
         return out;
     }
 
-    private static String border(String left, String right, int inner) {
-        return Theme.colorize(left + "─".repeat(inner) + right, Theme.active().darkGray());
+    private static Table.Row styledMetricRow(String[] r) {
+        String name =
+                Theme.active().isAnsi() ? Theme.colorize(r[0], Theme.active().brightWhite()) : r[0];
+        return Table.Row.data(RichText.ansi(name), RichText.plain(r[1]), RichText.plain(r[2]));
     }
 
-    private static String divider(String left, String junction, String right, int[] w) {
-        StringBuilder sb = new StringBuilder(left);
-        for (int i = 0; i < w.length; i++) {
-            sb.append("─".repeat(w[i] + 2));
-            sb.append(i == w.length - 1 ? right : junction);
-        }
-        return Theme.colorize(sb.toString(), Theme.active().darkGray());
-    }
-
-    private static String headerRow(String[] headers, int[] w) {
-        String bar = Theme.colorize("│", Theme.active().darkGray());
-        StringBuilder sb = new StringBuilder(bar);
-        for (int i = 0; i < headers.length; i++) {
-            sb.append(" ")
-                    .append(cc.jumpkick.cli.tui.BoxTable.headerCell(padRight(headers[i], w[i])))
-                    .append(" ")
-                    .append(bar);
-        }
-        return sb.toString();
-    }
-
-    private static String metricRow(String[] r, int[] w) {
-        String bar = Theme.colorize("│", Theme.active().darkGray());
-        return bar
-                + " "
-                + Theme.colorize(padLeft(r[0], w[0]), Theme.active().brightWhite())
-                + " "
-                + bar
-                + " "
-                + padRight(r[1], w[1])
-                + " "
-                + bar
-                + " "
-                + padRight(r[2], w[2])
-                + " "
-                + bar;
-    }
-
-    private static String utilizationRow(long used, long max, int inner) {
-        Theme t = Theme.active();
-        int pct = (int) Math.round(cc.jumpkick.cli.tui.ProgressBar.fraction(used, max) * 100);
-        // Match metric-row padding: " Utilization  <bar>  NN% " — two spaces around the bar.
-        String prefix = " Utilization  ";
-        String suffix = "  " + pct + "% ";
-        int barWidth = Math.max(1, inner - prefix.length() - suffix.length());
-        String bar = cc.jumpkick.cli.tui.ProgressBar.renderBar(
-                used, max, barWidth, t.bright(t.planBadgeColor()), t.darkGray());
-        String content = prefix + bar + suffix;
-        int contentCols = cc.jumpkick.cli.tui.BoxTable.visibleWidth(content);
-        if (contentCols < inner) {
-            // Prefer padding after the percent so the right rail lines up.
-            content = content + " ".repeat(inner - contentCols);
-        } else if (contentCols > inner && barWidth > 1) {
-            barWidth = Math.max(1, barWidth - (contentCols - inner));
-            bar = cc.jumpkick.cli.tui.ProgressBar.renderBar(
-                    used, max, barWidth, t.bright(t.planBadgeColor()), t.darkGray());
-            content = prefix + bar + suffix;
-            contentCols = cc.jumpkick.cli.tui.BoxTable.visibleWidth(content);
-            if (contentCols < inner) content = content + " ".repeat(inner - contentCols);
-        }
-        String rail = Theme.colorize("│", t.darkGray());
-        return rail + content + rail;
-    }
-
-    /** ANSI-aware pads ({@code BoxTable.visibleWidth}) so colored cells keep the box aligned. */
-    private static String padRight(String s, int w) {
-        int len = cc.jumpkick.cli.tui.BoxTable.visibleWidth(s);
-        return len >= w ? s : s + " ".repeat(w - len);
-    }
-
-    private static String padLeft(String s, int w) {
-        int len = cc.jumpkick.cli.tui.BoxTable.visibleWidth(s);
-        return len >= w ? s : " ".repeat(w - len) + s;
+    private static String utilizationContent(long used, long max) {
+        return "Utilization  "
+                + new Progress(used, max).look(Progress.Look.TRACK).segments(24).render(RenderContext.current());
     }
 }

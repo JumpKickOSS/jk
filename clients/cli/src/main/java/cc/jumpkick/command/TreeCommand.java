@@ -6,15 +6,22 @@ import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.BuildPlanWedge;
-import cc.jumpkick.cli.tui.CommandWedge;
-import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.Icon;
+import cc.jumpkick.cli.tui.RichText;
+import cc.jumpkick.cli.tui.Tree;
 import cc.jumpkick.compile.ClasspathResolver;
+import cc.jumpkick.config.ConfigSources;
+import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.ModuleSelection;
+import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.model.command.Param;
 import cc.jumpkick.resolver.DependencyTree;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -44,10 +51,16 @@ public final class TreeCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<depth>", "Maximum tree depth. Default: unlimited.", "-d", "--depth"),
+                Opt.value("<depth>", "Maximum tree depth. Default: 0 (declared).", "-d", "--depth"),
+                Opt.flag("Show transitive lockfile dependencies.", "-t", "--transitive"),
                 Opt.flag("Flatten each scope to a sorted, deduped list.", "-f", "--flatten"),
                 Opt.flag("Blend all scopes into one tree, one badge row.", "-S", "--stack"),
                 Opt.value("<scopes>", "Scopes to show, in order; meta: exec/run/all.", "-s", "--scopes"));
+    }
+
+    @Override
+    public List<Param> parameters() {
+        return List.of(Param.of("module", Arity.ZERO_OR_ONE, "Module (:name) or path. Default: workspace."));
     }
 
     @Override
@@ -55,6 +68,7 @@ public final class TreeCommand implements CliCommand {
         Integer depth = in.value("depth").map(Integer::parseInt).orElse(null);
         boolean flatten = in.isSet("flatten");
         boolean stack = in.isSet("stack");
+        boolean transitive = in.isSet("transitive");
 
         // -s/--scopes: an explicit, ordered subset; default = export, main, runtime.
         List<Scope> scopes = new ArrayList<>(DependencyTree.defaultScopeOrder());
@@ -82,7 +96,14 @@ public final class TreeCommand implements CliCommand {
             scopes = new ArrayList<>(ordered);
         }
         GlobalOptions global = GlobalOptions.from(in);
-        Path dir = global.workingDir();
+        Path cwd = global.workingDir();
+        String moduleSpec = in.positionals().isEmpty() ? null : in.positionals().getFirst();
+        TreeDir target = resolveTreeDir(cwd, moduleSpec);
+        if (!target.ok()) {
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tree", target.error()));
+            return Exit.CONFIG;
+        }
+        Path dir = target.dir();
         var proj = ProjectContext.require(dir, "tree").orElse(null);
         if (proj == null) return Exit.CONFIG;
         int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(dir, cc.jumpkick.util.JkDirs.cache(), global, "Tree");
@@ -96,19 +117,11 @@ public final class TreeCommand implements CliCommand {
             return Exit.CONFIG;
         }
 
-        int max = depth != null ? depth : Integer.MAX_VALUE;
+        int max = maxDepth(transitive, depth);
 
-        // Header: shared CommandWedge chip (nerd powerline / ansi two-space trail / plain " >").
         boolean nerdfont = cc.jumpkick.config.GlobalConfig.nerdfont();
         Theme t = Theme.active();
         boolean ansi = t.isAnsi();
-        CommandWedge.envelopeStart();
-        if (ansi) {
-            CliOutput.out(BuildPlanWedge.chip(Glyphs.MENU, "Dependencies Tree", t.planChip(), nerdfont)
-                    + BuildPlanWedge.cap(t.planBadgeColor(), nerdfont));
-        } else {
-            CliOutput.out(BuildPlanWedge.plainWedge(Glyphs.MENU_PLAIN, "Dependencies Tree", null));
-        }
 
         // Composite-aware: walks path deps' own trees too (anchored at `dir`). The walk runs
         // engine-side (thin client) with marker-tag styling; this client substitutes its Theme.
@@ -122,17 +135,7 @@ public final class TreeCommand implements CliCommand {
             return Exit.CONFIG;
         }
         String rendered = DependencyTree.applyStyling(tagged, styling(nerdfont, ansi));
-        // Root coord, then a rail line naming the scopes included in this tree, then the body.
-        int nl = rendered.indexOf('\n');
-        String scopeLine = scopesSummaryLine(scopeNames, ansi, t);
-        if (nl >= 0) {
-            CliOutput.out(rendered.substring(0, nl));
-            CliOutput.out(scopeLine);
-            CliOutput.outRaw(indentBody(rendered.substring(nl + 1), false));
-        } else {
-            CliOutput.outRaw(rendered);
-            CliOutput.out(scopeLine);
-        }
+        buildTree(rendered, scopeNames).print();
         if (rendered.contains(DependencyTree.MISSING_SUFFIX)) {
             CliOutput.out();
             CliOutput.out(
@@ -145,20 +148,148 @@ public final class TreeCommand implements CliCommand {
     }
 
     /**
-     * Rail + scope list under the root, e.g. {@code  │ · Scopes: export, main, runtime}.
-     * Names the filter for this render (default or {@code -s}), not only non-empty sections.
+     * Declared-only ({@code 0}) unless {@code -t}/{@code --transitive} expands the lockfile
+     * closure, or {@code -d} caps the walk. {@code -d} wins when both are set.
      */
-    private static String scopesSummaryLine(List<String> scopeNames, boolean ansi, Theme t) {
-        String list = String.join(", ", scopeNames);
-        if (ansi) {
-            return " "
-                    + Theme.colorize("│", t.darkGray())
-                    + " "
-                    + Theme.colorize("·", t.darkGray())
-                    + " Scopes: "
-                    + list;
+    static int maxDepth(boolean transitive, Integer depth) {
+        if (depth != null) return depth;
+        return transitive ? Integer.MAX_VALUE : 0;
+    }
+
+    /**
+     * Directory whose graph to print. No spec → workspace root (even from a member dir). {@code
+     * :name} is a workspace module selector. Anything else is a filesystem path ({@code .}, {@code
+     * foo}, {@code foo/bar}) that must contain {@code jk.toml}.
+     */
+    static TreeDir resolveTreeDir(Path cwd, String spec) throws IOException {
+        Path start = cwd.toAbsolutePath().normalize();
+        if (spec == null || spec.isBlank()) {
+            Path project = nearestProject(start);
+            if (project == null) {
+                return TreeDir.fail("no jk.toml in " + start);
+            }
+            return TreeDir.ok(workspaceOrProject(project));
         }
-        return " | · Scopes: " + list;
+        String token = spec.trim();
+        if (token.startsWith(":")) {
+            if (token.length() == 1 || token.substring(1).isBlank()) {
+                return TreeDir.fail("`:name` requires a module name");
+            }
+            return resolveColonModule(start, token);
+        }
+        return resolveModulePath(start, token);
+    }
+
+    private static TreeDir resolveColonModule(Path start, String spec) throws IOException {
+        Path project = nearestProject(start);
+        if (project == null) {
+            return TreeDir.fail("no jk.toml in " + start);
+        }
+        Path root = workspaceOrProject(project);
+        JkBuild entry = JkBuildParser.parse(root.resolve("jk.toml"));
+        ModuleSelection.Result selected = ModuleSelection.resolve(root, entry, spec);
+        if (!selected.ok()) {
+            return TreeDir.fail(selected.errorMessage());
+        }
+        if (selected.moduleDirs().size() != 1) {
+            return TreeDir.fail("`" + spec + "` matched " + selected.moduleDirs().size()
+                    + " modules — pick one path or :name");
+        }
+        return TreeDir.ok(selected.moduleDirs().iterator().next());
+    }
+
+    private static TreeDir resolveModulePath(Path start, String spec) {
+        Path relative = start.resolve(spec).normalize();
+        if (isModuleDir(relative)) return TreeDir.ok(relative);
+        Path project = nearestProject(start);
+        if (project != null) {
+            Path fromProject = workspaceOrProject(project).resolve(spec).normalize();
+            if (isModuleDir(fromProject) && !fromProject.equals(relative)) {
+                return TreeDir.ok(fromProject);
+            }
+        }
+        if (Files.exists(relative) && !Files.isDirectory(relative)) {
+            return TreeDir.fail("`" + spec + "` is not a directory");
+        }
+        if (Files.isDirectory(relative) && !Files.isRegularFile(relative.resolve("jk.toml"))) {
+            return TreeDir.fail("no jk.toml in " + relative);
+        }
+        return TreeDir.fail("`" + spec + "` is not a module directory");
+    }
+
+    private static Path nearestProject(Path start) {
+        Path toml = ConfigSources.findProjectConfig(start);
+        return toml == null ? null : toml.getParent();
+    }
+
+    /** Workspace root when {@code project} is a member or the root itself; otherwise the project. */
+    static Path workspaceOrProject(Path project) {
+        Path dir = project.toAbsolutePath().normalize();
+        if (WorkspaceScan.isWorkspaceRoot(dir)) return dir;
+        return WorkspaceScan.findRoot(dir).orElse(dir);
+    }
+
+    private static boolean isModuleDir(Path dir) {
+        return Files.isDirectory(dir) && Files.isRegularFile(dir.resolve("jk.toml"));
+    }
+
+    record TreeDir(Path dir, String error) {
+        static TreeDir ok(Path dir) {
+            return new TreeDir(dir, null);
+        }
+
+        static TreeDir fail(String error) {
+            return new TreeDir(null, error);
+        }
+
+        boolean ok() {
+            return error == null;
+        }
+    }
+
+    /** Wedge + root coord + scope rail + engine body, as one {@link Tree}. */
+    static Tree buildTree(String rendered, List<String> scopeNames) {
+        String[] lines = rendered.split("\n", -1);
+        String rootLine = lines.length == 0 ? "" : lines[0];
+        List<String> body = new ArrayList<>();
+        for (int i = 1; i < lines.length; i++) {
+            if (!lines[i].isEmpty()) body.add(lines[i]);
+        }
+        Tree.Node root = Tree.node(Icon.pulse(), rootCoord(rootLine))
+                .gap(Tree.Gap.NONE)
+                .bodyFit(Tree.BodyFit.RAIL)
+                .body(scopesSummary(scopeNames));
+        for (Tree.Node child : Tree.forest(body)) {
+            root.child(child);
+        }
+        return new Tree("Dependencies Tree").gap(Tree.Gap.NONE).root(root);
+    }
+
+    private static RichText rootCoord(String rootLine) {
+        String vis = org.jline.utils.AttributedString.stripAnsi(rootLine == null ? "" : rootLine).strip();
+        if (vis.startsWith("● ")) vis = vis.substring(2);
+        else if (vis.startsWith("* ")) vis = vis.substring(2);
+        return boldGav(vis);
+    }
+
+    private static RichText boldGav(String gav) {
+        if (gav == null || gav.isEmpty()) return RichText.empty();
+        String[] p = gav.split(":", 3);
+        if (p.length < 3) {
+            return RichText.parse("[bold coord-group]" + RichText.escape(gav) + "[/]");
+        }
+        return RichText.parse("[bold coord-group]"
+                + RichText.escape(p[0])
+                + "[/]:[bold coord-name]"
+                + RichText.escape(p[1])
+                + "[/]:[bold coord-version]"
+                + RichText.escape(p[2])
+                + "[/]");
+    }
+
+    private static RichText scopesSummary(List<String> scopeNames) {
+        String list = String.join(", ", scopeNames);
+        return RichText.parse("[dark-gray]·[/] Scopes: " + RichText.escape(list));
     }
 
     /**
@@ -209,31 +340,6 @@ public final class TreeCommand implements CliCommand {
                         .map(s -> s.name().toLowerCase(Locale.ROOT))
                         .collect(Collectors.joining(", "))
                 + ", exec/run, all";
-    }
-
-    /**
-     * Indents every line below the root node by one space, so the tree body sits one column in from
-     * the {@code ●} root bullet. The first line (the root coord) and any blank lines are left
-     * untouched.
-     */
-    private static String indentBody(String rendered) {
-        return indentBody(rendered, true);
-    }
-
-    /**
-     * Indents tree body lines by one space. When {@code skipFirst} is true (the full rendered
-     * string including root coord is passed), the first line is left untouched. When false (only
-     * the body after the root coord is passed), every non-empty line gets a leading space.
-     */
-    private static String indentBody(String rendered, boolean skipFirst) {
-        String[] lines = rendered.split("\n", -1);
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < lines.length; i++) {
-            if (i > 0) sb.append('\n');
-            if ((!skipFirst || i > 0) && !lines[i].isEmpty()) sb.append(' ');
-            sb.append(lines[i]);
-        }
-        return sb.toString();
     }
 
     /**

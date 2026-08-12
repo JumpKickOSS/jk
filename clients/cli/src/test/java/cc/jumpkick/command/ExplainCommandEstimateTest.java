@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.RenderContext;
 import cc.jumpkick.runtime.TaskForecast;
 import java.nio.file.Path;
 import java.util.List;
@@ -43,6 +44,44 @@ class ExplainCommandEstimateTest {
     }
 
     @Test
+    void buildGraph_uses_name_pills_and_skips_index() {
+        var dirty = TaskForecast.Module.fromWire(
+                Path.of("/tmp/a"),
+                "com.example:app",
+                List.of(
+                        new TaskForecast.Task("compile-main", TaskForecast.Status.RUN, "full compile", null),
+                        new TaskForecast.Task("package-jar", TaskForecast.Status.RUN, "package", null)),
+                10,
+                0,
+                true,
+                false);
+        var clean = TaskForecast.Module.fromWire(
+                Path.of("/tmp/b"),
+                "com.example:lib",
+                List.of(new TaskForecast.Task("compile-main", TaskForecast.Status.CACHED, "", "x")),
+                5,
+                2,
+                true,
+                false);
+
+        List<String> lines = ExplainCommand.buildGraph(
+                        "com.example:root", List.of(clean, dirty), false, Theme.active(), false)
+                .render(RenderContext.current().withAnsi(false));
+        String joined = String.join("\n", lines);
+        assertThat(joined).contains(" = Build Graph >");
+        assertThat(joined).contains("* com.example:root");
+        assertThat(joined).contains("[Fully Cached]").contains("1 module is fresh");
+        assertThat(joined).contains("[Rebuild]").contains("1 module is dirty");
+        assertThat(joined).contains("[app]");
+        assertThat(joined).doesNotContain("[01]").doesNotContain("01");
+        assertThat(joined).contains("[ ] Compile");
+        // Cached names hang off Fully Cached with no extra spine; Rebuild has a spacer.
+        assertThat(joined).contains(" +-[Fully Cached]");
+        assertThat(joined).contains("    |");
+        assertThat(joined).contains("    `-[app]");
+    }
+
+    @Test
     void chunkNames_packs_fixed_width_rows() {
         List<String> names = List.of("a", "b", "c", "d", "e", "f", "g");
         assertThat(ExplainCommand.chunkNames(names, 4))
@@ -55,8 +94,8 @@ class ExplainCommandEstimateTest {
         String line = TestAnsi.strip(ExplainCommand.renderCachedNameLine(
                 List.of("jk-core", "jk-cli", "jk-web", "jk-model"), true, Theme.active(), false));
         assertThat(line).isEqualTo("+ jk-core, + jk-cli, + jk-web, + jk-model,");
-        String last = TestAnsi.strip(ExplainCommand.renderCachedNameLine(
-                List.of("jk-android"), false, Theme.active(), false));
+        String last = TestAnsi.strip(
+                ExplainCommand.renderCachedNameLine(List.of("jk-android"), false, Theme.active(), false));
         assertThat(last).isEqualTo("+ jk-android");
     }
 
@@ -86,14 +125,11 @@ class ExplainCommandEstimateTest {
                 "com.example:app",
                 List.of(
                         new TaskForecast.Task("write-stamp", TaskForecast.Status.RUN, "", null),
-                        new TaskForecast.Task(
-                                "compile-main", TaskForecast.Status.CACHED, "", "abcd1234"),
+                        new TaskForecast.Task("compile-main", TaskForecast.Status.CACHED, "", "abcd1234"),
                         new TaskForecast.Task(
                                 "compile-test", TaskForecast.Status.RUN, "compile · 0 sources changed", null),
-                        new TaskForecast.Task(
-                                "run-tests", TaskForecast.Status.RUN, "run tests · ~28 tests", null),
-                        new TaskForecast.Task(
-                                "package-jar", TaskForecast.Status.RUN, "repackage", null)),
+                        new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~28 tests", null),
+                        new TaskForecast.Task("package-jar", TaskForecast.Status.RUN, "repackage", null)),
                 12,
                 28,
                 true,
@@ -115,8 +151,7 @@ class ExplainCommandEstimateTest {
                                 TaskForecast.Status.RUN,
                                 "full compile · 239 sources · classpath changed",
                                 null),
-                        new TaskForecast.Task(
-                                "run-tests", TaskForecast.Status.RUN, "run tests · ~1103 tests", null),
+                        new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~1103 tests", null),
                         new TaskForecast.Task(
                                 "package-jar", TaskForecast.Status.RUN, "repackage · compile changed", null),
                         new TaskForecast.Task(
@@ -127,9 +162,7 @@ class ExplainCommandEstimateTest {
                 false);
 
         String chain = TestAnsi.strip(ExplainCommand.renderPhaseChain(module, Theme.active(), false));
-        assertThat(chain)
-                .isEqualTo(
-                        "[ ] Compile 239 sources > [ ] Test ~1,103 tests > [ ] Package > [ ] Native");
+        assertThat(chain).isEqualTo("[ ] Compile 239 sources > [ ] Test ~1,103 tests > [ ] Package > [ ] Native");
         assertThat(ExplainCommand.producesNative(module)).isTrue();
     }
 
@@ -158,11 +191,11 @@ class ExplainCommandEstimateTest {
                 false);
 
         // 8s remaining against 16s full rebuild → 50% effort (time-weighted, not counts).
-        List<String> lines = ExplainCommand.renderSummaryTable(
-                        List.of(dirty, clean), 8_000, 16_000, false, Theme.active(), false)
-                .stream()
-                .map(TestAnsi::strip)
-                .toList();
+        List<String> lines =
+                ExplainCommand.renderSummaryTable(List.of(dirty, clean), 8_000, 16_000, false, Theme.active(), false)
+                        .stream()
+                        .map(TestAnsi::strip)
+                        .toList();
 
         String joined = String.join("\n", lines);
         assertThat(joined).contains("Plan Item");
@@ -201,11 +234,10 @@ class ExplainCommandEstimateTest {
                 false);
 
         // Force ANSI path so box-drawing junctions are present (plain mode uses +).
-        List<String> lines = ExplainCommand.renderSummaryTable(
-                        List.of(m), 1_000, 2_000, false, Theme.active(), true)
-                .stream()
-                .map(TestAnsi::strip)
-                .toList();
+        List<String> lines =
+                ExplainCommand.renderSummaryTable(List.of(m), 1_000, 2_000, false, Theme.active(), true).stream()
+                        .map(TestAnsi::strip)
+                        .toList();
 
         String footerJoin = "";
         String footerRow = "";

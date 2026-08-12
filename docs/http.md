@@ -116,7 +116,7 @@ Dependency graph for the Project page (JK-1542), same idea as `jk tree`:
 | --- | --- | --- |
 | `dir` | required | Project or workspace root (checkout path) |
 | `scopes` | `export,main,runtime` | Comma-separated canonical scopes (same default as `jk tree`). Percent-encoded like any query value; an unknown name is a **400** naming the valid set |
-| `transitive` | `false` | When true, expand lockfile transitive deps under each declared root |
+| `transitive` | `false` | When true, expand lockfile transitive deps under each declared root (same as `jk tree -t` / `--transitive`) |
 
 Response:
 
@@ -136,8 +136,8 @@ broken; a malformed `dir` or unknown scope is a **400**. Token-gated like `/api/
 loads this **only** when the Dependencies panel opens.
 
 The default scope set is defined once — `DependencyTree.defaultScopeOrder()` (`export`, `main`,
-`runtime`) — and shared verbatim by `jk tree` and this endpoint, so both surfaces answer the same
-question the same way.
+`runtime`) — and shared verbatim by `jk tree` and this endpoint. Declared-only is the default on
+both; `transitive=1` matches `jk tree -t` / `--transitive`.
 
 ### `GET /api/metrics`
 

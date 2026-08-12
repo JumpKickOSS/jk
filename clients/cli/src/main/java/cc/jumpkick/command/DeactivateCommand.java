@@ -2,9 +2,9 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
-import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -38,8 +38,8 @@ public final class DeactivateCommand implements CliCommand {
     public int run(Invocation in) {
         boolean nerdfont = GlobalConfig.nerdfont();
         CommandWedge.envelopeStart();
-        CliOutput.out(BuildPlanWedge.chipLine(
-                Glyphs.BANG, "Deactivate", nerdfont, "jk shell integration is not a session wrapper"));
+        CliOutput.out(
+                JkWedge.chipLine(Glyphs.BANG, "Deactivate", nerdfont, "jk shell integration is not a session wrapper"));
         CliOutput.out("  • Directory JAVA_HOME / PATH from hook-env apply only in this shell.");
         CliOutput.out("  • Open a new terminal (or `exec $SHELL`) to drop session env.");
         CliOutput.out("  • To stop auto-hooks permanently, remove the block between");

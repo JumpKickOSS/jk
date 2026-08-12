@@ -90,7 +90,11 @@ class ReadSideIntegrationTest {
         // against. --color=never drops the foreground colors but
         // leaves text attributes (underline/bold) in place, hence
         // the regex below.
-        String tree = TestAnsi.strip(captureStdout(() -> run("tree", "-C", tempDir.toString())));
+        String declared = TestAnsi.strip(captureStdout(() -> run("tree", "-C", tempDir.toString())));
+        assertThat(declared).contains("com.foo:root:1.0");
+        assertThat(declared).doesNotContain("com.foo:leaf:1.0");
+
+        String tree = TestAnsi.strip(captureStdout(() -> run("tree", "-t", "-C", tempDir.toString())));
         assertThat(tree).contains("com.foo:root:1.0");
         assertThat(tree).contains("com.foo:leaf:1.0");
 

@@ -9,8 +9,8 @@ import cc.jumpkick.cli.run.CompositeBuildPlanListener;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.EventLogListener;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.BuildPlanWedge;
-import cc.jumpkick.cli.tui.CommandManager;
+import cc.jumpkick.cli.tui.Coord;
+import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.CliCommand;
@@ -321,7 +321,7 @@ public final class NativeCommand implements CliCommand {
         // AUTO / QUIET: one shared aggregate view, calibrated to the whole cascade up front
         // (the plan burst carries every module plan's estimated weight).
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
-        CommandManager view = CommandManager.plan(CliOutput.stdout(), "Build", animate);
+        JkManager view = JkManager.plan(CliOutput.stdout(), "Build", animate);
         cc.jumpkick.cli.run.AggregateContext agg = new cc.jumpkick.cli.run.AggregateContext(view);
         int[] built = {0};
         var listener = new cc.jumpkick.runtime.WorkspaceBuildListener() {
@@ -362,8 +362,7 @@ public final class NativeCommand implements CliCommand {
                     .map(cc.jumpkick.runtime.ModuleOutcome::coord)
                     .findFirst()
                     .orElse("build");
-            view.finishBuildPlanFailure(
-                    BuildPlanWedge.coord(failedCoord) + " " + BuildCommand.elapsedSince(buildStart));
+            view.finishBuildPlanFailure(Coord.module(failedCoord) + " " + BuildCommand.elapsedSince(buildStart));
             for (BuildPlanResult.Diagnostic d : agg.lastErrors()) {
                 CliOutput.err(ConsoleSpec.renderError(d));
             }
@@ -417,7 +416,7 @@ public final class NativeCommand implements CliCommand {
                 "Build",
                 r -> Theme.colorize("Native build successful", Theme.active().success())
                         + BuildCommand.builtArtifact(projectDir, build),
-                r -> BuildPlanWedge.coord(coord),
+                r -> Coord.module(coord).renderLine(),
                 true);
         var listener = new cc.jumpkick.runtime.WorkspaceBuildListener() {
             @Override

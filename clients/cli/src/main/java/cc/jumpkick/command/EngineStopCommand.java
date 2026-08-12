@@ -5,9 +5,9 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.run.BuildPlanConsole;
-import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.cli.tui.DrainView;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.model.command.CliCommand;
@@ -203,7 +203,7 @@ public final class EngineStopCommand implements CliCommand {
     }
 
     private static String stoppedWedge(long ranMs) {
-        return BuildPlanWedge.chipLine(
+        return JkWedge.chipLine(
                 Glyphs.STOP, "Engine", GlobalConfig.nerdfont(), "Engine stopped. Ran for " + uptime(ranMs) + ".");
     }
 

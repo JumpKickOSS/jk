@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
@@ -73,33 +74,45 @@ public final class LibraryListCommand implements CliCommand {
     }
 
     private int listGrouped(LibraryCatalog catalog, Set<String> names) {
-        boolean firstGroup = true;
+        Table table = null;
         int shown = 0;
         for (String layer : catalog.layerNames()) {
             if (layerFilter != null && !layer.equals(layerFilter)) continue;
-            List<List<String>> rows = new ArrayList<>();
+            Table section = new Table("Libraries — " + layer)
+                    .columns(headers().toArray(String[]::new))
+                    .showTitle(true)
+                    .showColumns(true);
+            int added = 0;
             for (String name : names) {
                 if (catalog.source(name).orElseThrow().layer().equals(layer)) {
-                    rows.add(row(name, catalog.source(name).orElseThrow()));
+                    var src = catalog.source(name).orElseThrow();
+                    section.row(row(name, src).toArray(String[]::new));
+                    added++;
                 }
             }
-            if (rows.isEmpty()) continue;
-            if (!firstGroup) CliOutput.out();
-            firstGroup = false;
-            shown += rows.size();
-            printTable("Libraries — " + layer, rows);
+            if (added == 0) continue;
+            shown += added;
+            if (table == null) table = section;
+            else table.append(section, Table.Append.SECTION);
         }
-        if (shown == 0 && layerFilter != null) CliOutput.out("(no libraries in layer `" + layerFilter + "`)");
+        if (shown == 0 && layerFilter != null) {
+            CliOutput.out("(no libraries in layer `" + layerFilter + "`)");
+            return 0;
+        }
+        if (table != null) table.print();
         return 0;
     }
 
-    private void printTable(String title, List<List<String>> rows) {
+    private List<String> headers() {
         List<String> headers = new ArrayList<>(List.of("Name", "Coordinates"));
         if (showLayer && !groupByLayer) headers.add("Layer");
-        cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
-        for (String line : cc.jumpkick.cli.tui.BoxTable.render(title, headers, rows)) {
-            CliOutput.out(line);
-        }
+        return headers;
+    }
+
+    private void printTable(String title, List<List<String>> rows) {
+        Table table = new Table(title).columns(headers().toArray(String[]::new));
+        for (List<String> r : rows) table.row(r.toArray(String[]::new));
+        table.print();
     }
 
     private List<String> row(String name, LibraryCatalog.Source src) {

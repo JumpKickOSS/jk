@@ -9,9 +9,10 @@ import cc.jumpkick.cli.run.CliSessionTranscript;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.BuildNotify;
-import cc.jumpkick.cli.tui.BuildPlanWedge;
-import cc.jumpkick.cli.tui.CommandManager;
+import cc.jumpkick.cli.tui.Coord;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.JkManager;
+import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
@@ -264,7 +265,7 @@ public final class BuildCommand implements CliCommand {
         cc.jumpkick.cli.engine.EnginePrewarm.ensure();
 
         long buildStart = System.nanoTime();
-        CommandManager view = CommandManager.plan(CliOutput.stdout(), "Build", animate);
+        JkManager view = JkManager.plan(CliOutput.stdout(), "Build", animate);
         // OSC 0 tab/window title while the live build region is open.
         view.setWindowTitle("JumpKick - Building " + projectGavLabel(entryDir, entryBuild) + "...");
         AggregateContext earlyAgg = new AggregateContext(view);
@@ -447,7 +448,7 @@ public final class BuildCommand implements CliCommand {
                     cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsed, total[0]), json);
             if (!json) {
                 String took = ConsoleSpec.took(java.time.Duration.ofMillis(elapsed));
-                CliOutput.out(BuildPlanWedge.cancelledJobLine("Build", GlobalConfig.nerdfont(), false, took));
+                CliOutput.out(JkWedge.cancelledJobLine("Build", GlobalConfig.nerdfont(), false, took));
             }
             if (session != null) session.wedge("Build job was cancelled");
             notifyBuild(BuildNotify.Outcome.CANCELLED, entryDir, entryBuild, 0, elapsed);
@@ -471,7 +472,7 @@ public final class BuildCommand implements CliCommand {
                     cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]), json);
             if (!json) {
                 String took = ConsoleSpec.took(java.time.Duration.ofMillis(elapsedMs));
-                CliOutput.out(BuildPlanWedge.cancelledJobLine("Build", GlobalConfig.nerdfont(), false, took));
+                CliOutput.out(JkWedge.cancelledJobLine("Build", GlobalConfig.nerdfont(), false, took));
             }
             if (session != null) session.wedge("Build job was cancelled");
             notifyBuild(BuildNotify.Outcome.CANCELLED, entryDir, entryBuild, 0, elapsedMs);
@@ -517,7 +518,7 @@ public final class BuildCommand implements CliCommand {
             notifyBuild(BuildNotify.Outcome.COMPLETE, entryDir, entryBuild, 0, elapsedMs);
             return 0;
         }
-        // Headless path never opened CommandManager — printOk supplies the leading blank.
+        // Headless path never opened JkManager — printOk supplies the leading blank.
         cc.jumpkick.cli.tui.CommandWedge.printOk("Build", okTail);
         notifyBuild(BuildNotify.Outcome.COMPLETE, entryDir, entryBuild, 0, elapsedMs);
         return 0;
@@ -529,7 +530,7 @@ public final class BuildCommand implements CliCommand {
     }
 
     /**
-     * Live aggregate scheduler: one {@link CommandManager} (plan mode) shows a spinner header + a
+     * Live aggregate scheduler: one {@link JkManager} (plan mode) shows a spinner header + a
      * single bar calibrated to the whole graph + a tree of the modules building <em>right now</em>;
      * the tree grows to the parallelism limit and shrinks back to 0 as units drain. Each unit's
      * process output is buffered and flushed (with a ✓/✗ {@code [k/N]} line) above the region when it
@@ -537,7 +538,7 @@ public final class BuildCommand implements CliCommand {
      * animates; the same blocks + lines print append-only.
      */
     private int runGraphLive(
-            CommandManager view,
+            JkManager view,
             AggregateContext agg,
             Path entryDir,
             JkBuild entryBuild,
@@ -663,7 +664,7 @@ public final class BuildCommand implements CliCommand {
             notifyBuild(BuildNotify.Outcome.CANCELLED, entryDir, entryBuild, view.etaEstimateMs(), elapsedMs);
             return 1;
         } catch (java.io.IOException e) {
-            // finishBuildPlanFailure's own `tail` already gets wrapped in BuildPlanWedge.failureLine(planName,
+            // finishBuildPlanFailure's own `tail` already gets wrapped in JkWedge.failureLine(planName,
             // nerdfont, tail) internally — pass the plain message, not a pre-rendered failure line
             // (passing one double-wraps it into a garbled "‼ Build ‼ Build..." chip).
             long elapsedMs = (System.nanoTime() - start) / 1_000_000;
@@ -774,7 +775,7 @@ public final class BuildCommand implements CliCommand {
                     .append(' ')
                     .append(ConsoleSpec.took(java.time.Duration.ofMillis(millis)));
         } else {
-            sb.append(CommandManager.coloredModule(coord)).append(' ').append(Theme.colorize("— failed", th.error()));
+            sb.append(JkManager.coloredModule(coord)).append(' ').append(Theme.colorize("— failed", th.error()));
         }
         return sb.toString();
     }
@@ -807,7 +808,7 @@ public final class BuildCommand implements CliCommand {
                 var forecast = cc.jumpkick.cli.engine.EngineClient.forecast(
                         cc.jumpkick.engine.EnginePaths.current(), dir, cache, buildOpts.skipTests);
                 if (!forecast.hasErrors() && !forecast.empty() && forecast.fullyCached()) {
-                    // Fast path skips CommandManager (no live region) — must still printOk so the
+                    // Fast path skips JkManager (no live region) — must still printOk so the
                     // leading blank matches the full build path (JK-1373).
                     String upToDate = buildOk() + ", project up to date " + elapsedSince(startNanos);
                     cc.jumpkick.cli.tui.CommandWedge.printOk("Build", upToDate);
@@ -834,7 +835,7 @@ public final class BuildCommand implements CliCommand {
         ConsoleSpec spec = new ConsoleSpec(
                 "Build",
                 r -> projectTail(buildOutcomeHolder[0], tailDir, tailInfo),
-                r -> BuildPlanWedge.coord(timelineModule),
+                r -> Coord.module(timelineModule).renderLine(),
                 true);
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         BuildPlanResult result;
@@ -863,7 +864,7 @@ public final class BuildCommand implements CliCommand {
                     testResultHolder,
                     buildOutcomeHolder);
         } catch (cc.jumpkick.cli.engine.JobCancelledException e) {
-            CliOutput.out(BuildPlanWedge.cancelledJobLine("Build", GlobalConfig.nerdfont(), false, ""));
+            CliOutput.out(JkWedge.cancelledJobLine("Build", GlobalConfig.nerdfont(), false, ""));
             if (session != null) session.wedge("Build job was cancelled");
             return 1;
         } catch (java.io.IOException e) {
@@ -1099,7 +1100,7 @@ public final class BuildCommand implements CliCommand {
 
     /** Failure tail {@code group:name took T} — coord colored, {@code took T} bright-black. */
     private static String failureTail(String coord, long start) {
-        return BuildPlanWedge.coord(coord) + " " + elapsedSince(start);
+        return Coord.module(coord) + " " + elapsedSince(start);
     }
 
     /** Failure tail for a module missing its {@code jk.toml}. */

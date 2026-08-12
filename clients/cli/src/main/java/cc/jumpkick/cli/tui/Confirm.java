@@ -1,200 +1,48 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
-import cc.jumpkick.cli.Ansi;
-import cc.jumpkick.cli.theme.Theme;
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
-import org.jline.terminal.Attributes;
 import org.jline.terminal.Terminal;
-import org.jline.utils.NonBlockingReader;
 
 /**
- * A single-line yes/no confirmation, styled like {@link Wizard} and driven by a single keystroke
- * (no Enter required): {@code y}/{@code n}, with Enter taking the default and Ctrl-C / Esc
- * declining. On an interactive ANSI terminal it briefly enters raw mode (mirroring the Wizard's
- * terminal lifecycle); on a non-TTY — or when ANSI is off ({@code --no-ansi}, {@code TERM=dumb}) —
- * it falls back to a cooked {@code readLine()} so piped / CI / plain-terminal input keeps working
- * (JK-1420).
- *
- * <p>Renders {@code <question> [Y/n]} (default-yes) or {@code <question> [y/N]} (default-no) with
- * the brackets and slash dimmed. Once answered, the {@code [Y/n]} hint is overwritten in place with
- * a green {@code Yes} or a red {@code No}, so the settled line reads e.g. {@code <question> Yes}.
+ * Façade over {@link Confirmation} so existing {@code Confirm.of(...).ask()} callers stay valid.
  */
 public final class Confirm {
 
-    /** Visible columns to overwrite when settling: "[Y/n]" (5) + trailing space (1). */
-    private static final int HINT_WIDTH = 6;
+    private final Confirmation confirmation;
 
-    /**
-     * Set by {@link cc.jumpkick.cli.GlobalOptions#from} from the hidden global {@code -y}/{@code
-     * --yes}. When true, every {@link #ask()} returns true without prompting.
-     */
-    private static final ThreadLocal<Boolean> ASSUME_YES = ThreadLocal.withInitial(() -> Boolean.FALSE);
-
-    private final String question;
-    private final boolean defaultYes;
-
-    private Confirm(String question, boolean defaultYes) {
-        this.question = question;
-        this.defaultYes = defaultYes;
+    private Confirm(Confirmation confirmation) {
+        this.confirmation = confirmation;
     }
 
     public static Confirm of(String question, boolean defaultYes) {
-        return new Confirm(question, defaultYes);
+        return new Confirm(Confirmation.of(question, defaultYes));
     }
 
-    /** Enable/disable assume-yes for this thread (reset each leaf command). */
     public static void setAssumeYes(boolean yes) {
-        ASSUME_YES.set(yes);
+        Prompt.setAssumeYes(yes);
     }
 
-    /** Clear the assume-yes flag for this thread. */
     public static void clearAssumeYes() {
-        ASSUME_YES.remove();
+        Prompt.clearAssumeYes();
     }
 
-    /** True when global {@code -y}/{@code --yes} is in effect. */
     public static boolean assumeYes() {
-        return Boolean.TRUE.equals(ASSUME_YES.get());
+        return Prompt.assumeYes();
     }
 
-    /**
-     * Whether we can prompt a human — {@link Interactivity#canPrompt()}. Keyed on the controlling
-     * terminal, not stdin/stdout, so a {@code curl | bash} install (piped stdin) or {@code jk foo |
-     * less} (piped stdout) still prompts when a person is actually there.
-     */
     public static boolean isInteractiveTerminal() {
         return Interactivity.canPrompt();
     }
 
-    /**
-     * Ask, opening and closing our own terminal. On a non-interactive stdin — or an interactive
-     * terminal with ANSI off ({@code --no-ansi}, {@code TERM=dumb}, …) — reads a cooked line
-     * instead (EOF → {@code false}).
-     */
     public boolean ask() {
-        if (assumeYes()) return true;
-        if (!rawEligible(isInteractiveTerminal(), Theme.active().isAnsi())) {
-            return cookedFallback();
-        }
-        try (Terminal terminal = Wizard.openTerminal()) {
-            // Drain probe responses (DA / DECRQM) that TerminalBuilder emits on
-            // open — same as Wizard.run() does — so they don't land in the reader
-            // as garbage keys.
-            Wizard.drainInput(terminal.reader(), 40L);
-            return ask(terminal);
-        } catch (IOException e) {
-            return cookedFallback();
-        }
+        return confirmation.ask();
     }
 
-    /**
-     * Ask on an already-open terminal — for callers running inside a Wizard's terminal lifecycle.
-     * Enters raw mode for the single keystroke and restores cooked/echo mode afterward (so later
-     * {@code System.in} reads still work).
-     */
     public boolean ask(Terminal terminal) {
-        if (assumeYes()) return true;
-        // No-ANSI: the raw-mode keystroke UX and in-place settle assume escape sequences the mode
-        // just said we don't have — read a cooked line instead, even inside a wizard's terminal
-        // lifecycle (JK-1420).
-        if (!Theme.active().isAnsi()) return cookedFallback();
-        // Render the prompt to stderr, not stdout: a y/n the user can't see (because stdout is piped
-        // to `less` / a file) would be an invisible block. stderr is the terminal's own channel by
-        // convention (git/apt/ssh prompt there too). Use the terminal only to capture the single
-        // keystroke in raw mode.
-        var err = cc.jumpkick.cli.CliOutput.stderr();
-        err.print(promptText());
-        err.flush();
-        Attributes saved = terminal.enterRawMode();
-        try {
-            NonBlockingReader reader = terminal.reader();
-            while (true) {
-                Boolean result = interpret(KeyReader.read(reader));
-                if (result != null) {
-                    // Overwrite the "[Y/n] " hint in place with the colored
-                    // answer: step back over the hint, print green Yes / red No,
-                    // clear the leftover, and end the line (raw mode → explicit CRLF).
-                    String answer = Theme.colorize(
-                            result ? "Yes" : "No",
-                            result ? Theme.active().success() : Theme.active().error());
-                    err.print(Ansi.cursorBack(HINT_WIDTH) + answer + Ansi.ERASE_LINE_TO_END + "\r\n");
-                    err.flush();
-                    return result;
-                }
-            }
-        } finally {
-            Wizard.restoreCooked(terminal, saved);
-        }
+        return confirmation.ask(terminal);
     }
 
-    /** A key → decision, or {@code null} for keys that don't resolve the prompt. */
-    private Boolean interpret(KeyReader.Key key) {
-        return switch (key) {
-            case KeyReader.Key.Char c ->
-                switch (Character.toLowerCase(c.c())) {
-                    case 'y' -> Boolean.TRUE;
-                    case 'n' -> Boolean.FALSE;
-                    default -> null;
-                };
-            case KeyReader.Key.Enter ignored -> defaultYes;
-            case KeyReader.Key.CtrlC ignored -> Boolean.FALSE;
-            case KeyReader.Key.Escape ignored -> Boolean.FALSE;
-            default -> null;
-        };
-    }
-
-    /**
-     * Raw single-keystroke intercept needs both a promptable human <em>and</em> ANSI capability —
-     * the keystroke UX and the in-place settle assume escape sequences, so plain / {@code
-     * --no-ansi} terminals get cooked line input instead (JK-1420).
-     */
     static boolean rawEligible(boolean canPrompt, boolean ansi) {
-        return canPrompt && ansi;
-    }
-
-    /**
-     * Cooked read — non-TTY stdin (piped / CI) and interactive-but-no-ANSI terminals. Reads a full
-     * line ({@code y}/{@code yes}/{@code n}/{@code no}/empty = default), then settles the answer as
-     * plain text on its own line (no CSI; colorize no-ops when color is off).
-     */
-    private boolean cookedFallback() {
-        // Prompt to stderr (see ask(Terminal)) so it stays visible when stdout is redirected.
-        var err = cc.jumpkick.cli.CliOutput.stderr();
-        err.print(promptText());
-        err.flush();
-        boolean result;
-        try {
-            BufferedReader reader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
-            String line = reader.readLine();
-            if (line == null) {
-                result = false; // EOF / non-interactive → decline
-            } else {
-                String t = line.trim();
-                result = t.isEmpty() ? defaultYes : t.equalsIgnoreCase("y") || t.equalsIgnoreCase("yes");
-            }
-        } catch (IOException e) {
-            result = false;
-        }
-        err.println(Theme.colorize(
-                result ? "Yes" : "No",
-                result ? Theme.active().success() : Theme.active().error()));
-        err.flush();
-        return result;
-    }
-
-    private String promptText() {
-        return question + " " + yesNo() + " ";
-    }
-
-    /** {@code [Y/n]} / {@code [y/N]} with the brackets and slash dimmed. */
-    private String yesNo() {
-        var dim = Theme.active().darkGray();
-        String y = defaultYes ? "Y" : "y";
-        String n = defaultYes ? "n" : "N";
-        return Theme.colorize("[", dim) + y + Theme.colorize("/", dim) + n + Theme.colorize("]", dim);
+        return Prompt.rawEligible(canPrompt, ansi);
     }
 }

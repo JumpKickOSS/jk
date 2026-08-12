@@ -53,7 +53,7 @@ public final class CliOutput {
     }
 
     /**
-     * Stdout for APIs that need a {@link PrintStream} (CommandManager, Spinner, renderers). Under
+     * Stdout for APIs that need a {@link PrintStream} (JkManager, Spinner, renderers). Under
      * plain mode the stream rewrites Unicode chrome via {@link PlainAscii#wrap}.
      */
     public static PrintStream stdout() {

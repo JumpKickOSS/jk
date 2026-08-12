@@ -3,7 +3,6 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.config.GlobalConfig;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
@@ -387,16 +386,9 @@ public final class Wizard {
      * is printed separately in {@link #loop} to match this line's visual width.
      */
     private String headerLine(Terminal terminal) {
-        Theme t = Theme.active();
-        if (!t.isAnsi()) {
-            return BuildPlanWedge.plainWedge(Glyphs.MENU_PLAIN, command, subtitle);
-        }
-        boolean nerd = GlobalConfig.nerdfont();
-        // Nerd: " ≡ New " + powerline; ansi: " ≡ New  " (two trailing chip spaces).
-        return BuildPlanWedge.chip(Glyphs.MENU, command, t.planChip(), nerd)
-                + BuildPlanWedge.cap(t.planBadgeColor(), nerd)
-                + " "
-                + Theme.colorize(subtitle, t.focused());
+        return new JkWedge(Icon.menu(), command, RichText.plain(subtitle == null ? "" : subtitle))
+                .variant(JkWedge.Variant.MENU)
+                .renderLine(RenderContext.current());
     }
 
     /** Returns the visible (print-column) length of {@code s} by stripping CSI escape sequences. */
@@ -739,83 +731,38 @@ public final class Wizard {
         }
 
         private List<AttributedString> renderInput(WizardStep.InputStep is) {
-            var sb = new AttributedStringBuilder();
-            if (input.length() == 0) {
-                if (!is.placeholder().isEmpty()) {
-                    sb.append(is.placeholder(), Theme.active().darkGray().italic());
-                }
-            } else {
-                sb.append(input.toString(), Theme.active().focused());
-            }
-            var lines = new ArrayList<AttributedString>();
-            lines.add(sb.toAttributedString());
-            if (!error.isEmpty()) {
-                lines.add(new AttributedStringBuilder()
-                        .append(error, Theme.active().error())
-                        .toAttributedString());
-            }
-            return lines;
+            return ansiLines(
+                    new TextInput(input.toString(), is.placeholder(), true, error).render(RenderContext.current()));
         }
 
         private List<AttributedString> renderRadio(WizardStep.RadioStep rs) {
             var choices = rs.choicesFor(snapshot);
-            var lines = new ArrayList<AttributedString>();
-            if (rs.orientation() == Orientation.HORIZONTAL) {
-                var sb = new AttributedStringBuilder();
-                for (var i = 0; i < choices.size(); i++) {
-                    var c = choices.get(i);
-                    var isFocused = i == focus;
-                    sb.append(
-                            isFocused ? Rail.RADIO_ON : Rail.RADIO_OFF,
-                            isFocused
-                                    ? Theme.active().completedStep()
-                                    : Theme.active().darkGray());
-                    sb.append("  ");
-                    sb.append(
-                            c.label(),
-                            isFocused
-                                    ? Theme.active().focused()
-                                    : Theme.active().darkGray());
-                    appendHint(sb, c.hintFor(snapshot));
-                    if (i < choices.size() - 1) {
-                        sb.append("  ");
-                    }
-                }
-                lines.add(sb.toAttributedString());
-            } else {
-                for (var i = 0; i < choices.size(); i++) {
-                    var c = choices.get(i);
-                    var isFocused = i == focus;
-                    var sb = new AttributedStringBuilder()
-                            .append(
-                                    isFocused ? Rail.RADIO_ON : Rail.RADIO_OFF,
-                                    isFocused
-                                            ? Theme.active().completedStep()
-                                            : Theme.active().darkGray())
-                            .append("  ")
-                            .append(
-                                    c.label(),
-                                    isFocused
-                                            ? Theme.active().focused()
-                                            : Theme.active().darkGray());
-                    appendHint(sb, c.hintFor(snapshot));
-                    lines.add(sb.toAttributedString());
-                }
-                if (rs.hasCustomOption()) {
-                    var isFocused = focus == choices.size();
-                    var sb = new AttributedStringBuilder()
-                            .append(
-                                    isFocused ? Rail.RADIO_ON : Rail.RADIO_OFF,
-                                    isFocused
-                                            ? Theme.active().completedStep()
-                                            : Theme.active().darkGray())
-                            .append("  ");
-                    appendCustomField(sb, isFocused, rs.customPlaceholder());
-                    lines.add(sb.toAttributedString());
-                    appendError(lines);
-                }
+            var buttons = new ArrayList<RadioButton>();
+            for (int i = 0; i < choices.size(); i++) {
+                var c = choices.get(i);
+                boolean isFocused = i == focus;
+                buttons.add(new RadioButton(c.label(), isFocused, isFocused, c.hintFor(snapshot)));
+            }
+            if (rs.hasCustomOption() && rs.orientation() == Orientation.VERTICAL) {
+                boolean isFocused = focus == choices.size();
+                String custom = input.length() == 0 ? rs.customPlaceholder() : input.toString();
+                buttons.add(new RadioButton(custom, isFocused, isFocused, ""));
+            }
+            var lines = new ArrayList<>(
+                    ansiLines(new RadioButtonGroup(buttons, rs.orientation()).render(RenderContext.current())));
+            if (rs.hasCustomOption() && rs.orientation() == Orientation.VERTICAL && !error.isEmpty()) {
+                lines.add(new AttributedString(
+                        Theme.colorize(error, Theme.active().error())));
             }
             return lines;
+        }
+
+        private static List<AttributedString> ansiLines(List<String> lines) {
+            var out = new ArrayList<AttributedString>(lines.size());
+            for (String line : lines) {
+                out.add(new AttributedString(line));
+            }
+            return out;
         }
 
         /**
@@ -873,25 +820,23 @@ public final class Wizard {
                     var c = visible.get(i);
                     var isFocused = i == focus;
                     var isChecked = selected.contains(c.id());
-                    var glyph = isChecked ? Rail.CHECKBOX_ON : Rail.CHECKBOX_OFF;
-                    var glyphStyle = isChecked
-                            ? Theme.active().completedStep()
-                            : (isFocused
-                                    ? Theme.active().activeStep()
-                                    : Theme.active().darkGray());
-                    var labelStyle = isFocused
-                            ? Theme.active().focused()
-                            : Theme.active().darkGray();
-                    var sb = new AttributedStringBuilder()
-                            .append(glyph, glyphStyle)
-                            .append("  ");
                     if (c.richLabelFn() != null) {
-                        sb.append(c.richLabelFn().apply(isFocused));
+                        var sb = new AttributedStringBuilder()
+                                .append(
+                                        isChecked ? Rail.CHECKBOX_ON : Rail.CHECKBOX_OFF,
+                                        isChecked
+                                                ? Theme.active().completedStep()
+                                                : (isFocused
+                                                        ? Theme.active().activeStep()
+                                                        : Theme.active().darkGray()))
+                                .append("  ")
+                                .append(c.richLabelFn().apply(isFocused));
+                        appendHint(sb, c.hintFor(snapshot));
+                        lines.add(sb.toAttributedString());
                     } else {
-                        sb.append(c.label(), labelStyle);
+                        lines.addAll(ansiLines(new Checkbox(c.label(), isChecked, isFocused, c.hintFor(snapshot))
+                                .render(RenderContext.current())));
                     }
-                    appendHint(sb, c.hintFor(snapshot));
-                    lines.add(sb.toAttributedString());
                     shown++;
                 }
                 if (visible.size() > maxShow) {

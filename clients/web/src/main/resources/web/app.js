@@ -340,7 +340,8 @@ const BuildBars = {
 /**
  * Lazy dependency graph (JK-1542): mounted only when the Project-page Dependencies panel is open.
  * Fetches {@code GET /api/project/graph} with scope + transitive filters (same idea as
- * {@code jk tree --scopes}), aborts on unmount, and only then calls {@code echarts.init}.
+ * {@code jk tree --scopes} / {@code jk tree -t}), aborts on unmount, and only then calls
+ * {@code echarts.init}.
  */
 const ModuleDepGraph = {
   props: { dir: { type: String, required: true } },
@@ -374,7 +375,7 @@ const ModuleDepGraph = {
             <span>{{ sc }}</span>
           </label>
         </div>
-        <label class="check dep-transitive" data-tip="Include lockfile transitive dependencies (off by default)">
+        <label class="check dep-transitive" data-tip="Include lockfile transitive dependencies (same as jk tree -t; off by default)">
           <input type="checkbox" :checked="transitive" @change="setTransitive($event)">
           <span class="check-box" aria-hidden="true"></span>
           <span>Transitive</span>

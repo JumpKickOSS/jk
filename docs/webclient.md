@@ -64,7 +64,8 @@ ECharts (`series-graph`). Complex graphs are expensive server- and client-side, 
 - the panel is **closed by default**;
 - `GET /api/project/graph` runs **only** when the panel opens (`module-dep-graph` mounts then);
   scope checkboxes (default **export / main / runtime**, same as `jk tree`) and a **Transitive**
-  toggle (off by default) re-fetch with `scopes=` / `transitive=` — **debounced** (250 ms), so
+  toggle (off by default; same as `jk tree -t` / `--transitive`) re-fetch with `scopes=` /
+  `transitive=` — **debounced** (250 ms), so
   ticking several boxes in a row fires one request;
 - the server caps transitive expansion (500 nodes / 2000 edges) and sets `truncated: true` when it
   clips; the panel shows a warning line so a clipped graph never reads as complete;

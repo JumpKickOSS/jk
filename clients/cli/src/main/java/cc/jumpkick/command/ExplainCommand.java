@@ -7,10 +7,15 @@ import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.BoxTable;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.Icon;
+import cc.jumpkick.cli.tui.Pill;
+import cc.jumpkick.cli.tui.RenderContext;
+import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Spinner;
+import cc.jumpkick.cli.tui.Table;
+import cc.jumpkick.cli.tui.Tree;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleDotGraph;
 import cc.jumpkick.config.ModuleSelection;
@@ -212,85 +217,15 @@ public final class ExplainCommand implements CliCommand {
 
         Theme t = Theme.active();
         boolean ansi = t.isAnsi();
-        boolean nerdfont = cc.jumpkick.config.GlobalConfig.nerdfont();
 
         // Forecast every module's full step plan (compile → test → package),
         // truthfully — see TaskForecaster.
         List<TaskForecast.Module> modules = plan.modules();
         boolean verbose = in.isSet("verbose");
-
-        // Header: ≡ Build Graph (ETA lives in the summary table).
-        String header =
-                cc.jumpkick.cli.tui.BuildPlanWedge.planChip(cc.jumpkick.cli.tui.Glyphs.MENU, "Build Graph", nerdfont);
         boolean fullyCached = !modules.isEmpty() && modules.stream().noneMatch(TaskForecast.Module::dirty);
-        // Leading blank once per command (prep lock wedge may already have opened it).
-        CommandWedge.envelopeStart();
-        CliOutput.out(header);
-        // Root node: ● bullet, then the entry project's group:artifact in bold.
-        String rootBullet = ansi ? Theme.colorize("●", t.darkGray()) : "*";
         String coord = BuildCommand.buildTarget(buildFile, startDir);
-        CliOutput.out(" " + rootBullet + " " + (ansi ? boldCoord(coord, t) : coord));
-        // Empty spine under the root before Fully Cached / Rebuild sections.
-        CliOutput.out(ansi ? " " + Theme.colorize("│", t.darkGray()) : " |");
 
-        // Partition the topo order by cache status: every fully-cached module (wherever
-        // it sits in the order) collapses into the "Fully Cached" section (names only);
-        // only the modules that actually rebuild appear in the detailed "Rebuild" section.
-        // --verbose expands every task (cached ones too).
-        List<Integer> cachedIdx = new ArrayList<>();
-        List<Integer> dirtyIdx = new ArrayList<>();
-        for (int i = 0; i < modules.size(); i++) {
-            (modules.get(i).dirty() ? dirtyIdx : cachedIdx).add(i);
-        }
-
-        if (!cachedIdx.isEmpty()) {
-            boolean lastSection = dirtyIdx.isEmpty();
-            String sectionConnector = lastSection ? "╰─" : "├─";
-            // Plain: no space between connector and pill (`-[Fully Cached]`) — matches jk tree.
-            String sectionBadge = ansi ? cc.jumpkick.cli.tui.Badge.pill("Fully Cached", nerdfont) : "[Fully Cached]";
-            int nFresh = cachedIdx.size();
-            String freshNote = " " + nFresh + (nFresh == 1 ? " module is fresh" : " modules are fresh");
-            CliOutput.out(" "
-                    + (ansi ? Theme.colorize(sectionConnector, t.darkGray()) : (lastSection ? "`-" : "+-"))
-                    + sectionBadge
-                    + freshNote);
-            String childPrefix = ansi
-                    ? " " + Theme.colorize(lastSection ? "   " : "│  ", t.darkGray())
-                    : " " + (lastSection ? "   " : "|  ");
-            if (verbose) {
-                for (int j = 0; j < cachedIdx.size(); j++) {
-                    int i = cachedIdx.get(j);
-                    renderModuleRow(modules.get(i), j == cachedIdx.size() - 1, childPrefix, true, t, ansi);
-                }
-            } else {
-                List<String> names = new ArrayList<>();
-                for (int i : cachedIdx) names.add(shortName(modules.get(i).coord()));
-                // Fixed 4 names per line (no terminal wrap).
-                List<List<String>> lines = chunkNames(names, CACHED_NAMES_PER_LINE);
-                String cont = childPrefix + "   "; // align past "╰─ " / "`- "
-                String firstConnector = ansi ? Theme.colorize("╰─ ", t.darkGray()) : "`- ";
-                for (int li = 0; li < lines.size(); li++) {
-                    boolean more = li < lines.size() - 1;
-                    CliOutput.out((li == 0 ? childPrefix + firstConnector : cont)
-                            + renderCachedNameLine(lines.get(li), more, t, ansi));
-                }
-            }
-        }
-        if (!dirtyIdx.isEmpty()) {
-            String rebuildBadge = ansi ? cc.jumpkick.cli.tui.Badge.pill("Rebuild", nerdfont) : "[Rebuild]";
-            int nDirty = dirtyIdx.size();
-            String dirtyNote = " " + nDirty + (nDirty == 1 ? " module is dirty" : " modules are dirty");
-            CliOutput.out(" "
-                    + (ansi ? Theme.colorize("╰─", t.darkGray()) : "`-")
-                    + rebuildBadge
-                    + dirtyNote);
-            // Empty spine under Rebuild before the first module row.
-            CliOutput.out(ansi ? "    " + Theme.colorize("│", t.darkGray()) : "    |");
-            for (int j = 0; j < dirtyIdx.size(); j++) {
-                int i = dirtyIdx.get(j);
-                renderModuleRow(modules.get(i), j == dirtyIdx.size() - 1, "    ", verbose, t, ansi);
-            }
-        }
+        buildGraph(coord, modules, verbose, t, ansi).print();
 
         // Summary table: totals vs rebuild effort (ETA/full-ETA) + countdown seed.
         CliOutput.out("");
@@ -298,6 +233,80 @@ public final class ExplainCommand implements CliCommand {
             CliOutput.out(line);
         }
         return 0;
+    }
+
+    /**
+     * Build Graph: wedge title, {@code ● group:artifact} root, Fully Cached / Rebuild section
+     * pills, name-only branded module pills, hanging phase-chain (or {@code --verbose} step
+     * children).
+     */
+    static Tree buildGraph(
+            String rootCoord, List<TaskForecast.Module> modules, boolean verbose, Theme t, boolean ansi) {
+        Tree.Node root = Tree.node(Icon.pulse(), boldGa(rootCoord));
+
+        List<TaskForecast.Module> cached = new ArrayList<>();
+        List<TaskForecast.Module> dirty = new ArrayList<>();
+        for (TaskForecast.Module m : modules) {
+            (m.dirty() ? dirty : cached).add(m);
+        }
+
+        if (!cached.isEmpty()) {
+            int n = cached.size();
+            String note = n + (n == 1 ? " module is fresh" : " modules are fresh");
+            Tree.Node section = Tree.node(Pill.of("Fully Cached"), note);
+            if (verbose) {
+                for (TaskForecast.Module m : cached) {
+                    section.child(moduleNode(m, true, t, ansi));
+                }
+            } else {
+                List<String> names = new ArrayList<>(cached.size());
+                for (TaskForecast.Module m : cached) names.add(shortName(m.coord()));
+                List<List<String>> chunks = chunkNames(names, CACHED_NAMES_PER_LINE);
+                var lines = new ArrayList<RichText>(chunks.size());
+                for (int i = 0; i < chunks.size(); i++) {
+                    lines.add(RichText.ansi(renderCachedNameLine(chunks.get(i), i < chunks.size() - 1, t, ansi)));
+                }
+                section.body(lines);
+            }
+            root.child(section);
+        }
+        if (!dirty.isEmpty()) {
+            int n = dirty.size();
+            String note = n + (n == 1 ? " module is dirty" : " modules are dirty");
+            Tree.Node section = Tree.node(Pill.of("Rebuild"), note);
+            for (TaskForecast.Module m : dirty) {
+                section.child(moduleNode(m, verbose, t, ansi));
+            }
+            root.child(section);
+        }
+        return new Tree("Build Graph").gap(Tree.Gap.CHILDREN).root(root);
+    }
+
+    /** One rebuild (or verbose cached) module: branded name pill + phase chain or step children. */
+    private static Tree.Node moduleNode(TaskForecast.Module m, boolean verbose, Theme t, boolean ansi) {
+        Tree.Node node = Tree.node(Pill.branded(shortName(m.coord())));
+        if (verbose) {
+            List<TaskForecast.Task> ph = m.steps();
+            int nameCol = 0;
+            for (TaskForecast.Task p : ph) {
+                nameCol = Math.max(nameCol, p.name().length());
+            }
+            nameCol += STEP_NAME_DOT_GAP;
+            int commandCol = 0;
+            for (TaskForecast.Task p : ph) {
+                if (!p.cached()) commandCol = Math.max(commandCol, commandWidth(p.text()));
+            }
+            for (TaskForecast.Task p : ph) {
+                String step = formatStepName(p.name(), nameCol, t, ansi) + renderStatus(p, commandCol, t, ansi);
+                node.child(Tree.node(RichText.ansi(step)));
+            }
+            return node;
+        }
+        if (m.dirty()) {
+            String chain = renderPhaseChain(m, t, ansi);
+            if (!chain.isEmpty()) node.body(RichText.ansi(chain));
+        }
+        return node;
     }
 
     /**
@@ -338,54 +347,6 @@ public final class ExplainCommand implements CliCommand {
     private static final int CACHED_NAMES_PER_LINE = 4;
 
     /**
-     * Render one module row under a section: {@code prefix} + connector + bold bright-cyan artifact
-     * name, then either a phase-chain line (default) or the expanded task sub-tree ({@code
-     * --verbose}). The verdict is implied by the enclosing section (Fully Cached / Rebuild).
-     */
-    private static void renderModuleRow(
-            TaskForecast.Module m, boolean last, String prefix, boolean verbose, Theme t, boolean ansi) {
-        String moduleConnector = ansi ? Theme.colorize((last ? "╰" : "├") + "─", t.darkGray()) : (last ? "`-" : "+-");
-        String name = shortName(m.coord());
-        String moduleLabel = ansi ? Theme.colorize(name, t.brightCyan().bold()) : name;
-        CliOutput.out(prefix + moduleConnector + moduleLabel);
-
-        if (!(m.dirty() || verbose)) return;
-
-        String spine = ansi
-                ? prefix + (last ? "   " : Theme.colorize("│", t.darkGray()) + "  ")
-                : prefix + (last ? "   " : "|  ");
-
-        if (!verbose) {
-            String chain = renderPhaseChain(m, t, ansi);
-            if (!chain.isEmpty()) {
-                String stepConnector = ansi ? Theme.colorize("╰─ ", t.darkGray()) : "`- ";
-                CliOutput.out(spine + stepConnector + chain);
-            }
-            return;
-        }
-
-        List<TaskForecast.Task> ph = m.steps();
-        // Pad each step name to the widest in this module with bright-black dots so the
-        // □ / ✓ column lines up (package-assembly is longer than compile-main, etc.).
-        int nameCol = 0;
-        for (TaskForecast.Task p : ph) {
-            nameCol = Math.max(nameCol, p.name().length());
-        }
-        nameCol += STEP_NAME_DOT_GAP;
-        // Pad each □ step's command to the widest in this module so the · column lines up.
-        int commandCol = 0;
-        for (TaskForecast.Task p : ph) {
-            if (!p.cached()) commandCol = Math.max(commandCol, commandWidth(p.text()));
-        }
-        for (int k = 0; k < ph.size(); k++) {
-            boolean lp = k == ph.size() - 1;
-            String stepConnector = ansi ? Theme.colorize(lp ? "╰─ " : "├─ ", t.darkGray()) : (lp ? "`- " : "+- ");
-            String stepName = formatStepName(ph.get(k).name(), nameCol, t, ansi);
-            CliOutput.out(spine + stepConnector + stepName + renderStatus(ph.get(k), commandCol, t, ansi));
-        }
-    }
-
-    /**
      * Roll material tasks up into a web-style phase chain: {@code ✓ Compile › □ Test ~28 tests › □
      * Package}. Stages follow {@link BuildStage} pipeline order; bookkeeping-only steps are
      * omitted so stamp/resolve noise never appears.
@@ -400,8 +361,8 @@ public final class ExplainCommand implements CliCommand {
         if (byStage.isEmpty()) return "";
 
         List<BuildStage> order = byStage.keySet().stream()
-                .sorted(Comparator.comparingInt((BuildStage s) ->
-                                s == BuildStage.OTHER ? Integer.MAX_VALUE : s.pipelineOrder())
+                .sorted(Comparator.comparingInt(
+                                (BuildStage s) -> s == BuildStage.OTHER ? Integer.MAX_VALUE : s.pipelineOrder())
                         .thenComparing(BuildStage::wireName))
                 .toList();
 
@@ -417,8 +378,7 @@ public final class ExplainCommand implements CliCommand {
     }
 
     /** One phase token: {@code ✓ Compile} (green) or {@code □ Test ~28 tests} (blue + dim detail). */
-    private static String renderPhaseToken(
-            BuildStage stage, boolean dirty, String detail, Theme t, boolean ansi) {
+    private static String renderPhaseToken(BuildStage stage, boolean dirty, String detail, Theme t, boolean ansi) {
         String glyph = dirty ? Glyphs.PENDING : Glyphs.CHECK;
         String label = stage.displayName();
         if (!ansi) {
@@ -481,11 +441,13 @@ public final class ExplainCommand implements CliCommand {
                 modules.stream().mapToInt(TaskForecast.Module::testCount).sum();
         int totalJars =
                 (int) modules.stream().filter(TaskForecast.Module::producesJar).count();
-        int totalNatives = (int) modules.stream().filter(ExplainCommand::producesNative).count();
+        int totalNatives =
+                (int) modules.stream().filter(ExplainCommand::producesNative).count();
         int totalImages = (int)
                 modules.stream().filter(TaskForecast.Module::producesImage).count();
 
-        int dirtyModules = (int) modules.stream().filter(TaskForecast.Module::dirty).count();
+        int dirtyModules =
+                (int) modules.stream().filter(TaskForecast.Module::dirty).count();
         int dirtySources = modules.stream()
                 .filter(TaskForecast.Module::dirty)
                 .mapToInt(TaskForecast.Module::sourceCount)
@@ -494,8 +456,8 @@ public final class ExplainCommand implements CliCommand {
                 .filter(TaskForecast.Module::dirty)
                 .mapToInt(TaskForecast.Module::testCount)
                 .sum();
-        int dirtyJars = (int)
-                modules.stream().filter(m -> m.dirty() && m.producesJar()).count();
+        int dirtyJars =
+                (int) modules.stream().filter(m -> m.dirty() && m.producesJar()).count();
         int dirtyNatives = (int)
                 modules.stream().filter(m -> m.dirty() && producesNative(m)).count();
         int dirtyImages = (int)
@@ -504,15 +466,10 @@ public final class ExplainCommand implements CliCommand {
         // Rows: label, total cell text, rebuild count, total count (for per-item delta only).
         record PlanRow(String item, String totalCell, int rebuild, int total) {}
         List<PlanRow> planRows = new ArrayList<>();
-        planRows.add(new PlanRow(
-                "Modules",
-                boldNum(totalModules, t, ansi) + " in workspace",
-                dirtyModules,
-                totalModules));
-        planRows.add(new PlanRow(
-                "Sources", boldNum(totalSources, t, ansi) + " files", dirtySources, totalSources));
-        planRows.add(new PlanRow(
-                "Tests", boldNum(totalTests, t, ansi) + " methods", dirtyTests, totalTests));
+        planRows.add(
+                new PlanRow("Modules", boldNum(totalModules, t, ansi) + " in workspace", dirtyModules, totalModules));
+        planRows.add(new PlanRow("Sources", boldNum(totalSources, t, ansi) + " files", dirtySources, totalSources));
+        planRows.add(new PlanRow("Tests", boldNum(totalTests, t, ansi) + " methods", dirtyTests, totalTests));
         if (totalJars > 0) {
             planRows.add(new PlanRow(
                     "Packages",
@@ -535,55 +492,25 @@ public final class ExplainCommand implements CliCommand {
                     totalImages));
         }
 
-        String[] headers = {"Plan Item", "Total", "Rebuild", "Delta"};
-        List<List<String>> cells = new ArrayList<>();
+        Table table = new Table("Build Plan").columns("Plan Item", "Total", "Rebuild", "Delta");
         for (PlanRow r : planRows) {
-            cells.add(List.of(
-                    r.item(),
-                    r.totalCell(),
-                    colorRebuild(r.rebuild(), t, ansi),
-                    colorDelta(pctValue(r.rebuild(), r.total()), t, ansi)));
+            table.row(
+                    RichText.plain(r.item()),
+                    RichText.ansi(r.totalCell()),
+                    RichText.ansi(colorRebuild(r.rebuild(), t, ansi)),
+                    RichText.ansi(colorDelta(pctValue(r.rebuild(), r.total()), t, ansi)));
         }
-
-        // Column widths from visible cell content (ANSI-stripped).
-        int[] w = new int[4];
-        for (int i = 0; i < 4; i++) w[i] = BoxTable.visibleWidth(headers[i]);
-        for (var row : cells) {
-            for (int i = 0; i < 4; i++) w[i] = Math.max(w[i], BoxTable.visibleWidth(row.get(i)));
-        }
-        // Footer: effort = remaining ETA / full-rebuild ETA (not a count average).
         int effortPct = rebuildEffortPct(etaMillis, fullEtaMillis);
-        String effortLabel = "Total rebuild effort";
-        String effortValue = colorDelta(effortPct, t, ansi);
-        String etaLabel = "Build time estimate";
-        String etaValue = Theme.colorize(buildTimeEstimateValue(etaMillis, fullyCached), t.warning());
-        // Left span = col0 + col1; right span = col2 + col3 (plus inter-column gutters).
-        int leftSpan = w[0] + 2 + 1 + w[1] + 2; // cell pads + mid rail
-        int rightSpan = w[2] + 2 + 1 + w[3] + 2;
-        int leftNeed = Math.max(BoxTable.visibleWidth(effortLabel), BoxTable.visibleWidth(etaLabel)) + 2;
-        int rightNeed = Math.max(BoxTable.visibleWidth(effortValue), BoxTable.visibleWidth(etaValue)) + 2;
-        if (leftNeed > leftSpan) {
-            w[1] += leftNeed - leftSpan;
-            leftSpan = leftNeed;
-        }
-        if (rightNeed > rightSpan) {
-            w[3] += rightNeed - rightSpan;
-            rightSpan = rightNeed;
-        }
-
-        int inner = leftSpan + 1 + rightSpan; // mid rail between the two footer spans
-        List<String> out = new ArrayList<>();
-        out.add(BoxTable.titleBar("Build Plan", inner + 2));
-        out.add(boxDivider("├", "┬", "┤", w, ansi, t));
-        out.add(boxHeaderRow(headers, w, ansi, t));
-        out.add(boxDivider("├", "┼", "┤", w, ansi, t));
-        for (var row : cells) out.add(boxDataRow(row, w, ansi, t));
-        // Footer: collapse 4 body cols → 2 spans (┴ ends a rail, ┼ continues the mid rail).
-        out.add(boxFooterJoin(w, ansi, t));
-        out.add(boxFooterRow(effortLabel, effortValue, leftSpan, rightSpan, ansi, t));
-        out.add(boxFooterRow(etaLabel, etaValue, leftSpan, rightSpan, ansi, t));
-        out.add(boxFooterClose(leftSpan, rightSpan, ansi, t));
-        return out;
+        table.append(
+                new Table("")
+                        .columns("Label", "Value")
+                        .row(RichText.plain("Total rebuild effort"), RichText.ansi(colorDelta(effortPct, t, ansi)))
+                        .row(
+                                RichText.plain("Build time estimate"),
+                                RichText.ansi(
+                                        Theme.colorize(buildTimeEstimateValue(etaMillis, fullyCached), t.warning()))),
+                Table.Append.SECTION);
+        return table.render(RenderContext.current().withAnsi(ansi));
     }
 
     private static String boldNum(int n, Theme t, boolean ansi) {
@@ -608,99 +535,6 @@ public final class ExplainCommand implements CliCommand {
         return part * 100 / whole;
     }
 
-    private static String boxDivider(String left, String junction, String right, int[] w, boolean ansi, Theme t) {
-        if (!ansi) {
-            StringBuilder sb = new StringBuilder("+");
-            for (int i = 0; i < w.length; i++) {
-                sb.append("-".repeat(w[i] + 2));
-                sb.append(i == w.length - 1 ? "+" : "+");
-            }
-            return sb.toString();
-        }
-        StringBuilder sb = new StringBuilder(left);
-        for (int i = 0; i < w.length; i++) {
-            sb.append("─".repeat(w[i] + 2));
-            sb.append(i == w.length - 1 ? right : junction);
-        }
-        return Theme.colorize(sb.toString(), t.darkGray());
-    }
-
-    private static String boxHeaderRow(String[] headers, int[] w, boolean ansi, Theme t) {
-        String bar = ansi ? Theme.colorize("│", t.darkGray()) : "|";
-        StringBuilder sb = new StringBuilder(bar);
-        for (int i = 0; i < headers.length; i++) {
-            sb.append(' ')
-                    .append(BoxTable.headerCell(padVisible(headers[i], w[i])))
-                    .append(' ')
-                    .append(bar);
-        }
-        return sb.toString();
-    }
-
-    private static String boxDataRow(List<String> cells, int[] w, boolean ansi, Theme t) {
-        String bar = ansi ? Theme.colorize("│", t.darkGray()) : "|";
-        StringBuilder sb = new StringBuilder(bar);
-        for (int i = 0; i < w.length; i++) {
-            String c = i < cells.size() ? cells.get(i) : "";
-            sb.append(' ').append(padVisible(c, w[i])).append(' ').append(bar);
-        }
-        return sb.toString();
-    }
-
-    /**
-     * Divider that collapses the 4 body columns into the 2-span footer.
-     *
-     * <p>Box-drawing rule: a vertical that <em>ends</em> on this horizontal uses {@code ┴}; a
-     * vertical that <em>continues</em> in the same column (footer mid-rail under Total|Rebuild)
-     * uses {@code ┼}. So: Plan Item|Total → {@code ┴}, Total|Rebuild → {@code ┼}, Rebuild|Delta →
-     * {@code ┴}.
-     */
-    private static String boxFooterJoin(int[] w, boolean ansi, Theme t) {
-        int leftInner = w[0] + 2 + 1 + w[1] + 2;
-        int rightInner = w[2] + 2 + 1 + w[3] + 2;
-        if (!ansi) {
-            return "+" + "-".repeat(leftInner) + "+" + "-".repeat(rightInner) + "+";
-        }
-        // ├─────┴─────┼─────┴─────┤
-        String body = "├"
-                + "─".repeat(w[0] + 2)
-                + "┴"
-                + "─".repeat(w[1] + 2)
-                + "┼"
-                + "─".repeat(w[2] + 2)
-                + "┴"
-                + "─".repeat(w[3] + 2)
-                + "┤";
-        return Theme.colorize(body, t.darkGray());
-    }
-
-    private static String boxFooterRow(
-            String label, String value, int leftSpan, int rightSpan, boolean ansi, Theme t) {
-        String bar = ansi ? Theme.colorize("│", t.darkGray()) : "|";
-        return bar
-                + " "
-                + padVisible(label, leftSpan - 2)
-                + " "
-                + bar
-                + " "
-                + padVisible(value, rightSpan - 2)
-                + " "
-                + bar;
-    }
-
-    private static String boxFooterClose(int leftSpan, int rightSpan, boolean ansi, Theme t) {
-        if (!ansi) {
-            return "+" + "-".repeat(leftSpan) + "+" + "-".repeat(rightSpan) + "+";
-        }
-        return Theme.colorize("╰" + "─".repeat(leftSpan) + "┴" + "─".repeat(rightSpan) + "╯", t.darkGray());
-    }
-
-    /** Right-pad {@code s} to {@code width} visible columns (ANSI-aware). */
-    private static String padVisible(String s, int width) {
-        int len = BoxTable.visibleWidth(s);
-        return len >= width ? s : s + " ".repeat(width - len);
-    }
-
     /**
      * Step name in bright white, right-padded with bright-black {@code .} to {@code width} so the
      * status glyph lines up across steps. Non-ANSI: plain dots, no color.
@@ -719,12 +553,17 @@ public final class ExplainCommand implements CliCommand {
     }
 
     /** The entry project's {@code group:artifact} in bold, each segment in its coord color. */
-    private static String boldCoord(String coord, Theme t) {
+    private static RichText boldGa(String coord) {
+        if (coord == null || coord.isEmpty()) return RichText.empty();
         int colon = coord.indexOf(':');
-        if (colon < 0) return Theme.colorize(coord, t.coordName().bold());
-        return Theme.colorize(coord.substring(0, colon), t.coordGroup().bold())
-                + ":"
-                + Theme.colorize(coord.substring(colon + 1), t.coordName().bold());
+        if (colon < 0) {
+            return RichText.parse("[bold coord-name]" + RichText.escape(coord) + "[/]");
+        }
+        return RichText.parse("[bold coord-group]"
+                + RichText.escape(coord.substring(0, colon))
+                + "[/]:[bold coord-name]"
+                + RichText.escape(coord.substring(colon + 1))
+                + "[/]");
     }
 
     /** The artifact half of a {@code group:artifact} coordinate. */

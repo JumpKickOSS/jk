@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.run;
 
-import cc.jumpkick.cli.tui.CommandManager;
+import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
@@ -12,13 +12,13 @@ import java.util.List;
 
 /**
  * Feeds one workspace module's step/tree events into the shared {@link AggregateContext}'s {@link
- * CommandManager}. Aggregate bar math is engine-owned — this listener does not update
+ * JkManager}. Aggregate bar math is engine-owned — this listener does not update
  * {@link LiveProgress} or workspace percent.
  */
 public final class AggregateModuleListener implements BuildPlanListener {
 
     private final AggregateContext agg;
-    private final CommandManager cm;
+    private final JkManager cm;
     private final String module;
     private final List<Task> steps;
 

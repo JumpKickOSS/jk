@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * chrome line of the invocation (prep spinner, live bar, or settle chip — whichever comes first).
  * {@link #envelopeStart()} is idempotent for the life of a command ({@link #resetEnvelope} at
  * dispatch). Do <strong>not</strong> add a trailing blank after the settle line. Spinners,
- * {@link CommandManager}, and {@link #printOk}/{@link #printFail} all go through
+ * {@link JkManager}, and {@link #printOk}/{@link #printFail} all go through
  * {@link #envelopeStart}. Script-mode commands (paths, tokens, shell hooks) must not use the
  * envelope.
  *
@@ -63,17 +63,17 @@ public final class CommandWedge {
 
     /** Green check chip + message (done successfully). */
     public static String ok(String command, String message) {
-        return BuildPlanWedge.chipLine(Glyphs.CHECK, command, GlobalConfig.nerdfont(), message);
+        return JkWedge.ok(command, message).renderLine(RenderContext.current());
     }
 
     /** Red cross chip + message (done with error). Prefer this over {@code "jk cmd: …"} prefixes. */
     public static String fail(String command, String message) {
-        return BuildPlanWedge.failureLineCustom(command, GlobalConfig.nerdfont(), message);
+        return JkWedge.fail(command, message).renderLine(RenderContext.current());
     }
 
     /** Blue / neutral working chip (play glyph) + message. */
     public static String working(String command, String message) {
-        return BuildPlanWedge.chipLine(Glyphs.PLAY, command, GlobalConfig.nerdfont(), message);
+        return JkWedge.work(command, message).renderLine(RenderContext.current());
     }
 
     /**
@@ -87,30 +87,31 @@ public final class CommandWedge {
     }
 
     /**
-     * Blue menu chip used as the left half of a box-table title ({@link BoxTable#titleBar}): {@code
-     * ≡ Title} on the plan-blue chip. Prefer {@link BoxTable#titleBar} for full table chrome.
+     * Blue menu chip used as the left half of a box-table title: {@code
+     * ≡ Title} on the plan-blue chip. Prefer {@link Table} for full table chrome.
      */
     public static String menu(String title) {
-        return BuildPlanWedge.planChip(Glyphs.MENU, title == null ? "" : title, GlobalConfig.nerdfont());
+        return JkWedge.menu(title).renderLine(RenderContext.current());
     }
 
     /** Generic chip with caller-chosen glyph. */
     public static String chip(String glyph, String command, String message) {
-        return BuildPlanWedge.chipLine(glyph, command, GlobalConfig.nerdfont(), message);
+        return new JkWedge(Icon.fromGlyph(glyph), command, RichText.ansi(message == null ? "" : message))
+                .renderLine(RenderContext.current());
     }
 
     /** Settled failure with "Failed to &lt;command&gt;" phrasing. */
     public static String failedTo(String command, String tail) {
-        return BuildPlanWedge.failureLine(command, GlobalConfig.nerdfont(), tail);
+        return JkWedge.failureLine(command, GlobalConfig.nerdfont(), tail);
     }
 
     /** Explicit nerdfont flag for tests / custom rendering. */
     public static String ok(String command, String message, boolean nerdfont) {
-        return BuildPlanWedge.chipLine(Glyphs.CHECK, command, nerdfont, message);
+        return JkWedge.ok(command, message).renderLine(RenderContext.current().withNerd(nerdfont));
     }
 
     public static String fail(String command, String message, boolean nerdfont) {
-        return BuildPlanWedge.failureLineCustom(command, nerdfont, message);
+        return JkWedge.fail(command, message).renderLine(RenderContext.current().withNerd(nerdfont));
     }
 
     /**
@@ -124,7 +125,7 @@ public final class CommandWedge {
 
     /**
      * Like {@link #envelopeStart()} but writes the blank on {@code out} (e.g. a test capture stream
-     * or {@link CommandManager}'s sink).
+     * or {@link JkManager}'s sink).
      */
     public static void envelopeStart(PrintStream out) {
         if (ENVELOPE_STARTED.compareAndSet(false, true)) {

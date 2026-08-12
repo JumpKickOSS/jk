@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.run;
 
-import cc.jumpkick.cli.tui.CommandManager;
+import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
@@ -13,17 +13,17 @@ import java.util.List;
 
 /**
  * Console listener for plan-oriented commands ({@code jk build} and friends): drives a {@link
- * CommandManager} in plan mode — a spinner header, an aggregate progress bar, and a dynamic step
+ * JkManager} in plan mode — a spinner header, an aggregate progress bar, and a dynamic step
  * list. On completion the live region is replaced by a {@code ✓}/{@code ✗} result line built from
  * the {@link ConsoleSpec} mappers.
  *
  * <p>When constructed with a {@code null} {@link ConsoleSpec} the listener uses {@code command} as the
- * display name and calls {@link CommandManager#dismiss} on completion (the caller owns the result
+ * display name and calls {@link JkManager#dismiss} on completion (the caller owns the result
  * line). This is used by {@link BuildPlanConsole#run(cc.jumpkick.run.BuildPlan, BuildPlanConsole.Mode,
- * java.nio.file.Path)} to drive the CommandManager spinner for simple plans.
+ * java.nio.file.Path)} to drive the JkManager spinner for simple plans.
  *
  * <p>All steps of this plan are attributed to a single {@code module} (the project's {@code
- * group:artifact}). Workspace aggregation across modules feeds one shared {@link CommandManager}
+ * group:artifact}). Workspace aggregation across modules feeds one shared {@link JkManager}
  * from several plans; that path is built on the same component.
  */
 public final class CommandManagerListener implements BuildPlanListener {
@@ -42,8 +42,8 @@ public final class CommandManagerListener implements BuildPlanListener {
      */
     private final boolean aggregateRider;
 
-    private CommandManager cm;
-    private CommandManager.OutputScope capture;
+    private JkManager cm;
+    private JkManager.OutputScope capture;
 
     public CommandManagerListener(PrintStream out, ConsoleSpec spec, String module, List<Task> steps, boolean animate) {
         this(out, spec, module, steps, animate, true);
@@ -67,7 +67,7 @@ public final class CommandManagerListener implements BuildPlanListener {
 
     /**
      * No-spec constructor: uses {@code command} as the spinner display name and calls {@link
-     * CommandManager#dismiss} on completion so the caller can print its own result line.
+     * JkManager#dismiss} on completion so the caller can print its own result line.
      */
     public CommandManagerListener(PrintStream out, String command, String module, List<Task> steps, boolean animate) {
         this.out = out;
@@ -81,7 +81,7 @@ public final class CommandManagerListener implements BuildPlanListener {
 
     @Override
     public void planStart(BuildPlanView view) {
-        cm = CommandManager.plan(out, command, animate);
+        cm = JkManager.plan(out, command, animate);
         cm.target(module);
         for (Task p : steps) {
             cm.addTaskLabeled(module, p.name(), display(p));
@@ -161,7 +161,7 @@ public final class CommandManagerListener implements BuildPlanListener {
         // Restore the real streams before settling so the result line isn't
         // itself routed back above the (closing) region.
         if (capture != null) capture.close();
-        if (cm == null) cm = CommandManager.plan(out, command, animate);
+        if (cm == null) cm = JkManager.plan(out, command, animate);
         // No-spec path: the caller owns the result line — just clean up the live region.
         if (spec == null) {
             cm.dismiss();

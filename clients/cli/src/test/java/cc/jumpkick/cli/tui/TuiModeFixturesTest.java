@@ -7,6 +7,7 @@ import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
@@ -26,7 +27,7 @@ class TuiModeFixturesTest {
         withConfig(noAnsiConfig(), () -> {
             String ok = CommandWedge.ok("Build", "done", false);
             String fail = CommandWedge.fail("Build", "boom", false);
-            String table = BoxTable.titleBar("Installed JDKs", 40);
+            String table = JkWedge.menu("Installed JDKs").renderTitleBar(RenderContext.current(), 40);
             assertThat(ok).isEqualTo(" + Build > done");
             assertThat(fail).isEqualTo(" ! Build > boom");
             assertThat(table).startsWith(" = Installed JDKs > ").endsWith("+");
@@ -36,8 +37,8 @@ class TuiModeFixturesTest {
         });
 
         // When ANSI is available in the suite, check nerd vs non-nerd caps.
-        String nerd = BuildPlanWedge.chipLine(Glyphs.CHECK, "Clean", true, "ok");
-        String ansi = BuildPlanWedge.chipLine(Glyphs.CHECK, "Clean", false, "ok");
+        String nerd = JkWedge.chipLine(Glyphs.CHECK, "Clean", true, "ok");
+        String ansi = JkWedge.chipLine(Glyphs.CHECK, "Clean", false, "ok");
         if (!nerd.startsWith("+")) {
             assertThat(nerd).contains(PUA);
             assertThat(ansi).doesNotContain(PUA);
@@ -45,6 +46,26 @@ class TuiModeFixturesTest {
             assertThat(ansi).contains("Clean").contains("ok");
             assertThat(ansi).contains(CSI); // colored chip
         }
+    }
+
+    @Test
+    void tree_plain_is_ascii_connectors_and_bracket_pills() {
+        List<String> lines = new Tree("Build Graph")
+                .root(Tree.node(Icon.pulse(), "g:a")
+                        .child(Tree.node(Pill.of("Rebuild"), "1 module is dirty")
+                                .child(Tree.node(Pill.branded("core")).body(RichText.plain("[ ] Compile")))))
+                .render(RenderContext.current().withAnsi(false));
+        String joined = String.join("\n", lines);
+        assertThat(lines)
+                .containsExactly(
+                        " = Build Graph >",
+                        " * g:a",
+                        " |",
+                        " `-[Rebuild] 1 module is dirty",
+                        "    |",
+                        "    `-[core]",
+                        "       `- [ ] Compile");
+        assertThat(joined).doesNotContain(CSI).doesNotContain(PUA).doesNotContain("├").doesNotContain("╰");
     }
 
     @Test

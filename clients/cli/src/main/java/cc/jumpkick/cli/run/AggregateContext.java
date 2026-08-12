@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.run;
 
-import cc.jumpkick.cli.tui.CommandManager;
+import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.WorkspaceProgressTracker;
 import java.util.List;
 
 /**
- * Shared workspace UI sink for the CLI: one {@link CommandManager} plus last errors.
+ * Shared workspace UI sink for the CLI: one {@link JkManager} plus last errors.
  *
  * <p><b>Dumb client</b> aggregate bar math lives in the engine's {@link
  * WorkspaceProgressTracker}. This class only applies engine {@link
@@ -16,14 +16,14 @@ import java.util.List;
  */
 public final class AggregateContext {
 
-    private final CommandManager cm;
+    private final JkManager cm;
     private volatile List<BuildPlanResult.Diagnostic> lastErrors = List.of();
 
-    public AggregateContext(CommandManager cm) {
+    public AggregateContext(JkManager cm) {
         this.cm = cm;
     }
 
-    public CommandManager view() {
+    public JkManager view() {
         return cm;
     }
 

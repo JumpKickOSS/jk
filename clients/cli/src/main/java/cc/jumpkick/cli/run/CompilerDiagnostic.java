@@ -90,8 +90,10 @@ public final class CompilerDiagnostic {
 
     /** Java unless the header's file ends in {@code .kt}/{@code .kts}. */
     private static SyntaxHighlight.Language languageOf(String file) {
-        return file.endsWith(".kt") || file.endsWith(".kts")
-                ? SyntaxHighlight.Language.KOTLIN
-                : SyntaxHighlight.Language.JAVA;
+        if (file.endsWith(".kt") || file.endsWith(".kts")) return SyntaxHighlight.Language.KOTLIN;
+        if (file.endsWith(".groovy") || file.endsWith(".gvy") || file.endsWith(".gy")) {
+            return SyntaxHighlight.Language.GROOVY;
+        }
+        return SyntaxHighlight.Language.JAVA;
     }
 }
