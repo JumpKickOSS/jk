@@ -350,7 +350,7 @@
           <div class="tile"><span class="lbl">pid</span><span class="kpi">{{ status.pid }}</span></div>
           <div class="tile"><span class="lbl">uptime</span><span class="kpi">{{ uptime() }}</span></div>
           <div class="tile"><span class="lbl" data-tip="Live CLI (UDS/TCP) sockets + dashboard/MCP SSE streams">connections</span><span class="kpi">{{ status.activeRequests }}</span></div>
-          <div class="tile"><span class="lbl" data-tip="In-flight build/test/lock jobs right now — not lifetime build count">Builds Running</span><span class="kpi" :class="{ ok: status.activeBuildPlans > 0 }">{{ status.activeBuildPlans }}</span></div>
+          <div class="tile"><span class="lbl" data-tip="In-flight build/test/lock jobs right now — not lifetime build count">builds running</span><span class="kpi" :class="{ ok: status.activeBuildPlans > 0 }">{{ status.activeBuildPlans }}</span></div>
         </div>
 
         <div class="panels">
