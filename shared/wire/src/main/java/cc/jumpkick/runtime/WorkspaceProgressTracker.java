@@ -128,8 +128,12 @@ public final class WorkspaceProgressTracker {
         this.annotatedRemainingMs = r0;
         if (modulesTotal > 0) this.modulesTotal = modulesTotal;
         tickElapsed();
-        // First seed bases at the current tracker-clock elapsed (0 when seeded immediately).
-        if (r0 > 0 && seedAtElapsedMs == 0) seedAtElapsedMs = elapsedClockMs;
+        // Every accepted seed re-anchors the clock base — matching the CLI, whose pre-execute
+        // re-seed always re-anchors (setRemainingWorkEstimate). The old `seedAtElapsedMs == 0`
+        // guard conflated "never seeded" with "seeded at elapsed 0": a provisional → refined
+        // re-seed kept the stale anchor iff the first seed landed later than tracker-elapsed 0,
+        // and SSE percent silently diverged from the TUI bar (JK-1851).
+        if (r0 > 0) seedAtElapsedMs = elapsedClockMs;
         return recompute();
     }
 
@@ -251,7 +255,8 @@ public final class WorkspaceProgressTracker {
         }
     }
 
-    private long elapsedEpochNanos;
+    // Package-private: WorkspaceProgressTrackerTest rewinds the epoch to simulate elapsed time.
+    long elapsedEpochNanos;
 
     private Snapshot recompute() {
         long execSum = completedBase;
