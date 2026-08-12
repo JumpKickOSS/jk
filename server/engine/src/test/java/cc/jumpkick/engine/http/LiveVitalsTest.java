@@ -206,6 +206,7 @@ class LiveVitalsTest {
             // Seed the snapshot the way the sampler would (one slow capture, off-path here).
             live.publishCache(true);
             assertThat(sub.next(2_000)).contains("event: cache");
+            int afterSeed = captures.get();
 
             long before = System.nanoTime();
             live.hydrateFor(sub);
@@ -216,6 +217,27 @@ class LiveVitalsTest {
             assertThat(status1).isNotNull().contains("event: status");
             assertThat(frame).isNotNull().contains("event: cache").contains("\"thin\":true");
             assertThat(elapsedMillis).isLessThan(900); // served from the stored snapshot, not a walk
+            Thread.sleep(50);
+            assertThat(captures.get()).isEqualTo(afterSeed); // no async refresh walk on hydrate
+        }
+    }
+
+    @Test
+    void hydrate_without_snapshot_does_not_walk() throws Exception {
+        HttpEvents hub = new HttpEvents();
+        AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
+        AtomicInteger captures = new AtomicInteger();
+        Supplier<CacheSnapshot> capture = () -> {
+            captures.incrementAndGet();
+            return new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0);
+        };
+        try (LiveVitals live = new LiveVitals(hub, status::get, capture);
+                HttpEvents.Subscription sub = hub.subscribe()) {
+            live.hydrateFor(sub);
+            assertThat(sub.next(500)).contains("event: status");
+            assertThat(sub.next(100)).isNull(); // no cache frame without a stored snapshot
+            Thread.sleep(50);
+            assertThat(captures.get()).isZero();
         }
     }
 

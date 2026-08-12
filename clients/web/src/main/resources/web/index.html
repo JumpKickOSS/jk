@@ -81,7 +81,7 @@
         <span class="retention">Last 50 requests</span>
         <span class="spacer"></span>
         <form class="trigger" @submit.prevent="triggerBuild()">
-          <input v-model="buildDir" placeholder="/absolute/path/to/workspace" spellcheck="false">
+          <input v-model="buildDir" placeholder="/path/to/workspace" spellcheck="false">
           <button type="button" class="browse" @click="openBrowser()" aria-label="Browse for a workspace" data-tip="Browse for a workspace"><jk-icon name="folder-open"></jk-icon></button>
           <button type="submit"><jk-icon name="bolt"></jk-icon>Build</button>
         </form>
@@ -349,8 +349,8 @@
           <div class="tile"><span class="lbl">version</span><span class="kpi">{{ status.version }}</span></div>
           <div class="tile"><span class="lbl">pid</span><span class="kpi">{{ status.pid }}</span></div>
           <div class="tile"><span class="lbl">uptime</span><span class="kpi">{{ uptime() }}</span></div>
-          <div class="tile"><span class="lbl">connections</span><span class="kpi">{{ status.activeRequests }}</span></div>
-          <div class="tile"><span class="lbl">build plans</span><span class="kpi" :class="{ ok: status.activeBuildPlans > 0 }">{{ status.activeBuildPlans }}</span></div>
+          <div class="tile"><span class="lbl" data-tip="Live CLI (UDS/TCP) sockets + dashboard/MCP SSE streams">connections</span><span class="kpi">{{ status.activeRequests }}</span></div>
+          <div class="tile"><span class="lbl" data-tip="In-flight build/test/lock jobs right now — not lifetime build count">Builds Running</span><span class="kpi" :class="{ ok: status.activeBuildPlans > 0 }">{{ status.activeBuildPlans }}</span></div>
         </div>
 
         <div class="panels">
@@ -369,7 +369,7 @@
           </div>
         </div>
 
-        <!-- Running build stats (docs/metrics.md): KPI tiles here; the steps table is last. -->
+        <!-- Running build stats (docs/metrics.md): KPI tiles here; the tasks table is last. -->
         <template v-if="metrics && metrics.length">
           <div class="tiles">
             <div class="tile"><span class="lbl">builds recorded</span><span class="kpi">{{ metricsTotals().runs }}</span></div>
@@ -445,15 +445,15 @@
           </div>
         </div>
 
-        <!-- Steps table; engine log is always the final row. -->
+        <!-- Tasks table; engine log is always the final row. -->
         <div v-if="metrics && metrics.length" class="panels">
           <div class="panel wide">
-            <div class="panel-head"><span class="lbl">steps (by total time)</span><span class="spacer"></span><span class="mono dim">state/builds/metrics.json</span></div>
+            <div class="panel-head"><span class="lbl">tasks (by total time)</span><span class="spacer"></span><span class="mono dim">state/builds/metrics.json</span></div>
             <table class="stats">
-              <thead><tr><th>Step</th><th>Runs</th><th>Avg</th><th>Min</th><th>Max</th><th>Total</th><th>Failed</th></tr></thead>
+              <thead><tr><th>Task</th><th>Runs</th><th>Avg</th><th>Min</th><th>Max</th><th>Total</th><th>Failed</th></tr></thead>
               <tbody>
-                <tr v-for="r in metricsSteps()" :key="r.step">
-                  <td class="mono">{{ r.step }}</td>
+                <tr v-for="r in metricsSteps()" :key="r.task">
+                  <td class="mono">{{ r.task }}</td>
                   <td>{{ r.okCount }}</td>
                   <td>{{ duration(r.okAvgMillis) }}</td>
                   <td>{{ duration(r.okMinMillis) }}</td>

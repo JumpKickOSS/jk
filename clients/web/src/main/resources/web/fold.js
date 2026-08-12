@@ -23,8 +23,26 @@ export function foldEvent(cards, event) {
   const d = event.data || {};
   switch (event.type) {
     case 'request-start': {
+      // Engine startedAt (admission) beats client receipt time — late join / rehydrate must match TUI.
+      const engineStart =
+        typeof d.startedAt === 'number' && d.startedAt > 0 ? d.startedAt : null;
       // Already attached (SSE connect rehydrate replayed, or this tab started the job).
-      if (cards.some((c) => c.id === d.requestId)) break;
+      const attached = cards.find((c) => c.id === d.requestId);
+      if (attached) {
+        if (engineStart != null && (attached.startedAt == null || engineStart < attached.startedAt)) {
+          attached.startedAt = engineStart;
+        }
+        if (d.coord) attached.coord = d.coord;
+        if (d.projectId) attached.projectId = d.projectId;
+        if (d.buildNumber) attached.buildNumber = d.buildNumber;
+        if (typeof d.progress === 'number') {
+          attached.progressPercent = d.progress;
+          if (typeof attached.peakPct !== 'number' || d.progress > attached.peakPct) {
+            attached.peakPct = Math.min(99, Math.round(d.progress));
+          }
+        }
+        break;
+      }
       // Reconcile with a durable in-flight history row (refresh / other tab) when buildNumber matches.
       const existing = cards.find(
         (c) =>
@@ -37,6 +55,15 @@ export function foldEvent(cards, event) {
         existing.id = d.requestId; // prefer live request id for subsequent SSE
         if (d.coord) existing.coord = d.coord;
         if (d.projectId) existing.projectId = d.projectId;
+        if (engineStart != null && (existing.startedAt == null || engineStart < existing.startedAt)) {
+          existing.startedAt = engineStart;
+        }
+        if (typeof d.progress === 'number') {
+          existing.progressPercent = d.progress;
+          if (typeof existing.peakPct !== 'number' || d.progress > existing.peakPct) {
+            existing.peakPct = Math.min(99, Math.round(d.progress));
+          }
+        }
         break;
       }
       cards.unshift({
@@ -47,7 +74,7 @@ export function foldEvent(cards, event) {
         projectId: d.projectId || null,
         buildNumber: d.buildNumber || null,
         state: 'running',
-        startedAt: event.at ?? null,
+        startedAt: engineStart ?? event.at ?? null,
         finishedAt: null,
         millis: null,
         cancelled: false,
@@ -60,9 +87,10 @@ export function foldEvent(cards, event) {
         // progressPercent from engine workspace-progress (JK-1120) — dumb client, no re-sum.
         mods: {},
         planWeight: 0,
-        progressPercent: null, // 0–100 from workspace-progress; null until first aggregate event
+        progressPercent: typeof d.progress === 'number' ? d.progress : null,
         progressNum: 0,
         progressDen: 0,
+        peakPct: typeof d.progress === 'number' ? Math.min(99, Math.round(d.progress)) : undefined,
         etaMillis: null,
         etaAt: null,
         output: [],
@@ -95,9 +123,9 @@ export function foldEvent(cards, event) {
       const card = resolveCard(cards, d);
       if (card) {
         const row = stepRow(card, d.dir, (d.task || d.step), d.stage, event.at);
-        row.state = stepState(d.status);
         // Engine carries millis (additive); duration_ms is the CLI jsonl alias; else receipt delta.
         row.millis = stepMillisOf(d, row, event.at);
+        row.state = stepState(d.status, row.millis);
         // Keep last message for a moment of context only while running rows use it; finished
         // phases do not surface live detail.
       }
@@ -128,8 +156,13 @@ export function foldEvent(cards, event) {
       if (card) {
         card.progressNum = d.numerator || 0;
         card.progressDen = d.denominator || 0;
-        if (typeof d.progress === 'number') card.progressPercent = d.progress;
-        else if (card.progressDen > 0) {
+        if (typeof d.progress === 'number') {
+          card.progressPercent = d.progress;
+          // Floor the painted bar at the engine's weighted % so a late-join clock seed cannot
+          // flash 0% when the build is already mid-flight (then clock/adaptive climb from there).
+          const floor = Math.min(99, Math.round(d.progress));
+          if (typeof card.peakPct !== 'number' || floor > card.peakPct) card.peakPct = floor;
+        } else if (card.progressDen > 0) {
           card.progressPercent = Math.min(100, Math.round((100 * card.progressNum) / card.progressDen));
         }
         // Residual RemainingWork: adaptive bar + countdown re-anchor. Prefer CURRENT remainingMs
@@ -145,11 +178,13 @@ export function foldEvent(cards, event) {
             // remainingMs 0 = effectively done — leave unseeded rather than count down R0.
             if (rem > 0) {
               card.r0Ms = rem;
-              card.r0At = event.at ?? Date.now();
+              // Anchor R0 to engine start when known so clock progress = elapsed/(elapsed+remaining)
+              // matches the TUI after a mid-build join (not "since this tab connected").
+              card.r0At = card.startedAt != null ? card.startedAt : (event.at ?? Date.now());
             }
           } else if (typeof d.R0 === 'number' && d.R0 > 0) {
             card.r0Ms = d.R0;
-            card.r0At = event.at ?? Date.now();
+            card.r0At = card.startedAt != null ? card.startedAt : (event.at ?? Date.now());
           }
         }
       }
@@ -233,10 +268,68 @@ export function foldEvent(cards, event) {
       }
       break;
     }
+    case 'run-snapshot': {
+      // One compact mid-flight catch-up frame (SSE connect). Prefer this over N task events so
+      // live workspace-progress/eta are never stuck behind a phase-replay backlog.
+      applyRunSnapshot(cards, d, event.at);
+      break;
+    }
     default:
       break; // unknown event types are future vocabulary, never an error
   }
   return cards;
+}
+
+/**
+ * Atomically apply an engine mid-flight snapshot: identity, progress/ETA anchors, and phase
+ * chains. Idempotent with history seed and subsequent live events.
+ */
+function applyRunSnapshot(cards, d, at) {
+  if (!d || d.requestId == null) return;
+  // Ensure a running card exists (same paths as request-start rehydrate).
+  foldEvent(cards, {
+    type: 'request-start',
+    data: {
+      requestId: d.requestId,
+      jid: d.jid ?? d.requestId,
+      kind: d.kind,
+      dir: d.dir,
+      coord: d.coord,
+      projectId: d.projectId,
+      buildNumber: d.buildNumber,
+      startedAt: d.startedAt,
+      progress: d.progress,
+    },
+    at,
+  });
+  const card = resolveCard(cards, d);
+  if (!card) return;
+  if (typeof d.startedAt === 'number' && d.startedAt > 0) {
+    if (card.startedAt == null || d.startedAt < card.startedAt) card.startedAt = d.startedAt;
+  }
+  if (typeof d.progress === 'number') {
+    card.progressPercent = d.progress;
+    const floor = Math.min(99, Math.round(d.progress));
+    if (typeof card.peakPct !== 'number' || floor > card.peakPct) card.peakPct = floor;
+  }
+  if (typeof d.numerator === 'number') card.progressNum = d.numerator;
+  if (typeof d.denominator === 'number' && d.denominator > 0) card.progressDen = d.denominator;
+  applyLiveEtaFields(card, d);
+  // Always take the snapshot's phase chains when present — they are the engine's current truth
+  // (history stub is empty; live card may still be empty if this is the first frame).
+  const mods = historyModules({
+    running: true,
+    dir: d.dir || card.dir || '',
+    coord: d.coord || card.coord,
+    cancelled: false,
+    success: false,
+    startedAt: card.startedAt,
+    modules: d.modules,
+    tasks: d.tasks,
+    steps: d.steps,
+    diagnostics: d.diagnostics,
+  });
+  if (mods.length > 0) card.modules = mods;
 }
 
 /**
@@ -320,7 +413,23 @@ export function seedFromHistory(cards, records) {
       // Enriched history may carry the engine requestId — rebind a journal stub for SSE.
       const liveId = rec.requestId ?? rec.jid;
       if (rec.running && typeof liveId === 'number' && liveId > 0) live.id = liveId;
-      if (typeof rec.progress === 'number') live.progressPercent = rec.progress;
+      // Prefer engine admission time over browser receipt of a late request-start.
+      if (typeof rec.startedAt === 'number' && rec.startedAt > 0) {
+        if (live.startedAt == null || rec.startedAt < live.startedAt) live.startedAt = rec.startedAt;
+      }
+      if (typeof rec.progress === 'number') {
+        live.progressPercent = rec.progress;
+        const floor = Math.min(99, Math.round(rec.progress));
+        if (typeof live.peakPct !== 'number' || floor > live.peakPct) live.peakPct = floor;
+      }
+      if (typeof rec.numerator === 'number') live.progressNum = rec.numerator;
+      if (typeof rec.denominator === 'number' && rec.denominator > 0) live.progressDen = rec.denominator;
+      applyLiveEtaFields(live, rec);
+      // Enriched mid-flight modules/tasks fill empty phase chains (journal stub is empty until complete).
+      if (rec.running && (!live.modules || live.modules.length === 0)) {
+        const mods = historyModules(rec);
+        if (mods.length > 0) live.modules = mods;
+      }
       continue;
     }
     if (cards.some((c) => c.id === 'h:' + rec.id)) continue; // already seeded
@@ -350,7 +459,7 @@ function historyCard(rec) {
   let progressPercent = null;
   if (typeof rec.progress === 'number') progressPercent = rec.progress;
   else if (typeof rec.progressPercent === 'number') progressPercent = rec.progressPercent;
-  return {
+  const card = {
     id,
     historyId: rec.id,
     buildNumber: rec.buildNumber || null,
@@ -369,12 +478,44 @@ function historyCard(rec) {
     mods: {},
     planWeight: 0,
     progressPercent,
-    progressNum: 0,
-    progressDen: 0,
+    progressNum: typeof rec.numerator === 'number' ? rec.numerator : 0,
+    progressDen: typeof rec.denominator === 'number' ? rec.denominator : 0,
+    peakPct: typeof progressPercent === 'number' ? Math.min(99, Math.round(progressPercent)) : undefined,
     etaMillis: typeof rec.etaMillis === 'number' ? rec.etaMillis : null,
     etaAt: null,
     io: rec.io ? normalizeIo(rec.io) : null,
   };
+  if (running) applyLiveEtaFields(card, rec);
+  return card;
+}
+
+/**
+ * Apply engine residual / R0 fields from an enriched history row (or equivalent) so countdown and
+ * clock progress match a tab that watched from request-start. {@code remainingMs} is current as of
+ * this response — stamp residualAt to now so deadline = elapsed + remaining.
+ */
+function applyLiveEtaFields(card, rec) {
+  if (!card || !rec) return;
+  const rem = typeof rec.remainingMs === 'number' && rec.remainingMs >= 0 ? rec.remainingMs : null;
+  const now = Date.now();
+  if (rem != null) {
+    card.residualRemainingMs = rem;
+    card.residualAt = now;
+  }
+  if (card.r0Ms == null) {
+    if (typeof rec.R0 === 'number' && rec.R0 > 0) {
+      card.r0Ms = rec.R0;
+      card.r0At = card.startedAt != null ? card.startedAt : now;
+    } else if (rem != null && rem > 0 && card.startedAt != null) {
+      // No original R0 on the wire: synthesize total ≈ elapsed + remaining so auto clock mode
+      // engages and paints elapsed/(elapsed+remaining) instead of a 0% late-join flash.
+      card.r0Ms = Math.max(rem, now - card.startedAt + rem);
+      card.r0At = card.startedAt;
+    } else if (rem != null && rem > 0) {
+      card.r0Ms = rem;
+      card.r0At = now;
+    }
+  }
 }
 
 /**
@@ -454,33 +595,48 @@ function historyDiags(diags, dir) {
  * Module rows for a persisted record, matching the live card shape (each with its own step chain).
  * A workspace record has `modules[]` each carrying `steps`; a single-project record has no modules
  * and its steps at the top level — synthesize one row from them so backfilled cards match live.
+ * In-flight enriched rows may include {@code RUN} tasks and unfinished modules (no success yet).
  */
 function historyModules(rec) {
+  const running = !!rec.running;
   const toSteps = (ps) =>
-    (ps || []).map((p) => ({
-      name: p.name || '?',
-      state: stepState(p.status),
-      phase: p.stage || p.group || p.phase || '',
-      // Journal tasks always carry millis (0 when unknown); keep null only if the field is absent.
-      millis: typeof p.millis === 'number' ? p.millis : null,
-      message: '',
-    }));
+    (ps || []).map((p) => {
+      const millis = typeof p.millis === 'number' ? p.millis : null;
+      return {
+        name: p.name || '?',
+        state: stepState(p.status, millis),
+        phase: p.stage || p.group || p.phase || '',
+        // Journal tasks always carry millis (0 when unknown); keep null only if the field is absent.
+        millis,
+        message: '',
+      };
+    });
   // finishedAt / startedAt give a stable lastActivity for display order after backfill.
   const activity = rec.finishedAt || rec.startedAt || 0;
   if ((rec.modules || []).length > 0) {
     return rec.modules.map((m, i) => {
       const steps = toSteps(m.tasks || m.steps);
+      let state;
+      if (running && !m.success && steps.some((s) => s.state === 'running')) {
+        state = 'running';
+      } else if (running && !m.success && steps.length > 0 && !steps.every((s) => s.state === 'failed' || s.state === 'cancelled')) {
+        // Enriched mid-flight module: finished steps only so far, still in progress.
+        state = steps.some((s) => s.state === 'failed') ? 'failed' : 'running';
+      } else if (m.success) {
+        state = 'success';
+      } else if (steps.some((s) => s.state === 'failed')) {
+        state = 'failed';
+      } else if (rec.cancelled || steps.some((s) => s.state === 'cancelled')) {
+        state = 'cancelled';
+      } else if (running) {
+        state = 'running';
+      } else {
+        state = 'failed';
+      }
       return {
         dir: m.dir || '',
         coord: m.coord || null,
-        // FAIL beats cancel; cancel-only modules (user kill mid-flight) stay cancelled.
-        state: m.success
-          ? 'success'
-          : steps.some((s) => s.state === 'failed')
-            ? 'failed'
-            : rec.cancelled || steps.some((s) => s.state === 'cancelled')
-              ? 'cancelled'
-              : 'failed',
+        state,
         millis: m.millis ?? null,
         steps,
         diagnostics: historyDiags(rec.diagnostics, m.dir || ''),
@@ -492,17 +648,29 @@ function historyModules(rec) {
   // Single-project: no modules, steps at top level. Its diagnostics live in the "" bucket, so take
   // every error the record carries (there is only one module to own them).
   const steps = toSteps(rec.tasks || rec.steps);
-  return [{
-    dir: rec.dir || '',
-    coord: rec.coord || null,
-    // FAIL steps beat a cancel bit (journal/EOF races used to stamp cancelled on test failures).
-    state: steps.some((s) => s.state === 'failed')
+  if (steps.length === 0 && running) return []; // empty stub — wait for SSE / rehydrate phases
+  let state;
+  if (running) {
+    state = steps.some((s) => s.state === 'failed')
+      ? 'failed'
+      : steps.some((s) => s.state === 'running') || steps.length > 0
+        ? 'running'
+        : 'running';
+  } else {
+    state = steps.some((s) => s.state === 'failed')
       ? 'failed'
       : rec.cancelled
         ? 'cancelled'
         : rec.success === false
           ? 'failed'
-          : 'success',
+          : 'success';
+  }
+  return [{
+    // Live single-plan events use the empty SINGLE_PLAN_DIR; keep mid-flight seeds on the same
+    // key so SSE rehydrate does not open a second module row next to a history-seeded chain.
+    dir: running ? '' : (rec.dir || ''),
+    coord: rec.coord || null,
+    state,
     millis: rec.millis ?? null,
     steps,
     diagnostics: (rec.diagnostics || [])
@@ -592,7 +760,20 @@ function phaseState(steps) {
   if (steps.some((s) => s.state === 'running')) return 'running';
   if (steps.every((s) => s.state === 'skipped')) return 'skipped';
   if (steps.every((s) => s.state === 'skipped' || s.state === 'cancelled')) return 'cancelled';
-  return 'success'; // all terminal, at least one success
+  // Idle bookkeeping only (explicit 0ms success + skips): paint the phase as skipped so
+  // Compile/Generate with a skipped compile-java and a 0ms write-stamp is not solid "success".
+  // Missing millis is not treated as idle (history/tests often omit duration).
+  if (
+    steps.every(
+      (s) =>
+        s.state === 'skipped' ||
+        s.state === 'checked' ||
+        (s.state === 'success' && s.millis === 0),
+    )
+  ) {
+    return 'skipped';
+  }
+  return 'success'; // all terminal, at least one success with real wall-clock
 }
 
 /**
@@ -777,16 +958,25 @@ function moduleOrderRank(m) {
   return 2;
 }
 
-/** Engine StepStatus → chain-node state. */
-function stepState(status) {
+/**
+ * Engine StepStatus → chain-node state. {@code millis === 0} SUCCESS is painted skipped: pure
+ * no-ops (stamp unchanged, empty generate, ensure-jdk already present) often still land as
+ * SUCCESS when older engines omit {@code ctx.cached()}; 0ms wall matches the skip mental model.
+ */
+function stepState(status, millis) {
   switch (status) {
     case 'SUCCESS':
+    case 'success':
+      if (millis === 0) return 'skipped';
       return 'success';
     case 'FAIL':
+    case 'failed':
       return 'failed';
     case 'CANCELLED':
+    case 'cancelled':
       return 'cancelled';
     case 'SKIPPED':
+    case 'skipped':
       return 'skipped';
     default:
       return 'running';

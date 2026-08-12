@@ -102,11 +102,17 @@ Live model updates on every meaningful event; sinks materialize under one policy
 | **M1** | Phase finish (preflight stage / plan phase) | next frame | **append + flush** |
 | **M2** | Test class finish (when wired) | optional | **append + flush** |
 | **M3** | Module / plan / command finish | yes | **append + flush** |
-| **M4** | Dirty heartbeat | **80 ms** (`TTY_FRAME_MS`) | **2 s** if dirty (`DISK_HEARTBEAT_MS`) |
-| **M5** | Hot ticks (`progress` / `tick-update` / `label` / `output`) | model + next frame | append line; flush ≤ M4 |
+| **M4** | Dirty heartbeat | **80 ms** TTY paint (`TTY_FRAME_MS`); wire samples at **`JK_WIRE_PROGRESS_MS`** (default **500 ms**) | **2 s** if dirty (`DISK_HEARTBEAT_MS`) |
+| **M5** | Hot ticks (`progress` / `tick-update` / `label` / `output`) | model + next frame; **wire/SSE coalesce** to cadence (latest wins) | append line; flush ≤ M4 |
 
-Constants: `LiveProgress.TTY_FRAME_MS = 80`, `DISK_HEARTBEAT_MS = 2000`, `LINE_STALE_MS = 360`
-(process-output partial lines only).
+Constants: `LiveProgress.TTY_FRAME_MS = 80` (client paint / open-loop only), wire cadence
+`CoalescingBuildPlanListener.DEFAULT_CADENCE_MS = 500` via `JK_WIRE_PROGRESS_MS` (`0` =
+unbatched), `DISK_HEARTBEAT_MS = 2000`, `LINE_STALE_MS = 360` (process-output partial lines only).
+
+**Wire vs paint:** the engine socket and dashboard SSE share one human sample rate for aggregate
+`workspace-progress`, plan `progress`/`tick-update`/`label`/`output`. Structural events
+(`step-start`/`finish`, `warn`/`error`) stay immediate. Clients open-loop the bar/ETA between
+samples (CLI residual decay; web clock/residual).
 
 ### Deep timing: chrome timeline
 

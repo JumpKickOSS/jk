@@ -28,10 +28,13 @@ public final class LiveVitals implements AutoCloseable {
     static final long STATUS_PERIOD_MILLIS = 2_000;
 
     /**
-     * Artifact/action storage walk is IO-shaped; only as a safety net while subscribers exist.
-     * Inflicted publishes (after builds) are preferred when wired.
+     * Artifact/action storage walk is IO-shaped and allocates heavily on large stores. While
+     * dashboard subscribers exist we refresh on this period as a safety net; post-build
+     * {@link #nudgeCache()} and Status {@code GET /api/cache} are preferred for freshness.
+     * Initial delay matches the period so engine-start + Chrome reconnect does not walk
+     * immediately (see hydrateFor).
      */
-    static final long CACHE_PERIOD_MILLIS = 30_000;
+    static final long CACHE_PERIOD_MILLIS = 60_000;
 
     private final HttpEvents events;
     private final Supplier<StatusSnapshot> status;
@@ -153,9 +156,10 @@ public final class LiveVitals implements AutoCloseable {
      * Connect hydrate for one new subscription: current status plus the last captured cache
      * snapshot, delivered to <em>that subscription only</em> — existing tabs already hold these
      * facts, and re-broadcasting them duplicated chrome on every new tab (JK-1523). The cache side
-     * never walks the disk on the connect path: it re-sends the stored snapshot and schedules an
-     * async refresh on the sampler thread (forced when no snapshot exists yet — the SPA's REST
-     * hydrate covers that brief first-connect gap, JK-1513).
+     * never walks the disk on the connect path (JK-1513): it re-sends a stored snapshot when one
+     * exists. It does <strong>not</strong> schedule a fresh walk — exclusive store walks allocate
+     * tens of MiB and leave SerialGC committed heap expanded; first numbers come from
+     * {@code GET /api/cache} (Status view), post-build {@link #nudgeCache()}, or the slow sampler.
      */
     public void hydrateFor(HttpEvents.Subscription sub) {
         try {
@@ -172,11 +176,7 @@ public final class LiveVitals implements AutoCloseable {
             lastCache.set(PresentCache.of(last));
             events.deliverTo(sub, "cache", last.toThinJson());
         }
-        try {
-            scheduler.execute(() -> publishCache(last == null));
-        } catch (java.util.concurrent.RejectedExecutionException ignored) {
-            // closing — nothing left to notify
-        }
+        // No async publishCache here: engine-start reconnect storms must not walk multi-GiB stores.
     }
 
     private void tickStatusSafe() {

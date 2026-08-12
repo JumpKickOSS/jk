@@ -14,19 +14,22 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Human-paced wire progress: coalesces high-frequency {@link #progress}, {@link #tickUpdate}, and
- * {@link #label} events to at most one emit per cadence (default {@value #DEFAULT_CADENCE_MS} ms).
+ * Human-paced wire events: coalesces high-frequency {@link #progress}, {@link #tickUpdate},
+ * {@link #label}, and {@link #output} to at most one emit per cadence (default
+ * {@value #DEFAULT_CADENCE_MS} ms). Shared with aggregate {@code workspace-progress} on the engine
+ * socket and dashboard SSE so CLI and web see the same sample rate.
  *
- * <p>Structural events ({@code planStart/Finish}, {@code stepStart/Finish}, {@code output},
- * {@code warn}, {@code error}) flush pending progress immediately then pass through — humans need
- * those, and agents need them for correctness.
+ * <p>Structural events ({@code planStart/Finish}, {@code stepStart/Finish}, {@code warn},
+ * {@code error}) flush pending samples immediately then pass through — humans need those, and
+ * agents need them for correctness. Compiler chat is sampled (latest line wins); failures still
+ * ride {@code error} unthrottled.
  *
  * <p>Applies to <em>all</em> engine-hosted plans (lock, build, test, plugins), not only resolve:
- * anything that hammers {@code ctx.progress(1)} benefits. Cadence is for eyeballs; sending faster
- * than a human can read is pure wire cost.
+ * anything that hammers {@code ctx.progress(1)} or dumps stdout benefits. Cadence is for eyeballs;
+ * sending faster than a human can read is pure wire cost.
  *
- * <p>Env: {@code JK_WIRE_PROGRESS_MS} — milliseconds between progress/label flushes ({@code 0} =
- * unbatched passthrough for debugging).
+ * <p>Env: {@code JK_WIRE_PROGRESS_MS} — milliseconds between hot flushes ({@code 0} = unbatched
+ * passthrough for debugging).
  */
 public final class CoalescingBuildPlanListener implements BuildPlanListener, AutoCloseable {
 
@@ -47,6 +50,9 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
 
     private String labelStep;
     private String labelText;
+
+    private String outputStep;
+    private String outputLine;
 
     private long lastFlushNanos;
     private ScheduledFuture<?> scheduled;
@@ -150,8 +156,16 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
 
     @Override
     public void output(String step, String line) {
-        flush();
-        delegate.output(step, line);
+        if (cadenceMs == 0) {
+            delegate.output(step, line);
+            return;
+        }
+        // Latest line wins — a verbose compile must not push hundreds of JSONL frames/s on UDS/SSE.
+        synchronized (lock) {
+            outputStep = step;
+            outputLine = line;
+            scheduleLocked();
+        }
     }
 
     @Override
@@ -186,7 +200,7 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
     }
 
     /**
-     * Emit any pending progress/label now (also called before structural events). Take + emit are
+     * Emit any pending hot samples now (also called before structural events). Take + emit are
      * under the same lock so a timer flush cannot reorder past a structural event.
      */
     public void flush() {
@@ -219,6 +233,11 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
         labelStep = null;
         labelText = null;
 
+        String oStep = outputStep;
+        String oLine = outputLine;
+        outputStep = null;
+        outputLine = null;
+
         // Emit under lock so structural passthrough cannot race ahead of a concurrent timer flush.
         // Delegate is wire send only — must not re-enter this coalescer on the same instance.
         if (pStep != null && pView != null && pDelta != 0) {
@@ -229,6 +248,9 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
         }
         if (lStep != null && lText != null) {
             delegate.label(lStep, lText);
+        }
+        if (oStep != null && oLine != null) {
+            delegate.output(oStep, oLine);
         }
     }
 

@@ -185,6 +185,18 @@ captured snapshot (refreshing async on the sampler thread), and the post-build n
 async — a first-ever connect may briefly carry no `cache` frame until the async capture lands
 (the SPA's REST hydrate covers that gap).
 
+**Mid-build connect:** after each dashboard SSE subscription, the engine delivers one compact
+`run-snapshot` per in-flight job to **that subscription only** (not a broadcast, not a
+phase-by-phase replay). Independently, `GET /api/history` enriches `running: true` rows with the
+same live fields so the SPA's initial GET matches the TUI even before the first SSE frame.
+
+**Live smoothness:** hot progress traffic (aggregate `workspace-progress`, plan
+`progress`/`tick-update`/`label`/`output`) is sampled at **`JK_WIRE_PROGRESS_MS`** (default
+**500 ms**) on both the CLI UDS path and SSE — same coalescer. Structural events stay immediate.
+The SSE queue still sheds low-priority frames before critical ones when full. The SPA drains
+EventSource callbacks on animation frames and coalesces progress/ETA ticks so the main thread
+stays free; open-loop clock/residual fills the gaps between 500 ms samples.
+
 ### `event: status`
 
 Core engine/host vitals (same facts as `GET /api/status` heap/load/plans fields), including
@@ -218,13 +230,20 @@ lastPrunedMillis }` — enough for the footer; change-gated on MiB quanta.
 
 **REST (full):** section counts (`casCount`, `actionsCount`, …) for the Status panels. Prefer the two surfaces for UI; `totalBytes` is the combined sum.
 
+Capture is a full exclusive walk of the store/cache trees (hardlink-aware). The engine memoizes it
+with a **30 s TTL and single-flight** so concurrent `GET /api/cache` calls do not re-walk multi‑GiB
+stores in parallel. SSE connect hydrate **never** walks (it only re-sends a stored snapshot);
+first numbers come from Status `GET /api/cache`, post-build `notifyLiveCache` (invalidates the
+memo), or the slow 60 s safety-net sampler. Without that, Chrome reconnect storms at engine start
+left SerialGC holding ~90 MiB used/committed at idle.
+
 REST `GET /api/status` and `GET /api/cache` remain for hydrate, offline fallback, CLI/MCP tools,
 and curl. Metrics (`GET /api/metrics`) stay **REST-only / view-scoped** — not on the vitals SSE bus.
 
 ### Build SSE publish map (JK-1499)
 
 Inflicted publishers live on `EngineServer` (socket listener + HTTP job listeners). Every dashboard
-fold type has a site; progress is coalesced only by the intentional ≥0.1% / TTY-frame filter on
+fold type has a site; progress is coalesced by the intentional `JK_WIRE_PROGRESS_MS` (default 500 ms) filter on
 `workspace-progress` (same as the TUI), never by `LiveVitals`.
 
 | Event | Publisher (typical) | Notes |

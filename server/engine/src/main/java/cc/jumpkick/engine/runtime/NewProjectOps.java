@@ -48,9 +48,8 @@ public final class NewProjectOps {
         }
         String parentRaw = req.parentDir() == null ? "" : req.parentDir().strip();
         if (parentRaw.isEmpty()) throw new IllegalArgumentException("missing \"parentDir\"");
-        Path parent = Path.of(parentRaw);
-        if (!parent.isAbsolute()) throw new IllegalArgumentException("parentDir must be an absolute path");
-        parent = parent.toAbsolutePath().normalize();
+        // Same rules as the activity Build path: ~ and relatives resolve against user.home.
+        Path parent = cc.jumpkick.util.PathUtil.resolveUserPath(parentRaw);
         assertAllowedParent(parent);
         if (!Files.isDirectory(parent)) {
             throw new IllegalArgumentException("parentDir is not a directory: " + parent);

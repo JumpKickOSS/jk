@@ -83,4 +83,28 @@ class CoalescingBuildPlanListenerTest {
         c.planFinish(new BuildPlanResult("p", true, Duration.ZERO, List.of(), List.of(), List.of(), false, false));
         assertThat(events).containsExactly("l:hello", "done");
     }
+
+    @Test
+    void coalesces_output_to_latest_line_until_flush() {
+        List<String> events = new ArrayList<>();
+        BuildPlanListener sink = new BuildPlanListener() {
+            @Override
+            public void output(String step, String line) {
+                events.add("o:" + step + ":" + line);
+            }
+
+            @Override
+            public void stepFinish(String step, String group, cc.jumpkick.run.TaskStatus status, Duration duration) {
+                events.add("finish:" + step);
+            }
+        };
+        try (CoalescingBuildPlanListener c = new CoalescingBuildPlanListener(sink, 60_000L)) {
+            c.output("compile", "line-1");
+            c.output("compile", "line-2");
+            c.output("compile", "line-3");
+            assertThat(events).isEmpty();
+            c.stepFinish("compile", "compile", cc.jumpkick.run.TaskStatus.SUCCESS, Duration.ofMillis(10));
+            assertThat(events).containsExactly("o:compile:line-3", "finish:compile");
+        }
+    }
 }

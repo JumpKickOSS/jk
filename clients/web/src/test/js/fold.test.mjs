@@ -425,6 +425,138 @@ test('seedFromHistory uses live requestId when history is enriched', () => {
   assert.equal(cards[0].progressPercent, 61);
 });
 
+test('mid-build history enrich carries startedAt, residual, and prior phases', () => {
+  const cards = [];
+  const t0 = 1_700_000_000_000;
+  const before = Date.now();
+  seedFromHistory(cards, [
+    historyRecord('20260101T000000000-run1', '/w/a', {
+      finishedAt: 0,
+      millis: 0,
+      running: true,
+      buildNumber: 27,
+      requestId: 99,
+      startedAt: t0,
+      progress: 55,
+      remainingMs: 40_000,
+      R0: 90_000,
+      numerator: 110,
+      denominator: 200,
+      tasks: [
+        { name: 'resolve', stage: 'resolve', status: 'SUCCESS', millis: 120 },
+        { name: 'compile-java', stage: 'compile', status: 'RUN', millis: 0 },
+      ],
+    }),
+  ]);
+  const after = Date.now();
+  const c = cards[0];
+  assert.equal(c.id, 99);
+  assert.equal(c.startedAt, t0);
+  assert.equal(c.progressPercent, 55);
+  assert.equal(c.peakPct, 55);
+  assert.equal(c.residualRemainingMs, 40_000);
+  // remaining is as-of the GET — residualAt is "now", not admission time.
+  assert.ok(c.residualAt >= before && c.residualAt <= after);
+  assert.equal(c.r0Ms, 90_000);
+  assert.equal(c.r0At, t0);
+  assert.equal(c.modules.length, 1);
+  assert.equal(c.modules[0].dir, ''); // single-plan live key
+  assert.equal(c.modules[0].state, 'running');
+  assert.deepEqual(
+    c.modules[0].steps.map((s) => s.name + ':' + s.state),
+    ['resolve:success', 'compile-java:running'],
+  );
+});
+
+test('seedFromHistory prefers engine startedAt over late SSE receipt time', () => {
+  const cards = [];
+  const t0 = 1_000;
+  // Tab joined late: request-start arrived without startedAt → browser clock.
+  foldEvent(cards, { type: 'request-start', data: { requestId: 7, kind: 'build', dir: '/w', buildNumber: 3 }, at: 50_000 });
+  assert.equal(cards[0].startedAt, 50_000);
+  seedFromHistory(cards, [
+    historyRecord('r', '/w', {
+      finishedAt: 0,
+      millis: 0,
+      running: true,
+      buildNumber: 3,
+      requestId: 7,
+      startedAt: t0,
+      progress: 40,
+    }),
+  ]);
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].startedAt, t0);
+  assert.equal(cards[0].progressPercent, 40);
+});
+
+test('request-start rehydrate carries engine startedAt', () => {
+  const cards = [];
+  foldEvent(cards, {
+    type: 'request-start',
+    data: { requestId: 3, kind: 'build', dir: '/w', buildNumber: 1, startedAt: 9_000 },
+    at: 99_000,
+  });
+  assert.equal(cards[0].startedAt, 9_000);
+  // Second rehydrate must not clobber the earlier engine start with a later receipt.
+  foldEvent(cards, {
+    type: 'request-start',
+    data: { requestId: 3, kind: 'build', dir: '/w', buildNumber: 1, startedAt: 9_000 },
+    at: 120_000,
+  });
+  assert.equal(cards[0].startedAt, 9_000);
+  assert.equal(cards.length, 1);
+});
+
+test('run-snapshot applies phases + progress in one frame (no phase-replay backlog)', () => {
+  const cards = [];
+  const t0 = 5_000;
+  foldEvent(cards, {
+    type: 'run-snapshot',
+    data: {
+      requestId: 11,
+      kind: 'build',
+      dir: '/w',
+      buildNumber: 4,
+      startedAt: t0,
+      progress: 62,
+      remainingMs: 30_000,
+      R0: 80_000,
+      numerator: 124,
+      denominator: 200,
+      tasks: [
+        { name: 'resolve', stage: 'resolve', status: 'SUCCESS', millis: 80 },
+        { name: 'compile-java', stage: 'compile', status: 'RUN', millis: 0 },
+      ],
+    },
+    at: 50_000,
+  });
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].id, 11);
+  assert.equal(cards[0].startedAt, t0);
+  assert.equal(cards[0].progressPercent, 62);
+  assert.equal(cards[0].peakPct, 62);
+  assert.equal(cards[0].residualRemainingMs, 30_000);
+  assert.equal(cards[0].modules[0].steps.length, 2);
+  assert.equal(cards[0].modules[0].steps[1].state, 'running');
+  // Live progress after snapshot must attach to the same card (not a second one).
+  foldEvent(cards, {
+    type: 'workspace-progress',
+    data: {
+      requestId: 11,
+      dir: '/w',
+      numerator: 140,
+      denominator: 200,
+      progress: 70,
+      remainingMs: 25_000,
+    },
+    at: 55_000,
+  });
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].progressPercent, 70);
+  assert.equal(cards[0].residualRemainingMs, 25_000);
+});
+
 test('mid-build refresh: history stub rebinds on workspace-progress and finishes', () => {
   // Hard refresh while a build is streaming: journal seeds h:… then SSE events use numeric requestId.
   const cards = [];
@@ -577,6 +709,28 @@ test('phaseChainOf collapses steps into coarse phase nodes in encounter order', 
   assert.deepEqual(chain.map((p) => p.label), ['Resolve', 'Compile', 'Test']); // one node per phase, in order
   assert.deepEqual(chain.map((p) => p.state), ['success', 'success', 'success']);
   assert.deepEqual(chain[1].steps.map((s) => s.name), ['compile-java', 'compile-kotlin']); // Compile collapses both
+});
+
+test('phaseChainOf paints skip when compile is SKIPPED and stamp is 0ms success', () => {
+  // Journal shape: compile-java SKIPPED + write-stamp SUCCESS@0ms must not be solid green.
+  const chain = phaseChainOf({
+    steps: [
+      { name: 'compile-java', phase: 'compile', state: 'skipped', millis: 0 },
+      { name: 'write-stamp', phase: 'compile', state: 'success', millis: 0 },
+      { name: 'build-logic-after-compile', phase: 'compile', state: 'success', millis: 0 },
+    ],
+  });
+  assert.equal(chain[0].state, 'skipped');
+});
+
+test('task-finish SUCCESS with 0ms paints as skipped', () => {
+  const cards = [];
+  foldEvent(cards, { type: 'request-start', data: { requestId: 1, kind: 'build', dir: '/w' } });
+  foldEvent(cards, {
+    type: 'task-finish',
+    data: { requestId: 1, dir: '', task: 'write-stamp', stage: 'compile', status: 'SUCCESS', millis: 0 },
+  });
+  assert.equal(cards[0].modules[0].steps[0].state, 'skipped');
 });
 
 test('task-finish stores engine millis on the step row', () => {

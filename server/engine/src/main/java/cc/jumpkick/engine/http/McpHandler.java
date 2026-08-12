@@ -178,7 +178,7 @@ public final class McpHandler {
                                 "type",
                                 "string",
                                 "description",
-                                "Absolute path to project or workspace root (jk.toml)")))));
+                                "Project/workspace root (jk.toml): absolute, ~/…, or home-relative")))));
         tools.add(tool(
                 "jk_test",
                 "Start a true test-only job for dir (async; compile + tests, no package — same as "
@@ -189,12 +189,17 @@ public final class McpHandler {
                                 "type",
                                 "string",
                                 "description",
-                                "Absolute path to project or workspace root (jk.toml)")))));
+                                "Project/workspace root (jk.toml): absolute, ~/…, or home-relative")))));
         tools.add(tool(
                 "jk_lock",
                 "Resolve dependencies and write jk-lock.toml for dir (async). Progress: GET /mcp?requestId=N.",
-                objectSchema(
-                        Map.of("dir", Map.of("type", "string", "description", "Absolute path containing jk.toml")))));
+                objectSchema(Map.of(
+                        "dir",
+                        Map.of(
+                                "type",
+                                "string",
+                                "description",
+                                "Project/workspace root (jk.toml): absolute, ~/…, or home-relative")))));
         tools.add(tool(
                 "jk_cancel",
                 "Cancel an in-flight job by jid (or requestId alias). Grace then force workers.",
@@ -210,8 +215,13 @@ public final class McpHandler {
         tools.add(tool(
                 "jk_project",
                 "Parse project metadata from dir/jk.toml (coord, description).",
-                objectSchema(
-                        Map.of("dir", Map.of("type", "string", "description", "Absolute path containing jk.toml")))));
+                objectSchema(Map.of(
+                        "dir",
+                        Map.of(
+                                "type",
+                                "string",
+                                "description",
+                                "Project root (jk.toml): absolute, ~/…, or home-relative")))));
         tools.add(tool(
                 "jk_history",
                 "Recent build journal entries (JSON array of records). Same source as GET /api/history.",

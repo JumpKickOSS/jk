@@ -1,24 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import java.util.ArrayDeque;
+import java.util.Iterator;
 import java.util.Set;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * SSE fan-out for {@code GET /api/events} and MCP progress streams ({@code GET /mcp} with {@code
- * Accept: text/event-stream}). Each subscriber has a bounded drop-oldest queue so a slow client
- * never backpressures a build. Skip building event JSON when {@link #hasSubscribers} is false.
+ * Accept: text/event-stream}). Each subscriber has a bounded queue so a slow client never
+ * backpressures a build. When full, <strong>low-priority</strong> frames ({@code output},
+ * {@code plan-progress}, {@code label}, chrome) are shed before <strong>critical</strong> ones
+ * ({@code workspace-progress}, {@code eta}, structural task/module/request events) — a dump of
+ * compiler output must not freeze the dashboard bar while the CLI TUI keeps ticking.
  *
  * <p>MCP subscribers may filter by {@code requestId} so multi-job engines only deliver one job's
  * events to a given SSE connection ({@code GET /mcp?requestId=N} or progress-token binding).
  */
 public final class HttpEvents {
 
-    /** Per-subscriber frame buffer. A dashboard reads far faster than an engine emits; 256 is deep. */
+    /**
+     * Per-subscriber frame buffer. Deep enough for a burst of structural events; priority shedding
+     * keeps progress frames when output floods.
+     */
     static final int QUEUE_CAPACITY = 256;
 
     /** Wire framing for a subscription. */
@@ -66,14 +74,14 @@ public final class HttpEvents {
     }
 
     /**
-     * Deliver one frame to a single subscription — connect hydrate, never a broadcast. Existing
-     * subscribers already hold these facts; re-broadcasting them duplicated chrome on every new
-     * tab (JK-1523).
+     * Deliver one frame to a single subscription — connect hydrate / mid-flight run-snapshot,
+     * never a broadcast. Existing subscribers already hold live facts; re-broadcasting them
+     * duplicated chrome and could queue-stall a late tab (JK-1523).
      */
-    void deliverTo(Subscription s, String type, JsonOut payload) {
+    public void deliverTo(Subscription s, String type, JsonOut payload) {
         long id = seq.incrementAndGet();
         String data = payload.toString();
-        s.offerDroppingOldest(s.style == FrameStyle.MCP ? mcpFrame(id, type, data) : dashboardFrame(id, type, data));
+        s.offer(type, s.style == FrameStyle.MCP ? mcpFrame(id, type, data) : dashboardFrame(id, type, data));
     }
 
     private void publish(String type, JsonOut payload, boolean dashboardOnly) {
@@ -83,8 +91,7 @@ public final class HttpEvents {
         for (Subscription s : subscriptions) {
             if (dashboardOnly && s.style == FrameStyle.MCP) continue;
             if (!s.accepts(requestId)) continue;
-            s.offerDroppingOldest(
-                    s.style == FrameStyle.MCP ? mcpFrame(id, type, data) : dashboardFrame(id, type, data));
+            s.offer(type, s.style == FrameStyle.MCP ? mcpFrame(id, type, data) : dashboardFrame(id, type, data));
         }
     }
 
@@ -131,6 +138,29 @@ public final class HttpEvents {
     }
 
     /**
+     * Critical for live dashboard UX — never shed these for an {@code output} flood. Everything
+     * else (compiler lines, fine-grained plan ticks, labels, host vitals) is best-effort.
+     */
+    static boolean isCritical(String type) {
+        if (type == null) return false;
+        return switch (type) {
+            case "workspace-progress",
+                    "eta",
+                    "request-start",
+                    "request-finish",
+                    "run-snapshot",
+                    "task-start",
+                    "task-finish",
+                    "module-start",
+                    "module-finish",
+                    "buildplan-finish",
+                    "plan",
+                    "diagnostic" -> true;
+            default -> false;
+        };
+    }
+
+    /**
      * Best-effort parse of {@code "requestId": <number>} from a JsonOut object string. Returns
      * {@code null} when absent or unparseable.
      */
@@ -174,13 +204,18 @@ public final class HttpEvents {
     }
 
     /** One client's view of the stream. Closing unregisters; frames after close are dropped. */
-    static final class Subscription implements AutoCloseable {
+    public static final class Subscription implements AutoCloseable {
         private final HttpEvents hub;
         private final FrameStyle style;
         /** {@code null} = all events; non-null = only matching {@code requestId}. */
         private final Long requestIdFilter;
 
-        private final BlockingQueue<String> frames = new ArrayBlockingQueue<>(QUEUE_CAPACITY);
+        private final ReentrantLock lock = new ReentrantLock();
+        private final Condition notEmpty = lock.newCondition();
+        private final ArrayDeque<Queued> frames = new ArrayDeque<>(QUEUE_CAPACITY);
+        private volatile boolean closed;
+
+        private record Queued(boolean critical, String wire) {}
 
         private Subscription(HttpEvents hub, FrameStyle style, Long requestIdFilter) {
             this.hub = hub;
@@ -195,18 +230,91 @@ public final class HttpEvents {
 
         /** The next frame, or {@code null} after {@code timeoutMillis} of quiet (heartbeat time). */
         String next(long timeoutMillis) throws InterruptedException {
-            return frames.poll(timeoutMillis, TimeUnit.MILLISECONDS);
+            long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(Math.max(0, timeoutMillis));
+            lock.lock();
+            try {
+                while (frames.isEmpty()) {
+                    if (closed) return null;
+                    long wait = deadline - System.nanoTime();
+                    if (wait <= 0) return null;
+                    notEmpty.awaitNanos(wait);
+                }
+                Queued q = frames.pollFirst();
+                return q == null ? null : q.wire;
+            } finally {
+                lock.unlock();
+            }
         }
 
-        private void offerDroppingOldest(String frame) {
-            while (!frames.offer(frame)) {
-                frames.poll(); // full: shed the oldest frame, never the publisher's time
+        /**
+         * Drain up to {@code max} frames without blocking — used by the SSE writer to batch a
+         * burst into one socket write/flush so a full queue does not force 256 syscalls.
+         */
+        int drainTo(java.util.List<String> out, int max) {
+            if (out == null || max <= 0) return 0;
+            lock.lock();
+            try {
+                int n = 0;
+                while (n < max) {
+                    Queued q = frames.pollFirst();
+                    if (q == null) break;
+                    out.add(q.wire);
+                    n++;
+                }
+                return n;
+            } finally {
+                lock.unlock();
             }
+        }
+
+        /**
+         * Enqueue {@code wire} for event {@code type}. Never blocks the publisher. When full:
+         * low-priority frames are dropped (incoming or oldest); critical frames evict the oldest
+         * low-priority first, then the oldest critical if the queue is all critical.
+         */
+        void offer(String type, String wire) {
+            if (wire == null || closed) return;
+            boolean critical = isCritical(type);
+            lock.lock();
+            try {
+                if (closed) return;
+                if (frames.size() >= QUEUE_CAPACITY) {
+                    if (!critical) {
+                        // Drop this low-priority frame rather than evicting progress/structure.
+                        return;
+                    }
+                    if (!evictOldestNonCriticalLocked()) {
+                        frames.pollFirst(); // all critical — classic drop-oldest
+                    }
+                }
+                frames.addLast(new Queued(critical, wire));
+                notEmpty.signal();
+            } finally {
+                lock.unlock();
+            }
+        }
+
+        private boolean evictOldestNonCriticalLocked() {
+            for (Iterator<Queued> it = frames.iterator(); it.hasNext(); ) {
+                if (!it.next().critical) {
+                    it.remove();
+                    return true;
+                }
+            }
+            return false;
         }
 
         @Override
         public void close() {
+            closed = true;
             hub.subscriptions.remove(this);
+            lock.lock();
+            try {
+                frames.clear();
+                notEmpty.signalAll();
+            } finally {
+                lock.unlock();
+            }
         }
     }
 }

@@ -97,13 +97,18 @@ cap) and pauses when the tab is hidden (`document.hidden`); EventSource stays op
 through a single-flight gate (`fetchOnce`) so reconnect cannot stack duplicate in-flight calls.
 Relative “ago” labels use a local 1 s `now` tick only (no network).
 
-**Hard refresh mid-build:** `GET /api/history` enriches in-flight rows with live `requestId` /
-`progress`; on SSE connect the engine re-publishes `request-start` + current `workspace-progress`
-for every still-running job. `fold.js` rebinds journal stubs (`h:…`) to the live request id so the
-bar, steps, ETA, and finish events resume — no need to wait for the run to end.
+**Hard refresh mid-build:** `GET /api/history` enriches in-flight rows with live `requestId`,
+`progress`, `startedAt`, residual/`R0`, and mid-flight `modules`/`tasks`. On SSE connect the
+engine delivers **one** `run-snapshot` frame per running job to **that subscription only**
+(phases + progress + ETA anchors + `startedAt`) — not a phase-by-phase replay, which filled the
+256-frame SSE queue and left the SPA frozen for seconds while live ticks queued behind it.
+`fold.js` applies the snapshot atomically, rebinds journal stubs (`h:…`), and then folds live
+`workspace-progress` / task events in real time (TUI parity).
 
-Build phase/progress must stay **near-realtime** (inflicted SSE). Host vitals are sampled ~2 s and
-change-gated server-side so unchanged free RAM does not repaint noise.
+Build phase/progress is **inflicted SSE** at the same human cadence as the CLI wire
+(`JK_WIRE_PROGRESS_MS`, default 500 ms for aggregate + plan ticks + output samples). The SPA
+open-loops the bar/ETA between samples. Host vitals are sampled ~2 s and change-gated
+server-side so unchanged free RAM does not repaint noise.
 
 ## Testing
 

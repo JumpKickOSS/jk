@@ -1082,6 +1082,8 @@ public final class BuildPlanner {
                                 outcome.jdk()
                                         .map(cc.jumpkick.jdk.InstalledJdk::home)
                                         .orElseGet(() -> JavaHomes.resolveJavaHome(in.dir())));
+                        // Already on disk / locked — no download work this run.
+                        if (outcome.source() != JdkEnsure.Source.INSTALLED) ctx.cached();
                     } catch (Exception e) {
                         ctx.error("jdk", e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
                         throw e;
@@ -2023,6 +2025,7 @@ public final class BuildPlanner {
                     // [build] extra-resources: individual files from outside the module, each with
                     // its own destination and optional rename, so they cannot ride resDirs.
                     List<ExtraResources.Copy> extra = ExtraResources.resolve(ctx.require(PROJECT), in.dir());
+                    boolean copied = false;
                     if (!resDirs.isEmpty() || !extra.isEmpty()) {
                         ctx.label("copy resources");
                         for (Path dir : resDirs) copyResources(dir, classes);
@@ -2031,12 +2034,14 @@ public final class BuildPlanner {
                             Files.createDirectories(target.getParent());
                             Files.copy(c.source(), target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                         }
+                        copied = true;
                     } else {
                         ctx.label("no static resources");
                     }
                     // Project build logic: AFTER_RESOURCES anchor.
+                    boolean logicRan = false;
                     try {
-                        boolean ran = BuildLogicSupport.run(
+                        logicRan = BuildLogicSupport.run(
                                 in.dir(),
                                 ctx.require(LAYOUT),
                                 actionCache,
@@ -2044,11 +2049,12 @@ public final class BuildPlanner {
                                 cc.jumpkick.plugin.buildlogic.BuildLogicAnchor.AFTER_RESOURCES,
                                 ctx::label,
                                 buildLogicInputTokensRef);
-                        if (ran) ctx.label("build-logic applied");
+                        if (logicRan) ctx.label("build-logic applied");
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         throw new IOException("build-logic interrupted", e);
                     }
+                    if (!copied && !logicRan) ctx.cached(); // SKIPPED — nothing to copy, no logic
                     ctx.progress(1);
                 })
                 .build();
@@ -2074,7 +2080,7 @@ public final class BuildPlanner {
                 .execute(ctx -> {
                     Path classes = ctx.require(MAIN_CLASSES);
                     try {
-                        BuildLogicSupport.run(
+                        boolean ran = BuildLogicSupport.run(
                                 in.dir(),
                                 ctx.require(LAYOUT),
                                 actionCache,
@@ -2082,6 +2088,8 @@ public final class BuildPlanner {
                                 cc.jumpkick.plugin.buildlogic.BuildLogicAnchor.BEFORE_COMPILE,
                                 ctx::label,
                                 buildLogicInputTokensRef);
+                        if (ran) ctx.label("build-logic applied");
+                        else ctx.cached(); // SKIPPED — no generate/before-compile logic this run
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         throw new IOException("build-logic interrupted", e);
@@ -2109,7 +2117,7 @@ public final class BuildPlanner {
                 .execute(ctx -> {
                     Path classes = ctx.require(MAIN_CLASSES);
                     try {
-                        BuildLogicSupport.run(
+                        boolean ran = BuildLogicSupport.run(
                                 in.dir(),
                                 ctx.require(LAYOUT),
                                 actionCache,
@@ -2117,6 +2125,8 @@ public final class BuildPlanner {
                                 cc.jumpkick.plugin.buildlogic.BuildLogicAnchor.AFTER_COMPILE,
                                 ctx::label,
                                 buildLogicInputTokensRef);
+                        if (ran) ctx.label("build-logic applied");
+                        else ctx.cached(); // SKIPPED — no after-compile logic this run
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         throw new IOException("build-logic interrupted", e);
@@ -2143,7 +2153,7 @@ public final class BuildPlanner {
                 .execute(ctx -> {
                     Path classes = ctx.require(MAIN_CLASSES);
                     try {
-                        BuildLogicSupport.run(
+                        boolean ran = BuildLogicSupport.run(
                                 in.dir(),
                                 ctx.require(LAYOUT),
                                 actionCache,
@@ -2151,6 +2161,8 @@ public final class BuildPlanner {
                                 cc.jumpkick.plugin.buildlogic.BuildLogicAnchor.BEFORE_PACKAGE,
                                 ctx::label,
                                 buildLogicInputTokensRef);
+                        if (ran) ctx.label("build-logic applied");
+                        else ctx.cached(); // SKIPPED — no before-package logic this run
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         throw new IOException("build-logic interrupted", e);
@@ -2207,6 +2219,7 @@ public final class BuildPlanner {
                         if (in.projectModules().size() > 1) {
                             ctx.label("suite not present — skipped");
                             ctx.put(NO_TEST_SOURCES, true);
+                            ctx.cached(); // SKIPPED — suite absent in this workspace module
                             ctx.progress(1);
                             return;
                         }
@@ -2223,6 +2236,7 @@ public final class BuildPlanner {
                     if (javaTest.isEmpty() && ktTest.isEmpty() && gvTest.isEmpty()) {
                         ctx.label("no test sources");
                         ctx.put(NO_TEST_SOURCES, true);
+                        ctx.cached(); // SKIPPED — nothing to compile
                         ctx.progress(1);
                         return;
                     }
@@ -3365,6 +3379,7 @@ public final class BuildPlanner {
                     String outcome = ctx.get(BUILD_OUTCOME).orElse("");
                     if ("up-to-date".equals(outcome) || "no-sources".equals(outcome)) {
                         ctx.label("stamp unchanged");
+                        ctx.cached(); // SKIPPED — compile already stamp-skipped / no sources
                         ctx.progress(1);
                         return;
                     }
@@ -3424,6 +3439,7 @@ public final class BuildPlanner {
                     String outcome = ctx.get(KOTLIN_OUTCOME).orElse("");
                     if ("up-to-date".equals(outcome) || "no-sources".equals(outcome)) {
                         ctx.label("stamp unchanged");
+                        ctx.cached(); // SKIPPED — compile already stamp-skipped / no sources
                         ctx.progress(1);
                         return;
                     }
@@ -3459,6 +3475,7 @@ public final class BuildPlanner {
                     String outcome = ctx.get(GROOVY_OUTCOME).orElse("");
                     if ("up-to-date".equals(outcome) || "no-sources".equals(outcome)) {
                         ctx.label("stamp unchanged");
+                        ctx.cached(); // SKIPPED — compile already stamp-skipped / no sources
                         ctx.progress(1);
                         return;
                     }

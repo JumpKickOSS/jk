@@ -103,7 +103,7 @@ const PhaseChain = {
   // phase auto-opens), then a phase key, or `null` when they've closed all.
   data: () => ({ atStart: true, atEnd: true, follow: true, manualKey: undefined }),
   template: `
-    <div class="phase-chain-outer">
+    <div class="phase-chain-outer" :class="{ 'has-open': !!openPhase }">
       <div class="phase-live-row">
         <div class="step-chain-wrap">
           <button v-show="!atStart" type="button" class="chain-nav left" @click="page(-1)"
@@ -115,7 +115,7 @@ const PhaseChain = {
               <button type="button" class="step-node phase-node" :class="[p.state, { open: openKey === p.key }]"
                       :data-tip="phaseTitle(p)" :aria-expanded="String(openKey === p.key)" @click="toggle(p.key)">
                 <span v-if="p.state === 'running'" class="spin small"></span>
-                <jk-icon v-else-if="p.state === 'success'" name="check" class="step-glyph ok"></jk-icon>
+                <jk-icon v-else-if="p.state === 'success' || p.state === 'skipped'" name="check" class="step-glyph ok"></jk-icon>
                 <jk-icon v-else-if="p.state === 'failed'" name="x" class="step-glyph err"></jk-icon>
                 {{ p.label }}
               </button>
@@ -133,12 +133,12 @@ const PhaseChain = {
           </span>
         </span>
       </div>
-      <div v-if="openPhase" class="phase-steps">
+      <div v-if="openPhase" class="phase-steps" :class="openPhase.state">
         <template v-for="(s, i) in openPhase.steps" :key="s.name">
           <span v-if="i > 0" class="step-edge" :class="openPhase.steps[i - 1].state"></span>
           <span class="step-node" :class="s.state" :data-tip="stepTitle(s)">
             <span v-if="s.state === 'running'" class="spin small"></span>
-            <jk-icon v-else-if="s.state === 'success'" name="check" class="step-glyph ok"></jk-icon>
+            <jk-icon v-else-if="s.state === 'success' || s.state === 'skipped'" name="check" class="step-glyph ok"></jk-icon>
             <jk-icon v-else-if="s.state === 'failed'" name="x" class="step-glyph err"></jk-icon>
             {{ stepLabel(s) }}
           </span>
@@ -1132,16 +1132,12 @@ Vue.createApp({
           if (state === 'live') {
             this._offlineStatusBackoffMs = 5_000;
             this.clearOfflineStatusFallback();
-            if (wasOffline) {
-              this.refresh(); // resync after an engine restart
-              this.loadHistory(); // re-seed persisted runs (dedupe keeps this idempotent)
-              this.loadProjectHistory();
-            } else if (this.cards.length === 0) {
-              // First open / hard-refresh: mount also loads history; re-try once the stream is live
-              // in case the earlier GET raced a cold engine.
-              this.loadHistory();
-              this.loadProjectHistory();
-            }
+            // Always re-seed history on (re)connect: mid-flight enrichment + finished rows.
+            // run-snapshot SSE covers the same instant for running jobs; history remains the
+            // durable path and fills any race where the stream opened before the first GET.
+            if (wasOffline) this.refresh(); // full chrome resync after an engine restart
+            this.loadHistory();
+            this.loadProjectHistory();
           } else if (state === 'offline') {
             // EventSource's own retry cadence (~3s on refused connections) is shorter than the
             // poll delay — re-arming on every onerror would perpetually reset the pending timer
@@ -1305,7 +1301,10 @@ Vue.createApp({
       // engine/CLI ProgressBarMode.select (JK-1816); with neither signal, weighted below.
       const useClock = (mode === 'clock' && (haveR0 || haveResidual)) || (mode === 'auto' && haveR0);
       if (useClock) {
-        const base = haveR0 ? card.r0At : card.startedAt;
+        // Prefer engine admission time so a mid-build join does not restart the bar at 0%.
+        // Fall back to r0At (first seed receipt) for tabs that watched from the first tick.
+        const base =
+          card.startedAt != null ? card.startedAt : haveR0 ? card.r0At : this.now;
         const since = Math.max(0, this.now - (base != null ? base : this.now));
         // Adaptive: elapsed / (elapsed + residual). Residual firms up as work completes —
         // same oracle the countdown re-anchors to (ends on time with residual → 0).
@@ -1674,8 +1673,10 @@ Vue.createApp({
       if (this.view === 'projects' || this.view === 'project') {
         await this.refreshMetrics();
       }
-      // Cache tier + artifact store footer: SSE while live; REST hydrate when offline or empty.
-      if (!sseLive || !this.cache) {
+      // Cache tier + artifact store footer: prefer thin SSE while live. Full REST only when
+      // offline (or empty without a stream) — first paint used to always hit GET /api/cache,
+      // racing SSE connect walks of multi-GiB stores and ballooning engine heap.
+      if (!sseLive && !this.cache) {
         await this.refreshCache();
       }
     },
@@ -1763,10 +1764,10 @@ Vue.createApp({
         .sort((a, b) => a.kind.localeCompare(b.kind));
     },
 
-    // The machine-wide per-step rows, biggest total first, capped for the panel.
+    // Machine-wide per-task rows (wire: scope "task", name in "task"), biggest total first.
     metricsSteps() {
       return (this.metrics || [])
-        .filter((r) => r.scope === 'step')
+        .filter((r) => r.scope === 'task')
         .sort((a, b) => b.okTotalMillis - a.okTotalMillis)
         .slice(0, 10);
     },
@@ -1819,19 +1820,18 @@ Vue.createApp({
     // ---- the workspace picker (Browse…) ----
     async openBrowser() {
       if (this.authModal) return;
-      // Start from the typed path when it looks absolute; the server defaults to $HOME otherwise.
+      // Seed the picker with whatever was typed (~ / relative / absolute); server resolves vs $HOME.
       this.browserMode = 'workspace';
-      const seed = this.buildDir.trim().startsWith('/') ? this.buildDir.trim() : null;
+      const seed = this.buildDir.trim() || null;
       await this.browseTo(seed);
     },
 
     async openParentBrowser() {
       if (this.authModal) return;
       this.browserMode = 'parent';
-      const seed =
-        this.newProject.parentDir && this.newProject.parentDir.trim().startsWith('/')
-          ? this.newProject.parentDir.trim()
-          : null;
+      const seed = this.newProject.parentDir && this.newProject.parentDir.trim()
+        ? this.newProject.parentDir.trim()
+        : null;
       await this.browseTo(seed);
     },
 

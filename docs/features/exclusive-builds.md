@@ -62,7 +62,10 @@ On finish, `complete` rewrites the **same** run directory with the finished reco
 (`running: false`) and `metrics.toml`, then requests `MetricsHarvest`.
 
 `/api/history` therefore lists in-flight runs; the web client `seedFromHistory` materializes
-running cards so a refresh/new tab still shows them. SSE reconciles by `buildNumber` + `dir`.
+running cards so a refresh/new tab still shows them. In-flight rows are enriched with live
+`requestId`, `progress`, residual/`R0`, and mid-flight `modules`/`tasks` so the bar, elapsed
+clock, and phase chain match the TUI. SSE connect delivers one `run-snapshot` per job to the
+new tab only (no phase-replay backlog) and reconciles by `buildNumber` + `dir`.
 
 On engine start, `abandonStaleRunning` marks leftover `running: true` rows cancelled (process
 died mid-run).
