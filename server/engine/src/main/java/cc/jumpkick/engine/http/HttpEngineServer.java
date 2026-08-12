@@ -188,6 +188,13 @@ public final class HttpEngineServer implements AutoCloseable {
      */
     private record TemplatesCache(String json, long atNanos) {}
 
+    /** Engine hook: bump the combined-connection high-water mark on every SSE admission (JK-1861). */
+    private volatile Runnable onSseAdmitted = () -> {};
+
+    public void setOnSseAdmitted(Runnable onSseAdmitted) {
+        this.onSseAdmitted = onSseAdmitted != null ? onSseAdmitted : () -> {};
+    }
+
     private volatile TemplatesCache templatesCache;
     private static final long TEMPLATES_TTL_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
     private byte[] token;
@@ -437,6 +444,9 @@ public final class HttpEngineServer implements AutoCloseable {
                                     : mcpSurface ? "too many MCP event streams\n" : "too many event streams\n");
                     return;
                 }
+                // Peak must be observed at admission, not when a status snapshot happens to run —
+                // SSE spikes between snapshots were invisible to the high-water mark (JK-1861).
+                if (sse) onSseAdmitted.run();
                 try {
                     dispatch(exchange);
                 } finally {

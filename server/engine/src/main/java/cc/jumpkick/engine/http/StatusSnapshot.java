@@ -41,7 +41,11 @@ public record StatusSnapshot(
         double systemCpuLoad,
         double systemLoadAverage,
         String engineEpoch,
-        /** High-water mark of {@link #activeRequests} since engine start. */
+        /**
+         * High-water mark of {@link #activeRequests} (combined UDS + SSE surfaces) since engine
+         * start — bumped at every admission point (UDS accept, SSE gate acquire) and on each
+         * status snapshot, so spikes between snapshots are counted (JK-1861).
+         */
         int peakActiveRequests,
         /** High-water mark of concurrent in-flight plans since engine start. */
         int peakActiveBuildPlans) {

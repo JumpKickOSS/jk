@@ -108,8 +108,10 @@ public final class EngineServer implements AutoCloseable {
     private final AtomicInteger peakActiveBuildPlans = new AtomicInteger();
 
     private void noteConnectionOpened() {
-        int n = activeConnections.incrementAndGet();
-        peakActiveConnections.accumulateAndGet(n, Math::max);
+        activeConnections.incrementAndGet();
+        // Combined high-water mark (UDS + SSE surfaces) — same metric the SSE admission hook and
+        // statusSnapshot() bump, so the reported peak means one thing (JK-1861).
+        peakActiveConnections.accumulateAndGet(liveConnectionCount(), Math::max);
     }
 
     private void noteBuildPlanStarted() {
@@ -5506,6 +5508,10 @@ public final class EngineServer implements AutoCloseable {
         // Hard-refresh mid-build: history rows carry live requestId/progress/phases; SSE connect
         // delivers one compact run-snapshot per job to the new subscription only.
         candidate.setLiveRunSupport(this::liveRunsSnapshot, this::rehydrateLiveRunsOnSseConnect);
+        // Combined-connection peak observed at every admission point (UDS accept bumps it too) —
+        // not only when a status snapshot happens to run (JK-1861).
+        candidate.setOnSseAdmitted(
+                () -> peakActiveConnections.accumulateAndGet(liveConnectionCount(), Math::max));
         try {
             candidate.start();
             Files.writeString(paths.http(), candidate.url());
