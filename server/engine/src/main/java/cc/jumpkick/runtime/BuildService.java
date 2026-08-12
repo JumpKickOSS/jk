@@ -601,6 +601,7 @@ public final class BuildService {
             // "extra resources changed" was pricing ~792 tests while live only re-copied).
             boolean localCompile = hasLocalCompileContent(m);
             boolean resourceDrift = hasResourceDriftWork(m);
+            boolean testResourceDrift = hasTestResourceDriftWork(m);
             // Native/assembly in the forecast keeps run-tests full (cli ← engine test-dep) even
             // when native itself is cascade-discounted below.
             boolean keepFullTests = localCompile
@@ -613,7 +614,8 @@ public final class BuildService {
                 // Price material work only — bookkeeping steps (parse-build, stamps, …) are not
                 // cache hits but must not inflate ETA toward a full monorepo wall.
                 if (!distrust && TaskForecast.Module.isBookkeepingStep(s.name())) continue;
-                if (!distrust && shouldDiscountCascadeStep(s, localCompile, resourceDrift, keepFullTests)) {
+                if (!distrust
+                        && shouldDiscountCascadeStep(s, localCompile, resourceDrift, keepFullTests, testResourceDrift)) {
                     cascadeRecheck++;
                     continue;
                 }
@@ -658,9 +660,20 @@ public final class BuildService {
      * compile/test; billing suite walls for them was the multi-minute dogfood miss.
      */
     static boolean shouldDiscountCascadeStep(
-            TaskForecast.Task s, boolean localCompile, boolean resourceDrift, boolean keepFullTests) {
+            TaskForecast.Task s,
+            boolean localCompile,
+            boolean resourceDrift,
+            boolean keepFullTests,
+            boolean testResourceDrift) {
         if (s == null || s.cached()) return false;
         String name = s.name();
+        // TEST-resource drift reruns the suite for real — test action keys hash test resources
+        // (that is what made the drift material at all, JK-1808/1809) — so run-tests must keep
+        // its full wall no matter which rule below would discount it (JK-1842: one edited
+        // fixture priced a 792-test suite as a recheck token and the countdown collapsed).
+        if ("run-tests".equals(name) && testResourceDrift) {
+            return false;
+        }
         // Cascade-forced compile/package without local source edits.
         if (!localCompile && isCascadeForcedStep(s) && isCompileOrPackageStep(name)) {
             return true;
@@ -670,7 +683,8 @@ public final class BuildService {
         if (!localCompile && isCascadeForcedStep(s) && "native-image".equals(name)) {
             return true;
         }
-        // Resource drift schedules copy/package only — never a full compile/test suite.
+        // MAIN-resource drift schedules copy/package only — never a full compile/test suite
+        // (dogfood-validated discount; the test-resource case exited above).
         if (!localCompile && resourceDrift && (isCompileStepName(name) || "run-tests".equals(name))) {
             return true;
         }
@@ -732,6 +746,20 @@ public final class BuildService {
             if ("copy-resources".equals(s.name()) || "copy-test-resources".equals(s.name())) return true;
             String t = s.text() == null ? "" : s.text();
             if ("package-jar".equals(s.name()) && t.contains("resources changed")) return true;
+        }
+        return false;
+    }
+
+    /**
+     * TEST-resource drift specifically — the suite genuinely reruns (test action keys hash test
+     * resources), so unlike main-resource drift it must never discount {@code run-tests}
+     * (JK-1842).
+     */
+    static boolean hasTestResourceDriftWork(TaskForecast.Module m) {
+        if (m == null || m.steps() == null) return false;
+        for (TaskForecast.Task s : m.steps()) {
+            if (s.cached()) continue;
+            if ("copy-test-resources".equals(s.name())) return true;
         }
         return false;
     }
