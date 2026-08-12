@@ -80,6 +80,13 @@ public record CacheSnapshot(
         private final Object lock = new Object();
         private CacheSnapshot cached;
         private long deadlineNanos;
+        /**
+         * Explicit staleness flag. {@code System.nanoTime()} has an arbitrary — possibly
+         * negative — origin, so an absolute sentinel like {@code deadlineNanos = 0} is not
+         * reliably "expired": with a negative-origin clock {@code now - 0 < 0} held and
+         * {@link #invalidate()} became a permanent no-op (JK-1862).
+         */
+        private boolean stale = true;
 
         Memoizing(Supplier<CacheSnapshot> loader, long ttlMillis) {
             this.loader = Objects.requireNonNull(loader, "loader");
@@ -94,7 +101,7 @@ public record CacheSnapshot(
             CacheSnapshot snap;
             long usedBefore;
             synchronized (lock) {
-                if (cached != null && now - deadlineNanos < 0) {
+                if (cached != null && !stale && now - deadlineNanos < 0) {
                     return cached;
                 }
                 usedBefore = rt.totalMemory() - rt.freeMemory();
@@ -104,6 +111,7 @@ public record CacheSnapshot(
                 }
                 cached = snap;
                 deadlineNanos = System.nanoTime() + ttlNanos;
+                stale = false;
             }
             // Exclusive walks allocate large temporary sets; SerialGC keeps "used" high until a
             // full collection. One post-walk GC after a fat capture keeps idle status honest —
@@ -121,7 +129,7 @@ public record CacheSnapshot(
         /** Drop TTL so the next {@link #get()} walks again (post-build / explicit refresh). */
         public void invalidate() {
             synchronized (lock) {
-                deadlineNanos = 0L;
+                stale = true;
             }
         }
     }
