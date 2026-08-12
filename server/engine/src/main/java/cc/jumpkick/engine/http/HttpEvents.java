@@ -111,9 +111,33 @@ public final class HttpEvents {
      * delivered (events without a requestId are dropped for filtered subscriptions).
      */
     Subscription subscribe(FrameStyle style, Long requestIdFilter) {
-        Subscription s = new Subscription(this, style == null ? FrameStyle.DASHBOARD : style, requestIdFilter);
-        subscriptions.add(s);
+        Subscription s = subscribeDetached(style, requestIdFilter);
+        attach(s);
         return s;
+    }
+
+    /**
+     * Create a subscription that does NOT yet receive broadcasts. The dashboard connect path
+     * hydrates it (vitals + one {@code run-snapshot} per in-flight job via {@link #deliverTo})
+     * and only then {@link #attach}es it, under the engine's connect ordering lock — so every
+     * event is either reflected in the snapshot or delivered to the queue, never lost in the
+     * subscribe→snapshot window (JK-1837).
+     */
+    Subscription subscribeDetached(FrameStyle style, Long requestIdFilter) {
+        return new Subscription(this, style == null ? FrameStyle.DASHBOARD : style, requestIdFilter);
+    }
+
+    /**
+     * Register a (detached) subscription for broadcasts. Idempotent; a subscription closed
+     * before attach stays out of the hub. Public so the engine can attach inside its connect
+     * ordering lock (JK-1837).
+     */
+    public void attach(Subscription s) {
+        if (s == null || s.closed) return;
+        subscriptions.add(s);
+        // close() may have raced between the check and the add; never leave a closed
+        // subscription in the hub (hasSubscribers() would stay true forever, JK-1523).
+        if (s.closed) subscriptions.remove(s);
     }
 
     static String dashboardFrame(long id, String type, String data) {

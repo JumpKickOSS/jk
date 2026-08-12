@@ -286,6 +286,10 @@ export function foldEvent(cards, event) {
  */
 function applyRunSnapshot(cards, d, at) {
   if (!d || d.requestId == null) return;
+  // A snapshot captured while the run was still live can arrive after the finish frame in a
+  // reconnect race — it must never resurrect a finished card as running (JK-1837).
+  const pre = cards.find((c) => c.id === d.requestId);
+  if (pre && pre.state !== 'running') return;
   // Ensure a running card exists (same paths as request-start rehydrate).
   foldEvent(cards, {
     type: 'request-start',
@@ -451,6 +455,19 @@ export function seedFromHistory(cards, records) {
       if (rec.buildNumber) live.buildNumber = rec.buildNumber; // and pick up its assigned #number
       if (rec.projectId && !live.projectId) live.projectId = rec.projectId;
       if (rec.running) live.state = 'running';
+      else if (live.state === 'running') {
+        // The journal says this run is over: a finish frame lost to a connect/reconnect race
+        // (JK-1837) must not leave the card spinning forever — history is the durable truth.
+        live.state = 'finished';
+        live.finishedAt = rec.finishedAt || live.finishedAt || null;
+        live.millis = rec.millis ?? live.millis;
+        live.cancelled = !!rec.cancelled;
+        if (typeof rec.success === 'boolean') live.success = rec.success;
+        live.output = [];
+        live.etaMillis = null;
+        const finals = historyModules(rec);
+        if (finals.length > 0) live.modules = mergeSnapshotModules(live.modules, finals);
+      }
       // Enriched history may carry the engine requestId — rebind a journal stub for SSE.
       const liveId = rec.requestId ?? rec.jid;
       if (rec.running && typeof liveId === 'number' && liveId > 0) live.id = liveId;

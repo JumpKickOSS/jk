@@ -557,6 +557,64 @@ test('run-snapshot applies phases + progress in one frame (no phase-replay backl
   assert.equal(cards[0].residualRemainingMs, 25_000);
 });
 
+test('stale run-snapshot never resurrects a finished card (JK-1837)', () => {
+  const cards = [];
+  foldEvent(cards, { type: 'request-start', data: { requestId: 9, kind: 'build', dir: '/w' }, at: 1000 });
+  foldEvent(cards, {
+    type: 'request-finish',
+    data: { requestId: 9, dir: '/w', success: true, millis: 4200 },
+    at: 5000,
+  });
+  // A snapshot captured while the run was still live lands after the finish frame.
+  foldEvent(cards, {
+    type: 'run-snapshot',
+    data: {
+      requestId: 9,
+      kind: 'build',
+      dir: '/w',
+      startedAt: 800,
+      progress: 90,
+      tasks: [{ name: 'run-tests', stage: 'test', status: 'RUN', millis: 0 }],
+    },
+    at: 5001,
+  });
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].state, 'finished');
+  assert.equal(cards[0].millis, 4200);
+});
+
+test('seedFromHistory finishes a running card when the record says the run is over (JK-1837)', () => {
+  const cards = [];
+  foldEvent(cards, {
+    type: 'request-start',
+    data: { requestId: 12, kind: 'build', dir: '/w/a', buildNumber: 31 },
+    at: 1000,
+  });
+  foldEvent(cards, {
+    type: 'task-start',
+    data: { requestId: 12, dir: '/w/a', task: 'run-tests', stage: 'test' },
+    at: 1500,
+  });
+  assert.equal(cards[0].state, 'running');
+  // The request-finish frame was lost in the connect window; the journal is durable truth.
+  seedFromHistory(cards, [
+    historyRecord('20260101T000000000-run9', '/w/a', {
+      running: false,
+      buildNumber: 31,
+      success: true,
+      finishedAt: 9000,
+      millis: 8000,
+      tasks: [{ name: 'run-tests', stage: 'test', status: 'SUCCESS', millis: 7000 }],
+    }),
+  ]);
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].state, 'finished');
+  assert.equal(cards[0].success, true);
+  assert.equal(cards[0].millis, 8000);
+  const steps = cards[0].modules[0].steps;
+  assert.equal(steps.find((s) => s.name === 'run-tests').state, 'success');
+});
+
 test('reconnect run-snapshot preserves live diagnostics, failed state, and checked modules (JK-1834)', () => {
   const cards = [];
   foldEvent(cards, { type: 'request-start', data: { requestId: 7, kind: 'build', dir: '/w' }, at: 1000 });

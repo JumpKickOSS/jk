@@ -22,6 +22,33 @@ class HttpEventsTest {
     }
 
     @Test
+    void detached_subscription_misses_broadcasts_until_attach_and_keeps_hydrate_order() throws Exception {
+        HttpEvents hub = new HttpEvents();
+        HttpEvents.Subscription s = hub.subscribeDetached(HttpEvents.FrameStyle.DASHBOARD, null);
+        try {
+            assertThat(hub.hasSubscribers()).isFalse();
+            hub.publish("task-finish", JsonOut.object().put("requestId", 1)); // pre-attach broadcast: not queued
+            hub.deliverTo(s, "run-snapshot", JsonOut.object().put("requestId", 1)); // connect hydrate
+            hub.attach(s);
+            assertThat(hub.hasSubscribers()).isTrue();
+            hub.publish("task-start", JsonOut.object().put("requestId", 1));
+            assertThat(s.next(1000)).contains("event: run-snapshot");
+            assertThat(s.next(1000)).contains("event: task-start");
+        } finally {
+            s.close();
+        }
+    }
+
+    @Test
+    void attach_after_close_never_registers() {
+        HttpEvents hub = new HttpEvents();
+        HttpEvents.Subscription s = hub.subscribeDetached(HttpEvents.FrameStyle.DASHBOARD, null);
+        s.close();
+        hub.attach(s);
+        assertThat(hub.hasSubscribers()).isFalse(); // JK-1523: no zombie keeps the sampler alive
+    }
+
+    @Test
     void frames_carry_monotonic_ids_and_sse_framing() throws Exception {
         HttpEvents hub = new HttpEvents();
         try (HttpEvents.Subscription s = hub.subscribe()) {

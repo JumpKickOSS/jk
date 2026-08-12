@@ -812,25 +812,30 @@ public final class HttpEngineServer implements AutoCloseable {
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
         exchange.sendResponseHeaders(200, 0);
         var out = exchange.getResponseBody();
-        // Everything after subscribe() sits inside the try: if onSubscriberJoined throws (e.g.
-        // RejectedExecutionException racing stop()), the subscription must still leave the hub
-        // set or hasSubscribers() stays true for the process's life (JK-1523).
-        HttpEvents.Subscription subscription = events.subscribe();
+        // Detached until hydrated: broadcasts don't reach the subscription while the connect
+        // snapshot is captured, and the engine's rehydrate callback attaches it under its
+        // connect ordering lock — so no event can fall between the snapshot and the queue
+        // (JK-1837). If anything below throws before attach, the subscription was never in the
+        // hub, so hasSubscribers() cannot stay true for the process's life (JK-1523).
+        HttpEvents.Subscription subscription = events.subscribeDetached(HttpEvents.FrameStyle.DASHBOARD, null);
         try {
             liveVitals.onSubscriberJoined();
             // Connect hydrate: deliver current vitals to THIS subscription only (change-gate
-            // skipped) so the tab does not wait for the first 2s / 30s sampler tick — without
+            // skipped) so the tab does not wait for the first 2s / 60s sampler tick — without
             // re-broadcasting chrome to every open tab (JK-1523). Cache hydrate re-sends the last
-            // captured snapshot and refreshes async — the store walk must not delay the
-            // ": connected" write (JK-1513). Mid-flight catch-up is one compact run-snapshot per
-            // job delivered to THIS subscription only — never a broadcast phase replay (that
-            // filled the 256-frame queue and froze the SPA for seconds behind live ticks).
+            // captured snapshot — the store walk must not delay the ": connected" write
+            // (JK-1513). Mid-flight catch-up is one compact run-snapshot per job delivered to
+            // THIS subscription only — never a broadcast phase replay (that filled the 256-frame
+            // queue and froze the SPA for seconds behind live ticks).
             liveVitals.hydrateFor(subscription);
             try {
                 onEventsConnect.accept(subscription);
             } catch (RuntimeException e) {
                 log.accept("jk engine: sse connect rehydrate failed: " + e.getMessage());
             }
+            // Safety net: the engine callback attaches inside its ordering lock; if it failed
+            // (or no engine is wired, e.g. tests), attach now so live events still flow.
+            events.attach(subscription);
             out.write(": connected\n\n".getBytes(StandardCharsets.UTF_8));
             out.flush();
             // Batch drain: a full queue of structural+progress frames must not force one

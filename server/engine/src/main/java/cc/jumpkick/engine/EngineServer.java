@@ -1610,6 +1610,18 @@ public final class EngineServer implements AutoCloseable {
      * subscribers. Sampled chrome ({@code status}/{@code cache}) is separate: change-gated and
      * nudged only on request start/finish so Builds Running / storage totals stay timely.
      */
+    /**
+     * Orders wire-event publication against dashboard SSE connect hydration (JK-1837).
+     * Publishers take the read side around each publish (accumulation happens strictly before,
+     * in program order); a connecting dashboard takes the write side around snapshot capture →
+     * {@code deliverTo} → {@code attach}. Any publish that completed before the write section
+     * accumulated before the snapshot was captured (so its effect is in the snapshot); any
+     * publish after it reaches the attached queue. Overlap yields duplicates, which the SPA
+     * folds idempotently — gaps, which it cannot heal, are impossible.
+     */
+    private final java.util.concurrent.locks.ReentrantReadWriteLock sseConnect =
+            new java.util.concurrent.locks.ReentrantReadWriteLock();
+
     private void publishEvent(String type, cc.jumpkick.engine.http.JsonOut payload) {
         publishEvent(type, payload, false);
     }
@@ -1621,16 +1633,21 @@ public final class EngineServer implements AutoCloseable {
      * would double-count (JK-1523).
      */
     private void publishEvent(String type, cc.jumpkick.engine.http.JsonOut payload, boolean dashboardOnly) {
-        if (httpEvents != null && httpEvents.hasSubscribers()) {
-            if (dashboardOnly) httpEvents.publishDashboard(type, payload);
-            else httpEvents.publish(type, payload);
-        }
-        // Sampled chrome (status/cache SSE) is change-gated; nudge it when jobs start/finish so
-        // Builds Running and storage totals do not wait for the next timer tick (JK-1495/1497).
-        HttpEngineServer http = httpServer;
-        if (http != null && ("request-start".equals(type) || "request-finish".equals(type))) {
-            http.notifyLiveStatus();
-            if ("request-finish".equals(type)) http.notifyLiveCache();
+        sseConnect.readLock().lock();
+        try {
+            if (httpEvents != null && httpEvents.hasSubscribers()) {
+                if (dashboardOnly) httpEvents.publishDashboard(type, payload);
+                else httpEvents.publish(type, payload);
+            }
+            // Sampled chrome (status/cache SSE) is change-gated; nudge it when jobs start/finish so
+            // Builds Running and storage totals do not wait for the next timer tick (JK-1495/1497).
+            HttpEngineServer http = httpServer;
+            if (http != null && ("request-start".equals(type) || "request-finish".equals(type))) {
+                http.notifyLiveStatus();
+                if ("request-finish".equals(type)) http.notifyLiveCache();
+            }
+        } finally {
+            sseConnect.readLock().unlock();
         }
     }
 
@@ -4386,8 +4403,8 @@ public final class EngineServer implements AutoCloseable {
                         writer,
                         EngineProtocol.moduleFinish(
                                 dir, o.coord(), o.success(), o.exitCode(), o.millis(), o.didWork()));
-                publishModuleFinish(eventRequestId, dir, o.coord(), o.success(), o.millis(), o.didWork());
                 accModule(eventRequestId, o);
+                publishModuleFinish(eventRequestId, dir, o.coord(), o.success(), o.millis(), o.didWork());
                 cc.jumpkick.run.BuildPlan g = moduleBuildPlanner.remove(dir);
                 if (g != null) {
                     accTests(
@@ -5338,8 +5355,8 @@ public final class EngineServer implements AutoCloseable {
             public void stepFinish(String step, String group, cc.jumpkick.run.TaskStatus status, Duration duration) {
                 long millis = duration.toMillis();
                 sendQuiet(writer, EngineProtocol.stepFinish(dir, step, phaseWire(group), status.name(), millis));
-                publishStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), millis);
                 accStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), millis);
+                publishStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), millis);
             }
 
             @Override
@@ -5366,9 +5383,9 @@ public final class EngineServer implements AutoCloseable {
                 // releases after BuildService.buildWorkspace returns).
                 if (releaseSlotOnBuildPlanFinish) inFlightBuilds.release(eventRequestId);
                 sendQuiet(writer, finishEncoder.apply(result));
+                accBuildPlanFinish(eventRequestId, dir, result);
                 publishBuildPlanFinish(eventRequestId, dir, result.success());
                 if (!result.success()) publishDiagnostics(eventRequestId, dir, result.errors());
-                accBuildPlanFinish(eventRequestId, dir, result);
             }
         });
     }
@@ -5546,8 +5563,17 @@ public final class EngineServer implements AutoCloseable {
      */
     private void rehydrateLiveRunsOnSseConnect(cc.jumpkick.engine.http.HttpEvents.Subscription sub) {
         if (sub == null || httpEvents == null) return;
-        for (cc.jumpkick.engine.http.HttpEngineServer.LiveRun run : liveRunsSnapshot()) {
-            httpEvents.deliverTo(sub, "run-snapshot", liveRunSnapshotJson(run));
+        // Write side of the connect ordering lock (JK-1837): capture + deliver + attach are
+        // atomic w.r.t. every publishEvent, so no event can fall between the snapshot and the
+        // subscription queue. The subscription is detached until attach() below.
+        sseConnect.writeLock().lock();
+        try {
+            for (cc.jumpkick.engine.http.HttpEngineServer.LiveRun run : liveRunsSnapshot()) {
+                httpEvents.deliverTo(sub, "run-snapshot", liveRunSnapshotJson(run));
+            }
+            httpEvents.attach(sub);
+        } finally {
+            sseConnect.writeLock().unlock();
         }
     }
 
@@ -6074,8 +6100,8 @@ public final class EngineServer implements AutoCloseable {
                     public void stepFinish(
                             String step, String group, cc.jumpkick.run.TaskStatus status, Duration duration) {
                         long millis = duration.toMillis();
-                        publishStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), millis);
                         accStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), millis);
+                        publishStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), millis);
                     }
 
                     @Override
@@ -6090,9 +6116,9 @@ public final class EngineServer implements AutoCloseable {
 
                     @Override
                     public void planFinish(BuildPlanResult result) {
+                        accBuildPlanFinish(eventRequestId, dir, result);
                         publishBuildPlanFinish(eventRequestId, dir, result.success());
                         if (!result.success()) publishDiagnostics(eventRequestId, dir, result.errors());
-                        accBuildPlanFinish(eventRequestId, dir, result);
                     }
                 });
             }
@@ -6101,8 +6127,8 @@ public final class EngineServer implements AutoCloseable {
             public void onModuleFinish(ModuleOutcome o) {
                 String dir = o.dir().toString();
                 trackModuleComplete(eventRequestId, dir, lastDenByDir.getOrDefault(dir, 0L), null);
-                publishModuleFinish(eventRequestId, dir, o.coord(), o.success(), o.millis(), o.didWork());
                 accModule(eventRequestId, o);
+                publishModuleFinish(eventRequestId, dir, o.coord(), o.success(), o.millis(), o.didWork());
                 cc.jumpkick.run.BuildPlan g = moduleBuildPlanner.remove(dir);
                 if (g != null) {
                     accTests(
