@@ -225,13 +225,18 @@ export function foldEvent(cards, event) {
         // Always record remaining@emission for etaTotalMillis (JK-1517 re-projections).
         card.etaMillis = d.millis;
         card.etaAt = event.at ?? null;
-        // Seed R0 once; residual mid-run re-anchors via residualRemainingMs/residualAt.
-        if (d.millis > 0 && card.r0Ms == null) {
+        // Seed R0 — and, matching the CLI's "positive re-seeds allowed pre-execute" rule, let a
+        // later eta REPLACE a provisional seed until any module work has folded: a contended
+        // build's coarse lock+prior figure otherwise stayed R0 for the whole run and the
+        // R0-fallback bar paced against the wrong total (JK-1854). Mid-run, residual re-anchors
+        // via residualRemainingMs/residualAt and R0 stays frozen.
+        const preExecute = card.modules.length === 0 && !(card.progressNum > 0);
+        if (d.millis > 0 && (card.r0Ms == null || preExecute)) {
           card.r0Ms = d.millis;
-          card.r0At = event.at ?? Date.now();
-          if (card.residualRemainingMs == null) {
+          card.r0At = startAnchor(card) ?? event.at ?? Date.now();
+          if (card.residualRemainingMs == null || preExecute) {
             card.residualRemainingMs = d.millis;
-            card.residualAt = card.r0At;
+            card.residualAt = event.at ?? Date.now();
           }
         }
       }

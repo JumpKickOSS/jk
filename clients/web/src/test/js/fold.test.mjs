@@ -558,6 +558,26 @@ test('run-snapshot applies phases + progress in one frame (no phase-replay backl
   assert.equal(cards[0].residualRemainingMs, 25_000);
 });
 
+test('pre-execute eta re-seed replaces a provisional R0; execute freezes it (JK-1854)', () => {
+  const cards = [];
+  foldEvent(cards, { type: 'request-start', data: { requestId: 41, kind: 'build', dir: '/w' }, at: 1000 });
+  // Coarse lock+prior figure during lock contention.
+  foldEvent(cards, { type: 'eta', data: { requestId: 41, millis: 90_000 }, at: 1100 });
+  assert.equal(cards[0].r0Ms, 90_000);
+  // Post-forecast refined seed, still pre-execute: replaces (CLI parity).
+  foldEvent(cards, { type: 'eta', data: { requestId: 41, millis: 30_000 }, at: 2000 });
+  assert.equal(cards[0].r0Ms, 30_000);
+  assert.equal(cards[0].residualRemainingMs, 30_000);
+  // Execute begins (module work folds) — a later eta no longer rewrites R0.
+  foldEvent(cards, {
+    type: 'task-start',
+    data: { requestId: 41, dir: '/w/app', task: 'compile-java', stage: 'compile' },
+    at: 3000,
+  });
+  foldEvent(cards, { type: 'eta', data: { requestId: 41, millis: 70_000 }, at: 4000 });
+  assert.equal(cards[0].r0Ms, 30_000);
+});
+
 test('run-snapshot carries finished/didWork/historyId and the SPA stops guessing (JK-1846)', () => {
   const cards = [];
   foldEvent(cards, {
