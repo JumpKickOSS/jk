@@ -50,7 +50,7 @@ public final class HttpEvents {
     /**
      * True when any {@link FrameStyle#DASHBOARD} subscription is attached. The vitals sampler
      * lifecycle keys off this — an MCP progress stream alone must not keep status/cache sampling
-     * (and its 30s store walk) alive (JK-1512).
+     * (and its 60s store walk) alive (JK-1512).
      */
     public boolean hasDashboardSubscribers() {
         for (Subscription s : subscriptions) {

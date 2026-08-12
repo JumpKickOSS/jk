@@ -1683,10 +1683,13 @@ Vue.createApp({
       if (this.view === 'projects' || this.view === 'project') {
         await this.refreshMetrics();
       }
-      // Cache tier + artifact store footer: prefer thin SSE while live. Full REST only when
-      // offline (or empty without a stream) — first paint used to always hit GET /api/cache,
-      // racing SSE connect walks of multi-GiB stores and ballooning engine heap.
-      if (!sseLive && !this.cache) {
+      // Cache tier + artifact store footer: prefer thin SSE while live; REST only while no
+      // cache frame has arrived at all. A first-ever connect gets no SSE cache hydrate (no
+      // snapshot captured yet) and the safety-net sampler ticks every 60s, so without this
+      // one-shot the footer showed dashes for up to a minute (JK-1845). Snapshot walks are
+      // single-flight + TTL-memoized engine-side, so this cannot storm the store (JK-1846-era
+      // CacheSnapshot).
+      if (!this.cache) {
         await this.refreshCache();
       }
     },

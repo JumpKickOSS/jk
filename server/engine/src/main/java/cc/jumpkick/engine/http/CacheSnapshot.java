@@ -46,8 +46,10 @@ public record CacheSnapshot(
         long lastPrunedMillis) {
 
     /**
-     * Default freshness for live {@code /api/cache} + SSE chrome — matches
-     * {@link LiveVitals#CACHE_PERIOD_MILLIS}.
+     * Default freshness for live {@code /api/cache} + SSE chrome. Deliberately half of
+     * {@link LiveVitals#CACHE_PERIOD_MILLIS} (60 s): the safety-net sampler always sees a walk
+     * at most this stale, while REST bursts and reconnect storms inside the window coalesce
+     * onto one memoized result.
      */
     public static final long MEMO_TTL_MILLIS = 30_000L;
 

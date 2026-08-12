@@ -167,35 +167,51 @@ respawn. `jk engine rotate-token` is the explicit way to invalidate it.
 ## Live updates (`GET /api/events`)
 
 One SSE stream serves **build activity** and **chrome vitals**. Additive event names only (no
-protocol version bump). Fan-out is `HttpEvents` (bounded drop-oldest queues); the engine skips
-work when `hasSubscribers()` is false.
+protocol version bump). Fan-out is `HttpEvents` (bounded per-subscriber queues with priority
+shedding: a full queue evicts the oldest low-priority frame — output/label lose to
+progress/structure, and the freshest sample always survives); the engine skips work when
+`hasSubscribers()` is false.
 
 | Kind | Events | When published |
 | --- | --- | --- |
-| **Inflicted** (realtime) | `request-start` / `plan` / `module-*` / `step-*` / `label` / `plan-progress` / `workspace-progress` / `eta` / `output` / `diagnostic` / `*-finish` / `request-finish` | As the plan mutates state — never batched on a timer |
+| **Inflicted** | `request-start` / `plan` / `module-*` / `task-start` / `task-finish` / `label` / `plan-progress` / `workspace-progress` / `eta` / `output` / `diagnostic` / `*-finish` / `request-finish` | As the plan mutates state. Structural events are immediate; hot ticks (`progress`/`tick-update`/`label`/`output`) ride the 500 ms wire coalescer — see "Live smoothness" below |
 | **Sampled** (change-gated) | `status` | ~every 2 s while any client is subscribed, **and** only when presentation-quantized vitals change (CPU ~1 pp, RAM/heap ~1 MiB, counters exact). Also forced on stream connect and nudged on request start/finish |
-| **Sampled** (change-gated, IO) | `cache` | Slow tick (~30 s) while subscribed, plus after request finish; **not** on the 2 s status sampler. Live frames are **thin** (dual surface totals + budgets, `"thin": true`); full section breakdown is REST-only |
+| **Sampled** (change-gated, IO) | `cache` | Safety-net tick (60 s) while subscribed, plus after request finish; snapshot walks are single-flight and TTL-memoized (30 s) engine-side; **not** on the 2 s status sampler. Live frames are **thin** (dual surface totals + budgets, `"thin": true`); full section breakdown is REST-only |
 
 The sampled `status`/`cache` frames are **dashboard-stream chrome**: MCP SSE subscriptions
 (`GET /mcp`) never receive them, and an MCP stream alone neither starts nor sustains the samplers
 — "while subscribed" above means dashboard (`/api/events`) subscribers.
 
 The `cache` storage walk never runs on a request thread: connect hydrate re-sends the last
-captured snapshot (refreshing async on the sampler thread), and the post-build nudge is likewise
-async — a first-ever connect may briefly carry no `cache` frame until the async capture lands
-(the SPA's REST hydrate covers that gap).
+captured snapshot and never schedules a walk of its own; the post-build nudge is async. A
+first-ever connect therefore carries no `cache` frame until a nudge or the 60 s sampler
+captures one — the SPA fires a one-shot `GET /api/cache` whenever it is live with no cache
+data yet (the REST path shares the same single-flight, TTL-memoized snapshot, so this cannot
+storm the store).
 
-**Mid-build connect:** after each dashboard SSE subscription, the engine delivers one compact
-`run-snapshot` per in-flight job to **that subscription only** (not a broadcast, not a
-phase-by-phase replay). Independently, `GET /api/history` enriches `running: true` rows with the
-same live fields so the SPA's initial GET matches the TUI even before the first SSE frame.
+**Mid-build connect:** a new dashboard subscription starts *detached* — the engine captures one
+compact `run-snapshot` per in-flight job, delivers them to **that subscription only** (not a
+broadcast, not a phase-by-phase replay), and only then attaches it for broadcasts, all under a
+connect ordering lock that excludes concurrent publishes. Every event is therefore either
+reflected in the snapshot or delivered to the queue after it; overlap folds idempotently, gaps
+are impossible. Independently, `GET /api/history` enriches `running: true` rows with the same
+live fields so the SPA's initial GET matches the TUI even before the first SSE frame.
+
+`run-snapshot` payload (same shape as an enriched history row): `requestId`/`jid`, `kind`,
+`dir`, `coord?`, `projectId?`, `buildNumber?`, `historyId?` (journal id, present for journaled
+kinds), `startedAt` + `serverNow` (engine wall-clock pair — the SPA derives skew-free elapsed
+as `serverNow − startedAt` and re-anchors it to its own clock at receipt; both omitted until
+the hold registers), `running: true`, `progress?`, `remainingMs?`, `R0?`,
+`numerator`/`denominator?`, and phase chains: `modules[]` (`dir`, `coord?`, `finished`,
+`success`, `millis`, `didWork?` when finished, `tasks[]`) or top-level `tasks[]`
+(`name`/`stage`/`status`/`millis`) for single-plan runs.
 
 **Live smoothness:** hot progress traffic (aggregate `workspace-progress`, plan
 `progress`/`tick-update`/`label`/`output`) is sampled at **`JK_WIRE_PROGRESS_MS`** (default
 **500 ms**) on both the CLI UDS path and SSE — same coalescer. `progress`/`tick-update`/`label` are sampled (latest wins); `output` lines are queued and
 delivered as a batch each cadence tick, so multi-line bursts (test-failure stacks, native-image
 logs) arrive complete. Structural events stay immediate.
-The SSE queue still sheds low-priority frames before critical ones when full. The SPA drains
+The SSE queue sheds low-priority frames before critical ones when full (oldest first). The SPA drains
 EventSource callbacks on animation frames and coalesces progress/ETA ticks so the main thread
 stays free; open-loop clock/residual fills the gaps between 500 ms samples.
 
@@ -261,3 +277,4 @@ fold type has a site; progress is coalesced by the intentional `JK_WIRE_PROGRESS
 | `output` / `diagnostic` | step output / failures | Bounded diagnostics |
 | `buildplan-finish` | plan end | Module-level success |
 | `request-finish` | request finally | Always includes `success` + `cancelled` (CLI + HTTP) |
+| `run-snapshot` | `rehydrateLiveRunsOnSseConnect` | Connect-only, delivered to the joining subscription (never broadcast); payload documented under "Mid-build connect" above |
