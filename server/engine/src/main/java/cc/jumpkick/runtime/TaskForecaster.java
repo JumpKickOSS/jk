@@ -499,15 +499,22 @@ public final class TaskForecaster {
             // either under-cascades (jar will change) or — with copy-resources seeding cascade —
             // over-cascades every compile consumer. Detect drift first; package uses a projected
             // post-copy token when drift is present.
+            // Walk each tree at most ONCE per forecast and carry the flags to every consumer
+            // (emit block, package/assembly tokens): the emit-time and token-time re-walks both
+            // re-read the filesystem and could disagree with this detection when the tree changed
+            // in between — a copy-resources step for a tree that no longer drifts, with the
+            // package token projected from yet another read (JK-1844).
             boolean mainResourceDrift = false;
+            boolean extraOnlyResourceDrift = false;
             boolean testResourceDrift = false;
+            Boolean knownResourceDrift = null;
             if (!compileDirty && Files.isDirectory(layout.classesDir())) {
-                if (resourcesOutOfSync(
-                        cc.jumpkick.layout.ModuleLayout.mainResourcesDir(dir, compact), layout.classesDir())) {
-                    mainResourceDrift = true;
-                } else if (extraResourcesOutOfSync(project, dir, layout.classesDir())) {
-                    mainResourceDrift = true;
-                }
+                boolean mainOut = resourcesOutOfSync(
+                        cc.jumpkick.layout.ModuleLayout.mainResourcesDir(dir, compact), layout.classesDir());
+                boolean extraOut = !mainOut && extraResourcesOutOfSync(project, dir, layout.classesDir());
+                mainResourceDrift = mainOut || extraOut;
+                extraOnlyResourceDrift = extraOut;
+                knownResourceDrift = mainResourceDrift;
                 if (haveTests && !skipTests && !testDirty && Files.isDirectory(layout.testClassesDir())) {
                     Path resTest = cc.jumpkick.layout.ModuleLayout.testResourcesDir(dir, compact);
                     if (resourcesOutOfSync(resTest, layout.testClassesDir())) {
@@ -547,7 +554,8 @@ public final class TaskForecaster {
                 }
                 // classesTokenForPackage projects post-copy content when resources drifted so
                 // package CACHED/RUN matches the live step after copy-resources.
-                String classesTok = classesTokenForPackage(dir, compact, layout, project, actionCache, compileMainKey);
+                String classesTok = classesTokenForPackage(
+                        dir, compact, layout, project, actionCache, compileMainKey, knownResourceDrift);
                 // Must match BuildPlanner.packageJarStep tokens exactly — omitting contrib: made
                 // every module forecast permanent "repackage", cascade depDirty, and price a full
                 // monorepo rebuild (~3.5m) while live builds hit the package cache and SKIPPED.
@@ -593,7 +601,15 @@ public final class TaskForecaster {
                             "package-assembly", TaskForecast.Status.RUN, "repackage · compile changed", null));
                 } else {
                     boolean hit = assemblyActionCached(
-                            dir, project, layout, lockFile, actionCache, cache, compileMainKey, restoredJarShas);
+                            dir,
+                            project,
+                            layout,
+                            lockFile,
+                            actionCache,
+                            cache,
+                            compileMainKey,
+                            restoredJarShas,
+                            knownResourceDrift);
                     steps.add(
                             hit
                                     ? new TaskForecast.Task("package-assembly", TaskForecast.Status.CACHED, "", null)
@@ -622,13 +638,10 @@ public final class TaskForecaster {
             // Main/extra resource drift schedules the module so the jar ships fresh bytes (JK-1808).
             // Cascade to compile consumers is owned by package-jar above, not by these steps.
             if (mainResourceDrift) {
-                boolean extraOnly = !resourcesOutOfSync(
-                                cc.jumpkick.layout.ModuleLayout.mainResourcesDir(dir, compact), layout.classesDir())
-                        && extraResourcesOutOfSync(project, dir, layout.classesDir());
                 steps.add(new TaskForecast.Task(
                         "copy-resources",
                         TaskForecast.Status.RUN,
-                        extraOnly ? "extra resources changed" : "resources changed",
+                        extraOnlyResourceDrift ? "extra resources changed" : "resources changed",
                         null));
             }
             if (testResourceDrift) {
@@ -700,11 +713,17 @@ public final class TaskForecaster {
             BuildLayout layout,
             JkBuild project,
             ActionCache actionCache,
-            String compileMainKey)
+            String compileMainKey,
+            Boolean knownResourceDrift)
             throws IOException {
         Path classesDir = layout.classesDir();
         if (classesDirHasContent(classesDir)) {
-            if (mainResourcesOutOfSync(dir, compact, project, classesDir)) {
+            // Reuse the forecast's single drift detection when it ran (JK-1844) — a re-walk here
+            // could disagree with it and project the token from a different tree state.
+            boolean drifted = knownResourceDrift != null
+                    ? knownResourceDrift
+                    : mainResourcesOutOfSync(dir, compact, project, classesDir);
+            if (drifted) {
                 return classesTokenProjectedAfterResourceCopy(dir, compact, layout, project);
             }
             return ClasspathFingerprint.entry(classesDir);
@@ -784,7 +803,8 @@ public final class TaskForecaster {
             ActionCache actionCache,
             Path cache,
             String compileMainKey,
-            Map<Path, String> restoredJarShas)
+            Map<Path, String> restoredJarShas,
+            Boolean knownResourceDrift)
             throws IOException {
         Path assemblyJar = layout.assemblyJar();
         String classesTok = classesTokenForPackage(
@@ -793,7 +813,8 @@ public final class TaskForecaster {
                 layout,
                 project,
                 actionCache,
-                compileMainKey);
+                compileMainKey,
+                knownResourceDrift);
         // Same jar set as BuildPlanner.assemblyStep (ModuleRuntimeClasspath / JK-1345).
         List<Path> depJars = BuildPlanner.assemblyDependencyJars(dir, project, lockFile, cache);
         String depsTok = fingerprintDepJars(depJars, actionCache, restoredJarShas);
