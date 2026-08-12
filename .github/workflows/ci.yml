@@ -91,9 +91,19 @@ jobs:
 
       - name: Bootstrap dist + workers
         run: |
+          # installLocal dependsOn :cli:installDist (thin client) so materialize never races
+          # ahead of nativeCompile/dist looking for a bare `jk` on PATH.
           ./gradlew dist installLocal --no-daemon
           ./install.sh build/dist/jk
-          echo "$HOME/.jk/versions/0.12.0/bin" >> "$GITHUB_PATH"
+          # install.sh stages into the XDG data root (versions/<ver>/bin), not only ~/.jk.
+          VER=$(./build/dist/jk --version | head -1 | awk '{print $NF}')
+          if [ -d "$HOME/.local/share/jk/versions/$VER/bin" ]; then
+            echo "$HOME/.local/share/jk/versions/$VER/bin" >> "$GITHUB_PATH"
+          elif [ -d "$HOME/.jk/versions/$VER/bin" ]; then
+            echo "$HOME/.jk/versions/$VER/bin" >> "$GITHUB_PATH"
+          else
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          fi
 
       - name: jk lock + build + install-local + library tests
         env:
@@ -150,7 +160,10 @@ jobs:
           JK_AOT_TRAIN: off
         run: |
           jk --version
-          jk build --skip-tests
+          # clients/cli has [native] always=true; this job is Temurin-only (no Graal).
+          # Build the monorepo excluding the native-always CLI — thin client was already
+          # bootstrapped via :cli:installDist. Still exercise cli unit/integration via jk test.
+          jk build --skip-tests --modules 'shared/*,server/*,clients/web,plugins/*'
           jk plugin install-local
           # Same pure-jk suite as native job (C2 default parallel tests); release stages bootstrap client.
           jk test -j0 -w0 --modules 'shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*'

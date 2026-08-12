@@ -72,6 +72,12 @@ tasks.register("installLocal") {
     description =
         "Materialize shadowJar into the versioned layout and restart the engine (JK-1194 dogfood)"
     dependsOn(tasks.named("shadowJar"))
+    // Client must exist before materialize: `./gradlew dist installLocal` used to race
+    // installLocal (only dependsOn shadowJar) ahead of nativeCompile/dist, so resolveClient
+    // fell through to bare `jk` and failed on clean CI runners with no PATH install.
+    // installDist is the thin client (no Graal); dist's native binary is preferred when
+    // already present via resolveClient order, but is not a hard dependency here.
+    dependsOn(":cli:installDist")
     doLast {
         val engineJar =
             tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar").get().archiveFile

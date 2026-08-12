@@ -94,9 +94,10 @@ class EngineClientTest {
         EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "7.7.7", null);
         startInBackground(server);
-        waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
-
-        assertThat(EngineClient.ping(EnginePaths.activeSocket(p))).isTrue();
+        // Endpoint is written before acceptLoop (AOT plan / HTTP / warmup still run first).
+        // Wait for a real pong — cold CI can take longer than the 2s connect timeout between
+        // writeEndpoint and the accept loop, so "endpoint exists" alone races.
+        waitUntil(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
 
         var hs = EngineClient.handshake(EnginePaths.activeSocket(p), "7.7.7");
         assertThat(hs).isPresent();
@@ -118,7 +119,7 @@ class EngineClientTest {
         EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
         Thread serverThread = startInBackground(server);
-        waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
+        waitUntil(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
 
         assertThat(EngineClient.stop(EnginePaths.activeSocket(p))).isTrue();
         serverThread.join(5_000);
@@ -136,7 +137,7 @@ class EngineClientTest {
         EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
         startInBackground(server);
-        waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
+        waitUntil(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
 
         assertThat(EngineClient.handshake(EnginePaths.activeSocket(p), "1.0")
                         .orElseThrow()
@@ -154,7 +155,7 @@ class EngineClientTest {
         EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
         Thread serverThread = startInBackground(server);
-        waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
+        waitUntil(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
 
         assertThat(EngineClient.drain(EnginePaths.activeSocket(p))).isZero(); // no in-flight jobs → immediate exit
         serverThread.join(5_000);
@@ -166,7 +167,7 @@ class EngineClientTest {
         EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
         Thread serverThread = startInBackground(server);
-        waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
+        waitUntil(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
 
         long pid = EngineClient.readPidForSocket(EnginePaths.activeSocket(p));
         // In-process EngineServer records this JVM's pid; forceStop must not kill us.
@@ -234,9 +235,7 @@ class EngineClientTest {
             EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
             EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "7.7.7", null);
             startInBackground(server);
-            waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
-
-            assertThat(EngineClient.ping(EnginePaths.activeSocket(p))).isTrue();
+            waitUntil(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
 
             var hs = EngineClient.handshake(EnginePaths.activeSocket(p), "7.7.7");
             assertThat(hs).isPresent();
@@ -303,7 +302,7 @@ class EngineClientTest {
         EnginePaths.Paths p = EnginePaths.resolve(shortTempDir());
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "3.3.3", null);
         startInBackground(server);
-        waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
+        waitUntil(Duration.ofSeconds(30), () -> EngineClient.ping(EnginePaths.activeSocket(p)));
 
         EngineClient.Handshake hs = EngineClient.ensureRunning(p, "3.3.3");
         assertThat(hs.version()).isEqualTo("3.3.3");

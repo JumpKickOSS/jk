@@ -34,16 +34,10 @@ class TestStampWorkerJarsParityTest {
                 [application]
                 main = "cc.jumpkick.cli.Jk"
                 """);
-        // Minimal sibling engine jar so enrichCliTestProps has something to attach.
+        // Sibling engine is a library (no [application].main) → workspace layout puts the
+        // main jar at target/<module-rel>/lib/<name>-<ver>.jar (not module-local target/).
         Path engine = tmp.resolve("server/engine");
-        Files.createDirectories(engine.resolve("target"));
-        Path engineJar = engine.resolve("target/jk-engine-0.0.1.jar");
-        // empty zip is enough for path existence checks
-        try (var zos = new java.util.zip.ZipOutputStream(Files.newOutputStream(engineJar))) {
-            zos.putNextEntry(new java.util.zip.ZipEntry("META-INF/MANIFEST.MF"));
-            zos.write("Manifest-Version: 1.0\n".getBytes());
-            zos.closeEntry();
-        }
+        Files.createDirectories(engine);
         Files.writeString(engine.resolve("jk.toml"), """
                 [project]
                 group = "cc.jumpkick"
@@ -55,14 +49,17 @@ class TestStampWorkerJarsParityTest {
                 [workspace]
                 modules = ["clients/cli", "server/engine"]
                 """);
+        Path engineJar = tmp.resolve("target/server/engine/lib/jk-engine-0.0.1.jar");
+        Files.createDirectories(engineJar.getParent());
+        writeMinimalJar(engineJar);
 
         JkBuild project = JkBuildParser.parse(cli.resolve("jk.toml"));
         assertThat(BuildPlanner.needsNestedEngineIsolation(project)).isTrue();
 
         Map<String, String> workers = BuildPlanner.testStampWorkerJars(cli, project);
-        // Host / VersionStore fallback always supplies jk.engine.jar under pure-jk (and
-        // when the workspace assembly is present, that path wins).
+        // Workspace sibling path wins when present; cold CI has no host install/dist.
         assertThat(workers).containsKey("jk.engine.jar");
+        assertThat(Path.of(workers.get("jk.engine.jar"))).isRegularFile();
         var extras = BuildPlanner.testStampExtras(cli, project);
         assertThat(extras).anyMatch(s -> s.startsWith("sel:"));
         assertThat(extras).anyMatch(s -> s.startsWith("jk:"));
@@ -151,13 +148,57 @@ class TestStampWorkerJarsParityTest {
                 modules = ["clients/cli", "server/engine"]
                 """);
 
+        // Seed a monorepo-shaped host jar so cold CI (no install / no prior dist) still
+        // exercises locateHostEngineJar. Prefer an existing shadow/dist jar when present.
+        seedMonorepoHostEngineJar();
+
         JkBuild project = JkBuildParser.parse(cli.resolve("jk.toml"));
         Map<String, String> workers = BuildPlanner.testStampWorkerJars(cli, project);
-        // Host process / VersionStore / classpath must supply a fat jar so pure-jk nested
-        // isolation still gets -Djk.engine.jar without a workspace *-all.jar.
+        // Host process / VersionStore / monorepo product path must supply a fat jar so pure-jk
+        // nested isolation still gets -Djk.engine.jar without a workspace *-all.jar.
         assertThat(workers)
                 .as("jk.engine.jar must be set even when workspace assembly is absent")
                 .containsKey("jk.engine.jar");
         assertThat(Path.of(workers.get("jk.engine.jar"))).isRegularFile();
+    }
+
+    /** Minimal zip so path existence / monorepo product discovery has a real file. */
+    private static void writeMinimalJar(Path jar) throws Exception {
+        try (var zos = new java.util.zip.ZipOutputStream(Files.newOutputStream(jar))) {
+            zos.putNextEntry(new java.util.zip.ZipEntry("META-INF/MANIFEST.MF"));
+            zos.write("Manifest-Version: 1.0\n".getBytes());
+            zos.closeEntry();
+        }
+    }
+
+    /**
+     * Place {@code jk-engine-<VERSION>.jar} where {@link BuildPlanner#findMonorepoEngineJar}
+     * looks, without requiring a prior dogfood install. Prefer an existing shadow/dist jar.
+     */
+    private static Path seedMonorepoHostEngineJar() throws Exception {
+        String ver = cc.jumpkick.model.JkVersion.VERSION;
+        Path cwd = Path.of(System.getProperty("user.dir", ".")).toAbsolutePath().normalize();
+        for (Path walk = cwd; walk != null; walk = walk.getParent()) {
+            for (String rel : java.util.List.of(
+                    "server/engine/build/libs/jk-engine-" + ver + ".jar",
+                    "build/dist/lib/jk-engine-" + ver + ".jar",
+                    "build/libs/jk-engine-" + ver + ".jar")) {
+                Path p = walk.resolve(rel);
+                if (Files.isRegularFile(p)) return p.normalize();
+            }
+        }
+        // Cold tree: plant under the first monorepo-shaped root we can find (or cwd).
+        Path root = cwd;
+        for (Path walk = cwd; walk != null; walk = walk.getParent()) {
+            if (Files.isRegularFile(walk.resolve("settings.gradle.kts"))
+                    || Files.isRegularFile(walk.resolve("jk.toml"))) {
+                root = walk;
+                break;
+            }
+        }
+        Path seed = root.resolve("server/engine/build/libs/jk-engine-" + ver + ".jar");
+        Files.createDirectories(seed.getParent());
+        writeMinimalJar(seed);
+        return seed.normalize();
     }
 }
