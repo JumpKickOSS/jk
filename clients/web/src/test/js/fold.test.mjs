@@ -557,6 +557,55 @@ test('run-snapshot applies phases + progress in one frame (no phase-replay backl
   assert.equal(cards[0].residualRemainingMs, 25_000);
 });
 
+test('reconnect run-snapshot preserves live diagnostics, failed state, and checked modules (JK-1834)', () => {
+  const cards = [];
+  foldEvent(cards, { type: 'request-start', data: { requestId: 7, kind: 'build', dir: '/w' }, at: 1000 });
+  // Live stream reports a checked module, then a module-level failure with diagnostics.
+  foldEvent(cards, {
+    type: 'module-finish',
+    data: { requestId: 7, dir: '/w/lib', success: true, didWork: false, millis: 12 },
+    at: 1500,
+  });
+  foldEvent(cards, {
+    type: 'diagnostic',
+    data: { requestId: 7, dir: '/w/app', task: 'run-tests', code: 'test-failure', message: 'FooTest.bar failed' },
+    at: 2000,
+  });
+  foldEvent(cards, {
+    type: 'module-finish',
+    data: { requestId: 7, dir: '/w/app', success: false, millis: 900 },
+    at: 2100,
+  });
+  // EventSource reconnects: the new subscription's snapshot has chains but no diagnostics/didWork.
+  foldEvent(cards, {
+    type: 'run-snapshot',
+    data: {
+      requestId: 7,
+      kind: 'build',
+      dir: '/w',
+      startedAt: 900,
+      progress: 80,
+      modules: [
+        { dir: '/w/lib', success: true, millis: 12, tasks: [{ name: 'check', stage: 'compile', status: 'SUCCESS', millis: 12 }] },
+        { dir: '/w/app', success: false, millis: 900, tasks: [{ name: 'run-tests', stage: 'test', status: 'RUN', millis: 0 }] },
+        { dir: '/w/cli', success: false, millis: 0, tasks: [{ name: 'compile-java', stage: 'compile', status: 'RUN', millis: 0 }] },
+      ],
+    },
+    at: 3000,
+  });
+  const card = cards[0];
+  const byDir = Object.fromEntries(card.modules.map((m) => [m.dir, m]));
+  // Diagnostics and the reported failure survive the snapshot replace.
+  assert.equal(byDir['/w/app'].diagnostics.length, 1);
+  assert.equal(byDir['/w/app'].diagnostics[0].message, 'FooTest.bar failed');
+  assert.equal(byDir['/w/app'].state, 'failed');
+  // didWork=false keeps its checked rendering.
+  assert.equal(byDir['/w/lib'].state, 'checked');
+  // Snapshot-only modules still appear with the engine's chains.
+  assert.equal(byDir['/w/cli'].state, 'running');
+  assert.equal(byDir['/w/cli'].steps[0].name, 'compile-java');
+});
+
 test('mid-build refresh: history stub rebinds on workspace-progress and finishes', () => {
   // Hard refresh while a build is streaming: journal seeds h:… then SSE events use numeric requestId.
   const cards = [];

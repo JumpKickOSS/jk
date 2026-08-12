@@ -315,8 +315,11 @@ function applyRunSnapshot(cards, d, at) {
   if (typeof d.numerator === 'number') card.progressNum = d.numerator;
   if (typeof d.denominator === 'number' && d.denominator > 0) card.progressDen = d.denominator;
   applyLiveEtaFields(card, d);
-  // Always take the snapshot's phase chains when present — they are the engine's current truth
-  // (history stub is empty; live card may still be empty if this is the first frame).
+  // Take the snapshot's phase chains when present — they are the engine's current truth for
+  // chains and progress (history stub is empty; live card may still be empty if this is the
+  // first frame) — but MERGE into existing rows: the snapshot never carries diagnostics or
+  // didWork, which are published exactly once as live events, so a reconnect replace would
+  // lose them for the rest of the run (JK-1834).
   const mods = historyModules({
     running: true,
     dir: d.dir || card.dir || '',
@@ -329,7 +332,45 @@ function applyRunSnapshot(cards, d, at) {
     steps: d.steps,
     diagnostics: d.diagnostics,
   });
-  if (mods.length > 0) card.modules = mods;
+  if (mods.length > 0) card.modules = mergeSnapshotModules(card.modules, mods);
+}
+
+/**
+ * Merge snapshot module rows into a card's existing rows. Snapshot wins on chains/progress;
+ * live-only facts survive: diagnostics, didWork/checked, an already-reported failure, step
+ * messages, and rows only the live stream knows (e.g. the "" output bucket).
+ */
+function mergeSnapshotModules(existing, snapshot) {
+  if (!existing || existing.length === 0) return snapshot;
+  const byDir = new Map(existing.map((m) => [m.dir, m]));
+  const merged = snapshot.map((next) => {
+    const prev = byDir.get(next.dir);
+    if (!prev) return next;
+    byDir.delete(next.dir);
+    if ((!next.diagnostics || next.diagnostics.length === 0) && prev.diagnostics && prev.diagnostics.length > 0) {
+      next.diagnostics = prev.diagnostics;
+    }
+    if (prev.didWork !== undefined) {
+      next.didWork = prev.didWork;
+      if (next.state === 'success' && prev.didWork === false) next.state = 'checked';
+    }
+    // A failure the live stream already reported (module-finish success=false) outranks a
+    // snapshot that cannot see module-level failures without a FAIL task.
+    if (prev.state === 'failed' && next.state !== 'failed') next.state = 'failed';
+    if ((next.steps || []).length > 0 && (prev.steps || []).length > 0) {
+      const prevSteps = new Map(prev.steps.map((s) => [s.name, s]));
+      for (const s of next.steps) {
+        const ps = prevSteps.get(s.name);
+        if (ps && !s.message && ps.message) s.message = ps.message;
+      }
+    }
+    if (typeof prev.lastActivity === 'number' && prev.lastActivity > next.lastActivity) {
+      next.lastActivity = prev.lastActivity;
+    }
+    return next;
+  });
+  for (const leftover of byDir.values()) merged.push(leftover);
+  return merged;
 }
 
 /**
