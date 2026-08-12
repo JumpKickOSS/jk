@@ -154,11 +154,6 @@ public final class WorkspaceProgressTracker {
         return recompute();
     }
 
-    @Deprecated
-    public synchronized Snapshot setRemaining(long remainingMs) {
-        return noteRemaining(remainingMs, annotatedR0ms);
-    }
-
     public synchronized void modulesTotal(int modulesTotal) {
         this.modulesTotal = Math.max(0, modulesTotal);
     }
