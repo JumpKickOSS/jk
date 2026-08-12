@@ -361,6 +361,25 @@ class CommandManagerTest {
     }
 
     @Test
+    void identical_residual_reemits_do_not_reanchor_the_countdown() {
+        // Preflight ticks force-emit the unchanged seed residual every ~500 ms; each emit used to
+        // reset the anchor, so the countdown displayed a constant R0 for the whole prepare window
+        // instead of the promised open-loop decay (JK-1843).
+        var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdfont = false;
+        cm.setEtaEstimate(30_000); // R0 seed anchors residual at ~0 elapsed
+        cm.setModuleProgress(1, 2); // execute locks the seed path
+        cm.startNanos = System.nanoTime() - 10_000_000_000L; // wall clock: ~10s into the run
+        cm.setBarResidualRemaining(30_000); // identical re-emit — must NOT re-anchor
+        String held = TestAnsi.strip(cm.renderBuildPlanLines(120, 10_000).get(0));
+        assertThat(held).contains("ETA ~20s"); // decayed from the ORIGINAL anchor, not frozen at 30s
+        // A genuinely new residual still re-anchors: 25s at ~10s elapsed → ~24s a second later.
+        cm.setBarResidualRemaining(25_000);
+        String reanchored = TestAnsi.strip(cm.renderBuildPlanLines(120, 11_000).get(0));
+        assertThat(reanchored).contains("ETA ~24s");
+    }
+
+    @Test
     void residual_speeds_up_countdown_when_work_finishes_early() {
         var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;

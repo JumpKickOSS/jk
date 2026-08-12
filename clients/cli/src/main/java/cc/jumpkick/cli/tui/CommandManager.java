@@ -103,7 +103,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     // plan mode
     private String name = "";
     private String target = "";
-    private long startNanos;
+    // Package-private: CommandManagerTest rewinds the wall anchor to simulate elapsed time.
+    long startNanos;
     private long numerator;
     private long denominator;
     /**
@@ -440,6 +441,12 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             long rem = residualMillis;
             // Bare residual 0 with no R0 seed: do not invent a dual clock from "done".
             if (remainingWorkMs < 0 && rem == 0) return;
+            // Identical re-emit carries no new information — keep the existing anchor so the
+            // promised open-loop decay between samples actually happens. Without this, the
+            // preflight ticks force-emitting an unchanged R0 every ~500 ms re-anchored the
+            // countdown each time and froze the face at R0 for the whole prepare window,
+            // silently pushing the real finish to executeStart + R0 (JK-1843).
+            if (rem == residualRemainingMs) return;
             long elapsed = elapsedMillis();
             residualRemainingMs = rem;
             residualSetAtElapsedMs = elapsed;
