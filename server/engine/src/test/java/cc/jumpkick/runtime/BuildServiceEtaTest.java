@@ -146,6 +146,21 @@ class BuildServiceEtaTest {
                 false);
         assertThat(BuildService.hasLocalCompileContent(local)).isTrue();
 
+        // JK-1836: counts ending in 0 contain the substring "0 source" — a naive contains()
+        // treated a 10/20/100-source edit as zero-source and discounted the whole suite.
+        var tenSources = new TaskForecast.Module(
+                Path.of("/engine"),
+                "g:engine",
+                List.of(
+                        new TaskForecast.Task(
+                                "compile-main", TaskForecast.Status.PARTIAL, "compile · 10 sources changed", null),
+                        new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~1000 tests", null)),
+                100,
+                1000,
+                true,
+                false);
+        assertThat(BuildService.hasLocalCompileContent(tenSources)).isTrue();
+
         var cliShaped = new TaskForecast.Module(
                 Path.of("/cli"),
                 "g:cli",

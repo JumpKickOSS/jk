@@ -683,6 +683,14 @@ public final class BuildService {
     }
 
     /**
+     * "Exactly zero sources changed" — the count must not be a suffix of a larger number
+     * ("10 sources changed"), see JK-1836. Text form from {@code JavaIncrementalCompile}:
+     * {@code "1 source changed"} / {@code "<n> sources changed"}.
+     */
+    private static final java.util.regex.Pattern ZERO_SOURCES =
+            java.util.regex.Pattern.compile("(?<!\\d)0 sources? changed");
+
+    /**
      * True when the module has real local compile content (sources/options/classpath) — not
      * resource drift alone, and not a zero-source partial.
      */
@@ -691,8 +699,10 @@ public final class BuildService {
         for (TaskForecast.Task s : m.steps()) {
             if (s.cached() || !isCompileStepName(s.name())) continue;
             String t = s.text() == null ? "" : s.text();
-            // "compile · 0 sources changed" is not material work.
-            if (t.contains("0 source")) continue;
+            // "compile · 0 sources changed" is not material work. Digit-guarded: a bare
+            // contains("0 source") also matched "10/20/…N0 sources changed" and silently
+            // discounted whole test suites for modules with a multiple-of-ten edit (JK-1836).
+            if (ZERO_SOURCES.matcher(t).find()) continue;
             if (s.status() == TaskForecast.Status.PARTIAL || s.status() == TaskForecast.Status.FULL) {
                 return true;
             }
