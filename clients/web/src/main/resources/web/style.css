@@ -766,14 +766,14 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
   z-index: 1; /* paint the connector above .phase-steps top border */
 }
 /* Speech-bubble connector under the open node: outer triangle = node outline, inner = panel fill
- * (same 50% console bg as .phase-steps). Tip points up toward the open node.
- * top is past the bottom border (padding-box 100% + outline width) so the tip is not under the stroke. */
+ * (same 20% console bg as .phase-steps). Tip points up toward the open node.
+ * top is past the bottom border (padding-box 100% + outline + 1px) so the tip clears the stroke. */
 .phase-node.open::before,
 .phase-node.open::after {
   content: '';
   position: absolute;
   left: 50%;
-  top: calc(100% + var(--open-outline-w));
+  top: calc(100% + var(--open-outline-w) + 1px);
   transform: translateX(-50%);
   clip-path: polygon(50% 0, 100% 100%, 0 100%);
   pointer-events: none;
@@ -788,13 +788,13 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
   /* fill sits 1px inside the outline so the slanted edges + tip read as a 1px stroke */
   width: 14px;
   height: 8.5px;
-  top: calc(100% + var(--open-outline-w) + 1.25px);
-  background: rgba(var(--console-bg-rgb), 0.5);
+  top: calc(100% + var(--open-outline-w) + 2.25px);
+  background: rgba(var(--console-bg-rgb), 0.2);
 }
 /* Room for the hanging chevron inside overflow:hidden .step-chain (horizontal page only).
- * 12px = outline offset (2) + triangle height (10); -1px margin pulls .phase-steps up so the base
- * covers the panel's top border without double-alpha stacking in the main gap. */
-.phase-chain-outer.has-open .step-chain { padding-bottom: 12px; }
+ * 13px = outline offset (2) + 1px tip gap + triangle height (10); -1px margin pulls .phase-steps
+ * up so the base covers the panel's top border without double-alpha stacking in the main gap. */
+.phase-chain-outer.has-open .step-chain { padding-bottom: 13px; }
 .phase-chain-outer.has-open .phase-steps { margin-top: -1px; }
 /* Live detail immediately after the running (blue) phase — left of free space, CLI "· detail". */
 .phase-detail {
@@ -831,7 +831,7 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
   gap: 6px 0;
   margin-top: 8px;
   padding: 8px 10px;
-  background: rgba(var(--console-bg-rgb), 0.5);
+  background: rgba(var(--console-bg-rgb), 0.2);
   /* Outline matches the open phase node (state class set in the template). */
   border: 1px solid var(--node-outline, var(--bd));
   border-radius: var(--r-md);

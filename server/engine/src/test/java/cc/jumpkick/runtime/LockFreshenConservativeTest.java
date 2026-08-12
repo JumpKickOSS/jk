@@ -78,9 +78,12 @@ class LockFreshenConservativeTest {
 
         serveLib("1.0", "1.1");
         restartServer();
-        // Re-publish after bind: port reuse can hit a warm maven-metadata TTL entry written when
-        // only 1.0 was served; explicit lock revalidates metadata so it still floats to 1.1.
+        // Re-publish after bind, then drop any warm ambient index for this URL — JkStores puts
+        // maven-metadata in the product store (cacheN roots are ignored), so port reuse can
+        // leave a 24h TTL body that only lists 1.0. Plain lock no longer force-revalidates
+        // (jk update / -F only); the float assertion needs the live index.
         serveLib("1.0", "1.1");
+        dropLibIndexCache();
         touchManifest(tmp); // whitespace-only edit → digest-stale, so the freshen actually resolves
 
         LockFlow.Result freshened = LockFlow.run(tmp, tmp.resolve("cache2"), List.of(), true, base, true);
@@ -89,6 +92,7 @@ class LockFreshenConservativeTest {
 
         restartServer();
         serveLib("1.0", "1.1");
+        dropLibIndexCache();
         LockFlow.Result explicit = LockFlow.run(tmp, tmp.resolve("cache3"), List.of(), true, base, false);
         assertThat(explicit.status()).isZero();
         assertThat(libVersion(explicit.lockfile()))
@@ -290,6 +294,22 @@ class LockFreshenConservativeTest {
             served.put("/com/foo/lib/" + v + "/lib-" + v + ".pom", pom.getBytes(StandardCharsets.UTF_8));
             served.put("/com/foo/lib/" + v + "/lib-" + v + ".jar", emptyJar());
         }
+    }
+
+    /**
+     * Evict process + on-disk indexes for {@code com.foo:lib} at the current {@link #base}.
+     * Ambient {@link cc.jumpkick.cache.JkStores} metadata is keyed by URL and lives 24h; a
+     * recycled loopback port can otherwise hide newly served versions from plain {@code lock}.
+     */
+    private void dropLibIndexCache() throws IOException {
+        cc.jumpkick.resolve.ResolveProcessCacheControl.clearAll();
+        String root = base.toString();
+        if (!root.endsWith("/")) root = root + "/";
+        URI metaUri = URI.create(root).resolve("com/foo/lib/maven-metadata.xml");
+        Path metaDir = cc.jumpkick.cache.JkStores.store().resolve("metadata");
+        Path body = metaDir.resolve(cc.jumpkick.util.Hashing.sha256Hex(metaUri.toString()));
+        Files.deleteIfExists(body);
+        Files.deleteIfExists(body.resolveSibling(body.getFileName() + ".h"));
     }
 
     /**
