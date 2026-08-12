@@ -110,8 +110,18 @@ public final class ReleaseCommand implements CliCommand {
             return 0;
         }
 
-        // 1) Build JVM modules (engine assembly, plugins, libraries)
-        int code = runBuild(dir, skipTests, modulesSpec, cacheDir);
+        // 1) Build JVM modules (engine assembly, plugins, libraries).
+        // When --skip-native, drop native-always modules (clients/cli) from the default
+        // workspace build — those modules demand native-image on every `jk build`, which is
+        // exactly what skip-native is opting out of. Explicit -m still wins.
+        String buildModules = modulesSpec;
+        if (skipNative
+                && (buildModules == null || buildModules.isBlank())
+                && cliDir != null
+                && isNativeEligible(cliDir)) {
+            buildModules = modulesExcluding(dir, root, cliDir);
+        }
+        int code = runBuild(dir, skipTests, buildModules, cacheDir);
         if (code != 0) return code;
 
         // 2) Ensure a native CLI when the module is native-eligible and none is staged yet
@@ -308,6 +318,22 @@ public final class ReleaseCommand implements CliCommand {
         }
     }
 
+    /**
+     * Comma-joined module paths for a workspace build that omits {@code excluded}, so
+     * {@code --skip-native} does not re-enter a {@code [native] always = true} module.
+     */
+    private static String modulesExcluding(Path workspaceRoot, JkBuild root, Path excluded) {
+        if (!root.isWorkspaceRoot()) return null;
+        Path ex = excluded.toAbsolutePath().normalize();
+        List<String> keep = new ArrayList<>();
+        for (String m : root.workspace().modules()) {
+            Path dir = workspaceRoot.resolve(m).toAbsolutePath().normalize();
+            if (dir.equals(ex)) continue;
+            keep.add(m);
+        }
+        return keep.isEmpty() ? null : String.join(",", keep);
+    }
+
     private static Path findEngineAssembly(Path workspaceRoot, JkBuild root, Path engineDir) throws IOException {
         if (engineDir == null) return null;
         JkBuild engine = JkBuildParser.parse(engineDir.resolve("jk.toml"));
@@ -355,27 +381,28 @@ public final class ReleaseCommand implements CliCommand {
 
     private static Path findNativeClient(Path cliDir) {
         // pure-jk native-image uses project name (jk-cli); Gradle nativeCompile uses imageName "jk".
+        // Only these ship-layout paths — do not walk target/ (nested CLI suites plant
+        // target/test-jk-home/bin/jk, which is a bootstrap copy, not a native image).
         List<Path> candidates = List.of(
                 cliDir.resolve("target/jk"),
                 cliDir.resolve("target/jk-cli"),
                 cliDir.resolve("target/native/nativeCompile/jk"),
                 cliDir.resolve("build/native/nativeCompile/jk"));
         for (Path p : candidates) {
-            if (Files.isRegularFile(p)) return p;
+            if (Files.isRegularFile(p) && Files.isExecutable(p)) return p;
         }
-        Path target = cliDir.resolve("target");
-        if (Files.isDirectory(target)) {
-            try (var stream = Files.walk(target, 3)) {
-                return stream.filter(Files::isRegularFile)
-                        .filter(p -> {
-                            String n = p.getFileName().toString();
-                            return n.equals("jk") || n.equals("jk-cli");
-                        })
-                        .findFirst()
-                        .orElse(null);
-            } catch (IOException e) {
-                return null;
+        // Workspace central out tree: <workspace>/target/clients/cli/jk
+        try {
+            var root = cc.jumpkick.config.WorkspaceLocator.findRoot(cliDir);
+            if (root.isPresent()) {
+                Path rel = root.get().relativize(cliDir.toAbsolutePath().normalize());
+                for (String name : List.of("jk", "jk-cli")) {
+                    Path p = root.get().resolve("target").resolve(rel).resolve(name);
+                    if (Files.isRegularFile(p) && Files.isExecutable(p)) return p;
+                }
             }
+        } catch (IOException ignored) {
+            // fall through
         }
         return null;
     }
