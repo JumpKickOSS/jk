@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.TreeMap;
 
 /**
  * Parsed {@code [train]} / {@code [[train.profile]]} from {@code jk.toml}.
