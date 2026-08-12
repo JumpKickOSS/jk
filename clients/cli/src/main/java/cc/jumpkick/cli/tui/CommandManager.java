@@ -501,7 +501,11 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      * bar takes over automatically; pass {@code ""} to clear explicitly.
      */
     public void solveLabel(String label) {
-        this.solveLabel = label == null ? "" : label;
+        // Same lock as the other solveLabel writers (preflight/progress/seed) — worker and
+        // render threads otherwise raced on plain JMM visibility (JK-1852).
+        synchronized (lock) {
+            this.solveLabel = label == null ? "" : label;
+        }
     }
 
     /**
@@ -1721,11 +1725,18 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         long[] bd = displayBar(elapsedMillis);
         long barNum = bd[0];
         long barDen = bd[1];
+        // Sample worker-written state under the lock — the animator thread otherwise read
+        // denominator/solveLabel on plain JMM visibility (JK-1852).
+        long den;
+        String sl;
+        synchronized (lock) {
+            den = denominator;
+            sl = solveLabel;
+        }
         // Open-loop R0 alone is enough to show the bar (even before weight calibrate).
-        boolean hasBar = barDen > 0 || denominator > 0;
+        boolean hasBar = barDen > 0 || den > 0;
         String barStr = hasBar ? bar.render(barNum, Math.max(1, barDen)) : bar.render(0, 0);
         StringBuilder h = new StringBuilder();
-        String sl = solveLabel;
         boolean phase1 = !hasBar && !sl.isEmpty();
         AttributedStyle chip = t.planChip();
         // Pulse glyph: FG lerps white→chip blue; BG stays chip blue so it sits in the pill.
