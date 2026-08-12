@@ -274,8 +274,13 @@ export function events(onEvent, onState) {
     if (!COALESCE_TYPES.has(type)) return null;
     if (type === 'status' || type === 'cache') return type;
     const rid = data && data.requestId != null ? data.requestId : '';
-    // plan-progress / label are per-module; keep one pending per (type, requestId, dir).
-    if (type === 'plan-progress' || type === 'label') {
+    // plan-progress is per-module; label targets a specific STEP row — with parallel workers in
+    // one plan, a (type, rid, dir) key let step B's pending label overwrite step A's before the
+    // drain, leaving A's detail stale until its next tick (JK-1848).
+    if (type === 'label') {
+      return type + ':' + rid + ':' + ((data && data.dir) || '') + ':' + ((data && (data.task || data.step)) || '');
+    }
+    if (type === 'plan-progress') {
       return type + ':' + rid + ':' + ((data && data.dir) || '');
     }
     return type + ':' + rid;
