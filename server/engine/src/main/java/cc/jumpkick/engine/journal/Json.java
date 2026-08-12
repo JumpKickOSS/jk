@@ -112,7 +112,9 @@ final class Json {
             pm.put("name", p.name());
             pm.put("stage", p.stage());
             pm.put("status", p.status());
-            pm.put("millis", p.millis());
+            // Unknown duration (< 0) stays ABSENT on the wire: stamping it 0 made the SPA paint
+            // genuinely-worked steps as dashed cache-skips — 0 means a true no-op (JK-1855).
+            if (p.millis() >= 0) pm.put("millis", p.millis());
             out.add(pm);
         }
         return out;
@@ -235,7 +237,13 @@ final class Json {
             // Journals on disk predate the rename; read the old keys so history stays readable.
             String stage = strOr(pm, "stage", "group");
             if (stage == null || stage.isBlank()) stage = str(pm, "phase");
-            steps.add(new BuildRecord.Task(str(pm, "name"), stage, str(pm, "status"), lng(pm, "millis")));
+            // Missing millis = unknown duration, kept as -1 — NOT 0, which is the true-no-op
+            // signal the dashboard renders dashed (JK-1855).
+            steps.add(new BuildRecord.Task(
+                    str(pm, "name"),
+                    stage,
+                    str(pm, "status"),
+                    pm.get("millis") instanceof Number n ? n.longValue() : -1L));
         }
         return steps;
     }

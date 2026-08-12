@@ -703,12 +703,14 @@ function historyModules(rec) {
   const running = !!rec.running;
   const toSteps = (ps) =>
     (ps || []).map((p) => {
-      const millis = typeof p.millis === 'number' ? p.millis : null;
+      // Absent or negative millis = unknown duration (renders plain); 0 is the true-no-op
+      // signal that renders dashed (JK-1855 — the journal no longer stamps unknown as 0).
+      const millis = typeof p.millis === 'number' && p.millis >= 0 ? p.millis : null;
       return {
         name: p.name || '?',
         state: stepState(p.status, millis),
         phase: p.stage || p.group || p.phase || '',
-        // Journal tasks always carry millis (0 when unknown); keep null only if the field is absent.
+        
         millis,
         message: '',
       };
