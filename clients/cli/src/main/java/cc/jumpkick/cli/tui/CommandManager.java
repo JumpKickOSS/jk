@@ -1808,8 +1808,15 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 long targetSec = Math.max(0L, deadlineMs / 1000L - elapsedSec);
                 // Jitter buffer: sample latest target at most once per whole-second elapsed tick.
                 // Same-second residual re-anchors update the private target only; the painted face
-                // holds until elapsedSec advances (or first paint / seed / snap-to-zero).
-                if (countdownDisplayElapsedSec < 0 || elapsedSec != countdownDisplayElapsedSec || targetSec == 0) {
+                // holds until elapsedSec advances (or first paint / seed / snap-to-zero). One
+                // asymmetry is deliberate the other way: a re-anchor that RAISES the target in the
+                // same second a zero was committed repaints immediately — holding the 0s until the
+                // next second manufactured a 0s → Ns bounce and briefly flipped the count-up
+                // promote styling (JK-1850).
+                if (countdownDisplayElapsedSec < 0
+                        || elapsedSec != countdownDisplayElapsedSec
+                        || targetSec == 0
+                        || countdownDisplayRemainingSec <= 0) {
                     countdownDisplayRemainingSec = targetSec;
                     countdownDisplayElapsedSec = elapsedSec;
                 }

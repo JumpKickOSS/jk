@@ -361,6 +361,22 @@ class CommandManagerTest {
     }
 
     @Test
+    void same_second_reanchor_overwrites_a_committed_zero() {
+        // Snap-to-zero commits instantly; a residual raise in the SAME second must repaint
+        // instead of holding 0s and bouncing 0s → Ns at the next second (JK-1850).
+        var cm = CommandManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdfont = false;
+        cm.setEtaEstimate(30_000);
+        cm.setModuleProgress(1, 2);
+        String zero = TestAnsi.strip(cm.renderBuildPlanLines(120, 40_000).get(0));
+        assertThat(zero).contains("ETA 0s");
+        cm.startNanos = System.nanoTime() - 40_000_000_000L; // re-anchor lands at ~40s elapsed
+        cm.setBarResidualRemaining(15_000);
+        String raised = TestAnsi.strip(cm.renderBuildPlanLines(120, 40_000).get(0));
+        assertThat(raised).contains("ETA ~15s");
+    }
+
+    @Test
     void identical_residual_reemits_do_not_reanchor_the_countdown() {
         // Preflight ticks force-emit the unchanged seed residual every ~500 ms; each emit used to
         // reset the anchor, so the countdown displayed a constant R0 for the whole prepare window
