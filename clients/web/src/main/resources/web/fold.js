@@ -771,11 +771,8 @@ function historyModules(rec) {
   if (steps.length === 0 && running) return []; // empty stub — wait for SSE / rehydrate phases
   let state;
   if (running) {
-    state = steps.some((s) => s.state === 'failed')
-      ? 'failed'
-      : steps.some((s) => s.state === 'running') || steps.length > 0
-        ? 'running'
-        : 'running';
+    // Any failed step marks the run; otherwise it is running (the zero-step stub returned above).
+    state = steps.some((s) => s.state === 'failed') ? 'failed' : 'running';
   } else {
     state = steps.some((s) => s.state === 'failed')
       ? 'failed'
@@ -883,14 +880,9 @@ function phaseState(steps) {
   // Idle bookkeeping only (explicit 0ms success + skips): paint the phase as skipped so
   // Compile/Generate with a skipped compile-java and a 0ms write-stamp is not solid "success".
   // Missing millis is not treated as idle (history/tests often omit duration).
-  if (
-    steps.every(
-      (s) =>
-        s.state === 'skipped' ||
-        s.state === 'checked' ||
-        (s.state === 'success' && s.millis === 0),
-    )
-  ) {
+  // (No 'checked' alternative here: stepState never yields it — checked is a MODULE state from
+  // module-finish didWork=false; the step-level clause was dead, JK-1858.)
+  if (steps.every((s) => s.state === 'skipped' || (s.state === 'success' && s.millis === 0))) {
     return 'skipped';
   }
   return 'success'; // all terminal, at least one success with real wall-clock
