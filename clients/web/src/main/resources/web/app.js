@@ -1394,10 +1394,32 @@ Vue.createApp({
       const deadline = this.etaDeadlineSeconds(card);
       return deadline != null && this.elapsedSeconds(card) >= deadline + 2;
     },
-    etaCountdown(card) {
+    /**
+     * Whole-second countdown with the CLI's 1s jitter buffer (b1e4f58b / JK-1849): the face
+     * commits once per elapsed second, so a fresh residual sample landing mid-second cannot
+     * flick the digit ±1 when the deadline straddles a floor boundary. Zero snaps immediately
+     * (end on time), and a same-second re-anchor that raises the target overwrites a committed
+     * zero rather than bouncing 0s → Ns on the next second (the JK-1850 rule).
+     */
+    etaFaceSeconds(card) {
       const deadline = this.etaDeadlineSeconds(card);
-      if (deadline == null) return '';
-      const rem = deadline - this.elapsedSeconds(card);
+      if (deadline == null) return null;
+      const sec = this.elapsedSeconds(card);
+      const rem = Math.max(0, deadline - sec);
+      if (rem <= 0) {
+        card.etaFaceSec = sec;
+        card.etaFaceRem = 0;
+        return 0;
+      }
+      if (card.etaFaceSec !== sec || card.etaFaceRem == null || card.etaFaceRem <= 0) {
+        card.etaFaceSec = sec;
+        card.etaFaceRem = rem;
+      }
+      return card.etaFaceRem;
+    },
+    etaCountdown(card) {
+      const rem = this.etaFaceSeconds(card);
+      if (rem == null) return '';
       return rem <= 0 ? '0s' : '~' + this.fmtClockSeconds(rem);
     },
     // Back-compat alias used by older snapshots/tests: bare countdown string (no "ETA " label).

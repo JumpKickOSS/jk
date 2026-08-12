@@ -30,7 +30,9 @@ countdown so remaining eases into R(t) and hits 0 with residual → 0 (always en
 Between residual samples the client open-loop-decays the last re-anchor by wall time. A
 **1s jitter buffer** commits the painted remaining face at most once per whole-second
 elapsed tick (sample latest target when `elapsedSec` advances; hold within the second;
-snap to `0s` immediately).
+snap to `0s` immediately; a same-second re-anchor that raises the target overwrites a
+committed zero). Both faces implement it: CLI `CommandManager` and the SPA
+(`etaFaceSeconds`, JK-1849).
 
 **Bar** uses residual: when work finishes faster than R0, R(t) shrinks and the bar speeds up;
 when residual is larger, it slows. Formula `elapsed / (elapsed + residual)` hits ~100% as
