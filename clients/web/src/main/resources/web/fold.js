@@ -337,6 +337,9 @@ function applyRunSnapshot(cards, d, at) {
   });
   const card = resolveCard(cards, d);
   if (!card) return;
+  // The engine sends the journal id — apply it so dedupe/delete reconciliation works even for
+  // runs without a buildNumber (e.g. lock jobs), instead of waiting for a history GET (JK-1846).
+  if (typeof d.historyId === 'string' && d.historyId && !card.historyId) card.historyId = d.historyId;
   if (typeof d.startedAt === 'number' && d.startedAt > 0) {
     if (card.startedAt == null || d.startedAt < card.startedAt) card.startedAt = d.startedAt;
   }
@@ -711,7 +714,20 @@ function historyModules(rec) {
     return rec.modules.map((m, i) => {
       const steps = toSteps(m.tasks || m.steps);
       let state;
-      if (running && !m.success && steps.some((s) => s.state === 'running')) {
+      if (typeof m.finished === 'boolean') {
+        // Engine's explicit lifecycle bit (JK-1846): success=false alone was ambiguous between
+        // "still running" and "failed", and a module-level failure with no FAIL task was
+        // misclassified as running by the status-guessing below.
+        state = !m.finished
+          ? steps.some((s) => s.state === 'failed')
+            ? 'failed'
+            : 'running'
+          : m.success
+            ? m.didWork === false
+              ? 'checked'
+              : 'success'
+            : 'failed';
+      } else if (running && !m.success && steps.some((s) => s.state === 'running')) {
         state = 'running';
       } else if (running && !m.success && steps.length > 0 && !steps.every((s) => s.state === 'failed' || s.state === 'cancelled')) {
         // Enriched mid-flight module: finished steps only so far, still in progress.
@@ -727,7 +743,7 @@ function historyModules(rec) {
       } else {
         state = 'failed';
       }
-      return {
+      const row = {
         dir: m.dir || '',
         coord: m.coord || null,
         state,
@@ -737,6 +753,9 @@ function historyModules(rec) {
         // Preserve journal order as a tie-break (later modules slightly higher lastActivity).
         lastActivity: activity + i,
       };
+      // Carry the engine's cache-check bit so checked rendering survives merges (JK-1834/1846).
+      if (typeof m.didWork === 'boolean') row.didWork = m.didWork;
+      return row;
     });
   }
   // Single-project: no modules, steps at top level. Its diagnostics live in the "" bucket, so take

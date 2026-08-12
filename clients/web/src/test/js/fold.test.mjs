@@ -558,6 +558,38 @@ test('run-snapshot applies phases + progress in one frame (no phase-replay backl
   assert.equal(cards[0].residualRemainingMs, 25_000);
 });
 
+test('run-snapshot carries finished/didWork/historyId and the SPA stops guessing (JK-1846)', () => {
+  const cards = [];
+  foldEvent(cards, {
+    type: 'run-snapshot',
+    data: {
+      requestId: 31,
+      kind: 'build',
+      dir: '/w',
+      historyId: '20260101T000000000-lock1',
+      startedAt: 1000,
+      serverNow: 5000,
+      modules: [
+        // Module-level failure with no FAIL-status task: guessing called this "running".
+        { dir: '/w/app', finished: true, success: false, millis: 900, didWork: true,
+          tasks: [{ name: 'compile-java', stage: 'compile', status: 'SUCCESS', millis: 900 }] },
+        { dir: '/w/lib', finished: true, success: true, millis: 12, didWork: false,
+          tasks: [{ name: 'check', stage: 'compile', status: 'SUCCESS', millis: 12 }] },
+        { dir: '/w/cli', finished: false, success: false, millis: 0,
+          tasks: [{ name: 'compile-java', stage: 'compile', status: 'RUN', millis: 0 }] },
+      ],
+    },
+    at: 9000,
+  });
+  const card = cards[0];
+  assert.equal(card.historyId, '20260101T000000000-lock1');
+  const byDir = Object.fromEntries(card.modules.map((m) => [m.dir, m]));
+  assert.equal(byDir['/w/app'].state, 'failed');
+  assert.equal(byDir['/w/lib'].state, 'checked');
+  assert.equal(byDir['/w/lib'].didWork, false);
+  assert.equal(byDir['/w/cli'].state, 'running');
+});
+
 test('serverNow re-anchors engine startedAt to the client epoch under skew (JK-1839)', () => {
   const cards = [];
   // Engine clock runs 30s AHEAD of the browser: engine says the run started 10s ago.

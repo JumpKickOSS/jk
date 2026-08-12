@@ -5593,10 +5593,18 @@ public final class EngineServer implements AutoCloseable {
         m.put("kind", run.kind() == null ? "build" : run.kind());
         m.put("dir", run.dir() == null ? "" : run.dir());
         if (run.coord() != null) m.put("coord", run.coord());
-        m.put("startedAt", run.startedAt());
-        // Engine "now": lets the SPA compute skew-free elapsed and re-anchor to its own clock
-        // (JK-1839).
-        m.put("serverNow", serverNow);
+        // Guard like history enrichment: startedAt 0 (hold not yet registered) must not reach
+        // the SPA's elapsed clock as "now - 0" (JK-1846).
+        if (run.startedAt() > 0) {
+            m.put("startedAt", run.startedAt());
+            // Engine "now": lets the SPA compute skew-free elapsed and re-anchor to its own
+            // clock (JK-1839).
+            m.put("serverNow", serverNow);
+        }
+        if (run.dir() != null && !run.dir().isBlank()) {
+            // Same project linkage the live request-start carries (JK-1846).
+            m.put("projectId", cc.jumpkick.runtime.ProjectIds.idOf(run.dir()));
+        }
         m.put("running", true);
         if (run.buildNumber() > 0) m.put("buildNumber", run.buildNumber());
         if (run.journalId() != null && !run.journalId().isBlank()) m.put("historyId", run.journalId());
@@ -5614,8 +5622,11 @@ public final class EngineServer implements AutoCloseable {
                 java.util.Map<String, Object> mm = new java.util.LinkedHashMap<>();
                 mm.put("dir", mod.dir() == null ? "" : mod.dir());
                 if (mod.coord() != null) mm.put("coord", mod.coord());
+                // Explicit lifecycle bit (JK-1846) — see HttpEngineServer.liveModulesJson.
+                mm.put("finished", mod.finished());
                 mm.put("success", mod.finished() && mod.success());
                 mm.put("millis", mod.millis());
+                if (mod.finished()) mm.put("didWork", mod.didWork());
                 java.util.List<Object> tasks =
                         new java.util.ArrayList<>(mod.tasks().size());
                 for (var t : mod.tasks()) {
@@ -6631,13 +6642,19 @@ public final class EngineServer implements AutoCloseable {
                 String mdir = o.dir() == null ? "" : o.dir().toString();
                 covered.add(mdir);
                 moduleList.add(new cc.jumpkick.engine.http.HttpEngineServer.LiveModule(
-                        mdir, o.coord(), /* finished */ true, o.success(), o.millis(), liveTasks(stepsFor(mdir))));
+                        mdir,
+                        o.coord(),
+                        /* finished */ true,
+                        o.success(),
+                        o.millis(),
+                        o.didWork(),
+                        liveTasks(stepsFor(mdir))));
             }
             for (String d : stepsByDir.keySet()) {
                 if (covered.contains(d)) continue;
                 if (d.isEmpty()) continue; // single-plan top-level bucket
                 moduleList.add(new cc.jumpkick.engine.http.HttpEngineServer.LiveModule(
-                        d, null, /* finished */ false, false, 0L, liveTasks(stepsFor(d))));
+                        d, null, /* finished */ false, false, 0L, /* didWork n/a */ true, liveTasks(stepsFor(d))));
             }
             java.util.List<cc.jumpkick.engine.http.HttpEngineServer.LiveTask> top =
                     moduleList.isEmpty() ? liveTasks(stepsFor("")) : java.util.List.of();

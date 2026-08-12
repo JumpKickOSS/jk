@@ -149,7 +149,13 @@ public final class HttpEngineServer implements AutoCloseable {
 
     /** One module's mid-flight chain (finished modules + in-progress ones with steps so far). */
     public record LiveModule(
-            String dir, String coord, boolean finished, boolean success, long millis, List<LiveTask> tasks) {
+            String dir,
+            String coord,
+            boolean finished,
+            boolean success,
+            long millis,
+            boolean didWork,
+            List<LiveTask> tasks) {
         public LiveModule {
             tasks = tasks == null ? List.of() : List.copyOf(tasks);
         }
@@ -1223,8 +1229,13 @@ public final class HttpEngineServer implements AutoCloseable {
             Map<String, Object> mm = new LinkedHashMap<>();
             mm.put("dir", mod.dir() == null ? "" : mod.dir());
             if (mod.coord() != null && !mod.coord().isBlank()) mm.put("coord", mod.coord());
+            // Explicit lifecycle bit: success=false alone was ambiguous between "still
+            // running" and "failed" (JK-1846) — the SPA guessed from task statuses and
+            // misclassified module-level failures with no FAIL task.
+            mm.put("finished", mod.finished());
             mm.put("success", mod.finished() && mod.success());
             mm.put("millis", mod.millis());
+            if (mod.finished()) mm.put("didWork", mod.didWork());
             mm.put("tasks", liveTasksJson(mod.tasks()));
             out.add(mm);
         }
