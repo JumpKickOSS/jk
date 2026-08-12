@@ -293,8 +293,9 @@ public final class HttpEvents {
 
         /**
          * Enqueue {@code wire} for event {@code type}. Never blocks the publisher. When full:
-         * low-priority frames are dropped (incoming or oldest); critical frames evict the oldest
-         * low-priority first, then the oldest critical if the queue is all critical.
+         * the OLDEST low-priority frame is evicted so the freshest sample survives (JK-1847);
+         * an incoming low-priority frame is dropped only when the queue is all critical, and a
+         * critical frame then evicts the oldest critical (classic drop-oldest).
          */
         void offer(String type, String wire) {
             if (wire == null || closed) return;
@@ -303,11 +304,14 @@ public final class HttpEvents {
             try {
                 if (closed) return;
                 if (frames.size() >= QUEUE_CAPACITY) {
-                    if (!critical) {
-                        // Drop this low-priority frame rather than evicting progress/structure.
-                        return;
-                    }
+                    // Evict the OLDEST low-priority frame in either case: dropping the incoming
+                    // frame kept hours-stale output/label frames while discarding fresh ones,
+                    // inverting the coalescer's "latest wins" sampling upstream (JK-1847).
                     if (!evictOldestNonCriticalLocked()) {
+                        if (!critical) {
+                            // Queue is all critical — a low-priority frame loses to structure.
+                            return;
+                        }
                         frames.pollFirst(); // all critical — classic drop-oldest
                     }
                 }

@@ -40,6 +40,22 @@ class HttpEventsTest {
     }
 
     @Test
+    void full_queue_keeps_the_freshest_low_priority_frame() throws Exception {
+        HttpEvents hub = new HttpEvents();
+        try (HttpEvents.Subscription s = hub.subscribe()) {
+            // Flood with low-priority output far past capacity; the SURVIVORS must be the newest
+            // frames (evict-oldest), not an hours-stale prefix (the old drop-newest, JK-1847).
+            int flood = 600; // > QUEUE_CAPACITY
+            for (int i = 0; i < flood; i++) {
+                hub.publish("output", JsonOut.object().put("requestId", 1).put("line", "l-" + i));
+            }
+            String last = null;
+            for (String f; (f = s.next(10)) != null; ) last = f;
+            assertThat(last).contains("l-" + (flood - 1));
+        }
+    }
+
+    @Test
     void attach_after_close_never_registers() {
         HttpEvents hub = new HttpEvents();
         HttpEvents.Subscription s = hub.subscribeDetached(HttpEvents.FrameStyle.DASHBOARD, null);
