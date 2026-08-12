@@ -188,6 +188,22 @@ class SelfHostingTomlTest {
         }
     }
 
+    /**
+     * JK-1863 — the re-lock-in-the-same-commit guard, automated. Any jk.toml / jk-libs.toml edit
+     * must land with a re-stamped jk-lock.toml: a stale stamp costs every fresh checkout an ~18s
+     * re-resolve, and staleness detection is what stands between an edited catalog pin and a
+     * silently wrong resolution (JK-1864). Runs in CI via the plain unit tier.
+     */
+    @Test
+    void lock_stamp_matches_manifests() throws Exception {
+        Path lock = REPO.resolve("jk-lock.toml");
+        Assumptions.assumeTrue(Files.isRegularFile(lock), "workspace lock missing");
+        assertThat(cc.jumpkick.lock.LockfileReader.read(lock).manifestsSha256())
+                .as("jk-lock.toml manifests-sha256 is stale — re-lock (jk lock) and commit the "
+                        + "re-stamp together with the manifest/pin edit")
+                .isEqualTo(cc.jumpkick.lock.LockManifestDigest.compute(REPO));
+    }
+
     @Test
     void engine_is_assembly_app_and_depends_on_web() throws Exception {
         JkBuild engine = JkBuildParser.parse(REPO.resolve("server/engine/jk.toml"));
