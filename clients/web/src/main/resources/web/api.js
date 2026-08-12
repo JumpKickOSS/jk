@@ -333,6 +333,20 @@ export function events(onEvent, onState) {
     }
   }
 
+  // A drain armed on rAF never fires once the tab hides (background tabs get no animation
+  // frames): drainScheduled stayed true, every later scheduleDrain() no-opped, and an overnight
+  // build's frames piled up unapplied for hours (JK-1838). Re-arm on a macrotask at the hide
+  // transition; drain() clears the flag first, so a stale rAF firing on the next show just
+  // drains whatever is left. The listener unhooks itself once the stream is closed.
+  const rearmOnHide = () => {
+    if (source.readyState === EventSource.CLOSED) {
+      document.removeEventListener('visibilitychange', rearmOnHide);
+      return;
+    }
+    if (document.hidden && drainScheduled) setTimeout(drain, 0);
+  };
+  document.addEventListener('visibilitychange', rearmOnHide);
+
   for (const type of EVENT_TYPES) {
     source.addEventListener(type, (e) => {
       try {
