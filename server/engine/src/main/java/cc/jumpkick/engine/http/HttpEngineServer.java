@@ -1192,7 +1192,11 @@ public final class HttpEngineServer implements AutoCloseable {
             if (match == null) return cc.jumpkick.plugin.protocol.MiniJson.write(m);
             m.put("requestId", match.requestId());
             m.put("jid", match.requestId());
-            if (match.startedAt() > 0) m.put("startedAt", match.startedAt());
+            if (match.startedAt() > 0) {
+                m.put("startedAt", match.startedAt());
+                // Engine "now" beside engine startedAt — skew-free elapsed for the SPA (JK-1839).
+                m.put("serverNow", System.currentTimeMillis());
+            }
             if (!Double.isNaN(match.progress())) m.put("progress", match.progress());
             if (match.remainingMs() >= 0) m.put("remainingMs", match.remainingMs());
             if (match.r0Ms() > 0) m.put("R0", match.r0Ms());

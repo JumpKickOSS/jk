@@ -19,6 +19,26 @@ export const MAX_DIAGNOSTICS = 12;
  * parses; + success/cancelled/millis on finish); module/step/output/plan events carry
  * requestId/dir plus their specifics.
  */
+/**
+ * Latch the card's client-epoch start anchor. `startedAt` is engine wall clock; comparing it
+ * with the browser clock on a skewed remote dashboard shifts elapsed/bar/deadline by the skew
+ * (JK-1839). When a frame carries the engine's own `serverNow`, elapsed = serverNow - startedAt
+ * is skew-free and receipt time converts it to the client epoch. Earliest wins, like startedAt.
+ */
+function noteStartAnchor(card, d, at) {
+  if (typeof d.startedAt !== 'number' || d.startedAt <= 0 || at == null) return;
+  if (typeof d.serverNow !== 'number' || d.serverNow < d.startedAt) return;
+  const clientStart = at - (d.serverNow - d.startedAt);
+  if (card.startedAtClient == null || clientStart < card.startedAtClient) {
+    card.startedAtClient = clientStart;
+  }
+}
+
+/** Client-epoch start for elapsed math — engine-epoch startedAt is only a last resort. */
+export function startAnchor(card) {
+  return card.startedAtClient ?? card.startedAt ?? null;
+}
+
 export function foldEvent(cards, event) {
   const d = event.data || {};
   switch (event.type) {
@@ -32,6 +52,8 @@ export function foldEvent(cards, event) {
         if (engineStart != null && (attached.startedAt == null || engineStart < attached.startedAt)) {
           attached.startedAt = engineStart;
         }
+        noteStartAnchor(attached, d, event.at);
+        if (attached.startedAtClient == null && event.at != null) attached.startedAtClient = event.at;
         if (d.coord) attached.coord = d.coord;
         if (d.projectId) attached.projectId = d.projectId;
         if (d.buildNumber) attached.buildNumber = d.buildNumber;
@@ -58,6 +80,7 @@ export function foldEvent(cards, event) {
         if (engineStart != null && (existing.startedAt == null || engineStart < existing.startedAt)) {
           existing.startedAt = engineStart;
         }
+        noteStartAnchor(existing, d, event.at);
         if (typeof d.progress === 'number') {
           existing.progressPercent = d.progress;
           if (typeof existing.peakPct !== 'number' || d.progress > existing.peakPct) {
@@ -75,6 +98,12 @@ export function foldEvent(cards, event) {
         buildNumber: d.buildNumber || null,
         state: 'running',
         startedAt: engineStart ?? event.at ?? null,
+        // Client-epoch anchor (JK-1839): skew-corrected when serverNow rides the frame, else a
+        // live request-start's receipt time is the admission instant to within transit latency.
+        startedAtClient:
+          engineStart != null && typeof d.serverNow === 'number' && d.serverNow >= engineStart
+            ? (event.at ?? Date.now()) - (d.serverNow - engineStart)
+            : event.at ?? null,
         finishedAt: null,
         millis: null,
         cancelled: false,
@@ -180,11 +209,11 @@ export function foldEvent(cards, event) {
               card.r0Ms = rem;
               // Anchor R0 to engine start when known so clock progress = elapsed/(elapsed+remaining)
               // matches the TUI after a mid-build join (not "since this tab connected").
-              card.r0At = card.startedAt != null ? card.startedAt : (event.at ?? Date.now());
+              card.r0At = startAnchor(card) ?? event.at ?? Date.now();
             }
           } else if (typeof d.R0 === 'number' && d.R0 > 0) {
             card.r0Ms = d.R0;
-            card.r0At = card.startedAt != null ? card.startedAt : (event.at ?? Date.now());
+            card.r0At = startAnchor(card) ?? event.at ?? Date.now();
           }
         }
       }
@@ -311,6 +340,7 @@ function applyRunSnapshot(cards, d, at) {
   if (typeof d.startedAt === 'number' && d.startedAt > 0) {
     if (card.startedAt == null || d.startedAt < card.startedAt) card.startedAt = d.startedAt;
   }
+  noteStartAnchor(card, d, at);
   if (typeof d.progress === 'number') {
     card.progressPercent = d.progress;
     const floor = Math.min(99, Math.round(d.progress));
@@ -391,8 +421,9 @@ function mergeSnapshotModules(existing, snapshot) {
  */
 export function etaTotalMillis(card) {
   if (typeof card.etaMillis !== 'number' || card.etaMillis <= 0) return null;
-  if (card.etaAt != null && card.startedAt != null) {
-    return card.etaAt - card.startedAt + card.etaMillis;
+  const anchor = startAnchor(card);
+  if (card.etaAt != null && anchor != null) {
+    return card.etaAt - anchor + card.etaMillis;
   }
   return card.etaMillis;
 }
@@ -475,6 +506,7 @@ export function seedFromHistory(cards, records) {
       if (typeof rec.startedAt === 'number' && rec.startedAt > 0) {
         if (live.startedAt == null || rec.startedAt < live.startedAt) live.startedAt = rec.startedAt;
       }
+      noteStartAnchor(live, rec, Date.now());
       if (typeof rec.progress === 'number') {
         live.progressPercent = rec.progress;
         const floor = Math.min(99, Math.round(rec.progress));
@@ -527,6 +559,7 @@ function historyCard(rec) {
     projectId: rec.projectId || null,
     state: running ? 'running' : 'finished',
     startedAt: rec.startedAt ?? null,
+    startedAtClient: null,
     finishedAt: running ? null : rec.finishedAt ?? null,
     millis: running ? null : rec.millis ?? null,
     cancelled: !!rec.cancelled,
@@ -556,6 +589,9 @@ function applyLiveEtaFields(card, rec) {
   if (!card || !rec) return;
   const rem = typeof rec.remainingMs === 'number' && rec.remainingMs >= 0 ? rec.remainingMs : null;
   const now = Date.now();
+  // Latch the client-epoch anchor when the payload carries serverNow (no-op otherwise) so the
+  // r0At seeds below land in the client epoch (JK-1839).
+  noteStartAnchor(card, rec, now);
   if (rem != null) {
     card.residualRemainingMs = rem;
     card.residualAt = now;
@@ -563,12 +599,12 @@ function applyLiveEtaFields(card, rec) {
   if (card.r0Ms == null) {
     if (typeof rec.R0 === 'number' && rec.R0 > 0) {
       card.r0Ms = rec.R0;
-      card.r0At = card.startedAt != null ? card.startedAt : now;
-    } else if (rem != null && rem > 0 && card.startedAt != null) {
+      card.r0At = startAnchor(card) ?? now;
+    } else if (rem != null && rem > 0 && startAnchor(card) != null) {
       // No original R0 on the wire: synthesize total ≈ elapsed + remaining so auto clock mode
       // engages and paints elapsed/(elapsed+remaining) instead of a 0% late-join flash.
-      card.r0Ms = Math.max(rem, now - card.startedAt + rem);
-      card.r0At = card.startedAt;
+      card.r0Ms = Math.max(rem, now - startAnchor(card) + rem);
+      card.r0At = startAnchor(card);
     } else if (rem != null && rem > 0) {
       card.r0Ms = rem;
       card.r0At = now;

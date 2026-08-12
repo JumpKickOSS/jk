@@ -12,6 +12,7 @@ const {
   moduleSummary,
   phaseChainOf,
   seedFromHistory,
+  startAnchor,
   ioLines,
   fmtBytes,
   fmtStepMillis,
@@ -555,6 +556,42 @@ test('run-snapshot applies phases + progress in one frame (no phase-replay backl
   assert.equal(cards.length, 1);
   assert.equal(cards[0].progressPercent, 70);
   assert.equal(cards[0].residualRemainingMs, 25_000);
+});
+
+test('serverNow re-anchors engine startedAt to the client epoch under skew (JK-1839)', () => {
+  const cards = [];
+  // Engine clock runs 30s AHEAD of the browser: engine says the run started 10s ago.
+  const clientReceipt = 100_000;
+  const engineNow = 130_000;
+  const engineStart = engineNow - 10_000;
+  foldEvent(cards, {
+    type: 'run-snapshot',
+    data: {
+      requestId: 21,
+      kind: 'build',
+      dir: '/w',
+      startedAt: engineStart,
+      serverNow: engineNow,
+      progress: 40,
+      remainingMs: 20_000,
+      tasks: [{ name: 'compile-java', stage: 'compile', status: 'RUN', millis: 0 }],
+    },
+    at: clientReceipt,
+  });
+  const card = cards[0];
+  // Engine-epoch identity is preserved for history reconciliation…
+  assert.equal(card.startedAt, engineStart);
+  // …but elapsed math gets a client-epoch anchor: 10s before receipt, skew cancelled.
+  assert.equal(card.startedAtClient, clientReceipt - 10_000);
+  assert.equal(startAnchor(card), clientReceipt - 10_000);
+
+  // A later live request-start (serverNow ≈ engine now) must not move the anchor forward.
+  foldEvent(cards, {
+    type: 'request-start',
+    data: { requestId: 21, kind: 'build', dir: '/w', startedAt: engineStart, serverNow: engineNow + 5_000 },
+    at: clientReceipt + 5_000,
+  });
+  assert.equal(card.startedAtClient, clientReceipt - 10_000);
 });
 
 test('stale run-snapshot never resurrects a finished card (JK-1837)', () => {

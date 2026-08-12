@@ -1304,7 +1304,13 @@ Vue.createApp({
         // Prefer engine admission time so a mid-build join does not restart the bar at 0%.
         // Fall back to r0At (first seed receipt) for tabs that watched from the first tick.
         const base =
-          card.startedAt != null ? card.startedAt : haveR0 ? card.r0At : this.now;
+          card.startedAtClient != null
+            ? card.startedAtClient
+            : card.startedAt != null
+              ? card.startedAt
+              : haveR0
+                ? card.r0At
+                : this.now;
         const since = Math.max(0, this.now - (base != null ? base : this.now));
         // Adaptive: elapsed / (elapsed + residual). Residual firms up as work completes —
         // same oracle the countdown re-anchors to (ends on time with residual → 0).
@@ -1341,15 +1347,19 @@ Vue.createApp({
       return haveR0 || haveResidual;
     },
     elapsedSeconds(card) {
-      if (card.startedAt == null) return 0;
-      return Math.max(0, Math.floor((this.now - card.startedAt) / 1000));
+      // Client-epoch anchor first (JK-1839): engine-epoch startedAt vs this.now shifts elapsed
+      // by the clock skew on a remote dashboard.
+      const start = card.startedAtClient ?? card.startedAt;
+      if (start == null) return 0;
+      return Math.max(0, Math.floor((this.now - start) / 1000));
     },
     // Whole-second countdown deadline on the SAME counter as elapsedSeconds (startedAt epoch).
     // Prefer residual re-anchor when known (CLI setBarResidualRemaining); fall back to frozen R0.
     // Deriving both faces from one counter keeps them ticking on the same paint (JK-1822).
     etaDeadlineSeconds(card) {
       if (!this.hasEta(card)) return null;
-      const base = card.startedAt != null ? card.startedAt : (card.residualAt != null ? card.residualAt : card.r0At);
+      const start = card.startedAtClient ?? card.startedAt;
+      const base = start != null ? start : (card.residualAt != null ? card.residualAt : card.r0At);
       if (base == null) return null;
       // Residual re-anchor: deadline = residualAt + residualRemaining (open-loop decay between samples).
       if (

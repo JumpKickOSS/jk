@@ -1912,7 +1912,12 @@ public final class EngineServer implements AutoCloseable {
                 .put("coord", coord)
                 .put("projectId", cc.jumpkick.runtime.ProjectIds.idOf(dir));
         if (buildNumber > 0) payload = payload.put("buildNumber", buildNumber);
-        if (startedAt > 0) payload = payload.put("startedAt", startedAt);
+        if (startedAt > 0) {
+            payload = payload.put("startedAt", startedAt);
+            // Engine "now" beside engine startedAt: elapsed = serverNow - startedAt is skew-free,
+            // and the SPA re-anchors it to its own clock at receipt (JK-1839).
+            payload = payload.put("serverNow", clockMillis.getAsLong());
+        }
         payload = payload.put("activeBuildPlans", activeBuildPlans.get());
         publishEvent("request-start", withProgress(payload, requestId), dashboardOnly);
     }
@@ -5569,7 +5574,7 @@ public final class EngineServer implements AutoCloseable {
         sseConnect.writeLock().lock();
         try {
             for (cc.jumpkick.engine.http.HttpEngineServer.LiveRun run : liveRunsSnapshot()) {
-                httpEvents.deliverTo(sub, "run-snapshot", liveRunSnapshotJson(run));
+                httpEvents.deliverTo(sub, "run-snapshot", liveRunSnapshotJson(run, clockMillis.getAsLong()));
             }
             httpEvents.attach(sub);
         } finally {
@@ -5579,7 +5584,7 @@ public final class EngineServer implements AutoCloseable {
 
     /** Compact mid-flight JSON for the SPA {@code run-snapshot} fold (same shape as enriched history). */
     private static cc.jumpkick.engine.http.JsonOut liveRunSnapshotJson(
-            cc.jumpkick.engine.http.HttpEngineServer.LiveRun run) {
+            cc.jumpkick.engine.http.HttpEngineServer.LiveRun run, long serverNow) {
         java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
         m.put("schema", 1);
         m.put("type", "run-snapshot");
@@ -5589,6 +5594,9 @@ public final class EngineServer implements AutoCloseable {
         m.put("dir", run.dir() == null ? "" : run.dir());
         if (run.coord() != null) m.put("coord", run.coord());
         m.put("startedAt", run.startedAt());
+        // Engine "now": lets the SPA compute skew-free elapsed and re-anchor to its own clock
+        // (JK-1839).
+        m.put("serverNow", serverNow);
         m.put("running", true);
         if (run.buildNumber() > 0) m.put("buildNumber", run.buildNumber());
         if (run.journalId() != null && !run.journalId().isBlank()) m.put("historyId", run.journalId());
