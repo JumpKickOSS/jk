@@ -21,8 +21,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * <p>Structural events ({@code planStart/Finish}, {@code stepStart/Finish}, {@code warn},
  * {@code error}) flush pending samples immediately then pass through — humans need those, and
- * agents need them for correctness. Compiler chat is sampled (latest line wins); failures still
- * ride {@code error} unthrottled.
+ * agents need them for correctness. {@code progress}/{@code tickUpdate}/{@code label} are sampled
+ * (latest wins). {@code output} is <em>queued</em>, not sampled: every line is delivered, batched
+ * per cadence tick, because JSONL {@code output} is contractually "printed lines"
+ * (docs/machine-output.md) — a test-failure report or native-image log emitted as a synchronous
+ * burst must arrive complete (JK-1833). The queue is bounded ({@value #MAX_PENDING_OUTPUT_LINES}
+ * lines); a pathological storm drops the oldest lines and announces the gap with a marker line.
  *
  * <p>Applies to <em>all</em> engine-hosted plans (lock, build, test, plugins), not only resolve:
  * anything that hammers {@code ctx.progress(1)} or dumps stdout benefits. Cadence is for eyeballs;
@@ -51,8 +55,19 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
     private String labelStep;
     private String labelText;
 
-    private String outputStep;
-    private String outputLine;
+    /** Pending output lines in arrival order — bounded FIFO, never latest-wins (JK-1833). */
+    private final java.util.ArrayDeque<PendingOutput> outputQueue = new java.util.ArrayDeque<>();
+
+    private long droppedOutputLines;
+
+    /**
+     * Heap bound for a flush window's output backlog. Generous enough for any real failure report
+     * (hundreds of stacks); a step that exceeds it is a firehose, and the overflow is announced
+     * rather than silently truncated.
+     */
+    static final int MAX_PENDING_OUTPUT_LINES = 4096;
+
+    private record PendingOutput(String step, String line) {}
 
     private long lastFlushNanos;
     private ScheduledFuture<?> scheduled;
@@ -160,10 +175,15 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
             delegate.output(step, line);
             return;
         }
-        // Latest line wins — a verbose compile must not push hundreds of JSONL frames/s on UDS/SSE.
+        // Queue, don't sample: cadence bounds frame *rate* (lines batch into one window), but
+        // every line must arrive — a test-failure stack emitted as one synchronous burst would
+        // otherwise collapse to its final line (JK-1833).
         synchronized (lock) {
-            outputStep = step;
-            outputLine = line;
+            if (outputQueue.size() >= MAX_PENDING_OUTPUT_LINES) {
+                outputQueue.pollFirst();
+                droppedOutputLines++;
+            }
+            outputQueue.addLast(new PendingOutput(step, line));
             scheduleLocked();
         }
     }
@@ -233,10 +253,8 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
         labelStep = null;
         labelText = null;
 
-        String oStep = outputStep;
-        String oLine = outputLine;
-        outputStep = null;
-        outputLine = null;
+        long oDropped = droppedOutputLines;
+        droppedOutputLines = 0;
 
         // Emit under lock so structural passthrough cannot race ahead of a concurrent timer flush.
         // Delegate is wire send only — must not re-enter this coalescer on the same instance.
@@ -249,8 +267,13 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
         if (lStep != null && lText != null) {
             delegate.label(lStep, lText);
         }
-        if (oStep != null && oLine != null) {
-            delegate.output(oStep, oLine);
+        if (oDropped > 0 && !outputQueue.isEmpty()) {
+            delegate.output(
+                    outputQueue.peekFirst().step(),
+                    "[jk: " + oDropped + " earlier output line" + (oDropped == 1 ? "" : "s") + " dropped]");
+        }
+        for (PendingOutput o; (o = outputQueue.pollFirst()) != null; ) {
+            delegate.output(o.step(), o.line());
         }
     }
 

@@ -103,7 +103,7 @@ Live model updates on every meaningful event; sinks materialize under one policy
 | **M2** | Test class finish (when wired) | optional | **append + flush** |
 | **M3** | Module / plan / command finish | yes | **append + flush** |
 | **M4** | Dirty heartbeat | **80 ms** TTY paint (`TTY_FRAME_MS`); wire samples at **`JK_WIRE_PROGRESS_MS`** (default **500 ms**) | **2 s** if dirty (`DISK_HEARTBEAT_MS`) |
-| **M5** | Hot ticks (`progress` / `tick-update` / `label` / `output`) | model + next frame; **wire/SSE coalesce** to cadence (latest wins) | append line; flush ≤ M4 |
+| **M5** | Hot ticks (`progress` / `tick-update` / `label` / `output`) | model + next frame; **wire/SSE coalesce** to cadence (`progress`/`tick-update`/`label` latest-wins; `output` queued and batch-flushed — every line delivered) | append line; flush ≤ M4 |
 
 Constants: `LiveProgress.TTY_FRAME_MS = 80` (client paint / open-loop only), wire cadence
 `CoalescingBuildPlanListener.DEFAULT_CADENCE_MS = 500` via `JK_WIRE_PROGRESS_MS` (`0` =

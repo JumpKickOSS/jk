@@ -85,7 +85,7 @@ class CoalescingBuildPlanListenerTest {
     }
 
     @Test
-    void coalesces_output_to_latest_line_until_flush() {
+    void output_burst_within_one_window_delivers_every_line_in_order() {
         List<String> events = new ArrayList<>();
         BuildPlanListener sink = new BuildPlanListener() {
             @Override
@@ -99,12 +99,40 @@ class CoalescingBuildPlanListenerTest {
             }
         };
         try (CoalescingBuildPlanListener c = new CoalescingBuildPlanListener(sink, 60_000L)) {
-            c.output("compile", "line-1");
-            c.output("compile", "line-2");
-            c.output("compile", "line-3");
+            // A synchronous burst (test-failure stack, native-image log) inside one cadence
+            // window must arrive complete — latest-wins here silently ate failure reports
+            // (JK-1833).
+            c.output("run-tests", "FooTest.bar FAILED");
+            c.output("run-tests", "  at FooTest.bar(FooTest.java:42)");
+            c.output("compile", "warning: deprecated");
             assertThat(events).isEmpty();
-            c.stepFinish("compile", "compile", cc.jumpkick.run.TaskStatus.SUCCESS, Duration.ofMillis(10));
-            assertThat(events).containsExactly("o:compile:line-3", "finish:compile");
+            c.stepFinish("run-tests", "test", cc.jumpkick.run.TaskStatus.FAIL, Duration.ofMillis(10));
+            assertThat(events)
+                    .containsExactly(
+                            "o:run-tests:FooTest.bar FAILED",
+                            "o:run-tests:  at FooTest.bar(FooTest.java:42)",
+                            "o:compile:warning: deprecated",
+                            "finish:run-tests");
         }
+    }
+
+    @Test
+    void output_overflow_drops_oldest_and_announces_the_gap() {
+        List<String> events = new ArrayList<>();
+        BuildPlanListener sink = new BuildPlanListener() {
+            @Override
+            public void output(String step, String line) {
+                events.add(line);
+            }
+        };
+        int cap = CoalescingBuildPlanListener.MAX_PENDING_OUTPUT_LINES;
+        try (CoalescingBuildPlanListener c = new CoalescingBuildPlanListener(sink, 60_000L)) {
+            for (int i = 0; i < cap + 2; i++) c.output("firehose", "line-" + i);
+            c.flush();
+        }
+        assertThat(events).hasSize(cap + 1);
+        assertThat(events.get(0)).isEqualTo("[jk: 2 earlier output lines dropped]");
+        assertThat(events.get(1)).isEqualTo("line-2");
+        assertThat(events.get(events.size() - 1)).isEqualTo("line-" + (cap + 1));
     }
 }

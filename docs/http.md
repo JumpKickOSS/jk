@@ -192,7 +192,9 @@ same live fields so the SPA's initial GET matches the TUI even before the first 
 
 **Live smoothness:** hot progress traffic (aggregate `workspace-progress`, plan
 `progress`/`tick-update`/`label`/`output`) is sampled at **`JK_WIRE_PROGRESS_MS`** (default
-**500 ms**) on both the CLI UDS path and SSE — same coalescer. Structural events stay immediate.
+**500 ms**) on both the CLI UDS path and SSE — same coalescer. `progress`/`tick-update`/`label` are sampled (latest wins); `output` lines are queued and
+delivered as a batch each cadence tick, so multi-line bursts (test-failure stacks, native-image
+logs) arrive complete. Structural events stay immediate.
 The SSE queue still sheds low-priority frames before critical ones when full. The SPA drains
 EventSource callbacks on animation frames and coalesces progress/ETA ticks so the main thread
 stays free; open-loop clock/residual fills the gaps between 500 ms samples.
