@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.TestAnsi;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -114,13 +115,23 @@ class ExplainCommandTest {
         project(tmp.resolve("lib"), "lib");
         project(tmp.resolve("app"), "app", "lib");
 
-        // Assertions target single-color-span tokens, so they hold whether or not ANSI
-        // color is active (each coordinate segment is one colorize call).
-        String out = runExplainCapturingStdout(tmp);
+        // Strip ANSI so color spans between number and unit do not break substring matches.
+        String out = TestAnsi.strip(runExplainCapturingStdout(tmp));
 
-        assertThat(out).contains("Modules: 2");
+        assertThat(out).contains("Build Graph");
+        assertThat(out).contains("Plan Item");
+        assertThat(out).contains("Modules");
+        assertThat(out).contains("2 in workspace");
+        // Root keeps group:artifact; dirty module rows are name-only pills (no index).
         assertThat(out).contains("com.example").contains("app").contains("lib");
+        assertThat(out).contains("modules are dirty");
+        assertThat(out).doesNotContain("[01]").doesNotContain("01");
+        // Phase rollup (empty fixtures typically only forecast Compile).
+        assertThat(out).contains("Compile");
         // Both modules rebuild (fresh), listed dependency-first: lib before app.
         assertThat(out.indexOf("lib")).isLessThan(out.lastIndexOf("app"));
+        // ETA footer still present (value depends on host calibration / history).
+        assertThat(out).contains("Build time estimate");
+        assertThat(out).contains("Total rebuild effort");
     }
 }

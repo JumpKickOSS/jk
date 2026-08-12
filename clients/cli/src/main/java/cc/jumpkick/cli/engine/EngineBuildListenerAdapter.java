@@ -408,7 +408,13 @@ final class EngineBuildListenerAdapter {
                         }
                         case EngineProtocol.ERROR -> errors.add(Jsonl.str(line, "message"));
                         case EngineProtocol.ETA -> {
-                            if (etaOut != null) etaOut[0] = Jsonl.longValue(line, "millis", 0);
+                            if (etaOut != null) {
+                                etaOut[0] = Jsonl.longValue(line, "millis", 0);
+                                // Optional full-rebuild ETA (explain effort denominator); 0 when absent.
+                                if (etaOut.length > 1) {
+                                    etaOut[1] = Jsonl.longValue(line, "fullMillis", 0);
+                                }
+                            }
                         }
                         case EngineProtocol.EXPLAIN_DONE -> {
                             for (String dir : order) {

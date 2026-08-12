@@ -2028,7 +2028,28 @@ public final class EngineProtocol {
      * (JK-1831).
      */
     public static String eta(long remainingMs) {
-        return "{\"type\":\"" + ETA + "\",\"millis\":" + remainingMs + ",\"remainingMs\":" + remainingMs + "}";
+        return eta(remainingMs, -1);
+    }
+
+    /**
+     * As {@link #eta(long)} with optional {@code fullMillis}: schedule-aware ETA for a full
+     * rebuild of the same plan ({@code jk build --redo}). Used by {@code jk explain} as the
+     * denominator for rebuild effort ({@code remaining / full}). Negative {@code fullMillis}
+     * omits the field (non-explain ETA emitters).
+     */
+    public static String eta(long remainingMs, long fullMillis) {
+        StringBuilder sb = new StringBuilder(96);
+        sb.append("{\"type\":\"")
+                .append(ETA)
+                .append("\",\"millis\":")
+                .append(remainingMs)
+                .append(",\"remainingMs\":")
+                .append(remainingMs);
+        if (fullMillis >= 0) {
+            sb.append(",\"fullMillis\":").append(fullMillis);
+        }
+        sb.append('}');
+        return sb.toString();
     }
 
     /**

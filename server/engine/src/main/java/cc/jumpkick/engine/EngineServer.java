@@ -2867,6 +2867,8 @@ public final class EngineServer implements AutoCloseable {
                 }
             }
             // Schedule-aware ETA; 0 = fully cached. Same estimateEtaMillis as jk build countdown.
+            // fullMillis prices the same graph as a full rebuild (--redo) so explain can report
+            // rebuild effort as remaining/full (weight/time, not a count average).
             String etaJdksDirStr = Jsonl.str(requestLine, "jdksDir");
             int workers = Jsonl.intValue(requestLine, "workers", 0); // 0 = auto (bare jk build)
             int maxModuleConcurrency = Jsonl.intValue(requestLine, "maxModuleConcurrency", 0);
@@ -2875,6 +2877,8 @@ public final class EngineServer implements AutoCloseable {
             }
             boolean parallelTests = Jsonl.bool(requestLine, "parallelTests", false);
             int maxConc = maxModuleConcurrency;
+            Path etaJdksDir = etaJdksDirStr != null ? Path.of(etaJdksDirStr) : null;
+            String etaProfile = Jsonl.str(requestLine, "profile");
             long etaMillis = SessionContext.where(
                     session,
                     () -> BuildService.estimateEtaMillis(
@@ -2882,13 +2886,32 @@ public final class EngineServer implements AutoCloseable {
                             entryDir,
                             cache,
                             workers,
-                            etaJdksDirStr != null ? Path.of(etaJdksDirStr) : null,
-                            Jsonl.str(requestLine, "profile"),
+                            etaJdksDir,
+                            etaProfile,
                             skipTests,
                             verbose,
                             parallelTests,
                             maxConc));
-            sendQuiet(writer, EngineProtocol.eta(etaMillis));
+            long fullMillis;
+            if (rebuild || force) {
+                fullMillis = etaMillis; // already priced as full rebuild
+            } else {
+                Session fullSession = session.withConfig(config.withRebuild(Optional.of(true)));
+                fullMillis = SessionContext.where(
+                        fullSession,
+                        () -> BuildService.estimateEtaMillis(
+                                plan,
+                                entryDir,
+                                cache,
+                                workers,
+                                etaJdksDir,
+                                etaProfile,
+                                skipTests,
+                                verbose,
+                                parallelTests,
+                                maxConc));
+            }
+            sendQuiet(writer, EngineProtocol.eta(etaMillis, fullMillis));
             sendQuiet(
                     writer,
                     EngineProtocol.explainDone(
