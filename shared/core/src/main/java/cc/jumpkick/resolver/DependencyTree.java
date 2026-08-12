@@ -2,11 +2,13 @@
 package cc.jumpkick.resolver;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.WorkspaceMerge;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -243,6 +245,11 @@ public final class DependencyTree {
      * that scope (read from the module's {@code jk.toml} + {@code jk-lock.toml}). Workspace-sibling deps
      * (a module's {@code <name>.workspace = true} entries, which point at another module) are shown
      * as a collapsed {@code [workspace]} reference rather than re-expanded.
+     *
+     * <p>When {@code project} is a <em>workspace member</em> ({@code jk tree .} / {@code :name}),
+     * those same sibling edges are resolved to the adjacent module (version from its {@code
+     * jk.toml}) instead of {@code (missing)}. Depth {@code 0} stops at the sibling; a deeper walk
+     * ({@code --transitive}) continues through the sibling's declared deps and lockfile transitives.
      */
     public static String render(JkBuild project, Lockfile lock, Path projectDir, int maxDepth, Styling styling) {
         return render(project, lock, projectDir, maxDepth, styling, false);
@@ -303,7 +310,8 @@ public final class DependencyTree {
                         project, projectDir, maxDepth, styling, scopeOrder, stack, seenModules, seenDirs, out);
             }
         } else if (flatten) {
-            renderFlatScopes(project, lock, projectDir, styling, scopeOrder, stack, out);
+            renderFlatScopes(
+                    project, lock, projectDir, styling, scopeOrder, stack, workspaceGraphForMember(projectDir, lock), out);
         } else {
             renderScopeSections(
                     project,
@@ -313,7 +321,7 @@ public final class DependencyTree {
                     maxDepth,
                     "",
                     styling,
-                    Map.of(),
+                    workspaceGraphForMember(projectDir, lock),
                     scopeOrder,
                     stack,
                     seenModules,
@@ -413,6 +421,70 @@ public final class DependencyTree {
     private record LoadedModule(JkBuild build, Lockfile lock, Path dir) {}
 
     /**
+     * Workspace siblings known to this render. {@code expandSiblings} is true when the tree is
+     * rooted at a member: adjacent modules are walked (and their deps when depth allows) instead
+     * of being marked {@code (missing)} or collapsed to {@code [workspace]}.
+     */
+    private record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa, boolean expandSiblings) {
+        static WorkspaceGraph none() {
+            return new WorkspaceGraph(Map.of(), Map.of(), false);
+        }
+
+        static WorkspaceGraph collapse(Map<String, String> byName) {
+            return new WorkspaceGraph(byName == null ? Map.of() : byName, Map.of(), false);
+        }
+    }
+
+    /** Member-scoped tree: map sibling GAV → loaded module so workspace deps expand. */
+    private static WorkspaceGraph workspaceGraphForMember(Path projectDir, Lockfile lock) {
+        if (projectDir == null) return WorkspaceGraph.none();
+        try {
+            var rootDir = WorkspaceLocator.findRoot(projectDir);
+            if (rootDir.isEmpty()) return WorkspaceGraph.none();
+            Path root = rootDir.get();
+            JkBuild rootBuild = JkBuildParser.parseLocal(root.resolve("jk.toml"));
+            if (!rootBuild.isWorkspaceRoot()) return WorkspaceGraph.none();
+            List<LoadedModule> loaded = loadModules(rootBuild.workspace().modules(), root);
+            List<JkBuild> siblingBuilds = new ArrayList<>(loaded.size());
+            for (LoadedModule m : loaded) siblingBuilds.add(m.build());
+            Map<String, String> byName = new HashMap<>();
+            Map<String, LoadedModule> byGa = new HashMap<>();
+            for (LoadedModule m : loaded) {
+                JkBuild rewritten =
+                        WorkspaceMerge.resolveSiblingCoordinates(rootBuild, m.build(), siblingBuilds);
+                // Members share the workspace lock GraphOps already loaded.
+                Lockfile moduleLock = lock != null ? lock : m.lock();
+                String ga = moduleGa(rewritten);
+                byName.put(rewritten.project().name(), ga);
+                byGa.put(ga, new LoadedModule(rewritten, moduleLock, m.dir()));
+            }
+            String rootGa = moduleGa(rootBuild);
+            byName.putIfAbsent(rootBuild.project().name(), rootGa);
+            byGa.putIfAbsent(rootGa, new LoadedModule(rootBuild, lock, root));
+            return new WorkspaceGraph(byName, byGa, true);
+        } catch (Exception e) {
+            return WorkspaceGraph.none();
+        }
+    }
+
+    private static String moduleGa(JkBuild build) {
+        return build.project().group() + ":" + build.project().name();
+    }
+
+    private static String toGa(String module) {
+        if (module == null || module.isEmpty()) return module;
+        if (cc.jumpkick.model.PackageId.isMavenPackageKey(module)) {
+            try {
+                return cc.jumpkick.model.PackageId.parse(module).ga();
+            } catch (RuntimeException ignored) {
+                // fall through
+            }
+        }
+        String[] p = module.split(":", 3);
+        return p.length >= 2 ? p[0] + ":" + p[1] : module;
+    }
+
+    /**
      * Workspace-root view: scope sections (main/test/…) are the top-level nodes. Under each scope sit
      * the workspace modules that declare at least one dependency in that scope, in declaration
      * (build) order; each module node expands into its own deps for that scope, with sibling modules
@@ -430,7 +502,7 @@ public final class DependencyTree {
             StringBuilder out) {
 
         List<String> moduleRels = root.workspace().modules();
-        Map<String, String> byName = workspaceModulesByName(moduleRels, rootDir);
+        WorkspaceGraph ws = WorkspaceGraph.collapse(workspaceModulesByName(moduleRels, rootDir));
         List<LoadedModule> modules = loadModules(moduleRels, rootDir);
 
         // Scope sections present anywhere in the workspace, in display order.
@@ -461,7 +533,7 @@ public final class DependencyTree {
                         maxDepth,
                         scopePrefix,
                         styling,
-                        byName,
+                        ws,
                         seenModules,
                         seenDirs,
                         out);
@@ -488,7 +560,7 @@ public final class DependencyTree {
                         maxDepth,
                         scopePrefix,
                         styling,
-                        byName,
+                        ws,
                         seenModules,
                         seenDirs,
                         out);
@@ -504,7 +576,7 @@ public final class DependencyTree {
             int maxDepth,
             String scopePrefix,
             Styling styling,
-            Map<String, String> byName,
+            WorkspaceGraph ws,
             Set<String> seenModules,
             Set<String> seenDirs,
             StringBuilder out) {
@@ -530,7 +602,7 @@ public final class DependencyTree {
                 maxDepth,
                 modPrefix,
                 styling,
-                byName,
+                ws,
                 seenModules,
                 seenDirs,
                 out);
@@ -561,7 +633,7 @@ public final class DependencyTree {
             int maxDepth,
             String prefix,
             Styling styling,
-            Map<String, String> modules,
+            WorkspaceGraph ws,
             List<Scope> scopeOrder,
             boolean stack,
             Set<String> seenModules,
@@ -590,7 +662,7 @@ public final class DependencyTree {
                     maxDepth,
                     scopePrefix,
                     styling,
-                    modules,
+                    ws,
                     seenModules,
                     seenDirs,
                     out);
@@ -616,7 +688,7 @@ public final class DependencyTree {
                     maxDepth,
                     scopePrefix,
                     styling,
-                    modules,
+                    ws,
                     seenModules,
                     seenDirs,
                     out);
@@ -637,7 +709,7 @@ public final class DependencyTree {
             int maxDepth,
             String prefix,
             Styling styling,
-            Map<String, String> modules,
+            WorkspaceGraph ws,
             Set<String> seenModules,
             Set<String> seenDirs,
             StringBuilder out) {
@@ -665,7 +737,8 @@ public final class DependencyTree {
                     di == mods.size() - 1,
                     prefix,
                     styling,
-                    modules,
+                    ws,
+                    scopes,
                     seenModules,
                     seenDirs,
                     out,
@@ -756,6 +829,7 @@ public final class DependencyTree {
             Styling styling,
             List<Scope> scopeOrder,
             boolean stack,
+            WorkspaceGraph ws,
             StringBuilder out) {
 
         Map<String, Lockfile.Artifact> byModule = lock == null ? Map.of() : indexByModule(lock);
@@ -777,7 +851,8 @@ public final class DependencyTree {
                             m,
                             composite,
                             byModule,
-                            Map.of(),
+                            ws,
+                            sections,
                             visited,
                             collected,
                             declared.get(m),
@@ -796,7 +871,8 @@ public final class DependencyTree {
                         m,
                         composite,
                         byModule,
-                        Map.of(),
+                        ws,
+                        List.of(s),
                         visited,
                         collected,
                         declared.get(m),
@@ -811,7 +887,7 @@ public final class DependencyTree {
     private static void renderFlatWorkspaceScopes(
             JkBuild root, Path rootDir, Styling styling, List<Scope> scopeOrder, boolean stack, StringBuilder out) {
 
-        Map<String, String> byName = workspaceModulesByName(root.workspace().modules(), rootDir);
+        WorkspaceGraph ws = WorkspaceGraph.collapse(workspaceModulesByName(root.workspace().modules(), rootDir));
         List<LoadedModule> modules = loadModules(root.workspace().modules(), rootDir);
 
         List<Scope> sections = new ArrayList<>();
@@ -830,7 +906,7 @@ public final class DependencyTree {
                 Map<String, Dependency> composite = Map.of();
                 for (Scope s : sections) {
                     for (String dep : directModules(m.build(), s)) {
-                        collectFlat(dep, composite, byModule, byName, visited, collected);
+                        collectFlat(dep, composite, byModule, ws, sections, visited, collected);
                     }
                 }
             }
@@ -846,7 +922,7 @@ public final class DependencyTree {
                 Map<String, Lockfile.Artifact> byModule = m.lock() == null ? Map.of() : indexByModule(m.lock());
                 Map<String, Dependency> composite = Map.of();
                 for (String dep : directModules(m.build(), s)) {
-                    collectFlat(dep, composite, byModule, byName, visited, collected);
+                    collectFlat(dep, composite, byModule, ws, List.of(s), visited, collected);
                 }
             }
             renderFlatSection(
@@ -886,25 +962,46 @@ public final class DependencyTree {
             String module,
             Map<String, Dependency> composite,
             Map<String, Lockfile.Artifact> byModule,
-            Map<String, String> byName,
+            WorkspaceGraph ws,
+            List<Scope> walkScopes,
             Set<String> visited,
             Map<String, FlatDep> out) {
-        collectFlat(module, composite, byModule, byName, visited, out, null, false);
+        collectFlat(module, composite, byModule, ws, walkScopes, visited, out, null, false);
     }
 
     private static void collectFlat(
             String module,
             Map<String, Dependency> composite,
             Map<String, Lockfile.Artifact> byModule,
-            Map<String, String> byName,
+            WorkspaceGraph ws,
+            List<Scope> walkScopes,
             Set<String> visited,
             Map<String, FlatDep> out,
             String declaredVersion,
             boolean platformPin) {
 
+        LoadedModule sibling = resolveSibling(module, ws);
+        if (sibling != null) {
+            String ga = moduleGa(sibling.build());
+            String ver = sibling.build().project().version();
+            if (ws.expandSiblings()) {
+                if (!visited.add(ga)) return;
+                putFlat(out, new FlatDep(ga, ver, ""));
+                Map<String, Lockfile.Artifact> siblingIndex =
+                        sibling.lock() == null ? byModule : indexByModule(sibling.lock());
+                for (Scope s : walkScopes) {
+                    for (String dep : directModules(sibling.build(), s)) {
+                        collectFlat(dep, composite, siblingIndex, ws, walkScopes, visited, out);
+                    }
+                }
+            } else {
+                putFlat(out, new FlatDep(ga, ver, " [workspace]"));
+            }
+            return;
+        }
         if (Dependency.isWorkspaceRef(module)) {
             String name = Dependency.workspaceName(module);
-            putFlat(out, new FlatDep(byName.getOrDefault(name, module), null, " [workspace]"));
+            putFlat(out, new FlatDep(ws.byName().getOrDefault(name, module), null, " [workspace]"));
             return;
         }
         if (!visited.add(module)) return;
@@ -919,7 +1016,7 @@ public final class DependencyTree {
         }
         putFlat(out, new FlatDep(module, pkg.version(), ""));
         for (String child : pkg.deps()) {
-            collectFlat(stripVersion(child), composite, byModule, byName, visited, out, null, false);
+            collectFlat(stripVersion(child), composite, byModule, ws, walkScopes, visited, out, null, false);
         }
     }
 
@@ -978,20 +1075,42 @@ public final class DependencyTree {
             boolean isLast,
             String prefix,
             Styling styling,
-            Map<String, String> modules,
+            WorkspaceGraph ws,
+            List<Scope> scopes,
             Set<String> seenModules,
             Set<String> seenDirs,
             StringBuilder out,
             String declaredVersion,
             boolean platformPin) {
 
+        LoadedModule sibling = resolveSibling(module, ws);
+        if (sibling != null) {
+            if (ws.expandSiblings()) {
+                renderSiblingModule(
+                        sibling,
+                        scopes,
+                        depth,
+                        maxDepth,
+                        isLast,
+                        prefix,
+                        styling,
+                        ws,
+                        seenModules,
+                        seenDirs,
+                        out);
+                return;
+            }
+            String coord = moduleGa(sibling.build());
+            out.append(prefix)
+                    .append(styling.rail().apply(isLast ? "╰─ " : "├─ "))
+                    .append(coordLabel(coord, styling))
+                    .append(styling.rail().apply(" [workspace]"))
+                    .append('\n');
+            return;
+        }
         if (Dependency.isWorkspaceRef(module)) {
-            // Workspace sibling (a `<name>.workspace = true` dep) — already shown
-            // at the top level, and its external deps aren't in this module's lock.
-            // Resolve the synthetic "workspace:<name>" back to a real coord and
-            // reference it (no recursion).
             String name = Dependency.workspaceName(module);
-            String coord = modules.getOrDefault(name, module);
+            String coord = ws.byName().getOrDefault(name, module);
             out.append(prefix)
                     .append(styling.rail().apply(isLast ? "╰─ " : "├─ "))
                     .append(coordLabel(coord, styling))
@@ -1011,6 +1130,71 @@ public final class DependencyTree {
                 out,
                 declaredVersion,
                 platformPin);
+    }
+
+    private static LoadedModule resolveSibling(String module, WorkspaceGraph ws) {
+        if (ws == null || ws.byGa().isEmpty() && ws.byName().isEmpty()) return null;
+        if (Dependency.isWorkspaceRef(module)) {
+            String name = Dependency.workspaceName(module);
+            String ga = ws.byName().get(name);
+            return ga == null ? null : ws.byGa().get(ga);
+        }
+        return ws.byGa().get(toGa(module));
+    }
+
+    /**
+     * A workspace sibling as a real module node (version from its {@code jk.toml}). When depth
+     * allows, walk its declared deps — and those deps' lockfile transitives.
+     */
+    private static void renderSiblingModule(
+            LoadedModule sibling,
+            List<Scope> scopes,
+            int depth,
+            int maxDepth,
+            boolean isLast,
+            String prefix,
+            Styling styling,
+            WorkspaceGraph ws,
+            Set<String> seenModules,
+            Set<String> seenDirs,
+            StringBuilder out) {
+
+        String ga = moduleGa(sibling.build());
+        String connector = isLast ? "╰─ " : "├─ ";
+        String coord = sibling.build().project().group()
+                + ":"
+                + sibling.build().project().name()
+                + ":"
+                + sibling.build().project().version();
+        if (!seenModules.add(ga)) {
+            out.append(prefix)
+                    .append(styling.reference().apply(connector + coord + " ⎋"))
+                    .append('\n');
+            return;
+        }
+        out.append(prefix)
+                .append(styling.rail().apply(connector))
+                .append(formatCoord(
+                        sibling.build().project().group(),
+                        sibling.build().project().name(),
+                        sibling.build().project().version(),
+                        styling))
+                .append('\n');
+        if (depth >= maxDepth) return;
+        String childPrefix = prefix + styling.rail().apply(isLast ? "   " : "│  ");
+        renderScopeDepList(
+                sibling.build(),
+                sibling.lock(),
+                sibling.dir(),
+                scopes,
+                depth + 1,
+                maxDepth,
+                childPrefix,
+                styling,
+                ws,
+                seenModules,
+                seenDirs,
+                out);
     }
 
     /**

@@ -298,6 +298,73 @@ class DependencyTreeTest {
     }
 
     @Test
+    void member_tree_resolves_workspace_siblings_and_expands_when_depth_allows(
+            @org.junit.jupiter.api.io.TempDir Path root) throws Exception {
+        // b → a (workspace) → c (workspace) + leaf → grand. Member-scoped trees must
+        // treat siblings as modules (version from jk.toml), not lock-missing Maven coords.
+        Files.writeString(root.resolve("jk.toml"), """
+                [project]
+                group = "com.acme"
+                name = "ws"
+                version = "9.9.9"
+
+                [workspace]
+                modules = ["a", "b", "c"]
+                """);
+        Files.writeString(root.resolve("jk-lock.toml"), EMPTY_LOCK);
+        Path a = Files.createDirectories(root.resolve("a"));
+        Files.writeString(a.resolve("jk.toml"), """
+                [project]
+                name = "a"
+
+                [dependencies]
+                c = { workspace = true }
+                leaf = { group = "com.foo", name = "leaf", version = "1.0" }
+                """);
+        Path b = Files.createDirectories(root.resolve("b"));
+        Files.writeString(b.resolve("jk.toml"), """
+                [project]
+                name = "b"
+
+                [dependencies]
+                a = { workspace = true }
+                """);
+        Path c = Files.createDirectories(root.resolve("c"));
+        Files.writeString(c.resolve("jk.toml"), """
+                [project]
+                name = "c"
+                """);
+        Lockfile lock = lockOf(
+                pkg("com.foo:leaf", "1.0", List.of("com.foo:grand@1.0")), pkg("com.foo:grand", "1.0", List.of()));
+
+        JkBuild member = cc.jumpkick.config.JkBuildParser.parse(b.resolve("jk.toml"));
+        String declared = DependencyTree.render(member, lock, b, 0, DependencyTree.Styling.plain());
+        assertThat(declared).contains("com.acme:b:9.9.9");
+        assertThat(declared).contains("com.acme:a:9.9.9");
+        assertThat(declared).doesNotContain("(missing)");
+        assertThat(declared).doesNotContain("com.acme:c");
+        assertThat(declared).doesNotContain("com.foo:leaf");
+        assertThat(declared).doesNotContain("com.foo:grand");
+
+        String transitive = DependencyTree.render(member, lock, b, Integer.MAX_VALUE, DependencyTree.Styling.plain());
+        assertThat(transitive).contains("com.acme:a:9.9.9");
+        assertThat(transitive).contains("com.acme:c:9.9.9");
+        assertThat(transitive).contains("com.foo:leaf:1.0");
+        assertThat(transitive).contains("com.foo:grand:1.0");
+        assertThat(transitive).doesNotContain("(missing)");
+        assertThat(transitive).doesNotContain("[workspace]");
+
+        String flat = DependencyTree.render(
+                member, lock, b, Integer.MAX_VALUE, DependencyTree.Styling.plain(), true);
+        assertThat(flat)
+                .contains("com.acme:a:9.9.9")
+                .contains("com.acme:c:9.9.9")
+                .contains("com.foo:leaf:1.0")
+                .contains("com.foo:grand:1.0");
+        assertThat(flat).doesNotContain("(missing)").doesNotContain("[workspace]");
+    }
+
+    @Test
     void flatten_lists_each_scope_dep_once_without_nesting(@org.junit.jupiter.api.io.TempDir Path dir) {
         // Diamond: root -> a -> leaf ; root -> b -> leaf.
         JkBuild project = projectWithMainDeps("com.foo:root");
