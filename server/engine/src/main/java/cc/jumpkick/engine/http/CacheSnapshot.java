@@ -90,26 +90,32 @@ public record CacheSnapshot(
         @Override
         public CacheSnapshot get() {
             long now = System.nanoTime();
+            Runtime rt = Runtime.getRuntime();
+            CacheSnapshot snap;
+            long usedBefore;
             synchronized (lock) {
                 if (cached != null && now - deadlineNanos < 0) {
                     return cached;
                 }
-                Runtime rt = Runtime.getRuntime();
-                long usedBefore = rt.totalMemory() - rt.freeMemory();
-                CacheSnapshot snap = loader.get();
+                usedBefore = rt.totalMemory() - rt.freeMemory();
+                snap = loader.get();
                 if (snap == null) {
                     return cached; // keep last good; callers tolerate null
                 }
                 cached = snap;
                 deadlineNanos = System.nanoTime() + ttlNanos;
-                // Exclusive walks allocate large temporary sets; SerialGC keeps "used" high until a
-                // full collection. One post-walk GC after a fat capture keeps idle status honest.
-                long usedAfter = rt.totalMemory() - rt.freeMemory();
-                if (usedAfter - usedBefore > 32L * 1024 * 1024) {
-                    System.gc();
-                }
-                return snap;
             }
+            // Exclusive walks allocate large temporary sets; SerialGC keeps "used" high until a
+            // full collection. One post-walk GC after a fat capture keeps idle status honest —
+            // OUTSIDE the memo lock, so coalesced callers return the just-published snapshot
+            // instead of blocking through a stop-the-world collection too (JK-1860). Under
+            // -XX:+DisableExplicitGC this is a no-op and the idle figure simply waits for a
+            // natural full collection.
+            long usedAfter = rt.totalMemory() - rt.freeMemory();
+            if (usedAfter - usedBefore > 32L * 1024 * 1024) {
+                System.gc();
+            }
+            return snap;
         }
 
         /** Drop TTL so the next {@link #get()} walks again (post-build / explicit refresh). */
