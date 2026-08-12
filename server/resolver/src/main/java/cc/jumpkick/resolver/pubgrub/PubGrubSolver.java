@@ -285,8 +285,9 @@ public class PubGrubSolver {
                     case SATISFIED -> handleConflict(inco);
                     case ALMOST_SATISFIED -> {
                         Term derived = rel.unsatisfied().invert();
-                        boolean marksPresence = derived.positive() && !solution.hasPositiveTerm(derived.pkg());
-                        if (solution.satisfies(derived) && !marksPresence) continue;
+                        // satisfies() itself requires a positive commitment for positive terms
+                        // (JK-1835), so a derivation that would first mark presence never skips.
+                        if (solution.satisfies(derived)) continue;
                         solution.derive(derived, inco);
                         changed.add(derived.pkg());
                     }
@@ -348,14 +349,21 @@ public class PubGrubSolver {
     }
 
     private PartialSolution.Assignment findSatisfier(Term term) {
+        // A POSITIVE term needs a positive assignment in the prefix before it can be satisfied —
+        // raw set intersection loses positivity, and the reference algorithm's term intersection
+        // (negative ∩ positive = positive) never lets negative-only narrowing satisfy a positive
+        // term. Without this the satisfier could land on an earlier negative assignment and
+        // compute a too-shallow backjump level (JK-1835, satisfier mirror of the JK-1832 guard).
+        boolean sawPositive = false;
         VersionUniverse u = universes.get(term.pkg());
         if (u != null) {
             AllowedSet target = u.project(term.effectiveVersions());
             AllowedSet accumulated = u.all();
             for (PartialSolution.Assignment a : solution.assignments()) {
                 if (!a.term().pkg().equals(term.pkg())) continue;
+                sawPositive |= a.term().positive();
                 accumulated = accumulated.intersect(u.project(a.term().effectiveVersions()));
-                if (accumulated.subsetOf(target)) {
+                if ((!term.positive() || sawPositive) && accumulated.subsetOf(target)) {
                     return a;
                 }
             }
@@ -365,8 +373,9 @@ public class PubGrubSolver {
         VersionSet accumulated = VersionSet.ALL;
         for (PartialSolution.Assignment a : solution.assignments()) {
             if (!a.term().pkg().equals(term.pkg())) continue;
+            sawPositive |= a.term().positive();
             accumulated = accumulated.intersect(a.term().effectiveVersions());
-            if (accumulated.subsetOf(term.effectiveVersions())) {
+            if ((!term.positive() || sawPositive) && accumulated.subsetOf(term.effectiveVersions())) {
                 return a;
             }
         }

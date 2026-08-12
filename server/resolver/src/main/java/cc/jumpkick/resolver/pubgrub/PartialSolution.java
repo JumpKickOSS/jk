@@ -185,6 +185,15 @@ public final class PartialSolution {
             return term.effectiveVersions().contains(decided);
         }
         PackageState s = byPackage.get(term.pkg());
+        // Mirror of the absence guard in contradicts() (JK-1832): a package with no positive
+        // commitment — mentioned only negatively (e.g. ¬b{1.2} learned during conflict
+        // resolution, the exact post-backjump state), or not mentioned at all — may end up
+        // unselected entirely, and per the paper a negative assignment can never satisfy a
+        // POSITIVE term. Without this, set projection alone reported such terms satisfied,
+        // letting relationTo() misclassify a dependency incompatibility as SATISFIED (spurious
+        // conflict → wrong learned inco/backjump) or ALMOST_SATISFIED toward over-resolution
+        // (JK-1835).
+        if (term.positive() && (s == null || !s.hasPositive)) return false;
         VersionSet effective = term.effectiveVersions();
         if (s == null) {
             // Unmentioned package is unconstrained (universe of all version strings).
