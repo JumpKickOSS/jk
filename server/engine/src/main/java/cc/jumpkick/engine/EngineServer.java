@@ -18,6 +18,9 @@ import cc.jumpkick.engine.jobs.JobTransport;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
+import cc.jumpkick.engine.listen.EngineEvent;
+import cc.jumpkick.engine.listen.EventSink;
+import cc.jumpkick.engine.listen.WireEventSink;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.MemoryProbe;
@@ -4842,19 +4845,18 @@ public final class EngineServer implements AutoCloseable {
         // on a scheduler thread — there the ThreadLocal is unset and module events carry the id).
         long eventRequestId = eventRequestId();
         // Human-paced progress/label/tickstructural events still flush immediately.
+        EventSink sink = new WireEventSink(writer);
         return new CoalescingBuildPlanListener(new BuildPlanListener() {
             @Override
             public void planStart(BuildPlanView view) {
-                sendQuiet(
-                        writer,
-                        EngineProtocol.planStart(
-                                dir,
-                                view.planName(),
-                                view.numerator(),
-                                view.denominator(),
-                                view.stepsTotal(),
-                                view.stepsComplete(),
-                                view.cancelled()));
+                sink.emit(new EngineEvent.PlanStart(
+                        dir,
+                        view.planName(),
+                        view.numerator(),
+                        view.denominator(),
+                        view.stepsTotal(),
+                        view.stepsComplete(),
+                        view.cancelled()));
                 publishBuildPlanProgress(eventRequestId, dir, view);
             }
 
