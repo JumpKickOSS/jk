@@ -14,10 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
@@ -37,7 +34,7 @@ public final class HttpEngineServer implements AutoCloseable {
     private static final long DEFAULT_HEARTBEAT_MILLIS = 15_000;
 
     /** Cap on a request body ({@code POST /api/build} carries one flat object; 64 KiB is generous). */
-    private static final int MAX_BODY_BYTES = 64 * 1024;
+    static final int MAX_BODY_BYTES = 64 * 1024;
 
     /** Bind attempts before giving up — rides out a just-displaced predecessor still releasing the port. */
     private static final int BIND_ATTEMPTS = 25;
@@ -73,13 +70,16 @@ public final class HttpEngineServer implements AutoCloseable {
     private final Consumer<String> log;
     private final McpHandler mcp;
     private final String engineVersion;
+    private final HttpHistoryApi historyApi;
+    private final HttpProjectApi projectApi;
+    private final HttpReadApi readApi;
 
     /**
      * Currently-running jobs (from {@code EngineServer}'s in-flight registry). Used to enrich
      * {@code GET /api/history} with live {@code requestId}/progress so a hard-refreshed dashboard
      * rebinds SSE, and to drive connect-time rehydrate callbacks.
      */
-    private volatile Supplier<List<LiveRun>> liveRuns = List::of;
+    private volatile Supplier<List<HttpLive.Run>> liveRuns = List::of;
 
     /**
      * Invoked once after each dashboard SSE subscription is registered — delivers a compact
@@ -93,81 +93,6 @@ public final class HttpEngineServer implements AutoCloseable {
     private volatile ExecutorService executor;
 
     /**
-     * One in-flight job for history enrichment / SSE rehydrate. {@code progress} is NaN when
-     * unknown. {@code remainingMs}/{@code r0Ms} are {@code -1} when unknown. {@code modules}/
-     * {@code tasks} carry finished + currently-running phase chains so a hard refresh can paint
-     * the same strip as a tab that was open from the start.
-     */
-    public record LiveRun(
-            long requestId,
-            long buildNumber,
-            String kind,
-            String dir,
-            String coord,
-            long startedAt,
-            double progress,
-            String journalId,
-            long remainingMs,
-            long r0Ms,
-            long numerator,
-            long denominator,
-            List<LiveModule> modules,
-            List<LiveTask> tasks) {
-
-        public LiveRun {
-            modules = modules == null ? List.of() : List.copyOf(modules);
-            tasks = tasks == null ? List.of() : List.copyOf(tasks);
-        }
-
-        /** Compact constructor for tests that only need identity + progress rebind. */
-        public LiveRun(
-                long requestId,
-                long buildNumber,
-                String kind,
-                String dir,
-                String coord,
-                long startedAt,
-                double progress,
-                String journalId) {
-            this(
-                    requestId,
-                    buildNumber,
-                    kind,
-                    dir,
-                    coord,
-                    startedAt,
-                    progress,
-                    journalId,
-                    /* remainingMs */ -1L,
-                    /* r0Ms */ -1L,
-                    /* numerator */ 0L,
-                    /* denominator */ 0L,
-                    List.of(),
-                    List.of());
-        }
-    }
-
-    /** One module's mid-flight chain (finished modules + in-progress ones with steps so far). */
-    public record LiveModule(
-            String dir,
-            String coord,
-            boolean finished,
-            boolean success,
-            long millis,
-            boolean didWork,
-            List<LiveTask> tasks) {
-        public LiveModule {
-            tasks = tasks == null ? List.of() : List.copyOf(tasks);
-        }
-    }
-
-    /**
-     * One task: {@code status} is wire {@code SUCCESS}/{@code FAIL}/{@code RUN}/… (same as
-     * journal {@code tasks[].status}).
-     */
-    public record LiveTask(String name, String stage, String status, long millis) {}
-
-    /**
      * Wire the engine's live-job view. Optional — tests leave the defaults (empty / no-op).
      *
      * @param liveRuns snapshot of holds currently running
@@ -175,18 +100,11 @@ public final class HttpEngineServer implements AutoCloseable {
      *     one mid-flight snapshot per running job to that subscription only
      */
     public void setLiveRunSupport(
-            Supplier<List<LiveRun>> liveRuns, java.util.function.Consumer<HttpEvents.Subscription> onEventsConnect) {
+            Supplier<List<HttpLive.Run>> liveRuns,
+            java.util.function.Consumer<HttpEvents.Subscription> onEventsConnect) {
         this.liveRuns = liveRuns != null ? liveRuns : List::of;
         this.onEventsConnect = onEventsConnect != null ? onEventsConnect : s -> {};
     }
-
-    /**
-     * {@code GET /api/templates} response cache — building the index walks every template root
-     * (with a deep DFS for catalog-only ids), so repeated modal opens must not rescan the disk
-     * (JK-1455). One immutable holder rather than two volatiles: a reader must never pair the old
-     * JSON with the new timestamp and serve stale rows for a full TTL.
-     */
-    private record TemplatesCache(String json, long atNanos) {}
 
     /** Engine hook: bump the combined-connection high-water mark on every SSE admission (JK-1861). */
     private volatile Runnable onSseAdmitted = () -> {};
@@ -195,8 +113,6 @@ public final class HttpEngineServer implements AutoCloseable {
         this.onSseAdmitted = onSseAdmitted != null ? onSseAdmitted : () -> {};
     }
 
-    private volatile TemplatesCache templatesCache;
-    private static final long TEMPLATES_TTL_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
     private byte[] token;
     private long heartbeatMillis = DEFAULT_HEARTBEAT_MILLIS;
 
@@ -251,23 +167,26 @@ public final class HttpEngineServer implements AutoCloseable {
         this.mcp = config.mcp().enabled()
                 ? new McpHandler(status, jobs, this::projectMap, () -> journal.rawRecords(200), version, progressTokens)
                 : null;
-        api.register("GET", "/api/status", this::handleStatus);
-        api.register("GET", "/api/config", this::handleConfig);
+        this.historyApi = new HttpHistoryApi(journal, () -> this.liveRuns.get());
+        this.projectApi = new HttpProjectApi(journal);
+        this.readApi = new HttpReadApi(config, webRoot, logFile, status, jobs, metrics, cache, this::url);
+        api.register("GET", "/api/status", readApi::handleStatus);
+        api.register("GET", "/api/config", readApi::handleConfig);
         api.register("GET", "/api/events", this::handleEvents);
-        api.register("GET", "/api/log", this::handleLog);
-        api.register("GET", "/api/fs", this::handleFs);
-        api.register("POST", "/api/build", this::handleBuild);
-        api.register("POST", "/api/cancel", this::handleCancel);
-        api.register("GET", "/api/history", this::handleHistory);
-        api.register("GET", "/api/history/artifact", this::handleHistoryArtifact);
-        api.register("DELETE", "/api/history", this::handleHistoryDelete);
-        api.register("GET", "/api/metrics", this::handleMetrics);
-        api.register("GET", "/api/cache", this::handleCache);
-        api.register("GET", "/api/project", this::handleProject);
-        api.register("GET", "/api/project/graph", this::handleProjectGraph);
-        api.register("POST", "/api/projects", this::handleNewProject);
-        api.register("GET", "/api/projects/defaults", this::handleProjectDefaults);
-        api.register("GET", "/api/templates", this::handleTemplates);
+        api.register("GET", "/api/log", readApi::handleLog);
+        api.register("GET", "/api/fs", readApi::handleFs);
+        api.register("POST", "/api/build", readApi::handleBuild);
+        api.register("POST", "/api/cancel", readApi::handleCancel);
+        api.register("GET", "/api/history", historyApi::handleHistory);
+        api.register("GET", "/api/history/artifact", historyApi::handleHistoryArtifact);
+        api.register("DELETE", "/api/history", historyApi::handleHistoryDelete);
+        api.register("GET", "/api/metrics", readApi::handleMetrics);
+        api.register("GET", "/api/cache", readApi::handleCache);
+        api.register("GET", "/api/project", projectApi::handleProject);
+        api.register("GET", "/api/project/graph", projectApi::handleProjectGraph);
+        api.register("POST", "/api/projects", projectApi::handleNewProject);
+        api.register("GET", "/api/projects/defaults", projectApi::handleProjectDefaults);
+        api.register("GET", "/api/templates", projectApi::handleTemplates);
     }
 
     /**
@@ -700,7 +619,7 @@ public final class HttpEngineServer implements AutoCloseable {
         return authorization.substring("Bearer ".length()).trim();
     }
 
-    private static String queryParam(String query, String name) {
+    static String queryParam(String query, String name) {
         if (query == null) return null;
         for (String pair : query.split("&")) {
             int eq = pair.indexOf('=');
@@ -713,109 +632,6 @@ public final class HttpEngineServer implements AutoCloseable {
         if (presented == null || presented.isEmpty()) return false;
         // Constant-time, immune to length/prefix probing.
         return MessageDigest.isEqual(presented.getBytes(StandardCharsets.UTF_8), token);
-    }
-
-    private void handleStatus(HttpExchange exchange) throws IOException {
-        StatusSnapshot s = status.get();
-        String body = JsonOut.object()
-                .put("version", s.version())
-                .put("pid", s.pid())
-                .put("startedAt", s.startedAtMillis())
-                .put("uptimeSeconds", Math.max(0, (System.currentTimeMillis() - s.startedAtMillis()) / 1000))
-                .put("activeRequests", s.activeRequests())
-                .put("activeBuildPlans", s.activeBuildPlans())
-                .put("peakActiveRequests", s.peakActiveRequests())
-                .put("peakActiveBuildPlans", s.peakActiveBuildPlans())
-                .put("heapUsedBytes", s.heapUsedBytes())
-                .put("heapCommittedBytes", s.heapCommittedBytes())
-                .put("heapMaxBytes", s.heapMaxBytes())
-                .put("rssBytes", s.rssBytes())
-                .put("aotTrainingPid", s.aotTrainingPid())
-                .put("cores", s.cores())
-                .put("totalMemoryBytes", s.totalMemoryBytes())
-                .put("availableMemoryBytes", s.availableMemoryBytes())
-                .put("systemCpuLoad", s.systemCpuLoad())
-                .put("systemLoadAverage", s.systemLoadAverage())
-                .put("engineEpoch", s.engineEpoch())
-                .put("httpUrl", url())
-                // url already ends with /; avoid //mcp in status/mcpUrl. Null when MCP is off.
-                .put("mcpUrl", config.mcp().enabled() && url() != null ? url().replaceAll("/+$", "") + "/mcp" : null)
-                .put("maxConcurrentRequests", config.effectiveMaxConcurrentRequests())
-                .put("maxEventStreams", config.maxEventStreams())
-                .put("mcpEnabled", config.mcp().enabled())
-                .put("mcpMaxEventStreams", config.mcp().maxEventStreams())
-                .put("webRoot", webRoot.toString())
-                .toString();
-        sendJson(exchange, 200, body);
-    }
-
-    /**
-     * {@code GET /api/config} — effective machine {@code config.toml} as key / default / effective
-     * rows for the Status Configuration panel. Same openness as {@code GET /api/status} (loopback
-     * without token; token required when bound beyond loopback).
-     */
-    private void handleConfig(HttpExchange exchange) throws IOException {
-        java.util.List<java.util.Map<String, Object>> rows = new java.util.ArrayList<>();
-        for (cc.jumpkick.config.EffectiveUserConfig.Row r : cc.jumpkick.config.EffectiveUserConfig.rows()) {
-            java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
-            m.put("key", r.key());
-            m.put("default", r.defaultValue());
-            m.put("value", r.effectiveValue());
-            m.put("overridden", r.overridden());
-            rows.add(m);
-        }
-        java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
-        body.put("path", cc.jumpkick.config.EffectiveUserConfig.configPath().toString());
-        body.put("rows", rows);
-        sendJson(exchange, 200, cc.jumpkick.plugin.protocol.MiniJson.write(body));
-    }
-
-    /**
-     * The tail of the engine's own log for the Status view — plain text, newest lines last.
-     * Read-tier auth like every {@code /api} GET; IO-shaped (a bounded read of the file's tail).
-     */
-    private void handleLog(HttpExchange exchange) throws IOException {
-        int requested = 120;
-        String param = queryParam(exchange.getRequestURI().getQuery(), "lines");
-        if (param != null) {
-            try {
-                requested = Math.max(1, Math.min(400, Integer.parseInt(param)));
-            } catch (NumberFormatException ignored) {
-                // keep the default
-            }
-        }
-        String tail;
-        try {
-            tail = tailOf(logFile, requested);
-        } catch (IOException e) {
-            tail = "";
-        }
-        exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
-        exchange.getResponseHeaders().set("Cache-Control", "no-store");
-        byte[] bytes = tail.getBytes(StandardCharsets.UTF_8);
-        if (bytes.length == 0) {
-            exchange.sendResponseHeaders(200, -1);
-            return;
-        }
-        exchange.sendResponseHeaders(200, bytes.length);
-        exchange.getResponseBody().write(bytes);
-    }
-
-    /** Last {@code lines} lines of {@code file}, reading at most the final 256 KiB of it. */
-    private static String tailOf(Path file, int lines) throws IOException {
-        if (!Files.isRegularFile(file)) return "";
-        long size = Files.size(file);
-        long from = Math.max(0, size - 256 * 1024);
-        var buf = java.nio.ByteBuffer.allocate((int) (size - from));
-        try (var channel = java.nio.channels.FileChannel.open(file)) {
-            channel.position(from);
-            while (buf.hasRemaining() && channel.read(buf) >= 0) {}
-        }
-        byte[] bytes = buf.array();
-        String[] all = new String(bytes, StandardCharsets.UTF_8).split("\n", -1);
-        int end = all.length > 0 && all[all.length - 1].isEmpty() ? all.length - 1 : all.length;
-        int start = Math.max(0, end - lines);
-        return String.join("\n", java.util.Arrays.copyOfRange(all, start, end));
     }
 
     /**
@@ -882,652 +698,12 @@ public final class HttpEngineServer implements AutoCloseable {
             liveVitals.onSubscriberLeft();
         }
     }
-
-    /** Directory listings above this are truncated — a picker, not a filesystem dump. */
-    private static final int MAX_FS_ENTRIES = 400;
-
-    /**
-     * {@code GET /api/fs?dir=…} — the workspace picker behind the dashboard's Browse button:
-     * subdirectory names of a path (default: the user's home), whether it holds a
-     * {@code jk.toml}, and its parent for the up-navigation. Relative paths and {@code ~/…}
-     * resolve against {@code user.home}. Token-required even on loopback — see {@link #authorized}.
-     */
-    private void handleFs(HttpExchange exchange) throws IOException {
-        String requested = decode(queryParam(exchange.getRequestURI().getQuery(), "dir"));
-        Path dir;
-        try {
-            dir = requested == null || requested.isBlank()
-                    ? cc.jumpkick.util.PathUtil.userHome()
-                    : cc.jumpkick.util.PathUtil.resolveUserPath(requested);
-        } catch (IllegalArgumentException e) {
-            sendJson(
-                    exchange,
-                    400,
-                    JsonOut.object()
-                            .put("error", e.getMessage() == null ? "invalid dir" : e.getMessage())
-                            .toString());
-            return;
-        }
-        java.util.List<String> subdirs = new java.util.ArrayList<>();
-        try (var entries = Files.newDirectoryStream(dir)) {
-            for (Path entry : entries) {
-                String name = entry.getFileName().toString();
-                if (!name.startsWith(".") && Files.isDirectory(entry)) subdirs.add(name);
-            }
-        } catch (IOException | java.nio.file.DirectoryIteratorException e) {
-            sendJson(
-                    exchange,
-                    400,
-                    JsonOut.object()
-                            .put("error", "not a readable directory: " + dir)
-                            .toString());
-            return;
-        }
-        subdirs.sort(String.CASE_INSENSITIVE_ORDER);
-        boolean truncated = subdirs.size() > MAX_FS_ENTRIES;
-        if (truncated) subdirs = subdirs.subList(0, MAX_FS_ENTRIES);
-        Path parent = dir.getParent();
-        sendJson(
-                exchange,
-                200,
-                JsonOut.object()
-                        .put("dir", dir.toString())
-                        .put("parent", parent != null ? parent.toString() : null)
-                        .put("hasJkToml", Files.isRegularFile(dir.resolve("jk.toml")))
-                        .put("truncated", truncated)
-                        .putStrings("dirs", subdirs)
-                        .toString());
+    /** Test seam: rebind rules for in-flight history rows (JK-1522). */
+    HttpLive.Run matchLiveRun(java.util.Map<String, Object> rec) {
+        return historyApi.matchLiveRun(rec);
     }
 
-    /**
-     * {@code POST /api/projects} — scaffold a new project under {@code parentDir} (JK-1193). Same
-     * {@link cc.jumpkick.scaffold.NewScaffolder} path as {@code jk new}. Body: name, parentDir,
-     * group?, lang?, layout?, template?, executable?.
-     */
-    private void handleNewProject(HttpExchange exchange) throws IOException {
-        String body = new String(exchange.getRequestBody().readNBytes(MAX_BODY_BYTES), StandardCharsets.UTF_8);
-        String name = cc.jumpkick.plugin.protocol.Jsonl.str(body, "name");
-        String parentDir = cc.jumpkick.plugin.protocol.Jsonl.str(body, "parentDir");
-        String group = cc.jumpkick.plugin.protocol.Jsonl.str(body, "group");
-        String lang = cc.jumpkick.plugin.protocol.Jsonl.str(body, "lang");
-        String layout = cc.jumpkick.plugin.protocol.Jsonl.str(body, "layout");
-        String template = cc.jumpkick.plugin.protocol.Jsonl.str(body, "template");
-        String framework = cc.jumpkick.plugin.protocol.Jsonl.str(body, "framework");
-        boolean executable = cc.jumpkick.plugin.protocol.Jsonl.bool(body, "executable", true);
-        try {
-            var result = cc.jumpkick.engine.runtime.NewProjectOps.create(
-                    new cc.jumpkick.engine.runtime.NewProjectOps.Request(
-                            name, parentDir, group, lang, layout, template, executable, framework));
-            // Resolve the durable projectId so the SPA can route #project/<id> immediately
-            // (JK-1775) — an absolute path in the hash 404s (isValidId rejects '/'). The
-            // scaffolder writes no lock, so materialize identity.toml under the project home;
-            // without it GET /api/project?project=<id> cannot map the id back to the checkout.
-            String projectId = null;
-            try {
-                var identity = cc.jumpkick.builds.ProjectIdentity.resolve(result.path());
-                cc.jumpkick.builds.ProjectIdentity.IdentityFile.write(
-                        cc.jumpkick.builds.ProjectBuilds.projectHome(identity.id()), identity);
-                cc.jumpkick.runtime.ProjectIds.refresh(result.path().toString());
-                projectId = identity.id();
-            } catch (RuntimeException | IOException e) {
-                // Identity resolution/persist is best-effort — creation succeeded; the SPA
-                // skips the project route when projectId is absent.
-            }
-            JsonOut created = JsonOut.object()
-                    .put("path", result.path().toString())
-                    .put("dir", result.path().toString());
-            if (projectId != null) created.put("projectId", projectId);
-            sendJson(exchange, 201, created.toString());
-        } catch (IllegalArgumentException e) {
-            sendJson(
-                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
-        } catch (IllegalStateException e) {
-            sendJson(
-                    exchange, 409, JsonOut.object().put("error", e.getMessage()).toString());
-        } catch (IOException e) {
-            sendJson(
-                    exchange,
-                    500,
-                    JsonOut.object()
-                            .put("error", e.getMessage() == null ? "scaffold failed" : e.getMessage())
-                            .toString());
-        }
-    }
-
-    /**
-     * {@code GET /api/projects/defaults} — educated guesses for the New project modal (group from
-     * git email like {@code jk new}, parent dir from history / well-known roots / git clusters).
-     */
-    private void handleProjectDefaults(HttpExchange exchange) throws IOException {
-        String group = cc.jumpkick.scaffold.NewGroupGuess.guess();
-        java.util.List<java.nio.file.Path> historyDirs = new java.util.ArrayList<>();
-        try {
-            for (var rec : journal.list()) {
-                if (rec != null && rec.dir() != null && !rec.dir().isBlank()) {
-                    historyDirs.add(java.nio.file.Path.of(rec.dir()));
-                }
-            }
-        } catch (RuntimeException ignored) {
-            // journal empty / unreadable — parent guess still works without it
-        }
-        java.nio.file.Path parent = cc.jumpkick.scaffold.NewParentDirGuess.guess(
-                java.util.Optional.ofNullable(System.getProperty("user.home"))
-                        .map(java.nio.file.Path::of)
-                        .orElse(null),
-                historyDirs);
-        sendJson(
-                exchange,
-                200,
-                JsonOut.object()
-                        .put("group", group)
-                        .put("parentDir", parent.toString())
-                        .toString());
-    }
-
-    /**
-     * {@code GET /api/templates} — short-name catalog for the new-project picker. Each row is
-     * {@code {id, description, languages:[…], layout:"simple"|"traditional"|"custom"}}. Official
-     * catalog rows are merged with on-disk {@code jk_languages}/{@code jk_layout} from local
-     * template roots (see {@link cc.jumpkick.scaffold.Giter8TemplateIndex}).
-     */
-    private void handleTemplates(HttpExchange exchange) throws IOException {
-        TemplatesCache cached = templatesCache;
-        if (cached != null && System.nanoTime() - cached.atNanos() < TEMPLATES_TTL_NANOS) {
-            sendJson(exchange, 200, cached.json());
-            return;
-        }
-        // Same roots the short-name resolver uses (JK-1458) — the picker must never list a
-        // template that then resolves differently, or miss one that would resolve.
-        var entries =
-                cc.jumpkick.scaffold.Giter8TemplateIndex.build(cc.jumpkick.scaffold.Giter8TemplateIndex.searchRoots());
-        var arr = new StringBuilder("[");
-        boolean first = true;
-        for (var e : entries) {
-            if (!first) arr.append(',');
-            first = false;
-            arr.append(JsonOut.object()
-                    .put("id", e.id())
-                    .put("description", e.description())
-                    .putStrings("languages", e.languages())
-                    .put("layout", e.layout())
-                    .toString());
-        }
-        arr.append(']');
-        String json = arr.toString();
-        templatesCache = new TemplatesCache(json, System.nanoTime());
-        sendJson(exchange, 200, json);
-    }
-
-    /** {@code POST /api/build} — acknowledge with a request id; progress streams on {@code /api/events}. */
-    private void handleBuild(HttpExchange exchange) throws IOException {
-        String body = new String(exchange.getRequestBody().readNBytes(MAX_BODY_BYTES), StandardCharsets.UTF_8);
-        String dir = cc.jumpkick.plugin.protocol.Jsonl.str(body, "dir");
-        if (dir == null || dir.isBlank()) {
-            sendJson(
-                    exchange,
-                    400,
-                    JsonOut.object().put("error", "missing \"dir\"").toString());
-            return;
-        }
-        long requestId;
-        try {
-            requestId = jobs.triggerBuild(dir);
-        } catch (IllegalStateException e) {
-            String msg = e.getMessage() == null ? "" : e.getMessage();
-            // same fingerprint already running — 409 with human message for the UI.
-            if (msg.contains("already running")) {
-                sendJson(exchange, 409, JsonOut.object().put("error", msg).toString());
-                return;
-            }
-            // Engine is draining (graceful shutdown in progress) — refuse new builds.
-            exchange.getResponseHeaders().set("Retry-After", "1");
-            sendJson(exchange, 503, JsonOut.object().put("error", msg).toString());
-            return;
-        } catch (IllegalArgumentException e) {
-            sendJson(
-                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
-            return;
-        }
-        sendJson(
-                exchange,
-                202,
-                JsonOut.object()
-                        .put("requestId", requestId)
-                        .put("jid", requestId)
-                        .put("events", "/api/events")
-                        .toString());
-    }
-
-    /**
-     * {@code POST /api/cancel} — body {@code {"jid":N}} or {@code {"requestId":N}} (alias). Same kill
-     * path as MCP {@code jk_cancel} / JSONL {@code cancel-request}.
-     */
-    private void handleCancel(HttpExchange exchange) throws IOException {
-        String body = new String(exchange.getRequestBody().readNBytes(MAX_BODY_BYTES), StandardCharsets.UTF_8);
-        long jid = cc.jumpkick.plugin.protocol.Jsonl.longValue(body, "jid", -1);
-        if (jid < 0) jid = cc.jumpkick.plugin.protocol.Jsonl.longValue(body, "requestId", -1);
-        if (jid < 0) {
-            sendJson(
-                    exchange,
-                    400,
-                    JsonOut.object()
-                            .put("error", "missing \"jid\" (or requestId)")
-                            .toString());
-            return;
-        }
-        boolean ok = jobs.cancel(jid);
-        sendJson(
-                exchange,
-                ok ? 200 : 404,
-                JsonOut.object()
-                        .put("jid", jid)
-                        .put("requestId", jid)
-                        .put("cancelled", ok)
-                        .put("note", ok ? "" : "unknown or already finished jid")
-                        .toString());
-    }
-
-    /** Cap on the {@code GET /api/history} list — a picker of recent runs, not a full dump. */
-    private static final int HISTORY_LIST_LIMIT = 200;
-
-    /**
-     * {@code GET /api/history} — the persisted build journal (survives engine restarts). With no
-     * {@code ?id=}, a JSON array of the newest entries' full records; with {@code ?id=}, that one
-     * entry's {@code record.json}. Finished records stream verbatim (a cheap {@code "running":true}
-     * pre-check skips the parse); in-flight ones are MiniJson-parsed once to attach live
-     * {@code requestId}/{@code progress} (see {@link #enrichHistoryJson}). Read-tier auth, like
-     * every other GET.
-     */
-    private void handleHistory(HttpExchange exchange) throws IOException {
-        String id = decode(queryParam(exchange.getRequestURI().getQuery(), "id"));
-        if (id != null && !id.isBlank()) {
-            var record = journal.recordFile(id);
-            if (record.isEmpty()) {
-                sendJson(
-                        exchange,
-                        404,
-                        JsonOut.object().put("error", "no such build: " + id).toString());
-                return;
-            }
-            sendJson(exchange, 200, enrichHistoryJson(Files.readString(record.get(), StandardCharsets.UTF_8)));
-            return;
-        }
-        // Oversample raw journal rows, keep only build-like kinds (see BuildHistoryKinds).
-        List<String> raw = journal.rawRecords(Math.max(HISTORY_LIST_LIMIT * 4, HISTORY_LIST_LIMIT));
-        List<String> parts = new ArrayList<>(HISTORY_LIST_LIMIT);
-        for (String r : raw) {
-            if (!isBuildLikeHistoryJson(r)) continue;
-            parts.add(enrichHistoryJson(r));
-            if (parts.size() >= HISTORY_LIST_LIMIT) break;
-        }
-        sendJson(exchange, 200, "[" + String.join(",", parts) + "]");
-    }
-
-    /** True when a journal JSON blob's {@code kind} is a durable project build. */
-    private static boolean isBuildLikeHistoryJson(String raw) {
-        if (raw == null || raw.isBlank()) return false;
-        try {
-            Object parsed = cc.jumpkick.plugin.protocol.MiniJson.parse(raw);
-            if (!(parsed instanceof Map<?, ?> m)) return false;
-            Object k = m.get("kind");
-            return k instanceof String s && cc.jumpkick.engine.BuildHistoryKinds.isBuildLike(s);
-        } catch (RuntimeException e) {
-            return false;
-        }
-    }
-
-    /**
-     * Attach live mid-flight state to an in-flight journal record so the dashboard can rebind SSE
-     * after refresh with TUI-parity progress / elapsed / phases (parity with the wire
-     * {@code history-list} path, plus phases). Finished records are returned unchanged aside from
-     * projectId backfill.
-     */
-    private String enrichHistoryJson(String raw) {
-        if (raw == null || raw.isBlank()) return raw;
-        try {
-            Object parsed = cc.jumpkick.plugin.protocol.MiniJson.parse(raw);
-            if (!(parsed instanceof Map<?, ?> m0)) return raw;
-            @SuppressWarnings("unchecked")
-            Map<String, Object> m = (Map<String, Object>) m0;
-            // Durable project id for dashboard routing (JK-1727+). New rows are stamped at
-            // journal.begin (JK-1750); only legacy rows resolve here, through the process memo —
-            // a bare resolve is two TOML parses plus up to three git subprocesses per row.
-            // resolve() recovers an existing identity.toml id before hashing (JK-1794), so a
-            // dead checkout's rows route to its recorded project home instead of minting a
-            // fresh unknown:unknown id that 404s on the detail page.
-            if (!(m.get("projectId") instanceof String pid) || pid.isBlank()) {
-                if (m.get("dir") instanceof String dir && !dir.isBlank()) {
-                    String resolved = cc.jumpkick.runtime.ProjectIds.idOf(dir);
-                    if (resolved != null) m.put("projectId", resolved);
-                }
-            }
-            if (!Boolean.TRUE.equals(m.get("running"))) {
-                return cc.jumpkick.plugin.protocol.MiniJson.write(m);
-            }
-            LiveRun match = matchLiveRun(m);
-            if (match == null) return cc.jumpkick.plugin.protocol.MiniJson.write(m);
-            m.put("requestId", match.requestId());
-            m.put("jid", match.requestId());
-            if (match.startedAt() > 0) {
-                m.put("startedAt", match.startedAt());
-                // Engine "now" beside engine startedAt — skew-free elapsed for the SPA (JK-1839).
-                m.put("serverNow", System.currentTimeMillis());
-            }
-            if (!Double.isNaN(match.progress())) m.put("progress", match.progress());
-            if (match.remainingMs() >= 0) m.put("remainingMs", match.remainingMs());
-            if (match.r0Ms() > 0) m.put("R0", match.r0Ms());
-            if (match.denominator() > 0) {
-                m.put("numerator", match.numerator());
-                m.put("denominator", match.denominator());
-            }
-            // Prefer live phase chains (journal stub is empty until complete).
-            if (!match.modules().isEmpty()) {
-                m.put("modules", liveModulesJson(match.modules()));
-                m.put("tasks", List.of());
-            } else if (!match.tasks().isEmpty()) {
-                m.put("tasks", liveTasksJson(match.tasks()));
-            }
-            return cc.jumpkick.plugin.protocol.MiniJson.write(m);
-        } catch (RuntimeException e) {
-            return raw; // best-effort — never break the list for a bad row
-        }
-    }
-
-    private static List<Object> liveModulesJson(List<LiveModule> modules) {
-        List<Object> out = new ArrayList<>(modules.size());
-        for (LiveModule mod : modules) {
-            Map<String, Object> mm = new LinkedHashMap<>();
-            mm.put("dir", mod.dir() == null ? "" : mod.dir());
-            if (mod.coord() != null && !mod.coord().isBlank()) mm.put("coord", mod.coord());
-            // Explicit lifecycle bit: success=false alone was ambiguous between "still
-            // running" and "failed" (JK-1846) — the SPA guessed from task statuses and
-            // misclassified module-level failures with no FAIL task.
-            mm.put("finished", mod.finished());
-            mm.put("success", mod.finished() && mod.success());
-            mm.put("millis", mod.millis());
-            if (mod.finished()) mm.put("didWork", mod.didWork());
-            mm.put("tasks", liveTasksJson(mod.tasks()));
-            out.add(mm);
-        }
-        return out;
-    }
-
-    private static List<Object> liveTasksJson(List<LiveTask> tasks) {
-        List<Object> out = new ArrayList<>(tasks.size());
-        for (LiveTask t : tasks) {
-            Map<String, Object> sm = new LinkedHashMap<>();
-            sm.put("name", t.name() == null ? "?" : t.name());
-            sm.put("stage", t.stage() == null ? "" : t.stage());
-            sm.put("status", t.status() == null ? "RUN" : t.status());
-            sm.put("millis", t.millis());
-            out.add(sm);
-        }
-        return out;
-    }
-
-    // Package-private for direct unit testing of the rebind rules (JK-1522).
-    LiveRun matchLiveRun(Map<String, Object> rec) {
-        List<LiveRun> live = liveRuns.get();
-        if (live == null || live.isEmpty()) return null;
-        long buildNumber = liveLong(rec.get("buildNumber"));
-        String dir = rec.get("dir") instanceof String s ? s : null;
-        String id = rec.get("id") instanceof String s ? s : null;
-        for (LiveRun h : live) {
-            boolean sameRun = buildNumber > 0 && buildNumber == h.buildNumber() && dir != null && dir.equals(h.dir());
-            boolean sameJournal = id != null && h.journalId() != null && id.equals(h.journalId());
-            if (sameRun || sameJournal) return h;
-        }
-        // Single live job with matching dir — only for records that carry no buildNumber (older
-        // stubs). A record WITH a buildNumber that failed the strict match is a different run
-        // (e.g. a stale running stub from a crashed engine) and must not rebind to the current
-        // one's stream (JK-1522).
-        if (dir != null && buildNumber <= 0) {
-            LiveRun only = null;
-            for (LiveRun h : live) {
-                if (dir.equals(h.dir())) {
-                    if (only != null) return null; // ambiguous
-                    only = h;
-                }
-            }
-            return only;
-        }
-        return null;
-    }
-
-    private static long liveLong(Object v) {
-        if (v instanceof Number n) return n.longValue();
-        return 0L;
-    }
-
-    /**
-     * {@code GET /api/metrics[?dir=…]} — the running build aggregates as a flat JSON array, one
-     * object per tier row ({@code scope}: global / project / task / project/task; avg is
-     * pre-computed so the SPA stays arithmetic-free). An optional {@code dir} keeps only that
-     * project's rows; the global tiers are always included. Read-tier auth, like every other GET.
-     */
-    private void handleMetrics(HttpExchange exchange) throws IOException {
-        String dirFilter = decode(queryParam(exchange.getRequestURI().getQuery(), "dir"));
-        StringBuilder body = new StringBuilder("[");
-        for (cc.jumpkick.runtime.BuildMetrics.Entry e : metrics.get()) {
-            if (dirFilter != null && !e.dir().isEmpty() && !e.dir().equals(dirFilter)) continue;
-            if (body.length() > 1) body.append(',');
-            body.append(JsonOut.object()
-                    .put("scope", e.scope())
-                    .put("kind", e.kind())
-                    .put("dir", e.dir())
-                    .put("coord", e.coord())
-                    .put("task", e.step())
-                    .put("okCount", e.ok().count())
-                    .put("okTotalMillis", e.ok().totalMillis())
-                    .put("okMinMillis", e.ok().minMillis())
-                    .put("okMaxMillis", e.ok().maxMillis())
-                    .put("okAvgMillis", e.ok().avgMillis())
-                    .put("failCount", e.failed().count())
-                    .put("failTotalMillis", e.failed().totalMillis())
-                    .put("failMinMillis", e.failed().minMillis())
-                    .put("failMaxMillis", e.failed().maxMillis())
-                    .put("cancelledCount", e.cancelled().count())
-                    .put("updated", e.updatedMillis()));
-        }
-        sendJson(exchange, 200, body.append(']').toString());
-    }
-
-    /**
-     * {@code GET /api/cache} — the cache-directory breakdown (the {@code jk cache usage} /
-     * {@code jk storage usage} sections) as one flat object, for the Status view's Cache panel.
-     * Read-tier auth, like every other GET. IO-shaped; the engine wires a TTL/single-flight
-     * {@link CacheSnapshot#memoizing(Path)} supplier so concurrent tabs do not re-walk the store.
-     */
-    private void handleCache(HttpExchange exchange) throws IOException {
-        sendJson(exchange, 200, cache.get().toJson().toString());
-    }
-
-    /**
-     * {@code GET /api/project?project=&lt;id&gt;} or {@code ?dir=…} — live workspace metadata.
-     * Prefer {@code project=} (durable identity); {@code dir=} remains for direct checkout ops.
-     * Includes {@code projectId}, {@code dir}, {@code coord}, {@code description}.
-     */
-    private void handleProject(HttpExchange exchange) throws IOException {
-        String q = exchange.getRequestURI().getQuery();
-        String projectId = decode(queryParam(q, "project"));
-        String dir = decode(queryParam(q, "dir"));
-        if ((projectId == null || projectId.isBlank()) && (dir == null || dir.isBlank())) {
-            sendJson(
-                    exchange,
-                    400,
-                    JsonOut.object()
-                            .put("error", "missing \"project\" or \"dir\"")
-                            .toString());
-            return;
-        }
-        if (projectId != null && !projectId.isBlank()) {
-            var path = cc.jumpkick.builds.ProjectIdentity.pathForId(projectId);
-            if (path.isEmpty()) {
-                // Resolve may still work if lock/git present at a path we don't know — try reverse
-                // is not available; report missing checkout.
-                sendJson(
-                        exchange,
-                        404,
-                        JsonOut.object()
-                                .put("error", "unknown project id or checkout path missing: " + projectId)
-                                .put("projectId", projectId)
-                                .toString());
-                return;
-            }
-            dir = path.get().toString();
-        }
-        // Resolve identity BEFORE the jk.toml parse: resolution succeeds without a parseable
-        // manifest (lock / identity.toml / hash), so a ?dir= call on a broken or deleted
-        // workspace still gets its durable projectId in the fallback branch (JK-1796).
-        String resolvedId = projectId;
-        try {
-            resolvedId =
-                    cc.jumpkick.builds.ProjectIdentity.resolve(Path.of(dir)).id();
-        } catch (RuntimeException e) {
-            // Invalid path — keep whatever the caller supplied (empty for ?dir= calls).
-        }
-        try {
-            var project = cc.jumpkick.config.JkBuildParser.parse(Path.of(dir).resolve("jk.toml"))
-                    .project();
-            sendJson(
-                    exchange,
-                    200,
-                    JsonOut.object()
-                            .put("dir", dir)
-                            .put("projectId", resolvedId)
-                            .put("coord", project.group() + ":" + project.name())
-                            .put("description", project.description())
-                            .toString());
-        } catch (RuntimeException e) {
-            // Unparseable/missing jk.toml (deleted or moved workspace) → empty, never an error.
-            sendJson(
-                    exchange,
-                    200,
-                    JsonOut.object()
-                            .put("dir", dir)
-                            .put("projectId", resolvedId == null ? "" : resolvedId)
-                            .toString());
-        }
-    }
-
-    /**
-     * {@code GET /api/project/graph?dir=…[&scopes=main,test][&transitive=0|1]} — dependency graph
-     * for the Project page ECharts panel (JK-1542). Workspace modules plus declared external deps
-     * for the selected scopes (default {@code export,main,runtime}, same as {@code jk tree});
-     * optional lockfile transitive expansion ({@code jk tree -t}). On-demand only (SPA
-     * lazy-loads). Token-gated like
-     * {@code /api/project}.
-     */
-    private void handleProjectGraph(HttpExchange exchange) throws IOException {
-        String query = exchange.getRequestURI().getQuery();
-        Path projectDir;
-        List<cc.jumpkick.model.Scope> scopes;
-        try {
-            // decode can throw IllegalArgumentException on malformed percent-encoding — keep it (and
-            // the missing-dir check) inside the try so a bad `dir`/`scopes` query always gets the 400
-            // path below, not an uncaught exception turned into a generic 500.
-            String dir = decode(queryParam(query, "dir"));
-            if (dir == null || dir.isBlank()) {
-                sendJson(
-                        exchange,
-                        400,
-                        JsonOut.object().put("error", "missing \"dir\"").toString());
-                return;
-            }
-            projectDir = Path.of(dir);
-            // decode, like `dir` above: the SPA sends encodeURIComponent, which spells `,` as %2C,
-            // so a raw read turns every multi-scope selection into one unknown token (JK-1607).
-            scopes = cc.jumpkick.resolver.DependencyGraphModel.parseScopes(decode(queryParam(query, "scopes")));
-        } catch (IllegalArgumentException e) { // includes InvalidPathException from Path.of
-            sendJson(
-                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
-            return;
-        }
-        boolean transitive = parseTruthy(queryParam(query, "transitive"));
-        cc.jumpkick.resolver.DependencyGraphModel.Graph data;
-        try {
-            data = cc.jumpkick.resolver.DependencyGraphModel.forProjectDir(projectDir, scopes, transitive);
-        } catch (IOException | cc.jumpkick.config.JkBuildParseException e) {
-            // A broken project (malformed jk.toml, workspace member missing its jk.toml, IO
-            // trouble) must NOT come back as 200 + empty nodes — the SPA would tell the user the
-            // project has no dependencies (JK-1624). 422: the request was well-formed, the
-            // project is not.
-            String msg = e.getMessage() == null || e.getMessage().isBlank() ? e.toString() : e.getMessage();
-            sendJson(exchange, 422, JsonOut.object().put("error", msg).toString());
-            return;
-        }
-        List<Map<String, Object>> nodes = new ArrayList<>(data.nodes().size());
-        for (var n : data.nodes()) {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("id", n.id());
-            row.put("label", n.label());
-            row.put("kind", n.kind());
-            if (n.version() != null) row.put("version", n.version());
-            if (n.path() != null) row.put("path", n.path());
-            nodes.add(row);
-        }
-        List<Map<String, Object>> edges = new ArrayList<>(data.edges().size());
-        for (var e : data.edges()) {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("from", e.from());
-            row.put("to", e.to());
-            if (e.scope() != null) row.put("scope", e.scope());
-            edges.add(row);
-        }
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("dir", projectDir.toAbsolutePath().normalize().toString());
-        body.put("workspace", data.workspace());
-        body.put("scopes", data.scopes());
-        body.put("transitive", data.transitive());
-        body.put("truncated", data.truncated());
-        body.put("availableScopes", data.availableScopes());
-        body.put("nodes", nodes);
-        body.put("edges", edges);
-        sendJson(exchange, 200, cc.jumpkick.plugin.protocol.MiniJson.write(body));
-    }
-
-    /** Query flag: true for {@code 1}/{@code true}/{@code yes}/{@code on} (case-insensitive). */
-    private static boolean parseTruthy(String raw) {
-        if (raw == null || raw.isBlank()) return false;
-        String t = raw.trim().toLowerCase(java.util.Locale.ROOT);
-        return t.equals("1") || t.equals("true") || t.equals("yes") || t.equals("on");
-    }
-
-    /**
-     * {@code GET /api/history/artifact?id=…&name=…} — a snapshot file (test-results markdown, the
-     * {@code jk-lock.toml} snapshot, or the diagnostics text) served as plain text. {@code name} is
-     * whitelisted by the journal, so a hostile value cannot escape the entry directory.
-     */
-    private void handleHistoryArtifact(HttpExchange exchange) throws IOException {
-        String query = exchange.getRequestURI().getQuery();
-        var artifact = journal.artifact(decode(queryParam(query, "id")), decode(queryParam(query, "name")));
-        if (artifact.isEmpty()) {
-            sendJson(
-                    exchange,
-                    404,
-                    JsonOut.object().put("error", "no such artifact").toString());
-            return;
-        }
-        sendText(exchange, 200, Files.readString(artifact.get(), StandardCharsets.UTF_8));
-    }
-
-    /**
-     * {@code DELETE /api/history?id=…} — remove one entry, like deleting a CI run. DELETE is a
-     * mutation, so {@link #authorized} requires the bearer token even on loopback (CSRF defense).
-     */
-    private void handleHistoryDelete(HttpExchange exchange) throws IOException {
-        String id = decode(queryParam(exchange.getRequestURI().getQuery(), "id"));
-        if (id == null || !journal.delete(id)) {
-            sendJson(
-                    exchange,
-                    404,
-                    JsonOut.object().put("error", "no such build").toString());
-            return;
-        }
-        sendJson(exchange, 200, JsonOut.object().put("deleted", true).toString());
-    }
-
-    private static String decode(String raw) {
+    static String decode(String raw) {
         return raw == null ? null : java.net.URLDecoder.decode(raw, StandardCharsets.UTF_8);
     }
 
