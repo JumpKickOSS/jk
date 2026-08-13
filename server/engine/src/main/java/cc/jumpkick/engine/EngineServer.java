@@ -26,7 +26,6 @@ import cc.jumpkick.engine.listen.NoopEventSink;
 import cc.jumpkick.engine.listen.WireEventSink;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.JvmOptions;
-import cc.jumpkick.engine.plugin.MemoryProbe;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.verbs.HostedVerb;
 import cc.jumpkick.engine.verbs.VerbHost;
@@ -109,9 +108,9 @@ public final class EngineServer implements AutoCloseable {
      * Sidecar AOT trainer spawner/process. Spawned only after winning election; reaped on exit.
      * Clients never talk to it.
      */
-    private volatile java.util.function.Supplier<Process> aotTrainerSpawner;
+    private final AotTrainer aot;
 
-    private volatile Process aotTrainer;
+    private final EngineVitals vitals;
     private final AtomicInteger activeBuildPlans = new AtomicInteger();
     private final AtomicInteger peakActiveBuildPlans = new AtomicInteger();
 
@@ -306,6 +305,18 @@ public final class EngineServer implements AutoCloseable {
         // Process-scoped generation id for the dashboard hard-refresh contract (JK-1724).
         String bid = this.buildId.isEmpty() ? "" : "+" + this.buildId;
         this.engineEpoch = version + bid + "@" + this.startedAtMillis;
+        this.aot = new AotTrainer(this.log);
+        this.vitals = new EngineVitals(
+                this.version,
+                this.pid,
+                this.startedAtMillis,
+                this.engineEpoch,
+                peakActiveConnections,
+                peakActiveBuildPlans,
+                activeConnections,
+                activeBuildPlans,
+                () -> httpServer,
+                aot::pid);
     }
 
     /**
@@ -426,7 +437,7 @@ public final class EngineServer implements AutoCloseable {
         } catch (RuntimeException ignored) {
             // best-effort
         }
-        startAotTrainerIfConfigured();
+        aot.startIfConfigured();
         // HTTP binds only after the displaced predecessor has been told to drain — it still holds the
         // fixed port until it exits, so binding earlier loses the handoff race with "Address already in
         // use" and (being advisory, never retried for the engine's life) sticks in `jk engine status`.
@@ -580,7 +591,7 @@ public final class EngineServer implements AutoCloseable {
                                     && !mine.equals(Files.readString(ep).trim())) {
                                 log.accept("jk engine: displaced by a newer generation — draining");
                                 // JK-1452: do not finish / re-start engine AOT for a lame-duck generation.
-                                stopAotTrainerQuietly();
+                                aot.stopQuietly();
                                 synchronized (lifecycleLock) {
                                     if (activeBuildPlans.get() == 0) {
                                         shuttingDown = true;
@@ -594,7 +605,7 @@ public final class EngineServer implements AutoCloseable {
                             }
                             if (!Files.exists(ep) && orphanedAndUnused()) {
                                 log.accept("jk engine: no endpoint names this engine and it is unused — exiting");
-                                stopAotTrainerQuietly();
+                                aot.stopQuietly();
                                 synchronized (lifecycleLock) {
                                     shuttingDown = true;
                                     closeServerChannelQuietly();
@@ -751,7 +762,7 @@ public final class EngineServer implements AutoCloseable {
                         // engine AOT sidecar so it cannot re-publish engine-<old-v>-* (JK-1452).
                         // Voluntary `jk engine stop` still names us; leave train to finish then.
                         if (!endpointNamesThisEngine()) {
-                            stopAotTrainerQuietly();
+                            aot.stopQuietly();
                         }
                         synchronized (lifecycleLock) {
                             int jobs = activeBuildPlans.get();
@@ -2833,81 +2844,12 @@ public final class EngineServer implements AutoCloseable {
         }
     }
 
-    /** The one source of engine vitals — feeds both the socket {@code status-ack} and {@code /api/status}. */
     private cc.jumpkick.engine.http.StatusSnapshot statusSnapshot() {
-        Runtime rt = Runtime.getRuntime();
-        long heapCommitted = rt.totalMemory();
-        // Same available-memory semantics as HeapPlan (MemAvailable / reclaimable / MXBean free).
-        MemoryProbe.Memory host = MemoryProbe.current();
-        // "Connections" on the Admin tile / status-ack: every live client surface, not only the
-        // UDS accept loop. A browser on /api/events (or an MCP SSE) is a real attachment — without
-        // this, Admin shows 0 while the dashboard is open because only CLI socket clients used to
-        // bump activeConnections.
-        int connections = liveConnectionCount();
-        peakActiveConnections.accumulateAndGet(connections, Math::max);
-        return new cc.jumpkick.engine.http.StatusSnapshot(
-                version,
-                pid,
-                startedAtMillis,
-                connections,
-                activeBuildPlans.get(),
-                heapCommitted - rt.freeMemory(),
-                heapCommitted,
-                rt.maxMemory(),
-                MemoryProbe.ownRssBytes(),
-                aotTrainingPid(),
-                rt.availableProcessors(),
-                host.totalBytes(),
-                host.availableBytes(),
-                systemCpuLoad(),
-                systemLoadAverage(),
-                engineEpoch,
-                peakActiveConnections.get(),
-                peakActiveBuildPlans.get());
+        return vitals.snapshot();
     }
 
-    /**
-     * Live client attachments: CLI/UDS (or TCP) engine-protocol sockets + long-lived HTTP SSE
-     * (dashboard {@code /api/events} and MCP event streams). Short REST GETs are not counted — they
-     * release their admission permit as soon as the response finishes.
-     */
     private int liveConnectionCount() {
-        int n = activeConnections.get();
-        HttpEngineServer h = httpServer;
-        if (h != null) n += h.liveEventStreams();
-        return n;
-    }
-
-    /**
-     * Recent whole-host CPU utilisation in {@code [0, 1]}, or {@code -1} until the first sample / when
-     * the platform bean can't answer. The dashboard renders this as a percent next to CORES.
-     */
-    private static double systemCpuLoad() {
-        try {
-            var os = (com.sun.management.OperatingSystemMXBean)
-                    java.lang.management.ManagementFactory.getOperatingSystemMXBean();
-            double load = os.getCpuLoad();
-            return load >= 0 && load <= 1 ? load : -1;
-        } catch (RuntimeException e) {
-            return -1;
-        }
-    }
-
-    /** OS 1-minute load average, or {@code -1} when the platform bean cannot answer. */
-    private static double systemLoadAverage() {
-        try {
-            double avg = java.lang.management.ManagementFactory.getOperatingSystemMXBean()
-                    .getSystemLoadAverage();
-            return avg >= 0 ? avg : -1;
-        } catch (RuntimeException e) {
-            return -1;
-        }
-    }
-
-    /** The sidecar AOT trainer's pid while one is alive, {@code -1} otherwise. */
-    private long aotTrainingPid() {
-        Process p = aotTrainer;
-        return (p != null && p.isAlive()) ? p.pid() : -1;
+        return vitals.liveConnectionCount();
     }
 
     /**
@@ -2916,7 +2858,7 @@ public final class EngineServer implements AutoCloseable {
      * {@code null} (nothing to train after all — e.g. the cache appeared meanwhile).
      */
     public void aotTrainerSpawner(java.util.function.Supplier<Process> spawner) {
-        this.aotTrainerSpawner = spawner;
+        aot.spawner(spawner);
     }
 
     /**
@@ -2924,48 +2866,6 @@ public final class EngineServer implements AutoCloseable {
      * never finishes) costs a log line, never the engine. The trainer self-terminates in seconds;
      * the timeout is a belt against a hung child, generous enough to never fire on a healthy one.
      */
-    private void startAotTrainerIfConfigured() {
-        java.util.function.Supplier<Process> spawner = aotTrainerSpawner;
-        if (spawner == null) return;
-        try {
-            Process p = spawner.get();
-            if (p == null) return;
-            aotTrainer = p;
-            log.accept("jk engine: AOT training sidecar started (pid " + p.pid() + ")");
-            p.onExit().orTimeout(5, java.util.concurrent.TimeUnit.MINUTES).whenComplete((proc, err) -> {
-                if (err != null) {
-                    p.destroyForcibly();
-                    log.accept("jk engine: AOT training sidecar overran; killed (pid " + p.pid() + ")");
-                } else {
-                    log.accept("jk engine: AOT training sidecar finished (pid " + p.pid() + ", exit " + proc.exitValue()
-                            + ")");
-                }
-                aotTrainer = null;
-            });
-        } catch (RuntimeException e) {
-            log.accept("jk engine: AOT training sidecar failed to start: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Kill a live engine AOT sidecar, clear the spawner, and suppress <em>all</em> AOT training
-     * (workers included) so a lame-duck process cannot refill {@code state/aot} after the primary
-     * wipe (JK-1452). Idempotent.
-     */
-    private void stopAotTrainerQuietly() {
-        cc.jumpkick.util.AotSettings.suppressTraining();
-        aotTrainerSpawner = null;
-        Process p = aotTrainer;
-        aotTrainer = null;
-        if (p == null || !p.isAlive()) return;
-        try {
-            p.destroyForcibly();
-            log.accept("jk engine: killed AOT training sidecar (no longer primary, pid " + p.pid() + ")");
-        } catch (RuntimeException ignored) {
-            // best-effort
-        }
-    }
-
     /** Whether the endpoint pointer still names this generation's socket. */
     private boolean endpointNamesThisEngine() {
         if (active == null) return false;
