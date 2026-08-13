@@ -19,13 +19,13 @@ class PublishDiagnosticsSelectTest {
         for (int i = 0; i < 12; i++) {
             in.add(new BuildPlanResult.Diagnostic("compile-main", "javac", "err " + i));
         }
-        var published = EngineServer.selectPublishedDiagnostics(in);
+        var published = SsePublisher.selectPublishedDiagnostics(in);
         long tests =
                 published.stream().filter(d -> "test-failure".equals(d.code())).count();
         long javac = published.stream().filter(d -> "javac".equals(d.code())).count();
         assertThat(tests).isEqualTo(15);
-        assertThat(javac).isEqualTo(EngineServer.MAX_DIAGNOSTIC_EVENTS);
-        assertThat(EngineServer.unpublishedCount(in)).isEqualTo(12 - EngineServer.MAX_DIAGNOSTIC_EVENTS);
+        assertThat(javac).isEqualTo(SsePublisher.MAX_DIAGNOSTIC_EVENTS);
+        assertThat(SsePublisher.unpublishedCount(in)).isEqualTo(12 - SsePublisher.MAX_DIAGNOSTIC_EVENTS);
     }
 
     @Test
@@ -33,19 +33,19 @@ class PublishDiagnosticsSelectTest {
         // A broken shared fixture failing thousands of tests must not stream unbounded
         // snippet+stack payloads onto the SSE card (JK-1880). The "+N more" line owns the rest.
         List<BuildPlanResult.Diagnostic> in = new ArrayList<>();
-        for (int i = 0; i < EngineServer.MAX_TEST_FAILURE_EVENTS + 250; i++) {
+        for (int i = 0; i < SsePublisher.MAX_TEST_FAILURE_EVENTS + 250; i++) {
             in.add(new BuildPlanResult.Diagnostic("run-tests", "test-failure", "fail " + i));
         }
         in.add(new BuildPlanResult.Diagnostic("compile-main", "javac", "err"));
 
-        var published = EngineServer.selectPublishedDiagnostics(in);
+        var published = SsePublisher.selectPublishedDiagnostics(in);
         long tests =
                 published.stream().filter(d -> "test-failure".equals(d.code())).count();
-        assertThat(tests).isEqualTo(EngineServer.MAX_TEST_FAILURE_EVENTS);
+        assertThat(tests).isEqualTo(SsePublisher.MAX_TEST_FAILURE_EVENTS);
         // The first failures win (stable prefix), and non-test diagnostics still ride along.
         assertThat(published.getFirst().message()).isEqualTo("fail 0");
         assertThat(published.stream().filter(d -> "javac".equals(d.code())).count())
                 .isEqualTo(1);
-        assertThat(EngineServer.unpublishedCount(in)).isEqualTo(250);
+        assertThat(SsePublisher.unpublishedCount(in)).isEqualTo(250);
     }
 }
