@@ -46,6 +46,44 @@ class IdeCommandTest {
     }
 
     @Test
+    void human_output_is_a_single_ide_wedge_with_relative_bsp_path(@TempDir Path tmp) throws IOException {
+        Path ws = simpleProject(tmp);
+        Path jdks = tmp.resolve("jdks");
+        fakeJdk(jdks, "temurin-25.0.3", "25.0.3");
+        Path ideConfig = ideConfig(tmp);
+
+        java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+        var prev = System.out;
+        try {
+            System.setOut(new java.io.PrintStream(buf, true, java.nio.charset.StandardCharsets.UTF_8));
+            assertThat(Jk.execute(new String[] {
+                        "ide",
+                        "-C",
+                        ws.toString(),
+                        "--cache-dir",
+                        tmp.resolve("cache").toString(),
+                        "--jdks-dir",
+                        jdks.toString(),
+                        "--ide-config-dir",
+                        ideConfig.toString()
+                    }))
+                    .isEqualTo(0);
+        } finally {
+            System.setOut(prev);
+        }
+        String visible = cc.jumpkick.cli.TestAnsi.strip(buf.toString(java.nio.charset.StandardCharsets.UTF_8));
+        assertThat(visible).contains("IDE");
+        assertThat(visible).contains("The widget project is ready");
+        // One command chip — not a Sync / IDEA / Code / BSP stack.
+        assertThat(visible).doesNotContain(" > Sync");
+        assertThat(visible).doesNotContain("IDEA >");
+        assertThat(visible).doesNotContain("Code >");
+        assertThat(visible).doesNotContain("BSP >");
+        assertThat(visible).doesNotContain(ws.toAbsolutePath().toString());
+        assertThat(visible).contains("Note");
+    }
+
+    @Test
     void idea_flag_generates_only_intellij(@TempDir Path tmp) throws IOException {
         Path ws = simpleProject(tmp);
         Path jdks = tmp.resolve("jdks");

@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.ide;
 
-import cc.jumpkick.cli.CliOutput;
-import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.cli.tui.RichText;
-import cc.jumpkick.cli.tui.Tree;
 import cc.jumpkick.engine.protocol.IdeWireModel;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.protocol.Jsonl;
@@ -21,7 +16,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.jline.utils.AttributedStyle;
 
 /**
  * Emits VS Code project configuration for the <b>redhat.java</b> language server (Eclipse JDT-LS)
@@ -53,7 +47,7 @@ public final class VscodeIdeGenerator implements IdeGenerator {
     }
 
     @Override
-    public List<String> generate(IdeModel model) throws IOException {
+    public IdeGeneration generate(IdeModel model) throws IOException {
         // Eclipse project names are workspace-global and cross-module deps reference them by name
         // reject duplicates rather than emit a silently-broken classpath.
         assertUniqueNames(model);
@@ -78,29 +72,11 @@ public final class VscodeIdeGenerator implements IdeGenerator {
         write(vscodeDir.resolve("tasks.json"), tasksJson(model));
         files++;
 
-        // ---- presentation ---------------------------------------------------
-        Theme t = Theme.active();
-        String check = Theme.colorize(Glyphs.CHECK, t.success());
-        new Tree(JkWedge.ok(
-                        "Code",
-                        RichText.parse("The [focused]" + RichText.escape(model.rootName()) + "[/] project is ready")))
-                .gap(Tree.Gap.NONE)
-                .child(Tree.node(RichText.ansi(check
-                        + " Generated "
-                        + files
-                        + " project file"
-                        + (files == 1 ? "" : "s")
-                        + " for "
-                        + Theme.colorize("redhat.java", t.cyan()))))
-                .print();
-        CliOutput.out();
-        CliOutput.out(" "
-                + Theme.colorize(Glyphs.BANG + " Note", t.warning())
-                + ": run "
-                + Theme.colorize("Java: Clean Java Language Server Workspace", AttributedStyle.DEFAULT.italic())
-                + " if VS Code was already open");
-
-        return List.of("VS Code: " + files + " file" + (files == 1 ? "" : "s"));
+        return IdeGeneration.of(RichText.parse("Generated "
+                + files
+                + " project file"
+                + (files == 1 ? "" : "s")
+                + " for [cyan]redhat.java[/]"));
     }
 
     // =========================================================================

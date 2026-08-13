@@ -18,8 +18,9 @@ import java.util.Map;
  * Client half of the {@code jk ide} model build. The model math — workspace + module parsing,
  * lockfile + CAS reads, cross-module edges, per-module JDK/SDK handles — runs engine-side
  * ({@code IdeOps}, thin-client contract) and ships as an {@link IdeWireModel}; this class runs the
- * hosted best-effort sync first (client-rendered), fetches the wire model, and reconstructs the
- * {@link IdeModel} the generators consume. File generation and all TTY output stay client-side.
+ * hosted best-effort sync first (silent — {@link IdeChrome} owns the chip), fetches the wire
+ * model, and reconstructs the {@link IdeModel} the generators consume. File generation and all TTY
+ * output stay client-side.
  *
  * the pre-Wave-4 in-line jar fetch so it builds the exact same model with no engine.
  */
@@ -52,10 +53,18 @@ public final class IdeSupport {
      * so the resolved {@code JAVA_HOME} paths are valid regardless of which IDE consumes them.
      */
     public static IdeModel build(Invocation in) throws IOException {
+        return build(in, null);
+    }
+
+    /**
+     * Like {@link #build(Invocation)}, driving lock + sync under {@code chrome} when present so
+     * {@code jk ide} keeps a single {@code IDE} wedge (no nested Sync chip).
+     */
+    public static IdeModel build(Invocation in, IdeChrome chrome) throws IOException {
         Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
         Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
         Path ideConfigDir = in.value("ide-config-dir").map(Path::of).orElse(null);
-        return reconstruct(wireModel(in), cacheDir, jdksDir, ideConfigDir);
+        return reconstruct(wireModel(in, chrome), cacheDir, jdksDir, ideConfigDir);
     }
 
     /**
@@ -63,6 +72,15 @@ public final class IdeSupport {
      * --print-model}) and generators.
      */
     public static IdeWireModel wireModel(Invocation in) throws IOException {
+        return wireModel(in, null);
+    }
+
+    /**
+     * Engine {@link IdeWireModel} after lock + hosted sync. When {@code chrome} is non-null, lock
+     * and sync stay silent (the caller already owns the {@code IDE} chip). {@code --print-model}
+     * passes {@code null} and is also silent — machine stdout is the wire JSON only.
+     */
+    public static IdeWireModel wireModel(Invocation in, IdeChrome chrome) throws IOException {
         GlobalOptions global = GlobalOptions.from(in);
         Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
         Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
@@ -74,15 +92,16 @@ public final class IdeSupport {
         }
 
         // Fresh lock before sync/model — IDE files must match current manifests.
-        // EnsureFreshLock already printed any failure; rethrow without a second wedge line.
-        int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(syncRoot(startDir), cache, global, "IDE");
+        // Quiet: the IDE chip (or --print-model's raw JSON) owns the terminal. Failure already
+        // printed a wedge; rethrow without a second line.
+        int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensureQuiet(syncRoot(startDir), cache, global, "IDE");
         if (lockCode != 0) {
             throw new IdeException(lockCode, null);
         }
 
         // Bring the CAS in line with the lockfiles up front (one sync-request covers the workspace
-        // cascade, rendered here), then fetch the wire model from the engine.
-        hostedBestEffortSync(syncRoot(startDir), cache, jdksDir, global);
+        // cascade). No Sync chip — chrome.phase("Sync") is the live label when present.
+        hostedBestEffortSync(syncRoot(startDir), cache, jdksDir, global, chrome);
         IdeWireModel wire;
         try {
             wire = cc.jumpkick.cli.engine.EngineClient.ideModel(
@@ -222,10 +241,9 @@ public final class IdeSupport {
     }
 
     /**
-     * One hosted {@code jk sync} against the workspace root, rendered with the standard Sync chip.
-     * Best-effort by design (mirroring the old in-line {@code CacheSync} call): any failure — the
-     * engine unreachable, offline, a pinned-but-uninstalled JDK failing the plan's resolve-only
-     * ensure-jdk step — warns and returns; the model build skips whatever is still missing.
+     * One hosted {@code jk sync} against the workspace root. Silent on the terminal — {@code jk
+     * ide}'s live {@code IDE} chip already says {@code Sync}; {@code --print-model} must not emit
+     * chrome. Best-effort: any failure warns and returns; the model build skips whatever is missing.
      */
     /**
      * Hard ceiling for best-effort IDE pre-sync. A wedged engine must not block {@code jk ide} /
@@ -233,18 +251,10 @@ public final class IdeSupport {
      */
     private static final long BEST_EFFORT_SYNC_MS = 30_000L;
 
-    private static void hostedBestEffortSync(Path wsRoot, Path cache, Path jdksDir, GlobalOptions global) {
-        cc.jumpkick.cli.run.BuildPlanConsole.Mode mode = cc.jumpkick.cli.run.BuildPlanConsole.modeFor(global);
+    private static void hostedBestEffortSync(
+            Path wsRoot, Path cache, Path jdksDir, GlobalOptions global, IdeChrome chrome) {
         long[] fetched = new long[1];
         long[] upToDate = new long[1];
-        cc.jumpkick.cli.run.ConsoleSpec spec = new cc.jumpkick.cli.run.ConsoleSpec(
-                "Sync",
-                r -> fetched[0] == 0 && upToDate[0] == 0
-                        ? "already up to date"
-                        : fetched[0] + " fetched, " + upToDate[0] + " up-to-date",
-                r -> "Dependency sync incomplete — missing jars will be skipped.",
-                true);
-        String label = wsRoot.getFileName() != null ? wsRoot.getFileName().toString() : wsRoot.toString();
         var session = cc.jumpkick.config.SessionContext.current();
         var paths = cc.jumpkick.engine.EnginePaths.current();
         var req = new cc.jumpkick.cli.engine.EngineClient.SyncRequest(
@@ -259,8 +269,7 @@ public final class IdeSupport {
                         cc.jumpkick.cli.engine.EngineClient.runSync(
                                 paths,
                                 req,
-                                steps -> cc.jumpkick.cli.run.BuildPlanConsole.chooseConsoleListener(
-                                        steps, mode, spec, label),
+                                steps -> new cc.jumpkick.cli.run.SilentListener(System.out, System.err, true),
                                 fetched,
                                 upToDate);
                     } catch (Exception e) {
@@ -286,17 +295,27 @@ public final class IdeSupport {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-            cc.jumpkick.cli.CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "IDE",
+            syncWarn(
+                    chrome,
                     "dependency sync timed out after " + (BEST_EFFORT_SYNC_MS / 1000)
-                            + "s — missing jars will be skipped"));
+                            + "s — missing jars will be skipped");
             return;
         }
         Exception e = fail.get();
         if (e != null) {
-            cc.jumpkick.cli.CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "IDE", "dependency sync incomplete (" + e.getMessage() + ") — missing jars will be skipped"));
+            syncWarn(
+                    chrome,
+                    "dependency sync incomplete (" + e.getMessage() + ") — missing jars will be skipped");
         }
+    }
+
+    /** Soft sync failure: a note under the live IDE chip, or a fail wedge when there is no chrome. */
+    private static void syncWarn(IdeChrome chrome, String message) {
+        if (chrome != null) {
+            chrome.note(cc.jumpkick.cli.tui.RichText.plain(message));
+            return;
+        }
+        cc.jumpkick.cli.CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("IDE", message));
     }
 
     // =========================================================================
