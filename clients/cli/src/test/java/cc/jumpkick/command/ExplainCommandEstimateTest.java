@@ -16,30 +16,22 @@ class ExplainCommandEstimateTest {
 
     @Test
     void fully_cached_build_time_is_under_one_second_not_unknown() {
-        String label = TestAnsi.strip(ExplainCommand.buildTimeEstimate(0, true, Theme.active()));
-        assertThat(label).isEqualTo("Build time estimate <1s");
-        assertThat(label).doesNotContain("unknown");
         assertThat(ExplainCommand.buildTimeEstimateValue(0, true)).isEqualTo("<1s");
     }
 
     @Test
     void dirty_with_no_eta_is_not_yet_measured() {
-        String label = TestAnsi.strip(ExplainCommand.buildTimeEstimate(0, false, Theme.active()));
-        assertThat(label).isEqualTo("Build time estimate not yet measured");
-        assertThat(label).doesNotContain("unknown");
         assertThat(ExplainCommand.buildTimeEstimateValue(0, false)).isEqualTo("not yet measured");
     }
 
     @Test
     void sub_second_eta_formats_as_under_one_second() {
-        String label = TestAnsi.strip(ExplainCommand.buildTimeEstimate(400, false, Theme.active()));
-        assertThat(label).isEqualTo("Build time estimate <1s");
+        assertThat(ExplainCommand.buildTimeEstimateValue(400, false)).isEqualTo("<1s");
     }
 
     @Test
     void multi_second_eta_uses_tilde_estimate() {
-        String label = TestAnsi.strip(ExplainCommand.buildTimeEstimate(8_000, false, Theme.active()));
-        assertThat(label).isEqualTo("Build time estimate ~8s");
+        assertThat(ExplainCommand.buildTimeEstimateValue(8_000, false)).isEqualTo("~8s");
         assertThat(ExplainCommand.buildTimeEstimateValue(158_000, false)).isEqualTo("~2m 38s");
     }
 

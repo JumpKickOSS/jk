@@ -310,15 +310,6 @@ public final class ExplainCommand implements CliCommand {
     }
 
     /**
-     * Header estimate fragment: {@code Build time estimate ~8s}, {@code Build time estimate <1s}
-     * (fully cached / sub-second), or {@code Build time estimate not yet measured} when dirty work
-     * has no host/project timings yet.
-     */
-    static String buildTimeEstimate(long etaMillis, boolean fullyCached, Theme t) {
-        return "Build time estimate " + Theme.colorize(buildTimeEstimateValue(etaMillis, fullyCached), t.warning());
-    }
-
-    /**
      * ETA value only ({@code ~8s} / {@code <1s} / {@code not yet measured}) — same authority as
      * {@code jk build}'s countdown seed. Never mask a multi-minute eta behind Fully Cached / {@code
      * <1s}.
@@ -679,46 +670,6 @@ public final class ExplainCommand implements CliCommand {
 
     private static String padRight(String s, int width) {
         return s.length() >= width ? s : s + " ".repeat(width - s.length());
-    }
-
-    /**
-     * Join {@code units} with {@code ", "} to fit {@code available} visible columns. When the full
-     * list is too wide, show as many leading units as fit followed by a {@code …+N more…} marker,
-     * where {@code N} is the count of remaining units that didn't fit. {@code available} is
-     * effectively unbounded on a non-TTY, so the full list is shown there.
-     */
-    static String elideDeps(List<String> units, int available) {
-        String full = String.join(", ", units);
-        if (available <= 0 || units.size() <= 1 || full.length() <= available) return full;
-        String best = "…+" + units.size() + " more…"; // marker-only, if even one unit won't fit
-        for (int k = 1; k < units.size(); k++) {
-            String candidate = String.join(", ", units.subList(0, k)) + ", …+" + (units.size() - k) + " more…";
-            if (candidate.length() > available) break; // front grows monotonically
-            best = candidate;
-        }
-        return best;
-    }
-
-    /**
-     * Greedily pack {@code tokens} into {@code ", "}-joined lines, each at most {@code avail} visible
-     * columns wide (the wrap point drops the separator rather than leaving a trailing comma). On a
-     * non-TTY {@code avail} is effectively unbounded, so the whole list lands on one line.
-     */
-    static List<String> wrapNames(List<String> tokens, int avail) {
-        List<String> lines = new ArrayList<>();
-        StringBuilder cur = new StringBuilder();
-        for (String tok : tokens) {
-            if (cur.length() == 0) {
-                cur.append(tok);
-            } else if (cur.length() + 2 + tok.length() <= avail) {
-                cur.append(", ").append(tok);
-            } else {
-                lines.add(cur.toString());
-                cur = new StringBuilder(tok);
-            }
-        }
-        if (cur.length() > 0) lines.add(cur.toString());
-        return lines;
     }
 
     /**
