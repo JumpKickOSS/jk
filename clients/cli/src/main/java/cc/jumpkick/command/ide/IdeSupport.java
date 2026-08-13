@@ -303,9 +303,7 @@ public final class IdeSupport {
         }
         Exception e = fail.get();
         if (e != null) {
-            syncWarn(
-                    chrome,
-                    "dependency sync incomplete (" + e.getMessage() + ") — missing jars will be skipped");
+            syncWarn(chrome, "dependency sync incomplete (" + e.getMessage() + ") — missing jars will be skipped");
         }
     }
 

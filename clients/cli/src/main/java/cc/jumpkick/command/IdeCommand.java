@@ -105,9 +105,10 @@ public final class IdeCommand implements CliCommand {
                     chrome.fail(e.getMessage());
                     return e.code();
                 } catch (Exception e) {
-                    chrome.fail(e.getMessage() != null
-                            ? e.getMessage()
-                            : e.getClass().getSimpleName());
+                    chrome.fail(
+                            e.getMessage() != null
+                                    ? e.getMessage()
+                                    : e.getClass().getSimpleName());
                     return 1;
                 }
             }
@@ -116,7 +117,8 @@ public final class IdeCommand implements CliCommand {
                 Path bsp = BspCommand.writeConnectionFile(model.wsRoot());
                 chrome.phase(IdeChrome.bspWrote(bsp, model.wsRoot()));
             } catch (Exception e) {
-                chrome.fail(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+                chrome.fail(
+                        e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
                 return 1;
             }
             chrome.note(IdeChrome.restartNote());

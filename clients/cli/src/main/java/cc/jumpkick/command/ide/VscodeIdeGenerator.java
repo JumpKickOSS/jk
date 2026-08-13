@@ -72,11 +72,8 @@ public final class VscodeIdeGenerator implements IdeGenerator {
         write(vscodeDir.resolve("tasks.json"), tasksJson(model));
         files++;
 
-        return IdeGeneration.of(RichText.parse("Generated "
-                + files
-                + " project file"
-                + (files == 1 ? "" : "s")
-                + " for [cyan]redhat.java[/]"));
+        return IdeGeneration.of(RichText.parse(
+                "Generated " + files + " project file" + (files == 1 ? "" : "s") + " for [cyan]redhat.java[/]"));
     }
 
     // =========================================================================

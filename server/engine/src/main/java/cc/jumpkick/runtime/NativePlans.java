@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.config.ImageConfigParser;
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
@@ -19,32 +17,22 @@ public final class NativePlans {
 
     private NativePlans() {}
 
-    /** True when {@code [native] always = true}. Main class optional (exe vs shared lib). */
-    public static boolean isNativeEligible(JkBuild build) {
-        return build.nativeMode() == JkBuild.NativeMode.ALWAYS;
+    /**
+     * {@code jk native} adds a native-image tail when the client resolved a GraalVM home for the
+     * module (unique main + {@code GRAALVM_HOME}). {@code [native] always = true} is {@code jk
+     * build}'s tail, not this gate.
+     */
+    public static boolean isNativeEligible(Path graalHome) {
+        return graalHome != null;
     }
 
     /**
-     * The native-image main class: the CLI {@code --main} override wins, then {@code
-     * [native].main-class}, then {@code [image].main}; {@code null} falls through to {@code
-     * [application].main} inside {@link BuildPlanner#nativeStep}.
+     * The native-image main class: {@code --main}, then {@code [native].main-class}, then {@code
+     * [image].main}, then {@code [application] main}.
      */
     public static String resolveMain(Path buildFile, String mainOverride) {
-        if (mainOverride != null && !mainOverride.isBlank()) return mainOverride;
-        try {
-            String fromNative = JkBuildParser.parse(buildFile)
-                    .nativeConfig()
-                    .map(JkBuild.NativeConfig::mainClass)
-                    .orElse(null);
-            if (fromNative != null) return fromNative;
-        } catch (Exception ignored) {
-        }
-        try {
-            String fromImage = ImageConfigParser.parse(buildFile).main();
-            if (fromImage != null && !fromImage.isBlank()) return fromImage;
-        } catch (Exception ignored) {
-        }
-        return null;
+        Path dir = buildFile.getParent();
+        return dir == null ? mainOverride : cc.jumpkick.layout.NativePreflight.specifiedMain(dir, mainOverride);
     }
 
     /**
@@ -107,7 +95,7 @@ public final class NativePlans {
         BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs);
         // Assembly / sources tails only here — native carries CLI main/args from this command.
         BuildPlanner.appendDeclaredTails(builder, inputs, graalHome, /*allowNative*/ false);
-        if (allowNative && isNativeEligible(module)) {
+        if (allowNative && isNativeEligible(graalHome)) {
             builder.addTask(BuildPlanner.nativeStep(
                     moduleDir,
                     cache,
@@ -115,7 +103,8 @@ public final class NativePlans {
                     jdksDir,
                     graalHome,
                     resolveMain(buildFile, mainOverride),
-                    extraArgs == null ? List.of() : extraArgs));
+                    extraArgs == null ? List.of() : extraArgs,
+                    /*allowShared*/ false));
         }
         return builder.terminal(TaskNames.NATIVE_IMAGE).build();
     }

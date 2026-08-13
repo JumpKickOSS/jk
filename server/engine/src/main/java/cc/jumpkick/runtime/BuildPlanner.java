@@ -3559,7 +3559,7 @@ public final class BuildPlanner {
      * <ul>
      *   <li>{@code [application] assembly = true} → fat-jar step
      *   <li>{@code [native] always = true} → Graal native-image step (opt-in product of {@code jk
-     *       build} / {@code jk run} / install — same lever as {@code jk native})
+     *       build} / {@code jk run} / install; {@code jk native} does not require this flag)
      *   <li>{@code sources = "always"} → sources-jar step
      * </ul>
      *
@@ -3875,6 +3875,22 @@ public final class BuildPlanner {
             Path graalHome,
             String mainOverride,
             List<String> extraArgs) {
+        return nativeStep(dir, cache, lockFile, jdksDir, graalHome, mainOverride, extraArgs, true);
+    }
+
+    /**
+     * @param allowShared when {@code false} ({@code jk native}), missing / several mains fail
+     *     instead of emitting a {@code --shared} library
+     */
+    public static Task nativeStep(
+            Path dir,
+            Path cache,
+            Path lockFile,
+            Path jdksDir,
+            Path graalHome,
+            String mainOverride,
+            List<String> extraArgs,
+            boolean allowShared) {
         // Install / native plans never run under verify's ephemeral scratch — persist.
         final boolean persist = true;
         List<String> extra = extraArgs == null ? List.of() : extraArgs;
@@ -3914,19 +3930,39 @@ public final class BuildPlanner {
                         throw new RuntimeException("missing main jar for native-image");
                     }
                     // Resolution order: --main CLI flag > [native].main-class > [application].main.
-                    // A resolvable main → executable; none → shared library (--shared).
+                    // A resolvable main → executable; none → shared library (--shared) on jk
+                    // build. jk native requires a unique main (allowShared=false).
                     String mainClass = (mainOverride != null && !mainOverride.isBlank())
                             ? mainOverride
                             : (nativeCfg.mainClass() != null ? nativeCfg.mainClass() : project.mainClass());
-                    if ((mainClass == null || mainClass.isBlank())
-                            && PluginBuild.shape(project, dir)
-                                    .map(sh -> sh.mainScan())
-                                    .orElse(false)) {
-                        // main-scan packagers carry exactly one main — same scan packaging used.
-                        mainClass = cc.jumpkick.layout.MainClassScanner.scanUnique(layout.classesDir());
+                    if (mainClass == null || mainClass.isBlank()) {
+                        boolean scan = !allowShared
+                                || PluginBuild.shape(project, dir)
+                                        .map(sh -> sh.mainScan())
+                                        .orElse(false);
+                        if (scan) {
+                            try {
+                                mainClass = cc.jumpkick.layout.MainClassScanner.scanUnique(layout.classesDir());
+                            } catch (cc.jumpkick.layout.MainClassScanner.AmbiguousMainException e) {
+                                ctx.error("native", cc.jumpkick.layout.NativePreflight.MANY_MAINS);
+                                throw new RuntimeException(cc.jumpkick.layout.NativePreflight.MANY_MAINS);
+                            } catch (cc.jumpkick.layout.MainClassScanner.NoMainFoundException e) {
+                                if (!allowShared) {
+                                    ctx.error("native", cc.jumpkick.layout.NativePreflight.NO_MAIN);
+                                    throw new RuntimeException(cc.jumpkick.layout.NativePreflight.NO_MAIN);
+                                }
+                                mainClass = null;
+                            }
+                        }
                     }
                     boolean shared = (mainClass == null || mainClass.isBlank());
-                    if (shared) mainClass = null;
+                    if (shared) {
+                        if (!allowShared) {
+                            ctx.error("native", cc.jumpkick.layout.NativePreflight.NO_MAIN);
+                            throw new RuntimeException(cc.jumpkick.layout.NativePreflight.NO_MAIN);
+                        }
+                        mainClass = null;
+                    }
                     // Output path: [native].name overrides the artifact-derived name.
                     // Executable → target/<name>; library → target/lib<name> (native-image
                     // appends the platform extension.so/.dylib/.dll and emits C headers).

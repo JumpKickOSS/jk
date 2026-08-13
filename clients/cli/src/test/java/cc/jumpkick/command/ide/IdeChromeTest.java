@@ -35,9 +35,13 @@ class IdeChromeTest {
             chrome.phase(IdeChrome.phaseReady("VS Code", "hello-http"));
             chrome.addDetails(List.of(RichText.plain("Generated 7 project files for redhat.java")));
 
-            List<String> lines = chrome.renderLines(0).stream().map(TestAnsi::strip).toList();
+            List<String> lines =
+                    chrome.renderLines(0).stream().map(TestAnsi::strip).toList();
             assertThat(lines.getFirst()).contains("IDE").contains("VS Code: The hello-http project is ready");
-            assertThat(lines.getFirst()).doesNotContain("Sync").doesNotContain("Code  ").doesNotContain("IDEA  ");
+            assertThat(lines.getFirst())
+                    .doesNotContain("Sync")
+                    .doesNotContain("Code  ")
+                    .doesNotContain("IDEA  ");
             String tree = String.join("\n", lines);
             int vscode = tree.indexOf("Generated 7 project files for redhat.java");
             int ideaJdk = tree.indexOf("Registered the jk-graalvm-25 JDK");
@@ -83,8 +87,7 @@ class IdeChromeTest {
 
     @Test
     void projectReady_uses_bright_cyan_bold_markup() {
-        assertThat(IdeChrome.projectReady("hello-http").plainText())
-                .isEqualTo("The hello-http project is ready");
+        assertThat(IdeChrome.projectReady("hello-http").plainText()).isEqualTo("The hello-http project is ready");
         assertThat(IdeChrome.phaseReady("JetBrains IDEA", "hello-http"))
                 .isEqualTo("JetBrains IDEA: The hello-http project is ready");
     }
@@ -93,9 +96,7 @@ class IdeChromeTest {
     void bspWrote_is_workspace_relative(@TempDir Path tmp) throws IOException {
         Path ws = tmp.resolve("hello-http");
         Files.createDirectories(ws);
-        Files.writeString(
-                ws.resolve("jk.toml"),
-                """
+        Files.writeString(ws.resolve("jk.toml"), """
                 [project]
                 name = "hello-http"
                 """);

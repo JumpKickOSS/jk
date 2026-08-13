@@ -98,8 +98,7 @@ public final class IntellijIdeGenerator implements IdeGenerator {
 
         List<RichText> details = new ArrayList<>();
         if (!touchedTables.isEmpty()) {
-            details.add(RichText.parse(
-                    "Registered the [cyan]" + RichText.escape(defaultSdk.sdkName()) + "[/] JDK"));
+            details.add(RichText.parse("Registered the [cyan]" + RichText.escape(defaultSdk.sdkName()) + "[/] JDK"));
         }
         details.add(RichText.parse(
                 "Generated " + files + " project file" + (files == 1 ? "" : "s") + " in [path].idea[/]"));

@@ -74,8 +74,7 @@ public final class BspCommand implements CliCommand {
             return Exit.CONFIG;
         }
         Path out = writeConnectionFile(projectDir);
-        cc.jumpkick.cli.tui.CommandWedge.printOk(
-                "BSP", "Wrote " + cc.jumpkick.cli.PathDisplay.of(out, projectDir));
+        cc.jumpkick.cli.tui.CommandWedge.printOk("BSP", "Wrote " + cc.jumpkick.cli.PathDisplay.of(out, projectDir));
         CliOutput.out("Open this project in an IDE with BSP support (IntelliJ via Scala plugin / Metals).");
         return 0;
     }

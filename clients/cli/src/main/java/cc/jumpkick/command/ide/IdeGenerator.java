@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.ide;
 
-import java.util.List;
-
 /**
  * A strategy that emits project configuration for one IDE from the shared {@link IdeModel}. The
  * model is computed once by {@link IdeSupport#build} and handed to every selected generator, so a
