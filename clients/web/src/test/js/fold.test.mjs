@@ -1286,6 +1286,7 @@ test('shortDisplayLabel never leaves package FQCNs in client text', () => {
     'FooTest.bar(Path)',
   );
   assert.equal(simplifyMethodParams('m(java.lang.String[])'), 'm(String[])');
+  assert.equal(simplifyMethodParams('foo(java.lang.String)[#2]'), 'foo(String)[#2]');
   assert.equal(shortDisplayLabel('FooTest.bar(Path)  [w2]'), 'FooTest.bar(Path)  [w2]');
   // Live detail path shortens too.
   assert.equal(

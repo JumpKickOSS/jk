@@ -44,6 +44,13 @@ class JUnitUniqueIdTest {
     }
 
     @Test
+    void dynamic_test_keeps_invocation() {
+        var id = JUnitUniqueId.parse(
+                "[engine:junit-jupiter]/[class:C]/[test-factory:dynamicTests()]/[dynamic-test:#1]");
+        assertEquals("dynamicTests()[#1]", id.testMethod);
+    }
+
+    @Test
     void parameterized_template_with_array_param() {
         var id = JUnitUniqueId.parse(
                 "[engine:junit-jupiter]/[class:C]/[test-template:bar(int%5B%5D)]"

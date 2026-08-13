@@ -56,7 +56,8 @@ final class JUnitUniqueId {
                 case "test-factory" -> {
                     if (template.isEmpty()) template = s.getValue();
                 }
-                case "test-template-invocation", "test-factory-invocation" -> invocation = s.getValue();
+                case "test-template-invocation", "test-factory-invocation", "dynamic-test" ->
+                    invocation = s.getValue();
                 default -> {}
             }
         }
@@ -105,6 +106,7 @@ final class JUnitUniqueId {
         if (template.isEmpty()) return "";
         String invocation = segment(id, "test-template-invocation");
         if (invocation.isEmpty()) invocation = segment(id, "test-factory-invocation");
+        if (invocation.isEmpty()) invocation = segment(id, "dynamic-test");
         if (invocation.isEmpty()) return template;
         return template + "[" + invocation + "]";
     }

@@ -1311,7 +1311,8 @@ export function simplifyMethodParams(method) {
   if (open < 0 || close <= open) return String(method).trim();
   const name = method.slice(0, open).trim();
   const inside = method.slice(open + 1, close).trim();
-  if (!inside) return name + '()';
+  const suffix = method.slice(close + 1);
+  if (!inside) return name + '()' + suffix;
   const parts = inside.split(',').map((raw) => {
     let p = raw.trim();
     let suffix = '';
@@ -1328,7 +1329,7 @@ export function simplifyMethodParams(method) {
     if (d >= 0) p = p.slice(d + 1);
     return p + suffix;
   });
-  return name + '(' + parts.join(', ') + ')';
+  return name + '(' + parts.join(', ') + ')' + suffix;
 }
 
 /**

@@ -172,6 +172,8 @@ class TestFailureHighlightTest {
                 .isEqualTo("FooTest.bar(Path)  [w2]");
         assertThat(TestFailureHighlight.shortDisplayLabel("bar(java.nio.file.Path)"))
                 .isEqualTo("bar(Path)");
+        assertThat(TestFailureHighlight.shortDisplayLabel("foo(java.lang.String)[#2]"))
+                .isEqualTo("foo(String)[#2]");
         // Prose / versions / jars must not be mangled.
         assertThat(TestFailureHighlight.shortDisplayLabel("package jk-engine-0.12.0.jar"))
                 .isEqualTo("package jk-engine-0.12.0.jar");

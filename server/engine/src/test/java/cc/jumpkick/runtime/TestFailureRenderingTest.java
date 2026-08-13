@@ -72,6 +72,17 @@ class TestFailureRenderingTest {
                 "junit-jupiter",
                 "freshen_preserves_pins(java.nio.file.Path)");
         assertThat(TestSupport.shortTestLabel(f)).isEqualTo("FooTest.freshen_preserves_pins(Path)  [w2]");
+        var invoked = new TestSummary.Failure(
+                "bar(java.lang.String)[#2]",
+                "",
+                "",
+                "",
+                "",
+                "demo.FooTest",
+                0,
+                "",
+                "bar(java.lang.String)[#2]");
+        assertThat(TestSupport.shortTestLabel(invoked)).isEqualTo("FooTest.bar(String)[#2]");
         List<String> lines = TestSupport.renderFailures(new TestSummary(1, 0, 1, 0, List.of(f)));
         assertThat(lines).anyMatch(l -> l.equals("module: cc.jumpkick:jk-core"));
         assertThat(lines).anyMatch(l -> l.equals("FAILED FooTest.freshen_preserves_pins(Path)  [w2]"));

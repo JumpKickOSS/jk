@@ -171,7 +171,7 @@ public final class TestSupport {
      * › AssertionFailedError thrown at line 23
      * </pre>
      *
-     * <p>Simple class/method names only (no package FQCNs, no method params). When {@code moduleDir}
+     * <p>Simple class/method names only (no package FQCNs; params stay as simple type names). When {@code moduleDir}
      * is set, a 7-line source snippet is resolved from the stack. The leading {@code Test Failure}
      * title and trailing {@code Test Failure end} are sentinels the CLI rewrites into a red pill +
      * header / rail (the closer keeps a blank line inside the assertion body from ending the paint).
@@ -245,8 +245,8 @@ public final class TestSupport {
 
     /**
      * {@code SimpleClass.method()} / {@code SimpleClass.method(Path)} — no package FQCN; keep
-     * parentheses (and param type names when present). Falls back to the failure's test name when
-     * class/method are unknown.
+     * parentheses, simple param type names, and a trailing invocation tag ({@code [#1]}). Falls
+     * back to the failure's test name when class/method are unknown.
      */
     static String shortTestLabel(TestSummary.Failure f) {
         String cls = simpleClassName(f.className());
@@ -289,7 +289,8 @@ public final class TestSupport {
         if (open < 0 || close <= open) return method.strip();
         String name = method.substring(0, open).strip();
         String inside = method.substring(open + 1, close).strip();
-        if (inside.isEmpty()) return name + "()";
+        String suffix = method.substring(close + 1);
+        if (inside.isEmpty()) return name + "()" + suffix;
         StringBuilder simplified = new StringBuilder();
         for (String part : inside.split(",")) {
             String p = part.strip();
@@ -298,7 +299,7 @@ public final class TestSupport {
             if (!simplified.isEmpty()) simplified.append(", ");
             simplified.append(p);
         }
-        return name + "(" + simplified + ")";
+        return name + "(" + simplified + ")" + suffix;
     }
 
     /** {@code org.opentest4j.AssertionFailedError} → {@code AssertionFailedError}. */

@@ -491,26 +491,27 @@ public final class TestFailureHighlight {
         if (open < 0 || close <= open) return method.strip();
         String name = method.substring(0, open).strip();
         String inside = method.substring(open + 1, close).strip();
-        if (inside.isEmpty()) return name + "()";
+        String after = method.substring(close + 1);
+        if (inside.isEmpty()) return name + "()" + after;
         StringBuilder simplified = new StringBuilder();
         for (String part : inside.split(",")) {
             String p = part.strip();
-            String suffix = "";
+            String arraySuffix = "";
             while (p.endsWith("...") || p.endsWith("[]")) {
                 if (p.endsWith("...")) {
-                    suffix = "..." + suffix;
+                    arraySuffix = "..." + arraySuffix;
                     p = p.substring(0, p.length() - 3).strip();
                 } else {
-                    suffix = "[]" + suffix;
+                    arraySuffix = "[]" + arraySuffix;
                     p = p.substring(0, p.length() - 2).strip();
                 }
             }
             int d = p.lastIndexOf('.');
             if (d >= 0) p = p.substring(d + 1);
             if (!simplified.isEmpty()) simplified.append(", ");
-            simplified.append(p).append(suffix);
+            simplified.append(p).append(arraySuffix);
         }
-        return name + "(" + simplified + ")";
+        return name + "(" + simplified + ")" + after;
     }
 
     /** {@code SimpleClass.method()} / {@code SimpleClass.method(Path)} — type + function roles. */
