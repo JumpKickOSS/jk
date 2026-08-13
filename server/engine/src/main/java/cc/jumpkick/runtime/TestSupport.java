@@ -273,9 +273,9 @@ public final class TestSupport {
             method = method + "()";
         }
         if (cls.isEmpty() && method.isEmpty()) return f.testName() == null ? "?" : f.testName();
-        if (cls.isEmpty()) return method;
-        if (method.isEmpty()) return cls;
-        return cls + "." + method;
+        String label = cls.isEmpty() ? method : (method.isEmpty() ? cls : cls + "." + method);
+        if (f.workerId() > 0) label = label + "  [w" + f.workerId() + "]";
+        return label;
     }
 
     /**

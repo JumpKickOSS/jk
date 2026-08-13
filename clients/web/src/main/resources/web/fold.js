@@ -701,6 +701,7 @@ export function normalizeDiagnostic(d) {
     line: typeof d.line === 'number' ? d.line : 0,
     snippetStart: typeof d.snippetStart === 'number' ? d.snippetStart : 0,
     snippet,
+    worker: typeof d.worker === 'number' ? d.worker : 0,
   };
 }
 
@@ -1295,9 +1296,10 @@ export function shortTestLabel(d) {
   method = simplifyMethodParams(method);
   if (method && method.indexOf('(') < 0 && method !== '(test run)') method += '()';
   if (!cls && !method) return shortDisplayLabel(d.test || '') || '?';
-  if (!cls) return shortDisplayLabel(method);
-  if (!method) return cls;
-  return shortDisplayLabel(cls + '.' + method);
+  let label = !cls ? shortDisplayLabel(method) : !method ? cls : shortDisplayLabel(cls + '.' + method);
+  const worker = typeof d.worker === 'number' ? d.worker : 0;
+  if (worker > 0 && !label.includes('  [w')) label = label + '  [w' + worker + ']';
+  return label;
 }
 
 /** Keep {@code (…)} but strip package prefixes inside params. */

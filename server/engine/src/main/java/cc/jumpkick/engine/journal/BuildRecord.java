@@ -226,7 +226,8 @@ public record BuildRecord(
             String file,
             int line,
             int snippetStart,
-            java.util.List<String> snippet) {
+            java.util.List<String> snippet,
+            int worker) {
 
         public Diag {
             if (snippet == null) snippet = java.util.List.of();
@@ -264,7 +265,8 @@ public record BuildRecord(
                     "",
                     0,
                     0,
-                    java.util.List.of());
+                    java.util.List.of(),
+                    0);
         }
 
         /** Legacy ctor without structured test fields. */

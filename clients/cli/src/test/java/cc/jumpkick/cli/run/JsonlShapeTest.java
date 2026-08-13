@@ -102,8 +102,9 @@ class JsonlShapeTest {
                 "org.opentest4j.AssertionFailedError",
                 "expected: \"1.1\"\n but was: \"1.0\"",
                 "org.opentest4j.AssertionFailedError: …\n\tat cc.jumpkick.runtime.LockFreshenConservativeTest.freshen(LockFreshenConservativeTest.java:96)",
-                0);
+                2);
         String line = JsonlShape.error("run-tests", "test-failure", failure.message(), failure);
+        assertThat(line).contains("\"worker\":2");
         assertThat(line).contains("\"module\":\"cc.jumpkick:jk-engine\"");
         assertThat(line).contains("\"engine\":\"junit-jupiter\"");
         assertThat(line).contains("\"class\":\"cc.jumpkick.runtime.LockFreshenConservativeTest\"");

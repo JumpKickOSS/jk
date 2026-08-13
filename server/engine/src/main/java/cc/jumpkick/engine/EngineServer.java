@@ -2042,6 +2042,7 @@ public final class EngineServer implements AutoCloseable {
             if (d.line() > 0) o.put("line", d.line());
             if (d.snippetStart() > 0) o.put("snippetStart", d.snippetStart());
             if (d.snippet() != null && !d.snippet().isEmpty()) o.putStrings("snippet", d.snippet());
+            if (d.worker() > 0) o.put("worker", d.worker());
             if (d.test() != null && !d.test().isEmpty()) o.put("test", d.test());
             publishEvent("diagnostic", withProgress(o, requestId));
         }
@@ -6785,7 +6786,8 @@ public final class EngineServer implements AutoCloseable {
                         d.file(),
                         d.line(),
                         d.snippetStart(),
-                        d.snippet()));
+                        d.snippet(),
+                        d.worker()));
             }
             for (BuildPlanResult.Diagnostic d : result.warnings()) {
                 diagnostics.add(new BuildRecord.Diag(
@@ -6804,7 +6806,8 @@ public final class EngineServer implements AutoCloseable {
                         d.file(),
                         d.line(),
                         d.snippetStart(),
-                        d.snippet()));
+                        d.snippet(),
+                        d.worker()));
             }
             // Capture the step dependency edges from the genuine in-process result (engine-side
             // result.steps is reliably populated, unlike a client-side reconstruction).

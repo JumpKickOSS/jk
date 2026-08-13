@@ -81,11 +81,12 @@ public record BuildPlanResult(
             String file,
             int line,
             int snippetStart,
-            java.util.List<String> snippet) {
+            java.util.List<String> snippet,
+            int worker) {
 
         /** Diagnostic with no test identity — the common case (javac, resolver, …). */
         public Diagnostic(String step, String code, String message) {
-            this(step, code, message, "", "", "", "", "", "", "", "", 0, 0, java.util.List.of());
+            this(step, code, message, "", "", "", "", "", "", "", "", 0, 0, java.util.List.of(), 0);
         }
 
         /** Legacy two-field test failure (display label + exception class). */
@@ -104,7 +105,8 @@ public record BuildPlanResult(
                     "",
                     0,
                     0,
-                    java.util.List.of());
+                    java.util.List.of(),
+                    0);
         }
 
         /** Full structured test failure (incl. optional source snippet). */
@@ -123,7 +125,8 @@ public record BuildPlanResult(
                     failure == null ? "" : failure.file(),
                     failure == null ? 0 : failure.line(),
                     failure == null ? 0 : failure.snippetStart(),
-                    failure == null ? java.util.List.of() : failure.snippet());
+                    failure == null ? java.util.List.of() : failure.snippet(),
+                    failure == null ? 0 : failure.worker());
         }
 
         public Diagnostic {
@@ -138,7 +141,8 @@ public record BuildPlanResult(
                     && (method == null || method.isEmpty())
                     && (exceptionClass == null || exceptionClass.isEmpty())
                     && (stack == null || stack.isEmpty())
-                    && (file == null || file.isEmpty())) {
+                    && (file == null || file.isEmpty())
+                    && worker <= 0) {
                 return null;
             }
             return new TestFailureInfo(
@@ -149,7 +153,7 @@ public record BuildPlanResult(
                     exceptionClass,
                     message,
                     stack,
-                    0,
+                    worker,
                     file,
                     line,
                     snippetStart,

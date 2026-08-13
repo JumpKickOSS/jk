@@ -71,11 +71,15 @@ class TestFailureRenderingTest {
                 2,
                 "junit-jupiter",
                 "freshen_preserves_pins(java.nio.file.Path)");
-        assertThat(TestSupport.shortTestLabel(f)).isEqualTo("FooTest.freshen_preserves_pins(Path)");
+        assertThat(TestSupport.shortTestLabel(f)).isEqualTo("FooTest.freshen_preserves_pins(Path)  [w2]");
         List<String> lines = TestSupport.renderFailures(new TestSummary(1, 0, 1, 0, List.of(f)));
         assertThat(lines).anyMatch(l -> l.equals("module: cc.jumpkick:jk-core"));
-        assertThat(lines).anyMatch(l -> l.equals("FAILED FooTest.freshen_preserves_pins(Path)"));
+        assertThat(lines).anyMatch(l -> l.equals("FAILED FooTest.freshen_preserves_pins(Path)  [w2]"));
         assertThat(String.join("\n", lines)).doesNotContain("class: cc.jumpkick");
+        var info = f.toInfo();
+        var diag = new cc.jumpkick.run.BuildPlanResult.Diagnostic("run-tests", "test-failure", f.message(), info);
+        assertThat(diag.worker()).isEqualTo(2);
+        assertThat(diag.testFailure().worker()).isEqualTo(2);
     }
 
     @Test

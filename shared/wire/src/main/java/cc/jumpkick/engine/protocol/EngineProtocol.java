@@ -2258,7 +2258,23 @@ public final class EngineProtocol {
     private static String diagnosticLike(
             String type, String dir, String step, String code, String message, String test, String exceptionClass) {
         return diagnosticLike(
-                type, dir, step, code, message, test, exceptionClass, "", "", "", "", "", "", 0, 0, java.util.List.of());
+                type,
+                dir,
+                step,
+                code,
+                message,
+                test,
+                exceptionClass,
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                0,
+                0,
+                java.util.List.of(),
+                0);
     }
 
     /**
@@ -2295,7 +2311,8 @@ public final class EngineProtocol {
                 "",
                 0,
                 0,
-                java.util.List.of());
+                java.util.List.of(),
+                0);
     }
 
     private static String diagnosticLike(
@@ -2314,7 +2331,8 @@ public final class EngineProtocol {
             String file,
             int line,
             int snippetStart,
-            java.util.List<String> snippet) {
+            java.util.List<String> snippet,
+            int worker) {
         StringBuilder b = new StringBuilder(256);
         b.append("{\"type\":")
                 .append(Jsonl.quote(type))
@@ -2336,6 +2354,7 @@ public final class EngineProtocol {
         if (file != null && !file.isEmpty()) b.append(",\"file\":").append(Jsonl.quote(file));
         if (line > 0) b.append(",\"line\":").append(line);
         if (snippetStart > 0) b.append(",\"snippetStart\":").append(snippetStart);
+        if (worker > 0) b.append(",\"worker\":").append(worker);
         if (snippet != null && !snippet.isEmpty()) {
             b.append(",\"snippet\":[");
             for (int i = 0; i < snippet.size(); i++) {
@@ -2410,7 +2429,8 @@ public final class EngineProtocol {
                 failure.file(),
                 failure.line(),
                 failure.snippetStart(),
-                failure.snippet());
+                failure.snippet(),
+                failure.worker());
     }
 
     public static String planDiagnostic(
@@ -2463,7 +2483,8 @@ public final class EngineProtocol {
                 failure.file(),
                 failure.line(),
                 failure.snippetStart(),
-                failure.snippet());
+                failure.snippet(),
+                failure.worker());
     }
 
     /** @see #stepFinish(String, String, String, String, long) */

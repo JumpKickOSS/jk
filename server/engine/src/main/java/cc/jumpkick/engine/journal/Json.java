@@ -81,6 +81,7 @@ final class Json {
             if (d.line() > 0) dm.put("line", d.line());
             if (d.snippetStart() > 0) dm.put("snippetStart", d.snippetStart());
             if (d.snippet() != null && !d.snippet().isEmpty()) dm.put("snippet", d.snippet());
+            if (d.worker() > 0) dm.put("worker", d.worker());
             if (d.stack() != null && !d.stack().isEmpty()) {
                 dm.put("stack", d.stack());
                 Map<String, Object> th = new LinkedHashMap<>();
@@ -200,7 +201,8 @@ final class Json {
                     str(dm, "file"),
                     (int) lng(dm, "line"),
                     (int) lng(dm, "snippetStart"),
-                    strList(dm, "snippet")));
+                    strList(dm, "snippet"),
+                    (int) lng(dm, "worker")));
         }
 
         return new BuildRecord(
