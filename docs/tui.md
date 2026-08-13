@@ -93,7 +93,7 @@ changing the code (and vice versa):
 | `jk jdk list` | (wave 1 — the exemplar) |
 | `jk storage usage` | Element · File Count · Size (Jar Files / Native Bins / OCI Images / Worker JARs), plus Total, a spanning utilization row, and a last-cleaned footer |
 
-Use `new Table(title).columns(...).row(...)` (or `BoxTable.render` which delegates).
+Use `new Table(title).columns(...).row(...)` (or the `Table.render` static for string cells).
 `Table.print()` opens the envelope and degrades to ASCII under `--no-ansi`.
 
 ### Wedge header + rows

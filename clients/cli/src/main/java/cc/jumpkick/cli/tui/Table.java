@@ -133,7 +133,7 @@ public final class Table implements Widget {
         return RenderContext.visibleWidth(s);
     }
 
-    /** String-cell table (replaces {@code BoxTable.render}). */
+    /** String-cell table (replaces the deleted {@code BoxTable.render}). */
     public static Table of(String title, List<String> headers, List<? extends List<String>> rows) {
         Table table = new Table(title).columns(headers.toArray(String[]::new));
         int cols = headers.size();

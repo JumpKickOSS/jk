@@ -288,7 +288,7 @@ public final class RunCommand {
     /**
      * {@code Failed to run {coord}. No valid [yellow]main[/] method was specified or detected} (or,
      * for {@code issue = "ambiguous"}, {@code Multiple [yellow]main[/] methods found.}) — the
-     * sentence {@link cc.jumpkick.cli.tui.BuildPlanWedge#failureLineCustom} renders after the red chip.
+     * sentence {@link cc.jumpkick.cli.tui.JkWedge#failedTo} renders after the red chip.
      */
     private static String mainIssueSentence(String issue, String coord) {
         Theme t = Theme.active();

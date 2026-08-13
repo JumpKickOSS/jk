@@ -658,7 +658,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     /**
      * Settle the build plan with the green chip: {@code ✓ Build ▶ Successfully <tail>}. The {@code
      * tail} (e.g. "built 17 modules took 1.4s") is pre-styled by the caller; this owns only the chip
-     * + cap + command. See {@link BuildPlanWedge}.
+     * + cap + command. See {@link JkWedge}.
      */
     public void finishBuildPlanSuccess(String tail, List<String> above) {
         settle(JkWedge.ok(planName(), tail).renderLine(headerContext()), above);
@@ -713,7 +713,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     /**
      * Settle the build plan with the red chip, but a fully caller-composed sentence instead of the
      * "Failed to &lt;plan&gt;" derivation {@link #finishBuildPlanFailure} applies — see {@link
-     * BuildPlanWedge#failureLineCustom}.
+     * JkWedge#failedTo}.
      */
     public void finishBuildPlanFailureCustom(String sentence, List<String> above) {
         settle(JkWedge.fail(planName(), RichText.ansi(sentence)).renderLine(headerContext()), above);
