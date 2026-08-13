@@ -1,0 +1,80 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.engine.verbs;
+
+import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.jobs.JobKind;
+import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.plugin.protocol.Jsonl;
+import java.io.BufferedWriter;
+import java.net.URI;
+import java.nio.file.Path;
+import java.util.Optional;
+
+public final class OutdatedVerb implements HostedVerb {
+
+    private final VerbHost host;
+
+    public OutdatedVerb(VerbHost host) {
+        this.host = host;
+    }
+
+    @Override
+    public String wireType() {
+        return EngineProtocol.OUTDATED_REQUEST;
+    }
+
+    @Override
+    public JobKind jobKind() {
+        return JobKind.plan("outdated");
+    }
+
+    @Override
+    public VerbShape shape() {
+        return new VerbShape.SyncRead();
+    }
+
+    @Override
+    public String threadPrefix() {
+        return "jk-engine-outdated-";
+    }
+
+    @Override
+    public void run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
+        try {
+            cc.jumpkick.engine.protocol.OutdatedReport report;
+            try {
+                Path dir = Path.of(Jsonl.str(requestLine, "dir"));
+                Path cache = Path.of(Jsonl.str(requestLine, "cache"));
+                String repoUrl = Jsonl.str(requestLine, "repoUrl");
+                JkConfig config = new JkConfig(
+                        Optional.empty(),
+                        Optional.of(Jsonl.bool(requestLine, "offline", false)),
+                        Optional.of(Jsonl.bool(requestLine, "rebuild", false)),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.of(Jsonl.bool(requestLine, "force", false)),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty());
+                Session session = Session.defaults()
+                        .withConfig(config)
+                        .withWorkingDir(dir)
+                        .withCacheDir(cache);
+                report = SessionContext.where(
+                        session,
+                        () -> cc.jumpkick.runtime.OutdatedPlans.compute(
+                                dir, cache, repoUrl == null ? null : URI.create(repoUrl)));
+            } catch (Exception e) {
+                report = cc.jumpkick.engine.protocol.OutdatedReport.error(String.valueOf(e.getMessage()));
+            }
+            host.sendQuiet(writer, report.encode());
+
+        } catch (Exception e) {
+            host.sendQuiet(writer, host.requestFailedLine(null, e));
+        }
+    }
+}

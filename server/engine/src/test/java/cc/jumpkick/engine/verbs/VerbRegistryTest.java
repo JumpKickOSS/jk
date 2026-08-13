@@ -19,7 +19,7 @@ class VerbRegistryTest {
     @Test
     void standard_lists_workspace_test_and_single_build() {
         VerbRegistry reg = VerbRegistry.standard(new FakeHost());
-        assertThat(reg.all()).hasSize(6);
+        assertThat(reg.all()).hasSize(39);
         HostedVerb build = reg.find(EngineProtocol.BUILD_REQUEST);
         HostedVerb test = reg.find(EngineProtocol.TEST_REQUEST);
         HostedVerb single = reg.find(EngineProtocol.SINGLE_BUILD_REQUEST);
@@ -32,7 +32,10 @@ class VerbRegistryTest {
         assertThat(build.shape()).isInstanceOf(VerbShape.AsyncPlan.class);
         assertThat(test.jobKind().verb()).isEqualTo("test");
         assertThat(single.toJobRequest().verb()).isEqualTo("build");
-        assertThat(reg.find("audit-request")).isNull();
+        assertThat(reg.find(EngineProtocol.AUDIT_REQUEST)).isInstanceOf(AuditVerb.class);
+        assertThat(reg.find(EngineProtocol.CACHE_PRUNE_REQUEST).shape()).isInstanceOf(VerbShape.CacheMaint.class);
+        assertThat(reg.find(EngineProtocol.EXPLAIN_REQUEST).shape()).isInstanceOf(VerbShape.SyncRead.class);
+        assertThat(reg.find("not-a-verb")).isNull();
     }
 
     @Test
