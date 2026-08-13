@@ -1246,6 +1246,13 @@ test('shortTestLabel strips package and keeps method params simplified', () => {
     }),
     'FooTest.freshen(Path, String)',
   );
+  assert.equal(
+    shortTestLabel({
+      className: 'demo.FooTest',
+      method: 'bar(java.lang.String[])',
+    }),
+    'FooTest.bar(String[])',
+  );
 });
 
 test('shortDisplayLabel never leaves package FQCNs in client text', () => {

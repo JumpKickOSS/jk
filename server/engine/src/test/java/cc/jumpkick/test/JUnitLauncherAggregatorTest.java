@@ -79,6 +79,19 @@ class JUnitLauncherAggregatorTest {
     }
 
     @Test
+    void unique_id_percent_decode_and_class_extract() {
+        assertThat(JUnitLauncher.percentDecode("bar(int%5B%5D)")).isEqualTo("bar(int[])");
+        assertThat(JUnitLauncher.percentDecode("foo%2Fbar%251")).isEqualTo("foo/bar%1");
+        assertThat(JUnitLauncher.percentDecode("plain")).isEqualTo("plain");
+        assertThat(JUnitLauncher.classFromUniqueId(
+                        "[engine:junit-jupiter]/[class:demo.FooTest]/[method:bar(int%5B%5D)]"))
+                .isEqualTo("demo.FooTest");
+        assertThat(JUnitLauncher.engineFromUniqueId(
+                        "[engine:junit-jupiter]/[class:demo.FooTest]/[method:bar(int%5B%5D)]"))
+                .isEqualTo("junit-jupiter");
+    }
+
+    @Test
     void malformed_json_does_not_blow_up_the_aggregator() {
         var agg = new JUnitLauncher.ResultAggregator();
         agg.accept("not actually json");

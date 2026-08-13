@@ -1042,7 +1042,7 @@ public final class JUnitLauncher {
         int start = i + "[class:".length();
         int end = id.indexOf(']', start);
         if (end < 0) return "";
-        String outer = id.substring(start, end).trim();
+        String outer = percentDecode(id.substring(start, end).trim());
         // Nested: [class:Outer]/[nested-class:Inner] → Outer$Inner
         StringBuilder sb = new StringBuilder(outer);
         int from = end;
@@ -1052,7 +1052,7 @@ public final class JUnitLauncher {
             int ns = n + "[nested-class:".length();
             int ne = id.indexOf(']', ns);
             if (ne < 0) break;
-            sb.append('$').append(id, ns, ne);
+            sb.append('$').append(percentDecode(id.substring(ns, ne).trim()));
             from = ne + 1;
         }
         return sb.toString();
@@ -1066,7 +1066,37 @@ public final class JUnitLauncher {
         int start = i + "[engine:".length();
         int end = id.indexOf(']', start);
         if (end < 0) return "";
-        return id.substring(start, end).trim();
+        return percentDecode(id.substring(start, end).trim());
+    }
+
+    /**
+     * JUnit Platform writes {@code [ ] / %} as {@code %XX} in unique-id strings. Decode so a
+     * fallback parse of {@code [method:bar(int%5B%5D)]} yields {@code bar(int[])}.
+     */
+    static String percentDecode(String raw) {
+        if (raw == null || raw.isEmpty() || raw.indexOf('%') < 0) return raw == null ? "" : raw;
+        StringBuilder out = new StringBuilder(raw.length());
+        for (int i = 0; i < raw.length(); i++) {
+            char c = raw.charAt(i);
+            if (c == '%' && i + 2 < raw.length()) {
+                int hi = hexVal(raw.charAt(i + 1));
+                int lo = hexVal(raw.charAt(i + 2));
+                if (hi >= 0 && lo >= 0) {
+                    out.append((char) ((hi << 4) | lo));
+                    i += 2;
+                    continue;
+                }
+            }
+            out.append(c);
+        }
+        return out.toString();
+    }
+
+    private static int hexVal(char c) {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        return -1;
     }
 
     /**

@@ -102,6 +102,26 @@ class TestFailureRenderingTest {
                         true))
                 .isEqualTo("VariantSwitchTest.switching_variants(Path)");
         assertThat(TestSupport.simpleClassName("cc.jumpkick.runtime.FooTest")).isEqualTo("FooTest");
+        assertThat(TestSupport.liveTestDetail(
+                        "[engine:junit-jupiter]/[class:demo.FooTest]/[method:bar(java.lang.String%5B%5D)]",
+                        "bar(java.lang.String[])",
+                        true))
+                .isEqualTo("FooTest.bar(String[])");
+    }
+
+    @Test
+    void short_label_decodes_array_params_to_simple_names() {
+        var f = new TestSummary.Failure(
+                "bar(java.lang.String[])",
+                "java.lang.AssertionError",
+                "nope",
+                "",
+                "",
+                "demo.FooTest",
+                0,
+                "junit-jupiter",
+                "bar(java.lang.String[])");
+        assertThat(TestSupport.shortTestLabel(f)).isEqualTo("FooTest.bar(String[])");
     }
 
     @Test

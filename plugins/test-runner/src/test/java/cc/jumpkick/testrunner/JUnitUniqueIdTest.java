@@ -27,6 +27,31 @@ class JUnitUniqueIdTest {
     }
 
     @Test
+    void decodes_percent_encoded_array_params() {
+        var id = JUnitUniqueId.parse(
+                "[engine:junit-jupiter]/[class:demo.FooTest]/[method:bar(java.lang.String%5B%5D)]");
+        assertEquals("demo.FooTest", id.testClass);
+        assertEquals("bar(java.lang.String[])", id.testMethod);
+
+        var ints = JUnitUniqueId.parse("[engine:junit-jupiter]/[class:C]/[method:bar(int%5B%5D)]");
+        assertEquals("bar(int[])", ints.testMethod);
+    }
+
+    @Test
+    void decodes_slash_and_percent_in_segment() {
+        var id = JUnitUniqueId.parse("[engine:junit-jupiter]/[class:C]/[method:foo%2Fbar%251]");
+        assertEquals("foo/bar%1", id.testMethod);
+    }
+
+    @Test
+    void parameterized_template_with_array_param() {
+        var id = JUnitUniqueId.parse(
+                "[engine:junit-jupiter]/[class:C]/[test-template:bar(int%5B%5D)]"
+                        + "/[test-template-invocation:#1]");
+        assertEquals("bar(int[])[#1]", id.testMethod);
+    }
+
+    @Test
     void putIdentity_omits_display() {
         var id = JUnitUniqueId.parse("[engine:junit-jupiter]/[class:C]/[method:m()]");
         var map = new LinkedHashMap<String, Object>();
