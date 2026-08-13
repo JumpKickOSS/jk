@@ -451,7 +451,7 @@ public final class DependencyTree {
             Path root = rootDir.get();
             JkBuild rootBuild = JkBuildParser.parseLocal(root.resolve("jk.toml"));
             if (!rootBuild.isWorkspaceRoot()) return WorkspaceGraph.none();
-            List<LoadedModule> loaded = loadModules(rootBuild.workspace().modules(), root);
+            List<LoadedModule> loaded = loadModules(rootBuild.workspace().modules(), root, lock);
             List<JkBuild> siblingBuilds = new ArrayList<>(loaded.size());
             for (LoadedModule m : loaded) siblingBuilds.add(m.build());
             Map<String, String> byName = new HashMap<>();
@@ -470,6 +470,14 @@ public final class DependencyTree {
             return new WorkspaceGraph(byName, byGa, true);
         } catch (Exception e) {
             return WorkspaceGraph.none();
+        }
+    }
+
+    private static Lockfile readLockOrNull(Path lockFile) {
+        try {
+            return LockfileReader.read(lockFile);
+        } catch (Exception e) {
+            return null;
         }
     }
 
@@ -779,6 +787,17 @@ public final class DependencyTree {
      * dropped.
      */
     private static List<LoadedModule> loadModules(List<String> moduleRels, Path rootDir) {
+        return loadModules(moduleRels, rootDir, null);
+    }
+
+    /**
+     * As {@link #loadModules(List, Path)}, but when {@code sharedLock} is non-null every member
+     * uses it directly — modules never own a lockfile ({@code LockPaths} resolves each to the same
+     * root {@code jk-lock.toml}), and re-parsing that ~2,300-line file once per member threw away
+     * ~15 identical parses per render (JK-1920). With no shared lock, each distinct lock path is
+     * still parsed at most once.
+     */
+    private static List<LoadedModule> loadModules(List<String> moduleRels, Path rootDir, Lockfile sharedLock) {
         JkBuild rootBuild = null;
         if (rootDir != null) {
             try {
@@ -789,15 +808,22 @@ public final class DependencyTree {
             }
         }
         List<LoadedModule> modules = new ArrayList<>();
+        Map<Path, Lockfile> lockMemo = new HashMap<>();
         for (String rel : moduleRels) {
             Path dir = rootDir == null ? null : rootDir.resolve(rel).normalize();
             JkBuild build = null;
-            Lockfile lock = null;
+            Lockfile lock = sharedLock;
             try {
                 Path toml = dir == null ? null : dir.resolve("jk.toml");
-                Path lf = dir == null ? null : cc.jumpkick.lock.LockPaths.lockFile(dir);
                 if (toml != null && Files.isRegularFile(toml)) build = JkBuildParser.parseLocal(toml);
-                if (lf != null && Files.isRegularFile(lf)) lock = LockfileReader.read(lf);
+                if (lock == null && dir != null) {
+                    Path lf = cc.jumpkick.lock.LockPaths.lockFile(dir);
+                    if (lf != null && Files.isRegularFile(lf)) {
+                        Path key = lf.toAbsolutePath().normalize();
+                        if (!lockMemo.containsKey(key)) lockMemo.put(key, readLockOrNull(key));
+                        lock = lockMemo.get(key);
+                    }
+                }
             } catch (Exception ignored) {
                 // unreadable module — dropped (can't read its scopes)
             }
