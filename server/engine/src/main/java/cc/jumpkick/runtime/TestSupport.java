@@ -362,7 +362,7 @@ public final class TestSupport {
      * 100% on success.
      */
     public static TestProgressListener bridgeListener(TaskContext ctx, int workerCount, boolean verbose) {
-        return bridgeListener(ctx, workerCount, verbose, "");
+        return bridgeListener(ctx, workerCount, verbose, "", null);
     }
 
     /**
@@ -371,7 +371,17 @@ public final class TestSupport {
      */
     public static TestProgressListener bridgeListener(
             TaskContext ctx, int workerCount, boolean verbose, String moduleLabel) {
+        return bridgeListener(ctx, workerCount, verbose, moduleLabel, null);
+    }
+
+    /**
+     * Full bridge: module coord + project dir so source snippets attach to structured test-failure
+     * diagnostics (web Activity / details.jsonl).
+     */
+    public static TestProgressListener bridgeListener(
+            TaskContext ctx, int workerCount, boolean verbose, String moduleLabel, Path moduleDir) {
         String module = moduleLabel == null ? "" : moduleLabel.trim();
+        Path dir = moduleDir;
         return new TestProgressListener() {
             @Override
             public void onTestStarted(String id, String display, boolean isTest, int workerId) {
@@ -429,8 +439,20 @@ public final class TestSupport {
                 // but human listeners suppress the text banner so the same failure isn't
                 // printed twice. Test *infra* errors keep code "test" and still surface.
                 String methodLabel = method != null && !method.isBlank() ? method : label;
-                // Source snippet is resolved at renderFailures(moduleDir) time; structured error
-                // carries identity + stack (file/snippet filled when the plan re-emits if needed).
+                String file = "";
+                int line = 0;
+                int snippetStart = 0;
+                java.util.List<String> snippetLines = java.util.List.of();
+                if (dir != null) {
+                    var snip = TestFailureSource.resolve(dir, className, stack);
+                    if (snip.isPresent()) {
+                        var s = snip.get();
+                        file = s.relativePath();
+                        line = s.errorLine();
+                        snippetStart = s.startLine();
+                        snippetLines = s.lines();
+                    }
+                }
                 ctx.error(
                         "test-failure",
                         message,
@@ -442,7 +464,11 @@ public final class TestSupport {
                                 exClass == null ? "" : exClass,
                                 message == null ? "" : message,
                                 stack == null ? "" : stack,
-                                workerId));
+                                workerId,
+                                file,
+                                line,
+                                snippetStart,
+                                snippetLines));
             }
 
             @Override
@@ -486,16 +512,18 @@ public final class TestSupport {
         String cls = cc.jumpkick.test.JUnitLauncher.classFromUniqueId(uniqueId);
         String simple = simpleClassName(cls);
         String d = normalizeTestDisplay(display);
+        // Display never shows package FQCNs in param lists (wire may still carry them).
+        d = simplifyMethodParams(d);
         if (!isTest) {
             // Class/container: prefer FQCN simple name; fall back to JUnit display name.
             if (!simple.isEmpty()) return simple;
-            return d;
+            return simpleClassName(d.isEmpty() ? "" : d);
         }
         if (simple.isEmpty()) return d;
         if (d.isEmpty() || d.equals(simple)) return simple;
-        // Already "FooTest.bar" / "FooTest.bar(Path)".
+        // Already "FooTest.bar" / "FooTest.bar(Path)" (params already simplified).
         if (d.startsWith(simple + ".") || d.startsWith(simple + "(")) return d;
-        // Method-only display ("bar" / "bar(Path)") → Class.method(...).
+        // Method-only display ("bar" / "bar(Path)" / FQCN params) → Class.method(...).
         return simple + "." + d;
     }
 

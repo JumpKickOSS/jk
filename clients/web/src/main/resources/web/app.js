@@ -32,6 +32,8 @@ import {
   orderedModules,
   etaTotalMillis,
   stepTimingLabel,
+  isTestFailureDiag,
+  testFailureReport,
 } from './fold.js';
 import { installTips } from './tip.js';
 
@@ -1476,6 +1478,30 @@ Vue.createApp({
       const st = ((mod && mod.steps) || []).find((s) => s.name === d.step);
       const wire = st && st.phase ? st.phase : '';
       return wire ? wire.charAt(0).toUpperCase() + wire.slice(1) : '';
+    },
+
+    /** True when this diagnostic is a structured per-test failure (rich report, not one-liner). */
+    isTestFailure(d) {
+      return isTestFailureDiag(d);
+    },
+
+    /**
+     * CLI-parity report model for a test-failure diagnostic. {@code count} is how many
+     * test-failure diags this module carries (header "N test failed"); only the first
+     * failure in the module shows that header.
+     */
+    testFailure(mod, d) {
+      const diags = ((mod && mod.diagnostics) || []).filter((x) => isTestFailureDiag(x));
+      const n = diags.length;
+      return testFailureReport(d, {
+        count: Math.max(1, n),
+        showHeader: n === 0 || diags[0] === d,
+      });
+    },
+
+    /** Syntax segments for {@code SimpleClass.method()} labels. */
+    failLabelSegs(label) {
+      return detailSegments(label);
     },
 
     // A build is "compact" (one step chain under the header, no module-name rows) when it has at

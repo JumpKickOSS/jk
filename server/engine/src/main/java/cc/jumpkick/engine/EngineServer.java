@@ -2038,6 +2038,10 @@ public final class EngineServer implements AutoCloseable {
             if (d.exceptionClass() != null && !d.exceptionClass().isEmpty())
                 o.put("exceptionClass", d.exceptionClass());
             if (d.stack() != null && !d.stack().isEmpty()) o.put("stack", d.stack());
+            if (d.file() != null && !d.file().isEmpty()) o.put("file", d.file());
+            if (d.line() > 0) o.put("line", d.line());
+            if (d.snippetStart() > 0) o.put("snippetStart", d.snippetStart());
+            if (d.snippet() != null && !d.snippet().isEmpty()) o.putStrings("snippet", d.snippet());
             if (d.test() != null && !d.test().isEmpty()) o.put("test", d.test());
             publishEvent("diagnostic", withProgress(o, requestId));
         }
@@ -5396,19 +5400,8 @@ public final class EngineServer implements AutoCloseable {
                     error(step, code, message);
                     return;
                 }
-                sendQuiet(
-                        writer,
-                        EngineProtocol.errorLine(
-                                dir,
-                                step,
-                                code,
-                                redactEnv(dir, message == null || message.isEmpty() ? failure.message() : message),
-                                failure.module(),
-                                failure.engine(),
-                                failure.className(),
-                                failure.method(),
-                                failure.exceptionClass(),
-                                failure.stack()));
+                String msg = redactEnv(dir, message == null || message.isEmpty() ? failure.message() : message);
+                sendQuiet(writer, EngineProtocol.errorLine(dir, step, code, msg, failure));
             }
 
             @Override
@@ -5422,22 +5415,12 @@ public final class EngineServer implements AutoCloseable {
             @Override
             public void planFinish(BuildPlanResult result) {
                 for (BuildPlanResult.Diagnostic d : result.errors()) {
-                    if (d.module() != null && !d.module().isEmpty()
-                            || d.className() != null && !d.className().isEmpty()
-                            || d.stack() != null && !d.stack().isEmpty()) {
+                    var tf = d.testFailure();
+                    if (tf != null) {
                         sendQuiet(
                                 writer,
                                 EngineProtocol.planDiagnostic(
-                                        dir,
-                                        d.step(),
-                                        d.code(),
-                                        redactEnv(dir, d.message()),
-                                        d.module(),
-                                        d.engine(),
-                                        d.className(),
-                                        d.method(),
-                                        d.exceptionClass(),
-                                        d.stack()));
+                                        dir, d.step(), d.code(), redactEnv(dir, d.message()), tf));
                     } else {
                         sendQuiet(
                                 writer,
@@ -6798,7 +6781,11 @@ public final class EngineServer implements AutoCloseable {
                         d.engine(),
                         d.className(),
                         d.method(),
-                        d.stack()));
+                        d.stack(),
+                        d.file(),
+                        d.line(),
+                        d.snippetStart(),
+                        d.snippet()));
             }
             for (BuildPlanResult.Diagnostic d : result.warnings()) {
                 diagnostics.add(new BuildRecord.Diag(
@@ -6813,7 +6800,11 @@ public final class EngineServer implements AutoCloseable {
                         d.engine(),
                         d.className(),
                         d.method(),
-                        d.stack()));
+                        d.stack(),
+                        d.file(),
+                        d.line(),
+                        d.snippetStart(),
+                        d.snippet()));
             }
             // Capture the step dependency edges from the genuine in-process result (engine-side
             // result.steps is reliably populated, unlike a client-side reconstruction).

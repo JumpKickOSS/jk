@@ -256,13 +256,7 @@ export function foldEvent(cards, event) {
       if (card) {
         const mod = moduleRow(card, d.dir, event.at);
         if (mod.diagnostics.length < MAX_DIAGNOSTICS) {
-          mod.diagnostics.push({
-            step: d.task || d.step || '',
-            code: d.code || '',
-            message: d.message || '',
-            test: d.test || '',
-            exceptionClass: d.exceptionClass || '',
-          });
+          mod.diagnostics.push(normalizeDiagnostic(d));
         }
       }
       break;
@@ -684,13 +678,30 @@ export function fmtBytes(bytes) {
 function historyDiags(diags, dir) {
   return (diags || [])
     .filter((d) => d.severity !== 'warning' && (d.dir || '') === (dir || ''))
-    .map((d) => ({
-      step: d.task || d.step || '',
-      code: d.code || '',
-      message: d.message || '',
-      test: d.test || '',
-      exceptionClass: d.exceptionClass || '',
-    }));
+    .map((d) => normalizeDiagnostic(d));
+}
+
+/** Normalize a wire/journal diagnostic into the client shape (incl. test-failure enrichment). */
+export function normalizeDiagnostic(d) {
+  const snippet = Array.isArray(d.snippet)
+    ? d.snippet.map((s) => String(s))
+    : [];
+  return {
+    step: d.task || d.step || '',
+    code: d.code || '',
+    message: d.message || '',
+    test: d.test || '',
+    exceptionClass: d.exceptionClass || '',
+    module: d.module || '',
+    engine: d.engine || '',
+    className: d.class || d.className || '',
+    method: d.method || '',
+    stack: d.stack || (d.throwable && d.throwable.stack) || '',
+    file: d.file || '',
+    line: typeof d.line === 'number' ? d.line : 0,
+    snippetStart: typeof d.snippetStart === 'number' ? d.snippetStart : 0,
+    snippet,
+  };
 }
 
 /**
@@ -792,13 +803,7 @@ function historyModules(rec) {
     steps,
     diagnostics: (rec.diagnostics || [])
       .filter((d) => d.severity !== 'warning')
-      .map((d) => ({
-        step: d.task || d.step || '',
-        code: d.code || '',
-        message: d.message || '',
-        test: d.test || '',
-        exceptionClass: d.exceptionClass || '',
-      })),
+      .map((d) => normalizeDiagnostic(d)),
     lastActivity: activity,
   }];
 }
@@ -1097,7 +1102,8 @@ function stepState(status, millis) {
 
 /**
  * Live detail after the running phase node (CLI tree-row parity). Strips a leading
- * {@code module :: } prefix when the engine embeds the coordinate in test labels.
+ * {@code module :: } prefix when the engine embeds the coordinate in test labels, and
+ * shortens any package FQCNs so the UI never paints wire-shaped type names.
  */
 export function detailForDisplay(module, message) {
   if (message == null || message === '') return '';
@@ -1106,7 +1112,7 @@ export function detailForDisplay(module, message) {
   if (mod && msg.startsWith(mod + ' :: ')) {
     msg = msg.slice(mod.length + 4).trim();
   }
-  return msg;
+  return shortDisplayLabel(msg);
 }
 
 /**
@@ -1139,10 +1145,11 @@ export function looksLikeJavaMember(s) {
  * Color segments for a live step detail (CLI {@code colorDetail} roles).
  * Each segment is {@code { text, cls }} with cls in:
  * {@code det-type | det-fn | det-num | det-path | det-coord | det-mid | det-dim}.
+ * FQCNs in the text are shortened before segmentation.
  */
 export function detailSegments(detail) {
   if (detail == null || detail === '') return [];
-  let body = String(detail);
+  let body = shortDisplayLabel(String(detail));
   let worker = '';
   // progressLabel appends "  [w2]" — keep it outside the Java highlighter.
   const w = body.lastIndexOf('  [w');
@@ -1201,4 +1208,209 @@ function proseSegments(text) {
     else if (m[5] != null) segs.push({ text: m[5], cls: 'det-mid' });
   }
   return segs;
+}
+
+// ---- test-failure report (CLI TestFailureHighlight parity, no thick rail) ----
+
+/** Simple class name from FQCN. */
+export function simpleTypeName(fqcn) {
+  if (!fqcn) return '';
+  const s = String(fqcn);
+  const d = s.lastIndexOf('.');
+  return d >= 0 ? s.slice(d + 1) : s;
+}
+
+/**
+ * Human-facing member label: drop package FQCNs so the UI never paints wire-shaped names.
+ * {@code cc.jumpkick.FooTest.bar(java.nio.file.Path)} → {@code FooTest.bar(Path)}.
+ * Preserves a trailing {@code  [wN]} worker tag when present. Leaves ordinary prose, versions,
+ * and jar names untouched.
+ */
+export function shortDisplayLabel(raw) {
+  if (raw == null || raw === '') return raw == null ? '' : raw;
+  let worker = '';
+  let body = String(raw).trim();
+  const w = body.lastIndexOf('  [w');
+  if (w > 0 && body.endsWith(']')) {
+    worker = body.slice(w);
+    body = body.slice(0, w).trim();
+  }
+  if (!looksLikeJavaishLabel(body)) return worker ? body + worker : body;
+  body = simplifyMethodParams(body);
+  const paren = body.indexOf('(');
+  const searchEnd = paren >= 0 ? paren : body.length;
+  const dot = body.lastIndexOf('.', searchEnd - 1);
+  if (dot > 0 && dot < body.length - 1) {
+    const after = body.slice(dot + 1, searchEnd);
+    if (after && (/^[a-z_]/.test(after) || after.startsWith('<'))) {
+      const cls = simpleTypeName(body.slice(0, dot));
+      const method = simplifyMethodParams(body.slice(dot + 1));
+      body = cls ? cls + '.' + method : method;
+    } else {
+      body = simpleTypeName(body.slice(0, searchEnd)) + body.slice(searchEnd);
+    }
+  }
+  return worker ? body + worker : body;
+}
+
+/** True for Java member / type labels we may shorten — not versions, jar names, or free prose. */
+export function looksLikeJavaishLabel(body) {
+  if (!body) return false;
+  // Spaces only allowed inside a trailing param list: Foo.bar(A, B).
+  const open = body.indexOf('(');
+  const head = open >= 0 ? body.slice(0, open) : body;
+  if (head.indexOf(' ') >= 0) return false;
+  if (open >= 0) {
+    const close = body.lastIndexOf(')');
+    if (close < open) return false;
+    if (close + 1 < body.length && body.slice(close + 1).indexOf(' ') >= 0) return false;
+  }
+  const c0 = body[0];
+  if (!/[A-Za-z_$]/.test(c0)) return false;
+  if (open >= 0) {
+    return body.indexOf('.') >= 0 || /[A-Z]/.test(c0);
+  }
+  if (body.indexOf('.') < 0) return /[A-Z]/.test(c0);
+  return /^(?:[a-z][\w$]*\.)*[A-Z][\w$]*(?:\.[A-Za-z_][\w$]*)?$/.test(body);
+}
+
+/** {@code SimpleClass.method()} / {@code SimpleClass.method(Path)} — package stripped, params simplified. */
+export function shortTestLabel(d) {
+  let cls = simpleTypeName(d.className || d.class || '');
+  let method = (d.method || d.test || '').trim();
+  const gt = method.lastIndexOf(' > ');
+  if (gt >= 0) method = method.slice(gt + 3).trim();
+  method = simplifyMethodParams(method);
+  // method may still look like Class.method / pkg.Class.method — peel the class segment.
+  const paren = method.indexOf('(');
+  let dot = method.lastIndexOf('.');
+  if (paren >= 0 && dot > paren) dot = method.lastIndexOf('.', paren);
+  if (dot > 0 && dot < method.length - 1) {
+    const after = method.slice(dot + 1, paren >= 0 ? paren : method.length);
+    if (after && (/^[a-z_]/.test(after) || after.startsWith('<'))) {
+      if (!cls) cls = simpleTypeName(method.slice(0, dot));
+      method = method.slice(dot + 1);
+    }
+  }
+  method = simplifyMethodParams(method);
+  if (method && method.indexOf('(') < 0 && method !== '(test run)') method += '()';
+  if (!cls && !method) return shortDisplayLabel(d.test || '') || '?';
+  if (!cls) return shortDisplayLabel(method);
+  if (!method) return cls;
+  return shortDisplayLabel(cls + '.' + method);
+}
+
+/** Keep {@code (…)} but strip package prefixes inside params. */
+export function simplifyMethodParams(method) {
+  if (!method) return '';
+  const open = method.indexOf('(');
+  const close = method.lastIndexOf(')');
+  if (open < 0 || close <= open) return String(method).trim();
+  const name = method.slice(0, open).trim();
+  const inside = method.slice(open + 1, close).trim();
+  if (!inside) return name + '()';
+  const parts = inside.split(',').map((raw) => {
+    let p = raw.trim();
+    let suffix = '';
+    while (p.endsWith('...') || p.endsWith('[]')) {
+      if (p.endsWith('...')) {
+        suffix = '...' + suffix;
+        p = p.slice(0, -3).trim();
+      } else {
+        suffix = '[]' + suffix;
+        p = p.slice(0, -2).trim();
+      }
+    }
+    const d = p.lastIndexOf('.');
+    if (d >= 0) p = p.slice(d + 1);
+    return p + suffix;
+  });
+  return name + '(' + parts.join(', ') + ')';
+}
+
+/**
+ * Parse AssertJ-style messages into { desc, expected, actual } or null.
+ * Matches CLI {@code tryPaintAssertJ}.
+ */
+export function parseAssertJMessage(message) {
+  if (!message) return null;
+  let rest = String(message).trim();
+  let desc = null;
+  if (rest.startsWith('[')) {
+    const close = rest.indexOf(']');
+    if (close > 0) {
+      desc = rest.slice(1, close).trim();
+      rest = rest.slice(close + 1).trim();
+    }
+  }
+  let m = rest.match(/^expected:\s*([^\n]+?)\s*\n\s*but was:\s*([^\n]+?)\s*$/i);
+  if (!m) {
+    m = rest.match(/^expected:\s*(.+?)\s+but was:\s*(.+?)\s*$/i);
+  }
+  if (!m) return null;
+  return { desc, expected: stripValueQuotes(m[1].trim()), actual: stripValueQuotes(m[2].trim()) };
+}
+
+function stripValueQuotes(v) {
+  if (!v) return '';
+  const s = v.trim();
+  if (s.length >= 2) {
+    const a = s[0];
+    const b = s[s.length - 1];
+    if ((a === '"' && b === '"') || (a === "'" && b === "'")) return s.slice(1, -1);
+    if (a === '<' && b === '>') return s.slice(1, -1);
+  }
+  return s;
+}
+
+/**
+ * Build a structured report model for a test-failure diagnostic (CLI flat report, no rail).
+ * Non-test-failure diags return null — callers keep the legacy one-line render.
+ *
+ * @param {object} d normalized diagnostic
+ * @param {{ count?: number, showHeader?: boolean }} [opts]
+ *   {@code count} — total test failures in the module (header "N test failed").
+ *   {@code showHeader} — false for subsequent failures in the same module so only the first
+ *   report carries {@code ✘ Test failure in … › N tests failed} (CLI multi-failure parity).
+ */
+export function testFailureReport(d, opts) {
+  if (!d || d.code !== 'test-failure') return null;
+  const count = opts && opts.count > 0 ? opts.count : 1;
+  const showHeader = !opts || opts.showHeader !== false;
+  const assertj = parseAssertJMessage(d.message);
+  const simpleEx = simpleTypeName(d.exceptionClass);
+  const label = shortTestLabel(d);
+  const snippet = Array.isArray(d.snippet) ? d.snippet : [];
+  const start = d.snippetStart > 0 ? d.snippetStart : 1;
+  const errorLine = d.line > 0 ? d.line : 0;
+  let maxCode = 0;
+  for (const line of snippet) maxCode = Math.max(maxCode, String(line).length);
+  const rows = snippet.map((code, i) => {
+    const num = start + i;
+    const text = String(code);
+    const pad = Math.max(0, maxCode - text.length);
+    return {
+      num,
+      error: errorLine > 0 && num === errorLine,
+      code: text,
+      pad,
+    };
+  });
+  return {
+    module: d.module || '',
+    count,
+    showHeader,
+    label,
+    assertj,
+    message: d.message || '',
+    file: d.file || '',
+    line: errorLine,
+    exceptionClass: simpleEx,
+    rows,
+  };
+}
+
+/** True when the diagnostic should use the rich test-failure report. */
+export function isTestFailureDiag(d) {
+  return !!(d && d.code === 'test-failure');
 }

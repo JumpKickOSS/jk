@@ -222,7 +222,50 @@ public record BuildRecord(
             String engine,
             String className,
             String method,
-            String stack) {
+            String stack,
+            String file,
+            int line,
+            int snippetStart,
+            java.util.List<String> snippet) {
+
+        public Diag {
+            if (snippet == null) snippet = java.util.List.of();
+            else snippet = java.util.List.copyOf(snippet);
+            if (file == null) file = "";
+        }
+
+        /** Without source snippet. */
+        public Diag(
+                String severity,
+                String dir,
+                String step,
+                String code,
+                String message,
+                String test,
+                String exceptionClass,
+                String module,
+                String engine,
+                String className,
+                String method,
+                String stack) {
+            this(
+                    severity,
+                    dir,
+                    step,
+                    code,
+                    message,
+                    test,
+                    exceptionClass,
+                    module,
+                    engine,
+                    className,
+                    method,
+                    stack,
+                    "",
+                    0,
+                    0,
+                    java.util.List.of());
+        }
 
         /** Legacy ctor without structured test fields. */
         public Diag(

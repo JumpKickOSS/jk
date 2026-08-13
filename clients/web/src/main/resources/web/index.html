@@ -167,12 +167,67 @@
             <phase-chain v-if="singleChain(card).length" :steps="singleChain(card)" :module="card.coord || ''"></phase-chain>
             <div v-if="singleModule(card) && singleModule(card).diagnostics.length" class="diag">
               <div class="console">
-                <div v-for="(d, i) in singleModule(card).diagnostics" :key="i" class="diag-line">
-                  <!-- Separators live INSIDE spans (&nbsp;) — inter-element whitespace is not
-                       preserved reliably through the template pipeline, which squashed segments
-                       together. Shape: ✘ Phase › step › test › ExceptionClass › message -->
-                  <span class="console-err">✘&nbsp;</span><template v-if="diagPhase(singleModule(card), d)"><span class="console-phase">{{ diagPhase(singleModule(card), d) }}</span><span class="console-sep">&nbsp;›&nbsp;</span></template><span class="console-dir">{{ d.step }}</span><template v-if="d.test"><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.test }}</span></template><template v-if="d.exceptionClass"><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.exceptionClass }}</span></template><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.message }}</span>
-                </div>
+                <template v-for="(d, i) in singleModule(card).diagnostics" :key="i">
+                  <div v-if="isTestFailure(d) && testFailure(singleModule(card), d)" class="fail-report">
+                    <template v-for="rep in [testFailure(singleModule(card), d)]" :key="'tf'+i">
+                      <template v-if="rep.showHeader">
+                        <div class="fail-head">
+                          <span class="console-err">✘</span>
+                          <span class="fail-mid"> Test failure</span>
+                          <template v-if="rep.module">
+                            <span class="fail-mid"> in </span><span class="det-coord">{{ rep.module }}</span>
+                          </template>
+                          <span class="console-sep"> › </span>
+                          <span class="det-focus">{{ rep.count }}</span>
+                          <span class="fail-mid"> test{{ rep.count === 1 ? '' : 's' }} failed</span>
+                        </div>
+                        <div class="fail-blank"></div>
+                      </template>
+                      <div class="fail-line">
+                        <!-- &nbsp; lives inside the span — inter-element whitespace is squashed. -->
+                        <span class="fail-failed">FAILED&nbsp;</span><template v-for="(seg, si) in failLabelSegs(rep.label)" :key="si">
+                          <span :class="seg.cls">{{ seg.text }}</span>
+                        </template>
+                      </div>
+                      <div class="fail-blank"></div>
+                      <template v-if="rep.assertj">
+                        <div v-if="rep.assertj.desc" class="fail-line">
+                          <span class="fail-dim">"</span><span class="fail-desc">{{ rep.assertj.desc }}</span><span class="fail-dim">"</span>
+                        </div>
+                        <div class="fail-line">
+                          <span class="fail-mid">&nbsp;Expected:&nbsp;</span><span class="fail-ok">{{ rep.assertj.expected }}</span>
+                        </div>
+                        <div class="fail-line">
+                          <span class="fail-mid">&nbsp;&nbsp;But Was:&nbsp;</span><span class="fail-err">{{ rep.assertj.actual }}</span>
+                        </div>
+                      </template>
+                      <template v-else-if="rep.message">
+                        <div class="fail-line fail-mid" v-for="(ml, mi) in rep.message.split('\n')" :key="'m'+mi">{{ ml }}</div>
+                      </template>
+                      <template v-if="rep.file">
+                        <div class="fail-blank"></div>
+                        <div class="fail-line fail-path">{{ rep.file }}</div>
+                        <div
+                          v-for="(row, ri) in rep.rows"
+                          :key="'s'+ri"
+                          class="fail-src"
+                          :class="{ 'fail-src-err': row.error }"
+                        >
+                          <span class="fail-gutter" :class="{ 'fail-gutter-err': row.error }">{{ String(row.num).padStart(4, ' ') }}</span><span class="fail-gutter-rail">│</span><span class="fail-src-code">{{ row.code }}{{ ' '.repeat(row.pad) }}</span>
+                        </div>
+                        <div v-if="rep.exceptionClass" class="fail-line fail-thrown">
+                          <span class="det-type">{{ rep.exceptionClass }}</span><span class="fail-mid"> thrown at line </span><span class="det-focus">{{ rep.line }}</span>
+                        </div>
+                      </template>
+                      <div v-else-if="rep.exceptionClass" class="fail-line fail-thrown">
+                        <span class="det-type">{{ rep.exceptionClass }}</span>
+                      </div>
+                    </template>
+                  </div>
+                  <div v-else class="diag-line">
+                    <span class="console-err">✘&nbsp;</span><template v-if="diagPhase(singleModule(card), d)"><span class="console-phase">{{ diagPhase(singleModule(card), d) }}</span><span class="console-sep">&nbsp;›&nbsp;</span></template><span class="console-dir">{{ d.step }}</span><template v-if="d.test"><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.test }}</span></template><template v-if="d.exceptionClass"><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.exceptionClass }}</span></template><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.message }}</span>
+                  </div>
+                </template>
               </div>
             </div>
           </template>
@@ -207,9 +262,67 @@
               <phase-chain v-if="m.steps.length" :steps="m.steps" :module="m.coord || card.coord || ''"></phase-chain>
               <div v-if="m.diagnostics.length" class="diag">
                 <div class="console">
-                  <div v-for="(d, i) in m.diagnostics" :key="i" class="diag-line">
-                    <span class="console-err">✘&nbsp;</span><template v-if="diagPhase(m, d)"><span class="console-phase">{{ diagPhase(m, d) }}</span><span class="console-sep">&nbsp;›&nbsp;</span></template><span class="console-dir">{{ d.step }}</span><template v-if="d.test"><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.test }}</span></template><template v-if="d.exceptionClass"><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.exceptionClass }}</span></template><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.message }}</span>
-                  </div>
+                  <template v-for="(d, i) in m.diagnostics" :key="i">
+                    <div v-if="isTestFailure(d) && testFailure(m, d)" class="fail-report">
+                      <template v-for="rep in [testFailure(m, d)]" :key="'tf'+i">
+                        <template v-if="rep.showHeader">
+                          <div class="fail-head">
+                            <span class="console-err">✘</span>
+                            <span class="fail-mid"> Test failure</span>
+                            <template v-if="rep.module">
+                              <span class="fail-mid"> in </span><span class="det-coord">{{ rep.module }}</span>
+                            </template>
+                            <span class="console-sep"> › </span>
+                            <span class="det-focus">{{ rep.count }}</span>
+                            <span class="fail-mid"> test{{ rep.count === 1 ? '' : 's' }} failed</span>
+                          </div>
+                          <div class="fail-blank"></div>
+                        </template>
+                        <div class="fail-line">
+                          <!-- &nbsp; lives inside the span — inter-element whitespace is squashed. -->
+                          <span class="fail-failed">FAILED&nbsp;</span><template v-for="(seg, si) in failLabelSegs(rep.label)" :key="si">
+                            <span :class="seg.cls">{{ seg.text }}</span>
+                          </template>
+                        </div>
+                        <div class="fail-blank"></div>
+                        <template v-if="rep.assertj">
+                          <div v-if="rep.assertj.desc" class="fail-line">
+                            <span class="fail-dim">"</span><span class="fail-desc">{{ rep.assertj.desc }}</span><span class="fail-dim">"</span>
+                          </div>
+                          <div class="fail-line">
+                            <span class="fail-mid">&nbsp;Expected:&nbsp;</span><span class="fail-ok">{{ rep.assertj.expected }}</span>
+                          </div>
+                          <div class="fail-line">
+                            <span class="fail-mid">&nbsp;&nbsp;But Was:&nbsp;</span><span class="fail-err">{{ rep.assertj.actual }}</span>
+                          </div>
+                        </template>
+                        <template v-else-if="rep.message">
+                          <div class="fail-line fail-mid" v-for="(ml, mi) in rep.message.split('\n')" :key="'m'+mi">{{ ml }}</div>
+                        </template>
+                        <template v-if="rep.file">
+                          <div class="fail-blank"></div>
+                          <div class="fail-line fail-path">{{ rep.file }}</div>
+                          <div
+                            v-for="(row, ri) in rep.rows"
+                            :key="'s'+ri"
+                            class="fail-src"
+                            :class="{ 'fail-src-err': row.error }"
+                          >
+                            <span class="fail-gutter" :class="{ 'fail-gutter-err': row.error }">{{ String(row.num).padStart(4, ' ') }}</span><span class="fail-gutter-rail">│</span><span class="fail-src-code">{{ row.code }}{{ ' '.repeat(row.pad) }}</span>
+                          </div>
+                          <div v-if="rep.exceptionClass" class="fail-line fail-thrown">
+                            <span class="det-type">{{ rep.exceptionClass }}</span><span class="fail-mid"> thrown at line </span><span class="det-focus">{{ rep.line }}</span>
+                          </div>
+                        </template>
+                        <div v-else-if="rep.exceptionClass" class="fail-line fail-thrown">
+                          <span class="det-type">{{ rep.exceptionClass }}</span>
+                        </div>
+                      </template>
+                    </div>
+                    <div v-else class="diag-line">
+                      <span class="console-err">✘&nbsp;</span><template v-if="diagPhase(m, d)"><span class="console-phase">{{ diagPhase(m, d) }}</span><span class="console-sep">&nbsp;›&nbsp;</span></template><span class="console-dir">{{ d.step }}</span><template v-if="d.test"><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.test }}</span></template><template v-if="d.exceptionClass"><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.exceptionClass }}</span></template><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.message }}</span>
+                    </div>
+                  </template>
                 </div>
               </div>
             </div>

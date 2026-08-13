@@ -1328,6 +1328,8 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         if (nativePainted != null) {
             return worker.isEmpty() ? nativePainted : nativePainted + Theme.colorize(worker, t.midGray());
         }
+        // Wire may carry FQCNs (java.nio.file.Path, pkg.FooTest); display simple names only.
+        body = cc.jumpkick.cli.run.TestFailureHighlight.shortDisplayLabel(body);
         // Only syntax-highlight true member refs (FooTest.bar). Phase "Test" also hosts
         // compile-test labels like "compiling 12 sources" — those must stay mid-gray prose
         // (SyntaxHighlight paints unmatched text as terminal default/white).

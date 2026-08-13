@@ -821,6 +821,8 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 .det-type { color: var(--det-type); }
 .det-fn { color: var(--det-fn); }
 .det-num { color: var(--det-num); }
+/* CLI Theme.focused() — bold bright white (failure counts / thrown-at line). */
+.det-focus { color: var(--bright); font-weight: 700; }
 .det-path { color: var(--path); }
 .det-coord { color: var(--cn); }
 .det-dim { color: var(--dim); }
@@ -1219,6 +1221,60 @@ table.stats td.err { color: var(--err); }
 .diag .console { margin-top: 0; }
 .diag-line { padding: 1px 0; }
 .console-err { color: var(--err); }
+
+/* Test-failure report (CLI TestFailureHighlight parity — flat, no thick outer rail). */
+.fail-report {
+  margin: 4px 0 10px;
+  font: 400 12px/1.45 var(--mono);
+  color: var(--tx);
+  white-space: pre-wrap;
+}
+.fail-report + .fail-report { margin-top: 14px; }
+.fail-head { line-height: 1.4; }
+.fail-blank { height: 0.55em; }
+.fail-line { white-space: pre-wrap; }
+.fail-mid { color: var(--mu); }
+.fail-dim { color: var(--dim); }
+.fail-desc { color: var(--bright); font-style: italic; }
+.fail-failed { color: var(--err); font-weight: 700; }
+.fail-ok { color: var(--ok); }
+.fail-err { color: var(--err); }
+.fail-path {
+  color: var(--path);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  padding-left: 4ch;
+}
+.fail-thrown { padding-left: 4ch; }
+.fail-src {
+  display: flex;
+  white-space: pre;
+  background: var(--console-bg);
+  font: 400 12px/1.45 var(--mono);
+}
+.fail-gutter {
+  flex: none;
+  width: 4ch;
+  text-align: right;
+  color: var(--dim);
+  user-select: none;
+}
+.fail-gutter-err { color: var(--err); }
+.fail-gutter-rail {
+  flex: none;
+  color: var(--dim);
+  padding: 0 0.35em 0 0;
+  user-select: none;
+}
+.fail-src-code {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--tx);
+}
+/* 0.3-alpha error wash over the dark row so it mixes with --console-bg (CLI ERROR_LINE_BG). */
+.fail-src-err .fail-src-code {
+  background: rgba(var(--err-rgb), 0.3);
+}
 
 /* ---- workspace picker (Browse…) ---- */
 

@@ -270,6 +270,17 @@ public final class JsonlShape {
         if (!failure.exceptionClass().isEmpty())
             sb.append(",\"exceptionClass\":").append(js(failure.exceptionClass()));
         if (failure.worker() > 0) sb.append(",\"worker\":").append(failure.worker());
+        if (!failure.file().isEmpty()) sb.append(",\"file\":").append(js(failure.file()));
+        if (failure.line() > 0) sb.append(",\"line\":").append(failure.line());
+        if (failure.snippetStart() > 0) sb.append(",\"snippetStart\":").append(failure.snippetStart());
+        if (!failure.snippet().isEmpty()) {
+            sb.append(",\"snippet\":[");
+            for (int i = 0; i < failure.snippet().size(); i++) {
+                if (i > 0) sb.append(',');
+                sb.append(js(failure.snippet().get(i)));
+            }
+            sb.append(']');
+        }
         if (!failure.stack().isEmpty()) {
             sb.append(",\"stack\":").append(js(failure.stack()));
             sb.append(",\"throwable\":{")

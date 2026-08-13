@@ -2580,7 +2580,7 @@ public final class BuildPlanner {
                             + ":"
                             + projectUnderTest.project().name();
                     TestProgressListener listener =
-                            TestSupport.bridgeListener(ctx, testWorkers, in.verbose(), moduleLabel);
+                            TestSupport.bridgeListener(ctx, testWorkers, in.verbose(), moduleLabel, in.dir());
                     TestSummary result;
                     // Serialize test execution across concurrently-built units unless the
                     // user opted into parallel tests — shared ports/locks/fixtures.

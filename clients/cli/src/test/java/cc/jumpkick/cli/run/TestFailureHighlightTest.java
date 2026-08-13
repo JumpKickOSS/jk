@@ -114,4 +114,36 @@ class TestFailureHighlightTest {
         assertThat(plain(painted.get(0))).isEqualTo("Note: something");
         assertThat(plain(painted.get(1))).isEqualTo("\tat cc.jumpkick.Foo.bar(Foo.java:1)");
     }
+
+    @Test
+    void shortDisplayLabel_strips_package_fqcns() {
+        assertThat(TestFailureHighlight.shortDisplayLabel(
+                        "cc.jumpkick.runtime.FooTest.freshen(java.nio.file.Path)"))
+                .isEqualTo("FooTest.freshen(Path)");
+        assertThat(TestFailureHighlight.shortDisplayLabel("FooTest.bar(java.lang.String, java.util.List)"))
+                .isEqualTo("FooTest.bar(String, List)");
+        assertThat(TestFailureHighlight.shortDisplayLabel("org.opentest4j.AssertionFailedError"))
+                .isEqualTo("AssertionFailedError");
+        assertThat(TestFailureHighlight.shortDisplayLabel("FooTest.bar(Path)  [w2]"))
+                .isEqualTo("FooTest.bar(Path)  [w2]");
+        assertThat(TestFailureHighlight.shortDisplayLabel("bar(java.nio.file.Path)"))
+                .isEqualTo("bar(Path)");
+        // Prose / versions / jars must not be mangled.
+        assertThat(TestFailureHighlight.shortDisplayLabel("package jk-engine-0.12.0.jar"))
+                .isEqualTo("package jk-engine-0.12.0.jar");
+        assertThat(TestFailureHighlight.shortDisplayLabel("compiling 12 sources"))
+                .isEqualTo("compiling 12 sources");
+        assertThat(TestFailureHighlight.shortDisplayLabel("1.2.3")).isEqualTo("1.2.3");
+    }
+
+    @Test
+    void paintShortLabel_never_renders_package_fqcns() {
+        String painted = TestFailureHighlight.paintShortLabel(
+                "cc.jumpkick.runtime.DogfoodFailureSnippetTest.deliberately_fails(java.nio.file.Path)",
+                Theme.active());
+        String p = plain(painted);
+        assertThat(p).isEqualTo("DogfoodFailureSnippetTest.deliberately_fails(Path)");
+        assertThat(p).doesNotContain("java.nio");
+        assertThat(p).doesNotContain("cc.jumpkick");
+    }
 }

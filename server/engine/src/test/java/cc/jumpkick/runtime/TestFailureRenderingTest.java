@@ -95,6 +95,12 @@ class TestFailureRenderingTest {
                         "switching_variants(Path)",
                         true))
                 .isEqualTo("VariantSwitchTest.switching_variants(Path)");
+        // Display may still carry FQCN params from JUnit — never surface them live.
+        assertThat(TestSupport.liveTestDetail(
+                        "[engine:junit-jupiter]/[class:cc.jumpkick.runtime.VariantSwitchTest]/[method:switching_variants(java.nio.file.Path)]",
+                        "switching_variants(java.nio.file.Path)",
+                        true))
+                .isEqualTo("VariantSwitchTest.switching_variants(Path)");
         assertThat(TestSupport.simpleClassName("cc.jumpkick.runtime.FooTest")).isEqualTo("FooTest");
     }
 

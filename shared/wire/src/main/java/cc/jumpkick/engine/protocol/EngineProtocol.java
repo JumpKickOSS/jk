@@ -2257,13 +2257,14 @@ public final class EngineProtocol {
 
     private static String diagnosticLike(
             String type, String dir, String step, String code, String message, String test, String exceptionClass) {
-        return diagnosticLike(type, dir, step, code, message, test, exceptionClass, "", "", "", "", "");
+        return diagnosticLike(
+                type, dir, step, code, message, test, exceptionClass, "", "", "", "", "", "", 0, 0, java.util.List.of());
     }
 
     /**
      * Diagnostic/error line. Additive fields ({@code module}, {@code engine}, {@code class},
-     * {@code method}, {@code stack}, nested {@code throwable}) are omitted when empty so non-test
-     * diagnostics stay small. Legacy {@code test} is still written when non-empty for older clients.
+     * {@code method}, {@code stack}, source {@code file}/{@code line}/{@code snippet}, nested
+     * {@code throwable}) are omitted when empty so non-test diagnostics stay small.
      */
     private static String diagnosticLike(
             String type,
@@ -2278,6 +2279,42 @@ public final class EngineProtocol {
             String className,
             String method,
             String stack) {
+        return diagnosticLike(
+                type,
+                dir,
+                step,
+                code,
+                message,
+                test,
+                exceptionClass,
+                module,
+                engine,
+                className,
+                method,
+                stack,
+                "",
+                0,
+                0,
+                java.util.List.of());
+    }
+
+    private static String diagnosticLike(
+            String type,
+            String dir,
+            String step,
+            String code,
+            String message,
+            String test,
+            String exceptionClass,
+            String module,
+            String engine,
+            String className,
+            String method,
+            String stack,
+            String file,
+            int line,
+            int snippetStart,
+            java.util.List<String> snippet) {
         StringBuilder b = new StringBuilder(256);
         b.append("{\"type\":")
                 .append(Jsonl.quote(type))
@@ -2296,9 +2333,19 @@ public final class EngineProtocol {
         if (method != null && !method.isEmpty()) b.append(",\"method\":").append(Jsonl.quote(method));
         if (exceptionClass != null && !exceptionClass.isEmpty())
             b.append(",\"exceptionClass\":").append(Jsonl.quote(exceptionClass));
+        if (file != null && !file.isEmpty()) b.append(",\"file\":").append(Jsonl.quote(file));
+        if (line > 0) b.append(",\"line\":").append(line);
+        if (snippetStart > 0) b.append(",\"snippetStart\":").append(snippetStart);
+        if (snippet != null && !snippet.isEmpty()) {
+            b.append(",\"snippet\":[");
+            for (int i = 0; i < snippet.size(); i++) {
+                if (i > 0) b.append(',');
+                b.append(Jsonl.quote(snippet.get(i)));
+            }
+            b.append(']');
+        }
         if (stack != null && !stack.isEmpty()) {
             b.append(",\"stack\":").append(Jsonl.quote(stack));
-            // Nested throwable mirrors the runner shape for clients that prefer one object.
             b.append(",\"throwable\":{")
                     .append("\"class\":")
                     .append(Jsonl.quote(exceptionClass == null ? "" : exceptionClass))
@@ -2343,6 +2390,29 @@ public final class EngineProtocol {
                 ERROR_LINE, dir, step, code, message, "", exceptionClass, module, engine, className, method, stack);
     }
 
+    /** Full test-failure error line including optional source snippet. */
+    public static String errorLine(
+            String dir, String step, String code, String message, cc.jumpkick.run.TestFailureInfo failure) {
+        if (failure == null) return errorLine(dir, step, code, message, "", "");
+        return diagnosticLike(
+                ERROR_LINE,
+                dir,
+                step,
+                code,
+                message == null || message.isEmpty() ? failure.message() : message,
+                "",
+                failure.exceptionClass(),
+                failure.module(),
+                failure.engine(),
+                failure.className(),
+                failure.method(),
+                failure.stack(),
+                failure.file(),
+                failure.line(),
+                failure.snippetStart(),
+                failure.snippet());
+    }
+
     public static String planDiagnostic(
             String dir, String step, String code, String message, String test, String exceptionClass) {
         return diagnosticLike(BUILDPLAN_DIAGNOSTIC, dir, step, code, message, test, exceptionClass);
@@ -2372,6 +2442,28 @@ public final class EngineProtocol {
                 className,
                 method,
                 stack);
+    }
+
+    public static String planDiagnostic(
+            String dir, String step, String code, String message, cc.jumpkick.run.TestFailureInfo failure) {
+        if (failure == null) return planDiagnostic(dir, step, code, message, "", "");
+        return diagnosticLike(
+                BUILDPLAN_DIAGNOSTIC,
+                dir,
+                step,
+                code,
+                message == null || message.isEmpty() ? failure.message() : message,
+                "",
+                failure.exceptionClass(),
+                failure.module(),
+                failure.engine(),
+                failure.className(),
+                failure.method(),
+                failure.stack(),
+                failure.file(),
+                failure.line(),
+                failure.snippetStart(),
+                failure.snippet());
     }
 
     /** @see #stepFinish(String, String, String, String, long) */

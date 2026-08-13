@@ -24,6 +24,14 @@ const {
   orderedModules,
   MAX_CARDS,
   MAX_OUTPUT_LINES,
+  normalizeDiagnostic,
+  testFailureReport,
+  isTestFailureDiag,
+  parseAssertJMessage,
+  shortTestLabel,
+  shortDisplayLabel,
+  simpleTypeName,
+  simplifyMethodParams,
 } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
 
 const historyRecord = (id, dir, extra = {}) => ({
@@ -1173,4 +1181,214 @@ test('cancelled without FAIL steps still reads as cancelled', () => {
     }),
   ]);
   assert.equal(outcomeOf(cards[0]), 'cancelled');
+});
+
+// ---- test-failure rich report (CLI TestFailureHighlight parity) ----
+
+test('normalizeDiagnostic keeps snippet / identity fields for test failures', () => {
+  const d = normalizeDiagnostic({
+    task: 'run-tests',
+    code: 'test-failure',
+    message: '[dogfood] expected: "42"\n but was: "41"',
+    module: 'cc.jumpkick:jk-engine',
+    class: 'cc.jumpkick.runtime.DogfoodFailureSnippetTest',
+    method: 'deliberately_fails_to_show_source_snippet()',
+    exceptionClass: 'org.opentest4j.AssertionFailedError',
+    file: 'src/test/java/cc/jumpkick/runtime/DogfoodFailureSnippetTest.java',
+    line: 23,
+    snippetStart: 19,
+    snippet: ['', '        // comment', '                .isEqualTo(42);', '    }', '}'],
+  });
+  assert.equal(d.step, 'run-tests');
+  assert.equal(d.className, 'cc.jumpkick.runtime.DogfoodFailureSnippetTest');
+  assert.equal(d.file, 'src/test/java/cc/jumpkick/runtime/DogfoodFailureSnippetTest.java');
+  assert.equal(d.line, 23);
+  assert.equal(d.snippetStart, 19);
+  assert.equal(d.snippet.length, 5);
+  assert.equal(d.module, 'cc.jumpkick:jk-engine');
+});
+
+test('isTestFailureDiag only matches structured per-test code', () => {
+  assert.equal(isTestFailureDiag({ code: 'test-failure' }), true);
+  assert.equal(isTestFailureDiag({ code: 'error' }), false);
+  assert.equal(isTestFailureDiag(null), false);
+});
+
+test('parseAssertJMessage reformats description + expected/but was', () => {
+  const a = parseAssertJMessage('[dogfood: hello]\nexpected: "42"\n but was: "41"');
+  assert.ok(a);
+  assert.equal(a.desc, 'dogfood: hello');
+  assert.equal(a.expected, '42');
+  assert.equal(a.actual, '41');
+  assert.equal(parseAssertJMessage('plain boom'), null);
+});
+
+test('shortTestLabel strips package and keeps method params simplified', () => {
+  assert.equal(simpleTypeName('org.opentest4j.AssertionFailedError'), 'AssertionFailedError');
+  assert.equal(
+    shortTestLabel({
+      className: 'cc.jumpkick.runtime.DogfoodFailureSnippetTest',
+      method: 'deliberately_fails_to_show_source_snippet()',
+    }),
+    'DogfoodFailureSnippetTest.deliberately_fails_to_show_source_snippet()',
+  );
+  assert.equal(
+    shortTestLabel({
+      className: 'cc.jumpkick.Foo',
+      method: 'bar(java.nio.file.Path)',
+    }),
+    'Foo.bar(Path)',
+  );
+  // Wire may send FQCN on the free-form method field alone.
+  assert.equal(
+    shortTestLabel({
+      method: 'cc.jumpkick.runtime.FooTest.freshen(java.nio.file.Path, java.lang.String)',
+    }),
+    'FooTest.freshen(Path, String)',
+  );
+});
+
+test('shortDisplayLabel never leaves package FQCNs in client text', () => {
+  assert.equal(
+    shortDisplayLabel('cc.jumpkick.runtime.FooTest.bar(java.nio.file.Path)'),
+    'FooTest.bar(Path)',
+  );
+  assert.equal(simplifyMethodParams('m(java.lang.String[])'), 'm(String[])');
+  assert.equal(shortDisplayLabel('FooTest.bar(Path)  [w2]'), 'FooTest.bar(Path)  [w2]');
+  // Live detail path shortens too.
+  assert.equal(
+    detailForDisplay('g:a', 'g:a :: cc.jumpkick.Foo.bar(java.util.List)'),
+    'Foo.bar(List)',
+  );
+  const segs = detailSegments('cc.jumpkick.Foo.bar(java.nio.file.Path)');
+  const text = segs.map((s) => s.text).join('');
+  assert.equal(text, 'Foo.bar(Path)');
+  assert.ok(!text.includes('java.nio'));
+  // Prose / versions / jars stay intact.
+  assert.equal(shortDisplayLabel('package jk-engine-0.12.0.jar'), 'package jk-engine-0.12.0.jar');
+  assert.equal(shortDisplayLabel('compiling 12 sources'), 'compiling 12 sources');
+  assert.equal(detailForDisplay('g:a', 'g:a :: shrinking jar'), 'shrinking jar');
+});
+
+test('testFailureReport builds CLI-shaped model with snippet rows and error line', () => {
+  const d = normalizeDiagnostic({
+    code: 'test-failure',
+    message: '[dogfood: hello]\nexpected: "42"\n but was: "41"',
+    module: 'cc.jumpkick:jk-engine',
+    class: 'cc.jumpkick.runtime.DogfoodFailureSnippetTest',
+    method: 'deliberately_fails_to_show_source_snippet()',
+    exceptionClass: 'org.opentest4j.AssertionFailedError',
+    file: 'src/test/java/cc/jumpkick/runtime/DogfoodFailureSnippetTest.java',
+    line: 23,
+    snippetStart: 20,
+    snippet: [
+      '        // comment',
+      '        assertThat(41)',
+      '                .isEqualTo(42);',
+      '    }',
+    ],
+  });
+  // Force error line into snippet range for the * marker
+  d.line = 22;
+  d.snippetStart = 20;
+  const rep = testFailureReport(d, { count: 1, showHeader: true });
+  assert.ok(rep);
+  assert.equal(rep.showHeader, true);
+  assert.equal(rep.count, 1);
+  assert.equal(rep.module, 'cc.jumpkick:jk-engine');
+  assert.equal(rep.label, 'DogfoodFailureSnippetTest.deliberately_fails_to_show_source_snippet()');
+  assert.ok(rep.assertj);
+  assert.equal(rep.assertj.desc, 'dogfood: hello');
+  assert.equal(rep.assertj.expected, '42');
+  assert.equal(rep.assertj.actual, '41');
+  assert.equal(rep.file, 'src/test/java/cc/jumpkick/runtime/DogfoodFailureSnippetTest.java');
+  assert.equal(rep.exceptionClass, 'AssertionFailedError');
+  assert.equal(rep.line, 22);
+  assert.equal(rep.rows.length, 4);
+  assert.equal(rep.rows[0].num, 20);
+  assert.equal(rep.rows[2].num, 22);
+  assert.equal(rep.rows[2].error, true);
+  assert.equal(rep.rows[0].error, false);
+  // subsequent failure suppresses the shared header
+  const second = testFailureReport(d, { count: 2, showHeader: false });
+  assert.equal(second.showHeader, false);
+  assert.equal(second.count, 2);
+});
+
+test('live diagnostic event folds snippet fields onto the module', () => {
+  const cards = [];
+  foldEvent(cards, start(42, '/w'));
+  foldEvent(cards, {
+    type: 'diagnostic',
+    data: {
+      requestId: 42,
+      dir: '/w',
+      task: 'run-tests',
+      code: 'test-failure',
+      message: 'expected: 1\nbut was: 2',
+      module: 'g:a',
+      class: 'pkg.FooTest',
+      method: 'bar()',
+      exceptionClass: 'org.opentest4j.AssertionFailedError',
+      file: 'src/test/java/pkg/FooTest.java',
+      line: 10,
+      snippetStart: 8,
+      snippet: ['  void bar() {', '    assertEquals(1, 2);', '  }'],
+    },
+  });
+  const d = cards[0].modules[0].diagnostics[0];
+  assert.equal(d.code, 'test-failure');
+  assert.equal(d.file, 'src/test/java/pkg/FooTest.java');
+  assert.equal(d.snippet.length, 3);
+  assert.equal(d.className, 'pkg.FooTest');
+  const rep = testFailureReport(d, { count: 1 });
+  assert.equal(rep.label, 'FooTest.bar()');
+  // line 10 is the third snippet row (start 8 → 8, 9, 10)
+  assert.equal(rep.rows[2].num, 10);
+  assert.equal(rep.rows[2].error, true);
+  assert.equal(rep.rows[1].error, false);
+});
+
+test('history seed keeps test-failure snippet for Activity backfill', () => {
+  const cards = [];
+  seedFromHistory(cards, [
+    historyRecord('hist-tf', '/w', {
+      success: false,
+      modules: [
+        {
+          coord: 'g:core',
+          dir: '/w/core',
+          success: false,
+          exitCode: 4,
+          millis: 100,
+          steps: [{ name: 'run-tests', status: 'FAIL', phase: 'test' }],
+        },
+      ],
+      diagnostics: [
+        {
+          severity: 'error',
+          dir: '/w/core',
+          task: 'run-tests',
+          code: 'test-failure',
+          message: 'expected: x\nbut was: y',
+          module: 'g:core',
+          class: 'core.T',
+          method: 'm()',
+          exceptionClass: 'AssertionFailedError',
+          file: 'src/test/java/core/T.java',
+          line: 5,
+          snippetStart: 3,
+          snippet: ['class T {', '  void m() { fail(); }', '}'],
+        },
+      ],
+    }),
+  ]);
+  const mod = cards[0].modules.find((m) => m.dir === '/w/core');
+  assert.ok(mod);
+  assert.equal(mod.diagnostics.length, 1);
+  assert.equal(mod.diagnostics[0].snippet.length, 3);
+  assert.equal(mod.diagnostics[0].file, 'src/test/java/core/T.java');
+  const rep = testFailureReport(mod.diagnostics[0], { count: 1 });
+  assert.equal(rep.label, 'T.m()');
+  assert.equal(rep.exceptionClass, 'AssertionFailedError');
 });

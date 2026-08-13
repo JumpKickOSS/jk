@@ -1030,11 +1030,16 @@ final class EngineBuildListenerAdapter {
             String th = Jsonl.nested(line, "throwable");
             if (th != null) stack = nz(Jsonl.str(th, "stack"));
         }
+        String file = nz(Jsonl.str(line, "file"));
+        int lineNo = Jsonl.intValue(line, "line", 0);
+        int snippetStart = Jsonl.intValue(line, "snippetStart", 0);
+        java.util.List<String> snippet = Jsonl.strArray(line, "snippet");
         if (module.isEmpty()
                 && engine.isEmpty()
                 && className.isEmpty()
                 && method.isEmpty()
                 && stack.isEmpty()
+                && file.isEmpty()
                 && !"test-failure".equals(Jsonl.str(line, "code"))) {
             return null;
         }
@@ -1043,7 +1048,8 @@ final class EngineBuildListenerAdapter {
                 && className.isEmpty()
                 && method.isEmpty()
                 && stack.isEmpty()
-                && exceptionClass.isEmpty()) {
+                && exceptionClass.isEmpty()
+                && file.isEmpty()) {
             return null;
         }
         int worker = Jsonl.intValue(line, "worker", 0);
@@ -1056,7 +1062,11 @@ final class EngineBuildListenerAdapter {
                 exceptionClass,
                 nz(Jsonl.str(line, "message")),
                 stack,
-                worker);
+                worker,
+                file,
+                lineNo,
+                snippetStart,
+                snippet);
     }
 
     private static String nz(String s) {

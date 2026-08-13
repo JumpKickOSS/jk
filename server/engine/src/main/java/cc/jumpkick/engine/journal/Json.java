@@ -77,6 +77,10 @@ final class Json {
             if (d.method() != null && !d.method().isEmpty()) dm.put("method", d.method());
             if (d.exceptionClass() != null && !d.exceptionClass().isEmpty())
                 dm.put("exceptionClass", d.exceptionClass());
+            if (d.file() != null && !d.file().isEmpty()) dm.put("file", d.file());
+            if (d.line() > 0) dm.put("line", d.line());
+            if (d.snippetStart() > 0) dm.put("snippetStart", d.snippetStart());
+            if (d.snippet() != null && !d.snippet().isEmpty()) dm.put("snippet", d.snippet());
             if (d.stack() != null && !d.stack().isEmpty()) {
                 dm.put("stack", d.stack());
                 Map<String, Object> th = new LinkedHashMap<>();
@@ -192,7 +196,11 @@ final class Json {
                     str(dm, "engine"),
                     strOr(dm, "class", "className"),
                     str(dm, "method"),
-                    str(dm, "stack")));
+                    str(dm, "stack"),
+                    str(dm, "file"),
+                    (int) lng(dm, "line"),
+                    (int) lng(dm, "snippetStart"),
+                    strList(dm, "snippet")));
         }
 
         return new BuildRecord(
@@ -242,6 +250,15 @@ final class Json {
     private static String strOr(Map<String, Object> o, String key, String legacy) {
         String v = str(o, key);
         return v != null ? v : str(o, legacy);
+    }
+
+    private static List<String> strList(Map<String, Object> o, String key) {
+        if (!(o.get(key) instanceof List<?> l) || l.isEmpty()) return List.of();
+        List<String> out = new ArrayList<>(l.size());
+        for (Object e : l) {
+            if (e != null) out.add(String.valueOf(e));
+        }
+        return out;
     }
 
     /** Read a {@code "tasks"} array from a record or a module object ({@code "steps"} pre-rename). */

@@ -851,6 +851,16 @@ class JkManagerTest {
     }
 
     @Test
+    void colorDetail_strips_fqcns_from_java_member_labels() {
+        Theme t = Theme.active();
+        String painted = JkManager.colorDetail(
+                "Test", "cc.jumpkick.runtime.FooTest.bar(java.nio.file.Path)", t);
+        assertThat(TestAnsi.strip(painted)).isEqualTo("FooTest.bar(Path)");
+        assertThat(TestAnsi.strip(painted)).doesNotContain("java.nio");
+        assertThat(painted).contains(Theme.colorize("Path", t.synType()));
+    }
+
+    @Test
     void prose_detail_defaults_to_mid_gray_not_dim_or_cyan() {
         Theme t = Theme.active();
         String painted = JkManager.colorDetail("Package", "shrinking jar", t);
