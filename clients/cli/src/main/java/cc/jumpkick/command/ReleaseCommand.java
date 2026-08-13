@@ -111,18 +111,30 @@ public final class ReleaseCommand implements CliCommand {
         }
 
         // 1) Build JVM modules (engine assembly, plugins, libraries).
-        // When --skip-native, drop native-always modules (clients/cli) from the default
-        // workspace build — those modules demand native-image on every `jk build`, which is
-        // exactly what skip-native is opting out of. Explicit -m still wins.
+        // When --skip-native, drop every [native] always module from the default workspace
+        // build — those modules demand native-image on every `jk build`, which is exactly what
+        // skip-native is opting out of. Explicit -m still wins. An all-native workspace skips
+        // this step outright rather than falling back to the full build it opted out of
+        // (JK-1902).
         String buildModules = modulesSpec;
-        if (skipNative
-                && (buildModules == null || buildModules.isBlank())
-                && cliDir != null
-                && isNativeEligible(cliDir)) {
-            buildModules = modulesExcluding(dir, root, cliDir);
+        boolean skipBuildStep = false;
+        if (skipNative && (buildModules == null || buildModules.isBlank()) && root.isWorkspaceRoot()) {
+            List<String> keep = modulesWithoutNativeAlways(dir, root);
+            if (keep.size() < root.workspace().modules().size()) {
+                if (keep.isEmpty()) {
+                    cc.jumpkick.cli.tui.CommandWedge.printOk(
+                            "Release", "every module is [native] always — skipping the JVM build step");
+                    skipBuildStep = true;
+                } else {
+                    buildModules = String.join(",", keep);
+                }
+            }
         }
-        int code = runBuild(dir, skipTests, buildModules, cacheDir);
-        if (code != 0) return code;
+        if (!skipBuildStep) {
+            int buildCode = runBuild(dir, skipTests, buildModules, cacheDir);
+            if (buildCode != 0) return buildCode;
+        }
+        int code;
 
         // 2) Ensure a native CLI when the module is native-eligible and none is staged yet
         if (!skipNative && cliDir != null && findNativeClient(cliDir) == null && isNativeEligible(cliDir)) {
@@ -319,19 +331,16 @@ public final class ReleaseCommand implements CliCommand {
     }
 
     /**
-     * Comma-joined module paths for a workspace build that omits {@code excluded}, so
-     * {@code --skip-native} does not re-enter a {@code [native] always = true} module.
+     * Workspace module paths minus every {@code [native] always = true} module — not just the
+     * discovered CLI module — so {@code --skip-native} never re-enters any of them (JK-1902).
      */
-    private static String modulesExcluding(Path workspaceRoot, JkBuild root, Path excluded) {
-        if (!root.isWorkspaceRoot()) return null;
-        Path ex = excluded.toAbsolutePath().normalize();
+    static List<String> modulesWithoutNativeAlways(Path workspaceRoot, JkBuild root) {
         List<String> keep = new ArrayList<>();
         for (String m : root.workspace().modules()) {
-            Path dir = workspaceRoot.resolve(m).toAbsolutePath().normalize();
-            if (dir.equals(ex)) continue;
+            if (isNativeEligible(workspaceRoot.resolve(m).toAbsolutePath().normalize())) continue;
             keep.add(m);
         }
-        return keep.isEmpty() ? null : String.join(",", keep);
+        return keep;
     }
 
     private static Path findEngineAssembly(Path workspaceRoot, JkBuild root, Path engineDir) throws IOException {
