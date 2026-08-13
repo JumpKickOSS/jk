@@ -398,10 +398,37 @@ public final class ExplainCommand implements CliCommand {
     private static String stageDetail(BuildStage stage, boolean dirty, TaskForecast.Module m) {
         if (!dirty) return null;
         return switch (stage) {
-            case COMPILE -> m.sourceCount() > 0 ? fmtCount(m.sourceCount(), "source", "sources") : null;
-            case TEST -> m.testCount() > 0 ? "~" + String.format("%,d", m.testCount()) + " tests" : null;
+            case COMPILE -> {
+                // An incremental recompile must read as one: the forecast step text carries the
+                // real changed count ("3 sources changed"); the module total would overstate the
+                // work (JK-1897).
+                int changed = changedSourceCount(m);
+                if (changed >= 0) yield fmtCount(changed, "source changed", "sources changed");
+                yield m.sourceCount() > 0 ? fmtCount(m.sourceCount(), "source", "sources") : null;
+            }
+            case TEST -> m.testCount() > 0 ? "~" + fmtCount(m.testCount(), "test", "tests") : null;
             default -> null;
         };
+    }
+
+    /** {@code "N source(s) changed"} from {@code JavaIncrementalCompile}, digit-guarded (JK-1836). */
+    private static final java.util.regex.Pattern CHANGED_SOURCES =
+            java.util.regex.Pattern.compile("(?<!\\d)(\\d+) sources? changed");
+
+    /**
+     * Changed-source count summed over the module's non-cached compile steps, or {@code -1} when
+     * no step states one (full compile, no incremental state).
+     */
+    static int changedSourceCount(TaskForecast.Module m) {
+        int total = -1;
+        for (TaskForecast.Task s : m.steps()) {
+            if (s.cached() || BuildStage.ofTaskName(s.name()) != BuildStage.COMPILE) continue;
+            var matcher = CHANGED_SOURCES.matcher(s.text() == null ? "" : s.text());
+            while (matcher.find()) {
+                total = Math.max(0, total) + Integer.parseInt(matcher.group(1));
+            }
+        }
+        return total;
     }
 
     /** True when the module plan includes a material native stage task. */

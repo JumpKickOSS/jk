@@ -167,6 +167,44 @@ class ExplainCommandEstimateTest {
     }
 
     @Test
+    void dirty_compile_shows_the_changed_count_not_the_module_total() {
+        // JK-1897: an incremental recompile must read as one — the forecast says how many
+        // sources actually changed; the module's full source count overstates the work.
+        var module = TaskForecast.Module.fromWire(
+                Path.of("/tmp/m"),
+                "com.example:app",
+                List.of(
+                        new TaskForecast.Task(
+                                "compile-main", TaskForecast.Status.RUN, "compile · 3 sources changed", null),
+                        new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~28 tests", null)),
+                239,
+                28,
+                true,
+                false);
+        String chain = TestAnsi.strip(ExplainCommand.renderStageChain(module, Theme.active(), false));
+        assertThat(chain).isEqualTo("[ ] Compile 3 sources changed > [ ] Test ~28 tests");
+        assertThat(ExplainCommand.changedSourceCount(module)).isEqualTo(3);
+    }
+
+    @Test
+    void single_changed_source_and_single_test_are_singular() {
+        // JK-1897/JK-1898: "1 source changed", "~1 test" — never "~1 tests".
+        var module = TaskForecast.Module.fromWire(
+                Path.of("/tmp/m"),
+                "com.example:app",
+                List.of(
+                        new TaskForecast.Task(
+                                "compile-main", TaskForecast.Status.RUN, "compile · 1 source changed", null),
+                        new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests", null)),
+                239,
+                1,
+                true,
+                false);
+        String chain = TestAnsi.strip(ExplainCommand.renderStageChain(module, Theme.active(), false));
+        assertThat(chain).isEqualTo("[ ] Compile 1 source changed > [ ] Test ~1 test");
+    }
+
+    @Test
     void summary_table_lists_plan_items_rebuild_surface_and_eta() {
         var dirty = TaskForecast.Module.fromWire(
                 Path.of("/tmp/a"),
