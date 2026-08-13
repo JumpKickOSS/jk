@@ -3,12 +3,14 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.SourceLayout;
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -31,11 +33,12 @@ public final class TestFailureSource {
     private static final int MAX_SCAN_FILES = 4_000;
 
     /**
-     * Stack frame: {@code at pkg.Class.method(File.java:42)} or {@code (File.kt:12)} /
+     * Owner + location after {@code at } and after a {@code module/} or {@code loader/module/}
+     * prefix: {@code pkg.Class.method(File.java:42)} / {@code (File.kt:12)} /
      * {@code (Native Method)} / {@code (Unknown Source)}.
      */
     private static final Pattern FRAME = Pattern.compile(
-            "^\\s*at\\s+([\\w.$]+)\\.([\\w$<>]+)\\(([^:)]+)(?::(\\d+))?\\)\\s*$");
+            "^([\\w.$]+)\\.([\\w$<>]+)\\(([^:)]+)(?::(\\d+))?\\)\\s*$");
 
     private TestFailureSource() {}
 
@@ -71,7 +74,9 @@ public final class TestFailureSource {
         try {
             List<String> all = Files.readAllLines(file.get(), StandardCharsets.UTF_8);
             if (all.isEmpty()) return Optional.empty();
-            int errorLine = Math.min(f.line, all.size());
+            // A stack line past EOF is not the last line of the file — skip the snippet.
+            if (f.line < 1 || f.line > all.size()) return Optional.empty();
+            int errorLine = f.line;
             int[] window = window(all.size(), errorLine, CONTEXT_LINES);
             List<String> slice = new ArrayList<>(window[1] - window[0] + 1);
             for (int i = window[0]; i <= window[1]; i++) slice.add(all.get(i));
@@ -133,7 +138,17 @@ public final class TestFailureSource {
 
     static Optional<Frame> parseFrame(String raw) {
         if (raw == null) return Optional.empty();
-        Matcher m = FRAME.matcher(raw.stripTrailing());
+        String s = raw.stripTrailing();
+        int at = s.indexOf("at ");
+        if (at < 0) return Optional.empty();
+        s = s.substring(at + 3).stripLeading();
+        int paren = s.lastIndexOf('(');
+        if (paren <= 0) return Optional.empty();
+        String owner = s.substring(0, paren);
+        int slash = owner.lastIndexOf('/');
+        if (slash >= 0) owner = owner.substring(slash + 1);
+        String loc = s.substring(paren);
+        Matcher m = FRAME.matcher(owner + loc);
         if (!m.matches()) return Optional.empty();
         String file = m.group(3);
         int line = 0;
@@ -170,30 +185,33 @@ public final class TestFailureSource {
     // ---- file locate ----------------------------------------------------------
 
     static Optional<Path> locateFile(Path moduleDir, String testClass, String fileName) {
-        if (fileName == null || fileName.isBlank()) return Optional.empty();
+        if (fileName == null || fileName.isBlank() || fileName.indexOf('\0') >= 0) return Optional.empty();
+        // Reject path-shaped names before resolve — stack file names are basenames.
+        if (fileName.indexOf('/') >= 0 || fileName.indexOf('\\') >= 0) return Optional.empty();
         String pkgPath = packagePath(testClass);
         List<Path> candidates = new ArrayList<>();
 
-        // Prefer layout from jk.toml when parseable; still try both trees.
         boolean simplePreferred = isSimpleLayout(moduleDir);
-        addLayoutCandidates(candidates, moduleDir, pkgPath, fileName, simplePreferred);
-        addLayoutCandidates(candidates, moduleDir, pkgPath, fileName, !simplePreferred);
+        addSuiteCandidates(candidates, moduleDir, pkgPath, fileName, simplePreferred);
+        addSuiteCandidates(candidates, moduleDir, pkgPath, fileName, !simplePreferred);
 
         for (Path p : candidates) {
-            if (Files.isRegularFile(p)) return Optional.of(p);
+            Optional<Path> ok = insideModule(moduleDir, p);
+            if (ok.isPresent()) return ok;
         }
         return scanByFileName(moduleDir, pkgPath, fileName, simplePreferred);
     }
 
-    private static void addLayoutCandidates(
-            List<Path> out, Path moduleDir, String pkgPath, String fileName, boolean simple) {
-        if (simple) {
-            // Simple Mill-like: test/src[/package]/File.ext
-            if (!pkgPath.isEmpty()) out.add(moduleDir.resolve("test/src").resolve(pkgPath).resolve(fileName));
-            out.add(moduleDir.resolve("test/src").resolve(fileName));
-        } else {
-            for (String lang : List.of("java", "kotlin", "groovy")) {
-                Path root = moduleDir.resolve("src/test").resolve(lang);
+    private static void addSuiteCandidates(
+            List<Path> out, Path moduleDir, String pkgPath, String fileName, boolean compact) {
+        List<String> suites = TestSuites.discover(moduleDir, compact);
+        if (suites.isEmpty()) suites = List.of(TestSuites.DEFAULT);
+        for (String suite : suites) {
+            List<Path> roots = new ArrayList<>();
+            roots.addAll(TestSuites.javaRoots(moduleDir, compact, suite));
+            roots.addAll(TestSuites.kotlinRoots(moduleDir, compact, suite));
+            roots.addAll(TestSuites.groovyRoots(moduleDir, compact, suite));
+            for (Path root : roots) {
                 if (!pkgPath.isEmpty()) out.add(root.resolve(pkgPath).resolve(fileName));
                 out.add(root.resolve(fileName));
             }
@@ -202,33 +220,51 @@ public final class TestFailureSource {
 
     private static Optional<Path> scanByFileName(
             Path moduleDir, String pkgPath, String fileName, boolean simplePreferred) {
-        List<Path> roots = new ArrayList<>();
-        if (simplePreferred) {
-            roots.add(moduleDir.resolve("test/src"));
-            roots.add(moduleDir.resolve("src/test"));
-        } else {
-            roots.add(moduleDir.resolve("src/test"));
-            roots.add(moduleDir.resolve("test/src"));
-        }
+        LinkedHashSet<Path> roots = new LinkedHashSet<>();
+        addSuiteRoots(roots, moduleDir, simplePreferred);
+        addSuiteRoots(roots, moduleDir, !simplePreferred);
         Path preferSuffix =
                 pkgPath.isEmpty() ? Path.of(fileName) : Path.of(pkgPath.replace('/', java.io.File.separatorChar), fileName);
         Path best = null;
         int seen = 0;
         for (Path root : roots) {
             if (!Files.isDirectory(root)) continue;
+            if (insideModule(moduleDir, root).isEmpty()) continue;
             try (Stream<Path> walk = Files.walk(root)) {
                 for (Path p : (Iterable<Path>) walk::iterator) {
                     if (!Files.isRegularFile(p)) continue;
                     if (++seen > MAX_SCAN_FILES) return Optional.ofNullable(best);
                     if (!fileName.equals(p.getFileName().toString())) continue;
-                    if (p.endsWith(preferSuffix)) return Optional.of(p);
-                    if (best == null) best = p;
+                    Optional<Path> ok = insideModule(moduleDir, p);
+                    if (ok.isEmpty()) continue;
+                    if (p.endsWith(preferSuffix)) return ok;
+                    if (best == null) best = ok.get();
                 }
             } catch (IOException ignored) {
                 // try next root
             }
         }
         return Optional.ofNullable(best);
+    }
+
+    private static void addSuiteRoots(java.util.Set<Path> roots, Path moduleDir, boolean compact) {
+        List<String> suites = TestSuites.discover(moduleDir, compact);
+        if (suites.isEmpty()) suites = List.of(TestSuites.DEFAULT);
+        for (String suite : suites) {
+            roots.addAll(TestSuites.javaRoots(moduleDir, compact, suite));
+            roots.addAll(TestSuites.kotlinRoots(moduleDir, compact, suite));
+            roots.addAll(TestSuites.groovyRoots(moduleDir, compact, suite));
+        }
+    }
+
+    /** Regular file under {@code moduleDir} after normalize; empty if missing or a path escape. */
+    static Optional<Path> insideModule(Path moduleDir, Path candidate) {
+        if (moduleDir == null || candidate == null) return Optional.empty();
+        Path root = moduleDir.toAbsolutePath().normalize();
+        Path abs = candidate.toAbsolutePath().normalize();
+        if (!abs.startsWith(root)) return Optional.empty();
+        if (!Files.isRegularFile(abs)) return Optional.empty();
+        return Optional.of(abs);
     }
 
     private static boolean isSimpleLayout(Path moduleDir) {
