@@ -9,6 +9,9 @@ import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.TaskStatus;
 import java.io.PrintStream;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -21,6 +24,7 @@ public final class VerboseListener implements BuildPlanListener {
     private final PrintStream out;
     private final PrintStream err;
     private final ConcurrentMap<String, String> labels = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, List<String>> outputBuf = new ConcurrentHashMap<>();
 
     public VerboseListener(PrintStream out, PrintStream err) {
         this.out = out;
@@ -62,11 +66,20 @@ public final class VerboseListener implements BuildPlanListener {
 
     @Override
     public void output(String step, String line) {
-        out.println(StackTraceHighlight.line(line));
+        outputBuf.computeIfAbsent(step, s -> Collections.synchronizedList(new ArrayList<>())).add(line);
+    }
+
+    private void flushOutput(String step) {
+        List<String> buf = outputBuf.remove(step);
+        if (buf == null || buf.isEmpty()) return;
+        for (String painted : TestFailureHighlight.paintLines(List.copyOf(buf))) {
+            out.println(painted);
+        }
     }
 
     @Override
     public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
+        flushOutput(step);
         String glyph =
                 switch (status) {
                     case SUCCESS -> Theme.colorize(Glyphs.CHECK, Theme.active().completedStep());
@@ -101,6 +114,7 @@ public final class VerboseListener implements BuildPlanListener {
 
     @Override
     public void planFinish(BuildPlanResult result) {
+        for (String step : new ArrayList<>(outputBuf.keySet())) flushOutput(step);
         String summary = result.success()
                 ? Theme.colorize(Glyphs.CHECK + " done", Theme.active().completedStep())
                 : Theme.colorize(Glyphs.CROSS + " failed", Theme.active().error());
