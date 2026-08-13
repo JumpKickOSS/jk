@@ -121,9 +121,22 @@ public final class TestFailureSource {
         }
     }
 
+    /**
+     * UTF-8 with substitution: {@code Files.newBufferedReader}'s REPORT-mode decoder throws on the
+     * first malformed byte (a Latin-1 {@code é} anywhere in the file), dropping the whole snippet;
+     * a replacement char in one line is strictly better (JK-1907).
+     */
+    private static BufferedReader lenientReader(Path file) throws IOException {
+        var decoder = StandardCharsets.UTF_8
+                .newDecoder()
+                .onMalformedInput(java.nio.charset.CodingErrorAction.REPLACE)
+                .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPLACE);
+        return new BufferedReader(new java.io.InputStreamReader(Files.newInputStream(file), decoder));
+    }
+
     private static int countLines(Path file) throws IOException {
         int n = 0;
-        try (BufferedReader r = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+        try (BufferedReader r = lenientReader(file)) {
             while (r.readLine() != null) n++;
         }
         return n;
@@ -133,7 +146,7 @@ public final class TestFailureSource {
     static List<String> readWindow(Path file, int from, int to) throws IOException {
         if (to < from) return List.of();
         List<String> slice = new ArrayList<>(to - from + 1);
-        try (BufferedReader r = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+        try (BufferedReader r = lenientReader(file)) {
             int n = 0;
             String line;
             while ((line = r.readLine()) != null) {

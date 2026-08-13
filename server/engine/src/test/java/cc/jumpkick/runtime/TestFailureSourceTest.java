@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -60,6 +61,38 @@ class TestFailureSourceTest {
                 .orElseThrow();
         assertThat(f.line()).isEqualTo(15);
         assertThat(f.fileName()).isEqualTo("FooTest.java");
+    }
+
+    @Test
+    void non_utf8_bytes_before_the_window_do_not_drop_the_snippet(@TempDir Path mod) throws Exception {
+        // JK-1907: a Latin-1 'é' (0xE9) anywhere in the file used to throw MalformedInputException
+        // in the strict decoder and lose the whole snippet; substitution keeps the window.
+        Path src = mod.resolve("src/test/java/cc/jumpkick/runtime");
+        Files.createDirectories(src);
+        byte[] latin1Comment = "// café note\n".getBytes(StandardCharsets.ISO_8859_1);
+        byte[] rest = """
+                package cc.jumpkick.runtime;
+                class FooTest {
+                    void bar() {
+                        int a = 20;
+                        int b = 21;
+                        int result = a + b;
+                        assertEquals(42, result);
+                    }
+                }
+                """.getBytes(StandardCharsets.UTF_8);
+        byte[] all = new byte[latin1Comment.length + rest.length];
+        System.arraycopy(latin1Comment, 0, all, 0, latin1Comment.length);
+        System.arraycopy(rest, 0, all, latin1Comment.length, rest.length);
+        Files.write(src.resolve("FooTest.java"), all);
+
+        String stack =
+                "org.opentest4j.AssertionFailedError: x\n" + "\tat cc.jumpkick.runtime.FooTest.bar(FooTest.java:7)\n";
+        var snip = new TestFailureSource.Cache()
+                .resolve(mod, "cc.jumpkick.runtime.FooTest", stack)
+                .orElseThrow();
+        assertThat(snip.errorLine()).isEqualTo(7);
+        assertThat(String.join("\n", snip.lines())).contains("assertEquals(42, result);");
     }
 
     @Test
