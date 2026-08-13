@@ -262,16 +262,21 @@ public final class TestFailureSource {
         if (fileName.indexOf('/') >= 0 || fileName.indexOf('\\') >= 0) return Optional.empty();
         String pkgPath = packagePath(testClass);
         Layout layout = cache.layout(moduleDir);
-        for (Path root : layout.roots()) {
-            if (!pkgPath.isEmpty()) {
-                Optional<Path> hit =
-                        insideModuleFile(moduleDir, root.resolve(pkgPath).resolve(fileName));
+        try {
+            for (Path root : layout.roots()) {
+                if (!pkgPath.isEmpty()) {
+                    Optional<Path> hit =
+                            insideModuleFile(moduleDir, root.resolve(pkgPath).resolve(fileName));
+                    if (hit.isPresent()) return hit;
+                }
+                Optional<Path> hit = insideModuleFile(moduleDir, root.resolve(fileName));
                 if (hit.isPresent()) return hit;
             }
-            Optional<Path> hit = insideModuleFile(moduleDir, root.resolve(fileName));
-            if (hit.isPresent()) return hit;
+            return scanByFileName(cache, moduleDir, pkgPath, fileName, layout);
+        } catch (java.nio.file.InvalidPathException e) {
+            // Filesystem-specific rejects (beyond the sanitizing above) degrade to no snippet.
+            return Optional.empty();
         }
-        return scanByFileName(cache, moduleDir, pkgPath, fileName, layout);
     }
 
     private static Layout loadLayout(Path moduleDir) {
@@ -363,7 +368,16 @@ public final class TestFailureSource {
         if (dollar >= 0) cls = cls.substring(0, dollar);
         int dot = cls.lastIndexOf('.');
         if (dot <= 0) return "";
-        return cls.substring(0, dot).replace('.', '/');
+        String pkg = cls.substring(0, dot).replace('.', '/');
+        // The class name is wire input from the worker. A hostile/malformed value (NUL, '\\',
+        // a '..' segment) must degrade to no-package — Path.resolve would throw the unchecked
+        // InvalidPathException past the IOException-only catches into the worker-drain thread
+        // (JK-1908); absolute-path escapes are separately caught by containedIn.
+        if (pkg.indexOf('\0') >= 0 || pkg.indexOf('\\') >= 0) return "";
+        for (String seg : pkg.split("/")) {
+            if (seg.equals("..")) return "";
+        }
+        return pkg;
     }
 
     private static String languageOf(String fileName) {

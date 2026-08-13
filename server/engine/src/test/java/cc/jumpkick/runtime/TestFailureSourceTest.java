@@ -96,6 +96,20 @@ class TestFailureSourceTest {
     }
 
     @Test
+    void hostile_class_names_return_empty_instead_of_throwing(@TempDir Path mod) throws Exception {
+        // JK-1908: the class name is worker wire input; NUL / '..' segments must degrade to
+        // no-snippet, never throw InvalidPathException into the worker-drain thread.
+        Files.createDirectories(mod.resolve("src/test/java"));
+        String stack = "java.lang.AssertionError: x\n\tat evil.Foo.t(Foo.java:3)\n";
+        assertThat(new TestFailureSource.Cache().resolve(mod, "a\u0000b.Foo", stack))
+                .isEmpty();
+        assertThat(new TestFailureSource.Cache().resolve(mod, "x...y.Foo", stack))
+                .isEmpty();
+        assertThat(new TestFailureSource.Cache().resolve(mod, "a\\b.Foo", stack))
+                .isEmpty();
+    }
+
+    @Test
     void window_keeps_seven_lines_and_clips_at_edges() {
         assertThat(TestFailureSource.window(20, 1, 7)).containsExactly(0, 6);
         assertThat(TestFailureSource.window(20, 20, 7)).containsExactly(13, 19);
