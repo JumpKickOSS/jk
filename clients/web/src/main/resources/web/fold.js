@@ -1414,12 +1414,16 @@ export function testFailureReport(d, opts) {
   const errorLine = d.line > 0 ? d.line : 0;
   let maxCode = 0;
   for (const line of snippet) maxCode = Math.max(maxCode, String(line).length);
+  // Gutter sizes to the widest line number — a fixed 4ch overflows into the rail at
+  // five digits (large generated test files), where the CLI's %4s widens naturally (JK-1913).
+  const gutter = Math.max(4, String(start + Math.max(0, snippet.length - 1)).length);
   const rows = snippet.map((code, i) => {
     const num = start + i;
     const text = String(code);
     const pad = Math.max(0, maxCode - text.length);
     return {
       num,
+      gutter: String(num).padStart(gutter, ' '),
       error: errorLine > 0 && num === errorLine,
       code: text,
       pad,

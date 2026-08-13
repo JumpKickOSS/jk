@@ -213,7 +213,7 @@
                           class="fail-src"
                           :class="{ 'fail-src-err': row.error }"
                         >
-                          <span class="fail-gutter" :class="{ 'fail-gutter-err': row.error }">{{ String(row.num).padStart(4, ' ') }}</span><span class="fail-gutter-rail">│</span><span class="fail-src-code">{{ row.code }}{{ ' '.repeat(row.pad) }}</span>
+                          <span class="fail-gutter" :class="{ 'fail-gutter-err': row.error }">{{ row.gutter }}</span><span class="fail-gutter-rail">│</span><span class="fail-src-code">{{ row.code }}{{ ' '.repeat(row.pad) }}</span>
                         </div>
                         <div v-if="rep.exceptionClass" class="fail-line fail-thrown">
                           <span class="det-type">{{ rep.exceptionClass }}</span><span class="fail-mid"> thrown at line </span><span class="det-focus">{{ rep.line }}</span>
@@ -311,7 +311,7 @@
                             class="fail-src"
                             :class="{ 'fail-src-err': row.error }"
                           >
-                            <span class="fail-gutter" :class="{ 'fail-gutter-err': row.error }">{{ String(row.num).padStart(4, ' ') }}</span><span class="fail-gutter-rail">│</span><span class="fail-src-code">{{ row.code }}{{ ' '.repeat(row.pad) }}</span>
+                            <span class="fail-gutter" :class="{ 'fail-gutter-err': row.error }">{{ row.gutter }}</span><span class="fail-gutter-rail">│</span><span class="fail-src-code">{{ row.code }}{{ ' '.repeat(row.pad) }}</span>
                           </div>
                           <div v-if="rep.exceptionClass" class="fail-line fail-thrown">
                             <span class="det-type">{{ rep.exceptionClass }}</span><span class="fail-mid"> thrown at line </span><span class="det-focus">{{ rep.line }}</span>

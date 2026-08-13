@@ -1255,7 +1255,8 @@ table.stats td.err { color: var(--err); }
 }
 .fail-gutter {
   flex: none;
-  width: 4ch;
+  min-width: 4ch; /* sizes to the padded number; 4ch floor keeps short snippets aligned (JK-1913) */
+  white-space: pre;
   text-align: right;
   color: var(--dim);
   user-select: none;
