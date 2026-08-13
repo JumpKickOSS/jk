@@ -19,7 +19,16 @@ public record StatusSnapshot(
         String version,
         long pid,
         long startedAtMillis,
+        /**
+         * Live client attachments right now: engine-protocol sockets (CLI over UDS/TCP) plus
+         * long-lived HTTP SSE (dashboard and MCP). Wire name stays {@code activeRequests} for
+         * schema freeze; the Admin tile labels this "connections".
+         */
         int activeRequests,
+        /**
+         * Currently executing build/test/lock jobs (in-flight concurrency), not lifetime build
+         * count. Zero when the engine is idle.
+         */
         int activeBuildPlans,
         long heapUsedBytes,
         long heapCommittedBytes,
@@ -32,9 +41,13 @@ public record StatusSnapshot(
         double systemCpuLoad,
         double systemLoadAverage,
         String engineEpoch,
-        /** High-water mark of concurrent client connections since engine start. */
+        /**
+         * High-water mark of {@link #activeRequests} (combined UDS + SSE surfaces) since engine
+         * start — bumped at every admission point (UDS accept, SSE gate acquire) and on each
+         * status snapshot, so spikes between snapshots are counted (JK-1861).
+         */
         int peakActiveRequests,
-        /** High-water mark of concurrent plans since engine start. */
+        /** High-water mark of concurrent in-flight plans since engine start. */
         int peakActiveBuildPlans) {
 
     /** Compact constructor for tests that omit memory headroom / load / epoch / peaks. */

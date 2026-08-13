@@ -3,10 +3,10 @@ package cc.jumpkick.command.ide;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.BuildPlanWedge;
-import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.cli.tui.JkWedge;
+import cc.jumpkick.cli.tui.RichText;
+import cc.jumpkick.cli.tui.Tree;
 import cc.jumpkick.engine.protocol.IdeWireModel;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.protocol.Jsonl;
@@ -81,21 +81,18 @@ public final class VscodeIdeGenerator implements IdeGenerator {
         // ---- presentation ---------------------------------------------------
         Theme t = Theme.active();
         String check = Theme.colorize(Glyphs.CHECK, t.success());
-        CommandWedge.envelopeStart();
-        CliOutput.out(BuildPlanWedge.chipLine(
-                Glyphs.CHECK,
-                "Code",
-                GlobalConfig.nerdfont(),
-                "The " + Theme.colorize(model.rootName(), t.focused()) + " project is ready"));
-
-        List<String> items = new ArrayList<>();
-        items.add(check + " Generated " + files + " project file" + (files == 1 ? "" : "s") + " for "
-                + Theme.colorize("redhat.java", t.cyan()));
-        boolean ansi = t.isAnsi();
-        for (int i = 0; i < items.size(); i++) {
-            String connector = i == items.size() - 1 ? (ansi ? "╰─ " : "`- ") : (ansi ? "├─ " : "+- ");
-            CliOutput.out(" " + (ansi ? Theme.colorize(connector, t.darkGray()) : connector) + items.get(i));
-        }
+        new Tree(JkWedge.ok(
+                        "Code",
+                        RichText.parse("The [focused]" + RichText.escape(model.rootName()) + "[/] project is ready")))
+                .gap(Tree.Gap.NONE)
+                .child(Tree.node(RichText.ansi(check
+                        + " Generated "
+                        + files
+                        + " project file"
+                        + (files == 1 ? "" : "s")
+                        + " for "
+                        + Theme.colorize("redhat.java", t.cyan()))))
+                .print();
         CliOutput.out();
         CliOutput.out(" "
                 + Theme.colorize(Glyphs.BANG + " Note", t.warning())

@@ -601,6 +601,7 @@ public final class BuildService {
             // "extra resources changed" was pricing ~792 tests while live only re-copied).
             boolean localCompile = hasLocalCompileContent(m);
             boolean resourceDrift = hasResourceDriftWork(m);
+            boolean testResourceDrift = hasTestResourceDriftWork(m);
             // Native/assembly in the forecast keeps run-tests full (cli ← engine test-dep) even
             // when native itself is cascade-discounted below.
             boolean keepFullTests = localCompile
@@ -613,7 +614,9 @@ public final class BuildService {
                 // Price material work only — bookkeeping steps (parse-build, stamps, …) are not
                 // cache hits but must not inflate ETA toward a full monorepo wall.
                 if (!distrust && TaskForecast.Module.isBookkeepingStep(s.name())) continue;
-                if (!distrust && shouldDiscountCascadeStep(s, localCompile, resourceDrift, keepFullTests)) {
+                if (!distrust
+                        && shouldDiscountCascadeStep(
+                                s, localCompile, resourceDrift, keepFullTests, testResourceDrift)) {
                     cascadeRecheck++;
                     continue;
                 }
@@ -658,9 +661,20 @@ public final class BuildService {
      * compile/test; billing suite walls for them was the multi-minute dogfood miss.
      */
     static boolean shouldDiscountCascadeStep(
-            TaskForecast.Task s, boolean localCompile, boolean resourceDrift, boolean keepFullTests) {
+            TaskForecast.Task s,
+            boolean localCompile,
+            boolean resourceDrift,
+            boolean keepFullTests,
+            boolean testResourceDrift) {
         if (s == null || s.cached()) return false;
         String name = s.name();
+        // TEST-resource drift reruns the suite for real — test action keys hash test resources
+        // (that is what made the drift material at all, JK-1808/1809) — so run-tests must keep
+        // its full wall no matter which rule below would discount it (JK-1842: one edited
+        // fixture priced a 792-test suite as a recheck token and the countdown collapsed).
+        if ("run-tests".equals(name) && testResourceDrift) {
+            return false;
+        }
         // Cascade-forced compile/package without local source edits.
         if (!localCompile && isCascadeForcedStep(s) && isCompileOrPackageStep(name)) {
             return true;
@@ -670,7 +684,8 @@ public final class BuildService {
         if (!localCompile && isCascadeForcedStep(s) && "native-image".equals(name)) {
             return true;
         }
-        // Resource drift schedules copy/package only — never a full compile/test suite.
+        // MAIN-resource drift schedules copy/package only — never a full compile/test suite
+        // (dogfood-validated discount; the test-resource case exited above).
         if (!localCompile && resourceDrift && (isCompileStepName(name) || "run-tests".equals(name))) {
             return true;
         }
@@ -683,6 +698,14 @@ public final class BuildService {
     }
 
     /**
+     * "Exactly zero sources changed" — the count must not be a suffix of a larger number
+     * ("10 sources changed"), see JK-1836. Text form from {@code JavaIncrementalCompile}:
+     * {@code "1 source changed"} / {@code "<n> sources changed"}.
+     */
+    private static final java.util.regex.Pattern ZERO_SOURCES =
+            java.util.regex.Pattern.compile("(?<!\\d)0 sources? changed");
+
+    /**
      * True when the module has real local compile content (sources/options/classpath) — not
      * resource drift alone, and not a zero-source partial.
      */
@@ -691,8 +714,10 @@ public final class BuildService {
         for (TaskForecast.Task s : m.steps()) {
             if (s.cached() || !isCompileStepName(s.name())) continue;
             String t = s.text() == null ? "" : s.text();
-            // "compile · 0 sources changed" is not material work.
-            if (t.contains("0 source")) continue;
+            // "compile · 0 sources changed" is not material work. Digit-guarded: a bare
+            // contains("0 source") also matched "10/20/…N0 sources changed" and silently
+            // discounted whole test suites for modules with a multiple-of-ten edit (JK-1836).
+            if (ZERO_SOURCES.matcher(t).find()) continue;
             if (s.status() == TaskForecast.Status.PARTIAL || s.status() == TaskForecast.Status.FULL) {
                 return true;
             }
@@ -722,6 +747,20 @@ public final class BuildService {
             if ("copy-resources".equals(s.name()) || "copy-test-resources".equals(s.name())) return true;
             String t = s.text() == null ? "" : s.text();
             if ("package-jar".equals(s.name()) && t.contains("resources changed")) return true;
+        }
+        return false;
+    }
+
+    /**
+     * TEST-resource drift specifically — the suite genuinely reruns (test action keys hash test
+     * resources), so unlike main-resource drift it must never discount {@code run-tests}
+     * (JK-1842).
+     */
+    static boolean hasTestResourceDriftWork(TaskForecast.Module m) {
+        if (m == null || m.steps() == null) return false;
+        for (TaskForecast.Task s : m.steps()) {
+            if (s.cached()) continue;
+            if ("copy-test-resources".equals(s.name())) return true;
         }
         return false;
     }
@@ -949,7 +988,7 @@ public final class BuildService {
         }
         Calibration.ensure(req.jdksDir());
         if (probing) {
-            // complete=true drops the preflight row from the live tree (CommandManager.preflight).
+            // complete=true drops the preflight row from the live tree (JkManager.preflight).
             listener.onPreflight("calibrate", 1, 1, "Calibrating host…");
         }
         // only fully prepare modules that will execute (dirty). Clean modules skip prepare

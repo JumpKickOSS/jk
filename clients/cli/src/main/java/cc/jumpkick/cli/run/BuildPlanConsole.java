@@ -233,7 +233,7 @@ public final class BuildPlanConsole {
 
     /**
      * Run a workspace module's plan into a shared {@link AggregateContext} — its events feed the one
-     * aggregate {@link cc.jumpkick.cli.tui.CommandManager} (bar + step list) instead of a per-module
+     * aggregate {@link cc.jumpkick.cli.tui.JkManager} (bar + step list) instead of a per-module
      * view. The shared view is settled by the caller after the last module. Always records the event
      * log.
      */

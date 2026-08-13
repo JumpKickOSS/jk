@@ -70,8 +70,25 @@ final class Json {
             dm.put("task", d.step());
             dm.put("code", d.code());
             dm.put("message", d.message());
-            dm.put("test", d.test());
-            dm.put("exceptionClass", d.exceptionClass());
+            if (d.test() != null && !d.test().isEmpty()) dm.put("test", d.test());
+            if (d.module() != null && !d.module().isEmpty()) dm.put("module", d.module());
+            if (d.engine() != null && !d.engine().isEmpty()) dm.put("engine", d.engine());
+            if (d.className() != null && !d.className().isEmpty()) dm.put("class", d.className());
+            if (d.method() != null && !d.method().isEmpty()) dm.put("method", d.method());
+            if (d.exceptionClass() != null && !d.exceptionClass().isEmpty())
+                dm.put("exceptionClass", d.exceptionClass());
+            if (d.file() != null && !d.file().isEmpty()) dm.put("file", d.file());
+            if (d.line() > 0) dm.put("line", d.line());
+            if (d.snippetStart() > 0) dm.put("snippetStart", d.snippetStart());
+            if (d.snippet() != null && !d.snippet().isEmpty()) dm.put("snippet", d.snippet());
+            if (d.stack() != null && !d.stack().isEmpty()) {
+                dm.put("stack", d.stack());
+                Map<String, Object> th = new LinkedHashMap<>();
+                th.put("class", d.exceptionClass() == null ? "" : d.exceptionClass());
+                th.put("message", d.message() == null ? "" : d.message());
+                th.put("stack", d.stack());
+                dm.put("throwable", th);
+            }
             diagnostics.add(dm);
         }
         o.put("diagnostics", diagnostics);
@@ -112,7 +129,9 @@ final class Json {
             pm.put("name", p.name());
             pm.put("stage", p.stage());
             pm.put("status", p.status());
-            pm.put("millis", p.millis());
+            // Unknown duration (< 0) stays ABSENT on the wire: stamping it 0 made the SPA paint
+            // genuinely-worked steps as dashed cache-skips — 0 means a true no-op (JK-1855).
+            if (p.millis() >= 0) pm.put("millis", p.millis());
             out.add(pm);
         }
         return out;
@@ -172,7 +191,16 @@ final class Json {
                     str(dm, "code"),
                     str(dm, "message"),
                     str(dm, "test"),
-                    str(dm, "exceptionClass")));
+                    str(dm, "exceptionClass"),
+                    str(dm, "module"),
+                    str(dm, "engine"),
+                    strOr(dm, "class", "className"),
+                    str(dm, "method"),
+                    str(dm, "stack"),
+                    str(dm, "file"),
+                    (int) lng(dm, "line"),
+                    (int) lng(dm, "snippetStart"),
+                    strList(dm, "snippet")));
         }
 
         return new BuildRecord(
@@ -224,6 +252,15 @@ final class Json {
         return v != null ? v : str(o, legacy);
     }
 
+    private static List<String> strList(Map<String, Object> o, String key) {
+        if (!(o.get(key) instanceof List<?> l) || l.isEmpty()) return List.of();
+        List<String> out = new ArrayList<>(l.size());
+        for (Object e : l) {
+            if (e != null) out.add(String.valueOf(e));
+        }
+        return out;
+    }
+
     /** Read a {@code "tasks"} array from a record or a module object ({@code "steps"} pre-rename). */
     @SuppressWarnings("unchecked")
     private static List<BuildRecord.Task> readSteps(Map<String, Object> o) {
@@ -235,7 +272,13 @@ final class Json {
             // Journals on disk predate the rename; read the old keys so history stays readable.
             String stage = strOr(pm, "stage", "group");
             if (stage == null || stage.isBlank()) stage = str(pm, "phase");
-            steps.add(new BuildRecord.Task(str(pm, "name"), stage, str(pm, "status"), lng(pm, "millis")));
+            // Missing millis = unknown duration, kept as -1 — NOT 0, which is the true-no-op
+            // signal the dashboard renders dashed (JK-1855).
+            steps.add(new BuildRecord.Task(
+                    str(pm, "name"),
+                    stage,
+                    str(pm, "status"),
+                    pm.get("millis") instanceof Number n ? n.longValue() : -1L));
         }
         return steps;
     }

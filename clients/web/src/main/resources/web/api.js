@@ -212,6 +212,7 @@ export async function del(path) {
  */
 const EVENT_TYPES = [
   'request-start',
+  'run-snapshot', // mid-flight catch-up on SSE connect (one frame per running job)
   'plan',
   'module-start',
   'task-start',
@@ -230,6 +231,20 @@ const EVENT_TYPES = [
 ];
 
 /**
+ * Event types that are safe to coalesce to the latest pending frame per request (or globally for
+ * chrome). Collapsing these in the browser keeps the main thread free so the progress bar and ETA
+ * keep painting while a storm of structural/output frames is still being parsed.
+ */
+const COALESCE_TYPES = new Set([
+  'workspace-progress',
+  'plan-progress',
+  'eta',
+  'label',
+  'status',
+  'cache',
+]);
+
+/**
  * Open the SSE stream. `onEvent({type, data})` per engine event; `onState('live'|'offline')` as the
  * connection comes and goes. EventSource reconnects on its own after NETWORK errors only — any
  * non-200 response (503 while the engine respawns or the SSE budget is exhausted, 421 bad Host)
@@ -237,6 +252,9 @@ const EVENT_TYPES = [
  * readyState CLOSED (JK-1518). An HTTP-enabled engine never idles out (docs/http.md), so
  * 'offline' only ever means an explicit stop, an upgrade respawn, or a crash. EventSource cannot
  * send headers, so non-loopback origins carry the token as a query parameter.
+ *
+ * <p>Handlers return immediately: frames are queued and drained on animation frames so a burst of
+ * compiler {@code output} cannot freeze Vue (the CLI TUI is on a separate socket and stays smooth).
  */
 export function events(onEvent, onState) {
   // EventSource cannot send Authorization headers — always pass the token as a query param
@@ -245,10 +263,100 @@ export function events(onEvent, onState) {
   const source = new EventSource('/api/events' + query);
   source.onopen = () => onState('live');
   source.onerror = () => onState('offline');
+
+  /** @type {{type: string, data: object}[]} */
+  const queue = [];
+  /** Coalesced slots: key → index in queue (or latest object replaces in place). */
+  const coalesceAt = new Map();
+  let drainScheduled = false;
+
+  function coalesceKey(type, data) {
+    if (!COALESCE_TYPES.has(type)) return null;
+    if (type === 'status' || type === 'cache') return type;
+    const rid = data && data.requestId != null ? data.requestId : '';
+    // plan-progress is per-module; label targets a specific STEP row — with parallel workers in
+    // one plan, a (type, rid, dir) key let step B's pending label overwrite step A's before the
+    // drain, leaving A's detail stale until its next tick (JK-1848).
+    if (type === 'label') {
+      return type + ':' + rid + ':' + ((data && data.dir) || '') + ':' + ((data && (data.task || data.step)) || '');
+    }
+    if (type === 'plan-progress') {
+      return type + ':' + rid + ':' + ((data && data.dir) || '');
+    }
+    return type + ':' + rid;
+  }
+
+  function enqueue(event) {
+    const key = coalesceKey(event.type, event.data);
+    if (key != null) {
+      const idx = coalesceAt.get(key);
+      if (idx != null && queue[idx]) {
+        queue[idx] = event; // keep position; replace payload with newest
+        return;
+      }
+      coalesceAt.set(key, queue.length);
+    }
+    queue.push(event);
+  }
+
+  function drain() {
+    drainScheduled = false;
+    // Bound work per turn so paint/ETA timers stay responsive under a backlog.
+    const budgetMs = 6;
+    const start = performance.now();
+    let n = 0;
+    while (queue.length && performance.now() - start < budgetMs) {
+      const ev = queue.shift();
+      n++;
+      // Rebuild coalesce index cheaply when we drain — clear and re-index remaining.
+      if (n === 1) coalesceAt.clear();
+      try {
+        onEvent(ev);
+      } catch {
+        // a bad handler must not stall the drain loop
+      }
+    }
+    // Re-index coalesce map for anything still queued.
+    if (queue.length) {
+      coalesceAt.clear();
+      for (let i = 0; i < queue.length; i++) {
+        const k = coalesceKey(queue[i].type, queue[i].data);
+        if (k != null) coalesceAt.set(k, i);
+      }
+      scheduleDrain();
+    }
+  }
+
+  function scheduleDrain() {
+    if (drainScheduled) return;
+    drainScheduled = true;
+    // rAF aligns with paint; fall back to macrotask when the tab is backgrounded (rAF throttles).
+    if (typeof requestAnimationFrame === 'function' && !document.hidden) {
+      requestAnimationFrame(drain);
+    } else {
+      setTimeout(drain, 0);
+    }
+  }
+
+  // A drain armed on rAF never fires once the tab hides (background tabs get no animation
+  // frames): drainScheduled stayed true, every later scheduleDrain() no-opped, and an overnight
+  // build's frames piled up unapplied for hours (JK-1838). Re-arm on a macrotask at the hide
+  // transition; drain() clears the flag first, so a stale rAF firing on the next show just
+  // drains whatever is left. The listener unhooks itself once the stream is closed.
+  const rearmOnHide = () => {
+    if (source.readyState === EventSource.CLOSED) {
+      document.removeEventListener('visibilitychange', rearmOnHide);
+      return;
+    }
+    if (document.hidden && drainScheduled) setTimeout(drain, 0);
+  };
+  document.addEventListener('visibilitychange', rearmOnHide);
+
   for (const type of EVENT_TYPES) {
     source.addEventListener(type, (e) => {
       try {
-        onEvent({ type, data: JSON.parse(e.data) });
+        enqueue({ type, data: JSON.parse(e.data) });
+        scheduleDrain();
       } catch {
         // a malformed frame is dropped, never fatal to the stream
       }

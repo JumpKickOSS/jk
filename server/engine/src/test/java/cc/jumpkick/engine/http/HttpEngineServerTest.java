@@ -892,13 +892,43 @@ class HttpEngineServerTest {
     }
 
     @Test
-    void fs_rejects_relative_and_unreadable_paths() throws Exception {
-        assertThat(get("/api/fs?dir=relative/path", "Authorization", "Bearer " + token())
+    void fs_rejects_unreadable_paths() throws Exception {
+        // Relative segments resolve against $HOME — a non-existent leaf is still 400 (not "must be absolute").
+        assertThat(get(
+                                "/api/fs?dir=jk-no-such-relative-path-"
+                                        + ProcessHandle.current().pid(),
+                                "Authorization",
+                                "Bearer " + token())
                         .statusCode())
                 .isEqualTo(400);
         assertThat(get("/api/fs?dir=" + stateDir.resolve("no-such-dir"), "Authorization", "Bearer " + token())
                         .statusCode())
                 .isEqualTo(400);
+    }
+
+    @Test
+    void fs_accepts_tilde_and_home_relative_paths() throws Exception {
+        // Under $HOME so ~ and bare-relative resolve to the same absolute listing.
+        Path home = Path.of(System.getProperty("user.home")).toAbsolutePath().normalize();
+        Path pick = home.resolve("jk-fs-home-rel-" + ProcessHandle.current().pid());
+        Files.createDirectories(pick.resolve("child-a"));
+        Files.writeString(pick.resolve("jk.toml"), "[project]");
+        try {
+            String rel = home.relativize(pick).toString().replace('\\', '/');
+            String enc = java.net.URLEncoder.encode(rel, UTF_8);
+            String encTilde = java.net.URLEncoder.encode("~/" + rel, UTF_8);
+            HttpResponse<String> fromTilde = get("/api/fs?dir=" + encTilde, "Authorization", "Bearer " + token());
+            HttpResponse<String> fromRel = get("/api/fs?dir=" + enc, "Authorization", "Bearer " + token());
+            assertThat(fromTilde.statusCode()).isEqualTo(200);
+            assertThat(fromRel.statusCode()).isEqualTo(200);
+            assertThat(fromTilde.body())
+                    .contains("\"dir\":\"" + pick + "\"")
+                    .contains("\"dirs\":[\"child-a\"]")
+                    .contains("\"hasJkToml\":true");
+            assertThat(fromRel.body()).contains("\"dir\":\"" + pick + "\"");
+        } finally {
+            cc.jumpkick.util.PathUtil.deleteRecursively(pick);
+        }
     }
 
     @Test

@@ -19,12 +19,52 @@ export const MAX_DIAGNOSTICS = 12;
  * parses; + success/cancelled/millis on finish); module/step/output/plan events carry
  * requestId/dir plus their specifics.
  */
+/**
+ * Latch the card's client-epoch start anchor. `startedAt` is engine wall clock; comparing it
+ * with the browser clock on a skewed remote dashboard shifts elapsed/bar/deadline by the skew
+ * (JK-1839). When a frame carries the engine's own `serverNow`, elapsed = serverNow - startedAt
+ * is skew-free and receipt time converts it to the client epoch. Earliest wins, like startedAt.
+ */
+function noteStartAnchor(card, d, at) {
+  if (typeof d.startedAt !== 'number' || d.startedAt <= 0 || at == null) return;
+  if (typeof d.serverNow !== 'number' || d.serverNow < d.startedAt) return;
+  const clientStart = at - (d.serverNow - d.startedAt);
+  if (card.startedAtClient == null || clientStart < card.startedAtClient) {
+    card.startedAtClient = clientStart;
+  }
+}
+
+/** Client-epoch start for elapsed math — engine-epoch startedAt is only a last resort. */
+export function startAnchor(card) {
+  return card.startedAtClient ?? card.startedAt ?? null;
+}
+
 export function foldEvent(cards, event) {
   const d = event.data || {};
   switch (event.type) {
     case 'request-start': {
+      // Engine startedAt (admission) beats client receipt time — late join / rehydrate must match TUI.
+      const engineStart =
+        typeof d.startedAt === 'number' && d.startedAt > 0 ? d.startedAt : null;
       // Already attached (SSE connect rehydrate replayed, or this tab started the job).
-      if (cards.some((c) => c.id === d.requestId)) break;
+      const attached = cards.find((c) => c.id === d.requestId);
+      if (attached) {
+        if (engineStart != null && (attached.startedAt == null || engineStart < attached.startedAt)) {
+          attached.startedAt = engineStart;
+        }
+        noteStartAnchor(attached, d, event.at);
+        if (attached.startedAtClient == null && event.at != null) attached.startedAtClient = event.at;
+        if (d.coord) attached.coord = d.coord;
+        if (d.projectId) attached.projectId = d.projectId;
+        if (d.buildNumber) attached.buildNumber = d.buildNumber;
+        if (typeof d.progress === 'number') {
+          attached.progressPercent = d.progress;
+          if (typeof attached.peakPct !== 'number' || d.progress > attached.peakPct) {
+            attached.peakPct = Math.min(99, Math.round(d.progress));
+          }
+        }
+        break;
+      }
       // Reconcile with a durable in-flight history row (refresh / other tab) when buildNumber matches.
       const existing = cards.find(
         (c) =>
@@ -37,6 +77,16 @@ export function foldEvent(cards, event) {
         existing.id = d.requestId; // prefer live request id for subsequent SSE
         if (d.coord) existing.coord = d.coord;
         if (d.projectId) existing.projectId = d.projectId;
+        if (engineStart != null && (existing.startedAt == null || engineStart < existing.startedAt)) {
+          existing.startedAt = engineStart;
+        }
+        noteStartAnchor(existing, d, event.at);
+        if (typeof d.progress === 'number') {
+          existing.progressPercent = d.progress;
+          if (typeof existing.peakPct !== 'number' || d.progress > existing.peakPct) {
+            existing.peakPct = Math.min(99, Math.round(d.progress));
+          }
+        }
         break;
       }
       cards.unshift({
@@ -47,7 +97,13 @@ export function foldEvent(cards, event) {
         projectId: d.projectId || null,
         buildNumber: d.buildNumber || null,
         state: 'running',
-        startedAt: event.at ?? null,
+        startedAt: engineStart ?? event.at ?? null,
+        // Client-epoch anchor (JK-1839): skew-corrected when serverNow rides the frame, else a
+        // live request-start's receipt time is the admission instant to within transit latency.
+        startedAtClient:
+          engineStart != null && typeof d.serverNow === 'number' && d.serverNow >= engineStart
+            ? (event.at ?? Date.now()) - (d.serverNow - engineStart)
+            : event.at ?? null,
         finishedAt: null,
         millis: null,
         cancelled: false,
@@ -60,9 +116,10 @@ export function foldEvent(cards, event) {
         // progressPercent from engine workspace-progress (JK-1120) — dumb client, no re-sum.
         mods: {},
         planWeight: 0,
-        progressPercent: null, // 0–100 from workspace-progress; null until first aggregate event
+        progressPercent: typeof d.progress === 'number' ? d.progress : null,
         progressNum: 0,
         progressDen: 0,
+        peakPct: typeof d.progress === 'number' ? Math.min(99, Math.round(d.progress)) : undefined,
         etaMillis: null,
         etaAt: null,
         output: [],
@@ -95,9 +152,9 @@ export function foldEvent(cards, event) {
       const card = resolveCard(cards, d);
       if (card) {
         const row = stepRow(card, d.dir, (d.task || d.step), d.stage, event.at);
-        row.state = stepState(d.status);
         // Engine carries millis (additive); duration_ms is the CLI jsonl alias; else receipt delta.
         row.millis = stepMillisOf(d, row, event.at);
+        row.state = stepState(d.status, row.millis);
         // Keep last message for a moment of context only while running rows use it; finished
         // phases do not surface live detail.
       }
@@ -128,8 +185,13 @@ export function foldEvent(cards, event) {
       if (card) {
         card.progressNum = d.numerator || 0;
         card.progressDen = d.denominator || 0;
-        if (typeof d.progress === 'number') card.progressPercent = d.progress;
-        else if (card.progressDen > 0) {
+        if (typeof d.progress === 'number') {
+          card.progressPercent = d.progress;
+          // Floor the painted bar at the engine's weighted % so a late-join clock seed cannot
+          // flash 0% when the build is already mid-flight (then clock/adaptive climb from there).
+          const floor = Math.min(99, Math.round(d.progress));
+          if (typeof card.peakPct !== 'number' || floor > card.peakPct) card.peakPct = floor;
+        } else if (card.progressDen > 0) {
           card.progressPercent = Math.min(100, Math.round((100 * card.progressNum) / card.progressDen));
         }
         // Residual RemainingWork: adaptive bar + countdown re-anchor. Prefer CURRENT remainingMs
@@ -145,11 +207,13 @@ export function foldEvent(cards, event) {
             // remainingMs 0 = effectively done — leave unseeded rather than count down R0.
             if (rem > 0) {
               card.r0Ms = rem;
-              card.r0At = event.at ?? Date.now();
+              // Anchor R0 to engine start when known so clock progress = elapsed/(elapsed+remaining)
+              // matches the TUI after a mid-build join (not "since this tab connected").
+              card.r0At = startAnchor(card) ?? event.at ?? Date.now();
             }
           } else if (typeof d.R0 === 'number' && d.R0 > 0) {
             card.r0Ms = d.R0;
-            card.r0At = event.at ?? Date.now();
+            card.r0At = startAnchor(card) ?? event.at ?? Date.now();
           }
         }
       }
@@ -161,13 +225,18 @@ export function foldEvent(cards, event) {
         // Always record remaining@emission for etaTotalMillis (JK-1517 re-projections).
         card.etaMillis = d.millis;
         card.etaAt = event.at ?? null;
-        // Seed R0 once; residual mid-run re-anchors via residualRemainingMs/residualAt.
-        if (d.millis > 0 && card.r0Ms == null) {
+        // Seed R0 — and, matching the CLI's "positive re-seeds allowed pre-execute" rule, let a
+        // later eta REPLACE a provisional seed until any module work has folded: a contended
+        // build's coarse lock+prior figure otherwise stayed R0 for the whole run and the
+        // R0-fallback bar paced against the wrong total (JK-1854). Mid-run, residual re-anchors
+        // via residualRemainingMs/residualAt and R0 stays frozen.
+        const preExecute = card.modules.length === 0 && !(card.progressNum > 0);
+        if (d.millis > 0 && (card.r0Ms == null || preExecute)) {
           card.r0Ms = d.millis;
-          card.r0At = event.at ?? Date.now();
-          if (card.residualRemainingMs == null) {
+          card.r0At = startAnchor(card) ?? event.at ?? Date.now();
+          if (card.residualRemainingMs == null || preExecute) {
             card.residualRemainingMs = d.millis;
-            card.residualAt = card.r0At;
+            card.residualAt = event.at ?? Date.now();
           }
         }
       }
@@ -187,13 +256,7 @@ export function foldEvent(cards, event) {
       if (card) {
         const mod = moduleRow(card, d.dir, event.at);
         if (mod.diagnostics.length < MAX_DIAGNOSTICS) {
-          mod.diagnostics.push({
-            step: d.task || d.step || '',
-            code: d.code || '',
-            message: d.message || '',
-            test: d.test || '',
-            exceptionClass: d.exceptionClass || '',
-          });
+          mod.diagnostics.push(normalizeDiagnostic(d));
         }
       }
       break;
@@ -233,10 +296,117 @@ export function foldEvent(cards, event) {
       }
       break;
     }
+    case 'run-snapshot': {
+      // One compact mid-flight catch-up frame (SSE connect). Prefer this over N task events so
+      // live workspace-progress/eta are never stuck behind a phase-replay backlog.
+      applyRunSnapshot(cards, d, event.at);
+      break;
+    }
     default:
       break; // unknown event types are future vocabulary, never an error
   }
   return cards;
+}
+
+/**
+ * Atomically apply an engine mid-flight snapshot: identity, progress/ETA anchors, and phase
+ * chains. Idempotent with history seed and subsequent live events.
+ */
+function applyRunSnapshot(cards, d, at) {
+  if (!d || d.requestId == null) return;
+  // A snapshot captured while the run was still live can arrive after the finish frame in a
+  // reconnect race — it must never resurrect a finished card as running (JK-1837).
+  const pre = cards.find((c) => c.id === d.requestId);
+  if (pre && pre.state !== 'running') return;
+  // Ensure a running card exists (same paths as request-start rehydrate).
+  foldEvent(cards, {
+    type: 'request-start',
+    data: {
+      requestId: d.requestId,
+      jid: d.jid ?? d.requestId,
+      kind: d.kind,
+      dir: d.dir,
+      coord: d.coord,
+      projectId: d.projectId,
+      buildNumber: d.buildNumber,
+      startedAt: d.startedAt,
+      progress: d.progress,
+    },
+    at,
+  });
+  const card = resolveCard(cards, d);
+  if (!card) return;
+  // The engine sends the journal id — apply it so dedupe/delete reconciliation works even for
+  // runs without a buildNumber (e.g. lock jobs), instead of waiting for a history GET (JK-1846).
+  if (typeof d.historyId === 'string' && d.historyId && !card.historyId) card.historyId = d.historyId;
+  if (typeof d.startedAt === 'number' && d.startedAt > 0) {
+    if (card.startedAt == null || d.startedAt < card.startedAt) card.startedAt = d.startedAt;
+  }
+  noteStartAnchor(card, d, at);
+  if (typeof d.progress === 'number') {
+    card.progressPercent = d.progress;
+    const floor = Math.min(99, Math.round(d.progress));
+    if (typeof card.peakPct !== 'number' || floor > card.peakPct) card.peakPct = floor;
+  }
+  if (typeof d.numerator === 'number') card.progressNum = d.numerator;
+  if (typeof d.denominator === 'number' && d.denominator > 0) card.progressDen = d.denominator;
+  applyLiveEtaFields(card, d);
+  // Take the snapshot's phase chains when present — they are the engine's current truth for
+  // chains and progress (history stub is empty; live card may still be empty if this is the
+  // first frame) — but MERGE into existing rows: the snapshot never carries diagnostics or
+  // didWork, which are published exactly once as live events, so a reconnect replace would
+  // lose them for the rest of the run (JK-1834).
+  const mods = historyModules({
+    running: true,
+    dir: d.dir || card.dir || '',
+    coord: d.coord || card.coord,
+    cancelled: false,
+    success: false,
+    startedAt: card.startedAt,
+    modules: d.modules,
+    tasks: d.tasks,
+    steps: d.steps,
+    diagnostics: d.diagnostics,
+  });
+  if (mods.length > 0) card.modules = mergeSnapshotModules(card.modules, mods);
+}
+
+/**
+ * Merge snapshot module rows into a card's existing rows. Snapshot wins on chains/progress;
+ * live-only facts survive: diagnostics, didWork/checked, an already-reported failure, step
+ * messages, and rows only the live stream knows (e.g. the "" output bucket).
+ */
+function mergeSnapshotModules(existing, snapshot) {
+  if (!existing || existing.length === 0) return snapshot;
+  const byDir = new Map(existing.map((m) => [m.dir, m]));
+  const merged = snapshot.map((next) => {
+    const prev = byDir.get(next.dir);
+    if (!prev) return next;
+    byDir.delete(next.dir);
+    if ((!next.diagnostics || next.diagnostics.length === 0) && prev.diagnostics && prev.diagnostics.length > 0) {
+      next.diagnostics = prev.diagnostics;
+    }
+    if (prev.didWork !== undefined) {
+      next.didWork = prev.didWork;
+      if (next.state === 'success' && prev.didWork === false) next.state = 'checked';
+    }
+    // A failure the live stream already reported (module-finish success=false) outranks a
+    // snapshot that cannot see module-level failures without a FAIL task.
+    if (prev.state === 'failed' && next.state !== 'failed') next.state = 'failed';
+    if ((next.steps || []).length > 0 && (prev.steps || []).length > 0) {
+      const prevSteps = new Map(prev.steps.map((s) => [s.name, s]));
+      for (const s of next.steps) {
+        const ps = prevSteps.get(s.name);
+        if (ps && !s.message && ps.message) s.message = ps.message;
+      }
+    }
+    if (typeof prev.lastActivity === 'number' && prev.lastActivity > next.lastActivity) {
+      next.lastActivity = prev.lastActivity;
+    }
+    return next;
+  });
+  for (const leftover of byDir.values()) merged.push(leftover);
+  return merged;
 }
 
 /**
@@ -253,8 +423,9 @@ export function foldEvent(cards, event) {
  */
 export function etaTotalMillis(card) {
   if (typeof card.etaMillis !== 'number' || card.etaMillis <= 0) return null;
-  if (card.etaAt != null && card.startedAt != null) {
-    return card.etaAt - card.startedAt + card.etaMillis;
+  const anchor = startAnchor(card);
+  if (card.etaAt != null && anchor != null) {
+    return card.etaAt - anchor + card.etaMillis;
   }
   return card.etaMillis;
 }
@@ -317,10 +488,40 @@ export function seedFromHistory(cards, records) {
       if (rec.buildNumber) live.buildNumber = rec.buildNumber; // and pick up its assigned #number
       if (rec.projectId && !live.projectId) live.projectId = rec.projectId;
       if (rec.running) live.state = 'running';
+      else if (live.state === 'running') {
+        // The journal says this run is over: a finish frame lost to a connect/reconnect race
+        // (JK-1837) must not leave the card spinning forever — history is the durable truth.
+        live.state = 'finished';
+        live.finishedAt = rec.finishedAt || live.finishedAt || null;
+        live.millis = rec.millis ?? live.millis;
+        live.cancelled = !!rec.cancelled;
+        if (typeof rec.success === 'boolean') live.success = rec.success;
+        live.output = [];
+        live.etaMillis = null;
+        const finals = historyModules(rec);
+        if (finals.length > 0) live.modules = mergeSnapshotModules(live.modules, finals);
+      }
       // Enriched history may carry the engine requestId — rebind a journal stub for SSE.
       const liveId = rec.requestId ?? rec.jid;
       if (rec.running && typeof liveId === 'number' && liveId > 0) live.id = liveId;
-      if (typeof rec.progress === 'number') live.progressPercent = rec.progress;
+      // Prefer engine admission time over browser receipt of a late request-start.
+      if (typeof rec.startedAt === 'number' && rec.startedAt > 0) {
+        if (live.startedAt == null || rec.startedAt < live.startedAt) live.startedAt = rec.startedAt;
+      }
+      noteStartAnchor(live, rec, Date.now());
+      if (typeof rec.progress === 'number') {
+        live.progressPercent = rec.progress;
+        const floor = Math.min(99, Math.round(rec.progress));
+        if (typeof live.peakPct !== 'number' || floor > live.peakPct) live.peakPct = floor;
+      }
+      if (typeof rec.numerator === 'number') live.progressNum = rec.numerator;
+      if (typeof rec.denominator === 'number' && rec.denominator > 0) live.progressDen = rec.denominator;
+      applyLiveEtaFields(live, rec);
+      // Enriched mid-flight modules/tasks fill empty phase chains (journal stub is empty until complete).
+      if (rec.running && (!live.modules || live.modules.length === 0)) {
+        const mods = historyModules(rec);
+        if (mods.length > 0) live.modules = mods;
+      }
       continue;
     }
     if (cards.some((c) => c.id === 'h:' + rec.id)) continue; // already seeded
@@ -350,7 +551,7 @@ function historyCard(rec) {
   let progressPercent = null;
   if (typeof rec.progress === 'number') progressPercent = rec.progress;
   else if (typeof rec.progressPercent === 'number') progressPercent = rec.progressPercent;
-  return {
+  const card = {
     id,
     historyId: rec.id,
     buildNumber: rec.buildNumber || null,
@@ -360,6 +561,7 @@ function historyCard(rec) {
     projectId: rec.projectId || null,
     state: running ? 'running' : 'finished',
     startedAt: rec.startedAt ?? null,
+    startedAtClient: null,
     finishedAt: running ? null : rec.finishedAt ?? null,
     millis: running ? null : rec.millis ?? null,
     cancelled: !!rec.cancelled,
@@ -369,12 +571,47 @@ function historyCard(rec) {
     mods: {},
     planWeight: 0,
     progressPercent,
-    progressNum: 0,
-    progressDen: 0,
+    progressNum: typeof rec.numerator === 'number' ? rec.numerator : 0,
+    progressDen: typeof rec.denominator === 'number' ? rec.denominator : 0,
+    peakPct: typeof progressPercent === 'number' ? Math.min(99, Math.round(progressPercent)) : undefined,
     etaMillis: typeof rec.etaMillis === 'number' ? rec.etaMillis : null,
     etaAt: null,
     io: rec.io ? normalizeIo(rec.io) : null,
   };
+  if (running) applyLiveEtaFields(card, rec);
+  return card;
+}
+
+/**
+ * Apply engine residual / R0 fields from an enriched history row (or equivalent) so countdown and
+ * clock progress match a tab that watched from request-start. {@code remainingMs} is current as of
+ * this response — stamp residualAt to now so deadline = elapsed + remaining.
+ */
+function applyLiveEtaFields(card, rec) {
+  if (!card || !rec) return;
+  const rem = typeof rec.remainingMs === 'number' && rec.remainingMs >= 0 ? rec.remainingMs : null;
+  const now = Date.now();
+  // Latch the client-epoch anchor when the payload carries serverNow (no-op otherwise) so the
+  // r0At seeds below land in the client epoch (JK-1839).
+  noteStartAnchor(card, rec, now);
+  if (rem != null) {
+    card.residualRemainingMs = rem;
+    card.residualAt = now;
+  }
+  if (card.r0Ms == null) {
+    if (typeof rec.R0 === 'number' && rec.R0 > 0) {
+      card.r0Ms = rec.R0;
+      card.r0At = startAnchor(card) ?? now;
+    } else if (rem != null && rem > 0 && startAnchor(card) != null) {
+      // No original R0 on the wire: synthesize total ≈ elapsed + remaining so auto clock mode
+      // engages and paints elapsed/(elapsed+remaining) instead of a 0% late-join flash.
+      card.r0Ms = Math.max(rem, now - startAnchor(card) + rem);
+      card.r0At = startAnchor(card);
+    } else if (rem != null && rem > 0) {
+      card.r0Ms = rem;
+      card.r0At = now;
+    }
+  }
 }
 
 /**
@@ -441,79 +678,132 @@ export function fmtBytes(bytes) {
 function historyDiags(diags, dir) {
   return (diags || [])
     .filter((d) => d.severity !== 'warning' && (d.dir || '') === (dir || ''))
-    .map((d) => ({
-      step: d.task || d.step || '',
-      code: d.code || '',
-      message: d.message || '',
-      test: d.test || '',
-      exceptionClass: d.exceptionClass || '',
-    }));
+    .map((d) => normalizeDiagnostic(d));
+}
+
+/** Normalize a wire/journal diagnostic into the client shape (incl. test-failure enrichment). */
+export function normalizeDiagnostic(d) {
+  const snippet = Array.isArray(d.snippet)
+    ? d.snippet.map((s) => String(s))
+    : [];
+  return {
+    step: d.task || d.step || '',
+    code: d.code || '',
+    message: d.message || '',
+    test: d.test || '',
+    exceptionClass: d.exceptionClass || '',
+    module: d.module || '',
+    engine: d.engine || '',
+    className: d.class || d.className || '',
+    method: d.method || '',
+    stack: d.stack || (d.throwable && d.throwable.stack) || '',
+    file: d.file || '',
+    line: typeof d.line === 'number' ? d.line : 0,
+    snippetStart: typeof d.snippetStart === 'number' ? d.snippetStart : 0,
+    snippet,
+  };
 }
 
 /**
  * Module rows for a persisted record, matching the live card shape (each with its own step chain).
  * A workspace record has `modules[]` each carrying `steps`; a single-project record has no modules
  * and its steps at the top level — synthesize one row from them so backfilled cards match live.
+ * In-flight enriched rows may include {@code RUN} tasks and unfinished modules (no success yet).
  */
 function historyModules(rec) {
+  const running = !!rec.running;
   const toSteps = (ps) =>
-    (ps || []).map((p) => ({
-      name: p.name || '?',
-      state: stepState(p.status),
-      phase: p.stage || p.group || p.phase || '',
-      // Journal tasks always carry millis (0 when unknown); keep null only if the field is absent.
-      millis: typeof p.millis === 'number' ? p.millis : null,
-      message: '',
-    }));
+    (ps || []).map((p) => {
+      // Absent or negative millis = unknown duration (renders plain); 0 is the true-no-op
+      // signal that renders dashed (JK-1855 — the journal no longer stamps unknown as 0).
+      const millis = typeof p.millis === 'number' && p.millis >= 0 ? p.millis : null;
+      return {
+        name: p.name || '?',
+        state: stepState(p.status, millis),
+        phase: p.stage || p.group || p.phase || '',
+        
+        millis,
+        message: '',
+      };
+    });
   // finishedAt / startedAt give a stable lastActivity for display order after backfill.
   const activity = rec.finishedAt || rec.startedAt || 0;
   if ((rec.modules || []).length > 0) {
     return rec.modules.map((m, i) => {
       const steps = toSteps(m.tasks || m.steps);
-      return {
+      let state;
+      if (typeof m.finished === 'boolean') {
+        // Engine's explicit lifecycle bit (JK-1846): success=false alone was ambiguous between
+        // "still running" and "failed", and a module-level failure with no FAIL task was
+        // misclassified as running by the status-guessing below.
+        state = !m.finished
+          ? steps.some((s) => s.state === 'failed')
+            ? 'failed'
+            : 'running'
+          : m.success
+            ? m.didWork === false
+              ? 'checked'
+              : 'success'
+            : 'failed';
+      } else if (running && !m.success && steps.some((s) => s.state === 'running')) {
+        state = 'running';
+      } else if (running && !m.success && steps.length > 0 && !steps.every((s) => s.state === 'failed' || s.state === 'cancelled')) {
+        // Enriched mid-flight module: finished steps only so far, still in progress.
+        state = steps.some((s) => s.state === 'failed') ? 'failed' : 'running';
+      } else if (m.success) {
+        state = 'success';
+      } else if (steps.some((s) => s.state === 'failed')) {
+        state = 'failed';
+      } else if (rec.cancelled || steps.some((s) => s.state === 'cancelled')) {
+        state = 'cancelled';
+      } else if (running) {
+        state = 'running';
+      } else {
+        state = 'failed';
+      }
+      const row = {
         dir: m.dir || '',
         coord: m.coord || null,
-        // FAIL beats cancel; cancel-only modules (user kill mid-flight) stay cancelled.
-        state: m.success
-          ? 'success'
-          : steps.some((s) => s.state === 'failed')
-            ? 'failed'
-            : rec.cancelled || steps.some((s) => s.state === 'cancelled')
-              ? 'cancelled'
-              : 'failed',
+        state,
         millis: m.millis ?? null,
         steps,
         diagnostics: historyDiags(rec.diagnostics, m.dir || ''),
         // Preserve journal order as a tie-break (later modules slightly higher lastActivity).
         lastActivity: activity + i,
       };
+      // Carry the engine's cache-check bit so checked rendering survives merges (JK-1834/1846).
+      if (typeof m.didWork === 'boolean') row.didWork = m.didWork;
+      return row;
     });
   }
   // Single-project: no modules, steps at top level. Its diagnostics live in the "" bucket, so take
   // every error the record carries (there is only one module to own them).
   const steps = toSteps(rec.tasks || rec.steps);
-  return [{
-    dir: rec.dir || '',
-    coord: rec.coord || null,
-    // FAIL steps beat a cancel bit (journal/EOF races used to stamp cancelled on test failures).
-    state: steps.some((s) => s.state === 'failed')
+  if (steps.length === 0 && running) return []; // empty stub — wait for SSE / rehydrate phases
+  let state;
+  if (running) {
+    // Any failed step marks the run; otherwise it is running (the zero-step stub returned above).
+    state = steps.some((s) => s.state === 'failed') ? 'failed' : 'running';
+  } else {
+    state = steps.some((s) => s.state === 'failed')
       ? 'failed'
       : rec.cancelled
         ? 'cancelled'
         : rec.success === false
           ? 'failed'
-          : 'success',
+          : 'success';
+  }
+  return [{
+    // Live single-plan events use the empty SINGLE_PLAN_DIR; keep mid-flight seeds on the same
+    // key so SSE rehydrate does not open a second module row next to a history-seeded chain.
+    dir: running ? '' : (rec.dir || ''),
+    coord: rec.coord || null,
+    state,
     millis: rec.millis ?? null,
     steps,
     diagnostics: (rec.diagnostics || [])
       .filter((d) => d.severity !== 'warning')
-      .map((d) => ({
-        step: d.task || d.step || '',
-        code: d.code || '',
-        message: d.message || '',
-        test: d.test || '',
-        exceptionClass: d.exceptionClass || '',
-      })),
+      .map((d) => normalizeDiagnostic(d)),
     lastActivity: activity,
   }];
 }
@@ -592,7 +882,15 @@ function phaseState(steps) {
   if (steps.some((s) => s.state === 'running')) return 'running';
   if (steps.every((s) => s.state === 'skipped')) return 'skipped';
   if (steps.every((s) => s.state === 'skipped' || s.state === 'cancelled')) return 'cancelled';
-  return 'success'; // all terminal, at least one success
+  // Idle bookkeeping only (explicit 0ms success + skips): paint the phase as skipped so
+  // Compile/Generate with a skipped compile-java and a 0ms write-stamp is not solid "success".
+  // Missing millis is not treated as idle (history/tests often omit duration).
+  // (No 'checked' alternative here: stepState never yields it — checked is a MODULE state from
+  // module-finish didWork=false; the step-level clause was dead, JK-1858.)
+  if (steps.every((s) => s.state === 'skipped' || (s.state === 'success' && s.millis === 0))) {
+    return 'skipped';
+  }
+  return 'success'; // all terminal, at least one success with real wall-clock
 }
 
 /**
@@ -777,16 +1075,25 @@ function moduleOrderRank(m) {
   return 2;
 }
 
-/** Engine StepStatus → chain-node state. */
-function stepState(status) {
+/**
+ * Engine StepStatus → chain-node state. {@code millis === 0} SUCCESS is painted skipped: pure
+ * no-ops (stamp unchanged, empty generate, ensure-jdk already present) often still land as
+ * SUCCESS when older engines omit {@code ctx.cached()}; 0ms wall matches the skip mental model.
+ */
+function stepState(status, millis) {
   switch (status) {
     case 'SUCCESS':
+    case 'success':
+      if (millis === 0) return 'skipped';
       return 'success';
     case 'FAIL':
+    case 'failed':
       return 'failed';
     case 'CANCELLED':
+    case 'cancelled':
       return 'cancelled';
     case 'SKIPPED':
+    case 'skipped':
       return 'skipped';
     default:
       return 'running';
@@ -795,7 +1102,8 @@ function stepState(status) {
 
 /**
  * Live detail after the running phase node (CLI tree-row parity). Strips a leading
- * {@code module :: } prefix when the engine embeds the coordinate in test labels.
+ * {@code module :: } prefix when the engine embeds the coordinate in test labels, and
+ * shortens any package FQCNs so the UI never paints wire-shaped type names.
  */
 export function detailForDisplay(module, message) {
   if (message == null || message === '') return '';
@@ -804,7 +1112,7 @@ export function detailForDisplay(module, message) {
   if (mod && msg.startsWith(mod + ' :: ')) {
     msg = msg.slice(mod.length + 4).trim();
   }
-  return msg;
+  return shortDisplayLabel(msg);
 }
 
 /**
@@ -837,10 +1145,11 @@ export function looksLikeJavaMember(s) {
  * Color segments for a live step detail (CLI {@code colorDetail} roles).
  * Each segment is {@code { text, cls }} with cls in:
  * {@code det-type | det-fn | det-num | det-path | det-coord | det-mid | det-dim}.
+ * FQCNs in the text are shortened before segmentation.
  */
 export function detailSegments(detail) {
   if (detail == null || detail === '') return [];
-  let body = String(detail);
+  let body = shortDisplayLabel(String(detail));
   let worker = '';
   // progressLabel appends "  [w2]" — keep it outside the Java highlighter.
   const w = body.lastIndexOf('  [w');
@@ -899,4 +1208,209 @@ function proseSegments(text) {
     else if (m[5] != null) segs.push({ text: m[5], cls: 'det-mid' });
   }
   return segs;
+}
+
+// ---- test-failure report (CLI TestFailureHighlight parity, no thick rail) ----
+
+/** Simple class name from FQCN. */
+export function simpleTypeName(fqcn) {
+  if (!fqcn) return '';
+  const s = String(fqcn);
+  const d = s.lastIndexOf('.');
+  return d >= 0 ? s.slice(d + 1) : s;
+}
+
+/**
+ * Human-facing member label: drop package FQCNs so the UI never paints wire-shaped names.
+ * {@code cc.jumpkick.FooTest.bar(java.nio.file.Path)} → {@code FooTest.bar(Path)}.
+ * Preserves a trailing {@code  [wN]} worker tag when present. Leaves ordinary prose, versions,
+ * and jar names untouched.
+ */
+export function shortDisplayLabel(raw) {
+  if (raw == null || raw === '') return raw == null ? '' : raw;
+  let worker = '';
+  let body = String(raw).trim();
+  const w = body.lastIndexOf('  [w');
+  if (w > 0 && body.endsWith(']')) {
+    worker = body.slice(w);
+    body = body.slice(0, w).trim();
+  }
+  if (!looksLikeJavaishLabel(body)) return worker ? body + worker : body;
+  body = simplifyMethodParams(body);
+  const paren = body.indexOf('(');
+  const searchEnd = paren >= 0 ? paren : body.length;
+  const dot = body.lastIndexOf('.', searchEnd - 1);
+  if (dot > 0 && dot < body.length - 1) {
+    const after = body.slice(dot + 1, searchEnd);
+    if (after && (/^[a-z_]/.test(after) || after.startsWith('<'))) {
+      const cls = simpleTypeName(body.slice(0, dot));
+      const method = simplifyMethodParams(body.slice(dot + 1));
+      body = cls ? cls + '.' + method : method;
+    } else {
+      body = simpleTypeName(body.slice(0, searchEnd)) + body.slice(searchEnd);
+    }
+  }
+  return worker ? body + worker : body;
+}
+
+/** True for Java member / type labels we may shorten — not versions, jar names, or free prose. */
+export function looksLikeJavaishLabel(body) {
+  if (!body) return false;
+  // Spaces only allowed inside a trailing param list: Foo.bar(A, B).
+  const open = body.indexOf('(');
+  const head = open >= 0 ? body.slice(0, open) : body;
+  if (head.indexOf(' ') >= 0) return false;
+  if (open >= 0) {
+    const close = body.lastIndexOf(')');
+    if (close < open) return false;
+    if (close + 1 < body.length && body.slice(close + 1).indexOf(' ') >= 0) return false;
+  }
+  const c0 = body[0];
+  if (!/[A-Za-z_$]/.test(c0)) return false;
+  if (open >= 0) {
+    return body.indexOf('.') >= 0 || /[A-Z]/.test(c0);
+  }
+  if (body.indexOf('.') < 0) return /[A-Z]/.test(c0);
+  return /^(?:[a-z][\w$]*\.)*[A-Z][\w$]*(?:\.[A-Za-z_][\w$]*)?$/.test(body);
+}
+
+/** {@code SimpleClass.method()} / {@code SimpleClass.method(Path)} — package stripped, params simplified. */
+export function shortTestLabel(d) {
+  let cls = simpleTypeName(d.className || d.class || '');
+  let method = (d.method || d.test || '').trim();
+  const gt = method.lastIndexOf(' > ');
+  if (gt >= 0) method = method.slice(gt + 3).trim();
+  method = simplifyMethodParams(method);
+  // method may still look like Class.method / pkg.Class.method — peel the class segment.
+  const paren = method.indexOf('(');
+  let dot = method.lastIndexOf('.');
+  if (paren >= 0 && dot > paren) dot = method.lastIndexOf('.', paren);
+  if (dot > 0 && dot < method.length - 1) {
+    const after = method.slice(dot + 1, paren >= 0 ? paren : method.length);
+    if (after && (/^[a-z_]/.test(after) || after.startsWith('<'))) {
+      if (!cls) cls = simpleTypeName(method.slice(0, dot));
+      method = method.slice(dot + 1);
+    }
+  }
+  method = simplifyMethodParams(method);
+  if (method && method.indexOf('(') < 0 && method !== '(test run)') method += '()';
+  if (!cls && !method) return shortDisplayLabel(d.test || '') || '?';
+  if (!cls) return shortDisplayLabel(method);
+  if (!method) return cls;
+  return shortDisplayLabel(cls + '.' + method);
+}
+
+/** Keep {@code (…)} but strip package prefixes inside params. */
+export function simplifyMethodParams(method) {
+  if (!method) return '';
+  const open = method.indexOf('(');
+  const close = method.lastIndexOf(')');
+  if (open < 0 || close <= open) return String(method).trim();
+  const name = method.slice(0, open).trim();
+  const inside = method.slice(open + 1, close).trim();
+  if (!inside) return name + '()';
+  const parts = inside.split(',').map((raw) => {
+    let p = raw.trim();
+    let suffix = '';
+    while (p.endsWith('...') || p.endsWith('[]')) {
+      if (p.endsWith('...')) {
+        suffix = '...' + suffix;
+        p = p.slice(0, -3).trim();
+      } else {
+        suffix = '[]' + suffix;
+        p = p.slice(0, -2).trim();
+      }
+    }
+    const d = p.lastIndexOf('.');
+    if (d >= 0) p = p.slice(d + 1);
+    return p + suffix;
+  });
+  return name + '(' + parts.join(', ') + ')';
+}
+
+/**
+ * Parse AssertJ-style messages into { desc, expected, actual } or null.
+ * Matches CLI {@code tryPaintAssertJ}.
+ */
+export function parseAssertJMessage(message) {
+  if (!message) return null;
+  let rest = String(message).trim();
+  let desc = null;
+  if (rest.startsWith('[')) {
+    const close = rest.indexOf(']');
+    if (close > 0) {
+      desc = rest.slice(1, close).trim();
+      rest = rest.slice(close + 1).trim();
+    }
+  }
+  let m = rest.match(/^expected:\s*([^\n]+?)\s*\n\s*but was:\s*([^\n]+?)\s*$/i);
+  if (!m) {
+    m = rest.match(/^expected:\s*(.+?)\s+but was:\s*(.+?)\s*$/i);
+  }
+  if (!m) return null;
+  return { desc, expected: stripValueQuotes(m[1].trim()), actual: stripValueQuotes(m[2].trim()) };
+}
+
+function stripValueQuotes(v) {
+  if (!v) return '';
+  const s = v.trim();
+  if (s.length >= 2) {
+    const a = s[0];
+    const b = s[s.length - 1];
+    if ((a === '"' && b === '"') || (a === "'" && b === "'")) return s.slice(1, -1);
+    if (a === '<' && b === '>') return s.slice(1, -1);
+  }
+  return s;
+}
+
+/**
+ * Build a structured report model for a test-failure diagnostic (CLI flat report, no rail).
+ * Non-test-failure diags return null — callers keep the legacy one-line render.
+ *
+ * @param {object} d normalized diagnostic
+ * @param {{ count?: number, showHeader?: boolean }} [opts]
+ *   {@code count} — total test failures in the module (header "N test failed").
+ *   {@code showHeader} — false for subsequent failures in the same module so only the first
+ *   report carries {@code ✘ Test failure in … › N tests failed} (CLI multi-failure parity).
+ */
+export function testFailureReport(d, opts) {
+  if (!d || d.code !== 'test-failure') return null;
+  const count = opts && opts.count > 0 ? opts.count : 1;
+  const showHeader = !opts || opts.showHeader !== false;
+  const assertj = parseAssertJMessage(d.message);
+  const simpleEx = simpleTypeName(d.exceptionClass);
+  const label = shortTestLabel(d);
+  const snippet = Array.isArray(d.snippet) ? d.snippet : [];
+  const start = d.snippetStart > 0 ? d.snippetStart : 1;
+  const errorLine = d.line > 0 ? d.line : 0;
+  let maxCode = 0;
+  for (const line of snippet) maxCode = Math.max(maxCode, String(line).length);
+  const rows = snippet.map((code, i) => {
+    const num = start + i;
+    const text = String(code);
+    const pad = Math.max(0, maxCode - text.length);
+    return {
+      num,
+      error: errorLine > 0 && num === errorLine,
+      code: text,
+      pad,
+    };
+  });
+  return {
+    module: d.module || '',
+    count,
+    showHeader,
+    label,
+    assertj,
+    message: d.message || '',
+    file: d.file || '',
+    line: errorLine,
+    exceptionClass: simpleEx,
+    rows,
+  };
+}
+
+/** True when the diagnostic should use the rich test-failure report. */
+export function isTestFailureDiag(d) {
+  return !!(d && d.code === 'test-failure');
 }

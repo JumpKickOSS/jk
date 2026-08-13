@@ -8,8 +8,8 @@ import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Coord;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.util.JkDirs;
@@ -56,7 +56,7 @@ public final class RunCommand {
                         return "Executing";
                     }
                 },
-                r -> BuildPlanWedge.coord(coord),
+                r -> Coord.module(coord).renderLine(),
                 true,
                 true,
                 r -> {
@@ -293,7 +293,7 @@ public final class RunCommand {
     private static String mainIssueSentence(String issue, String coord) {
         Theme t = Theme.active();
         String main = Theme.colorize("main", t.highlight());
-        String head = Theme.colorize("Failed", t.error()) + " to run " + BuildPlanWedge.coord(coord) + ". ";
+        String head = Theme.colorize("Failed", t.error()) + " to run " + Coord.module(coord) + ". ";
         return head
                 + ("ambiguous".equals(issue)
                         ? "Multiple " + main + " methods found."
@@ -344,7 +344,7 @@ public final class RunCommand {
      * region settles to an exec-style chip so the run banner follows cleanly.
      */
     private cc.jumpkick.runtime.WorkspaceResult runWorkspaceLive(cc.jumpkick.runtime.WorkspaceRequest request) {
-        var view = cc.jumpkick.cli.tui.CommandManager.plan(CliOutput.stdout(), "Run", true);
+        var view = cc.jumpkick.cli.tui.JkManager.plan(CliOutput.stdout(), "Run", true);
         var agg = new cc.jumpkick.cli.run.AggregateContext(view);
         java.util.Map<Path, List<String>> buffers = new java.util.concurrent.ConcurrentHashMap<>();
         List<String> deferredOutput = java.util.Collections.synchronizedList(new ArrayList<>());

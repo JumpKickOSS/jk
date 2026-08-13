@@ -62,6 +62,13 @@ public final class LockManifestDigest {
                 // parse failure: still digest whatever files we found
             }
         }
+        // The workspace catalog layer (jk-libs.toml) changes how short names resolve to
+        // group:artifact, so a pin edit must flip staleness exactly like a manifest edit —
+        // without this the lock kept resolving the old GA while looking fresh (JK-1864).
+        Path libs = owner.resolve("jk-libs.toml");
+        if (Files.isRegularFile(libs)) {
+            parts.put("jk-libs.toml", normalized(Files.readAllBytes(libs)));
+        }
         return hashParts(parts);
     }
 

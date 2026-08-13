@@ -3,7 +3,7 @@ package cc.jumpkick.cli.run;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.tui.CommandManager;
+import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskStatus;
@@ -21,8 +21,7 @@ class AggregateModuleListenerTest {
     @Test
     void modules_drive_phase_tree_not_the_bar() {
         var buf = new ByteArrayOutputStream();
-        CommandManager view =
-                CommandManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Building", false);
+        JkManager view = JkManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Building", false);
         var agg = new AggregateContext(view);
 
         var a = new AggregateModuleListener(agg, "g:api", List.of(step("compile", "Compile")));
@@ -53,8 +52,7 @@ class AggregateModuleListenerTest {
     @Test
     void concurrent_modules_show_in_phase_tree() {
         var buf = new ByteArrayOutputStream();
-        CommandManager view =
-                CommandManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Building", false);
+        JkManager view = JkManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Building", false);
         var agg = new AggregateContext(view);
 
         var a = new AggregateModuleListener(agg, "g:api", List.of(step("compile", "Compile")), 10);
@@ -82,7 +80,7 @@ class AggregateModuleListenerTest {
     void skipped_step_does_not_paint_phase_failed() {
         // Cache-hit steps terminate SKIPPED; the live tree must not show ✘ Failed.
         var buf = new ByteArrayOutputStream();
-        CommandManager view = CommandManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Build", false);
+        JkManager view = JkManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Build", false);
         var agg = new AggregateContext(view);
 
         var a = new AggregateModuleListener(agg, "cc.jumpkick:jk-engine", List.of(step("run-tests", "Testing")));
@@ -104,7 +102,7 @@ class AggregateModuleListenerTest {
     @Test
     void real_fail_still_paints_phase_failed() {
         var buf = new ByteArrayOutputStream();
-        CommandManager view = CommandManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Build", false);
+        JkManager view = JkManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Build", false);
         var agg = new AggregateContext(view);
 
         var a = new AggregateModuleListener(agg, "g:api", List.of(step("compile-java", "Compile")));

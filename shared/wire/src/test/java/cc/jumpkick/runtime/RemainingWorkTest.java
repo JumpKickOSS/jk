@@ -20,19 +20,15 @@ class RemainingWorkTest {
         RemainingWork rw = RemainingWork.seed(costs, 200, 1, true, true);
         assertThat(rw.R0()).isEqualTo(200);
         assertThat(rw.remaining()).isEqualTo(200);
-        assertThat(rw.completeFraction()).isEqualTo(0.0);
 
         rw.moduleProgress(a, 0.5);
         assertThat(rw.remaining()).isEqualTo(150); // 50 + 100
-        assertThat(rw.completeFraction()).isEqualTo(0.25);
 
         rw.moduleComplete(a);
         assertThat(rw.remaining()).isEqualTo(100);
-        assertThat(rw.completeFraction()).isEqualTo(0.5);
 
         rw.moduleComplete(b);
         assertThat(rw.remaining()).isEqualTo(0);
-        assertThat(rw.completeFraction()).isEqualTo(1.0);
     }
 
     @Test
@@ -72,12 +68,10 @@ class RemainingWorkTest {
         RemainingWork rw = RemainingWork.seed(costs, 60_000, 1, true, true);
         assertThat(rw.R0()).isEqualTo(60_000);
         assertThat(rw.remaining()).isEqualTo(60_000);
-        assertThat(rw.completeFraction()).isEqualTo(0.0);
         rw.moduleComplete(a);
         assertThat(rw.remaining()).isEqualTo(30_000);
         rw.moduleComplete(b);
         assertThat(rw.remaining()).isEqualTo(0);
-        assertThat(rw.completeFraction()).isEqualTo(1.0);
     }
 
     @Test
@@ -85,6 +79,5 @@ class RemainingWorkTest {
         RemainingWork rw = RemainingWork.seed(List.of(), 45_000, 1, true, true);
         assertThat(rw.R0()).isEqualTo(45_000);
         assertThat(rw.remaining()).isEqualTo(45_000);
-        assertThat(rw.completeFraction()).isEqualTo(0.0);
     }
 }

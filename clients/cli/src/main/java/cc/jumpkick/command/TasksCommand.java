@@ -138,8 +138,7 @@ public final class TasksCommand implements CliCommand {
                         "Project build-logic task (anchor via SPI or AFTER_RESOURCES for *Build)"));
             }
             cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
-            for (String line :
-                    cc.jumpkick.cli.tui.BoxTable.render(title, List.of("Name", "Stage", "Description"), rows)) {
+            for (String line : cc.jumpkick.cli.tui.Table.render(title, List.of("Name", "Stage", "Description"), rows)) {
                 CliOutput.out(line);
             }
         }

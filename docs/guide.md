@@ -457,7 +457,10 @@ jk outdated                      # Current / Compatible / Latest table
 jk outdated --exclude-up-to-date # only rows that can move
 jk outdated --output json        # machine-readable array of rows
 jk why com.foo:bar               # why a pin is there
-jk tree                          # export/main/runtime graph (see -s for scopes)
+jk tree                          # workspace graph (even from a member dir)
+jk tree :foo                     # one workspace module
+jk tree foo/bar                  # module path
+jk tree -t                       # include transitive lockfile deps
 jk update                        # re-resolve on purpose, then commit jk-lock.toml
 ```
 
@@ -936,16 +939,18 @@ We deliberately do **not** ship Mill’s full lint matrix as first-party plugins
 
 ### Why did this rebuild?
 
-Use **`jk explain`**. It forecasts cache hit/miss per module and step (sources changed,
-dependency changed, options/classpath). When the lock is missing or stale it refreshes it first
+Use **`jk explain`**. It forecasts cache hit/miss per module and stage (sources changed,
+dependency changed, options/classpath). The default view is a build graph with tasks rolled up
+by phase (Compile / Test / Package / …, same taxonomy as the web dashboard) plus a summary table
+of rebuild effort (remaining ETA ÷ full-rebuild ETA) and ETA. When the lock is missing or stale it refreshes it first
 (same as `jk build`) so the plan and ETA match the live build countdown; a CommandWedge spinner
 shows while locking. Automatic refreshes are conservative — pinned versions stay put; only
 `jk lock` / `jk update` float to latest. Prefer this over Gradle build scans for day-to-day
 rebuild questions.
 
 ```bash
-jk explain                   # full plan: cached vs rebuild sections + ETA
-jk explain --verbose         # expand every step
+jk explain                   # build graph (phase rollup) + rebuild-surface table + ETA
+jk explain --verbose         # expand every task under each module
 jk explain --redo            # global flag: forecast full rebuild ETA (same as `jk build --redo`)
 # The ETA seed matches bare `jk build` bit-for-bit (same -w auto, -j, flags). See docs/perf/progress-contract.md.
 

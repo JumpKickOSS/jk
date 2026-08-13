@@ -18,7 +18,7 @@ class BoxTableRenderTest {
     @Test
     void renders_title_header_rows_and_close() {
         List<String> out =
-                BoxTable.render("Things", List.of("Name", "Value"), List.of(List.of("alpha", "1"), List.of("b", "22")));
+                Table.render("Things", List.of("Name", "Value"), List.of(List.of("alpha", "1"), List.of("b", "22")));
         // title + top divider + header + divider + 2 rows + close
         assertThat(out).hasSize(7);
         String plain = stripAnsi(String.join("\n", out));
@@ -31,21 +31,21 @@ class BoxTableRenderTest {
     @Test
     void header_cells_are_italic_when_ansi() {
         if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) return;
-        String cell = BoxTable.headerCell("Name");
+        String cell = Table.headerCell("Name");
         assertThat(cell)
                 .isEqualTo(
                         cc.jumpkick.cli.theme.Theme.colorize("Name", org.jline.utils.AttributedStyle.DEFAULT.italic()));
         // Full table: header row (index 2) carries italic; body does not restyle plain cells.
-        List<String> out = BoxTable.render("T", List.of("Name"), List.of(List.of("alpha")));
-        assertThat(out.get(2)).contains(BoxTable.headerCell("Name"));
+        List<String> out = Table.render("T", List.of("Name"), List.of(List.of("alpha")));
+        assertThat(out.get(2)).contains(Table.headerCell("Name"));
         assertThat(out.get(4)).contains("alpha");
-        assertThat(out.get(4)).doesNotContain(BoxTable.headerCell("alpha"));
+        assertThat(out.get(4)).doesNotContain(Table.headerCell("alpha"));
     }
 
     @Test
     void pads_short_rows_and_truncates_long_ones() {
         List<String> out =
-                BoxTable.render("T", List.of("A", "B"), List.of(List.of("only-a"), List.of("x", "y", "ignored")));
+                Table.render("T", List.of("A", "B"), List.of(List.of("only-a"), List.of("x", "y", "ignored")));
         String plain = stripAnsi(String.join("\n", out));
         assertThat(plain).contains("only-a");
         assertThat(plain).doesNotContain("ignored");
@@ -65,7 +65,7 @@ class BoxTableRenderTest {
 
     @Test
     void body_lines_share_one_visible_width() {
-        List<String> out = BoxTable.render("T", List.of("A"), List.of(List.of("wide-cell-content"), List.of("x")));
+        List<String> out = Table.render("T", List.of("A"), List.of(List.of("wide-cell-content"), List.of("x")));
         assertUniformWidth(out);
     }
 
@@ -74,7 +74,7 @@ class BoxTableRenderTest {
         // PlainAscii expands … → ... at the print boundary; render must account for the
         // expanded width up front so rows with truncated cells keep the rails aligned.
         withNoAnsi(() -> {
-            List<String> out = BoxTable.render(
+            List<String> out = Table.render(
                     "Build history",
                     List.of("Id", "Project"),
                     List.of(List.of("1", "very-long-project…"), List.of("2", "ok")));
@@ -89,20 +89,20 @@ class BoxTableRenderTest {
         // CJK chars are 1 UTF-16 unit but 2 terminal columns; width accounting must be
         // column-aware or the row overflows its rails.
         List<String> out =
-                BoxTable.render("T", List.of("Project", "Took"), List.of(List.of("构建工具", "1s"), List.of("app", "2s")));
+                Table.render("T", List.of("Project", "Took"), List.of(List.of("构建工具", "1s"), List.of("app", "2s")));
         assertUniformWidth(out);
     }
 
     @Test
     void long_title_widens_table_instead_of_overhanging() {
-        List<String> out = BoxTable.render(
+        List<String> out = Table.render(
                 "Tasks — some:very-long-module-name (deep/relative/path)", List.of("A"), List.of(List.of("x")));
         assertUniformWidth(out);
     }
 
     @Test
     void zero_rows_render_without_stray_divider() {
-        List<String> out = BoxTable.render("Empty", List.of("A", "B"), List.of());
+        List<String> out = Table.render("Empty", List.of("A", "B"), List.of());
         // title + top divider + header + close — no ├┼┤ between header and bottom border
         assertThat(out).hasSize(4);
         assertThat(stripAnsi(String.join("\n", out))).doesNotContain("┼");
@@ -114,7 +114,7 @@ class BoxTableRenderTest {
         // ⊛ (history cancelled), — (Tasks/Library-search titles + n/a durations), … (truncation)
         // must all be rewritten before the "ASCII-only" plain output leaves the renderer.
         withNoAnsi(() -> {
-            List<String> out = BoxTable.render(
+            List<String> out = Table.render(
                     "Tasks — g:n (path)",
                     List.of("", "Id", "Took"),
                     List.of(List.of("⊛", "42", "—"), List.of("✓", "43", "1.2s…")));

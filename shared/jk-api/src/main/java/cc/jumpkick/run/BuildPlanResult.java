@@ -62,16 +62,98 @@ public record BuildPlanResult(
     /**
      * Structured diagnostic from {@link TaskContext#warn} / {@link TaskContext#error}.
      *
-     * <p>{@code test} and {@code exceptionClass} carry the discrete parts of a test failure (the
-     * failing test's display name and the thrown exception's class) so structured consumers don't
-     * have to parse them back out of a glued {@code message}. Both are empty for diagnostics that
-     * aren't test failures.
+     * <p>Test failures carry split identity ({@code module}, {@code engine}, {@code className},
+     * {@code method}), {@code exceptionClass}, and full {@code stack}. Non-test diagnostics leave
+     * those empty. Legacy {@code test} is kept empty for new emits (prefer {@code module} +
+     * {@code method}).
      */
-    public record Diagnostic(String step, String code, String message, String test, String exceptionClass) {
+    public record Diagnostic(
+            String step,
+            String code,
+            String message,
+            String test,
+            String exceptionClass,
+            String module,
+            String engine,
+            String className,
+            String method,
+            String stack,
+            String file,
+            int line,
+            int snippetStart,
+            java.util.List<String> snippet) {
 
         /** Diagnostic with no test identity — the common case (javac, resolver, …). */
         public Diagnostic(String step, String code, String message) {
-            this(step, code, message, "", "");
+            this(step, code, message, "", "", "", "", "", "", "", "", 0, 0, java.util.List.of());
+        }
+
+        /** Legacy two-field test failure (display label + exception class). */
+        public Diagnostic(String step, String code, String message, String test, String exceptionClass) {
+            this(
+                    step,
+                    code,
+                    message,
+                    test == null ? "" : test,
+                    exceptionClass == null ? "" : exceptionClass,
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    0,
+                    0,
+                    java.util.List.of());
+        }
+
+        /** Full structured test failure (incl. optional source snippet). */
+        public Diagnostic(String step, String code, String message, TestFailureInfo failure) {
+            this(
+                    step,
+                    code,
+                    message == null ? (failure == null ? "" : failure.message()) : message,
+                    "",
+                    failure == null ? "" : failure.exceptionClass(),
+                    failure == null ? "" : failure.module(),
+                    failure == null ? "" : failure.engine(),
+                    failure == null ? "" : failure.className(),
+                    failure == null ? "" : failure.method(),
+                    failure == null ? "" : failure.stack(),
+                    failure == null ? "" : failure.file(),
+                    failure == null ? 0 : failure.line(),
+                    failure == null ? 0 : failure.snippetStart(),
+                    failure == null ? java.util.List.of() : failure.snippet());
+        }
+
+        public Diagnostic {
+            if (snippet == null) snippet = java.util.List.of();
+            else snippet = java.util.List.copyOf(snippet);
+            if (file == null) file = "";
+        }
+
+        public TestFailureInfo testFailure() {
+            if ((module == null || module.isEmpty())
+                    && (className == null || className.isEmpty())
+                    && (method == null || method.isEmpty())
+                    && (exceptionClass == null || exceptionClass.isEmpty())
+                    && (stack == null || stack.isEmpty())
+                    && (file == null || file.isEmpty())) {
+                return null;
+            }
+            return new TestFailureInfo(
+                    module,
+                    engine,
+                    className,
+                    method,
+                    exceptionClass,
+                    message,
+                    stack,
+                    0,
+                    file,
+                    line,
+                    snippetStart,
+                    snippet);
         }
     }
 }

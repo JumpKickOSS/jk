@@ -819,7 +819,8 @@ public final class JUnitLauncher {
                     listener.onDiscoveryTotal(Jsonl.intValue(json, "classes", 0), Jsonl.intValue(json, "tests", 0));
                 case "dynamic_registered" -> {
                     if ("TEST".equals(Jsonl.str(json, "type"))) {
-                        dynamicIds.add(Jsonl.str(json, "id"));
+                        String uid = identityKey(json);
+                        if (!uid.isEmpty()) dynamicIds.add(uid);
                     }
                 }
                 case "warning" -> listener.onWarning(Jsonl.str(json, "code"), Jsonl.str(json, "message"));
@@ -832,29 +833,30 @@ public final class JUnitLauncher {
 
         private void onStarted(String json) {
             boolean isTest = "TEST".equals(Jsonl.str(json, "type"));
-            listener.onTestStarted(Jsonl.str(json, "id"), Jsonl.str(json, "display"), isTest, workerId);
+            String id = identityKey(json);
+            String label = progressLabel(json);
+            listener.onTestStarted(id, label, isTest, eventWorker(json));
         }
 
         private void onFinished(String json) {
             boolean isTest = "TEST".equals(Jsonl.str(json, "type"));
-            String id = Jsonl.str(json, "id");
+            String id = identityKey(json);
             String status = Jsonl.str(json, "status");
-            String display = Jsonl.str(json, "display");
-            if (display == null) display = id;
+            String label = progressLabel(json);
             long duration = Jsonl.intValue(json, "duration_ms", 0);
-            boolean wasStatic = isTest && !dynamicIds.contains(id);
+            int w = eventWorker(json);
+            boolean wasStatic = isTest && (id.isEmpty() || !dynamicIds.contains(id));
+            String cls = classNameOf(json);
             if (isTest) {
-                String cls = classFromUniqueId(id);
                 if (!cls.isEmpty()) executedClasses.add(cls);
                 switch (status != null ? status : "") {
                     case "SUCCESSFUL" -> succeeded++;
-                    case "FAILED" -> captureFailure(id, display, json);
+                    case "FAILED" -> captureFailure(json, label, false);
                     case "ABORTED" -> skipped++;
                     default -> {}
                 }
             } else {
                 // Class (or suite) container wall — free duration_ms from the runner; no method walk.
-                String cls = classFromUniqueId(id);
                 if (!cls.isEmpty() && duration > 0 && "SUCCESSFUL".equals(status)) {
                     classWallMs.merge(cls, duration, Long::sum);
                 }
@@ -862,56 +864,119 @@ public final class JUnitLauncher {
                     // A container-level failure (class initializer / @BeforeAll / engine):
                     // no per-test event follows, so without capturing it the run would
                     // surface only as a bare "runner exited N". Record it with its stack.
-                    captureFailure(id, display + " (container)", json);
+                    captureFailure(json, label.isEmpty() ? "container" : label + " (container)", true);
                 }
             }
-            listener.onTestFinished(id, display, status, isTest, wasStatic, duration, workerId);
+            listener.onTestFinished(id, label, status, isTest, wasStatic, duration, w);
             if (isTest) {
                 String throwable = Jsonl.nested(json, "throwable");
                 if ("ABORTED".equals(status)) {
-                    if (xmlReport != null) xmlReport.recordSkipped(id, display, "aborted");
-                    if (mdReport != null) mdReport.recordSkipped(id, display, "aborted");
+                    if (xmlReport != null) xmlReport.recordSkipped(id, label, "aborted");
+                    if (mdReport != null) mdReport.recordSkipped(id, label, "aborted");
                 } else {
-                    if (xmlReport != null) xmlReport.recordFinished(id, display, duration, throwable);
-                    if (mdReport != null) mdReport.recordFinished(id, display, duration, throwable);
+                    if (xmlReport != null) xmlReport.recordFinished(id, label, duration, throwable);
+                    if (mdReport != null) mdReport.recordFinished(id, label, duration, throwable);
                 }
             }
         }
 
-        /** Record a FAILED test/container: count it and keep its summary + full stack. */
-        private void captureFailure(String id, String display, String json) {
+        /** Record a FAILED test/container: count it and keep identity + full stack. */
+        private void captureFailure(String json, String label, boolean container) {
             failed++;
             String throwableJson = Jsonl.nested(json, "throwable");
             String exClass = throwableJson != null ? Jsonl.str(throwableJson, "class") : null;
             if (exClass == null) exClass = "?";
             String message = throwableJson != null ? Jsonl.str(throwableJson, "message") : null;
             if (message == null) message = "";
-            // The runner emits the full stack trace under "stack"; keep it so the
-            // build can print it (we used to read only class + message).
-            String stack = throwableJson != null ? Jsonl.str(throwableJson, "stack") : null;
-            String className = classFromUniqueId(id);
+            String stack = readStack(throwableJson);
+            String className = classNameOf(json);
+            String method = methodOf(json);
+            String engine = engineOf(json);
+            String testName = !method.isEmpty() ? method : label;
+            if (container && !testName.endsWith("(container)")) {
+                testName = testName + " (container)";
+            }
+            int w = eventWorker(json);
             failures.add(new TestSummary.Failure(
-                    display, exClass, message, stack == null ? "" : stack, moduleLabel, className, workerId));
-            listener.onFailure(id, display, exClass, message, workerId);
+                    testName, exClass, message, stack, moduleLabel, className, w, engine, method));
+            listener.onFailure(identityKey(json), testName, exClass, message, stack, engine, className, method, w);
         }
 
         private void onSkipped(String json) {
             boolean isTest = "TEST".equals(Jsonl.str(json, "type"));
-            String id = Jsonl.str(json, "id");
-            boolean wasStatic = isTest && !dynamicIds.contains(id);
+            String id = identityKey(json);
+            boolean wasStatic = isTest && (id.isEmpty() || !dynamicIds.contains(id));
             if (isTest) {
                 skipped++;
-                String cls = classFromUniqueId(id);
+                String cls = classNameOf(json);
                 if (!cls.isEmpty()) executedClasses.add(cls);
             }
             String reason = Jsonl.str(json, "reason");
-            listener.onTestSkipped(
-                    id, Jsonl.str(json, "display"), reason != null ? reason : "", isTest, wasStatic, workerId);
+            String label = progressLabel(json);
+            int w = eventWorker(json);
+            listener.onTestSkipped(id, label, reason != null ? reason : "", isTest, wasStatic, w);
             if (isTest) {
-                String display = Jsonl.str(json, "display");
-                if (xmlReport != null) xmlReport.recordSkipped(id, display, reason);
-                if (mdReport != null) mdReport.recordSkipped(id, display, reason);
+                if (xmlReport != null) xmlReport.recordSkipped(id, label, reason);
+                if (mdReport != null) mdReport.recordSkipped(id, label, reason);
             }
+        }
+
+        /** Prefer split fields; fall back to uniqueId / legacy id / display. */
+        private static String identityKey(String json) {
+            String uid = Jsonl.str(json, "uniqueId");
+            if (uid != null && !uid.isBlank()) return uid;
+            String legacy = Jsonl.str(json, "id");
+            return legacy == null ? "" : legacy;
+        }
+
+        private static String progressLabel(String json) {
+            String method = methodOf(json);
+            if (!method.isEmpty()) return method;
+            String cls = classNameOf(json);
+            if (!cls.isEmpty()) {
+                int dot = cls.lastIndexOf('.');
+                return dot < 0 ? cls : cls.substring(dot + 1);
+            }
+            String display = Jsonl.str(json, "display");
+            if (display != null && !display.isBlank()) return display;
+            return identityKey(json);
+        }
+
+        private static String classNameOf(String json) {
+            String c = Jsonl.str(json, "testClass");
+            if (c != null && !c.isBlank()) return c;
+            return classFromUniqueId(identityKey(json));
+        }
+
+        private static String methodOf(String json) {
+            String m = Jsonl.str(json, "testMethod");
+            return m == null ? "" : m;
+        }
+
+        private static String engineOf(String json) {
+            String e = Jsonl.str(json, "testEngine");
+            if (e != null && !e.isBlank()) return e;
+            return engineFromUniqueId(identityKey(json));
+        }
+
+        /** Event worker field ({@code worker}, legacy {@code w}), else this aggregator's id. */
+        private int eventWorker(String json) {
+            int w = Jsonl.intValue(json, "worker", -1);
+            if (w < 0) w = Jsonl.intValue(json, "w", -1);
+            return w > 0 ? w : workerId;
+        }
+
+        /**
+         * {@code throwable.stack} as a single string. Accepts a string (preferred) or a legacy line
+         * array and joins it.
+         */
+        static String readStack(String throwableJson) {
+            if (throwableJson == null) return "";
+            String s = Jsonl.str(throwableJson, "stack");
+            if (s != null) return s;
+            java.util.List<String> lines = Jsonl.strArray(throwableJson, "stack");
+            if (lines.isEmpty()) return "";
+            return String.join("\n", lines);
         }
 
         synchronized TestSummary toResult(int exitCode) {
@@ -975,6 +1040,30 @@ public final class JUnitLauncher {
         int i = id.indexOf("[class:");
         if (i < 0) return "";
         int start = i + "[class:".length();
+        int end = id.indexOf(']', start);
+        if (end < 0) return "";
+        String outer = id.substring(start, end).trim();
+        // Nested: [class:Outer]/[nested-class:Inner] → Outer$Inner
+        StringBuilder sb = new StringBuilder(outer);
+        int from = end;
+        while (true) {
+            int n = id.indexOf("[nested-class:", from);
+            if (n < 0) break;
+            int ns = n + "[nested-class:".length();
+            int ne = id.indexOf(']', ns);
+            if (ne < 0) break;
+            sb.append('$').append(id, ns, ne);
+            from = ne + 1;
+        }
+        return sb.toString();
+    }
+
+    /** Extract engine id from {@code [engine:junit-jupiter]}. */
+    public static String engineFromUniqueId(String id) {
+        if (id == null || id.isBlank()) return "";
+        int i = id.indexOf("[engine:");
+        if (i < 0) return "";
+        int start = i + "[engine:".length();
         int end = id.indexOf(']', start);
         if (end < 0) return "";
         return id.substring(start, end).trim();

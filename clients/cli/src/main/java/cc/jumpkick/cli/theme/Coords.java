@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.theme;
 
+import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.model.Coordinate;
 import org.jline.utils.AttributedStyle;
 
@@ -31,14 +32,39 @@ public final class Coords {
         return Theme.active().brightCyan();
     }
 
+    /** {@code [coord-group]group[/]:[coord-name]artifact[/]:[coord-version]version[/]}. */
+    public static RichText richGav(String group, String artifact, String version) {
+        return richGa(group, artifact).plus(RichText.plain(":")).plus(RichText.styled(version, "coord-version"));
+    }
+
+    public static RichText richGa(String group, String artifact) {
+        return RichText.styled(group, "coord-group")
+                .plus(RichText.plain(":"))
+                .plus(RichText.styled(artifact, "coord-name"));
+    }
+
+    public static RichText richModule(String moduleKey, String version) {
+        if (moduleKey == null || moduleKey.isEmpty()) return RichText.empty();
+        int colon = moduleKey.indexOf(':');
+        RichText base = colon < 0
+                ? RichText.styled(moduleKey, "bright-cyan")
+                : richGa(moduleKey.substring(0, colon), moduleKey.substring(colon + 1));
+        if (version == null || version.isEmpty()) return base;
+        return base.plus(RichText.plain(":")).plus(RichText.styled(version, "coord-version"));
+    }
+
+    public static RichText richModule(String moduleKey) {
+        return richModule(moduleKey, null);
+    }
+
     /** {@code [blue]group[/]:[cyan]artifact[/]:[bright-blue]version[/]}. */
     public static String gav(String group, String artifact, String version) {
-        return ga(group, artifact) + ":" + Theme.colorize(version, versionStyle());
+        return richGav(group, artifact, version).render();
     }
 
     /** {@code [blue]group[/]:[cyan]artifact[/]} (no version). */
     public static String ga(String group, String artifact) {
-        return Theme.colorize(group, groupStyle()) + ":" + Theme.colorize(artifact, artifactStyle());
+        return richGa(group, artifact).render();
     }
 
     /** Color a {@link Coordinate} as {@code group:artifact:version}. */
@@ -48,12 +74,12 @@ public final class Coords {
 
     /** Color the version on its own — cyan. */
     public static String version(String version) {
-        return Theme.colorize(version, versionStyle());
+        return RichText.styled(version, "coord-version").render();
     }
 
     /** An artifact short-name / library on its own — bright-cyan. */
     public static String shortName(String name) {
-        return Theme.colorize(name, shortNameStyle());
+        return RichText.styled(name, "bright-cyan").render();
     }
 
     /**
@@ -62,13 +88,7 @@ public final class Coords {
      * {@code null}/blank version omits the version segment.
      */
     public static String module(String moduleKey, String version) {
-        int colon = moduleKey.indexOf(':');
-        String colored =
-                colon < 0 ? shortName(moduleKey) : ga(moduleKey.substring(0, colon), moduleKey.substring(colon + 1));
-        if (version != null && !version.isEmpty()) {
-            colored += ":" + Theme.colorize(version, versionStyle());
-        }
-        return colored;
+        return richModule(moduleKey, version).render();
     }
 
     /** Color a {@code group:artifact} module key with no version. */

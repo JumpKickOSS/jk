@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.run;
 
-import cc.jumpkick.cli.tui.CommandManager;
+import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
@@ -12,13 +12,13 @@ import java.util.List;
 
 /**
  * Feeds one workspace module's step/tree events into the shared {@link AggregateContext}'s {@link
- * CommandManager}. Aggregate bar math is engine-owned — this listener does not update
+ * JkManager}. Aggregate bar math is engine-owned — this listener does not update
  * {@link LiveProgress} or workspace percent.
  */
 public final class AggregateModuleListener implements BuildPlanListener {
 
     private final AggregateContext agg;
-    private final CommandManager cm;
+    private final JkManager cm;
     private final String module;
     private final List<Task> steps;
 
@@ -82,10 +82,12 @@ public final class AggregateModuleListener implements BuildPlanListener {
         if (TestFailureHighlight.isHeader(line)) {
             inTestFailure = true;
             testFailStream.reset();
-            return TestFailureHighlight.paintHeader();
+            testFailStream.line(line);
+            return null; // flushed on stepFinish
         }
         if (inTestFailure) {
-            return testFailStream.line(line);
+            testFailStream.line(line);
+            return null;
         }
         return StackTraceHighlight.line(line);
     }
@@ -107,6 +109,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
     }
 
     private void emit(String line) {
+        if (line == null) return; // source-snippet buffer mid-stream
         if (outBuffer != null) {
             synchronized (outBuffer) {
                 outBuffer.add(line);
@@ -129,7 +132,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
     @Override
     public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
         if (inTestFailure && outBuffer == null) {
-            emit(DiagnosticReport.errorFooter());
+            for (String painted : testFailStream.finish()) emit(painted);
         }
         inTestFailure = false;
         testFailStream.reset();

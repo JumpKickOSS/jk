@@ -67,3 +67,20 @@ tasks.processResources {
         rename { "minified.jk-plugin.toml" }
     }
 }
+
+// SelfHostingTomlTest guards the workspace's own manifests: catalog pins (JK-1840) and the
+// manifests-sha256 re-lock stamp (JK-1863). Without these inputs an edit to jk.toml /
+// jk-libs.toml / jk-lock.toml leaves :core:test UP-TO-DATE and the guard silently never reruns
+// (same trap :web documents for fold.js).
+tasks.named<Test>("test") {
+    inputs.files(
+        rootProject.file("jk-lock.toml"),
+        rootProject.file("jk-libs.toml"),
+    )
+    inputs.files(
+        rootProject.fileTree(rootProject.projectDir) {
+            include("jk.toml", "*/*/jk.toml")
+            exclude("**/build/**", ".git/**")
+        }
+    )
+}

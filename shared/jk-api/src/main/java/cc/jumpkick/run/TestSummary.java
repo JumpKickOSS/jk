@@ -38,39 +38,60 @@ public record TestSummary(
     }
 
     /**
-     * One failed test. {@code exceptionClass} and {@code message} are the failure's throwable split
-     * into discrete fields; either may be empty when the failure carries no throwable (e.g. runner
-     * exited N). {@code details} is the full stack (empty when none).
+     * One failed test. Identity comes from the runner's split uniqueId ({@code testEngine} /
+     * {@code className} / {@code method}); {@code exceptionClass} + {@code message} + {@code stack}
+     * are the throwable. Empty module/class and {@code workerId <= 0} mean unknown / serial.
      *
-     * <p>{@code module} / {@code className} / {@code workerId} enrich multi-module / multi-worker
-     * failure lines. Empty module/class and {@code workerId <= 0} mean unknown / single
-     * worker.
+     * <p>{@code testName} is a short label for progress/headlines (usually the method segment), not a
+     * Jupiter display-name decision from the plugin.
      */
     public record Failure(
             String testName,
             String exceptionClass,
             String message,
-            String details,
+            String stack,
             String module,
             String className,
-            int workerId) {
+            int workerId,
+            String testEngine,
+            String method) {
 
         public Failure {
             if (testName == null) testName = "";
             if (exceptionClass == null) exceptionClass = "";
             if (message == null) message = "";
-            if (details == null) details = "";
+            if (stack == null) stack = "";
             if (module == null) module = "";
             if (className == null) className = "";
+            if (testEngine == null) testEngine = "";
+            if (method == null) method = "";
         }
 
-        /** Compat ctor without module / class / worker. */
-        public Failure(String testName, String exceptionClass, String message, String details) {
-            this(testName, exceptionClass, message, details, "", "", 0);
+        /** Compat: no module / class / worker / engine. */
+        public Failure(String testName, String exceptionClass, String message, String stack) {
+            this(testName, exceptionClass, message, stack, "", "", 0, "", "");
+        }
+
+        /** Compat: module/class/worker without engine/method. */
+        public Failure(
+                String testName,
+                String exceptionClass,
+                String message,
+                String stack,
+                String module,
+                String className,
+                int workerId) {
+            this(testName, exceptionClass, message, stack, module, className, workerId, "", "");
+        }
+
+        /** @deprecated use {@link #stack()} — kept as an alias for older call sites. */
+        @Deprecated
+        public String details() {
+            return stack;
         }
 
         /**
-         * One-line label for console: {@code module:: display [wN]}. Module and worker omitted when
+         * One-line label for console: {@code module :: method [wN]}. Module and worker omitted when
          * unknown / serial.
          */
         public String headline() {
@@ -78,11 +99,25 @@ public record TestSummary(
             if (!module.isBlank()) {
                 sb.append(module).append(" :: ");
             }
-            sb.append(testName);
+            String label = !method.isBlank() ? method : (!testName.isBlank() ? testName : className);
+            sb.append(label);
             if (workerId > 0) {
                 sb.append("  [w").append(workerId).append(']');
             }
             return sb.toString();
+        }
+
+        /** Structured form for diagnostics / client wire (no source snippet). */
+        public TestFailureInfo toInfo() {
+            return new TestFailureInfo(
+                    module,
+                    testEngine,
+                    className,
+                    method.isBlank() ? testName : method,
+                    exceptionClass,
+                    message,
+                    stack,
+                    workerId);
         }
     }
 }

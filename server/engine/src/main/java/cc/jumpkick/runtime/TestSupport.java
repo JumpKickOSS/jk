@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -155,55 +156,146 @@ public final class TestSupport {
      *
      * <pre>
      * Test Failure
-     * 1 test failed:
+     * module: group:artifact
+     * 1 test failed
      *
-     *   FAILED  group:artifact :: method()
-     *     class: fqcn
-     *     java.lang.AssertionError
+     * FAILED SimpleClass.method
      *
-     * Expecting actual:
-     *   21670L
-     * …
-     * 	at …
+     * [assertj description]
+     * expected: "42"
+     *  but was: "41"
+     *
+     * @@source path=… line=N start=S lang=java
+     * @@src …
+     * @@src-end
+     * › AssertionFailedError thrown at line 23
      * </pre>
      *
-     * <p>Returns empty when nothing failed. The leading {@code Test Failure} title is a fixed sentinel
-     * the CLI rewrites into a red pill + "Failure".
+     * <p>Simple class/method names only (no package FQCNs, no method params). When {@code moduleDir}
+     * is set, a 7-line source snippet is resolved from the stack. The leading {@code Test Failure}
+     * title is a fixed sentinel the CLI rewrites into a red pill + header line.
      */
     public static List<String> renderFailures(TestSummary result) {
+        return renderFailures(result, null);
+    }
+
+    /** As {@link #renderFailures(TestSummary)} with module-dir source resolution. */
+    public static List<String> renderFailures(TestSummary result, Path moduleDir) {
         List<String> out = new ArrayList<>();
         List<TestSummary.Failure> failures = result.failures();
         if (failures.isEmpty()) return out;
         // No leading blank — the CLI leaves a single blank under the prompt / live region.
         out.add("Test Failure");
-        out.add(failures.size() + " test" + (failures.size() == 1 ? "" : "s") + " failed:");
+        // First non-blank module wins for the header (multi-module reports still list each FAILED).
+        String module = failures.stream()
+                .map(TestSummary.Failure::module)
+                .filter(m -> m != null && !m.isBlank())
+                .findFirst()
+                .orElse("");
+        if (!module.isBlank()) out.add("module: " + module);
+        out.add(failures.size() + " test" + (failures.size() == 1 ? "" : "s") + " failed");
         for (TestSummary.Failure f : failures) {
             out.add("");
-            // module:: display [wN] so parallel monorepo flakes are locatable.
-            out.add("  FAILED  " + f.headline());
-            if (f.className() != null
-                    && !f.className().isBlank()
-                    && !f.headline().contains(f.className())) {
-                out.add("    class: " + f.className());
+            out.add("FAILED " + shortTestLabel(f));
+            Optional<TestFailureSource.Snippet> snippet = Optional.empty();
+            if (moduleDir != null) {
+                snippet = TestFailureSource.resolve(moduleDir, f.className(), f.stack());
             }
-            if (!f.exceptionClass().isEmpty()) {
-                out.add("    " + f.exceptionClass());
-            }
-            // Assertion / failure body (prefer discrete message; else extract from stack).
+            // Assertion body, then source snippet, then exception locus under the snippet.
             List<String> body = failureBodyLines(f);
             if (!body.isEmpty()) {
                 out.add("");
                 out.addAll(body);
             }
-            // Stack frames only (skip exception header already printed above).
-            List<String> frames = failureStackFrames(f);
-            if (!frames.isEmpty()) {
+            if (snippet.isPresent()) {
                 out.add("");
-                out.addAll(frames);
+                out.addAll(TestFailureSource.encodeMarkers(snippet.get()));
+                String ex = simpleTypeName(f.exceptionClass());
+                if (ex.isEmpty()) ex = "Error";
+                out.add("    " + ex + " thrown at line " + snippet.get().errorLine());
+            } else if (!f.exceptionClass().isEmpty()) {
+                out.add("");
+                out.add("    " + simpleTypeName(f.exceptionClass()));
+                List<String> frames = failureStackFrames(f);
+                if (!frames.isEmpty()) {
+                    out.add("");
+                    out.addAll(frames);
+                }
+            } else {
+                List<String> frames = failureStackFrames(f);
+                if (!frames.isEmpty()) {
+                    out.add("");
+                    out.addAll(frames);
+                }
             }
         }
         // No trailing blank — the settle wedge ("✘ Build …") follows immediately.
         return out;
+    }
+
+    /**
+     * {@code SimpleClass.method()} / {@code SimpleClass.method(Path)} — no package FQCN; keep
+     * parentheses (and param type names when present). Falls back to the failure's test name when
+     * class/method are unknown.
+     */
+    static String shortTestLabel(TestSummary.Failure f) {
+        String cls = simpleClassName(f.className());
+        String method = f.method();
+        if (method == null || method.isBlank()) method = f.testName();
+        method = method == null ? "" : method.strip();
+        // "Foo > bar()" / "Foo.bar()" → method part only
+        int gt = method.lastIndexOf(" > ");
+        if (gt >= 0) method = method.substring(gt + 3).strip();
+        // Prefer simple param forms: (java.nio.file.Path) → (Path)
+        method = simplifyMethodParams(method);
+        // If method still looks like Class.method, split — but not Foo(Path) where '(' is params.
+        int paren = method.indexOf('(');
+        int dot = method.lastIndexOf('.');
+        if (dot > 0 && (paren < 0 || dot < paren)) {
+            String maybeCls = method.substring(0, dot);
+            String maybeM = method.substring(dot + 1);
+            if (cls.isEmpty()) cls = simpleClassName(maybeCls);
+            method = maybeM;
+        }
+        method = simplifyMethodParams(method);
+        // Bare name with no parens (rare) — add empty () for consistency with JUnit display.
+        if (!method.isEmpty() && method.indexOf('(') < 0 && !method.equals("(test run)")) {
+            method = method + "()";
+        }
+        if (cls.isEmpty() && method.isEmpty()) return f.testName() == null ? "?" : f.testName();
+        if (cls.isEmpty()) return method;
+        if (method.isEmpty()) return cls;
+        return cls + "." + method;
+    }
+
+    /**
+     * Keep {@code (…)} but strip package prefixes inside params: {@code (java.nio.file.Path)} →
+     * {@code (Path)}; leave {@code ()} alone.
+     */
+    static String simplifyMethodParams(String method) {
+        if (method == null || method.isEmpty()) return "";
+        int open = method.indexOf('(');
+        int close = method.lastIndexOf(')');
+        if (open < 0 || close <= open) return method.strip();
+        String name = method.substring(0, open).strip();
+        String inside = method.substring(open + 1, close).strip();
+        if (inside.isEmpty()) return name + "()";
+        StringBuilder simplified = new StringBuilder();
+        for (String part : inside.split(",")) {
+            String p = part.strip();
+            int d = p.lastIndexOf('.');
+            if (d >= 0) p = p.substring(d + 1);
+            if (!simplified.isEmpty()) simplified.append(", ");
+            simplified.append(p);
+        }
+        return name + "(" + simplified + ")";
+    }
+
+    /** {@code org.opentest4j.AssertionFailedError} → {@code AssertionFailedError}. */
+    static String simpleTypeName(String fqcn) {
+        if (fqcn == null || fqcn.isBlank()) return "";
+        int d = fqcn.lastIndexOf('.');
+        return d >= 0 ? fqcn.substring(d + 1) : fqcn;
     }
 
     /** Human-facing assertion / message lines (no stack frames, no exception FQCN prefix). */
@@ -219,7 +311,7 @@ public final class TestSupport {
             return lines;
         }
         // Fall back: stack's message section between "Exception: " and first "at ".
-        String details = f.details() == null ? "" : f.details();
+        String details = f.stack() == null ? "" : f.stack();
         if (details.isBlank()) return List.of();
         List<String> lines = new ArrayList<>();
         boolean started = false;
@@ -248,7 +340,7 @@ public final class TestSupport {
 
     /** {@code at …} / {@code ... N more} lines from the stack, preserving original indent. */
     static List<String> failureStackFrames(TestSummary.Failure f) {
-        String details = f.details() == null ? "" : f.details();
+        String details = f.stack() == null ? "" : f.stack();
         if (details.isBlank()) return List.of();
         List<String> frames = new ArrayList<>();
         for (String line : details.split("\n", -1)) {
@@ -270,7 +362,7 @@ public final class TestSupport {
      * 100% on success.
      */
     public static TestProgressListener bridgeListener(TaskContext ctx, int workerCount, boolean verbose) {
-        return bridgeListener(ctx, workerCount, verbose, "");
+        return bridgeListener(ctx, workerCount, verbose, "", null);
     }
 
     /**
@@ -279,7 +371,17 @@ public final class TestSupport {
      */
     public static TestProgressListener bridgeListener(
             TaskContext ctx, int workerCount, boolean verbose, String moduleLabel) {
+        return bridgeListener(ctx, workerCount, verbose, moduleLabel, null);
+    }
+
+    /**
+     * Full bridge: module coord + project dir so source snippets attach to structured test-failure
+     * diagnostics (web Activity / details.jsonl).
+     */
+    public static TestProgressListener bridgeListener(
+            TaskContext ctx, int workerCount, boolean verbose, String moduleLabel, Path moduleDir) {
         String module = moduleLabel == null ? "" : moduleLabel.trim();
+        Path dir = moduleDir;
         return new TestProgressListener() {
             @Override
             public void onTestStarted(String id, String display, boolean isTest, int workerId) {
@@ -321,14 +423,52 @@ public final class TestSupport {
             }
 
             @Override
-            public void onFailure(String id, String display, String exClass, String message, int workerId) {
+            public void onFailure(
+                    String id,
+                    String label,
+                    String exClass,
+                    String message,
+                    String stack,
+                    String engine,
+                    String className,
+                    String method,
+                    int workerId) {
                 // Code "test-failure" (not "test") marks a per-test failure that is
                 // already shown in full by the run-tests renderFailures block. The
-                // diagnostic still flows to JSON consumers, but the human listeners
-                // suppress it so the same failure isn't printed twice. Test *infra*
-                // errors (interrupt/IO) keep code "test" and still surface in text mode.
-                String label = progressLabel(module, liveTestDetail(id, display, true), workerId, workerCount);
-                ctx.error("test-failure", message, label, exClass);
+                // diagnostic still flows to JSON consumers (details.jsonl / --output json),
+                // but human listeners suppress the text banner so the same failure isn't
+                // printed twice. Test *infra* errors keep code "test" and still surface.
+                String methodLabel = method != null && !method.isBlank() ? method : label;
+                String file = "";
+                int line = 0;
+                int snippetStart = 0;
+                java.util.List<String> snippetLines = java.util.List.of();
+                if (dir != null) {
+                    var snip = TestFailureSource.resolve(dir, className, stack);
+                    if (snip.isPresent()) {
+                        var s = snip.get();
+                        file = s.relativePath();
+                        line = s.errorLine();
+                        snippetStart = s.startLine();
+                        snippetLines = s.lines();
+                    }
+                }
+                ctx.error(
+                        "test-failure",
+                        message,
+                        new cc.jumpkick.run.TestFailureInfo(
+                                module == null ? "" : module,
+                                engine == null ? "" : engine,
+                                className == null ? "" : className,
+                                methodLabel == null ? "" : methodLabel,
+                                exClass == null ? "" : exClass,
+                                message == null ? "" : message,
+                                stack == null ? "" : stack,
+                                workerId,
+                                file,
+                                line,
+                                snippetStart,
+                                snippetLines));
             }
 
             @Override
@@ -372,16 +512,18 @@ public final class TestSupport {
         String cls = cc.jumpkick.test.JUnitLauncher.classFromUniqueId(uniqueId);
         String simple = simpleClassName(cls);
         String d = normalizeTestDisplay(display);
+        // Display never shows package FQCNs in param lists (wire may still carry them).
+        d = simplifyMethodParams(d);
         if (!isTest) {
             // Class/container: prefer FQCN simple name; fall back to JUnit display name.
             if (!simple.isEmpty()) return simple;
-            return d;
+            return simpleClassName(d.isEmpty() ? "" : d);
         }
         if (simple.isEmpty()) return d;
         if (d.isEmpty() || d.equals(simple)) return simple;
-        // Already "FooTest.bar" / "FooTest.bar(Path)".
+        // Already "FooTest.bar" / "FooTest.bar(Path)" (params already simplified).
         if (d.startsWith(simple + ".") || d.startsWith(simple + "(")) return d;
-        // Method-only display ("bar" / "bar(Path)") → Class.method(...).
+        // Method-only display ("bar" / "bar(Path)" / FQCN params) → Class.method(...).
         return simple + "." + d;
     }
 

@@ -115,8 +115,10 @@ class SelfHostingTomlTest {
 
     @Test
     void short_name_manifests_do_not_use_removed_catalog_pin() throws Exception {
-        // catalog = … and host-local libs.toml are gone; short names resolve through the system
-        // catalog (global + bundled) only. Self-host manifests must not resurrect the old pin.
+        // catalog = … and host-local libs.toml are gone; short names resolve through the layered
+        // catalog (project jk-libs.toml → global → bundled). Self-host manifests must not
+        // resurrect the old per-manifest pin — the workspace-root jk-libs.toml pins them instead
+        // (JK-1840, see catalog_pins_cover_every_self_host_short_name).
         for (String rel : java.util.List.of(
                 "jk.toml",
                 "clients/cli/jk.toml",
@@ -128,6 +130,81 @@ class SelfHostingTomlTest {
             String text = java.nio.file.Files.readString(REPO.resolve(rel));
             assertThat(text).as("%s must not set catalog = (removed)", rel).doesNotContain("catalog =");
         }
+    }
+
+    /**
+     * JK-1840 — the anti-repoint guard. The downloaded registry catalog (libs.global.toml)
+     * shadows the bundled floor, so without a project-layer pin a registry edit/compromise or a
+     * stale mirror could silently repoint jk's own dependencies at the next re-lock (the
+     * JK-1811/JK-1812 hazard). The workspace root jk-libs.toml must pin every catalog-resolved
+     * short name any workspace manifest uses, each to the bundled coordinate, and the layered
+     * chain must actually serve those pins from the project layer.
+     */
+    @Test
+    void catalog_pins_cover_every_self_host_short_name() throws Exception {
+        JkBuild root = JkBuildParser.parseLocal(REPO.resolve("jk.toml"));
+        java.util.List<Path> manifests = new java.util.ArrayList<>();
+        manifests.add(REPO.resolve("jk.toml"));
+        for (Path moduleDir :
+                cc.jumpkick.config.WorkspaceLoader.loadModules(REPO, root).keySet()) {
+            Path mt = moduleDir.resolve("jk.toml");
+            if (Files.isRegularFile(mt)) manifests.add(mt);
+        }
+        // Catalog-resolved short names: `name = "<version>"` entries in *dependencies tables,
+        // excluding workspace refs and structured { group = … } coordinates.
+        java.util.regex.Pattern entry =
+                java.util.regex.Pattern.compile("^([A-Za-z0-9._-]+)\\s*=\\s*\"[^\"]*\"\\s*(#.*)?$");
+        java.util.Set<String> shortNames = new java.util.TreeSet<>();
+        for (Path manifest : manifests) {
+            String table = "";
+            for (String raw : Files.readAllLines(manifest)) {
+                String line = raw.strip();
+                if (line.startsWith("[")) {
+                    table = line;
+                    continue;
+                }
+                if (!table.endsWith("dependencies]")) continue;
+                var m = entry.matcher(line);
+                if (m.matches() && !m.group(1).endsWith(".workspace")) shortNames.add(m.group(1));
+            }
+        }
+        assertThat(shortNames).as("self-host manifests use catalog short names").isNotEmpty();
+
+        cc.jumpkick.library.LibraryCatalog bundled = cc.jumpkick.library.LibraryCatalog.bundled();
+        cc.jumpkick.library.LibraryCatalog pins = cc.jumpkick.library.LibraryCatalog.parse(
+                Files.readString(cc.jumpkick.library.LibraryCatalog.projectFile(REPO)));
+        cc.jumpkick.library.LibraryCatalog chain = cc.jumpkick.library.LibraryCatalog.forProject(REPO);
+        for (String name : shortNames) {
+            var expected = bundled.lookup(name);
+            assertThat(expected)
+                    .as("%s must exist in the bundled catalog", name)
+                    .isPresent();
+            assertThat(pins.lookup(name))
+                    .as("jk-libs.toml must pin %s (add it with the bundled GA)", name)
+                    .contains(expected.get());
+            assertThat(chain.lookup(name))
+                    .as("layered chain must serve the pinned GA for %s", name)
+                    .contains(expected.get());
+            assertThat(chain.source(name))
+                    .as("%s must resolve from the project layer, not a mutable registry", name)
+                    .hasValueSatisfying(s -> assertThat(s.layer()).isEqualTo("project"));
+        }
+    }
+
+    /**
+     * JK-1863 — the re-lock-in-the-same-commit guard, automated. Any jk.toml / jk-libs.toml edit
+     * must land with a re-stamped jk-lock.toml: a stale stamp costs every fresh checkout an ~18s
+     * re-resolve, and staleness detection is what stands between an edited catalog pin and a
+     * silently wrong resolution (JK-1864). Runs in CI via the plain unit tier.
+     */
+    @Test
+    void lock_stamp_matches_manifests() throws Exception {
+        Path lock = REPO.resolve("jk-lock.toml");
+        Assumptions.assumeTrue(Files.isRegularFile(lock), "workspace lock missing");
+        assertThat(cc.jumpkick.lock.LockfileReader.read(lock).manifestsSha256())
+                .as("jk-lock.toml manifests-sha256 is stale — re-lock (jk lock) and commit the "
+                        + "re-stamp together with the manifest/pin edit")
+                .isEqualTo(cc.jumpkick.lock.LockManifestDigest.compute(REPO));
     }
 
     @Test

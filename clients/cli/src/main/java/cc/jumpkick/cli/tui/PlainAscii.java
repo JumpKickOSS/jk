@@ -29,7 +29,7 @@ import java.nio.charset.StandardCharsets;
  * </table>
  *
  * <p>When {@link Theme#isAnsi()} is true, {@link #apply} is identity. Use {@link #wrap(PrintStream)}
- * for APIs that need a stream (CommandManager, Spinner).
+ * for APIs that need a stream (JkManager, Spinner).
  */
 public final class PlainAscii {
 
@@ -86,7 +86,7 @@ public final class PlainAscii {
 
     /**
      * Return {@code out} unchanged under ANSI; otherwise a stream that runs {@link #apply} on
-     * every {@code print(String)} / {@code println(String)} so CommandManager and Spinner do not
+     * every {@code print(String)} / {@code println(String)} so JkManager and Spinner do not
      * need per-call transforms.
      */
     public static PrintStream wrap(PrintStream out) {

@@ -112,6 +112,36 @@ class LockFreshnessTest {
     }
 
     @Test
+    void jk_libs_toml_edit_flips_staleness(@TempDir Path dir) throws Exception {
+        // The workspace catalog layer changes short-name -> GA resolution, so a pin edit must
+        // stale the lock exactly like a manifest edit (JK-1864).
+        Files.writeString(dir.resolve("jk.toml"), """
+                [project]
+                group = "g"
+                name = "n"
+                version = "1"
+                """);
+        Path lockFile = dir.resolve("jk-lock.toml");
+        LockfileWriter.write(Lockfile.empty("test"), lockFile);
+        assertThat(LockFreshness.isStale(dir, lockFile)).isFalse();
+
+        Files.writeString(dir.resolve("jk-libs.toml"), """
+                [libraries]
+                foo = "com.example:foo"
+                """);
+        assertThat(LockFreshness.isStale(dir, lockFile)).isTrue();
+
+        // Re-stamp with the pins present, then edit the pin: stale again.
+        LockfileWriter.write(Lockfile.empty("test"), lockFile);
+        assertThat(LockFreshness.isStale(dir, lockFile)).isFalse();
+        Files.writeString(dir.resolve("jk-libs.toml"), """
+                [libraries]
+                foo = "org.elsewhere:foo"
+                """);
+        assertThat(LockFreshness.isStale(dir, lockFile)).isTrue();
+    }
+
+    @Test
     void isValidDigest_accepts_hex64_only() {
         assertThat(LockFreshness.isValidDigest(null)).isFalse();
         assertThat(LockFreshness.isValidDigest("")).isFalse();

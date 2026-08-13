@@ -42,9 +42,21 @@ public interface TaskContext {
      */
     void error(String code, String message);
 
-    /** Structured test-failure form of {@link #error(String, String)}. */
+    /** Legacy structured test-failure form of {@link #error(String, String)}. */
     default void error(String code, String message, String test, String exceptionClass) {
         error(code, message);
+    }
+
+    /** Structured test failure (module / engine / class / method / stack). */
+    default void error(String code, String message, TestFailureInfo failure) {
+        if (failure == null) {
+            error(code, message);
+            return;
+        }
+        String label = failure.module().isEmpty()
+                ? failure.method()
+                : failure.module() + " :: " + failure.method();
+        error(code, message, label, failure.exceptionClass());
     }
 
     /** True when cancelled (sibling failure or Ctrl-C); poll in long loops. */

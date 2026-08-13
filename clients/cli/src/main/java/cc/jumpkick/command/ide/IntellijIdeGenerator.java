@@ -3,10 +3,10 @@ package cc.jumpkick.command.ide;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.BuildPlanWedge;
-import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.cli.tui.JkWedge;
+import cc.jumpkick.cli.tui.RichText;
+import cc.jumpkick.cli.tui.Tree;
 import cc.jumpkick.engine.protocol.IdeWireModel;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.Scope;
@@ -106,29 +106,22 @@ public final class IntellijIdeGenerator implements IdeGenerator {
         Theme t = Theme.active();
         String check = Theme.colorize(Glyphs.CHECK, t.success());
 
-        CommandWedge.envelopeStart();
-        CliOutput.out(BuildPlanWedge.chipLine(
-                Glyphs.CHECK,
-                "IDEA",
-                GlobalConfig.nerdfont(),
-                "The " + Theme.colorize(model.rootName(), t.focused()) + " project is ready"));
-
-        List<String> items = new ArrayList<>();
+        Tree tree = new Tree(JkWedge.ok(
+                        "IDEA",
+                        RichText.parse("The [focused]" + RichText.escape(model.rootName()) + "[/] project is ready")))
+                .gap(Tree.Gap.NONE);
         if (!touchedTables.isEmpty()) {
-            items.add(check + " Registered the " + Theme.colorize(defaultSdk.sdkName(), t.cyan()) + " JDK");
+            tree.child(Tree.node(RichText.ansi(
+                    check + " Registered the " + Theme.colorize(defaultSdk.sdkName(), t.cyan()) + " JDK")));
         }
-        items.add(check
+        tree.child(Tree.node(RichText.ansi(check
                 + " Generated "
                 + files
                 + " project file"
                 + (files == 1 ? "" : "s")
                 + " in "
-                + Theme.colorize(".idea", t.path()));
-        boolean ansi = t.isAnsi();
-        for (int i = 0; i < items.size(); i++) {
-            String connector = i == items.size() - 1 ? (ansi ? "╰─ " : "`- ") : (ansi ? "├─ " : "+- ");
-            CliOutput.out(" " + (ansi ? Theme.colorize(connector, t.darkGray()) : connector) + items.get(i));
-        }
+                + Theme.colorize(".idea", t.path()))));
+        tree.print();
 
         CliOutput.out();
         CliOutput.out(" "

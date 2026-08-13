@@ -133,6 +133,31 @@ class BuildServiceEtaTest {
         assertThat(BuildService.hasLocalCompileContent(resourceOnly)).isFalse();
         assertThat(BuildService.hasResourceDriftWork(resourceOnly)).isTrue();
 
+        // JK-1842: a test-resource edit reruns the suite for real (test action keys hash test
+        // resources), so run-tests must never be discounted for it — main-resource drift keeps
+        // its dogfood-validated discount.
+        var testResourceOnly = new TaskForecast.Module(
+                Path.of("/core"),
+                "g:core",
+                List.of(
+                        new TaskForecast.Task(
+                                "copy-test-resources", TaskForecast.Status.RUN, "test resources changed", null),
+                        new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~792 tests", null)),
+                100,
+                792,
+                true,
+                false);
+        assertThat(BuildService.hasTestResourceDriftWork(testResourceOnly)).isTrue();
+        var suite = testResourceOnly.steps().get(1);
+        assertThat(BuildService.shouldDiscountCascadeStep(suite, false, true, true, true))
+                .isFalse();
+        // Rule 4 (pure cascade) is also vetoed by test-resource drift.
+        assertThat(BuildService.shouldDiscountCascadeStep(suite, false, true, false, true))
+                .isFalse();
+        // Main-resource-only drift still discounts the suite (no test-resource signal).
+        assertThat(BuildService.shouldDiscountCascadeStep(suite, false, true, true, false))
+                .isTrue();
+
         var local = new TaskForecast.Module(
                 Path.of("/engine"),
                 "g:engine",
@@ -145,6 +170,21 @@ class BuildServiceEtaTest {
                 true,
                 false);
         assertThat(BuildService.hasLocalCompileContent(local)).isTrue();
+
+        // JK-1836: counts ending in 0 contain the substring "0 source" — a naive contains()
+        // treated a 10/20/100-source edit as zero-source and discounted the whole suite.
+        var tenSources = new TaskForecast.Module(
+                Path.of("/engine"),
+                "g:engine",
+                List.of(
+                        new TaskForecast.Task(
+                                "compile-main", TaskForecast.Status.PARTIAL, "compile · 10 sources changed", null),
+                        new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~1000 tests", null)),
+                100,
+                1000,
+                true,
+                false);
+        assertThat(BuildService.hasLocalCompileContent(tenSources)).isTrue();
 
         var cliShaped = new TaskForecast.Module(
                 Path.of("/cli"),

@@ -19,55 +19,62 @@ class TestFailureRenderingTest {
     }
 
     @Test
-    void a_failure_renders_name_and_indented_stack() {
+    void a_failure_renders_short_label_and_stack_when_no_snippet() {
         var f = new TestSummary.Failure(
-                "cc.jumpkick.FooTest > bar()",
+                "bar()",
                 "org.opentest4j.AssertionFailedError",
                 "expected: <1> but was: <2>",
                 "org.opentest4j.AssertionFailedError: expected: <1> but was: <2>\n"
-                        + "\tat cc.jumpkick.FooTest.bar(FooTest.java:42)");
+                        + "\tat cc.jumpkick.FooTest.bar(FooTest.java:42)",
+                "",
+                "cc.jumpkick.FooTest",
+                0,
+                "junit-jupiter",
+                "bar()");
         var result = new TestSummary(1, 0, 1, 0, List.of(f));
 
         List<String> lines = TestSupport.renderFailures(result);
         String text = String.join("\n", lines);
 
         assertThat(lines).anyMatch(l -> l.equals("Test Failure"));
-        assertThat(lines).anyMatch(l -> l.equals("1 test failed:"));
-        assertThat(lines).anyMatch(l -> l.contains("FAILED  cc.jumpkick.FooTest > bar()"));
-        assertThat(lines).anyMatch(l -> l.contains("org.opentest4j.AssertionFailedError"));
+        assertThat(lines).anyMatch(l -> l.equals("1 test failed"));
+        assertThat(lines).anyMatch(l -> l.equals("FAILED FooTest.bar()"));
         assertThat(text).contains("expected: <1> but was: <2>");
         assertThat(text).contains("at cc.jumpkick.FooTest.bar(FooTest.java:42)");
+        // No package FQCN on the FAILED line
+        assertThat(text).doesNotContain("FAILED cc.jumpkick.FooTest");
     }
 
     @Test
     void pluralises_and_falls_back_to_message_when_no_stack() {
-        var a = new TestSummary.Failure("A > x()", "", "boom", "boom\n\tat A.x(A.java:1)");
+        var a = new TestSummary.Failure("x()", "", "boom", "boom\n\tat A.x(A.java:1)", "", "A", 0, "", "x()");
         var b = new TestSummary.Failure("(test run)", "", "runner exited 1", ""); // no stack
         var result = new TestSummary(2, 0, 2, 0, List.of(a, b));
 
         List<String> lines = TestSupport.renderFailures(result);
         assertThat(lines).anyMatch(l -> l.equals("Test Failure"));
-        assertThat(lines).anyMatch(l -> l.equals("2 tests failed:"));
-        // The stack-less failure falls back to its one-line message.
-        assertThat(lines).anyMatch(l -> l.contains("FAILED  (test run)"));
+        assertThat(lines).anyMatch(l -> l.equals("2 tests failed"));
+        assertThat(lines).anyMatch(l -> l.contains("FAILED "));
         assertThat(String.join("\n", lines)).contains("runner exited 1");
     }
 
     @Test
-    void headline_includes_module_and_worker() {
+    void short_label_uses_simple_class_and_keeps_params() {
         var f = new TestSummary.Failure(
-                "FooTest > bar()",
+                "freshen(Path)",
                 "java.lang.AssertionError",
                 "nope",
                 "java.lang.AssertionError: nope",
                 "cc.jumpkick:jk-core",
-                "cc.jumpkick.FooTest",
-                2);
-        assertThat(f.headline()).isEqualTo("cc.jumpkick:jk-core :: FooTest > bar()  [w2]");
+                "cc.jumpkick.runtime.FooTest",
+                2,
+                "junit-jupiter",
+                "freshen_preserves_pins(java.nio.file.Path)");
+        assertThat(TestSupport.shortTestLabel(f)).isEqualTo("FooTest.freshen_preserves_pins(Path)");
         List<String> lines = TestSupport.renderFailures(new TestSummary(1, 0, 1, 0, List.of(f)));
-        assertThat(lines).anyMatch(l -> l.contains("FAILED  cc.jumpkick:jk-core :: FooTest > bar()  [w2]"));
-        assertThat(lines).anyMatch(l -> l.contains("class: cc.jumpkick.FooTest"));
-        assertThat(lines).anyMatch(l -> l.strip().equals("java.lang.AssertionError"));
+        assertThat(lines).anyMatch(l -> l.equals("module: cc.jumpkick:jk-core"));
+        assertThat(lines).anyMatch(l -> l.equals("FAILED FooTest.freshen_preserves_pins(Path)"));
+        assertThat(String.join("\n", lines)).doesNotContain("class: cc.jumpkick");
     }
 
     @Test
@@ -86,6 +93,12 @@ class TestFailureRenderingTest {
         assertThat(TestSupport.liveTestDetail(
                         "[engine:junit-jupiter]/[class:cc.jumpkick.runtime.VariantSwitchTest]/[method:switching_variants(java.nio.file.Path)]",
                         "switching_variants(Path)",
+                        true))
+                .isEqualTo("VariantSwitchTest.switching_variants(Path)");
+        // Display may still carry FQCN params from JUnit — never surface them live.
+        assertThat(TestSupport.liveTestDetail(
+                        "[engine:junit-jupiter]/[class:cc.jumpkick.runtime.VariantSwitchTest]/[method:switching_variants(java.nio.file.Path)]",
+                        "switching_variants(java.nio.file.Path)",
                         true))
                 .isEqualTo("VariantSwitchTest.switching_variants(Path)");
         assertThat(TestSupport.simpleClassName("cc.jumpkick.runtime.FooTest")).isEqualTo("FooTest");

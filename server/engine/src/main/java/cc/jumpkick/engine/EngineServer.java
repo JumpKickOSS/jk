@@ -108,8 +108,10 @@ public final class EngineServer implements AutoCloseable {
     private final AtomicInteger peakActiveBuildPlans = new AtomicInteger();
 
     private void noteConnectionOpened() {
-        int n = activeConnections.incrementAndGet();
-        peakActiveConnections.accumulateAndGet(n, Math::max);
+        activeConnections.incrementAndGet();
+        // Combined high-water mark (UDS + SSE surfaces) — same metric the SSE admission hook and
+        // statusSnapshot() bump, so the reported peak means one thing (JK-1861).
+        peakActiveConnections.accumulateAndGet(liveConnectionCount(), Math::max);
     }
 
     private void noteBuildPlanStarted() {
@@ -1610,6 +1612,18 @@ public final class EngineServer implements AutoCloseable {
      * subscribers. Sampled chrome ({@code status}/{@code cache}) is separate: change-gated and
      * nudged only on request start/finish so Builds Running / storage totals stay timely.
      */
+    /**
+     * Orders wire-event publication against dashboard SSE connect hydration (JK-1837).
+     * Publishers take the read side around each publish (accumulation happens strictly before,
+     * in program order); a connecting dashboard takes the write side around snapshot capture →
+     * {@code deliverTo} → {@code attach}. Any publish that completed before the write section
+     * accumulated before the snapshot was captured (so its effect is in the snapshot); any
+     * publish after it reaches the attached queue. Overlap yields duplicates, which the SPA
+     * folds idempotently — gaps, which it cannot heal, are impossible.
+     */
+    private final java.util.concurrent.locks.ReentrantReadWriteLock sseConnect =
+            new java.util.concurrent.locks.ReentrantReadWriteLock();
+
     private void publishEvent(String type, cc.jumpkick.engine.http.JsonOut payload) {
         publishEvent(type, payload, false);
     }
@@ -1621,16 +1635,21 @@ public final class EngineServer implements AutoCloseable {
      * would double-count (JK-1523).
      */
     private void publishEvent(String type, cc.jumpkick.engine.http.JsonOut payload, boolean dashboardOnly) {
-        if (httpEvents != null && httpEvents.hasSubscribers()) {
-            if (dashboardOnly) httpEvents.publishDashboard(type, payload);
-            else httpEvents.publish(type, payload);
-        }
-        // Sampled chrome (status/cache SSE) is change-gated; nudge it when jobs start/finish so
-        // Builds Running and storage totals do not wait for the next timer tick (JK-1495/1497).
-        HttpEngineServer http = httpServer;
-        if (http != null && ("request-start".equals(type) || "request-finish".equals(type))) {
-            http.notifyLiveStatus();
-            if ("request-finish".equals(type)) http.notifyLiveCache();
+        sseConnect.readLock().lock();
+        try {
+            if (httpEvents != null && httpEvents.hasSubscribers()) {
+                if (dashboardOnly) httpEvents.publishDashboard(type, payload);
+                else httpEvents.publish(type, payload);
+            }
+            // Sampled chrome (status/cache SSE) is change-gated; nudge it when jobs start/finish so
+            // Builds Running and storage totals do not wait for the next timer tick (JK-1495/1497).
+            HttpEngineServer http = httpServer;
+            if (http != null && ("request-start".equals(type) || "request-finish".equals(type))) {
+                http.notifyLiveStatus();
+                if ("request-finish".equals(type)) http.notifyLiveCache();
+            }
+        } finally {
+            sseConnect.readLock().unlock();
         }
     }
 
@@ -1838,16 +1857,20 @@ public final class EngineServer implements AutoCloseable {
         }
     }
 
-    /** ≥0.1% change or one TTY frame (WorkspaceProgressTracker.TTY_FRAME_MS) since last emit. */
+    /**
+     * Same human cadence as {@link CoalescingBuildPlanListener} / {@code JK_WIRE_PROGRESS_MS}
+     * (default 500 ms). CLI TUI and web open-loop the bar between samples; shipping every TTY
+     * frame (80 ms) on UDS+SSE was pure wire cost. {@code force} emits still bypass this (stage
+     * boundaries, module complete, finish). {@code JK_WIRE_PROGRESS_MS=0} is unbatched.
+     */
     private boolean shouldEmitWorkspaceProgress(
             long requestId, cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
+        long cadence = CoalescingBuildPlanListener.cadenceFromEnv();
+        if (cadence <= 0) return true;
         long[] prev = progressEmitState.get(requestId);
         if (prev == null) return true;
         long now = System.currentTimeMillis();
-        if (now - prev[0] >= cc.jumpkick.runtime.WorkspaceProgressTracker.TTY_FRAME_MS) return true;
-        if (!snap.hasPercent()) return false;
-        long pctMillis = Math.round(snap.percent() * 10.0);
-        return Math.abs(pctMillis - prev[1]) >= 1; // 0.1%
+        return now - prev[0] >= cadence;
     }
 
     /**
@@ -1864,6 +1887,15 @@ public final class EngineServer implements AutoCloseable {
     }
 
     private void publishRequestStart(long requestId, String kind, String dir, long buildNumber, boolean dashboardOnly) {
+        long startedAt = inFlightBuilds
+                .get(requestId)
+                .map(InFlightBuilds.Hold::startedAt)
+                .orElse(0L);
+        publishRequestStart(requestId, kind, dir, buildNumber, dashboardOnly, startedAt);
+    }
+
+    private void publishRequestStart(
+            long requestId, String kind, String dir, long buildNumber, boolean dashboardOnly, long startedAt) {
         if (!eventsWanted()) return;
         String coord = null;
         try {
@@ -1882,11 +1914,22 @@ public final class EngineServer implements AutoCloseable {
                 .put("coord", coord)
                 .put("projectId", cc.jumpkick.runtime.ProjectIds.idOf(dir));
         if (buildNumber > 0) payload = payload.put("buildNumber", buildNumber);
+        if (startedAt > 0) {
+            payload = payload.put("startedAt", startedAt);
+            // Engine "now" beside engine startedAt: elapsed = serverNow - startedAt is skew-free,
+            // and the SPA re-anchors it to its own clock at receipt (JK-1839).
+            payload = payload.put("serverNow", clockMillis.getAsLong());
+        }
         payload = payload.put("activeBuildPlans", activeBuildPlans.get());
         publishEvent("request-start", withProgress(payload, requestId), dashboardOnly);
     }
 
     private void publishStepStart(long requestId, String dir, String step, String phase) {
+        publishStepStart(requestId, dir, step, phase, false);
+    }
+
+    private void publishStepStart(long requestId, String dir, String step, String phase, boolean dashboardOnly) {
+        accStepStart(requestId, dir, step, phase);
         if (!eventsWanted()) return;
         // Field names align with CLI JsonlShape (schema + type + task + group).
         publishEvent(
@@ -1899,10 +1942,16 @@ public final class EngineServer implements AutoCloseable {
                                 .put("dir", dir)
                                 .put("task", step)
                                 .put("stage", phase),
-                        requestId));
+                        requestId),
+                dashboardOnly);
     }
 
     private void publishStepFinish(long requestId, String dir, String step, String phase, String status, long millis) {
+        publishStepFinish(requestId, dir, step, phase, status, millis, false);
+    }
+
+    private void publishStepFinish(
+            long requestId, String dir, String step, String phase, String status, long millis, boolean dashboardOnly) {
         if (!eventsWanted()) return;
         publishEvent(
                 "task-finish",
@@ -1916,7 +1965,8 @@ public final class EngineServer implements AutoCloseable {
                                 .put("stage", phase)
                                 .put("status", status)
                                 .put("millis", millis),
-                        requestId));
+                        requestId),
+                dashboardOnly);
     }
 
     /**
@@ -1945,6 +1995,8 @@ public final class EngineServer implements AutoCloseable {
 
     private void publishOutput(long requestId, String dir, String step, String line) {
         if (!eventsWanted()) return;
+        // Rate is owned by CoalescingBuildPlanListener (JK_WIRE_PROGRESS_MS) on both CLI wire and
+        // HTTP hub paths — do not double-throttle here.
         // Redact here, not per caller: the HTTP/MCP job listener feeds raw step output and the
         // SSE stream is readable token-free on loopback. Idempotent for callers that
         // already masked.
@@ -1971,20 +2023,27 @@ public final class EngineServer implements AutoCloseable {
         for (int i = 0; i < shown; i++) {
             BuildPlanResult.Diagnostic d = errors.get(i);
             // type "error" matches CLI JsonlShape; SSE event name stays "diagnostic" for the SPA.
-            publishEvent(
-                    "diagnostic",
-                    withProgress(
-                            cc.jumpkick.engine.http.JsonOut.object()
-                                    .put("schema", 1)
-                                    .put("type", "error")
-                                    .put("requestId", requestId)
-                                    .put("dir", dir)
-                                    .put("task", d.step())
-                                    .put("code", d.code())
-                                    .put("message", redactEnv(dir, d.message()))
-                                    .put("test", d.test())
-                                    .put("exceptionClass", d.exceptionClass()),
-                            requestId));
+            var o = cc.jumpkick.engine.http.JsonOut.object()
+                    .put("schema", 1)
+                    .put("type", "error")
+                    .put("requestId", requestId)
+                    .put("dir", dir)
+                    .put("task", d.step())
+                    .put("code", d.code())
+                    .put("message", redactEnv(dir, d.message()));
+            if (d.module() != null && !d.module().isEmpty()) o.put("module", d.module());
+            if (d.engine() != null && !d.engine().isEmpty()) o.put("engine", d.engine());
+            if (d.className() != null && !d.className().isEmpty()) o.put("class", d.className());
+            if (d.method() != null && !d.method().isEmpty()) o.put("method", d.method());
+            if (d.exceptionClass() != null && !d.exceptionClass().isEmpty())
+                o.put("exceptionClass", d.exceptionClass());
+            if (d.stack() != null && !d.stack().isEmpty()) o.put("stack", d.stack());
+            if (d.file() != null && !d.file().isEmpty()) o.put("file", d.file());
+            if (d.line() > 0) o.put("line", d.line());
+            if (d.snippetStart() > 0) o.put("snippetStart", d.snippetStart());
+            if (d.snippet() != null && !d.snippet().isEmpty()) o.putStrings("snippet", d.snippet());
+            if (d.test() != null && !d.test().isEmpty()) o.put("test", d.test());
+            publishEvent("diagnostic", withProgress(o, requestId));
         }
         if (errors.size() > shown) {
             publishRequestError(requestId, dir, "+ " + (errors.size() - shown) + " more errors — see the CLI output");
@@ -2815,6 +2874,8 @@ public final class EngineServer implements AutoCloseable {
                 }
             }
             // Schedule-aware ETA; 0 = fully cached. Same estimateEtaMillis as jk build countdown.
+            // fullMillis prices the same graph as a full rebuild (--redo) so explain can report
+            // rebuild effort as remaining/full (weight/time, not a count average).
             String etaJdksDirStr = Jsonl.str(requestLine, "jdksDir");
             int workers = Jsonl.intValue(requestLine, "workers", 0); // 0 = auto (bare jk build)
             int maxModuleConcurrency = Jsonl.intValue(requestLine, "maxModuleConcurrency", 0);
@@ -2823,6 +2884,8 @@ public final class EngineServer implements AutoCloseable {
             }
             boolean parallelTests = Jsonl.bool(requestLine, "parallelTests", false);
             int maxConc = maxModuleConcurrency;
+            Path etaJdksDir = etaJdksDirStr != null ? Path.of(etaJdksDirStr) : null;
+            String etaProfile = Jsonl.str(requestLine, "profile");
             long etaMillis = SessionContext.where(
                     session,
                     () -> BuildService.estimateEtaMillis(
@@ -2830,13 +2893,32 @@ public final class EngineServer implements AutoCloseable {
                             entryDir,
                             cache,
                             workers,
-                            etaJdksDirStr != null ? Path.of(etaJdksDirStr) : null,
-                            Jsonl.str(requestLine, "profile"),
+                            etaJdksDir,
+                            etaProfile,
                             skipTests,
                             verbose,
                             parallelTests,
                             maxConc));
-            sendQuiet(writer, EngineProtocol.eta(etaMillis));
+            long fullMillis;
+            if (rebuild || force) {
+                fullMillis = etaMillis; // already priced as full rebuild
+            } else {
+                Session fullSession = session.withConfig(config.withRebuild(Optional.of(true)));
+                fullMillis = SessionContext.where(
+                        fullSession,
+                        () -> BuildService.estimateEtaMillis(
+                                plan,
+                                entryDir,
+                                cache,
+                                workers,
+                                etaJdksDir,
+                                etaProfile,
+                                skipTests,
+                                verbose,
+                                parallelTests,
+                                maxConc));
+            }
+            sendQuiet(writer, EngineProtocol.eta(etaMillis, fullMillis));
             sendQuiet(
                     writer,
                     EngineProtocol.explainDone(
@@ -4358,8 +4440,8 @@ public final class EngineServer implements AutoCloseable {
                         writer,
                         EngineProtocol.moduleFinish(
                                 dir, o.coord(), o.success(), o.exitCode(), o.millis(), o.didWork()));
-                publishModuleFinish(eventRequestId, dir, o.coord(), o.success(), o.millis(), o.didWork());
                 accModule(eventRequestId, o);
+                publishModuleFinish(eventRequestId, dir, o.coord(), o.success(), o.millis(), o.didWork());
                 cc.jumpkick.run.BuildPlan g = moduleBuildPlanner.remove(dir);
                 if (g != null) {
                     accTests(
@@ -4435,6 +4517,11 @@ public final class EngineServer implements AutoCloseable {
             }
 
             @Override
+            public void error(String step, String code, String message, cc.jumpkick.run.TestFailureInfo failure) {
+                inner.error(step, code, message, failure);
+            }
+
+            @Override
             public void planFinish(BuildPlanResult result) {
                 inner.planFinish(result);
             }
@@ -4448,6 +4535,10 @@ public final class EngineServer implements AutoCloseable {
     }
 
     private void publishModuleStart(long requestId, String dir, String coord) {
+        publishModuleStart(requestId, dir, coord, false);
+    }
+
+    private void publishModuleStart(long requestId, String dir, String coord, boolean dashboardOnly) {
         if (!eventsWanted()) return;
         publishEvent(
                 "module-start",
@@ -4458,11 +4549,23 @@ public final class EngineServer implements AutoCloseable {
                                 .put("requestId", requestId)
                                 .put("dir", dir)
                                 .put("coord", coord),
-                        requestId));
+                        requestId),
+                dashboardOnly);
     }
 
     private void publishModuleFinish(
             long requestId, String dir, String coord, boolean success, long millis, boolean didWork) {
+        publishModuleFinish(requestId, dir, coord, success, millis, didWork, false);
+    }
+
+    private void publishModuleFinish(
+            long requestId,
+            String dir,
+            String coord,
+            boolean success,
+            long millis,
+            boolean didWork,
+            boolean dashboardOnly) {
         if (!eventsWanted()) return;
         publishEvent(
                 "module-finish",
@@ -4476,7 +4579,8 @@ public final class EngineServer implements AutoCloseable {
                                 .put("success", success)
                                 .put("millis", millis)
                                 .put("didWork", didWork),
-                        requestId));
+                        requestId),
+                dashboardOnly);
     }
 
     private void publishBuildPlanFinish(long requestId, String dir, boolean success) {
@@ -4564,6 +4668,11 @@ public final class EngineServer implements AutoCloseable {
      * workspace module's {@code BuildPlanResult.steps} isn't reliably populated, so we capture the
      * events directly).
      */
+    private void accStepStart(long requestId, String dir, String step, String phase) {
+        BuildAccumulator a = accumulators.get(requestId);
+        if (a != null) a.noteTaskStart(dir, step, phase);
+    }
+
     private void accStepFinish(long requestId, String dir, String step, String phase, String status, long millis) {
         BuildAccumulator a = accumulators.get(requestId);
         if (a != null) a.addTask(dir, step, phase, status, millis);
@@ -5285,25 +5394,44 @@ public final class EngineServer implements AutoCloseable {
             }
 
             @Override
+            public void error(
+                    String step, String code, String message, cc.jumpkick.run.TestFailureInfo failure) {
+                if (failure == null) {
+                    error(step, code, message);
+                    return;
+                }
+                String msg = redactEnv(dir, message == null || message.isEmpty() ? failure.message() : message);
+                sendQuiet(writer, EngineProtocol.errorLine(dir, step, code, msg, failure));
+            }
+
+            @Override
             public void stepFinish(String step, String group, cc.jumpkick.run.TaskStatus status, Duration duration) {
                 long millis = duration.toMillis();
                 sendQuiet(writer, EngineProtocol.stepFinish(dir, step, phaseWire(group), status.name(), millis));
-                publishStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), millis);
                 accStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), millis);
+                publishStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), millis);
             }
 
             @Override
             public void planFinish(BuildPlanResult result) {
                 for (BuildPlanResult.Diagnostic d : result.errors()) {
-                    sendQuiet(
-                            writer,
-                            EngineProtocol.planDiagnostic(
-                                    dir,
-                                    d.step(),
-                                    d.code(),
-                                    redactEnv(dir, d.message()),
-                                    d.test(),
-                                    d.exceptionClass()));
+                    var tf = d.testFailure();
+                    if (tf != null) {
+                        sendQuiet(
+                                writer,
+                                EngineProtocol.planDiagnostic(
+                                        dir, d.step(), d.code(), redactEnv(dir, d.message()), tf));
+                    } else {
+                        sendQuiet(
+                                writer,
+                                EngineProtocol.planDiagnostic(
+                                        dir,
+                                        d.step(),
+                                        d.code(),
+                                        redactEnv(dir, d.message()),
+                                        d.test(),
+                                        d.exceptionClass()));
+                    }
                 }
                 // Timeline before the terminal finish, for every socket request that owns an
                 // accumulator (no-op otherwise): a client that has returned must not observe the
@@ -5316,9 +5444,9 @@ public final class EngineServer implements AutoCloseable {
                 // releases after BuildService.buildWorkspace returns).
                 if (releaseSlotOnBuildPlanFinish) inFlightBuilds.release(eventRequestId);
                 sendQuiet(writer, finishEncoder.apply(result));
+                accBuildPlanFinish(eventRequestId, dir, result);
                 publishBuildPlanFinish(eventRequestId, dir, result.success());
                 if (!result.success()) publishDiagnostics(eventRequestId, dir, result.errors());
-                accBuildPlanFinish(eventRequestId, dir, result);
             }
         });
     }
@@ -5427,11 +5555,16 @@ public final class EngineServer implements AutoCloseable {
                 httpJobs(),
                 journal,
                 () -> BuildMetrics.load(metricsFile).entries(),
-                () -> cc.jumpkick.engine.http.CacheSnapshot.capture(cc.jumpkick.util.JkDirs.cache()),
+                // Single-flight + 30s TTL: dashboard SSE reconnect + GET /api/cache must not each
+                // exclusive-walk multi-GiB stores (SerialGC balloons committed heap ~90 MiB).
+                cc.jumpkick.engine.http.CacheSnapshot.memoizing(cc.jumpkick.util.JkDirs.cache()),
                 log);
-        // Hard-refresh mid-build: history rows carry live requestId/progress; SSE connect replays
-        // request-start + current workspace-progress so the SPA rebinds the stream.
+        // Hard-refresh mid-build: history rows carry live requestId/progress/phases; SSE connect
+        // delivers one compact run-snapshot per job to the new subscription only.
         candidate.setLiveRunSupport(this::liveRunsSnapshot, this::rehydrateLiveRunsOnSseConnect);
+        // Combined-connection peak observed at every admission point (UDS accept bumps it too) —
+        // not only when a status snapshot happens to run (JK-1861).
+        candidate.setOnSseAdmitted(() -> peakActiveConnections.accumulateAndGet(liveConnectionCount(), Math::max));
         try {
             candidate.start();
             Files.writeString(paths.http(), candidate.url());
@@ -5444,11 +5577,28 @@ public final class EngineServer implements AutoCloseable {
         }
     }
 
-    /** Snapshot of in-flight holds for dashboard history enrichment. */
+    /** Snapshot of in-flight holds for dashboard history enrichment (progress + phases + ETA). */
     private java.util.List<cc.jumpkick.engine.http.HttpEngineServer.LiveRun> liveRunsSnapshot() {
         java.util.List<cc.jumpkick.engine.http.HttpEngineServer.LiveRun> out = new java.util.ArrayList<>();
         for (InFlightBuilds.Hold h : inFlightBuilds.list()) {
             Double p = lastProgressByRequest.get(h.requestId());
+            long remainingMs = -1L;
+            long r0Ms = -1L;
+            long num = 0L;
+            long den = 0L;
+            cc.jumpkick.runtime.WorkspaceProgressTracker tracker = progressTrackers.get(h.requestId());
+            if (tracker != null) {
+                var snap = tracker.snapshot();
+                remainingMs = snap.remainingMs();
+                r0Ms = snap.R0ms();
+                num = snap.numerator();
+                den = snap.denominator();
+                if ((p == null || p.isNaN()) && snap.hasPercent()) p = snap.percent();
+            }
+            BuildAccumulator acc = accumulators.get(h.requestId());
+            BuildAccumulator.MidFlight mid = acc != null
+                    ? acc.midFlight()
+                    : new BuildAccumulator.MidFlight(java.util.List.of(), java.util.List.of());
             out.add(new cc.jumpkick.engine.http.HttpEngineServer.LiveRun(
                     h.requestId(),
                     h.buildNumber(),
@@ -5457,22 +5607,112 @@ public final class EngineServer implements AutoCloseable {
                     h.coord(),
                     h.startedAt(),
                     p != null && !p.isNaN() ? p : Double.NaN,
-                    h.journalId()));
+                    h.journalId(),
+                    remainingMs,
+                    r0Ms,
+                    num,
+                    den,
+                    mid.modules(),
+                    mid.tasks()));
         }
         return out;
     }
 
     /**
-     * After a new dashboard SSE subscription: re-emit request-start + current aggregate progress
-     * for every still-running job so a refreshed tab does not sit on a frozen history stub.
+     * After a new dashboard SSE subscription: deliver one compact {@code run-snapshot} per
+     * in-flight job to <em>that subscription only</em>. A phase-by-phase replay filled the
+     * 256-frame SSE queue and left the SPA frozen for seconds while live progress/ETA sat
+     * behind the backlog; one snapshot keeps connect O(jobs) and leaves the wire free for
+     * real-time ticks (parity with the TUI).
      */
-    private void rehydrateLiveRunsOnSseConnect() {
-        for (InFlightBuilds.Hold h : inFlightBuilds.list()) {
-            // Dashboard-only: existing tabs fold the duplicate request-start idempotently; MCP
-            // streams must not see a replayed "job began" (JK-1523).
-            publishRequestStart(h.requestId(), h.kind(), h.dir(), h.buildNumber(), true);
-            emitWorkspaceProgress(h.requestId(), null, true, true);
+    private void rehydrateLiveRunsOnSseConnect(cc.jumpkick.engine.http.HttpEvents.Subscription sub) {
+        if (sub == null || httpEvents == null) return;
+        // Write side of the connect ordering lock (JK-1837): capture + deliver + attach are
+        // atomic w.r.t. every publishEvent, so no event can fall between the snapshot and the
+        // subscription queue. The subscription is detached until attach() below.
+        sseConnect.writeLock().lock();
+        try {
+            for (cc.jumpkick.engine.http.HttpEngineServer.LiveRun run : liveRunsSnapshot()) {
+                httpEvents.deliverTo(sub, "run-snapshot", liveRunSnapshotJson(run, clockMillis.getAsLong()));
+            }
+            httpEvents.attach(sub);
+        } finally {
+            sseConnect.writeLock().unlock();
         }
+    }
+
+    /** Compact mid-flight JSON for the SPA {@code run-snapshot} fold (same shape as enriched history). */
+    private static cc.jumpkick.engine.http.JsonOut liveRunSnapshotJson(
+            cc.jumpkick.engine.http.HttpEngineServer.LiveRun run, long serverNow) {
+        java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+        m.put("schema", 1);
+        m.put("type", "run-snapshot");
+        m.put("requestId", run.requestId());
+        m.put("jid", run.requestId());
+        m.put("kind", run.kind() == null ? "build" : run.kind());
+        m.put("dir", run.dir() == null ? "" : run.dir());
+        if (run.coord() != null) m.put("coord", run.coord());
+        // Guard like history enrichment: startedAt 0 (hold not yet registered) must not reach
+        // the SPA's elapsed clock as "now - 0" (JK-1846).
+        if (run.startedAt() > 0) {
+            m.put("startedAt", run.startedAt());
+            // Engine "now": lets the SPA compute skew-free elapsed and re-anchor to its own
+            // clock (JK-1839).
+            m.put("serverNow", serverNow);
+        }
+        if (run.dir() != null && !run.dir().isBlank()) {
+            // Same project linkage the live request-start carries (JK-1846).
+            m.put("projectId", cc.jumpkick.runtime.ProjectIds.idOf(run.dir()));
+        }
+        m.put("running", true);
+        if (run.buildNumber() > 0) m.put("buildNumber", run.buildNumber());
+        if (run.journalId() != null && !run.journalId().isBlank()) m.put("historyId", run.journalId());
+        if (!Double.isNaN(run.progress())) m.put("progress", run.progress());
+        if (run.remainingMs() >= 0) m.put("remainingMs", run.remainingMs());
+        if (run.r0Ms() > 0) m.put("R0", run.r0Ms());
+        if (run.denominator() > 0) {
+            m.put("numerator", run.numerator());
+            m.put("denominator", run.denominator());
+        }
+        if (!run.modules().isEmpty()) {
+            java.util.List<Object> mods =
+                    new java.util.ArrayList<>(run.modules().size());
+            for (var mod : run.modules()) {
+                java.util.Map<String, Object> mm = new java.util.LinkedHashMap<>();
+                mm.put("dir", mod.dir() == null ? "" : mod.dir());
+                if (mod.coord() != null) mm.put("coord", mod.coord());
+                // Explicit lifecycle bit (JK-1846) — see HttpEngineServer.liveModulesJson.
+                mm.put("finished", mod.finished());
+                mm.put("success", mod.finished() && mod.success());
+                mm.put("millis", mod.millis());
+                if (mod.finished()) mm.put("didWork", mod.didWork());
+                java.util.List<Object> tasks =
+                        new java.util.ArrayList<>(mod.tasks().size());
+                for (var t : mod.tasks()) {
+                    java.util.Map<String, Object> tm = new java.util.LinkedHashMap<>();
+                    tm.put("name", t.name());
+                    tm.put("stage", t.stage() == null ? "" : t.stage());
+                    tm.put("status", t.status() == null ? "RUN" : t.status());
+                    tm.put("millis", t.millis());
+                    tasks.add(tm);
+                }
+                mm.put("tasks", tasks);
+                mods.add(mm);
+            }
+            m.put("modules", mods);
+        } else if (!run.tasks().isEmpty()) {
+            java.util.List<Object> tasks = new java.util.ArrayList<>(run.tasks().size());
+            for (var t : run.tasks()) {
+                java.util.Map<String, Object> tm = new java.util.LinkedHashMap<>();
+                tm.put("name", t.name());
+                tm.put("stage", t.stage() == null ? "" : t.stage());
+                tm.put("status", t.status() == null ? "RUN" : t.status());
+                tm.put("millis", t.millis());
+                tasks.add(tm);
+            }
+            m.put("tasks", tasks);
+        }
+        return cc.jumpkick.engine.http.JsonOut.rawObject(m);
     }
 
     /** HTTP/MCP job cancel tokens and runner threads. */
@@ -5530,10 +5770,8 @@ public final class EngineServer implements AutoCloseable {
     }
 
     private long startHttpWorkspace(String dirStr, String kind, boolean skipTests, boolean testOnly) {
-        Path entryDir = Path.of(dirStr);
-        if (!entryDir.isAbsolute()) {
-            throw new IllegalArgumentException("dir must be an absolute path");
-        }
+        // ~ and bare relatives resolve against user.home (engine CWD is the state dir, not $HOME).
+        Path entryDir = cc.jumpkick.util.PathUtil.resolveUserPath(dirStr);
         if (!Files.isRegularFile(entryDir.resolve("jk.toml"))) {
             throw new IllegalArgumentException("no jk.toml in " + entryDir);
         }
@@ -5630,10 +5868,7 @@ public final class EngineServer implements AutoCloseable {
     }
 
     private long startHttpLock(String dirStr) {
-        Path entryDir = Path.of(dirStr);
-        if (!entryDir.isAbsolute()) {
-            throw new IllegalArgumentException("dir must be an absolute path");
-        }
+        Path entryDir = cc.jumpkick.util.PathUtil.resolveUserPath(dirStr);
         if (!Files.isRegularFile(entryDir.resolve("jk.toml"))) {
             throw new IllegalArgumentException("no jk.toml in " + entryDir);
         }
@@ -5807,10 +6042,10 @@ public final class EngineServer implements AutoCloseable {
         }
     }
 
-    /** BuildPlan events for a single HTTP lock job → SSE hub. */
+    /** BuildPlan events for a single HTTP lock job → SSE hub (same wire cadence as CLI UDS). */
     private BuildPlanListener singleBuildPlanHubListener(String dir) {
         long eventRequestId = eventRequestId();
-        return new BuildPlanListener() {
+        return new CoalescingBuildPlanListener(new BuildPlanListener() {
             @Override
             public void planStart(BuildPlanView view) {
                 publishBuildPlanProgress(eventRequestId, dir, view);
@@ -5840,7 +6075,12 @@ public final class EngineServer implements AutoCloseable {
             public void label(String step, String label) {
                 publishLabel(eventRequestId, dir, step, label);
             }
-        };
+
+            @Override
+            public void output(String step, String line) {
+                publishOutput(eventRequestId, dir, step, line);
+            }
+        });
     }
 
     /** Module/plan events to the dashboard hub only — the HTTP trigger's counterpart of {@link #wireListener}. */
@@ -5906,7 +6146,8 @@ public final class EngineServer implements AutoCloseable {
                 String dir = m.dir().toString();
                 moduleBuildPlanner.put(dir, m.plan());
                 publishModuleStart(eventRequestId, dir, m.coord());
-                return new BuildPlanListener() {
+                // Same JK_WIRE_PROGRESS_MS coalescing as the CLI UDS path (progress/label/output).
+                return new CoalescingBuildPlanListener(new BuildPlanListener() {
                     @Override
                     public void planStart(BuildPlanView view) {
                         lastDenByDir.put(dir, view.denominator());
@@ -5937,8 +6178,8 @@ public final class EngineServer implements AutoCloseable {
                     public void stepFinish(
                             String step, String group, cc.jumpkick.run.TaskStatus status, Duration duration) {
                         long millis = duration.toMillis();
-                        publishStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), millis);
                         accStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), millis);
+                        publishStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), millis);
                     }
 
                     @Override
@@ -5953,19 +6194,19 @@ public final class EngineServer implements AutoCloseable {
 
                     @Override
                     public void planFinish(BuildPlanResult result) {
+                        accBuildPlanFinish(eventRequestId, dir, result);
                         publishBuildPlanFinish(eventRequestId, dir, result.success());
                         if (!result.success()) publishDiagnostics(eventRequestId, dir, result.errors());
-                        accBuildPlanFinish(eventRequestId, dir, result);
                     }
-                };
+                });
             }
 
             @Override
             public void onModuleFinish(ModuleOutcome o) {
                 String dir = o.dir().toString();
                 trackModuleComplete(eventRequestId, dir, lastDenByDir.getOrDefault(dir, 0L), null);
-                publishModuleFinish(eventRequestId, dir, o.coord(), o.success(), o.millis(), o.didWork());
                 accModule(eventRequestId, o);
+                publishModuleFinish(eventRequestId, dir, o.coord(), o.success(), o.millis(), o.didWork());
                 cc.jumpkick.run.BuildPlan g = moduleBuildPlanner.remove(dir);
                 if (g != null) {
                     accTests(
@@ -5982,11 +6223,17 @@ public final class EngineServer implements AutoCloseable {
         long heapCommitted = rt.totalMemory();
         // Same available-memory semantics as HeapPlan (MemAvailable / reclaimable / MXBean free).
         MemoryProbe.Memory host = MemoryProbe.current();
+        // "Connections" on the Admin tile / status-ack: every live client surface, not only the
+        // UDS accept loop. A browser on /api/events (or an MCP SSE) is a real attachment — without
+        // this, Admin shows 0 while the dashboard is open because only CLI socket clients used to
+        // bump activeConnections.
+        int connections = liveConnectionCount();
+        peakActiveConnections.accumulateAndGet(connections, Math::max);
         return new cc.jumpkick.engine.http.StatusSnapshot(
                 version,
                 pid,
                 startedAtMillis,
-                activeConnections.get(),
+                connections,
                 activeBuildPlans.get(),
                 heapCommitted - rt.freeMemory(),
                 heapCommitted,
@@ -6001,6 +6248,18 @@ public final class EngineServer implements AutoCloseable {
                 engineEpoch,
                 peakActiveConnections.get(),
                 peakActiveBuildPlans.get());
+    }
+
+    /**
+     * Live client attachments: CLI/UDS (or TCP) engine-protocol sockets + long-lived HTTP SSE
+     * (dashboard {@code /api/events} and MCP event streams). Short REST GETs are not counted — they
+     * release their admission permit as soon as the response finishes.
+     */
+    private int liveConnectionCount() {
+        int n = activeConnections.get();
+        HttpEngineServer h = httpServer;
+        if (h != null) n += h.liveEventStreams();
+        return n;
     }
 
     /**
@@ -6390,6 +6649,22 @@ public final class EngineServer implements AutoCloseable {
             if (!o.success()) anyFailure = true;
         }
 
+        /**
+         * Currently-running step (dashboard rehydrate). No-op when the step already has a
+         * terminal status so a late {@code stepStart} cannot resurrect a finished row.
+         */
+        void noteTaskStart(String dir, String step, String phase) {
+            if (step == null || step.isBlank()) return;
+            String d = dir == null ? "" : dir;
+            java.util.Map<String, BuildRecord.Task> m = stepsByDir.computeIfAbsent(
+                    d, k -> java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<>()));
+            synchronized (m) {
+                BuildRecord.Task existing = m.get(step);
+                if (existing != null && isTerminalTaskStatus(existing.status())) return;
+                m.put(step, new BuildRecord.Task(step, phase == null ? "" : phase, "RUN", 0L));
+            }
+        }
+
         /** One finished step, stored under its module dir ("" for a single-plan build). */
         void addTask(String dir, String step, String phase, String status, long millis) {
             stepsByDir
@@ -6399,6 +6674,69 @@ public final class EngineServer implements AutoCloseable {
                     .put(step, new BuildRecord.Task(step, phase, status, millis));
             if (timeline != null) {
                 timeline.complete(timelineModule(dir), step, status == null ? "" : status, millis);
+            }
+        }
+
+        private static boolean isTerminalTaskStatus(String status) {
+            if (status == null || status.isBlank()) return false;
+            String u = status.trim().toUpperCase(java.util.Locale.ROOT);
+            return "SUCCESS".equals(u)
+                    || "FAIL".equals(u)
+                    || "FAILED".equals(u)
+                    || "CANCELLED".equals(u)
+                    || "CANCELED".equals(u)
+                    || "SKIPPED".equals(u);
+        }
+
+        /**
+         * Mid-flight modules/tasks for dashboard catch-up. Finished modules keep their outcome;
+         * dirs with steps but no module outcome are in-progress workspace modules. When no module
+         * rows exist, top-level tasks are the single-plan chain (including {@code RUN}).
+         */
+        MidFlight midFlight() {
+            java.util.List<cc.jumpkick.engine.http.HttpEngineServer.LiveModule> moduleList =
+                    new java.util.ArrayList<>();
+            java.util.Set<String> covered = new java.util.HashSet<>();
+            for (ModuleOutcome o : modules) {
+                String mdir = o.dir() == null ? "" : o.dir().toString();
+                covered.add(mdir);
+                moduleList.add(new cc.jumpkick.engine.http.HttpEngineServer.LiveModule(
+                        mdir,
+                        o.coord(),
+                        /* finished */ true,
+                        o.success(),
+                        o.millis(),
+                        o.didWork(),
+                        liveTasks(stepsFor(mdir))));
+            }
+            for (String d : stepsByDir.keySet()) {
+                if (covered.contains(d)) continue;
+                if (d.isEmpty()) continue; // single-plan top-level bucket
+                moduleList.add(new cc.jumpkick.engine.http.HttpEngineServer.LiveModule(
+                        d, null, /* finished */ false, false, 0L, /* didWork n/a */ true, liveTasks(stepsFor(d))));
+            }
+            java.util.List<cc.jumpkick.engine.http.HttpEngineServer.LiveTask> top =
+                    moduleList.isEmpty() ? liveTasks(stepsFor("")) : java.util.List.of();
+            return new MidFlight(moduleList, top);
+        }
+
+        private static java.util.List<cc.jumpkick.engine.http.HttpEngineServer.LiveTask> liveTasks(
+                java.util.List<BuildRecord.Task> steps) {
+            java.util.List<cc.jumpkick.engine.http.HttpEngineServer.LiveTask> out =
+                    new java.util.ArrayList<>(steps.size());
+            for (BuildRecord.Task s : steps) {
+                out.add(new cc.jumpkick.engine.http.HttpEngineServer.LiveTask(
+                        s.name(), s.stage(), s.status(), s.millis()));
+            }
+            return out;
+        }
+
+        record MidFlight(
+                java.util.List<cc.jumpkick.engine.http.HttpEngineServer.LiveModule> modules,
+                java.util.List<cc.jumpkick.engine.http.HttpEngineServer.LiveTask> tasks) {
+            MidFlight {
+                modules = modules == null ? java.util.List.of() : java.util.List.copyOf(modules);
+                tasks = tasks == null ? java.util.List.of() : java.util.List.copyOf(tasks);
             }
         }
 
@@ -6438,7 +6776,16 @@ public final class EngineServer implements AutoCloseable {
                         d.code(),
                         redactEnv(redactDir, d.message()),
                         d.test(),
-                        d.exceptionClass()));
+                        d.exceptionClass(),
+                        d.module(),
+                        d.engine(),
+                        d.className(),
+                        d.method(),
+                        d.stack(),
+                        d.file(),
+                        d.line(),
+                        d.snippetStart(),
+                        d.snippet()));
             }
             for (BuildPlanResult.Diagnostic d : result.warnings()) {
                 diagnostics.add(new BuildRecord.Diag(
@@ -6448,7 +6795,16 @@ public final class EngineServer implements AutoCloseable {
                         d.code(),
                         redactEnv(redactDir, d.message()),
                         d.test(),
-                        d.exceptionClass()));
+                        d.exceptionClass(),
+                        d.module(),
+                        d.engine(),
+                        d.className(),
+                        d.method(),
+                        d.stack(),
+                        d.file(),
+                        d.line(),
+                        d.snippetStart(),
+                        d.snippet()));
             }
             // Capture the step dependency edges from the genuine in-process result (engine-side
             // result.steps is reliably populated, unlike a client-side reconstruction).

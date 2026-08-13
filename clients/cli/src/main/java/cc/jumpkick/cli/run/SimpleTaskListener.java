@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.run;
 
-import cc.jumpkick.cli.tui.CommandManager;
+import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import java.io.PrintStream;
 
 /**
- * Console listener for simple-task commands: drives a {@link CommandManager} in simple mode — an
+ * Console listener for simple-task commands: drives a {@link JkManager} in simple mode — an
  * animated spinner + command on a TTY, then a {@code ✓}/{@code ✗} result line built from the {@link
  * ConsoleSpec} mappers. On a pipe / under {@code --quiet} ({@code animate == false}) it skips the
  * spinner but still prints the result line, so non-interactive consumers keep a summary.
@@ -24,7 +24,7 @@ public final class SimpleTaskListener implements BuildPlanListener {
     private final ConsoleSpec spec;
     private final boolean animate;
 
-    private CommandManager cm;
+    private JkManager cm;
 
     public SimpleTaskListener(PrintStream out, PrintStream err, ConsoleSpec spec, boolean animate) {
         this.out = out;
@@ -35,7 +35,7 @@ public final class SimpleTaskListener implements BuildPlanListener {
 
     @Override
     public void planStart(BuildPlanView view) {
-        cm = CommandManager.simple(out, spec.command(), animate);
+        cm = JkManager.simple(out, spec.command(), animate);
     }
 
     @Override
@@ -48,7 +48,7 @@ public final class SimpleTaskListener implements BuildPlanListener {
 
     @Override
     public void planFinish(BuildPlanResult result) {
-        if (cm == null) cm = CommandManager.simple(out, spec.command(), animate);
+        if (cm == null) cm = JkManager.simple(out, spec.command(), animate);
         String suffix = " " + ConsoleSpec.took(result.duration());
         if (result.success()) {
             cm.finishSuccess(spec.onSuccess().apply(result) + suffix);

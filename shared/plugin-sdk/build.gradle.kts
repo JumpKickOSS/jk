@@ -42,7 +42,7 @@ publishing {
                 description.set(
                         "The stable API third-party jk build plugins compile against, plus the " +
                                 "host<->plugin JSONL wire codec.")
-                url.set("https://github.com/BryanSant/jk")
+                url.set("https://github.com/JumpKickOSS/jk")
                 licenses {
                     license {
                         name.set("The Apache License, Version 2.0")
@@ -56,8 +56,8 @@ publishing {
                     }
                 }
                 scm {
-                    url.set("https://github.com/BryanSant/jk")
-                    connection.set("scm:git:https://github.com/BryanSant/jk.git")
+                    url.set("https://github.com/JumpKickOSS/jk")
+                    connection.set("scm:git:https://github.com/JumpKickOSS/jk.git")
                 }
             }
         }

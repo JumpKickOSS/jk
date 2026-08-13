@@ -5,6 +5,9 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.RenderContext;
+import cc.jumpkick.cli.tui.RichText;
+import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.engine.protocol.OutdatedReport;
 import cc.jumpkick.model.GitVersion;
 import cc.jumpkick.model.command.CliCommand;
@@ -226,79 +229,26 @@ public final class OutdatedCommand implements CliCommand {
             first = false;
         }
 
-        int[] w = new int[n];
-        for (int i = 0; i < n; i++) w[i] = headers.get(i).length();
-        for (String[] cells : cellRows) {
-            for (int i = 0; i < n; i++) w[i] = Math.max(w[i], cells[i].length());
-        }
-        int inner = innerWidth(w);
-
-        List<String> out = new ArrayList<>();
-        out.add(cc.jumpkick.cli.tui.BoxTable.titleBar(title, inner + 2));
-        out.add(divider("├", "┬", "┤", w));
-        out.add(headerRow(headers, w));
-        out.add(divider("├", "┼", "┤", w));
+        Table table = new Table(title).columns(headers.toArray(String[]::new));
         for (int i = 0; i < cellRows.size(); i++) {
-            if (dividerBefore.get(i)) out.add(divider("├", "┼", "┤", w));
-            out.add(dataRow(cellRows.get(i), styleRows.get(i), w));
+            if (dividerBefore.get(i)) table.row(Table.Row.separator());
+            String[] cells = cellRows.get(i);
+            AttributedStyle[] styles = styleRows.get(i);
+            RichText[] rich = new RichText[n];
+            for (int c = 0; c < n; c++) {
+                rich[c] = styledCell(cells[c], styles[c]);
+            }
+            table.row(rich);
         }
-        out.add(divider("╰", "┴", "╯", w));
-        return out;
+        return table.render(RenderContext.current());
+    }
+
+    private static RichText styledCell(String text, AttributedStyle style) {
+        if (style == null || !Theme.active().isAnsi()) return RichText.plain(text);
+        return RichText.ansi(Theme.colorize(text, style));
     }
 
     private static String disp(String v) {
         return v == null || v.isEmpty() ? NONE : v;
-    }
-
-    private static int innerWidth(int[] widths) {
-        int sum = 0;
-        for (int c : widths) sum += c + 2;
-        return sum + (widths.length - 1);
-    }
-
-    private static String divider(String left, String junction, String right, int[] widths) {
-        boolean ansi = Theme.active().isAnsi();
-        var sb = new StringBuilder(ansi ? left : "+");
-        for (int i = 0; i < widths.length; i++) {
-            sb.append((ansi ? "─" : "-").repeat(widths[i] + 2));
-            sb.append(i == widths.length - 1 ? (ansi ? right : "+") : (ansi ? junction : "+"));
-        }
-        return ansi ? Theme.colorize(sb.toString(), Theme.active().darkGray()) : sb.toString();
-    }
-
-    private static String headerRow(List<String> headers, int[] widths) {
-        String bar =
-                Theme.active().isAnsi() ? Theme.colorize("│", Theme.active().darkGray()) : "|";
-        var sb = new StringBuilder(bar);
-        for (int i = 0; i < headers.size(); i++) {
-            sb.append(" ")
-                    .append(cc.jumpkick.cli.tui.BoxTable.headerCell(padRight(headers.get(i), widths[i])))
-                    .append(" ")
-                    .append(bar);
-        }
-        return sb.toString();
-    }
-
-    private static String dataRow(String[] cells, AttributedStyle[] styles, int[] widths) {
-        String bar =
-                Theme.active().isAnsi() ? Theme.colorize("│", Theme.active().darkGray()) : "|";
-        var sb = new StringBuilder(bar);
-        for (int i = 0; i < cells.length; i++) {
-            sb.append(" ")
-                    .append(styled(cells[i], widths[i], styles[i]))
-                    .append(" ")
-                    .append(bar);
-        }
-        return sb.toString();
-    }
-
-    private static String styled(String text, int width, AttributedStyle style) {
-        String padded = padRight(text, width);
-        if (style == null || !Theme.active().isAnsi()) return padded;
-        return Theme.colorize(padded, style);
-    }
-
-    private static String padRight(String s, int width) {
-        return s.length() >= width ? s : s + " ".repeat(width - s.length());
     }
 }

@@ -75,7 +75,8 @@ class CleanExplainWhyRebuiltTest {
                 "--cache-dir",
                 tempDir.resolve("cache").toString()));
         assertThat(stdout).contains("Build Plan").contains("widget");
-        assertThat(stdout).contains("compile-main");
+        // Default explain rolls tasks into stages (Compile / Test / Package).
+        assertThat(stdout).contains("Compile");
     }
 
     @Test
@@ -92,13 +93,14 @@ class CleanExplainWhyRebuiltTest {
                 tempDir.toString(),
                 "--cache-dir",
                 tempDir.resolve("cache").toString()));
-        // Header "- Build Plan" chip + the ● root coord; a single never-built project
-        // lands in the "Rebuild" section.
-        assertThat(stdout).contains("Build Plan").contains("widget");
+        // Header "Build Plan" chip + Build Graph; a single never-built project lands in Rebuild.
+        assertThat(stdout).contains("Build Plan").contains("Build Graph").contains("widget");
         assertThat(stdout).containsIgnoringCase("rebuild");
-        assertThat(stdout).contains("compile-main");
-        // Never built → the module rebuilds: "□ full compile · N sources".
-        assertThat(stdout).contains("full compile");
+        // Phase rollup: dirty Compile with source count (not the expanded compile-main line).
+        assertThat(stdout).contains("Compile");
+        assertThat(stdout).contains("source");
+        assertThat(stdout).contains("Total rebuild effort");
+        assertThat(stdout).contains("Build time estimate");
     }
 
     @Test

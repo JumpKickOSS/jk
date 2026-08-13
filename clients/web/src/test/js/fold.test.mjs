@@ -12,6 +12,7 @@ const {
   moduleSummary,
   phaseChainOf,
   seedFromHistory,
+  startAnchor,
   ioLines,
   fmtBytes,
   fmtStepMillis,
@@ -23,6 +24,14 @@ const {
   orderedModules,
   MAX_CARDS,
   MAX_OUTPUT_LINES,
+  normalizeDiagnostic,
+  testFailureReport,
+  isTestFailureDiag,
+  parseAssertJMessage,
+  shortTestLabel,
+  shortDisplayLabel,
+  simpleTypeName,
+  simplifyMethodParams,
 } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
 
 const historyRecord = (id, dir, extra = {}) => ({
@@ -425,6 +434,333 @@ test('seedFromHistory uses live requestId when history is enriched', () => {
   assert.equal(cards[0].progressPercent, 61);
 });
 
+test('mid-build history enrich carries startedAt, residual, and prior phases', () => {
+  const cards = [];
+  const t0 = 1_700_000_000_000;
+  const before = Date.now();
+  seedFromHistory(cards, [
+    historyRecord('20260101T000000000-run1', '/w/a', {
+      finishedAt: 0,
+      millis: 0,
+      running: true,
+      buildNumber: 27,
+      requestId: 99,
+      startedAt: t0,
+      progress: 55,
+      remainingMs: 40_000,
+      R0: 90_000,
+      numerator: 110,
+      denominator: 200,
+      tasks: [
+        { name: 'resolve', stage: 'resolve', status: 'SUCCESS', millis: 120 },
+        { name: 'compile-java', stage: 'compile', status: 'RUN', millis: 0 },
+      ],
+    }),
+  ]);
+  const after = Date.now();
+  const c = cards[0];
+  assert.equal(c.id, 99);
+  assert.equal(c.startedAt, t0);
+  assert.equal(c.progressPercent, 55);
+  assert.equal(c.peakPct, 55);
+  assert.equal(c.residualRemainingMs, 40_000);
+  // remaining is as-of the GET — residualAt is "now", not admission time.
+  assert.ok(c.residualAt >= before && c.residualAt <= after);
+  assert.equal(c.r0Ms, 90_000);
+  assert.equal(c.r0At, t0);
+  assert.equal(c.modules.length, 1);
+  assert.equal(c.modules[0].dir, ''); // single-plan live key
+  assert.equal(c.modules[0].state, 'running');
+  assert.deepEqual(
+    c.modules[0].steps.map((s) => s.name + ':' + s.state),
+    ['resolve:success', 'compile-java:running'],
+  );
+});
+
+test('seedFromHistory prefers engine startedAt over late SSE receipt time', () => {
+  const cards = [];
+  const t0 = 1_000;
+  // Tab joined late: request-start arrived without startedAt → browser clock.
+  foldEvent(cards, { type: 'request-start', data: { requestId: 7, kind: 'build', dir: '/w', buildNumber: 3 }, at: 50_000 });
+  assert.equal(cards[0].startedAt, 50_000);
+  seedFromHistory(cards, [
+    historyRecord('r', '/w', {
+      finishedAt: 0,
+      millis: 0,
+      running: true,
+      buildNumber: 3,
+      requestId: 7,
+      startedAt: t0,
+      progress: 40,
+    }),
+  ]);
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].startedAt, t0);
+  assert.equal(cards[0].progressPercent, 40);
+});
+
+test('request-start rehydrate carries engine startedAt', () => {
+  const cards = [];
+  foldEvent(cards, {
+    type: 'request-start',
+    data: { requestId: 3, kind: 'build', dir: '/w', buildNumber: 1, startedAt: 9_000 },
+    at: 99_000,
+  });
+  assert.equal(cards[0].startedAt, 9_000);
+  // Second rehydrate must not clobber the earlier engine start with a later receipt.
+  foldEvent(cards, {
+    type: 'request-start',
+    data: { requestId: 3, kind: 'build', dir: '/w', buildNumber: 1, startedAt: 9_000 },
+    at: 120_000,
+  });
+  assert.equal(cards[0].startedAt, 9_000);
+  assert.equal(cards.length, 1);
+});
+
+test('run-snapshot applies phases + progress in one frame (no phase-replay backlog)', () => {
+  const cards = [];
+  const t0 = 5_000;
+  foldEvent(cards, {
+    type: 'run-snapshot',
+    data: {
+      requestId: 11,
+      kind: 'build',
+      dir: '/w',
+      buildNumber: 4,
+      startedAt: t0,
+      progress: 62,
+      remainingMs: 30_000,
+      R0: 80_000,
+      numerator: 124,
+      denominator: 200,
+      tasks: [
+        { name: 'resolve', stage: 'resolve', status: 'SUCCESS', millis: 80 },
+        { name: 'compile-java', stage: 'compile', status: 'RUN', millis: 0 },
+      ],
+    },
+    at: 50_000,
+  });
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].id, 11);
+  assert.equal(cards[0].startedAt, t0);
+  assert.equal(cards[0].progressPercent, 62);
+  assert.equal(cards[0].peakPct, 62);
+  assert.equal(cards[0].residualRemainingMs, 30_000);
+  assert.equal(cards[0].modules[0].steps.length, 2);
+  assert.equal(cards[0].modules[0].steps[1].state, 'running');
+  // Live progress after snapshot must attach to the same card (not a second one).
+  foldEvent(cards, {
+    type: 'workspace-progress',
+    data: {
+      requestId: 11,
+      dir: '/w',
+      numerator: 140,
+      denominator: 200,
+      progress: 70,
+      remainingMs: 25_000,
+    },
+    at: 55_000,
+  });
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].progressPercent, 70);
+  assert.equal(cards[0].residualRemainingMs, 25_000);
+});
+
+test('pre-execute eta re-seed replaces a provisional R0; execute freezes it (JK-1854)', () => {
+  const cards = [];
+  foldEvent(cards, { type: 'request-start', data: { requestId: 41, kind: 'build', dir: '/w' }, at: 1000 });
+  // Coarse lock+prior figure during lock contention.
+  foldEvent(cards, { type: 'eta', data: { requestId: 41, millis: 90_000 }, at: 1100 });
+  assert.equal(cards[0].r0Ms, 90_000);
+  // Post-forecast refined seed, still pre-execute: replaces (CLI parity).
+  foldEvent(cards, { type: 'eta', data: { requestId: 41, millis: 30_000 }, at: 2000 });
+  assert.equal(cards[0].r0Ms, 30_000);
+  assert.equal(cards[0].residualRemainingMs, 30_000);
+  // Execute begins (module work folds) — a later eta no longer rewrites R0.
+  foldEvent(cards, {
+    type: 'task-start',
+    data: { requestId: 41, dir: '/w/app', task: 'compile-java', stage: 'compile' },
+    at: 3000,
+  });
+  foldEvent(cards, { type: 'eta', data: { requestId: 41, millis: 70_000 }, at: 4000 });
+  assert.equal(cards[0].r0Ms, 30_000);
+});
+
+test('run-snapshot carries finished/didWork/historyId and the SPA stops guessing (JK-1846)', () => {
+  const cards = [];
+  foldEvent(cards, {
+    type: 'run-snapshot',
+    data: {
+      requestId: 31,
+      kind: 'build',
+      dir: '/w',
+      historyId: '20260101T000000000-lock1',
+      startedAt: 1000,
+      serverNow: 5000,
+      modules: [
+        // Module-level failure with no FAIL-status task: guessing called this "running".
+        { dir: '/w/app', finished: true, success: false, millis: 900, didWork: true,
+          tasks: [{ name: 'compile-java', stage: 'compile', status: 'SUCCESS', millis: 900 }] },
+        { dir: '/w/lib', finished: true, success: true, millis: 12, didWork: false,
+          tasks: [{ name: 'check', stage: 'compile', status: 'SUCCESS', millis: 12 }] },
+        { dir: '/w/cli', finished: false, success: false, millis: 0,
+          tasks: [{ name: 'compile-java', stage: 'compile', status: 'RUN', millis: 0 }] },
+      ],
+    },
+    at: 9000,
+  });
+  const card = cards[0];
+  assert.equal(card.historyId, '20260101T000000000-lock1');
+  const byDir = Object.fromEntries(card.modules.map((m) => [m.dir, m]));
+  assert.equal(byDir['/w/app'].state, 'failed');
+  assert.equal(byDir['/w/lib'].state, 'checked');
+  assert.equal(byDir['/w/lib'].didWork, false);
+  assert.equal(byDir['/w/cli'].state, 'running');
+});
+
+test('serverNow re-anchors engine startedAt to the client epoch under skew (JK-1839)', () => {
+  const cards = [];
+  // Engine clock runs 30s AHEAD of the browser: engine says the run started 10s ago.
+  const clientReceipt = 100_000;
+  const engineNow = 130_000;
+  const engineStart = engineNow - 10_000;
+  foldEvent(cards, {
+    type: 'run-snapshot',
+    data: {
+      requestId: 21,
+      kind: 'build',
+      dir: '/w',
+      startedAt: engineStart,
+      serverNow: engineNow,
+      progress: 40,
+      remainingMs: 20_000,
+      tasks: [{ name: 'compile-java', stage: 'compile', status: 'RUN', millis: 0 }],
+    },
+    at: clientReceipt,
+  });
+  const card = cards[0];
+  // Engine-epoch identity is preserved for history reconciliation…
+  assert.equal(card.startedAt, engineStart);
+  // …but elapsed math gets a client-epoch anchor: 10s before receipt, skew cancelled.
+  assert.equal(card.startedAtClient, clientReceipt - 10_000);
+  assert.equal(startAnchor(card), clientReceipt - 10_000);
+
+  // A later live request-start (serverNow ≈ engine now) must not move the anchor forward.
+  foldEvent(cards, {
+    type: 'request-start',
+    data: { requestId: 21, kind: 'build', dir: '/w', startedAt: engineStart, serverNow: engineNow + 5_000 },
+    at: clientReceipt + 5_000,
+  });
+  assert.equal(card.startedAtClient, clientReceipt - 10_000);
+});
+
+test('stale run-snapshot never resurrects a finished card (JK-1837)', () => {
+  const cards = [];
+  foldEvent(cards, { type: 'request-start', data: { requestId: 9, kind: 'build', dir: '/w' }, at: 1000 });
+  foldEvent(cards, {
+    type: 'request-finish',
+    data: { requestId: 9, dir: '/w', success: true, millis: 4200 },
+    at: 5000,
+  });
+  // A snapshot captured while the run was still live lands after the finish frame.
+  foldEvent(cards, {
+    type: 'run-snapshot',
+    data: {
+      requestId: 9,
+      kind: 'build',
+      dir: '/w',
+      startedAt: 800,
+      progress: 90,
+      tasks: [{ name: 'run-tests', stage: 'test', status: 'RUN', millis: 0 }],
+    },
+    at: 5001,
+  });
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].state, 'finished');
+  assert.equal(cards[0].millis, 4200);
+});
+
+test('seedFromHistory finishes a running card when the record says the run is over (JK-1837)', () => {
+  const cards = [];
+  foldEvent(cards, {
+    type: 'request-start',
+    data: { requestId: 12, kind: 'build', dir: '/w/a', buildNumber: 31 },
+    at: 1000,
+  });
+  foldEvent(cards, {
+    type: 'task-start',
+    data: { requestId: 12, dir: '/w/a', task: 'run-tests', stage: 'test' },
+    at: 1500,
+  });
+  assert.equal(cards[0].state, 'running');
+  // The request-finish frame was lost in the connect window; the journal is durable truth.
+  seedFromHistory(cards, [
+    historyRecord('20260101T000000000-run9', '/w/a', {
+      running: false,
+      buildNumber: 31,
+      success: true,
+      finishedAt: 9000,
+      millis: 8000,
+      tasks: [{ name: 'run-tests', stage: 'test', status: 'SUCCESS', millis: 7000 }],
+    }),
+  ]);
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].state, 'finished');
+  assert.equal(cards[0].success, true);
+  assert.equal(cards[0].millis, 8000);
+  const steps = cards[0].modules[0].steps;
+  assert.equal(steps.find((s) => s.name === 'run-tests').state, 'success');
+});
+
+test('reconnect run-snapshot preserves live diagnostics, failed state, and checked modules (JK-1834)', () => {
+  const cards = [];
+  foldEvent(cards, { type: 'request-start', data: { requestId: 7, kind: 'build', dir: '/w' }, at: 1000 });
+  // Live stream reports a checked module, then a module-level failure with diagnostics.
+  foldEvent(cards, {
+    type: 'module-finish',
+    data: { requestId: 7, dir: '/w/lib', success: true, didWork: false, millis: 12 },
+    at: 1500,
+  });
+  foldEvent(cards, {
+    type: 'diagnostic',
+    data: { requestId: 7, dir: '/w/app', task: 'run-tests', code: 'test-failure', message: 'FooTest.bar failed' },
+    at: 2000,
+  });
+  foldEvent(cards, {
+    type: 'module-finish',
+    data: { requestId: 7, dir: '/w/app', success: false, millis: 900 },
+    at: 2100,
+  });
+  // EventSource reconnects: the new subscription's snapshot has chains but no diagnostics/didWork.
+  foldEvent(cards, {
+    type: 'run-snapshot',
+    data: {
+      requestId: 7,
+      kind: 'build',
+      dir: '/w',
+      startedAt: 900,
+      progress: 80,
+      modules: [
+        { dir: '/w/lib', success: true, millis: 12, tasks: [{ name: 'check', stage: 'compile', status: 'SUCCESS', millis: 12 }] },
+        { dir: '/w/app', success: false, millis: 900, tasks: [{ name: 'run-tests', stage: 'test', status: 'RUN', millis: 0 }] },
+        { dir: '/w/cli', success: false, millis: 0, tasks: [{ name: 'compile-java', stage: 'compile', status: 'RUN', millis: 0 }] },
+      ],
+    },
+    at: 3000,
+  });
+  const card = cards[0];
+  const byDir = Object.fromEntries(card.modules.map((m) => [m.dir, m]));
+  // Diagnostics and the reported failure survive the snapshot replace.
+  assert.equal(byDir['/w/app'].diagnostics.length, 1);
+  assert.equal(byDir['/w/app'].diagnostics[0].message, 'FooTest.bar failed');
+  assert.equal(byDir['/w/app'].state, 'failed');
+  // didWork=false keeps its checked rendering.
+  assert.equal(byDir['/w/lib'].state, 'checked');
+  // Snapshot-only modules still appear with the engine's chains.
+  assert.equal(byDir['/w/cli'].state, 'running');
+  assert.equal(byDir['/w/cli'].steps[0].name, 'compile-java');
+});
+
 test('mid-build refresh: history stub rebinds on workspace-progress and finishes', () => {
   // Hard refresh while a build is streaming: journal seeds h:… then SSE events use numeric requestId.
   const cards = [];
@@ -577,6 +913,28 @@ test('phaseChainOf collapses steps into coarse phase nodes in encounter order', 
   assert.deepEqual(chain.map((p) => p.label), ['Resolve', 'Compile', 'Test']); // one node per phase, in order
   assert.deepEqual(chain.map((p) => p.state), ['success', 'success', 'success']);
   assert.deepEqual(chain[1].steps.map((s) => s.name), ['compile-java', 'compile-kotlin']); // Compile collapses both
+});
+
+test('phaseChainOf paints skip when compile is SKIPPED and stamp is 0ms success', () => {
+  // Journal shape: compile-java SKIPPED + write-stamp SUCCESS@0ms must not be solid green.
+  const chain = phaseChainOf({
+    steps: [
+      { name: 'compile-java', phase: 'compile', state: 'skipped', millis: 0 },
+      { name: 'write-stamp', phase: 'compile', state: 'success', millis: 0 },
+      { name: 'build-logic-after-compile', phase: 'compile', state: 'success', millis: 0 },
+    ],
+  });
+  assert.equal(chain[0].state, 'skipped');
+});
+
+test('task-finish SUCCESS with 0ms paints as skipped', () => {
+  const cards = [];
+  foldEvent(cards, { type: 'request-start', data: { requestId: 1, kind: 'build', dir: '/w' } });
+  foldEvent(cards, {
+    type: 'task-finish',
+    data: { requestId: 1, dir: '', task: 'write-stamp', stage: 'compile', status: 'SUCCESS', millis: 0 },
+  });
+  assert.equal(cards[0].modules[0].steps[0].state, 'skipped');
 });
 
 test('task-finish stores engine millis on the step row', () => {
@@ -823,4 +1181,214 @@ test('cancelled without FAIL steps still reads as cancelled', () => {
     }),
   ]);
   assert.equal(outcomeOf(cards[0]), 'cancelled');
+});
+
+// ---- test-failure rich report (CLI TestFailureHighlight parity) ----
+
+test('normalizeDiagnostic keeps snippet / identity fields for test failures', () => {
+  const d = normalizeDiagnostic({
+    task: 'run-tests',
+    code: 'test-failure',
+    message: '[dogfood] expected: "42"\n but was: "41"',
+    module: 'cc.jumpkick:jk-engine',
+    class: 'cc.jumpkick.runtime.DogfoodFailureSnippetTest',
+    method: 'deliberately_fails_to_show_source_snippet()',
+    exceptionClass: 'org.opentest4j.AssertionFailedError',
+    file: 'src/test/java/cc/jumpkick/runtime/DogfoodFailureSnippetTest.java',
+    line: 23,
+    snippetStart: 19,
+    snippet: ['', '        // comment', '                .isEqualTo(42);', '    }', '}'],
+  });
+  assert.equal(d.step, 'run-tests');
+  assert.equal(d.className, 'cc.jumpkick.runtime.DogfoodFailureSnippetTest');
+  assert.equal(d.file, 'src/test/java/cc/jumpkick/runtime/DogfoodFailureSnippetTest.java');
+  assert.equal(d.line, 23);
+  assert.equal(d.snippetStart, 19);
+  assert.equal(d.snippet.length, 5);
+  assert.equal(d.module, 'cc.jumpkick:jk-engine');
+});
+
+test('isTestFailureDiag only matches structured per-test code', () => {
+  assert.equal(isTestFailureDiag({ code: 'test-failure' }), true);
+  assert.equal(isTestFailureDiag({ code: 'error' }), false);
+  assert.equal(isTestFailureDiag(null), false);
+});
+
+test('parseAssertJMessage reformats description + expected/but was', () => {
+  const a = parseAssertJMessage('[dogfood: hello]\nexpected: "42"\n but was: "41"');
+  assert.ok(a);
+  assert.equal(a.desc, 'dogfood: hello');
+  assert.equal(a.expected, '42');
+  assert.equal(a.actual, '41');
+  assert.equal(parseAssertJMessage('plain boom'), null);
+});
+
+test('shortTestLabel strips package and keeps method params simplified', () => {
+  assert.equal(simpleTypeName('org.opentest4j.AssertionFailedError'), 'AssertionFailedError');
+  assert.equal(
+    shortTestLabel({
+      className: 'cc.jumpkick.runtime.DogfoodFailureSnippetTest',
+      method: 'deliberately_fails_to_show_source_snippet()',
+    }),
+    'DogfoodFailureSnippetTest.deliberately_fails_to_show_source_snippet()',
+  );
+  assert.equal(
+    shortTestLabel({
+      className: 'cc.jumpkick.Foo',
+      method: 'bar(java.nio.file.Path)',
+    }),
+    'Foo.bar(Path)',
+  );
+  // Wire may send FQCN on the free-form method field alone.
+  assert.equal(
+    shortTestLabel({
+      method: 'cc.jumpkick.runtime.FooTest.freshen(java.nio.file.Path, java.lang.String)',
+    }),
+    'FooTest.freshen(Path, String)',
+  );
+});
+
+test('shortDisplayLabel never leaves package FQCNs in client text', () => {
+  assert.equal(
+    shortDisplayLabel('cc.jumpkick.runtime.FooTest.bar(java.nio.file.Path)'),
+    'FooTest.bar(Path)',
+  );
+  assert.equal(simplifyMethodParams('m(java.lang.String[])'), 'm(String[])');
+  assert.equal(shortDisplayLabel('FooTest.bar(Path)  [w2]'), 'FooTest.bar(Path)  [w2]');
+  // Live detail path shortens too.
+  assert.equal(
+    detailForDisplay('g:a', 'g:a :: cc.jumpkick.Foo.bar(java.util.List)'),
+    'Foo.bar(List)',
+  );
+  const segs = detailSegments('cc.jumpkick.Foo.bar(java.nio.file.Path)');
+  const text = segs.map((s) => s.text).join('');
+  assert.equal(text, 'Foo.bar(Path)');
+  assert.ok(!text.includes('java.nio'));
+  // Prose / versions / jars stay intact.
+  assert.equal(shortDisplayLabel('package jk-engine-0.12.0.jar'), 'package jk-engine-0.12.0.jar');
+  assert.equal(shortDisplayLabel('compiling 12 sources'), 'compiling 12 sources');
+  assert.equal(detailForDisplay('g:a', 'g:a :: shrinking jar'), 'shrinking jar');
+});
+
+test('testFailureReport builds CLI-shaped model with snippet rows and error line', () => {
+  const d = normalizeDiagnostic({
+    code: 'test-failure',
+    message: '[dogfood: hello]\nexpected: "42"\n but was: "41"',
+    module: 'cc.jumpkick:jk-engine',
+    class: 'cc.jumpkick.runtime.DogfoodFailureSnippetTest',
+    method: 'deliberately_fails_to_show_source_snippet()',
+    exceptionClass: 'org.opentest4j.AssertionFailedError',
+    file: 'src/test/java/cc/jumpkick/runtime/DogfoodFailureSnippetTest.java',
+    line: 23,
+    snippetStart: 20,
+    snippet: [
+      '        // comment',
+      '        assertThat(41)',
+      '                .isEqualTo(42);',
+      '    }',
+    ],
+  });
+  // Force error line into snippet range for the * marker
+  d.line = 22;
+  d.snippetStart = 20;
+  const rep = testFailureReport(d, { count: 1, showHeader: true });
+  assert.ok(rep);
+  assert.equal(rep.showHeader, true);
+  assert.equal(rep.count, 1);
+  assert.equal(rep.module, 'cc.jumpkick:jk-engine');
+  assert.equal(rep.label, 'DogfoodFailureSnippetTest.deliberately_fails_to_show_source_snippet()');
+  assert.ok(rep.assertj);
+  assert.equal(rep.assertj.desc, 'dogfood: hello');
+  assert.equal(rep.assertj.expected, '42');
+  assert.equal(rep.assertj.actual, '41');
+  assert.equal(rep.file, 'src/test/java/cc/jumpkick/runtime/DogfoodFailureSnippetTest.java');
+  assert.equal(rep.exceptionClass, 'AssertionFailedError');
+  assert.equal(rep.line, 22);
+  assert.equal(rep.rows.length, 4);
+  assert.equal(rep.rows[0].num, 20);
+  assert.equal(rep.rows[2].num, 22);
+  assert.equal(rep.rows[2].error, true);
+  assert.equal(rep.rows[0].error, false);
+  // subsequent failure suppresses the shared header
+  const second = testFailureReport(d, { count: 2, showHeader: false });
+  assert.equal(second.showHeader, false);
+  assert.equal(second.count, 2);
+});
+
+test('live diagnostic event folds snippet fields onto the module', () => {
+  const cards = [];
+  foldEvent(cards, start(42, '/w'));
+  foldEvent(cards, {
+    type: 'diagnostic',
+    data: {
+      requestId: 42,
+      dir: '/w',
+      task: 'run-tests',
+      code: 'test-failure',
+      message: 'expected: 1\nbut was: 2',
+      module: 'g:a',
+      class: 'pkg.FooTest',
+      method: 'bar()',
+      exceptionClass: 'org.opentest4j.AssertionFailedError',
+      file: 'src/test/java/pkg/FooTest.java',
+      line: 10,
+      snippetStart: 8,
+      snippet: ['  void bar() {', '    assertEquals(1, 2);', '  }'],
+    },
+  });
+  const d = cards[0].modules[0].diagnostics[0];
+  assert.equal(d.code, 'test-failure');
+  assert.equal(d.file, 'src/test/java/pkg/FooTest.java');
+  assert.equal(d.snippet.length, 3);
+  assert.equal(d.className, 'pkg.FooTest');
+  const rep = testFailureReport(d, { count: 1 });
+  assert.equal(rep.label, 'FooTest.bar()');
+  // line 10 is the third snippet row (start 8 → 8, 9, 10)
+  assert.equal(rep.rows[2].num, 10);
+  assert.equal(rep.rows[2].error, true);
+  assert.equal(rep.rows[1].error, false);
+});
+
+test('history seed keeps test-failure snippet for Activity backfill', () => {
+  const cards = [];
+  seedFromHistory(cards, [
+    historyRecord('hist-tf', '/w', {
+      success: false,
+      modules: [
+        {
+          coord: 'g:core',
+          dir: '/w/core',
+          success: false,
+          exitCode: 4,
+          millis: 100,
+          steps: [{ name: 'run-tests', status: 'FAIL', phase: 'test' }],
+        },
+      ],
+      diagnostics: [
+        {
+          severity: 'error',
+          dir: '/w/core',
+          task: 'run-tests',
+          code: 'test-failure',
+          message: 'expected: x\nbut was: y',
+          module: 'g:core',
+          class: 'core.T',
+          method: 'm()',
+          exceptionClass: 'AssertionFailedError',
+          file: 'src/test/java/core/T.java',
+          line: 5,
+          snippetStart: 3,
+          snippet: ['class T {', '  void m() { fail(); }', '}'],
+        },
+      ],
+    }),
+  ]);
+  const mod = cards[0].modules.find((m) => m.dir === '/w/core');
+  assert.ok(mod);
+  assert.equal(mod.diagnostics.length, 1);
+  assert.equal(mod.diagnostics[0].snippet.length, 3);
+  assert.equal(mod.diagnostics[0].file, 'src/test/java/core/T.java');
+  const rep = testFailureReport(mod.diagnostics[0], { count: 1 });
+  assert.equal(rep.label, 'T.m()');
+  assert.equal(rep.exceptionClass, 'AssertionFailedError');
 });

@@ -10,8 +10,8 @@ import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.CommandManager;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -130,13 +130,13 @@ public final class LockCommand implements CliCommand {
     }
 
     /**
-     * Hosted live path (AUTO / QUIET): one shared {@link CommandManager} spanning root + all
+     * Hosted live path (AUTO / QUIET): one shared {@link JkManager} spanning root + all
      * workspace modules, driven from wire events — one row per module, per-package completion lines
      * (colorized here, never engine-side), and the final Lock chip.
      */
     private int runHostedLive(Path dir, Path cache, BuildPlanConsole.Mode mode) {
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
-        CommandManager view = CommandManager.plan(CliOutput.stdout(), "Lock", animate);
+        JkManager view = JkManager.plan(CliOutput.stdout(), "Lock", animate);
         long start = System.nanoTime();
 
         AtomicInteger globalLocked = new AtomicInteger(0);

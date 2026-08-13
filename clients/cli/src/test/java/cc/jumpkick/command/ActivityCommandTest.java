@@ -67,11 +67,13 @@ class ActivityCommandTest {
 
     @Test
     void tree_branches_are_indented() {
-        Theme t = Theme.active();
-        // Leading space under the title chip; no trailing space before the pill.
-        assertThat(strip(ActivityCommand.branch(false, t))).isIn(" ├─", " +-");
-        assertThat(strip(ActivityCommand.branch(true, t))).isIn(" ╰─", " `-");
-        assertThat(strip(ActivityCommand.rail())).isIn(" │", " |");
+        List<String> lines = new cc.jumpkick.cli.tui.Tree("Build Jobs")
+                .gap(cc.jumpkick.cli.tui.Tree.Gap.EACH)
+                .child(cc.jumpkick.cli.tui.Tree.node(cc.jumpkick.cli.tui.Pill.of("A")))
+                .child(cc.jumpkick.cli.tui.Tree.node(cc.jumpkick.cli.tui.Pill.of("B")))
+                .render(cc.jumpkick.cli.tui.RenderContext.current().withAnsi(false));
+        assertThat(lines)
+                .containsExactly(" = Build Jobs >", " |", " +-[A]", " |", " `-[B]");
     }
 
     @Test

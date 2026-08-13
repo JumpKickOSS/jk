@@ -71,8 +71,8 @@ public final class ToolListCommand implements CliCommand {
             rows.add(List.of(bin, coord, source, Files.exists(launcher) ? launcher.toString() : "(not on PATH)"));
         }
         cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
-        for (String line : cc.jumpkick.cli.tui.BoxTable.render(
-                "Tools", List.of("Tool", "Coordinates", "Source", "Launcher"), rows)) {
+        for (String line :
+                cc.jumpkick.cli.tui.Table.render("Tools", List.of("Tool", "Coordinates", "Source", "Launcher"), rows)) {
             CliOutput.out(line);
         }
         return 0;

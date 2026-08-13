@@ -144,17 +144,28 @@ class TestCommandUserOutputTest {
         var ctx = new RecordingContext();
         TestProgressListener listener = cc.jumpkick.runtime.TestSupport.bridgeListener(ctx, 1, false);
 
-        listener.onFailure("id", "ClassA.brokenTest", "java.lang.AssertionError", "expected 5 got 4", 0);
+        listener.onFailure(
+                "id",
+                "brokenTest()",
+                "java.lang.AssertionError",
+                "expected 5 got 4",
+                "java.lang.AssertionError: expected 5 got 4\n\tat ClassA.brokenTest(ClassA.java:9)",
+                "junit-jupiter",
+                "com.example.ClassA",
+                "brokenTest()",
+                0);
 
         assertThat(ctx.errors).hasSize(1);
         // "test-failure" (not "test") so human listeners can suppress the inline
         // echo — the run-tests failure block already prints it in full — while the
-        // diagnostic still reaches --output json. The test name and exception class
-        // ride as discrete fields, not glued into the message.
+        // diagnostic still reaches --output json / details.jsonl with split identity.
         assertThat(ctx.errors.get(0).code()).isEqualTo("test-failure");
         assertThat(ctx.errors.get(0).message()).isEqualTo("expected 5 got 4");
-        assertThat(ctx.errors.get(0).test()).isEqualTo("ClassA.brokenTest");
+        assertThat(ctx.errors.get(0).method()).isEqualTo("brokenTest()");
+        assertThat(ctx.errors.get(0).className()).isEqualTo("com.example.ClassA");
+        assertThat(ctx.errors.get(0).engine()).isEqualTo("junit-jupiter");
         assertThat(ctx.errors.get(0).exceptionClass()).isEqualTo("java.lang.AssertionError");
+        assertThat(ctx.errors.get(0).stack()).contains("at ClassA.brokenTest(ClassA.java:9)");
     }
 
     @Test
@@ -210,7 +221,14 @@ class TestCommandUserOutputTest {
         final List<String> outputs = new ArrayList<>();
         final List<Diag> errors = new ArrayList<>();
 
-        record Diag(String code, String message, String test, String exceptionClass) {}
+        record Diag(
+                String code,
+                String message,
+                String method,
+                String className,
+                String engine,
+                String exceptionClass,
+                String stack) {}
 
         @Override
         public void progress(int delta) {
@@ -237,12 +255,24 @@ class TestCommandUserOutputTest {
 
         @Override
         public void error(String code, String message) {
-            errors.add(new Diag(code, message, "", ""));
+            errors.add(new Diag(code, message, "", "", "", "", ""));
         }
 
         @Override
         public void error(String code, String message, String test, String exClass) {
-            errors.add(new Diag(code, message, test, exClass));
+            errors.add(new Diag(code, message, test, "", "", exClass, ""));
+        }
+
+        @Override
+        public void error(String code, String message, cc.jumpkick.run.TestFailureInfo failure) {
+            errors.add(new Diag(
+                    code,
+                    message,
+                    failure.method(),
+                    failure.className(),
+                    failure.engine(),
+                    failure.exceptionClass(),
+                    failure.stack()));
         }
 
         @Override

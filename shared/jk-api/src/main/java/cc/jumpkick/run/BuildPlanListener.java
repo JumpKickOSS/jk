@@ -37,8 +37,21 @@ public interface BuildPlanListener {
 
     default void error(String step, String code, String message) {}
 
+    /** Legacy test-failure form (label + exception class only). Prefer {@link #error(String, String, String, TestFailureInfo)}. */
     default void error(String step, String code, String message, String test, String exceptionClass) {
         error(step, code, message);
+    }
+
+    /** Structured test failure (module / engine / class / method / stack). */
+    default void error(String step, String code, String message, TestFailureInfo failure) {
+        if (failure == null) {
+            error(step, code, message);
+            return;
+        }
+        String label = failure.module().isEmpty()
+                ? failure.method()
+                : failure.module() + " :: " + failure.method();
+        error(step, code, message, label, failure.exceptionClass());
     }
 
     default void stepFinish(String step, String group, TaskStatus status, Duration duration) {}

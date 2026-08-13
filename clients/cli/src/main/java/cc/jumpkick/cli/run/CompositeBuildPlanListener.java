@@ -92,6 +92,12 @@ public final class CompositeBuildPlanListener implements BuildPlanListener {
     }
 
     @Override
+    public void error(String step, String code, String message, cc.jumpkick.run.TestFailureInfo failure) {
+        a.error(step, code, message, failure);
+        b.error(step, code, message, failure);
+    }
+
+    @Override
     public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
         a.stepFinish(step, group, status, duration);
         b.stepFinish(step, group, status, duration);

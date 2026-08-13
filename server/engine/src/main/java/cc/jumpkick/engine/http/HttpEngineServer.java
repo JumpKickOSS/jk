@@ -82,18 +82,21 @@ public final class HttpEngineServer implements AutoCloseable {
     private volatile Supplier<List<LiveRun>> liveRuns = List::of;
 
     /**
-     * Invoked once after each dashboard SSE subscription is registered — re-publishes
-     * {@code request-start} + current progress for in-flight jobs so a refreshed tab resumes
-     * the live stream (not only a frozen history stub).
+     * Invoked once after each dashboard SSE subscription is registered — delivers a compact
+     * mid-flight {@code run-snapshot} (phases + progress + startedAt) to <em>that</em>
+     * subscription only so a refreshed tab resumes without flooding the bus or blocking live
+     * ticks behind a phase-by-phase replay.
      */
-    private volatile Runnable onEventsConnect = () -> {};
+    private volatile java.util.function.Consumer<HttpEvents.Subscription> onEventsConnect = s -> {};
 
     private volatile HttpServer server;
     private volatile ExecutorService executor;
 
     /**
      * One in-flight job for history enrichment / SSE rehydrate. {@code progress} is NaN when
-     * unknown.
+     * unknown. {@code remainingMs}/{@code r0Ms} are {@code -1} when unknown. {@code modules}/
+     * {@code tasks} carry finished + currently-running phase chains so a hard refresh can paint
+     * the same strip as a tab that was open from the start.
      */
     public record LiveRun(
             long requestId,
@@ -103,18 +106,78 @@ public final class HttpEngineServer implements AutoCloseable {
             String coord,
             long startedAt,
             double progress,
-            String journalId) {}
+            String journalId,
+            long remainingMs,
+            long r0Ms,
+            long numerator,
+            long denominator,
+            List<LiveModule> modules,
+            List<LiveTask> tasks) {
+
+        public LiveRun {
+            modules = modules == null ? List.of() : List.copyOf(modules);
+            tasks = tasks == null ? List.of() : List.copyOf(tasks);
+        }
+
+        /** Compact constructor for tests that only need identity + progress rebind. */
+        public LiveRun(
+                long requestId,
+                long buildNumber,
+                String kind,
+                String dir,
+                String coord,
+                long startedAt,
+                double progress,
+                String journalId) {
+            this(
+                    requestId,
+                    buildNumber,
+                    kind,
+                    dir,
+                    coord,
+                    startedAt,
+                    progress,
+                    journalId,
+                    /* remainingMs */ -1L,
+                    /* r0Ms */ -1L,
+                    /* numerator */ 0L,
+                    /* denominator */ 0L,
+                    List.of(),
+                    List.of());
+        }
+    }
+
+    /** One module's mid-flight chain (finished modules + in-progress ones with steps so far). */
+    public record LiveModule(
+            String dir,
+            String coord,
+            boolean finished,
+            boolean success,
+            long millis,
+            boolean didWork,
+            List<LiveTask> tasks) {
+        public LiveModule {
+            tasks = tasks == null ? List.of() : List.copyOf(tasks);
+        }
+    }
+
+    /**
+     * One task: {@code status} is wire {@code SUCCESS}/{@code FAIL}/{@code RUN}/… (same as
+     * journal {@code tasks[].status}).
+     */
+    public record LiveTask(String name, String stage, String status, long millis) {}
 
     /**
      * Wire the engine's live-job view. Optional — tests leave the defaults (empty / no-op).
      *
      * @param liveRuns snapshot of holds currently running
-     * @param onEventsConnect after a new {@code GET /api/events} subscription is live, rehydrate
-     *     in-flight jobs onto the SSE bus (request-start + progress)
+     * @param onEventsConnect after a new {@code GET /api/events} subscription is live, deliver
+     *     one mid-flight snapshot per running job to that subscription only
      */
-    public void setLiveRunSupport(Supplier<List<LiveRun>> liveRuns, Runnable onEventsConnect) {
+    public void setLiveRunSupport(
+            Supplier<List<LiveRun>> liveRuns, java.util.function.Consumer<HttpEvents.Subscription> onEventsConnect) {
         this.liveRuns = liveRuns != null ? liveRuns : List::of;
-        this.onEventsConnect = onEventsConnect != null ? onEventsConnect : () -> {};
+        this.onEventsConnect = onEventsConnect != null ? onEventsConnect : s -> {};
     }
 
     /**
@@ -124,6 +187,13 @@ public final class HttpEngineServer implements AutoCloseable {
      * JSON with the new timestamp and serve stale rows for a full TTL.
      */
     private record TemplatesCache(String json, long atNanos) {}
+
+    /** Engine hook: bump the combined-connection high-water mark on every SSE admission (JK-1861). */
+    private volatile Runnable onSseAdmitted = () -> {};
+
+    public void setOnSseAdmitted(Runnable onSseAdmitted) {
+        this.onSseAdmitted = onSseAdmitted != null ? onSseAdmitted : () -> {};
+    }
 
     private volatile TemplatesCache templatesCache;
     private static final long TEMPLATES_TTL_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
@@ -143,8 +213,8 @@ public final class HttpEngineServer implements AutoCloseable {
      * @param jobs async build/test/lock/cancel for HTTP + MCP
      * @param metrics supplies the running build aggregates {@code GET /api/metrics} reports, fresh
      * per request (the engine's {@code BuildMetrics} store)
-     * @param cache supplies the cache breakdown {@code GET /api/cache} reports, fresh per request
-     * (an IO-shaped walk of the cache sections — see {@link CacheSnapshot#capture})
+     * @param cache supplies the cache breakdown {@code GET /api/cache} and live SSE report
+     * (prefer {@link CacheSnapshot#memoizing(Path)} so concurrent REST/SSE do not re-walk)
      */
     public HttpEngineServer(
             JkHttpConfig config,
@@ -315,9 +385,13 @@ public final class HttpEngineServer implements AutoCloseable {
 
     /**
      * Change-gated {@code cache} SSE after store/action-cache may have grown (request finish, prune).
-     * IO-shaped — only call off the hot step path.
+     * IO-shaped — only call off the hot step path. Invalidates a {@link CacheSnapshot.Memoizing}
+     * supplier first so the async nudge walks fresh numbers rather than replaying the TTL cache.
      */
     public void notifyLiveCache() {
+        if (cache instanceof CacheSnapshot.Memoizing memo) {
+            memo.invalidate();
+        }
         liveVitals.nudgeCache();
     }
 
@@ -370,6 +444,9 @@ public final class HttpEngineServer implements AutoCloseable {
                                     : mcpSurface ? "too many MCP event streams\n" : "too many event streams\n");
                     return;
                 }
+                // Peak must be observed at admission, not when a status snapshot happens to run —
+                // SSE spikes between snapshots were invisible to the high-water mark (JK-1861).
+                if (sse) onSseAdmitted.run();
                 try {
                     dispatch(exchange);
                 } finally {
@@ -582,9 +659,16 @@ public final class HttpEngineServer implements AutoCloseable {
     /** Project metadata for MCP {@code jk_project} (same parse as GET /api/project). */
     private java.util.Map<String, Object> projectMap(String dir) {
         java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
-        m.put("dir", dir);
+        Path root;
         try {
-            var project = cc.jumpkick.config.JkBuildParser.parse(Path.of(dir).resolve("jk.toml"))
+            root = cc.jumpkick.util.PathUtil.resolveUserPath(dir);
+        } catch (IllegalArgumentException e) {
+            m.put("dir", dir);
+            return m;
+        }
+        m.put("dir", root.toString());
+        try {
+            var project = cc.jumpkick.config.JkBuildParser.parse(root.resolve("jk.toml"))
                     .project();
             m.put("coord", project.group() + ":" + project.name());
             if (project.description() != null) m.put("description", project.description());
@@ -744,30 +828,49 @@ public final class HttpEngineServer implements AutoCloseable {
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
         exchange.sendResponseHeaders(200, 0);
         var out = exchange.getResponseBody();
-        // Everything after subscribe() sits inside the try: if onSubscriberJoined throws (e.g.
-        // RejectedExecutionException racing stop()), the subscription must still leave the hub
-        // set or hasSubscribers() stays true for the process's life (JK-1523).
-        HttpEvents.Subscription subscription = events.subscribe();
+        // Detached until hydrated: broadcasts don't reach the subscription while the connect
+        // snapshot is captured, and the engine's rehydrate callback attaches it under its
+        // connect ordering lock — so no event can fall between the snapshot and the queue
+        // (JK-1837). If anything below throws before attach, the subscription was never in the
+        // hub, so hasSubscribers() cannot stay true for the process's life (JK-1523).
+        HttpEvents.Subscription subscription = events.subscribeDetached(HttpEvents.FrameStyle.DASHBOARD, null);
         try {
             liveVitals.onSubscriberJoined();
             // Connect hydrate: deliver current vitals to THIS subscription only (change-gate
-            // skipped) so the tab does not wait for the first 2s / 30s sampler tick — without
+            // skipped) so the tab does not wait for the first 2s / 60s sampler tick — without
             // re-broadcasting chrome to every open tab (JK-1523). Cache hydrate re-sends the last
-            // captured snapshot and refreshes async — the store walk must not delay the
-            // ": connected" write (JK-1513). Re-publish in-flight build request-start + progress
-            // (dashboard-wide, folded idempotently) so a hard refresh mid-build rebinds the SPA
-            // to the live requestId stream.
+            // captured snapshot — the store walk must not delay the ": connected" write
+            // (JK-1513). Mid-flight catch-up is one compact run-snapshot per job delivered to
+            // THIS subscription only — never a broadcast phase replay (that filled the 256-frame
+            // queue and froze the SPA for seconds behind live ticks).
             liveVitals.hydrateFor(subscription);
             try {
-                onEventsConnect.run();
+                onEventsConnect.accept(subscription);
             } catch (RuntimeException e) {
                 log.accept("jk engine: sse connect rehydrate failed: " + e.getMessage());
             }
+            // Safety net: the engine callback attaches inside its ordering lock; if it failed
+            // (or no engine is wired, e.g. tests), attach now so live events still flow.
+            events.attach(subscription);
             out.write(": connected\n\n".getBytes(StandardCharsets.UTF_8));
             out.flush();
+            // Batch drain: a full queue of structural+progress frames must not force one
+            // write+flush per event (that stalls the socket while the CLI TUI stays smooth).
+            java.util.List<String> batch = new java.util.ArrayList<>(64);
+            byte[] heartbeat = ": heartbeat\n\n".getBytes(StandardCharsets.UTF_8);
             while (true) {
-                String frame = subscription.next(heartbeatMillis);
-                out.write((frame != null ? frame : ": heartbeat\n\n").getBytes(StandardCharsets.UTF_8));
+                String first = subscription.next(heartbeatMillis);
+                if (first == null) {
+                    out.write(heartbeat);
+                    out.flush();
+                    continue;
+                }
+                batch.clear();
+                batch.add(first);
+                subscription.drainTo(batch, 63);
+                for (String frame : batch) {
+                    out.write(frame.getBytes(StandardCharsets.UTF_8));
+                }
                 out.flush();
             }
         } catch (InterruptedException e) {
@@ -785,25 +888,26 @@ public final class HttpEngineServer implements AutoCloseable {
 
     /**
      * {@code GET /api/fs?dir=…} — the workspace picker behind the dashboard's Browse button:
-     * subdirectory names of an absolute path (default: the user's home), whether it holds a
-     * {@code jk.toml}, and its parent for the up-navigation. Token-required even on loopback
-     * see {@link #authorized}.
+     * subdirectory names of a path (default: the user's home), whether it holds a
+     * {@code jk.toml}, and its parent for the up-navigation. Relative paths and {@code ~/…}
+     * resolve against {@code user.home}. Token-required even on loopback — see {@link #authorized}.
      */
     private void handleFs(HttpExchange exchange) throws IOException {
-        String requested = queryParam(exchange.getRequestURI().getQuery(), "dir");
-        Path dir = requested == null || requested.isBlank()
-                ? Path.of(System.getProperty("user.home"))
-                : Path.of(requested);
-        if (!dir.isAbsolute()) {
+        String requested = decode(queryParam(exchange.getRequestURI().getQuery(), "dir"));
+        Path dir;
+        try {
+            dir = requested == null || requested.isBlank()
+                    ? cc.jumpkick.util.PathUtil.userHome()
+                    : cc.jumpkick.util.PathUtil.resolveUserPath(requested);
+        } catch (IllegalArgumentException e) {
             sendJson(
                     exchange,
                     400,
                     JsonOut.object()
-                            .put("error", "dir must be an absolute path")
+                            .put("error", e.getMessage() == null ? "invalid dir" : e.getMessage())
                             .toString());
             return;
         }
-        dir = dir.normalize();
         java.util.List<String> subdirs = new java.util.ArrayList<>();
         try (var entries = Files.newDirectoryStream(dir)) {
             for (Path entry : entries) {
@@ -1073,9 +1177,10 @@ public final class HttpEngineServer implements AutoCloseable {
     }
 
     /**
-     * Attach live {@code requestId}/{@code jid}/{@code progress} to an in-flight journal record so
-     * the dashboard can rebind SSE after refresh (parity with the wire {@code history-list}
-     * path). Finished records are returned unchanged.
+     * Attach live mid-flight state to an in-flight journal record so the dashboard can rebind SSE
+     * after refresh with TUI-parity progress / elapsed / phases (parity with the wire
+     * {@code history-list} path, plus phases). Finished records are returned unchanged aside from
+     * projectId backfill.
      */
     private String enrichHistoryJson(String raw) {
         if (raw == null || raw.isBlank()) return raw;
@@ -1103,11 +1208,61 @@ public final class HttpEngineServer implements AutoCloseable {
             if (match == null) return cc.jumpkick.plugin.protocol.MiniJson.write(m);
             m.put("requestId", match.requestId());
             m.put("jid", match.requestId());
+            if (match.startedAt() > 0) {
+                m.put("startedAt", match.startedAt());
+                // Engine "now" beside engine startedAt — skew-free elapsed for the SPA (JK-1839).
+                m.put("serverNow", System.currentTimeMillis());
+            }
             if (!Double.isNaN(match.progress())) m.put("progress", match.progress());
+            if (match.remainingMs() >= 0) m.put("remainingMs", match.remainingMs());
+            if (match.r0Ms() > 0) m.put("R0", match.r0Ms());
+            if (match.denominator() > 0) {
+                m.put("numerator", match.numerator());
+                m.put("denominator", match.denominator());
+            }
+            // Prefer live phase chains (journal stub is empty until complete).
+            if (!match.modules().isEmpty()) {
+                m.put("modules", liveModulesJson(match.modules()));
+                m.put("tasks", List.of());
+            } else if (!match.tasks().isEmpty()) {
+                m.put("tasks", liveTasksJson(match.tasks()));
+            }
             return cc.jumpkick.plugin.protocol.MiniJson.write(m);
         } catch (RuntimeException e) {
             return raw; // best-effort — never break the list for a bad row
         }
+    }
+
+    private static List<Object> liveModulesJson(List<LiveModule> modules) {
+        List<Object> out = new ArrayList<>(modules.size());
+        for (LiveModule mod : modules) {
+            Map<String, Object> mm = new LinkedHashMap<>();
+            mm.put("dir", mod.dir() == null ? "" : mod.dir());
+            if (mod.coord() != null && !mod.coord().isBlank()) mm.put("coord", mod.coord());
+            // Explicit lifecycle bit: success=false alone was ambiguous between "still
+            // running" and "failed" (JK-1846) — the SPA guessed from task statuses and
+            // misclassified module-level failures with no FAIL task.
+            mm.put("finished", mod.finished());
+            mm.put("success", mod.finished() && mod.success());
+            mm.put("millis", mod.millis());
+            if (mod.finished()) mm.put("didWork", mod.didWork());
+            mm.put("tasks", liveTasksJson(mod.tasks()));
+            out.add(mm);
+        }
+        return out;
+    }
+
+    private static List<Object> liveTasksJson(List<LiveTask> tasks) {
+        List<Object> out = new ArrayList<>(tasks.size());
+        for (LiveTask t : tasks) {
+            Map<String, Object> sm = new LinkedHashMap<>();
+            sm.put("name", t.name() == null ? "?" : t.name());
+            sm.put("stage", t.stage() == null ? "" : t.stage());
+            sm.put("status", t.status() == null ? "RUN" : t.status());
+            sm.put("millis", t.millis());
+            out.add(sm);
+        }
+        return out;
     }
 
     // Package-private for direct unit testing of the rebind rules (JK-1522).
@@ -1146,7 +1301,7 @@ public final class HttpEngineServer implements AutoCloseable {
 
     /**
      * {@code GET /api/metrics[?dir=…]} — the running build aggregates as a flat JSON array, one
-     * object per tier row ({@code scope}: global / project / step / project-step; avg is
+     * object per tier row ({@code scope}: global / project / task / project/task; avg is
      * pre-computed so the SPA stays arithmetic-free). An optional {@code dir} keeps only that
      * project's rows; the global tiers are always included. Read-tier auth, like every other GET.
      */
@@ -1179,8 +1334,9 @@ public final class HttpEngineServer implements AutoCloseable {
 
     /**
      * {@code GET /api/cache} — the cache-directory breakdown (the {@code jk cache usage} /
-     * {@code jk storage usage} sections) as one flat object, for the Status view's Cache panel. Read-tier auth, like every other GET;
-     * IO-shaped (a walk of the cache sections), so it is computed per request, never cached.
+     * {@code jk storage usage} sections) as one flat object, for the Status view's Cache panel.
+     * Read-tier auth, like every other GET. IO-shaped; the engine wires a TTL/single-flight
+     * {@link CacheSnapshot#memoizing(Path)} supplier so concurrent tabs do not re-walk the store.
      */
     private void handleCache(HttpExchange exchange) throws IOException {
         sendJson(exchange, 200, cache.get().toJson().toString());
@@ -1258,7 +1414,8 @@ public final class HttpEngineServer implements AutoCloseable {
      * {@code GET /api/project/graph?dir=…[&scopes=main,test][&transitive=0|1]} — dependency graph
      * for the Project page ECharts panel (JK-1542). Workspace modules plus declared external deps
      * for the selected scopes (default {@code export,main,runtime}, same as {@code jk tree});
-     * optional lockfile transitive expansion. On-demand only (SPA lazy-loads). Token-gated like
+     * optional lockfile transitive expansion ({@code jk tree -t}). On-demand only (SPA
+     * lazy-loads). Token-gated like
      * {@code /api/project}.
      */
     private void handleProjectGraph(HttpExchange exchange) throws IOException {

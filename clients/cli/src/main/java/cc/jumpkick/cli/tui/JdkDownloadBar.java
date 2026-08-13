@@ -2,7 +2,6 @@
 package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.Ansi;
-import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import java.io.PrintStream;
 import org.jline.utils.AttributedStyle;
@@ -24,11 +23,7 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
     private final String displayName; // "Eclipse Temurin 26"
     private final boolean nerdfont;
     private final boolean silent;
-    /** Bare-terminal path (no nerd chip): blue↔dark-blue open pulse. */
-    private final AttributedStyle[] frameColors = Spinner.buildOpenPulseStyles(Spinner.PULSE_FRAMES);
-
     private final AttributedStyle[] failColors;
-    private final ProgressBar bar = new ProgressBar();
 
     private int frame;
     private long numerator;
@@ -175,41 +170,14 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
     private String buildLine() {
         Theme t = Theme.active();
         String command = installing ? "Installing " : "Downloading ";
-        String label = Theme.colorize(command + displayName, t.normalGray());
-
-        if (nerdfont) {
-            var chip = t.planChip();
-            String chipStr = Theme.colorize(" ", chip)
-                    + Theme.colorize(Spinner.PULSE_GLYPH, chip)
-                    + Theme.colorize(" JDK ", chip)
-                    + Theme.colorize(Glyphs.SEGMENT_END_NERD, t.bright(t.planBadgeColor()));
-            if (installing) {
-                return chipStr + " " + label;
-            }
-            Rgb lead = bar.leadColor(numerator, denominator);
-            var cap = t.withBackground(t.bright(t.planBadgeColor()), lead);
-            return Theme.colorize(" ", chip)
-                    + Theme.colorize(Spinner.PULSE_GLYPH, chip)
-                    + Theme.colorize(" ", chip)
-                    + Theme.colorize("JDK", chip)
-                    + Theme.colorize(" ", chip)
-                    + Theme.colorize(Glyphs.SEGMENT_END_NERD, cap)
-                    + bar.render(numerator, denominator)
-                    + " "
-                    + Theme.colorize("·", t.darkGray())
-                    + " "
-                    + label;
-        } else {
-            if (installing) {
-                return Theme.colorize(Spinner.PULSE_GLYPH, frameColors[frame]) + " JDK  " + label;
-            }
-            return Theme.colorize(Spinner.PULSE_GLYPH, frameColors[frame])
-                    + " JDK "
-                    + bar.render(numerator, denominator)
-                    + " "
-                    + Theme.colorize("·", t.darkGray())
-                    + " "
-                    + label;
+        RichText status = RichText.ansi(Theme.colorize(command + displayName, t.normalGray()));
+        RenderContext ctx = RenderContext.current().withNerd(nerdfont).withFrame(frame);
+        JkWedge wedge = new JkWedge(Icon.spinner(), "JDK", installing ? status : RichText.empty())
+                .variant(JkWedge.Variant.WORK);
+        if (!installing) {
+            wedge = wedge.progress(new Progress(numerator, denominator)
+                    .suffix(RichText.of(RichText.parse("[dark-gray]·[/] "), status)));
         }
+        return wedge.renderLine(ctx);
     }
 }

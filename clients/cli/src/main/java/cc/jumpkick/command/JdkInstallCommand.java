@@ -408,7 +408,7 @@ public final class JdkInstallCommand implements CliCommand {
         String msg = Theme.colorize(label, t.focused())
                 + Theme.colorize(" " + command + " ", t.normalGray())
                 + Theme.colorize(tildeCollapse(home), t.path());
-        return cc.jumpkick.cli.tui.BuildPlanWedge.chipLine(Glyphs.CHECK, "JDK", nerdfont, msg);
+        return cc.jumpkick.cli.tui.JkWedge.chipLine(Glyphs.CHECK, "JDK", nerdfont, msg);
     }
 
     /** Render an absolute path with {@code $HOME} collapsed to {@code ~}. */

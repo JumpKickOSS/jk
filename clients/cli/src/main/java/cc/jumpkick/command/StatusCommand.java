@@ -9,7 +9,8 @@ import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
-import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.JkWedge;
+import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
@@ -119,8 +120,7 @@ public final class StatusCommand implements CliCommand {
 
         // ── Header: ≡ Status  JumpKick Engine v[bold]X.Y.Z[/] is running (pid [yellow]N[/]) ─
         // Prep lock / analyzing may already have opened the envelope; this is first chrome if not.
-        CommandWedge.envelopeStart();
-        CliOutput.out(CommandWedge.chip(Glyphs.MENU, "Status", engineStatusMessage(engine)));
+        JkWedge.menu("Status", RichText.parse(engineStatusMarkup(engine))).print();
         CliOutput.out("");
 
         if (!globalOnly) {
@@ -288,19 +288,22 @@ public final class StatusCommand implements CliCommand {
     // ── rendering helpers ────────────────────────────────────────────────────
 
     /**
-     * Status chip tail: {@code JumpKick Engine v}<bold version>{@code  is running (pid }<yellow
-     * pid>{@code )}. Version is theme focused (bold); pid matches engine start/stop yellow.
+     * Status chip tail: {@code JumpKick Engine v[bold]X[/] is running (pid [yellow]N[/])}.
      */
     static String engineStatusMessage(Optional<EngineClient.Status> engine) {
-        Theme t = Theme.active();
-        // focused() is bold bright-white; plain terminals keep the bare version string.
-        String version = t.isAnsi() ? Theme.colorize(Jk.VERSION, t.focused()) : Jk.VERSION;
+        return RichText.parse(engineStatusMarkup(engine)).render();
+    }
+
+    static String engineStatusMarkup(Optional<EngineClient.Status> engine) {
+        String version = Jk.VERSION;
         if (engine.isEmpty()) {
-            return "JumpKick Engine v" + version + " is not running";
+            return "JumpKick Engine v[bold]" + version + "[/] is not running";
         }
-        String pid = Long.toString(engine.get().pid());
-        String pidStyled = t.isAnsi() ? Theme.colorize(pid, t.warning()) : pid;
-        return "JumpKick Engine v" + version + " is running (pid " + pidStyled + ")";
+        return "JumpKick Engine v[bold]"
+                + version
+                + "[/] is running (pid [yellow]"
+                + engine.get().pid()
+                + "[/])";
     }
 
     private static void sectionHeader(String title, String suffix) {

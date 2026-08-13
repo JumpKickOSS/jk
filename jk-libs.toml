@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Self-host catalog pins (JK-1840). Workspace short-name -> group:artifact, the top layer of
+# the catalog chain (project -> system global -> bundled). jk's own manifests resolve their
+# short names HERE, so an edited/compromised registry catalog (the downloaded
+# libs.global.toml shadows the bundled floor) can never silently repoint jk's own
+# dependencies at the next re-lock (the JK-1811/JK-1812 hazard class).
+#
+# Keep every catalog-resolved short name used by any workspace jk.toml in this table, with
+# the same GA the bundled catalog ships. SelfHostingTomlTest#catalog_pins_cover_every
+# _self_host_short_name fails when a manifest starts using a short name missing here, and
+# when a pin drifts from the bundled coordinate.
+#
+# Name -> GA only. Versions live in the manifests / jk-lock.toml, never here.
+
+[libraries]
+apksig = "com.android.tools.build:apksig"
+asm = "org.ow2.asm:asm"
+asm-commons = "org.ow2.asm:asm-commons"
+asm-tree = "org.ow2.asm:asm-tree"
+assertj-core = "org.assertj:assertj-core"
+bcpg-jdk18on = "org.bouncycastle:bcpg-jdk18on"
+commons-compress = "org.apache.commons:commons-compress"
+graalvm-nativeimage = "org.graalvm.sdk:nativeimage"
+groovy = "org.apache.groovy:groovy"
+jackson3-databind = "tools.jackson.core:jackson-databind"
+jgit = "org.eclipse.jgit:org.eclipse.jgit"
+jib-core = "com.google.cloud.tools:jib-core"
+jline-terminal-ffm = "org.jline:jline-terminal-ffm"
+junit-jupiter = "org.junit.jupiter:junit-jupiter"
+junit-platform-engine = "org.junit.platform:junit-platform-engine"
+junit-platform-launcher = "org.junit.platform:junit-platform-launcher"
+kotlin-build-tools-api = "org.jetbrains.kotlin:kotlin-build-tools-api"
+kotlin-stdlib = "org.jetbrains.kotlin:kotlin-stdlib"
+maven-artifact = "org.apache.maven:maven-artifact"
+openrewrite-java = "org.openrewrite:rewrite-java"
+openrewrite-java21 = "org.openrewrite:rewrite-java-21"
+quarkus-bootstrap-app-model = "io.quarkus:quarkus-bootstrap-app-model"
+quarkus-bootstrap-core = "io.quarkus:quarkus-bootstrap-core"
+quarkus-bootstrap-maven-resolver = "io.quarkus:quarkus-bootstrap-maven-resolver"
+sigstore-java = "dev.sigstore:sigstore-java"
+slf4j-api = "org.slf4j:slf4j-api"
+slf4j-nop = "org.slf4j:slf4j-nop"
+spotless-lib = "com.diffplug.spotless:spotless-lib"
+tomlj = "org.tomlj:tomlj"

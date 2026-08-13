@@ -22,6 +22,49 @@ class HttpEventsTest {
     }
 
     @Test
+    void detached_subscription_misses_broadcasts_until_attach_and_keeps_hydrate_order() throws Exception {
+        HttpEvents hub = new HttpEvents();
+        HttpEvents.Subscription s = hub.subscribeDetached(HttpEvents.FrameStyle.DASHBOARD, null);
+        try {
+            assertThat(hub.hasSubscribers()).isFalse();
+            hub.publish("task-finish", JsonOut.object().put("requestId", 1)); // pre-attach broadcast: not queued
+            hub.deliverTo(s, "run-snapshot", JsonOut.object().put("requestId", 1)); // connect hydrate
+            hub.attach(s);
+            assertThat(hub.hasSubscribers()).isTrue();
+            hub.publish("task-start", JsonOut.object().put("requestId", 1));
+            assertThat(s.next(1000)).contains("event: run-snapshot");
+            assertThat(s.next(1000)).contains("event: task-start");
+        } finally {
+            s.close();
+        }
+    }
+
+    @Test
+    void full_queue_keeps_the_freshest_low_priority_frame() throws Exception {
+        HttpEvents hub = new HttpEvents();
+        try (HttpEvents.Subscription s = hub.subscribe()) {
+            // Flood with low-priority output far past capacity; the SURVIVORS must be the newest
+            // frames (evict-oldest), not an hours-stale prefix (the old drop-newest, JK-1847).
+            int flood = 600; // > QUEUE_CAPACITY
+            for (int i = 0; i < flood; i++) {
+                hub.publish("output", JsonOut.object().put("requestId", 1).put("line", "l-" + i));
+            }
+            String last = null;
+            for (String f; (f = s.next(10)) != null; ) last = f;
+            assertThat(last).contains("l-" + (flood - 1));
+        }
+    }
+
+    @Test
+    void attach_after_close_never_registers() {
+        HttpEvents hub = new HttpEvents();
+        HttpEvents.Subscription s = hub.subscribeDetached(HttpEvents.FrameStyle.DASHBOARD, null);
+        s.close();
+        hub.attach(s);
+        assertThat(hub.hasSubscribers()).isFalse(); // JK-1523: no zombie keeps the sampler alive
+    }
+
+    @Test
     void frames_carry_monotonic_ids_and_sse_framing() throws Exception {
         HttpEvents hub = new HttpEvents();
         try (HttpEvents.Subscription s = hub.subscribe()) {
@@ -47,9 +90,11 @@ class HttpEventsTest {
     void slow_subscriber_sheds_oldest_frames_never_blocks_the_publisher() throws Exception {
         HttpEvents hub = new HttpEvents();
         try (HttpEvents.Subscription s = hub.subscribe()) {
+            // Critical frames fill the queue first so later low-priority output is dropped rather
+            // than evicting progress (new priority policy). Use critical types for the capacity test.
             int published = HttpEvents.QUEUE_CAPACITY + 10;
             for (int i = 1; i <= published; i++) {
-                hub.publish("output", JsonOut.object().put("n", i)); // never blocks
+                hub.publish("workspace-progress", JsonOut.object().put("n", i)); // never blocks
             }
             List<String> received = new ArrayList<>();
             String frame;
@@ -57,6 +102,42 @@ class HttpEventsTest {
             assertThat(received).hasSize(HttpEvents.QUEUE_CAPACITY); // the oldest 10 were shed
             assertThat(received.getLast()).contains("\"n\":" + published); // newest survives
             assertThat(received.getFirst()).doesNotContain("\"n\":1}"); // oldest didn't
+        }
+    }
+
+    @Test
+    void output_flood_does_not_evict_workspace_progress() throws Exception {
+        HttpEvents hub = new HttpEvents();
+        try (HttpEvents.Subscription s = hub.subscribe()) {
+            hub.publish(
+                    "workspace-progress", JsonOut.object().put("requestId", 1).put("progress", 12.0));
+            for (int i = 0; i < HttpEvents.QUEUE_CAPACITY * 2; i++) {
+                hub.publish("output", JsonOut.object().put("requestId", 1).put("line", "noise-" + i));
+            }
+            // Progress must still be the first frame; later output may be truncated.
+            String first = s.next(1000);
+            assertThat(first).contains("event: workspace-progress").contains("\"progress\":12");
+            // Drain the rest — queue held progress + at most CAP-1 output (rest shed).
+            int n = 0;
+            while (s.next(10) != null) n++;
+            assertThat(n).isBetween(1, HttpEvents.QUEUE_CAPACITY - 1);
+        }
+    }
+
+    @Test
+    void drainTo_batches_without_blocking() throws Exception {
+        HttpEvents hub = new HttpEvents();
+        try (HttpEvents.Subscription s = hub.subscribe()) {
+            for (int i = 0; i < 5; i++) {
+                hub.publish("task-start", JsonOut.object().put("n", i));
+            }
+            List<String> batch = new ArrayList<>();
+            // first next() then drain rest
+            batch.add(s.next(1000));
+            int more = s.drainTo(batch, 10);
+            assertThat(more).isEqualTo(4);
+            assertThat(batch).hasSize(5);
+            assertThat(s.next(10)).isNull();
         }
     }
 

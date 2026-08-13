@@ -148,17 +148,6 @@ public final class RemainingWork {
         return Math.max(0, Math.round(idealWeights * weightToMs));
     }
 
-    /**
-     * Fraction of seed work completed: {@code 1 - R/R0}, clamped to {@code [0, 1]}. When
-     * {@code R0 == 0}, returns {@code 1} (nothing to do).
-     */
-    public synchronized double completeFraction() {
-        if (R0 <= 0) return 1.0;
-        long r = remaining();
-        if (r >= R0) return 0.0;
-        return clamp01(1.0 - (double) r / (double) R0);
-    }
-
     private static double clamp01(double v) {
         if (v < 0) return 0;
         if (v > 1) return 1;

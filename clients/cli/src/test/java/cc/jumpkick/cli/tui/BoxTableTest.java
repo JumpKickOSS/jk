@@ -10,7 +10,7 @@ class BoxTableTest {
 
     @Test
     void title_bar_carries_title_and_has_no_top_left_corner() {
-        String line = BoxTable.titleBar("Installed OpenJDKs", 50);
+        String line = JkWedge.menu("Installed OpenJDKs").renderTitleBar(RenderContext.current(), 50);
         String plain = stripAnsi(line);
         assertThat(plain).contains("Installed OpenJDKs");
         assertThat(plain).doesNotContain("╭");

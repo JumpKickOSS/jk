@@ -6,7 +6,7 @@ import org.jline.utils.AttributedStyle;
 
 /**
  * A small "chip" / "pill" label — black text on a gray background, used for {@code jk tree}'s scope
- * sections and {@code jk explain}'s unit indices so the two read consistently.
+ * sections and {@code jk explain}'s Fully Cached / Rebuild labels so the two read consistently.
  *
  * <p>With a Nerd Font ({@code [global].nerdfont = true}) the chip is rounded into a pill: powerline
  * half-circle caps (drawn in the chip's background color) flank the bare label. Without one, the

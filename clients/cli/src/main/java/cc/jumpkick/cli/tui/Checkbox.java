@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.cli.tui;
+
+import cc.jumpkick.cli.theme.Theme;
+import java.util.List;
+
+/** A checked/unchecked box with a label and optional hint. */
+public final class Checkbox implements Widget {
+
+    private final String label;
+    private final boolean checked;
+    private final boolean focused;
+    private final String hint;
+
+    public Checkbox(String label, boolean checked, boolean focused, String hint) {
+        this.label = label == null ? "" : label;
+        this.checked = checked;
+        this.focused = focused;
+        this.hint = hint == null ? "" : hint;
+    }
+
+    @Override
+    public List<String> render(RenderContext ctx) {
+        Theme t = ctx.theme();
+        String glyph = checked ? Rail.CHECKBOX_ON : Rail.CHECKBOX_OFF;
+        if (!ctx.ansi()) {
+            String line = glyph + "  " + label + (hint.isEmpty() ? "" : "  " + hint);
+            return List.of(line);
+        }
+        var glyphStyle = checked ? t.completedStep() : (focused ? t.focused() : t.darkGray());
+        var labelStyle = focused ? t.focused() : t.darkGray();
+        String line = Theme.colorize(glyph, glyphStyle)
+                + "  "
+                + Theme.colorize(label, labelStyle)
+                + (hint.isEmpty() ? "" : "  " + Theme.colorize(hint, t.darkGray()));
+        return List.of(line);
+    }
+}

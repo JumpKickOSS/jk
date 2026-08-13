@@ -6,9 +6,9 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.BuildPlanWedge;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.model.command.CliCommand;
@@ -58,7 +58,7 @@ public final class EngineStatusCommand implements CliCommand {
                 CliOutput.out("{\"running\":false,\"engines\":" + enginesJson(others) + "}");
             } else {
                 CommandWedge.envelopeStart();
-                CliOutput.out(BuildPlanWedge.chipLine(
+                CliOutput.out(JkWedge.chipLine(
                         Glyphs.STOP,
                         "Engine",
                         GlobalConfig.nerdfont(),
@@ -92,7 +92,7 @@ public final class EngineStatusCommand implements CliCommand {
             return Exit.SUCCESS;
         }
         CommandWedge.envelopeStart();
-        CliOutput.out(BuildPlanWedge.chipLine(
+        CliOutput.out(JkWedge.chipLine(
                 Glyphs.PLAY, "Engine", GlobalConfig.nerdfont(), "Engine is running (pid " + pidStyled(s.pid()) + ")"));
         detail("Version", s.version());
         detail("Uptime", formatUptime(uptimeSeconds));

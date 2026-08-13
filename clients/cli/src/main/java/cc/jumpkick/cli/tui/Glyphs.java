@@ -9,7 +9,7 @@ import cc.jumpkick.cli.theme.Theme;
  * Theme.colorize(Glyphs.CHECK, Theme.active().success())}).
  *
  * <p>Unicode forms are for ANSI/nerd modes. Prefer {@link #check()}, {@link #cross()}, etc. when
- * emitting markers outside {@link BuildPlanWedge} so {@code --no-ansi} stays ASCII-only. Free-form
+ * emitting markers outside {@link JkWedge} so {@code --no-ansi} stays ASCII-only. Free-form
  * message text is rewritten at print time by {@link PlainAscii} (ellipsis, bullets, pulse).
  */
 public final class Glyphs {
@@ -40,7 +40,7 @@ public final class Glyphs {
 
     /**
      * Table / menu marker — U+2261 identical to (triple bar). Used on blue {@link CommandWedge}
-     * chips that title a box-drawn table ({@link BoxTable#titleBar}).
+     * chips that title a box-drawn table ({@link Table}).
      */
     public static final String MENU = "≡";
 

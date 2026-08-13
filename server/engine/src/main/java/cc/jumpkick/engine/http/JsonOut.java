@@ -21,7 +21,23 @@ public final class JsonOut {
         return new JsonOut();
     }
 
+    /**
+     * Wrap an already-built map (nested lists/maps allowed) so SSE payloads can carry structured
+     * mid-flight snapshots without a second JSON dialect.
+     */
+    public static JsonOut rawObject(Map<String, Object> fields) {
+        JsonOut o = new JsonOut();
+        if (fields != null) o.fields.putAll(fields);
+        return o;
+    }
+
     public JsonOut put(String key, String value) {
+        fields.put(key, value);
+        return this;
+    }
+
+    /** Nested object/array (maps/lists) — MiniJson serializes them recursively. */
+    public JsonOut putObject(String key, Object value) {
         fields.put(key, value);
         return this;
     }

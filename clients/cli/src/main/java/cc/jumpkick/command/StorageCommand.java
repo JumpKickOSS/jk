@@ -105,7 +105,7 @@ public final class StorageCommand extends GroupCommand {
         }
         if (!skipConfirm && !confirmNuke(storeRoot, pre)) {
             CommandWedge.envelopeStart();
-            CliOutput.out(cc.jumpkick.cli.tui.BuildPlanWedge.chipLine(
+            CliOutput.out(cc.jumpkick.cli.tui.JkWedge.chipLine(
                     Glyphs.CROSS, "Storage", cc.jumpkick.config.GlobalConfig.nerdfont(), "Nuke aborted."));
             return 1;
         }

@@ -7,8 +7,8 @@ import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.CommandManager;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -196,7 +196,7 @@ public final class FormatCommand implements CliCommand {
         // Animated path — start the TUI *first*, so the spinner is already visible while the plan's
         // collect/resolve steps (I/O) run behind it.
         String subtitle = "Formatting files…";
-        try (CommandManager cm = CommandManager.plan(CliOutput.stdout(), "Format", true)) {
+        try (JkManager cm = JkManager.plan(CliOutput.stdout(), "Format", true)) {
             cm.addTaskLabeled("", "fmt", subtitle);
             cm.stepRunning("", "fmt", "Formatting files…");
 

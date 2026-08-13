@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Storage-surface rendering: {@code jk cache usage} and {@code jk storage usage} hand-built boxes
- * stay aligned via ANSI-aware {@code BoxTable.visibleWidth} padding.
+ * stay aligned via ANSI-aware {@code Table.visibleWidth} padding.
  */
 class StorageSurfacesRenderTest {
 

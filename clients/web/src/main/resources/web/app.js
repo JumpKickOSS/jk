@@ -32,6 +32,8 @@ import {
   orderedModules,
   etaTotalMillis,
   stepTimingLabel,
+  isTestFailureDiag,
+  testFailureReport,
 } from './fold.js';
 import { installTips } from './tip.js';
 
@@ -103,7 +105,7 @@ const PhaseChain = {
   // phase auto-opens), then a phase key, or `null` when they've closed all.
   data: () => ({ atStart: true, atEnd: true, follow: true, manualKey: undefined }),
   template: `
-    <div class="phase-chain-outer">
+    <div class="phase-chain-outer" :class="{ 'has-open': !!openPhase }">
       <div class="phase-live-row">
         <div class="step-chain-wrap">
           <button v-show="!atStart" type="button" class="chain-nav left" @click="page(-1)"
@@ -115,7 +117,7 @@ const PhaseChain = {
               <button type="button" class="step-node phase-node" :class="[p.state, { open: openKey === p.key }]"
                       :data-tip="phaseTitle(p)" :aria-expanded="String(openKey === p.key)" @click="toggle(p.key)">
                 <span v-if="p.state === 'running'" class="spin small"></span>
-                <jk-icon v-else-if="p.state === 'success'" name="check" class="step-glyph ok"></jk-icon>
+                <jk-icon v-else-if="p.state === 'success' || p.state === 'skipped'" name="check" class="step-glyph ok"></jk-icon>
                 <jk-icon v-else-if="p.state === 'failed'" name="x" class="step-glyph err"></jk-icon>
                 {{ p.label }}
               </button>
@@ -133,12 +135,12 @@ const PhaseChain = {
           </span>
         </span>
       </div>
-      <div v-if="openPhase" class="phase-steps">
+      <div v-if="openPhase" class="phase-steps" :class="openPhase.state">
         <template v-for="(s, i) in openPhase.steps" :key="s.name">
           <span v-if="i > 0" class="step-edge" :class="openPhase.steps[i - 1].state"></span>
           <span class="step-node" :class="s.state" :data-tip="stepTitle(s)">
             <span v-if="s.state === 'running'" class="spin small"></span>
-            <jk-icon v-else-if="s.state === 'success'" name="check" class="step-glyph ok"></jk-icon>
+            <jk-icon v-else-if="s.state === 'success' || s.state === 'skipped'" name="check" class="step-glyph ok"></jk-icon>
             <jk-icon v-else-if="s.state === 'failed'" name="x" class="step-glyph err"></jk-icon>
             {{ stepLabel(s) }}
           </span>
@@ -340,7 +342,8 @@ const BuildBars = {
 /**
  * Lazy dependency graph (JK-1542): mounted only when the Project-page Dependencies panel is open.
  * Fetches {@code GET /api/project/graph} with scope + transitive filters (same idea as
- * {@code jk tree --scopes}), aborts on unmount, and only then calls {@code echarts.init}.
+ * {@code jk tree --scopes} / {@code jk tree -t}), aborts on unmount, and only then calls
+ * {@code echarts.init}.
  */
 const ModuleDepGraph = {
   props: { dir: { type: String, required: true } },
@@ -374,7 +377,7 @@ const ModuleDepGraph = {
             <span>{{ sc }}</span>
           </label>
         </div>
-        <label class="check dep-transitive" data-tip="Include lockfile transitive dependencies (off by default)">
+        <label class="check dep-transitive" data-tip="Include lockfile transitive dependencies (same as jk tree -t; off by default)">
           <input type="checkbox" :checked="transitive" @change="setTransitive($event)">
           <span class="check-box" aria-hidden="true"></span>
           <span>Transitive</span>
@@ -1132,16 +1135,12 @@ Vue.createApp({
           if (state === 'live') {
             this._offlineStatusBackoffMs = 5_000;
             this.clearOfflineStatusFallback();
-            if (wasOffline) {
-              this.refresh(); // resync after an engine restart
-              this.loadHistory(); // re-seed persisted runs (dedupe keeps this idempotent)
-              this.loadProjectHistory();
-            } else if (this.cards.length === 0) {
-              // First open / hard-refresh: mount also loads history; re-try once the stream is live
-              // in case the earlier GET raced a cold engine.
-              this.loadHistory();
-              this.loadProjectHistory();
-            }
+            // Always re-seed history on (re)connect: mid-flight enrichment + finished rows.
+            // run-snapshot SSE covers the same instant for running jobs; history remains the
+            // durable path and fills any race where the stream opened before the first GET.
+            if (wasOffline) this.refresh(); // full chrome resync after an engine restart
+            this.loadHistory();
+            this.loadProjectHistory();
           } else if (state === 'offline') {
             // EventSource's own retry cadence (~3s on refused connections) is shorter than the
             // poll delay — re-arming on every onerror would perpetually reset the pending timer
@@ -1305,7 +1304,16 @@ Vue.createApp({
       // engine/CLI ProgressBarMode.select (JK-1816); with neither signal, weighted below.
       const useClock = (mode === 'clock' && (haveR0 || haveResidual)) || (mode === 'auto' && haveR0);
       if (useClock) {
-        const base = haveR0 ? card.r0At : card.startedAt;
+        // Prefer engine admission time so a mid-build join does not restart the bar at 0%.
+        // Fall back to r0At (first seed receipt) for tabs that watched from the first tick.
+        const base =
+          card.startedAtClient != null
+            ? card.startedAtClient
+            : card.startedAt != null
+              ? card.startedAt
+              : haveR0
+                ? card.r0At
+                : this.now;
         const since = Math.max(0, this.now - (base != null ? base : this.now));
         // Adaptive: elapsed / (elapsed + residual). Residual firms up as work completes —
         // same oracle the countdown re-anchors to (ends on time with residual → 0).
@@ -1342,15 +1350,19 @@ Vue.createApp({
       return haveR0 || haveResidual;
     },
     elapsedSeconds(card) {
-      if (card.startedAt == null) return 0;
-      return Math.max(0, Math.floor((this.now - card.startedAt) / 1000));
+      // Client-epoch anchor first (JK-1839): engine-epoch startedAt vs this.now shifts elapsed
+      // by the clock skew on a remote dashboard.
+      const start = card.startedAtClient ?? card.startedAt;
+      if (start == null) return 0;
+      return Math.max(0, Math.floor((this.now - start) / 1000));
     },
     // Whole-second countdown deadline on the SAME counter as elapsedSeconds (startedAt epoch).
     // Prefer residual re-anchor when known (CLI setBarResidualRemaining); fall back to frozen R0.
     // Deriving both faces from one counter keeps them ticking on the same paint (JK-1822).
     etaDeadlineSeconds(card) {
       if (!this.hasEta(card)) return null;
-      const base = card.startedAt != null ? card.startedAt : (card.residualAt != null ? card.residualAt : card.r0At);
+      const start = card.startedAtClient ?? card.startedAt;
+      const base = start != null ? start : (card.residualAt != null ? card.residualAt : card.r0At);
       if (base == null) return null;
       // Residual re-anchor: deadline = residualAt + residualRemaining (open-loop decay between samples).
       if (
@@ -1385,10 +1397,32 @@ Vue.createApp({
       const deadline = this.etaDeadlineSeconds(card);
       return deadline != null && this.elapsedSeconds(card) >= deadline + 2;
     },
-    etaCountdown(card) {
+    /**
+     * Whole-second countdown with the CLI's 1s jitter buffer (b1e4f58b / JK-1849): the face
+     * commits once per elapsed second, so a fresh residual sample landing mid-second cannot
+     * flick the digit ±1 when the deadline straddles a floor boundary. Zero snaps immediately
+     * (end on time), and a same-second re-anchor that raises the target overwrites a committed
+     * zero rather than bouncing 0s → Ns on the next second (the JK-1850 rule).
+     */
+    etaFaceSeconds(card) {
       const deadline = this.etaDeadlineSeconds(card);
-      if (deadline == null) return '';
-      const rem = deadline - this.elapsedSeconds(card);
+      if (deadline == null) return null;
+      const sec = this.elapsedSeconds(card);
+      const rem = Math.max(0, deadline - sec);
+      if (rem <= 0) {
+        card.etaFaceSec = sec;
+        card.etaFaceRem = 0;
+        return 0;
+      }
+      if (card.etaFaceSec !== sec || card.etaFaceRem == null || card.etaFaceRem <= 0) {
+        card.etaFaceSec = sec;
+        card.etaFaceRem = rem;
+      }
+      return card.etaFaceRem;
+    },
+    etaCountdown(card) {
+      const rem = this.etaFaceSeconds(card);
+      if (rem == null) return '';
       return rem <= 0 ? '0s' : '~' + this.fmtClockSeconds(rem);
     },
     // Back-compat alias used by older snapshots/tests: bare countdown string (no "ETA " label).
@@ -1444,6 +1478,30 @@ Vue.createApp({
       const st = ((mod && mod.steps) || []).find((s) => s.name === d.step);
       const wire = st && st.phase ? st.phase : '';
       return wire ? wire.charAt(0).toUpperCase() + wire.slice(1) : '';
+    },
+
+    /** True when this diagnostic is a structured per-test failure (rich report, not one-liner). */
+    isTestFailure(d) {
+      return isTestFailureDiag(d);
+    },
+
+    /**
+     * CLI-parity report model for a test-failure diagnostic. {@code count} is how many
+     * test-failure diags this module carries (header "N test failed"); only the first
+     * failure in the module shows that header.
+     */
+    testFailure(mod, d) {
+      const diags = ((mod && mod.diagnostics) || []).filter((x) => isTestFailureDiag(x));
+      const n = diags.length;
+      return testFailureReport(d, {
+        count: Math.max(1, n),
+        showHeader: n === 0 || diags[0] === d,
+      });
+    },
+
+    /** Syntax segments for {@code SimpleClass.method()} labels. */
+    failLabelSegs(label) {
+      return detailSegments(label);
     },
 
     // A build is "compact" (one step chain under the header, no module-name rows) when it has at
@@ -1674,8 +1732,13 @@ Vue.createApp({
       if (this.view === 'projects' || this.view === 'project') {
         await this.refreshMetrics();
       }
-      // Cache tier + artifact store footer: SSE while live; REST hydrate when offline or empty.
-      if (!sseLive || !this.cache) {
+      // Cache tier + artifact store footer: prefer thin SSE while live; REST only while no
+      // cache frame has arrived at all. A first-ever connect gets no SSE cache hydrate (no
+      // snapshot captured yet) and the safety-net sampler ticks every 60s, so without this
+      // one-shot the footer showed dashes for up to a minute (JK-1845). Snapshot walks are
+      // single-flight + TTL-memoized engine-side, so this cannot storm the store (JK-1846-era
+      // CacheSnapshot).
+      if (!this.cache) {
         await this.refreshCache();
       }
     },
@@ -1763,10 +1826,10 @@ Vue.createApp({
         .sort((a, b) => a.kind.localeCompare(b.kind));
     },
 
-    // The machine-wide per-step rows, biggest total first, capped for the panel.
+    // Machine-wide per-task rows (wire: scope "task", name in "task"), biggest total first.
     metricsSteps() {
       return (this.metrics || [])
-        .filter((r) => r.scope === 'step')
+        .filter((r) => r.scope === 'task')
         .sort((a, b) => b.okTotalMillis - a.okTotalMillis)
         .slice(0, 10);
     },
@@ -1819,19 +1882,18 @@ Vue.createApp({
     // ---- the workspace picker (Browse…) ----
     async openBrowser() {
       if (this.authModal) return;
-      // Start from the typed path when it looks absolute; the server defaults to $HOME otherwise.
+      // Seed the picker with whatever was typed (~ / relative / absolute); server resolves vs $HOME.
       this.browserMode = 'workspace';
-      const seed = this.buildDir.trim().startsWith('/') ? this.buildDir.trim() : null;
+      const seed = this.buildDir.trim() || null;
       await this.browseTo(seed);
     },
 
     async openParentBrowser() {
       if (this.authModal) return;
       this.browserMode = 'parent';
-      const seed =
-        this.newProject.parentDir && this.newProject.parentDir.trim().startsWith('/')
-          ? this.newProject.parentDir.trim()
-          : null;
+      const seed = this.newProject.parentDir && this.newProject.parentDir.trim()
+        ? this.newProject.parentDir.trim()
+        : null;
       await this.browseTo(seed);
     },
 

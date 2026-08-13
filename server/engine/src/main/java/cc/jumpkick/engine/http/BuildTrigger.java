@@ -9,8 +9,8 @@ package cc.jumpkick.engine.http;
 public interface BuildTrigger {
 
     /**
-     * Start a build of the workspace/project at {@code dir} (an absolute path containing {@code
-     * jk.toml}) and return its request id immediately.
+     * Start a build of the workspace/project at {@code dir} (absolute, {@code ~/…}, or home-relative
+     * path containing {@code jk.toml}) and return its request id immediately.
      *
      * @throws IllegalArgumentException when {@code dir} isn't buildable — relayed as a {@code 400}
      */

@@ -2028,7 +2028,28 @@ public final class EngineProtocol {
      * (JK-1831).
      */
     public static String eta(long remainingMs) {
-        return "{\"type\":\"" + ETA + "\",\"millis\":" + remainingMs + ",\"remainingMs\":" + remainingMs + "}";
+        return eta(remainingMs, -1);
+    }
+
+    /**
+     * As {@link #eta(long)} with optional {@code fullMillis}: schedule-aware ETA for a full
+     * rebuild of the same plan ({@code jk build --redo}). Used by {@code jk explain} as the
+     * denominator for rebuild effort ({@code remaining / full}). Negative {@code fullMillis}
+     * omits the field (non-explain ETA emitters).
+     */
+    public static String eta(long remainingMs, long fullMillis) {
+        StringBuilder sb = new StringBuilder(96);
+        sb.append("{\"type\":\"")
+                .append(ETA)
+                .append("\",\"millis\":")
+                .append(remainingMs)
+                .append(",\"remainingMs\":")
+                .append(remainingMs);
+        if (fullMillis >= 0) {
+            sb.append(",\"fullMillis\":").append(fullMillis);
+        }
+        sb.append('}');
+        return sb.toString();
     }
 
     /**
@@ -2236,21 +2257,112 @@ public final class EngineProtocol {
 
     private static String diagnosticLike(
             String type, String dir, String step, String code, String message, String test, String exceptionClass) {
-        return "{\"type\":\""
-                + type
-                + "\",\"dir\":"
-                + Jsonl.quote(dir)
-                + ",\"task\":"
-                + Jsonl.quote(step)
-                + ",\"code\":"
-                + Jsonl.quote(code)
-                + ",\"message\":"
-                + Jsonl.quote(message)
-                + ",\"test\":"
-                + Jsonl.quote(test)
-                + ",\"exceptionClass\":"
-                + Jsonl.quote(exceptionClass)
-                + "}";
+        return diagnosticLike(
+                type, dir, step, code, message, test, exceptionClass, "", "", "", "", "", "", 0, 0, java.util.List.of());
+    }
+
+    /**
+     * Diagnostic/error line. Additive fields ({@code module}, {@code engine}, {@code class},
+     * {@code method}, {@code stack}, source {@code file}/{@code line}/{@code snippet}, nested
+     * {@code throwable}) are omitted when empty so non-test diagnostics stay small.
+     */
+    private static String diagnosticLike(
+            String type,
+            String dir,
+            String step,
+            String code,
+            String message,
+            String test,
+            String exceptionClass,
+            String module,
+            String engine,
+            String className,
+            String method,
+            String stack) {
+        return diagnosticLike(
+                type,
+                dir,
+                step,
+                code,
+                message,
+                test,
+                exceptionClass,
+                module,
+                engine,
+                className,
+                method,
+                stack,
+                "",
+                0,
+                0,
+                java.util.List.of());
+    }
+
+    private static String diagnosticLike(
+            String type,
+            String dir,
+            String step,
+            String code,
+            String message,
+            String test,
+            String exceptionClass,
+            String module,
+            String engine,
+            String className,
+            String method,
+            String stack,
+            String file,
+            int line,
+            int snippetStart,
+            java.util.List<String> snippet) {
+        StringBuilder b = new StringBuilder(256);
+        b.append("{\"type\":")
+                .append(Jsonl.quote(type))
+                .append(",\"dir\":")
+                .append(Jsonl.quote(dir))
+                .append(",\"task\":")
+                .append(Jsonl.quote(step))
+                .append(",\"code\":")
+                .append(Jsonl.quote(code))
+                .append(",\"message\":")
+                .append(Jsonl.quote(message));
+        if (test != null && !test.isEmpty()) b.append(",\"test\":").append(Jsonl.quote(test));
+        if (module != null && !module.isEmpty()) b.append(",\"module\":").append(Jsonl.quote(module));
+        if (engine != null && !engine.isEmpty()) b.append(",\"engine\":").append(Jsonl.quote(engine));
+        if (className != null && !className.isEmpty()) b.append(",\"class\":").append(Jsonl.quote(className));
+        if (method != null && !method.isEmpty()) b.append(",\"method\":").append(Jsonl.quote(method));
+        if (exceptionClass != null && !exceptionClass.isEmpty())
+            b.append(",\"exceptionClass\":").append(Jsonl.quote(exceptionClass));
+        if (file != null && !file.isEmpty()) b.append(",\"file\":").append(Jsonl.quote(file));
+        if (line > 0) b.append(",\"line\":").append(line);
+        if (snippetStart > 0) b.append(",\"snippetStart\":").append(snippetStart);
+        if (snippet != null && !snippet.isEmpty()) {
+            b.append(",\"snippet\":[");
+            for (int i = 0; i < snippet.size(); i++) {
+                if (i > 0) b.append(',');
+                b.append(Jsonl.quote(snippet.get(i)));
+            }
+            b.append(']');
+        }
+        if (stack != null && !stack.isEmpty()) {
+            b.append(",\"stack\":").append(Jsonl.quote(stack));
+            b.append(",\"throwable\":{")
+                    .append("\"class\":")
+                    .append(Jsonl.quote(exceptionClass == null ? "" : exceptionClass))
+                    .append(",\"message\":")
+                    .append(Jsonl.quote(message == null ? "" : message))
+                    .append(",\"stack\":")
+                    .append(Jsonl.quote(stack))
+                    .append('}');
+        } else if (exceptionClass != null && !exceptionClass.isEmpty()) {
+            b.append(",\"throwable\":{")
+                    .append("\"class\":")
+                    .append(Jsonl.quote(exceptionClass))
+                    .append(",\"message\":")
+                    .append(Jsonl.quote(message == null ? "" : message))
+                    .append(",\"stack\":\"\"}");
+        }
+        return b.append('}').toString();
     }
 
     public static String warn(String dir, String step, String code, String message) {
@@ -2262,9 +2374,96 @@ public final class EngineProtocol {
         return diagnosticLike(ERROR_LINE, dir, step, code, message, test, exceptionClass);
     }
 
+    /** Enriched test-failure error line (module / engine / class / method / stack). */
+    public static String errorLine(
+            String dir,
+            String step,
+            String code,
+            String message,
+            String module,
+            String engine,
+            String className,
+            String method,
+            String exceptionClass,
+            String stack) {
+        return diagnosticLike(
+                ERROR_LINE, dir, step, code, message, "", exceptionClass, module, engine, className, method, stack);
+    }
+
+    /** Full test-failure error line including optional source snippet. */
+    public static String errorLine(
+            String dir, String step, String code, String message, cc.jumpkick.run.TestFailureInfo failure) {
+        if (failure == null) return errorLine(dir, step, code, message, "", "");
+        return diagnosticLike(
+                ERROR_LINE,
+                dir,
+                step,
+                code,
+                message == null || message.isEmpty() ? failure.message() : message,
+                "",
+                failure.exceptionClass(),
+                failure.module(),
+                failure.engine(),
+                failure.className(),
+                failure.method(),
+                failure.stack(),
+                failure.file(),
+                failure.line(),
+                failure.snippetStart(),
+                failure.snippet());
+    }
+
     public static String planDiagnostic(
             String dir, String step, String code, String message, String test, String exceptionClass) {
         return diagnosticLike(BUILDPLAN_DIAGNOSTIC, dir, step, code, message, test, exceptionClass);
+    }
+
+    public static String planDiagnostic(
+            String dir,
+            String step,
+            String code,
+            String message,
+            String module,
+            String engine,
+            String className,
+            String method,
+            String exceptionClass,
+            String stack) {
+        return diagnosticLike(
+                BUILDPLAN_DIAGNOSTIC,
+                dir,
+                step,
+                code,
+                message,
+                "",
+                exceptionClass,
+                module,
+                engine,
+                className,
+                method,
+                stack);
+    }
+
+    public static String planDiagnostic(
+            String dir, String step, String code, String message, cc.jumpkick.run.TestFailureInfo failure) {
+        if (failure == null) return planDiagnostic(dir, step, code, message, "", "");
+        return diagnosticLike(
+                BUILDPLAN_DIAGNOSTIC,
+                dir,
+                step,
+                code,
+                message == null || message.isEmpty() ? failure.message() : message,
+                "",
+                failure.exceptionClass(),
+                failure.module(),
+                failure.engine(),
+                failure.className(),
+                failure.method(),
+                failure.stack(),
+                failure.file(),
+                failure.line(),
+                failure.snippetStart(),
+                failure.snippet());
     }
 
     /** @see #stepFinish(String, String, String, String, long) */

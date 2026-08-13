@@ -33,6 +33,7 @@
   /* RGB triplets, one per state/identity hue above. Kept in lock-step with the hex tokens so a
    * single colour can drive a fill, a border, and a glow at different alphas — rgba(var(--x-rgb), a).
    * (CSS can't derive these from the hex at runtime, so they're maintained by hand.) */
+  --console-bg-rgb: 11, 17, 22;
   --run-rgb: 61, 155, 255;
   --runc-rgb: 18, 74, 140;
   --ok-rgb: 0, 255, 135;
@@ -700,17 +701,37 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
   gap: 6px;
   padding: 5px 10px;
   border-radius: var(--r-md);
-  border: 1px solid var(--bd);
+  border: 1px solid var(--node-outline, var(--bd));
   background: var(--s2);
   font: 600 11px/1 var(--mono);
   color: var(--mu);
   white-space: nowrap;
+  --node-outline: var(--bd); /* shared by open-node chevron + .phase-steps border */
 }
 
-.step-node.running { border-color: var(--run-line); color: var(--run-fg); background: var(--runc); }
-.step-node.success { border-color: rgba(var(--ok-rgb), 0.4); color: var(--ok); background: rgba(var(--okc-rgb), 0.14); }
-.step-node.failed { border-color: rgba(var(--err-rgb), 0.5); color: var(--err); background: rgba(var(--err-rgb), 0.12); }
-.step-node.skipped, .step-node.cancelled { opacity: 0.55; }
+.step-node.running {
+  --node-outline: var(--run-line);
+  color: var(--run-fg);
+  background: var(--runc);
+}
+.step-node.success {
+  --node-outline: rgba(var(--ok-rgb), 0.4);
+  color: var(--ok);
+  background: rgba(var(--okc-rgb), 0.14);
+}
+.step-node.failed {
+  --node-outline: rgba(var(--err-rgb), 0.5);
+  color: var(--err);
+  background: rgba(var(--err-rgb), 0.12);
+}
+/* Skipped: same green + check as success; dashed outline is the only difference. */
+.step-node.skipped {
+  --node-outline: rgba(var(--ok-rgb), 0.4);
+  color: var(--ok);
+  background: rgba(var(--okc-rgb), 0.14);
+  border-style: dashed;
+}
+.step-node.cancelled { opacity: 0.55; }
 .step-glyph.ok { color: var(--ok); }
 .step-glyph.err { color: var(--err); }
 
@@ -736,8 +757,45 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
   min-width: 0;
   margin-top: 0; /* spacing lives on the row */
 }
-.phase-node { cursor: pointer; }
-.phase-node.open { border-color: var(--mu); color: var(--bright); }
+.phase-node { cursor: pointer; position: relative; }
+/* Open = same state border hue (green/red/blue/…), just a hair thicker — no white/mu override. */
+.phase-node.open {
+  --open-outline-w: 2px; /* thicker border; chevron is offset by this so it clears the outline */
+  border-width: var(--open-outline-w);
+  padding: 4px 9px; /* hold outer size steady vs the default 5px 10px + 1px border */
+  z-index: 1; /* paint the connector above .phase-steps top border */
+}
+/* Speech-bubble connector under the open node: outer triangle = node outline, inner = panel fill
+ * (same 20% console bg as .phase-steps). Tip points up toward the open node.
+ * top is past the bottom border (padding-box 100% + outline + 1px) so the tip clears the stroke. */
+.phase-node.open::before,
+.phase-node.open::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: calc(100% + var(--open-outline-w) + 1px);
+  transform: translateX(-50%);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  pointer-events: none;
+}
+.phase-node.open::before {
+  /* outline stroke — same --node-outline as the open chip + .phase-steps border */
+  width: 16px;
+  height: 10px;
+  background: var(--node-outline, var(--bd));
+}
+.phase-node.open::after {
+  /* fill sits 1px inside the outline so the slanted edges + tip read as a 1px stroke */
+  width: 14px;
+  height: 8.5px;
+  top: calc(100% + var(--open-outline-w) + 2.25px);
+  background: rgba(var(--console-bg-rgb), 0.2);
+}
+/* Room for the hanging chevron inside overflow:hidden .step-chain (horizontal page only).
+ * 13px = outline offset (2) + 1px tip gap + triangle height (10); -1px margin pulls .phase-steps
+ * up so the base covers the panel's top border without double-alpha stacking in the main gap. */
+.phase-chain-outer.has-open .step-chain { padding-bottom: 13px; }
+.phase-chain-outer.has-open .phase-steps { margin-top: -1px; }
 /* Live detail immediately after the running (blue) phase — left of free space, CLI "· detail". */
 .phase-detail {
   display: inline-flex;
@@ -763,6 +821,8 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 .det-type { color: var(--det-type); }
 .det-fn { color: var(--det-fn); }
 .det-num { color: var(--det-num); }
+/* CLI Theme.focused() — bold bright white (failure counts / thrown-at line). */
+.det-focus { color: var(--bright); font-weight: 700; }
 .det-path { color: var(--path); }
 .det-coord { color: var(--cn); }
 .det-dim { color: var(--dim); }
@@ -773,10 +833,20 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
   gap: 6px 0;
   margin-top: 8px;
   padding: 8px 10px;
-  background: var(--console-bg);
-  border: 1px solid var(--bd2);
+  background: rgba(var(--console-bg-rgb), 0.2);
+  /* Outline matches the open phase node (state class set in the template). */
+  border: 1px solid var(--node-outline, var(--bd));
   border-radius: var(--r-md);
+  --node-outline: var(--bd);
 }
+.phase-steps.running { --node-outline: var(--run-line); }
+.phase-steps.success { --node-outline: rgba(var(--ok-rgb), 0.4); }
+.phase-steps.failed { --node-outline: rgba(var(--err-rgb), 0.5); }
+.phase-steps.skipped {
+  --node-outline: rgba(var(--ok-rgb), 0.4);
+  border-style: dashed;
+}
+.step-edge.skipped { background: rgba(var(--ok-rgb), 0.45); }
 
 /* console tail (in-flight output + engine log) */
 
@@ -813,7 +883,13 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 /* Pure cache check (JK-1296) — same green family, slightly muted */
 .dot.checked { background: rgba(var(--ok-rgb), 0.55); }
 .dot.failed { background: var(--err); }
-.dot.cancelled, .dot.skipped { background: var(--dim); }
+.dot.cancelled { background: var(--dim); }
+/* Skipped: success green, dashed ring (not a solid blob). */
+.dot.skipped {
+  background: transparent;
+  border: 1px dashed var(--ok);
+  box-sizing: border-box;
+}
 
 /* ---- projects view ----
  * One row per project: {orb}{coords} left · {ECharts spark} centre · {pill #NNN}{reliability} right.
@@ -1145,6 +1221,60 @@ table.stats td.err { color: var(--err); }
 .diag .console { margin-top: 0; }
 .diag-line { padding: 1px 0; }
 .console-err { color: var(--err); }
+
+/* Test-failure report (CLI TestFailureHighlight parity — flat, no thick outer rail). */
+.fail-report {
+  margin: 4px 0 10px;
+  font: 400 12px/1.45 var(--mono);
+  color: var(--tx);
+  white-space: pre-wrap;
+}
+.fail-report + .fail-report { margin-top: 14px; }
+.fail-head { line-height: 1.4; }
+.fail-blank { height: 0.55em; }
+.fail-line { white-space: pre-wrap; }
+.fail-mid { color: var(--mu); }
+.fail-dim { color: var(--dim); }
+.fail-desc { color: var(--bright); font-style: italic; }
+.fail-failed { color: var(--err); font-weight: 700; }
+.fail-ok { color: var(--ok); }
+.fail-err { color: var(--err); }
+.fail-path {
+  color: var(--path);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  padding-left: 4ch;
+}
+.fail-thrown { padding-left: 4ch; }
+.fail-src {
+  display: flex;
+  white-space: pre;
+  background: var(--console-bg);
+  font: 400 12px/1.45 var(--mono);
+}
+.fail-gutter {
+  flex: none;
+  width: 4ch;
+  text-align: right;
+  color: var(--dim);
+  user-select: none;
+}
+.fail-gutter-err { color: var(--err); }
+.fail-gutter-rail {
+  flex: none;
+  color: var(--dim);
+  padding: 0 0.35em 0 0;
+  user-select: none;
+}
+.fail-src-code {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--tx);
+}
+/* 0.3-alpha error wash over the dark row so it mixes with --console-bg (CLI ERROR_LINE_BG). */
+.fail-src-err .fail-src-code {
+  background: rgba(var(--err-rgb), 0.3);
+}
 
 /* ---- workspace picker (Browse…) ---- */
 

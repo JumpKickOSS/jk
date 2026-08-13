@@ -3,12 +3,19 @@ package cc.jumpkick.compile;
 
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 
 /**
  * Minimal CycloneDX 1.5 SBOM from lockfile coordinates + SHA-256 (deterministic; no serial numbers
  * so reproducible jars stay stable).
+ *
+ * <p>Components are sorted by {@code group}, {@code artifact}, {@code version}. {@code LockFlow}
+ * keeps solver order in memory; {@code LockfileWriter} sorts by name on disk. Without this sort the
+ * first {@code jk build} (in-memory lock) and the next {@code jk run} (disk lock) embed different
+ * SBOM bytes, miss the package-jar cache, and rebuild native-image.
  */
 public final class CycloneDxSbom {
 
@@ -30,7 +37,12 @@ public final class CycloneDxSbom {
 
     /** The CycloneDX JSON document for an application and its resolved runtime components. */
     public static byte[] write(String group, String artifact, String version, List<Component> components) {
-        StringBuilder sb = new StringBuilder(1024 + components.size() * 256);
+        List<Component> ordered = new ArrayList<>(components);
+        ordered.sort(Comparator.comparing(Component::group)
+                .thenComparing(Component::artifact)
+                .thenComparing(Component::version)
+                .thenComparing(c -> c.sha256() == null ? "" : c.sha256()));
+        StringBuilder sb = new StringBuilder(1024 + ordered.size() * 256);
         sb.append("{\n");
         sb.append("  \"bomFormat\": \"CycloneDX\",\n");
         sb.append("  \"specVersion\": \"1.5\",\n");
@@ -46,8 +58,8 @@ public final class CycloneDxSbom {
         sb.append("    }\n");
         sb.append("  },\n");
         sb.append("  \"components\": [");
-        for (int i = 0; i < components.size(); i++) {
-            Component c = components.get(i);
+        for (int i = 0; i < ordered.size(); i++) {
+            Component c = ordered.get(i);
             sb.append(i == 0 ? "\n" : ",\n");
             sb.append("    {\n");
             sb.append("      \"type\": \"library\",\n");
@@ -63,7 +75,7 @@ public final class CycloneDxSbom {
             }
             sb.append("\n    }");
         }
-        sb.append(components.isEmpty() ? "]\n" : "\n  ]\n");
+        sb.append(ordered.isEmpty() ? "]\n" : "\n  ]\n");
         sb.append("}\n");
         return sb.toString().getBytes(StandardCharsets.UTF_8);
     }

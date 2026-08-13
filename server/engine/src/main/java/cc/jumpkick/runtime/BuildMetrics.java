@@ -183,7 +183,15 @@ public final class BuildMetrics {
     /**
      * Prefer the session workspace's project metrics so a stale project-identity home for the same
      * absolute path cannot poison step walls. Fall back to {@link
-     * cc.jumpkick.builds.AggregatedMetrics#loadAll} (count-preferring merge) when no working dir.
+     * cc.jumpkick.builds.AggregatedMetrics#loadAll} (count-preferring merge) when there is no real
+     * project session.
+     *
+     * <p>Important: ambient {@link SessionContext} uses {@link Session#defaults()}, whose working
+     * dir is the process CWD. The engine process CWD is the state dir ({@code …/jk/engine}), which
+     * is a directory but has no {@code jk.toml} — treating that as a project session produced an
+     * empty project-metrics fold and left Admin KPIs at zero (host task means only). Only a
+     * checkout that actually has {@code jk.toml} scopes to one project; otherwise merge every
+     * harvested project (what the dashboard and host-wide ETA want).
      *
      * <p>Memoized for a short TTL keyed by (builds root, working dir): every priced step consults
      * this (own + host tiers), so one ETA seed on a dirty monorepo issued hundreds of identical
@@ -198,18 +206,21 @@ public final class BuildMetrics {
         } catch (RuntimeException ignored) {
             // no session / bad path — global merge below
         }
+        // Only a real jk checkout is a project session; engine CWD / random dirs use loadAll.
+        boolean projectSession = work != null && Files.isRegularFile(work.resolve("jk.toml"));
+        Path memoKey = projectSession ? work : null;
         long now = System.currentTimeMillis();
         AggMemo memo = AGG_MEMO.get();
         if (memo != null
                 && memo.builds().equals(builds)
-                && java.util.Objects.equals(memo.work(), work)
+                && java.util.Objects.equals(memo.work(), memoKey)
                 && now - memo.atMillis() < AGG_MEMO_TTL_MS) {
             return memo.agg();
         }
-        cc.jumpkick.builds.AggregatedMetrics agg = work != null
+        cc.jumpkick.builds.AggregatedMetrics agg = projectSession
                 ? cc.jumpkick.builds.AggregatedMetrics.load(builds, null, work)
                 : cc.jumpkick.builds.AggregatedMetrics.loadAll(builds);
-        AGG_MEMO.set(new AggMemo(builds, work, now, agg));
+        AGG_MEMO.set(new AggMemo(builds, memoKey, now, agg));
         return agg;
     }
 

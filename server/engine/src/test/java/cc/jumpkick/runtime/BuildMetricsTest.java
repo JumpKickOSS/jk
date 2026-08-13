@@ -40,6 +40,105 @@ class BuildMetricsTest {
         assertThat(m.entries()).isEmpty();
     }
 
+    /**
+     * Admin / {@code GET /api/metrics} loads the default metrics path with ambient
+     * {@link cc.jumpkick.config.Session#defaults()}. The engine process CWD is the state dir (no
+     * {@code jk.toml}); that must still surface harvested project invocations via loadAll — not an
+     * empty single-project fold that leaves KPI tiles at zero.
+     */
+    @Test
+    void default_path_with_engine_like_cwd_uses_machine_wide_aggregates(@TempDir Path state) throws Exception {
+        // JK_HOME (engine test harness) wins over JK_STATE_DIR for builds/ — pin JK_BUILDS_DIR.
+        String prevBuilds = System.getProperty("jk.env.JK_BUILDS_DIR");
+        Path builds = state.resolve("builds");
+        System.setProperty("jk.env.JK_BUILDS_DIR", builds.toString());
+        BuildMetrics.clearSessionAggregatesMemo();
+        BuildMetrics.clearMemo();
+        var prior = cc.jumpkick.config.SessionContext.current();
+        try {
+            Path home = builds.resolve("projects").resolve("demo-home");
+            Files.createDirectories(home);
+            Files.writeString(home.resolve(cc.jumpkick.builds.ProjectBuilds.PROJECT_METRICS), """
+                    [mean]
+                    invocation.build.wall-ms = 4200
+                    task.compile-java.wall-ms = 800
+                    [count]
+                    invocation.build.wall-ms = 9
+                    task.compile-java.wall-ms = 9
+                    """);
+            Files.writeString(builds.resolve(cc.jumpkick.builds.ProjectBuilds.HOST_METRICS), """
+                    [mean]
+                    task.compile-java.wall-ms = 750
+                    """);
+            // Engine-like ambient session: CWD is a real directory but not a jk checkout.
+            Path engineCwd = state.resolve("engine");
+            Files.createDirectories(engineCwd);
+            cc.jumpkick.config.SessionContext.install(
+                    cc.jumpkick.config.Session.defaults().withWorkingDir(engineCwd));
+            BuildMetrics.clearSessionAggregatesMemo();
+
+            BuildMetrics m = BuildMetrics.load(BuildMetrics.defaultFile());
+            assertThat(m.invocation("build", ""))
+                    .as("global build tier from harvested project-metrics")
+                    .isPresent();
+            assertThat(m.invocation("build", "").orElseThrow().ok().count()).isEqualTo(9);
+            assertThat(m.step("", "compile-java")).isPresent();
+        } finally {
+            cc.jumpkick.config.SessionContext.install(prior);
+            BuildMetrics.clearSessionAggregatesMemo();
+            BuildMetrics.clearMemo();
+            if (prevBuilds == null) System.clearProperty("jk.env.JK_BUILDS_DIR");
+            else System.setProperty("jk.env.JK_BUILDS_DIR", prevBuilds);
+        }
+    }
+
+    @Test
+    void default_path_with_jk_toml_cwd_stays_project_scoped(@TempDir Path state) throws Exception {
+        String prevBuilds = System.getProperty("jk.env.JK_BUILDS_DIR");
+        Path builds = state.resolve("builds");
+        System.setProperty("jk.env.JK_BUILDS_DIR", builds.toString());
+        BuildMetrics.clearSessionAggregatesMemo();
+        BuildMetrics.clearMemo();
+        var prior = cc.jumpkick.config.SessionContext.current();
+        try {
+            Path checkout = state.resolve("checkout");
+            Files.createDirectories(checkout);
+            Files.writeString(checkout.resolve("jk.toml"), "[project]\ngroup = \"g\"\nname = \"n\"\n");
+            // Resolve the identity home this checkout would use, write metrics only there.
+            Path home = cc.jumpkick.builds.ProjectBuilds.projectHome(builds, null, checkout);
+            Files.createDirectories(home);
+            Files.writeString(home.resolve(cc.jumpkick.builds.ProjectBuilds.PROJECT_METRICS), """
+                    [mean]
+                    invocation.build.wall-ms = 1000
+                    [count]
+                    invocation.build.wall-ms = 3
+                    """);
+            // A sibling home that must NOT appear when session is scoped to checkout.
+            Path other = builds.resolve("projects").resolve("other-home");
+            Files.createDirectories(other);
+            Files.writeString(other.resolve(cc.jumpkick.builds.ProjectBuilds.PROJECT_METRICS), """
+                    [mean]
+                    invocation.build.wall-ms = 99999
+                    [count]
+                    invocation.build.wall-ms = 99
+                    """);
+
+            cc.jumpkick.config.SessionContext.install(
+                    cc.jumpkick.config.Session.defaults().withWorkingDir(checkout));
+            BuildMetrics.clearSessionAggregatesMemo();
+            BuildMetrics m = BuildMetrics.load(BuildMetrics.defaultFile());
+            assertThat(m.invocation("build", "").orElseThrow().ok().count())
+                    .as("project session must not pick the unrelated home's 99 samples")
+                    .isEqualTo(3);
+        } finally {
+            cc.jumpkick.config.SessionContext.install(prior);
+            BuildMetrics.clearSessionAggregatesMemo();
+            BuildMetrics.clearMemo();
+            if (prevBuilds == null) System.clearProperty("jk.env.JK_BUILDS_DIR");
+            else System.setProperty("jk.env.JK_BUILDS_DIR", prevBuilds);
+        }
+    }
+
     @Test
     void one_build_updates_project_and_global_tiers(@TempDir Path dir) {
         record(file(dir), build("/p", true, 1200), NOW);

@@ -7,10 +7,10 @@ import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.BoxTable;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -337,7 +337,7 @@ public final class SelfNukeCommand implements CliCommand {
             tableRows.add(List.of(pathStyled(dirs.storeDir()), "Artifact store (jk storage nuke)"));
         }
         CommandWedge.envelopeStart();
-        for (String line : BoxTable.renderWarning("JumpKick Data Nuke", headers, tableRows)) {
+        for (String line : Table.renderWarning("JumpKick Data Nuke", headers, tableRows)) {
             CliOutput.out(line);
         }
         if (wantStore) {

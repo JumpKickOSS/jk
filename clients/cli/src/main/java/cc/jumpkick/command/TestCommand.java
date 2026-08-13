@@ -15,7 +15,7 @@ import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.run.SessionMirrorListener;
 import cc.jumpkick.cli.run.TestFailureHighlight;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.CommandManager;
+import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -275,7 +275,7 @@ public final class TestCommand implements CliCommand {
 
     /**
      * Workspace tests: one engine {@code buildWorkspace} RPC with {@code testOnly=true} — same
-     * live aggregate TUI as {@code jk build} (single {@link CommandManager} header + bar + module
+     * live aggregate TUI as {@code jk build} (single {@link JkManager} header + bar + module
      * tree), terminal target {@code run-tests} per module instead of package.
      */
     private int runWorkspaceTests(Path entryDir, JkBuild entryBuild, Path cache, int workerCount, Set<Path> dirtyDirs)
@@ -289,14 +289,14 @@ public final class TestCommand implements CliCommand {
         return runWorkspaceTestsLive(entryDir, entryBuild, cache, workerCount, dirtyDirs);
     }
 
-    /** Live TTY: one CommandManager "Test" region — mirrors {@link BuildCommand} workspace live path. */
+    /** Live TTY: one JkManager "Test" region — mirrors {@link BuildCommand} workspace live path. */
     private int runWorkspaceTestsLive(
             Path entryDir, JkBuild entryBuild, Path cache, int workerCount, Set<Path> dirtyDirs) {
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
         cc.jumpkick.cli.engine.EnginePrewarm.ensure();
         long start = System.nanoTime();
-        CommandManager view = CommandManager.plan(CliOutput.stdout(), "Test", animate);
+        JkManager view = JkManager.plan(CliOutput.stdout(), "Test", animate);
         view.setWindowTitle("JumpKick - Testing " + BuildCommand.projectGavLabel(entryDir, entryBuild) + "...");
         AggregateContext agg = new AggregateContext(view);
         Map<Path, List<String>> buffers = new java.util.concurrent.ConcurrentHashMap<>();
@@ -430,7 +430,7 @@ public final class TestCommand implements CliCommand {
         return 0;
     }
 
-    /** Headless / JSON: same workspace RPC as live, no CommandManager chrome. */
+    /** Headless / JSON: same workspace RPC as live, no JkManager chrome. */
     private int runWorkspaceTestsHeadless(
             Path entryDir, JkBuild entryBuild, Path cache, int workerCount, Set<Path> dirtyDirs) {
         boolean json = global != null && global.outputIsJson();

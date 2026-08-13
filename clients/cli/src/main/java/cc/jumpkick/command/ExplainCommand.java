@@ -8,7 +8,14 @@ import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.Icon;
+import cc.jumpkick.cli.tui.Pill;
+import cc.jumpkick.cli.tui.RenderContext;
+import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Spinner;
+import cc.jumpkick.cli.tui.Table;
+import cc.jumpkick.cli.tui.Tree;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleDotGraph;
 import cc.jumpkick.config.ModuleSelection;
@@ -19,6 +26,7 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.runtime.ExplainPlan;
 import cc.jumpkick.runtime.TaskForecast;
 import cc.jumpkick.util.HostCalibrationStatus;
@@ -26,6 +34,7 @@ import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -33,10 +42,12 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@code jk explain} — forecast of what a build would run (cache hit/miss per module/step). Prefer
+ * {@code jk explain} — forecast of what a build would run (cache hit/miss per module/stage). Prefer
  * this over Gradle build scans for "why will this rebuild?" questions. Hidden aliases: {@code plan},
  * {@code why-rebuilt}. Refreshes a stale/missing lock first (same as {@code jk build}) so the ETA
- * matches the build countdown. {@code --verbose} expands all; {@code --run} executes the plan.
+ * matches the build countdown. Default output is a build graph (tasks rolled up by {@link
+ * BuildStage}) plus a summary table; {@code --verbose} expands every task; {@code --run} executes
+ * the plan.
  */
 public final class ExplainCommand implements CliCommand {
 
@@ -51,7 +62,7 @@ public final class ExplainCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Forecast rebuilds (cache hit/miss per step)";
+        return "Forecast rebuilds (cache hit/miss per stage)";
     }
 
     @Override
@@ -165,7 +176,9 @@ public final class ExplainCommand implements CliCommand {
 
         ExplainPlan plan;
         long etaMillis;
-        long[] etaOut = new long[1];
+        long fullEtaMillis;
+        // [0] = current remaining ETA; [1] = full-rebuild ETA (effort denominator).
+        long[] etaOut = new long[2];
         try (Spinner prep = livePrep ? CommandWedge.analyzing(CliOutput.stdout(), "Explain", prepMsg) : null) {
             // Same starting lock as `jk build` so the dirty plan and ETA match the countdown.
             // Pass the prep spinner so a freshen failure settles it before writing stderr.
@@ -195,6 +208,7 @@ public final class ExplainCommand implements CliCommand {
                     etaOut);
         }
         etaMillis = etaOut[0];
+        fullEtaMillis = etaOut[1];
 
         if (plan.hasErrors()) {
             for (String err : plan.errors()) CliOutput.err(ConsoleSpec.errorLine("composite", err));
@@ -203,130 +217,96 @@ public final class ExplainCommand implements CliCommand {
 
         Theme t = Theme.active();
         boolean ansi = t.isAnsi();
-        boolean nerdfont = cc.jumpkick.config.GlobalConfig.nerdfont();
-        // On a TTY, wrap the cached-module list to the terminal width; piped output gets
-        // the full list on one line (MAX_VALUE → never wraps).
-        int width = cc.jumpkick.cli.run.BuildPlanConsole.isInteractiveTerminal()
-                ? cc.jumpkick.cli.tui.CommandManager.detectColumns()
-                : Integer.MAX_VALUE;
 
         // Forecast every module's full step plan (compile → test → package),
         // truthfully — see TaskForecaster.
         List<TaskForecast.Module> modules = plan.modules();
-        boolean all = in.isSet("verbose");
-
-        // Header: plan chip (nerd powerline / ansi two-space trail / plain " = Build Plan >")
-        // then the build-time estimate.
-        String header =
-                cc.jumpkick.cli.tui.BuildPlanWedge.planChip(cc.jumpkick.cli.tui.Glyphs.MENU, "Build Plan", nerdfont);
-        // Display the engine ETA as returned — same number as jk build countdown seed.
-        // Do NOT mask a non-zero eta behind "Fully Cached / <1s": that hid the empty-cost →
-        // whole-build history bug (engine returned ~3.5m while the UI said <1s).
+        boolean verbose = in.isSet("verbose");
         boolean fullyCached = !modules.isEmpty() && modules.stream().noneMatch(TaskForecast.Module::dirty);
-        String estimate = buildTimeEstimate(etaMillis, fullyCached, t);
-        // Leading blank once per command (prep lock wedge may already have opened it).
-        CommandWedge.envelopeStart();
-        CliOutput.out(header + " " + estimate);
-        // Root node: ● bullet, then the entry project's group:artifact in bold.
-        String rootBullet = ansi ? Theme.colorize("●", t.darkGray()) : "*";
         String coord = BuildCommand.buildTarget(buildFile, startDir);
-        CliOutput.out(" " + rootBullet + " " + (ansi ? boldCoord(coord, t) : coord));
 
-        // Workspace-wide stats directly under the root bullet.
-        int totalModules = modules.size();
-        int totalSources =
-                modules.stream().mapToInt(TaskForecast.Module::sourceCount).sum();
-        int totalTests =
-                modules.stream().mapToInt(TaskForecast.Module::testCount).sum();
-        int totalJars =
-                (int) modules.stream().filter(TaskForecast.Module::producesJar).count();
-        int totalImages = (int)
-                modules.stream().filter(TaskForecast.Module::producesImage).count();
-        String rootPfx = ansi ? " " + Theme.colorize("│", t.darkGray()) + " · " : " | - ";
-        if (totalModules > 1) CliOutput.out(rootPfx + "Modules: " + String.format("%,d", totalModules));
-        CliOutput.out(rootPfx + "Sources: " + fmtCount(totalSources, "file", "files"));
-        CliOutput.out(rootPfx + "Tests: " + fmtCount(totalTests, "test", "tests"));
-        if (totalJars > 0) CliOutput.out(rootPfx + "Packages: " + fmtCount(totalJars, "jar", "jars"));
-        if (totalImages > 0) CliOutput.out(rootPfx + "Containers: " + fmtCount(totalImages, "image", "images"));
+        buildGraph(coord, modules, verbose, t, ansi).print();
 
-        // Partition the topo order by cache status: every fully-cached module (wherever
-        // it sits in the order) collapses into the "Fully Cached" section (names only);
-        // only the modules that actually rebuild appear in the detailed "Rebuild" section,
-        // each keeping its topo index. --verbose expands every step (cached ones too).
-        boolean verbose = all;
-        List<Integer> cachedIdx = new ArrayList<>();
-        List<Integer> dirtyIdx = new ArrayList<>();
-        for (int i = 0; i < modules.size(); i++) {
-            (modules.get(i).dirty() ? dirtyIdx : cachedIdx).add(i);
-        }
-
-        if (!cachedIdx.isEmpty()) {
-            boolean lastSection = dirtyIdx.isEmpty();
-            String sectionConnector = lastSection ? "╰─" : "├─";
-            // Plain: no space between connector and pill (`-[Fully Cached]`) — matches jk tree.
-            String sectionBadge = ansi ? cc.jumpkick.cli.tui.Badge.pill("Fully Cached", nerdfont) : "[Fully Cached]";
-            CliOutput.out(" "
-                    + (ansi ? Theme.colorize(sectionConnector, t.darkGray()) : (lastSection ? "`-" : "+-"))
-                    + sectionBadge);
-            String childPrefix = ansi
-                    ? " " + Theme.colorize(lastSection ? "   " : "│  ", t.darkGray())
-                    : " " + (lastSection ? "   " : "|  ");
-            if (verbose) {
-                for (int j = 0; j < cachedIdx.size(); j++) {
-                    int i = cachedIdx.get(j);
-                    renderModuleRow(
-                            modules.get(i), i + 1, j == cachedIdx.size() - 1, childPrefix, nerdfont, true, t, ansi);
-                }
-            } else {
-                List<String> names = new ArrayList<>();
-                for (int i : cachedIdx) names.add(":" + shortName(modules.get(i).coord()));
-                // Wrap the full list across lines (no truncation): the first line hangs off
-                // a "╰─ " connector; continuations align under the first name.
-                List<String> lines = wrapNames(names, Math.max(20, width - 7));
-                String cont = childPrefix + "   "; // align past "╰─ " / "`- "
-                String firstConnector = ansi ? Theme.colorize("╰─ ", t.darkGray()) : "`- ";
-                for (int li = 0; li < lines.size(); li++) {
-                    CliOutput.out(
-                            (li == 0 ? childPrefix + firstConnector : cont) + renderCachedNames(lines.get(li), t));
-                }
-            }
-        }
-        if (!dirtyIdx.isEmpty()) {
-            String rebuildBadge = ansi ? cc.jumpkick.cli.tui.Badge.pill("Rebuild", nerdfont) : "[Rebuild]";
-            CliOutput.out(" " + (ansi ? Theme.colorize("╰─", t.darkGray()) : "`-") + rebuildBadge);
-            String secPfx = ansi ? "    " + Theme.colorize("│", t.darkGray()) + " · " : "    | - ";
-            int dirtyModules = dirtyIdx.size();
-            int dirtySources = modules.stream()
-                    .filter(TaskForecast.Module::dirty)
-                    .mapToInt(TaskForecast.Module::sourceCount)
-                    .sum();
-            int dirtyTests = modules.stream()
-                    .filter(TaskForecast.Module::dirty)
-                    .mapToInt(TaskForecast.Module::testCount)
-                    .sum();
-            int dirtyJars = (int)
-                    modules.stream().filter(m -> m.dirty() && m.producesJar()).count();
-            int dirtyImages = (int)
-                    modules.stream().filter(m -> m.dirty() && m.producesImage()).count();
-            if (totalModules > 1)
-                CliOutput.out(
-                        secPfx + "Modules: " + String.format("%,d", dirtyModules) + pct(dirtyModules, totalModules));
-            CliOutput.out(
-                    secPfx + "Sources: " + fmtCount(dirtySources, "file", "files") + pct(dirtySources, totalSources));
-            CliOutput.out(secPfx + "Tests: " + fmtCount(dirtyTests, "test", "tests") + pct(dirtyTests, totalTests));
-            if (totalJars > 0)
-                CliOutput.out(secPfx + "Packages: " + fmtCount(dirtyJars, "jar", "jars") + pct(dirtyJars, totalJars));
-            if (totalImages > 0)
-                CliOutput.out(secPfx
-                        + "Containers: "
-                        + fmtCount(dirtyImages, "image", "images")
-                        + pct(dirtyImages, totalImages));
-            for (int j = 0; j < dirtyIdx.size(); j++) {
-                int i = dirtyIdx.get(j);
-                renderModuleRow(modules.get(i), i + 1, j == dirtyIdx.size() - 1, "    ", nerdfont, verbose, t, ansi);
-            }
+        // Summary table: totals vs rebuild effort (ETA/full-ETA) + countdown seed.
+        CliOutput.out("");
+        for (String line : renderSummaryTable(modules, etaMillis, fullEtaMillis, fullyCached, t, ansi)) {
+            CliOutput.out(line);
         }
         return 0;
+    }
+
+    /**
+     * Build Graph: wedge title, {@code ● group:artifact} root, Fully Cached / Rebuild section
+     * pills, name-only branded module pills, hanging phase-chain (or {@code --verbose} step
+     * children).
+     */
+    static Tree buildGraph(
+            String rootCoord, List<TaskForecast.Module> modules, boolean verbose, Theme t, boolean ansi) {
+        Tree.Node root = Tree.node(Icon.pulse(), boldGa(rootCoord));
+
+        List<TaskForecast.Module> cached = new ArrayList<>();
+        List<TaskForecast.Module> dirty = new ArrayList<>();
+        for (TaskForecast.Module m : modules) {
+            (m.dirty() ? dirty : cached).add(m);
+        }
+
+        if (!cached.isEmpty()) {
+            int n = cached.size();
+            String note = n + (n == 1 ? " module is fresh" : " modules are fresh");
+            Tree.Node section = Tree.node(Pill.of("Fully Cached"), note);
+            if (verbose) {
+                for (TaskForecast.Module m : cached) {
+                    section.child(moduleNode(m, true, t, ansi));
+                }
+            } else {
+                List<String> names = new ArrayList<>(cached.size());
+                for (TaskForecast.Module m : cached) names.add(shortName(m.coord()));
+                List<List<String>> chunks = chunkNames(names, CACHED_NAMES_PER_LINE);
+                var lines = new ArrayList<RichText>(chunks.size());
+                for (int i = 0; i < chunks.size(); i++) {
+                    lines.add(RichText.ansi(renderCachedNameLine(chunks.get(i), i < chunks.size() - 1, t, ansi)));
+                }
+                section.body(lines);
+            }
+            root.child(section);
+        }
+        if (!dirty.isEmpty()) {
+            int n = dirty.size();
+            String note = n + (n == 1 ? " module is dirty" : " modules are dirty");
+            Tree.Node section = Tree.node(Pill.of("Rebuild"), note);
+            for (TaskForecast.Module m : dirty) {
+                section.child(moduleNode(m, verbose, t, ansi));
+            }
+            root.child(section);
+        }
+        return new Tree("Build Graph").gap(Tree.Gap.CHILDREN).root(root);
+    }
+
+    /** One rebuild (or verbose cached) module: branded name pill + phase chain or step children. */
+    private static Tree.Node moduleNode(TaskForecast.Module m, boolean verbose, Theme t, boolean ansi) {
+        Tree.Node node = Tree.node(Pill.branded(shortName(m.coord())));
+        if (verbose) {
+            List<TaskForecast.Task> ph = m.steps();
+            int nameCol = 0;
+            for (TaskForecast.Task p : ph) {
+                nameCol = Math.max(nameCol, p.name().length());
+            }
+            nameCol += STEP_NAME_DOT_GAP;
+            int commandCol = 0;
+            for (TaskForecast.Task p : ph) {
+                if (!p.cached()) commandCol = Math.max(commandCol, commandWidth(p.text()));
+            }
+            for (TaskForecast.Task p : ph) {
+                String step = formatStepName(p.name(), nameCol, t, ansi) + renderStatus(p, commandCol, t, ansi);
+                node.child(Tree.node(RichText.ansi(step)));
+            }
+            return node;
+        }
+        if (m.dirty()) {
+            String chain = renderPhaseChain(m, t, ansi);
+            if (!chain.isEmpty()) node.body(RichText.ansi(chain));
+        }
+        return node;
     }
 
     /**
@@ -335,15 +315,18 @@ public final class ExplainCommand implements CliCommand {
      * has no host/project timings yet.
      */
     static String buildTimeEstimate(long etaMillis, boolean fullyCached, Theme t) {
-        // etaMillis is authoritative (same estimateEtaMillis as jk build). Never mask a multi-minute
-        // eta behind Fully Cached / <1s — that hid empty-cost → history-average bugs.
-        if (etaMillis <= 0) {
-            return "Build time estimate " + Theme.colorize(fullyCached ? "<1s" : "not yet measured", t.warning());
-        }
-        if (etaMillis < 1000) {
-            return "Build time estimate " + Theme.colorize("<1s", t.warning());
-        }
-        return "Build time estimate " + Theme.colorize("~" + fmtDuration(etaMillis), t.warning());
+        return "Build time estimate " + Theme.colorize(buildTimeEstimateValue(etaMillis, fullyCached), t.warning());
+    }
+
+    /**
+     * ETA value only ({@code ~8s} / {@code <1s} / {@code not yet measured}) — same authority as
+     * {@code jk build}'s countdown seed. Never mask a multi-minute eta behind Fully Cached / {@code
+     * <1s}.
+     */
+    static String buildTimeEstimateValue(long etaMillis, boolean fullyCached) {
+        if (etaMillis <= 0) return fullyCached ? "<1s" : "not yet measured";
+        if (etaMillis < 1000) return "<1s";
+        return "~" + fmtDuration(etaMillis);
     }
 
     /** "1m 20s" / "8s" / "<1s" — coarse predicted-duration formatting for the plan summary. */
@@ -360,51 +343,196 @@ public final class ExplainCommand implements CliCommand {
      */
     private static final int STEP_NAME_DOT_GAP = 2;
 
+    /** Fixed columns in the Fully Cached name list (no terminal-width wrap). */
+    private static final int CACHED_NAMES_PER_LINE = 4;
+
     /**
-     * Render one module row under a section: {@code prefix} + connector + index badge + coordinate,
-     * then its step sub-tree. The verdict is implied by the enclosing section (Fully Cached /
-     * Rebuild) and the origin / dependency edges are omitted as noise. Steps render when the module
-     * rebuilds, or always under {@code verbose}.
+     * Roll material tasks up into a web-style phase chain: {@code ✓ Compile › □ Test ~28 tests › □
+     * Package}. Stages follow {@link BuildStage} pipeline order; bookkeeping-only steps are
+     * omitted so stamp/resolve noise never appears.
      */
-    private static void renderModuleRow(
-            TaskForecast.Module m,
-            int idx,
-            boolean last,
-            String prefix,
-            boolean nerdfont,
-            boolean verbose,
+    static String renderPhaseChain(TaskForecast.Module m, Theme t, boolean ansi) {
+        Map<BuildStage, List<TaskForecast.Task>> byStage = new LinkedHashMap<>();
+        for (TaskForecast.Task step : m.steps()) {
+            if (!TaskForecast.Module.isMaterialWork(step.name())) continue;
+            BuildStage stage = BuildStage.ofTaskName(step.name());
+            byStage.computeIfAbsent(stage, _ -> new ArrayList<>()).add(step);
+        }
+        if (byStage.isEmpty()) return "";
+
+        List<BuildStage> order = byStage.keySet().stream()
+                .sorted(Comparator.comparingInt(
+                                (BuildStage s) -> s == BuildStage.OTHER ? Integer.MAX_VALUE : s.pipelineOrder())
+                        .thenComparing(BuildStage::wireName))
+                .toList();
+
+        String sep = ansi ? Theme.colorize(" › ", t.darkGray()) : " > ";
+        StringBuilder sb = new StringBuilder();
+        for (BuildStage stage : order) {
+            if (!sb.isEmpty()) sb.append(sep);
+            List<TaskForecast.Task> steps = byStage.get(stage);
+            boolean dirty = steps.stream().anyMatch(s -> !s.cached());
+            sb.append(renderPhaseToken(stage, dirty, phaseDetail(stage, dirty, m), t, ansi));
+        }
+        return sb.toString();
+    }
+
+    /** One phase token: {@code ✓ Compile} (green) or {@code □ Test ~28 tests} (blue + dim detail). */
+    private static String renderPhaseToken(BuildStage stage, boolean dirty, String detail, Theme t, boolean ansi) {
+        String glyph = dirty ? Glyphs.PENDING : Glyphs.CHECK;
+        String label = stage.displayName();
+        if (!ansi) {
+            String plain = (dirty ? Glyphs.PENDING_PLAIN : Glyphs.CHECK_PLAIN) + " " + label;
+            return detail == null || detail.isEmpty() ? plain : plain + " " + detail;
+        }
+        var style = dirty ? t.blue() : t.success();
+        String head = Theme.colorize(glyph + " " + label, style);
+        if (detail == null || detail.isEmpty()) return head;
+        return head + " " + Theme.colorize(detail, t.darkGray());
+    }
+
+    /**
+     * Short detail next to a dirty phase — source/test counts for Compile/Test; nothing for
+     * package/native/image (the phase name is enough).
+     */
+    private static String phaseDetail(BuildStage stage, boolean dirty, TaskForecast.Module m) {
+        if (!dirty) return null;
+        return switch (stage) {
+            case COMPILE -> m.sourceCount() > 0 ? fmtCount(m.sourceCount(), "source", "sources") : null;
+            case TEST -> m.testCount() > 0 ? "~" + String.format("%,d", m.testCount()) + " tests" : null;
+            default -> null;
+        };
+    }
+
+    /** True when the module plan includes a material native stage task. */
+    static boolean producesNative(TaskForecast.Module m) {
+        return m.steps().stream()
+                .anyMatch(s -> TaskForecast.Module.isMaterialWork(s.name())
+                        && BuildStage.ofTaskName(s.name()) == BuildStage.NATIVE);
+    }
+
+    /**
+     * Rebuild effort as a percent of a full rebuild's schedule-aware ETA: {@code remaining / full}.
+     * Example: 1.5m remaining against a 3m full rebuild → 50%. Capped at 100; 0 when nothing to do
+     * or the seed is still unmeasured.
+     */
+    static int rebuildEffortPct(long etaMillis, long fullEtaMillis) {
+        if (etaMillis <= 0) return 0;
+        if (fullEtaMillis <= 0) return 100;
+        if (etaMillis >= fullEtaMillis) return 100;
+        return (int) Math.round(100.0 * etaMillis / fullEtaMillis);
+    }
+
+    /**
+     * Summary table under the build graph: Plan Item / Total / Rebuild / Delta, plus rebuild-effort
+     * (time-weighted) and ETA footer rows.
+     */
+    static List<String> renderSummaryTable(
+            List<TaskForecast.Module> modules,
+            long etaMillis,
+            long fullEtaMillis,
+            boolean fullyCached,
             Theme t,
             boolean ansi) {
-        String moduleConnector = ansi ? Theme.colorize((last ? "╰" : "├") + "─", t.darkGray()) : (last ? "`-" : "+-");
-        String moduleBadge = ansi
-                ? cc.jumpkick.cli.tui.Badge.pill(String.format("%02d", idx), nerdfont)
-                : " [" + String.format("%02d", idx) + "]";
-        CliOutput.out(prefix + moduleConnector + moduleBadge + ' ' + (ansi ? coloredCoord(m.coord(), t) : m.coord()));
+        int totalModules = modules.size();
+        int totalSources =
+                modules.stream().mapToInt(TaskForecast.Module::sourceCount).sum();
+        int totalTests =
+                modules.stream().mapToInt(TaskForecast.Module::testCount).sum();
+        int totalJars =
+                (int) modules.stream().filter(TaskForecast.Module::producesJar).count();
+        int totalNatives =
+                (int) modules.stream().filter(ExplainCommand::producesNative).count();
+        int totalImages = (int)
+                modules.stream().filter(TaskForecast.Module::producesImage).count();
 
-        if (m.dirty() || verbose) {
-            String spine = ansi
-                    ? prefix + (last ? "   " : Theme.colorize("│", t.darkGray()) + "  ")
-                    : prefix + (last ? "   " : "|  ");
-            List<TaskForecast.Task> ph = m.steps();
-            // Pad each step name to the widest in this module with bright-black dots so the
-            // □ / ✓ column lines up (package-assembly is longer than compile-main, etc.).
-            int nameCol = 0;
-            for (TaskForecast.Task p : ph) {
-                nameCol = Math.max(nameCol, p.name().length());
-            }
-            nameCol += STEP_NAME_DOT_GAP;
-            // Pad each □ step's command to the widest in this module so the · column lines up.
-            int commandCol = 0;
-            for (TaskForecast.Task p : ph) {
-                if (!p.cached()) commandCol = Math.max(commandCol, commandWidth(p.text()));
-            }
-            for (int k = 0; k < ph.size(); k++) {
-                boolean lp = k == ph.size() - 1;
-                String stepConnector = ansi ? Theme.colorize(lp ? "╰─ " : "├─ ", t.darkGray()) : (lp ? "`- " : "+- ");
-                String stepName = formatStepName(ph.get(k).name(), nameCol, t, ansi);
-                CliOutput.out(spine + stepConnector + stepName + renderStatus(ph.get(k), commandCol, t, ansi));
-            }
+        int dirtyModules =
+                (int) modules.stream().filter(TaskForecast.Module::dirty).count();
+        int dirtySources = modules.stream()
+                .filter(TaskForecast.Module::dirty)
+                .mapToInt(TaskForecast.Module::sourceCount)
+                .sum();
+        int dirtyTests = modules.stream()
+                .filter(TaskForecast.Module::dirty)
+                .mapToInt(TaskForecast.Module::testCount)
+                .sum();
+        int dirtyJars =
+                (int) modules.stream().filter(m -> m.dirty() && m.producesJar()).count();
+        int dirtyNatives = (int)
+                modules.stream().filter(m -> m.dirty() && producesNative(m)).count();
+        int dirtyImages = (int)
+                modules.stream().filter(m -> m.dirty() && m.producesImage()).count();
+
+        // Rows: label, total cell text, rebuild count, total count (for per-item delta only).
+        record PlanRow(String item, String totalCell, int rebuild, int total) {}
+        List<PlanRow> planRows = new ArrayList<>();
+        planRows.add(
+                new PlanRow("Modules", boldNum(totalModules, t, ansi) + " in workspace", dirtyModules, totalModules));
+        planRows.add(new PlanRow("Sources", boldNum(totalSources, t, ansi) + " files", dirtySources, totalSources));
+        planRows.add(new PlanRow("Tests", boldNum(totalTests, t, ansi) + " methods", dirtyTests, totalTests));
+        if (totalJars > 0) {
+            planRows.add(new PlanRow(
+                    "Packages",
+                    boldNum(totalJars, t, ansi) + (totalJars == 1 ? " jar" : " jars"),
+                    dirtyJars,
+                    totalJars));
         }
+        if (totalNatives > 0) {
+            planRows.add(new PlanRow(
+                    "Native Bins",
+                    boldNum(totalNatives, t, ansi) + (totalNatives == 1 ? " executable" : " executables"),
+                    dirtyNatives,
+                    totalNatives));
+        }
+        if (totalImages > 0) {
+            planRows.add(new PlanRow(
+                    "OCI Images",
+                    boldNum(totalImages, t, ansi) + (totalImages == 1 ? " container img" : " container imgs"),
+                    dirtyImages,
+                    totalImages));
+        }
+
+        Table table = new Table("Build Plan").columns("Plan Item", "Total", "Rebuild", "Delta");
+        for (PlanRow r : planRows) {
+            table.row(
+                    RichText.plain(r.item()),
+                    RichText.ansi(r.totalCell()),
+                    RichText.ansi(colorRebuild(r.rebuild(), t, ansi)),
+                    RichText.ansi(colorDelta(pctValue(r.rebuild(), r.total()), t, ansi)));
+        }
+        int effortPct = rebuildEffortPct(etaMillis, fullEtaMillis);
+        table.append(
+                new Table("")
+                        .columns("Label", "Value")
+                        .row(RichText.plain("Total rebuild effort"), RichText.ansi(colorDelta(effortPct, t, ansi)))
+                        .row(
+                                RichText.plain("Build time estimate"),
+                                RichText.ansi(
+                                        Theme.colorize(buildTimeEstimateValue(etaMillis, fullyCached), t.warning()))),
+                Table.Append.SECTION);
+        return table.render(RenderContext.current().withAnsi(ansi));
+    }
+
+    private static String boldNum(int n, Theme t, boolean ansi) {
+        String s = String.format("%,d", n);
+        return ansi ? Theme.colorize(s, t.brightWhite().bold()) : s;
+    }
+
+    private static String colorRebuild(int n, Theme t, boolean ansi) {
+        String s = String.format("%,d", n);
+        if (!ansi) return s;
+        return n > 0 ? Theme.colorize(s, t.blue()) : Theme.colorize(s, t.darkGray());
+    }
+
+    private static String colorDelta(int pct, Theme t, boolean ansi) {
+        String s = pct + "%";
+        // All plan percentages are bold white; only the build-time estimate stays yellow.
+        return ansi ? Theme.colorize(s, t.brightWhite().bold()) : s;
+    }
+
+    private static int pctValue(int part, int whole) {
+        if (whole <= 0) return 0;
+        return part * 100 / whole;
     }
 
     /**
@@ -425,12 +553,17 @@ public final class ExplainCommand implements CliCommand {
     }
 
     /** The entry project's {@code group:artifact} in bold, each segment in its coord color. */
-    private static String boldCoord(String coord, Theme t) {
+    private static RichText boldGa(String coord) {
+        if (coord == null || coord.isEmpty()) return RichText.empty();
         int colon = coord.indexOf(':');
-        if (colon < 0) return Theme.colorize(coord, t.coordName().bold());
-        return Theme.colorize(coord.substring(0, colon), t.coordGroup().bold())
-                + ":"
-                + Theme.colorize(coord.substring(colon + 1), t.coordName().bold());
+        if (colon < 0) {
+            return RichText.parse("[bold coord-name]" + RichText.escape(coord) + "[/]");
+        }
+        return RichText.parse("[bold coord-group]"
+                + RichText.escape(coord.substring(0, colon))
+                + "[/]:[bold coord-name]"
+                + RichText.escape(coord.substring(colon + 1))
+                + "[/]");
     }
 
     /** The artifact half of a {@code group:artifact} coordinate. */
@@ -439,22 +572,38 @@ public final class ExplainCommand implements CliCommand {
         return c < 0 ? coord : coord.substring(c + 1);
     }
 
-    /** Color a comma-list of {@code :name} cached-module refs (the {@code …+N more…} marker dim). */
-    private static String renderCachedNames(String elided, Theme t) {
+    /**
+     * One Fully Cached line: {@code ✓ name, ✓ name, …} — green check, green+strikethrough name,
+     * dim comma. Trailing comma when {@code trailingComma} (more lines follow).
+     */
+    static String renderCachedNameLine(List<String> names, boolean trailingComma, Theme t, boolean ansi) {
+        if (names.isEmpty()) return "";
         StringBuilder sb = new StringBuilder();
-        String[] pieces = elided.split(", ");
-        for (int i = 0; i < pieces.length; i++) {
-            if (i > 0) sb.append(Theme.colorize(", ", t.darkGray()));
-            String p = pieces[i];
-            if (p.matches("…\\+\\d+ more…")) {
-                sb.append(Theme.colorize(p, t.darkGray()));
-            } else if (p.startsWith(":")) {
-                sb.append(":").append(Theme.colorize(p.substring(1), t.coordName()));
-            } else {
-                sb.append(Theme.colorize(p, t.coordName()));
-            }
+        String sep = ansi ? Theme.colorize(", ", t.darkGray()) : ", ";
+        for (int i = 0; i < names.size(); i++) {
+            if (i > 0) sb.append(sep);
+            sb.append(renderCachedModuleToken(names.get(i), t, ansi));
         }
+        if (trailingComma) sb.append(ansi ? Theme.colorize(",", t.darkGray()) : ",");
         return sb.toString();
+    }
+
+    /** {@code ✓ name} — green check; green strikethrough name (done / fresh). */
+    static String renderCachedModuleToken(String name, Theme t, boolean ansi) {
+        if (!ansi) return Glyphs.CHECK_PLAIN + " " + name;
+        return Theme.colorize(Glyphs.CHECK, t.success())
+                + " "
+                + Theme.colorize(name, t.success().crossedOut());
+    }
+
+    /** Pack {@code names} into fixed-size chunks (last chunk may be shorter). */
+    static List<List<String>> chunkNames(List<String> names, int perLine) {
+        int n = Math.max(1, perLine);
+        List<List<String>> lines = new ArrayList<>();
+        for (int i = 0; i < names.size(); i += n) {
+            lines.add(List.copyOf(names.subList(i, Math.min(i + n, names.size()))));
+        }
+        return lines;
     }
 
     /**
@@ -501,22 +650,8 @@ public final class ExplainCommand implements CliCommand {
         return String.format("%,d", n) + " " + (n == 1 ? singular : plural);
     }
 
-    private static String pct(int part, int whole) {
-        if (whole <= 0) return "";
-        return " - " + (part * 100 / whole) + "%";
-    }
-
     private static String padRight(String s, int width) {
         return s.length() >= width ? s : s + " ".repeat(width - s.length());
-    }
-
-    /** {@code group:name} with the group and name in their coordinate colors. */
-    private static String coloredCoord(String coord, Theme t) {
-        int colon = coord.indexOf(':');
-        if (colon < 0) return Theme.colorize(coord, t.coordName());
-        return Theme.colorize(coord.substring(0, colon), t.coordGroup())
-                + ":"
-                + Theme.colorize(coord.substring(colon + 1), t.coordName());
     }
 
     /**
