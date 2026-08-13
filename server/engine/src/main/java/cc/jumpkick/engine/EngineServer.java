@@ -10,6 +10,10 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.JsonOut;
+import cc.jumpkick.engine.jobs.JobBody;
+import cc.jumpkick.engine.jobs.JobRequest;
+import cc.jumpkick.engine.jobs.JobSession;
+import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
@@ -161,52 +165,10 @@ public final class EngineServer implements AutoCloseable {
     private final java.util.concurrent.atomic.AtomicLong requestIds = new java.util.concurrent.atomic.AtomicLong();
 
     /**
-     * Last aggregate {@code progress} percent (0–100) per request id for MCP/SSE riders /
-     * . Updated only from {@link cc.jumpkick.runtime.WorkspaceProgressTracker} — never from
-     * module-local plan ticks.
+     * One row per request: progress, accumulator, emit throttle. Retired ids cannot
+     * {@code computeIfAbsent} a zombie (JK-1474).
      */
-    private final java.util.concurrent.ConcurrentHashMap<Long, Double> lastProgressByRequest =
-            new java.util.concurrent.ConcurrentHashMap<>();
-
-    /**
-     * Denominator behind each request's held peak: when the tracker's denominator grows
-     * (calibrate — preflight band joins the execute total), the held percent is stale by
-     * construction and must rebase instead of pinning the rider at the preflight peak.
-     */
-    private final java.util.concurrent.ConcurrentHashMap<Long, Long> lastProgressDenByRequest =
-            new java.util.concurrent.ConcurrentHashMap<>();
-
-    /** Per-request workspace aggregate progress. */
-    private final java.util.concurrent.ConcurrentHashMap<Long, cc.jumpkick.runtime.WorkspaceProgressTracker>
-            progressTrackers = new java.util.concurrent.ConcurrentHashMap<>();
-
-    /** Per-request progress mode from the request wire (JK-1816). */
-    private final java.util.concurrent.ConcurrentHashMap<Long, cc.jumpkick.runtime.progress.ProgressBarMode>
-            progressModes = new java.util.concurrent.ConcurrentHashMap<>();
-
-    /** Per-request residual wall-work oracle {@code R(t)} — shared by bar and countdown. */
-    private final java.util.concurrent.ConcurrentHashMap<Long, cc.jumpkick.runtime.RemainingWork> remainingWorks =
-            new java.util.concurrent.ConcurrentHashMap<>();
-
-    /** Workspace root dir for {@code workspace-progress} events. */
-    private final java.util.concurrent.ConcurrentHashMap<Long, String> progressRoots =
-            new java.util.concurrent.ConcurrentHashMap<>();
-
-    /** Plan weight per module dir (legacy slice hints; residual schedule is authoritative). */
-    private final java.util.concurrent.ConcurrentHashMap<Long, java.util.concurrent.ConcurrentHashMap<String, Long>>
-            progressWeights = new java.util.concurrent.ConcurrentHashMap<>();
-
-    /** Throttle state: {@code [lastEmitEpochMs, lastEmitPercentMillis]} (percent × 10). */
-    private final java.util.concurrent.ConcurrentHashMap<Long, long[]> progressEmitState =
-            new java.util.concurrent.ConcurrentHashMap<>();
-
-    /** Serialize workspace-progress emit per request ordered stream). */
-    private final java.util.concurrent.ConcurrentHashMap<Long, Object> progressEmitLocks =
-            new java.util.concurrent.ConcurrentHashMap<>();
-
-    /** Per-request journal accumulators; persisted at request-finish regardless of SSE subscribers. */
-    private final java.util.concurrent.ConcurrentHashMap<Long, BuildAccumulator> accumulators =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    private final JobSessions sessions = new JobSessions(requestIds::get);
 
     private final JkHistoryConfig historyConfig = JkHistoryConfig.resolve();
 
@@ -824,95 +786,121 @@ public final class EngineServer implements AutoCloseable {
                     }
                     case EngineProtocol.LOCK_REQUEST -> {
                         // Same fork-and-watch shape as BUILD_REQUEST, hosting jk lock's cascade.
-                        handleAsyncBuildPlanRequest(line, reader, writer, "jk-engine-lock-", "lock", this::runLock);
+                        handleAsyncBuildPlanRequest(
+                                line, reader, writer, JobRequest.plan("lock", "jk-engine-lock-", this::runLock));
                         return;
                     }
                     case EngineProtocol.UPDATE_REQUEST -> {
                         // jk update rides jk lock's event vocabulary (plus the --git splice mode).
                         handleAsyncBuildPlanRequest(
-                                line, reader, writer, "jk-engine-update-", "update", this::runUpdate);
+                                line, reader, writer, JobRequest.plan("update", "jk-engine-update-", this::runUpdate));
                         return;
                     }
                     case EngineProtocol.SYNC_REQUEST -> {
                         // jk sync is a single plan — TEST_REQUEST's wire shape.
-                        handleAsyncBuildPlanRequest(line, reader, writer, "jk-engine-sync-", "sync", this::runSync);
+                        handleAsyncBuildPlanRequest(
+                                line, reader, writer, JobRequest.plan("sync", "jk-engine-sync-", this::runSync));
                         return;
                     }
                     case EngineProtocol.AUDIT_REQUEST -> {
                         // Hosted worker command: single plan, worker forked engine-side.
-                        handleAsyncBuildPlanRequest(line, reader, writer, "jk-engine-audit-", "audit", this::runAudit);
+                        handleAsyncBuildPlanRequest(
+                                line, reader, writer, JobRequest.plan("audit", "jk-engine-audit-", this::runAudit));
                         return;
                     }
                     case EngineProtocol.FORMAT_REQUEST -> {
                         handleAsyncBuildPlanRequest(
-                                line, reader, writer, "jk-engine-format-", "format", this::runFormat);
+                                line, reader, writer, JobRequest.plan("format", "jk-engine-format-", this::runFormat));
                         return;
                     }
                     case EngineProtocol.PUBLISH_REQUEST -> {
                         handleAsyncBuildPlanRequest(
-                                line, reader, writer, "jk-engine-publish-", "publish", this::runPublish);
+                                line,
+                                reader,
+                                writer,
+                                JobRequest.plan("publish", "jk-engine-publish-", this::runPublish));
                         return;
                     }
                     case EngineProtocol.IMAGE_REQUEST -> {
-                        handleAsyncBuildPlanRequest(line, reader, writer, "jk-engine-image-", "image", this::runImage);
+                        handleAsyncBuildPlanRequest(
+                                line, reader, writer, JobRequest.plan("image", "jk-engine-image-", this::runImage));
                         return;
                     }
                     case EngineProtocol.IMPORT_REQUEST -> {
                         handleAsyncBuildPlanRequest(
-                                line, reader, writer, "jk-engine-import-", "import", this::runImport);
+                                line, reader, writer, JobRequest.plan("import", "jk-engine-import-", this::runImport));
                         return;
                     }
                     case EngineProtocol.PROVISION_REQUEST -> {
                         // One-shot (no plan events), but the worker may download a whole Maven/Gradle
                         // distribution — same fork-and-watch shape so an EOF still cancels.
                         handleAsyncBuildPlanRequest(
-                                line, reader, writer, "jk-engine-provision-", "provision", this::runProvision);
+                                line,
+                                reader,
+                                writer,
+                                JobRequest.plan("provision", "jk-engine-provision-", this::runProvision));
                         return;
                     }
                     case EngineProtocol.COMPILE_REQUEST -> {
                         // Hosted plan command: jk compile is a single plan.
                         handleAsyncBuildPlanRequest(
-                                line, reader, writer, "jk-engine-compile-", "compile", this::runCompile);
+                                line,
+                                reader,
+                                writer,
+                                JobRequest.plan("compile", "jk-engine-compile-", this::runCompile));
                         return;
                     }
                     case EngineProtocol.NATIVE_REQUEST -> {
                         // jk native's serial module cascade, speaking BUILD_REQUEST's workspace vocabulary.
                         handleAsyncBuildPlanRequest(
-                                line, reader, writer, "jk-engine-native-", "native", this::runNative);
+                                line, reader, writer, JobRequest.plan("native", "jk-engine-native-", this::runNative));
                         return;
                     }
                     case EngineProtocol.TRAIN_REQUEST -> {
-                        handleAsyncBuildPlanRequest(line, reader, writer, "jk-engine-train-", "train", this::runTrain);
+                        handleAsyncBuildPlanRequest(
+                                line, reader, writer, JobRequest.plan("train", "jk-engine-train-", this::runTrain));
                         return;
                     }
                     case EngineProtocol.INSTALL_REQUEST -> {
                         // jk install's build + cache-install halves; make-install stays client-side.
                         handleAsyncBuildPlanRequest(
-                                line, reader, writer, "jk-engine-install-", "install", this::runInstall);
+                                line,
+                                reader,
+                                writer,
+                                JobRequest.plan("install", "jk-engine-install-", this::runInstall));
                         return;
                     }
                     case EngineProtocol.GIT_FETCH_REQUEST -> {
                         // jk install <git-url>'s clone half (git runs in-process in the engine).
                         handleAsyncBuildPlanRequest(
-                                line, reader, writer, "jk-engine-gitfetch-", "git-fetch", this::runGitFetch);
+                                line,
+                                reader,
+                                writer,
+                                JobRequest.plan("git-fetch", "jk-engine-gitfetch-", this::runGitFetch));
                         return;
                     }
                     case EngineProtocol.SCRIPT_PREPARE_REQUEST -> {
                         handleAsyncBuildPlanRequest(
-                                line, reader, writer, "jk-engine-script-", "script", this::runScriptPrepare);
+                                line,
+                                reader,
+                                writer,
+                                JobRequest.plan("script", "jk-engine-script-", this::runScriptPrepare));
                         return;
                     }
                     case EngineProtocol.TOOL_RESOLVE_REQUEST -> {
                         // Hosted long-tail command: jk tool install/run Maven resolve+fetch.
                         handleAsyncBuildPlanRequest(
-                                line, reader, writer, "jk-engine-tool-", "tool", this::runToolResolve);
+                                line, reader, writer, JobRequest.plan("tool", "jk-engine-tool-", this::runToolResolve));
                         return;
                     }
                     case EngineProtocol.CACHE_PRUNE_REQUEST -> {
                         // Cache maintenance is an idle-boundary job, not a plan: it waits for
                         // activeBuildPlans to drain (and blocks new ones) instead of joining them.
                         handleAsyncBuildPlanRequest(
-                                line, reader, writer, "jk-engine-cache-", "cache", this::runCacheMaintenance, false);
+                                line,
+                                reader,
+                                writer,
+                                JobRequest.maintenance("cache", "jk-engine-cache-", this::runCacheMaintenance));
                         return;
                     }
                     case EngineProtocol.EXPLAIN_REQUEST -> {
@@ -951,64 +939,17 @@ public final class EngineServer implements AutoCloseable {
      * build finishes and its terminal message has been sent, or the connection drops.
      */
     private void handleBuildRequest(String requestLine, BufferedReader reader, BufferedWriter writer) {
-        // The one stream whose terminal is workspace-finish (see LiveJob.workspaceStream).
         handleAsyncBuildPlanRequest(
-                requestLine, reader, writer, "jk-engine-build-", "build", this::runBuild, true, true);
+                requestLine, reader, writer, JobRequest.workspace("build", "jk-engine-build-", this::runBuild));
     }
 
-    /** An engine-hosted operation's body: decode the request, run it, stream events to {@code writer}. */
-    @FunctionalInterface
-    private interface BuildPlanRunner {
-        void run(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer);
-    }
-
-    /**
-     * Fork {@code runner} onto its own thread (so this method can keep reading the connection for a
-     * {@link EngineProtocol#BUILD_CANCEL} or EOF meanwhile) and wait for it to finish. Shared by every
-     * request type that owns the rest of its connection's lifecycle ({@link #handleBuildRequest},
-     * {@link #handleTestRequest}, {@link #handleSingleBuildRequest}) — they differ only in what
-     * {@code runner} actually builds and runs.
-     */
     private void handleAsyncBuildPlanRequest(
-            String requestLine,
-            BufferedReader reader,
-            BufferedWriter writer,
-            String threadPrefix,
-            String kind,
-            BuildPlanRunner runner) {
-        handleAsyncBuildPlanRequest(requestLine, reader, writer, threadPrefix, kind, runner, true, false);
-    }
-
-    /**
-     * As above; {@code plan=false} for a cache maintenance job, which is deliberately <em>not</em>
-     * a plan: it doesn't join {@link #activeBuildPlans} or hold {@link #cacheGate}'s read side
-     * its runner takes the write side itself (see {@link #runCacheMaintenance}).
-     */
-    private void handleAsyncBuildPlanRequest(
-            String requestLine,
-            BufferedReader reader,
-            BufferedWriter writer,
-            String threadPrefix,
-            String kind,
-            BuildPlanRunner runner,
-            boolean plan) {
-        handleAsyncBuildPlanRequest(requestLine, reader, writer, threadPrefix, kind, runner, plan, false);
-    }
-
-    /**
-     * As above; {@code workspaceStream=true} only for the workspace build stream, whose terminal
-     * wire line is {@code workspace-finish} — every other stream ends on {@code plan-finish}
-     * and a cancelled terminal must match.
-     */
-    private void handleAsyncBuildPlanRequest(
-            String requestLine,
-            BufferedReader reader,
-            BufferedWriter writer,
-            String threadPrefix,
-            String kind,
-            BuildPlanRunner runner,
-            boolean plan,
-            boolean workspaceStream) {
+            String requestLine, BufferedReader reader, BufferedWriter writer, JobRequest job) {
+        String threadPrefix = job.threadPrefix();
+        String kind = job.verb();
+        JobBody runner = job.body();
+        boolean plan = job.joinsActivePlans();
+        boolean workspaceStream = job.workspaceTerminal();
         // Refuse new jobs while draining (a graceful shutdown is finishing in-flight work). The client
         // normally can't even get here — its handshake sees `draining` and fails first — but guard the
         // server too so a raced/last-moment request is rejected instead of prolonging the drain.
@@ -1035,7 +976,7 @@ public final class EngineServer implements AutoCloseable {
         long eventRequestId = requestIds.incrementAndGet();
         // The requesting shell's JK_PROGRESS_MODE rides the request — the resident engine's own
         // startup env is not the client's (JK-1816).
-        progressModes.put(eventRequestId, EngineProtocol.progressModeOf(requestLine));
+        putMode(eventRequestId, EngineProtocol.progressModeOf(requestLine));
         // The kind rides explicitly from the dispatch site (never parsed back out of a thread
         // name); the journal dir falls back to a request's specific location field so non-build
         // requests never record the literal string "null".
@@ -1251,11 +1192,11 @@ public final class EngineServer implements AutoCloseable {
             boolean cancelled = effectiveCancelled(eventRequestId, cancelToken.cancelled());
             // success: same default as BuildAccumulator.toRecord — HTTP jobs always sent it; CLI
             // socket jobs used to omit it and force the SPA to derive from module rows (JK-1499).
-            BuildAccumulator finishAcc = accumulators.get(eventRequestId);
+            BuildAccumulator finishAcc = accumulatorOf(eventRequestId);
             boolean success = finishAcc != null ? finishAcc.effectiveSuccess(cancelled) : !cancelled;
             // Pin 100% only on success — a failed build keeps its last true percent, matching the
             // workspace-runner path and the stated policy (JK-1521).
-            if (success && !cancelled) lastProgressByRequest.put(eventRequestId, 100.0);
+            if (success && !cancelled) putLastProgress(eventRequestId, 100.0);
             // Safety netif the runner was abandoned/interrupted without a terminal
             // wire event, still tell the CLI the job was cancelled so it does not report a crash.
             // Harmless if the runner already sent workspace-/plan-finish (client has returned).
@@ -1538,7 +1479,7 @@ public final class EngineServer implements AutoCloseable {
 
     /** Stamp the request's accumulator so journal/metrics never treat a cancelled wall as success. */
     private void markUserCancelled(long requestId, boolean explicit) {
-        BuildAccumulator a = accumulators.get(requestId);
+        BuildAccumulator a = accumulatorOf(requestId);
         if (a != null) a.markUserCancelled(explicit);
     }
 
@@ -1589,7 +1530,7 @@ public final class EngineServer implements AutoCloseable {
      * after the CLI closes the socket. No accumulator → raw token.
      */
     private boolean effectiveCancelled(long requestId, boolean rawCancelled) {
-        BuildAccumulator a = accumulators.get(requestId);
+        BuildAccumulator a = accumulatorOf(requestId);
         if (a == null) return rawCancelled;
         if (a.wasCancelled()) return true;
         // Token cancelled mid-job but stamp missed (legacy path): still cancel unless the runner
@@ -1659,7 +1600,7 @@ public final class EngineServer implements AutoCloseable {
      * engine tracker. Never compute from module-local ticks here.
      */
     private cc.jumpkick.engine.http.JsonOut withProgress(cc.jumpkick.engine.http.JsonOut payload, long requestId) {
-        Double p = requestId > 0 ? lastProgressByRequest.get(requestId) : null;
+        Double p = requestId > 0 ? lastProgressOf(requestId) : null;
         return payload.putNullable("progress", p);
     }
 
@@ -1668,7 +1609,7 @@ public final class EngineServer implements AutoCloseable {
      * else a throwaway so metering call sites never branch on whether anyone is recording.
      */
     private cc.jumpkick.task.IoLedger runIo(long requestId) {
-        BuildAccumulator a = accumulators.get(requestId);
+        BuildAccumulator a = accumulatorOf(requestId);
         return a != null ? a.io() : new cc.jumpkick.task.IoLedger();
     }
 
@@ -1677,7 +1618,7 @@ public final class EngineServer implements AutoCloseable {
      * waiting for the history backfill. Omitted entirely for a run that moved nothing.
      */
     private cc.jumpkick.engine.http.JsonOut withIo(cc.jumpkick.engine.http.JsonOut payload, long requestId) {
-        BuildAccumulator a = accumulators.get(requestId);
+        BuildAccumulator a = accumulatorOf(requestId);
         if (a == null) return payload;
         cc.jumpkick.task.IoLedger.Totals t = a.io().totals();
         if (t.isEmpty()) return payload;
@@ -1701,31 +1642,13 @@ public final class EngineServer implements AutoCloseable {
      * <p>Bounded: request ids come from a monotonic counter, so ids far below the newest can no
      * longer be live and are pruned on each teardown.
      */
-    private final java.util.concurrent.ConcurrentHashMap<Long, Boolean> retiredRequests =
-            new java.util.concurrent.ConcurrentHashMap<>();
-
-    /** How far below the newest request id a retired marker is still worth keeping. */
-    private static final long RETIRED_WINDOW = 1024L;
-
     private void clearProgress(long requestId) {
-        if (requestId <= 0) return;
-        retiredRequests.put(requestId, Boolean.TRUE);
-        lastProgressByRequest.remove(requestId);
-        lastProgressDenByRequest.remove(requestId);
-        progressTrackers.remove(requestId);
-        progressModes.remove(requestId);
-        remainingWorks.remove(requestId);
-        progressRoots.remove(requestId);
-        progressWeights.remove(requestId);
-        progressEmitState.remove(requestId);
-        progressEmitLocks.remove(requestId);
-        long cutoff = requestIds.get() - RETIRED_WINDOW;
-        if (cutoff > 0) retiredRequests.keySet().removeIf(id -> id < cutoff);
+        sessions.retire(requestId);
     }
 
     /** True once {@link #clearProgress} has retired this request — late emits must not re-register. */
     private boolean progressRetired(long requestId) {
-        return retiredRequests.containsKey(requestId);
+        return sessions.retired(requestId);
     }
 
     /**
@@ -1733,18 +1656,109 @@ public final class EngineServer implements AutoCloseable {
      * object to update (no null checks at eight call sites) and the update goes nowhere.
      */
     private cc.jumpkick.runtime.WorkspaceProgressTracker progressTracker(long requestId) {
-        var mode = progressModes.get(requestId);
-        if (progressRetired(requestId)) return new cc.jumpkick.runtime.WorkspaceProgressTracker(mode);
-        return progressTrackers.computeIfAbsent(
-                requestId, id -> new cc.jumpkick.runtime.WorkspaceProgressTracker(mode));
+        if (sessions.retired(requestId)) {
+            return new cc.jumpkick.runtime.WorkspaceProgressTracker(null);
+        }
+        JobSession s = sessions.open(requestId);
+        if (s == null) return new cc.jumpkick.runtime.WorkspaceProgressTracker(null);
+        return s.tracker();
     }
 
     private long planWeight(long requestId, String dir) {
         if (requestId <= 0 || dir == null) return 0;
-        var m = progressWeights.get(requestId);
-        if (m == null) return 0;
-        Long w = m.get(dir);
+        JobSession s = sessions.get(requestId);
+        if (s == null) return 0;
+        Long w = s.weights().get(dir);
         return w != null ? w : 0;
+    }
+
+    private void putMode(long id, cc.jumpkick.runtime.progress.ProgressBarMode mode) {
+        JobSession s = sessions.open(id);
+        if (s != null) s.mode(mode);
+    }
+
+    private void putRemaining(long id, cc.jumpkick.runtime.RemainingWork rw) {
+        JobSession s = sessions.open(id);
+        if (s != null) s.remaining(rw);
+    }
+
+    private cc.jumpkick.runtime.RemainingWork remainingOf(long id) {
+        JobSession s = sessions.get(id);
+        return s == null ? null : s.remaining();
+    }
+
+    private void putProgressRoot(long id, String root) {
+        JobSession s = sessions.open(id);
+        if (s != null) s.progressRoot(root);
+    }
+
+    private String progressRootOf(long id) {
+        JobSession s = sessions.get(id);
+        String r = s == null ? null : s.progressRoot();
+        return r == null ? "" : r;
+    }
+
+    private void putLastProgress(long id, double p) {
+        JobSession s = sessions.open(id);
+        if (s != null) s.lastProgress(p);
+    }
+
+    private Double lastProgressOf(long id) {
+        JobSession s = sessions.get(id);
+        return s == null ? null : s.lastProgress();
+    }
+
+    private void putLastProgressDen(long id, long den) {
+        JobSession s = sessions.open(id);
+        if (s != null) s.lastProgressDen(den);
+    }
+
+    private Long lastProgressDenOf(long id) {
+        JobSession s = sessions.get(id);
+        return s == null ? null : s.lastProgressDen();
+    }
+
+    private void putAccumulator(long id, BuildAccumulator acc) {
+        JobSession s = sessions.open(id);
+        if (s != null) s.accumulator(acc);
+    }
+
+    private BuildAccumulator accumulatorOf(long id) {
+        JobSession s = sessions.get(id);
+        return s == null ? null : s.accumulator();
+    }
+
+    private BuildAccumulator takeAccumulator(long id) {
+        JobSession s = sessions.get(id);
+        if (s == null) return null;
+        BuildAccumulator a = s.accumulator();
+        s.accumulator(null);
+        return a;
+    }
+
+    private java.util.concurrent.ConcurrentHashMap<String, Long> weightsOf(long id) {
+        JobSession s = sessions.open(id);
+        return s == null ? new java.util.concurrent.ConcurrentHashMap<>() : s.weights();
+    }
+
+    private cc.jumpkick.runtime.WorkspaceProgressTracker trackerOrNull(long id) {
+        JobSession s = sessions.get(id);
+        return s == null ? null : s.existingTracker();
+    }
+
+    private Object emitLockOf(long id) {
+        JobSession s = sessions.open(id);
+        return s == null ? new Object() : s.emitLock();
+    }
+
+    private void putEmitState(long id, long[] state) {
+        JobSession s = sessions.open(id);
+        if (s != null) s.emitState(state);
+    }
+
+    private long[] emitStateOf(long id) {
+        JobSession s = sessions.get(id);
+        return s == null ? null : s.emitState();
     }
 
     /**
@@ -1760,7 +1774,7 @@ public final class EngineServer implements AutoCloseable {
         // Bar: effort-weight slices (plan num/den) + residual annotation for adaptive clock/countdown.
         long slice = planWeight(requestId, dir);
         progressTracker(requestId).moduleProgress(dir, slice, view.numerator(), view.denominator());
-        cc.jumpkick.runtime.RemainingWork rw = remainingWorks.get(requestId);
+        cc.jumpkick.runtime.RemainingWork rw = remainingOf(requestId);
         if (rw != null && dir != null) {
             // Atomic update+recompute+note per request: two scheduler threads interleaving
             // (T1 computes 10s, T2 computes 9s and notes it, T1 notes 10s last) regressed the
@@ -1776,7 +1790,7 @@ public final class EngineServer implements AutoCloseable {
 
     private void trackModuleComplete(long requestId, String dir, long lastDen, java.io.BufferedWriter writer) {
         if (requestId <= 0) return;
-        cc.jumpkick.runtime.RemainingWork rw = remainingWorks.get(requestId);
+        cc.jumpkick.runtime.RemainingWork rw = remainingOf(requestId);
         if (rw != null && dir != null) {
             synchronized (rw) {
                 rw.moduleComplete(java.nio.file.Path.of(dir));
@@ -1801,9 +1815,9 @@ public final class EngineServer implements AutoCloseable {
         // A straggler from an abandoned job must not re-register the maps teardown just cleared,
         // nor take a fresh emit lock that no longer serializes against anything (JK-1474).
         if (progressRetired(requestId)) return;
-        Object lock = progressEmitLocks.computeIfAbsent(requestId, id -> new Object());
+        Object lock = emitLockOf(requestId);
         synchronized (lock) {
-            cc.jumpkick.runtime.WorkspaceProgressTracker tracker = progressTrackers.get(requestId);
+            cc.jumpkick.runtime.WorkspaceProgressTracker tracker = trackerOrNull(requestId);
             if (tracker == null) return;
             var snap = tracker.snapshot();
             double heldPct = Double.NaN;
@@ -1811,18 +1825,18 @@ public final class EngineServer implements AutoCloseable {
                 // Peak-hold machine progressnever publish a lower % than already
                 // emitted — but rebase when the denominator grew (calibrate), or the preflight
                 // peak pins the rider for the whole execute phase.
-                Double prevPct = lastProgressByRequest.get(requestId);
-                Long prevDen = lastProgressDenByRequest.get(requestId);
+                Double prevPct = lastProgressOf(requestId);
+                Long prevDen = lastProgressDenOf(requestId);
                 heldPct = snap.percent();
                 boolean denGrew = prevDen != null && snap.denominator() > prevDen;
                 if (!denGrew && prevPct != null && heldPct + 1e-9 < prevPct) {
                     heldPct = prevPct;
                 }
-                lastProgressByRequest.put(requestId, heldPct);
-                lastProgressDenByRequest.put(requestId, snap.denominator());
+                putLastProgress(requestId, heldPct);
+                putLastProgressDen(requestId, snap.denominator());
             }
             if (!force && !shouldEmitWorkspaceProgress(requestId, snap)) return;
-            String dir = progressRoots.getOrDefault(requestId, "");
+            String dir = progressRootOf(requestId);
             // snapshot() recomputes open-loop percent when R0 is set (clock strategy).
             long num = snap.numerator();
             long den = snap.denominator();
@@ -1850,11 +1864,11 @@ public final class EngineServer implements AutoCloseable {
                 if (!Double.isNaN(pct)) body.put("progress", pct);
                 publishEvent("workspace-progress", withProgress(body, requestId), dashboardOnly);
             }
-            Double held = lastProgressByRequest.get(requestId);
+            Double held = lastProgressOf(requestId);
             long pctMillis = held != null
                     ? Math.round(held * 10.0)
                     : (snap.hasPercent() ? Math.round(snap.percent() * 10.0) : -1L);
-            progressEmitState.put(requestId, new long[] {System.currentTimeMillis(), pctMillis});
+            putEmitState(requestId, new long[] {System.currentTimeMillis(), pctMillis});
         }
     }
 
@@ -1868,7 +1882,7 @@ public final class EngineServer implements AutoCloseable {
             long requestId, cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
         long cadence = CoalescingBuildPlanListener.cadenceFromEnv();
         if (cadence <= 0) return true;
-        long[] prev = progressEmitState.get(requestId);
+        long[] prev = emitStateOf(requestId);
         if (prev == null) return true;
         long now = System.currentTimeMillis();
         return now - prev[0] >= cadence;
@@ -2141,12 +2155,12 @@ public final class EngineServer implements AutoCloseable {
      * Fine-grained module plan ticks for the dashboard (step detail). Aggregate % on SSE/MCP:
      * workspace builds use {@link cc.jumpkick.runtime.WorkspaceProgressTracker}; single-plan
      * jobs (build/test/compile) have no tracker yet — the plan <em>is</em> the whole request, so
-     * feed {@link #lastProgressByRequest} from this view.
+     * feed last-progress on the session from this view.
      */
     private void publishBuildPlanProgress(long requestId, String dir, BuildPlanView view) {
-        if (requestId > 0 && view != null && !progressTrackers.containsKey(requestId) && view.denominator() > 0) {
+        if (requestId > 0 && view != null && trackerOrNull(requestId) == null && view.denominator() > 0) {
             double p = cc.jumpkick.runtime.WorkspaceProgressTracker.percentOf(view.numerator(), view.denominator());
-            if (!Double.isNaN(p)) lastProgressByRequest.put(requestId, p);
+            if (!Double.isNaN(p)) putLastProgress(requestId, p);
         }
         if (!eventsWanted()) return;
         publishEvent(
@@ -2476,7 +2490,7 @@ public final class EngineServer implements AutoCloseable {
                     .withJvm(EngineProtocol.jvmTuning(requestLine));
 
             long rid = eventRequestId();
-            if (rid > 0) progressRoots.put(rid, entryDirStr);
+            if (rid > 0) putProgressRoot(rid, entryDirStr);
             WorkspaceBuildListener listener = wireListener(writer, entryDirStr);
             WorkspaceResult result = SessionContext.where(session, () -> BuildService.buildWorkspace(req, listener));
             // Exclusive build work is done; free the fingerprint before finish events / bookkeeping.
@@ -2525,7 +2539,8 @@ public final class EngineServer implements AutoCloseable {
      * onto its own thread and keeps reading the connection for a cancel/EOF meanwhile.
      */
     private void handleTestRequest(String requestLine, BufferedReader reader, BufferedWriter writer) {
-        handleAsyncBuildPlanRequest(requestLine, reader, writer, "jk-engine-test-", "test", this::runTest);
+        handleAsyncBuildPlanRequest(
+                requestLine, reader, writer, JobRequest.plan("test", "jk-engine-test-", this::runTest));
     }
 
     /**
@@ -2533,7 +2548,8 @@ public final class EngineServer implements AutoCloseable {
      * engine-hosted counterpart of {@code BuildCommand.runForDir}.
      */
     private void handleSingleBuildRequest(String requestLine, BufferedReader reader, BufferedWriter writer) {
-        handleAsyncBuildPlanRequest(requestLine, reader, writer, "jk-engine-1build-", "build", this::runSingleBuild);
+        handleAsyncBuildPlanRequest(
+                requestLine, reader, writer, JobRequest.plan("build", "jk-engine-1build-", this::runSingleBuild));
     }
 
     /** {@link EngineProtocol#PROJECT_INFO_REQUEST}: synchronous project summary. */
@@ -4366,7 +4382,7 @@ public final class EngineServer implements AutoCloseable {
         // Created on the runner's thread — capture the request id for the dashboard events now;
         // the callbacks below fire on scheduler/worker threads where the ThreadLocal isn't set.
         long eventRequestId = eventRequestId();
-        if (eventRequestId > 0 && workspaceDir != null) progressRoots.put(eventRequestId, workspaceDir);
+        if (eventRequestId > 0 && workspaceDir != null) putProgressRoot(eventRequestId, workspaceDir);
         // Each module's plan, kept from onModuleStart so onModuleFinish can read its TEST_RESULT and
         // fold per-module test counts into the run's record — the workspace path has no single test
         // plan, so tests would otherwise never reach a dashboard-triggered build's history.
@@ -4401,7 +4417,7 @@ public final class EngineServer implements AutoCloseable {
             public void onWorkModel(cc.jumpkick.runtime.WorkModel model) {
                 if (eventRequestId <= 0 || model == null) return;
                 cc.jumpkick.runtime.RemainingWork rw = model.toRemainingWork();
-                remainingWorks.put(eventRequestId, rw);
+                putRemaining(eventRequestId, rw);
                 // Annotate R0 for wire/clients; bar denominator is calibrated from plan weights.
                 progressTracker(eventRequestId)
                         .seedWall(model.R0(), model.costs().size());
@@ -4413,8 +4429,7 @@ public final class EngineServer implements AutoCloseable {
                 long totalWeight = 0;
                 // Id-less builds must not insert a key clearProgress can never remove.
                 var weights = eventRequestId > 0
-                        ? progressWeights.computeIfAbsent(
-                                eventRequestId, id -> new java.util.concurrent.ConcurrentHashMap<String, Long>())
+                        ? weightsOf(eventRequestId)
                         : new java.util.concurrent.ConcurrentHashMap<String, Long>();
                 for (ModulePlan m : plan) {
                     String dir = m.dir().toString();
@@ -4680,7 +4695,7 @@ public final class EngineServer implements AutoCloseable {
             projectDir = null;
         }
         ChromeTimeline timeline = ChromeTimeline.open(projectDir, noTimeline);
-        accumulators.put(
+        putAccumulator(
                 requestId,
                 new BuildAccumulator(kind, dir, coordOf(dir), trigger, timeline, rebuild, buildNumber, journalId));
     }
@@ -4696,17 +4711,17 @@ public final class EngineServer implements AutoCloseable {
     }
 
     private void accModule(long requestId, ModuleOutcome o) {
-        BuildAccumulator a = accumulators.get(requestId);
+        BuildAccumulator a = accumulatorOf(requestId);
         if (a != null) a.addModule(o);
     }
 
     private void accModuleGraph(long requestId, java.util.Map<Path, java.util.Set<Path>> prereqs) {
-        BuildAccumulator a = accumulators.get(requestId);
+        BuildAccumulator a = accumulatorOf(requestId);
         if (a != null) a.setModuleEdges(prereqs);
     }
 
     private void accBuildPlanFinish(long requestId, String dir, BuildPlanResult result) {
-        BuildAccumulator a = accumulators.get(requestId);
+        BuildAccumulator a = accumulatorOf(requestId);
         if (a != null) a.addBuildPlan(dir, result);
     }
 
@@ -4717,22 +4732,22 @@ public final class EngineServer implements AutoCloseable {
      * events directly).
      */
     private void accStepStart(long requestId, String dir, String step, String phase) {
-        BuildAccumulator a = accumulators.get(requestId);
+        BuildAccumulator a = accumulatorOf(requestId);
         if (a != null) a.noteTaskStart(dir, step, phase);
     }
 
     private void accStepFinish(long requestId, String dir, String step, String phase, String status, long millis) {
-        BuildAccumulator a = accumulators.get(requestId);
+        BuildAccumulator a = accumulatorOf(requestId);
         if (a != null) a.addTask(dir, step, phase, status, millis);
     }
 
     private void accTests(long requestId, TestSummary tests) {
-        BuildAccumulator a = accumulators.get(requestId);
+        BuildAccumulator a = accumulatorOf(requestId);
         if (a != null && tests != null) a.addTests(tests);
     }
 
     private void accOutcome(long requestId, boolean success, int exitCode) {
-        BuildAccumulator a = accumulators.get(requestId);
+        BuildAccumulator a = accumulatorOf(requestId);
         if (a != null) a.setOutcome(success, exitCode);
     }
 
@@ -4764,7 +4779,7 @@ public final class EngineServer implements AutoCloseable {
     }
 
     private void writeJournal(long requestId, boolean cancelled, long millis, BufferedWriter writer) {
-        BuildAccumulator a = accumulators.remove(requestId);
+        BuildAccumulator a = takeAccumulator(requestId);
         if (a == null) return;
         try {
             long finishedAt = clockMillis.getAsLong();
@@ -5137,7 +5152,7 @@ public final class EngineServer implements AutoCloseable {
                                     || h.journalId().equals(r.id()));
                     if (sameRun || sameLocator) {
                         jid = h.requestId();
-                        Double p = lastProgressByRequest.get(h.requestId());
+                        Double p = lastProgressOf(h.requestId());
                         if (p != null && !Double.isNaN(p)) progressPct = (int) Math.round(p);
                         break;
                     }
@@ -5517,7 +5532,7 @@ public final class EngineServer implements AutoCloseable {
 
     /** Write chrome timeline (if any) and notify the socket client. Idempotent per request. */
     private void flushTimelineToClient(long requestId, BufferedWriter writer) {
-        BuildAccumulator a = accumulators.get(requestId);
+        BuildAccumulator a = accumulatorOf(requestId);
         if (a == null) return;
         a.flushTimeline().ifPresent(path -> {
             if (writer != null) sendQuiet(writer, EngineProtocol.timeline(path.toString()));
@@ -5672,12 +5687,12 @@ public final class EngineServer implements AutoCloseable {
     private java.util.List<cc.jumpkick.engine.http.HttpEngineServer.LiveRun> liveRunsSnapshot() {
         java.util.List<cc.jumpkick.engine.http.HttpEngineServer.LiveRun> out = new java.util.ArrayList<>();
         for (InFlightBuilds.Hold h : inFlightBuilds.list()) {
-            Double p = lastProgressByRequest.get(h.requestId());
+            Double p = lastProgressOf(h.requestId());
             long remainingMs = -1L;
             long r0Ms = -1L;
             long num = 0L;
             long den = 0L;
-            cc.jumpkick.runtime.WorkspaceProgressTracker tracker = progressTrackers.get(h.requestId());
+            cc.jumpkick.runtime.WorkspaceProgressTracker tracker = trackerOrNull(h.requestId());
             if (tracker != null) {
                 var snap = tracker.snapshot();
                 remainingMs = snap.remainingMs();
@@ -5686,7 +5701,7 @@ public final class EngineServer implements AutoCloseable {
                 den = snap.denominator();
                 if ((p == null || p.isNaN()) && snap.hasPercent()) p = snap.percent();
             }
-            BuildAccumulator acc = accumulators.get(h.requestId());
+            BuildAccumulator acc = accumulatorOf(h.requestId());
             BuildAccumulator.MidFlight mid = acc != null
                     ? acc.midFlight()
                     : new BuildAccumulator.MidFlight(java.util.List.of(), java.util.List.of());
@@ -5909,7 +5924,7 @@ public final class EngineServer implements AutoCloseable {
                 // Free exclusive fingerprint before journal/idle chores so a follow-up build can start.
                 inFlightBuilds.release(eventRequestId);
                 long elapsedMillis = clockMillis.getAsLong() - startMillis;
-                if (success) lastProgressByRequest.put(eventRequestId, 100.0);
+                if (success) putLastProgress(eventRequestId, 100.0);
                 // Slot first so request-finish status nudge sees post-finish plan count (JK-1725).
                 noteBuildPlanFinished();
                 publishEvent(
@@ -5992,7 +6007,7 @@ public final class EngineServer implements AutoCloseable {
                 currentEventRequestId.remove();
                 cacheGate.readLock().unlock();
                 long elapsedMillis = clockMillis.getAsLong() - startMillis;
-                if (success) lastProgressByRequest.put(eventRequestId, 100.0);
+                if (success) putLastProgress(eventRequestId, 100.0);
                 noteBuildPlanFinished();
                 publishEvent(
                         "request-finish",
@@ -6067,7 +6082,7 @@ public final class EngineServer implements AutoCloseable {
                     .withJdksDir(jdksDir)
                     .withCancel(cancelToken);
             long rid = eventRequestId();
-            if (rid > 0) progressRoots.put(rid, entryDir.toString());
+            if (rid > 0) putProgressRoot(rid, entryDir.toString());
             WorkspaceResult result = SessionContext.where(
                     session, () -> BuildService.buildWorkspace(req, hubListener(entryDir.toString())));
             accOutcome(rid, result.success(), result.exitCode());
@@ -6177,7 +6192,7 @@ public final class EngineServer implements AutoCloseable {
     /** Module/plan events to the dashboard hub only — the HTTP trigger's counterpart of {@link #wireListener}. */
     private WorkspaceBuildListener hubListener(String workspaceDir) {
         long eventRequestId = eventRequestId();
-        if (eventRequestId > 0 && workspaceDir != null) progressRoots.put(eventRequestId, workspaceDir);
+        if (eventRequestId > 0 && workspaceDir != null) putProgressRoot(eventRequestId, workspaceDir);
         // As in wireListener: keep each module's plan so onModuleFinish can fold its TEST_RESULT into
         // the record — a web-triggered build has no single test plan, so tests would otherwise never
         // reach the journal for dashboard builds.
@@ -6197,7 +6212,7 @@ public final class EngineServer implements AutoCloseable {
             @Override
             public void onWorkModel(cc.jumpkick.runtime.WorkModel model) {
                 if (eventRequestId <= 0 || model == null) return;
-                remainingWorks.put(eventRequestId, model.toRemainingWork());
+                putRemaining(eventRequestId, model.toRemainingWork());
                 progressTracker(eventRequestId)
                         .seedWall(model.R0(), model.costs().size());
                 emitWorkspaceProgress(eventRequestId, null, true);
@@ -6208,8 +6223,7 @@ public final class EngineServer implements AutoCloseable {
                 long totalWeight = 0;
                 // Id-less builds must not insert a key clearProgress can never remove.
                 var weights = eventRequestId > 0
-                        ? progressWeights.computeIfAbsent(
-                                eventRequestId, id -> new java.util.concurrent.ConcurrentHashMap<String, Long>())
+                        ? weightsOf(eventRequestId)
                         : new java.util.concurrent.ConcurrentHashMap<String, Long>();
                 for (ModulePlan m : plan) {
                     totalWeight += m.weight();
