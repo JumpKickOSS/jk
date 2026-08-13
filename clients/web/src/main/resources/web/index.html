@@ -168,8 +168,8 @@
             <div v-if="singleModule(card) && singleModule(card).diagnostics.length" class="diag">
               <div class="console">
                 <template v-for="(d, i) in singleModule(card).diagnostics" :key="i">
-                  <div v-if="isTestFailure(d) && testFailure(singleModule(card), d)" class="fail-report">
-                    <template v-for="rep in [testFailure(singleModule(card), d)]" :key="'tf'+i">
+                  <div v-if="isTestFailure(d)" class="fail-report">
+                    <template v-for="rep in tfReports(singleModule(card), d)" :key="'tf'+i">
                       <template v-if="rep.showHeader">
                         <div class="fail-head">
                           <span class="console-err">✘</span>
@@ -266,8 +266,8 @@
               <div v-if="m.diagnostics.length" class="diag">
                 <div class="console">
                   <template v-for="(d, i) in m.diagnostics" :key="i">
-                    <div v-if="isTestFailure(d) && testFailure(m, d)" class="fail-report">
-                      <template v-for="rep in [testFailure(m, d)]" :key="'tf'+i">
+                    <div v-if="isTestFailure(d)" class="fail-report">
+                      <template v-for="rep in tfReports(m, d)" :key="'tf'+i">
                         <template v-if="rep.showHeader">
                           <div class="fail-head">
                             <span class="console-err">✘</span>

@@ -384,7 +384,35 @@ test('diagnostics attach to their module by dir, survive finish, and are capped 
       },
     });
   }
-  assert.equal(core.diagnostics.length, startLen + 15); // test-failure is not capped
+  assert.equal(core.diagnostics.length, startLen + 15); // test-failure has its own, higher cap
+});
+
+test('test-failure diagnostics are bounded by their own ceiling (JK-1881)', async () => {
+  const { MAX_TEST_FAILURE_DIAGNOSTICS } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const cards = [];
+  foldEvent(cards, start(1, '/w'));
+  for (let i = 0; i < MAX_TEST_FAILURE_DIAGNOSTICS + 40; i++) {
+    foldEvent(cards, {
+      type: 'diagnostic',
+      data: {
+        requestId: 1,
+        dir: '/w/core',
+        task: 'run-tests',
+        code: 'test-failure',
+        message: 'fail ' + i,
+        class: 'T',
+        method: 'm' + i + '()',
+      },
+    });
+  }
+  const core = cards[0].modules.find((m) => m.dir === '/w/core');
+  assert.equal(
+    core.diagnostics.filter((d) => isTestFailureDiag(d)).length,
+    MAX_TEST_FAILURE_DIAGNOSTICS,
+  );
+  // Other codes still get their slice under the flood.
+  foldEvent(cards, { type: 'diagnostic', data: { requestId: 1, dir: '/w/core', task: 'p', message: 'other' } });
+  assert.equal(core.diagnostics.length, MAX_TEST_FAILURE_DIAGNOSTICS + 1);
 });
 
 test('module summary counts modules and failures', () => {

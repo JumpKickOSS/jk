@@ -12,6 +12,13 @@ export const MAX_OUTPUT_LINES = 8;
 export const MAX_DIAGNOSTICS = 12;
 
 /**
+ * Client-side ceiling for rich test-failure diagnostics per module. The live SSE feed is already
+ * server-capped (JK-1880), but journal history replay is not — a pathological record must not
+ * inject thousands of snippet+stack payloads into one card.
+ */
+export const MAX_TEST_FAILURE_DIAGNOSTICS = 120;
+
+/**
  * Fold one SSE event into the newest-first card list, mutating and returning it.
  * An event is `{type, data, at}` where `data` is the parsed flat JSON payload the engine
  * publishes and `at` is the client-clock receipt time (fold stays clock-free and pure):
@@ -256,7 +263,10 @@ export function foldEvent(cards, event) {
       if (card) {
         const mod = moduleRow(card, d.dir, event.at);
         const nd = normalizeDiagnostic(d);
-        if (isTestFailureDiag(nd) || mod.diagnostics.length < MAX_DIAGNOSTICS) {
+        // Per-kind ceilings (server policy, JK-1880): a test-failure flood must not evict the
+        // compile/resolve slice, and vice versa.
+        const kindCount = mod.diagnostics.filter((x) => isTestFailureDiag(x) === isTestFailureDiag(nd)).length;
+        if (kindCount < (isTestFailureDiag(nd) ? MAX_TEST_FAILURE_DIAGNOSTICS : MAX_DIAGNOSTICS)) {
           mod.diagnostics.push(nd);
         }
       }
@@ -803,11 +813,26 @@ function historyModules(rec) {
     state,
     millis: rec.millis ?? null,
     steps,
-    diagnostics: (rec.diagnostics || [])
+    diagnostics: boundDiagnostics((rec.diagnostics || [])
       .filter((d) => d.severity !== 'warning')
-      .map((d) => normalizeDiagnostic(d)),
+      .map((d) => normalizeDiagnostic(d))),
     lastActivity: activity,
   }];
+}
+
+/** Apply the per-kind diagnostic ceilings (same policy as the live path) to a replayed list. */
+function boundDiagnostics(list) {
+  const out = [];
+  let tests = 0;
+  let other = 0;
+  for (const d of list) {
+    if (isTestFailureDiag(d)) {
+      if (tests < MAX_TEST_FAILURE_DIAGNOSTICS) { out.push(d); tests++; }
+    } else if (other < MAX_DIAGNOSTICS) {
+      out.push(d); other++;
+    }
+  }
+  return out;
 }
 
 /** True when any step actually failed (FAIL) — not merely cancelled mid-flight. */

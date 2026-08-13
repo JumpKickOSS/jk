@@ -254,6 +254,9 @@ function cssVar(name, fallback) {
 }
 
 const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+
+/** Memoized test-failure report models, keyed by the (immutable) diagnostic object. */
+const TF_REPORT_CACHE = new WeakMap();
 /** Escape a value for interpolation into an HTML tooltip string — dependency names/versions/paths
  * come from a project's jk.toml/jk-lock.toml, which is attacker-adjacent (a shared or malicious
  * repo someone opens in the dashboard), so they must never reach innerHTML unescaped. */
@@ -1486,17 +1489,24 @@ Vue.createApp({
     },
 
     /**
-     * CLI-parity report model for a test-failure diagnostic. {@code count} is how many
-     * test-failure diags this module carries (header "N test failed"); only the first
-     * failure in the module shows that header.
+     * CLI-parity report model for a test-failure diagnostic, as a 0/1-element array for a single
+     * {@code v-for} evaluation. {@code count} is how many test-failure diags this module carries
+     * (header "N tests failed"); only the first failure in the module shows that header. Report
+     * models are memoized per diagnostic — these are methods, not computeds, so they re-run on
+     * every SSE-driven tick, and rebuilding label/assertj/snippet parses for every failure on
+     * every tick made the card O(n²) in failures (JK-1881).
      */
-    testFailure(mod, d) {
+    tfReports(mod, d) {
+      if (!isTestFailureDiag(d)) return [];
       const diags = ((mod && mod.diagnostics) || []).filter((x) => isTestFailureDiag(x));
-      const n = diags.length;
-      return testFailureReport(d, {
-        count: Math.max(1, n),
-        showHeader: n === 0 || diags[0] === d,
-      });
+      const n = Math.max(1, diags.length);
+      const showHeader = diags.length === 0 || diags[0] === d;
+      let hit = TF_REPORT_CACHE.get(d);
+      if (!hit || hit.n !== n || hit.showHeader !== showHeader) {
+        hit = { n, showHeader, rep: testFailureReport(d, { count: n, showHeader }) };
+        TF_REPORT_CACHE.set(d, hit);
+      }
+      return hit.rep ? [hit.rep] : [];
     },
 
     /** Syntax segments for {@code SimpleClass.method()} labels. */
