@@ -64,11 +64,27 @@ public final class VerboseListener implements BuildPlanListener {
         labels.put(step, label);
     }
 
+    /**
+     * Non-failure output streams immediately — watching a hung test live is a primary use of
+     * {@code --verbose}, so lines must not sit in a buffer until stepFinish (JK-1882). Only a
+     * {@code Test Failure} block is held back, from its header sentinel to its footer, so the
+     * report paints as one unit (JK-1874); the footer flushes it without waiting for the step.
+     */
     @Override
     public void output(String step, String line) {
-        outputBuf
-                .computeIfAbsent(step, s -> Collections.synchronizedList(new ArrayList<>()))
-                .add(line);
+        List<String> buf = outputBuf.get(step);
+        if (buf == null && TestFailureHighlight.isHeader(line)) {
+            buf = Collections.synchronizedList(new ArrayList<>());
+            outputBuf.put(step, buf);
+        }
+        if (buf != null) {
+            buf.add(line);
+            if (line != null && TestFailureHighlight.FOOTER_SENTINEL.equals(line.strip())) {
+                flushOutput(step);
+            }
+            return;
+        }
+        out.println(StackTraceHighlight.line(line));
     }
 
     private void flushOutput(String step) {

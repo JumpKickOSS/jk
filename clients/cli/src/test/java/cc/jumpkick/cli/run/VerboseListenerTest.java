@@ -57,4 +57,39 @@ class VerboseListenerTest {
         String plain = AttributedString.stripAnsi(buf.toString(StandardCharsets.UTF_8));
         assertThat(plain).contains("Note: Recompile with -Xlint");
     }
+
+    @Test
+    void output_streams_live_and_is_not_held_until_step_finish() {
+        // A hung run-tests step must still show its output under --verbose (JK-1882).
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        PrintStream out = new PrintStream(buf, true, StandardCharsets.UTF_8);
+        var v = new VerboseListener(out, out);
+        v.output("run-tests", "test stdout: starting slow thing");
+        // No stepFinish — the line is already on screen.
+        String plain = AttributedString.stripAnsi(buf.toString(StandardCharsets.UTF_8));
+        assertThat(plain).contains("test stdout: starting slow thing");
+    }
+
+    @Test
+    void failure_block_paints_at_its_footer_before_step_finish() {
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        PrintStream out = new PrintStream(buf, true, StandardCharsets.UTF_8);
+        var v = new VerboseListener(out, out);
+        v.output("run-tests", "before block");
+        for (String line : List.of("Test Failure", "1 test failed", "", "FAILED Foo.bar()", "Test Failure end")) {
+            v.output("run-tests", line);
+        }
+        v.output("run-tests", "after block");
+        // Still no stepFinish: the block painted at its footer, trailing output streamed on.
+        String plain = AttributedString.stripAnsi(buf.toString(StandardCharsets.UTF_8));
+        assertThat(plain).contains("before block");
+        assertThat(plain).contains("FAILED Foo.bar()");
+        assertThat(plain).doesNotContain("Test Failure end");
+        assertThat(plain).contains("after block");
+        // The block was consumed — stepFinish must not repaint it.
+        int first = plain.indexOf("FAILED Foo.bar()");
+        v.stepFinish("run-tests", "test", TaskStatus.FAIL, Duration.ofMillis(1));
+        String after = AttributedString.stripAnsi(buf.toString(StandardCharsets.UTF_8));
+        assertThat(after.indexOf("FAILED Foo.bar()", first + 1)).isNegative();
+    }
 }
