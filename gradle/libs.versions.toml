@@ -15,6 +15,7 @@ jgit = "7.6.0.202603022253-r"
 jline = "4.1.2"
 jib-core = "0.28.1"
 groovy = "5.0.4"
+jspecify = "1.0.1"
 junit = "6.1.0"
 kotlin-bta = "2.4.0"
 maven-artifact = "3.9.16"
@@ -29,6 +30,7 @@ xz = "1.12"
 
 [libraries]
 # foundations
+jspecify               = { module = "org.jspecify:jspecify",                        version.ref = "jspecify" }
 tomlj                  = { module = "org.tomlj:tomlj",                              version.ref = "tomlj" }
 jackson-databind       = { module = "tools.jackson.core:jackson-databind",          version.ref = "jackson" }
 

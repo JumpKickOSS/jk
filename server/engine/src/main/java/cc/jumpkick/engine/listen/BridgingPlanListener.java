@@ -1,0 +1,179 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.engine.listen;
+
+import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.BuildPlanView;
+import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.run.TestFailureInfo;
+import java.time.Duration;
+import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
+
+/**
+ * One plan listener: redact, emit to the sink, then run engine side-effects (SSE / acc /
+ * workspace tracker). CLI and HTTP differ only by which {@link EventSink} they pass.
+ */
+public final class BridgingPlanListener implements BuildPlanListener {
+
+    /** Engine-owned progress, journal fold, and SSE. */
+    public interface Hooks {
+        default void planProgress(String dir, BuildPlanView view) {}
+
+        default void stepStarted(String dir, String step, String phase) {}
+
+        default void stepFinished(String dir, String step, String phase, String status, long millis) {}
+
+        default void labeled(String dir, String step, String text) {}
+
+        default void output(String dir, String step, String line) {}
+
+        default void planFinished(String dir, BuildPlanResult result) {}
+    }
+
+    private final String dir;
+    private final EventSink sink;
+    private final Hooks hooks;
+    private final @Nullable Function<BuildPlanResult, String> finishEncoder;
+
+    public BridgingPlanListener(String dir, EventSink sink, Hooks hooks) {
+        this(dir, sink, hooks, null);
+    }
+
+    public BridgingPlanListener(
+            String dir, EventSink sink, Hooks hooks, @Nullable Function<BuildPlanResult, String> finishEncoder) {
+        this.dir = dir;
+        this.sink = sink;
+        this.hooks = hooks;
+        this.finishEncoder = finishEncoder;
+    }
+
+    public static String phaseWire(@Nullable String group) {
+        return group == null ? "" : group;
+    }
+
+    @Override
+    public void planStart(BuildPlanView view) {
+        sink.emit(new EngineEvent.PlanStart(
+                dir,
+                view.planName(),
+                view.numerator(),
+                view.denominator(),
+                view.stepsTotal(),
+                view.stepsComplete(),
+                view.cancelled()));
+        hooks.planProgress(dir, view);
+    }
+
+    @Override
+    public void stepStart(String step, String group, int ticks) {
+        String phase = phaseWire(group);
+        sink.emit(new EngineEvent.StepStart(dir, step, phase, ticks));
+        hooks.stepStarted(dir, step, phase);
+    }
+
+    @Override
+    public void progress(String step, int delta, BuildPlanView view) {
+        sink.emit(new EngineEvent.Progress(
+                dir,
+                step,
+                delta,
+                view.numerator(),
+                view.denominator(),
+                view.stepsTotal(),
+                view.stepsComplete(),
+                view.cancelled()));
+        hooks.planProgress(dir, view);
+    }
+
+    @Override
+    public void tickUpdate(String step, int delta, BuildPlanView view) {
+        sink.emit(new EngineEvent.TickUpdate(
+                dir,
+                step,
+                delta,
+                view.numerator(),
+                view.denominator(),
+                view.stepsTotal(),
+                view.stepsComplete(),
+                view.cancelled()));
+        hooks.planProgress(dir, view);
+    }
+
+    @Override
+    public void label(String step, String label) {
+        String safe = EventRedaction.redactEnv(dir, label);
+        sink.emit(new EngineEvent.Label(dir, step, safe));
+        hooks.labeled(dir, step, safe);
+    }
+
+    @Override
+    public void output(String step, String line) {
+        String safe = EventRedaction.redactEnv(dir, line);
+        sink.emit(new EngineEvent.Output(dir, step, safe));
+        hooks.output(dir, step, safe);
+    }
+
+    @Override
+    public void warn(String step, String code, String message) {
+        sink.emit(new EngineEvent.Warn(dir, step, code, EventRedaction.redactEnv(dir, message)));
+    }
+
+    @Override
+    public void error(String step, String code, String message) {
+        error(step, code, message, (String) null, null);
+    }
+
+    @Override
+    public void error(String step, String code, String message, String test, String exceptionClass) {
+        sink.emit(new EngineEvent.ErrorLine(
+                dir, step, code, EventRedaction.redactEnv(dir, message), test, exceptionClass));
+    }
+
+    @Override
+    public void error(String step, String code, String message, TestFailureInfo failure) {
+        if (failure == null) {
+            error(step, code, message);
+            return;
+        }
+        TestFailureInfo safe = EventRedaction.redactFailure(dir, failure);
+        String msg = EventRedaction.redactEnv(dir, message == null || message.isEmpty() ? failure.message() : message);
+        sink.emit(new EngineEvent.ErrorFailure(dir, step, code, msg, safe));
+    }
+
+    @Override
+    public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
+        long millis = duration.toMillis();
+        String phase = phaseWire(group);
+        String st = status.name();
+        sink.emit(new EngineEvent.StepFinish(dir, step, phase, st, millis));
+        hooks.stepFinished(dir, step, phase, st, millis);
+    }
+
+    @Override
+    public void planFinish(BuildPlanResult result) {
+        for (BuildPlanResult.Diagnostic d : result.errors()) {
+            var tf = d.testFailure();
+            if (tf != null) {
+                TestFailureInfo safe = EventRedaction.redactFailure(dir, tf);
+                sink.emit(new EngineEvent.PlanDiagnosticFailure(
+                        dir, d.step(), d.code(), EventRedaction.redactEnv(dir, d.message()), safe));
+            } else {
+                sink.emit(new EngineEvent.PlanDiagnostic(
+                        dir,
+                        d.step(),
+                        d.code(),
+                        EventRedaction.redactEnv(dir, d.message()),
+                        d.test(),
+                        d.exceptionClass()));
+            }
+        }
+        // Timeline + exclusive-slot release must precede the terminal plan-finish line
+        // (JK-1714): a client that has returned must not observe the engine still writing
+        // the chrome profile, and a reconnect must not see an already-running fingerprint.
+        hooks.planFinished(dir, result);
+        if (finishEncoder != null) {
+            sink.emit(new EngineEvent.PlanFinishLine(finishEncoder.apply(result)));
+        }
+    }
+}

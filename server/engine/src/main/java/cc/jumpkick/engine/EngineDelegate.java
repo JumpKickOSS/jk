@@ -2,6 +2,8 @@
 package cc.jumpkick.engine;
 
 import cc.jumpkick.cache.VersionStore;
+import cc.jumpkick.engine.listen.EventRedaction;
+import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import java.io.BufferedReader;
@@ -13,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -121,6 +124,70 @@ public final class EngineDelegate {
             }
         } finally {
             if (child.isAlive()) child.destroy();
+        }
+    }
+
+    /** Artifact-producing requests that may run on a pinned older engine (engine-versioning §3). */
+    public static final Set<String> DELEGATABLE = Set.of(
+            EngineProtocol.BUILD_REQUEST,
+            EngineProtocol.TEST_REQUEST,
+            EngineProtocol.SINGLE_BUILD_REQUEST,
+            EngineProtocol.COMPILE_REQUEST,
+            EngineProtocol.NATIVE_REQUEST,
+            EngineProtocol.TRAIN_REQUEST,
+            EngineProtocol.IMAGE_REQUEST,
+            EngineProtocol.INSTALL_REQUEST,
+            EngineProtocol.PUBLISH_REQUEST);
+
+    /**
+     * If the project pins an older jk, run that version as a job child; refuse newer pins.
+     * Same version/no pin → serve locally. Job children never re-delegate.
+     *
+     * @return true when this request was fully handled (delegated or refused)
+     */
+    public static boolean maybeDelegate(
+            boolean jobMode,
+            String version,
+            String requestLine,
+            BufferedReader reader,
+            BufferedWriter writer,
+            Path stderrLog,
+            Consumer<String> log) {
+        if (jobMode) return false;
+        String entryDir = cc.jumpkick.plugin.protocol.Jsonl.str(requestLine, "dir");
+        if (entryDir == null) return false;
+        String pin = pinnedVersionDiffering(Path.of(entryDir), version);
+        if (pin == null) return false;
+        if (pinIsNewer(pin, version)) {
+            sendQuiet(
+                    writer,
+                    EngineProtocol.error(
+                            EngineProtocol.ERR_VERSION_SKEW,
+                            "this build pins jk " + pin + " but the engine is "
+                                    + version + " — run that project's wrapper (./jk) or `jk self update` to upgrade;"
+                                    + " the newer engine takes over without interrupting running builds"));
+            return true;
+        }
+        try {
+            runAsChild(pin, requestLine, reader, writer, stderrLog, log);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            sendQuiet(writer, EngineProtocol.requestFailed("interrupted delegating to jk " + pin));
+        } catch (IOException e) {
+            sendQuiet(
+                    writer,
+                    EngineProtocol.requestFailed(EventRedaction.redactEnv(null, String.valueOf(e.getMessage()))));
+        }
+        return true;
+    }
+
+    private static void sendQuiet(BufferedWriter writer, String line) {
+        try {
+            writer.write(line);
+            writer.write('\n');
+            writer.flush();
+        } catch (IOException ignored) {
+            // client gone
         }
     }
 }

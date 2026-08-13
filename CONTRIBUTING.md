@@ -49,6 +49,12 @@ jk formats itself. Run `jk format` before you commit; CI runs `jk format --check
 `self-host-jvm` job and fails the build on drift (JK-1664). There is no pre-commit hook — if
 you want one, `jk format --check` is the command, but the CI gate is what's authoritative.
 
+### Code as Art
+
+How we write Java (size budgets, Typed Envelope, JSpecify, diet Lombok, pre-1.0 breakage):
+**[code-as-art.md](code-as-art.md)**. Campaign epic JK-1923 preempts other work until it
+closes.
+
 ### Self-host (phase 2+) — workspace modules + thin workers with jk
 
 Long-form dogfood and the `jk-jk` worktree: **[docs/self-host.md](docs/self-host.md)**.

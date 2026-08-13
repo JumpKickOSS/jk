@@ -3,6 +3,7 @@ package cc.jumpkick.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.runtime.ModuleOutcome;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -15,8 +16,8 @@ import org.junit.jupiter.api.Test;
  */
 class CancelStampGuardTest {
 
-    private static EngineServer.BuildAccumulator acc() {
-        return new EngineServer.BuildAccumulator("build", "/w", "g:w", "cli");
+    private static BuildAccumulator acc() {
+        return new BuildAccumulator("build", "/w", "g:w", "cli");
     }
 
     private static ModuleOutcome failedModule() {
@@ -38,7 +39,7 @@ class CancelStampGuardTest {
         a.markUserCancelled(true);
         assertThat(a.wasCancelled()).isTrue();
         // And the resolved journal bit agrees: stamped failure + user stamp → cancelled.
-        assertThat(EngineServer.resolveCancelledFlag(false, a.wasCancelled(), true))
+        assertThat(BuildAccumulator.resolveCancelledFlag(false, a.wasCancelled(), true))
                 .isTrue();
     }
 

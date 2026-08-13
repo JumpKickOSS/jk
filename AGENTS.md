@@ -113,6 +113,9 @@ Needs a GraalVM-capable JDK for `dist` (see [CONTRIBUTING.md](CONTRIBUTING.md) /
 - Protocol: that repo’s [`AGENTS.md`](https://github.com/JumpKickOSS/kanartist/blob/main/AGENTS.md).
 - Tickets: `projects/jk/tickets/JK-NNNN-*.md` (status lives on the ticket file; board views are generated).
 - Sibling checkout assumed: `../kanartist` next to this repo (or set `KANARTIST_WORKSPACE_ROOT`).
+- **Preempt:** JK-1923 (Code as Art / Typed Envelope) and its children are **P0**. Do not
+  claim unrelated tickets until that epic is `done`. Spec: [code-as-art.md](code-as-art.md).
+  Baseline tag: `pre-code-as-art`.
 
 ### Claim and ship a ticket
 
