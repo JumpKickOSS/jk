@@ -89,13 +89,6 @@ public final class TestFailureSource {
 
     private record Layout(boolean simple, List<Path> roots) {}
 
-    private static final Cache UNBOUNDED = new Cache();
-
-    /** Best-effort: empty when module dir, stack, or file cannot be resolved. */
-    public static Optional<Snippet> resolve(Path moduleDir, String testClass, String stack) {
-        return resolve(UNBOUNDED, moduleDir, testClass, stack);
-    }
-
     static Optional<Snippet> resolve(Cache cache, Path moduleDir, String testClass, String stack) {
         if (moduleDir == null || !Files.isDirectory(moduleDir)) return Optional.empty();
         if (stack == null || stack.isBlank()) return Optional.empty();
@@ -104,7 +97,9 @@ public final class TestFailureSource {
         Frame f = frame.get();
         Path mod = moduleDir.toAbsolutePath().normalize();
         SnipKey key = new SnipKey(mod, testClass == null ? "" : testClass, f.fileName, f.line);
-        Cache c = cache == null ? UNBOUNDED : cache;
+        // No static fallback: a process-wide cache in the resident engine would serve pre-edit
+        // snippet lines forever and grow without bound (JK-1906) — callers own a per-run Cache.
+        Cache c = cache == null ? new Cache() : cache;
         return c.snippets.computeIfAbsent(key, k -> resolveUncached(c, mod, testClass, f));
     }
 
@@ -247,10 +242,6 @@ public final class TestFailureSource {
     }
 
     // ---- file locate ----------------------------------------------------------
-
-    static Optional<Path> locateFile(Path moduleDir, String testClass, String fileName) {
-        return locateFile(UNBOUNDED, moduleDir, testClass, fileName);
-    }
 
     private static Optional<Path> locateFile(Cache cache, Path moduleDir, String testClass, String fileName) {
         if (fileName == null || fileName.isBlank() || fileName.indexOf('\0') >= 0) return Optional.empty();

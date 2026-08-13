@@ -190,6 +190,7 @@ public final class TestSupport {
         List<String> out = new ArrayList<>();
         List<TestSummary.Failure> failures = result.failures();
         if (failures.isEmpty()) return out;
+        TestFailureSource.Cache effectiveCache = cache != null ? cache : new TestFailureSource.Cache();
         // No leading blank — the CLI leaves a single blank under the prompt / live region.
         out.add("Test Failure");
         // First non-blank module wins for the header (multi-module reports still list each FAILED).
@@ -205,9 +206,7 @@ public final class TestSupport {
             out.add("FAILED " + shortTestLabel(f));
             Optional<TestFailureSource.Snippet> snippet = Optional.empty();
             if (moduleDir != null) {
-                snippet = cache != null
-                        ? cache.resolve(moduleDir, f.className(), f.stack())
-                        : TestFailureSource.resolve(moduleDir, f.className(), f.stack());
+                snippet = effectiveCache.resolve(moduleDir, f.className(), f.stack());
             }
             // Assertion body, then source snippet, then exception locus under the snippet.
             List<String> body = failureBodyLines(f);
@@ -403,7 +402,7 @@ public final class TestSupport {
             TestFailureSource.Cache cache) {
         String module = moduleLabel == null ? "" : moduleLabel.trim();
         Path dir = moduleDir;
-        TestFailureSource.Cache snippets = cache;
+        TestFailureSource.Cache snippets = cache != null ? cache : new TestFailureSource.Cache();
         return new TestProgressListener() {
             @Override
             public void onTestStarted(String id, String display, boolean isTest, int workerId) {
@@ -466,9 +465,7 @@ public final class TestSupport {
                 int snippetStart = 0;
                 java.util.List<String> snippetLines = java.util.List.of();
                 if (dir != null) {
-                    var snip = snippets != null
-                            ? snippets.resolve(dir, className, stack)
-                            : TestFailureSource.resolve(dir, className, stack);
+                    var snip = snippets.resolve(dir, className, stack);
                     if (snip.isPresent()) {
                         var s = snip.get();
                         file = s.relativePath();

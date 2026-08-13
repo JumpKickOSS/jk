@@ -89,7 +89,8 @@ class TestFailureSourceTest {
                 """);
         String stack =
                 "org.opentest4j.AssertionFailedError: x\n" + "\tat cc.jumpkick.runtime.FooTest.bar(FooTest.java:9)\n";
-        var snip = TestFailureSource.resolve(mod, "cc.jumpkick.runtime.FooTest", stack)
+        var snip = new TestFailureSource.Cache()
+                .resolve(mod, "cc.jumpkick.runtime.FooTest", stack)
                 .orElseThrow();
         assertThat(snip.errorLine()).isEqualTo(9);
         assertThat(snip.lines()).hasSize(7);
@@ -118,7 +119,9 @@ class TestFailureSourceTest {
                 }
                 """);
         String stack = "java.lang.AssertionError: x\n\tat cc.jumpkick.BarTest.t(BarTest.java:4)\n";
-        var snip = TestFailureSource.resolve(mod, "cc.jumpkick.BarTest", stack).orElseThrow();
+        var snip = new TestFailureSource.Cache()
+                .resolve(mod, "cc.jumpkick.BarTest", stack)
+                .orElseThrow();
         assertThat(snip.relativePath()).contains("test/src/");
         assertThat(snip.errorLine()).isEqualTo(4);
     }
@@ -176,7 +179,9 @@ class TestFailureSourceTest {
                 }
                 """);
         String stack = "java.lang.AssertionError: x\n\tat cc.jumpkick.ItTest.t(ItTest.java:4)\n";
-        var snip = TestFailureSource.resolve(mod, "cc.jumpkick.ItTest", stack).orElseThrow();
+        var snip = new TestFailureSource.Cache()
+                .resolve(mod, "cc.jumpkick.ItTest", stack)
+                .orElseThrow();
         assertThat(snip.relativePath()).contains("src/integration/");
         assertThat(snip.errorLine()).isEqualTo(4);
     }
@@ -194,7 +199,9 @@ class TestFailureSourceTest {
                 }
                 """);
         String stack = "java.lang.AssertionError: x\n\tat cc.jumpkick.ItTest.t(ItTest.java:4)\n";
-        var snip = TestFailureSource.resolve(mod, "cc.jumpkick.ItTest", stack).orElseThrow();
+        var snip = new TestFailureSource.Cache()
+                .resolve(mod, "cc.jumpkick.ItTest", stack)
+                .orElseThrow();
         assertThat(snip.relativePath()).contains("integration/src/");
         assertThat(snip.errorLine()).isEqualTo(4);
     }
@@ -205,7 +212,8 @@ class TestFailureSourceTest {
         Files.createDirectories(src);
         Files.writeString(src.resolve("FooTest.java"), "class FooTest {\n  void t() {}\n}\n");
         String stack = "err\n\tat cc.jumpkick.FooTest.t(FooTest.java:999)\n";
-        assertThat(TestFailureSource.resolve(mod, "cc.jumpkick.FooTest", stack)).isEmpty();
+        assertThat(new TestFailureSource.Cache().resolve(mod, "cc.jumpkick.FooTest", stack))
+                .isEmpty();
     }
 
     @Test
@@ -213,7 +221,8 @@ class TestFailureSourceTest {
         Path outside = mod.getParent().resolve("secret.txt");
         Files.writeString(outside, "do not read\n");
         String stack = "err\n\tat cc.jumpkick.FooTest.t(../secret.txt:1)\n";
-        assertThat(TestFailureSource.resolve(mod, "cc.jumpkick.FooTest", stack)).isEmpty();
+        assertThat(new TestFailureSource.Cache().resolve(mod, "cc.jumpkick.FooTest", stack))
+                .isEmpty();
         assertThat(TestFailureSource.insideModule(mod, mod.resolve("../../secret.txt")))
                 .isEmpty();
     }
