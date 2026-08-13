@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
-import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.HttpEvents;
+import cc.jumpkick.engine.http.HttpLive;
 import cc.jumpkick.engine.http.JsonOut;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildAccumulator;
@@ -36,8 +36,8 @@ public final class LiveRuns {
         this.clock = clock;
     }
 
-    public List<HttpEngineServer.LiveRun> snapshot() {
-        List<HttpEngineServer.LiveRun> out = new ArrayList<>();
+    public List<HttpLive.Run> snapshot() {
+        List<HttpLive.Run> out = new ArrayList<>();
         for (InFlightBuilds.Hold h : inFlight.list()) {
             Double p = sessions.lastProgress(h.requestId());
             long remainingMs = -1L;
@@ -56,7 +56,7 @@ public final class LiveRuns {
             BuildAccumulator acc = sessions.accumulator(h.requestId());
             BuildAccumulator.MidFlight mid =
                     acc != null ? acc.midFlight() : new BuildAccumulator.MidFlight(List.of(), List.of());
-            out.add(new HttpEngineServer.LiveRun(
+            out.add(new HttpLive.Run(
                     h.requestId(),
                     h.buildNumber(),
                     h.kind(),
@@ -79,7 +79,7 @@ public final class LiveRuns {
         if (sub == null || events == null) return;
         sseConnect.writeLock().lock();
         try {
-            for (HttpEngineServer.LiveRun run : snapshot()) {
+            for (HttpLive.Run run : snapshot()) {
                 events.deliverTo(sub, "run-snapshot", snapshotJson(run, clock.getAsLong()));
             }
             events.attach(sub);
@@ -88,7 +88,7 @@ public final class LiveRuns {
         }
     }
 
-    static JsonOut snapshotJson(HttpEngineServer.LiveRun run, long serverNow) {
+    static JsonOut snapshotJson(HttpLive.Run run, long serverNow) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("schema", 1);
         m.put("type", "run-snapshot");

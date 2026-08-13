@@ -5,4 +5,5 @@
  * cc.jumpkick.run.JkThreads#cpu()} so virtual-thread carriers are not pinned. Bind failure is
  * advisory — the engine still serves builds.
  */
+@org.jspecify.annotations.NullMarked
 package cc.jumpkick.engine.http;
