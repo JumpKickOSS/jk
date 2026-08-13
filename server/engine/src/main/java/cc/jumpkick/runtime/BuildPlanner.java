@@ -4969,7 +4969,17 @@ public final class BuildPlanner {
      * Gradle {@code build/libs}, pure-jk {@code target/server/engine}). Null only when none
      * of those exist (cold checkout with no install and no prior package).
      */
+    /**
+     * Test hook: when set, host-engine-jar discovery searches only this root's monorepo product
+     * paths. Keeps tests from depending on — or worse, seeding — the real checkout's build
+     * outputs (JK-1885), and makes fallback assertions deterministic on warm developer trees
+     * where the process/VersionStore probes would otherwise win (JK-1917).
+     */
+    static volatile Path hostEngineSearchOverride;
+
     static Path locateHostEngineJar() {
+        Path override = hostEngineSearchOverride;
+        if (override != null) return findMonorepoEngineJar(override);
         try {
             var cs = cc.jumpkick.engine.EngineMain.class.getProtectionDomain().getCodeSource();
             if (cs != null && cs.getLocation() != null) {
