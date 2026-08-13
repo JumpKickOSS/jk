@@ -3,14 +3,12 @@ package cc.jumpkick.engine.jobs;
 
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.Session;
-import cc.jumpkick.engine.BuildHistoryKinds;
 import cc.jumpkick.engine.BuildJobFingerprint;
 import cc.jumpkick.engine.InFlightBuilds;
 import cc.jumpkick.engine.JobWorkers;
 import cc.jumpkick.engine.http.JsonOut;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
-import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.runtime.progress.ProgressBarMode;
@@ -185,7 +183,7 @@ public final class JobEnvelope {
         String fingerprint = fingerprintOverride != null
                 ? fingerprintOverride
                 : BuildJobFingerprint.ofRequest(eventKind, requestLine);
-        AdmitResult admit = admitJob(eventRequestId, eventKind, eventDir, fingerprint, trigger);
+        AdmitResult admit = JobAdmit.admit(host, eventRequestId, eventKind, eventDir, fingerprint, trigger);
         if (admit.rejected() != null) {
             InFlightBuilds.Hold h = admit.rejected();
             String label = "test".equals(eventKind) ? "Test" : "Build";
@@ -218,7 +216,7 @@ public final class JobEnvelope {
         // Public jid surface — client tracks this for Ctrl-C / jk cancel.
         if (writer != null) {
             try {
-                send(writer, jobStartLine(eventRequestId, eventKind, eventDir, admit));
+                send(writer, JobAdmit.jobStartLine(host, eventRequestId, eventKind, eventDir, admit));
             } catch (IOException ignored) {
                 // client gone before job body — still run cancel registration below
             }
@@ -451,63 +449,6 @@ public final class JobEnvelope {
         }
         finish.run();
         return eventRequestId;
-    }
-
-    /** job-start wire line with buildNumber + details path for the CLI transcript. */
-    public String jobStartLine(long jid, String kind, String dir, AdmitResult admit) {
-        String detailsPath = null;
-        if (admit.buildNumber() > 0) {
-            detailsPath = host.journal()
-                    .detailsFile(host.coordOf(dir), dir, admit.buildNumber())
-                    .map(Path::toString)
-                    .orElseGet(() -> host.journal()
-                            .detailsFile(Long.toString(admit.buildNumber()))
-                            .map(Path::toString)
-                            .orElse(null));
-        }
-        return EngineProtocol.jobStart(jid, kind, dir, admit.buildNumber(), detailsPath, -1);
-    }
-
-    /**
-     * Allocate a build number (journaled kinds), take an exclusive fingerprint slot when required,
-     * and persist an in-flight journal stub.
-     */
-    public AdmitResult admitJob(long requestId, String kind, String dir, String fingerprint, String trigger) {
-        boolean exclusive = BuildJobFingerprint.isExclusiveKind(kind);
-        String fp = exclusive && fingerprint != null ? fingerprint : "";
-        // Reject before allocating a build number so collisions do not burn sequence values.
-        if (exclusive && !fp.isEmpty()) {
-            var existing = host.inFlight().peek(fp);
-            if (existing.isPresent()) return AdmitResult.reject(existing.get());
-        }
-        String canonDir = BuildJobFingerprint.canonicalDir(dir);
-        String coord = host.coordOf(dir);
-        long buildNumber = 0L;
-        if (BuildHistoryKinds.isBuildLike(kind) && canonDir != null && !canonDir.isBlank()) {
-            buildNumber = cc.jumpkick.runtime.BuildNumberAllocator.allocate(canonDir, coord);
-        }
-        long startedAt = host.nowMillis();
-        String projectId = cc.jumpkick.runtime.ProjectIds.refresh(canonDir != null ? canonDir : dir);
-        String journalId = null;
-        if (BuildHistoryKinds.isBuildLike(kind) && host.historyConfig().enabled() && buildNumber > 0) {
-            journalId = host.journal()
-                    .begin(BuildRecord.running(
-                            buildNumber, kind, dir, coord, projectId, startedAt, host.version(), trigger));
-        }
-        InFlightBuilds.Hold candidate =
-                new InFlightBuilds.Hold(requestId, buildNumber, fp, kind, dir, coord, startedAt, journalId, trigger);
-        if (exclusive && !fp.isEmpty()) {
-            var raced = host.inFlight().tryAcquire(candidate);
-            if (raced.isPresent()) {
-                // Scoped: journalId is this project's build number, which another project may
-                // also use (JK-1471).
-                if (journalId != null) host.journal().delete(journalId, coord, dir);
-                return AdmitResult.reject(raced.get());
-            }
-        } else {
-            host.inFlight().tryAcquire(candidate);
-        }
-        return AdmitResult.ok(buildNumber, journalId);
     }
 
     /**

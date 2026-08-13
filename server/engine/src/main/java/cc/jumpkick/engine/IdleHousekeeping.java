@@ -1,0 +1,271 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.engine;
+
+import cc.jumpkick.config.JkHistoryConfig;
+import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.runtime.BuildMetrics;
+import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
+import java.util.function.LongSupplier;
+import java.util.function.Supplier;
+
+/**
+ * Idle-boundary chores: cache prune, journal/metrics retention, host warmup, trailing GC.
+ * Exactly-once at the build boundary (JK-1795); GC is always last (JK-1725).
+ */
+public final class IdleHousekeeping {
+
+    private final AtomicInteger activeBuildPlans;
+    private final ReentrantReadWriteLock cacheGate;
+    private final JkHistoryConfig historyConfig;
+    private final BuildJournal journal;
+    private final Supplier<Path> metricsFile;
+    private final LongSupplier clock;
+    private final Consumer<String> log;
+    private final BooleanSupplier shuttingDown;
+    private final BooleanSupplier draining;
+    private final Runnable onDrainIdle;
+
+    private final AtomicReference<Path> pendingPruneCache = new AtomicReference<>();
+    private final AtomicReference<Boolean> pendingWarmupForce = new AtomicReference<>();
+    private final AtomicBoolean warmupRunning = new AtomicBoolean();
+    private final AtomicBoolean running = new AtomicBoolean();
+
+    public IdleHousekeeping(
+            AtomicInteger activeBuildPlans,
+            ReentrantReadWriteLock cacheGate,
+            JkHistoryConfig historyConfig,
+            BuildJournal journal,
+            Supplier<Path> metricsFile,
+            LongSupplier clock,
+            Consumer<String> log,
+            BooleanSupplier shuttingDown,
+            BooleanSupplier draining,
+            Runnable onDrainIdle) {
+        this.activeBuildPlans = activeBuildPlans;
+        this.cacheGate = cacheGate;
+        this.historyConfig = historyConfig;
+        this.journal = journal;
+        this.metricsFile = metricsFile;
+        this.clock = clock;
+        this.log = log;
+        this.shuttingDown = shuttingDown;
+        this.draining = draining;
+        this.onDrainIdle = onDrainIdle;
+    }
+
+    /**
+     * After a plan slot was released: all idle housekeeping when nothing remains in flight.
+     * Does not decrement the counter — the finish path decrements first (JK-1725).
+     */
+    public void maybeIdleBoundary() {
+        if (activeBuildPlans.get() != 0) return;
+        run();
+        if (draining.getAsBoolean()) onDrainIdle.run();
+    }
+
+    public void maybeIdleGc() {
+        if (activeBuildPlans.get() != 0 || warmupRunning.get()) return;
+        System.gc();
+    }
+
+    public boolean warmupRunning() {
+        return warmupRunning.get();
+    }
+
+    public void run() {
+        if (shuttingDown.getAsBoolean()) return;
+        if (activeBuildPlans.get() != 0) return;
+        if (!running.compareAndSet(false, true)) return;
+        try {
+            if (activeBuildPlans.get() != 0) return;
+            drainPendingPrune();
+            pruneJournal();
+            pruneMetrics();
+            try {
+                cc.jumpkick.builds.MetricsHarvest.get().awaitIdle(30_000L);
+            } catch (RuntimeException ignored) {
+            }
+            if (activeBuildPlans.get() != 0) return;
+
+            if (pendingWarmupForce.get() != null || HostWarmup.needsWork()) {
+                pendingWarmupForce.compareAndSet(null, Boolean.FALSE);
+                kickPendingWarmup(true);
+                return;
+            }
+            if (activeBuildPlans.get() == 0 && !warmupRunning.get()) {
+                System.gc();
+            }
+        } finally {
+            running.set(false);
+        }
+    }
+
+    public void maybeEnqueuePrune(Path cache) {
+        try {
+            var config = cc.jumpkick.config.JkCacheConfig.resolve();
+            if (config.autoPrune() && cc.jumpkick.task.CachePruneScheduler.shouldRun(config, cache)) {
+                pendingPruneCache.compareAndSet(null, cache);
+            }
+        } catch (IOException ignored) {
+            // hygiene, never load-bearing
+        }
+    }
+
+    /** 12-hour feed-refresh hook. Does not consult {@code .last-pruned}. */
+    public void enqueueScheduledCacheGc() {
+        if (shuttingDown.getAsBoolean()) return;
+        var config = cc.jumpkick.config.JkCacheConfig.resolve();
+        if (config.autoPrune()) {
+            pendingPruneCache.compareAndSet(null, cc.jumpkick.util.JkDirs.cache());
+        }
+        if (activeBuildPlans.get() == 0) {
+            pendingWarmupForce.compareAndSet(null, Boolean.FALSE);
+            run();
+        } else {
+            scheduleHostWarmup(false);
+        }
+    }
+
+    public boolean scheduleHostWarmup(boolean force) {
+        if (shuttingDown.getAsBoolean() || draining.getAsBoolean()) return false;
+        if (!force && !HostWarmup.needsWork()) return false;
+        pendingWarmupForce.updateAndGet(prev -> prev == null ? force : (prev || force));
+        if (activeBuildPlans.get() == 0) kickPendingWarmup(true);
+        return true;
+    }
+
+    public void scheduleResolveClassWarmup() {
+        if (shuttingDown.getAsBoolean() || draining.getAsBoolean()) return;
+        Thread.ofVirtual().name("jk-resolve-warmup").start(() -> {
+            try {
+                Class.forName("cc.jumpkick.resolver.pubgrub.PubGrubSolver");
+                Class.forName("cc.jumpkick.resolver.pubgrub.PartialSolution");
+                Class.forName("cc.jumpkick.resolver.MavenPackageSource");
+                Class.forName("cc.jumpkick.resolver.LockOrchestrator");
+                Class.forName("cc.jumpkick.repo.EffectivePomBuilder");
+                Class.forName("cc.jumpkick.resolve.ResolveProcessCacheControl");
+            } catch (ClassNotFoundException | LinkageError ignored) {
+                // best-effort
+            }
+        });
+    }
+
+    private void kickPendingWarmup(boolean trailGc) {
+        if (shuttingDown.getAsBoolean() || draining.getAsBoolean()) return;
+        if (activeBuildPlans.get() != 0) return;
+        Boolean force = pendingWarmupForce.getAndSet(null);
+        if (force == null) return;
+        if (!warmupRunning.compareAndSet(false, true)) {
+            pendingWarmupForce.updateAndGet(prev -> prev == null ? force : (prev || force));
+            return;
+        }
+        Thread t = new Thread(
+                () -> {
+                    try {
+                        if (activeBuildPlans.get() != 0) {
+                            pendingWarmupForce.updateAndGet(prev -> prev == null ? force : (prev || force));
+                            return;
+                        }
+                        drainPendingPrune();
+                        try {
+                            cc.jumpkick.builds.MetricsHarvest.get().awaitIdle(30_000L);
+                        } catch (RuntimeException ignored) {
+                        }
+                        HostWarmup.runIdle(force, log);
+                    } catch (RuntimeException e) {
+                        log.accept("jk engine: idle host warmup failed: " + e.getMessage());
+                    } finally {
+                        boolean more = pendingWarmupForce.get() != null;
+                        if (trailGc && !more && activeBuildPlans.get() == 0) {
+                            System.gc();
+                        }
+                        warmupRunning.set(false);
+                        if (pendingWarmupForce.get() != null && activeBuildPlans.get() == 0) {
+                            kickPendingWarmup(trailGc);
+                        }
+                    }
+                },
+                "jk-idle-warmup");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    private void pruneJournal() {
+        if (!historyConfig.enabled()) return;
+        try {
+            long now = clock.getAsLong();
+            BuildJournal.PruneResult r = journal.prune(historyConfig.maxAgeMillis(), historyConfig.maxDiskBytes(), now);
+            if (r.removedEntries() > 0) {
+                log.accept("jk engine: build journal prune removed " + r.removedEntries() + " entries ("
+                        + r.removedBytes() + " bytes)");
+            }
+        } catch (RuntimeException e) {
+            log.accept("jk engine: build journal prune failed: " + e.getMessage());
+        }
+    }
+
+    private void pruneMetrics() {
+        try {
+            BuildMetrics.Limits limits =
+                    BuildMetrics.Limits.resolve(cc.jumpkick.util.JkDirs.userConfigFile(), System::getenv);
+            BuildMetrics.PruneReport r = BuildMetrics.prune(metricsFile.get(), limits, clock.getAsLong(), false);
+            if (r.evictedByAge() + r.evictedBySize() > 0) {
+                log.accept("jk engine: build metrics prune removed " + (r.evictedByAge() + r.evictedBySize())
+                        + " rows (" + r.kept() + " kept, " + r.finalBytes() + " bytes)");
+            }
+        } catch (RuntimeException e) {
+            log.accept("jk engine: build metrics prune failed: " + e.getMessage());
+        }
+    }
+
+    private void drainPendingPrune() {
+        Path cache = pendingPruneCache.getAndSet(null);
+        if (cache == null) return;
+        if (!cacheGate.writeLock().tryLock()) {
+            pendingPruneCache.compareAndSet(null, cache);
+            return;
+        }
+        try (FileChannel lockChan =
+                FileChannel.open(cache.resolve(".prune.lock"), StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
+            FileLock pruneLock = lockChan.tryLock();
+            if (pruneLock == null) return;
+            try {
+                var config = cc.jumpkick.config.JkCacheConfig.resolve();
+                cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.CachePlans.pruneBuildPlan(
+                        cache, config.recordTtlDays(), false, false, false);
+                cc.jumpkick.run.BuildPlanResult result = plan.run();
+                if (result.success()) {
+                    Files.writeString(
+                            cache.resolve(cc.jumpkick.task.CachePruneScheduler.LAST_PRUNED_FILE),
+                            Long.toString(clock.getAsLong()),
+                            StandardCharsets.UTF_8);
+                    log.accept("jk engine: idle-boundary cache prune removed "
+                            + plan.get(cc.jumpkick.runtime.CachePlans.FILES).orElse(0L)
+                            + " files ("
+                            + plan.get(cc.jumpkick.runtime.CachePlans.BYTES).orElse(0L)
+                            + " bytes)");
+                } else {
+                    log.accept("jk engine: idle-boundary cache prune failed");
+                }
+            } finally {
+                pruneLock.release();
+            }
+        } catch (Exception e) {
+            log.accept("jk engine: idle-boundary cache prune failed: " + e.getMessage());
+        } finally {
+            cacheGate.writeLock().unlock();
+        }
+    }
+}
