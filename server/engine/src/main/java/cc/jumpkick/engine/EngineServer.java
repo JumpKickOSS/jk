@@ -1,50 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
-import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.JkHttpConfig;
-import cc.jumpkick.config.Session;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.http.HttpEngineServer;
-import cc.jumpkick.engine.http.JsonOut;
 import cc.jumpkick.engine.jobs.JobEnvelope;
-import cc.jumpkick.engine.jobs.JobRequest;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.jobs.JobTransport;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
-import cc.jumpkick.engine.journal.BuildRecord;
-import cc.jumpkick.engine.listen.BridgingPlanListener;
-import cc.jumpkick.engine.listen.BridgingWorkspaceListener;
+import cc.jumpkick.engine.journal.JournalWriter;
 import cc.jumpkick.engine.listen.EventRedaction;
-import cc.jumpkick.engine.listen.EventSink;
-import cc.jumpkick.engine.listen.NoopEventSink;
-import cc.jumpkick.engine.listen.WireEventSink;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.verbs.HostedVerb;
-import cc.jumpkick.engine.verbs.VerbHost;
 import cc.jumpkick.engine.verbs.VerbRegistry;
 import cc.jumpkick.engine.verbs.VerbShape;
-import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.protocol.Jsonl;
-import cc.jumpkick.resolver.ResolveObserver;
-import cc.jumpkick.run.BuildPlanListener;
-import cc.jumpkick.run.BuildPlanResult;
-import cc.jumpkick.run.BuildPlanView;
-import cc.jumpkick.run.TestSummary;
-import cc.jumpkick.runtime.BuildMetrics;
-import cc.jumpkick.runtime.BuildService;
-import cc.jumpkick.runtime.CacheBenefit;
-import cc.jumpkick.runtime.ChromeTimeline;
-import cc.jumpkick.runtime.ModuleOutcome;
-import cc.jumpkick.runtime.WorkspaceBuildListener;
-import cc.jumpkick.runtime.WorkspaceRequest;
-import cc.jumpkick.runtime.WorkspaceResult;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -63,7 +37,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -72,9 +45,9 @@ import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 
 /**
- * Resident engine server: single-instance election, socket accept loop, and hosted operations
- * (workspace/single builds, tests, explain) each on their own connection/{@link Session} with
- * plan events streamed over the wire. Runs until explicit stop or drain.
+ * Resident engine: election, accept loop, drain/close, and four-arm {@link VerbShape} dispatch.
+ * Verbs, journal, SSE, HTTP jobs, and listeners are collaborators — this class is the
+ * composition root.
  */
 public final class EngineServer implements AutoCloseable {
 
@@ -113,6 +86,9 @@ public final class EngineServer implements AutoCloseable {
     private final EngineVitals vitals;
     private final SsePublisher sse;
     private final LiveRuns liveRuns;
+    private final JournalWriter journalWriter;
+    private final EngineListeners listeners;
+    private final EngineHttpFront http;
     private final AtomicInteger activeBuildPlans = new AtomicInteger();
     private final AtomicInteger peakActiveBuildPlans = new AtomicInteger();
 
@@ -174,16 +150,15 @@ public final class EngineServer implements AutoCloseable {
      */
     private final JobSessions sessions = new JobSessions(requestIds::get);
 
-    private final JobEnvelope jobs = new JobEnvelope(new EnvelopeHost());
-
-    private final VerbRegistry verbs = VerbRegistry.standard(new VerbBridge());
+    private final JobEnvelope jobs;
+    private final VerbRegistry verbs;
 
     private final JkHistoryConfig historyConfig = JkHistoryConfig.resolve();
 
     private final BuildJournal journal = BuildJournal.current();
 
     /** The running invocation/step aggregates every finished build/test folds into. */
-    private Path metricsFile = BuildMetrics.defaultFile();
+    private Path metricsFile = cc.jumpkick.runtime.BuildMetrics.defaultFile();
 
     /** Exclusive same-fingerprint slots + in-flight holds. */
     private final InFlightBuilds inFlightBuilds = new InFlightBuilds();
@@ -226,12 +201,6 @@ public final class EngineServer implements AutoCloseable {
     private FileChannel genLockChannel;
     private ServerSocketChannel serverChannel;
     private ExecutorService connectionExecutor;
-
-    /** Non-null once the embedded HTTP server is up; stays null when disabled or bind failed. */
-    private HttpEngineServer httpServer;
-
-    /** Non-null when {@code [http]} is enabled but the server failed to start — surfaced in status. */
-    private volatile String httpError;
 
     /** Non-null only on the loopback-TCP transport (Windows) — see {@link EngineTransport}. */
     private String expectedToken;
@@ -303,6 +272,72 @@ public final class EngineServer implements AutoCloseable {
                         closeServerChannelQuietly();
                     }
                 });
+        this.journalWriter = new JournalWriter(
+                sessions, journal, historyConfig, () -> metricsFile, clockMillis, this.version, this.log);
+        this.sse = new SsePublisher(
+                sessions,
+                inFlightBuilds,
+                httpEvents,
+                this::httpServer,
+                clockMillis,
+                activeBuildPlans,
+                sseConnect,
+                journalWriter::accStepStart);
+        this.liveRuns = new LiveRuns(inFlightBuilds, sessions, httpEvents, sseConnect, clockMillis);
+        this.listeners = new EngineListeners(sessions, sse, journalWriter, inFlightBuilds, this::eventRequestId);
+        this.jobs = new JobEnvelope(new EngineEnvelopeHost(
+                this::tryStartBuildPlan,
+                this::abandonBuildPlanSlot,
+                this::noteBuildPlanFinished,
+                () -> draining,
+                requestIds,
+                clockMillis,
+                sessions,
+                sse,
+                journalWriter,
+                cacheGate,
+                currentEventRequestId,
+                inFlightBuilds,
+                activeBuildPlans,
+                idle,
+                this.log,
+                this.version,
+                historyConfig,
+                journal));
+        this.verbs = VerbRegistry.standard(new EngineVerbBridge(
+                this::eventRequestId,
+                sessions,
+                listeners,
+                jobs,
+                journalWriter,
+                sse,
+                idle,
+                cacheGate,
+                activeBuildPlans,
+                clockMillis,
+                journal,
+                historyConfig,
+                () -> metricsFile,
+                inFlightBuilds));
+        this.http = new EngineHttpFront(
+                httpConfig,
+                paths,
+                this.version,
+                httpEvents,
+                journal,
+                () -> metricsFile,
+                this.log,
+                this::statusSnapshot,
+                liveRuns,
+                peakActiveConnections,
+                this::liveConnectionCount,
+                jobs,
+                sessions,
+                sse,
+                journalWriter,
+                this::eventRequestId,
+                listeners,
+                this::cancelJob);
         this.vitals = new EngineVitals(
                 this.version,
                 this.pid,
@@ -312,18 +347,8 @@ public final class EngineServer implements AutoCloseable {
                 peakActiveBuildPlans,
                 activeConnections,
                 activeBuildPlans,
-                () -> httpServer,
+                this::httpServer,
                 aot::pid);
-        this.sse = new SsePublisher(
-                sessions,
-                inFlightBuilds,
-                httpEvents,
-                () -> httpServer,
-                clockMillis,
-                activeBuildPlans,
-                sseConnect,
-                this::accStepStart);
-        this.liveRuns = new LiveRuns(inFlightBuilds, sessions, httpEvents, sseConnect, clockMillis);
     }
 
     /**
@@ -448,7 +473,7 @@ public final class EngineServer implements AutoCloseable {
         // HTTP binds only after the displaced predecessor has been told to drain — it still holds the
         // fixed port until it exits, so binding earlier loses the handoff race with "Address already in
         // use" and (being advisory, never retried for the engine's life) sticks in `jk engine status`.
-        startHttpIfEnabled();
+        http.start();
         // leftover running=true journal rows from a killed engine cannot still be live.
         int abandoned = journal.abandonStaleRunning(version);
         if (abandoned > 0) {
@@ -607,7 +632,7 @@ public final class EngineServer implements AutoCloseable {
                                         draining = true;
                                     }
                                 }
-                                stopHttpQuietly(); // hand the Web UI port to the successor right away
+                                http.stopNow(); // hand the Web UI port to the successor right away
                                 return;
                             }
                             if (!Files.exists(ep) && orphanedAndUnused()) {
@@ -701,102 +726,100 @@ public final class EngineServer implements AutoCloseable {
     }
 
     private void serveConnection(BufferedReader reader, BufferedWriter writer) throws IOException {
-        {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                String type = EngineProtocol.typeOf(line);
-                if (type == null) {
-                    // A garbled REQUEST gets a typed refusal, never silence — a silently-dropped
-                    // request wedges a streaming client that is waiting for a terminal event.
-                    sendQuiet(
-                            writer,
-                            EngineProtocol.error(
-                                    EngineProtocol.ERR_PROTOCOL,
-                                    "unparseable request line (no \"type\" discriminator)"));
-                    continue;
-                }
-                // Downward-delegation gate for artifact-producing requests (engine-versioning §3).
-                if (DELEGATABLE.contains(type) && maybeDelegate(line, reader, writer)) {
-                    return; // served by the pinned version's child engine (see EngineDelegate)
-                }
-                HostedVerb verb = verbs.find(type);
-                if (verb != null) {
-                    if (dispatchVerb(verb, line, reader, writer)) return;
-                    continue;
-                }
-                switch (type) {
-                    case EngineProtocol.HELLO -> {
-                        int clientProto = Jsonl.intValue(line, "proto", EngineProtocol.PROTOCOL);
-                        if (clientProto > EngineProtocol.PROTOCOL) {
-                            // A newer-protocol client: this engine must not serve wire semantics
-                            // it postdates — the client reacts by taking over (spawn + drain).
-                            send(
-                                    writer,
-                                    EngineProtocol.error(
-                                            EngineProtocol.ERR_VERSION_SKEW,
-                                            "client speaks protocol " + clientProto + " but this engine speaks "
-                                                    + EngineProtocol.PROTOCOL + " — start a matching engine"));
-                            return;
-                        }
-                        send(writer, EngineProtocol.helloAck(version, pid, startedAtMillis, draining, buildId));
-                    }
-                    case EngineProtocol.PING -> send(writer, EngineProtocol.pong());
-                    case EngineProtocol.STATUS -> {
-                        cc.jumpkick.engine.http.StatusSnapshot s = statusSnapshot();
+        String line;
+        while ((line = reader.readLine()) != null) {
+            String type = EngineProtocol.typeOf(line);
+            if (type == null) {
+                // A garbled REQUEST gets a typed refusal, never silence — a silently-dropped
+                // request wedges a streaming client that is waiting for a terminal event.
+                sendQuiet(
+                        writer,
+                        EngineProtocol.error(
+                                EngineProtocol.ERR_PROTOCOL, "unparseable request line (no \"type\" discriminator)"));
+                continue;
+            }
+            // Downward-delegation gate for artifact-producing requests (engine-versioning §3).
+            if (EngineDelegate.DELEGATABLE.contains(type)
+                    && EngineDelegate.maybeDelegate(jobMode, version, line, reader, writer, paths.log(), log)) {
+                return; // served by the pinned version's child engine (see EngineDelegate)
+            }
+            HostedVerb verb = verbs.find(type);
+            if (verb != null) {
+                if (dispatchVerb(verb, line, reader, writer)) return;
+                continue;
+            }
+            switch (type) {
+                case EngineProtocol.HELLO -> {
+                    int clientProto = Jsonl.intValue(line, "proto", EngineProtocol.PROTOCOL);
+                    if (clientProto > EngineProtocol.PROTOCOL) {
+                        // A newer-protocol client: this engine must not serve wire semantics
+                        // it postdates — the client reacts by taking over (spawn + drain).
                         send(
                                 writer,
-                                EngineProtocol.statusAck(
-                                        s.version(),
-                                        s.pid(),
-                                        s.startedAtMillis(),
-                                        s.activeRequests(),
-                                        s.activeBuildPlans(),
-                                        draining,
-                                        s.heapUsedBytes(),
-                                        s.heapCommittedBytes(),
-                                        s.heapMaxBytes(),
-                                        s.rssBytes(),
-                                        s.aotTrainingPid(),
-                                        httpServer != null ? httpServer.url() : null,
-                                        httpError,
-                                        httpServer != null && httpServer.mcpEnabled(),
-                                        s.peakActiveRequests(),
-                                        s.peakActiveBuildPlans()));
-                    }
-                    case EngineProtocol.SHUTDOWN -> {
-                        boolean force = cc.jumpkick.plugin.protocol.Jsonl.bool(line, "force", false);
-                        // Takeover already repointed the endpoint before sending shutdown — kill the
-                        // engine AOT sidecar so it cannot re-publish engine-<old-v>-* (JK-1452).
-                        // Voluntary `jk engine stop` still names us; leave train to finish then.
-                        if (!endpointNamesThisEngine()) {
-                            aot.stopQuietly();
-                        }
-                        synchronized (lifecycleLock) {
-                            int jobs = activeBuildPlans.get();
-                            if (force || jobs == 0) {
-                                // Immediate: no in-flight jobs, or an explicit force — close the listener
-                                // now so run returns and the JVM exits cleanly (AOT still assembles when
-                                // we remain primary).
-                                send(writer, EngineProtocol.bye(jobs, false));
-                                shuttingDown = true;
-                                closeServerChannelQuietly();
-                            } else {
-                                // Graceful drain: keep the listener open (so new commands get a clear
-                                // "shutting down" handshake and in-flight jobs finish); the last job to
-                                // complete triggers the clean exit (see maybeIdleBoundary).
-                                draining = true;
-                                send(writer, EngineProtocol.bye(jobs, true));
-                            }
-                        }
-                        stopHttpQuietly(); // hand the Web UI port to the successor right away
+                                EngineProtocol.error(
+                                        EngineProtocol.ERR_VERSION_SKEW,
+                                        "client speaks protocol " + clientProto + " but this engine speaks "
+                                                + EngineProtocol.PROTOCOL + " — start a matching engine"));
                         return;
                     }
-                    case EngineProtocol.CANCEL_REQUEST -> handleCancelRequest(line, writer);
-                    default ->
-                        sendQuiet(
-                                writer,
-                                EngineProtocol.error(EngineProtocol.ERR_PROTOCOL, "unknown request type: " + type));
+                    send(writer, EngineProtocol.helloAck(version, pid, startedAtMillis, draining, buildId));
                 }
+                case EngineProtocol.PING -> send(writer, EngineProtocol.pong());
+                case EngineProtocol.STATUS -> {
+                    cc.jumpkick.engine.http.StatusSnapshot s = statusSnapshot();
+                    HttpEngineServer hs = http.server();
+                    send(
+                            writer,
+                            EngineProtocol.statusAck(
+                                    s.version(),
+                                    s.pid(),
+                                    s.startedAtMillis(),
+                                    s.activeRequests(),
+                                    s.activeBuildPlans(),
+                                    draining,
+                                    s.heapUsedBytes(),
+                                    s.heapCommittedBytes(),
+                                    s.heapMaxBytes(),
+                                    s.rssBytes(),
+                                    s.aotTrainingPid(),
+                                    hs != null ? hs.url() : null,
+                                    http.error(),
+                                    hs != null && hs.mcpEnabled(),
+                                    s.peakActiveRequests(),
+                                    s.peakActiveBuildPlans()));
+                }
+                case EngineProtocol.SHUTDOWN -> {
+                    boolean force = cc.jumpkick.plugin.protocol.Jsonl.bool(line, "force", false);
+                    // Takeover already repointed the endpoint before sending shutdown — kill the
+                    // engine AOT sidecar so it cannot re-publish engine-<old-v>-* (JK-1452).
+                    // Voluntary `jk engine stop` still names us; leave train to finish then.
+                    if (!endpointNamesThisEngine()) {
+                        aot.stopQuietly();
+                    }
+                    synchronized (lifecycleLock) {
+                        int n = activeBuildPlans.get();
+                        if (force || n == 0) {
+                            // Immediate: no in-flight jobs, or an explicit force — close the listener
+                            // now so run returns and the JVM exits cleanly (AOT still assembles when
+                            // we remain primary).
+                            send(writer, EngineProtocol.bye(n, false));
+                            shuttingDown = true;
+                            closeServerChannelQuietly();
+                        } else {
+                            // Graceful drain: keep the listener open (so new commands get a clear
+                            // "shutting down" handshake and in-flight jobs finish); the last job to
+                            // complete triggers the clean exit (see maybeIdleBoundary).
+                            draining = true;
+                            send(writer, EngineProtocol.bye(n, true));
+                        }
+                    }
+                    http.stopNow(); // hand the Web UI port to the successor right away
+                    return;
+                }
+                case EngineProtocol.CANCEL_REQUEST -> handleCancelRequest(line, writer);
+                default ->
+                    sendQuiet(
+                            writer, EngineProtocol.error(EngineProtocol.ERR_PROTOCOL, "unknown request type: " + type));
             }
         }
     }
@@ -817,7 +840,7 @@ public final class EngineServer implements AutoCloseable {
                 yield true;
             }
             case VerbShape.SyncRead() -> {
-                verb.run(line, Session.defaults().cancel(), writer);
+                verb.run(line, cc.jumpkick.config.Session.defaults().cancel(), writer);
                 yield false;
             }
             case VerbShape.Lifecycle() ->
@@ -858,13 +881,6 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
-     * Publish an <strong>inflicted</strong> build/activity frame to the dashboard SSE hub (JK-1499).
-     * Call only when the engine already mutated user-visible state — never batch build progress on
-     * the sampled vitals timer ({@link cc.jumpkick.engine.http.LiveVitals}). No-op without
-     * subscribers. Sampled chrome ({@code status}/{@code cache}) is separate: change-gated and
-     * nudged only on request start/finish so Builds Running / storage totals stay timely.
-     */
-    /**
      * Orders wire-event publication against dashboard SSE connect hydration (JK-1837).
      * Publishers take the read side around each publish (accumulation happens strictly before,
      * in program order); a connecting dashboard takes the write side around snapshot capture →
@@ -876,621 +892,14 @@ public final class EngineServer implements AutoCloseable {
     private final java.util.concurrent.locks.ReentrantReadWriteLock sseConnect =
             new java.util.concurrent.locks.ReentrantReadWriteLock();
 
-    private void maybeIdleBoundary() {
-        idle.maybeIdleBoundary();
-    }
-
-    private void maybeIdleGc() {
-        idle.maybeIdleGc();
-    }
-
-    private void maybeEnqueuePrune(Path cache) {
-        idle.maybeEnqueuePrune(cache);
-    }
-
-    private boolean scheduleHostWarmupIfNeeded(boolean force) {
-        return idle.scheduleHostWarmup(force);
-    }
-
-    private void releaseExclusiveSlot() {
-        long id = eventRequestId();
-        if (id > 0) inFlightBuilds.release(id);
-    }
-
-    /** Single-flight latch for {@link #runIdleHousekeeping} — see the exactly-once note there. */
-    /**
-     * Answer {@link EngineProtocol#EXEC_PLAN_REQUEST}: a complete execution plan (run/dev argv,
-     * install layout, aot-cache layout) — the engine decides, the client executes. Synchronous,
-     * read-only, inline.
-     */
-    private static final java.util.Set<String> DELEGATABLE = java.util.Set.of(
-            EngineProtocol.BUILD_REQUEST,
-            EngineProtocol.TEST_REQUEST,
-            EngineProtocol.SINGLE_BUILD_REQUEST,
-            EngineProtocol.COMPILE_REQUEST,
-            EngineProtocol.NATIVE_REQUEST,
-            EngineProtocol.TRAIN_REQUEST,
-            EngineProtocol.IMAGE_REQUEST,
-            EngineProtocol.INSTALL_REQUEST,
-            EngineProtocol.PUBLISH_REQUEST);
-
-    /**
-     * If the project pins an older jk, run that version as a job child; refuse newer pins.
-     * Same version/no pin → serve locally. Job children never re-delegate.
-     */
-    private boolean maybeDelegate(String requestLine, BufferedReader reader, BufferedWriter writer) {
-        if (jobMode) return false; // a job child serves what it was handed — never re-routes
-        String entryDir = cc.jumpkick.plugin.protocol.Jsonl.str(requestLine, "dir");
-        if (entryDir == null) return false;
-        String pin = EngineDelegate.pinnedVersionDiffering(Path.of(entryDir), version);
-        if (pin == null) return false;
-        if (EngineDelegate.pinIsNewer(pin, version)) {
-            sendQuiet(
-                    writer,
-                    EngineProtocol.error(
-                            EngineProtocol.ERR_VERSION_SKEW,
-                            "this build pins jk " + pin + " but the engine is "
-                                    + version + " — run that project's wrapper (./jk) or `jk self update` to upgrade;"
-                                    + " the newer engine takes over without interrupting running builds"));
-            return true;
-        }
-        try {
-            EngineDelegate.runAsChild(pin, requestLine, reader, writer, paths.log(), log);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            sendQuiet(writer, EngineProtocol.requestFailed("interrupted delegating to jk " + pin));
-        } catch (IOException e) {
-            sendQuiet(writer, requestFailedLine(null, e));
-        }
-        return true;
-    }
-
-    // ---- hosted worker commands ---------------------------------------------------------------------
-
-    // ---- hosted plan commands -------------------------------------------------------------------
-
-    // ---- hosted long-tail commands ------------------------------------------------------------------
-
-    /**
-     * Reconstruct the request's {@link Session} from the flat config fields every lock/sync/update
-     * request carries ({@code offline}/{@code force}/{@code verbose}, plus sync's {@code refresh})
-     * — the same fields {@link cc.jumpkick.engine.verbs.WorkspaceBuildVerb} decodes inline.
-     */
-    private static Session resolveSession(String requestLine, Session.CancelToken cancelToken, boolean refresh) {
-        Path entryDir = Path.of(Jsonl.str(requestLine, "dir"));
-        Path cache = Path.of(Jsonl.str(requestLine, "cache"));
-        JkConfig config = new JkConfig(
-                Optional.empty(),
-                Optional.of(Jsonl.bool(requestLine, "offline", false)),
-                Optional.of(Jsonl.bool(requestLine, "rebuild", false)),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.of(Jsonl.bool(requestLine, "verbose", false)),
-                Optional.empty(),
-                Optional.of(Jsonl.bool(requestLine, "force", false) || refresh),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty());
-        return Session.defaults()
-                .withConfig(config)
-                .withWorkingDir(entryDir)
-                .withCacheDir(cache)
-                .withCancel(cancelToken)
-                .withJvm(EngineProtocol.jvmTuning(requestLine))
-                // The variant selection rides the session: every plan factory's Inputs defaults
-                // from it, so compile/install/native/publish/... are parameterized generically.
-                .withVariant(EngineProtocol.variantOf(requestLine), EngineProtocol.clientEnvOf(requestLine))
-                .withAssemblyOverride(EngineProtocol.assemblyOverrideOf(requestLine));
-    }
-
-    /** The optional {@code repoUrl} request field ({@code --repo-url} overrides), or {@code null}. */
-    private static java.net.URI repoUrlOf(String requestLine) {
-        String s = Jsonl.str(requestLine, "repoUrl");
-        return s != null ? java.net.URI.create(s) : null;
-    }
-
-    /** CLI workspace listener: JSONL on {@code writer} plus SSE / journal hooks. */
-    /** CLI workspace listener: JSONL on {@code writer} plus SSE / journal hooks. */
-    private WorkspaceBuildListener wireListener(BufferedWriter writer, String workspaceDir) {
-        return workspaceListener(workspaceDir, new WireEventSink(writer), writer);
-    }
-
-    /** HTTP/MCP workspace listener: hooks only — the dashboard has no CLI writer. */
-    private WorkspaceBuildListener hubListener(String workspaceDir) {
-        return workspaceListener(workspaceDir, NoopEventSink.INSTANCE, null);
-    }
-
-    private WorkspaceBuildListener workspaceListener(
-            String workspaceDir, EventSink sink, java.io.BufferedWriter writer) {
-        long eventRequestId = eventRequestId();
-        if (eventRequestId > 0 && workspaceDir != null) sessions.progressRoot(eventRequestId, workspaceDir);
-        return new BridgingWorkspaceListener(workspaceDir, sink, workspaceHooks(eventRequestId, writer));
-    }
-
-    private BridgingWorkspaceListener.Hooks workspaceHooks(long rid, java.io.BufferedWriter writer) {
-        return new BridgingWorkspaceListener.Hooks() {
-            @Override
-            public void preflight(String stage, int done, int total) {
-                if (rid > 0) {
-                    sessions.tracker(rid).preflight(stage, done, total);
-                    sse.emitWorkspaceProgress(rid, writer, true);
-                }
-            }
-
-            @Override
-            public void workModel(cc.jumpkick.runtime.WorkModel model) {
-                if (rid <= 0) return;
-                sessions.remaining(rid, model.toRemainingWork());
-                sessions.tracker(rid).seedWall(model.R0(), model.costs().size());
-                sse.emitWorkspaceProgress(rid, writer, true);
-            }
-
-            @Override
-            public void recordWeight(String dir, long weight) {
-                if (rid > 0) sessions.weights(rid).put(dir, weight);
-            }
-
-            @Override
-            public void planWeights(long totalWeight, int modules) {
-                if (rid > 0) {
-                    sessions.tracker(rid).calibrate(totalWeight, modules);
-                    sse.emitWorkspaceProgress(rid, writer, true);
-                }
-                sse.publishPlan(rid, totalWeight);
-            }
-
-            @Override
-            public void moduleGraph(java.util.Map<Path, java.util.Set<Path>> prereqs) {
-                accModuleGraph(rid, prereqs);
-            }
-
-            @Override
-            public void eta(long remainingMs) {
-                sse.publishEta(rid, remainingMs);
-            }
-
-            @Override
-            public void moduleStarted(String dir, String coord) {
-                sse.publishModuleStart(rid, dir, coord);
-            }
-
-            @Override
-            public void moduleFinished(ModuleOutcome o) {
-                accModule(rid, o);
-                sse.publishModuleFinish(rid, o.dir().toString(), o.coord(), o.success(), o.millis(), o.didWork());
-            }
-
-            @Override
-            public void trackModule(String dir, BuildPlanView view) {
-                sse.trackModuleBuildPlan(rid, dir, view, writer, false);
-            }
-
-            @Override
-            public void trackModuleComplete(String dir, long lastDen) {
-                sse.trackModuleComplete(rid, dir, lastDen, writer);
-            }
-
-            @Override
-            public BridgingPlanListener.Hooks planHooks(String dir) {
-                return EngineServer.this.planHooks(rid, dir, writer, false);
-            }
-
-            @Override
-            public void testsFrom(cc.jumpkick.run.BuildPlan plan) {
-                accTests(
-                        rid,
-                        plan.get(cc.jumpkick.runtime.BuildPlanner.TEST_RESULT).orElse(null));
-            }
-        };
-    }
-
-    private BridgingPlanListener.Hooks planHooks(
-            long rid, String dir, java.io.BufferedWriter writer, boolean releaseSlotOnFinish) {
-        return new BridgingPlanListener.Hooks() {
-            @Override
-            public void planProgress(String d, BuildPlanView view) {
-                sse.publishBuildPlanProgress(rid, d, view);
-            }
-
-            @Override
-            public void stepStarted(String d, String step, String phase) {
-                sse.publishStepStart(rid, d, step, phase);
-            }
-
-            @Override
-            public void stepFinished(String d, String step, String phase, String status, long millis) {
-                accStepFinish(rid, d, step, phase, status, millis);
-                sse.publishStepFinish(rid, d, step, phase, status, millis);
-            }
-
-            @Override
-            public void labeled(String d, String step, String text) {
-                sse.publishLabel(rid, d, step, text);
-            }
-
-            @Override
-            public void output(String d, String step, String line) {
-                sse.publishOutput(rid, d, step, line);
-            }
-
-            @Override
-            public void planFinished(String d, BuildPlanResult result) {
-                flushTimelineToClient(rid, writer);
-                if (releaseSlotOnFinish) inFlightBuilds.release(rid);
-                accBuildPlanFinish(rid, d, result);
-                sse.publishBuildPlanFinish(rid, d, result.success());
-                if (!result.success()) sse.publishDiagnostics(rid, d, result.errors());
-            }
-        };
-    }
-
     /** The current thread's hosted-request id for dashboard events; {@code -1} outside a request. */
     private long eventRequestId() {
         Long id = currentEventRequestId.get();
         return id != null ? id : -1;
     }
 
-    private void registerAccumulator(long requestId, String kind, String dir, String trigger) {
-        registerAccumulator(requestId, kind, dir, trigger, false, false, 0L, null);
-    }
-
-    private void registerAccumulator(long requestId, String kind, String dir, String trigger, boolean noTimeline) {
-        registerAccumulator(requestId, kind, dir, trigger, noTimeline, false, 0L, null);
-    }
-
-    private void registerAccumulator(
-            long requestId,
-            String kind,
-            String dir,
-            String trigger,
-            boolean noTimeline,
-            boolean rebuild,
-            long buildNumber,
-            String journalId) {
-        if (!BuildHistoryKinds.isBuildLike(kind)) return;
-        Path projectDir = null;
-        try {
-            if (dir != null && !dir.isBlank()) projectDir = Path.of(dir);
-        } catch (RuntimeException ignored) {
-            projectDir = null;
-        }
-        ChromeTimeline timeline = ChromeTimeline.open(projectDir, noTimeline);
-        sessions.accumulator(
-                requestId,
-                new BuildAccumulator(kind, dir, coordOf(dir), trigger, timeline, rebuild, buildNumber, journalId));
-    }
-
-    /** The project's {@code group:name}, or {@code null} when its {@code jk.toml} doesn't parse. */
-    private static String coordOf(String dir) {
-        try {
-            var project = JkBuildParser.parse(Path.of(dir).resolve("jk.toml")).project();
-            return project.group() + ":" + project.name();
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private void accModule(long requestId, ModuleOutcome o) {
-        BuildAccumulator a = sessions.accumulator(requestId);
-        if (a != null) a.addModule(o);
-    }
-
-    private void accModuleGraph(long requestId, java.util.Map<Path, java.util.Set<Path>> prereqs) {
-        BuildAccumulator a = sessions.accumulator(requestId);
-        if (a != null) a.setModuleEdges(prereqs);
-    }
-
-    private void accBuildPlanFinish(long requestId, String dir, BuildPlanResult result) {
-        BuildAccumulator a = sessions.accumulator(requestId);
-        if (a != null) a.addBuildPlan(dir, result);
-    }
-
-    /**
-     * Record one finished step under its module dir — the same {@code stepFinish} signal the
-     * dashboard renders, so the journal's per-module chains match the live cards exactly (a
-     * workspace module's {@code BuildPlanResult.steps} isn't reliably populated, so we capture the
-     * events directly).
-     */
-    private void accStepStart(long requestId, String dir, String step, String phase) {
-        BuildAccumulator a = sessions.accumulator(requestId);
-        if (a != null) a.noteTaskStart(dir, step, phase);
-    }
-
-    private void accStepFinish(long requestId, String dir, String step, String phase, String status, long millis) {
-        BuildAccumulator a = sessions.accumulator(requestId);
-        if (a != null) a.addTask(dir, step, phase, status, millis);
-    }
-
-    private void accTests(long requestId, TestSummary tests) {
-        BuildAccumulator a = sessions.accumulator(requestId);
-        if (a != null && tests != null) a.addTests(tests);
-    }
-
-    private void accOutcome(long requestId, boolean success, int exitCode) {
-        BuildAccumulator a = sessions.accumulator(requestId);
-        if (a != null) a.setOutcome(success, exitCode);
-    }
-
-    /**
-     * The cache's estimated wall-clock benefit for a finished run (two-level critical path), or
-     * {@code null} for a build that didn't succeed cleanly. Baselines come from {@link BuildMetrics}
-     * as of before this run's own fold — a cache-hit step's cold cost is its prior successful-run
-     * average (per-project tier, then the global-per-step tier); a step with no history contributes
-     * ~0 and lowers coverage. See {@link CacheBenefit}.
-     */
-    private CacheBenefit.Result computeBenefit(BuildAccumulator a, long millis) {
-        if (!a.succeeded() || a.wasCancelled()) return null;
-        BuildMetrics metrics = BuildMetrics.load(metricsFile);
-        java.util.function.BiFunction<String, String, java.util.OptionalLong> baseline = (dir, step) -> {
-            java.util.Optional<BuildMetrics.Entry> e = metrics.step(dir, step).filter(x -> x.ok().count() > 0);
-            if (e.isEmpty()) e = metrics.step("", step).filter(x -> x.ok().count() > 0);
-            return e.map(x -> java.util.OptionalLong.of(x.ok().avgMillis())).orElse(java.util.OptionalLong.empty());
-        };
-        return CacheBenefit.compute(a.benefitModules(), a.benefitModuleEdges(), millis, baseline);
-    }
-
-    /**
-     * Persist the finished build to the journal — ungated by dashboard subscribers, so every build
-     * is captured whether or not a browser is watching, and survives an engine restart. Best-effort:
-     * a failure here is logged, never propagated (journaling must not affect the build's outcome).
-     */
-    private void writeJournal(long requestId, boolean cancelled, long millis) {
-        writeJournal(requestId, cancelled, millis, null);
-    }
-
-    private void writeJournal(long requestId, boolean cancelled, long millis, BufferedWriter writer) {
-        BuildAccumulator a = sessions.takeAccumulator(requestId);
-        if (a == null) return;
-        try {
-            long finishedAt = clockMillis.getAsLong();
-            String commit = gitCommit(a.dir()); // best-effort short SHA of the project's HEAD
-            // Prefer an explicit cancel stamp (BUILD_CANCEL / deadline / HTTP cancel) even if the
-            // caller's cancelled flag lagged — truncated wall must never train ok history for ETA.
-            boolean cancelledEffective = cancelled || a.wasCancelled();
-            // Estimate the cache's wall-clock benefit from baselines as of BEFORE this run's fold.
-            CacheBenefit.Result benefit = computeBenefit(a, millis);
-            BuildRecord record = a.toRecord(finishedAt, cancelledEffective, millis, version, commit, benefit);
-            // Start-time number only — per-run metrics.toml + MetricsHarvest train ETA aggregates.
-            long buildNumber = a.buildNumber();
-            if (buildNumber > 0) record = record.withBuildNumber(buildNumber);
-            // Chrome timeline (web / late path): same step durations as metrics. Socket clients
-            // usually already flushed via flushTimelineToClient before terminal events.
-            a.flushTimeline().ifPresent(path -> {
-                if (writer != null) sendQuiet(writer, EngineProtocol.timeline(path.toString()));
-            });
-            if (!historyConfig.enabled()) return;
-            Path dir = Path.of(a.dir());
-            // Snapshot paths mirror BuildLayout.markdownTestResults and the project's jk-lock.toml; each
-            // is copied only if it exists at finish, so a skip-tests or lock-less build just omits it.
-            BuildJournal.Snapshot snapshot = new BuildJournal.Snapshot(
-                    dir.resolve("target").resolve("reports").resolve("test-results.md"),
-                    cc.jumpkick.lock.LockPaths.lockFile(dir),
-                    a.diagnosticsText());
-            // Synthetic optimize/calibrate: do not leave a durable project home (JK-1390).
-            if (record.synthetic()) {
-                String jid = a.journalId();
-                if (jid != null && !jid.isBlank()) {
-                    journal.delete(jid, record.coord(), record.dir());
-                }
-                journal.purgeProject(record.coord(), record.dir());
-                return;
-            }
-            String jid = a.journalId();
-            if (jid != null && !jid.isBlank()) {
-                // Complete the in-flight stub (same history id / build number) —.
-                if (!journal.complete(jid, record, snapshot)) {
-                    journal.append(record, snapshot);
-                }
-            } else {
-                journal.append(record, snapshot);
-            }
-        } catch (RuntimeException e) {
-            log.accept("jk engine: build journal append failed: " + e);
-        }
-    }
-
-    /**
-     * The project's git HEAD as a short SHA, or {@code null} when the dir isn't a git repo, git isn't
-     * on PATH, or the call errors/times out. Best-effort and non-blocking-ish (1s cap): a commit stamp
-     * is a nice-to-have on the history record, never worth failing or stalling journaling.
-     */
-    private static String gitCommit(String dir) {
-        if (dir == null || dir.isEmpty()) return null;
-        Process p = null;
-        try {
-            // stderr is discarded at the OS level and stdout drained on a side thread, so the 1s
-            // cap actually holds. Reading stdout to EOF inline deadlocks on a repo where git is
-            // chatty enough to fill its stderr pipe (dubious-ownership, many warnings): git can't
-            // exit, stdout never sees EOF, and the waitFor below is never reached — on the journal
-            // teardown path that hangs the whole request (JK-1473).
-            p = new ProcessBuilder("git", "-C", dir, "rev-parse", "--short", "HEAD")
-                    .redirectError(ProcessBuilder.Redirect.DISCARD)
-                    .start();
-            Process proc = p;
-            StringBuilder sb = new StringBuilder();
-            Thread drainer = new Thread(
-                    () -> {
-                        try (var in = proc.getInputStream()) {
-                            sb.append(new String(in.readAllBytes(), StandardCharsets.UTF_8));
-                        } catch (IOException ignored) {
-                            // killed mid-read — no stamp
-                        }
-                    },
-                    "jk-git-commit-probe");
-            drainer.setDaemon(true);
-            drainer.start();
-            if (!p.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)) {
-                p.destroyForcibly();
-                return null;
-            }
-            drainer.join(200);
-            String out = sb.toString().trim();
-            return p.exitValue() == 0 && !out.isEmpty() ? out : null;
-        } catch (IOException | InterruptedException | RuntimeException e) {
-            if (e instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-                if (p != null) p.destroyForcibly();
-            }
-            return null;
-        }
-    }
-
-    /**
-     * Map a finished run's record into the running-metrics input shape: the invocation outcome plus
-     * every per-module step (workspace) and top-level step (single-plan, whose steps carry the
-     * record's own dir). Keeps journal types out of {@code cc.jumpkick.runtime}.
-     */
-    private static BuildMetrics.Outcome toOutcome(BuildRecord r) {
-        return toOutcome(r, false);
-    }
-
-    private static BuildMetrics.Outcome toOutcome(BuildRecord r, boolean rebuildFlag) {
-        java.util.ArrayList<BuildMetrics.StepSample> steps = new java.util.ArrayList<>();
-        for (BuildRecord.Task p : r.steps()) {
-            steps.add(new BuildMetrics.StepSample(r.dir(), p.name(), p.status(), p.millis()));
-        }
-        for (BuildRecord.Module m : r.modules()) {
-            for (BuildRecord.Task p : m.steps()) {
-                steps.add(new BuildMetrics.StepSample(m.dir(), p.name(), p.status(), p.millis()));
-            }
-        }
-        // shape-aware metrics key so rebuild vs incremental priors stay separate.
-        // Prefer the accumulator's rebuild flag (set from the wire request) over ambient session
-        // journal write often runs after SessionContext.where has exited.
-        String kind = r.kind() == null ? "build" : r.kind();
-        String dir = r.dir() == null ? "" : r.dir();
-        if ("build".equals(kind) || kind.startsWith("build")) {
-            boolean rebuild = rebuildFlag
-                    || SessionContext.current().config().rebuildOr(false)
-                    || SessionContext.current().config().forceOr(false);
-            int dirty = r.modules() == null ? 0 : r.modules().size();
-            // Single-module plan records often have empty modules list — treat as 1 when steps ran.
-            if (dirty == 0 && r.steps() != null && !r.steps().isEmpty()) dirty = 1;
-            var shape = new BuildService.HistoryShape(rebuild, dirty);
-            kind = shape.kind();
-            if (!dir.isEmpty()) dir = shape.dirKey(Path.of(dir));
-        }
-        return new BuildMetrics.Outcome(kind, dir, r.coord(), r.success(), r.cancelled(), r.millis(), steps);
-    }
-
-    /**
-     * A {@code history-diag} replay line carrying the FULL persisted shape — the journal keeps
-     * module/class/method/stack/snippet/worker (JK-1869) and replay must not flatten a failure
-     * back to task+message (JK-1909).
-     */
-    public static String historyDiagLine(BuildRecord.Diag d) {
-        var o = JsonOut.object()
-                .put("type", EngineProtocol.HISTORY_DIAG)
-                .put("severity", d.severity())
-                .put("task", d.step())
-                .put("code", d.code())
-                .put("message", d.message())
-                .put("test", d.test())
-                .put("exceptionClass", d.exceptionClass());
-        if (d.module() != null && !d.module().isEmpty()) o.put("module", d.module());
-        if (d.engine() != null && !d.engine().isEmpty()) o.put("engine", d.engine());
-        if (d.className() != null && !d.className().isEmpty()) o.put("class", d.className());
-        if (d.method() != null && !d.method().isEmpty()) o.put("method", d.method());
-        if (d.stack() != null && !d.stack().isEmpty()) o.put("stack", d.stack());
-        if (d.file() != null && !d.file().isEmpty()) o.put("file", d.file());
-        if (d.line() > 0) o.put("line", d.line());
-        if (d.snippetStart() > 0) o.put("snippetStart", d.snippetStart());
-        if (d.snippet() != null && !d.snippet().isEmpty()) o.putStrings("snippet", d.snippet());
-        if (d.worker() > 0) o.put("worker", d.worker());
-        return o.toString();
-    }
-
-    /**
-     * Translate every {@link BuildPlanListener} callback for one plan into a {@code dir}-tagged wire
-     * event. {@code realBuildPlan} is non-null only for {@link #runTest}/{@link #runSingleBuild} — its
-     * {@code TEST_RESULT}/{@code BUILD_OUTCOME} keys (populated by the run-tests/parse-build steps)
-     * ride along on the {@link EngineProtocol#BUILDPLAN_FINISH} message so the client can render its
-     * summary line before it even sees the terminal message; {@code null} for a plain per-module
-     * workspace-build plan (where neither applies at the module level).
-     */
-    private BuildPlanListener wireBuildPlanListener(
-            String dir, BufferedWriter writer, cc.jumpkick.run.BuildPlan realBuildPlan) {
-        // realBuildPlan non-null ⇒ single-project run: release the exclusive slot before the
-        // terminal plan-finish so a reconnect is not rejected as already-running.
-        return hostedPlanListener(
-                dir,
-                new WireEventSink(writer),
-                writer,
-                result -> encodePlanFinish(dir, realBuildPlan, result),
-                realBuildPlan != null);
-    }
-
-    /**
-     * As {@link #wireBuildPlanListener(String, BufferedWriter, cc.jumpkick.run.BuildPlan)}, but with a
-     * pluggable terminal encoder: {@code finishEncoder} maps the finished {@link BuildPlanResult} to the
-     * {@link EngineProtocol#BUILDPLAN_FINISH} message to send (after the {@link
-     * EngineProtocol#BUILDPLAN_DIAGNOSTIC} burst) — how lock/update/sync ride their summary counts on the
-     * same message the build/test plans already send.
-     */
-    private BuildPlanListener wireBuildPlanListener(
-            String dir, BufferedWriter writer, java.util.function.Function<BuildPlanResult, String> finishEncoder) {
-        return hostedPlanListener(dir, new WireEventSink(writer), writer, finishEncoder, false);
-    }
-
-    /** HTTP lock: same hooks as CLI, no JSONL writer. */
-    private BuildPlanListener singleBuildPlanHubListener(String dir) {
-        return hostedPlanListener(dir, NoopEventSink.INSTANCE, null, null, false);
-    }
-
-    private BuildPlanListener hostedPlanListener(
-            String dir,
-            EventSink sink,
-            java.io.BufferedWriter writer,
-            java.util.function.Function<BuildPlanResult, String> finishEncoder,
-            boolean releaseSlotOnFinish) {
-        return new CoalescingBuildPlanListener(new BridgingPlanListener(
-                dir, sink, planHooks(eventRequestId(), dir, writer, releaseSlotOnFinish), finishEncoder));
-    }
-
-    /**
-     * Terminal {@code plan-finish} for a single-project build/test. Wire {@code cancelled} is
-     * user/deadline cancel only — {@link BuildPlanResult#cancelled()} is also set on cooperative
-     * fail-fast and must not look like the user cancelled the job.
-     */
-    private static String encodePlanFinish(
-            String dir, cc.jumpkick.run.BuildPlan realBuildPlan, BuildPlanResult result) {
-        TestSummary testResult = realBuildPlan == null
-                ? null
-                : realBuildPlan
-                        .get(cc.jumpkick.runtime.BuildPlanner.TEST_RESULT)
-                        .orElse(null);
-        String buildOutcome = realBuildPlan == null
-                ? null
-                : realBuildPlan
-                        .get(cc.jumpkick.runtime.BuildPlanner.BUILD_OUTCOME)
-                        .orElse(null);
-        boolean cancelled = result.userCancelled();
-        if (testResult == null && buildOutcome == null) {
-            return EngineProtocol.planFinish(dir, result.success(), cancelled);
-        }
-        return EngineProtocol.withCancelled(
-                EngineProtocol.planFinish(
-                        dir,
-                        result.success(),
-                        buildOutcome,
-                        testResult != null ? testResult.total() : -1,
-                        testResult != null ? testResult.succeeded() : -1,
-                        testResult != null ? testResult.failed() : -1,
-                        testResult != null ? testResult.skipped() : -1),
-                cancelled);
-    }
-
-    /** Write chrome timeline (if any) and notify the socket client. Idempotent per request. */
-    private void flushTimelineToClient(long requestId, BufferedWriter writer) {
-        BuildAccumulator a = sessions.accumulator(requestId);
-        if (a == null) return;
-        a.flushTimeline().ifPresent(path -> {
-            if (writer != null) sendQuiet(writer, EngineProtocol.timeline(path.toString()));
-        });
-    }
-
     /** Best-effort send: a write failure means the client is gone — nothing more to do for this event. */
-    static void sendQuiet(BufferedWriter writer, String line) {
+    public static void sendQuiet(BufferedWriter writer, String line) {
         try {
             send(writer, line);
         } catch (IOException ignored) {
@@ -1502,41 +911,14 @@ public final class EngineServer implements AutoCloseable {
         return EventRedaction.redactEnv(dir, text);
     }
 
-    static cc.jumpkick.run.TestFailureInfo redactFailure(String dir, cc.jumpkick.run.TestFailureInfo f) {
-        return EventRedaction.redactFailure(dir, f);
-    }
-
-    /** {@link EngineProtocol#requestFailed} with {@code .env} values masked. */
-    private static String requestFailedLine(String dir, Throwable e) {
-        return EngineProtocol.requestFailed(redactEnv(dir, String.valueOf(e.getMessage())));
-    }
-
-    private static String requestFailedLine(String dir, String message) {
-        return EngineProtocol.requestFailed(redactEnv(dir, message));
-    }
-
-    /**
-     * Heartbeat interval while an async job runs. Default 30s; {@code 0} disables.
-     * Env: {@code JK_ENGINE_HEARTBEAT_MS}.
-     */
     static long jobHeartbeatMs() {
         return JobEnvelope.jobHeartbeatMs();
     }
 
-    /**
-     * Optional per-request wall deadline /. Default {@code 0} = off (huge
-     * monorepos). Env: {@code JK_ENGINE_JOB_DEADLINE_MS}. When set, the engine cancels the job,
-     * {@code destroyForcibly}s registered worker processes, interrupts the runner, and bounds the
-     * connection join to deadline + {@link #jobDeadlineGraceMs}.
-     */
     static long jobDeadlineMs() {
         return JobEnvelope.jobDeadlineMs();
     }
 
-    /**
-     * Grace after the wall deadline for the runner to unwind after worker kill. Default
-     * 30s. Env: {@code JK_ENGINE_JOB_DEADLINE_GRACE_MS}.
-     */
     static long jobDeadlineGraceMs() {
         return JobEnvelope.jobDeadlineGraceMs();
     }
@@ -1545,188 +927,8 @@ public final class EngineServer implements AutoCloseable {
         activeConnections.decrementAndGet();
     }
 
-    /** Start embedded HTTP when {@code [http]} is present; bind failure is advisory only. */
-    private void startHttpIfEnabled() {
-        if (httpConfig == null) return;
-        HttpEngineServer candidate = new HttpEngineServer(
-                httpConfig,
-                httpConfig.webRootPath(),
-                paths.httpToken(),
-                paths.log(),
-                version,
-                this::statusSnapshot,
-                httpEvents,
-                httpJobs(),
-                journal,
-                () -> BuildMetrics.load(metricsFile).entries(),
-                // Single-flight + 30s TTL: dashboard SSE reconnect + GET /api/cache must not each
-                // exclusive-walk multi-GiB stores (SerialGC balloons committed heap ~90 MiB).
-                cc.jumpkick.engine.http.CacheSnapshot.memoizing(cc.jumpkick.util.JkDirs.cache()),
-                log);
-        // Hard-refresh mid-build: history rows carry live requestId/progress/phases; SSE connect
-        // delivers one compact run-snapshot per job to the new subscription only.
-        candidate.setLiveRunSupport(liveRuns::snapshot, liveRuns::rehydrate);
-        // Combined-connection peak observed at every admission point (UDS accept bumps it too) —
-        // not only when a status snapshot happens to run (JK-1861).
-        candidate.setOnSseAdmitted(() -> peakActiveConnections.accumulateAndGet(liveConnectionCount(), Math::max));
-        try {
-            candidate.start();
-            Files.writeString(paths.http(), candidate.url());
-            httpServer = candidate;
-            log.accept("jk engine: http listening on " + candidate.url());
-        } catch (IOException | RuntimeException e) {
-            candidate.close();
-            httpError = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-            log.accept("jk engine: http failed to start (" + httpError + ") — continuing without http");
-        }
-    }
-
-    private cc.jumpkick.engine.http.EngineHttpJobs httpJobs() {
-        return new cc.jumpkick.engine.http.EngineHttpJobs() {
-            @Override
-            public long triggerBuild(String dir) {
-                return triggerHttpWorkspace(dir, "build", /* skipTests */ false, /* testOnly */ false);
-            }
-
-            @Override
-            public long triggerTest(String dir) {
-                // True test-only: same graph as build, each module uses testOnly plans (no package).
-                return triggerHttpWorkspace(dir, "test", /* skipTests */ false, /* testOnly */ true);
-            }
-
-            @Override
-            public long triggerLock(String dir) {
-                return triggerHttpLock(dir);
-            }
-
-            @Override
-            public boolean cancel(long requestId) {
-                return cancelJob(requestId);
-            }
-        };
-    }
-
-    /** {@code POST /api/build} / MCP: same JobEnvelope as CLI, FireAndForget. */
-    private long triggerHttpWorkspace(String dirStr, String kind, boolean skipTests, boolean testOnly) {
-        Path entryDir = cc.jumpkick.util.PathUtil.resolveUserPath(dirStr);
-        if (!Files.isRegularFile(entryDir.resolve("jk.toml"))) {
-            throw new IllegalArgumentException("no jk.toml in " + entryDir);
-        }
-        String line = "{\"type\":\"build-request\",\"dir\":"
-                + cc.jumpkick.plugin.protocol.Jsonl.quote(entryDir.toString())
-                + ",\"trigger\":\"web\"}";
-        JobRequest req = JobRequest.workspace(
-                kind,
-                "jk-engine-http-" + kind + "-",
-                (l, tok, w) -> runHttpWorkspace(entryDir, skipTests, testOnly, tok));
-        return jobs.submitAsync(line, req, BuildJobFingerprint.ofHttp(kind, entryDir, skipTests, testOnly));
-    }
-
-    private long triggerHttpLock(String dirStr) {
-        Path entryDir = cc.jumpkick.util.PathUtil.resolveUserPath(dirStr);
-        if (!Files.isRegularFile(entryDir.resolve("jk.toml"))) {
-            throw new IllegalArgumentException("no jk.toml in " + entryDir);
-        }
-        String line = "{\"type\":\"lock-request\",\"dir\":"
-                + cc.jumpkick.plugin.protocol.Jsonl.quote(entryDir.toString())
-                + ",\"trigger\":\"web\"}";
-        return jobs.submitAsync(
-                line, JobRequest.plan("lock", "jk-engine-http-lock-", (l, tok, w) -> runHttpLock(entryDir, tok)), "");
-    }
-
-    /** Workspace build/test body for HTTP/MCP — hub-only events. */
-    private boolean runHttpWorkspace(
-            Path entryDir, boolean skipTests, boolean testOnly, Session.CancelToken cancelToken) {
-        try {
-            JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve("jk.toml"));
-            Path cache = cc.jumpkick.util.JkDirs.cache();
-            Path jdksDir = cc.jumpkick.util.JkDirs.jdks();
-            WorkspaceRequest req = new WorkspaceRequest(
-                            entryDir,
-                            entryBuild,
-                            cache,
-                            jdksDir,
-                            Runtime.getRuntime().availableProcessors(), // the shared plan's own worst-case cap
-                            null,
-                            skipTests,
-                            false,
-                            0,
-                            null, // engine forecasts dirty modules
-                            false, // this engine plans memory once at startup, not per request
-                            true) // auto-freshen a stale lock, like jk build
-                    .withTestOnly(testOnly);
-            Session session = Session.defaults()
-                    .withWorkingDir(entryDir)
-                    .withCacheDir(cache)
-                    .withJdksDir(jdksDir)
-                    .withCancel(cancelToken);
-            long rid = eventRequestId();
-            if (rid > 0) sessions.progressRoot(rid, entryDir.toString());
-            WorkspaceResult result = SessionContext.where(
-                    session, () -> BuildService.buildWorkspace(req, hubListener(entryDir.toString())));
-            accOutcome(rid, result.success(), result.exitCode());
-            if (rid > 0) {
-                if (result.success()) sessions.tracker(rid).finish();
-                sse.emitWorkspaceProgress(rid, null, true);
-            }
-            if (!result.success()) {
-                for (String error : result.errors().stream().limit(5).toList()) {
-                    sse.publishRequestError(rid, entryDir.toString(), error);
-                }
-            }
-            return result.success();
-        } catch (Exception e) {
-            // The engine log is served by GET /api/log — redact like every other exiting channel.
-            accOutcome(eventRequestId(), false, 1);
-            log.accept("jk engine: http-triggered job of " + entryDir + " failed: "
-                    + redactEnv(entryDir.toString(), String.valueOf(e.getMessage())));
-            sse.publishRequestError(eventRequestId(), entryDir.toString(), String.valueOf(e.getMessage()));
-            return false;
-        }
-    }
-
-    private boolean runHttpLock(Path entryDir, Session.CancelToken cancelToken) {
-        try {
-            Path cache = cc.jumpkick.util.JkDirs.cache();
-            // Same scope rule as the JSONL lock cascade: a workspace member redirects to its root
-            // and locks the merged union — a module-scoped resolution must never overwrite the
-            // root jk-lock.toml.
-            var scope = cc.jumpkick.runtime.LockPlans.lockScope(entryDir);
-            Path lockDir = scope.lockDir();
-            Session session = Session.defaults()
-                    .withWorkingDir(lockDir)
-                    .withCacheDir(cache)
-                    .withCancel(cancelToken);
-            cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.LockPlans.lockBuildPlan(
-                    lockDir,
-                    scope.effective(),
-                    cache,
-                    null,
-                    java.util.List.of(),
-                    true,
-                    false,
-                    ResolveObserver.NOOP,
-                    null);
-            plan.addListener(singleBuildPlanHubListener(lockDir.toString()));
-            cc.jumpkick.run.BuildPlanResult result;
-            // Serialize per lock dir with every other lock entry point (JK-1356).
-            synchronized (cc.jumpkick.runtime.LockGate.monitorFor(lockDir)) {
-                result = SessionContext.where(session, plan::run);
-            }
-            accOutcome(eventRequestId(), result.success(), result.success() ? 0 : 1);
-            if (!result.success()) {
-                for (var d : result.errors().stream().limit(5).toList()) {
-                    sse.publishRequestError(eventRequestId(), entryDir.toString(), d.message());
-                }
-            }
-            return result.success();
-        } catch (Exception e) {
-            accOutcome(eventRequestId(), false, 1);
-            log.accept("jk engine: http-triggered lock of " + entryDir + " failed: "
-                    + redactEnv(entryDir.toString(), String.valueOf(e.getMessage())));
-            sse.publishRequestError(eventRequestId(), entryDir.toString(), String.valueOf(e.getMessage()));
-            return false;
-        }
+    private HttpEngineServer httpServer() {
+        return http.server();
     }
 
     private cc.jumpkick.engine.http.StatusSnapshot statusSnapshot() {
@@ -1746,11 +948,6 @@ public final class EngineServer implements AutoCloseable {
         aot.spawner(spawner);
     }
 
-    /**
-     * Spawn and adopt the sidecar AOT trainer. Best-effort: a trainer that fails to start (or
-     * never finishes) costs a log line, never the engine. The trainer self-terminates in seconds;
-     * the timeout is a belt against a hung child, generous enough to never fire on a healthy one.
-     */
     /** Whether the endpoint pointer still names this generation's socket. */
     private boolean endpointNamesThisEngine() {
         if (active == null) return false;
@@ -1786,14 +983,6 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
-     * Release the Web UI port the moment this engine becomes a lame duck. The successor generation is
-     * already taking over HTTP, so there is no reason to hold the fixed port while in-flight jobs
-     * drain. Without this the port stayed bound until {@link #cleanup} at final exit, and a busy or
-     * dashboard-connected drain (the SSE stream forces the full stop-grace) could outlast the
-     * successor's bind-retry window — surfacing as "Web UI: failed to start (Address already in use)".
-     * Idempotent: cleanup's later close is then a no-op.
-     */
-    /**
      * True when an orphaned engine has nothing left to serve: no in-flight jobs and no attached SSE
      * stream.
      *
@@ -1804,13 +993,7 @@ public final class EngineServer implements AutoCloseable {
      */
     private boolean orphanedAndUnused() {
         if (activeBuildPlans.get() != 0) return false;
-        HttpEngineServer h = httpServer;
-        return h == null || h.liveEventStreams() == 0;
-    }
-
-    private void stopHttpQuietly() {
-        HttpEngineServer h = httpServer;
-        if (h != null) h.stopNow();
+        return http.liveEventStreams() == 0;
     }
 
     private void cleanup() {
@@ -1822,7 +1005,7 @@ public final class EngineServer implements AutoCloseable {
             storeFeedRefresh.close();
             storeFeedRefresh = null;
         }
-        if (httpServer != null) httpServer.close();
+        http.close();
         deleteQuietly(paths.http()); // the live bound-URL file — stale once we stop
         // The http token is deliberately NOT deleted: it persists across restarts so an open
         // dashboard tab survives an upgrade/crash respawn. `jk engine rotate-token`
@@ -1877,12 +1060,11 @@ public final class EngineServer implements AutoCloseable {
      * builds pass {@code applyMemoryPlan=false} so concurrent requests do not overwrite it.
      */
     private void planSharedWorkerMemoryOnce() {
-        // requested concurrency from [engine] jobs / JK_JOBS (default = cores).
         int cap = cc.jumpkick.config.Jobs.resolve(cc.jumpkick.config.JkEngineConfig.resolve());
         JvmOptions.planAndApply(HeapPlan.requestedJvms(cap, 1, false, cap));
     }
 
-    private static void send(BufferedWriter writer, String line) throws IOException {
+    static void send(BufferedWriter writer, String line) throws IOException {
         // Heartbeat + plan workers may write concurrently.
         synchronized (writer) {
             writer.write(line);
@@ -1901,303 +1083,5 @@ public final class EngineServer implements AutoCloseable {
 
     static boolean resolveCancelledFlag(Boolean successStamp, boolean userCancelled, boolean cancelHint) {
         return BuildAccumulator.resolveCancelledFlag(successStamp, userCancelled, cancelHint);
-    }
-
-    private final class VerbBridge implements VerbHost {
-        @Override
-        public long eventRequestId() {
-            return EngineServer.this.eventRequestId();
-        }
-
-        @Override
-        public void putProgressRoot(long rid, String dir) {
-            sessions.progressRoot(rid, dir);
-        }
-
-        @Override
-        public WorkspaceBuildListener workspaceListener(BufferedWriter writer, String dir) {
-            return wireListener(writer, dir);
-        }
-
-        @Override
-        public BuildPlanListener planListener(String dir, BufferedWriter writer, cc.jumpkick.run.BuildPlan plan) {
-            return wireBuildPlanListener(dir, writer, plan);
-        }
-
-        @Override
-        public BuildPlanListener planListener(
-                String dir, BufferedWriter writer, java.util.function.Function<BuildPlanResult, String> finishEncoder) {
-            return wireBuildPlanListener(dir, writer, finishEncoder);
-        }
-
-        @Override
-        public void releaseExclusiveSlot() {
-            EngineServer.this.releaseExclusiveSlot();
-        }
-
-        @Override
-        public boolean effectiveCancelled(long rid, boolean tokenCancelled) {
-            return jobs.effectiveCancelled(rid, tokenCancelled);
-        }
-
-        @Override
-        public void accOutcome(long rid, boolean success, int exit) {
-            EngineServer.this.accOutcome(rid, success, exit);
-        }
-
-        @Override
-        public void accTests(long rid, TestSummary tests) {
-            EngineServer.this.accTests(rid, tests);
-        }
-
-        @Override
-        public void finishProgress(long rid) {
-            sessions.tracker(rid).finish();
-        }
-
-        @Override
-        public void emitWorkspaceProgress(long rid, BufferedWriter writer, boolean force) {
-            sse.emitWorkspaceProgress(rid, writer, force);
-        }
-
-        @Override
-        public void flushTimeline(long rid, BufferedWriter writer) {
-            flushTimelineToClient(rid, writer);
-        }
-
-        @Override
-        public void send(BufferedWriter writer, String line) throws IOException {
-            EngineServer.send(writer, line);
-        }
-
-        @Override
-        public void sendQuiet(BufferedWriter writer, String line) {
-            EngineServer.sendQuiet(writer, line);
-        }
-
-        @Override
-        public String redactEnv(String dir, String text) {
-            return EngineServer.redactEnv(dir, text);
-        }
-
-        @Override
-        public String requestFailedLine(String dir, Throwable e) {
-            return EngineServer.requestFailedLine(dir, e);
-        }
-
-        @Override
-        public void publishRequestError(long rid, String dir, String message) {
-            sse.publishRequestError(rid, dir, message);
-        }
-
-        @Override
-        public Session resolveSession(String requestLine, Session.CancelToken cancel, boolean refresh) {
-            return EngineServer.resolveSession(requestLine, cancel, refresh);
-        }
-
-        @Override
-        public void maybeEnqueuePrune(Path cache) {
-            idle.maybeEnqueuePrune(cache);
-        }
-
-        @Override
-        public java.util.concurrent.locks.ReentrantReadWriteLock cacheGate() {
-            return cacheGate;
-        }
-
-        @Override
-        public int activePlanCount() {
-            return activeBuildPlans.get();
-        }
-
-        @Override
-        public long nowMillis() {
-            return clockMillis.getAsLong();
-        }
-
-        @Override
-        public boolean scheduleHostWarmup(boolean force) {
-            return idle.scheduleHostWarmup(force);
-        }
-
-        @Override
-        public cc.jumpkick.engine.journal.BuildJournal journal() {
-            return journal;
-        }
-
-        @Override
-        public JkHistoryConfig historyConfig() {
-            return historyConfig;
-        }
-
-        @Override
-        public Path metricsFile() {
-            return metricsFile;
-        }
-
-        @Override
-        public InFlightBuilds inFlightBuilds() {
-            return inFlightBuilds;
-        }
-
-        @Override
-        public Double lastProgress(long requestId) {
-            return sessions.lastProgress(requestId);
-        }
-    }
-
-    private final class EnvelopeHost implements JobEnvelope.Host {
-        @Override
-        public boolean tryStartBuildPlan() {
-            return EngineServer.this.tryStartBuildPlan();
-        }
-
-        @Override
-        public void abandonBuildPlanSlot() {
-            EngineServer.this.abandonBuildPlanSlot();
-        }
-
-        @Override
-        public void noteBuildPlanFinished() {
-            EngineServer.this.noteBuildPlanFinished();
-        }
-
-        @Override
-        public boolean draining() {
-            return draining;
-        }
-
-        @Override
-        public long nextRequestId() {
-            return requestIds.incrementAndGet();
-        }
-
-        @Override
-        public long nowMillis() {
-            return clockMillis.getAsLong();
-        }
-
-        @Override
-        public void putMode(long id, cc.jumpkick.runtime.progress.ProgressBarMode mode) {
-            sessions.mode(id, mode);
-        }
-
-        @Override
-        public void publishRequestStart(long id, String kind, String dir, long buildNumber) {
-            sse.publishRequestStart(id, kind, dir, buildNumber);
-        }
-
-        @Override
-        public void registerAccumulator(
-                long id,
-                String kind,
-                String dir,
-                String trigger,
-                boolean noTimeline,
-                boolean rebuild,
-                long buildNumber,
-                String journalId) {
-            EngineServer.this.registerAccumulator(id, kind, dir, trigger, noTimeline, rebuild, buildNumber, journalId);
-        }
-
-        @Override
-        public java.util.concurrent.locks.ReentrantReadWriteLock cacheGate() {
-            return cacheGate;
-        }
-
-        @Override
-        public void bindEventRequestId(long id) {
-            currentEventRequestId.set(id);
-        }
-
-        @Override
-        public void unbindEventRequestId() {
-            currentEventRequestId.remove();
-        }
-
-        @Override
-        public cc.jumpkick.task.IoLedger runIo(long id) {
-            return sse.runIo(id);
-        }
-
-        @Override
-        public InFlightBuilds inFlight() {
-            return inFlightBuilds;
-        }
-
-        @Override
-        public BuildAccumulator accumulatorOf(long id) {
-            return sessions.accumulator(id);
-        }
-
-        @Override
-        public void putLastProgress(long id, double percent) {
-            sessions.lastProgress(id, percent);
-        }
-
-        @Override
-        public int activeBuildPlans() {
-            return activeBuildPlans.get();
-        }
-
-        @Override
-        public JsonOut withProgress(JsonOut payload, long id) {
-            return sse.withProgress(payload, id);
-        }
-
-        @Override
-        public JsonOut withIo(JsonOut payload, long id) {
-            return sse.withIo(payload, id);
-        }
-
-        @Override
-        public void publishEvent(String type, JsonOut payload) {
-            sse.publishEvent(type, payload);
-        }
-
-        @Override
-        public void clearProgress(long id) {
-            sessions.retire(id);
-        }
-
-        @Override
-        public void writeJournal(long id, boolean cancelled, long millis, java.io.BufferedWriter writer) {
-            EngineServer.this.writeJournal(id, cancelled, millis, writer);
-        }
-
-        @Override
-        public void maybeIdleBoundary() {
-            idle.maybeIdleBoundary();
-        }
-
-        @Override
-        public void maybeIdleGc() {
-            idle.maybeIdleGc();
-        }
-
-        @Override
-        public void log(String message) {
-            EngineServer.this.log.accept(message);
-        }
-
-        @Override
-        public String version() {
-            return version;
-        }
-
-        @Override
-        public JkHistoryConfig historyConfig() {
-            return historyConfig;
-        }
-
-        @Override
-        public BuildJournal journal() {
-            return journal;
-        }
-
-        @Override
-        public String coordOf(String dir) {
-            return EngineServer.coordOf(dir);
-        }
     }
 }

@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.journal.BuildRecord;
+import cc.jumpkick.engine.journal.JournalWriter;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -35,7 +36,7 @@ class HistoryDiagLineTest {
                 List.of("int a = 1;", "assertEquals(1, 2);"),
                 2);
 
-        String line = EngineServer.historyDiagLine(d);
+        String line = JournalWriter.historyDiagLine(d);
 
         assertThat(Jsonl.str(line, "severity")).isEqualTo("error");
         assertThat(Jsonl.str(line, "task")).isEqualTo("run-tests");
@@ -54,7 +55,7 @@ class HistoryDiagLineTest {
     @Test
     void empty_enrichment_stays_off_the_wire() {
         var d = new BuildRecord.Diag("warning", "", "lock", "resolve", "no versions", "", "");
-        String line = EngineServer.historyDiagLine(d);
+        String line = JournalWriter.historyDiagLine(d);
         assertThat(Jsonl.str(line, "severity")).isEqualTo("warning");
         assertThat(line)
                 .doesNotContain("\"stack\"")

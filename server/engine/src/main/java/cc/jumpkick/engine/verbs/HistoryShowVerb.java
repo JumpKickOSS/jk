@@ -106,7 +106,7 @@ public final class HistoryShowVerb implements HostedVerb {
                 stepCount++;
             }
             for (BuildRecord.Diag d : r.diagnostics()) {
-                host.send(writer, cc.jumpkick.engine.EngineServer.historyDiagLine(d));
+                host.send(writer, cc.jumpkick.engine.journal.JournalWriter.historyDiagLine(d));
             }
             host.send(
                     writer,
