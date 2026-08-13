@@ -978,22 +978,20 @@ public final class DependencyTree {
 
         LoadedModule sibling = resolveSibling(module, ws);
         if (sibling != null) {
+            // resolveSibling only hits in the member graph (byGa populated ⇒ expandSiblings=true);
+            // the collapsed [workspace] form renders via Dependency.isWorkspaceRef below (JK-1919).
             String ga = moduleGa(sibling.build());
             String ver = sibling.build().project().version();
-            if (ws.expandSiblings()) {
-                if (!visited.add(ga)) return;
-                putFlat(out, new FlatDep(ga, ver, ""));
-                Map<String, Lockfile.Artifact> siblingIndex =
-                        sibling.lock() == null ? byModule : indexByModule(sibling.lock());
-                // The sibling contributes its own surface (export/main/runtime), not whatever
-                // scope section of the consumer declared it (JK-1884).
-                for (Scope s : siblingContributedScopes()) {
-                    for (String dep : directModules(sibling.build(), s)) {
-                        collectFlat(dep, composite, siblingIndex, ws, siblingContributedScopes(), visited, out);
-                    }
+            if (!visited.add(ga)) return;
+            putFlat(out, new FlatDep(ga, ver, ""));
+            Map<String, Lockfile.Artifact> siblingIndex =
+                    sibling.lock() == null ? byModule : indexByModule(sibling.lock());
+            // The sibling contributes its own surface (export/main/runtime), not whatever
+            // scope section of the consumer declared it (JK-1884).
+            for (Scope s : siblingContributedScopes()) {
+                for (String dep : directModules(sibling.build(), s)) {
+                    collectFlat(dep, composite, siblingIndex, ws, siblingContributedScopes(), visited, out);
                 }
-            } else {
-                putFlat(out, new FlatDep(ga, ver, " [workspace]"));
             }
             return;
         }
@@ -1083,17 +1081,9 @@ public final class DependencyTree {
 
         LoadedModule sibling = resolveSibling(module, ws);
         if (sibling != null) {
-            if (ws.expandSiblings()) {
-                renderSiblingModule(
-                        sibling, scopes, depth, maxDepth, isLast, prefix, styling, ws, seenModules, seenDirs, out);
-                return;
-            }
-            String coord = moduleGa(sibling.build());
-            out.append(prefix)
-                    .append(styling.rail().apply(isLast ? "╰─ " : "├─ "))
-                    .append(coordLabel(coord, styling))
-                    .append(styling.rail().apply(" [workspace]"))
-                    .append('\n');
+            // Member graph only (JK-1919): collapsed [workspace] rows come from isWorkspaceRef.
+            renderSiblingModule(
+                    sibling, scopes, depth, maxDepth, isLast, prefix, styling, ws, seenModules, seenDirs, out);
             return;
         }
         if (Dependency.isWorkspaceRef(module)) {
