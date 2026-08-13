@@ -61,6 +61,7 @@ public final class PlainAscii {
                 case 0x2026 -> sb.append("..."); // …
                 case 0x2022 -> sb.append('-'); // • bullet
                 case 0x25CF -> sb.append('*'); // ● black circle / pulse
+                case 0x25CB -> sb.append('o'); // ○ white circle / radio off
                 case 0x2713, 0x2714 -> sb.append(Glyphs.CHECK_PLAIN); // ✓ ✔
                 case 0x2718, 0x2717 -> sb.append(Glyphs.CROSS_PLAIN); // ✘ ✗
                 case 0x203C -> sb.append(Glyphs.BANG_PLAIN); // ‼
