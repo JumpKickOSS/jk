@@ -102,7 +102,7 @@ public final class CommandManagerListener implements BuildPlanListener {
         cm.stepMessage(module, step, label);
     }
 
-    /** True while painting a {@link TestFailureHighlight} block from run-tests output. */
+    /** True while buffering a {@link TestFailureHighlight} block from run-tests output. */
     private boolean inTestFailure;
 
     private final TestFailureHighlight.Stream testFailStream = new TestFailureHighlight.Stream();
@@ -112,12 +112,11 @@ public final class CommandManagerListener implements BuildPlanListener {
         if (TestFailureHighlight.isHeader(line)) {
             inTestFailure = true;
             testFailStream.reset();
-            cm.writeAbove(TestFailureHighlight.paintHeader());
+            testFailStream.line(line);
             return;
         }
         if (inTestFailure) {
-            String painted = testFailStream.line(line);
-            if (painted != null) cm.writeAbove(painted);
+            testFailStream.line(line);
             return;
         }
         cm.writeAbove(StackTraceHighlight.line(line));
@@ -148,7 +147,9 @@ public final class CommandManagerListener implements BuildPlanListener {
     @Override
     public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
         if (inTestFailure) {
-            cm.writeAbove(DiagnosticReport.errorFooter());
+            for (String painted : testFailStream.finish()) {
+                if (painted != null) cm.writeAbove(painted);
+            }
         }
         inTestFailure = false;
         testFailStream.reset();

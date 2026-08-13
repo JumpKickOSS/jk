@@ -82,10 +82,12 @@ public final class AggregateModuleListener implements BuildPlanListener {
         if (TestFailureHighlight.isHeader(line)) {
             inTestFailure = true;
             testFailStream.reset();
-            return TestFailureHighlight.paintHeader();
+            testFailStream.line(line);
+            return null; // flushed on stepFinish
         }
         if (inTestFailure) {
-            return testFailStream.line(line);
+            testFailStream.line(line);
+            return null;
         }
         return StackTraceHighlight.line(line);
     }
@@ -130,7 +132,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
     @Override
     public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
         if (inTestFailure && outBuffer == null) {
-            emit(DiagnosticReport.errorFooter());
+            for (String painted : testFailStream.finish()) emit(painted);
         }
         inTestFailure = false;
         testFailStream.reset();

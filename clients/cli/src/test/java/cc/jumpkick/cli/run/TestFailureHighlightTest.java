@@ -13,34 +13,63 @@ import org.junit.jupiter.api.Test;
 class TestFailureHighlightTest {
 
     @Test
-    void paints_source_snippet_path_and_error_line() {
+    void paints_header_with_module_and_count() {
         List<String> raw = List.of(
                 "Test Failure",
-                "1 test failed:",
+                "module: cc.jumpkick:jk-engine",
+                "1 test failed",
                 "",
-                "  FAILED  demo :: d()",
-                "@@source path=src/test/java/demo/ZTest.java line=7 start=4 lang=java",
-                "@@src 4|    void a() { int x = 1; }",
-                "@@src 5|    void b() { int y = 2; }",
-                "@@src 6|    void c() { int z = 3; }",
-                "@@src 7*|        assertEquals(1, 2);",
-                "@@src 8|    }",
-                "@@src 9|    void e() { int w = 4; }",
-                "@@src 10|    void f() { int v = 5; }",
+                "FAILED DogfoodFailureSnippetTest.deliberately_fails_to_show_source_snippet()",
+                "",
+                "[dogfood: hello]",
+                "expected: \"42\"",
+                " but was: \"41\"",
+                "",
+                "@@source path=src/test/java/cc/jumpkick/runtime/DogfoodFailureSnippetTest.java line=23 start=19 lang=java",
+                "@@src 19|",
+                "@@src 20|        // comment",
+                "@@src 23*|                .isEqualTo(42);",
+                "@@src 24|    }",
+                "@@src 25|}",
                 "@@src-end",
-                "",
-                "org.opentest4j.AssertionFailedError thrown at line 7",
-                "",
-                "expected: <1> but was: <2>");
+                "    AssertionFailedError thrown at line 23");
         List<String> painted = TestFailureHighlight.paintLines(raw);
         String all = String.join("\n", painted.stream().map(TestFailureHighlightTest::plain).toList());
-        assertThat(all).contains("src/test/java/demo/ZTest.java");
-        assertThat(all).contains("assertEquals");
-        assertThat(all).contains("thrown at line 7");
-        assertThat(all).doesNotContain("@@source");
-        assertThat(all).doesNotContain("@@src ");
-    }
 
+        assertThat(all).contains("Failure");
+        assertThat(all).contains("cc.jumpkick:jk-engine");
+        assertThat(all).contains("1 test failed");
+        assertThat(all)
+                .contains("FAILED DogfoodFailureSnippetTest.deliberately_fails_to_show_source_snippet()");
+        assertThat(all).contains("AssertionFailedError thrown at line 23");
+        assertThat(all).contains("\"dogfood: hello\"");
+        assertThat(all).doesNotContain("[dogfood:");
+        assertThat(all).contains("Expected: 42");
+        assertThat(all).contains("But Was: 41");
+        assertThat(all).contains("src/test/java/cc/jumpkick/runtime/DogfoodFailureSnippetTest.java");
+        assertThat(all).contains("isEqualTo");
+        assertThat(all).doesNotContain("org.opentest4j");
+        assertThat(all).doesNotContain("@@source");
+        // Order: FAILED → Expected → source → thrown-at → footer
+        int failedAt = all.indexOf("FAILED Dogfood");
+        int expectedAt = all.indexOf("Expected: 42");
+        int pathAt = all.indexOf("src/test/java");
+        int thrownAt = all.indexOf("AssertionFailedError thrown at line 23");
+        int footerAt = all.indexOf(DiagnosticReport.FOOTER);
+        assertThat(failedAt).isGreaterThan(0);
+        assertThat(expectedAt).isGreaterThan(failedAt);
+        assertThat(pathAt).isGreaterThan(expectedAt);
+        assertThat(thrownAt).isGreaterThan(pathAt);
+        assertThat(footerAt).isGreaterThan(thrownAt);
+
+        if (Theme.active().isAnsi()) {
+            Theme t = Theme.active();
+            assertThat(String.join("", painted)).contains(Coords.ga("cc.jumpkick", "jk-engine"));
+            // Failure is not red; FAILED is red.
+            assertThat(String.join("", painted)).contains(Theme.colorize("Failure", t.midGray()));
+            assertThat(String.join("", painted)).contains(Theme.colorize("FAILED", t.error().bold()));
+        }
+    }
 
     private static String plain(String s) {
         return AttributedString.stripAnsi(s == null ? "" : s);
@@ -52,56 +81,29 @@ class TestFailureHighlightTest {
         assertThat(plain(h)).contains("Test").contains("Failure");
         if (Theme.active().isAnsi()) {
             assertThat(h).contains("\u001b");
-            assertThat(h)
-                    .contains(Theme.colorize("Failure", Theme.active().error().bold()));
+            assertThat(h).contains(Theme.colorize("Failure", Theme.active().midGray()));
         }
     }
 
     @Test
-    void paints_full_block_with_rail_coords_and_assertion_colors() {
+    void paints_legacy_expecting_actual_layout() {
         List<String> raw = List.of(
-                "",
                 "Test Failure",
-                "1 test failed:",
+                "1 test failed",
                 "",
-                "  FAILED  cc.jumpkick:jk-engine :: size_model_for_cli_like_app_tracks_reference_at_scale_one()",
-                "    class: cc.jumpkick.runtime.NativeEffortTest",
-                "    java.lang.AssertionError",
+                "FAILED NativeEffortTest.size_model",
                 "",
                 "Expecting actual:",
                 "  21670L",
                 "to be between:",
-                "  [28000L, 45000L]",
-                ""); // trailing blank must be stripped so the settle wedge sits tight
+                "  [28000L, 45000L]");
         List<String> painted = TestFailureHighlight.paintLines(raw);
-        String all = String.join(
-                "\n", painted.stream().map(TestFailureHighlightTest::plain).toList());
-
-        assertThat(all).contains("Test");
-        assertThat(all).contains("Failure");
-        assertThat(all).contains("1 test failed:");
-        assertThat(all).contains("FAILED");
-        assertThat(all).contains("cc.jumpkick:jk-engine");
-        assertThat(all).contains("size_model_for_cli_like_app_tracks_reference_at_scale_one()");
-        assertThat(all).contains("class: cc.jumpkick.runtime.NativeEffortTest");
+        String all = plain(String.join("\n", painted));
+        assertThat(all).contains("FAILED NativeEffortTest.size_model");
         assertThat(all).contains("21670L");
-        assertThat(all).contains("[28000L, 45000L]");
-        // Closes with heavy rail footer; no trailing blank after it.
-        assertThat(plain(painted.getLast()).strip()).isEqualTo(DiagnosticReport.FOOTER);
-        assertThat(all).contains("[28000L, 45000L]");
-        // No redundant Error banner.
-        assertThat(all).doesNotContain("Error [run-tests");
-
+        assertThat(all).contains(DiagnosticReport.FOOTER);
         if (Theme.active().isAnsi()) {
             Theme t = Theme.active();
-            // Rail on body lines
-            assertThat(painted.stream()
-                            .filter(l -> l != null && l.contains(TestFailureHighlight.RAIL))
-                            .count())
-                    .isGreaterThan(3);
-            // Coord uses theme segments
-            assertThat(String.join("", painted)).contains(Coords.ga("cc.jumpkick", "jk-engine"));
-            // Actual red, expected green
             assertThat(String.join("", painted)).contains(Theme.colorize("21670L", t.error()));
             assertThat(String.join("", painted)).contains(Theme.colorize("[28000L, 45000L]", t.success()));
         }

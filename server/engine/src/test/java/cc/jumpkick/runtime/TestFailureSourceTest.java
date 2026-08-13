@@ -138,8 +138,12 @@ class TestFailureSourceTest {
                 new cc.jumpkick.run.TestSummary(1, 0, 1, 0, List.of(f)), mod);
         String text = String.join("\n", lines);
         assertThat(text).contains("@@source ");
-        assertThat(text).contains("thrown at line 7");
+        assertThat(text).contains("AssertionFailedError thrown at line 7");
         assertThat(text).contains("expected: <1> but was: <2>");
+        assertThat(text).contains("FAILED ZTest.d()");
+        // Thrown-at before assertion body / source
+        // Thrown-at sits after the source markers
+        assertThat(text.indexOf("@@src-end")).isLessThan(text.indexOf("thrown at line 7"));
         // Stack frames omitted when snippet present
         assertThat(text).doesNotContain("\tat demo.ZTest.d");
     }
