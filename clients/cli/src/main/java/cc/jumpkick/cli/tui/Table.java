@@ -609,7 +609,9 @@ public final class Table implements Widget {
             String padL = i == 0 ? leftPad : sp;
             String padR = i == widths.length - 1 ? rightPad : sp;
             String rail = i == widths.length - 1 ? outerBar : innerBar;
-            sb.append(padL).append(pad(raw, widths[i], align)).append(padR).append(rail);
+            // Alignment fill must carry the band background too, or a banded row shows
+            // terminal-background stripes inside every cell shorter than its column.
+            sb.append(padL).append(pad(raw, widths[i], align, sp)).append(padR).append(rail);
         }
         return sb.toString();
     }
@@ -636,13 +638,18 @@ public final class Table implements Widget {
     }
 
     private static String pad(String s, int width, Align align) {
+        return pad(s, width, align, " ");
+    }
+
+    /** {@code fill} is one visible column (possibly styled, e.g. a band-background space). */
+    private static String pad(String s, int width, Align align, String fill) {
         int vis = RenderContext.visibleWidth(s);
         int extra = Math.max(0, width - vis);
-        if (align == Align.RIGHT) return " ".repeat(extra) + s;
+        if (align == Align.RIGHT) return fill.repeat(extra) + s;
         if (align == Align.CENTER) {
             int left = extra / 2;
-            return " ".repeat(left) + s + " ".repeat(extra - left);
+            return fill.repeat(left) + s + fill.repeat(extra - left);
         }
-        return s + " ".repeat(extra);
+        return s + fill.repeat(extra);
     }
 }
