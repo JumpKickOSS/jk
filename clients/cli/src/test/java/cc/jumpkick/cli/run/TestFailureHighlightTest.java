@@ -153,6 +153,39 @@ class TestFailureHighlightTest {
     }
 
     @Test
+    void snippet_rows_clamp_to_terminal_width_and_expand_tabs() {
+        // JK-1914: one over-long source line must not pad every row past the terminal; tabs
+        // expand so the band pad math is column-based.
+        String longLine = "        assertThat(x)" + ".describedAs(\"padding\")".repeat(20) + ";";
+        List<String> raw = List.of(
+                "Test Failure",
+                "1 test failed",
+                "",
+                "FAILED Foo.bar()",
+                "",
+                "@@source line=2 start=1 lang=java path=Foo.java",
+                "@@src 1|\tint tabbed = 1;",
+                "@@src 2*|" + longLine,
+                "@@src-end",
+                "Test Failure end");
+        List<String> painted = TestFailureHighlight.paintLines(raw);
+        for (String line : painted) {
+            assertThat(plain(line)).doesNotContain("\t");
+        }
+        int widest = painted.stream()
+                .map(TestFailureHighlightTest::plain)
+                .mapToInt(String::length)
+                .max()
+                .orElse(0);
+        // Terminal defaults to >= 80 in tests; rows must stay within the detected width.
+        assertThat(widest).isLessThanOrEqualTo(cc.jumpkick.cli.tui.TerminalSize.columns());
+        assertThat(String.join(
+                        "\n",
+                        painted.stream().map(TestFailureHighlightTest::plain).toList()))
+                .contains("…");
+    }
+
+    @Test
     void source_paths_with_spaces_render_intact() {
         // JK-1905: the emitter puts path= last (to end-of-line); old mid-line form still parses.
         List<String> raw = List.of(

@@ -354,6 +354,10 @@ public final class TestFailureHighlight {
         String lang = attr(header, "lang");
         SyntaxHighlight.Language language = languageOf(lang);
 
+        // Clamp to the terminal: one over-long source line otherwise pads EVERY row past the
+        // width, wrapping continuation rows without the rail and spilling the band (JK-1914).
+        // Tabs expand first — the pad math is column-based, and a raw '\t' misaligns the band end.
+        int budget = Math.max(40, cc.jumpkick.cli.tui.TerminalSize.columns() - ROW_OVERHEAD);
         List<SrcRow> rows = new ArrayList<>();
         int maxCode = 0;
         for (int i = 1; i < markers.size(); i++) {
@@ -361,6 +365,8 @@ public final class TestFailureHighlight {
             if (m == null || m.equals("@@src-end") || !m.startsWith("@@src ")) continue;
             SrcRow row = parseSrcRow(m);
             if (row == null) continue;
+            String code = clampCode(expandTabs(row.code), budget);
+            row = new SrcRow(row.num, row.error, code);
             rows.add(row);
             maxCode = Math.max(maxCode, row.code.length());
         }
@@ -378,6 +384,30 @@ public final class TestFailureHighlight {
             out.add(rail(paintSrcLine(row, maxCode, language, t, pane), t));
         }
         return out;
+    }
+
+    /** Visible columns a painted row spends before code: rail {@code " ┃ "} + gutter + bar + gap. */
+    private static final int ROW_OVERHEAD = 9;
+
+    private static String expandTabs(String code) {
+        if (code == null || code.indexOf('\t') < 0) return code == null ? "" : code;
+        StringBuilder sb = new StringBuilder(code.length() + 8);
+        for (int i = 0; i < code.length(); i++) {
+            char c = code.charAt(i);
+            if (c == '\t') {
+                do {
+                    sb.append(' ');
+                } while (sb.length() % 4 != 0);
+            } else {
+                sb.append(c);
+            }
+        }
+        return sb.toString();
+    }
+
+    private static String clampCode(String code, int budget) {
+        if (code.length() <= budget) return code;
+        return code.substring(0, Math.max(1, budget - 1)) + "…";
     }
 
     private record SrcRow(String num, boolean error, String code) {}
