@@ -28,6 +28,10 @@ import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.MemoryProbe;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.verbs.HostedVerb;
+import cc.jumpkick.engine.verbs.VerbHost;
+import cc.jumpkick.engine.verbs.VerbRegistry;
+import cc.jumpkick.engine.verbs.VerbShape;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -36,14 +40,12 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TestSummary;
-import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildMetrics;
 import cc.jumpkick.runtime.BuildService;
 import cc.jumpkick.runtime.CacheBenefit;
 import cc.jumpkick.runtime.ChromeTimeline;
 import cc.jumpkick.runtime.ExplainPlan;
 import cc.jumpkick.runtime.ModuleOutcome;
-import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.WorkspaceBuildListener;
 import cc.jumpkick.runtime.WorkspaceRequest;
 import cc.jumpkick.runtime.WorkspaceResult;
@@ -175,6 +177,8 @@ public final class EngineServer implements AutoCloseable {
     private final JobSessions sessions = new JobSessions(requestIds::get);
 
     private final JobEnvelope jobs = new JobEnvelope(new EnvelopeHost());
+
+    private final VerbRegistry verbs = VerbRegistry.standard(new VerbBridge());
 
     private final JkHistoryConfig historyConfig = JkHistoryConfig.resolve();
 
@@ -700,6 +704,11 @@ public final class EngineServer implements AutoCloseable {
                 if (DELEGATABLE.contains(type) && maybeDelegate(line, reader, writer)) {
                     return; // served by the pinned version's child engine (see EngineDelegate)
                 }
+                HostedVerb verb = verbs.find(type);
+                if (verb != null) {
+                    if (dispatchVerb(verb, line, reader, writer)) return;
+                    continue;
+                }
                 switch (type) {
                     case EngineProtocol.HELLO -> {
                         int clientProto = Jsonl.intValue(line, "proto", EngineProtocol.PROTOCOL);
@@ -774,22 +783,6 @@ public final class EngineServer implements AutoCloseable {
                     case EngineProtocol.HISTORY_DELETE_REQUEST -> handleHistoryDelete(line, writer);
                     case EngineProtocol.CANCEL_REQUEST -> handleCancelRequest(line, writer);
                     case EngineProtocol.METRICS_REQUEST -> handleMetrics(line, writer);
-                    case EngineProtocol.BUILD_REQUEST -> {
-                        // Owns the rest of this connection's lifecycle: forks the build onto its own
-                        // thread and keeps reading this loop for a build-cancel/EOF while it runs.
-                        handleBuildRequest(line, reader, writer);
-                        return;
-                    }
-                    case EngineProtocol.TEST_REQUEST -> {
-                        // Same shape as BUILD_REQUEST but for a single project's test plan (Task 3).
-                        handleTestRequest(line, reader, writer);
-                        return;
-                    }
-                    case EngineProtocol.SINGLE_BUILD_REQUEST -> {
-                        // Same shape as TEST_REQUEST but a real (non-testOnly) build plan.
-                        handleSingleBuildRequest(line, reader, writer);
-                        return;
-                    }
                     case EngineProtocol.LOCK_REQUEST -> {
                         // Same fork-and-watch shape as BUILD_REQUEST, hosting jk lock's cascade.
                         jobs.submit(
@@ -952,16 +945,27 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
-     * Run a workspace build on its own thread (so this method can keep reading the connection for a
-     * {@link EngineProtocol#BUILD_CANCEL} or EOF meanwhile) and stream every {@link
-     * WorkspaceBuildListener}/{@link BuildPlanListener} callback back as a wire event. Returns once the
-     * build finishes and its terminal message has been sent, or the connection drops.
+     * Registry dispatch. {@code true} means the verb owns the rest of this connection
+     * (async plan / cache maint).
      */
-    private void handleBuildRequest(String requestLine, BufferedReader reader, BufferedWriter writer) {
-        jobs.submit(
-                requestLine,
-                JobRequest.workspace("build", "jk-engine-build-", this::runBuild),
-                new JobTransport.SocketWatch(reader, writer));
+    private boolean dispatchVerb(HostedVerb verb, String line, BufferedReader reader, BufferedWriter writer)
+            throws IOException {
+        return switch (verb.shape()) {
+            case VerbShape.AsyncPlan() -> {
+                jobs.submit(line, verb.toJobRequest(), new JobTransport.SocketWatch(reader, writer));
+                yield true;
+            }
+            case VerbShape.CacheMaint() -> {
+                jobs.submit(line, verb.toJobRequest(), new JobTransport.SocketWatch(reader, writer));
+                yield true;
+            }
+            case VerbShape.SyncRead() -> {
+                verb.run(line, Session.defaults().cancel(), writer);
+                yield false;
+            }
+            case VerbShape.Lifecycle() ->
+                throw new IllegalStateException("lifecycle stays on the process, not the verb registry");
+        };
     }
 
     private void handleCancelRequest(String requestLine, BufferedWriter writer) throws IOException {
@@ -1863,149 +1867,6 @@ public final class EngineServer implements AutoCloseable {
         }
     }
 
-    /** Decode the request, reconstruct a {@link Session}/{@link WorkspaceRequest}, and run it. */
-    private void runBuild(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
-        try {
-            String entryDirStr = Jsonl.str(requestLine, "dir");
-            String cacheStr = Jsonl.str(requestLine, "cache");
-            String jdksDirStr = Jsonl.str(requestLine, "jdksDir");
-            int workers = Jsonl.intValue(requestLine, "workers", 0); // 0 = auto at run-tests
-            String profile = Jsonl.str(requestLine, "profile");
-            boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
-            boolean verbose = Jsonl.bool(requestLine, "verbose", false);
-            int maxModuleConcurrency = Jsonl.intValue(requestLine, "maxModuleConcurrency", 0);
-            boolean parallelTests = Jsonl.bool(requestLine, "parallelTests", false);
-            boolean offline = Jsonl.bool(requestLine, "offline", false);
-            boolean force = Jsonl.bool(requestLine, "force", false);
-            // Distinct from force: rerun bypasses the action cache / freshness stamps without
-            // implying refresh, so locked dependencies still come from the local CAS (jk verify).
-            boolean rerun = Jsonl.bool(requestLine, "rebuild", false);
-            // jk build sends true (auto-freshen a stale workspace lock engine-side before building);
-            // jk verify's scratch rebuild sends false (pinned lock used verbatim).
-            boolean freshenLock = Jsonl.bool(requestLine, "freshenLock", false);
-            // jk verify only: scratch-salted action keys never recur — tasks must not persist them.
-            boolean ephemeralActions = Jsonl.bool(requestLine, "ephemeralActions", false);
-            // Workspace jk test: every module plan stops at run-tests (no package/native tails).
-            boolean testOnly = Jsonl.bool(requestLine, "testOnly", false);
-            // -m / --affected-since: the client's module selection; null = engine forecasts.
-            java.util.List<String> dirtyHintDirs = EngineProtocol.dirtyHintOf(requestLine);
-
-            Path entryDir = Path.of(entryDirStr);
-            Path cache = Path.of(cacheStr);
-            Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
-
-            JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve("jk.toml"));
-            WorkspaceRequest req = new WorkspaceRequest(
-                            entryDir,
-                            entryBuild,
-                            cache,
-                            jdksDir,
-                            workers,
-                            profile,
-                            skipTests,
-                            verbose,
-                            maxModuleConcurrency,
-                            dirtyHintDirs == null
-                                    ? null // engine forecasts dirty modules
-                                    : dirtyHintDirs.stream()
-                                            .map(Path::of)
-                                            .collect(java.util.stream.Collectors.toUnmodifiableSet()),
-                            false, // this engine plans memory once at startup, not per request
-                            freshenLock)
-                    .withTestOnly(testOnly)
-                    .withEphemeralActions(ephemeralActions)
-                    .withVariant(EngineProtocol.variantOf(requestLine), EngineProtocol.clientEnvOf(requestLine));
-
-            JkConfig config = new JkConfig(
-                    Optional.empty(),
-                    Optional.of(offline),
-                    Optional.of(rerun),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.of(verbose),
-                    Optional.empty(),
-                    Optional.of(force),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty());
-            Session session = Session.defaults()
-                    .withConfig(config)
-                    .withWorkingDir(entryDir)
-                    .withCacheDir(cache)
-                    .withJdksDir(jdksDir)
-                    .withParallelTests(parallelTests)
-                    .withTestSelection(EngineProtocol.testSelectionOf(requestLine))
-                    .withCancel(cancelToken)
-                    .withJvm(EngineProtocol.jvmTuning(requestLine));
-
-            long rid = eventRequestId();
-            if (rid > 0) putProgressRoot(rid, entryDirStr);
-            WorkspaceBuildListener listener = wireListener(writer, entryDirStr);
-            WorkspaceResult result = SessionContext.where(session, () -> BuildService.buildWorkspace(req, listener));
-            // Exclusive build work is done; free the fingerprint before finish events / bookkeeping.
-            releaseExclusiveSlot();
-            // User/deadline cancel may set the token after modules already failed — trust either flag.
-            boolean cancelled = result.cancelled() || jobs.effectiveCancelled(rid, cancelToken.cancelled());
-            accOutcome(rid, result.success() && !cancelled, result.exitCode());
-            if (rid > 0) {
-                // finish pins 100%/done — a failed build keeps its last true percent.
-                if (result.success() && !cancelled) progressTracker(rid).finish();
-                emitWorkspaceProgress(rid, writer, true);
-            }
-            // Chrome timeline before terminal event so the client still has the socket open.
-            flushTimelineToClient(rid, writer);
-            java.util.List<String> safeErrors = result.errors().stream()
-                    .map(err -> redactEnv(entryDirStr, err))
-                    .toList();
-            // Always terminal with cancelled so the CLI never sees a bare disconnect after Ctrl-C /
-            // jk cancel / web cancel.
-            send(
-                    writer,
-                    EngineProtocol.workspaceFinish(
-                            result.success() && !cancelled, result.exitCode(), safeErrors, cancelled));
-            if (!result.success() && !cancelled) {
-                for (String error : safeErrors.stream().limit(5).toList()) {
-                    publishRequestError(eventRequestId(), entryDirStr, error);
-                }
-            }
-        } catch (Exception e) {
-            String dir = Jsonl.str(requestLine, "dir");
-            long rid = eventRequestId();
-            boolean cancelled = jobs.effectiveCancelled(rid, cancelToken.cancelled());
-            if (cancelled) {
-                // Cancelled mid-flight: settle as cancelled, not a crash / request-failed.
-                sendQuiet(writer, EngineProtocol.workspaceFinish(false, 1, List.of(), true));
-            } else {
-                accOutcome(rid, false, 1);
-                String msg = redactEnv(dir, String.valueOf(e.getMessage()));
-                sendQuiet(writer, requestFailedLine(dir, msg));
-                publishRequestError(rid, dir, msg);
-            }
-        }
-    }
-
-    /**
-     * As {@link #handleBuildRequest}, but for a single project's test plan (Task 3): forks the run
-     * onto its own thread and keeps reading the connection for a cancel/EOF meanwhile.
-     */
-    private void handleTestRequest(String requestLine, BufferedReader reader, BufferedWriter writer) {
-        jobs.submit(
-                requestLine,
-                JobRequest.plan("test", "jk-engine-test-", this::runTest),
-                new JobTransport.SocketWatch(reader, writer));
-    }
-
-    /**
-     * As {@link #handleTestRequest}, but for a single (non-workspace) project's real build plan — the
-     * engine-hosted counterpart of {@code BuildCommand.runForDir}.
-     */
-    private void handleSingleBuildRequest(String requestLine, BufferedReader reader, BufferedWriter writer) {
-        jobs.submit(
-                requestLine,
-                JobRequest.plan("build", "jk-engine-1build-", this::runSingleBuild),
-                new JobTransport.SocketWatch(reader, writer));
-    }
-
     /** {@link EngineProtocol#PROJECT_INFO_REQUEST}: synchronous project summary. */
     private void handleProjectInfoRequest(String requestLine, BufferedWriter writer) {
         cc.jumpkick.engine.protocol.ProjectInfo info;
@@ -2333,7 +2194,7 @@ public final class EngineServer implements AutoCloseable {
      * Forecast a build via {@link BuildService#explain} and stream the plan as a burst of
      * module/step/edge messages — the engine-hosted counterpart of {@code ExplainCommand}'s call
      * into the same facade. Synchronous and inline (no worker JVM forked, no cancel/EOF fork needed
-     * unlike {@link #handleBuildRequest}/{@link #handleTestRequest}/{@link #handleSingleBuildRequest}).
+     * unlike the {@link VerbShape.AsyncPlan} verbs).
      */
     private void handleExplainRequest(String requestLine, BufferedWriter writer) {
         try {
@@ -2444,229 +2305,6 @@ public final class EngineServer implements AutoCloseable {
         } catch (Exception e) {
             sendQuiet(writer, requestFailedLine(null, e));
             sendQuiet(writer, EngineProtocol.explainDone(0, 0));
-        }
-    }
-
-    /**
-     * Build and run the test-only {@code BuildPlan} exactly as {@code TestCommand} does in-process, but
-     * streaming its {@link BuildPlanListener} events over the wire via {@link #wireBuildPlanListener} — the
-     * same single-plan event vocabulary {@link #runBuild} already speaks per module, here tagged with
-     * the fixed {@link EngineProtocol#SINGLE_PLAN_DIR} sentinel since there's only one plan.
-     */
-    private void runTest(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
-        try {
-            String entryDirStr = Jsonl.str(requestLine, "dir");
-            String cacheStr = Jsonl.str(requestLine, "cache");
-            String jdksDirStr = Jsonl.str(requestLine, "jdksDir");
-            // 0 = auto (JUnitLauncher resolves min(jobs, classes) + heap clamp).
-            int workers = Jsonl.intValue(requestLine, "workers", 0);
-            String profile = Jsonl.str(requestLine, "profile");
-            boolean verbose = Jsonl.bool(requestLine, "verbose", false);
-            boolean offline = Jsonl.bool(requestLine, "offline", false);
-            boolean force = Jsonl.bool(requestLine, "force", false);
-            boolean parallelTests = Jsonl.bool(requestLine, "parallelTests", false);
-
-            Path entryDir = Path.of(entryDirStr);
-            Path cache = Path.of(cacheStr);
-            Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
-            Path buildFile = entryDir.resolve("jk.toml");
-            Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(entryDir);
-            int workerCount = Math.max(0, workers);
-
-            // Size the bar/ETA to the SELECTED suites, simple/traditional roots incl.
-            boolean compactTests = cc.jumpkick.layout.ModuleLayout.isCompact(entryDir);
-            int estimatedTestCount = cc.jumpkick.runtime.TestSupport.estimateSelectedSuiteTestCount(
-                    entryDir, compactTests, EngineProtocol.testSelectionOf(requestLine));
-
-            // The request's cache-relevant flags ride the session config exactly as
-            // runSingleBuild's do — without this, `jk test --force` was silently
-            // dropped on the hosted path (the run-tests stamp skip guards on rerunOr,
-            // which reads the force flag).
-            JkConfig config = new JkConfig(
-                    Optional.empty(),
-                    Optional.of(offline),
-                    Optional.of(Jsonl.bool(requestLine, "rebuild", false)),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.of(verbose),
-                    Optional.empty(),
-                    Optional.of(force),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.empty());
-            Session session = Session.defaults()
-                    .withConfig(config)
-                    .withWorkingDir(entryDir)
-                    .withCacheDir(cache)
-                    .withJdksDir(jdksDir)
-                    .withCancel(cancelToken)
-                    .withJvm(EngineProtocol.jvmTuning(requestLine))
-                    .withParallelTests(parallelTests)
-                    .withTestSelection(EngineProtocol.testSelectionOf(requestLine));
-
-            // The session rides Inputs EXPLICITLY (canonical constructor): the delegating
-            // constructors capture SessionContext.current at construction time, which here
-            // outside SessionContext.where — is the engine's ambient default, not this request.
-            // Steps read in.session for the force/rerun guards, so the ambient capture was
-            // exactly how `--force` got dropped.
-            cc.jumpkick.runtime.BuildPlanner.Inputs inputs = new cc.jumpkick.runtime.BuildPlanner.Inputs(
-                            entryDir,
-                            cache,
-                            buildFile,
-                            lockFile,
-                            lockFile.getParent(),
-                            workerCount,
-                            estimatedTestCount,
-                            profile,
-                            jdksDir,
-                            /* skipTests */ false,
-                            verbose,
-                            /* testOnly */ true,
-                            /* compileOnly */ false,
-                            java.util.Set.of(),
-                            session)
-                    .withVariant(EngineProtocol.variantOf(requestLine), EngineProtocol.clientEnvOf(requestLine));
-            cc.jumpkick.run.BuildPlan plan =
-                    cc.jumpkick.runtime.BuildPlanner.coreBuilder(inputs).build();
-
-            String dir = EngineProtocol.SINGLE_PLAN_DIR;
-            for (Task p : plan.steps()) {
-                sendQuiet(
-                        writer,
-                        EngineProtocol.planStep(
-                                dir, p.name(), p.label(), phaseWire(p.group().orElse(null))));
-            }
-            sendQuiet(writer, EngineProtocol.planDone(1));
-            plan.addListener(wireBuildPlanListener(dir, writer, plan));
-
-            cc.jumpkick.run.BuildPlanResult result = SessionContext.where(session, plan::run);
-            // planFinish already sent; free exclusive slot before bookkeeping (see releaseExclusiveSlot).
-            releaseExclusiveSlot();
-            accTests(
-                    eventRequestId(),
-                    plan.get(cc.jumpkick.runtime.BuildPlanner.TEST_RESULT).orElse(null));
-            accOutcome(eventRequestId(), result.success(), result.success() ? 0 : 1);
-            // planFinish (with test counts, if any) was already sent by wireBuildPlanListener's own
-            // planFinish handling — nothing further to send here; the connection close signals "done".
-        } catch (Exception e) {
-            sendQuiet(writer, requestFailedLine(null, e));
-        }
-    }
-
-    /**
-     * Single-project build plan (same wire shape as {@link #runTest}, {@code testOnly=false}).
-     * On success: update host calibration and queue idle-boundary cache prune.
-     */
-    private void runSingleBuild(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
-        try {
-            String entryDirStr = Jsonl.str(requestLine, "dir");
-            String cacheStr = Jsonl.str(requestLine, "cache");
-            String jdksDirStr = Jsonl.str(requestLine, "jdksDir");
-            int workers = Jsonl.intValue(requestLine, "workers", 0);
-            String profile = Jsonl.str(requestLine, "profile");
-            boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
-            boolean verbose = Jsonl.bool(requestLine, "verbose", false);
-            boolean offline = Jsonl.bool(requestLine, "offline", false);
-            boolean force = Jsonl.bool(requestLine, "force", false);
-
-            Path entryDir = Path.of(entryDirStr);
-            Path cache = Path.of(cacheStr);
-            Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
-            Path buildFile = entryDir.resolve("jk.toml");
-            Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(entryDir);
-            int workerCount = Math.max(0, workers);
-
-            int estimatedTestCount = skipTests
-                    ? 0
-                    : cc.jumpkick.runtime.TestSupport.estimateSelectedSuiteTestCount(
-                            entryDir,
-                            cc.jumpkick.layout.ModuleLayout.isCompact(entryDir),
-                            EngineProtocol.testSelectionOf(requestLine));
-
-            // resolveSession carries assemblyOverride / rebuild / force from the wire envelope.
-            Session session = resolveSession(requestLine, cancelToken, false).withJdksDir(jdksDir);
-
-            // Session threaded explicitly — see runTest: the delegating Inputs constructors
-            // capture the engine's ambient session at construction, dropping --force/--offline.
-            cc.jumpkick.runtime.BuildPlanner.Inputs inputs = new cc.jumpkick.runtime.BuildPlanner.Inputs(
-                            entryDir,
-                            cache,
-                            buildFile,
-                            lockFile,
-                            lockFile.getParent(),
-                            workerCount,
-                            estimatedTestCount,
-                            profile,
-                            jdksDir,
-                            skipTests,
-                            verbose,
-                            /* testOnly */ false,
-                            /* compileOnly */ false,
-                            java.util.Set.of(),
-                            session)
-                    .withVariant(EngineProtocol.variantOf(requestLine), EngineProtocol.clientEnvOf(requestLine));
-            // BuildPlan construction must see session.assemblyOverride (applyAssemblyOverride);
-            // run under SessionContext.where so ambient helpers agree with Inputs.session.
-            cc.jumpkick.run.BuildPlan plan = SessionContext.where(session, () -> {
-                cc.jumpkick.run.BuildPlan.Builder builder = cc.jumpkick.runtime.BuildPlanner.coreBuilder(inputs, false);
-                cc.jumpkick.runtime.BuildPlanner.appendDeclaredTails(builder, inputs);
-                return builder.build();
-            });
-            long barWeight = plan.estimatedTotalWeight();
-
-            String dir = EngineProtocol.SINGLE_PLAN_DIR;
-            for (Task p : plan.steps()) {
-                sendQuiet(
-                        writer,
-                        EngineProtocol.planStep(
-                                dir, p.name(), p.label(), phaseWire(p.group().orElse(null))));
-            }
-            sendQuiet(writer, EngineProtocol.planDone(1));
-            plan.addListener(wireBuildPlanListener(dir, writer, plan));
-
-            // snapshot graph + fingerprints BEFORE the run — a post-build fingerprint
-            // would record mid-build edits as clean. Guard on the resolved session, not the
-            // ambient one (the request thread's ambient session is the engine default).
-            BuildGraph.Result preGraph = null;
-            java.util.Map<Path, String> preFps = null;
-            if (!session.config().rebuildOr(false) && !session.config().forceOr(false)) {
-                try {
-                    // Path-based parse: applyWorkspace must run, or a thin member manifest
-                    // yields sentinel group/version and the memo silently never stores.
-                    cc.jumpkick.model.JkBuild entry = cc.jumpkick.config.JkBuildParser.parse(buildFile);
-                    BuildGraph.Result g = BuildGraph.resolve(entryDir, entry);
-                    if (!g.hasErrors()) {
-                        preGraph = g;
-                        preFps = PreflightMemo.snapshotFingerprints(g, skipTests);
-                    }
-                } catch (Exception ignored) {
-                    // fail-open
-                }
-            }
-
-            long startNanos = System.nanoTime();
-            cc.jumpkick.run.BuildPlanResult result = SessionContext.where(session, plan::run);
-            // planFinish already sent; free exclusive slot before calibration / memo / prune queue.
-            releaseExclusiveSlot();
-            accTests(
-                    eventRequestId(),
-                    plan.get(cc.jumpkick.runtime.BuildPlanner.TEST_RESULT).orElse(null));
-            accOutcome(eventRequestId(), result.success(), result.success() ? 0 : 1);
-            if (result.success() && barWeight > 0) {
-                long moduleMs = (System.nanoTime() - startNanos) / 1_000_000;
-                if (moduleMs > 0) {
-                    cc.jumpkick.runtime.Calibration.refine(moduleMs / (double) barWeight, System.currentTimeMillis());
-                }
-                maybeEnqueuePrune(cache);
-            }
-            // single-module success → preflight dirty memo = all clean (parity with
-            // workspace), using the pre-run snapshot.
-            if (result.success() && preGraph != null && preFps != null) {
-                PreflightMemo.storeDirty(entryDir, preGraph, skipTests, java.util.Set.of(), preFps);
-                PreflightMemo.storeGraph(entryDir, preGraph);
-            }
-        } catch (Exception e) {
-            sendQuiet(writer, requestFailedLine(null, e));
         }
     }
 
@@ -3796,7 +3434,7 @@ public final class EngineServer implements AutoCloseable {
     /**
      * Reconstruct the request's {@link Session} from the flat config fields every lock/sync/update
      * request carries ({@code offline}/{@code force}/{@code verbose}, plus sync's {@code refresh})
-     * — the same fields {@link #runBuild} decodes inline.
+     * — the same fields {@link cc.jumpkick.engine.verbs.WorkspaceBuildVerb} decodes inline.
      */
     private static Session resolveSession(String requestLine, Session.CancelToken cancelToken, boolean refresh) {
         Path entryDir = Path.of(Jsonl.str(requestLine, "dir"));
@@ -5448,6 +5086,98 @@ public final class EngineServer implements AutoCloseable {
 
     static boolean resolveCancelledFlag(Boolean successStamp, boolean userCancelled, boolean cancelHint) {
         return BuildAccumulator.resolveCancelledFlag(successStamp, userCancelled, cancelHint);
+    }
+
+    private final class VerbBridge implements VerbHost {
+        @Override
+        public long eventRequestId() {
+            return EngineServer.this.eventRequestId();
+        }
+
+        @Override
+        public void putProgressRoot(long rid, String dir) {
+            EngineServer.this.putProgressRoot(rid, dir);
+        }
+
+        @Override
+        public WorkspaceBuildListener workspaceListener(BufferedWriter writer, String dir) {
+            return wireListener(writer, dir);
+        }
+
+        @Override
+        public BuildPlanListener planListener(String dir, BufferedWriter writer, cc.jumpkick.run.BuildPlan plan) {
+            return wireBuildPlanListener(dir, writer, plan);
+        }
+
+        @Override
+        public void releaseExclusiveSlot() {
+            EngineServer.this.releaseExclusiveSlot();
+        }
+
+        @Override
+        public boolean effectiveCancelled(long rid, boolean tokenCancelled) {
+            return jobs.effectiveCancelled(rid, tokenCancelled);
+        }
+
+        @Override
+        public void accOutcome(long rid, boolean success, int exit) {
+            EngineServer.this.accOutcome(rid, success, exit);
+        }
+
+        @Override
+        public void accTests(long rid, TestSummary tests) {
+            EngineServer.this.accTests(rid, tests);
+        }
+
+        @Override
+        public void finishProgress(long rid) {
+            progressTracker(rid).finish();
+        }
+
+        @Override
+        public void emitWorkspaceProgress(long rid, BufferedWriter writer, boolean force) {
+            EngineServer.this.emitWorkspaceProgress(rid, writer, force);
+        }
+
+        @Override
+        public void flushTimeline(long rid, BufferedWriter writer) {
+            flushTimelineToClient(rid, writer);
+        }
+
+        @Override
+        public void send(BufferedWriter writer, String line) throws IOException {
+            EngineServer.send(writer, line);
+        }
+
+        @Override
+        public void sendQuiet(BufferedWriter writer, String line) {
+            EngineServer.sendQuiet(writer, line);
+        }
+
+        @Override
+        public String redactEnv(String dir, String text) {
+            return EngineServer.redactEnv(dir, text);
+        }
+
+        @Override
+        public String requestFailedLine(String dir, Throwable e) {
+            return EngineServer.requestFailedLine(dir, e);
+        }
+
+        @Override
+        public void publishRequestError(long rid, String dir, String message) {
+            EngineServer.this.publishRequestError(rid, dir, message);
+        }
+
+        @Override
+        public Session resolveSession(String requestLine, Session.CancelToken cancel, boolean refresh) {
+            return EngineServer.resolveSession(requestLine, cancel, refresh);
+        }
+
+        @Override
+        public void maybeEnqueuePrune(Path cache) {
+            EngineServer.this.maybeEnqueuePrune(cache);
+        }
     }
 
     private final class EnvelopeHost implements JobEnvelope.Host {
