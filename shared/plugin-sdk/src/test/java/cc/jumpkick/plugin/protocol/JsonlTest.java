@@ -94,6 +94,29 @@ class JsonlTest {
     }
 
     @Test
+    void controlCharsRoundTripThroughEveryStringReader() {
+        // quote() emits \\uXXXX for control chars; every decoder must read them back (JK-1879) —
+        // an assertion message with ESC or a vertical tab crosses worker → engine → CLI intact.
+        String raw = "esc \u001b vt \u000b bell \u0007 end";
+        String quoted = Jsonl.quote(raw);
+        assertThat(quoted).contains("\\u001b").contains("\\u000b").contains("\\u0007");
+
+        assertThat(Jsonl.str("{\"v\":" + quoted + "}", "v")).isEqualTo(raw);
+        assertThat(Jsonl.topStr("{\"v\":" + quoted + "}", "v")).isEqualTo(raw);
+        assertThat(Jsonl.strArray("{\"a\":[" + quoted + "]}", "a")).containsExactly(raw);
+        assertThat(Jsonl.strMap("{\"m\":{\"k\":" + quoted + "}}", "m")).containsEntry("k", raw);
+
+        // Re-encoding the decoded value is stable (no double-escaping across hops).
+        assertThat(Jsonl.quote(Jsonl.str("{\"v\":" + quoted + "}", "v"))).isEqualTo(quoted);
+    }
+
+    @Test
+    void malformedUnicodeEscapesAreKeptLiterally() {
+        assertThat(Jsonl.str("{\"v\":\"a\\uzzzz b\"}", "v")).isEqualTo("a\\uzzzz b");
+        assertThat(Jsonl.str("{\"v\":\"tail\\u12\"}", "v")).isEqualTo("tail\\u12");
+    }
+
+    @Test
     void quoteEncodesNullAsBareJsonNull() {
         assertThat(Jsonl.quote(null)).isEqualTo("null");
         // "field":null is read back as an absent string by str().

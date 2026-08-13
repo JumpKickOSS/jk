@@ -41,18 +41,7 @@ public final class Jsonl {
         for (int i = start; i < json.length(); i++) {
             char c = json.charAt(i);
             if (c == '\\' && i + 1 < json.length()) {
-                char n = json.charAt(++i);
-                switch (n) {
-                    case '"' -> sb.append('"');
-                    case '\\' -> sb.append('\\');
-                    case 'n' -> sb.append('\n');
-                    case 'r' -> sb.append('\r');
-                    case 't' -> sb.append('\t');
-                    default -> {
-                        sb.append('\\');
-                        sb.append(n);
-                    }
-                }
+                i = appendEscape(json, i + 1, sb);
             } else if (c == '"') {
                 break;
             } else {
@@ -60,6 +49,43 @@ public final class Jsonl {
             }
         }
         return sb.toString();
+    }
+
+    /**
+     * Decode the escape whose introducing {@code \\} sits at {@code i - 1}; append the decoded
+     * char to {@code sb} and return the index of the last consumed char. One decoder for every
+     * string reader — {@link #quote} emits {@code \\uXXXX} for control chars, so a reader without
+     * the {@code u} case corrupts any message or stack containing one (ESC, vertical tab, …) at
+     * every wire hop. Unknown or malformed escapes are kept literally.
+     */
+    private static int appendEscape(String s, int i, StringBuilder sb) {
+        char n = s.charAt(i);
+        switch (n) {
+            case '"' -> sb.append('"');
+            case '\\' -> sb.append('\\');
+            case '/' -> sb.append('/');
+            case 'n' -> sb.append('\n');
+            case 'r' -> sb.append('\r');
+            case 't' -> sb.append('\t');
+            case 'b' -> sb.append('\b');
+            case 'f' -> sb.append('\f');
+            case 'u' -> {
+                if (i + 4 < s.length()) {
+                    try {
+                        sb.append((char) Integer.parseInt(s, i + 1, i + 5, 16));
+                        return i + 4;
+                    } catch (NumberFormatException ignored) {
+                        // malformed hex — fall through to literal
+                    }
+                }
+                sb.append('\\').append(n);
+            }
+            default -> {
+                sb.append('\\');
+                sb.append(n);
+            }
+        }
+        return i;
     }
 
     /**
@@ -215,25 +241,7 @@ public final class Jsonl {
                 while (i < content.length() && content.charAt(i) != '"') {
                     char c = content.charAt(i);
                     if (c == '\\' && i + 1 < content.length()) {
-                        char n = content.charAt(++i);
-                        switch (n) {
-                            case '"' -> sb.append('"');
-                            case '\\' -> sb.append('\\');
-                            case 'n' -> sb.append('\n');
-                            case 'r' -> sb.append('\r');
-                            case 't' -> sb.append('\t');
-                            case 'u' -> {
-                                // Unicode escape (4 hex digits) — as emitted by quote() for control chars.
-                                if (i + 4 < content.length()) {
-                                    sb.append((char) Integer.parseInt(content.substring(i + 1, i + 5), 16));
-                                    i += 4;
-                                }
-                            }
-                            default -> {
-                                sb.append('\\');
-                                sb.append(n);
-                            }
-                        }
+                        i = appendEscape(content, i + 1, sb);
                     } else {
                         sb.append(c);
                     }
@@ -356,18 +364,7 @@ public final class Jsonl {
         while (i < s.length() && s.charAt(i) != '"') {
             char c = s.charAt(i);
             if (c == '\\' && i + 1 < s.length()) {
-                char n = s.charAt(++i);
-                switch (n) {
-                    case '"' -> sb.append('"');
-                    case '\\' -> sb.append('\\');
-                    case 'n' -> sb.append('\n');
-                    case 'r' -> sb.append('\r');
-                    case 't' -> sb.append('\t');
-                    default -> {
-                        sb.append('\\');
-                        sb.append(n);
-                    }
-                }
+                i = appendEscape(s, i + 1, sb);
             } else {
                 sb.append(c);
             }
