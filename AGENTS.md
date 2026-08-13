@@ -155,6 +155,21 @@ Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not**
 
 Record failures on the kanartist ticket (`status: blocked` or body notes); do not mark done on green unit tests alone if dist/install/dogfood is broken.
 
+## Code formatting (mandatory before every commit)
+
+**Hard requirement — not optional.** Before creating **any** git commit (including `git commit`, amend, or any equivalent commit action), every agent **must** run:
+
+```bash
+jk format
+```
+
+Rules:
+
+- Run `jk format` after you have finished creating or modifying source files and **before** you stage a commit. This covers **all** languages the command supports, including Java, Kotlin, Groovy, and any other files it formats.
+- **Do not** proceed with `git commit` (or amend / any equivalent) until `jk format` has **successfully completed**.
+- If `jk format` fails, **fix the issues and re-run `jk format`** until it succeeds. Do not skip, defer, or commit around a failed format run.
+- This applies to every commit an agent creates in this repository. Unformatted source must not enter git history.
+
 ## Git workflow (private repo)
 
 - **Trivial** fixes (typos, one-liner comment, obvious bug with no ticket): commit on `main` is fine.
