@@ -2366,23 +2366,11 @@ public final class EngineProtocol {
             }
             b.append(']');
         }
+        // The stack is serialized exactly once, top-level. The old nested "throwable" object
+        // duplicated class/message/stack per line — with no reader that could not already use
+        // the top-level fields — doubling every failure's wire cost.
         if (stack != null && !stack.isEmpty()) {
             b.append(",\"stack\":").append(Jsonl.quote(stack));
-            b.append(",\"throwable\":{")
-                    .append("\"class\":")
-                    .append(Jsonl.quote(exceptionClass == null ? "" : exceptionClass))
-                    .append(",\"message\":")
-                    .append(Jsonl.quote(message == null ? "" : message))
-                    .append(",\"stack\":")
-                    .append(Jsonl.quote(stack))
-                    .append('}');
-        } else if (exceptionClass != null && !exceptionClass.isEmpty()) {
-            b.append(",\"throwable\":{")
-                    .append("\"class\":")
-                    .append(Jsonl.quote(exceptionClass))
-                    .append(",\"message\":")
-                    .append(Jsonl.quote(message == null ? "" : message))
-                    .append(",\"stack\":\"\"}");
         }
         return b.append('}').toString();
     }

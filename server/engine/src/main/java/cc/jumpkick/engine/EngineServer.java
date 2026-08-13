@@ -2013,21 +2013,34 @@ public final class EngineServer implements AutoCloseable {
                         requestId));
     }
 
-    /** Compile-error flood cap. {@code test-failure} diagnostics are never dropped (JK-1871). */
+    /** Compile-error flood cap. {@code test-failure} diagnostics get their own, higher cap. */
     static final int MAX_DIAGNOSTIC_EVENTS = 8;
 
     /**
-     * Which diagnostics to put on the live SSE card. Every {@code test-failure} is kept; other
-     * codes (javac, resolve, …) are capped at {@link #MAX_DIAGNOSTIC_EVENTS}.
+     * Test-failure flood cap for the live card. JK-1871's intent stands — a normal red run shows
+     * every failure — but a broken shared fixture can fail thousands of tests, each carrying a
+     * stack and snippet; an SSE card is not the place to stream that (the CLI report and journal
+     * still have everything).
+     */
+    static final int MAX_TEST_FAILURE_EVENTS = 100;
+
+    /**
+     * Which diagnostics to put on the live SSE card. {@code test-failure} diagnostics are kept up
+     * to {@link #MAX_TEST_FAILURE_EVENTS}; other codes (javac, resolve, …) are capped at
+     * {@link #MAX_DIAGNOSTIC_EVENTS}.
      */
     static java.util.List<BuildPlanResult.Diagnostic> selectPublishedDiagnostics(
             java.util.List<BuildPlanResult.Diagnostic> errors) {
         if (errors == null || errors.isEmpty()) return java.util.List.of();
         java.util.ArrayList<BuildPlanResult.Diagnostic> out = new java.util.ArrayList<>(errors.size());
+        int tests = 0;
         int other = 0;
         for (BuildPlanResult.Diagnostic d : errors) {
             if ("test-failure".equals(d.code())) {
-                out.add(d);
+                if (tests < MAX_TEST_FAILURE_EVENTS) {
+                    out.add(d);
+                    tests++;
+                }
                 continue;
             }
             if (other < MAX_DIAGNOSTIC_EVENTS) {
@@ -2038,13 +2051,16 @@ public final class EngineServer implements AutoCloseable {
         return out;
     }
 
-    static int unpublishedOtherCount(java.util.List<BuildPlanResult.Diagnostic> errors) {
+    /** How many diagnostics {@link #selectPublishedDiagnostics} dropped — feeds the "+N more" line. */
+    static int unpublishedCount(java.util.List<BuildPlanResult.Diagnostic> errors) {
         if (errors == null) return 0;
+        int tests = 0;
         int other = 0;
         for (BuildPlanResult.Diagnostic d : errors) {
-            if (!"test-failure".equals(d.code())) other++;
+            if ("test-failure".equals(d.code())) tests++;
+            else other++;
         }
-        return Math.max(0, other - MAX_DIAGNOSTIC_EVENTS);
+        return Math.max(0, other - MAX_DIAGNOSTIC_EVENTS) + Math.max(0, tests - MAX_TEST_FAILURE_EVENTS);
     }
 
     /** Publish structured {@link BuildPlanResult.Diagnostic}s for a failed request card. */
@@ -2075,7 +2091,7 @@ public final class EngineServer implements AutoCloseable {
             if (d.test() != null && !d.test().isEmpty()) o.put("test", d.test());
             publishEvent("diagnostic", withProgress(o, requestId));
         }
-        int dropped = unpublishedOtherCount(errors);
+        int dropped = unpublishedCount(errors);
         if (dropped > 0) {
             publishRequestError(requestId, dir, "+ " + dropped + " more errors — see the CLI output");
         }

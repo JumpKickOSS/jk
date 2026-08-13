@@ -112,7 +112,8 @@ class JsonlShapeTest {
                 .contains("\"method\":\"freshen_preserves_pins_while_explicit_lock_floats(java.nio.file.Path)\"");
         assertThat(line).contains("\"exceptionClass\":\"org.opentest4j.AssertionFailedError\"");
         assertThat(line).contains("\"stack\":");
-        assertThat(line).contains("\"throwable\":{");
+        // JK-1880: the stack is serialized exactly once — no nested throwable duplicate.
+        assertThat(line).doesNotContain("\"throwable\":");
         assertThat(line).doesNotContain("\"test\":");
         assertThat(line).contains("LockFreshenConservativeTest.java:96");
     }

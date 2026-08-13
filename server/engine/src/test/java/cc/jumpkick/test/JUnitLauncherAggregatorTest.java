@@ -41,6 +41,20 @@ class JUnitLauncherAggregatorTest {
     }
 
     @Test
+    void pathological_stacks_are_truncated_at_capture() {
+        // The stack is worker-controlled input copied onto wire, SSE, and journal — a
+        // deep-recursion failure must not ride megabytes of frames through the pipeline (JK-1880).
+        String frame = "\tat C.recurse(C.java:2)\n";
+        String stack = "StackOverflowError\n" + frame.repeat(200_000 / frame.length());
+        String truncated = JUnitLauncher.ResultAggregator.truncateStack(stack);
+        assertThat(truncated.length()).isLessThanOrEqualTo(JUnitLauncher.ResultAggregator.MAX_STACK_CHARS + 64);
+        assertThat(truncated).endsWith("more chars)");
+        // Cuts on a line boundary, keeping whole frames.
+        assertThat(truncated).contains("... stack truncated (");
+        assertThat(JUnitLauncher.ResultAggregator.truncateStack("short")).isEqualTo("short");
+    }
+
+    @Test
     void container_events_do_not_count_toward_test_totals() {
         // JUnit fires FINISHED for engine roots and test classes too — those
         // are CONTAINER nodes and must not inflate the test count.

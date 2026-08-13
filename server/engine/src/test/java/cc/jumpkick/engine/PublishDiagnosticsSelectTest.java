@@ -25,6 +25,27 @@ class PublishDiagnosticsSelectTest {
         long javac = published.stream().filter(d -> "javac".equals(d.code())).count();
         assertThat(tests).isEqualTo(15);
         assertThat(javac).isEqualTo(EngineServer.MAX_DIAGNOSTIC_EVENTS);
-        assertThat(EngineServer.unpublishedOtherCount(in)).isEqualTo(12 - EngineServer.MAX_DIAGNOSTIC_EVENTS);
+        assertThat(EngineServer.unpublishedCount(in)).isEqualTo(12 - EngineServer.MAX_DIAGNOSTIC_EVENTS);
+    }
+
+    @Test
+    void pathological_test_failure_floods_are_bounded() {
+        // A broken shared fixture failing thousands of tests must not stream unbounded
+        // snippet+stack payloads onto the SSE card (JK-1880). The "+N more" line owns the rest.
+        List<BuildPlanResult.Diagnostic> in = new ArrayList<>();
+        for (int i = 0; i < EngineServer.MAX_TEST_FAILURE_EVENTS + 250; i++) {
+            in.add(new BuildPlanResult.Diagnostic("run-tests", "test-failure", "fail " + i));
+        }
+        in.add(new BuildPlanResult.Diagnostic("compile-main", "javac", "err"));
+
+        var published = EngineServer.selectPublishedDiagnostics(in);
+        long tests =
+                published.stream().filter(d -> "test-failure".equals(d.code())).count();
+        assertThat(tests).isEqualTo(EngineServer.MAX_TEST_FAILURE_EVENTS);
+        // The first failures win (stable prefix), and non-test diagnostics still ride along.
+        assertThat(published.getFirst().message()).isEqualTo("fail 0");
+        assertThat(published.stream().filter(d -> "javac".equals(d.code())).count())
+                .isEqualTo(1);
+        assertThat(EngineServer.unpublishedCount(in)).isEqualTo(250);
     }
 }

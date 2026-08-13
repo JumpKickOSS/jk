@@ -251,7 +251,7 @@ public final class JsonlShape {
 
     /**
      * Enriched test-failure error for details.jsonl / --output json: module, engine, class, method,
-     * exceptionClass, stack, and nested throwable (single-string stack).
+     * exceptionClass, and a single top-level stack (no nested throwable duplicate — JK-1880).
      */
     static String error(String step, String code, String msg, cc.jumpkick.run.TestFailureInfo failure) {
         if (failure == null) return error(step, code, msg);
@@ -283,14 +283,6 @@ public final class JsonlShape {
         }
         if (!failure.stack().isEmpty()) {
             sb.append(",\"stack\":").append(js(failure.stack()));
-            sb.append(",\"throwable\":{")
-                    .append("\"class\":")
-                    .append(js(failure.exceptionClass()))
-                    .append(",\"message\":")
-                    .append(js(failure.message()))
-                    .append(",\"stack\":")
-                    .append(js(failure.stack()))
-                    .append('}');
         }
         return sb.append('}').toString();
     }

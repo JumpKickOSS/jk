@@ -968,15 +968,29 @@ public final class JUnitLauncher {
 
         /**
          * {@code throwable.stack} as a single string. Accepts a string (preferred) or a legacy line
-         * array and joins it.
+         * array and joins it. Truncated to {@link #MAX_STACK_CHARS}: the stack is worker-controlled
+         * input that rides every downstream copy (wire, SSE, journal), and a deep-recursion failure
+         * can produce megabytes of frames that no reader wants.
          */
         static String readStack(String throwableJson) {
             if (throwableJson == null) return "";
             String s = Jsonl.str(throwableJson, "stack");
-            if (s != null) return s;
-            java.util.List<String> lines = Jsonl.strArray(throwableJson, "stack");
-            if (lines.isEmpty()) return "";
-            return String.join("\n", lines);
+            if (s == null) {
+                java.util.List<String> lines = Jsonl.strArray(throwableJson, "stack");
+                if (lines.isEmpty()) return "";
+                s = String.join("\n", lines);
+            }
+            return truncateStack(s);
+        }
+
+        /** Bound for a single failure's stack text; ~400 frames — far past any useful depth. */
+        static final int MAX_STACK_CHARS = 32_768;
+
+        static String truncateStack(String stack) {
+            if (stack == null || stack.length() <= MAX_STACK_CHARS) return stack;
+            int cut = stack.lastIndexOf('\n', MAX_STACK_CHARS);
+            if (cut <= 0) cut = MAX_STACK_CHARS;
+            return stack.substring(0, cut) + "\n\t... stack truncated (" + (stack.length() - cut) + " more chars)";
         }
 
         synchronized TestSummary toResult(int exitCode) {
