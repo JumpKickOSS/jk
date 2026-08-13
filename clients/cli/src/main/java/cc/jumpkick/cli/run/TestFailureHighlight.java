@@ -116,19 +116,6 @@ public final class TestFailureHighlight {
         }
     }
 
-    public static String paintBodyLine(String raw) {
-        Stream s = new Stream();
-        s.line(HEADER_SENTINEL);
-        s.line(raw);
-        List<String> painted = s.finish();
-        return painted.size() > 1 ? painted.get(1) : (painted.isEmpty() ? raw : painted.get(0));
-    }
-
-    /** Styled header fragment: red Test pill + mid-gray "Failure" (legacy callers). */
-    public static String paintHeader() {
-        return paintHeaderLine(null, 1, false);
-    }
-
     /**
      * {@code Test Failure in group:artifact › 1 test failed}
      *

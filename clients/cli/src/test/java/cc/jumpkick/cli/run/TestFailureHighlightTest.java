@@ -80,7 +80,7 @@ class TestFailureHighlightTest {
 
     @Test
     void header_is_test_pill_plus_failure() {
-        String h = TestFailureHighlight.paintHeader();
+        String h = TestFailureHighlight.paintHeaderLine(null, 1, false);
         assertThat(plain(h)).contains("Test").contains("Failure");
         assertThat(plain(h)).contains("1 test failed");
         if (Theme.active().isAnsi()) {
