@@ -107,6 +107,32 @@ class TableAppendTest {
     }
 
     @Test
+    void section_child_span_rows_get_collapse_dividers_like_the_parent() {
+        // JK-1891: a full-span row inside a SECTION child needs the rail-collapse divider above
+        // it and a flat close beneath, exactly as the parent row loop renders spans.
+        Table parent = new Table("T").columns("A", "B").row("a", "b");
+        Table child = new Table("").columns("L", "V").row("l", "v");
+        child.row(Table.Row.span(Table.Cell.of("utilization bar goes here").span(2)));
+        parent.append(child, Table.Append.SECTION);
+
+        List<String> out = parent.render(RenderContext.current());
+        int span = -1;
+        for (int i = 0; i < out.size(); i++) {
+            if (out.get(i).contains("utilization bar")) span = i;
+        }
+        assertThat(span).isGreaterThan(0);
+        String above = TestAnsi.strip(out.get(span - 1));
+        String below = TestAnsi.strip(out.get(span + 1));
+        if (ThemeAnsi.ansi()) {
+            assertThat(above).startsWith("├").doesNotContain("┼"); // rails collapse: ┴ only
+            assertThat(above).contains("┴");
+            assertThat(below).doesNotContain("┴"); // flat close under a full-span last row
+        }
+        // Every line still shares one width.
+        assertThat(out.stream().map(RenderContext::visibleWidth).distinct()).hasSize(1);
+    }
+
+    @Test
     void all_lines_share_one_visible_width() {
         Table t = new Table("Build Plan")
                 .columns("Plan Item", "Total", "Rebuild", "Delta")

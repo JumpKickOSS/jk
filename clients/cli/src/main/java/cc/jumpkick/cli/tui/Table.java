@@ -383,13 +383,22 @@ public final class Table implements Widget {
                 if (row.kind() == RowKind.SEPARATOR) {
                     out.add(divider(ctx, "├", "┼", "┤", cw));
                 } else if (row.kind() == RowKind.SPAN) {
+                    // Same treatment as the parent loop: collapse the column rails before a
+                    // full-span row instead of colliding into it without junctions (JK-1891).
+                    if (isFullSpan(row, cw.length)) {
+                        out.add(divider(ctx, "├", "┴", "┤", cw));
+                    }
                     out.add(spanRow(ctx, row, cw, plain));
                 } else {
                     out.add(dataRow(ctx, row, child.columnsView(), cw, plain));
                 }
             }
             if (childLast) {
-                out.add(divider(ctx, "╰", "┴", "╯", cw));
+                if (lastVisibleIsFullSpan(child.rows, cw.length)) {
+                    out.add(flatClose(ctx, innerWidth(cw)));
+                } else {
+                    out.add(divider(ctx, "╰", "┴", "╯", cw));
+                }
             }
         }
         return out;
