@@ -253,6 +253,74 @@ function cssVar(name, fallback) {
   return v || fallback;
 }
 
+
+// One fail-report body shared by the compact-card and workspace-module branches — the two
+// inline template copies drifted once already (JK-1873); a single component cannot (JK-1916).
+const FailReport = {
+  props: { rep: { type: Object, required: true } },
+  methods: {
+    failLabelSegs(label) {
+      return detailSegments(label);
+    },
+  },
+  template: `
+    <template v-if="rep.showHeader">
+      <div class="fail-head">
+        <span class="console-err">\u2718</span>
+        <span class="fail-mid"> Test failure</span>
+        <template v-if="rep.module">
+          <span class="fail-mid"> in </span><span class="det-coord">{{ rep.module }}</span>
+        </template>
+        <span class="console-sep"> \u203a </span>
+        <span class="det-focus">{{ rep.count }}</span>
+        <span class="fail-mid"> test{{ rep.count === 1 ? '' : 's' }} failed</span>
+      </div>
+      <div class="fail-blank"></div>
+    </template>
+    <div class="fail-line">
+      <span class="fail-failed">FAILED&nbsp;</span><template v-for="(seg, si) in failLabelSegs(rep.label)" :key="si">
+        <span :class="seg.cls">{{ seg.text }}</span>
+      </template>
+    </div>
+    <div class="fail-blank"></div>
+    <template v-if="rep.assertj">
+      <div v-if="rep.assertj.desc" class="fail-line">
+        <span class="fail-dim">"</span><span class="fail-desc">{{ rep.assertj.desc }}</span><span class="fail-dim">"</span>
+      </div>
+      <div class="fail-line">
+        <span class="fail-mid">&nbsp;Expected:&nbsp;</span><span class="fail-ok">{{ rep.assertj.expected }}</span>
+      </div>
+      <div class="fail-line">
+        <span class="fail-mid">&nbsp;&nbsp;But Was:&nbsp;</span><span class="fail-err">{{ rep.assertj.actual }}</span>
+      </div>
+    </template>
+    <template v-else-if="rep.message">
+      <div class="fail-line fail-mid" v-for="(ml, mi) in rep.message.split('\\n')" :key="'m'+mi">{{ ml }}</div>
+    </template>
+    <template v-if="rep.file">
+      <div class="fail-blank"></div>
+      <div class="fail-line fail-path">{{ rep.file }}</div>
+      <div
+        v-for="(row, ri) in rep.rows"
+        :key="'s'+ri"
+        class="fail-src"
+        :class="{ 'fail-src-err': row.error }"
+      >
+        <span class="fail-gutter" :class="{ 'fail-gutter-err': row.error }">{{ row.gutter }}</span><span class="fail-gutter-rail">\u2502</span><span class="fail-src-code">{{ row.code }}{{ ' '.repeat(row.pad) }}</span>
+      </div>
+      <div v-if="rep.exceptionClass" class="fail-line fail-thrown">
+        <span class="det-type">{{ rep.exceptionClass }}</span><span class="fail-mid"> thrown at line </span><span class="det-focus">{{ rep.line }}</span>
+      </div>
+    </template>
+    <template v-else>
+      <div v-if="rep.exceptionClass" class="fail-line fail-thrown">
+        <span class="det-type">{{ rep.exceptionClass }}</span>
+      </div>
+      <div v-for="(fr, fi) in (rep.frames || [])" :key="'st'+fi" class="fail-line fail-stack">{{ fr }}</div>
+    </template>
+  `,
+};
+
 const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
 /** Memoized test-failure report models, keyed by the (immutable) diagnostic object. */
@@ -2288,6 +2356,7 @@ Vue.createApp({
 })
   .component('jk-icon', JkIcon)
   .component('phase-chain', PhaseChain)
+  .component('fail-report', FailReport)
   .component('build-bars', BuildBars)
   .component('module-dep-graph', ModuleDepGraph)
   .mount('#app');
