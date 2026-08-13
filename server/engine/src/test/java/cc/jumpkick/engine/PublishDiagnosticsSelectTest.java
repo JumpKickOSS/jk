@@ -20,7 +20,8 @@ class PublishDiagnosticsSelectTest {
             in.add(new BuildPlanResult.Diagnostic("compile-main", "javac", "err " + i));
         }
         var published = EngineServer.selectPublishedDiagnostics(in);
-        long tests = published.stream().filter(d -> "test-failure".equals(d.code())).count();
+        long tests =
+                published.stream().filter(d -> "test-failure".equals(d.code())).count();
         long javac = published.stream().filter(d -> "javac".equals(d.code())).count();
         assertThat(tests).isEqualTo(15);
         assertThat(javac).isEqualTo(EngineServer.MAX_DIAGNOSTIC_EVENTS);

@@ -204,7 +204,9 @@ public final class ActivityCommand implements CliCommand {
         sb.append(glyph).append(' ');
         if (buildNumber > 0) {
             int width = Math.max(1, buildNumberWidth);
-            sb.append('#').append(String.format("%0" + width + "d", buildNumber)).append(' ');
+            sb.append('#')
+                    .append(String.format("%0" + width + "d", buildNumber))
+                    .append(' ');
         } else if (!running) {
             sb.append("#— ");
         }

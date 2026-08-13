@@ -311,7 +311,14 @@ public final class DependencyTree {
             }
         } else if (flatten) {
             renderFlatScopes(
-                    project, lock, projectDir, styling, scopeOrder, stack, workspaceGraphForMember(projectDir, lock), out);
+                    project,
+                    lock,
+                    projectDir,
+                    styling,
+                    scopeOrder,
+                    stack,
+                    workspaceGraphForMember(projectDir, lock),
+                    out);
         } else {
             renderScopeSections(
                     project,
@@ -450,8 +457,7 @@ public final class DependencyTree {
             Map<String, String> byName = new HashMap<>();
             Map<String, LoadedModule> byGa = new HashMap<>();
             for (LoadedModule m : loaded) {
-                JkBuild rewritten =
-                        WorkspaceMerge.resolveSiblingCoordinates(rootBuild, m.build(), siblingBuilds);
+                JkBuild rewritten = WorkspaceMerge.resolveSiblingCoordinates(rootBuild, m.build(), siblingBuilds);
                 // Members share the workspace lock GraphOps already loaded.
                 Lockfile moduleLock = lock != null ? lock : m.lock();
                 String ga = moduleGa(rewritten);
@@ -594,18 +600,7 @@ public final class DependencyTree {
                 .append('\n');
         String modPrefix = scopePrefix + styling.rail().apply(lastMod ? "   " : "│  ");
         renderScopeDepList(
-                m.build(),
-                m.lock(),
-                m.dir(),
-                scopes,
-                1,
-                maxDepth,
-                modPrefix,
-                styling,
-                ws,
-                seenModules,
-                seenDirs,
-                out);
+                m.build(), m.lock(), m.dir(), scopes, 1, maxDepth, modPrefix, styling, ws, seenModules, seenDirs, out);
     }
 
     /** Scopes shown as sections, in display order; only non-empty ones render. */
@@ -887,7 +882,8 @@ public final class DependencyTree {
     private static void renderFlatWorkspaceScopes(
             JkBuild root, Path rootDir, Styling styling, List<Scope> scopeOrder, boolean stack, StringBuilder out) {
 
-        WorkspaceGraph ws = WorkspaceGraph.collapse(workspaceModulesByName(root.workspace().modules(), rootDir));
+        WorkspaceGraph ws =
+                WorkspaceGraph.collapse(workspaceModulesByName(root.workspace().modules(), rootDir));
         List<LoadedModule> modules = loadModules(root.workspace().modules(), rootDir);
 
         List<Scope> sections = new ArrayList<>();
@@ -1087,17 +1083,7 @@ public final class DependencyTree {
         if (sibling != null) {
             if (ws.expandSiblings()) {
                 renderSiblingModule(
-                        sibling,
-                        scopes,
-                        depth,
-                        maxDepth,
-                        isLast,
-                        prefix,
-                        styling,
-                        ws,
-                        seenModules,
-                        seenDirs,
-                        out);
+                        sibling, scopes, depth, maxDepth, isLast, prefix, styling, ws, seenModules, seenDirs, out);
                 return;
             }
             String coord = moduleGa(sibling.build());

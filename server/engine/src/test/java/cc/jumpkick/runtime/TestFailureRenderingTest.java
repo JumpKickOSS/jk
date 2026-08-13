@@ -73,15 +73,7 @@ class TestFailureRenderingTest {
                 "freshen_preserves_pins(java.nio.file.Path)");
         assertThat(TestSupport.shortTestLabel(f)).isEqualTo("FooTest.freshen_preserves_pins(Path)  [w2]");
         var invoked = new TestSummary.Failure(
-                "bar(java.lang.String)[#2]",
-                "",
-                "",
-                "",
-                "",
-                "demo.FooTest",
-                0,
-                "",
-                "bar(java.lang.String)[#2]");
+                "bar(java.lang.String)[#2]", "", "", "", "", "demo.FooTest", 0, "", "bar(java.lang.String)[#2]");
         assertThat(TestSupport.shortTestLabel(invoked)).isEqualTo("FooTest.bar(String)[#2]");
         List<String> lines = TestSupport.renderFailures(new TestSummary(1, 0, 1, 0, List.of(f)));
         assertThat(lines).anyMatch(l -> l.equals("module: cc.jumpkick:jk-core"));
@@ -120,8 +112,7 @@ class TestFailureRenderingTest {
         assertThat(TestSupport.simpleClassName("cc.jumpkick.runtime.FooTest")).isEqualTo("FooTest");
         assertThat(TestSupport.liveTestDetail(
                         "[engine:junit-jupiter]/[class:demo.FooTest]/[method:bar(java.lang.String%5B%5D)]",
-                        "bar(java.lang.String[])",
-                        true))
+                        "bar(java.lang.String[])", true))
                 .isEqualTo("FooTest.bar(String[])");
     }
 

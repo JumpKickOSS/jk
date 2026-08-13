@@ -40,8 +40,7 @@ public final class TestFailureSource {
      * prefix: {@code pkg.Class.method(File.java:42)} / {@code (File.kt:12)} /
      * {@code (Native Method)} / {@code (Unknown Source)}.
      */
-    private static final Pattern FRAME = Pattern.compile(
-            "^([\\w.$]+)\\.([\\w$<>]+)\\(([^:)]+)(?::(\\d+))?\\)\\s*$");
+    private static final Pattern FRAME = Pattern.compile("^([\\w.$]+)\\.([\\w$<>]+)\\(([^:)]+)(?::(\\d+))?\\)\\s*$");
 
     private TestFailureSource() {}
 
@@ -51,12 +50,7 @@ public final class TestFailureSource {
      * {@code lines.get(0)}.
      */
     public record Snippet(
-            Path absolutePath,
-            String relativePath,
-            int errorLine,
-            int startLine,
-            List<String> lines,
-            String language) {
+            Path absolutePath, String relativePath, int errorLine, int startLine, List<String> lines, String language) {
 
         public Snippet {
             lines = List.copyOf(lines);
@@ -116,8 +110,7 @@ public final class TestFailureSource {
 
     private static Optional<Snippet> resolveUncached(Cache cache, Path moduleDir, String testClass, Frame f) {
         FileKey fk = new FileKey(moduleDir, testClass == null ? "" : testClass, f.fileName);
-        Optional<Path> file =
-                cache.files.computeIfAbsent(fk, k -> locateFile(cache, moduleDir, testClass, f.fileName));
+        Optional<Path> file = cache.files.computeIfAbsent(fk, k -> locateFile(cache, moduleDir, testClass, f.fileName));
         if (file.isEmpty()) return Optional.empty();
         try {
             int lineCount = countLines(file.get());
@@ -126,7 +119,8 @@ public final class TestFailureSource {
             List<String> slice = readWindow(file.get(), w[0], w[1]);
             if (slice.isEmpty()) return Optional.empty();
             Path abs = file.get();
-            return Optional.of(new Snippet(abs, relativize(moduleDir, abs), f.line, w[0] + 1, slice, languageOf(f.fileName)));
+            return Optional.of(
+                    new Snippet(abs, relativize(moduleDir, abs), f.line, w[0] + 1, slice, languageOf(f.fileName)));
         } catch (IOException e) {
             return Optional.empty();
         }
@@ -264,7 +258,8 @@ public final class TestFailureSource {
         Layout layout = cache.layout(moduleDir);
         for (Path root : layout.roots()) {
             if (!pkgPath.isEmpty()) {
-                Optional<Path> hit = insideModuleFile(moduleDir, root.resolve(pkgPath).resolve(fileName));
+                Optional<Path> hit =
+                        insideModuleFile(moduleDir, root.resolve(pkgPath).resolve(fileName));
                 if (hit.isPresent()) return hit;
             }
             Optional<Path> hit = insideModuleFile(moduleDir, root.resolve(fileName));
@@ -283,8 +278,9 @@ public final class TestFailureSource {
 
     private static Optional<Path> scanByFileName(
             Cache cache, Path moduleDir, String pkgPath, String fileName, Layout layout) {
-        Path preferSuffix =
-                pkgPath.isEmpty() ? Path.of(fileName) : Path.of(pkgPath.replace('/', java.io.File.separatorChar), fileName);
+        Path preferSuffix = pkgPath.isEmpty()
+                ? Path.of(fileName)
+                : Path.of(pkgPath.replace('/', java.io.File.separatorChar), fileName);
         Path best = null;
         int seen = 0;
         for (Path root : layout.roots()) {

@@ -65,7 +65,11 @@ class TuiModeFixturesTest {
                         "    |",
                         "    `-[core]",
                         "       `- [ ] Compile");
-        assertThat(joined).doesNotContain(CSI).doesNotContain(PUA).doesNotContain("├").doesNotContain("╰");
+        assertThat(joined)
+                .doesNotContain(CSI)
+                .doesNotContain(PUA)
+                .doesNotContain("├")
+                .doesNotContain("╰");
     }
 
     @Test

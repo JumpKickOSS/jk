@@ -17,10 +17,11 @@ class JUnitLauncherAggregatorTest {
         var agg = new JUnitLauncher.ResultAggregator();
         agg.accept("{\"event\":\"finished\",\"id\":\"a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
         agg.accept("{\"event\":\"finished\",\"id\":\"b\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
-        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"[engine:junit-jupiter]/[class:C]/[method:c()]\","
-                + "\"testEngine\":\"junit-jupiter\",\"testClass\":\"C\",\"testMethod\":\"c()\","
-                + "\"type\":\"TEST\",\"status\":\"FAILED\","
-                + "\"throwable\":{\"class\":\"AssertionError\",\"message\":\"nope\",\"stack\":\"AssertionError: nope\\n\\tat C.c(C.java:1)\"}}");
+        agg.accept(
+                "{\"event\":\"finished\",\"uniqueId\":\"[engine:junit-jupiter]/[class:C]/[method:c()]\","
+                        + "\"testEngine\":\"junit-jupiter\",\"testClass\":\"C\",\"testMethod\":\"c()\","
+                        + "\"type\":\"TEST\",\"status\":\"FAILED\","
+                        + "\"throwable\":{\"class\":\"AssertionError\",\"message\":\"nope\",\"stack\":\"AssertionError: nope\\n\\tat C.c(C.java:1)\"}}");
         agg.accept("{\"event\":\"skipped\",\"uniqueId\":\"d\",\"type\":\"TEST\",\"reason\":\"@Disabled\"}");
 
         var result = agg.toResult(0);
@@ -55,11 +56,14 @@ class JUnitLauncherAggregatorTest {
     void merges_event_streams_from_multiple_workers() {
         // Simulate two parallel workers each running a couple of classes.
         var agg = new JUnitLauncher.ResultAggregator();
-        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"w1.a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\",\"worker\":1}");
-        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"w2.x\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\",\"worker\":2}");
+        agg.accept(
+                "{\"event\":\"finished\",\"uniqueId\":\"w1.a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\",\"worker\":1}");
+        agg.accept(
+                "{\"event\":\"finished\",\"uniqueId\":\"w2.x\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\",\"worker\":2}");
         agg.accept("{\"event\":\"finished\",\"uniqueId\":\"w1.b\",\"type\":\"TEST\",\"status\":\"FAILED\",\"worker\":1,"
                 + "\"testMethod\":\"b()\",\"throwable\":{\"class\":\"E\",\"message\":\"m\",\"stack\":\"\"}}");
-        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"w2.y\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\",\"worker\":2}");
+        agg.accept(
+                "{\"event\":\"finished\",\"uniqueId\":\"w2.y\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\",\"worker\":2}");
 
         var result = agg.toResult(0);
         assertThat(result.total()).isEqualTo(4);
@@ -122,7 +126,8 @@ class JUnitLauncherAggregatorTest {
         var agg = new JUnitLauncher.ResultAggregator(listener, 0);
 
         // Plain static test — no preceding dynamic_registered.
-        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"static-1\"," + "\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
+        agg.accept(
+                "{\"event\":\"finished\",\"uniqueId\":\"static-1\"," + "\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
         // Parameterized invocation — preceded by dynamic_registered.
         agg.accept("{\"event\":\"dynamic_registered\",\"uniqueId\":\"dyn-1\",\"type\":\"TEST\"}");
         agg.accept("{\"event\":\"finished\",\"uniqueId\":\"dyn-1\"," + "\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
@@ -130,7 +135,8 @@ class JUnitLauncherAggregatorTest {
         // test id — its later finished (also CONTAINER) shouldn't affect
         // progress regardless.
         agg.accept("{\"event\":\"dynamic_registered\",\"uniqueId\":\"c-1\",\"type\":\"CONTAINER\"}");
-        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"c-1\"," + "\"type\":\"CONTAINER\",\"status\":\"SUCCESSFUL\"}");
+        agg.accept(
+                "{\"event\":\"finished\",\"uniqueId\":\"c-1\"," + "\"type\":\"CONTAINER\",\"status\":\"SUCCESSFUL\"}");
 
         assertThat(captured).hasSize(3);
         assertThat(captured.get(0)).containsExactly(true, true); // static @Test

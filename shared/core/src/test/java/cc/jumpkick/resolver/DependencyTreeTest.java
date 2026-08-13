@@ -354,8 +354,7 @@ class DependencyTreeTest {
         assertThat(transitive).doesNotContain("(missing)");
         assertThat(transitive).doesNotContain("[workspace]");
 
-        String flat = DependencyTree.render(
-                member, lock, b, Integer.MAX_VALUE, DependencyTree.Styling.plain(), true);
+        String flat = DependencyTree.render(member, lock, b, Integer.MAX_VALUE, DependencyTree.Styling.plain(), true);
         assertThat(flat)
                 .contains("com.acme:a:9.9.9")
                 .contains("com.acme:c:9.9.9")

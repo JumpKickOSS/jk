@@ -56,8 +56,7 @@ final class JUnitUniqueId {
                 case "test-factory" -> {
                     if (template.isEmpty()) template = s.getValue();
                 }
-                case "test-template-invocation", "test-factory-invocation", "dynamic-test" ->
-                    invocation = s.getValue();
+                case "test-template-invocation", "test-factory-invocation", "dynamic-test" -> invocation = s.getValue();
                 default -> {}
             }
         }

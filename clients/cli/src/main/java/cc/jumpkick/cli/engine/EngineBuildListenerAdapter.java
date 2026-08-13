@@ -913,8 +913,7 @@ final class EngineBuildListenerAdapter {
                         planListenersByDir
                                 .getOrDefault(dir, NOOP)
                                 .warn(Jsonl.str(line, "task"), Jsonl.str(line, "code"), Jsonl.str(line, "message"));
-                    case EngineProtocol.ERROR_LINE ->
-                        dispatchError(planListenersByDir.getOrDefault(dir, NOOP), line);
+                    case EngineProtocol.ERROR_LINE -> dispatchError(planListenersByDir.getOrDefault(dir, NOOP), line);
                     case EngineProtocol.BUILDPLAN_DIAGNOSTIC ->
                         diagnosticsByDir
                                 .computeIfAbsent(dir, d -> new ArrayList<>())

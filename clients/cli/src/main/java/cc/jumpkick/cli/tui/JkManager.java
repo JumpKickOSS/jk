@@ -1160,7 +1160,8 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             budget--;
             shown++;
             if (entry.briefError != null && !entry.briefError.isEmpty() && budget > 0) {
-                node.body(RichText.ansi(Theme.colorize(entry.briefError, Theme.active().error())))
+                node.body(RichText.ansi(
+                                Theme.colorize(entry.briefError, Theme.active().error())))
                         .bodyFit(Tree.BodyFit.INDENT);
                 budget--;
             }

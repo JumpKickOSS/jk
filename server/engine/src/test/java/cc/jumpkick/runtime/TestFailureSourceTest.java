@@ -13,8 +13,7 @@ class TestFailureSourceTest {
 
     @Test
     void parses_java_stack_frame() {
-        var f = TestFailureSource.parseFrame(
-                        "\tat cc.jumpkick.runtime.FooTest.bar(FooTest.java:42)")
+        var f = TestFailureSource.parseFrame("\tat cc.jumpkick.runtime.FooTest.bar(FooTest.java:42)")
                 .orElseThrow();
         assertThat(f.className()).isEqualTo("cc.jumpkick.runtime.FooTest");
         assertThat(f.method()).isEqualTo("bar");
@@ -24,24 +23,26 @@ class TestFailureSourceTest {
 
     @Test
     void parses_kotlin_and_groovy_file_names() {
-        assertThat(TestFailureSource.parseFrame("\tat c.F.m(F.kt:9)").orElseThrow().fileName())
+        assertThat(TestFailureSource.parseFrame("\tat c.F.m(F.kt:9)")
+                        .orElseThrow()
+                        .fileName())
                 .isEqualTo("F.kt");
-        assertThat(TestFailureSource.parseFrame("\tat c.F.m(F.groovy:3)").orElseThrow().fileName())
+        assertThat(TestFailureSource.parseFrame("\tat c.F.m(F.groovy:3)")
+                        .orElseThrow()
+                        .fileName())
                 .isEqualTo("F.groovy");
     }
 
     @Test
     void parses_named_module_and_classloader_frames() {
-        var mod = TestFailureSource.parseFrame(
-                        "\tat demo.mod/cc.jumpkick.runtime.FooTest.bar(FooTest.java:15)")
+        var mod = TestFailureSource.parseFrame("\tat demo.mod/cc.jumpkick.runtime.FooTest.bar(FooTest.java:15)")
                 .orElseThrow();
         assertThat(mod.className()).isEqualTo("cc.jumpkick.runtime.FooTest");
         assertThat(mod.method()).isEqualTo("bar");
         assertThat(mod.fileName()).isEqualTo("FooTest.java");
         assertThat(mod.line()).isEqualTo(15);
 
-        var loader = TestFailureSource.parseFrame(
-                        "\tat app//cc.jumpkick.runtime.FooTest.bar(FooTest.java:9)")
+        var loader = TestFailureSource.parseFrame("\tat app//cc.jumpkick.runtime.FooTest.bar(FooTest.java:9)")
                 .orElseThrow();
         assertThat(loader.className()).isEqualTo("cc.jumpkick.runtime.FooTest");
         assertThat(loader.line()).isEqualTo(9);
@@ -55,7 +56,8 @@ class TestFailureSourceTest {
                 	at cc.jumpkick.runtime.FooTest.bar(FooTest.java:15)
                 	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
                 """;
-        var f = TestFailureSource.primaryFrame(stack, "cc.jumpkick.runtime.FooTest").orElseThrow();
+        var f = TestFailureSource.primaryFrame(stack, "cc.jumpkick.runtime.FooTest")
+                .orElseThrow();
         assertThat(f.line()).isEqualTo(15);
         assertThat(f.fileName()).isEqualTo("FooTest.java");
     }
@@ -72,9 +74,7 @@ class TestFailureSourceTest {
     void resolves_traditional_layout_and_snippet(@TempDir Path mod) throws Exception {
         Path src = mod.resolve("src/test/java/cc/jumpkick/runtime");
         Files.createDirectories(src);
-        Files.writeString(
-                src.resolve("FooTest.java"),
-                """
+        Files.writeString(src.resolve("FooTest.java"), """
                 package cc.jumpkick.runtime;
                 import static org.junit.jupiter.api.Assertions.assertEquals;
                 class FooTest {
@@ -87,18 +87,21 @@ class TestFailureSourceTest {
                     }
                 }
                 """);
-        String stack = "org.opentest4j.AssertionFailedError: x\n"
-                + "\tat cc.jumpkick.runtime.FooTest.bar(FooTest.java:9)\n";
-        var snip = TestFailureSource.resolve(mod, "cc.jumpkick.runtime.FooTest", stack).orElseThrow();
+        String stack =
+                "org.opentest4j.AssertionFailedError: x\n" + "\tat cc.jumpkick.runtime.FooTest.bar(FooTest.java:9)\n";
+        var snip = TestFailureSource.resolve(mod, "cc.jumpkick.runtime.FooTest", stack)
+                .orElseThrow();
         assertThat(snip.errorLine()).isEqualTo(9);
         assertThat(snip.lines()).hasSize(7);
         assertThat(snip.relativePath()).contains("FooTest.java");
         assertThat(snip.language()).isEqualTo("java");
         // Error line is among the seven lines
-        assertThat(snip.lines().stream().anyMatch(l -> l.contains("assertEquals"))).isTrue();
+        assertThat(snip.lines().stream().anyMatch(l -> l.contains("assertEquals")))
+                .isTrue();
         List<String> markers = TestFailureSource.encodeMarkers(snip);
         assertThat(markers.get(0)).startsWith("@@source ");
-        assertThat(markers.stream().anyMatch(l -> l.contains("*|") && l.contains("assertEquals"))).isTrue();
+        assertThat(markers.stream().anyMatch(l -> l.contains("*|") && l.contains("assertEquals")))
+                .isTrue();
         assertThat(markers.getLast()).isEqualTo("@@src-end");
     }
 
@@ -106,9 +109,7 @@ class TestFailureSourceTest {
     void resolves_simple_layout_test_src(@TempDir Path mod) throws Exception {
         Path src = mod.resolve("test/src/cc/jumpkick");
         Files.createDirectories(src);
-        Files.writeString(
-                src.resolve("BarTest.java"),
-                """
+        Files.writeString(src.resolve("BarTest.java"), """
                 package cc.jumpkick;
                 class BarTest {
                     void t() {
@@ -126,9 +127,7 @@ class TestFailureSourceTest {
     void renderFailures_embeds_snippet_markers(@TempDir Path mod) throws Exception {
         Path src = mod.resolve("src/test/java/demo");
         Files.createDirectories(src);
-        Files.writeString(
-                src.resolve("ZTest.java"),
-                """
+        Files.writeString(src.resolve("ZTest.java"), """
                 package demo;
                 class ZTest {
                     void a() { int x = 1; }
@@ -146,13 +145,11 @@ class TestFailureSourceTest {
                 "d()",
                 "org.opentest4j.AssertionFailedError",
                 "expected: <1> but was: <2>",
-                "org.opentest4j.AssertionFailedError: expected: <1> but was: <2>\n"
-                        + "\tat demo.ZTest.d(ZTest.java:7)",
+                "org.opentest4j.AssertionFailedError: expected: <1> but was: <2>\n" + "\tat demo.ZTest.d(ZTest.java:7)",
                 "g:a",
                 "demo.ZTest",
                 0);
-        var lines = TestSupport.renderFailures(
-                new cc.jumpkick.run.TestSummary(1, 0, 1, 0, List.of(f)), mod);
+        var lines = TestSupport.renderFailures(new cc.jumpkick.run.TestSummary(1, 0, 1, 0, List.of(f)), mod);
         String text = String.join("\n", lines);
         assertThat(text).contains("@@source ");
         assertThat(text).contains("AssertionFailedError thrown at line 7");
@@ -170,9 +167,7 @@ class TestFailureSourceTest {
     void resolves_integration_suite(@TempDir Path mod) throws Exception {
         Path src = mod.resolve("src/integration/java/cc/jumpkick");
         Files.createDirectories(src);
-        Files.writeString(
-                src.resolve("ItTest.java"),
-                """
+        Files.writeString(src.resolve("ItTest.java"), """
                 package cc.jumpkick;
                 class ItTest {
                     void t() {
@@ -190,9 +185,7 @@ class TestFailureSourceTest {
     void resolves_simple_layout_integration_suite(@TempDir Path mod) throws Exception {
         Path src = mod.resolve("integration/src/cc/jumpkick");
         Files.createDirectories(src);
-        Files.writeString(
-                src.resolve("ItTest.java"),
-                """
+        Files.writeString(src.resolve("ItTest.java"), """
                 package cc.jumpkick;
                 class ItTest {
                     void t() {
@@ -221,17 +214,15 @@ class TestFailureSourceTest {
         Files.writeString(outside, "do not read\n");
         String stack = "err\n\tat cc.jumpkick.FooTest.t(../secret.txt:1)\n";
         assertThat(TestFailureSource.resolve(mod, "cc.jumpkick.FooTest", stack)).isEmpty();
-        assertThat(TestFailureSource.insideModule(mod, mod.resolve("../../secret.txt"))).isEmpty();
+        assertThat(TestFailureSource.insideModule(mod, mod.resolve("../../secret.txt")))
+                .isEmpty();
     }
 
     @Test
-    void shared_cache_resolves_once_and_does_not_walk_when_candidates_hit(@TempDir Path mod)
-            throws Exception {
+    void shared_cache_resolves_once_and_does_not_walk_when_candidates_hit(@TempDir Path mod) throws Exception {
         Path src = mod.resolve("src/test/java/cc/jumpkick");
         Files.createDirectories(src);
-        Files.writeString(
-                src.resolve("FooTest.java"),
-                """
+        Files.writeString(src.resolve("FooTest.java"), """
                 package cc.jumpkick;
                 class FooTest {
                     void a() { throw new AssertionError("a"); }
@@ -267,7 +258,7 @@ class TestFailureSourceTest {
         for (int i = 1; i <= 200; i++) sb.append("line ").append(i).append('\n');
         Files.writeString(f, sb);
         List<String> slice = TestFailureSource.readWindow(f, 96, 102);
-        assertThat(slice).containsExactly(
-                "line 97", "line 98", "line 99", "line 100", "line 101", "line 102", "line 103");
+        assertThat(slice)
+                .containsExactly("line 97", "line 98", "line 99", "line 100", "line 101", "line 102", "line 103");
     }
 }

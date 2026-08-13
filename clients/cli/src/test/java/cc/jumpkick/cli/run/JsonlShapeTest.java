@@ -108,7 +108,8 @@ class JsonlShapeTest {
         assertThat(line).contains("\"module\":\"cc.jumpkick:jk-engine\"");
         assertThat(line).contains("\"engine\":\"junit-jupiter\"");
         assertThat(line).contains("\"class\":\"cc.jumpkick.runtime.LockFreshenConservativeTest\"");
-        assertThat(line).contains("\"method\":\"freshen_preserves_pins_while_explicit_lock_floats(java.nio.file.Path)\"");
+        assertThat(line)
+                .contains("\"method\":\"freshen_preserves_pins_while_explicit_lock_floats(java.nio.file.Path)\"");
         assertThat(line).contains("\"exceptionClass\":\"org.opentest4j.AssertionFailedError\"");
         assertThat(line).contains("\"stack\":");
         assertThat(line).contains("\"throwable\":{");

@@ -66,7 +66,9 @@ public final class VerboseListener implements BuildPlanListener {
 
     @Override
     public void output(String step, String line) {
-        outputBuf.computeIfAbsent(step, s -> Collections.synchronizedList(new ArrayList<>())).add(line);
+        outputBuf
+                .computeIfAbsent(step, s -> Collections.synchronizedList(new ArrayList<>()))
+                .add(line);
     }
 
     private void flushOutput(String step) {

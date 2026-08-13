@@ -186,8 +186,7 @@ public final class TestSupport {
     }
 
     /** Share {@code cache} with {@link #bridgeListener} so each failure is resolved once. */
-    public static List<String> renderFailures(
-            TestSummary result, Path moduleDir, TestFailureSource.Cache cache) {
+    public static List<String> renderFailures(TestSummary result, Path moduleDir, TestFailureSource.Cache cache) {
         List<String> out = new ArrayList<>();
         List<TestSummary.Failure> failures = result.failures();
         if (failures.isEmpty()) return out;

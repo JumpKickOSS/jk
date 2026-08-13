@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -33,10 +34,12 @@ class TreeCommandTest {
         module(tmp.resolve("foo"), "foo");
         module(tmp.resolve("foo").resolve("bar"), "bar");
 
-        assertThat(TreeCommand.resolveTreeDir(tmp, null).dir()).isEqualTo(tmp.toAbsolutePath().normalize());
+        assertThat(TreeCommand.resolveTreeDir(tmp, null).dir())
+                .isEqualTo(tmp.toAbsolutePath().normalize());
         assertThat(TreeCommand.resolveTreeDir(tmp.resolve("foo"), null).dir())
                 .isEqualTo(tmp.toAbsolutePath().normalize());
-        assertThat(TreeCommand.resolveTreeDir(tmp.resolve("foo").resolve("bar"), null).dir())
+        assertThat(TreeCommand.resolveTreeDir(tmp.resolve("foo").resolve("bar"), null)
+                        .dir())
                 .isEqualTo(tmp.toAbsolutePath().normalize());
     }
 
@@ -64,7 +67,8 @@ class TreeCommandTest {
                 .isEqualTo(tmp.resolve("foo").resolve("bar").toAbsolutePath().normalize());
         assertThat(TreeCommand.resolveTreeDir(tmp.resolve("foo"), ".").dir())
                 .isEqualTo(tmp.resolve("foo").toAbsolutePath().normalize());
-        assertThat(TreeCommand.resolveTreeDir(tmp, ".").dir()).isEqualTo(tmp.toAbsolutePath().normalize());
+        assertThat(TreeCommand.resolveTreeDir(tmp, ".").dir())
+                .isEqualTo(tmp.toAbsolutePath().normalize());
     }
 
     @Test
@@ -90,17 +94,19 @@ class TreeCommandTest {
     @Test
     void standalone_project_is_its_own_scope(@TempDir Path tmp) throws IOException {
         module(tmp, "solo");
-        assertThat(TreeCommand.resolveTreeDir(tmp, null).dir()).isEqualTo(tmp.toAbsolutePath().normalize());
-        assertThat(TreeCommand.resolveTreeDir(tmp, ".").dir()).isEqualTo(tmp.toAbsolutePath().normalize());
-        assertThat(TreeCommand.resolveTreeDir(tmp, ":solo").dir()).isEqualTo(tmp.toAbsolutePath().normalize());
+        assertThat(TreeCommand.resolveTreeDir(tmp, null).dir())
+                .isEqualTo(tmp.toAbsolutePath().normalize());
+        assertThat(TreeCommand.resolveTreeDir(tmp, ".").dir())
+                .isEqualTo(tmp.toAbsolutePath().normalize());
+        assertThat(TreeCommand.resolveTreeDir(tmp, ":solo").dir())
+                .isEqualTo(tmp.toAbsolutePath().normalize());
     }
 
     private static void workspace(Path dir, String... modules) throws IOException {
         Files.createDirectories(dir);
-        String mods = String.join(", ", java.util.Arrays.stream(modules).map(m -> '"' + m + '"').toList());
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        String mods =
+                String.join(", ", Arrays.stream(modules).map(m -> '"' + m + '"').toList());
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group   = "com.example"
                 name    = "root"
@@ -108,20 +114,16 @@ class TreeCommandTest {
 
                 [workspace]
                 modules = [%s]
-                """
-                        .formatted(mods));
+                """.formatted(mods));
     }
 
     private static void module(Path dir, String name) throws IOException {
         Files.createDirectories(dir);
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group   = "com.example"
                 name    = "%s"
                 version = "1.0.0"
-                """
-                        .formatted(name));
+                """.formatted(name));
     }
 }

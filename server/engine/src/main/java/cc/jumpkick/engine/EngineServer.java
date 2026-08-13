@@ -5425,8 +5425,7 @@ public final class EngineServer implements AutoCloseable {
             }
 
             @Override
-            public void error(
-                    String step, String code, String message, cc.jumpkick.run.TestFailureInfo failure) {
+            public void error(String step, String code, String message, cc.jumpkick.run.TestFailureInfo failure) {
                 if (failure == null) {
                     error(step, code, message);
                     return;

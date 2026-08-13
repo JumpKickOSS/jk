@@ -50,6 +50,7 @@ public final class TestFailureHighlight {
     private static final Pattern COUNT_LINE = Pattern.compile("^(\\d+) test(s?) failed:?$");
     private static final Pattern THROWN_AT =
             Pattern.compile("^[›\\s]*(?<ex>[A-Za-z_][\\w$]*) thrown at line (?<n>\\d+)\\s*$");
+
     private TestFailureHighlight() {}
 
     /**
@@ -237,8 +238,7 @@ public final class TestFailureHighlight {
             }
 
             Matcher thrown = THROWN_AT.matcher(raw.strip());
-            if (thrown.matches()
-                    || raw.strip().matches("^[›\\s]*[A-Za-z_][\\w$]* thrown at line \\d+\\s*$")) {
+            if (thrown.matches() || raw.strip().matches("^[›\\s]*[A-Za-z_][\\w$]* thrown at line \\d+\\s*$")) {
                 flushAssert(out, assertBuf, collectingAssert, t);
                 collectingAssert = false;
                 assertBuf.clear();
@@ -252,10 +252,10 @@ public final class TestFailureHighlight {
                 flushAssert(out, assertBuf, collectingAssert, t);
                 collectingAssert = false;
                 assertBuf.clear();
-                String rest = failed.matches() ? failed.group("rest") : raw.strip().substring("FAILED ".length());
-                String failedWord = t.isAnsi()
-                        ? Theme.colorize("FAILED", t.error().bold())
-                        : "FAILED";
+                String rest =
+                        failed.matches() ? failed.group("rest") : raw.strip().substring("FAILED ".length());
+                String failedWord =
+                        t.isAnsi() ? Theme.colorize("FAILED", t.error().bold()) : "FAILED";
                 out.add(rail(failedWord + " " + paintShortLabel(rest, t), t));
                 out.add(rail("", t));
                 collectingAssert = true; // assertion body follows until source
@@ -434,9 +434,7 @@ public final class TestFailureHighlight {
             String after = body.substring(dot + 1, searchEnd);
             // method / <init> after the last pre-paren dot → class is everything before it
             if (!after.isEmpty()
-                    && (Character.isLowerCase(after.charAt(0))
-                            || after.charAt(0) == '_'
-                            || after.startsWith("<"))) {
+                    && (Character.isLowerCase(after.charAt(0)) || after.charAt(0) == '_' || after.startsWith("<"))) {
                 String cls = simpleName(body.substring(0, dot));
                 String method = simplifyMethodParams(body.substring(dot + 1));
                 body = cls.isEmpty() ? method : cls + "." + method;
@@ -476,8 +474,7 @@ public final class TestFailureHighlight {
             return Character.isUpperCase(c0); // FooTest / AssertionFailedError
         }
         // package.Class / package.Class.method / FooTest.bar
-        return body.matches(
-                "(?:[a-z][\\w$]*\\.)*[A-Z][\\w$]*(?:\\.[A-Za-z_][\\w$]*)?");
+        return body.matches("(?:[a-z][\\w$]*\\.)*[A-Z][\\w$]*(?:\\.[A-Za-z_][\\w$]*)?");
     }
 
     /**
@@ -577,7 +574,8 @@ public final class TestFailureHighlight {
         }
         sb.append(Theme.colorize(")", t.darkGray()));
         if (close + 1 < method.length()) {
-            sb.append(Theme.colorize(method.substring(close + 1), SyntaxHighlight.styleFor(SyntaxHighlight.Role.FUNCTION)));
+            sb.append(Theme.colorize(
+                    method.substring(close + 1), SyntaxHighlight.styleFor(SyntaxHighlight.Role.FUNCTION)));
         }
         return sb.toString();
     }
@@ -587,8 +585,7 @@ public final class TestFailureHighlight {
         Matcher m = THROWN_AT.matcher(s);
         if (!m.matches()) {
             if (!s.isEmpty() && s.indexOf(' ') < 0) {
-                return BODY_INDENT
-                        + Theme.colorize(simpleName(s), SyntaxHighlight.styleFor(SyntaxHighlight.Role.TYPE));
+                return BODY_INDENT + Theme.colorize(simpleName(s), SyntaxHighlight.styleFor(SyntaxHighlight.Role.TYPE));
             }
             return Theme.colorize(raw, t.midGray());
         }

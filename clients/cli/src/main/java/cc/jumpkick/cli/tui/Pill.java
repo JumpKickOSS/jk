@@ -110,8 +110,7 @@ public final class Pill implements Widget {
     private static Fill fill(Look look, Theme theme) {
         return switch (look) {
             case DEFAULT -> new Fill(theme.scopeBadge(), theme.gray());
-            case BRANDED, RUNNING ->
-                new Fill(theme.planChip(), theme.bright(theme.planBadgeColor()));
+            case BRANDED, RUNNING -> new Fill(theme.planChip(), theme.bright(theme.planBadgeColor()));
             case SUCCESS -> filled(theme, theme.planChipColor(), false);
             case FAIL -> filled(theme, theme.planFailColor(), false);
             case WARNING -> filled(theme, JkDarkTheme.NORMAL_YELLOW, false);

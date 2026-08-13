@@ -53,9 +53,7 @@ public interface TaskContext {
             error(code, message);
             return;
         }
-        String label = failure.module().isEmpty()
-                ? failure.method()
-                : failure.module() + " :: " + failure.method();
+        String label = failure.module().isEmpty() ? failure.method() : failure.module() + " :: " + failure.method();
         error(code, message, label, failure.exceptionClass());
     }
 

@@ -34,13 +34,13 @@ class TestFailureHighlightTest {
                 "@@src-end",
                 "    AssertionFailedError thrown at line 23");
         List<String> painted = TestFailureHighlight.paintLines(raw);
-        String all = String.join("\n", painted.stream().map(TestFailureHighlightTest::plain).toList());
+        String all = String.join(
+                "\n", painted.stream().map(TestFailureHighlightTest::plain).toList());
 
         assertThat(all).contains("Failure");
         assertThat(all).contains("cc.jumpkick:jk-engine");
         assertThat(all).contains("1 test failed");
-        assertThat(all)
-                .contains("FAILED DogfoodFailureSnippetTest.deliberately_fails_to_show_source_snippet()");
+        assertThat(all).contains("FAILED DogfoodFailureSnippetTest.deliberately_fails_to_show_source_snippet()");
         assertThat(all).contains("AssertionFailedError thrown at line 23");
         assertThat(all).contains("\"dogfood: hello\"");
         assertThat(all).doesNotContain("[dogfood:");
@@ -66,7 +66,8 @@ class TestFailureHighlightTest {
             Theme t = Theme.active();
             assertThat(String.join("", painted)).contains(Coords.ga("cc.jumpkick", "jk-engine"));
             assertThat(String.join("", painted)).contains(Theme.colorize("Failure", t.midGray()));
-            assertThat(String.join("", painted)).contains(Theme.colorize("FAILED", t.error().bold()));
+            assertThat(String.join("", painted))
+                    .contains(Theme.colorize("FAILED", t.error().bold()));
             assertThat(String.join("", painted)).contains(Theme.colorize(TestFailureHighlight.RAIL, t.error()));
             assertThat(String.join("", painted)).contains(Theme.colorize("›", t.darkGray()));
             assertThat(String.join("", painted)).contains(Theme.colorize("1", t.focused()));
@@ -161,8 +162,7 @@ class TestFailureHighlightTest {
 
     @Test
     void shortDisplayLabel_strips_package_fqcns() {
-        assertThat(TestFailureHighlight.shortDisplayLabel(
-                        "cc.jumpkick.runtime.FooTest.freshen(java.nio.file.Path)"))
+        assertThat(TestFailureHighlight.shortDisplayLabel("cc.jumpkick.runtime.FooTest.freshen(java.nio.file.Path)"))
                 .isEqualTo("FooTest.freshen(Path)");
         assertThat(TestFailureHighlight.shortDisplayLabel("FooTest.bar(java.lang.String, java.util.List)"))
                 .isEqualTo("FooTest.bar(String, List)");
@@ -185,8 +185,7 @@ class TestFailureHighlightTest {
     @Test
     void paintShortLabel_never_renders_package_fqcns() {
         String painted = TestFailureHighlight.paintShortLabel(
-                "cc.jumpkick.runtime.DogfoodFailureSnippetTest.deliberately_fails(java.nio.file.Path)",
-                Theme.active());
+                "cc.jumpkick.runtime.DogfoodFailureSnippetTest.deliberately_fails(java.nio.file.Path)", Theme.active());
         String p = plain(painted);
         assertThat(p).isEqualTo("DogfoodFailureSnippetTest.deliberately_fails(Path)");
         assertThat(p).doesNotContain("java.nio");
