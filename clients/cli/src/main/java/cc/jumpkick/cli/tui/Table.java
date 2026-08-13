@@ -228,7 +228,13 @@ public final class Table implements Widget {
             resolved = sameColumns(this.columns, other.columns) ? Append.MERGE : Append.SECTION;
         }
         if (resolved == Append.MERGE) {
+            // A merge absorbs the whole child, not just its rows: its own appended sections keep
+            // rendering, and sticky styling flags survive (JK-1890). Alignment stays the parent's —
+            // matching columns were the precondition for MERGE.
             rows.addAll(other.rows);
+            appended.addAll(other.appended);
+            warning |= other.warning;
+            rowSeparators |= other.rowSeparators;
             return this;
         }
         // A SECTION child snaps each of its columns onto a span of parent columns, so it can

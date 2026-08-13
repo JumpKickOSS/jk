@@ -75,6 +75,21 @@ class TableAppendTest {
     }
 
     @Test
+    void merge_carries_the_childs_own_sections_and_flags() {
+        // JK-1890: a.append(b) with matching columns must not silently drop b's appended
+        // section (or its warning/rowSeparators styling).
+        Table child = new Table("").columns("A", "B").row("c1", "c2").warning(true);
+        child.append(new Table("").columns("L").row("child-section-row"), Table.Append.SECTION);
+        Table parent = new Table("T").columns("A", "B").row("p1", "p2");
+        parent.append(child); // AUTO → MERGE (same columns)
+
+        String all = String.join("\n", parent.render(RenderContext.current()));
+        assertThat(all).contains("p1");
+        assertThat(all).contains("c1");
+        assertThat(all).contains("child-section-row");
+    }
+
+    @Test
     void appending_a_wider_section_fails_loudly_not_with_aioobe_mid_render() {
         // A child with more columns than the parent cannot snap; snapSpans used to produce
         // out-of-range span ends and the painter threw AIOOBE mid-render (JK-1886).
