@@ -4,6 +4,7 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
@@ -46,8 +47,8 @@ public final class PluginCommandVerb implements HostedVerb {
                         Path.of(Jsonl.str(requestLine, "cache")),
                         Jsonl.str(requestLine, "command"),
                         Jsonl.strArray(requestLine, "args"),
-                        EngineProtocol.variantOf(requestLine),
-                        EngineProtocol.clientEnvOf(requestLine));
+                        ProtoSession.variantOf(requestLine),
+                        ProtoSession.clientEnvOf(requestLine));
             } catch (RuntimeException e) {
                 report = cc.jumpkick.engine.protocol.PluginCommandReport.error(String.valueOf(e.getMessage()));
             }

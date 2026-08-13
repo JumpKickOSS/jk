@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -71,7 +72,7 @@ public final class EngineWire {
                     SocketChannel.open(new java.net.InetSocketAddress(java.net.InetAddress.getLoopbackAddress(), port));
             BufferedWriter authWriter =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            authWriter.write(EngineProtocol.auth(token));
+            authWriter.write(ProtoLifecycle.auth(token));
             authWriter.write('\n');
             authWriter.flush();
             return ch;

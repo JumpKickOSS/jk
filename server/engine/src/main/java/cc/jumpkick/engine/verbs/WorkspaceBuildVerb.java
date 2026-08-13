@@ -7,6 +7,9 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoEvents;
+import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.runtime.BuildService;
@@ -66,7 +69,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
             boolean freshenLock = Jsonl.bool(requestLine, "freshenLock", false);
             boolean ephemeralActions = Jsonl.bool(requestLine, "ephemeralActions", false);
             boolean testOnly = Jsonl.bool(requestLine, "testOnly", false);
-            List<String> dirtyHintDirs = EngineProtocol.dirtyHintOf(requestLine);
+            List<String> dirtyHintDirs = ProtoJobs.dirtyHintOf(requestLine);
 
             Path entryDir = Path.of(entryDirStr);
             Path cache = Path.of(cacheStr);
@@ -90,7 +93,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                             freshenLock)
                     .withTestOnly(testOnly)
                     .withEphemeralActions(ephemeralActions)
-                    .withVariant(EngineProtocol.variantOf(requestLine), EngineProtocol.clientEnvOf(requestLine));
+                    .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine));
 
             JkConfig config = new JkConfig(
                     Optional.empty(),
@@ -110,9 +113,9 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     .withCacheDir(cache)
                     .withJdksDir(jdksDir)
                     .withParallelTests(parallelTests)
-                    .withTestSelection(EngineProtocol.testSelectionOf(requestLine))
+                    .withTestSelection(ProtoJobs.testSelectionOf(requestLine))
                     .withCancel(cancelToken)
-                    .withJvm(EngineProtocol.jvmTuning(requestLine));
+                    .withJvm(ProtoSession.jvmTuning(requestLine));
 
             long rid = host.eventRequestId();
             if (rid > 0) host.putProgressRoot(rid, entryDirStr);
@@ -131,7 +134,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     .toList();
             host.send(
                     writer,
-                    EngineProtocol.workspaceFinish(
+                    ProtoEvents.workspaceFinish(
                             result.success() && !cancelled, result.exitCode(), safeErrors, cancelled));
             if (!result.success() && !cancelled) {
                 for (String error : safeErrors.stream().limit(5).toList()) {
@@ -143,7 +146,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
             long rid = host.eventRequestId();
             boolean cancelled = host.effectiveCancelled(rid, cancelToken.cancelled());
             if (cancelled) {
-                host.sendQuiet(writer, EngineProtocol.workspaceFinish(false, 1, List.of(), true));
+                host.sendQuiet(writer, ProtoEvents.workspaceFinish(false, 1, List.of(), true));
             } else {
                 host.accOutcome(rid, false, 1);
                 String msg = host.redactEnv(dir, String.valueOf(e.getMessage()));

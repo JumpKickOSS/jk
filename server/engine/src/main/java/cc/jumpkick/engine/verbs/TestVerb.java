@@ -6,6 +6,8 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
@@ -63,7 +65,7 @@ public final class TestVerb implements HostedVerb {
 
             boolean compactTests = cc.jumpkick.layout.ModuleLayout.isCompact(entryDir);
             int estimatedTestCount = cc.jumpkick.runtime.TestSupport.estimateSelectedSuiteTestCount(
-                    entryDir, compactTests, EngineProtocol.testSelectionOf(requestLine));
+                    entryDir, compactTests, ProtoJobs.testSelectionOf(requestLine));
 
             JkConfig config = new JkConfig(
                     Optional.empty(),
@@ -83,9 +85,9 @@ public final class TestVerb implements HostedVerb {
                     .withCacheDir(cache)
                     .withJdksDir(jdksDir)
                     .withCancel(cancelToken)
-                    .withJvm(EngineProtocol.jvmTuning(requestLine))
+                    .withJvm(ProtoSession.jvmTuning(requestLine))
                     .withParallelTests(parallelTests)
-                    .withTestSelection(EngineProtocol.testSelectionOf(requestLine));
+                    .withTestSelection(ProtoJobs.testSelectionOf(requestLine));
 
             cc.jumpkick.runtime.BuildPlanner.Inputs inputs = new cc.jumpkick.runtime.BuildPlanner.Inputs(
                             entryDir,
@@ -103,7 +105,7 @@ public final class TestVerb implements HostedVerb {
                             /* compileOnly */ false,
                             Set.of(),
                             session)
-                    .withVariant(EngineProtocol.variantOf(requestLine), EngineProtocol.clientEnvOf(requestLine));
+                    .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine));
             cc.jumpkick.run.BuildPlan plan =
                     cc.jumpkick.runtime.BuildPlanner.coreBuilder(inputs).build();
 

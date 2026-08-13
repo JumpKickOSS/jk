@@ -5,6 +5,8 @@ import cc.jumpkick.cli.Jk;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.EngineWireException;
+import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.engine.protocol.ProtoReads;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
@@ -40,7 +42,7 @@ final class EngineResolveAdapter {
             EnginePaths.Paths paths, EngineRequests.OutdatedRequest req) throws IOException {
         return EngineBuildListenerAdapter.request(
                 paths,
-                EngineProtocol.outdatedRequest(
+                ProtoReads.outdatedRequest(
                         req.entryDir().toString(),
                         req.cache().toString(),
                         req.repoUrl() != null ? req.repoUrl().toString() : null,
@@ -57,7 +59,7 @@ final class EngineResolveAdapter {
             throws IOException {
         return streamCascade(
                 paths,
-                EngineProtocol.lockRequest(
+                ProtoJobs.lockRequest(
                         req.entryDir().toString(),
                         req.cache().toString(),
                         req.features(),
@@ -90,7 +92,7 @@ final class EngineResolveAdapter {
     }
 
     private static String updateRequestLine(EngineRequests.UpdateRequest req, boolean gitOnly, String gitTarget) {
-        return EngineProtocol.updateRequest(
+        return ProtoJobs.updateRequest(
                 req.entryDir().toString(),
                 req.cache().toString(),
                 req.features(),
@@ -127,7 +129,7 @@ final class EngineResolveAdapter {
 
             send(
                     writer,
-                    EngineProtocol.syncRequest(
+                    ProtoJobs.syncRequest(
                             req.entryDir().toString(),
                             req.cache().toString(),
                             req.jdksDir() != null ? req.jdksDir().toString() : null,

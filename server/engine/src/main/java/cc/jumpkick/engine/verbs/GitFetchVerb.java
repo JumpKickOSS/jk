@@ -5,6 +5,7 @@ import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
@@ -73,7 +74,7 @@ public final class GitFetchVerb implements HostedVerb {
                             plan.get(cc.jumpkick.runtime.InstallPlans.CHECKOUT).orElse(null);
                     String sha = plan.get(cc.jumpkick.runtime.InstallPlans.FETCHED_SHA)
                             .orElse(null);
-                    return EngineProtocol.planFinishGitFetch(
+                    return ProtoEvents.planFinishGitFetch(
                             dir, result.success(), checkout != null ? checkout.toString() : null, sha);
                 });
             } catch (Exception e) {

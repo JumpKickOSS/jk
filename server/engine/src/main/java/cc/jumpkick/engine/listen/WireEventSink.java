@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.listen;
 
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoEvents;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import org.jspecify.annotations.Nullable;
@@ -31,7 +32,7 @@ public final class WireEventSink implements EventSink {
     static @Nullable String encode(EngineEvent event) {
         return switch (event) {
             case EngineEvent.PlanStart e ->
-                EngineProtocol.planStart(
+                ProtoEvents.planStart(
                         e.dir(),
                         e.name(),
                         e.numerator(),
@@ -39,9 +40,9 @@ public final class WireEventSink implements EventSink {
                         e.stepsTotal(),
                         e.stepsComplete(),
                         e.cancelled());
-            case EngineEvent.StepStart e -> EngineProtocol.stepStart(e.dir(), e.step(), e.phase(), e.ticks());
+            case EngineEvent.StepStart e -> ProtoEvents.stepStart(e.dir(), e.step(), e.phase(), e.ticks());
             case EngineEvent.Progress e ->
-                EngineProtocol.progress(
+                ProtoEvents.progress(
                         e.dir(),
                         e.step(),
                         e.delta(),
@@ -51,7 +52,7 @@ public final class WireEventSink implements EventSink {
                         e.stepsComplete(),
                         e.cancelled());
             case EngineEvent.TickUpdate e ->
-                EngineProtocol.tickUpdate(
+                ProtoEvents.tickUpdate(
                         e.dir(),
                         e.step(),
                         e.delta(),
@@ -60,30 +61,30 @@ public final class WireEventSink implements EventSink {
                         e.stepsTotal(),
                         e.stepsComplete(),
                         e.cancelled());
-            case EngineEvent.Label e -> EngineProtocol.label(e.dir(), e.step(), e.text());
-            case EngineEvent.Output e -> EngineProtocol.output(e.dir(), e.step(), e.line());
-            case EngineEvent.Warn e -> EngineProtocol.warn(e.dir(), e.step(), e.code(), e.message());
+            case EngineEvent.Label e -> ProtoEvents.label(e.dir(), e.step(), e.text());
+            case EngineEvent.Output e -> ProtoEvents.output(e.dir(), e.step(), e.line());
+            case EngineEvent.Warn e -> ProtoEvents.warn(e.dir(), e.step(), e.code(), e.message());
             case EngineEvent.ErrorLine e ->
-                EngineProtocol.errorLine(e.dir(), e.step(), e.code(), e.message(), e.test(), e.exceptionClass());
+                ProtoEvents.errorLine(e.dir(), e.step(), e.code(), e.message(), e.test(), e.exceptionClass());
             case EngineEvent.StepFinish e ->
-                EngineProtocol.stepFinish(e.dir(), e.step(), e.phase(), e.status(), e.millis());
+                ProtoEvents.stepFinish(e.dir(), e.step(), e.phase(), e.status(), e.millis());
             case EngineEvent.PlanFinishLine e -> e.encodedWireLine();
             case EngineEvent.PlanDiagnostic e ->
-                EngineProtocol.planDiagnostic(e.dir(), e.step(), e.code(), e.message(), e.test(), e.exceptionClass());
+                ProtoEvents.planDiagnostic(e.dir(), e.step(), e.code(), e.message(), e.test(), e.exceptionClass());
             case EngineEvent.ErrorFailure e ->
-                EngineProtocol.errorLine(e.dir(), e.step(), e.code(), e.message(), e.failure());
+                ProtoEvents.errorLine(e.dir(), e.step(), e.code(), e.message(), e.failure());
             case EngineEvent.PlanDiagnosticFailure e ->
-                EngineProtocol.planDiagnostic(e.dir(), e.step(), e.code(), e.message(), e.failure());
-            case EngineEvent.Preflight e -> EngineProtocol.preflight(e.stage(), e.done(), e.total(), e.label());
-            case EngineEvent.InvocationPhase e -> EngineProtocol.invocationPhase(e.name(), e.status());
+                ProtoEvents.planDiagnostic(e.dir(), e.step(), e.code(), e.message(), e.failure());
+            case EngineEvent.Preflight e -> ProtoEvents.preflight(e.stage(), e.done(), e.total(), e.label());
+            case EngineEvent.InvocationPhase e -> ProtoEvents.invocationPhase(e.name(), e.status());
             case EngineEvent.PlanModule e ->
-                EngineProtocol.planModule(e.dir(), e.coord(), e.planName(), (int) e.weight(), e.fullyCached());
-            case EngineEvent.PlanStep e -> EngineProtocol.planStep(e.dir(), e.name(), e.label(), e.phase());
-            case EngineEvent.PlanDone e -> EngineProtocol.planDone(e.modules());
-            case EngineEvent.ModuleStart e -> EngineProtocol.moduleStart(e.dir());
+                ProtoEvents.planModule(e.dir(), e.coord(), e.planName(), (int) e.weight(), e.fullyCached());
+            case EngineEvent.PlanStep e -> ProtoEvents.planStep(e.dir(), e.name(), e.label(), e.phase());
+            case EngineEvent.PlanDone e -> ProtoEvents.planDone(e.modules());
+            case EngineEvent.ModuleStart e -> ProtoEvents.moduleStart(e.dir());
             case EngineEvent.ModuleFinish e ->
-                EngineProtocol.moduleFinish(e.dir(), e.coord(), e.success(), e.exitCode(), e.millis(), e.didWork());
-            case EngineEvent.Eta e -> EngineProtocol.eta(e.remainingMs());
+                ProtoEvents.moduleFinish(e.dir(), e.coord(), e.success(), e.exitCode(), e.millis(), e.didWork());
+            case EngineEvent.Eta e -> ProtoEvents.eta(e.remainingMs());
         };
     }
 }

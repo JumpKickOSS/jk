@@ -7,6 +7,8 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoEvents;
+import cc.jumpkick.engine.protocol.ProtoReads;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.runtime.BuildService;
@@ -81,14 +83,14 @@ public final class ExplainVerb implements HostedVerb {
                     for (String err : plan.errors()) {
                         host.sendQuiet(writer, host.requestFailedLine(entryDir.toString(), err));
                     }
-                    host.sendQuiet(writer, EngineProtocol.explainDone(1, 0));
+                    host.sendQuiet(writer, ProtoReads.explainDone(1, 0));
                     return;
                 }
                 for (cc.jumpkick.runtime.TaskForecast.Module m : plan.modules()) {
                     String dir = m.dir().toString();
                     host.sendQuiet(
                             writer,
-                            EngineProtocol.explainModule(
+                            ProtoReads.explainModule(
                                     dir,
                                     m.coord(),
                                     m.sourceCount(),
@@ -98,14 +100,12 @@ public final class ExplainVerb implements HostedVerb {
                     for (cc.jumpkick.runtime.TaskForecast.Task p : m.steps()) {
                         host.sendQuiet(
                                 writer,
-                                EngineProtocol.explainStep(
-                                        dir, p.name(), p.status().name(), p.text(), p.key()));
+                                ProtoReads.explainStep(dir, p.name(), p.status().name(), p.text(), p.key()));
                     }
                 }
                 for (var e : plan.edges().entrySet()) {
                     for (Path dep : e.getValue()) {
-                        host.sendQuiet(
-                                writer, EngineProtocol.explainEdge(e.getKey().toString(), dep.toString()));
+                        host.sendQuiet(writer, ProtoReads.explainEdge(e.getKey().toString(), dep.toString()));
                     }
                 }
                 // Schedule-aware ETA; 0 = fully cached. Same estimateEtaMillis as jk build countdown.
@@ -153,14 +153,14 @@ public final class ExplainVerb implements HostedVerb {
                                     parallelTests,
                                     maxConc));
                 }
-                host.sendQuiet(writer, EngineProtocol.eta(etaMillis, fullMillis));
+                host.sendQuiet(writer, ProtoEvents.eta(etaMillis, fullMillis));
                 host.sendQuiet(
                         writer,
-                        EngineProtocol.explainDone(
+                        ProtoReads.explainDone(
                                 plan.maxReadyWidth(), plan.modules().size()));
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
-                host.sendQuiet(writer, EngineProtocol.explainDone(0, 0));
+                host.sendQuiet(writer, ProtoReads.explainDone(0, 0));
             }
 
         } catch (Exception e) {

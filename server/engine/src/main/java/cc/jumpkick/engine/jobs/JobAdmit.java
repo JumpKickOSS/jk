@@ -5,7 +5,7 @@ import cc.jumpkick.engine.BuildHistoryKinds;
 import cc.jumpkick.engine.BuildJobFingerprint;
 import cc.jumpkick.engine.InFlightBuilds;
 import cc.jumpkick.engine.journal.BuildRecord;
-import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import java.nio.file.Path;
 
 /** Exclusive fingerprint + start-time journal stub for one job. */
@@ -68,6 +68,6 @@ public final class JobAdmit {
                             .map(Path::toString)
                             .orElse(null));
         }
-        return EngineProtocol.jobStart(jid, kind, dir, admit.buildNumber(), detailsPath, -1);
+        return ProtoLifecycle.jobStart(jid, kind, dir, admit.buildNumber(), detailsPath, -1);
     }
 }

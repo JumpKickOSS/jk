@@ -6,6 +6,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.run.BuildPlanResult;
@@ -102,7 +103,7 @@ public final class NativeVerb implements HostedVerb {
         } catch (RuntimeException | IOException e) {
             host.sendQuiet(
                     writer,
-                    EngineProtocol.workspaceFinish(
+                    ProtoEvents.workspaceFinish(
                             false, cc.jumpkick.model.command.Exit.CONFIG, List.of(String.valueOf(e.getMessage()))));
             return;
         }
@@ -118,7 +119,7 @@ public final class NativeVerb implements HostedVerb {
             } catch (RuntimeException | IOException e) {
                 host.sendQuiet(
                         writer,
-                        EngineProtocol.workspaceFinish(
+                        ProtoEvents.workspaceFinish(
                                 false, cc.jumpkick.model.command.Exit.CONFIG, List.of(String.valueOf(e.getMessage()))));
                 return;
             }
@@ -134,7 +135,7 @@ public final class NativeVerb implements HostedVerb {
                     if (graph.hasErrors()) {
                         host.sendQuiet(
                                 writer,
-                                EngineProtocol.workspaceFinish(
+                                ProtoEvents.workspaceFinish(
                                         false, cc.jumpkick.model.command.Exit.CONFIG, List.copyOf(graph.errors())));
                         return;
                     }
@@ -150,7 +151,7 @@ public final class NativeVerb implements HostedVerb {
                 } catch (IOException e) {
                     host.sendQuiet(
                             writer,
-                            EngineProtocol.workspaceFinish(
+                            ProtoEvents.workspaceFinish(
                                     false,
                                     cc.jumpkick.model.command.Exit.CONFIG,
                                     List.of("module selection: cannot resolve the build graph — " + e.getMessage())));
@@ -197,7 +198,7 @@ public final class NativeVerb implements HostedVerb {
             cc.jumpkick.run.BuildPlan plan = entry.getValue();
             host.sendQuiet(
                     writer,
-                    EngineProtocol.planModule(
+                    ProtoEvents.planModule(
                             dirTag,
                             coords.get(entry.getKey()),
                             plan.name(),
@@ -206,7 +207,7 @@ public final class NativeVerb implements HostedVerb {
             for (Task p : plan.steps()) {
                 host.sendQuiet(
                         writer,
-                        EngineProtocol.planStep(
+                        ProtoEvents.planStep(
                                 dirTag,
                                 p.name(),
                                 p.label(),
@@ -214,13 +215,13 @@ public final class NativeVerb implements HostedVerb {
                                         p.group().orElse(null))));
             }
         }
-        host.sendQuiet(writer, EngineProtocol.planDone(plans.size()));
+        host.sendQuiet(writer, ProtoEvents.planDone(plans.size()));
 
         for (var entry : plans.entrySet()) {
             Path dir = entry.getKey();
             String dirTag = dir.toString();
             cc.jumpkick.run.BuildPlan plan = entry.getValue();
-            host.sendQuiet(writer, EngineProtocol.moduleStart(dirTag));
+            host.sendQuiet(writer, ProtoEvents.moduleStart(dirTag));
             plan.addListener(host.planListener(dirTag, writer, plan));
             long startNanos = System.nanoTime();
             BuildPlanResult result = plan.run();
@@ -229,12 +230,12 @@ public final class NativeVerb implements HostedVerb {
             boolean didWork = !result.success() || cc.jumpkick.runtime.BuildService.moduleDidWork(result);
             host.sendQuiet(
                     writer,
-                    EngineProtocol.moduleFinish(dirTag, coords.get(dir), result.success(), exitCode, millis, didWork));
+                    ProtoEvents.moduleFinish(dirTag, coords.get(dir), result.success(), exitCode, millis, didWork));
             if (!result.success()) {
-                host.sendQuiet(writer, EngineProtocol.workspaceFinish(false, exitCode, List.of()));
+                host.sendQuiet(writer, ProtoEvents.workspaceFinish(false, exitCode, List.of()));
                 return;
             }
         }
-        host.sendQuiet(writer, EngineProtocol.workspaceFinish(true, 0, List.of()));
+        host.sendQuiet(writer, ProtoEvents.workspaceFinish(true, 0, List.of()));
     }
 }

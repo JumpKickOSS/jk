@@ -4,6 +4,7 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedWriter;
 
@@ -48,7 +49,7 @@ public final class CalibrateVerb implements HostedVerb {
                 }
                 host.sendQuiet(
                         writer,
-                        EngineProtocol.calibrateAck(
+                        ProtoLifecycle.calibrateAck(
                                 cal.present(),
                                 cal.msPerWeight(),
                                 cal.jvmForkMs(),
@@ -67,7 +68,7 @@ public final class CalibrateVerb implements HostedVerb {
             } catch (Exception e) {
                 host.sendQuiet(
                         writer,
-                        EngineProtocol.calibrateAck(
+                        ProtoLifecycle.calibrateAck(
                                 false,
                                 0,
                                 0,

@@ -4,6 +4,7 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
@@ -56,12 +57,12 @@ public final class ImportVerb implements HostedVerb {
                         Jsonl.bool(requestLine, "force", false),
                         report != null ? Path.of(report) : null,
                         cache,
-                        (kind, text) -> host.sendQuiet(writer, EngineProtocol.importNote(dir, kind, text)));
+                        (kind, text) -> host.sendQuiet(writer, ProtoEvents.importNote(dir, kind, text)));
                 host.streamSinglePlan(
                         plan,
                         session,
                         writer,
-                        result -> EngineProtocol.planFinishImport(
+                        result -> ProtoEvents.planFinishImport(
                                 dir,
                                 result.success(),
                                 plan.get(cc.jumpkick.runtime.CompatPlans.EXIT).orElse(1),

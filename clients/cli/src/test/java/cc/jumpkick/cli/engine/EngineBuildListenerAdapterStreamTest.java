@@ -3,7 +3,8 @@ package cc.jumpkick.cli.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoEvents;
+import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.run.BuildPlanResult;
 import java.io.BufferedReader;
 import java.io.StringReader;
@@ -29,9 +30,9 @@ class EngineBuildListenerAdapterStreamTest {
     @Test
     void the_job_note_is_forgotten_when_the_stream_finishes() throws Exception {
         BufferedReader reader = stream(
-                EngineProtocol.jobStart(41, "build", "/proj", 7),
-                EngineProtocol.planDone(0),
-                EngineProtocol.planFinish("/proj", true, false));
+                ProtoLifecycle.jobStart(41, "build", "/proj", 7),
+                ProtoEvents.planDone(0),
+                ProtoEvents.planFinish("/proj", true, false));
 
         BuildPlanResult result = EngineBuildListenerAdapter.streamSingleBuildPlanEvents(
                 reader, steps -> new cc.jumpkick.run.BuildPlanListener() {}, null, null);
@@ -43,9 +44,9 @@ class EngineBuildListenerAdapterStreamTest {
     @Test
     void a_cancel_terminal_before_plan_done_settles_without_a_listener() throws Exception {
         BufferedReader reader = stream(
-                EngineProtocol.jobStart(42, "build", "/proj", 8),
+                ProtoLifecycle.jobStart(42, "build", "/proj", 8),
                 // Remote cancel injected before the plan burst ever created the listener.
-                EngineProtocol.planFinish("/proj", false, true));
+                ProtoEvents.planFinish("/proj", false, true));
 
         BuildPlanResult result = EngineBuildListenerAdapter.streamSingleBuildPlanEvents(
                 reader, steps -> new cc.jumpkick.run.BuildPlanListener() {}, null, null);
@@ -66,9 +67,9 @@ class EngineBuildListenerAdapterStreamTest {
                 "boom",
                 "java.lang.AssertionError: boom\n\tat x.Y.z(Y.java:1)");
         BufferedReader reader = stream(
-                EngineProtocol.planDone(0),
-                EngineProtocol.planDiagnostic("/p", "run-tests", "test-failure", "boom", info),
-                EngineProtocol.planFinish("/p", false, false));
+                ProtoEvents.planDone(0),
+                ProtoEvents.planDiagnostic("/p", "run-tests", "test-failure", "boom", info),
+                ProtoEvents.planFinish("/p", false, false));
 
         BuildPlanResult result = EngineBuildListenerAdapter.streamSingleBuildPlanEvents(
                 reader, steps -> new cc.jumpkick.run.BuildPlanListener() {}, null, null);

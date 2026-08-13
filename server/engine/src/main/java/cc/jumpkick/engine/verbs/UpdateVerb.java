@@ -6,6 +6,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.protocol.Jsonl;
@@ -68,7 +69,7 @@ public final class UpdateVerb implements HostedVerb {
                     } catch (RuntimeException e) {
                         host.sendQuiet(
                                 writer,
-                                EngineProtocol.lockFinish(
+                                ProtoEvents.lockFinish(
                                         false, Exit.CONFIG, List.of(String.valueOf(e.getMessage())), -1));
                         return null;
                     }
@@ -76,7 +77,7 @@ public final class UpdateVerb implements HostedVerb {
                             LockPlans.updateGitOnly(entryDir, root, cache, repoUrl, features, withDefaults, gitTarget);
                     host.sendQuiet(
                             writer,
-                            EngineProtocol.lockFinish(
+                            ProtoEvents.lockFinish(
                                     outcome.exitCode() == 0,
                                     outcome.exitCode(),
                                     outcome.error() != null ? List.of(outcome.error()) : List.of(),

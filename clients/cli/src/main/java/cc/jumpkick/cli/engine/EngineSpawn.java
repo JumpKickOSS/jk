@@ -4,6 +4,7 @@ package cc.jumpkick.cli.engine;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.jdk.GlobalDefaultJdk;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.JavaHomes;
@@ -113,7 +114,7 @@ public final class EngineSpawn {
             return new Reachability.Absent();
         }
         try (ch) {
-            String ack = EngineWire.exchange(ch, EngineProtocol.hello(clientVersion));
+            String ack = EngineWire.exchange(ch, ProtoLifecycle.hello(clientVersion));
             if (!EngineProtocol.HELLO_ACK.equals(EngineProtocol.typeOf(ack))) {
                 return new Reachability.Unusable();
             }

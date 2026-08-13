@@ -2,7 +2,8 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.engine.EnginePaths;
-import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.runtime.WorkspaceBuildListener;
 import cc.jumpkick.runtime.WorkspaceResult;
@@ -27,7 +28,7 @@ public final class EngineHosted {
             throws IOException {
         return EnginePluginAdapter.stream(
                         paths,
-                        EngineProtocol.auditRequest(
+                        ProtoJobs.auditRequest(
                                 req.entryDir().toString(),
                                 req.cache().toString(),
                                 req.severity(),
@@ -57,7 +58,7 @@ public final class EngineHosted {
             throws IOException {
         EnginePluginAdapter.HostedFinish finish = EnginePluginAdapter.stream(
                 paths,
-                EngineProtocol.formatRequest(
+                ProtoJobs.formatRequest(
                         req.entryDir().toString(),
                         req.cache().toString(),
                         req.check(),
@@ -108,7 +109,7 @@ public final class EngineHosted {
         }
         EnginePluginAdapter.HostedFinish finish = EnginePluginAdapter.stream(
                 paths,
-                EngineProtocol.publishRequest(
+                ProtoJobs.publishRequest(
                         req.entryDir().toString(),
                         req.cache().toString(),
                         req.repoUrl().toString(),
@@ -149,7 +150,7 @@ public final class EngineHosted {
             throws IOException {
         return EnginePluginAdapter.stream(
                         paths,
-                        EngineProtocol.imageRequest(
+                        ProtoJobs.imageRequest(
                                 req.entryDir().toString(),
                                 req.cache().toString(),
                                 req.jdksDir() != null ? req.jdksDir().toString() : null,
@@ -195,7 +196,7 @@ public final class EngineHosted {
             throws IOException {
         EnginePluginAdapter.HostedFinish finish = EnginePluginAdapter.stream(
                 paths,
-                EngineProtocol.importRequest(
+                ProtoJobs.importRequest(
                         req.source().toString(),
                         req.out().toString(),
                         req.baseDir().toString(),
@@ -225,7 +226,7 @@ public final class EngineHosted {
             throws IOException {
         return EnginePluginAdapter.provision(
                 paths,
-                EngineProtocol.provisionRequest(
+                ProtoJobs.provisionRequest(
                         cache.toString(), projectDir.toString(), toolsRoot.toString(), noDiscover, gradle));
     }
 
@@ -240,7 +241,7 @@ public final class EngineHosted {
             throws IOException {
         return EnginePluginAdapter.stream(
                         paths,
-                        EngineProtocol.compileRequest(
+                        ProtoJobs.compileRequest(
                                 req.entryDir().toString(),
                                 req.cache().toString(),
                                 req.profile(),
@@ -261,7 +262,7 @@ public final class EngineHosted {
             throws IOException {
         return EnginePluginAdapter.stream(
                         paths,
-                        EngineProtocol.trainRequest(
+                        ProtoJobs.trainRequest(
                                 req.entryDir().toString(),
                                 req.cache().toString(),
                                 req.jdksDir() != null ? req.jdksDir().toString() : null,
@@ -315,7 +316,7 @@ public final class EngineHosted {
             throws IOException {
         EnginePluginAdapter.HostedFinish finish = EnginePluginAdapter.stream(
                 paths,
-                EngineProtocol.gitFetchRequest(
+                ProtoJobs.gitFetchRequest(
                         req.url(),
                         req.canonicalUrl(),
                         req.ref(),
@@ -342,7 +343,7 @@ public final class EngineHosted {
             throws IOException {
         EnginePluginAdapter.HostedFinish finish = EnginePluginAdapter.stream(
                 paths,
-                EngineProtocol.toolResolveRequest(
+                ProtoSession.toolResolveRequest(
                         req.coord(),
                         req.with(),
                         req.bin(),
@@ -374,7 +375,7 @@ public final class EngineHosted {
             throws IOException {
         EnginePluginAdapter.HostedFinish finish = EnginePluginAdapter.stream(
                 paths,
-                EngineProtocol.scriptPrepareRequest(
+                ProtoSession.scriptPrepareRequest(
                         req.mode(),
                         req.script().toString(),
                         req.cache().toString(),
@@ -416,9 +417,9 @@ public final class EngineHosted {
             EngineRequests.CacheMaintSummary[] summaryOut)
             throws IOException {
         String requestLine = "clear".equals(req.op())
-                ? EngineProtocol.cacheClearRequest(
+                ? ProtoSession.cacheClearRequest(
                         req.cache().toString(), req.projectRoot().toString(), req.dryRun())
-                : EngineProtocol.cachePruneRequest(
+                : ProtoSession.cachePruneRequest(
                         req.op(),
                         req.cache().toString(),
                         req.olderThanDays(),

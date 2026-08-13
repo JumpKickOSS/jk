@@ -4,7 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.TestSelection;
-import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoJobs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -51,13 +51,13 @@ class EffectiveSelectionTest {
     void tags_resolved_survives_the_wire_round_trip(@TempDir Path dir) throws Exception {
         moduleWithExcludes(dir);
         var cleared = TestSelection.of(java.util.List.of(), false, java.util.List.of(), java.util.List.of(), true);
-        String json = "{" + EngineProtocol.testSelectionFields(cleared).substring(1) + "}";
-        var decoded = EngineProtocol.testSelectionOf(json);
+        String json = "{" + ProtoJobs.testSelectionFields(cleared).substring(1) + "}";
+        var decoded = ProtoJobs.testSelectionOf(json);
         assertThat(decoded.tagsResolved()).isTrue();
         assertThat(BuildPlanner.effectiveSelection(decoded, dir).excludeTags()).isEmpty();
 
         String defJson =
-                "{" + EngineProtocol.testSelectionFields(TestSelection.DEFAULT).substring(1) + "}";
-        assertThat(EngineProtocol.testSelectionOf(defJson).tagsResolved()).isFalse();
+                "{" + ProtoJobs.testSelectionFields(TestSelection.DEFAULT).substring(1) + "}";
+        assertThat(ProtoJobs.testSelectionOf(defJson).tagsResolved()).isFalse();
     }
 }
