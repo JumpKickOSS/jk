@@ -37,7 +37,7 @@ final class StreamingListener implements EngineExecutionListener {
     @Override
     public void dynamicTestRegistered(TestDescriptor descriptor) {
         var payload = new LinkedHashMap<String, Object>();
-        JUnitUniqueId.parse(descriptor.getUniqueId().toString()).putIdentity(payload);
+        putIdentityWithDisplay(descriptor, payload);
         payload.put(
                 "parent",
                 descriptor.getParent().map(p -> p.getUniqueId().toString()).orElse(null));
@@ -48,7 +48,7 @@ final class StreamingListener implements EngineExecutionListener {
     @Override
     public void executionSkipped(TestDescriptor descriptor, String reason) {
         var payload = new LinkedHashMap<String, Object>();
-        JUnitUniqueId.parse(descriptor.getUniqueId().toString()).putIdentity(payload);
+        putIdentityWithDisplay(descriptor, payload);
         payload.put("type", descriptor.getType().name());
         payload.put("reason", reason == null ? "" : reason);
         emit(EventType.SKIPPED, payload);
@@ -59,7 +59,7 @@ final class StreamingListener implements EngineExecutionListener {
         String uid = descriptor.getUniqueId().toString();
         startNanos.put(uid, System.nanoTime());
         var payload = new LinkedHashMap<String, Object>();
-        JUnitUniqueId.parse(uid).putIdentity(payload);
+        putIdentityWithDisplay(descriptor, payload);
         payload.put(
                 "parent",
                 descriptor.getParent().map(p -> p.getUniqueId().toString()).orElse(null));
@@ -79,7 +79,7 @@ final class StreamingListener implements EngineExecutionListener {
         }
 
         var payload = new LinkedHashMap<String, Object>();
-        JUnitUniqueId.parse(uid).putIdentity(payload);
+        putIdentityWithDisplay(descriptor, payload);
         payload.put("status", result.getStatus().name());
         payload.put("type", descriptor.getType().name()); // parent counts FINISHED[type=TEST] for totals
         payload.put("duration_ms", durationMs);
@@ -124,18 +124,6 @@ final class StreamingListener implements EngineExecutionListener {
         return map;
     }
 
-    /**
-     * Pull the engine identifier out of a uniqueId like {@code [engine:junit-jupiter]}. Returns the
-     * raw string when the pattern doesn't match — safe fallback.
-     */
-    private static String displayEngine(String uniqueId) {
-        var prefix = "[engine:";
-        if (uniqueId.startsWith(prefix) && uniqueId.endsWith("]")) {
-            return uniqueId.substring(prefix.length(), uniqueId.length() - 1);
-        }
-        return uniqueId;
-    }
-
     private void emit(EventType type, Map<String, Object> payload) {
         try {
             // Stamp the worker id on every event in pull/parallel mode so
@@ -172,5 +160,18 @@ final class StreamingListener implements EngineExecutionListener {
         payload.put("classes", classes);
         payload.put("tests", tests);
         emit(EventType.DISCOVERY_TOTAL, payload);
+    }
+
+    /**
+     * Structured identity from the uniqueId, plus the human display name when the engine has no
+     * class/method segments (Spock spec/feature, Cucumber feature/scenario) — without it, progress
+     * and FAILED labels regress to the raw bracketed uniqueId (JK-1903).
+     */
+    private static void putIdentityWithDisplay(TestDescriptor descriptor, java.util.Map<String, Object> payload) {
+        JUnitUniqueId.parse(descriptor.getUniqueId().toString()).putIdentity(payload);
+        if (!payload.containsKey("testClass") && !payload.containsKey("testMethod")) {
+            String display = descriptor.getDisplayName();
+            if (display != null && !display.isBlank()) payload.put("display", display);
+        }
     }
 }

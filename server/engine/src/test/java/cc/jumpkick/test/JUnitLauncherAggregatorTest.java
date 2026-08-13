@@ -67,6 +67,21 @@ class JUnitLauncherAggregatorTest {
     }
 
     @Test
+    void engines_without_class_method_segments_keep_their_display_label() {
+        // Spock/Cucumber uniqueIds have no [class:]/[method:] segments; the worker sends the
+        // display name for those and labels must use it — not the raw bracketed id (JK-1903).
+        var agg = new JUnitLauncher.ResultAggregator();
+        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"[engine:spock]/[spec:LockSpec]/[feature:floats the lock]\","
+                + "\"testEngine\":\"spock\",\"display\":\"floats the lock\","
+                + "\"type\":\"TEST\",\"status\":\"FAILED\","
+                + "\"throwable\":{\"class\":\"E\",\"message\":\"m\",\"stack\":\"\"}}");
+        var result = agg.toResult(0);
+        assertThat(result.failures()).singleElement().satisfies(f -> {
+            assertThat(f.testName()).isEqualTo("floats the lock");
+        });
+    }
+
+    @Test
     void merges_event_streams_from_multiple_workers() {
         // Simulate two parallel workers each running a couple of classes.
         var agg = new JUnitLauncher.ResultAggregator();
