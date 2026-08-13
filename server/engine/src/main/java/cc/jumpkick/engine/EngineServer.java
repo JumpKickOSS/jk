@@ -18,8 +18,11 @@ import cc.jumpkick.engine.jobs.JobTransport;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
-import cc.jumpkick.engine.listen.EngineEvent;
+import cc.jumpkick.engine.listen.BridgingPlanListener;
+import cc.jumpkick.engine.listen.BridgingWorkspaceListener;
+import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.engine.listen.EventSink;
+import cc.jumpkick.engine.listen.NoopEventSink;
 import cc.jumpkick.engine.listen.WireEventSink;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.JvmOptions;
@@ -40,7 +43,6 @@ import cc.jumpkick.runtime.CacheBenefit;
 import cc.jumpkick.runtime.ChromeTimeline;
 import cc.jumpkick.runtime.ExplainPlan;
 import cc.jumpkick.runtime.ModuleOutcome;
-import cc.jumpkick.runtime.ModulePlan;
 import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.WorkspaceBuildListener;
 import cc.jumpkick.runtime.WorkspaceRequest;
@@ -63,7 +65,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
@@ -1453,7 +1454,7 @@ public final class EngineServer implements AutoCloseable {
 
     /** Wire spelling of a step's coarse {@link String} — {@code ""} when unset. */
     private static String phaseWire(String group) {
-        return group == null ? "" : group;
+        return BridgingPlanListener.phaseWire(group);
     }
 
     private void publishOutput(long requestId, String dir, String step, String line) {
@@ -1975,6 +1976,7 @@ public final class EngineServer implements AutoCloseable {
                 // Cancelled mid-flight: settle as cancelled, not a crash / request-failed.
                 sendQuiet(writer, EngineProtocol.workspaceFinish(false, 1, List.of(), true));
             } else {
+                accOutcome(rid, false, 1);
                 String msg = redactEnv(dir, String.valueOf(e.getMessage()));
                 sendQuiet(writer, requestFailedLine(dir, msg));
                 publishRequestError(rid, dir, msg);
@@ -3829,216 +3831,136 @@ public final class EngineServer implements AutoCloseable {
         return s != null ? java.net.URI.create(s) : null;
     }
 
-    /** Translate every {@link WorkspaceBuildListener} callback into a wire event on {@code writer}. */
+    /** CLI workspace listener: JSONL on {@code writer} plus SSE / journal hooks. */
     private WorkspaceBuildListener wireListener(BufferedWriter writer, String workspaceDir) {
-        // Created on the runner's thread — capture the request id for the dashboard events now;
-        // the callbacks below fire on scheduler/worker threads where the ThreadLocal isn't set.
+        return workspaceListener(workspaceDir, new WireEventSink(writer), writer);
+    }
+
+    /** HTTP/MCP workspace listener: hooks only — the dashboard has no CLI writer. */
+    private WorkspaceBuildListener hubListener(String workspaceDir) {
+        return workspaceListener(workspaceDir, NoopEventSink.INSTANCE, null);
+    }
+
+    private WorkspaceBuildListener workspaceListener(
+            String workspaceDir, EventSink sink, java.io.BufferedWriter writer) {
         long eventRequestId = eventRequestId();
         if (eventRequestId > 0 && workspaceDir != null) putProgressRoot(eventRequestId, workspaceDir);
-        // Each module's plan, kept from onModuleStart so onModuleFinish can read its TEST_RESULT and
-        // fold per-module test counts into the run's record — the workspace path has no single test
-        // plan, so tests would otherwise never reach a dashboard-triggered build's history.
-        java.util.Map<String, cc.jumpkick.run.BuildPlan> moduleBuildPlanner =
-                new java.util.concurrent.ConcurrentHashMap<>();
-        java.util.concurrent.ConcurrentHashMap<String, Long> lastDenByDir =
-                new java.util.concurrent.ConcurrentHashMap<>();
-        return new WorkspaceBuildListener() {
+        return new BridgingWorkspaceListener(workspaceDir, sink, workspaceHooks(eventRequestId, writer));
+    }
+
+    private BridgingWorkspaceListener.Hooks workspaceHooks(long rid, java.io.BufferedWriter writer) {
+        return new BridgingWorkspaceListener.Hooks() {
             @Override
-            public void onPreflight(String stage, int done, int total, String label) {
-                sendQuiet(writer, EngineProtocol.preflight(stage, done, total, label));
-                // Map coarse preflight stages onto user-visible InvocationPhases. Wire names
-                // come from the enum — the one vocabulary a future consumer's fromWire parses.
-                cc.jumpkick.plugin.build.InvocationPhase inv =
-                        switch (stage == null ? "" : stage) {
-                            case "lock", "graph" -> cc.jumpkick.plugin.build.InvocationPhase.RESOLVE;
-                            case "checking", "plan", "prepare", "calibrate" ->
-                                cc.jumpkick.plugin.build.InvocationPhase.PLAN;
-                            default -> null;
-                        };
-                if (inv != null) {
-                    String status = (total > 0 && done >= total) ? "finish" : "start";
-                    sendQuiet(writer, EngineProtocol.invocationPhase(inv.wireName(), status));
-                }
-                if (eventRequestId > 0) {
-                    progressTracker(eventRequestId).preflight(stage, done, total);
-                    emitWorkspaceProgress(eventRequestId, writer, true);
+            public void preflight(String stage, int done, int total) {
+                if (rid > 0) {
+                    progressTracker(rid).preflight(stage, done, total);
+                    emitWorkspaceProgress(rid, writer, true);
                 }
             }
 
             @Override
-            public void onWorkModel(cc.jumpkick.runtime.WorkModel model) {
-                if (eventRequestId <= 0 || model == null) return;
-                cc.jumpkick.runtime.RemainingWork rw = model.toRemainingWork();
-                putRemaining(eventRequestId, rw);
-                // Annotate R0 for wire/clients; bar denominator is calibrated from plan weights.
-                progressTracker(eventRequestId)
-                        .seedWall(model.R0(), model.costs().size());
-                emitWorkspaceProgress(eventRequestId, writer, true);
+            public void workModel(cc.jumpkick.runtime.WorkModel model) {
+                if (rid <= 0) return;
+                putRemaining(rid, model.toRemainingWork());
+                progressTracker(rid).seedWall(model.R0(), model.costs().size());
+                emitWorkspaceProgress(rid, writer, true);
             }
 
             @Override
-            public void onPlan(java.util.List<ModulePlan> plan) {
-                long totalWeight = 0;
-                // Id-less builds must not insert a key clearProgress can never remove.
-                var weights = eventRequestId > 0
-                        ? weightsOf(eventRequestId)
-                        : new java.util.concurrent.ConcurrentHashMap<String, Long>();
-                for (ModulePlan m : plan) {
-                    String dir = m.dir().toString();
-                    totalWeight += m.weight();
-                    weights.put(dir, (long) m.weight());
-                    sendQuiet(
-                            writer,
-                            EngineProtocol.planModule(dir, m.coord(), m.plan().name(), m.weight(), m.fullyCached()));
-                    for (Task p : m.plan().steps()) {
-                        sendQuiet(
-                                writer,
-                                EngineProtocol.planStep(
-                                        dir,
-                                        p.name(),
-                                        p.label(),
-                                        phaseWire(p.group().orElse(null))));
-                    }
+            public void recordWeight(String dir, long weight) {
+                if (rid > 0) weightsOf(rid).put(dir, weight);
+            }
+
+            @Override
+            public void planWeights(long totalWeight, int modules) {
+                if (rid > 0) {
+                    progressTracker(rid).calibrate(totalWeight, modules);
+                    emitWorkspaceProgress(rid, writer, true);
                 }
-                sendQuiet(writer, EngineProtocol.planDone(plan.size()));
-                // Bar = Σ effort weights (real work + TOKENs), not wall-ms R0.
-                if (eventRequestId > 0) {
-                    progressTracker(eventRequestId).calibrate(totalWeight, plan.size());
-                    emitWorkspaceProgress(eventRequestId, writer, true);
-                }
-                publishPlan(eventRequestId, totalWeight);
+                publishPlan(rid, totalWeight);
             }
 
             @Override
-            public void onModuleGraph(java.util.Map<Path, java.util.Set<Path>> prereqs) {
-                accModuleGraph(eventRequestId, prereqs);
+            public void moduleGraph(java.util.Map<Path, java.util.Set<Path>> prereqs) {
+                accModuleGraph(rid, prereqs);
             }
 
             @Override
-            public void onEtaEstimate(long remainingMs) {
-                sendQuiet(writer, EngineProtocol.eta(remainingMs));
-                publishEta(eventRequestId, remainingMs);
+            public void eta(long remainingMs) {
+                publishEta(rid, remainingMs);
             }
 
             @Override
-            public BuildPlanListener onModuleStart(ModulePlan m) {
-                String dir = m.dir().toString();
-                moduleBuildPlanner.put(dir, m.plan()); // read its TEST_RESULT at finish (see onModuleFinish)
-                sendQuiet(writer, EngineProtocol.moduleStart(dir));
-                publishModuleStart(eventRequestId, dir, m.coord());
-                // wireBuildPlanListener captures the dashboard request id from the currentEventRequestId
-                // ThreadLocal — but onModuleStart runs on a WorkspaceScheduler thread where it isn't
-                // set, so without this seed every per-module step/plan-progress hub event would
-                // publish under id -1 and be dropped (no per-module chains or weight bar). Seed it
-                // with the request id captured on the request thread when wireListener was created.
-                Long prev = currentEventRequestId.get();
-                currentEventRequestId.set(eventRequestId);
-                try {
-                    return wrapBuildPlanForWorkspace(
-                            wireBuildPlanListener(dir, writer, (cc.jumpkick.run.BuildPlan) null),
-                            eventRequestId,
-                            dir,
-                            writer,
-                            lastDenByDir);
-                } finally {
-                    if (prev == null) currentEventRequestId.remove();
-                    else currentEventRequestId.set(prev);
-                }
+            public void moduleStarted(String dir, String coord) {
+                publishModuleStart(rid, dir, coord);
             }
 
             @Override
-            public void onModuleFinish(ModuleOutcome o) {
-                String dir = o.dir().toString();
-                long lastDen = lastDenByDir.getOrDefault(dir, 0L);
-                trackModuleComplete(eventRequestId, dir, lastDen, writer);
-                sendQuiet(
-                        writer,
-                        EngineProtocol.moduleFinish(
-                                dir, o.coord(), o.success(), o.exitCode(), o.millis(), o.didWork()));
-                accModule(eventRequestId, o);
-                publishModuleFinish(eventRequestId, dir, o.coord(), o.success(), o.millis(), o.didWork());
-                cc.jumpkick.run.BuildPlan g = moduleBuildPlanner.remove(dir);
-                if (g != null) {
-                    accTests(
-                            eventRequestId,
-                            g.get(cc.jumpkick.runtime.BuildPlanner.TEST_RESULT).orElse(null));
-                }
+            public void moduleFinished(ModuleOutcome o) {
+                accModule(rid, o);
+                publishModuleFinish(rid, o.dir().toString(), o.coord(), o.success(), o.millis(), o.didWork());
+            }
+
+            @Override
+            public void trackModule(String dir, BuildPlanView view) {
+                trackModuleBuildPlan(rid, dir, view, writer, false);
+            }
+
+            @Override
+            public void trackModuleComplete(String dir, long lastDen) {
+                EngineServer.this.trackModuleComplete(rid, dir, lastDen, writer);
+            }
+
+            @Override
+            public BridgingPlanListener.Hooks planHooks(String dir) {
+                return EngineServer.this.planHooks(rid, dir, writer, false);
+            }
+
+            @Override
+            public void testsFrom(cc.jumpkick.run.BuildPlan plan) {
+                accTests(
+                        rid,
+                        plan.get(cc.jumpkick.runtime.BuildPlanner.TEST_RESULT).orElse(null));
             }
         };
     }
 
-    /** Decorate a module plan listener to feed the workspace aggregate tracker. */
-    private BuildPlanListener wrapBuildPlanForWorkspace(
-            BuildPlanListener inner,
-            long requestId,
-            String dir,
-            java.io.BufferedWriter writer,
-            java.util.concurrent.ConcurrentHashMap<String, Long> lastDenByDir) {
-        return new BuildPlanListener() {
+    private BridgingPlanListener.Hooks planHooks(
+            long rid, String dir, java.io.BufferedWriter writer, boolean releaseSlotOnFinish) {
+        return new BridgingPlanListener.Hooks() {
             @Override
-            public void planStart(BuildPlanView view) {
-                lastDenByDir.put(dir, view.denominator());
-                trackModuleBuildPlan(requestId, dir, view, writer, false);
-                inner.planStart(view);
+            public void planProgress(String d, BuildPlanView view) {
+                publishBuildPlanProgress(rid, d, view);
             }
 
             @Override
-            public void progress(String step, int delta, BuildPlanView view) {
-                lastDenByDir.put(dir, view.denominator());
-                trackModuleBuildPlan(requestId, dir, view, writer, false);
-                inner.progress(step, delta, view);
+            public void stepStarted(String d, String step, String phase) {
+                publishStepStart(rid, d, step, phase);
             }
 
             @Override
-            public void tickUpdate(String step, int delta, BuildPlanView view) {
-                lastDenByDir.put(dir, view.denominator());
-                trackModuleBuildPlan(requestId, dir, view, writer, false);
-                inner.tickUpdate(step, delta, view);
+            public void stepFinished(String d, String step, String phase, String status, long millis) {
+                accStepFinish(rid, d, step, phase, status, millis);
+                publishStepFinish(rid, d, step, phase, status, millis);
             }
 
             @Override
-            public void stepStart(String step, String group, int ticks) {
-                inner.stepStart(step, group, ticks);
+            public void labeled(String d, String step, String text) {
+                publishLabel(rid, d, step, text);
             }
 
             @Override
-            public void stepFinish(String step, String group, cc.jumpkick.run.TaskStatus status, Duration duration) {
-                inner.stepFinish(step, group, status, duration);
+            public void output(String d, String step, String line) {
+                publishOutput(rid, d, step, line);
             }
 
             @Override
-            public void label(String step, String label) {
-                inner.label(step, label);
-            }
-
-            @Override
-            public void output(String step, String line) {
-                inner.output(step, line);
-            }
-
-            @Override
-            public void warn(String step, String code, String message) {
-                inner.warn(step, code, message);
-            }
-
-            @Override
-            public void error(String step, String code, String message) {
-                inner.error(step, code, message);
-            }
-
-            @Override
-            public void error(String step, String code, String message, String test, String exceptionClass) {
-                inner.error(step, code, message, test, exceptionClass);
-            }
-
-            @Override
-            public void error(String step, String code, String message, cc.jumpkick.run.TestFailureInfo failure) {
-                inner.error(step, code, message, failure);
-            }
-
-            @Override
-            public void planFinish(BuildPlanResult result) {
-                inner.planFinish(result);
+            public void planFinished(String d, BuildPlanResult result) {
+                flushTimelineToClient(rid, writer);
+                if (releaseSlotOnFinish) inFlightBuilds.release(rid);
+                accBuildPlanFinish(rid, d, result);
+                publishBuildPlanFinish(rid, d, result.success());
+                if (!result.success()) publishDiagnostics(rid, d, result.errors());
             }
         };
     }
@@ -4786,42 +4708,14 @@ public final class EngineServer implements AutoCloseable {
      */
     private BuildPlanListener wireBuildPlanListener(
             String dir, BufferedWriter writer, cc.jumpkick.run.BuildPlan realBuildPlan) {
-        // realBuildPlan non-null ⇒ single-project run: flush chrome timeline on plan finish.
-        // Workspace modules pass null and flush once on workspace finish instead.
-        boolean flushTimeline = realBuildPlan != null;
-        return wireBuildPlanListener(
+        // realBuildPlan non-null ⇒ single-project run: release the exclusive slot before the
+        // terminal plan-finish so a reconnect is not rejected as already-running.
+        return hostedPlanListener(
                 dir,
+                new WireEventSink(writer),
                 writer,
-                (java.util.function.Function<BuildPlanResult, String>) result -> {
-                    cc.jumpkick.run.TestSummary testResult = realBuildPlan == null
-                            ? null
-                            : realBuildPlan
-                                    .get(cc.jumpkick.runtime.BuildPlanner.TEST_RESULT)
-                                    .orElse(null);
-                    String buildOutcome = realBuildPlan == null
-                            ? null
-                            : realBuildPlan
-                                    .get(cc.jumpkick.runtime.BuildPlanner.BUILD_OUTCOME)
-                                    .orElse(null);
-                    // Wire "cancelled" is user/deadline cancel only. BuildPlanResult.cancelled is also
-                    // set on cooperative fail-fast (remaining steps aborted after a real FAIL) — that
-                    // must not look like the user cancelled the job.
-                    boolean cancelled = result.userCancelled();
-                    String finish = testResult == null && buildOutcome == null
-                            ? EngineProtocol.planFinish(dir, result.success(), cancelled)
-                            : EngineProtocol.withCancelled(
-                                    EngineProtocol.planFinish(
-                                            dir,
-                                            result.success(),
-                                            buildOutcome,
-                                            testResult != null ? testResult.total() : -1,
-                                            testResult != null ? testResult.succeeded() : -1,
-                                            testResult != null ? testResult.failed() : -1,
-                                            testResult != null ? testResult.skipped() : -1),
-                                    cancelled);
-                    return finish;
-                },
-                flushTimeline);
+                result -> encodePlanFinish(dir, realBuildPlan, result),
+                realBuildPlan != null);
     }
 
     /**
@@ -4833,152 +4727,55 @@ public final class EngineServer implements AutoCloseable {
      */
     private BuildPlanListener wireBuildPlanListener(
             String dir, BufferedWriter writer, java.util.function.Function<BuildPlanResult, String> finishEncoder) {
-        return wireBuildPlanListener(dir, writer, finishEncoder, false);
+        return hostedPlanListener(dir, new WireEventSink(writer), writer, finishEncoder, false);
     }
 
-    private BuildPlanListener wireBuildPlanListener(
+    /** HTTP lock: same hooks as CLI, no JSONL writer. */
+    private BuildPlanListener singleBuildPlanHubListener(String dir) {
+        return hostedPlanListener(dir, NoopEventSink.INSTANCE, null, null, false);
+    }
+
+    private BuildPlanListener hostedPlanListener(
             String dir,
-            BufferedWriter writer,
+            EventSink sink,
+            java.io.BufferedWriter writer,
             java.util.function.Function<BuildPlanResult, String> finishEncoder,
-            boolean releaseSlotOnBuildPlanFinish) {
-        // Created on the runner's thread (directly, or via wireListener's onModuleStart which runs
-        // on a scheduler thread — there the ThreadLocal is unset and module events carry the id).
-        long eventRequestId = eventRequestId();
-        // Human-paced progress/label/tickstructural events still flush immediately.
-        EventSink sink = new WireEventSink(writer);
-        return new CoalescingBuildPlanListener(new BuildPlanListener() {
-            @Override
-            public void planStart(BuildPlanView view) {
-                sink.emit(new EngineEvent.PlanStart(
+            boolean releaseSlotOnFinish) {
+        return new CoalescingBuildPlanListener(new BridgingPlanListener(
+                dir, sink, planHooks(eventRequestId(), dir, writer, releaseSlotOnFinish), finishEncoder));
+    }
+
+    /**
+     * Terminal {@code plan-finish} for a single-project build/test. Wire {@code cancelled} is
+     * user/deadline cancel only — {@link BuildPlanResult#cancelled()} is also set on cooperative
+     * fail-fast and must not look like the user cancelled the job.
+     */
+    private static String encodePlanFinish(
+            String dir, cc.jumpkick.run.BuildPlan realBuildPlan, BuildPlanResult result) {
+        TestSummary testResult = realBuildPlan == null
+                ? null
+                : realBuildPlan
+                        .get(cc.jumpkick.runtime.BuildPlanner.TEST_RESULT)
+                        .orElse(null);
+        String buildOutcome = realBuildPlan == null
+                ? null
+                : realBuildPlan
+                        .get(cc.jumpkick.runtime.BuildPlanner.BUILD_OUTCOME)
+                        .orElse(null);
+        boolean cancelled = result.userCancelled();
+        if (testResult == null && buildOutcome == null) {
+            return EngineProtocol.planFinish(dir, result.success(), cancelled);
+        }
+        return EngineProtocol.withCancelled(
+                EngineProtocol.planFinish(
                         dir,
-                        view.planName(),
-                        view.numerator(),
-                        view.denominator(),
-                        view.stepsTotal(),
-                        view.stepsComplete(),
-                        view.cancelled()));
-                publishBuildPlanProgress(eventRequestId, dir, view);
-            }
-
-            @Override
-            public void stepStart(String step, String group, int ticks) {
-                sendQuiet(writer, EngineProtocol.stepStart(dir, step, phaseWire(group), ticks));
-                publishStepStart(eventRequestId, dir, step, phaseWire(group));
-            }
-
-            @Override
-            public void progress(String step, int delta, BuildPlanView view) {
-                sendQuiet(
-                        writer,
-                        EngineProtocol.progress(
-                                dir,
-                                step,
-                                delta,
-                                view.numerator(),
-                                view.denominator(),
-                                view.stepsTotal(),
-                                view.stepsComplete(),
-                                view.cancelled()));
-                publishBuildPlanProgress(eventRequestId, dir, view);
-            }
-
-            @Override
-            public void tickUpdate(String step, int delta, BuildPlanView view) {
-                sendQuiet(
-                        writer,
-                        EngineProtocol.tickUpdate(
-                                dir,
-                                step,
-                                delta,
-                                view.numerator(),
-                                view.denominator(),
-                                view.stepsTotal(),
-                                view.stepsComplete(),
-                                view.cancelled()));
-                publishBuildPlanProgress(eventRequestId, dir, view);
-            }
-
-            @Override
-            public void label(String step, String label) {
-                String safe = redactEnv(dir, label);
-                sendQuiet(writer, EngineProtocol.label(dir, step, safe));
-                publishLabel(eventRequestId, dir, step, safe);
-            }
-
-            @Override
-            public void output(String step, String line) {
-                String safe = redactEnv(dir, line);
-                sendQuiet(writer, EngineProtocol.output(dir, step, safe));
-                publishOutput(eventRequestId, dir, step, safe);
-            }
-
-            @Override
-            public void warn(String step, String code, String message) {
-                sendQuiet(writer, EngineProtocol.warn(dir, step, code, redactEnv(dir, message)));
-            }
-
-            @Override
-            public void error(String step, String code, String message, String test, String exceptionClass) {
-                sendQuiet(
-                        writer,
-                        EngineProtocol.errorLine(dir, step, code, redactEnv(dir, message), test, exceptionClass));
-            }
-
-            @Override
-            public void error(String step, String code, String message, cc.jumpkick.run.TestFailureInfo failure) {
-                if (failure == null) {
-                    error(step, code, message);
-                    return;
-                }
-                String msg = redactEnv(dir, message == null || message.isEmpty() ? failure.message() : message);
-                sendQuiet(writer, EngineProtocol.errorLine(dir, step, code, msg, redactFailure(dir, failure)));
-            }
-
-            @Override
-            public void stepFinish(String step, String group, cc.jumpkick.run.TaskStatus status, Duration duration) {
-                long millis = duration.toMillis();
-                sendQuiet(writer, EngineProtocol.stepFinish(dir, step, phaseWire(group), status.name(), millis));
-                accStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), millis);
-                publishStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), millis);
-            }
-
-            @Override
-            public void planFinish(BuildPlanResult result) {
-                for (BuildPlanResult.Diagnostic d : result.errors()) {
-                    var tf = d.testFailure();
-                    if (tf != null) {
-                        sendQuiet(
-                                writer,
-                                EngineProtocol.planDiagnostic(
-                                        dir, d.step(), d.code(), redactEnv(dir, d.message()), redactFailure(dir, tf)));
-                    } else {
-                        sendQuiet(
-                                writer,
-                                EngineProtocol.planDiagnostic(
-                                        dir,
-                                        d.step(),
-                                        d.code(),
-                                        redactEnv(dir, d.message()),
-                                        d.test(),
-                                        d.exceptionClass()));
-                    }
-                }
-                // Timeline before the terminal finish, for every socket request that owns an
-                // accumulator (no-op otherwise): a client that has returned must not observe the
-                // engine still writing target/jk-chrome-profile.json (JK-1714). Workspace modules
-                // flush once in runBuild before workspace-finish; the flushTimeline guard makes a
-                // second call here idempotent.
-                flushTimelineToClient(eventRequestId, writer);
-                // Free exclusive fingerprint before the terminal line so a client that reconnects
-                // immediately is not rejected as already-running (single-plan only; workspace
-                // releases after BuildService.buildWorkspace returns).
-                if (releaseSlotOnBuildPlanFinish) inFlightBuilds.release(eventRequestId);
-                sendQuiet(writer, finishEncoder.apply(result));
-                accBuildPlanFinish(eventRequestId, dir, result);
-                publishBuildPlanFinish(eventRequestId, dir, result.success());
-                if (!result.success()) publishDiagnostics(eventRequestId, dir, result.errors());
-            }
-        });
+                        result.success(),
+                        buildOutcome,
+                        testResult != null ? testResult.total() : -1,
+                        testResult != null ? testResult.succeeded() : -1,
+                        testResult != null ? testResult.failed() : -1,
+                        testResult != null ? testResult.skipped() : -1),
+                cancelled);
     }
 
     /** Write chrome timeline (if any) and notify the socket client. Idempotent per request. */
@@ -4999,54 +4796,12 @@ public final class EngineServer implements AutoCloseable {
         }
     }
 
-    /**
-     * Mask {@code.env}-sourced values in free-form text that leaves the enginewire
-     * events, journal diagnostics, SSE, and request-failed messages. Lookup is by module/workspace
-     * dir so masking follows {@link cc.jumpkick.config.EnvLookup#isFromFile} (source, not name
-     * heuristics). When {@code dir} is blank, the ambient session's working dir is used. Failures
-     * fall through to the original text — redaction must never break a build.
-     */
     static String redactEnv(String dir, String text) {
-        if (text == null || text.isEmpty()) return text;
-        try {
-            Path root;
-            if (dir != null && !dir.isBlank()) {
-                root = Path.of(dir);
-            } else {
-                root = cc.jumpkick.config.SessionContext.current().workingDir();
-            }
-            if (root == null) return text;
-            return cc.jumpkick.config.BuildEnv.secretsFor(root).redact(text);
-        } catch (RuntimeException e) {
-            return text;
-        }
+        return EventRedaction.redactEnv(dir, text);
     }
 
-    /**
-     * {@link #redactEnv} over the free-text fields of a test failure. The first line of
-     * {@code printStackTrace} text repeats the raw exception message, so masking {@code message}
-     * alone still leaks the secret through {@code stack} (wire, SSE, journal).
-     */
     static cc.jumpkick.run.TestFailureInfo redactFailure(String dir, cc.jumpkick.run.TestFailureInfo f) {
-        if (f == null) return null;
-        String message = redactEnv(dir, f.message());
-        String stack = redactEnv(dir, f.stack());
-        if (java.util.Objects.equals(message, f.message()) && java.util.Objects.equals(stack, f.stack())) {
-            return f;
-        }
-        return new cc.jumpkick.run.TestFailureInfo(
-                f.module(),
-                f.engine(),
-                f.className(),
-                f.method(),
-                f.exceptionClass(),
-                message,
-                stack,
-                f.worker(),
-                f.file(),
-                f.line(),
-                f.snippetStart(),
-                f.snippet());
+        return EventRedaction.redactFailure(dir, f);
     }
 
     /** {@link EngineProtocol#requestFailed} with {@code .env} values masked. */
@@ -5358,6 +5113,7 @@ public final class EngineServer implements AutoCloseable {
             return result.success();
         } catch (Exception e) {
             // The engine log is served by GET /api/log — redact like every other exiting channel.
+            accOutcome(eventRequestId(), false, 1);
             log.accept("jk engine: http-triggered job of " + entryDir + " failed: "
                     + redactEnv(entryDir.toString(), String.valueOf(e.getMessage())));
             publishRequestError(eventRequestId(), entryDir.toString(), String.valueOf(e.getMessage()));
@@ -5401,185 +5157,12 @@ public final class EngineServer implements AutoCloseable {
             }
             return result.success();
         } catch (Exception e) {
+            accOutcome(eventRequestId(), false, 1);
             log.accept("jk engine: http-triggered lock of " + entryDir + " failed: "
                     + redactEnv(entryDir.toString(), String.valueOf(e.getMessage())));
             publishRequestError(eventRequestId(), entryDir.toString(), String.valueOf(e.getMessage()));
             return false;
         }
-    }
-
-    /** BuildPlan events for a single HTTP lock job → SSE hub (same wire cadence as CLI UDS). */
-    private BuildPlanListener singleBuildPlanHubListener(String dir) {
-        long eventRequestId = eventRequestId();
-        return new CoalescingBuildPlanListener(new BuildPlanListener() {
-            @Override
-            public void planStart(BuildPlanView view) {
-                publishBuildPlanProgress(eventRequestId, dir, view);
-            }
-
-            @Override
-            public void progress(String step, int delta, BuildPlanView view) {
-                publishBuildPlanProgress(eventRequestId, dir, view);
-            }
-
-            @Override
-            public void tickUpdate(String step, int delta, BuildPlanView view) {
-                publishBuildPlanProgress(eventRequestId, dir, view);
-            }
-
-            @Override
-            public void stepStart(String step, String group, int ticks) {
-                publishStepStart(eventRequestId, dir, step, phaseWire(group));
-            }
-
-            @Override
-            public void stepFinish(String step, String group, cc.jumpkick.run.TaskStatus status, Duration duration) {
-                publishStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), duration.toMillis());
-            }
-
-            @Override
-            public void label(String step, String label) {
-                publishLabel(eventRequestId, dir, step, label);
-            }
-
-            @Override
-            public void output(String step, String line) {
-                publishOutput(eventRequestId, dir, step, line);
-            }
-        });
-    }
-
-    /** Module/plan events to the dashboard hub only — the HTTP trigger's counterpart of {@link #wireListener}. */
-    private WorkspaceBuildListener hubListener(String workspaceDir) {
-        long eventRequestId = eventRequestId();
-        if (eventRequestId > 0 && workspaceDir != null) putProgressRoot(eventRequestId, workspaceDir);
-        // As in wireListener: keep each module's plan so onModuleFinish can fold its TEST_RESULT into
-        // the record — a web-triggered build has no single test plan, so tests would otherwise never
-        // reach the journal for dashboard builds.
-        java.util.Map<String, cc.jumpkick.run.BuildPlan> moduleBuildPlanner =
-                new java.util.concurrent.ConcurrentHashMap<>();
-        java.util.concurrent.ConcurrentHashMap<String, Long> lastDenByDir =
-                new java.util.concurrent.ConcurrentHashMap<>();
-        return new WorkspaceBuildListener() {
-            @Override
-            public void onPreflight(String stage, int done, int total, String label) {
-                if (eventRequestId > 0) {
-                    progressTracker(eventRequestId).preflight(stage, done, total);
-                    emitWorkspaceProgress(eventRequestId, null, true);
-                }
-            }
-
-            @Override
-            public void onWorkModel(cc.jumpkick.runtime.WorkModel model) {
-                if (eventRequestId <= 0 || model == null) return;
-                putRemaining(eventRequestId, model.toRemainingWork());
-                progressTracker(eventRequestId)
-                        .seedWall(model.R0(), model.costs().size());
-                emitWorkspaceProgress(eventRequestId, null, true);
-            }
-
-            @Override
-            public void onPlan(java.util.List<ModulePlan> plan) {
-                long totalWeight = 0;
-                // Id-less builds must not insert a key clearProgress can never remove.
-                var weights = eventRequestId > 0
-                        ? weightsOf(eventRequestId)
-                        : new java.util.concurrent.ConcurrentHashMap<String, Long>();
-                for (ModulePlan m : plan) {
-                    totalWeight += m.weight();
-                    weights.put(m.dir().toString(), (long) m.weight());
-                }
-                if (eventRequestId > 0) {
-                    progressTracker(eventRequestId).calibrate(totalWeight, plan.size());
-                    emitWorkspaceProgress(eventRequestId, null, true);
-                }
-                publishPlan(eventRequestId, totalWeight);
-            }
-
-            @Override
-            public void onModuleGraph(java.util.Map<Path, java.util.Set<Path>> prereqs) {
-                accModuleGraph(eventRequestId, prereqs);
-            }
-
-            @Override
-            public void onEtaEstimate(long remainingMs) {
-                publishEta(eventRequestId, remainingMs);
-            }
-
-            @Override
-            public BuildPlanListener onModuleStart(ModulePlan m) {
-                String dir = m.dir().toString();
-                moduleBuildPlanner.put(dir, m.plan());
-                publishModuleStart(eventRequestId, dir, m.coord());
-                // Same JK_WIRE_PROGRESS_MS coalescing as the CLI UDS path (progress/label/output).
-                return new CoalescingBuildPlanListener(new BuildPlanListener() {
-                    @Override
-                    public void planStart(BuildPlanView view) {
-                        lastDenByDir.put(dir, view.denominator());
-                        trackModuleBuildPlan(eventRequestId, dir, view, null, false);
-                        publishBuildPlanProgress(eventRequestId, dir, view);
-                    }
-
-                    @Override
-                    public void progress(String step, int delta, BuildPlanView view) {
-                        lastDenByDir.put(dir, view.denominator());
-                        trackModuleBuildPlan(eventRequestId, dir, view, null, false);
-                        publishBuildPlanProgress(eventRequestId, dir, view);
-                    }
-
-                    @Override
-                    public void tickUpdate(String step, int delta, BuildPlanView view) {
-                        lastDenByDir.put(dir, view.denominator());
-                        trackModuleBuildPlan(eventRequestId, dir, view, null, false);
-                        publishBuildPlanProgress(eventRequestId, dir, view);
-                    }
-
-                    @Override
-                    public void stepStart(String step, String group, int ticks) {
-                        publishStepStart(eventRequestId, dir, step, phaseWire(group));
-                    }
-
-                    @Override
-                    public void stepFinish(
-                            String step, String group, cc.jumpkick.run.TaskStatus status, Duration duration) {
-                        long millis = duration.toMillis();
-                        accStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), millis);
-                        publishStepFinish(eventRequestId, dir, step, phaseWire(group), status.name(), millis);
-                    }
-
-                    @Override
-                    public void label(String step, String label) {
-                        publishLabel(eventRequestId, dir, step, label);
-                    }
-
-                    @Override
-                    public void output(String step, String line) {
-                        publishOutput(eventRequestId, dir, step, line);
-                    }
-
-                    @Override
-                    public void planFinish(BuildPlanResult result) {
-                        accBuildPlanFinish(eventRequestId, dir, result);
-                        publishBuildPlanFinish(eventRequestId, dir, result.success());
-                        if (!result.success()) publishDiagnostics(eventRequestId, dir, result.errors());
-                    }
-                });
-            }
-
-            @Override
-            public void onModuleFinish(ModuleOutcome o) {
-                String dir = o.dir().toString();
-                trackModuleComplete(eventRequestId, dir, lastDenByDir.getOrDefault(dir, 0L), null);
-                accModule(eventRequestId, o);
-                publishModuleFinish(eventRequestId, dir, o.coord(), o.success(), o.millis(), o.didWork());
-                cc.jumpkick.run.BuildPlan g = moduleBuildPlanner.remove(dir);
-                if (g != null) {
-                    accTests(
-                            eventRequestId,
-                            g.get(cc.jumpkick.runtime.BuildPlanner.TEST_RESULT).orElse(null));
-                }
-            }
-        };
     }
 
     /** The one source of engine vitals — feeds both the socket {@code status-ack} and {@code /api/status}. */

@@ -70,6 +70,20 @@ public final class WireEventSink implements EventSink {
             case EngineEvent.PlanFinishLine e -> e.encodedWireLine();
             case EngineEvent.PlanDiagnostic e ->
                 EngineProtocol.planDiagnostic(e.dir(), e.step(), e.code(), e.message(), e.test(), e.exceptionClass());
+            case EngineEvent.ErrorFailure e ->
+                EngineProtocol.errorLine(e.dir(), e.step(), e.code(), e.message(), e.failure());
+            case EngineEvent.PlanDiagnosticFailure e ->
+                EngineProtocol.planDiagnostic(e.dir(), e.step(), e.code(), e.message(), e.failure());
+            case EngineEvent.Preflight e -> EngineProtocol.preflight(e.stage(), e.done(), e.total(), e.label());
+            case EngineEvent.InvocationPhase e -> EngineProtocol.invocationPhase(e.name(), e.status());
+            case EngineEvent.PlanModule e ->
+                EngineProtocol.planModule(e.dir(), e.coord(), e.planName(), (int) e.weight(), e.fullyCached());
+            case EngineEvent.PlanStep e -> EngineProtocol.planStep(e.dir(), e.name(), e.label(), e.phase());
+            case EngineEvent.PlanDone e -> EngineProtocol.planDone(e.modules());
+            case EngineEvent.ModuleStart e -> EngineProtocol.moduleStart(e.dir());
+            case EngineEvent.ModuleFinish e ->
+                EngineProtocol.moduleFinish(e.dir(), e.coord(), e.success(), e.exitCode(), e.millis(), e.didWork());
+            case EngineEvent.Eta e -> EngineProtocol.eta(e.remainingMs());
         };
     }
 }

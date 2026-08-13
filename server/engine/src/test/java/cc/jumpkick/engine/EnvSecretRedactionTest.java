@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
+import cc.jumpkick.engine.listen.EventRedaction;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -24,9 +25,9 @@ class EnvSecretRedactionTest {
     void redactEnv_masks_file_sourced_values(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve(".env"), "TOKEN=" + SECRET + "\n");
         String raw = "failed to auth with token " + SECRET + " against mirror";
-        assertThat(EngineServer.redactEnv(tmp.toString(), raw))
+        assertThat(EventRedaction.redactEnv(tmp.toString(), raw))
                 .isEqualTo("failed to auth with token " + SecretRedactor.MASK + " against mirror");
-        assertThat(EngineServer.redactEnv(tmp.toString(), raw)).doesNotContain(SECRET);
+        assertThat(EventRedaction.redactEnv(tmp.toString(), raw)).doesNotContain(SECRET);
     }
 
     @Test
@@ -35,7 +36,7 @@ class EnvSecretRedactionTest {
         Path journalRoot = tmp.resolve("journal");
         BuildJournal journal = new BuildJournal(journalRoot);
 
-        String redacted = EngineServer.redactEnv(tmp.toString(), "signing failed: " + SECRET);
+        String redacted = EventRedaction.redactEnv(tmp.toString(), "signing failed: " + SECRET);
         BuildRecord record = new BuildRecord(
                 null,
                 1L,
@@ -92,7 +93,7 @@ class EnvSecretRedactionTest {
                 "expected " + SECRET,
                 "org.opentest4j.AssertionFailedError: expected " + SECRET + "\n\tat FooTest.bar(FooTest.java:9)");
 
-        var red = EngineServer.redactFailure(tmp.toString(), f);
+        var red = EventRedaction.redactFailure(tmp.toString(), f);
 
         assertThat(red.message()).doesNotContain(SECRET).contains(SecretRedactor.MASK);
         assertThat(red.stack()).doesNotContain(SECRET).contains(SecretRedactor.MASK);
@@ -101,7 +102,7 @@ class EnvSecretRedactionTest {
 
         // A failure with nothing to mask comes back as the same instance (no copy churn).
         var clean = new cc.jumpkick.run.TestFailureInfo("g:a", "junit-jupiter", "FooTest", "bar()", "E", "m", "s");
-        assertThat(EngineServer.redactFailure(tmp.toString(), clean)).isSameAs(clean);
+        assertThat(EventRedaction.redactFailure(tmp.toString(), clean)).isSameAs(clean);
     }
 
     @Test
