@@ -2066,7 +2066,7 @@ public final class EngineServer implements AutoCloseable {
             if (d.method() != null && !d.method().isEmpty()) o.put("method", d.method());
             if (d.exceptionClass() != null && !d.exceptionClass().isEmpty())
                 o.put("exceptionClass", d.exceptionClass());
-            if (d.stack() != null && !d.stack().isEmpty()) o.put("stack", d.stack());
+            if (d.stack() != null && !d.stack().isEmpty()) o.put("stack", redactEnv(dir, d.stack()));
             if (d.file() != null && !d.file().isEmpty()) o.put("file", d.file());
             if (d.line() > 0) o.put("line", d.line());
             if (d.snippetStart() > 0) o.put("snippetStart", d.snippetStart());
@@ -5431,7 +5431,7 @@ public final class EngineServer implements AutoCloseable {
                     return;
                 }
                 String msg = redactEnv(dir, message == null || message.isEmpty() ? failure.message() : message);
-                sendQuiet(writer, EngineProtocol.errorLine(dir, step, code, msg, failure));
+                sendQuiet(writer, EngineProtocol.errorLine(dir, step, code, msg, redactFailure(dir, failure)));
             }
 
             @Override
@@ -5450,7 +5450,7 @@ public final class EngineServer implements AutoCloseable {
                         sendQuiet(
                                 writer,
                                 EngineProtocol.planDiagnostic(
-                                        dir, d.step(), d.code(), redactEnv(dir, d.message()), tf));
+                                        dir, d.step(), d.code(), redactEnv(dir, d.message()), redactFailure(dir, tf)));
                     } else {
                         sendQuiet(
                                 writer,
@@ -5520,6 +5520,33 @@ public final class EngineServer implements AutoCloseable {
         } catch (RuntimeException e) {
             return text;
         }
+    }
+
+    /**
+     * {@link #redactEnv} over the free-text fields of a test failure. The first line of
+     * {@code printStackTrace} text repeats the raw exception message, so masking {@code message}
+     * alone still leaks the secret through {@code stack} (wire, SSE, journal).
+     */
+    static cc.jumpkick.run.TestFailureInfo redactFailure(String dir, cc.jumpkick.run.TestFailureInfo f) {
+        if (f == null) return null;
+        String message = redactEnv(dir, f.message());
+        String stack = redactEnv(dir, f.stack());
+        if (java.util.Objects.equals(message, f.message()) && java.util.Objects.equals(stack, f.stack())) {
+            return f;
+        }
+        return new cc.jumpkick.run.TestFailureInfo(
+                f.module(),
+                f.engine(),
+                f.className(),
+                f.method(),
+                f.exceptionClass(),
+                message,
+                stack,
+                f.worker(),
+                f.file(),
+                f.line(),
+                f.snippetStart(),
+                f.snippet());
     }
 
     /** {@link EngineProtocol#requestFailed} with {@code .env} values masked. */
@@ -6811,7 +6838,7 @@ public final class EngineServer implements AutoCloseable {
                         d.engine(),
                         d.className(),
                         d.method(),
-                        d.stack(),
+                        redactEnv(redactDir, d.stack()),
                         d.file(),
                         d.line(),
                         d.snippetStart(),
@@ -6831,7 +6858,7 @@ public final class EngineServer implements AutoCloseable {
                         d.engine(),
                         d.className(),
                         d.method(),
-                        d.stack(),
+                        redactEnv(redactDir, d.stack()),
                         d.file(),
                         d.line(),
                         d.snippetStart(),

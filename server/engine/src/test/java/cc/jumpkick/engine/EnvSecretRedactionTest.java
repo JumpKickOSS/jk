@@ -79,6 +79,32 @@ class EnvSecretRedactionTest {
     }
 
     @Test
+    void redactFailure_masks_message_and_stack(@TempDir Path tmp) throws Exception {
+        // printStackTrace text repeats the raw message on its first line, so masking message
+        // alone still leaks the secret through the stack field (JK-1878).
+        Files.writeString(tmp.resolve(".env"), "TOKEN=" + SECRET + "\n");
+        var f = new cc.jumpkick.run.TestFailureInfo(
+                "g:a",
+                "junit-jupiter",
+                "FooTest",
+                "bar()",
+                "org.opentest4j.AssertionFailedError",
+                "expected " + SECRET,
+                "org.opentest4j.AssertionFailedError: expected " + SECRET + "\n\tat FooTest.bar(FooTest.java:9)");
+
+        var red = EngineServer.redactFailure(tmp.toString(), f);
+
+        assertThat(red.message()).doesNotContain(SECRET).contains(SecretRedactor.MASK);
+        assertThat(red.stack()).doesNotContain(SECRET).contains(SecretRedactor.MASK);
+        assertThat(red.className()).isEqualTo("FooTest");
+        assertThat(red.exceptionClass()).isEqualTo(f.exceptionClass());
+
+        // A failure with nothing to mask comes back as the same instance (no copy churn).
+        var clean = new cc.jumpkick.run.TestFailureInfo("g:a", "junit-jupiter", "FooTest", "bar()", "E", "m", "s");
+        assertThat(EngineServer.redactFailure(tmp.toString(), clean)).isSameAs(clean);
+    }
+
+    @Test
     void real_environment_values_are_not_masked_even_when_named_in_dotenv(@TempDir Path tmp) throws Exception {
         // Source-based masking: a real env var that shadows.env is not a secret.
         Files.writeString(tmp.resolve(".env"), "MODE=from-file\n");
