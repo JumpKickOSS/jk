@@ -10,7 +10,6 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.JsonOut;
-import cc.jumpkick.engine.jobs.AdmitResult;
 import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobRequest;
 import cc.jumpkick.engine.jobs.JobSession;
@@ -982,8 +981,7 @@ public final class EngineServer implements AutoCloseable {
     }
 
     boolean cancelJob(long jid) {
-        if (jobs.cancelJob(jid)) return true;
-        return cancelHttpJob(jid);
+        return jobs.cancelJob(jid);
     }
 
     int cancelJobsForDir(String dir) {
@@ -5262,13 +5260,6 @@ public final class EngineServer implements AutoCloseable {
         return cc.jumpkick.engine.http.JsonOut.rawObject(m);
     }
 
-    /** HTTP/MCP job cancel tokens and runner threads. */
-    private final java.util.concurrent.ConcurrentHashMap<Long, Session.CancelToken> httpCancelTokens =
-            new java.util.concurrent.ConcurrentHashMap<>();
-
-    private final java.util.concurrent.ConcurrentHashMap<Long, Thread> httpJobThreads =
-            new java.util.concurrent.ConcurrentHashMap<>();
-
     private cc.jumpkick.engine.http.EngineHttpJobs httpJobs() {
         return new cc.jumpkick.engine.http.EngineHttpJobs() {
             @Override
@@ -5294,207 +5285,32 @@ public final class EngineServer implements AutoCloseable {
         };
     }
 
-    /**
-     * {@code POST /api/build} / MCP {@code jk_build}/{@code jk_test}: start a workspace job and
-     * return a request id immediately. Progress is SSE (dashboard {@code /api/events} or MCP {@code
-     * GET /mcp} event-stream).
-     */
+    /** {@code POST /api/build} / MCP: same JobEnvelope as CLI, FireAndForget. */
     private long triggerHttpWorkspace(String dirStr, String kind, boolean skipTests, boolean testOnly) {
-        // Claim the plan slot atomically with the shutdown check, so displacement/stop can
-        // never see zero plans for a job that is about to start (JK-1470). Any failure before
-        // the runner thread is started gives the slot back — a leaked slot would stall shutdown.
-        if (!tryStartBuildPlan()) {
-            throw new IllegalStateException("engine is shutting down");
-        }
-        boolean started = false;
-        try {
-            long id = startHttpWorkspace(dirStr, kind, skipTests, testOnly);
-            started = true;
-            return id;
-        } finally {
-            if (!started) abandonBuildPlanSlot();
-        }
-    }
-
-    private long startHttpWorkspace(String dirStr, String kind, boolean skipTests, boolean testOnly) {
-        // ~ and bare relatives resolve against user.home (engine CWD is the state dir, not $HOME).
         Path entryDir = cc.jumpkick.util.PathUtil.resolveUserPath(dirStr);
         if (!Files.isRegularFile(entryDir.resolve("jk.toml"))) {
             throw new IllegalArgumentException("no jk.toml in " + entryDir);
         }
-        long eventRequestId = requestIds.incrementAndGet();
-        long startMillis = clockMillis.getAsLong();
-        String fp = BuildJobFingerprint.ofHttp(kind, entryDir, skipTests, testOnly);
-        AdmitResult admit = jobs.admitJob(eventRequestId, kind, entryDir.toString(), fp, "web");
-        if (admit.rejected() != null) {
-            InFlightBuilds.Hold h = admit.rejected();
-            String label = "test".equals(kind) ? "Test" : "Build";
-            throw new IllegalStateException(label + " #" + h.buildNumber() + " is already running");
-        }
-        Session.CancelToken cancelToken = Session.CancelToken.live();
-        httpCancelTokens.put(eventRequestId, cancelToken);
-        java.util.concurrent.atomic.AtomicReference<Thread> runnerRef =
-                new java.util.concurrent.atomic.AtomicReference<>();
-        // HTTP/SSE has no CLI stream writer — cancel settles via request-finish on the dashboard.
-        // No CLI stream (writer null) — workspaceStream is moot for the terminal push.
-        jobs.registerLiveJob(eventRequestId, cancelToken, runnerRef, null, null, entryDir.toString(), kind, true);
-        publishRequestStart(eventRequestId, kind, entryDir.toString(), admit.buildNumber());
-        registerAccumulator(
-                eventRequestId, kind, entryDir.toString(), "web", false, false, admit.buildNumber(), admit.journalId());
-        // Unstarted: registration below must complete before the body can reach its finally and
-        // remove the very keys we are about to insert, which would leak a dead Thread under this
-        // id forever and make a cancel arriving in that window a no-op (JK-1478).
-        Thread t = Thread.ofVirtual().name("jk-engine-http-" + kind + "-", 0).unstarted(() -> {
-            cacheGate.readLock().lock();
-            currentEventRequestId.set(eventRequestId);
-            JobWorkers.open(eventRequestId);
-            cc.jumpkick.task.IoLedger.open(runIo(eventRequestId));
-            boolean success = false;
-            boolean cancelled = false;
-            try {
-                success = runHttpWorkspace(entryDir, skipTests, testOnly, cancelToken);
-                cancelled = cancelToken.cancelled() && !success;
-            } finally {
-                cc.jumpkick.task.IoLedger.close();
-                JobWorkers.close();
-                httpCancelTokens.remove(eventRequestId);
-                httpJobThreads.remove(eventRequestId);
-                jobs.unregisterLiveJob(eventRequestId);
-                currentEventRequestId.remove();
-                cacheGate.readLock().unlock();
-                // Free exclusive fingerprint before journal/idle chores so a follow-up build can start.
-                inFlightBuilds.release(eventRequestId);
-                long elapsedMillis = clockMillis.getAsLong() - startMillis;
-                if (success) putLastProgress(eventRequestId, 100.0);
-                // Slot first so request-finish status nudge sees post-finish plan count (JK-1725).
-                noteBuildPlanFinished();
-                publishEvent(
-                        "request-finish",
-                        withProgress(
-                                withIo(
-                                        cc.jumpkick.engine.http.JsonOut.object()
-                                                .put("schema", 1)
-                                                .put("type", "request-finish")
-                                                .put("requestId", eventRequestId)
-                                                .put("jid", eventRequestId)
-                                                .put("kind", kind)
-                                                .put("dir", entryDir.toString())
-                                                .put("success", success)
-                                                .put("cancelled", cancelled)
-                                                .put("millis", elapsedMillis)
-                                                .put("activeBuildPlans", activeBuildPlans.get()),
-                                        eventRequestId),
-                                eventRequestId));
-                clearProgress(eventRequestId);
-                writeJournal(eventRequestId, cancelled, elapsedMillis);
-                // After finish/journal so idle chores + GC include that allocation.
-                maybeIdleBoundary();
-            }
-        });
-        runnerRef.set(t);
-        httpJobThreads.put(eventRequestId, t);
-        t.start();
-        return eventRequestId;
+        String line = "{\"type\":\"build-request\",\"dir\":"
+                + cc.jumpkick.plugin.protocol.Jsonl.quote(entryDir.toString())
+                + ",\"trigger\":\"web\"}";
+        JobRequest req = JobRequest.workspace(
+                kind,
+                "jk-engine-http-" + kind + "-",
+                (l, tok, w) -> runHttpWorkspace(entryDir, skipTests, testOnly, tok));
+        return jobs.submitAsync(line, req, BuildJobFingerprint.ofHttp(kind, entryDir, skipTests, testOnly));
     }
 
     private long triggerHttpLock(String dirStr) {
-        // Claim the plan slot atomically with the shutdown check, so displacement/stop can
-        // never see zero plans for a job that is about to start (JK-1470). Any failure before
-        // the runner thread is started gives the slot back — a leaked slot would stall shutdown.
-        if (!tryStartBuildPlan()) {
-            throw new IllegalStateException("engine is shutting down");
-        }
-        boolean started = false;
-        try {
-            long id = startHttpLock(dirStr);
-            started = true;
-            return id;
-        } finally {
-            if (!started) abandonBuildPlanSlot();
-        }
-    }
-
-    private long startHttpLock(String dirStr) {
         Path entryDir = cc.jumpkick.util.PathUtil.resolveUserPath(dirStr);
         if (!Files.isRegularFile(entryDir.resolve("jk.toml"))) {
             throw new IllegalArgumentException("no jk.toml in " + entryDir);
         }
-        long eventRequestId = requestIds.incrementAndGet();
-        long startMillis = clockMillis.getAsLong();
-        Session.CancelToken cancelToken = Session.CancelToken.live();
-        httpCancelTokens.put(eventRequestId, cancelToken);
-        java.util.concurrent.atomic.AtomicReference<Thread> runnerRef =
-                new java.util.concurrent.atomic.AtomicReference<>();
-        jobs.registerLiveJob(eventRequestId, cancelToken, runnerRef, null, null, entryDir.toString(), "lock", false);
-        publishRequestStart(eventRequestId, "lock", entryDir.toString());
-        registerAccumulator(eventRequestId, "lock", entryDir.toString(), "web");
-        // Unstarted — see the note in startHttpWorkspace (JK-1478).
-        Thread t = Thread.ofVirtual().name("jk-engine-http-lock-", 0).unstarted(() -> {
-            cacheGate.readLock().lock();
-            currentEventRequestId.set(eventRequestId);
-            JobWorkers.open(eventRequestId);
-            cc.jumpkick.task.IoLedger.open(runIo(eventRequestId));
-            boolean success = false;
-            boolean cancelled = false;
-            try {
-                success = runHttpLock(entryDir, cancelToken);
-                cancelled = cancelToken.cancelled() && !success;
-            } finally {
-                cc.jumpkick.task.IoLedger.close();
-                JobWorkers.close();
-                httpCancelTokens.remove(eventRequestId);
-                httpJobThreads.remove(eventRequestId);
-                jobs.unregisterLiveJob(eventRequestId);
-                currentEventRequestId.remove();
-                cacheGate.readLock().unlock();
-                long elapsedMillis = clockMillis.getAsLong() - startMillis;
-                if (success) putLastProgress(eventRequestId, 100.0);
-                noteBuildPlanFinished();
-                publishEvent(
-                        "request-finish",
-                        withProgress(
-                                withIo(
-                                        cc.jumpkick.engine.http.JsonOut.object()
-                                                .put("schema", 1)
-                                                .put("type", "request-finish")
-                                                .put("requestId", eventRequestId)
-                                                .put("jid", eventRequestId)
-                                                .put("kind", "lock")
-                                                .put("dir", entryDir.toString())
-                                                .put("success", success)
-                                                .put("cancelled", cancelled)
-                                                .put("millis", elapsedMillis)
-                                                .put("activeBuildPlans", activeBuildPlans.get()),
-                                        eventRequestId),
-                                eventRequestId));
-                clearProgress(eventRequestId);
-                writeJournal(eventRequestId, cancelled, elapsedMillis);
-                // After finish/journal so idle chores + GC include that allocation.
-                maybeIdleBoundary();
-            }
-        });
-        runnerRef.set(t);
-        httpJobThreads.put(eventRequestId, t);
-        t.start();
-        return eventRequestId;
-    }
-
-    private boolean cancelHttpJob(long requestId) {
-        Session.CancelToken token = httpCancelTokens.get(requestId);
-        if (token == null) return false;
-        token.cancel();
-        BuildAccumulator a = accumulatorOf(requestId);
-        if (a != null) a.markUserCancelled(true);
-        JobWorkers.shutdownForRequest(requestId, JobWorkers.cancelGraceMs());
-        Thread runner = httpJobThreads.get(requestId);
-        if (runner != null) {
-            try {
-                runner.interrupt();
-            } catch (RuntimeException ignored) {
-                // best-effort
-            }
-        }
-        return true;
+        String line = "{\"type\":\"lock-request\",\"dir\":"
+                + cc.jumpkick.plugin.protocol.Jsonl.quote(entryDir.toString())
+                + ",\"trigger\":\"web\"}";
+        return jobs.submitAsync(
+                line, JobRequest.plan("lock", "jk-engine-http-lock-", (l, tok, w) -> runHttpLock(entryDir, tok)), "");
     }
 
     /** Workspace build/test body for HTTP/MCP — hub-only events. */

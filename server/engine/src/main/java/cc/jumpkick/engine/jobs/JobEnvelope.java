@@ -110,18 +110,34 @@ public final class JobEnvelope {
         this.host = host;
     }
 
-    public void submit(String requestLine, JobRequest job, JobTransport transport) {
-        switch (transport) {
-            case JobTransport.SocketWatch w -> submitSocket(requestLine, job, w.reader(), w.writer());
-            case JobTransport.FireAndForget _ -> throw new UnsupportedOperationException("HTTP submit is JK-1928");
-        }
+    public long submit(String requestLine, JobRequest job, JobTransport transport) {
+        return switch (transport) {
+            case JobTransport.SocketWatch w -> submitSocket(requestLine, job, w.reader(), w.writer(), false, null);
+            case JobTransport.FireAndForget _ ->
+                submitSocket(
+                        requestLine, job, null, null, true, BuildJobFingerprint.ofRequest(job.verb(), requestLine));
+        };
+    }
+
+    /**
+     * HTTP/MCP: same envelope, no socket. {@code fingerprint} is {@link BuildJobFingerprint#ofHttp}.
+     * Throws if the engine is draining or the project is already running.
+     */
+    public long submitAsync(String requestLine, JobRequest job, String fingerprint) {
+        return submitSocket(requestLine, job, null, null, true, fingerprint);
     }
 
     /**
      * Fork {@code job} onto its own thread (so this method can keep reading the connection for a
      * {@link EngineProtocol#BUILD_CANCEL} or EOF meanwhile) and wait for it to finish.
      */
-    private void submitSocket(String requestLine, JobRequest job, BufferedReader reader, BufferedWriter writer) {
+    private long submitSocket(
+            String requestLine,
+            JobRequest job,
+            @Nullable BufferedReader reader,
+            @Nullable BufferedWriter writer,
+            boolean detached,
+            @Nullable String fingerprintOverride) {
         String threadPrefix = job.threadPrefix();
         String kind = job.verb();
         JobBody runner = job.body();
@@ -137,6 +153,7 @@ public final class JobEnvelope {
             claimedBuildPlanSlot = host.tryStartBuildPlan();
         }
         if (plan ? !claimedBuildPlanSlot : host.draining()) {
+            if (detached) throw new IllegalStateException("engine is shutting down");
             try {
                 send(
                         writer,
@@ -146,7 +163,7 @@ public final class JobEnvelope {
             } catch (IOException ignored) {
                 // Client vanished mid-refusal — nothing to do; the connection is closing anyway.
             }
-            return;
+            return -1;
         }
         Session.CancelToken cancelToken = Session.CancelToken.live();
         CountDownLatch done = new CountDownLatch(1);
@@ -165,19 +182,25 @@ public final class JobEnvelope {
         String trigger = Jsonl.str(requestLine, "trigger");
         if (trigger == null || trigger.isBlank()) trigger = "cli";
         // exclusive fingerprint + start-time build number for journaled kinds.
-        AdmitResult admit = admitJob(
-                eventRequestId, eventKind, eventDir, BuildJobFingerprint.ofRequest(eventKind, requestLine), trigger);
+        String fingerprint = fingerprintOverride != null
+                ? fingerprintOverride
+                : BuildJobFingerprint.ofRequest(eventKind, requestLine);
+        AdmitResult admit = admitJob(eventRequestId, eventKind, eventDir, fingerprint, trigger);
         if (admit.rejected() != null) {
+            InFlightBuilds.Hold h = admit.rejected();
+            String label = "test".equals(eventKind) ? "Test" : "Build";
+            String msg = label + " #" + h.buildNumber() + " is already running";
+            if (detached) {
+                if (claimedBuildPlanSlot) host.abandonBuildPlanSlot();
+                throw new IllegalStateException(msg);
+            }
             try {
-                InFlightBuilds.Hold h = admit.rejected();
-                String label = "test".equals(eventKind) ? "Test" : "Build";
-                String msg = label + " #" + h.buildNumber() + " is already running";
                 send(writer, EngineProtocol.alreadyRunning(h.buildNumber(), h.requestId(), msg));
             } catch (IOException ignored) {
                 // client gone
             }
             if (claimedBuildPlanSlot) host.abandonBuildPlanSlot(); // nothing ran — give the slot back
-            return;
+            return -1;
         }
         host.publishRequestStart(eventRequestId, eventKind, eventDir, admit.buildNumber());
         host.registerAccumulator(
@@ -193,10 +216,12 @@ public final class JobEnvelope {
         Thread heartbeatThread = null;
         AtomicReference<Thread> runnerRef = new AtomicReference<>();
         // Public jid surface — client tracks this for Ctrl-C / jk cancel.
-        try {
-            send(writer, jobStartLine(eventRequestId, eventKind, eventDir, admit));
-        } catch (IOException ignored) {
-            // client gone before job body — still run cancel registration below
+        if (writer != null) {
+            try {
+                send(writer, jobStartLine(eventRequestId, eventKind, eventDir, admit));
+            } catch (IOException ignored) {
+                // client gone before job body — still run cancel registration below
+            }
         }
         // Capture this connection thread so remote cancel can wake it off client-readLine. The
         // wake is Thread.interrupt, which on a thread blocked in an InterruptibleChannel read also
@@ -205,210 +230,227 @@ public final class JobEnvelope {
         AtomicBoolean parkedOnRead = new AtomicBoolean(false);
         Thread connectionThread = Thread.currentThread();
         registerLiveJob(
-                eventRequestId, cancelToken, runnerRef, writer, connectionThread, eventDir, eventKind, workspaceStream);
-        try {
-            Thread started = Thread.ofVirtual().name(threadPrefix, 0).start(() -> {
-                if (plan) host.cacheGate().readLock().lock();
-                host.bindEventRequestId(eventRequestId);
-                JobWorkers.open(eventRequestId);
-                // Every Session this request builds adopts this ledger, so fetches/cache traffic on
-                // the shared pools all land in one place (see IoLedger).
-                cc.jumpkick.task.IoLedger.open(host.runIo(eventRequestId));
-                try {
-                    runner.run(requestLine, cancelToken, writer);
-                } finally {
-                    cc.jumpkick.task.IoLedger.close();
-                    JobWorkers.close();
-                    JobWorkers.clear(eventRequestId);
-                    host.unbindEventRequestId();
-                    if (plan) host.cacheGate().readLock().unlock();
-                    // Free exclusive fingerprint as soon as plan work ends — before the
-                    // connection thread finishes teardown — so a follow-up same-project build is
-                    // not rejected as already-running while journal/idle chores run.
-                    host.inFlight().release(eventRequestId);
-                    unregisterLiveJob(eventRequestId);
-                    done.countDown();
-                    // Unblock the connection thread only if it is parked on client readLine
-                    // waiting for BUILD_CANCEL / EOF — remote cancel finishes the runner without
-                    // the client writing anything. A blanket interrupt here landed after
-                    // the read loop too, leaving the flag set through teardown so the journal
-                    // completion died on ClosedByInterruptException — a phantom "running" job in
-                    // jk jobs until engine restart.
-                    if (parkedOnRead.get()) connectionThread.interrupt();
-                }
-            });
-            runnerRef.set(started);
-            // Keep-alive + optional wall deadline while the job runs.
-            // Client stream idle (JK_STREAM_IDLE_MS) resets on each heartbeat line. On deadline:
-            // cancel + worker shutdown (grace→force) + interrupt runner; connection join is bounded.
-            // User cancel / EOF: same worker policy with a short cancel grace — never hang.
-            long heartbeatMs = jobHeartbeatMs();
-            long deadlineMs = jobDeadlineMs();
-            long graceMs = jobDeadlineGraceMs();
-            long cancelGraceMs = JobWorkers.cancelGraceMs();
-            if (heartbeatMs > 0 || deadlineMs > 0) {
-                heartbeatThread = Thread.ofVirtual().name("jk-job-watchdog", 0).start(() -> {
-                    long start = host.nowMillis();
-                    while (done.getCount() > 0) {
-                        long elapsed = host.nowMillis() - start;
-                        long wait = heartbeatMs > 0 ? heartbeatMs : 1_000L;
-                        if (deadlineMs > 0) {
-                            long remaining = deadlineMs - elapsed;
-                            if (remaining <= 0) {
-                                enforceDeadline(eventRequestId, cancelToken, runnerRef.get(), writer, deadlineMs);
-                                return;
-                            }
-                            wait = Math.min(wait, remaining);
-                        }
-                        try {
-                            if (done.await(wait, TimeUnit.MILLISECONDS)) return;
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
+                eventRequestId,
+                cancelToken,
+                runnerRef,
+                writer,
+                detached ? null : connectionThread,
+                eventDir,
+                eventKind,
+                workspaceStream);
+        Thread started = Thread.ofVirtual().name(threadPrefix, 0).unstarted(() -> {
+            if (plan) host.cacheGate().readLock().lock();
+            host.bindEventRequestId(eventRequestId);
+            JobWorkers.open(eventRequestId);
+            // Every Session this request builds adopts this ledger, so fetches/cache traffic on
+            // the shared pools all land in one place (see IoLedger).
+            cc.jumpkick.task.IoLedger.open(host.runIo(eventRequestId));
+            try {
+                runner.run(requestLine, cancelToken, writer);
+            } finally {
+                cc.jumpkick.task.IoLedger.close();
+                JobWorkers.close();
+                JobWorkers.clear(eventRequestId);
+                host.unbindEventRequestId();
+                if (plan) host.cacheGate().readLock().unlock();
+                // Free exclusive fingerprint as soon as plan work ends — before the
+                // connection thread finishes teardown — so a follow-up same-project build is
+                // not rejected as already-running while journal/idle chores run.
+                host.inFlight().release(eventRequestId);
+                unregisterLiveJob(eventRequestId);
+                done.countDown();
+                // Unblock the connection thread only if it is parked on client readLine
+                // waiting for BUILD_CANCEL / EOF — remote cancel finishes the runner without
+                // the client writing anything. A blanket interrupt here landed after
+                // the read loop too, leaving the flag set through teardown so the journal
+                // completion died on ClosedByInterruptException — a phantom "running" job in
+                // jk jobs until engine restart.
+                if (!detached && parkedOnRead.get()) connectionThread.interrupt();
+            }
+        });
+        runnerRef.set(started);
+        started.start(); // JK-1478: register live job + runnerRef before start
+        // Keep-alive + optional wall deadline while the job runs.
+        // Client stream idle (JK_STREAM_IDLE_MS) resets on each heartbeat line. On deadline:
+        // cancel + worker shutdown (grace→force) + interrupt runner; connection join is bounded.
+        // User cancel / EOF: same worker policy with a short cancel grace — never hang.
+        long heartbeatMs = jobHeartbeatMs();
+        long deadlineMs = jobDeadlineMs();
+        long graceMs = jobDeadlineGraceMs();
+        long cancelGraceMs = JobWorkers.cancelGraceMs();
+        if (heartbeatMs > 0 || deadlineMs > 0) {
+            heartbeatThread = Thread.ofVirtual().name("jk-job-watchdog", 0).start(() -> {
+                long start = host.nowMillis();
+                while (done.getCount() > 0) {
+                    long elapsed = host.nowMillis() - start;
+                    long wait = heartbeatMs > 0 ? heartbeatMs : 1_000L;
+                    if (deadlineMs > 0) {
+                        long remaining = deadlineMs - elapsed;
+                        if (remaining <= 0) {
+                            enforceDeadline(eventRequestId, cancelToken, runnerRef.get(), writer, deadlineMs);
                             return;
                         }
-                        if (done.getCount() == 0) return;
-                        if (heartbeatMs > 0) {
-                            sendQuiet(writer, EngineProtocol.heartbeat(host.nowMillis() - start));
-                        }
+                        wait = Math.min(wait, remaining);
                     }
-                });
-            }
-            try {
-                // Stay responsive after remote cancel: the client never writes on this socket, so a
-                // pure blocking readLine would park forever even after the runner finished. Cancel
-                // (and runner teardown) interrupt this thread so we can join and run the finally
-                // safety-net terminal.
-                while (done.getCount() > 0) {
                     try {
-                        parkedOnRead.set(true);
-                        String line = reader.readLine();
-                        parkedOnRead.set(false);
-                        if (line == null) {
-                            // EOF / client gone mid-job — same bounded cancel path (not explicit:
-                            // an EOF after a reported failure is the terminal-read race, JK-1521).
+                        if (done.await(wait, TimeUnit.MILLISECONDS)) return;
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                    if (done.getCount() == 0) return;
+                    if (heartbeatMs > 0) {
+                        sendQuiet(writer, EngineProtocol.heartbeat(host.nowMillis() - start));
+                    }
+                }
+            });
+        }
+        final Thread watchdog = heartbeatThread;
+        Runnable finish = () -> {
+            try {
+                try {
+                    // Stay responsive after remote cancel: the client never writes on this socket, so a
+                    // pure blocking readLine would park forever even after the runner finished. Cancel
+                    // (and runner teardown) interrupt this thread so we can join and run the finally
+                    // safety-net terminal.
+                    while (reader != null && done.getCount() > 0) {
+                        try {
+                            parkedOnRead.set(true);
+                            String line = reader.readLine();
+                            parkedOnRead.set(false);
+                            if (line == null) {
+                                // EOF / client gone mid-job — same bounded cancel path (not explicit:
+                                // an EOF after a reported failure is the terminal-read race, JK-1521).
+                                beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs, false);
+                                break;
+                            }
+                            if (EngineProtocol.BUILD_CANCEL.equals(EngineProtocol.typeOf(line))) {
+                                // Explicit cancel on this socket: cooperative flag + worker grace→force.
+                                beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs, true);
+                            }
+                        } catch (IOException e) {
+                            parkedOnRead.set(false);
+                            // Interrupt during read (ClosedByInterruptException, etc.) or a real error.
+                            if (done.getCount() == 0 || Thread.currentThread().isInterrupted()) {
+                                break; // runner done / cancel wake — join below
+                            }
                             beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs, false);
                             break;
                         }
-                        if (EngineProtocol.BUILD_CANCEL.equals(EngineProtocol.typeOf(line))) {
-                            // Explicit cancel on this socket: cooperative flag + worker grace→force.
-                            beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs, true);
-                        }
-                    } catch (IOException e) {
-                        parkedOnRead.set(false);
-                        // Interrupt during read (ClosedByInterruptException, etc.) or a real error.
-                        if (done.getCount() == 0 || Thread.currentThread().isInterrupted()) {
-                            break; // runner done / cancel wake — join below
-                        }
+                    }
+                    parkedOnRead.set(false);
+                } catch (RuntimeException ignored) {
+                    if (done.getCount() > 0) {
                         beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs, false);
-                        break;
                     }
                 }
-                parkedOnRead.set(false);
-            } catch (RuntimeException ignored) {
-                if (done.getCount() > 0) {
-                    beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs, false);
-                }
-            }
-            // Clear interrupt so await/join below is not spuriously skipped.
-            Thread.interrupted();
-            try {
-                // Bound the join so a wedged runner cannot hang the connection forever.
-                if (deadlineMs > 0) {
-                    long elapsed = host.nowMillis() - eventStartMillis;
-                    long budget = Math.max(1L, deadlineMs + graceMs - elapsed);
-                    if (!done.await(budget, TimeUnit.MILLISECONDS)) {
-                        enforceDeadline(eventRequestId, cancelToken, runnerRef.get(), writer, deadlineMs);
-                        // Last chance for the runner to unwind after worker kill / interrupt.
-                        // Cap hard so UX never waits the full 30s grace when the job is deadlocked.
-                        long lastChance = Math.min(graceMs, Math.max(cancelGraceMs + 200L, 1_000L));
-                        if (!done.await(lastChance, TimeUnit.MILLISECONDS)) {
-                            host.log("jk engine: job "
-                                    + eventRequestId
-                                    + " still running after deadline+"
-                                    + lastChance
-                                    + "ms grace — abandoned; workers killed");
+                // Clear interrupt so await/join below is not spuriously skipped.
+                Thread.interrupted();
+                try {
+                    // Bound the join so a wedged runner cannot hang the connection forever.
+                    if (deadlineMs > 0) {
+                        long elapsed = host.nowMillis() - eventStartMillis;
+                        long budget = Math.max(1L, deadlineMs + graceMs - elapsed);
+                        if (!done.await(budget, TimeUnit.MILLISECONDS)) {
+                            enforceDeadline(eventRequestId, cancelToken, runnerRef.get(), writer, deadlineMs);
+                            // Last chance for the runner to unwind after worker kill / interrupt.
+                            // Cap hard so UX never waits the full 30s grace when the job is deadlocked.
+                            long lastChance = Math.min(graceMs, Math.max(cancelGraceMs + 200L, 1_000L));
+                            if (!done.await(lastChance, TimeUnit.MILLISECONDS)) {
+                                host.log("jk engine: job "
+                                        + eventRequestId
+                                        + " still running after deadline+"
+                                        + lastChance
+                                        + "ms grace — abandoned; workers killed");
+                            }
                         }
-                    }
-                } else if (cancelToken.cancelled() && done.getCount() > 0) {
-                    // User cancel without wall deadline: join only for cancelGrace + small buffer.
-                    long joinBudget = cancelGraceMs + 500L;
-                    if (!done.await(joinBudget, TimeUnit.MILLISECONDS)) {
-                        JobWorkers.shutdownForRequest(eventRequestId, 0L);
-                        interruptRunner(runnerRef.get());
-                        if (!done.await(200L, TimeUnit.MILLISECONDS)) {
-                            host.log("jk engine: job "
-                                    + eventRequestId
-                                    + " still running after cancel+"
-                                    + joinBudget
-                                    + "ms — abandoned; workers force-killed");
+                    } else if (cancelToken.cancelled() && done.getCount() > 0) {
+                        // User cancel without wall deadline: join only for cancelGrace + small buffer.
+                        long joinBudget = cancelGraceMs + 500L;
+                        if (!done.await(joinBudget, TimeUnit.MILLISECONDS)) {
+                            JobWorkers.shutdownForRequest(eventRequestId, 0L);
+                            interruptRunner(runnerRef.get());
+                            if (!done.await(200L, TimeUnit.MILLISECONDS)) {
+                                host.log("jk engine: job "
+                                        + eventRequestId
+                                        + " still running after cancel+"
+                                        + joinBudget
+                                        + "ms — abandoned; workers force-killed");
+                            }
                         }
+                    } else {
+                        done.await();
                     }
-                } else {
-                    done.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                 }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+            } finally {
+                // A late runner/cancel interrupt may have landed after the joins: clear it before any
+                // teardown I/O, or journal completion dies on ClosedByInterruptException and jk jobs
+                // shows this build as running forever. This thread ends after teardown, so
+                // there is nothing to restore the flag for.
+                Thread.interrupted();
+                if (watchdog != null) watchdog.interrupt();
+                // Belts: any leftover workers die now (grace 0 — request is ending).
+                JobWorkers.shutdownForRequest(eventRequestId, 0L);
+                JobWorkers.clear(eventRequestId);
+                // Idempotent: runner finally usually released already; covers admit-without-run paths.
+                host.inFlight().release(eventRequestId);
+                long elapsedMillis = host.nowMillis() - eventStartMillis;
+                // cancelToken.cancelled also trips on the benign end-of-request EOF, so a finished
+                // build (success or failure) can look cancelled. Correct it once here for both the
+                // dashboard event and the journal.
+                boolean cancelled = effectiveCancelled(eventRequestId, cancelToken.cancelled());
+                // success: same default as BuildAccumulator.toRecord — HTTP jobs always sent it; CLI
+                // socket jobs used to omit it and force the SPA to derive from module rows (JK-1499).
+                BuildAccumulator finishAcc = host.accumulatorOf(eventRequestId);
+                boolean success = finishAcc != null ? finishAcc.effectiveSuccess(cancelled) : !cancelled;
+                // Pin 100% only on success — a failed build keeps its last true percent, matching the
+                // workspace-runner path and the stated policy (JK-1521).
+                if (success && !cancelled) host.putLastProgress(eventRequestId, 100.0);
+                // Safety net: if the runner was abandoned/interrupted without a terminal
+                // wire event, still tell the CLI the job was cancelled so it does not report a crash.
+                // Harmless if the runner already sent workspace-/plan-finish (client has returned).
+                if (cancelled && writer != null) {
+                    // Same shape rule as pushCancelledTerminal: single builds journal as "build" but
+                    // their client loop only ends on plan-finish.
+                    sendQuiet(writer, cancelledTerminalLine(workspaceStream, eventDir));
+                }
+                // Release the plan slot before request-finish so status SSE carries the post-finish
+                // activeBuildPlans count (JK-1725) — Live activity finishes in the same frame.
+                if (plan) host.noteBuildPlanFinished();
+                host.publishEvent(
+                        "request-finish",
+                        host.withProgress(
+                                host.withIo(
+                                        JsonOut.object()
+                                                .put("schema", 1)
+                                                .put("type", "request-finish")
+                                                .put("requestId", eventRequestId)
+                                                .put("jid", eventRequestId)
+                                                .put("kind", eventKind)
+                                                .put("dir", eventDir)
+                                                .put("projectId", cc.jumpkick.runtime.ProjectIds.idOf(eventDir))
+                                                .put("success", success)
+                                                .put("cancelled", cancelled)
+                                                .put("millis", elapsedMillis)
+                                                .put("activeBuildPlans", host.activeBuildPlans()),
+                                        eventRequestId),
+                                eventRequestId));
+                host.clearProgress(eventRequestId);
+                host.writeJournal(eventRequestId, cancelled, elapsedMillis, writer);
+                // Idle boundary after finish side-effects so prune/GC see journal + event garbage too.
+                // Cache maintenance (plan=false) only GCs when nothing else is in flight.
+                if (plan) host.maybeIdleBoundary();
+                else host.maybeIdleGc();
             }
-        } finally {
-            // A late runner/cancel interrupt may have landed after the joins: clear it before any
-            // teardown I/O, or journal completion dies on ClosedByInterruptException and jk jobs
-            // shows this build as running forever. This thread ends after teardown, so
-            // there is nothing to restore the flag for.
-            Thread.interrupted();
-            if (heartbeatThread != null) heartbeatThread.interrupt();
-            // Belts: any leftover workers die now (grace 0 — request is ending).
-            JobWorkers.shutdownForRequest(eventRequestId, 0L);
-            JobWorkers.clear(eventRequestId);
-            // Idempotent: runner finally usually released already; covers admit-without-run paths.
-            host.inFlight().release(eventRequestId);
-            long elapsedMillis = host.nowMillis() - eventStartMillis;
-            // cancelToken.cancelled also trips on the benign end-of-request EOF, so a finished
-            // build (success or failure) can look cancelled. Correct it once here for both the
-            // dashboard event and the journal.
-            boolean cancelled = effectiveCancelled(eventRequestId, cancelToken.cancelled());
-            // success: same default as BuildAccumulator.toRecord — HTTP jobs always sent it; CLI
-            // socket jobs used to omit it and force the SPA to derive from module rows (JK-1499).
-            BuildAccumulator finishAcc = host.accumulatorOf(eventRequestId);
-            boolean success = finishAcc != null ? finishAcc.effectiveSuccess(cancelled) : !cancelled;
-            // Pin 100% only on success — a failed build keeps its last true percent, matching the
-            // workspace-runner path and the stated policy (JK-1521).
-            if (success && !cancelled) host.putLastProgress(eventRequestId, 100.0);
-            // Safety net: if the runner was abandoned/interrupted without a terminal
-            // wire event, still tell the CLI the job was cancelled so it does not report a crash.
-            // Harmless if the runner already sent workspace-/plan-finish (client has returned).
-            if (cancelled && writer != null) {
-                // Same shape rule as pushCancelledTerminal: single builds journal as "build" but
-                // their client loop only ends on plan-finish.
-                sendQuiet(writer, cancelledTerminalLine(workspaceStream, eventDir));
-            }
-            // Release the plan slot before request-finish so status SSE carries the post-finish
-            // activeBuildPlans count (JK-1725) — Live activity finishes in the same frame.
-            if (plan) host.noteBuildPlanFinished();
-            host.publishEvent(
-                    "request-finish",
-                    host.withProgress(
-                            host.withIo(
-                                    JsonOut.object()
-                                            .put("schema", 1)
-                                            .put("type", "request-finish")
-                                            .put("requestId", eventRequestId)
-                                            .put("jid", eventRequestId)
-                                            .put("kind", eventKind)
-                                            .put("dir", eventDir)
-                                            .put("projectId", cc.jumpkick.runtime.ProjectIds.idOf(eventDir))
-                                            .put("success", success)
-                                            .put("cancelled", cancelled)
-                                            .put("millis", elapsedMillis)
-                                            .put("activeBuildPlans", host.activeBuildPlans()),
-                                    eventRequestId),
-                            eventRequestId));
-            host.clearProgress(eventRequestId);
-            host.writeJournal(eventRequestId, cancelled, elapsedMillis, writer);
-            // Idle boundary after finish side-effects so prune/GC see journal + event garbage too.
-            // Cache maintenance (plan=false) only GCs when nothing else is in flight.
-            if (plan) host.maybeIdleBoundary();
-            else host.maybeIdleGc();
+        };
+        if (detached) {
+            Thread.ofVirtual().name("jk-job-join-", 0).start(finish);
+            return eventRequestId;
         }
+        finish.run();
+        return eventRequestId;
     }
 
     /** job-start wire line with buildNumber + details path for the CLI transcript. */
