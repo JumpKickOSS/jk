@@ -51,6 +51,9 @@ public final class TestFailureHighlight {
     private static final Pattern THROWN_AT =
             Pattern.compile("^[›\\s]*(?<ex>[A-Za-z_][\\w$]*) thrown at line (?<n>\\d+)\\s*$");
 
+    /** The no-snippet exception locus {@code TestSupport} emits: four spaces + simple type name. */
+    private static final Pattern BARE_EXCEPTION = Pattern.compile("^ {4}[A-Z][\\w$]*$");
+
     private TestFailureHighlight() {}
 
     /**
@@ -270,6 +273,27 @@ public final class TestFailureHighlight {
                 collectingAssert = false;
                 assertBuf.clear();
                 out.add(rail(StackTraceHighlight.line(raw), t));
+                i++;
+                continue;
+            }
+
+            // Bare exception locus on the no-snippet path ("    AssertionFailedError" between the
+            // assertion body and the stack frames). It must flush the assertion buffer — buffered,
+            // it defeats the AssertJ reformat and paints as an actual-value line (JK-1883). Only a
+            // blank-line boundary qualifies, so an indented capitalized token inside a multi-line
+            // assertion value stays part of the body.
+            if (BARE_EXCEPTION.matcher(raw).matches()
+                    && (!collectingAssert
+                            || assertBuf.isEmpty()
+                            || strip(assertBuf.get(assertBuf.size() - 1)).isEmpty())) {
+                while (!assertBuf.isEmpty()
+                        && strip(assertBuf.get(assertBuf.size() - 1)).isEmpty()) {
+                    assertBuf.remove(assertBuf.size() - 1);
+                }
+                flushAssert(out, assertBuf, collectingAssert, t);
+                collectingAssert = false;
+                assertBuf.clear();
+                out.add(rail(paintThrownAt(raw, t), t));
                 i++;
                 continue;
             }

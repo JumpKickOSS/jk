@@ -153,6 +153,63 @@ class TestFailureHighlightTest {
     }
 
     @Test
+    void no_snippet_failure_keeps_assertj_reformat_and_type_colored_exception() {
+        // The engine's no-snippet shape (escape-rejected, moved/generated, inherited test): bare
+        // "    ExceptionClass" between assertion body and frames — it must flush the assertion
+        // buffer, not ride into it and defeat the AssertJ reformat (JK-1883).
+        List<String> raw = List.of(
+                "Test Failure",
+                "module: cc.jumpkick:jk-engine",
+                "1 test failed",
+                "",
+                "FAILED FooTest.bar()",
+                "",
+                "expected: \"42\"",
+                " but was: \"41\"",
+                "",
+                "    AssertionFailedError",
+                "",
+                "\tat cc.jumpkick.FooTest.bar(FooTest.java:9)",
+                "Test Failure end");
+        List<String> painted = TestFailureHighlight.paintLines(raw);
+        String all = String.join(
+                "\n", painted.stream().map(TestFailureHighlightTest::plain).toList());
+
+        assertThat(all).contains("Expected: 42");
+        assertThat(all).contains("But Was: 41");
+        assertThat(all).contains("AssertionFailedError");
+        assertThat(all).contains("at cc.jumpkick.FooTest.bar(FooTest.java:9)");
+        // The exception is a locus line, not part of the assertion body.
+        int expectedAt = all.indexOf("Expected: 42");
+        int exAt = all.indexOf("AssertionFailedError");
+        assertThat(exAt).isGreaterThan(expectedAt);
+    }
+
+    @Test
+    void indented_capitalized_token_inside_an_assertion_value_stays_in_the_body() {
+        List<String> raw = List.of(
+                "Test Failure",
+                "1 test failed",
+                "",
+                "FAILED FooTest.bar()",
+                "",
+                "expected:",
+                "    Alpha",
+                " but was:",
+                "    Beta",
+                "",
+                "    AssertionFailedError",
+                "Test Failure end");
+        List<String> painted = TestFailureHighlight.paintLines(raw);
+        String all = String.join(
+                "\n", painted.stream().map(TestFailureHighlightTest::plain).toList());
+        // "Alpha" follows a non-blank line — it belongs to the assertion body, not the locus.
+        assertThat(all).contains("Alpha");
+        assertThat(all).contains("Beta");
+        assertThat(all).contains("AssertionFailedError");
+    }
+
+    @Test
     void non_failure_output_passes_through_stack_highlight() {
         List<String> raw = List.of("Note: something", "\tat cc.jumpkick.Foo.bar(Foo.java:1)");
         List<String> painted = TestFailureHighlight.paintLines(raw);
