@@ -80,10 +80,12 @@ public final class AggregateModuleListener implements BuildPlanListener {
 
     private String paintOutputLine(String line) {
         if (TestFailureHighlight.isHeader(line)) {
+            // A second header must not reset() away an un-flushed first block (JK-1915).
+            flushBufferedFailure();
             inTestFailure = true;
             testFailStream.reset();
             testFailStream.line(line);
-            return null; // flushed on stepFinish
+            return null; // flushed on stepFinish / footer
         }
         if (inTestFailure) {
             testFailStream.line(line);
@@ -131,11 +133,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
 
     @Override
     public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
-        if (inTestFailure && outBuffer == null) {
-            for (String painted : testFailStream.finish()) emit(painted);
-        }
-        inTestFailure = false;
-        testFailStream.reset();
+        flushBufferedFailure();
         // SKIPPED = cache hit / up-to-date — still a green terminal (matches BuildPlan.isOk).
         // Treating it as failure painted the live tree red with "Failed" while the build
         // succeeded.
@@ -143,8 +141,18 @@ public final class AggregateModuleListener implements BuildPlanListener {
         cm.stepDone(module, step, ok, group == null ? "" : group);
     }
 
+    /** Paint any buffered failure block now — already-received lines must not be dropped (JK-1915). */
+    private void flushBufferedFailure() {
+        if (inTestFailure && outBuffer == null) {
+            for (String painted : testFailStream.finish()) emit(painted);
+        }
+        inTestFailure = false;
+        testFailStream.reset();
+    }
+
     @Override
     public void planFinish(BuildPlanResult result) {
+        flushBufferedFailure();
         if (!result.success()) {
             agg.notifyErrors(result.errors());
         }

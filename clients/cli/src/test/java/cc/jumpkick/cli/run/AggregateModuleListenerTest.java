@@ -120,6 +120,27 @@ class AggregateModuleListenerTest {
         assertThat(all).containsAnyOf("Failed", "cannot find symbol");
     }
 
+    @Test
+    void buffered_failure_block_survives_a_plan_that_never_reaches_step_finish() {
+        // JK-1915: cancel/disconnect between the block's lines and stepFinish must still print
+        // the already-received report; before, planFinish settled without flushing it.
+        var buf = new ByteArrayOutputStream();
+        PrintStream out = new PrintStream(buf, true, StandardCharsets.UTF_8);
+        JkManager view = JkManager.plan(out, "Building", false);
+        var agg = new AggregateContext(view);
+        var a = new AggregateModuleListener(agg, "g:api", List.of(step("run-tests", "Test")));
+        a.planStart(new BuildPlanView("build", 0, 10, 1, 0, false));
+        a.stepStart("run-tests", "test", 10);
+        a.output("run-tests", "Test Failure");
+        a.output("run-tests", "1 test failed");
+        a.output("run-tests", "");
+        a.output("run-tests", "FAILED Foo.bar()");
+        // No stepFinish — the plan is torn down (cancel).
+        a.planFinish(result(false));
+        String all = strip(buf.toString(StandardCharsets.UTF_8));
+        assertThat(all).contains("FAILED Foo.bar()");
+    }
+
     private static Task step(String name, String label) {
         return Task.builder(name).label(label).ticks(1).execute(ctx -> {}).build();
     }
