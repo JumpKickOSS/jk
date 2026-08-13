@@ -441,9 +441,10 @@ public final class NewScaffolder {
     private static final int JAVA_INSTANCE_MAIN_MIN = 25;
 
     /**
-     * Sample sources mirroring jk's reference layout: a {@code Calc} class with a JUnit {@code
+     * Sample sources mirroring jk's reference layout: a {@code Calc} record with a JUnit {@code
      * CalcTest}, plus a {@code Main} entry point for runnable projects. The package follows the
-     * project group; the test relies on the JUnit jk defaults in when no test framework is declared.
+     * project group; the test relies on the JUnit jk defaults when no test framework is declared.
+     * Java samples that selected JSpecify also get {@code package-info.java} {@code @NullMarked}.
      */
     private static void writeSample(NewInputs inputs) throws IOException {
         switch (inputs.lang()) {
@@ -463,6 +464,9 @@ public final class NewScaffolder {
 
         Files.writeString(srcDir.resolve("Calc.java"), renderJavaCalc(pkg), StandardCharsets.UTF_8);
         Files.writeString(testDir.resolve("CalcTest.java"), renderJavaCalcTest(pkg), StandardCharsets.UTF_8);
+        if (wantsJspecify(inputs)) {
+            Files.writeString(srcDir.resolve("package-info.java"), renderJavaPackageInfo(pkg), StandardCharsets.UTF_8);
+        }
         if (inputs.isRunnable()) {
             // Gate the instance-main syntax on the compile target, not the toolchain.
             boolean instanceMain = inputs.javaRelease() >= JAVA_INSTANCE_MAIN_MIN;
@@ -530,9 +534,8 @@ public final class NewScaffolder {
 
                     class Main {
                         void main() {
-                            int value = 5;
-                            Calc calc = new Calc();
-                            IO.println("Hello, world! 5 * 2 = " + calc.doubleValue(value));
+                            Calc calc = new Calc(5);
+                            IO.println("Hello, world! 5 * 2 = " + calc.doubled());
                         }
                     }
                     """.formatted(pkg);
@@ -542,9 +545,8 @@ public final class NewScaffolder {
 
                 class Main {
                     public static void main(String... args) {
-                        int value = 5;
-                        Calc calc = new Calc();
-                        System.out.println("Hello, world! 5 * 2 = " + calc.doubleValue(value));
+                        Calc calc = new Calc(5);
+                        System.out.println("Hello, world! 5 * 2 = " + calc.doubled());
                     }
                 }
                 """.formatted(pkg);
@@ -554,8 +556,8 @@ public final class NewScaffolder {
         return """
                 package %s;
 
-                public class Calc {
-                    public int doubleValue(int value) {
+                public record Calc(int value) {
+                    public int doubled() {
                         return value * 2;
                     }
                 }
@@ -572,12 +574,25 @@ public final class NewScaffolder {
 
                 public class CalcTest {
                     @Test
-                    void doubleValueReturnsTwiceTheInput() {
-                        Calc calc = new Calc();
-                        assertEquals(10, calc.doubleValue(5));
+                    void doubledReturnsTwiceTheValue() {
+                        assertEquals(10, new Calc(5).doubled());
                     }
                 }
                 """.formatted(pkg);
+    }
+
+    private static String renderJavaPackageInfo(String pkg) {
+        return """
+                @org.jspecify.annotations.NullMarked
+                package %s;
+                """.formatted(pkg);
+    }
+
+    private static boolean wantsJspecify(NewInputs inputs) {
+        for (String dep : inputs.deps()) {
+            if ("jspecify".equals(dep) || dep.contains("jspecify")) return true;
+        }
+        return false;
     }
 
     private static String renderKotlinMain(String pkg) {

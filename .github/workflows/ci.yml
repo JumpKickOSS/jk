@@ -22,6 +22,14 @@ jobs:
       - name: Scan commit messages
         run: bash scripts/check-no-agent-attribution.sh
 
+  lombok-diet:
+    name: Lombok diet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ban lombok outside server/ and plugins/
+        run: bash scripts/check-lombok-diet.sh
+
   # Fast unit tier only — excludes @Tag(integration|slow|bench). Target <5 min.
   test:
     name: Gradle unit test

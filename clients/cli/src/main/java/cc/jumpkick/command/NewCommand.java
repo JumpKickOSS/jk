@@ -1093,7 +1093,7 @@ public final class NewCommand implements CliCommand {
                 .choicesFn(a -> libraryPickerChoices())
                 .filterable(true)
                 .customOption("group:artifact or short-name (e.g. com.google.guava:guava)")
-                .defaults(java.util.Set.of("lombok", "jspecify"))
+                .defaults(java.util.Set.of("jspecify"))
                 .when(a -> "java".equals(a.get("lang")))
                 .build();
 
@@ -1399,5 +1399,5 @@ public final class NewCommand implements CliCommand {
     }
 
     private static final List<String> CURATED_IDS =
-            List.of("lombok", "jspecify", "kotest", "commons-lang", "commons-io", "guava");
+            List.of("jspecify", "kotest", "commons-lang", "commons-io", "guava", "lombok");
 }
