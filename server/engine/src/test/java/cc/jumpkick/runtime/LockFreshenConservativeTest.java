@@ -32,8 +32,15 @@ class LockFreshenConservativeTest {
     private URI base;
     private final Map<String, byte[]> served = new HashMap<>();
 
+    @org.junit.jupiter.api.io.TempDir
+    Path isolatedStore;
+
     @BeforeEach
     void start() throws IOException {
+        // Isolate the ambient product store (JK-1918): JkStores resolves via JkDirs, and without
+        // this override the test writes 24h-TTL maven-metadata into — and evicts files from —
+        // the developer's real store. jk.env.* properties beat the environment in JkDirs.
+        System.setProperty("jk.env.JK_STORE_DIR", isolatedStore.resolve("store").toString());
         restartServer();
         // Injected test-framework defaults must resolve like in the resolver test harness.
         serveLeaf("org.junit.jupiter", "junit-jupiter", "6.1.0");
@@ -42,6 +49,7 @@ class LockFreshenConservativeTest {
 
     @AfterEach
     void stop() {
+        System.clearProperty("jk.env.JK_STORE_DIR");
         server.stop(0);
     }
 
@@ -298,8 +306,10 @@ class LockFreshenConservativeTest {
 
     /**
      * Evict process + on-disk indexes for {@code com.foo:lib} at the current {@link #base}.
-     * Ambient {@link cc.jumpkick.cache.JkStores} metadata is keyed by URL and lives 24h; a
-     * recycled loopback port can otherwise hide newly served versions from plain {@code lock}.
+     * Metadata is keyed by URL and lives 24h; a loopback port recycled across
+     * {@link #restartServer()} calls can otherwise hide newly served versions from plain
+     * {@code lock}. Operates on the {@code @TempDir}-isolated store (JK-1918), never the
+     * developer's.
      */
     private void dropLibIndexCache() throws IOException {
         cc.jumpkick.resolve.ResolveProcessCacheControl.clearAll();
