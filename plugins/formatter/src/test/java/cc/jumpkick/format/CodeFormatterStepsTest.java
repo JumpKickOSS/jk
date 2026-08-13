@@ -68,6 +68,14 @@ class CodeFormatterStepsTest {
                 .containsExactly("palantir-java-format");
     }
 
+    @Test
+    void unnamed_class_probe_uses_already_read_bytes() {
+        assertThat(CodeFormatter.isUnnamedClass("void main() { IO.println(1); }".getBytes()))
+                .isTrue();
+        assertThat(CodeFormatter.isUnnamedClass("public class Foo {}".getBytes()))
+                .isFalse();
+    }
+
     private static CodeFormatter.Spec baseSpec() {
         var spec = new CodeFormatter.Spec();
         spec.javaStyle = "palantir";

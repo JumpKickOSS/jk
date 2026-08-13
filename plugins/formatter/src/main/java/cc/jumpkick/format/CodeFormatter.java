@@ -112,24 +112,23 @@ public final class CodeFormatter implements Plugin {
             for (FileRef ref : spec.files) {
                 Formatter fmt = ref.kotlin ? kotlinFmt : javaFmt;
                 if (fmt == null) continue; // no formatter for this language (shouldn't happen)
-                // Java 21+ unnamed classes (no type declaration) can't be parsed by
-                // palantir/google-java-format — skip them silently.
-                if (!ref.kotlin && isUnnamedClass(ref.file)) {
-                    clean++;
-                    emitFile(out, ref.file, "skipped", null);
-                    continue;
-                }
                 try {
-                    // --- Stamp check -------------------------------------------------
-                    // Read file bytes once — used for both the stamp key and handed to
-                    // OpenRewrite/Spotless on a miss (OS cache makes the 2nd read free).
-                    byte[] originalBytes = stampCache != null ? Files.readAllBytes(ref.file.toPath()) : null;
-                    String stampKey = originalBytes != null ? FormatStamp.computeKey(originalBytes, configDesc) : null;
+                    // Read once: stamp key, unnamed-class probe, and the formatter on a miss.
+                    byte[] originalBytes = Files.readAllBytes(ref.file.toPath());
+                    String stampKey = stampCache != null ? FormatStamp.computeKey(originalBytes, configDesc) : null;
 
                     if (stampKey != null && stampCache.contains(stampKey)) {
-                        // Stamp hit: file content is known clean under this config.
                         clean++;
                         emitFile(out, ref.file, "clean", null);
+                        continue;
+                    }
+
+                    // Java 21+ unnamed classes (no type declaration) can't be parsed by
+                    // palantir/google-java-format — skip them silently (after the stamp miss).
+                    if (!ref.kotlin && isUnnamedClass(originalBytes)) {
+                        clean++;
+                        emitFile(out, ref.file, "skipped", null);
+                        if (stampKey != null) stampCache.record(stampKey);
                         continue;
                     }
 
@@ -303,9 +302,9 @@ public final class CodeFormatter implements Plugin {
     private static final Pattern TYPE_DECL =
             Pattern.compile("\\b(class|interface|enum|record)\\s+\\w|@interface\\s+\\w");
 
-    /** True if the file has no top-level type declaration (Java 21+ unnamed class). */
-    private static boolean isUnnamedClass(File file) throws IOException {
-        String src = Files.readString(file.toPath(), StandardCharsets.UTF_8);
+    /** True if the source has no top-level type declaration (Java 21+ unnamed class). */
+    static boolean isUnnamedClass(byte[] bytes) {
+        String src = new String(bytes, StandardCharsets.UTF_8);
         // Strip line and block comments before checking for type declarations.
         String stripped = src.replaceAll("//[^\n]*", "").replaceAll("(?s)/\\*.*?\\*/", " ");
         return !TYPE_DECL.matcher(stripped).find();

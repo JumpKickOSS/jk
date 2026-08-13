@@ -18,12 +18,15 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.tool.ToolResolver;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Stream;
 
 /**
  * {@code jk format} plan: collect sources, resolve formatter jars, fork {@code jk-formatter}.
@@ -64,6 +67,9 @@ public final class FormatPlans {
     public static final BuildPlanKey<Integer> TOTAL = BuildPlanKey.of("format-total", Integer.class);
     public static final BuildPlanKey<Integer> WORKER_EXIT = BuildPlanKey.of("format-worker-exit", Integer.class);
 
+    /** Files already clean by the mtime/size index — not sent to the worker. */
+    static final BuildPlanKey<Integer> PRE_CLEAN = BuildPlanKey.of("format-preclean", Integer.class);
+
     /**
      * Build the format plan for {@code projectDir}. Style names arrive already resolved (flags/env/
      * {@code [format]} block are the client's concern). Steps: {@code collect-sources} (SYNC) walks
@@ -88,15 +94,28 @@ public final class FormatPlans {
         BuildPlanKey<List> removeUnusedJarsKey = BuildPlanKey.of("format-remove-unused-jars", List.class);
         BuildPlanKey<List> kotlinJarsKey = BuildPlanKey.of("format-kotlin-jars", List.class);
 
+        BuildPlanKey<FormatFreshnessIndex> indexKey = BuildPlanKey.of("format-index", FormatFreshnessIndex.class);
+
         Task collect = Task.builder(TaskNames.COLLECT_SOURCES)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("collect sources");
-                    List<Path> javaFiles = collectSources(projectDir, ".java");
-                    List<Path> kotlinFiles = collectSources(projectDir, ".kt");
-                    ctx.put(javaFilesKey, javaFiles);
-                    ctx.put(kotlinFilesKey, kotlinFiles);
-                    ctx.put(TOTAL, javaFiles.size() + kotlinFiles.size());
+                    CollectedSources all = collectSources(projectDir);
+                    FormatFreshnessIndex index = openIndex(
+                            projectDir,
+                            cache,
+                            javaStyle,
+                            kotlinStyle,
+                            optimizeImports,
+                            importOrder,
+                            removeUnusedImports,
+                            rewriteConfig);
+                    FormatFreshnessIndex.Split split = index.partition(all.javaFiles(), all.kotlinFiles());
+                    ctx.put(javaFilesKey, split.dirtyJava());
+                    ctx.put(kotlinFilesKey, split.dirtyKotlin());
+                    ctx.put(PRE_CLEAN, split.clean());
+                    ctx.put(indexKey, index);
+                    ctx.put(TOTAL, all.total());
                     ctx.progress(1);
                 })
                 .build();
@@ -174,15 +193,24 @@ public final class FormatPlans {
                     List<Path> javaFiles = (List<Path>) ctx.require(javaFilesKey);
                     @SuppressWarnings("unchecked")
                     List<Path> kotlinFiles = (List<Path>) ctx.require(kotlinFilesKey);
-                    int total = javaFiles.size() + kotlinFiles.size();
-                    if (total == 0) {
+                    int preClean = ctx.get(PRE_CLEAN).orElse(0);
+                    FormatFreshnessIndex freshness = ctx.get(indexKey).orElse(null);
+                    int dirty = javaFiles.size() + kotlinFiles.size();
+                    int total = preClean + dirty;
+                    ctx.put(TOTAL, total);
+                    if (dirty == 0) {
                         ctx.put(CHANGED, 0);
-                        ctx.put(CLEAN, 0);
+                        ctx.put(CLEAN, preClean);
                         ctx.put(ERRORS, 0);
                         ctx.put(WORKER_EXIT, 0);
+                        if (total > 0) {
+                            ctx.updateTicks(total);
+                            ctx.progress(total);
+                        }
                         return;
                     }
                     ctx.updateTicks(total);
+                    if (preClean > 0) ctx.progress(preClean);
                     ctx.label(check ? "check formatting" : "format sources");
                     @SuppressWarnings("unchecked")
                     List<Path> javaJars = (List<Path>) ctx.require(javaJarsKey);
@@ -214,22 +242,26 @@ public final class FormatPlans {
                         int exit = new PluginClient("##JKFMT:")
                                 .on("file", json -> {
                                     String status = Jsonl.str(json, "status");
-                                    if ("changed".equals(status)) changed.incrementAndGet();
-                                    else if ("error".equals(status)) errors.incrementAndGet();
-                                    else clean.incrementAndGet();
+                                    String path = Jsonl.str(json, "path");
+                                    if ("changed".equals(status)) {
+                                        changed.incrementAndGet();
+                                        if (!check && freshness != null) freshness.record(Path.of(path));
+                                    } else if ("error".equals(status)) {
+                                        errors.incrementAndGet();
+                                    } else {
+                                        clean.incrementAndGet();
+                                        if (freshness != null) freshness.record(Path.of(path));
+                                    }
                                     observer.onFile(
-                                            Jsonl.str(json, "path"),
-                                            status,
-                                            Jsonl.str(json, "msg"),
-                                            index.incrementAndGet(),
-                                            total);
+                                            path, status, Jsonl.str(json, "msg"), index.incrementAndGet(), total);
                                     ctx.progress(1);
                                 })
                                 .passthrough(ctx::output)
                                 .run(PluginLaunch.javaCommand(
                                         workerJar, javaFiles.isEmpty() ? List.of() : JAVAC_EXPORTS, spec));
+                        if (freshness != null) freshness.save();
                         ctx.put(CHANGED, changed.get());
-                        ctx.put(CLEAN, clean.get());
+                        ctx.put(CLEAN, preClean + clean.get());
                         ctx.put(ERRORS, errors.get());
                         ctx.put(WORKER_EXIT, exit);
                     } catch (InterruptedException e) {
@@ -328,42 +360,96 @@ public final class FormatPlans {
         return left.equals(right);
     }
 
-    /** Collect project source files with the given extension, skipping build/VCS output dirs. */
-    private static List<Path> collectSources(Path root, String ext) throws IOException {
-        if (!Files.isDirectory(root)) return List.of();
-        try (Stream<Path> walk = Files.walk(root)) {
-            return walk.filter(Files::isRegularFile)
-                    .filter(p -> p.getFileName().toString().endsWith(ext))
-                    .filter(FormatPlans::notExcluded)
-                    .sorted()
-                    .toList();
+    record CollectedSources(List<Path> javaFiles, List<Path> kotlinFiles) {
+        int total() {
+            return javaFiles.size() + kotlinFiles.size();
+        }
+    }
+
+    /**
+     * One walk, skipping excluded directories entirely ({@code target/}, {@code build/}, {@code
+     * .git/}, …) instead of descending and filtering files afterwards.
+     */
+    static CollectedSources collectSources(Path root) throws IOException {
+        if (!Files.isDirectory(root)) return new CollectedSources(List.of(), List.of());
+        List<Path> java = new ArrayList<>();
+        List<Path> kotlin = new ArrayList<>();
+        Files.walkFileTree(root, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                if (dir.equals(root)) return FileVisitResult.CONTINUE;
+                return excludedSegment(dir.getFileName().toString())
+                        ? FileVisitResult.SKIP_SUBTREE
+                        : FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                if (!notExcluded(file)) return FileVisitResult.CONTINUE;
+                String name = file.getFileName().toString();
+                if (name.endsWith(".java")) java.add(file);
+                else if (name.endsWith(".kt")) kotlin.add(file);
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                return FileVisitResult.CONTINUE;
+            }
+        });
+        java.sort(null);
+        kotlin.sort(null);
+        return new CollectedSources(List.copyOf(java), List.copyOf(kotlin));
+    }
+
+    private static FormatFreshnessIndex openIndex(
+            Path projectDir,
+            Path cache,
+            String javaStyle,
+            String kotlinStyle,
+            boolean optimizeImports,
+            boolean importOrder,
+            boolean removeUnusedImports,
+            Path rewriteConfig) {
+        try {
+            Path workerJar = PluginJar.FORMATTER.locate(JkStores.cas(cache));
+            String key = FormatFreshnessIndex.configKey(
+                    javaStyle,
+                    javaVersion(javaStyle),
+                    kotlinStyle,
+                    KTFMT_VERSION,
+                    optimizeImports,
+                    importOrder,
+                    removeUnusedImports,
+                    rewriteConfig,
+                    workerJar);
+            return FormatFreshnessIndex.open(cache, projectDir, key);
+        } catch (Exception e) {
+            return FormatFreshnessIndex.disabled(projectDir);
         }
     }
 
     static boolean notExcluded(Path p) {
         for (Path seg : p) {
-            String s = seg.toString();
-            if (s.equals("target")
-                    || s.equals("build")
-                    || s.equals(".jk")
-                    || s.equals(".git")
-                    || s.equals("node_modules")) {
-                return false;
-            }
-            // A giter8 template root has an unambiguous shape — a directory literally suffixed
-            // `.g8`, or named `g8` (the jk-templates catalog and this repo's own templates/*.g8
-            // dogfood tree both use one of these two). A bare "templates"/"giter8" segment name is
-            // NOT a reliable signal: this repo's own cc.jumpkick.templates package (and any user's
-            // legitimate templates/ code, e.g. email templates) would be silently unformatted too.
-            if (s.endsWith(".g8") || s.equals("g8")) {
-                return false;
-            }
-            // Giter8 placeholders are wrapped in `$…$` ($package$, $name$) — not just any name that
-            // happens to contain a `$`.
-            if (s.length() > 1 && s.startsWith("$") && s.endsWith("$")) {
-                return false;
-            }
+            if (excludedSegment(seg.toString())) return false;
         }
         return true;
+    }
+
+    /**
+     * Directory (or path-segment) names we never format under. A giter8 template root is a
+     * directory literally suffixed {@code .g8} or named {@code g8}. A bare "templates"/"giter8"
+     * segment is not excluded — this repo's {@code cc.jumpkick.templates} package is real source.
+     */
+    static boolean excludedSegment(String s) {
+        if (s.equals("target")
+                || s.equals("build")
+                || s.equals(".jk")
+                || s.equals(".git")
+                || s.equals("node_modules")) {
+            return true;
+        }
+        if (s.endsWith(".g8") || s.equals("g8")) return true;
+        return s.length() > 1 && s.startsWith("$") && s.endsWith("$");
     }
 }

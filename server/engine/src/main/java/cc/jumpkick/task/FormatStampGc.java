@@ -16,8 +16,9 @@ import java.util.stream.Stream;
  * cache prune} (and the engine's 12 h idle-boundary prune) alongside the other cache-tier steps.
  *
  * <p>Format stamps are empty marker files keyed by SHA-256 of (stamp version + config descriptor +
- * file bytes). They become unreachable when content or formatter config changes, and hits only
- * refresh mtime — so growth is orphaned content-address keys plus a live working set.
+ * file bytes). They become unreachable when content or formatter config changes. Hits no longer
+ * refresh mtime (that was a write per clean file); growth is orphaned content-address keys plus
+ * stamps recorded on the last real format.
  *
  * <p>Policy (two phases):
  *

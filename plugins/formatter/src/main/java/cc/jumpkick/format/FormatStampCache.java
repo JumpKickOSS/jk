@@ -10,8 +10,8 @@ import java.nio.file.attribute.FileTime;
  * CAS-sharded per-file format stamp store under {@code <cache>/format-stamps/}. A hit means the
  * file is already clean for the config in the key. Fail-open on I/O errors.
  *
- * <p>Hits refresh mtime so the engine's format-stamp GC can LRU-evict cold entries (age TTL +
- * count cap on {@code jk cache clean} / idle-boundary prune).
+ * <p>Hits are existence-only (no mtime touch). Age-TTL GC still evicts cold entries; a lost stamp
+ * costs one extra format pass.
  */
 final class FormatStampCache {
 
@@ -22,19 +22,13 @@ final class FormatStampCache {
     }
 
     /**
-     * True when a valid stamp exists for {@code key}; false on any I/O error. On hit, refreshes
-     * mtime (best-effort) so LRU GC sees recent use.
+     * True when a valid stamp exists for {@code key}; false on any I/O error. Hits do not refresh
+     * mtime — a 1 600-file clean run used to pay 1 600 extra writes for LRU, which dominated the
+     * skip path. Age-TTL GC still evicts unused stamps; a lost stamp costs one extra format.
      */
     boolean contains(String key) {
         try {
-            Path p = stampPath(key);
-            if (!Files.exists(p)) return false;
-            try {
-                Files.setLastModifiedTime(p, FileTime.fromMillis(System.currentTimeMillis()));
-            } catch (IOException ignored) {
-                // still a hit — touch is advisory for LRU only
-            }
-            return true;
+            return Files.exists(stampPath(key));
         } catch (Exception e) {
             return false;
         }
