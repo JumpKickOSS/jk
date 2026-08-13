@@ -11,7 +11,7 @@ Status: **normative** for TUI / wire progress. Implementations live under
 3. **Effort-weight progress bar** — denominator is Σ plan step weights (measured walls preferred). Cache/skip → TOKEN. Bar **never goes backwards**.
 4. **Real-work only** — bookkeeping steps do not inflate dirty set or ETA.
 5. **Hierarchical learning** — test method → test class → task → stage → module → workspace.
-6. **Dual clock** — countdown from residual-reanchored remaining (starts as `R0`); dim `+elapsed` count-up from command start.
+6. **Dual clock** — mid-gray countdown from residual-reanchored remaining (starts as `R0`; `0s` at the deadline, then `+Ns` for the miss); dim elapsed from command start (no `+`).
 7. **details.jsonl** carries fine events; the header bar/clock stay run-wide.
 
 ## Model

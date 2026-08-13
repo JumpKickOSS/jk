@@ -1409,8 +1409,9 @@ Vue.createApp({
 
     // Live ETA dual-clock (CLI parity). Both faces share one whole-second elapsed counter so they
     // tick on the same paint — flooring remaining-ms and elapsed-ms independently desynced them.
-    // Countdown re-anchors to residual RemainingWork so it eases into R(t) and freezes at "0s"
-    // with residual → 0; count-up is always full elapsed. No seed → count-up only.
+    // Countdown re-anchors to residual RemainingWork so it eases into R(t), paints "0s" at
+    // the deadline, then counts the miss as "+Ns". Elapsed is always full run time, no plus.
+    // No seed → count-up only.
     hasEta(card) {
       if (this.outcome(card) !== 'running') return false;
       const haveR0 = typeof card.r0Ms === 'number' && card.r0Ms > 0 && card.r0At != null;
@@ -1457,16 +1458,13 @@ Vue.createApp({
       const total = etaTotalMillis(card);
       return total == null ? 0 : Math.max(0, Math.floor(total / 1000));
     },
-    etaOverdue(card) {
-      // Countdown has frozen at 0s (residual/R0 exhausted). Same whole-second counter as the
-      // faces so the freeze and the paint flip together.
+    /** Seconds past the residual/R0 deadline, or 0 while the countdown is still decaying. */
+    etaOverrunSeconds(card) {
+      const rem = this.etaFaceSeconds(card);
+      if (rem == null || rem > 0) return 0;
       const deadline = this.etaDeadlineSeconds(card);
-      return deadline != null && this.elapsedSeconds(card) >= deadline;
-    },
-    /** Count-up mid-gray only after 2s past deadline — matches CLI COUNT_UP_PROMOTE_GRACE_MS. */
-    etaCountUpPromoted(card) {
-      const deadline = this.etaDeadlineSeconds(card);
-      return deadline != null && this.elapsedSeconds(card) >= deadline + 2;
+      if (deadline == null) return 0;
+      return Math.max(0, this.elapsedSeconds(card) - deadline);
     },
     /**
      * Whole-second countdown with the CLI's 1s jitter buffer (b1e4f58b / JK-1849): the face
@@ -1494,7 +1492,9 @@ Vue.createApp({
     etaCountdown(card) {
       const rem = this.etaFaceSeconds(card);
       if (rem == null) return '';
-      return rem <= 0 ? '0s' : '~' + this.fmtClockSeconds(rem);
+      if (rem > 0) return '~' + this.fmtClockSeconds(rem);
+      const over = this.etaOverrunSeconds(card);
+      return over > 0 ? '+' + this.fmtClockSeconds(over) : '0s';
     },
     // Back-compat alias used by older snapshots/tests: bare countdown string (no "ETA " label).
     eta(card) {
@@ -2277,8 +2277,9 @@ Vue.createApp({
     },
     elapsed(card) {
       if (card.startedAt == null) return '';
-      // Full run-wide count-up from the same whole-second counter as the countdown.
-      return '+' + this.fmtClockSeconds(this.elapsedSeconds(card));
+      // Full run-wide count-up from the same whole-second counter as the countdown. No plus —
+      // the + lives on the ETA face once the estimate is past.
+      return this.fmtClockSeconds(this.elapsedSeconds(card));
     },
     ago(card) {
       if (card.finishedAt == null) return '';
