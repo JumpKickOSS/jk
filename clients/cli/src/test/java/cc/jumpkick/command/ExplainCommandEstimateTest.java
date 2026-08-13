@@ -135,7 +135,7 @@ class ExplainCommandEstimateTest {
                 true,
                 false);
 
-        String chain = TestAnsi.strip(ExplainCommand.renderPhaseChain(module, Theme.active(), false));
+        String chain = TestAnsi.strip(ExplainCommand.renderStageChain(module, Theme.active(), false));
         // Bookkeeping write-stamp is omitted; cached compile, dirty test/package with counts.
         assertThat(chain).isEqualTo("+ Compile > [ ] Test ~28 tests > [ ] Package");
     }
@@ -161,7 +161,7 @@ class ExplainCommandEstimateTest {
                 true,
                 false);
 
-        String chain = TestAnsi.strip(ExplainCommand.renderPhaseChain(module, Theme.active(), false));
+        String chain = TestAnsi.strip(ExplainCommand.renderStageChain(module, Theme.active(), false));
         assertThat(chain).isEqualTo("[ ] Compile 239 sources > [ ] Test ~1,103 tests > [ ] Package > [ ] Native");
         assertThat(ExplainCommand.producesNative(module)).isTrue();
     }

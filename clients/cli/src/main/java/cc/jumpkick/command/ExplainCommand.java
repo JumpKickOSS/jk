@@ -237,7 +237,7 @@ public final class ExplainCommand implements CliCommand {
 
     /**
      * Build Graph: wedge title, {@code ● group:artifact} root, Fully Cached / Rebuild section
-     * pills, name-only branded module pills, hanging phase-chain (or {@code --verbose} step
+     * pills, name-only branded module pills, hanging stage-chain (or {@code --verbose} step
      * children).
      */
     static Tree buildGraph(
@@ -282,7 +282,7 @@ public final class ExplainCommand implements CliCommand {
         return new Tree("Build Graph").gap(Tree.Gap.CHILDREN).root(root);
     }
 
-    /** One rebuild (or verbose cached) module: branded name pill + phase chain or step children. */
+    /** One rebuild (or verbose cached) module: branded name pill + stage chain or step children. */
     private static Tree.Node moduleNode(TaskForecast.Module m, boolean verbose, Theme t, boolean ansi) {
         Tree.Node node = Tree.node(Pill.branded(shortName(m.coord())));
         if (verbose) {
@@ -303,7 +303,7 @@ public final class ExplainCommand implements CliCommand {
             return node;
         }
         if (m.dirty()) {
-            String chain = renderPhaseChain(m, t, ansi);
+            String chain = renderStageChain(m, t, ansi);
             if (!chain.isEmpty()) node.body(RichText.ansi(chain));
         }
         return node;
@@ -347,11 +347,11 @@ public final class ExplainCommand implements CliCommand {
     private static final int CACHED_NAMES_PER_LINE = 4;
 
     /**
-     * Roll material tasks up into a web-style phase chain: {@code ✓ Compile › □ Test ~28 tests › □
+     * Roll material tasks up into a stage chain: {@code ✓ Compile › □ Test ~28 tests › □
      * Package}. Stages follow {@link BuildStage} pipeline order; bookkeeping-only steps are
      * omitted so stamp/resolve noise never appears.
      */
-    static String renderPhaseChain(TaskForecast.Module m, Theme t, boolean ansi) {
+    static String renderStageChain(TaskForecast.Module m, Theme t, boolean ansi) {
         Map<BuildStage, List<TaskForecast.Task>> byStage = new LinkedHashMap<>();
         for (TaskForecast.Task step : m.steps()) {
             if (!TaskForecast.Module.isMaterialWork(step.name())) continue;
@@ -372,13 +372,13 @@ public final class ExplainCommand implements CliCommand {
             if (!sb.isEmpty()) sb.append(sep);
             List<TaskForecast.Task> steps = byStage.get(stage);
             boolean dirty = steps.stream().anyMatch(s -> !s.cached());
-            sb.append(renderPhaseToken(stage, dirty, phaseDetail(stage, dirty, m), t, ansi));
+            sb.append(renderStageToken(stage, dirty, stageDetail(stage, dirty, m), t, ansi));
         }
         return sb.toString();
     }
 
-    /** One phase token: {@code ✓ Compile} (green) or {@code □ Test ~28 tests} (blue + dim detail). */
-    private static String renderPhaseToken(BuildStage stage, boolean dirty, String detail, Theme t, boolean ansi) {
+    /** One stage token: {@code ✓ Compile} (green) or {@code □ Test ~28 tests} (blue + dim detail). */
+    private static String renderStageToken(BuildStage stage, boolean dirty, String detail, Theme t, boolean ansi) {
         String glyph = dirty ? Glyphs.PENDING : Glyphs.CHECK;
         String label = stage.displayName();
         if (!ansi) {
@@ -392,10 +392,10 @@ public final class ExplainCommand implements CliCommand {
     }
 
     /**
-     * Short detail next to a dirty phase — source/test counts for Compile/Test; nothing for
-     * package/native/image (the phase name is enough).
+     * Short detail next to a dirty stage — source/test counts for Compile/Test; nothing for
+     * package/native/image (the stage name is enough).
      */
-    private static String phaseDetail(BuildStage stage, boolean dirty, TaskForecast.Module m) {
+    private static String stageDetail(BuildStage stage, boolean dirty, TaskForecast.Module m) {
         if (!dirty) return null;
         return switch (stage) {
             case COMPILE -> m.sourceCount() > 0 ? fmtCount(m.sourceCount(), "source", "sources") : null;
