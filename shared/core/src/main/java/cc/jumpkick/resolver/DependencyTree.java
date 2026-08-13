@@ -985,9 +985,11 @@ public final class DependencyTree {
                 putFlat(out, new FlatDep(ga, ver, ""));
                 Map<String, Lockfile.Artifact> siblingIndex =
                         sibling.lock() == null ? byModule : indexByModule(sibling.lock());
-                for (Scope s : walkScopes) {
+                // The sibling contributes its own surface (export/main/runtime), not whatever
+                // scope section of the consumer declared it (JK-1884).
+                for (Scope s : siblingContributedScopes()) {
                     for (String dep : directModules(sibling.build(), s)) {
-                        collectFlat(dep, composite, siblingIndex, ws, walkScopes, visited, out);
+                        collectFlat(dep, composite, siblingIndex, ws, siblingContributedScopes(), visited, out);
                     }
                 }
             } else {
@@ -1129,8 +1131,19 @@ public final class DependencyTree {
     }
 
     /**
+     * The scope surface a consumed workspace sibling contributes to its consumer: export, main,
+     * runtime — matching {@code ModuleRuntimeClasspath}/{@code WorkspaceClasspath}. A sibling's
+     * test/dev/processor deps never ride the member's classpath, and its export/runtime deps
+     * always do — regardless of which section of the member declared the sibling (JK-1884).
+     */
+    private static List<Scope> siblingContributedScopes() {
+        return List.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME);
+    }
+
+    /**
      * A workspace sibling as a real module node (version from its {@code jk.toml}). When depth
-     * allows, walk its declared deps — and those deps' lockfile transitives.
+     * allows, walk its contributed surface ({@link #siblingContributedScopes()}) — and those deps'
+     * lockfile transitives.
      */
     private static void renderSiblingModule(
             LoadedModule sibling,
@@ -1172,7 +1185,7 @@ public final class DependencyTree {
                 sibling.build(),
                 sibling.lock(),
                 sibling.dir(),
-                scopes,
+                siblingContributedScopes(),
                 depth + 1,
                 maxDepth,
                 childPrefix,
