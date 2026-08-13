@@ -249,6 +249,41 @@ public final class JsonlShape {
         return sb.append('}').toString();
     }
 
+    /**
+     * Enriched test-failure error for details.jsonl / --output json: module, engine, class, method,
+     * exceptionClass, stack, and nested throwable (single-string stack).
+     */
+    static String error(String step, String code, String msg, cc.jumpkick.run.TestFailureInfo failure) {
+        if (failure == null) return error(step, code, msg);
+        String message = msg == null || msg.isEmpty() ? failure.message() : msg;
+        StringBuilder sb = open("error")
+                .append(",\"task\":")
+                .append(js(step))
+                .append(",\"code\":")
+                .append(js(code))
+                .append(",\"message\":")
+                .append(js(message));
+        if (!failure.module().isEmpty()) sb.append(",\"module\":").append(js(failure.module()));
+        if (!failure.engine().isEmpty()) sb.append(",\"engine\":").append(js(failure.engine()));
+        if (!failure.className().isEmpty()) sb.append(",\"class\":").append(js(failure.className()));
+        if (!failure.method().isEmpty()) sb.append(",\"method\":").append(js(failure.method()));
+        if (!failure.exceptionClass().isEmpty())
+            sb.append(",\"exceptionClass\":").append(js(failure.exceptionClass()));
+        if (failure.worker() > 0) sb.append(",\"worker\":").append(failure.worker());
+        if (!failure.stack().isEmpty()) {
+            sb.append(",\"stack\":").append(js(failure.stack()));
+            sb.append(",\"throwable\":{")
+                    .append("\"class\":")
+                    .append(js(failure.exceptionClass()))
+                    .append(",\"message\":")
+                    .append(js(failure.message()))
+                    .append(",\"stack\":")
+                    .append(js(failure.stack()))
+                    .append('}');
+        }
+        return sb.append('}').toString();
+    }
+
     static String stepFinish(String step, String group, TaskStatus status, Duration duration) {
         return open("task-finish")
                 .append(",\"task\":")

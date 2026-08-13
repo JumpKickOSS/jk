@@ -2616,7 +2616,7 @@ public final class BuildPlanner {
                         // of a record for this key is the "not yet green" signal).
                         // Surface each failure (name + stack trace) above the bar
                         // not just the count — like Maven/Gradle.
-                        for (String line : TestSupport.renderFailures(result)) ctx.output(line);
+                        for (String line : TestSupport.renderFailures(result, in.dir())) ctx.output(line);
                         throw new RuntimeException(
                                 result.failed() + " test failure" + (result.failed() == 1 ? "" : "s"));
                     }

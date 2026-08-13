@@ -17,10 +17,11 @@ class JUnitLauncherAggregatorTest {
         var agg = new JUnitLauncher.ResultAggregator();
         agg.accept("{\"event\":\"finished\",\"id\":\"a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
         agg.accept("{\"event\":\"finished\",\"id\":\"b\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
-        agg.accept("{\"event\":\"finished\",\"id\":\"c\",\"type\":\"TEST\",\"status\":\"FAILED\","
-                + "\"display\":\"c()\","
-                + "\"throwable\":{\"class\":\"AssertionError\",\"message\":\"nope\"}}");
-        agg.accept("{\"event\":\"skipped\",\"id\":\"d\",\"type\":\"TEST\",\"reason\":\"@Disabled\"}");
+        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"[engine:junit-jupiter]/[class:C]/[method:c()]\","
+                + "\"testEngine\":\"junit-jupiter\",\"testClass\":\"C\",\"testMethod\":\"c()\","
+                + "\"type\":\"TEST\",\"status\":\"FAILED\","
+                + "\"throwable\":{\"class\":\"AssertionError\",\"message\":\"nope\",\"stack\":\"AssertionError: nope\\n\\tat C.c(C.java:1)\"}}");
+        agg.accept("{\"event\":\"skipped\",\"uniqueId\":\"d\",\"type\":\"TEST\",\"reason\":\"@Disabled\"}");
 
         var result = agg.toResult(0);
         assertThat(result.total()).isEqualTo(4);
@@ -29,8 +30,12 @@ class JUnitLauncherAggregatorTest {
         assertThat(result.skipped()).isEqualTo(1);
         assertThat(result.failures()).singleElement().satisfies(f -> {
             assertThat(f.testName()).isEqualTo("c()");
+            assertThat(f.method()).isEqualTo("c()");
+            assertThat(f.className()).isEqualTo("C");
+            assertThat(f.testEngine()).isEqualTo("junit-jupiter");
             assertThat(f.exceptionClass()).isEqualTo("AssertionError");
             assertThat(f.message()).isEqualTo("nope");
+            assertThat(f.stack()).contains("at C.c(C.java:1)");
         });
     }
 
@@ -50,11 +55,11 @@ class JUnitLauncherAggregatorTest {
     void merges_event_streams_from_multiple_workers() {
         // Simulate two parallel workers each running a couple of classes.
         var agg = new JUnitLauncher.ResultAggregator();
-        agg.accept("{\"event\":\"finished\",\"id\":\"w1.a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\",\"w\":1}");
-        agg.accept("{\"event\":\"finished\",\"id\":\"w2.x\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\",\"w\":2}");
-        agg.accept("{\"event\":\"finished\",\"id\":\"w1.b\",\"type\":\"TEST\",\"status\":\"FAILED\",\"w\":1,"
-                + "\"display\":\"b()\",\"throwable\":{\"class\":\"E\",\"message\":\"m\"}}");
-        agg.accept("{\"event\":\"finished\",\"id\":\"w2.y\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\",\"w\":2}");
+        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"w1.a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\",\"worker\":1}");
+        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"w2.x\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\",\"worker\":2}");
+        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"w1.b\",\"type\":\"TEST\",\"status\":\"FAILED\",\"worker\":1,"
+                + "\"testMethod\":\"b()\",\"throwable\":{\"class\":\"E\",\"message\":\"m\",\"stack\":\"\"}}");
+        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"w2.y\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\",\"worker\":2}");
 
         var result = agg.toResult(0);
         assertThat(result.total()).isEqualTo(4);
@@ -104,15 +109,15 @@ class JUnitLauncherAggregatorTest {
         var agg = new JUnitLauncher.ResultAggregator(listener, 0);
 
         // Plain static test — no preceding dynamic_registered.
-        agg.accept("{\"event\":\"finished\",\"id\":\"static-1\"," + "\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
+        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"static-1\"," + "\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
         // Parameterized invocation — preceded by dynamic_registered.
-        agg.accept("{\"event\":\"dynamic_registered\",\"id\":\"dyn-1\",\"type\":\"TEST\"}");
-        agg.accept("{\"event\":\"finished\",\"id\":\"dyn-1\"," + "\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
+        agg.accept("{\"event\":\"dynamic_registered\",\"uniqueId\":\"dyn-1\",\"type\":\"TEST\"}");
+        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"dyn-1\"," + "\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
         // CONTAINER-typed dynamic_registered must NOT count as a dynamic
         // test id — its later finished (also CONTAINER) shouldn't affect
         // progress regardless.
-        agg.accept("{\"event\":\"dynamic_registered\",\"id\":\"c-1\",\"type\":\"CONTAINER\"}");
-        agg.accept("{\"event\":\"finished\",\"id\":\"c-1\"," + "\"type\":\"CONTAINER\",\"status\":\"SUCCESSFUL\"}");
+        agg.accept("{\"event\":\"dynamic_registered\",\"uniqueId\":\"c-1\",\"type\":\"CONTAINER\"}");
+        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"c-1\"," + "\"type\":\"CONTAINER\",\"status\":\"SUCCESSFUL\"}");
 
         assertThat(captured).hasSize(3);
         assertThat(captured.get(0)).containsExactly(true, true); // static @Test
@@ -136,10 +141,21 @@ class JUnitLauncherAggregatorTest {
     @Test
     void failed_test_keeps_the_full_stack_trace() {
         var agg = new JUnitLauncher.ResultAggregator();
-        agg.accept("{\"event\":\"finished\",\"id\":\"c\",\"type\":\"TEST\",\"status\":\"FAILED\","
-                + "\"display\":\"c()\",\"throwable\":{\"class\":\"AssertionError\","
+        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"c\",\"type\":\"TEST\",\"status\":\"FAILED\","
+                + "\"testMethod\":\"c()\",\"throwable\":{\"class\":\"AssertionError\","
                 + "\"message\":\"nope\",\"stack\":\"AssertionError: nope\\n\\tat Foo.c(Foo.java:9)\"}}");
-        assertThat(agg.toResult(0).failures()).singleElement().satisfies(f -> assertThat(f.details())
+        assertThat(agg.toResult(0).failures()).singleElement().satisfies(f -> assertThat(f.stack())
+                .contains("AssertionError: nope")
+                .contains("at Foo.c(Foo.java:9)"));
+    }
+
+    @Test
+    void stack_line_array_is_joined_for_legacy_runners() {
+        var agg = new JUnitLauncher.ResultAggregator();
+        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"c\",\"type\":\"TEST\",\"status\":\"FAILED\","
+                + "\"testMethod\":\"c()\",\"throwable\":{\"class\":\"AssertionError\","
+                + "\"message\":\"nope\",\"stack\":[\"AssertionError: nope\",\"\\tat Foo.c(Foo.java:9)\"]}}");
+        assertThat(agg.toResult(0).failures()).singleElement().satisfies(f -> assertThat(f.stack())
                 .contains("AssertionError: nope")
                 .contains("at Foo.c(Foo.java:9)"));
     }
@@ -150,14 +166,14 @@ class JUnitLauncherAggregatorTest {
         // and fires no TEST event — capture it instead of a silent "runner exited".
         var agg = new JUnitLauncher.ResultAggregator();
         agg.accept(
-                "{\"event\":\"finished\",\"id\":\"cls\",\"type\":\"CONTAINER\",\"status\":\"FAILED\","
-                        + "\"display\":\"FooTest\",\"throwable\":{\"class\":\"ExceptionInInitializerError\","
+                "{\"event\":\"finished\",\"uniqueId\":\"cls\",\"testClass\":\"FooTest\",\"type\":\"CONTAINER\","
+                        + "\"status\":\"FAILED\",\"throwable\":{\"class\":\"ExceptionInInitializerError\","
                         + "\"message\":\"\",\"stack\":\"ExceptionInInitializerError\\n\\tat FooTest.<clinit>(FooTest.java:3)\"}}");
         var result = agg.toResult(0);
         assertThat(result.allPassed()).isFalse();
         assertThat(result.failures()).singleElement().satisfies(f -> {
-            assertThat(f.testName()).contains("FooTest");
-            assertThat(f.details()).contains("ExceptionInInitializerError");
+            assertThat(f.className()).isEqualTo("FooTest");
+            assertThat(f.stack()).contains("ExceptionInInitializerError");
         });
     }
 
@@ -169,7 +185,7 @@ class JUnitLauncherAggregatorTest {
         var result = agg.toResult(1, crash); // no events, non-zero exit
         assertThat(result.failures()).singleElement().satisfies(f -> {
             assertThat(f.testName()).isEqualTo("(test run)");
-            assertThat(f.details()).contains("NoClassDefFoundError").contains("at cc.jumpkick.Boot.main");
+            assertThat(f.stack()).contains("NoClassDefFoundError").contains("at cc.jumpkick.Boot.main");
         });
     }
 

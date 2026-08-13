@@ -207,6 +207,12 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
     }
 
     @Override
+    public void error(String step, String code, String message, cc.jumpkick.run.TestFailureInfo failure) {
+        flush();
+        delegate.error(step, code, message, failure);
+    }
+
+    @Override
     public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
         flush();
         delegate.stepFinish(step, group, status, duration);

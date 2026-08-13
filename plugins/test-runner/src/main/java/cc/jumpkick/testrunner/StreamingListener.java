@@ -37,8 +37,7 @@ final class StreamingListener implements EngineExecutionListener {
     @Override
     public void dynamicTestRegistered(TestDescriptor descriptor) {
         var payload = new LinkedHashMap<String, Object>();
-        payload.put("id", descriptor.getUniqueId().toString());
-        payload.put("display", descriptor.getDisplayName());
+        JUnitUniqueId.parse(descriptor.getUniqueId().toString()).putIdentity(payload);
         payload.put(
                 "parent",
                 descriptor.getParent().map(p -> p.getUniqueId().toString()).orElse(null));
@@ -49,8 +48,7 @@ final class StreamingListener implements EngineExecutionListener {
     @Override
     public void executionSkipped(TestDescriptor descriptor, String reason) {
         var payload = new LinkedHashMap<String, Object>();
-        payload.put("id", descriptor.getUniqueId().toString());
-        payload.put("display", descriptor.getDisplayName());
+        JUnitUniqueId.parse(descriptor.getUniqueId().toString()).putIdentity(payload);
         payload.put("type", descriptor.getType().name());
         payload.put("reason", reason == null ? "" : reason);
         emit(EventType.SKIPPED, payload);
@@ -61,8 +59,7 @@ final class StreamingListener implements EngineExecutionListener {
         String uid = descriptor.getUniqueId().toString();
         startNanos.put(uid, System.nanoTime());
         var payload = new LinkedHashMap<String, Object>();
-        payload.put("id", uid);
-        payload.put("display", descriptor.getDisplayName());
+        JUnitUniqueId.parse(uid).putIdentity(payload);
         payload.put(
                 "parent",
                 descriptor.getParent().map(p -> p.getUniqueId().toString()).orElse(null));
@@ -82,10 +79,9 @@ final class StreamingListener implements EngineExecutionListener {
         }
 
         var payload = new LinkedHashMap<String, Object>();
-        payload.put("id", uid);
+        JUnitUniqueId.parse(uid).putIdentity(payload);
         payload.put("status", result.getStatus().name());
         payload.put("type", descriptor.getType().name()); // parent counts FINISHED[type=TEST] for totals
-        payload.put("display", descriptor.getDisplayName());
         payload.put("duration_ms", durationMs);
         result.getThrowable().ifPresent(t -> payload.put("throwable", flatten(t)));
         emit(EventType.FINISHED, payload);
@@ -116,7 +112,7 @@ final class StreamingListener implements EngineExecutionListener {
 
     /**
      * Render a throwable in a form the parent process can display without needing the failure's
-     * classes on its own classpath. Includes the type, message, and stack trace lines.
+     * classes on its own classpath. {@code stack} is a single string ({@code printStackTrace} text).
      */
     private static Map<String, Object> flatten(Throwable t) {
         var sw = new StringWriter();
@@ -124,7 +120,7 @@ final class StreamingListener implements EngineExecutionListener {
         var map = new LinkedHashMap<String, Object>();
         map.put("class", t.getClass().getName());
         map.put("message", t.getMessage() == null ? "" : t.getMessage());
-        map.put("stack", sw.toString());
+        map.put("stack", sw.toString()); // single string — not a line array
         return map;
     }
 
@@ -145,7 +141,7 @@ final class StreamingListener implements EngineExecutionListener {
             // Stamp the worker id on every event in pull/parallel mode so
             // the parent can attribute output. Single-worker (id 0) runs
             // omit it to keep the wire form unchanged from Stage A.
-            if (workerId > 0) payload.put("w", workerId);
+            if (workerId > 0) payload.put("worker", workerId);
             out.write(type, payload);
             out.flush();
         } catch (IOException e) {

@@ -78,6 +78,11 @@ abstract class JsonlEmittingListener implements BuildPlanListener {
     }
 
     @Override
+    public void error(String step, String code, String msg, cc.jumpkick.run.TestFailureInfo failure) {
+        line(JsonlShape.error(step, code, msg, failure), "error");
+    }
+
+    @Override
     public void stepFinish(String step, String group, TaskStatus s, Duration d) {
         line(JsonlShape.stepFinish(step, wire(group), s, d), "task-finish");
     }

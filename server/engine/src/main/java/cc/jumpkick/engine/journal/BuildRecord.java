@@ -217,5 +217,23 @@ public record BuildRecord(
             String code,
             String message,
             String test,
-            String exceptionClass) {}
+            String exceptionClass,
+            String module,
+            String engine,
+            String className,
+            String method,
+            String stack) {
+
+        /** Legacy ctor without structured test fields. */
+        public Diag(
+                String severity,
+                String dir,
+                String step,
+                String code,
+                String message,
+                String test,
+                String exceptionClass) {
+            this(severity, dir, step, code, message, test, exceptionClass, "", "", "", "", "");
+        }
+    }
 }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.run;
 
+import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -202,8 +203,21 @@ public final class SyntaxHighlight {
         };
     }
 
+    /**
+     * Highlight {@code src} for {@code lang}, painting every token on {@code bg} so an editor band
+     * stays continuous. {@code bg == null} uses the terminal default background.
+     */
+    public static String highlight(String src, Language lang, Rgb bg) {
+        if (src == null) return "";
+        return render(src, -1, rulesFor(lang == null ? Language.JAVA : lang), bg);
+    }
+
     /** First-match-wins ordered rules; caret column optionally underlined. SGR only. */
     static String render(String src, int caretCol, List<Rule> rules) {
+        return render(src, caretCol, rules, null);
+    }
+
+    static String render(String src, int caretCol, List<Rule> rules, Rgb bg) {
         StringBuilder out = new StringBuilder();
         int n = src.length();
         Matcher[] matchers = new Matcher[rules.size()];
@@ -228,10 +242,10 @@ public final class SyntaxHighlight {
                 }
             }
             if (matchEnd < 0) {
-                emit(out, src, i, i + 1, Role.PLAIN, caretCol);
+                emit(out, src, i, i + 1, Role.PLAIN, caretCol, bg);
                 i++;
             } else {
-                emit(out, src, i, matchEnd, role, caretCol);
+                emit(out, src, i, matchEnd, role, caretCol, bg);
                 i = matchEnd;
             }
         }
@@ -243,8 +257,9 @@ public final class SyntaxHighlight {
      * is split so the caret character keeps the token color and gains an underline, while its
      * neighbours stay plainly colored.
      */
-    private static void emit(StringBuilder out, String src, int s, int e, Role role, int caretCol) {
+    private static void emit(StringBuilder out, String src, int s, int e, Role role, int caretCol, Rgb bg) {
         AttributedStyle style = styleFor(role);
+        if (bg != null) style = Theme.active().withBackground(style, bg);
         if (caretCol < s || caretCol >= e) {
             out.append(Theme.colorize(src.substring(s, e), style));
             return;

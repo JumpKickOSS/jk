@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.theme.Coords;
+import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Badge;
 import cc.jumpkick.config.GlobalConfig;
@@ -85,22 +86,45 @@ public final class TestFailureHighlight {
     }
 
     /**
-     * Live-stream painter: tracks whether the next indented value is actual (red) or expected
-     * (green) across successive {@link #paintBodyLine} calls on the same block.
+     * Live-stream painter: tracks actual/expected value colors and buffers {@code @@source} …
+     * {@code @@src-end} so the editor snippet paints as a unit.
      */
     public static final class Stream {
         private ValueRole nextValue = ValueRole.ACTUAL;
+        private List<String> sourceBuf;
 
+        /**
+         * Paint one body line. When buffering a source snippet, returns {@code null} for intermediate
+         * markers (caller should skip writing); the last marker returns a multi-line string joined
+         * with {@code \n}.
+         */
         public String line(String raw) {
             if (raw == null) return null;
+            if (raw.startsWith("@@source ")) {
+                sourceBuf = new ArrayList<>();
+                sourceBuf.add(raw);
+                return null;
+            }
+            if (sourceBuf != null) {
+                sourceBuf.add(raw);
+                if (raw.equals("@@src-end")) {
+                    Theme t = Theme.active();
+                    List<String> painted = paintSourceBlock(sourceBuf, t);
+                    sourceBuf = null;
+                    return String.join("\n", painted);
+                }
+                return null;
+            }
             Theme t = Theme.active();
             if (!t.isAnsi()) return railPlain(raw);
+            if (raw.contains(" thrown at line ")) return rail(paintThrownAt(raw, t), t);
             nextValue = updateValueRole(raw, nextValue);
             return rail(paintContent(raw, t, nextValue), t);
         }
 
         public void reset() {
             nextValue = ValueRole.ACTUAL;
+            sourceBuf = null;
         }
     }
 
@@ -122,13 +146,22 @@ public final class TestFailureHighlight {
 
     // --- block painting ------------------------------------------------------
 
+    /** Web/console editor chrome: {@code --console-bg: #0b1116}. */
+    private static final Rgb CONSOLE_BG = new Rgb(11, 17, 22);
+
+    /**
+     * Error-line band: {@code rgba(255, 51, 102, 0.12)} over console bg → roughly rgb(40, 21, 32).
+     */
+    private static final Rgb ERROR_LINE_BG = new Rgb(40, 21, 32);
+
     private static List<String> paintBlock(List<String> block) {
-        List<String> out = new ArrayList<>(block.size());
+        List<String> out = new ArrayList<>(block.size() + 8);
         Theme t = Theme.active();
         boolean sawHeader = false;
         // Tracks whether the next indented value is an "actual" (red) or "expected" (green).
         ValueRole nextValue = ValueRole.ACTUAL;
-        for (String raw : block) {
+        for (int i = 0; i < block.size(); i++) {
+            String raw = block.get(i);
             if (raw == null) {
                 out.add(null);
                 continue;
@@ -138,8 +171,20 @@ public final class TestFailureHighlight {
                 sawHeader = true;
                 continue;
             }
+            if (raw.startsWith("@@source ")) {
+                int end = i + 1;
+                while (end < block.size() && !isSrcEnd(block.get(end))) end++;
+                if (end < block.size()) end++; // include @@src-end
+                out.addAll(paintSourceBlock(block.subList(i, end), t));
+                i = end - 1;
+                continue;
+            }
             if (!t.isAnsi()) {
-                out.add(railPlain(raw));
+                out.add(railPlain(stripSrcMarkers(raw)));
+                continue;
+            }
+            if (raw.contains(" thrown at line ")) {
+                out.add(rail(paintThrownAt(raw, t), t));
                 continue;
             }
             nextValue = updateValueRole(raw, nextValue);
@@ -147,6 +192,123 @@ public final class TestFailureHighlight {
         }
         out.add(DiagnosticReport.errorFooter());
         return out;
+    }
+
+    private static boolean isSrcEnd(String line) {
+        return line != null && line.equals("@@src-end");
+    }
+
+    private static String stripSrcMarkers(String raw) {
+        if (raw == null) return "";
+        if (raw.startsWith("@@source ")) return raw.substring("@@source ".length());
+        if (raw.startsWith("@@src ")) {
+            int bar = raw.indexOf('|');
+            return bar >= 0 ? raw.substring(bar + 1) : raw;
+        }
+        if (raw.equals("@@src-end")) return "";
+        return raw;
+    }
+
+    /**
+     * Editor snippet: path (periwinkle + underline), then guttered lines on console-bg; error line
+     * uses a subtle dark-red band. No failure rail — reads as a code pane.
+     */
+    static List<String> paintSourceBlock(List<String> markers, Theme t) {
+        if (markers.isEmpty()) return List.of();
+        String header = markers.get(0);
+        String path = attr(header, "path");
+        String lang = attr(header, "lang");
+        int errorLine = parseInt(attr(header, "line"), 0);
+        SyntaxHighlight.Language language = languageOf(lang);
+
+        List<String> out = new ArrayList<>();
+        if (!t.isAnsi()) {
+            out.add(path);
+            for (int i = 1; i < markers.size(); i++) {
+                String m = markers.get(i);
+                if (m == null || m.equals("@@src-end") || !m.startsWith("@@src ")) continue;
+                out.add(plainSrcLine(m));
+            }
+            return out;
+        }
+
+        // Path: periwinkle + underline (no console band — sits above the pane).
+        out.add(Theme.colorize(path, t.path().underline()));
+
+        Rgb pane = CONSOLE_BG;
+        for (int i = 1; i < markers.size(); i++) {
+            String m = markers.get(i);
+            if (m == null || m.equals("@@src-end") || !m.startsWith("@@src ")) continue;
+            out.add(paintSrcLine(m, errorLine, language, t, pane));
+        }
+        return out;
+    }
+
+    private static String plainSrcLine(String marker) {
+        // @@src 15*|code  or  @@src 10|code
+        int sp = marker.indexOf(' ');
+        int bar = marker.indexOf('|');
+        if (sp < 0 || bar < 0) return marker;
+        String num = marker.substring(sp + 1, bar).replace("*", "");
+        String code = marker.substring(bar + 1);
+        return String.format("%4s│ %s", num, code);
+    }
+
+    private static String paintSrcLine(
+            String marker, int errorLine, SyntaxHighlight.Language language, Theme t, Rgb paneBg) {
+        int sp = marker.indexOf(' ');
+        int bar = marker.indexOf('|');
+        if (sp < 0 || bar < 0) return marker;
+        String numPart = marker.substring(sp + 1, bar);
+        boolean isError = numPart.endsWith("*");
+        String num = isError ? numPart.substring(0, numPart.length() - 1) : numPart;
+        String code = marker.substring(bar + 1);
+
+        Rgb lineBg = isError ? ERROR_LINE_BG : paneBg;
+        String gutter = Theme.colorize(String.format("%4s", num), t.withBackground(t.dim(), lineBg));
+        String rail = Theme.colorize("│", t.withBackground(t.darkGray(), lineBg));
+        String gap = Theme.colorize(" ", t.withBackground(AttributedStyle.DEFAULT, lineBg));
+        String codePainted = code.isEmpty()
+                ? Theme.colorize(" ", t.withBackground(AttributedStyle.DEFAULT, lineBg))
+                : SyntaxHighlight.highlight(code, language, lineBg);
+        return gutter + rail + gap + codePainted;
+    }
+
+    private static String paintThrownAt(String raw, Theme t) {
+        // Fqcn thrown at line N
+        int idx = raw.indexOf(" thrown at line ");
+        if (idx <= 0) return Theme.colorize(raw, t.midGray());
+        String fqcn = raw.substring(0, idx).strip();
+        String rest = raw.substring(idx);
+        return paintFqcn(fqcn, t) + Theme.colorize(rest, t.midGray());
+    }
+
+    private static String attr(String header, String key) {
+        // @@source path=foo line=15 start=10 lang=java
+        String needle = key + "=";
+        int i = header.indexOf(needle);
+        if (i < 0) return "";
+        int s = i + needle.length();
+        int e = s;
+        while (e < header.length() && !Character.isWhitespace(header.charAt(e))) e++;
+        return header.substring(s, e);
+    }
+
+    private static int parseInt(String s, int dflt) {
+        try {
+            return Integer.parseInt(s);
+        } catch (Exception e) {
+            return dflt;
+        }
+    }
+
+    private static SyntaxHighlight.Language languageOf(String lang) {
+        if (lang == null) return SyntaxHighlight.Language.JAVA;
+        return switch (lang.toLowerCase(java.util.Locale.ROOT)) {
+            case "kotlin", "kt" -> SyntaxHighlight.Language.KOTLIN;
+            case "groovy" -> SyntaxHighlight.Language.GROOVY;
+            default -> SyntaxHighlight.Language.JAVA;
+        };
     }
 
     private enum ValueRole {
@@ -195,10 +357,12 @@ public final class TestFailureHighlight {
     static boolean isFailureContinuation(String line) {
         if (line == null) return false;
         if (line.startsWith(" ") || line.startsWith("\t")) return true;
+        if (line.startsWith("@@source ") || line.startsWith("@@src ") || line.equals("@@src-end")) return true;
         String t = line.stripLeading();
         if (t.startsWith("FAILED  ") || t.startsWith("class: ") || t.startsWith("at ") || t.startsWith("...")) {
             return true;
         }
+        if (t.contains(" thrown at line ")) return true;
         if (COUNT_LINE.matcher(t).matches()) return true;
         // Exception FQCN on its own line
         if (FQCN_LINE.matcher(line).matches() && looksLikeExceptionOrClass(t)) return true;

@@ -116,7 +116,8 @@ public final class CommandManagerListener implements BuildPlanListener {
             return;
         }
         if (inTestFailure) {
-            cm.writeAbove(testFailStream.line(line));
+            String painted = testFailStream.line(line);
+            if (painted != null) cm.writeAbove(painted);
             return;
         }
         cm.writeAbove(StackTraceHighlight.line(line));

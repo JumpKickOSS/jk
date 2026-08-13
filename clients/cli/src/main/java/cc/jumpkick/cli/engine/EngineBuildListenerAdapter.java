@@ -15,6 +15,7 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.runtime.ExplainPlan;
 import cc.jumpkick.runtime.ModuleOutcome;
 import cc.jumpkick.runtime.ModulePlan;
@@ -702,12 +703,7 @@ final class EngineBuildListenerAdapter {
                         && !EngineProtocol.BUILDPLAN_FINISH.equals(type)
                         && !EngineProtocol.ERROR.equals(type)) {
                     if (EngineProtocol.BUILDPLAN_DIAGNOSTIC.equals(type)) {
-                        diagnostics.add(new BuildPlanResult.Diagnostic(
-                                Jsonl.str(line, "task"),
-                                Jsonl.str(line, "code"),
-                                Jsonl.str(line, "message"),
-                                Jsonl.str(line, "test"),
-                                Jsonl.str(line, "exceptionClass")));
+                        diagnostics.add(diagnosticFromWire(line));
                     }
                     continue;
                 }
@@ -734,20 +730,8 @@ final class EngineBuildListenerAdapter {
                     case EngineProtocol.OUTPUT -> listener.output(Jsonl.str(line, "task"), Jsonl.str(line, "line"));
                     case EngineProtocol.WARN ->
                         listener.warn(Jsonl.str(line, "task"), Jsonl.str(line, "code"), Jsonl.str(line, "message"));
-                    case EngineProtocol.ERROR_LINE ->
-                        listener.error(
-                                Jsonl.str(line, "task"),
-                                Jsonl.str(line, "code"),
-                                Jsonl.str(line, "message"),
-                                Jsonl.str(line, "test"),
-                                Jsonl.str(line, "exceptionClass"));
-                    case EngineProtocol.BUILDPLAN_DIAGNOSTIC ->
-                        diagnostics.add(new BuildPlanResult.Diagnostic(
-                                Jsonl.str(line, "task"),
-                                Jsonl.str(line, "code"),
-                                Jsonl.str(line, "message"),
-                                Jsonl.str(line, "test"),
-                                Jsonl.str(line, "exceptionClass")));
+                    case EngineProtocol.ERROR_LINE -> dispatchError(listener, line);
+                    case EngineProtocol.BUILDPLAN_DIAGNOSTIC -> diagnostics.add(diagnosticFromWire(line));
                     case EngineProtocol.TASK_FINISH ->
                         listener.stepFinish(
                                 Jsonl.str(line, "task"),
@@ -930,23 +914,11 @@ final class EngineBuildListenerAdapter {
                                 .getOrDefault(dir, NOOP)
                                 .warn(Jsonl.str(line, "task"), Jsonl.str(line, "code"), Jsonl.str(line, "message"));
                     case EngineProtocol.ERROR_LINE ->
-                        planListenersByDir
-                                .getOrDefault(dir, NOOP)
-                                .error(
-                                        Jsonl.str(line, "task"),
-                                        Jsonl.str(line, "code"),
-                                        Jsonl.str(line, "message"),
-                                        Jsonl.str(line, "test"),
-                                        Jsonl.str(line, "exceptionClass"));
+                        dispatchError(planListenersByDir.getOrDefault(dir, NOOP), line);
                     case EngineProtocol.BUILDPLAN_DIAGNOSTIC ->
                         diagnosticsByDir
                                 .computeIfAbsent(dir, d -> new ArrayList<>())
-                                .add(new BuildPlanResult.Diagnostic(
-                                        Jsonl.str(line, "task"),
-                                        Jsonl.str(line, "code"),
-                                        Jsonl.str(line, "message"),
-                                        Jsonl.str(line, "test"),
-                                        Jsonl.str(line, "exceptionClass")));
+                                .add(diagnosticFromWire(line));
                     case EngineProtocol.TASK_FINISH ->
                         planListenersByDir
                                 .getOrDefault(dir, NOOP)
@@ -1013,6 +985,82 @@ final class EngineBuildListenerAdapter {
             // The job is over however the stream ended.
             if (notedJid > 0) cc.jumpkick.cli.engine.EngineClient.ActiveJobs.forget(notedJid);
         }
+    }
+
+    /** Dispatch a wire error line to the plan listener (enriched test-failure when fields present). */
+    private static void dispatchError(BuildPlanListener listener, String line) {
+        if (listener == null) return;
+        TestFailureInfo failure = testFailureFromWire(line);
+        String task = Jsonl.str(line, "task");
+        String code = Jsonl.str(line, "code");
+        String message = Jsonl.str(line, "message");
+        if (failure != null) {
+            listener.error(task, code, message, failure);
+        } else {
+            listener.error(task, code, message, Jsonl.str(line, "test"), Jsonl.str(line, "exceptionClass"));
+        }
+    }
+
+    private static BuildPlanResult.Diagnostic diagnosticFromWire(String line) {
+        TestFailureInfo f = testFailureFromWire(line);
+        if (f != null) {
+            return new BuildPlanResult.Diagnostic(
+                    Jsonl.str(line, "task"), Jsonl.str(line, "code"), Jsonl.str(line, "message"), f);
+        }
+        return new BuildPlanResult.Diagnostic(
+                Jsonl.str(line, "task"),
+                Jsonl.str(line, "code"),
+                Jsonl.str(line, "message"),
+                Jsonl.str(line, "test"),
+                Jsonl.str(line, "exceptionClass"));
+    }
+
+    /**
+     * Parse enriched test-failure fields from an error/diagnostic wire line. Returns null when no
+     * structured test identity is present (plain javac/resolve errors).
+     */
+    private static TestFailureInfo testFailureFromWire(String line) {
+        String module = nz(Jsonl.str(line, "module"));
+        String engine = nz(Jsonl.str(line, "engine"));
+        String className = nz(Jsonl.str(line, "class"));
+        String method = nz(Jsonl.str(line, "method"));
+        String exceptionClass = nz(Jsonl.str(line, "exceptionClass"));
+        String stack = nz(Jsonl.str(line, "stack"));
+        if (stack.isEmpty()) {
+            String th = Jsonl.nested(line, "throwable");
+            if (th != null) stack = nz(Jsonl.str(th, "stack"));
+        }
+        if (module.isEmpty()
+                && engine.isEmpty()
+                && className.isEmpty()
+                && method.isEmpty()
+                && stack.isEmpty()
+                && !"test-failure".equals(Jsonl.str(line, "code"))) {
+            return null;
+        }
+        if (module.isEmpty()
+                && engine.isEmpty()
+                && className.isEmpty()
+                && method.isEmpty()
+                && stack.isEmpty()
+                && exceptionClass.isEmpty()) {
+            return null;
+        }
+        int worker = Jsonl.intValue(line, "worker", 0);
+        if (worker <= 0) worker = Jsonl.intValue(line, "w", 0);
+        return new TestFailureInfo(
+                module,
+                engine,
+                className,
+                method,
+                exceptionClass,
+                nz(Jsonl.str(line, "message")),
+                stack,
+                worker);
+    }
+
+    private static String nz(String s) {
+        return s == null ? "" : s;
     }
 
     private static List<ModulePlan> buildModulePlans(Map<String, ModuleMeta> planByDir, Path cache) {

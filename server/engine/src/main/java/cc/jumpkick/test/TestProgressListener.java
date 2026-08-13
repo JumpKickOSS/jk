@@ -55,7 +55,26 @@ public interface TestProgressListener {
     /** A non-protocol line came back from the child — user's {@code System.out} write, mostly. */
     default void onUserOutput(int workerId, String line) {}
 
-    /** Detailed failure information from a FAILED finish (class + message + flattened stack). */
+    /**
+     * Detailed failure from a FAILED finish. {@code stack} is the full single-string stack trace;
+     * {@code engine}/{@code className}/{@code method} are split uniqueId parts (may be empty on
+     * legacy events).
+     */
+    default void onFailure(
+            String id,
+            String label,
+            String exClass,
+            String message,
+            String stack,
+            String engine,
+            String className,
+            String method,
+            int workerId) {
+        onFailure(id, label, exClass, message, workerId);
+    }
+
+    /** @deprecated prefer the stack-bearing overload. */
+    @Deprecated
     default void onFailure(String id, String display, String exClass, String message, int workerId) {}
 
     /**

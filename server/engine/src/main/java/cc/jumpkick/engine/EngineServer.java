@@ -2023,20 +2023,23 @@ public final class EngineServer implements AutoCloseable {
         for (int i = 0; i < shown; i++) {
             BuildPlanResult.Diagnostic d = errors.get(i);
             // type "error" matches CLI JsonlShape; SSE event name stays "diagnostic" for the SPA.
-            publishEvent(
-                    "diagnostic",
-                    withProgress(
-                            cc.jumpkick.engine.http.JsonOut.object()
-                                    .put("schema", 1)
-                                    .put("type", "error")
-                                    .put("requestId", requestId)
-                                    .put("dir", dir)
-                                    .put("task", d.step())
-                                    .put("code", d.code())
-                                    .put("message", redactEnv(dir, d.message()))
-                                    .put("test", d.test())
-                                    .put("exceptionClass", d.exceptionClass()),
-                            requestId));
+            var o = cc.jumpkick.engine.http.JsonOut.object()
+                    .put("schema", 1)
+                    .put("type", "error")
+                    .put("requestId", requestId)
+                    .put("dir", dir)
+                    .put("task", d.step())
+                    .put("code", d.code())
+                    .put("message", redactEnv(dir, d.message()));
+            if (d.module() != null && !d.module().isEmpty()) o.put("module", d.module());
+            if (d.engine() != null && !d.engine().isEmpty()) o.put("engine", d.engine());
+            if (d.className() != null && !d.className().isEmpty()) o.put("class", d.className());
+            if (d.method() != null && !d.method().isEmpty()) o.put("method", d.method());
+            if (d.exceptionClass() != null && !d.exceptionClass().isEmpty())
+                o.put("exceptionClass", d.exceptionClass());
+            if (d.stack() != null && !d.stack().isEmpty()) o.put("stack", d.stack());
+            if (d.test() != null && !d.test().isEmpty()) o.put("test", d.test());
+            publishEvent("diagnostic", withProgress(o, requestId));
         }
         if (errors.size() > shown) {
             publishRequestError(requestId, dir, "+ " + (errors.size() - shown) + " more errors — see the CLI output");
@@ -4510,6 +4513,11 @@ public final class EngineServer implements AutoCloseable {
             }
 
             @Override
+            public void error(String step, String code, String message, cc.jumpkick.run.TestFailureInfo failure) {
+                inner.error(step, code, message, failure);
+            }
+
+            @Override
             public void planFinish(BuildPlanResult result) {
                 inner.planFinish(result);
             }
@@ -5382,6 +5390,28 @@ public final class EngineServer implements AutoCloseable {
             }
 
             @Override
+            public void error(
+                    String step, String code, String message, cc.jumpkick.run.TestFailureInfo failure) {
+                if (failure == null) {
+                    error(step, code, message);
+                    return;
+                }
+                sendQuiet(
+                        writer,
+                        EngineProtocol.errorLine(
+                                dir,
+                                step,
+                                code,
+                                redactEnv(dir, message == null || message.isEmpty() ? failure.message() : message),
+                                failure.module(),
+                                failure.engine(),
+                                failure.className(),
+                                failure.method(),
+                                failure.exceptionClass(),
+                                failure.stack()));
+            }
+
+            @Override
             public void stepFinish(String step, String group, cc.jumpkick.run.TaskStatus status, Duration duration) {
                 long millis = duration.toMillis();
                 sendQuiet(writer, EngineProtocol.stepFinish(dir, step, phaseWire(group), status.name(), millis));
@@ -5392,15 +5422,33 @@ public final class EngineServer implements AutoCloseable {
             @Override
             public void planFinish(BuildPlanResult result) {
                 for (BuildPlanResult.Diagnostic d : result.errors()) {
-                    sendQuiet(
-                            writer,
-                            EngineProtocol.planDiagnostic(
-                                    dir,
-                                    d.step(),
-                                    d.code(),
-                                    redactEnv(dir, d.message()),
-                                    d.test(),
-                                    d.exceptionClass()));
+                    if (d.module() != null && !d.module().isEmpty()
+                            || d.className() != null && !d.className().isEmpty()
+                            || d.stack() != null && !d.stack().isEmpty()) {
+                        sendQuiet(
+                                writer,
+                                EngineProtocol.planDiagnostic(
+                                        dir,
+                                        d.step(),
+                                        d.code(),
+                                        redactEnv(dir, d.message()),
+                                        d.module(),
+                                        d.engine(),
+                                        d.className(),
+                                        d.method(),
+                                        d.exceptionClass(),
+                                        d.stack()));
+                    } else {
+                        sendQuiet(
+                                writer,
+                                EngineProtocol.planDiagnostic(
+                                        dir,
+                                        d.step(),
+                                        d.code(),
+                                        redactEnv(dir, d.message()),
+                                        d.test(),
+                                        d.exceptionClass()));
+                    }
                 }
                 // Timeline before the terminal finish, for every socket request that owns an
                 // accumulator (no-op otherwise): a client that has returned must not observe the
@@ -6745,7 +6793,12 @@ public final class EngineServer implements AutoCloseable {
                         d.code(),
                         redactEnv(redactDir, d.message()),
                         d.test(),
-                        d.exceptionClass()));
+                        d.exceptionClass(),
+                        d.module(),
+                        d.engine(),
+                        d.className(),
+                        d.method(),
+                        d.stack()));
             }
             for (BuildPlanResult.Diagnostic d : result.warnings()) {
                 diagnostics.add(new BuildRecord.Diag(
@@ -6755,7 +6808,12 @@ public final class EngineServer implements AutoCloseable {
                         d.code(),
                         redactEnv(redactDir, d.message()),
                         d.test(),
-                        d.exceptionClass()));
+                        d.exceptionClass(),
+                        d.module(),
+                        d.engine(),
+                        d.className(),
+                        d.method(),
+                        d.stack()));
             }
             // Capture the step dependency edges from the genuine in-process result (engine-side
             // result.steps is reliably populated, unlike a client-side reconstruction).

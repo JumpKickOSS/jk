@@ -107,6 +107,7 @@ public final class AggregateModuleListener implements BuildPlanListener {
     }
 
     private void emit(String line) {
+        if (line == null) return; // source-snippet buffer mid-stream
         if (outBuffer != null) {
             synchronized (outBuffer) {
                 outBuffer.add(line);

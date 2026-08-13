@@ -12,6 +12,36 @@ import org.junit.jupiter.api.Test;
 /** {@link TestFailureHighlight} turns the engine's plain failure block into a styled report. */
 class TestFailureHighlightTest {
 
+    @Test
+    void paints_source_snippet_path_and_error_line() {
+        List<String> raw = List.of(
+                "Test Failure",
+                "1 test failed:",
+                "",
+                "  FAILED  demo :: d()",
+                "@@source path=src/test/java/demo/ZTest.java line=7 start=4 lang=java",
+                "@@src 4|    void a() { int x = 1; }",
+                "@@src 5|    void b() { int y = 2; }",
+                "@@src 6|    void c() { int z = 3; }",
+                "@@src 7*|        assertEquals(1, 2);",
+                "@@src 8|    }",
+                "@@src 9|    void e() { int w = 4; }",
+                "@@src 10|    void f() { int v = 5; }",
+                "@@src-end",
+                "",
+                "org.opentest4j.AssertionFailedError thrown at line 7",
+                "",
+                "expected: <1> but was: <2>");
+        List<String> painted = TestFailureHighlight.paintLines(raw);
+        String all = String.join("\n", painted.stream().map(TestFailureHighlightTest::plain).toList());
+        assertThat(all).contains("src/test/java/demo/ZTest.java");
+        assertThat(all).contains("assertEquals");
+        assertThat(all).contains("thrown at line 7");
+        assertThat(all).doesNotContain("@@source");
+        assertThat(all).doesNotContain("@@src ");
+    }
+
+
     private static String plain(String s) {
         return AttributedString.stripAnsi(s == null ? "" : s);
     }

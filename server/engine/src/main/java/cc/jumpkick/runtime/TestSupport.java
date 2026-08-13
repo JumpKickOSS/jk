@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -159,18 +160,26 @@ public final class TestSupport {
      *
      *   FAILED  group:artifact :: method()
      *     class: fqcn
-     *     java.lang.AssertionError
+     * @@source path=… line=N start=S lang=java
+     * @@src 10|  …
+     * @@src 15*|  assert…
+     * @@src-end
+     * org.opentest4j.AssertionFailedError thrown at line 15
      *
-     * Expecting actual:
-     *   21670L
-     * …
-     * 	at …
+     * expected: …
+     *  but was: …
      * </pre>
      *
-     * <p>Returns empty when nothing failed. The leading {@code Test Failure} title is a fixed sentinel
-     * the CLI rewrites into a red pill + "Failure".
+     * <p>When {@code moduleDir} is set, a 7-line source snippet is resolved from the stack (Java /
+     * Kotlin / Groovy). Stack frames are omitted when a snippet is present. The leading {@code Test
+     * Failure} title is a fixed sentinel the CLI rewrites into a red pill + "Failure".
      */
     public static List<String> renderFailures(TestSummary result) {
+        return renderFailures(result, null);
+    }
+
+    /** As {@link #renderFailures(TestSummary)} with module-dir source resolution. */
+    public static List<String> renderFailures(TestSummary result, Path moduleDir) {
         List<String> out = new ArrayList<>();
         List<TestSummary.Failure> failures = result.failures();
         if (failures.isEmpty()) return out;
@@ -179,14 +188,24 @@ public final class TestSupport {
         out.add(failures.size() + " test" + (failures.size() == 1 ? "" : "s") + " failed:");
         for (TestSummary.Failure f : failures) {
             out.add("");
-            // module:: display [wN] so parallel monorepo flakes are locatable.
+            // module:: method [wN] so parallel monorepo flakes are locatable.
             out.add("  FAILED  " + f.headline());
             if (f.className() != null
                     && !f.className().isBlank()
                     && !f.headline().contains(f.className())) {
                 out.add("    class: " + f.className());
             }
-            if (!f.exceptionClass().isEmpty()) {
+            Optional<TestFailureSource.Snippet> snippet = Optional.empty();
+            if (moduleDir != null) {
+                snippet = TestFailureSource.resolve(moduleDir, f.className(), f.stack());
+            }
+            if (snippet.isPresent()) {
+                out.add("");
+                out.addAll(TestFailureSource.encodeMarkers(snippet.get()));
+                out.add("");
+                String ex = f.exceptionClass().isEmpty() ? "Error" : f.exceptionClass();
+                out.add(ex + " thrown at line " + snippet.get().errorLine());
+            } else if (!f.exceptionClass().isEmpty()) {
                 out.add("    " + f.exceptionClass());
             }
             // Assertion / failure body (prefer discrete message; else extract from stack).
@@ -195,11 +214,13 @@ public final class TestSupport {
                 out.add("");
                 out.addAll(body);
             }
-            // Stack frames only (skip exception header already printed above).
-            List<String> frames = failureStackFrames(f);
-            if (!frames.isEmpty()) {
-                out.add("");
-                out.addAll(frames);
+            // Full stack only when we could not show a source snippet.
+            if (snippet.isEmpty()) {
+                List<String> frames = failureStackFrames(f);
+                if (!frames.isEmpty()) {
+                    out.add("");
+                    out.addAll(frames);
+                }
             }
         }
         // No trailing blank — the settle wedge ("✘ Build …") follows immediately.
@@ -219,7 +240,7 @@ public final class TestSupport {
             return lines;
         }
         // Fall back: stack's message section between "Exception: " and first "at ".
-        String details = f.details() == null ? "" : f.details();
+        String details = f.stack() == null ? "" : f.stack();
         if (details.isBlank()) return List.of();
         List<String> lines = new ArrayList<>();
         boolean started = false;
@@ -248,7 +269,7 @@ public final class TestSupport {
 
     /** {@code at …} / {@code ... N more} lines from the stack, preserving original indent. */
     static List<String> failureStackFrames(TestSummary.Failure f) {
-        String details = f.details() == null ? "" : f.details();
+        String details = f.stack() == null ? "" : f.stack();
         if (details.isBlank()) return List.of();
         List<String> frames = new ArrayList<>();
         for (String line : details.split("\n", -1)) {
@@ -321,14 +342,36 @@ public final class TestSupport {
             }
 
             @Override
-            public void onFailure(String id, String display, String exClass, String message, int workerId) {
+            public void onFailure(
+                    String id,
+                    String label,
+                    String exClass,
+                    String message,
+                    String stack,
+                    String engine,
+                    String className,
+                    String method,
+                    int workerId) {
                 // Code "test-failure" (not "test") marks a per-test failure that is
                 // already shown in full by the run-tests renderFailures block. The
-                // diagnostic still flows to JSON consumers, but the human listeners
-                // suppress it so the same failure isn't printed twice. Test *infra*
-                // errors (interrupt/IO) keep code "test" and still surface in text mode.
-                String label = progressLabel(module, liveTestDetail(id, display, true), workerId, workerCount);
-                ctx.error("test-failure", message, label, exClass);
+                // diagnostic still flows to JSON consumers (details.jsonl / --output json),
+                // but human listeners suppress the text banner so the same failure isn't
+                // printed twice. Test *infra* errors keep code "test" and still surface.
+                String methodLabel = method != null && !method.isBlank() ? method : label;
+                // Source snippet is resolved at renderFailures(moduleDir) time; structured error
+                // carries identity + stack (file/snippet filled when the plan re-emits if needed).
+                ctx.error(
+                        "test-failure",
+                        message,
+                        new cc.jumpkick.run.TestFailureInfo(
+                                module == null ? "" : module,
+                                engine == null ? "" : engine,
+                                className == null ? "" : className,
+                                methodLabel == null ? "" : methodLabel,
+                                exClass == null ? "" : exClass,
+                                message == null ? "" : message,
+                                stack == null ? "" : stack,
+                                workerId));
             }
 
             @Override

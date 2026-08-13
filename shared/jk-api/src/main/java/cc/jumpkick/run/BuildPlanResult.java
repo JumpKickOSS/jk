@@ -62,16 +62,57 @@ public record BuildPlanResult(
     /**
      * Structured diagnostic from {@link TaskContext#warn} / {@link TaskContext#error}.
      *
-     * <p>{@code test} and {@code exceptionClass} carry the discrete parts of a test failure (the
-     * failing test's display name and the thrown exception's class) so structured consumers don't
-     * have to parse them back out of a glued {@code message}. Both are empty for diagnostics that
-     * aren't test failures.
+     * <p>Test failures carry split identity ({@code module}, {@code engine}, {@code className},
+     * {@code method}), {@code exceptionClass}, and full {@code stack}. Non-test diagnostics leave
+     * those empty. Legacy {@code test} is kept empty for new emits (prefer {@code module} +
+     * {@code method}).
      */
-    public record Diagnostic(String step, String code, String message, String test, String exceptionClass) {
+    public record Diagnostic(
+            String step,
+            String code,
+            String message,
+            String test,
+            String exceptionClass,
+            String module,
+            String engine,
+            String className,
+            String method,
+            String stack) {
 
         /** Diagnostic with no test identity — the common case (javac, resolver, …). */
         public Diagnostic(String step, String code, String message) {
-            this(step, code, message, "", "");
+            this(step, code, message, "", "", "", "", "", "", "");
+        }
+
+        /** Legacy two-field test failure (display label + exception class). */
+        public Diagnostic(String step, String code, String message, String test, String exceptionClass) {
+            this(step, code, message, test == null ? "" : test, exceptionClass == null ? "" : exceptionClass, "", "", "", "", "");
+        }
+
+        /** Full structured test failure. */
+        public Diagnostic(String step, String code, String message, TestFailureInfo failure) {
+            this(
+                    step,
+                    code,
+                    message == null ? (failure == null ? "" : failure.message()) : message,
+                    "",
+                    failure == null ? "" : failure.exceptionClass(),
+                    failure == null ? "" : failure.module(),
+                    failure == null ? "" : failure.engine(),
+                    failure == null ? "" : failure.className(),
+                    failure == null ? "" : failure.method(),
+                    failure == null ? "" : failure.stack());
+        }
+
+        public TestFailureInfo testFailure() {
+            if ((module == null || module.isEmpty())
+                    && (className == null || className.isEmpty())
+                    && (method == null || method.isEmpty())
+                    && (exceptionClass == null || exceptionClass.isEmpty())
+                    && (stack == null || stack.isEmpty())) {
+                return null;
+            }
+            return new TestFailureInfo(module, engine, className, method, exceptionClass, message, stack);
         }
     }
 }

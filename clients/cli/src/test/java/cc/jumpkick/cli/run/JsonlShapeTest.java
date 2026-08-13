@@ -93,6 +93,29 @@ class JsonlShapeTest {
     }
 
     @Test
+    void error_carries_enriched_test_failure() {
+        var failure = new cc.jumpkick.run.TestFailureInfo(
+                "cc.jumpkick:jk-engine",
+                "junit-jupiter",
+                "cc.jumpkick.runtime.LockFreshenConservativeTest",
+                "freshen_preserves_pins_while_explicit_lock_floats(java.nio.file.Path)",
+                "org.opentest4j.AssertionFailedError",
+                "expected: \"1.1\"\n but was: \"1.0\"",
+                "org.opentest4j.AssertionFailedError: …\n\tat cc.jumpkick.runtime.LockFreshenConservativeTest.freshen(LockFreshenConservativeTest.java:96)",
+                0);
+        String line = JsonlShape.error("run-tests", "test-failure", failure.message(), failure);
+        assertThat(line).contains("\"module\":\"cc.jumpkick:jk-engine\"");
+        assertThat(line).contains("\"engine\":\"junit-jupiter\"");
+        assertThat(line).contains("\"class\":\"cc.jumpkick.runtime.LockFreshenConservativeTest\"");
+        assertThat(line).contains("\"method\":\"freshen_preserves_pins_while_explicit_lock_floats(java.nio.file.Path)\"");
+        assertThat(line).contains("\"exceptionClass\":\"org.opentest4j.AssertionFailedError\"");
+        assertThat(line).contains("\"stack\":");
+        assertThat(line).contains("\"throwable\":{");
+        assertThat(line).doesNotContain("\"test\":");
+        assertThat(line).contains("LockFreshenConservativeTest.java:96");
+    }
+
+    @Test
     void output_json_and_jsonl_both_select_machine_mode() {
         assertThat(optsWithOutput("json").outputIsJson()).isTrue();
         assertThat(optsWithOutput("jsonl").outputIsJson()).isTrue();

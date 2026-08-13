@@ -4,7 +4,6 @@ package cc.jumpkick.testrunner;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -263,8 +262,7 @@ final class LauncherPath {
             // Without this, every @ParameterizedTest/@TestFactory invocation counts as static
             // and the progress numerator blows past the static-plan denominator.
             Map<String, Object> p = new LinkedHashMap<>();
-            p.put("id", id.getUniqueId());
-            p.put("display", id.getDisplayName());
+            JUnitUniqueId.parse(id.getUniqueId()).putIdentity(p);
             p.put("parent", id.getParentId().orElse(null));
             p.put("type", typeName(id));
             emit(EventType.DYNAMIC_REGISTERED, p);
@@ -280,8 +278,7 @@ final class LauncherPath {
         @Override
         public void executionSkipped(TestIdentifier id, String reason) {
             Map<String, Object> p = new LinkedHashMap<>();
-            p.put("id", id.getUniqueId());
-            p.put("display", id.getDisplayName());
+            JUnitUniqueId.parse(id.getUniqueId()).putIdentity(p);
             p.put("type", typeName(id));
             p.put("reason", reason == null ? "" : reason);
             emit(EventType.SKIPPED, p);
@@ -291,8 +288,7 @@ final class LauncherPath {
         public void executionStarted(TestIdentifier id) {
             startNanos.put(id.getUniqueId(), System.nanoTime());
             Map<String, Object> p = new LinkedHashMap<>();
-            p.put("id", id.getUniqueId());
-            p.put("display", id.getDisplayName());
+            JUnitUniqueId.parse(id.getUniqueId()).putIdentity(p);
             p.put("parent", id.getParentId().orElse(null));
             p.put("type", typeName(id));
             id.getSource().ifPresent(src -> p.put("source", src.toString()));
@@ -307,8 +303,7 @@ final class LauncherPath {
                 failed.set(true);
             }
             Map<String, Object> p = new LinkedHashMap<>();
-            p.put("id", id.getUniqueId());
-            p.put("display", id.getDisplayName());
+            JUnitUniqueId.parse(id.getUniqueId()).putIdentity(p);
             p.put("type", typeName(id));
             p.put("status", result.getStatus().name());
             p.put("duration_ms", durationMs);
@@ -318,7 +313,7 @@ final class LauncherPath {
 
         private void emit(EventType type, Map<String, Object> payload) {
             try {
-                if (workerId > 0) payload.put("w", workerId);
+                if (workerId > 0) payload.put("worker", workerId);
                 out.write(type, payload);
                 out.flush();
             } catch (Exception e) {
@@ -332,17 +327,14 @@ final class LauncherPath {
             return "CONTAINER";
         }
 
+        /** Single-string stack ({@code printStackTrace}); not a line array. */
         private static Map<String, Object> throwableMap(Throwable t) {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("class", t.getClass().getName());
             m.put("message", t.getMessage() == null ? "" : t.getMessage());
             StringWriter sw = new StringWriter();
             t.printStackTrace(new PrintWriter(sw));
-            List<String> stack = new ArrayList<>();
-            for (String line : sw.toString().split("\n")) {
-                stack.add(line);
-            }
-            m.put("stack", stack);
+            m.put("stack", sw.toString());
             return m;
         }
     }

@@ -70,8 +70,21 @@ final class Json {
             dm.put("task", d.step());
             dm.put("code", d.code());
             dm.put("message", d.message());
-            dm.put("test", d.test());
-            dm.put("exceptionClass", d.exceptionClass());
+            if (d.test() != null && !d.test().isEmpty()) dm.put("test", d.test());
+            if (d.module() != null && !d.module().isEmpty()) dm.put("module", d.module());
+            if (d.engine() != null && !d.engine().isEmpty()) dm.put("engine", d.engine());
+            if (d.className() != null && !d.className().isEmpty()) dm.put("class", d.className());
+            if (d.method() != null && !d.method().isEmpty()) dm.put("method", d.method());
+            if (d.exceptionClass() != null && !d.exceptionClass().isEmpty())
+                dm.put("exceptionClass", d.exceptionClass());
+            if (d.stack() != null && !d.stack().isEmpty()) {
+                dm.put("stack", d.stack());
+                Map<String, Object> th = new LinkedHashMap<>();
+                th.put("class", d.exceptionClass() == null ? "" : d.exceptionClass());
+                th.put("message", d.message() == null ? "" : d.message());
+                th.put("stack", d.stack());
+                dm.put("throwable", th);
+            }
             diagnostics.add(dm);
         }
         o.put("diagnostics", diagnostics);
@@ -174,7 +187,12 @@ final class Json {
                     str(dm, "code"),
                     str(dm, "message"),
                     str(dm, "test"),
-                    str(dm, "exceptionClass")));
+                    str(dm, "exceptionClass"),
+                    str(dm, "module"),
+                    str(dm, "engine"),
+                    strOr(dm, "class", "className"),
+                    str(dm, "method"),
+                    str(dm, "stack")));
         }
 
         return new BuildRecord(

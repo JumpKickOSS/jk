@@ -2257,21 +2257,65 @@ public final class EngineProtocol {
 
     private static String diagnosticLike(
             String type, String dir, String step, String code, String message, String test, String exceptionClass) {
-        return "{\"type\":\""
-                + type
-                + "\",\"dir\":"
-                + Jsonl.quote(dir)
-                + ",\"task\":"
-                + Jsonl.quote(step)
-                + ",\"code\":"
-                + Jsonl.quote(code)
-                + ",\"message\":"
-                + Jsonl.quote(message)
-                + ",\"test\":"
-                + Jsonl.quote(test)
-                + ",\"exceptionClass\":"
-                + Jsonl.quote(exceptionClass)
-                + "}";
+        return diagnosticLike(type, dir, step, code, message, test, exceptionClass, "", "", "", "", "");
+    }
+
+    /**
+     * Diagnostic/error line. Additive fields ({@code module}, {@code engine}, {@code class},
+     * {@code method}, {@code stack}, nested {@code throwable}) are omitted when empty so non-test
+     * diagnostics stay small. Legacy {@code test} is still written when non-empty for older clients.
+     */
+    private static String diagnosticLike(
+            String type,
+            String dir,
+            String step,
+            String code,
+            String message,
+            String test,
+            String exceptionClass,
+            String module,
+            String engine,
+            String className,
+            String method,
+            String stack) {
+        StringBuilder b = new StringBuilder(256);
+        b.append("{\"type\":")
+                .append(Jsonl.quote(type))
+                .append(",\"dir\":")
+                .append(Jsonl.quote(dir))
+                .append(",\"task\":")
+                .append(Jsonl.quote(step))
+                .append(",\"code\":")
+                .append(Jsonl.quote(code))
+                .append(",\"message\":")
+                .append(Jsonl.quote(message));
+        if (test != null && !test.isEmpty()) b.append(",\"test\":").append(Jsonl.quote(test));
+        if (module != null && !module.isEmpty()) b.append(",\"module\":").append(Jsonl.quote(module));
+        if (engine != null && !engine.isEmpty()) b.append(",\"engine\":").append(Jsonl.quote(engine));
+        if (className != null && !className.isEmpty()) b.append(",\"class\":").append(Jsonl.quote(className));
+        if (method != null && !method.isEmpty()) b.append(",\"method\":").append(Jsonl.quote(method));
+        if (exceptionClass != null && !exceptionClass.isEmpty())
+            b.append(",\"exceptionClass\":").append(Jsonl.quote(exceptionClass));
+        if (stack != null && !stack.isEmpty()) {
+            b.append(",\"stack\":").append(Jsonl.quote(stack));
+            // Nested throwable mirrors the runner shape for clients that prefer one object.
+            b.append(",\"throwable\":{")
+                    .append("\"class\":")
+                    .append(Jsonl.quote(exceptionClass == null ? "" : exceptionClass))
+                    .append(",\"message\":")
+                    .append(Jsonl.quote(message == null ? "" : message))
+                    .append(",\"stack\":")
+                    .append(Jsonl.quote(stack))
+                    .append('}');
+        } else if (exceptionClass != null && !exceptionClass.isEmpty()) {
+            b.append(",\"throwable\":{")
+                    .append("\"class\":")
+                    .append(Jsonl.quote(exceptionClass))
+                    .append(",\"message\":")
+                    .append(Jsonl.quote(message == null ? "" : message))
+                    .append(",\"stack\":\"\"}");
+        }
+        return b.append('}').toString();
     }
 
     public static String warn(String dir, String step, String code, String message) {
@@ -2283,9 +2327,51 @@ public final class EngineProtocol {
         return diagnosticLike(ERROR_LINE, dir, step, code, message, test, exceptionClass);
     }
 
+    /** Enriched test-failure error line (module / engine / class / method / stack). */
+    public static String errorLine(
+            String dir,
+            String step,
+            String code,
+            String message,
+            String module,
+            String engine,
+            String className,
+            String method,
+            String exceptionClass,
+            String stack) {
+        return diagnosticLike(
+                ERROR_LINE, dir, step, code, message, "", exceptionClass, module, engine, className, method, stack);
+    }
+
     public static String planDiagnostic(
             String dir, String step, String code, String message, String test, String exceptionClass) {
         return diagnosticLike(BUILDPLAN_DIAGNOSTIC, dir, step, code, message, test, exceptionClass);
+    }
+
+    public static String planDiagnostic(
+            String dir,
+            String step,
+            String code,
+            String message,
+            String module,
+            String engine,
+            String className,
+            String method,
+            String exceptionClass,
+            String stack) {
+        return diagnosticLike(
+                BUILDPLAN_DIAGNOSTIC,
+                dir,
+                step,
+                code,
+                message,
+                "",
+                exceptionClass,
+                module,
+                engine,
+                className,
+                method,
+                stack);
     }
 
     /** @see #stepFinish(String, String, String, String, long) */
