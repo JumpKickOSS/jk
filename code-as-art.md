@@ -386,17 +386,19 @@ to add it.
 
 ## After EngineServer
 
-Same charter, one patient at a time.
+Same charter, one patient at a time. **Shipped** (JK-1933–1941):
 
-| Order | File | Cut |
-|---|---|---|
-| 1 | `HttpEngineServer` (1,592) | Finish router / static / MCP / bind |
-| 2 | `EngineClient` (2,616) | Spawn, takeover, AOT train |
-| 3 | `EngineProtocol` (3,379) | Align with `EngineEvent`; delete leftover tokens |
-| 4 | `BuildService` (1,618) | Lock-guard vs execute vs fold |
-| 5 | `BuildPlanner` (5,348) | Peel remaining `*Step` clusters into the `*Plans` that already exist |
-| 6 | `JkBuildParser` (2,238) | Table parsers; one facade |
-| 7 | `JkManager` / `NewCommand` | CLI surfaces; **no Lombok** (Graal) |
+| File | Before | After | How |
+|---|---|---|---|
+| `EngineServer` | 7,073 | 1,088 | elect/accept/drain/close + composition root |
+| `JobEnvelope` | — | 683 | one submit path |
+| `HttpEngineServer` | 1,592 | 768 | router / history / project / live |
+| `EngineClient` | 2,616 | 942 | spawn, wire, hosted verbs |
+| `EngineProtocol` | 3,379 | 464 | discriminators; builders in `Proto*` families |
+| `BuildService` | 1,618 | 507 | lock-guard / execute / fold |
+| `BuildPlanner` | 5,348 | 1,191 | `Planner*` step clusters; facade `coreBuilder` |
+| `JkBuildParser` | 2,238 | 391 | `Manifest*` table parsers |
+| `JkManager` / `NewCommand` | 2,204 / 1,403 | 1,178 / 1,164 | view/color + wizard; no Lombok |
 
 ---
 
