@@ -23,7 +23,13 @@ public final class VerbRegistry {
     }
 
     public static VerbRegistry standard(VerbHost host) {
-        return new VerbRegistry(List.of(new WorkspaceBuildVerb(host), new TestVerb(host), new SingleBuildVerb(host)));
+        return new VerbRegistry(List.of(
+                new WorkspaceBuildVerb(host),
+                new TestVerb(host),
+                new SingleBuildVerb(host),
+                new LockVerb(host),
+                new UpdateVerb(host),
+                new SyncVerb(host)));
     }
 
     public @Nullable HostedVerb find(String wireType) {

@@ -9,6 +9,7 @@ import cc.jumpkick.runtime.WorkspaceBuildListener;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /** Engine services a hosted verb may not own. */
@@ -21,6 +22,9 @@ public interface VerbHost {
     WorkspaceBuildListener workspaceListener(BufferedWriter writer, String dir);
 
     BuildPlanListener planListener(String dir, BufferedWriter writer, BuildPlan plan);
+
+    BuildPlanListener planListener(
+            String dir, BufferedWriter writer, Function<cc.jumpkick.run.BuildPlanResult, String> finishEncoder);
 
     void releaseExclusiveSlot();
 
