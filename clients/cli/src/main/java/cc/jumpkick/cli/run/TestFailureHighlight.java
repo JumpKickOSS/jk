@@ -140,7 +140,8 @@ public final class TestFailureHighlight {
         Theme t = Theme.active();
         if (!t.isAnsi()) {
             String m = module == null || module.isBlank() ? "" : " in " + module;
-            return "[Test] Failure" + m + " › " + count + " test" + (plural ? "s" : "") + " failed";
+            // ASCII only: plain mode's consumers (dumb terminals, CI logs) are why it exists (JK-1910).
+            return "[Test] Failure" + m + " > " + count + " test" + (plural ? "s" : "") + " failed";
         }
         // Same red/white chip as DiagnosticReport Compile Java failures.
         AttributedStyle body = t.withBackground(t.bright(255, 255, 255), t.planFailColor());
@@ -405,7 +406,7 @@ public final class TestFailureHighlight {
     }
 
     private static String plainSrcLine(SrcRow row, int maxCode) {
-        return String.format("%4s│ %s", row.num, padRight(row.code, maxCode));
+        return String.format("%4s| %s", row.num, padRight(row.code, maxCode));
     }
 
     private static String paintSrcLine(
