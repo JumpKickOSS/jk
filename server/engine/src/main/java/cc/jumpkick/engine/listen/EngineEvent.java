@@ -67,4 +67,29 @@ public sealed interface EngineEvent {
             @Nullable String test,
             @Nullable String exceptionClass)
             implements EngineEvent {}
+
+    record ErrorFailure(String dir, String step, String code, String message, cc.jumpkick.run.TestFailureInfo failure)
+            implements EngineEvent {}
+
+    record PlanDiagnosticFailure(
+            String dir, String step, String code, String message, cc.jumpkick.run.TestFailureInfo failure)
+            implements EngineEvent {}
+
+    record Preflight(String stage, int done, int total, String label) implements EngineEvent {}
+
+    record InvocationPhase(String name, String status) implements EngineEvent {}
+
+    record PlanModule(String dir, String coord, String planName, long weight, boolean fullyCached)
+            implements EngineEvent {}
+
+    record PlanStep(String dir, String name, String label, String phase) implements EngineEvent {}
+
+    record PlanDone(int modules) implements EngineEvent {}
+
+    record ModuleStart(String dir) implements EngineEvent {}
+
+    record ModuleFinish(String dir, String coord, boolean success, int exitCode, long millis, boolean didWork)
+            implements EngineEvent {}
+
+    record Eta(long remainingMs) implements EngineEvent {}
 }
