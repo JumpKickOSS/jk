@@ -157,7 +157,7 @@ public final class JkWedge implements Widget {
     private String paintCap(RenderContext ctx, ChipColors colors) {
         if (!ctx.nerdfont() || !ctx.ansi()) return "";
         if (progress != null && progress.look() == Progress.Look.PLAN) {
-            Rgb lead = new ProgressBar().leadColor(progress.numerator(), Math.max(1L, progress.denominator()));
+            Rgb lead = ProgressBar.shared().leadColor(progress.numerator(), Math.max(1L, progress.denominator()));
             return Theme.colorize(
                     Glyphs.SEGMENT_END_NERD,
                     ctx.theme().withBackground(ctx.theme().bright(colors.cap), lead));
