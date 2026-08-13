@@ -232,7 +232,7 @@ public final class Wizard {
         var answers = new LinkedHashMap<String, Object>(preset.asMap());
 
         writer.println();
-        String hdr = headerLine(terminal);
+        String hdr = headerLine();
         writer.println(hdr);
         // Box opener: ╭ followed by dashes to match the header's visual width.
         int hdrWidth = visibleLength(hdr);
@@ -382,11 +382,15 @@ public final class Wizard {
      * auto-size to the content's visible (print-column) width.
      */
     /**
-     * Header line: BuildPlanWedge chip followed by the subtitle in bold-white. The {@code ╭──} opener
-     * is printed separately in {@link #loop} to match this line's visual width.
+     * Header line: menu wedge chip followed by the subtitle in bold-white (focused). The
+     * {@code ╭──} opener is printed separately in {@link #loop} to match this line's visual width.
      */
-    private String headerLine(Terminal terminal) {
-        return new JkWedge(Icon.menu(), command, RichText.plain(subtitle == null ? "" : subtitle))
+    private String headerLine() {
+        String sub = subtitle == null ? "" : subtitle;
+        RichText tail = sub.isEmpty()
+                ? RichText.empty()
+                : RichText.ansi(Theme.colorize(sub, Theme.active().focused()));
+        return new JkWedge(Icon.menu(), command, tail)
                 .variant(JkWedge.Variant.MENU)
                 .renderLine(RenderContext.current());
     }
