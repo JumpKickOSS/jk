@@ -176,7 +176,7 @@ public final class CleanCommand implements CliCommand {
         Path root = CacheCommand.resolveCacheRoot(cacheDirOverride);
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(new GlobalOptions());
 
-        var summary = new cc.jumpkick.cli.engine.EngineClient.CacheMaintSummary[1];
+        var summary = new cc.jumpkick.cli.engine.EngineRequests.CacheMaintSummary[1];
         ConsoleSpec spec = CacheCommand.clearSpec(
                 false,
                 () -> summary[0] != null ? summary[0].files() : 0L,
@@ -184,7 +184,7 @@ public final class CleanCommand implements CliCommand {
         try {
             var result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
                     cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest(
+                    new cc.jumpkick.cli.engine.EngineRequests.CacheMaintRequest(
                             "clear", root, 0, false, false, false, projectDir),
                     steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
                     CacheCommand::printWait,

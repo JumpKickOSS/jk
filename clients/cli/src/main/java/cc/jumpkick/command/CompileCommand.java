@@ -92,7 +92,7 @@ public final class CompileCommand implements CliCommand {
             try {
                 result = cc.jumpkick.cli.engine.EngineClient.runCompile(
                         cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineClient.CompileRequest(
+                        new cc.jumpkick.cli.engine.EngineRequests.CompileRequest(
                                 moduleDir, cache, profileName, session.offline(), session.force(), global.verbose),
                         steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, target));
             } catch (IOException e) {

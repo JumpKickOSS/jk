@@ -10,6 +10,8 @@ import cc.jumpkick.engine.listen.EventSink;
 import cc.jumpkick.engine.listen.NoopEventSink;
 import cc.jumpkick.engine.listen.WireEventSink;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoEvents;
+import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
@@ -86,7 +88,7 @@ public final class EngineListeners {
         BuildAccumulator a = sessions.accumulator(requestId);
         if (a == null) return;
         a.flushTimeline().ifPresent(path -> {
-            if (writer != null) EngineServer.sendQuiet(writer, EngineProtocol.timeline(path.toString()));
+            if (writer != null) EngineServer.sendQuiet(writer, ProtoJobs.timeline(path.toString()));
         });
     }
 
@@ -241,10 +243,10 @@ public final class EngineListeners {
                         .orElse(null);
         boolean cancelled = result.userCancelled();
         if (testResult == null && buildOutcome == null) {
-            return EngineProtocol.planFinish(dir, result.success(), cancelled);
+            return ProtoEvents.planFinish(dir, result.success(), cancelled);
         }
-        return EngineProtocol.withCancelled(
-                EngineProtocol.planFinish(
+        return ProtoEvents.withCancelled(
+                ProtoEvents.planFinish(
                         dir,
                         result.success(),
                         buildOutcome,

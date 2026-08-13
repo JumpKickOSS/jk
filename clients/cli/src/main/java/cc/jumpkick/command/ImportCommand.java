@@ -111,11 +111,11 @@ public final class ImportCommand implements CliCommand {
         int warnings;
         String error;
         String diag;
-        cc.jumpkick.cli.engine.EngineClient.ImportOutcome outcome;
+        cc.jumpkick.cli.engine.EngineRequests.ImportOutcome outcome;
         try {
             outcome = cc.jumpkick.cli.engine.EngineClient.runImport(
                     cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineClient.ImportRequest(
+                    new cc.jumpkick.cli.engine.EngineRequests.ImportRequest(
                             source.toAbsolutePath(),
                             target.toAbsolutePath(),
                             projectDir,

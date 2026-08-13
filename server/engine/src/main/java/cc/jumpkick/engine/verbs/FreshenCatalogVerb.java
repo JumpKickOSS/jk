@@ -4,6 +4,7 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoReads;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedWriter;
 import java.net.URI;
@@ -77,7 +78,7 @@ public final class FreshenCatalogVerb implements HostedVerb {
             } catch (Exception e) {
                 error = String.valueOf(e.getMessage());
             }
-            host.sendQuiet(writer, EngineProtocol.freshenCatalogAck(error == null, error));
+            host.sendQuiet(writer, ProtoReads.freshenCatalogAck(error == null, error));
 
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));

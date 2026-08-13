@@ -4,6 +4,7 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedWriter;
 import java.net.URI;
@@ -61,7 +62,7 @@ public final class ToolResolveVerb implements HostedVerb {
                 host.streamSinglePlan(plan, session, writer, result -> {
                     cc.jumpkick.tool.ToolEnv env =
                             plan.get(cc.jumpkick.runtime.ToolPlans.TOOL_ENV).orElse(null);
-                    return EngineProtocol.planFinishTool(
+                    return ProtoSession.planFinishTool(
                             dir,
                             result.success(),
                             env != null ? env.primary().toGav() : null,

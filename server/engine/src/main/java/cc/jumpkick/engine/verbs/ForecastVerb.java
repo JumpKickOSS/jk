@@ -7,6 +7,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoReads;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.runtime.BuildService;
@@ -76,12 +77,12 @@ public final class ForecastVerb implements HostedVerb {
                     } catch (IOException e) {
                         host.sendQuiet(
                                 writer,
-                                EngineProtocol.forecastAck(
+                                ProtoReads.forecastAck(
                                         List.of(), false, false, List.of(String.valueOf(e.getMessage()))));
                         return null;
                     }
                     if (graph.hasErrors()) {
-                        host.sendQuiet(writer, EngineProtocol.forecastAck(List.of(), false, false, graph.errors()));
+                        host.sendQuiet(writer, ProtoReads.forecastAck(List.of(), false, false, graph.errors()));
                         return null;
                     }
                     List<String> dirty = new ArrayList<>();
@@ -89,13 +90,13 @@ public final class ForecastVerb implements HostedVerb {
                         dirty.add(d.toString());
                     boolean lockStale = BuildService.workspaceLockStale(
                             entryDir, entryBuild, cc.jumpkick.lock.LockPaths.lockFile(entryDir));
-                    host.sendQuiet(writer, EngineProtocol.forecastAck(dirty, lockStale, graph.isEmpty(), List.of()));
+                    host.sendQuiet(writer, ProtoReads.forecastAck(dirty, lockStale, graph.isEmpty(), List.of()));
                     return null;
                 });
             } catch (Exception e) {
                 host.sendQuiet(
                         writer,
-                        EngineProtocol.forecastAck(List.of(), false, false, List.of(String.valueOf(e.getMessage()))));
+                        ProtoReads.forecastAck(List.of(), false, false, List.of(String.valueOf(e.getMessage()))));
             }
 
         } catch (Exception e) {

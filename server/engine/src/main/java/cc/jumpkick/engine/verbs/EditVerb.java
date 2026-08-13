@@ -4,6 +4,7 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoReads;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
@@ -48,7 +49,7 @@ public final class EditVerb implements HostedVerb {
             } catch (RuntimeException e) {
                 result = new cc.jumpkick.runtime.EditOps.Result(false, String.valueOf(e.getMessage()));
             }
-            host.sendQuiet(writer, EngineProtocol.editAck(result.changed(), result.error()));
+            host.sendQuiet(writer, ProtoReads.editAck(result.changed(), result.error()));
 
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));

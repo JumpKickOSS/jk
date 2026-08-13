@@ -5,6 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.engine.protocol.ProtoLifecycle;
+import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -152,16 +155,16 @@ class EngineServerTest {
         waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
 
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
-            String ack = c.send(EngineProtocol.hello("9.9.9-test"));
+            String ack = c.send(ProtoLifecycle.hello("9.9.9-test"));
             assertThat(EngineProtocol.typeOf(ack)).isEqualTo(EngineProtocol.HELLO_ACK);
             assertThat(Jsonl.str(ack, "version")).isEqualTo("9.9.9-test");
             assertThat(Jsonl.longValue(ack, "pid", -1))
                     .isEqualTo(ProcessHandle.current().pid());
 
-            String pong = c.send(EngineProtocol.ping());
+            String pong = c.send(ProtoLifecycle.ping());
             assertThat(EngineProtocol.typeOf(pong)).isEqualTo(EngineProtocol.PONG);
 
-            String status = c.send(EngineProtocol.statusRequest());
+            String status = c.send(ProtoLifecycle.statusRequest());
             assertThat(EngineProtocol.typeOf(status)).isEqualTo(EngineProtocol.STATUS_ACK);
             assertThat(Jsonl.intValue(status, "activeRequests", -1)).isEqualTo(1); // this very connection
             // Memory usage is best-effort, but heap numbers always exist on a live JVM.
@@ -197,15 +200,15 @@ class EngineServerTest {
         waitUntil(Duration.ofSeconds(5), () -> trainer[0] != null && trainer[0].isAlive());
 
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
-            c.send(EngineProtocol.hello("9.9.9-test"));
-            String status = c.send(EngineProtocol.statusRequest());
+            c.send(ProtoLifecycle.hello("9.9.9-test"));
+            String status = c.send(ProtoLifecycle.statusRequest());
             assertThat(Jsonl.longValue(status, "aotTrainingPid", -99)).isEqualTo(trainer[0].pid());
 
             // Trainer exits (self-terminates in real life) → the pid leaves the status snapshot.
             trainer[0].destroy();
             waitUntil(Duration.ofSeconds(5), () -> {
                 try {
-                    return Jsonl.longValue(c.send(EngineProtocol.statusRequest()), "aotTrainingPid", -99) == -1;
+                    return Jsonl.longValue(c.send(ProtoLifecycle.statusRequest()), "aotTrainingPid", -99) == -1;
                 } catch (IOException e) {
                     return false;
                 }
@@ -246,7 +249,7 @@ class EngineServerTest {
 
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
             // Unfiltered: global build row + both project rows + global/project step rows.
-            c.sendLine(EngineProtocol.metricsRequest(null));
+            c.sendLine(ProtoSession.metricsRequest(null));
             List<String> rows = new ArrayList<>();
             String line;
             while ((line = c.readLine()) != null && EngineProtocol.METRICS_ENTRY.equals(EngineProtocol.typeOf(line))) {
@@ -272,7 +275,7 @@ class EngineServerTest {
             assertThat(Jsonl.longValue(failedProject, "failTotalMillis", -1)).isEqualTo(400);
 
             // Filtered: /proj/a's rows plus the always-included global tiers; /proj/b drops out.
-            c.sendLine(EngineProtocol.metricsRequest("/proj/a"));
+            c.sendLine(ProtoSession.metricsRequest("/proj/a"));
             List<String> filtered = new ArrayList<>();
             while ((line = c.readLine()) != null && EngineProtocol.METRICS_ENTRY.equals(EngineProtocol.typeOf(line))) {
                 filtered.add(line);
@@ -311,7 +314,7 @@ class EngineServerTest {
         waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
 
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
-            String bye = c.send(EngineProtocol.shutdown());
+            String bye = c.send(ProtoLifecycle.shutdown());
             assertThat(EngineProtocol.typeOf(bye)).isEqualTo(EngineProtocol.BYE);
         }
         serverThread.join(5_000);
@@ -347,9 +350,9 @@ class EngineServerTest {
                         new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
                 BufferedReader r =
                         new BufferedReader(new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8));
-                w.write(EngineProtocol.auth("not-the-real-token"));
+                w.write(ProtoLifecycle.auth("not-the-real-token"));
                 w.write('\n');
-                w.write(EngineProtocol.ping());
+                w.write(ProtoLifecycle.ping());
                 w.write('\n');
                 w.flush();
                 // Typed refusal, then close: distinguishable from a crash.
@@ -366,9 +369,9 @@ class EngineServerTest {
                         new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
                 BufferedReader r =
                         new BufferedReader(new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8));
-                w.write(EngineProtocol.auth(token));
+                w.write(ProtoLifecycle.auth(token));
                 w.write('\n');
-                w.write(EngineProtocol.ping());
+                w.write(ProtoLifecycle.ping());
                 w.write('\n');
                 w.flush();
                 assertThat(EngineProtocol.typeOf(r.readLine())).isEqualTo(EngineProtocol.PONG);
@@ -443,7 +446,7 @@ class EngineServerTest {
             boolean sawAnyPackage = false;
             int lastPackageTotal = -1;
             try (Client c = new Client(EnginePaths.activeSocket(p))) {
-                c.sendLine(EngineProtocol.lockRequest(
+                c.sendLine(ProtoJobs.lockRequest(
                         project.toString(),
                         cache.toString(),
                         List.of(),
@@ -573,7 +576,7 @@ class EngineServerTest {
             String planFinish = null;
             String buildError = null;
             try (Client c = new Client(EnginePaths.activeSocket(p))) {
-                c.sendLine(EngineProtocol.auditRequest(
+                c.sendLine(ProtoJobs.auditRequest(
                         project.toString(), cache.toString(), "LOW", base + "/querybatch", base + "/vulns/"));
                 String line;
                 while ((line = c.readLine()) != null) {
@@ -665,7 +668,7 @@ class EngineServerTest {
         Thread serverThread = runInBackground(server);
         waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
         try {
-            String plain = EngineProtocol.singleBuildRequest(
+            String plain = ProtoJobs.singleBuildRequest(
                     project.toString(), cache.toString(), null, 1, null, true, false, false, false);
 
             // First build: real compile, stamps + caches populated.
@@ -673,7 +676,7 @@ class EngineServerTest {
             // Sanity: a plain second build IS the fast path.
             assertThat(runToBuildPlanFinish(p, plain)).contains("\"buildOutcome\":\"up-to-date\"");
             // The envelope's rebuild defeats it.
-            String distrust = EngineProtocol.withSession(plain, null, null, null, true);
+            String distrust = ProtoSession.withSession(plain, null, null, null, true);
             assertThat(runToBuildPlanFinish(p, distrust))
                     .as("rebuild must reach the engine's stamp checks")
                     .doesNotContain("\"buildOutcome\":\"up-to-date\"");
@@ -736,7 +739,7 @@ class EngineServerTest {
         String planFinish = null;
         String buildError = null;
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
-            c.sendLine(EngineProtocol.compileRequest(project.toString(), cache.toString(), null, false, false, false));
+            c.sendLine(ProtoJobs.compileRequest(project.toString(), cache.toString(), null, false, false, false));
             String line;
             while ((line = c.readLine()) != null) {
                 String type = EngineProtocol.typeOf(line);
@@ -811,7 +814,7 @@ class EngineServerTest {
             String planFinish = null;
             String buildError = null;
             try (Client c = new Client(EnginePaths.activeSocket(p))) {
-                c.sendLine(EngineProtocol.toolResolveRequest(
+                c.sendLine(ProtoSession.toolResolveRequest(
                         "com.example:widget-cli:1.0.0",
                         List.of(),
                         "widget",
@@ -888,7 +891,7 @@ class EngineServerTest {
         String planFinish = null;
         String buildError = null;
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
-            c.sendLine(EngineProtocol.cachePruneRequest("prune", cache.toString(), 30, false, false, false));
+            c.sendLine(ProtoSession.cachePruneRequest("prune", cache.toString(), 30, false, false, false));
             String line;
             while ((line = c.readLine()) != null) {
                 String type = EngineProtocol.typeOf(line);
@@ -959,7 +962,7 @@ class EngineServerTest {
         String planFinish = null;
         String buildError = null;
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
-            c.sendLine(EngineProtocol.cacheClearRequest(cache.toString(), project.toString(), false));
+            c.sendLine(ProtoSession.cacheClearRequest(cache.toString(), project.toString(), false));
             String line;
             while ((line = c.readLine()) != null) {
                 String type = EngineProtocol.typeOf(line);
@@ -1021,7 +1024,7 @@ class EngineServerTest {
         Thread serverThread = runInBackground(server);
         waitUntil(Duration.ofSeconds(5), () -> {
             try (Client c = new Client(EnginePaths.activeSocket(p))) {
-                return EngineProtocol.PONG.equals(EngineProtocol.typeOf(c.send(EngineProtocol.ping())));
+                return EngineProtocol.PONG.equals(EngineProtocol.typeOf(c.send(ProtoLifecycle.ping())));
             } catch (IOException e) {
                 return false;
             }
@@ -1080,10 +1083,10 @@ class EngineServerTest {
                 .isEqualTo(401);
 
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
-            String ack = c.send(EngineProtocol.statusRequest());
+            String ack = c.send(ProtoLifecycle.statusRequest());
             assertThat(Jsonl.str(ack, "httpUrl")).isEqualTo(url);
             assertThat(Jsonl.str(ack, "httpError")).isNull();
-            assertThat(c.send(EngineProtocol.shutdown())).isNotNull(); // bye
+            assertThat(c.send(ProtoLifecycle.shutdown())).isNotNull(); // bye
         }
         serverThread.join(5_000);
         assertThat(serverThread.isAlive()).isFalse();
@@ -1111,9 +1114,9 @@ class EngineServerTest {
 
             try (Client c = new Client(EnginePaths.activeSocket(p))) {
                 // The engine's primary role is unharmed...
-                assertThat(EngineProtocol.typeOf(c.send(EngineProtocol.ping()))).isEqualTo(EngineProtocol.PONG);
+                assertThat(EngineProtocol.typeOf(c.send(ProtoLifecycle.ping()))).isEqualTo(EngineProtocol.PONG);
                 // ...and status reports the bind failure instead of a URL.
-                String ack = c.send(EngineProtocol.statusRequest());
+                String ack = c.send(ProtoLifecycle.statusRequest());
                 assertThat(Jsonl.str(ack, "httpUrl")).isNull();
                 assertThat(Jsonl.str(ack, "httpError")).isNotEmpty();
             }

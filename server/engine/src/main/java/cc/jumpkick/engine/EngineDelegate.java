@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import cc.jumpkick.cache.VersionStore;
 import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import java.io.BufferedReader;
@@ -161,7 +162,7 @@ public final class EngineDelegate {
         if (pinIsNewer(pin, version)) {
             sendQuiet(
                     writer,
-                    EngineProtocol.error(
+                    ProtoLifecycle.error(
                             EngineProtocol.ERR_VERSION_SKEW,
                             "this build pins jk " + pin + " but the engine is "
                                     + version + " — run that project's wrapper (./jk) or `jk self update` to upgrade;"
@@ -172,11 +173,11 @@ public final class EngineDelegate {
             runAsChild(pin, requestLine, reader, writer, stderrLog, log);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            sendQuiet(writer, EngineProtocol.requestFailed("interrupted delegating to jk " + pin));
+            sendQuiet(writer, ProtoLifecycle.requestFailed("interrupted delegating to jk " + pin));
         } catch (IOException e) {
             sendQuiet(
                     writer,
-                    EngineProtocol.requestFailed(EventRedaction.redactEnv(null, String.valueOf(e.getMessage()))));
+                    ProtoLifecycle.requestFailed(EventRedaction.redactEnv(null, String.valueOf(e.getMessage()))));
         }
         return true;
     }

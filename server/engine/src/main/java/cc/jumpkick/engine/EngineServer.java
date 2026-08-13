@@ -15,6 +15,7 @@ import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.engine.verbs.HostedVerb;
 import cc.jumpkick.engine.verbs.VerbRegistry;
 import cc.jumpkick.engine.verbs.VerbShape;
@@ -515,7 +516,7 @@ public final class EngineServer implements AutoCloseable {
         try (SocketChannel ch = openClient(previousActive)) {
             java.io.BufferedWriter w = new java.io.BufferedWriter(new java.io.OutputStreamWriter(
                     java.nio.channels.Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            w.write(EngineProtocol.shutdown(false));
+            w.write(ProtoLifecycle.shutdown(false));
             w.write('\n');
             w.flush();
             log.accept("jk engine: drained displaced engine at " + previousActive.getFileName());
@@ -553,7 +554,7 @@ public final class EngineServer implements AutoCloseable {
                     java.nio.channels.Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(
                     java.nio.channels.Channels.newInputStream(ch), StandardCharsets.UTF_8));
-            w.write(EngineProtocol.hello(probeVersion, "probe"));
+            w.write(ProtoLifecycle.hello(probeVersion, "probe"));
             w.write('\n');
             w.flush();
             String ack = r.readLine();
@@ -578,7 +579,7 @@ public final class EngineServer implements AutoCloseable {
                     java.nio.channels.Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             // The auth envelope, exactly as the CLI client sends it — authenticate accepts
             // nothing else (a raw token line here once broke takeover/election on TCP).
-            w.write(EngineProtocol.auth(Files.readString(token).trim()));
+            w.write(ProtoLifecycle.auth(Files.readString(token).trim()));
             w.write('\n');
             w.flush();
             return ch;
@@ -695,7 +696,7 @@ public final class EngineServer implements AutoCloseable {
                         new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8))) {
             if (expectedToken != null && !authenticate(reader)) {
                 // Typed refusal (then close): a silent close is indistinguishable from a crash.
-                sendQuiet(writer, EngineProtocol.error(EngineProtocol.ERR_AUTH, "engine token rejected"));
+                sendQuiet(writer, ProtoLifecycle.error(EngineProtocol.ERR_AUTH, "engine token rejected"));
                 return;
             }
             serveConnection(reader, writer);
@@ -734,7 +735,7 @@ public final class EngineServer implements AutoCloseable {
                 // request wedges a streaming client that is waiting for a terminal event.
                 sendQuiet(
                         writer,
-                        EngineProtocol.error(
+                        ProtoLifecycle.error(
                                 EngineProtocol.ERR_PROTOCOL, "unparseable request line (no \"type\" discriminator)"));
                 continue;
             }
@@ -756,21 +757,21 @@ public final class EngineServer implements AutoCloseable {
                         // it postdates — the client reacts by taking over (spawn + drain).
                         send(
                                 writer,
-                                EngineProtocol.error(
+                                ProtoLifecycle.error(
                                         EngineProtocol.ERR_VERSION_SKEW,
                                         "client speaks protocol " + clientProto + " but this engine speaks "
                                                 + EngineProtocol.PROTOCOL + " — start a matching engine"));
                         return;
                     }
-                    send(writer, EngineProtocol.helloAck(version, pid, startedAtMillis, draining, buildId));
+                    send(writer, ProtoLifecycle.helloAck(version, pid, startedAtMillis, draining, buildId));
                 }
-                case EngineProtocol.PING -> send(writer, EngineProtocol.pong());
+                case EngineProtocol.PING -> send(writer, ProtoLifecycle.pong());
                 case EngineProtocol.STATUS -> {
                     cc.jumpkick.engine.http.StatusSnapshot s = statusSnapshot();
                     HttpEngineServer hs = http.server();
                     send(
                             writer,
-                            EngineProtocol.statusAck(
+                            ProtoLifecycle.statusAck(
                                     s.version(),
                                     s.pid(),
                                     s.startedAtMillis(),
@@ -802,7 +803,7 @@ public final class EngineServer implements AutoCloseable {
                             // Immediate: no in-flight jobs, or an explicit force — close the listener
                             // now so run returns and the JVM exits cleanly (AOT still assembles when
                             // we remain primary).
-                            send(writer, EngineProtocol.bye(n, false));
+                            send(writer, ProtoLifecycle.bye(n, false));
                             shuttingDown = true;
                             closeServerChannelQuietly();
                         } else {
@@ -810,7 +811,7 @@ public final class EngineServer implements AutoCloseable {
                             // "shutting down" handshake and in-flight jobs finish); the last job to
                             // complete triggers the clean exit (see maybeIdleBoundary).
                             draining = true;
-                            send(writer, EngineProtocol.bye(n, true));
+                            send(writer, ProtoLifecycle.bye(n, true));
                         }
                     }
                     http.stopNow(); // hand the Web UI port to the successor right away
@@ -819,7 +820,7 @@ public final class EngineServer implements AutoCloseable {
                 case EngineProtocol.CANCEL_REQUEST -> handleCancelRequest(line, writer);
                 default ->
                     sendQuiet(
-                            writer, EngineProtocol.error(EngineProtocol.ERR_PROTOCOL, "unknown request type: " + type));
+                            writer, ProtoLifecycle.error(EngineProtocol.ERR_PROTOCOL, "unknown request type: " + type));
             }
         }
     }
@@ -854,18 +855,18 @@ public final class EngineServer implements AutoCloseable {
         String dir = Jsonl.str(requestLine, "dir");
         if (jid >= 0) {
             boolean ok = cancelJob(jid);
-            send(writer, EngineProtocol.cancelAck(jid, ok, ok ? null : "unknown or already finished jid"));
+            send(writer, ProtoLifecycle.cancelAck(jid, ok, ok ? null : "unknown or already finished jid"));
             return;
         }
         if (dir != null && !dir.isBlank()) {
             int n = jobs.cancelJobsForDir(dir);
             send(
                     writer,
-                    EngineProtocol.cancelAck(
+                    ProtoLifecycle.cancelAck(
                             0, n > 0, n > 0 ? ("cancelled " + n + " job(s)") : "no running jobs for dir"));
             return;
         }
-        send(writer, EngineProtocol.cancelAck(-1, false, "cancel-request requires jid or dir"));
+        send(writer, ProtoLifecycle.cancelAck(-1, false, "cancel-request requires jid or dir"));
     }
 
     boolean cancelJob(long jid) {

@@ -213,12 +213,12 @@ public final class BuildAccumulator {
      * rows exist, top-level tasks are the single-plan chain (including {@code RUN}).
      */
     public MidFlight midFlight() {
-        List<cc.jumpkick.engine.http.HttpEngineServer.LiveModule> moduleList = new ArrayList<>();
+        List<cc.jumpkick.engine.http.HttpLive.Module> moduleList = new ArrayList<>();
         Set<String> covered = new HashSet<>();
         for (ModuleOutcome o : modules) {
             String mdir = o.dir() == null ? "" : o.dir().toString();
             covered.add(mdir);
-            moduleList.add(new cc.jumpkick.engine.http.HttpEngineServer.LiveModule(
+            moduleList.add(new cc.jumpkick.engine.http.HttpLive.Module(
                     mdir,
                     o.coord(),
                     /* finished */ true,
@@ -230,25 +230,23 @@ public final class BuildAccumulator {
         for (String d : stepsByDir.keySet()) {
             if (covered.contains(d)) continue;
             if (d.isEmpty()) continue; // single-plan top-level bucket
-            moduleList.add(new cc.jumpkick.engine.http.HttpEngineServer.LiveModule(
+            moduleList.add(new cc.jumpkick.engine.http.HttpLive.Module(
                     d, null, /* finished */ false, false, 0L, /* didWork n/a */ true, liveTasks(stepsFor(d))));
         }
-        List<cc.jumpkick.engine.http.HttpEngineServer.LiveTask> top =
-                moduleList.isEmpty() ? liveTasks(stepsFor("")) : List.of();
+        List<cc.jumpkick.engine.http.HttpLive.Task> top = moduleList.isEmpty() ? liveTasks(stepsFor("")) : List.of();
         return new MidFlight(moduleList, top);
     }
 
-    private static List<cc.jumpkick.engine.http.HttpEngineServer.LiveTask> liveTasks(List<BuildRecord.Task> steps) {
-        List<cc.jumpkick.engine.http.HttpEngineServer.LiveTask> out = new ArrayList<>(steps.size());
+    private static List<cc.jumpkick.engine.http.HttpLive.Task> liveTasks(List<BuildRecord.Task> steps) {
+        List<cc.jumpkick.engine.http.HttpLive.Task> out = new ArrayList<>(steps.size());
         for (BuildRecord.Task s : steps) {
-            out.add(new cc.jumpkick.engine.http.HttpEngineServer.LiveTask(s.name(), s.stage(), s.status(), s.millis()));
+            out.add(new cc.jumpkick.engine.http.HttpLive.Task(s.name(), s.stage(), s.status(), s.millis()));
         }
         return out;
     }
 
     public record MidFlight(
-            List<cc.jumpkick.engine.http.HttpEngineServer.LiveModule> modules,
-            List<cc.jumpkick.engine.http.HttpEngineServer.LiveTask> tasks) {
+            List<cc.jumpkick.engine.http.HttpLive.Module> modules, List<cc.jumpkick.engine.http.HttpLive.Task> tasks) {
         public MidFlight {
             modules = modules == null ? List.of() : List.copyOf(modules);
             tasks = tasks == null ? List.of() : List.copyOf(tasks);

@@ -3,7 +3,7 @@ package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.engine.CoalescingLockPackages;
 import cc.jumpkick.engine.listen.BridgingPlanListener;
-import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
@@ -69,21 +69,21 @@ final class LockCascade {
             coord = scope.coord();
         } catch (RuntimeException e) {
             host.sendQuiet(
-                    writer, EngineProtocol.lockFinish(false, Exit.CONFIG, List.of(String.valueOf(e.getMessage())), -1));
+                    writer, ProtoEvents.lockFinish(false, Exit.CONFIG, List.of(String.valueOf(e.getMessage())), -1));
             return;
         }
 
         synchronized (LockGate.monitorFor(lockDir)) {
             if (conservative && !LockFreshness.isStale(lockDir, LockPaths.lockFile(lockDir))) {
-                host.sendQuiet(writer, EngineProtocol.lockFinish(true, 0, List.of(), -1));
+                host.sendQuiet(writer, ProtoEvents.lockFinish(true, 0, List.of(), -1));
                 return;
             }
             Path dir = lockDir;
             String dirTag = dir.toString();
-            host.sendQuiet(writer, EngineProtocol.lockModule(dirTag, coord));
+            host.sendQuiet(writer, ProtoEvents.lockModule(dirTag, coord));
 
             CoalescingLockPackages lockPkgs = new CoalescingLockPackages(
-                    (d, name, ver, total) -> host.sendQuiet(writer, EngineProtocol.lockPackage(d, name, ver, total)));
+                    (d, name, ver, total) -> host.sendQuiet(writer, ProtoEvents.lockPackage(d, name, ver, total)));
             ResolveObserver observer = new ResolveObserver() {
                 @Override
                 public void onTotal(int total) {}
@@ -110,18 +110,18 @@ final class LockCascade {
             for (Task p : plan.steps()) {
                 host.sendQuiet(
                         writer,
-                        EngineProtocol.planStep(
+                        ProtoEvents.planStep(
                                 dirTag,
                                 p.name(),
                                 p.label(),
                                 BridgingPlanListener.phaseWire(p.group().orElse(null))));
             }
-            host.sendQuiet(writer, EngineProtocol.planDone(1));
+            host.sendQuiet(writer, ProtoEvents.planDone(1));
             plan.addListener(host.planListener(dirTag, writer, result -> {
                 lockPkgs.flush();
                 lockPkgs.close();
                 Lockfile lock = plan.get(LockPlans.LOCKFILE).orElse(null);
-                return EngineProtocol.planFinishLock(
+                return ProtoEvents.planFinishLock(
                         dirTag,
                         result.success(),
                         lock != null ? lock.artifacts().size() : -1,
@@ -136,11 +136,10 @@ final class LockCascade {
             BuildPlanResult result = plan.run();
             lockPkgs.close();
             if (!result.success()) {
-                host.sendQuiet(
-                        writer, EngineProtocol.lockFinish(false, LockPlans.failureExitCode(result), List.of(), -1));
+                host.sendQuiet(writer, ProtoEvents.lockFinish(false, LockPlans.failureExitCode(result), List.of(), -1));
                 return;
             }
         }
-        host.sendQuiet(writer, EngineProtocol.lockFinish(true, 0, List.of(), -1));
+        host.sendQuiet(writer, ProtoEvents.lockFinish(true, 0, List.of(), -1));
     }
 }

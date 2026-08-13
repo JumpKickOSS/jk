@@ -5,6 +5,7 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleSelection;
 import cc.jumpkick.config.WorkspaceLoader;
@@ -276,7 +277,7 @@ public final class TasksCommand implements CliCommand {
             boolean serial = global != null && global.jobsEffective() == 1;
             return EngineClient.explain(
                     EnginePaths.current(),
-                    new EngineClient.ExplainRequest(
+                    new EngineRequests.ExplainRequest(
                             startDir.toAbsolutePath().normalize(),
                             cache.toAbsolutePath().normalize(),
                             1,

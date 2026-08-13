@@ -3,6 +3,7 @@ package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.engine.listen.BridgingPlanListener;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.Task;
 import java.io.BufferedWriter;
@@ -18,13 +19,13 @@ final class PlanBurst {
         for (Task p : plan.steps()) {
             host.sendQuiet(
                     writer,
-                    EngineProtocol.planStep(
+                    ProtoEvents.planStep(
                             dir,
                             p.name(),
                             p.label(),
                             BridgingPlanListener.phaseWire(p.group().orElse(null))));
         }
-        host.sendQuiet(writer, EngineProtocol.planDone(1));
+        host.sendQuiet(writer, ProtoEvents.planDone(1));
         plan.addListener(host.planListener(dir, writer, plan));
     }
 
@@ -39,13 +40,13 @@ final class PlanBurst {
         for (Task p : plan.steps()) {
             host.sendQuiet(
                     writer,
-                    EngineProtocol.planStep(
+                    ProtoEvents.planStep(
                             dir,
                             p.name(),
                             p.label(),
                             BridgingPlanListener.phaseWire(p.group().orElse(null))));
         }
-        host.sendQuiet(writer, EngineProtocol.planDone(1));
+        host.sendQuiet(writer, ProtoEvents.planDone(1));
         plan.addListener(host.planListener(dir, writer, finishEncoder));
         cc.jumpkick.config.SessionContext.where(session, plan::run);
     }

@@ -4,6 +4,7 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedWriter;
 import java.net.URI;
@@ -79,7 +80,7 @@ public final class ScriptPrepareVerb implements HostedVerb {
                             .orElse(null);
                     Path stdlib =
                             plan.get(cc.jumpkick.runtime.ScriptPlans.KT_STDLIB).orElse(null);
-                    return EngineProtocol.planFinishScript(
+                    return ProtoSession.planFinishScript(
                             dir,
                             result.success(),
                             plan.get(cc.jumpkick.runtime.ScriptPlans.MAIN_CLASS).orElse(null),

@@ -148,7 +148,7 @@ public final class RunCommand {
                 // Engine-hosted single-module build (SINGLE_BUILD_REQUEST, skipTests).
                 result = cc.jumpkick.cli.engine.EngineClient.runSingleBuild(
                         cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineClient.SingleBuildRequest(
+                        new cc.jumpkick.cli.engine.EngineRequests.SingleBuildRequest(
                                 projectDir,
                                 cache,
                                 jdksDir,

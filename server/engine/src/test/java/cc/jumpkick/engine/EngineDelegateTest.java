@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedReader;
@@ -127,7 +128,7 @@ class EngineDelegateTest {
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader r =
                     new BufferedReader(new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8));
-            w.write(EngineProtocol.singleBuildRequest(
+            w.write(ProtoJobs.singleBuildRequest(
                     project.toString(), project.resolve("cache").toString(), null, 1, null, true, false, false, false));
             w.write('\n');
             w.flush();

@@ -5,6 +5,7 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
@@ -659,7 +660,7 @@ public final class StatusCommand implements CliCommand {
             long[] etaOut = new long[1];
             ExplainPlan plan = EngineClient.explain(
                     paths,
-                    new EngineClient.ExplainRequest(
+                    new EngineRequests.ExplainRequest(
                             cwd, JkDirs.cache(), 1, false, null, null, true, false, false, false),
                     etaOut);
             if (plan == null || plan.modules() == null) return null;

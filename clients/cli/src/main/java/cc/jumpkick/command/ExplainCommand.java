@@ -193,7 +193,7 @@ public final class ExplainCommand implements CliCommand {
             // Forecast via engine: graph + per-step plan + schedule-aware ETA.
             plan = cc.jumpkick.cli.engine.EngineClient.explain(
                     cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineClient.ExplainRequest(
+                    new cc.jumpkick.cli.engine.EngineRequests.ExplainRequest(
                             startDir,
                             cache,
                             workers,

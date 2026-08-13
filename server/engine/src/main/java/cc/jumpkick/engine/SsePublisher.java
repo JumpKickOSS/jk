@@ -8,7 +8,7 @@ import cc.jumpkick.engine.jobs.JobSession;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.listen.EventRedaction;
-import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import java.nio.file.Path;
@@ -283,7 +283,7 @@ public final class SsePublisher {
             // The HELD percent goes on both wire surfaces — the JSONL line used to carry the raw
             // (possibly regressing) value while SSE got the held one via withProgress (JK-1821).
             double pct = heldPct;
-            String line = EngineProtocol.workspaceProgress(
+            String line = ProtoEvents.workspaceProgress(
                     dir, num, den, snap.phase(), snap.modulesComplete(), snap.modulesTotal(), rem, r0, pct);
             if (writer != null) EngineServer.sendQuiet(writer, line);
             if (eventsWanted()) {

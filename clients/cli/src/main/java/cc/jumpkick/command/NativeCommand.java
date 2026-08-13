@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.CompositeBuildPlanListener;
 import cc.jumpkick.cli.run.ConsoleSpec;
@@ -149,10 +150,10 @@ public final class NativeCommand implements CliCommand {
     }
 
     /** The engine request for {@code entryDir}, with the client-resolved GraalVM homes attached. */
-    private EngineClient.NativeRequest hostedRequest(
+    private EngineRequests.NativeRequest hostedRequest(
             Path entryDir, Path cache, Map<Path, Path> graalHomes, List<Path> selectedModuleDirs) {
         var session = cc.jumpkick.config.SessionContext.current();
-        return new EngineClient.NativeRequest(
+        return new EngineRequests.NativeRequest(
                 entryDir,
                 cache,
                 jdksDir,

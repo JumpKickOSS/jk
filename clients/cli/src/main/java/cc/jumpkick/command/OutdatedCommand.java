@@ -83,7 +83,7 @@ public final class OutdatedCommand implements CliCommand {
         OutdatedReport report;
         report = cc.jumpkick.cli.engine.EngineClient.runOutdated(
                 cc.jumpkick.engine.EnginePaths.current(),
-                new cc.jumpkick.cli.engine.EngineClient.OutdatedRequest(
+                new cc.jumpkick.cli.engine.EngineRequests.OutdatedRequest(
                         dir, cache, repoUrl, global.offline, global.force));
 
         if (report.error() != null) {

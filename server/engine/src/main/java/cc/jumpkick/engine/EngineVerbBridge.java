@@ -9,7 +9,8 @@ import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.JournalWriter;
 import cc.jumpkick.engine.listen.EventRedaction;
-import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoLifecycle;
+import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.engine.verbs.VerbHost;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.run.BuildPlan;
@@ -156,7 +157,7 @@ public final class EngineVerbBridge implements VerbHost {
 
     @Override
     public String requestFailedLine(@Nullable String dir, Throwable e) {
-        return EngineProtocol.requestFailed(EventRedaction.redactEnv(dir, String.valueOf(e.getMessage())));
+        return ProtoLifecycle.requestFailed(EventRedaction.redactEnv(dir, String.valueOf(e.getMessage())));
     }
 
     @Override
@@ -243,8 +244,8 @@ public final class EngineVerbBridge implements VerbHost {
                 .withWorkingDir(entryDir)
                 .withCacheDir(cache)
                 .withCancel(cancelToken)
-                .withJvm(EngineProtocol.jvmTuning(requestLine))
-                .withVariant(EngineProtocol.variantOf(requestLine), EngineProtocol.clientEnvOf(requestLine))
-                .withAssemblyOverride(EngineProtocol.assemblyOverrideOf(requestLine));
+                .withJvm(ProtoSession.jvmTuning(requestLine))
+                .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine))
+                .withAssemblyOverride(ProtoSession.assemblyOverrideOf(requestLine));
     }
 }

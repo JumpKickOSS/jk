@@ -4,6 +4,7 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedWriter;
 
@@ -44,12 +45,12 @@ public final class OptimizeVerb implements HostedVerb {
                 host.sendQuiet(
                         writer,
                         scheduled
-                                ? EngineProtocol.optimizeAck(
+                                ? ProtoLifecycle.optimizeAck(
                                         true, "", "scheduled", "scheduled: host warmup on idle worker")
-                                : EngineProtocol.optimizeAck(
+                                : ProtoLifecycle.optimizeAck(
                                         true, "", "", "nothing to do: worker AOT and calibration are current"));
             } catch (RuntimeException e) {
-                host.sendQuiet(writer, EngineProtocol.optimizeAck(false, "", "", "optimize failed: " + e.getMessage()));
+                host.sendQuiet(writer, ProtoLifecycle.optimizeAck(false, "", "", "optimize failed: " + e.getMessage()));
             }
 
         } catch (Exception e) {

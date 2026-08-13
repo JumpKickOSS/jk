@@ -6,6 +6,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.listen.BridgingPlanListener;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
@@ -68,18 +69,18 @@ public final class SyncVerb implements HostedVerb {
                 for (Task p : plan.steps()) {
                     host.sendQuiet(
                             writer,
-                            EngineProtocol.planStep(
+                            ProtoEvents.planStep(
                                     dir,
                                     p.name(),
                                     p.label(),
                                     BridgingPlanListener.phaseWire(p.group().orElse(null))));
                 }
-                host.sendQuiet(writer, EngineProtocol.planDone(1));
+                host.sendQuiet(writer, ProtoEvents.planDone(1));
                 plan.addListener(host.planListener(
                         dir,
                         writer,
                         (BuildPlanResult result) ->
-                                EngineProtocol.planFinishSync(dir, result.success(), fetched.get(), upToDate.get())));
+                                ProtoEvents.planFinishSync(dir, result.success(), fetched.get(), upToDate.get())));
                 BuildPlanResult result = plan.run();
                 if (result.success()) host.maybeEnqueuePrune(cache);
                 return null;

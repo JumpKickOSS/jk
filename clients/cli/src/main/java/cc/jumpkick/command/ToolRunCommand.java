@@ -258,11 +258,11 @@ public final class ToolRunCommand implements CliCommand {
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
 
         Path checkout;
-        cc.jumpkick.cli.engine.EngineClient.GitFetchOutcome outcome;
+        cc.jumpkick.cli.engine.EngineRequests.GitFetchOutcome outcome;
         try {
             outcome = cc.jumpkick.cli.engine.EngineClient.runGitFetch(
                     cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineClient.GitFetchRequest(
+                    new cc.jumpkick.cli.engine.EngineRequests.GitFetchRequest(
                             expanded, canonical, refStr, cacheDir, refresh, /* requireJkToml */ false),
                     steps -> BuildPlanConsole.chooseConsoleListener("tool-git-fetch", steps, mode));
         } catch (IOException e) {
@@ -428,11 +428,11 @@ public final class ToolRunCommand implements CliCommand {
         Files.createDirectories(cacheDir);
 
         ToolEnv env;
-        cc.jumpkick.cli.engine.EngineClient.ToolResolveOutcome outcome;
+        cc.jumpkick.cli.engine.EngineRequests.ToolResolveOutcome outcome;
         try {
             outcome = cc.jumpkick.cli.engine.EngineClient.runToolResolve(
                     cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineClient.ToolResolveRequest(
+                    new cc.jumpkick.cli.engine.EngineRequests.ToolResolveRequest(
                             resolved.coordSpec(), with, bin, mainClass, repoUrl, cacheDir),
                     steps -> BuildPlanConsole.chooseConsoleListener(
                             "tool-run", steps, BuildPlanConsole.modeFor(global)));

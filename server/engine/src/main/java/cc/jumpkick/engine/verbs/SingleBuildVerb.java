@@ -5,6 +5,8 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.PreflightMemo;
@@ -65,7 +67,7 @@ public final class SingleBuildVerb implements HostedVerb {
                     : cc.jumpkick.runtime.TestSupport.estimateSelectedSuiteTestCount(
                             entryDir,
                             cc.jumpkick.layout.ModuleLayout.isCompact(entryDir),
-                            EngineProtocol.testSelectionOf(requestLine));
+                            ProtoJobs.testSelectionOf(requestLine));
 
             Session session =
                     host.resolveSession(requestLine, cancelToken, false).withJdksDir(jdksDir);
@@ -86,7 +88,7 @@ public final class SingleBuildVerb implements HostedVerb {
                             /* compileOnly */ false,
                             Set.of(),
                             session)
-                    .withVariant(EngineProtocol.variantOf(requestLine), EngineProtocol.clientEnvOf(requestLine));
+                    .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine));
             cc.jumpkick.run.BuildPlan plan = SessionContext.where(session, () -> {
                 cc.jumpkick.run.BuildPlan.Builder builder = cc.jumpkick.runtime.BuildPlanner.coreBuilder(inputs, false);
                 cc.jumpkick.runtime.BuildPlanner.appendDeclaredTails(builder, inputs);

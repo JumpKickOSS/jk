@@ -5,6 +5,8 @@ import cc.jumpkick.cli.Jk;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.EngineWireException;
+import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.engine.protocol.ProtoReads;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
@@ -37,10 +39,10 @@ final class EngineResolveAdapter {
      * no plan stream.
      */
     static cc.jumpkick.engine.protocol.OutdatedReport runOutdated(
-            EnginePaths.Paths paths, EngineClient.OutdatedRequest req) throws IOException {
+            EnginePaths.Paths paths, EngineRequests.OutdatedRequest req) throws IOException {
         return EngineBuildListenerAdapter.request(
                 paths,
-                EngineProtocol.outdatedRequest(
+                ProtoReads.outdatedRequest(
                         req.entryDir().toString(),
                         req.cache().toString(),
                         req.repoUrl() != null ? req.repoUrl().toString() : null,
@@ -52,12 +54,12 @@ final class EngineResolveAdapter {
     }
 
     /** Run {@code jk lock}'s cascade against the engine, driving {@code handler}. */
-    static EngineClient.LockOutcome runLock(
-            EnginePaths.Paths paths, EngineClient.LockRequest req, EngineClient.LockHandler handler)
+    static EngineRequests.LockOutcome runLock(
+            EnginePaths.Paths paths, EngineRequests.LockRequest req, EngineRequests.LockHandler handler)
             throws IOException {
         return streamCascade(
                 paths,
-                EngineProtocol.lockRequest(
+                ProtoJobs.lockRequest(
                         req.entryDir().toString(),
                         req.cache().toString(),
                         req.features(),
@@ -73,8 +75,8 @@ final class EngineResolveAdapter {
     }
 
     /** Run {@code jk update}'s full re-resolve cascade against the engine, driving {@code handler}. */
-    static EngineClient.LockOutcome runUpdate(
-            EnginePaths.Paths paths, EngineClient.UpdateRequest req, EngineClient.LockHandler handler)
+    static EngineRequests.LockOutcome runUpdate(
+            EnginePaths.Paths paths, EngineRequests.UpdateRequest req, EngineRequests.LockHandler handler)
             throws IOException {
         return streamCascade(paths, updateRequestLine(req, false, null), handler, "update");
     }
@@ -84,13 +86,13 @@ final class EngineResolveAdapter {
      * splices the lock and replies with just the terminal, whose {@code refreshed} count and plain
      * {@code errors} the command renders.
      */
-    static EngineClient.LockOutcome runUpdateGitOnly(
-            EnginePaths.Paths paths, EngineClient.UpdateRequest req, String gitTarget) throws IOException {
+    static EngineRequests.LockOutcome runUpdateGitOnly(
+            EnginePaths.Paths paths, EngineRequests.UpdateRequest req, String gitTarget) throws IOException {
         return streamCascade(paths, updateRequestLine(req, true, gitTarget), NOOP_HANDLER, "update");
     }
 
-    private static String updateRequestLine(EngineClient.UpdateRequest req, boolean gitOnly, String gitTarget) {
-        return EngineProtocol.updateRequest(
+    private static String updateRequestLine(EngineRequests.UpdateRequest req, boolean gitOnly, String gitTarget) {
+        return ProtoJobs.updateRequest(
                 req.entryDir().toString(),
                 req.cache().toString(),
                 req.features(),
@@ -113,7 +115,7 @@ final class EngineResolveAdapter {
      */
     static BuildPlanResult runSync(
             EnginePaths.Paths paths,
-            EngineClient.SyncRequest req,
+            EngineRequests.SyncRequest req,
             Function<List<Task>, BuildPlanListener> listenerFactory,
             long[] fetchedOut,
             long[] upToDateOut)
@@ -127,7 +129,7 @@ final class EngineResolveAdapter {
 
             send(
                     writer,
-                    EngineProtocol.syncRequest(
+                    ProtoJobs.syncRequest(
                             req.entryDir().toString(),
                             req.cache().toString(),
                             req.jdksDir() != null ? req.jdksDir().toString() : null,
@@ -178,8 +180,8 @@ final class EngineResolveAdapter {
     }
 
     /** Send a cascade request and replay its stream into {@code handler} until the terminal arrives. */
-    private static EngineClient.LockOutcome streamCascade(
-            EnginePaths.Paths paths, String requestLine, EngineClient.LockHandler handler, String planName)
+    private static EngineRequests.LockOutcome streamCascade(
+            EnginePaths.Paths paths, String requestLine, EngineRequests.LockHandler handler, String planName)
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
 
@@ -235,13 +237,13 @@ final class EngineResolveAdapter {
                         handler.onModuleFinish(
                                 currentDir,
                                 result,
-                                new EngineClient.LockCounts(
+                                new EngineRequests.LockCounts(
                                         Jsonl.longValue(line, "lockPackages", -1),
                                         Jsonl.longValue(line, "lockSources", -1),
                                         Jsonl.longValue(line, "lockPlugins", -1)));
                     }
                     case EngineProtocol.LOCK_FINISH -> {
-                        return new EngineClient.LockOutcome(
+                        return new EngineRequests.LockOutcome(
                                 Jsonl.bool(line, "success", false),
                                 Jsonl.intValue(line, "exitCode", 1),
                                 Jsonl.strArray(line, "errors"),
@@ -333,7 +335,7 @@ final class EngineResolveAdapter {
                 + "(it may have crashed); run `jk engine status` for details");
     }
 
-    private static final EngineClient.LockHandler NOOP_HANDLER = (dir, coord, steps) -> new BuildPlanListener() {};
+    private static final EngineRequests.LockHandler NOOP_HANDLER = (dir, coord, steps) -> new BuildPlanListener() {};
 
     private static String wireGroup(String raw) {
         return raw == null || raw.isBlank() ? null : raw;

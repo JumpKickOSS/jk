@@ -6,6 +6,8 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoEvents;
+import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedWriter;
@@ -68,7 +70,7 @@ public final class ImageVerb implements HostedVerb {
                         .withCacheDir(cache)
                         .withJdksDir(jdksDir)
                         .withCancel(cancelToken)
-                        .withVariant(EngineProtocol.variantOf(requestLine), EngineProtocol.clientEnvOf(requestLine));
+                        .withVariant(ProtoSession.variantOf(requestLine), ProtoSession.clientEnvOf(requestLine));
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 // Constructed in-session: the plan factory's BuildPlanner.Inputs captures the
                 // ambient SessionContext at construction, so building it outside where would
@@ -102,7 +104,7 @@ public final class ImageVerb implements HostedVerb {
                     String daemonExe = !daemonMode
                             ? null
                             : cfg != null && cfg.dockerExecutable() != null ? cfg.dockerExecutable() : "docker";
-                    return EngineProtocol.planFinishImage(
+                    return ProtoEvents.planFinishImage(
                             dir,
                             result.success(),
                             testResult != null ? testResult.total() : -1,

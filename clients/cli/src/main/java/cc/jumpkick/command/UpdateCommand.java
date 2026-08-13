@@ -5,6 +5,7 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -92,9 +93,9 @@ public final class UpdateCommand implements CliCommand {
 
     // ---- engine-hosted paths -------------------------------------------------
 
-    private EngineClient.UpdateRequest updateRequest(Path dir, Path cache) {
+    private EngineRequests.UpdateRequest updateRequest(Path dir, Path cache) {
         var session = cc.jumpkick.config.SessionContext.current();
-        return new EngineClient.UpdateRequest(
+        return new EngineRequests.UpdateRequest(
                 dir,
                 cache,
                 features,
@@ -109,14 +110,14 @@ public final class UpdateCommand implements CliCommand {
     /** Hosted full re-resolve: one console listener per cascade module, summary line per lockfile. */
     private int runHosted(Path dir, Path cache) {
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
-        EngineClient.LockHandler handler = new EngineClient.LockHandler() {
+        EngineRequests.LockHandler handler = new EngineRequests.LockHandler() {
             @Override
             public BuildPlanListener onModuleStart(String moduleDir, String coord, List<Task> steps) {
                 return BuildPlanConsole.chooseConsoleListener("update", steps, mode);
             }
 
             @Override
-            public void onModuleFinish(String moduleDir, BuildPlanResult result, EngineClient.LockCounts counts) {
+            public void onModuleFinish(String moduleDir, BuildPlanResult result, EngineRequests.LockCounts counts) {
                 if (result.success() && !global.outputIsJson()) {
                     printUpdatedLine(
                             cc.jumpkick.lock.LockPaths.lockFile(Path.of(moduleDir)),
@@ -126,7 +127,7 @@ public final class UpdateCommand implements CliCommand {
             }
         };
 
-        EngineClient.LockOutcome outcome;
+        EngineRequests.LockOutcome outcome;
         try {
             outcome = EngineClient.runUpdate(
                     cc.jumpkick.engine.EnginePaths.current(), updateRequest(dir, cache), handler);
@@ -142,7 +143,7 @@ public final class UpdateCommand implements CliCommand {
 
     /** Hosted {@code --git} splice: no plan events — the terminal carries the refreshed count. */
     private int runHostedGitOnly(Path dir, Path cache, String gitTarget) {
-        EngineClient.LockOutcome outcome;
+        EngineRequests.LockOutcome outcome;
         try {
             outcome = EngineClient.runUpdateGitOnly(
                     cc.jumpkick.engine.EnginePaths.current(), updateRequest(dir, cache), gitTarget);

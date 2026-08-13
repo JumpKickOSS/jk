@@ -5,6 +5,7 @@ import cc.jumpkick.cli.Jk;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.EngineWireException;
+import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
@@ -85,7 +86,7 @@ final class EnginePluginAdapter {
             var session = cc.jumpkick.config.SessionContext.current();
             send(
                     writer,
-                    EngineProtocol.withSession(
+                    ProtoSession.withSession(
                             requestLine,
                             session.variant(),
                             session.clientEnv(),
@@ -153,7 +154,7 @@ final class EnginePluginAdapter {
             var session = cc.jumpkick.config.SessionContext.current();
             send(
                     writer,
-                    EngineProtocol.withSession(
+                    ProtoSession.withSession(
                             requestLine,
                             session.variant(),
                             session.clientEnv(),

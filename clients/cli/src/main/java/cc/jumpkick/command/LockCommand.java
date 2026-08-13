@@ -6,6 +6,7 @@ import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Coords;
@@ -115,9 +116,9 @@ public final class LockCommand implements CliCommand {
 
     // ---- engine-hosted paths -------------------------------------------------
 
-    private EngineClient.LockRequest lockRequest(Path dir, Path cache) {
+    private EngineRequests.LockRequest lockRequest(Path dir, Path cache) {
         var session = cc.jumpkick.config.SessionContext.current();
-        return new EngineClient.LockRequest(
+        return new EngineRequests.LockRequest(
                 dir,
                 cache,
                 features,
@@ -147,7 +148,7 @@ public final class LockCommand implements CliCommand {
         List<String> errorLines = new ArrayList<>();
         Map<String, String> coordByDir = new java.util.HashMap<>();
 
-        EngineClient.LockHandler handler = new EngineClient.LockHandler() {
+        EngineRequests.LockHandler handler = new EngineRequests.LockHandler() {
             @Override
             public BuildPlanListener onModuleStart(String moduleDir, String coord, List<Task> steps) {
                 coordByDir.put(moduleDir, coord);
@@ -191,7 +192,7 @@ public final class LockCommand implements CliCommand {
             }
 
             @Override
-            public void onModuleFinish(String moduleDir, BuildPlanResult result, EngineClient.LockCounts counts) {
+            public void onModuleFinish(String moduleDir, BuildPlanResult result, EngineRequests.LockCounts counts) {
                 view.stepDone(coordByDir.get(moduleDir), "lock", result.success());
                 // Authoritative package count from the written lockfile (not wire event cardinality).
                 if (counts != null && counts.packages() >= 0) {
@@ -209,7 +210,7 @@ public final class LockCommand implements CliCommand {
             }
         };
 
-        EngineClient.LockOutcome outcome;
+        EngineRequests.LockOutcome outcome;
         try {
             outcome = EngineClient.runLock(cc.jumpkick.engine.EnginePaths.current(), lockRequest(dir, cache), handler);
         } catch (java.io.IOException e) {
@@ -227,7 +228,7 @@ public final class LockCommand implements CliCommand {
 
     /** Hosted plain path (--verbose / --output json): one console listener per cascade module. */
     private int runHostedPlain(Path dir, Path cache, BuildPlanConsole.Mode mode) {
-        EngineClient.LockHandler handler = new EngineClient.LockHandler() {
+        EngineRequests.LockHandler handler = new EngineRequests.LockHandler() {
             private BuildPlanListener current;
 
             @Override
@@ -244,7 +245,7 @@ public final class LockCommand implements CliCommand {
             }
         };
 
-        EngineClient.LockOutcome outcome;
+        EngineRequests.LockOutcome outcome;
         try {
             outcome = EngineClient.runLock(cc.jumpkick.engine.EnginePaths.current(), lockRequest(dir, cache), handler);
         } catch (java.io.IOException e) {
