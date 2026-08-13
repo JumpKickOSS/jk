@@ -43,7 +43,8 @@ So any “AOT-on vs AOT-off” numbers collected while the **compiler JDK** was 
 | **`java … PluginMain`** kotlin-compiler | Kotlin Build Tools API | yes (`kotlincFlags`) | All Kotlin compiles |
 | Engine itself | `java -cp jk-engine.jar` | separate engine `.aot` | Always |
 
-**Policy:** AOT only for **`java … PluginMain`** workers (kotlin-compiler + java-compiler). Bare `javac` never trains or maps `.aot` (measured as noise on Temurin).
+**Policy:** AOT only for **`java … PluginMain`** workers (kotlin-compiler + java-compiler +
+formatter). Bare `javac` never trains or maps `.aot` (measured as noise on Temurin).
 
 ## 2026-07-21 — Temurin 25.0.3 results
 

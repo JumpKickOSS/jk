@@ -42,8 +42,9 @@ Network errors are **fail-fast and quiet** (no retries). The next minute/12 h 
 | **host-metrics.toml `[calibration]`** | HardwareProbe multi-probe for cold ETA |
 
 **Not** pre-trained: **Kotlin** — trains on miss at the first real Kotlin compile (classpath is
-project/version-specific; a dedicated bootstrap key would not match production forks). List caches
-with `jk engine aot`.
+project/version-specific; a dedicated bootstrap key would not match production forks). **Formatter**
+— trains on miss at the first {@code jk format} (same PluginAot path; Palantir/ktfmt jars are
+resolved per run). List caches with `jk engine aot`.
 **Not** AOT-cached at all: **Groovy** workers (no cache integration yet) and test-runner AOT
 (suite classpath includes project classes; caches are not reusable).
 

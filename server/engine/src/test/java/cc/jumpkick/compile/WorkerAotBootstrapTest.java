@@ -19,6 +19,8 @@ class WorkerAotBootstrapTest {
         // Only java-compiler is pre-trained; language workers stay on-demand.
         assertThat(result.skipped().stream().anyMatch(s -> s.startsWith("kotlinc")))
                 .isTrue();
+        assertThat(result.skipped().stream().anyMatch(s -> s.startsWith("formatter")))
+                .isTrue();
         assertThat(result.skipped().stream().anyMatch(s -> s.startsWith("groovy")))
                 .isTrue();
         assertThat(result.skipped().stream().anyMatch(s -> s.contains("test-runner")))

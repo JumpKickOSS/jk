@@ -2,9 +2,15 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.compile.WorkerClasspath;
+import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
@@ -233,12 +239,32 @@ public final class FormatPlans {
                             importOrder,
                             removeUnusedImports,
                             rewriteConfig,
-                            cache);
+                            cache,
+                            null);
                     try {
                         AtomicInteger changed = new AtomicInteger();
                         AtomicInteger clean = new AtomicInteger();
                         AtomicInteger errors = new AtomicInteger();
                         AtomicInteger index = new AtomicInteger();
+                        Path hostJava = JavaHomes.runningJavaHome();
+                        String workerCp = WorkerClasspath.resolve(workerJar);
+                        List<String> extra = new ArrayList<>(PluginAot.formatterFlags(
+                                hostJava,
+                                workerCp,
+                                (aotOut, scratch) -> trainerCommand(
+                                        hostJava,
+                                        workerCp,
+                                        aotOut,
+                                        scratch,
+                                        javaStyle,
+                                        kotlinStyle,
+                                        javaJars,
+                                        removeUnusedJars,
+                                        kotlinJars,
+                                        optimizeImports,
+                                        importOrder,
+                                        removeUnusedImports)));
+                        if (!javaFiles.isEmpty()) extra.addAll(JAVAC_EXPORTS);
                         int exit = new PluginClient("##JKFMT:")
                                 .on("file", json -> {
                                     String status = Jsonl.str(json, "status");
@@ -257,8 +283,7 @@ public final class FormatPlans {
                                     ctx.progress(1);
                                 })
                                 .passthrough(ctx::output)
-                                .run(PluginLaunch.javaCommand(
-                                        workerJar, javaFiles.isEmpty() ? List.of() : JAVAC_EXPORTS, spec));
+                                .run(PluginLaunch.javaCommand(workerJar, extra, spec));
                         if (freshness != null) freshness.save();
                         ctx.put(CHANGED, changed.get());
                         ctx.put(CLEAN, preClean + clean.get());
@@ -303,7 +328,8 @@ public final class FormatPlans {
             boolean importOrder,
             boolean removeUnusedImports,
             Path rewriteConfig,
-            Path cacheDir)
+            Path cacheDir,
+            Path dest)
             throws IOException {
         SpecWriter w = new SpecWriter()
                 .op(PluginProtocol.OP_COMMAND, "format", "jk-formatter")
@@ -340,10 +366,102 @@ public final class FormatPlans {
         // Pass the cache root so the plugin can read/write per-file format stamps.
         if (cacheDir != null)
             w.configString("cacheDir", cacheDir.toAbsolutePath().toString());
-        Path spec = Files.createTempFile("jk-format-", ".spec");
+        Path spec = dest != null ? dest : Files.createTempFile("jk-format-", ".spec");
+        if (dest != null && dest.getParent() != null) Files.createDirectories(dest.getParent());
         Files.write(spec, w.lines(), StandardCharsets.UTF_8);
         return spec;
     }
+
+    /**
+     * Background AOT trainer: same {@code java -cp worker PluginMain spec} shape as a real format,
+     * recording with {@code -XX:AOTCacheOutput} while formatting a synthetic Hello.java (and
+     * Hello.kt when Kotlin jars are on this run).
+     */
+    static List<String> trainerCommand(
+            Path hostJavaHome,
+            String workerCp,
+            Path aotOutput,
+            Path scratch,
+            String javaStyle,
+            String kotlinStyle,
+            List<Path> javaJars,
+            List<Path> removeUnusedJars,
+            List<Path> kotlinJars,
+            boolean optimizeImports,
+            boolean importOrder,
+            boolean removeUnusedImports)
+            throws IOException {
+        List<Path> javaFiles = List.of();
+        if (javaJars != null && !javaJars.isEmpty()) {
+            Path hello = scratch.resolve("Hello.java");
+            Files.writeString(hello, TRAIN_JAVA);
+            javaFiles = List.of(hello);
+        }
+        List<Path> kotlinFiles = List.of();
+        if (kotlinJars != null && !kotlinJars.isEmpty()) {
+            Path helloKt = scratch.resolve("Hello.kt");
+            Files.writeString(helloKt, TRAIN_KOTLIN);
+            kotlinFiles = List.of(helloKt);
+        }
+        if (javaFiles.isEmpty() && kotlinFiles.isEmpty()) {
+            // Nothing to exercise — still emit a no-op spec so the worker starts and the
+            // PluginMain + Spotless classes land in the cache.
+            Path hello = scratch.resolve("Hello.java");
+            Files.writeString(hello, TRAIN_JAVA);
+            javaFiles = List.of(hello);
+        }
+        Path spec = writeSpec(
+                false,
+                javaStyle,
+                kotlinStyle,
+                javaFiles,
+                javaJars == null ? List.of() : javaJars,
+                removeUnusedJars == null ? List.of() : removeUnusedJars,
+                kotlinFiles,
+                kotlinJars == null ? List.of() : kotlinJars,
+                optimizeImports,
+                importOrder,
+                removeUnusedImports,
+                null,
+                scratch,
+                scratch.resolve("train.spec"));
+        List<String> jvmFlags = new ArrayList<>();
+        jvmFlags.add("-XX:AOTCacheOutput=" + aotOutput);
+        jvmFlags.addAll(JvmOptions.batchFlags(1));
+        if (!javaFiles.isEmpty()) jvmFlags.addAll(JAVAC_EXPORTS);
+        boolean win = HostPlatform.isWindows();
+        Path javaExe = hostJavaHome.resolve("bin").resolve(win ? "java.exe" : "java");
+        return PluginLoader.command(
+                javaExe, workerCp, jvmFlags, List.of(spec.toAbsolutePath().toString()));
+    }
+
+    private static final String TRAIN_JAVA = """
+            package demo;
+
+            import java.util.ArrayList;
+            import java.util.List;
+
+            public class Hello {
+              public static void main(String[] args) {
+                java.util.Map<String, Integer> values = new java.util.HashMap<>();
+                values.put("a", 1);
+                List<String> names = new ArrayList<>();
+                names.add("jk-formatter aot train");
+                System.out.println(values + names.toString());
+              }
+            }
+            """;
+
+    private static final String TRAIN_KOTLIN = """
+            package demo
+
+            data class Point(val x: Int, val y: Int)
+
+            fun main() {
+                val points = (1..4).map { Point(it, it * 2) }
+                println(points.joinToString { "${it.x},${it.y}" })
+            }
+            """;
 
     private static List<String> absPaths(List<Path> paths) {
         return paths.stream().map(p -> p.toAbsolutePath().toString()).toList();
