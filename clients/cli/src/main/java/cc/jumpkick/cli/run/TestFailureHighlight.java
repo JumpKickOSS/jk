@@ -39,6 +39,9 @@ public final class TestFailureHighlight {
     /** Engine sentinel title — must stay byte-identical to {@code TestSupport.renderFailures}. */
     public static final String HEADER_SENTINEL = "Test Failure";
 
+    /** Engine closer — must stay byte-identical to {@code TestSupport.renderFailures}. */
+    public static final String FOOTER_SENTINEL = "Test Failure end";
+
     /** Heavy vertical box-drawing used as the failure rail (U+2503). */
     public static final String RAIL = "┃";
 
@@ -47,9 +50,6 @@ public final class TestFailureHighlight {
     private static final Pattern COUNT_LINE = Pattern.compile("^(\\d+) test(s?) failed:?$");
     private static final Pattern THROWN_AT =
             Pattern.compile("^[›\\s]*(?<ex>[A-Za-z_][\\w$]*) thrown at line (?<n>\\d+)\\s*$");
-    private static final Pattern FQCN_LINE =
-            Pattern.compile("^(?<indent>[ \\t]*)(?<fqcn>[a-zA-Z_][\\w$]*(?:\\.[a-zA-Z_][\\w$]*)+)$");
-
     private TestFailureHighlight() {}
 
     /**
@@ -75,6 +75,7 @@ public final class TestFailureHighlight {
                 int end = findBlockEnd(lines, i);
                 out.addAll(paintBlock(lines.subList(i, end)));
                 i = end;
+                if (i < lines.size() && FOOTER_SENTINEL.equals(strip(lines.get(i)))) i++;
                 while (i < lines.size() && (lines.get(i) == null || lines.get(i).isEmpty())) i++;
                 continue;
             }
@@ -217,6 +218,10 @@ public final class TestFailureHighlight {
             if (raw == null) {
                 i++;
                 continue;
+            }
+
+            if (FOOTER_SENTINEL.equals(raw.strip())) {
+                break;
             }
 
             if (raw.startsWith("@@source ")) {
@@ -725,45 +730,17 @@ public final class TestFailureHighlight {
         return current;
     }
 
+    /**
+     * End of the report: {@link #FOOTER_SENTINEL} (exclusive), the next {@link #HEADER_SENTINEL},
+     * or EOF. A blank-line heuristic would truncate assertion bodies that contain a blank followed
+     * by an unindented value, leaking {@code @@source} markers into the terminal.
+     */
     static int findBlockEnd(List<String> lines, int start) {
-        boolean sawFailed = false;
         for (int i = start + 1; i < lines.size(); i++) {
-            String s = lines.get(i);
-            if (s != null && s.contains("FAILED ")) sawFailed = true;
-            if (s == null || !s.isEmpty()) continue;
-            if (!sawFailed) continue;
-            if (i + 1 >= lines.size()) return i;
-            String next = lines.get(i + 1);
-            if (next == null || next.isEmpty() || !isFailureContinuation(next)) {
-                return i;
-            }
+            String s = strip(lines.get(i));
+            if (FOOTER_SENTINEL.equals(s) || HEADER_SENTINEL.equals(s)) return i;
         }
         return lines.size();
-    }
-
-    static boolean isFailureContinuation(String line) {
-        if (line == null) return false;
-        if (line.startsWith(" ") || line.startsWith("\t")) return true;
-        if (line.startsWith("@@source ") || line.startsWith("@@src ") || line.equals("@@src-end")) return true;
-        String t = line.stripLeading();
-        if (t.startsWith("FAILED ") || t.startsWith("module: ") || t.startsWith("at ") || t.startsWith("...")) {
-            return true;
-        }
-        if (t.startsWith("›") || t.contains(" thrown at line ")) return true;
-        // Indented exception locus under FAILED
-        if (t.matches("[A-Za-z_][\\w$]* thrown at line \\d+")) return true;
-        if (t.startsWith("[") && t.contains("]")) return true;
-        if (COUNT_LINE.matcher(t).matches()) return true;
-        if (FQCN_LINE.matcher(line).matches() && looksLikeExceptionOrClass(t)) return true;
-        String lower = t.toLowerCase(java.util.Locale.ROOT);
-        return lower.startsWith("expected")
-                || lower.startsWith("but was")
-                || lower.startsWith("but had")
-                || lower.contains("expect")
-                || lower.contains("actual")
-                || lower.contains("between")
-                || lower.contains("but was")
-                || lower.contains("but had");
     }
 
     private static String paintFallbackContent(String raw, Theme t, ValueRole valueRole) {
@@ -789,12 +766,6 @@ public final class TestFailureHighlight {
             return Theme.colorize(indent, t.midGray()) + Theme.colorize(stripped, v);
         }
         return Theme.colorize(raw, t.midGray());
-    }
-
-    private static boolean looksLikeExceptionOrClass(String fqcn) {
-        if (fqcn.indexOf('.') < 0) return false;
-        String simple = fqcn.substring(fqcn.lastIndexOf('.') + 1);
-        return Character.isUpperCase(simple.charAt(0));
     }
 
     private static String rail(String paintedContent, Theme t) {

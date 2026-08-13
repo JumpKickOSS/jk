@@ -39,6 +39,7 @@ class TestFailureRenderingTest {
         assertThat(lines).anyMatch(l -> l.equals("Test Failure"));
         assertThat(lines).anyMatch(l -> l.equals("1 test failed"));
         assertThat(lines).anyMatch(l -> l.equals("FAILED FooTest.bar()"));
+        assertThat(lines.getLast()).isEqualTo("Test Failure end");
         assertThat(text).contains("expected: <1> but was: <2>");
         assertThat(text).contains("at cc.jumpkick.FooTest.bar(FooTest.java:42)");
         // No package FQCN on the FAILED line

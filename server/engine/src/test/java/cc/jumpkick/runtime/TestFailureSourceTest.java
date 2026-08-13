@@ -146,5 +146,6 @@ class TestFailureSourceTest {
         assertThat(text.indexOf("@@src-end")).isLessThan(text.indexOf("thrown at line 7"));
         // Stack frames omitted when snippet present
         assertThat(text).doesNotContain("\tat demo.ZTest.d");
+        assertThat(lines.getLast()).isEqualTo("Test Failure end");
     }
 }

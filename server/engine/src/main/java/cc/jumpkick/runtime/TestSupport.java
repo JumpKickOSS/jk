@@ -173,7 +173,8 @@ public final class TestSupport {
      *
      * <p>Simple class/method names only (no package FQCNs, no method params). When {@code moduleDir}
      * is set, a 7-line source snippet is resolved from the stack. The leading {@code Test Failure}
-     * title is a fixed sentinel the CLI rewrites into a red pill + header line.
+     * title and trailing {@code Test Failure end} are sentinels the CLI rewrites into a red pill +
+     * header / rail (the closer keeps a blank line inside the assertion body from ending the paint).
      */
     public static List<String> renderFailures(TestSummary result) {
         return renderFailures(result, null);
@@ -229,7 +230,8 @@ public final class TestSupport {
                 }
             }
         }
-        // No trailing blank — the settle wedge ("✘ Build …") follows immediately.
+        // Closer so the CLI does not treat a blank inside the assertion body as end-of-report.
+        out.add("Test Failure end");
         return out;
     }
 

@@ -115,6 +115,43 @@ class TestFailureHighlightTest {
     }
 
     @Test
+    void blank_inside_assertion_body_does_not_leak_source_markers() {
+        List<String> raw = List.of(
+                "Test Failure",
+                "1 test failed",
+                "",
+                "FAILED Foo.bar()",
+                "",
+                "expected:",
+                "",
+                "<42>",
+                "but was:",
+                "",
+                "<41>",
+                "",
+                "@@source path=src/test/java/Foo.java line=9 start=6 lang=java",
+                "@@src 6|    void bar() {",
+                "@@src 9*|        assertEquals(42, 41);",
+                "@@src 10|    }",
+                "@@src-end",
+                "    AssertionFailedError thrown at line 9",
+                "Test Failure end",
+                "Note: leftover output");
+        List<String> painted = TestFailureHighlight.paintLines(raw);
+        String all = plain(String.join("\n", painted));
+        assertThat(all).doesNotContain("@@source");
+        assertThat(all).doesNotContain("@@src");
+        assertThat(all).contains("AssertionFailedError thrown at line 9");
+        assertThat(all).contains("Expected: 42");
+        assertThat(all).contains("But Was: 41");
+        assertThat(all).contains("Foo.java");
+        assertThat(all).contains(DiagnosticReport.FOOTER);
+        assertThat(all).contains("Note: leftover output");
+        assertThat(all).doesNotContain("Test Failure end");
+        assertThat(all.indexOf("Note: leftover output")).isGreaterThan(all.indexOf(DiagnosticReport.FOOTER));
+    }
+
+    @Test
     void non_failure_output_passes_through_stack_highlight() {
         List<String> raw = List.of("Note: something", "\tat cc.jumpkick.Foo.bar(Foo.java:1)");
         List<String> painted = TestFailureHighlight.paintLines(raw);
