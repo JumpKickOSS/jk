@@ -142,11 +142,11 @@ public final class PublishCommand implements CliCommand {
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         BuildPlanResult result;
         int files;
-        cc.jumpkick.cli.engine.EngineClient.PublishOutcome outcome;
+        cc.jumpkick.cli.engine.EngineRequests.PublishOutcome outcome;
         try {
             outcome = cc.jumpkick.cli.engine.EngineClient.runPublish(
                     cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineClient.PublishRequest(
+                    new cc.jumpkick.cli.engine.EngineRequests.PublishRequest(
                             projectDir,
                             cache,
                             repoUrl,

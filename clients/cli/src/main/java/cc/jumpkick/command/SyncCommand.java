@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.jdk.JdkEnsure;
@@ -107,7 +108,7 @@ public final class SyncCommand implements CliCommand {
         try {
             result = EngineClient.runSync(
                     cc.jumpkick.engine.EnginePaths.current(),
-                    new EngineClient.SyncRequest(
+                    new EngineRequests.SyncRequest(
                             dir,
                             cache,
                             jdksDir,

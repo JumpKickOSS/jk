@@ -237,7 +237,7 @@ public final class StorageCommand extends GroupCommand {
             GlobalOptions global = GlobalOptions.from(in);
             Path root = CacheCommand.resolveCacheRoot(null);
 
-            var summary = new cc.jumpkick.cli.engine.EngineClient.CacheMaintSummary[1];
+            var summary = new cc.jumpkick.cli.engine.EngineRequests.CacheMaintSummary[1];
             ConsoleSpec spec = cleanSpec(
                     dryRun,
                     () -> summary[0] != null ? summary[0].files() : 0L,
@@ -247,7 +247,7 @@ public final class StorageCommand extends GroupCommand {
             try {
                 result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
                         cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest(
+                        new cc.jumpkick.cli.engine.EngineRequests.CacheMaintRequest(
                                 "sweep", root, Integer.MAX_VALUE, dryRun, true, false),
                         steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Storage"),
                         CacheCommand::printWait,

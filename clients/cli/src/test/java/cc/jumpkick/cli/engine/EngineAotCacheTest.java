@@ -3,10 +3,10 @@ package cc.jumpkick.cli.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.engine.EngineClient.AotMode;
-import cc.jumpkick.cli.engine.EngineClient.EngineArtifact;
-import cc.jumpkick.cli.engine.EngineClient.EngineJdk;
-import cc.jumpkick.cli.engine.EngineClient.EngineTarget;
+import cc.jumpkick.cli.engine.EngineSpawn.AotMode;
+import cc.jumpkick.cli.engine.EngineSpawn.EngineArtifact;
+import cc.jumpkick.cli.engine.EngineSpawn.EngineJdk;
+import cc.jumpkick.cli.engine.EngineSpawn.EngineTarget;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.jdk.JdkVendor;
 import java.io.IOException;
@@ -162,14 +162,14 @@ class EngineAotCacheTest {
             System.setProperty("jk.aot.train", "on");
             // Zero-byte file: the engine must NOT map it — and the manifest must not call it ready.
             Files.createFile(cache);
-            EngineClient.recordEngineAotManifest(cache, engineJar, temurin("25.0.3"), "0.1.0", "0123456789abcdef");
+            EngineSpawn.recordEngineAotManifest(cache, engineJar, temurin("25.0.3"), "0.1.0", "0123456789abcdef");
             assertThat(statusOf(dir, cache)).isEqualTo("pending");
             assertThat(EngineClient.chooseAotMode(new EngineTarget(jarArtifact, dir, true, cache, false)))
                     .isEqualTo(AotMode.TRAIN);
 
             // Complete file: manifest says ready, engine maps it.
             Files.writeString(cache, "assembled-cache");
-            EngineClient.recordEngineAotManifest(cache, engineJar, temurin("25.0.3"), "0.1.0", "0123456789abcdef");
+            EngineSpawn.recordEngineAotManifest(cache, engineJar, temurin("25.0.3"), "0.1.0", "0123456789abcdef");
             assertThat(statusOf(dir, cache)).isEqualTo("ready");
             assertThat(EngineClient.chooseAotMode(new EngineTarget(jarArtifact, dir, true, cache, false)))
                     .isEqualTo(AotMode.USE);

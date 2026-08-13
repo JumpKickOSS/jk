@@ -842,7 +842,7 @@ public final class BuildCommand implements CliCommand {
         try {
             result = cc.jumpkick.cli.engine.EngineClient.runSingleBuild(
                     cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineClient.SingleBuildRequest(
+                    new cc.jumpkick.cli.engine.EngineRequests.SingleBuildRequest(
                             dir,
                             cache,
                             jdksDir,

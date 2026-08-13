@@ -3,6 +3,7 @@ package cc.jumpkick.cli.ide;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.IdeWireModel;
@@ -124,7 +125,7 @@ public class IdeEngineClient {
         boolean success;
         BuildPlanResult result = EngineClient.runSync(
                 EnginePaths.current(),
-                new EngineClient.SyncRequest(
+                new EngineRequests.SyncRequest(
                         syncRoot,
                         cacheDir,
                         jdksDir,
@@ -195,7 +196,8 @@ public class IdeEngineClient {
         progress.onModuleStart(coord, projectDir);
         BuildPlanResult r = EngineClient.runSingleBuild(
                 EnginePaths.current(),
-                new EngineClient.SingleBuildRequest(projectDir, cacheDir, jdksDir, 1, null, false, false, false, false),
+                new EngineRequests.SingleBuildRequest(
+                        projectDir, cacheDir, jdksDir, 1, null, false, false, false, false),
                 steps -> progressListener(progress, steps),
                 null,
                 null);
@@ -217,7 +219,7 @@ public class IdeEngineClient {
         List<String> errors = new ArrayList<>();
         BuildPlanResult r = EngineClient.runSingleBuild(
                 EnginePaths.current(),
-                new EngineClient.SingleBuildRequest(mod, cacheDir, jdksDir, 1, null, false, false, false, false),
+                new EngineRequests.SingleBuildRequest(mod, cacheDir, jdksDir, 1, null, false, false, false, false),
                 steps -> progressListener(progress, steps),
                 null,
                 null);
@@ -291,7 +293,7 @@ public class IdeEngineClient {
         var sel = selection != null ? selection : session.testSelection();
         BuildPlanResult r = EngineClient.runTest(
                 EnginePaths.current(),
-                new EngineClient.TestRequest(
+                new EngineRequests.TestRequest(
                         mod,
                         cacheDir,
                         jdksDir,

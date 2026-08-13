@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.JavaHomes;
@@ -80,7 +81,7 @@ final class ScriptRunner {
             return Exit.NO_INPUT;
         }
         ScriptHeader header = readHeader(script);
-        EngineClient.ScriptPrepareOutcome prep = prepare("java", script);
+        EngineRequests.ScriptPrepareOutcome prep = prepare("java", script);
         if (!prep.result().success()) return failureExitCode(prep.result());
         return execJava(prep.classesDir(), prep.classpath(), header.javaOptions(), prep.mainClass(), args);
     }
@@ -93,7 +94,7 @@ final class ScriptRunner {
             return Exit.NO_INPUT;
         }
         ScriptHeader header = readHeader(script);
-        EngineClient.ScriptPrepareOutcome prep = prepare("kt", script);
+        EngineRequests.ScriptPrepareOutcome prep = prepare("kt", script);
         if (!prep.result().success()) return failureExitCode(prep.result());
 
         // At runtime, the Kotlin stdlib must be on the classpath.
@@ -110,7 +111,7 @@ final class ScriptRunner {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", "script not found: " + script));
             return Exit.NO_INPUT;
         }
-        EngineClient.ScriptPrepareOutcome prep = prepare("kts", script);
+        EngineRequests.ScriptPrepareOutcome prep = prepare("kts", script);
         if (!prep.result().success() || prep.kotlincBin() == null) {
             // "kotlinc-missing" is an EX_SOFTWARE (70) shape; everything
             // else collapses to the generic resolver error code.
@@ -164,7 +165,7 @@ final class ScriptRunner {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", "jar not found: " + jar));
             return Exit.NO_INPUT;
         }
-        EngineClient.ScriptPrepareOutcome prep = prepare("jar", jar);
+        EngineRequests.ScriptPrepareOutcome prep = prepare("jar", jar);
         if (!prep.result().success() || prep.mainClass() == null) {
             for (BuildPlanResult.Diagnostic d : prep.result().errors()) {
                 if ("no-main-class".equals(d.code())) return Exit.DATA_ERR;
@@ -196,12 +197,13 @@ final class ScriptRunner {
      * Run one mode's preparation plan — engine-hosted normally, in-process through the {@link
      * standard single-plan progress either way.
      */
-    private EngineClient.ScriptPrepareOutcome prepare(String mode, Path file) throws IOException, InterruptedException {
+    private EngineRequests.ScriptPrepareOutcome prepare(String mode, Path file)
+            throws IOException, InterruptedException {
         BuildPlanConsole.Mode consoleMode = BuildPlanConsole.modeFor(global);
 
         return EngineClient.runScriptPrepare(
                 cc.jumpkick.engine.EnginePaths.current(),
-                new EngineClient.ScriptPrepareRequest(
+                new EngineRequests.ScriptPrepareRequest(
                         mode, file.toAbsolutePath(), cacheDir(), stateDir(), repoUrl, forceRecompile, extraDeps),
                 steps -> BuildPlanConsole.chooseConsoleListener("script", steps, consoleMode));
     }

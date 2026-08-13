@@ -145,7 +145,7 @@ final class EngineBuildListenerAdapter {
      */
     static BuildPlanResult runTest(
             EnginePaths.Paths paths,
-            EngineClient.TestRequest req,
+            EngineRequests.TestRequest req,
             java.util.function.Function<List<Task>, BuildPlanListener> listenerFactory,
             cc.jumpkick.run.TestSummary[] testResultOut)
             throws IOException {
@@ -192,7 +192,7 @@ final class EngineBuildListenerAdapter {
      */
     static BuildPlanResult runSingleBuild(
             EnginePaths.Paths paths,
-            EngineClient.SingleBuildRequest req,
+            EngineRequests.SingleBuildRequest req,
             java.util.function.Function<List<Task>, BuildPlanListener> listenerFactory,
             cc.jumpkick.run.TestSummary[] testResultOut,
             String[] buildOutcomeOut)
@@ -236,7 +236,7 @@ final class EngineBuildListenerAdapter {
      * codes are engine-computed ({@code jk native}'s 64/4/1 mapping).
      */
     static WorkspaceResult runNative(
-            EnginePaths.Paths paths, EngineClient.NativeRequest req, WorkspaceBuildListener listener)
+            EnginePaths.Paths paths, EngineRequests.NativeRequest req, WorkspaceBuildListener listener)
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
 
@@ -288,7 +288,7 @@ final class EngineBuildListenerAdapter {
      */
     static BuildPlanResult runInstall(
             EnginePaths.Paths paths,
-            EngineClient.InstallRequest req,
+            EngineRequests.InstallRequest req,
             java.util.function.Function<List<Task>, BuildPlanListener> listenerFactory,
             cc.jumpkick.run.TestSummary[] testResultOut)
             throws IOException {
@@ -333,7 +333,7 @@ final class EngineBuildListenerAdapter {
      * <p>Plan-affecting build options ride the request for the engine-side ETA estimate ({@code
      * eta} event; {@code 0} = unknown) before {@code explain-done}.
      */
-    static ExplainPlan explain(EnginePaths.Paths paths, EngineClient.ExplainRequest req, long[] etaOut)
+    static ExplainPlan explain(EnginePaths.Paths paths, EngineRequests.ExplainRequest req, long[] etaOut)
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
 

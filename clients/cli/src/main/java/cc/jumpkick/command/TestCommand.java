@@ -196,7 +196,7 @@ public final class TestCommand implements CliCommand {
         try {
             result = cc.jumpkick.cli.engine.EngineClient.runTest(
                     cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineClient.TestRequest(
+                    new cc.jumpkick.cli.engine.EngineRequests.TestRequest(
                             dir,
                             cache,
                             jdksDir,

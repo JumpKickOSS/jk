@@ -290,7 +290,7 @@ public final class FormatCommand implements CliCommand {
         var session = cc.jumpkick.config.SessionContext.current();
         var outcome = cc.jumpkick.cli.engine.EngineClient.runFormat(
                 cc.jumpkick.engine.EnginePaths.current(),
-                new cc.jumpkick.cli.engine.EngineClient.FormatRequest(
+                new cc.jumpkick.cli.engine.EngineRequests.FormatRequest(
                         projectDir,
                         cache,
                         check,

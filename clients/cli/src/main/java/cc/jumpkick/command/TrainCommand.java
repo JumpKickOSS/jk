@@ -79,7 +79,7 @@ public final class TrainCommand implements CliCommand {
         try {
             result = cc.jumpkick.cli.engine.EngineClient.runTrain(
                     cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineClient.TrainRequest(
+                    new cc.jumpkick.cli.engine.EngineRequests.TrainRequest(
                             dir,
                             cache,
                             jdksDir,

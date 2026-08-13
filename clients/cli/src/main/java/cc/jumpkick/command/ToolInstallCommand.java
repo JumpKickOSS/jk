@@ -204,11 +204,11 @@ public final class ToolInstallCommand implements CliCommand {
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
 
         ToolEnv env;
-        cc.jumpkick.cli.engine.EngineClient.ToolResolveOutcome outcome;
+        cc.jumpkick.cli.engine.EngineRequests.ToolResolveOutcome outcome;
         try {
             outcome = cc.jumpkick.cli.engine.EngineClient.runToolResolve(
                     cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineClient.ToolResolveRequest(
+                    new cc.jumpkick.cli.engine.EngineRequests.ToolResolveRequest(
                             resolved.coordSpec(), with, bin, mainClass, repoUrl, cacheDir),
                     steps -> BuildPlanConsole.chooseConsoleListener("tool-install", steps, mode));
         } catch (IOException e) {
@@ -319,11 +319,11 @@ public final class ToolInstallCommand implements CliCommand {
         Files.createDirectories(cacheDir);
         BuildPlanConsole.Mode consoleMode = BuildPlanConsole.modeFor(global);
 
-        cc.jumpkick.cli.engine.EngineClient.ScriptPrepareOutcome prep;
+        cc.jumpkick.cli.engine.EngineRequests.ScriptPrepareOutcome prep;
         try {
             prep = cc.jumpkick.cli.engine.EngineClient.runScriptPrepare(
                     cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineClient.ScriptPrepareRequest(
+                    new cc.jumpkick.cli.engine.EngineRequests.ScriptPrepareRequest(
                             mode, file.toAbsolutePath(), cacheDir, stateDir, repoUrl, false, with),
                     steps -> BuildPlanConsole.chooseConsoleListener("tool-install", steps, consoleMode));
         } catch (IOException e) {
