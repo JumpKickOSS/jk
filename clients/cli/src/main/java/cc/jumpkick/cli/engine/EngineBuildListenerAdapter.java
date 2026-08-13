@@ -1020,10 +1020,12 @@ final class EngineBuildListenerAdapter {
      * structured test identity is present (plain javac/resolve errors).
      */
     private static TestFailureInfo testFailureFromWire(String line) {
-        String module = nz(Jsonl.str(line, "module"));
-        String engine = nz(Jsonl.str(line, "engine"));
-        String className = nz(Jsonl.str(line, "class"));
-        String method = nz(Jsonl.str(line, "method"));
+        String module = nz(Jsonl.topStr(line, "module"));
+        String engine = nz(Jsonl.topStr(line, "engine"));
+        String className = nz(Jsonl.topStr(line, "testClass"));
+        if (className.isEmpty()) className = nz(Jsonl.topStr(line, "class"));
+        String method = nz(Jsonl.topStr(line, "method"));
+        if (method.isEmpty()) method = nz(Jsonl.topStr(line, "test"));
         String exceptionClass = nz(Jsonl.str(line, "exceptionClass"));
         String stack = nz(Jsonl.str(line, "stack"));
         if (stack.isEmpty()) {

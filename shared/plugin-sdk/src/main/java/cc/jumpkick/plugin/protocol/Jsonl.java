@@ -18,11 +18,25 @@ public final class Jsonl {
      * {@code \n}, {@code \r}, {@code \t}). Returns {@code null} when the key is absent.
      */
     public static String str(String json, String key) {
-        if (json == null) return null;
-        String needle = "\"" + key + "\":\"";
-        int start = json.indexOf(needle);
-        if (start < 0) return null;
-        start += needle.length();
+        return strAt(json, indexOfKey(json, key, false));
+    }
+
+    /**
+     * Like {@link #str} but only the root object's field — not a nested {@code throwable.class}
+     * (or any other nested object).
+     */
+    public static String topStr(String json, String key) {
+        return strAt(json, indexOfKey(json, key, true));
+    }
+
+    private static String strAt(String json, int keyAt) {
+        if (json == null || keyAt < 0) return null;
+        int colon = json.indexOf(':', keyAt);
+        if (colon < 0) return null;
+        int start = colon + 1;
+        while (start < json.length() && json.charAt(start) == ' ') start++;
+        if (start >= json.length() || json.charAt(start) != '"') return null;
+        start++;
         StringBuilder sb = new StringBuilder();
         for (int i = start; i < json.length(); i++) {
             char c = json.charAt(i);
@@ -46,6 +60,42 @@ public final class Jsonl {
             }
         }
         return sb.toString();
+    }
+
+    /**
+     * Index of {@code "key"} that starts a field. When {@code topLevelOnly}, the match must sit in
+     * the root object (depth 1), so {@code throwable.class} does not shadow a missing top-level
+     * {@code class}.
+     */
+    static int indexOfKey(String json, String key, boolean topLevelOnly) {
+        if (json == null || key == null) return -1;
+        String needle = "\"" + key + "\"";
+        int depth = 0;
+        boolean inString = false;
+        for (int i = 0; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (inString) {
+                if (c == '\\') {
+                    i++;
+                    continue;
+                }
+                if (c == '"') inString = false;
+                continue;
+            }
+            if (c == '"') {
+                boolean atRoot = !topLevelOnly || depth == 1;
+                if (atRoot && json.startsWith(needle, i)) {
+                    int after = i + needle.length();
+                    while (after < json.length() && json.charAt(after) == ' ') after++;
+                    if (after < json.length() && json.charAt(after) == ':') return i;
+                }
+                inString = true;
+                continue;
+            }
+            if (c == '{' || c == '[') depth++;
+            else if ((c == '}' || c == ']') && depth > 0) depth--;
+        }
+        return -1;
     }
 
     /** Extract a JSON integer field, returning {@code defaultVal} when absent or non-numeric. */

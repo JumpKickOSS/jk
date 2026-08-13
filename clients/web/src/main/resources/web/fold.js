@@ -695,7 +695,7 @@ export function normalizeDiagnostic(d) {
     exceptionClass: d.exceptionClass || '',
     module: d.module || '',
     engine: d.engine || '',
-    className: d.class || d.className || '',
+    className: d.testClass || d.class || d.className || '',
     method: d.method || '',
     stack: d.stack || (d.throwable && d.throwable.stack) || '',
     file: d.file || '',

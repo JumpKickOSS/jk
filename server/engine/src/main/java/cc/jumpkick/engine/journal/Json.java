@@ -73,7 +73,10 @@ final class Json {
             if (d.test() != null && !d.test().isEmpty()) dm.put("test", d.test());
             if (d.module() != null && !d.module().isEmpty()) dm.put("module", d.module());
             if (d.engine() != null && !d.engine().isEmpty()) dm.put("engine", d.engine());
-            if (d.className() != null && !d.className().isEmpty()) dm.put("class", d.className());
+            if (d.className() != null && !d.className().isEmpty()) {
+                dm.put("testClass", d.className());
+                dm.put("class", d.className());
+            }
             if (d.method() != null && !d.method().isEmpty()) dm.put("method", d.method());
             if (d.exceptionClass() != null && !d.exceptionClass().isEmpty())
                 dm.put("exceptionClass", d.exceptionClass());
@@ -195,7 +198,7 @@ final class Json {
                     str(dm, "exceptionClass"),
                     str(dm, "module"),
                     str(dm, "engine"),
-                    strOr(dm, "class", "className"),
+                    firstStr(dm, "testClass", "class", "className"),
                     str(dm, "method"),
                     str(dm, "stack"),
                     str(dm, "file"),
@@ -252,6 +255,14 @@ final class Json {
     private static String strOr(Map<String, Object> o, String key, String legacy) {
         String v = str(o, key);
         return v != null ? v : str(o, legacy);
+    }
+
+    private static String firstStr(Map<String, Object> o, String... keys) {
+        for (String k : keys) {
+            String v = str(o, k);
+            if (v != null) return v;
+        }
+        return null;
     }
 
     private static List<String> strList(Map<String, Object> o, String key) {

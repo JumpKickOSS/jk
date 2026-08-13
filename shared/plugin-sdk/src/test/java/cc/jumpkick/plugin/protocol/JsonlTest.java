@@ -71,6 +71,13 @@ class JsonlTest {
         assertThat(nested).isEqualTo("{\"class\":\"E\",\"message\":\"boom {x}\"}");
         assertThat(Jsonl.str(nested, "class")).isEqualTo("E");
         assertThat(Jsonl.str(nested, "message")).isEqualTo("boom {x}");
+        // Nested throwable.class must not be read as the top-level test class.
+        assertThat(Jsonl.topStr(json, "class")).isNull();
+        assertThat(Jsonl.str(json, "class")).isEqualTo("E");
+        String withClass =
+                "{\"class\":\"pkg.Foo\",\"throwable\":{\"class\":\"AssertionError\",\"message\":\"x\"}}";
+        assertThat(Jsonl.topStr(withClass, "class")).isEqualTo("pkg.Foo");
+        assertThat(Jsonl.topStr(withClass, "testClass")).isNull();
     }
 
     @Test

@@ -2347,7 +2347,10 @@ public final class EngineProtocol {
         if (test != null && !test.isEmpty()) b.append(",\"test\":").append(Jsonl.quote(test));
         if (module != null && !module.isEmpty()) b.append(",\"module\":").append(Jsonl.quote(module));
         if (engine != null && !engine.isEmpty()) b.append(",\"engine\":").append(Jsonl.quote(engine));
-        if (className != null && !className.isEmpty()) b.append(",\"class\":").append(Jsonl.quote(className));
+        if (className != null && !className.isEmpty()) {
+            b.append(",\"testClass\":").append(Jsonl.quote(className));
+            b.append(",\"class\":").append(Jsonl.quote(className));
+        }
         if (method != null && !method.isEmpty()) b.append(",\"method\":").append(Jsonl.quote(method));
         if (exceptionClass != null && !exceptionClass.isEmpty())
             b.append(",\"exceptionClass\":").append(Jsonl.quote(exceptionClass));
