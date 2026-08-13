@@ -25,8 +25,10 @@ class NewScaffolderTest {
         var test = tempDir.resolve("src/test/java/com/example/CalcTest.java");
         assertThat(calc).exists();
         assertThat(Files.readString(calc)).contains("package com.example;");
+        assertThat(Files.readString(calc)).contains("public record Calc(int value)");
         assertThat(test).exists();
         assertThat(Files.readString(test)).contains("class CalcTest");
+        assertThat(Files.readString(test)).contains("new Calc(5).doubled()");
         assertThat(tempDir.resolve("src/main/java/com/example/Main.java")).doesNotExist();
     }
 
@@ -46,7 +48,7 @@ class NewScaffolderTest {
         assertThat(body).doesNotContain("public static void main");
         assertThat(body).contains("void main()");
         assertThat(body).contains("IO.println(");
-        assertThat(body).contains("new Calc()"); // Main references the sample Calc
+        assertThat(body).contains("new Calc(5)"); // Main references the sample Calc
     }
 
     @Test
@@ -62,7 +64,7 @@ class NewScaffolderTest {
         assertThat(body).contains("class Main");
         assertThat(body).contains("void main()");
         assertThat(body).contains("IO.println(");
-        assertThat(body).contains("new Calc()");
+        assertThat(body).contains("new Calc(5)");
         assertThat(tempDir.resolve("src/main/java")).doesNotExist();
         // Sibling sample files share the package dir; the test lands under ./test/.
         assertThat(tempDir.resolve("src/com/example/Calc.java")).exists();
@@ -80,7 +82,7 @@ class NewScaffolderTest {
         assertThat(body).doesNotContain("public final class");
         assertThat(body).contains("public static void main(String... args)");
         assertThat(body).contains("System.out.println(");
-        assertThat(body).contains("new Calc()");
+        assertThat(body).contains("new Calc(5)");
         assertThat(body).doesNotContain("IO.println");
     }
 
@@ -203,6 +205,20 @@ class NewScaffolderTest {
         assertThat(build).contains("[processor-dependencies]");
         assertThat(build).contains("[provided-dependencies]");
         assertThat(build).contains("lombok = \"latest\"");
+    }
+
+    @Test
+    void jspecify_sample_writes_nullmarked_package_info(@TempDir Path tempDir) throws IOException {
+        NewScaffolder.write(libraryWithDeps(tempDir, List.of("jspecify")));
+
+        var info = tempDir.resolve("src/main/java/com/example/package-info.java");
+        assertThat(info).exists();
+        assertThat(Files.readString(info)).contains("@org.jspecify.annotations.NullMarked");
+        assertThat(Files.readString(info)).contains("package com.example;");
+        var calc = Files.readString(tempDir.resolve("src/main/java/com/example/Calc.java"));
+        assertThat(calc).contains("public record Calc(int value)");
+        assertThat(calc).doesNotContain("lombok");
+        assertThat(calc).doesNotContain("@Data");
     }
 
     @Test
@@ -506,6 +522,15 @@ class NewScaffolderTest {
     }
 
     private static NewInputs library(Path dir, NewInputs.Language lang, boolean sample, int major) {
+        return libraryWith(dir, lang, sample, major, List.of());
+    }
+
+    private static NewInputs libraryWithDeps(Path dir, List<String> deps) {
+        return libraryWith(dir, NewInputs.Language.JAVA, true, 25, deps);
+    }
+
+    private static NewInputs libraryWith(
+            Path dir, NewInputs.Language lang, boolean sample, int major, List<String> deps) {
         return new NewInputs(
                 "com.example",
                 "widget",
@@ -518,7 +543,7 @@ class NewScaffolderTest {
                 lang,
                 null,
                 Optional.empty(),
-                List.of(),
+                deps,
                 sample,
                 dir);
     }
