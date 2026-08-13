@@ -5,6 +5,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.SourceLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.JkBuild;
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -13,6 +14,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -62,30 +65,95 @@ public final class TestFailureSource {
         }
     }
 
+    /**
+     * Per-run cache: one snippet resolve and one suite-root walk per module. Share one instance
+     * between {@code onFailure} diagnostics and {@code renderFailures}.
+     */
+    public static final class Cache {
+        private final ConcurrentHashMap<SnipKey, Optional<Snippet>> snippets = new ConcurrentHashMap<>();
+        private final ConcurrentHashMap<FileKey, Optional<Path>> files = new ConcurrentHashMap<>();
+        private final ConcurrentHashMap<Path, Layout> layouts = new ConcurrentHashMap<>();
+        private final LongAdder walks = new LongAdder();
+
+        public Optional<Snippet> resolve(Path moduleDir, String testClass, String stack) {
+            return TestFailureSource.resolve(this, moduleDir, testClass, stack);
+        }
+
+        /** Times {@code Files.walk} ran (tests). */
+        public int walkCount() {
+            return walks.intValue();
+        }
+
+        Layout layout(Path moduleDir) {
+            return layouts.computeIfAbsent(moduleDir.toAbsolutePath().normalize(), TestFailureSource::loadLayout);
+        }
+    }
+
+    private record SnipKey(Path module, String testClass, String fileName, int line) {}
+
+    private record FileKey(Path module, String testClass, String fileName) {}
+
+    private record Layout(boolean simple, List<Path> roots) {}
+
+    private static final Cache UNBOUNDED = new Cache();
+
     /** Best-effort: empty when module dir, stack, or file cannot be resolved. */
     public static Optional<Snippet> resolve(Path moduleDir, String testClass, String stack) {
+        return resolve(UNBOUNDED, moduleDir, testClass, stack);
+    }
+
+    static Optional<Snippet> resolve(Cache cache, Path moduleDir, String testClass, String stack) {
         if (moduleDir == null || !Files.isDirectory(moduleDir)) return Optional.empty();
         if (stack == null || stack.isBlank()) return Optional.empty();
         Optional<Frame> frame = primaryFrame(stack, testClass);
         if (frame.isEmpty() || frame.get().line <= 0) return Optional.empty();
         Frame f = frame.get();
-        Optional<Path> file = locateFile(moduleDir, testClass, f.fileName);
+        Path mod = moduleDir.toAbsolutePath().normalize();
+        SnipKey key = new SnipKey(mod, testClass == null ? "" : testClass, f.fileName, f.line);
+        Cache c = cache == null ? UNBOUNDED : cache;
+        return c.snippets.computeIfAbsent(key, k -> resolveUncached(c, mod, testClass, f));
+    }
+
+    private static Optional<Snippet> resolveUncached(Cache cache, Path moduleDir, String testClass, Frame f) {
+        FileKey fk = new FileKey(moduleDir, testClass == null ? "" : testClass, f.fileName);
+        Optional<Path> file =
+                cache.files.computeIfAbsent(fk, k -> locateFile(cache, moduleDir, testClass, f.fileName));
         if (file.isEmpty()) return Optional.empty();
         try {
-            List<String> all = Files.readAllLines(file.get(), StandardCharsets.UTF_8);
-            if (all.isEmpty()) return Optional.empty();
-            // A stack line past EOF is not the last line of the file — skip the snippet.
-            if (f.line < 1 || f.line > all.size()) return Optional.empty();
-            int errorLine = f.line;
-            int[] window = window(all.size(), errorLine, CONTEXT_LINES);
-            List<String> slice = new ArrayList<>(window[1] - window[0] + 1);
-            for (int i = window[0]; i <= window[1]; i++) slice.add(all.get(i));
-            Path abs = file.get().toAbsolutePath().normalize();
-            String rel = relativize(moduleDir, abs);
-            return Optional.of(new Snippet(abs, rel, errorLine, window[0] + 1, slice, languageOf(f.fileName)));
+            int lineCount = countLines(file.get());
+            if (lineCount <= 0 || f.line < 1 || f.line > lineCount) return Optional.empty();
+            int[] w = window(lineCount, f.line, CONTEXT_LINES);
+            List<String> slice = readWindow(file.get(), w[0], w[1]);
+            if (slice.isEmpty()) return Optional.empty();
+            Path abs = file.get();
+            return Optional.of(new Snippet(abs, relativize(moduleDir, abs), f.line, w[0] + 1, slice, languageOf(f.fileName)));
         } catch (IOException e) {
             return Optional.empty();
         }
+    }
+
+    private static int countLines(Path file) throws IOException {
+        int n = 0;
+        try (BufferedReader r = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            while (r.readLine() != null) n++;
+        }
+        return n;
+    }
+
+    /** Lines {@code from}..{@code to} inclusive, 0-based. */
+    static List<String> readWindow(Path file, int from, int to) throws IOException {
+        if (to < from) return List.of();
+        List<String> slice = new ArrayList<>(to - from + 1);
+        try (BufferedReader r = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            int n = 0;
+            String line;
+            while ((line = r.readLine()) != null) {
+                if (n >= from && n <= to) slice.add(line);
+                if (n >= to) break;
+                n++;
+            }
+        }
+        return slice;
     }
 
     /** Plain-text markers for {@link TestSupport#renderFailures} / CLI paint. */
@@ -185,57 +253,50 @@ public final class TestFailureSource {
     // ---- file locate ----------------------------------------------------------
 
     static Optional<Path> locateFile(Path moduleDir, String testClass, String fileName) {
+        return locateFile(UNBOUNDED, moduleDir, testClass, fileName);
+    }
+
+    private static Optional<Path> locateFile(Cache cache, Path moduleDir, String testClass, String fileName) {
         if (fileName == null || fileName.isBlank() || fileName.indexOf('\0') >= 0) return Optional.empty();
         // Reject path-shaped names before resolve — stack file names are basenames.
         if (fileName.indexOf('/') >= 0 || fileName.indexOf('\\') >= 0) return Optional.empty();
         String pkgPath = packagePath(testClass);
-        List<Path> candidates = new ArrayList<>();
-
-        boolean simplePreferred = isSimpleLayout(moduleDir);
-        addSuiteCandidates(candidates, moduleDir, pkgPath, fileName, simplePreferred);
-        addSuiteCandidates(candidates, moduleDir, pkgPath, fileName, !simplePreferred);
-
-        for (Path p : candidates) {
-            Optional<Path> ok = insideModule(moduleDir, p);
-            if (ok.isPresent()) return ok;
+        Layout layout = cache.layout(moduleDir);
+        for (Path root : layout.roots()) {
+            if (!pkgPath.isEmpty()) {
+                Optional<Path> hit = insideModuleFile(moduleDir, root.resolve(pkgPath).resolve(fileName));
+                if (hit.isPresent()) return hit;
+            }
+            Optional<Path> hit = insideModuleFile(moduleDir, root.resolve(fileName));
+            if (hit.isPresent()) return hit;
         }
-        return scanByFileName(moduleDir, pkgPath, fileName, simplePreferred);
+        return scanByFileName(cache, moduleDir, pkgPath, fileName, layout);
     }
 
-    private static void addSuiteCandidates(
-            List<Path> out, Path moduleDir, String pkgPath, String fileName, boolean compact) {
-        List<String> suites = TestSuites.discover(moduleDir, compact);
-        if (suites.isEmpty()) suites = List.of(TestSuites.DEFAULT);
-        for (String suite : suites) {
-            List<Path> roots = new ArrayList<>();
-            roots.addAll(TestSuites.javaRoots(moduleDir, compact, suite));
-            roots.addAll(TestSuites.kotlinRoots(moduleDir, compact, suite));
-            roots.addAll(TestSuites.groovyRoots(moduleDir, compact, suite));
-            for (Path root : roots) {
-                if (!pkgPath.isEmpty()) out.add(root.resolve(pkgPath).resolve(fileName));
-                out.add(root.resolve(fileName));
-            }
-        }
+    private static Layout loadLayout(Path moduleDir) {
+        boolean simple = isSimpleLayout(moduleDir);
+        LinkedHashSet<Path> roots = new LinkedHashSet<>();
+        addSuiteRoots(roots, moduleDir, simple);
+        addSuiteRoots(roots, moduleDir, !simple);
+        return new Layout(simple, List.copyOf(roots));
     }
 
     private static Optional<Path> scanByFileName(
-            Path moduleDir, String pkgPath, String fileName, boolean simplePreferred) {
-        LinkedHashSet<Path> roots = new LinkedHashSet<>();
-        addSuiteRoots(roots, moduleDir, simplePreferred);
-        addSuiteRoots(roots, moduleDir, !simplePreferred);
+            Cache cache, Path moduleDir, String pkgPath, String fileName, Layout layout) {
         Path preferSuffix =
                 pkgPath.isEmpty() ? Path.of(fileName) : Path.of(pkgPath.replace('/', java.io.File.separatorChar), fileName);
         Path best = null;
         int seen = 0;
-        for (Path root : roots) {
+        for (Path root : layout.roots()) {
             if (!Files.isDirectory(root)) continue;
-            if (insideModule(moduleDir, root).isEmpty()) continue;
+            if (!containedIn(moduleDir, root)) continue;
+            cache.walks.increment();
             try (Stream<Path> walk = Files.walk(root)) {
                 for (Path p : (Iterable<Path>) walk::iterator) {
                     if (!Files.isRegularFile(p)) continue;
                     if (++seen > MAX_SCAN_FILES) return Optional.ofNullable(best);
                     if (!fileName.equals(p.getFileName().toString())) continue;
-                    Optional<Path> ok = insideModule(moduleDir, p);
+                    Optional<Path> ok = insideModuleFile(moduleDir, p);
                     if (ok.isEmpty()) continue;
                     if (p.endsWith(preferSuffix)) return ok;
                     if (best == null) best = ok.get();
@@ -257,12 +318,22 @@ public final class TestFailureSource {
         }
     }
 
-    /** Regular file under {@code moduleDir} after normalize; empty if missing or a path escape. */
-    static Optional<Path> insideModule(Path moduleDir, Path candidate) {
-        if (moduleDir == null || candidate == null) return Optional.empty();
+    /** True when {@code candidate} normalizes to a path inside {@code moduleDir}. */
+    static boolean containedIn(Path moduleDir, Path candidate) {
+        if (moduleDir == null || candidate == null) return false;
         Path root = moduleDir.toAbsolutePath().normalize();
         Path abs = candidate.toAbsolutePath().normalize();
-        if (!abs.startsWith(root)) return Optional.empty();
+        return abs.startsWith(root);
+    }
+
+    /** Regular file under {@code moduleDir} after normalize; empty if missing or a path escape. */
+    static Optional<Path> insideModule(Path moduleDir, Path candidate) {
+        return insideModuleFile(moduleDir, candidate);
+    }
+
+    private static Optional<Path> insideModuleFile(Path moduleDir, Path candidate) {
+        if (!containedIn(moduleDir, candidate)) return Optional.empty();
+        Path abs = candidate.toAbsolutePath().normalize();
         if (!Files.isRegularFile(abs)) return Optional.empty();
         return Optional.of(abs);
     }

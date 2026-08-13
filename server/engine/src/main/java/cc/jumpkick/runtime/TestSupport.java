@@ -182,6 +182,12 @@ public final class TestSupport {
 
     /** As {@link #renderFailures(TestSummary)} with module-dir source resolution. */
     public static List<String> renderFailures(TestSummary result, Path moduleDir) {
+        return renderFailures(result, moduleDir, null);
+    }
+
+    /** Share {@code cache} with {@link #bridgeListener} so each failure is resolved once. */
+    public static List<String> renderFailures(
+            TestSummary result, Path moduleDir, TestFailureSource.Cache cache) {
         List<String> out = new ArrayList<>();
         List<TestSummary.Failure> failures = result.failures();
         if (failures.isEmpty()) return out;
@@ -200,7 +206,9 @@ public final class TestSupport {
             out.add("FAILED " + shortTestLabel(f));
             Optional<TestFailureSource.Snippet> snippet = Optional.empty();
             if (moduleDir != null) {
-                snippet = TestFailureSource.resolve(moduleDir, f.className(), f.stack());
+                snippet = cache != null
+                        ? cache.resolve(moduleDir, f.className(), f.stack())
+                        : TestFailureSource.resolve(moduleDir, f.className(), f.stack());
             }
             // Assertion body, then source snippet, then exception locus under the snippet.
             List<String> body = failureBodyLines(f);
@@ -382,8 +390,20 @@ public final class TestSupport {
      */
     public static TestProgressListener bridgeListener(
             TaskContext ctx, int workerCount, boolean verbose, String moduleLabel, Path moduleDir) {
+        return bridgeListener(ctx, workerCount, verbose, moduleLabel, moduleDir, null);
+    }
+
+    /** As {@link #bridgeListener(TaskContext, int, boolean, String, Path)} with a shared snippet cache. */
+    public static TestProgressListener bridgeListener(
+            TaskContext ctx,
+            int workerCount,
+            boolean verbose,
+            String moduleLabel,
+            Path moduleDir,
+            TestFailureSource.Cache cache) {
         String module = moduleLabel == null ? "" : moduleLabel.trim();
         Path dir = moduleDir;
+        TestFailureSource.Cache snippets = cache;
         return new TestProgressListener() {
             @Override
             public void onTestStarted(String id, String display, boolean isTest, int workerId) {
@@ -446,7 +466,9 @@ public final class TestSupport {
                 int snippetStart = 0;
                 java.util.List<String> snippetLines = java.util.List.of();
                 if (dir != null) {
-                    var snip = TestFailureSource.resolve(dir, className, stack);
+                    var snip = snippets != null
+                            ? snippets.resolve(dir, className, stack)
+                            : TestFailureSource.resolve(dir, className, stack);
                     if (snip.isPresent()) {
                         var s = snip.get();
                         file = s.relativePath();

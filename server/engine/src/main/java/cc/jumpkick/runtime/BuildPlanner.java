@@ -2579,8 +2579,10 @@ public final class BuildPlanner {
                     String moduleLabel = projectUnderTest.project().group()
                             + ":"
                             + projectUnderTest.project().name();
+                    TestFailureSource.Cache snippets = new TestFailureSource.Cache();
                     TestProgressListener listener =
-                            TestSupport.bridgeListener(ctx, testWorkers, in.verbose(), moduleLabel, in.dir());
+                            TestSupport.bridgeListener(
+                                    ctx, testWorkers, in.verbose(), moduleLabel, in.dir(), snippets);
                     TestSummary result;
                     // Serialize test execution across concurrently-built units unless the
                     // user opted into parallel tests — shared ports/locks/fixtures.
@@ -2616,7 +2618,8 @@ public final class BuildPlanner {
                         // of a record for this key is the "not yet green" signal).
                         // Surface each failure (name + stack trace) above the bar
                         // not just the count — like Maven/Gradle.
-                        for (String line : TestSupport.renderFailures(result, in.dir())) ctx.output(line);
+                        for (String line : TestSupport.renderFailures(result, in.dir(), snippets))
+                            ctx.output(line);
                         throw new RuntimeException(
                                 result.failed() + " test failure" + (result.failed() == 1 ? "" : "s"));
                     }

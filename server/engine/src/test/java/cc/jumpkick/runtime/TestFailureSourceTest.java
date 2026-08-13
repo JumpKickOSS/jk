@@ -223,4 +223,51 @@ class TestFailureSourceTest {
         assertThat(TestFailureSource.resolve(mod, "cc.jumpkick.FooTest", stack)).isEmpty();
         assertThat(TestFailureSource.insideModule(mod, mod.resolve("../../secret.txt"))).isEmpty();
     }
+
+    @Test
+    void shared_cache_resolves_once_and_does_not_walk_when_candidates_hit(@TempDir Path mod)
+            throws Exception {
+        Path src = mod.resolve("src/test/java/cc/jumpkick");
+        Files.createDirectories(src);
+        Files.writeString(
+                src.resolve("FooTest.java"),
+                """
+                package cc.jumpkick;
+                class FooTest {
+                    void a() { throw new AssertionError("a"); }
+                    void b() { throw new AssertionError("b"); }
+                }
+                """);
+        var cache = new TestFailureSource.Cache();
+        String stackA = "err\n\tat cc.jumpkick.FooTest.a(FooTest.java:3)\n";
+        String stackB = "err\n\tat cc.jumpkick.FooTest.b(FooTest.java:4)\n";
+        assertThat(cache.resolve(mod, "cc.jumpkick.FooTest", stackA)).isPresent();
+        assertThat(cache.resolve(mod, "cc.jumpkick.FooTest", stackA)).isPresent();
+        assertThat(cache.resolve(mod, "cc.jumpkick.FooTest", stackB)).isPresent();
+        assertThat(cache.walkCount()).isEqualTo(0);
+    }
+
+    @Test
+    void shared_cache_walks_once_when_package_path_misses(@TempDir Path mod) throws Exception {
+        Path src = mod.resolve("src/test/java/elsewhere");
+        Files.createDirectories(src);
+        Files.writeString(src.resolve("FooTest.java"), "class FooTest {\n  void t() {}\n  void u() {}\n}\n");
+        var cache = new TestFailureSource.Cache();
+        String stackA = "err\n\tat cc.jumpkick.FooTest.t(FooTest.java:2)\n";
+        String stackB = "err\n\tat cc.jumpkick.FooTest.u(FooTest.java:3)\n";
+        assertThat(cache.resolve(mod, "cc.jumpkick.FooTest", stackA)).isPresent();
+        assertThat(cache.resolve(mod, "cc.jumpkick.FooTest", stackB)).isPresent();
+        assertThat(cache.walkCount()).isEqualTo(1);
+    }
+
+    @Test
+    void readWindow_loads_only_the_slice(@TempDir Path tmp) throws Exception {
+        Path f = tmp.resolve("Big.java");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 1; i <= 200; i++) sb.append("line ").append(i).append('\n');
+        Files.writeString(f, sb);
+        List<String> slice = TestFailureSource.readWindow(f, 96, 102);
+        assertThat(slice).containsExactly(
+                "line 97", "line 98", "line 99", "line 100", "line 101", "line 102", "line 103");
+    }
 }
