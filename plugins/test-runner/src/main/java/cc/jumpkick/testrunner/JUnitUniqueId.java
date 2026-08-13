@@ -45,7 +45,10 @@ final class JUnitUniqueId {
         String cls = "";
         String method = "";
         String template = "";
-        String invocation = "";
+        // Invocation-ish segments compose in order — nested @TestFactory containers each carry an
+        // index, and dropping the container index makes sibling dynamic tests with the same leaf
+        // index (#1/#2 vs #3/#2) label identically (JK-1904).
+        StringBuilder invocation = new StringBuilder();
         for (org.junit.platform.engine.UniqueId.Segment s : uid.getSegments()) {
             switch (s.getType()) {
                 case "engine" -> engine = s.getValue();
@@ -56,13 +59,16 @@ final class JUnitUniqueId {
                 case "test-factory" -> {
                     if (template.isEmpty()) template = s.getValue();
                 }
-                case "test-template-invocation", "test-factory-invocation", "dynamic-test" -> invocation = s.getValue();
+                case "test-template-invocation", "test-factory-invocation", "dynamic-container", "dynamic-test" -> {
+                    if (invocation.length() > 0) invocation.append('/');
+                    invocation.append(s.getValue());
+                }
                 default -> {}
             }
         }
         if (method.isEmpty()) {
             method = template;
-            if (!method.isEmpty() && !invocation.isEmpty()) method = method + "[" + invocation + "]";
+            if (!method.isEmpty() && invocation.length() > 0) method = method + "[" + invocation + "]";
         }
         return new JUnitUniqueId(raw, engine, cls, method);
     }
@@ -73,6 +79,32 @@ final class JUnitUniqueId {
         if (!testEngine.isEmpty()) payload.put("testEngine", testEngine);
         if (!testClass.isEmpty()) payload.put("testClass", testClass);
         if (!testMethod.isEmpty()) payload.put("testMethod", testMethod);
+    }
+
+    /**
+     * Every invocation-ish segment's value in id order, {@code /}-joined — same composition rule
+     * as the platform-parsed path (JK-1904): nested dynamic containers keep their indices.
+     */
+    private static String invocationPath(String id) {
+        StringBuilder sb = new StringBuilder();
+        int from = 0;
+        while (true) {
+            int open = id.indexOf('[', from);
+            if (open < 0) break;
+            int colon = id.indexOf(':', open);
+            int close = id.indexOf(']', open);
+            if (colon < 0 || close < 0 || colon > close) break;
+            String type = id.substring(open + 1, colon).trim();
+            switch (type) {
+                case "test-template-invocation", "test-factory-invocation", "dynamic-container", "dynamic-test" -> {
+                    if (sb.length() > 0) sb.append('/');
+                    sb.append(percentDecode(id.substring(colon + 1, close).trim()));
+                }
+                default -> {}
+            }
+            from = close + 1;
+        }
+        return sb.toString();
     }
 
     private static String className(String id) {
@@ -103,9 +135,7 @@ final class JUnitUniqueId {
         String template = segment(id, "test-template");
         if (template.isEmpty()) template = segment(id, "test-factory");
         if (template.isEmpty()) return "";
-        String invocation = segment(id, "test-template-invocation");
-        if (invocation.isEmpty()) invocation = segment(id, "test-factory-invocation");
-        if (invocation.isEmpty()) invocation = segment(id, "dynamic-test");
+        String invocation = invocationPath(id);
         if (invocation.isEmpty()) return template;
         return template + "[" + invocation + "]";
     }

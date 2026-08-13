@@ -50,6 +50,18 @@ class JUnitUniqueIdTest {
     }
 
     @Test
+    void nested_dynamic_containers_compose_their_indices() {
+        // JK-1904: sibling containers' leaves both end in [dynamic-test:#2]; dropping the
+        // container index made them label identically.
+        var a = JUnitUniqueId.parse(
+                "[engine:junit-jupiter]/[class:C]/[test-factory:m()]" + "/[dynamic-container:#1]/[dynamic-test:#2]");
+        var b = JUnitUniqueId.parse(
+                "[engine:junit-jupiter]/[class:C]/[test-factory:m()]" + "/[dynamic-container:#3]/[dynamic-test:#2]");
+        assertEquals("m()[#1/#2]", a.testMethod);
+        assertEquals("m()[#3/#2]", b.testMethod);
+    }
+
+    @Test
     void parameterized_template_with_array_param() {
         var id = JUnitUniqueId.parse(
                 "[engine:junit-jupiter]/[class:C]/[test-template:bar(int%5B%5D)]" + "/[test-template-invocation:#1]");
