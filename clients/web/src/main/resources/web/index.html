@@ -219,9 +219,12 @@
                           <span class="det-type">{{ rep.exceptionClass }}</span><span class="fail-mid"> thrown at line </span><span class="det-focus">{{ rep.line }}</span>
                         </div>
                       </template>
-                      <div v-else-if="rep.exceptionClass" class="fail-line fail-thrown">
-                        <span class="det-type">{{ rep.exceptionClass }}</span>
-                      </div>
+                      <template v-else>
+                        <div v-if="rep.exceptionClass" class="fail-line fail-thrown">
+                          <span class="det-type">{{ rep.exceptionClass }}</span>
+                        </div>
+                        <div v-for="(fr, fi) in (rep.frames || [])" :key="'st'+fi" class="fail-line fail-stack">{{ fr }}</div>
+                      </template>
                     </template>
                   </div>
                   <div v-else class="diag-line">
@@ -314,9 +317,12 @@
                             <span class="det-type">{{ rep.exceptionClass }}</span><span class="fail-mid"> thrown at line </span><span class="det-focus">{{ rep.line }}</span>
                           </div>
                         </template>
-                        <div v-else-if="rep.exceptionClass" class="fail-line fail-thrown">
-                          <span class="det-type">{{ rep.exceptionClass }}</span>
-                        </div>
+                        <template v-else>
+                          <div v-if="rep.exceptionClass" class="fail-line fail-thrown">
+                            <span class="det-type">{{ rep.exceptionClass }}</span>
+                          </div>
+                          <div v-for="(fr, fi) in (rep.frames || [])" :key="'st'+fi" class="fail-line fail-stack">{{ fr }}</div>
+                        </template>
                       </template>
                     </div>
                     <div v-else class="diag-line">

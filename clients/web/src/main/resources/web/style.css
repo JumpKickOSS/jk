@@ -1246,6 +1246,7 @@ table.stats td.err { color: var(--err); }
   padding-left: 4ch;
 }
 .fail-thrown { padding-left: 4ch; }
+.fail-stack { color: var(--dim); padding-left: 2ch; }
 .fail-src {
   display: flex;
   white-space: pre;

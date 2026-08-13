@@ -26,6 +26,7 @@ const {
   MAX_OUTPUT_LINES,
   normalizeDiagnostic,
   testFailureReport,
+  stackFrameLines,
   isTestFailureDiag,
   parseAssertJMessage,
   shortTestLabel,
@@ -1321,6 +1322,7 @@ test('testFailureReport builds CLI-shaped model with snippet rows and error line
   assert.equal(rep.line, 22);
   assert.equal(rep.rows.length, 4);
   assert.equal(rep.rows[0].num, 20);
+  assert.deepEqual(rep.frames, []);
   assert.equal(rep.rows[2].num, 22);
   assert.equal(rep.rows[2].error, true);
   assert.equal(rep.rows[0].error, false);
@@ -1328,6 +1330,26 @@ test('testFailureReport builds CLI-shaped model with snippet rows and error line
   const second = testFailureReport(d, { count: 2, showHeader: false });
   assert.equal(second.showHeader, false);
   assert.equal(second.count, 2);
+});
+
+test('testFailureReport falls back to stack frames when snippet is missing', () => {
+  const d = normalizeDiagnostic({
+    code: 'test-failure',
+    message: 'boom',
+    class: 'pkg.FooTest',
+    method: 'bar()',
+    exceptionClass: 'java.lang.AssertionError',
+    stack: 'java.lang.AssertionError: boom\n\tat pkg.FooTest.bar(FooTest.java:4)\n\tat java.base/java.lang.Thread.run(Thread.java:1)\n',
+  });
+  const rep = testFailureReport(d, { count: 1 });
+  assert.ok(rep);
+  assert.equal(rep.file, '');
+  assert.equal(rep.exceptionClass, 'AssertionError');
+  assert.deepEqual(rep.frames, [
+    '\tat pkg.FooTest.bar(FooTest.java:4)',
+    '\tat java.base/java.lang.Thread.run(Thread.java:1)',
+  ]);
+  assert.deepEqual(stackFrameLines('not a stack'), []);
 });
 
 test('live diagnostic event folds snippet fields onto the module', () => {

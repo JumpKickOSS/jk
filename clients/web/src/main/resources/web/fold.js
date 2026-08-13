@@ -1409,7 +1409,20 @@ export function testFailureReport(d, opts) {
     line: errorLine,
     exceptionClass: simpleEx,
     rows,
+    // CLI paints `at …` frames when there is no snippet; hide them when source is present.
+    frames: d.file && snippet.length ? [] : stackFrameLines(d.stack),
   };
+}
+
+/** {@code at …} / {@code ... N more} lines from a printStackTrace string. */
+export function stackFrameLines(stack) {
+  if (!stack) return [];
+  const out = [];
+  for (const line of String(stack).split('\n')) {
+    const t = line.trimStart();
+    if (t.startsWith('at ') || t.startsWith('...')) out.push(line);
+  }
+  return out;
 }
 
 /** True when the diagnostic should use the rich test-failure report. */
