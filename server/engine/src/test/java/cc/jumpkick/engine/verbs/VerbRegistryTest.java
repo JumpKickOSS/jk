@@ -11,6 +11,7 @@ import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.WorkspaceBuildListener;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
+import java.util.function.Function;
 import org.junit.jupiter.api.Test;
 
 class VerbRegistryTest {
@@ -18,17 +19,20 @@ class VerbRegistryTest {
     @Test
     void standard_lists_workspace_test_and_single_build() {
         VerbRegistry reg = VerbRegistry.standard(new FakeHost());
-        assertThat(reg.all()).hasSize(3);
+        assertThat(reg.all()).hasSize(6);
         HostedVerb build = reg.find(EngineProtocol.BUILD_REQUEST);
         HostedVerb test = reg.find(EngineProtocol.TEST_REQUEST);
         HostedVerb single = reg.find(EngineProtocol.SINGLE_BUILD_REQUEST);
         assertThat(build).isInstanceOf(WorkspaceBuildVerb.class);
         assertThat(test).isInstanceOf(TestVerb.class);
         assertThat(single).isInstanceOf(SingleBuildVerb.class);
+        assertThat(reg.find(EngineProtocol.LOCK_REQUEST)).isInstanceOf(LockVerb.class);
+        assertThat(reg.find(EngineProtocol.UPDATE_REQUEST)).isInstanceOf(UpdateVerb.class);
+        assertThat(reg.find(EngineProtocol.SYNC_REQUEST)).isInstanceOf(SyncVerb.class);
         assertThat(build.shape()).isInstanceOf(VerbShape.AsyncPlan.class);
         assertThat(test.jobKind().verb()).isEqualTo("test");
         assertThat(single.toJobRequest().verb()).isEqualTo("build");
-        assertThat(reg.find("lock-request")).isNull();
+        assertThat(reg.find("audit-request")).isNull();
     }
 
     @Test
@@ -56,6 +60,12 @@ class VerbRegistryTest {
 
         @Override
         public BuildPlanListener planListener(String dir, BufferedWriter writer, BuildPlan plan) {
+            return new BuildPlanListener() {};
+        }
+
+        @Override
+        public BuildPlanListener planListener(
+                String dir, BufferedWriter writer, Function<cc.jumpkick.run.BuildPlanResult, String> finishEncoder) {
             return new BuildPlanListener() {};
         }
 

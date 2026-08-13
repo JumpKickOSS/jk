@@ -783,30 +783,6 @@ public final class EngineServer implements AutoCloseable {
                     case EngineProtocol.HISTORY_DELETE_REQUEST -> handleHistoryDelete(line, writer);
                     case EngineProtocol.CANCEL_REQUEST -> handleCancelRequest(line, writer);
                     case EngineProtocol.METRICS_REQUEST -> handleMetrics(line, writer);
-                    case EngineProtocol.LOCK_REQUEST -> {
-                        // Same fork-and-watch shape as BUILD_REQUEST, hosting jk lock's cascade.
-                        jobs.submit(
-                                line,
-                                JobRequest.plan("lock", "jk-engine-lock-", this::runLock),
-                                new JobTransport.SocketWatch(reader, writer));
-                        return;
-                    }
-                    case EngineProtocol.UPDATE_REQUEST -> {
-                        // jk update rides jk lock's event vocabulary (plus the --git splice mode).
-                        jobs.submit(
-                                line,
-                                JobRequest.plan("update", "jk-engine-update-", this::runUpdate),
-                                new JobTransport.SocketWatch(reader, writer));
-                        return;
-                    }
-                    case EngineProtocol.SYNC_REQUEST -> {
-                        // jk sync is a single plan — TEST_REQUEST's wire shape.
-                        jobs.submit(
-                                line,
-                                JobRequest.plan("sync", "jk-engine-sync-", this::runSync),
-                                new JobTransport.SocketWatch(reader, writer));
-                        return;
-                    }
                     case EngineProtocol.AUDIT_REQUEST -> {
                         // Hosted worker command: single plan, worker forked engine-side.
                         jobs.submit(
@@ -2308,147 +2284,6 @@ public final class EngineServer implements AutoCloseable {
         }
     }
 
-    /**
-     * Decode a {@link EngineProtocol#LOCK_REQUEST} and run {@code jk lock}'s cascade in-session:
-     * the entry project, then (for a workspace root) each declared module in declaration order
-     * each module a {@link EngineProtocol#LOCK_MODULE} + plan-step burst + the standard plan
-     * events, ending in a {@link EngineProtocol#LOCK_FINISH} terminal. Per-package resolution
-     * streams as {@link EngineProtocol#LOCK_PACKAGE} (plain structured text; the client formats and
-     * colorizes). Forge tokens for git-source materialization resolve exactly as in the CLI — the
-     * same {@code JK_HOME} / platform product layout token store and environment, which this engine process inherits from its
-     * spawner.
-     */
-    private void runLock(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
-        try {
-            java.util.List<String> features = Jsonl.strArray(requestLine, "features");
-            boolean withDefaults = !Jsonl.bool(requestLine, "noDefaultFeatures", false);
-            boolean sources = Jsonl.bool(requestLine, "sources", false);
-            boolean conservative = Jsonl.bool(requestLine, "conservative", false);
-            Session session = resolveSession(requestLine, cancelToken, false);
-            java.net.URI repoUrl = repoUrlOf(requestLine);
-            SessionContext.where(session, () -> {
-                lockCascade(
-                        session.workingDir(),
-                        session.cacheDir(),
-                        repoUrl,
-                        features,
-                        withDefaults,
-                        sources,
-                        false,
-                        null,
-                        conservative,
-                        writer);
-                return null;
-            });
-        } catch (Exception e) {
-            sendQuiet(writer, requestFailedLine(null, e));
-        }
-    }
-
-    /**
-     * Decode a {@link EngineProtocol#UPDATE_REQUEST}: either the full re-resolve cascade (riding
-     * {@link #runLock}'s exact event vocabulary, with {@code jk update}'s always-fresh plan) or the
-     * {@code --git} splice mode, which runs no plan at all — just the {@link
-     * EngineProtocol#LOCK_FINISH} terminal carrying the refreshed count.
-     */
-    private void runUpdate(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
-        try {
-            java.util.List<String> features = Jsonl.strArray(requestLine, "features");
-            boolean withDefaults = !Jsonl.bool(requestLine, "noDefaultFeatures", false);
-            boolean gitOnly = Jsonl.bool(requestLine, "gitOnly", false);
-            String gitTarget = Jsonl.str(requestLine, "gitTarget");
-            Session session = resolveSession(requestLine, cancelToken, false);
-            java.net.URI repoUrl = repoUrlOf(requestLine);
-            String platformOverride = Jsonl.str(requestLine, "platform");
-            if (platformOverride != null && platformOverride.isBlank()) platformOverride = null;
-            String platformFinal = platformOverride;
-            SessionContext.where(session, () -> {
-                Path entryDir = session.workingDir();
-                Path cache = session.cacheDir();
-                if (gitOnly) {
-                    java.nio.file.Files.createDirectories(cache);
-                    JkBuild root;
-                    try {
-                        root = JkBuildParser.parse(entryDir.resolve("jk.toml"));
-                    } catch (RuntimeException e) {
-                        sendQuiet(
-                                writer,
-                                EngineProtocol.lockFinish(
-                                        false,
-                                        cc.jumpkick.model.command.Exit.CONFIG,
-                                        java.util.List.of(String.valueOf(e.getMessage())),
-                                        -1));
-                        return null;
-                    }
-                    var outcome = cc.jumpkick.runtime.LockPlans.updateGitOnly(
-                            entryDir, root, cache, repoUrl, features, withDefaults, gitTarget);
-                    sendQuiet(
-                            writer,
-                            EngineProtocol.lockFinish(
-                                    outcome.exitCode() == 0,
-                                    outcome.exitCode(),
-                                    outcome.error() != null ? java.util.List.of(outcome.error()) : java.util.List.of(),
-                                    outcome.refreshed()));
-                } else {
-                    lockCascade(entryDir, cache, repoUrl, features, withDefaults, false, true, platformFinal, writer);
-                }
-                return null;
-            });
-        } catch (Exception e) {
-            sendQuiet(writer, requestFailedLine(null, e));
-        }
-    }
-
-    /**
-     * Decode a {@link EngineProtocol#SYNC_REQUEST} and run {@code jk sync}'s single plan in-session
-     * — {@link EngineProtocol#TEST_REQUEST}'s exact wire shape, with the fetched/up-to-date counts
-     * riding the terminal plan-finish. The plan is built with {@code allowJdkInstall = false}: JDK
-     * installs never happen inside the engine (the client pre-flights them — see {@link
-     * cc.jumpkick.runtime.SyncPlans}). On success, queues the opportunistic cache prune for the
-     * next idle boundary — the post-success step the CLI used to run, moved here since the engine
-     * did the work.
-     */
-    private void runSync(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
-        try {
-            boolean sources = Jsonl.bool(requestLine, "sources", false);
-            boolean refresh = Jsonl.bool(requestLine, "refresh", false);
-            String jdksDirStr = Jsonl.str(requestLine, "jdksDir");
-            Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
-            Session session = resolveSession(requestLine, cancelToken, refresh).withJdksDir(jdksDir);
-            java.net.URI repoUrl = repoUrlOf(requestLine);
-            SessionContext.where(session, () -> {
-                Path entryDir = session.workingDir();
-                Path cache = session.cacheDir();
-                java.nio.file.Files.createDirectories(cache);
-                java.util.concurrent.atomic.AtomicInteger fetched = new java.util.concurrent.atomic.AtomicInteger();
-                java.util.concurrent.atomic.AtomicInteger upToDate = new java.util.concurrent.atomic.AtomicInteger();
-                cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.SyncPlans.syncBuildPlan(
-                        entryDir, cache, jdksDir, repoUrl, sources, fetched, upToDate, null, false);
-                String dir = EngineProtocol.SINGLE_PLAN_DIR;
-                for (Task p : plan.steps()) {
-                    sendQuiet(
-                            writer,
-                            EngineProtocol.planStep(
-                                    dir,
-                                    p.name(),
-                                    p.label(),
-                                    phaseWire(p.group().orElse(null))));
-                }
-                sendQuiet(writer, EngineProtocol.planDone(1));
-                plan.addListener(wireBuildPlanListener(
-                        dir, writer, (java.util.function.Function<BuildPlanResult, String>) result ->
-                                EngineProtocol.planFinishSync(dir, result.success(), fetched.get(), upToDate.get())));
-                BuildPlanResult result = plan.run();
-                if (result.success()) {
-                    maybeEnqueuePrune(cache);
-                }
-                return null;
-            });
-        } catch (Exception e) {
-            sendQuiet(writer, requestFailedLine(null, e));
-        }
-    }
-
     // ---- hosted worker commands ---------------------------------------------------------------------
 
     /**
@@ -3296,139 +3131,6 @@ public final class EngineServer implements AutoCloseable {
             }
         }
         sendQuiet(writer, EngineProtocol.workspaceFinish(true, 0, java.util.List.of()));
-    }
-
-    /**
-     * The lock/update path both {@link #runLock} and {@link #runUpdate} stream: parse the entry
-     * manifest, resolve workspace ownership, then run <strong>one</strong> {@link
-     * cc.jumpkick.runtime.LockPlans} plan that writes the single workspace (or standalone)
-     * {@code jk-lock.toml}. Members never get their own lockfile — locking from a member updates
-     * the workspace root lock with the full merged graph.
-     */
-    private void lockCascade(
-            Path entryDir,
-            Path cache,
-            java.net.URI repoUrl,
-            java.util.List<String> features,
-            boolean withDefaults,
-            boolean sources,
-            boolean update,
-            String platformOverride,
-            BufferedWriter writer)
-            throws Exception {
-        lockCascade(entryDir, cache, repoUrl, features, withDefaults, sources, update, platformOverride, false, writer);
-    }
-
-    private void lockCascade(
-            Path entryDir,
-            Path cache,
-            java.net.URI repoUrl,
-            java.util.List<String> features,
-            boolean withDefaults,
-            boolean sources,
-            boolean update,
-            String platformOverride,
-            boolean conservative,
-            BufferedWriter writer)
-            throws Exception {
-        java.nio.file.Files.createDirectories(cache);
-        // One lock scope: workspace root (merged) or standalone project. Members redirect to root
-        // (shared with the HTTP/MCP lock job —.
-        Path lockDir;
-        JkBuild effective;
-        String coord;
-        try {
-            var scope = cc.jumpkick.runtime.LockPlans.lockScope(entryDir);
-            lockDir = scope.lockDir();
-            effective = scope.effective();
-            coord = scope.coord();
-        } catch (RuntimeException e) {
-            sendQuiet(
-                    writer,
-                    EngineProtocol.lockFinish(
-                            false,
-                            cc.jumpkick.model.command.Exit.CONFIG,
-                            java.util.List.of(String.valueOf(e.getMessage())),
-                            -1));
-            return;
-        }
-
-        // Serialize per lock dir (JK-1356). A conservative freshen that waited here may find the
-        // lock already fresh — a concurrent job won the flight; the bare lock-finish is a complete
-        // stream (the client returns on the terminal without any plan events).
-        synchronized (cc.jumpkick.runtime.LockGate.monitorFor(lockDir)) {
-            if (conservative
-                    && !cc.jumpkick.lock.LockFreshness.isStale(lockDir, cc.jumpkick.lock.LockPaths.lockFile(lockDir))) {
-                sendQuiet(writer, EngineProtocol.lockFinish(true, 0, java.util.List.of(), -1));
-                return;
-            }
-            Path dir = lockDir;
-            String dirTag = dir.toString();
-            sendQuiet(writer, EngineProtocol.lockModule(dirTag, coord));
-
-            CoalescingLockPackages lockPkgs = new CoalescingLockPackages(
-                    (d, name, ver, total) -> sendQuiet(writer, EngineProtocol.lockPackage(d, name, ver, total)));
-            cc.jumpkick.resolver.ResolveObserver observer = new cc.jumpkick.resolver.ResolveObserver() {
-                @Override
-                public void onTotal(int total) {
-                    // tick growth already rides the plan's tick-update events
-                }
-
-                @Override
-                public void onPackage(String module, String version) {
-                    lockPkgs.onPackage(dirTag, module, version);
-                }
-            };
-            cc.jumpkick.run.BuildPlan plan = update
-                    ? cc.jumpkick.runtime.LockPlans.updateBuildPlan(
-                            dir, effective, cache, repoUrl, features, withDefaults, platformOverride)
-                    : cc.jumpkick.runtime.LockPlans.lockBuildPlan(
-                            dir,
-                            effective,
-                            cache,
-                            repoUrl,
-                            features,
-                            withDefaults,
-                            sources,
-                            conservative,
-                            observer,
-                            null);
-            for (Task p : plan.steps()) {
-                sendQuiet(
-                        writer,
-                        EngineProtocol.planStep(
-                                dirTag, p.name(), p.label(), phaseWire(p.group().orElse(null))));
-            }
-            sendQuiet(writer, EngineProtocol.planDone(1));
-            plan.addListener(wireBuildPlanListener(
-                    dirTag, writer, (java.util.function.Function<BuildPlanResult, String>) result -> {
-                        lockPkgs.flush();
-                        lockPkgs.close();
-                        cc.jumpkick.lock.Lockfile lock =
-                                plan.get(cc.jumpkick.runtime.LockPlans.LOCKFILE).orElse(null);
-                        return EngineProtocol.planFinishLock(
-                                dirTag,
-                                result.success(),
-                                lock != null ? lock.artifacts().size() : -1,
-                                lock != null
-                                        ? lock.artifacts().stream()
-                                                .filter(a -> a.sourcesChecksum() != null)
-                                                .count()
-                                        : -1,
-                                lock != null ? lock.plugins().size() : -1);
-                    }));
-
-            BuildPlanResult result = plan.run();
-            lockPkgs.close();
-            if (!result.success()) {
-                sendQuiet(
-                        writer,
-                        EngineProtocol.lockFinish(
-                                false, cc.jumpkick.runtime.LockPlans.failureExitCode(result), java.util.List.of(), -1));
-                return;
-            }
-        }
-        sendQuiet(writer, EngineProtocol.lockFinish(true, 0, java.util.List.of(), -1));
     }
 
     /**
@@ -4762,7 +4464,7 @@ public final class EngineServer implements AutoCloseable {
     private boolean runHttpLock(Path entryDir, Session.CancelToken cancelToken) {
         try {
             Path cache = cc.jumpkick.util.JkDirs.cache();
-            // Same scope rule as the JSONL lockCascade: a workspace member redirects to its root
+            // Same scope rule as the JSONL lock cascade: a workspace member redirects to its root
             // and locks the merged union — a module-scoped resolution must never overwrite the
             // root jk-lock.toml.
             var scope = cc.jumpkick.runtime.LockPlans.lockScope(entryDir);
@@ -5107,6 +4809,12 @@ public final class EngineServer implements AutoCloseable {
         @Override
         public BuildPlanListener planListener(String dir, BufferedWriter writer, cc.jumpkick.run.BuildPlan plan) {
             return wireBuildPlanListener(dir, writer, plan);
+        }
+
+        @Override
+        public BuildPlanListener planListener(
+                String dir, BufferedWriter writer, java.util.function.Function<BuildPlanResult, String> finishEncoder) {
+            return wireBuildPlanListener(dir, writer, finishEncoder);
         }
 
         @Override
