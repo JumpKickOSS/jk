@@ -5245,17 +5245,7 @@ public final class EngineServer implements AutoCloseable {
             stepCount++;
         }
         for (BuildRecord.Diag d : r.diagnostics()) {
-            send(
-                    writer,
-                    JsonOut.object()
-                            .put("type", EngineProtocol.HISTORY_DIAG)
-                            .put("severity", d.severity())
-                            .put("task", d.step())
-                            .put("code", d.code())
-                            .put("message", d.message())
-                            .put("test", d.test())
-                            .put("exceptionClass", d.exceptionClass())
-                            .toString());
+            send(writer, historyDiagLine(d));
         }
         send(
                 writer,
@@ -5265,6 +5255,33 @@ public final class EngineServer implements AutoCloseable {
                                 "count",
                                 r.modules().size() + stepCount + r.diagnostics().size())
                         .toString());
+    }
+
+    /**
+     * A {@code history-diag} replay line carrying the FULL persisted shape — the journal keeps
+     * module/class/method/stack/snippet/worker (JK-1869) and replay must not flatten a failure
+     * back to task+message (JK-1909).
+     */
+    static String historyDiagLine(BuildRecord.Diag d) {
+        var o = JsonOut.object()
+                .put("type", EngineProtocol.HISTORY_DIAG)
+                .put("severity", d.severity())
+                .put("task", d.step())
+                .put("code", d.code())
+                .put("message", d.message())
+                .put("test", d.test())
+                .put("exceptionClass", d.exceptionClass());
+        if (d.module() != null && !d.module().isEmpty()) o.put("module", d.module());
+        if (d.engine() != null && !d.engine().isEmpty()) o.put("engine", d.engine());
+        if (d.className() != null && !d.className().isEmpty()) o.put("class", d.className());
+        if (d.method() != null && !d.method().isEmpty()) o.put("method", d.method());
+        if (d.stack() != null && !d.stack().isEmpty()) o.put("stack", d.stack());
+        if (d.file() != null && !d.file().isEmpty()) o.put("file", d.file());
+        if (d.line() > 0) o.put("line", d.line());
+        if (d.snippetStart() > 0) o.put("snippetStart", d.snippetStart());
+        if (d.snippet() != null && !d.snippet().isEmpty()) o.putStrings("snippet", d.snippet());
+        if (d.worker() > 0) o.put("worker", d.worker());
+        return o.toString();
     }
 
     /** A {@code history-task} line, optionally tagged with its module label (null for single-plan). */

@@ -237,7 +237,19 @@ public final class HistoryCommand extends GroupCommand {
                         .append(Jsonl.str(d, "severity"))
                         .append("] ");
                 appendIf(b, Jsonl.str(d, "task"), ": ");
-                appendIf(b, Jsonl.str(d, "test"), " — ");
+                // Enriched identity (JK-1909): Class.method [wN] beats the legacy glued test label.
+                String cls = Jsonl.topStr(d, "class");
+                String method = Jsonl.topStr(d, "method");
+                if (cls != null && !cls.isBlank()) {
+                    String simple = cls.substring(cls.lastIndexOf('.') + 1);
+                    b.append(simple);
+                    if (method != null && !method.isBlank()) b.append('.').append(method);
+                    int worker = Jsonl.intValue(d, "worker", 0);
+                    if (worker > 0) b.append(" [w").append(worker).append(']');
+                    b.append(" — ");
+                } else {
+                    appendIf(b, Jsonl.str(d, "test"), " — ");
+                }
                 String exc = Jsonl.str(d, "exceptionClass");
                 if (exc != null && !exc.isBlank()) b.append('(').append(exc).append(") ");
                 String msg = Jsonl.str(d, "message");
