@@ -13,7 +13,7 @@ class EngineWireExceptionTest {
 
     @Test
     void message_carries_no_wire_code_by_default() {
-        EngineWireException e = EngineWireException.fromJsonLine(EngineProtocol.error("deadline", "job timed out"));
+        EngineWireException e = EngineWireException.fromJsonLine(ProtoLifecycle.error("deadline", "job timed out"));
 
         assertThat(e.getMessage()).isEqualTo("job timed out");
         assertThat(e.code()).isEqualTo("deadline");
@@ -22,7 +22,7 @@ class EngineWireExceptionTest {
     @Test
     void context_prefix_reads_like_the_pre_typed_error_messages() {
         EngineWireException e = EngineWireException.fromJsonLine(
-                EngineProtocol.error("request-failed", "boom"), "jk engine: run failed: ");
+                ProtoLifecycle.error("request-failed", "boom"), "jk engine: run failed: ");
 
         assertThat(e.getMessage()).isEqualTo("jk engine: run failed: boom");
     }
@@ -30,8 +30,8 @@ class EngineWireExceptionTest {
     @Test
     void already_running_is_a_typed_check_not_a_string_match() {
         EngineWireException running = EngineWireException.fromJsonLine(
-                EngineProtocol.error(EngineProtocol.ERR_ALREADY_RUNNING, "Build #27 is already running"));
-        EngineWireException other = EngineWireException.fromJsonLine(EngineProtocol.error("deadline", "timed out"));
+                ProtoLifecycle.error(EngineProtocol.ERR_ALREADY_RUNNING, "Build #27 is already running"));
+        EngineWireException other = EngineWireException.fromJsonLine(ProtoLifecycle.error("deadline", "timed out"));
 
         assertThat(running.alreadyRunning()).isTrue();
         assertThat(other.alreadyRunning()).isFalse();
@@ -39,7 +39,7 @@ class EngineWireExceptionTest {
 
     @Test
     void blank_code_falls_back_to_request_failed() {
-        EngineWireException e = EngineWireException.fromJsonLine(EngineProtocol.error("", "boom"));
+        EngineWireException e = EngineWireException.fromJsonLine(ProtoLifecycle.error("", "boom"));
 
         assertThat(e.code()).isEqualTo(EngineProtocol.ERR_REQUEST_FAILED);
     }
