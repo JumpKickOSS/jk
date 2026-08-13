@@ -153,14 +153,16 @@ public final class TestFailureSource {
     /** Plain-text markers for {@link TestSupport#renderFailures} / CLI paint. */
     public static List<String> encodeMarkers(Snippet s) {
         List<String> out = new ArrayList<>(s.lines().size() + 2);
-        out.add("@@source path="
-                + s.relativePath()
-                + " line="
+        // path is LAST and runs to end-of-line: the header is space-delimited and paths may
+        // contain spaces, which a mid-line unquoted value would truncate (JK-1905).
+        out.add("@@source line="
                 + s.errorLine()
                 + " start="
                 + s.startLine()
                 + " lang="
-                + s.language());
+                + s.language()
+                + " path="
+                + s.relativePath());
         int n = s.startLine();
         for (String line : s.lines()) {
             boolean err = n == s.errorLine();

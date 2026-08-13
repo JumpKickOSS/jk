@@ -362,7 +362,7 @@ public final class TestFailureHighlight {
     static List<String> paintSourceBlock(List<String> markers, Theme t) {
         if (markers.isEmpty()) return List.of();
         String header = markers.get(0);
-        String path = attr(header, "path");
+        String path = pathAttr(header);
         String lang = attr(header, "lang");
         SyntaxHighlight.Language language = languageOf(lang);
 
@@ -722,6 +722,23 @@ public final class TestFailureHighlight {
         int e = s;
         while (e < header.length() && !Character.isWhitespace(header.charAt(e))) e++;
         return header.substring(s, e);
+    }
+
+    /**
+     * The {@code path=} value runs to end-of-line (the emitter puts it last so paths with spaces
+     * survive the space-delimited header — JK-1905). Old-format headers carried path mid-line;
+     * detect the trailing {@code line=} attr and fall back to the first-whitespace cut.
+     */
+    private static String pathAttr(String header) {
+        String needle = "path=";
+        int i = header.indexOf(needle);
+        if (i < 0) return "";
+        String tail = header.substring(i + needle.length());
+        if (tail.matches("\\S+ line=\\d+.*")) {
+            int sp = tail.indexOf(' ');
+            return tail.substring(0, sp);
+        }
+        return tail.strip();
     }
 
     private static SyntaxHighlight.Language languageOf(String lang) {

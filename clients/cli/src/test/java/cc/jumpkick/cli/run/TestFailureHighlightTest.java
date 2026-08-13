@@ -153,6 +153,46 @@ class TestFailureHighlightTest {
     }
 
     @Test
+    void source_paths_with_spaces_render_intact() {
+        // JK-1905: the emitter puts path= last (to end-of-line); old mid-line form still parses.
+        List<String> raw = List.of(
+                "Test Failure",
+                "1 test failed",
+                "",
+                "FAILED FooSpec.works()",
+                "",
+                "@@source line=3 start=1 lang=groovy path=src/test/groovy/My Specs/FooSpec.groovy",
+                "@@src 1|class FooSpec {",
+                "@@src 3*|  def works() {}",
+                "@@src-end",
+                "    Error thrown at line 3",
+                "Test Failure end");
+        List<String> painted = TestFailureHighlight.paintLines(raw);
+        String all = String.join(
+                "\n", painted.stream().map(TestFailureHighlightTest::plain).toList());
+        assertThat(all).contains("src/test/groovy/My Specs/FooSpec.groovy");
+
+        // Old-format header (path mid-line, no spaces) keeps parsing.
+        List<String> old = List.of(
+                "Test Failure",
+                "1 test failed",
+                "",
+                "FAILED Foo.bar()",
+                "",
+                "@@source path=Foo.java line=3 start=1 lang=java",
+                "@@src 3*|  void bar() {}",
+                "@@src-end",
+                "Test Failure end");
+        String oldAll = String.join(
+                "\n",
+                TestFailureHighlight.paintLines(old).stream()
+                        .map(TestFailureHighlightTest::plain)
+                        .toList());
+        assertThat(oldAll).contains("Foo.java");
+        assertThat(oldAll).doesNotContain("Foo.java line=");
+    }
+
+    @Test
     void no_snippet_failure_keeps_assertj_reformat_and_type_colored_exception() {
         // The engine's no-snippet shape (escape-rejected, moved/generated, inherited test): bare
         // "    ExceptionClass" between assertion body and frames — it must flush the assertion
