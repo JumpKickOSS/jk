@@ -4,6 +4,8 @@ package cc.jumpkick.cli.run;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.Badge;
+import cc.jumpkick.config.GlobalConfig;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -18,28 +20,26 @@ import org.jline.utils.AttributedStyle;
  * <p>Painted shape:
  *
  * <pre>
- * ✘ Test failure in group:artifact › 1 test failed
- *
- * FAILED SimpleClass.method()
- *
- * "description"
- *  Expected: 42
- *   But Was: 41
- *
- *     path/to/File.java
- *   19│ …
- *     AssertionFailedError thrown at line 23
+ * Test Failure in group:artifact › 1 test failed
+ *  ┃
+ *  ┃ FAILED SimpleClass.method()
+ *  ┃
+ *  ┃ "description"
+ *  ┃  Expected: 42
+ *  ┃   But Was: 41
+ *  ┃
+ *  ┃     path/to/File.java
+ *  ┃   19│ …
+ *  ┃     AssertionFailedError thrown at line 23
+ *  ┗━
  * </pre>
- *
- * <p>No thick outer rail — the body is flush-left; colors match the prior CLI report.
  */
 public final class TestFailureHighlight {
 
     /** Engine sentinel title — must stay byte-identical to {@code TestSupport.renderFailures}. */
     public static final String HEADER_SENTINEL = "Test Failure";
 
-    /** @deprecated rail removed from the report; kept for tests that asserted its presence. */
-    @Deprecated
+    /** Heavy vertical box-drawing used as the failure rail (U+2503). */
     public static final String RAIL = "┃";
 
     private static final Pattern FAILED_LINE = Pattern.compile("^(?<indent>[ \\t]*)FAILED (?<rest>.+)$");
@@ -119,13 +119,13 @@ public final class TestFailureHighlight {
         return painted.size() > 1 ? painted.get(1) : (painted.isEmpty() ? raw : painted.get(0));
     }
 
-    /** Styled header fragment (legacy callers). */
+    /** Styled header fragment: red Test pill + mid-gray "Failure" (legacy callers). */
     public static String paintHeader() {
         return paintHeaderLine(null, 1, false);
     }
 
     /**
-     * {@code ✘ Test failure in group:artifact › 1 test failed}
+     * {@code Test Failure in group:artifact › 1 test failed}
      *
      * @param module GA coord or null/blank
      * @param count failure count
@@ -135,12 +135,15 @@ public final class TestFailureHighlight {
         Theme t = Theme.active();
         if (!t.isAnsi()) {
             String m = module == null || module.isBlank() ? "" : " in " + module;
-            return "✘ Test failure" + m + " › " + count + " test" + (plural ? "s" : "") + " failed";
+            return "[Test] Failure" + m + " › " + count + " test" + (plural ? "s" : "") + " failed";
         }
+        // Same red/white chip as DiagnosticReport Compile Java failures.
+        AttributedStyle body = t.withBackground(t.bright(255, 255, 255), t.planFailColor());
+        AttributedStyle caps = t.bright(t.planFailColor());
+        String pill = Badge.pill("Test", GlobalConfig.nerdfont(), body, caps);
         StringBuilder sb = new StringBuilder();
-        sb.append(Theme.colorize("✘", t.error()))
-                .append(' ')
-                .append(Theme.colorize("Test failure", t.midGray()));
+        // "Failure" is mid-gray — the FAILED badge carries the error color.
+        sb.append(pill).append(' ').append(Theme.colorize("Failure", t.midGray()));
         if (module != null && !module.isBlank()) {
             sb.append(Theme.colorize(" in ", t.midGray()));
             int colon = module.indexOf(':');
@@ -202,9 +205,9 @@ public final class TestFailureHighlight {
             i++;
         }
         out.add(paintHeaderLine(module, count, plural));
-        out.add(""); // blank under header
+        out.add(rail("", t)); // blank under header
 
-        // ---- body (no thick outer rail) ------------------------------------
+        // ---- body (red rail around the existing content) -------------------
         ValueRole nextValue = ValueRole.ACTUAL;
         List<String> assertBuf = new ArrayList<>();
         boolean collectingAssert = false;
@@ -234,7 +237,7 @@ public final class TestFailureHighlight {
                 flushAssert(out, assertBuf, collectingAssert, t);
                 collectingAssert = false;
                 assertBuf.clear();
-                out.add(paintThrownAt(raw, t));
+                out.add(rail(paintThrownAt(raw, t), t));
                 i++;
                 continue;
             }
@@ -248,8 +251,8 @@ public final class TestFailureHighlight {
                 String failedWord = t.isAnsi()
                         ? Theme.colorize("FAILED", t.error().bold())
                         : "FAILED";
-                out.add(failedWord + " " + paintShortLabel(rest, t));
-                out.add("");
+                out.add(rail(failedWord + " " + paintShortLabel(rest, t), t));
+                out.add(rail("", t));
                 collectingAssert = true; // assertion body follows until source
                 i++;
                 continue;
@@ -261,7 +264,7 @@ public final class TestFailureHighlight {
                 flushAssert(out, assertBuf, collectingAssert, t);
                 collectingAssert = false;
                 assertBuf.clear();
-                out.add(StackTraceHighlight.line(raw));
+                out.add(rail(StackTraceHighlight.line(raw), t));
                 i++;
                 continue;
             }
@@ -278,21 +281,21 @@ public final class TestFailureHighlight {
             }
 
             if (raw.isEmpty()) {
-                out.add("");
+                out.add(rail("", t));
                 i++;
                 continue;
             }
 
             if (!t.isAnsi()) {
-                out.add(raw);
+                out.add(railPlain(raw));
             } else {
                 nextValue = updateValueRole(raw, nextValue);
-                out.add(paintFallbackContent(raw, t, nextValue));
+                out.add(rail(paintFallbackContent(raw, t, nextValue), t));
             }
             i++;
         }
         flushAssert(out, assertBuf, collectingAssert, t);
-        // No ┗━ footer — report ends after the thrown-at / last body line.
+        out.add(DiagnosticReport.errorFooter());
         return out;
     }
 
@@ -300,9 +303,9 @@ public final class TestFailureHighlight {
         if (!collecting || assertBuf.isEmpty()) return;
         List<String> painted = paintAssertionBody(assertBuf, t);
         for (String line : painted) {
-            out.add(line == null ? "" : line);
+            out.add(rail(line == null ? "" : line, t));
         }
-        out.add(""); // blank after assertion body before source
+        out.add(rail("", t)); // blank after assertion body before source
         assertBuf.clear();
     }
 
@@ -347,15 +350,15 @@ public final class TestFailureHighlight {
 
         List<String> out = new ArrayList<>();
         if (!t.isAnsi()) {
-            out.add(BODY_INDENT + path);
-            for (SrcRow row : rows) out.add(plainSrcLine(row, maxCode));
+            out.add(railPlain(BODY_INDENT + path));
+            for (SrcRow row : rows) out.add(railPlain(plainSrcLine(row, maxCode)));
             return out;
         }
 
-        out.add(BODY_INDENT + Theme.colorize(path, t.path().underline()));
+        out.add(rail(BODY_INDENT + Theme.colorize(path, t.path().underline()), t));
         Rgb pane = CONSOLE_BG;
         for (SrcRow row : rows) {
-            out.add(paintSrcLine(row, maxCode, language, t, pane));
+            out.add(rail(paintSrcLine(row, maxCode, language, t, pane), t));
         }
         return out;
     }
@@ -792,6 +795,15 @@ public final class TestFailureHighlight {
         if (fqcn.indexOf('.') < 0) return false;
         String simple = fqcn.substring(fqcn.lastIndexOf('.') + 1);
         return Character.isUpperCase(simple.charAt(0));
+    }
+
+    private static String rail(String paintedContent, Theme t) {
+        if (!t.isAnsi()) return railPlain(paintedContent);
+        return " " + Theme.colorize(RAIL, t.error()) + " " + (paintedContent == null ? "" : paintedContent);
+    }
+
+    private static String railPlain(String raw) {
+        return " | " + (raw == null ? "" : raw);
     }
 
     public static boolean isHeader(String line) {

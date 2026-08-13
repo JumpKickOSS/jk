@@ -36,7 +36,9 @@ class TestFailureHighlightTest {
         List<String> painted = TestFailureHighlight.paintLines(raw);
         String all = String.join("\n", painted.stream().map(TestFailureHighlightTest::plain).toList());
 
-        assertThat(all).contains("✘ Test failure in cc.jumpkick:jk-engine › 1 test failed");
+        assertThat(all).contains("Failure");
+        assertThat(all).contains("cc.jumpkick:jk-engine");
+        assertThat(all).contains("1 test failed");
         assertThat(all)
                 .contains("FAILED DogfoodFailureSnippetTest.deliberately_fails_to_show_source_snippet()");
         assertThat(all).contains("AssertionFailedError thrown at line 23");
@@ -48,24 +50,26 @@ class TestFailureHighlightTest {
         assertThat(all).contains("isEqualTo");
         assertThat(all).doesNotContain("org.opentest4j");
         assertThat(all).doesNotContain("@@source");
-        // No thick rail or corner footer
-        assertThat(all).doesNotContain("┃");
-        assertThat(all).doesNotContain(DiagnosticReport.FOOTER);
-        // Order: FAILED → Expected → source → thrown-at
+        // Order: FAILED → Expected → source → thrown-at → footer
         int failedAt = all.indexOf("FAILED Dogfood");
         int expectedAt = all.indexOf("Expected: 42");
         int pathAt = all.indexOf("src/test/java");
         int thrownAt = all.indexOf("AssertionFailedError thrown at line 23");
+        int footerAt = all.indexOf(DiagnosticReport.FOOTER);
         assertThat(failedAt).isGreaterThan(0);
         assertThat(expectedAt).isGreaterThan(failedAt);
         assertThat(pathAt).isGreaterThan(expectedAt);
         assertThat(thrownAt).isGreaterThan(pathAt);
+        assertThat(footerAt).isGreaterThan(thrownAt);
 
         if (Theme.active().isAnsi()) {
             Theme t = Theme.active();
             assertThat(String.join("", painted)).contains(Coords.ga("cc.jumpkick", "jk-engine"));
-            assertThat(String.join("", painted)).contains(Theme.colorize("✘", t.error()));
+            assertThat(String.join("", painted)).contains(Theme.colorize("Failure", t.midGray()));
             assertThat(String.join("", painted)).contains(Theme.colorize("FAILED", t.error().bold()));
+            assertThat(String.join("", painted)).contains(Theme.colorize(TestFailureHighlight.RAIL, t.error()));
+            assertThat(String.join("", painted)).contains(Theme.colorize("›", t.darkGray()));
+            assertThat(String.join("", painted)).contains(Theme.colorize("1", t.focused()));
         }
     }
 
@@ -74,12 +78,15 @@ class TestFailureHighlightTest {
     }
 
     @Test
-    void header_is_cross_plus_test_failure() {
+    void header_is_test_pill_plus_failure() {
         String h = TestFailureHighlight.paintHeader();
-        assertThat(plain(h)).contains("✘").contains("Test failure");
+        assertThat(plain(h)).contains("Test").contains("Failure");
+        assertThat(plain(h)).contains("1 test failed");
         if (Theme.active().isAnsi()) {
             assertThat(h).contains("\u001b");
-            assertThat(h).contains(Theme.colorize("✘", Theme.active().error()));
+            Theme t = Theme.active();
+            assertThat(h).contains(Theme.colorize("Failure", t.midGray()));
+            assertThat(h).contains(Theme.colorize("1", t.focused()));
         }
     }
 
@@ -99,7 +106,7 @@ class TestFailureHighlightTest {
         String all = plain(String.join("\n", painted));
         assertThat(all).contains("FAILED NativeEffortTest.size_model()");
         assertThat(all).contains("21670L");
-        assertThat(all).doesNotContain(DiagnosticReport.FOOTER);
+        assertThat(all).contains(DiagnosticReport.FOOTER);
         if (Theme.active().isAnsi()) {
             Theme t = Theme.active();
             assertThat(String.join("", painted)).contains(Theme.colorize("21670L", t.error()));
