@@ -117,10 +117,15 @@ public final class Table implements Widget {
         this.title = title == null ? "" : title;
     }
 
-    /** Italic header text when ANSI is on. */
+    /** Italic header text when ANSI is on (global-theme convenience for one-shot callers). */
     public static String headerCell(String text) {
+        return headerCell(text, Theme.active().isAnsi());
+    }
+
+    /** Like every other paint decision, the plain fallback follows the render context (JK-1889). */
+    static String headerCell(String text, boolean ansi) {
         String s = text == null ? "" : text;
-        if (s.isEmpty() || !Theme.active().isAnsi()) return s;
+        if (s.isEmpty() || !ansi) return s;
         return Theme.colorize(s, org.jline.utils.AttributedStyle.DEFAULT.italic());
     }
 
@@ -593,7 +598,9 @@ public final class Table implements Widget {
         for (int i = 0; i < widths.length; i++) {
             String name = i < cols.size() ? cols.get(i).name() : "";
             if (plain) name = PlainAscii.transform(name);
-            String cell = pad(headerCell(name), widths[i], Align.LEFT);
+            // Headers sit over their data — a CENTER column centers its header too (JK-1888).
+            Align align = i < cols.size() ? cols.get(i).align() : Align.LEFT;
+            String cell = pad(headerCell(name, ansi), widths[i], align);
             sb.append(' ').append(cell).append(' ').append(bar);
         }
         return sb.toString();

@@ -34,4 +34,26 @@ class TableBandTest {
         String plainRow = out.stream().filter(l -> l.contains("b ")).findFirst().orElseThrow();
         assertThat(plainRow).isNotEmpty();
     }
+
+    @Test
+    void centered_column_centers_its_header_too() {
+        // JK-1888: headers sit over their data; a CENTER column's header must not stick left.
+        Table t = new Table("T").columns(new Table.Column("V", Table.Align.CENTER), new Table.Column("Name"));
+        t.row(Table.Row.data(RichText.plain("2525"), RichText.plain("temurin-wide-cell")));
+        List<String> out = t.render(new RenderContext(Theme.active(), false, false, 80, 0));
+        String header = out.stream().filter(l -> l.contains("V")).findFirst().orElseThrow();
+        // Column width is 4 ("2525"); centered "V" gets left fill: "|  V   |" not "| V    |".
+        assertThat(header).contains("|  V  ");
+    }
+
+    @Test
+    void plain_context_headers_carry_no_sgr_even_under_an_ansi_global_theme() {
+        // JK-1889: headerCell must follow the render context like every other paint decision.
+        Table t = new Table("T").columns("Name");
+        t.row(Table.Row.data(RichText.plain("alpha")));
+        List<String> out = t.render(new RenderContext(Theme.active(), false, false, 80, 0));
+        for (String line : out) {
+            assertThat(line).doesNotContain("\u001b[");
+        }
+    }
 }
