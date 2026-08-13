@@ -239,7 +239,8 @@ public final class JkManager implements AutoCloseable, LiveRegion {
      * "Building"}); set the active module with {@link #target}.
      */
     public static JkManager plan(PrintStream out, String name, boolean animate) {
-        int[] size = animate ? detectSize() : new int[] {DEFAULT_HEIGHT, DEFAULT_WIDTH};
+        // Probe here — a plan start is a natural boundary — never from the frame-render path.
+        int[] size = animate ? TerminalSize.refresh() : new int[] {DEFAULT_HEIGHT, DEFAULT_WIDTH};
         JkManager cm = new JkManager(out, animate, true, size[1]);
         cm.height = size[0];
         cm.name = name;
@@ -2034,53 +2035,6 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             i = j;
         }
         return true;
-    }
-
-    /**
-     * Terminal size {@code {rows, cols}}, detected once, leak-free. We deliberately do NOT build a
-     * JLine terminal: JLine probes the terminal with capability queries (DA1 {@code \e[c}, mode
-     * reports like {@code \e[?2027$p}), and a transient build-then-close races the async replies
-     * they arrive after we exit and the shell echoes them as garbage. Instead ask the tty directly
-     * via {@code stty size} (an ioctl, no escape sequences), then the {@code $LINES}/{@code $COLUMNS}
-     * env, then conservative defaults. Only called when animating (interactive tty).
-     */
-    /** Terminal width in columns ({@code stty size} → {@code $COLUMNS} → {@value #DEFAULT_WIDTH}). */
-    public static int detectColumns() {
-        return detectSize()[1];
-    }
-
-    private static int[] detectSize() {
-        try {
-            Process p = new ProcessBuilder("stty", "size")
-                    .redirectInput(ProcessBuilder.Redirect.from(new java.io.File("/dev/tty")))
-                    .redirectError(ProcessBuilder.Redirect.DISCARD)
-                    .start();
-            String out =
-                    new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.US_ASCII).trim();
-            p.waitFor();
-            String[] parts = out.split("\\s+"); // "<rows> <cols>"
-            if (parts.length == 2) {
-                int rows = Integer.parseInt(parts[0]);
-                int cols = Integer.parseInt(parts[1]);
-                if (rows > 0 && cols > 0) return new int[] {rows, cols};
-            }
-        } catch (Exception ignored) {
-            // no /dev/tty, no stty (e.g. Windows), or unparsable — fall through
-        }
-        return new int[] {envInt("LINES", DEFAULT_HEIGHT), envInt("COLUMNS", DEFAULT_WIDTH)};
-    }
-
-    private static int envInt(String name, int fallback) {
-        try {
-            String v = System.getenv(name);
-            if (v != null) {
-                int n = Integer.parseInt(v.trim());
-                if (n > 0) return n;
-            }
-        } catch (NumberFormatException ignored) {
-            // not a number — use the fallback
-        }
-        return fallback;
     }
 
     /** Restores {@code System.out}/{@code System.err} when closed (no checked exception). */

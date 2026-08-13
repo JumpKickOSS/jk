@@ -26,12 +26,16 @@ public record RenderContext(Theme theme, boolean ansi, boolean nerdfont, int wid
         if (frame < 0) frame = 0;
     }
 
-    /** Snapshot of the process-wide theme / nerd flag / terminal columns. */
+    /**
+     * Snapshot of the process-wide theme / nerd flag / terminal columns. Called on every
+     * animation frame, so the width comes from the {@link TerminalSize} cache — never a fresh
+     * probe (probing forks a subprocess).
+     */
     public static RenderContext current() {
         Theme theme = Theme.active();
         boolean ansi = theme.isAnsi();
         boolean nerd = ansi && GlobalConfig.nerdfont();
-        return new RenderContext(theme, ansi, nerd, JkManager.detectColumns(), 0);
+        return new RenderContext(theme, ansi, nerd, TerminalSize.columns(), 0);
     }
 
     public Mode mode() {
