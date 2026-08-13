@@ -75,6 +75,23 @@ class TableAppendTest {
     }
 
     @Test
+    void appending_a_wider_section_fails_loudly_not_with_aioobe_mid_render() {
+        // A child with more columns than the parent cannot snap; snapSpans used to produce
+        // out-of-range span ends and the painter threw AIOOBE mid-render (JK-1886).
+        Table parent = new Table("T").columns("A", "B").row("a", "b");
+        Table wider = new Table("").columns("W", "X", "Y", "Z").row("1", "2", "3", "4");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> parent.append(wider, Table.Append.SECTION))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("more columns");
+        // AUTO resolves differing columns to SECTION — same guard.
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> parent.append(wider))
+                .isInstanceOf(IllegalArgumentException.class);
+        // Equal-width and narrower children still append fine.
+        parent.append(new Table("").columns("L", "V").row("l", "v"), Table.Append.SECTION);
+        assertThat(parent.render(RenderContext.current())).isNotEmpty();
+    }
+
+    @Test
     void all_lines_share_one_visible_width() {
         Table t = new Table("Build Plan")
                 .columns("Plan Item", "Total", "Rebuild", "Delta")

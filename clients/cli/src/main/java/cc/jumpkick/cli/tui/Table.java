@@ -226,6 +226,15 @@ public final class Table implements Widget {
             rows.addAll(other.rows);
             return this;
         }
+        // A SECTION child snaps each of its columns onto a span of parent columns, so it can
+        // never have more columns than the parent — snapSpans would produce out-of-range,
+        // non-monotonic span ends and the painter would throw AIOOBE mid-render (JK-1886).
+        // Fail here, at the call site that can actually fix the layout.
+        if (other.columns.size() > this.columns.size()) {
+            throw new IllegalArgumentException("appended section has more columns ("
+                    + other.columns.size() + ") than the parent table (" + this.columns.size()
+                    + ") — swap parent and child, or merge columns");
+        }
         appended.add(other);
         return this;
     }
