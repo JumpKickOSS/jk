@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Human-paced {@code lock-package} wire events: at most one emit per cadence with the latest
  * package and a running total. The client should prefer {@link
- * cc.jumpkick.cli.engine.EngineClient.LockCounts} for the final count (not message cardinality).
+ * cc.jumpkick.cli.engine.EngineRequests.LockCounts} for the final count (not message cardinality).
  *
  * <p>Same cadence as {@link CoalescingBuildPlanListener} ({@code JK_WIRE_PROGRESS_MS}, default
  * 500 ms).

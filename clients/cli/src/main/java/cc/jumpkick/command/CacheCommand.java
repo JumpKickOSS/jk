@@ -589,11 +589,11 @@ public final class CacheCommand extends GroupCommand {
                 BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
                 var planResult = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
                         cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest(
+                        new cc.jumpkick.cli.engine.EngineRequests.CacheMaintRequest(
                                 "purge", root, 0, false, false, false),
                         steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
                         CacheCommand::printWait,
-                        new cc.jumpkick.cli.engine.EngineClient.CacheMaintSummary[1]);
+                        new cc.jumpkick.cli.engine.EngineRequests.CacheMaintSummary[1]);
                 if (planResult.success()) return 0;
                 CommandWedge.printFail("Cache", "The engine's purge failed — not racing it with a local wipe.");
                 return 1;
@@ -773,7 +773,7 @@ public final class CacheCommand extends GroupCommand {
                 boolean sweep,
                 GlobalOptions global) {
             // Settled from the terminal plan-finish before the console listener renders the line.
-            var summary = new cc.jumpkick.cli.engine.EngineClient.CacheMaintSummary[1];
+            var summary = new cc.jumpkick.cli.engine.EngineRequests.CacheMaintSummary[1];
             ConsoleSpec spec = cleanSpec(
                     dryRun,
                     () -> summary[0] != null ? summary[0].files() : 0L,
@@ -786,9 +786,9 @@ public final class CacheCommand extends GroupCommand {
                         // --sweep adds the CAS sweep but must not do LESS cleaning than plain
                         // clean: Class-C heavy outputs drop either way (JK-1788).
                         sweep
-                                ? new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest(
+                                ? new cc.jumpkick.cli.engine.EngineRequests.CacheMaintRequest(
                                         "prune", root, olderThanDays, dryRun, true, defaultCacheDir, null, true)
-                                : cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest.cacheClean(
+                                : cc.jumpkick.cli.engine.EngineRequests.CacheMaintRequest.cacheClean(
                                         root, olderThanDays, dryRun, defaultCacheDir),
                         steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
                         CacheCommand::printWait,

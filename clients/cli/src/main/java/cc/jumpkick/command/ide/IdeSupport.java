@@ -257,7 +257,7 @@ public final class IdeSupport {
         long[] upToDate = new long[1];
         var session = cc.jumpkick.config.SessionContext.current();
         var paths = cc.jumpkick.engine.EnginePaths.current();
-        var req = new cc.jumpkick.cli.engine.EngineClient.SyncRequest(
+        var req = new cc.jumpkick.cli.engine.EngineRequests.SyncRequest(
                 wsRoot, cache, jdksDir, null, false, session.offline(), session.force(), false, global.verbose);
         // Time-box: best-effort must never hang the CLI. On timeout, force-stop the engine so the
         // blocked protocol read unblocks via channel close.

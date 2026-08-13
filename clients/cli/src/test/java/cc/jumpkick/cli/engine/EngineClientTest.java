@@ -271,15 +271,15 @@ class EngineClientTest {
 
         // versions/<client version>/lib/jk-engine.jar: the JVM-hosted engine's fat jar
         Path engineJar = materialize(store, dir, "1.2.3");
-        EngineClient.EngineArtifact viaVersions =
+        EngineSpawn.EngineArtifact viaVersions =
                 EngineClient.resolveEngineArtifact(null, "1.2.3", store).orElseThrow();
-        assertThat(viaVersions.kind()).isEqualTo(EngineClient.EngineArtifact.Kind.JAR);
+        assertThat(viaVersions.kind()).isEqualTo(EngineSpawn.EngineArtifact.Kind.JAR);
         assertThat(viaVersions.path()).isEqualTo(engineJar.toString());
 
         // JK_ENGINE_EXE wins over the materialized jar, always a dedicated executable
-        EngineClient.EngineArtifact viaEnv = EngineClient.resolveEngineArtifact("/opt/jk/jk-engine", "1.2.3", store)
+        EngineSpawn.EngineArtifact viaEnv = EngineClient.resolveEngineArtifact("/opt/jk/jk-engine", "1.2.3", store)
                 .orElseThrow();
-        assertThat(viaEnv.kind()).isEqualTo(EngineClient.EngineArtifact.Kind.EXE);
+        assertThat(viaEnv.kind()).isEqualTo(EngineSpawn.EngineArtifact.Kind.EXE);
         assertThat(viaEnv.path()).isEqualTo("/opt/jk/jk-engine");
 
         // a blank override is ignored, not obeyed

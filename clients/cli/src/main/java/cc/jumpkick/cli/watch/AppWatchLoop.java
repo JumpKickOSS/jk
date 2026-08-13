@@ -175,7 +175,7 @@ public final class AppWatchLoop {
         var session = cc.jumpkick.config.SessionContext.current();
         BuildPlanResult result = cc.jumpkick.cli.engine.EngineClient.runSingleBuild(
                 cc.jumpkick.engine.EnginePaths.current(),
-                new cc.jumpkick.cli.engine.EngineClient.SingleBuildRequest(
+                new cc.jumpkick.cli.engine.EngineRequests.SingleBuildRequest(
                         projectDir,
                         cache,
                         jdksDir,
@@ -201,7 +201,7 @@ public final class AppWatchLoop {
         var session = cc.jumpkick.config.SessionContext.current();
         BuildPlanResult result = cc.jumpkick.cli.engine.EngineClient.runCompile(
                 cc.jumpkick.engine.EnginePaths.current(),
-                new cc.jumpkick.cli.engine.EngineClient.CompileRequest(
+                new cc.jumpkick.cli.engine.EngineRequests.CompileRequest(
                         projectDir, cache, null, session.offline(), session.force(), global.verbose),
                 steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, target));
         return result.success();

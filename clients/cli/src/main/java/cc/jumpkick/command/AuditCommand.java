@@ -93,7 +93,7 @@ public final class AuditCommand implements CliCommand {
         try {
             result = cc.jumpkick.cli.engine.EngineClient.runAudit(
                     cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineClient.AuditRequest(
+                    new cc.jumpkick.cli.engine.EngineRequests.AuditRequest(
                             projectDir, cache, threshold.toString(), osvBatchUrl, osvVulnsUrl),
                     steps -> BuildPlanConsole.chooseConsoleListener("audit", steps, mode),
                     observer);

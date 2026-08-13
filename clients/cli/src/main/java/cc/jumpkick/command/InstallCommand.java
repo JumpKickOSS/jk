@@ -148,11 +148,11 @@ public final class InstallCommand {
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
 
         ToolEnv env;
-        cc.jumpkick.cli.engine.EngineClient.ToolResolveOutcome outcome;
+        cc.jumpkick.cli.engine.EngineRequests.ToolResolveOutcome outcome;
         try {
             outcome = cc.jumpkick.cli.engine.EngineClient.runToolResolve(
                     cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineClient.ToolResolveRequest(
+                    new cc.jumpkick.cli.engine.EngineRequests.ToolResolveRequest(
                             resolved.coordSpec(), java.util.List.of(), bin, mainClass, repoUrl, cacheDir),
                     steps -> BuildPlanConsole.chooseConsoleListener("install-maven", steps, mode));
         } catch (IOException e) {
@@ -192,11 +192,11 @@ public final class InstallCommand {
         Path checkout;
         String sha;
         // Engine-hosted clone: checkout path + sha ride the terminal plan-finish.
-        cc.jumpkick.cli.engine.EngineClient.GitFetchOutcome outcome;
+        cc.jumpkick.cli.engine.EngineRequests.GitFetchOutcome outcome;
         try {
             outcome = cc.jumpkick.cli.engine.EngineClient.runGitFetch(
                     cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineClient.GitFetchRequest(
+                    new cc.jumpkick.cli.engine.EngineRequests.GitFetchRequest(
                             expanded, canonical, refStr, cacheDir, refresh),
                     steps -> BuildPlanConsole.chooseConsoleListener("install-git-fetch", steps, mode));
         } catch (IOException e) {
@@ -279,7 +279,7 @@ public final class InstallCommand {
         try {
             result = cc.jumpkick.cli.engine.EngineClient.runInstall(
                     cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineClient.InstallRequest(
+                    new cc.jumpkick.cli.engine.EngineRequests.InstallRequest(
                             projectDir,
                             cacheDir,
                             m2Dir(),

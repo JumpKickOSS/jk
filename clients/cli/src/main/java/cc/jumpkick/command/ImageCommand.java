@@ -118,8 +118,8 @@ public final class ImageCommand implements CliCommand {
         // terminal plan-finish carries — the summary holder is populated before the console
         // listener's own planFinish fires, same holder pattern as TestCommand's hosted path.
         var session = cc.jumpkick.config.SessionContext.current();
-        cc.jumpkick.cli.engine.EngineClient.ImageSummary[] summary =
-                new cc.jumpkick.cli.engine.EngineClient.ImageSummary[1];
+        cc.jumpkick.cli.engine.EngineRequests.ImageSummary[] summary =
+                new cc.jumpkick.cli.engine.EngineRequests.ImageSummary[1];
         ConsoleSpec spec = new ConsoleSpec(
                 "Image",
                 r -> summary[0] != null
@@ -135,7 +135,7 @@ public final class ImageCommand implements CliCommand {
         try {
             result = cc.jumpkick.cli.engine.EngineClient.runImage(
                     cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineClient.ImageRequest(
+                    new cc.jumpkick.cli.engine.EngineRequests.ImageRequest(
                             projectDir,
                             cache,
                             jdksDir,

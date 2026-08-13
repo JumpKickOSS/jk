@@ -3,6 +3,7 @@ package cc.jumpkick.cli;
 
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EnginePrewarm;
+import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.config.JkBuildParser;
@@ -84,10 +85,10 @@ public final class EnsureFreshLock {
         boolean showOwn = ownSpinner && spinner == null && isInteractiveAuto(global) && !global.outputIsJson();
         try {
             // Conservative: a freshen must never float pinned versions — that is `jk lock`'s job.
-            EngineClient.LockRequest req = new EngineClient.LockRequest(
+            EngineRequests.LockRequest req = new EngineRequests.LockRequest(
                     dir, cache, List.of(), false, false, null, global.offline, global.force, global.verbose, true);
 
-            EngineClient.LockHandler quiet = new EngineClient.LockHandler() {
+            EngineRequests.LockHandler quiet = new EngineRequests.LockHandler() {
                 @Override
                 public BuildPlanListener onModuleStart(
                         String moduleDir, String moduleCoord, List<cc.jumpkick.run.Task> steps) {
@@ -95,7 +96,7 @@ public final class EnsureFreshLock {
                 }
             };
 
-            EngineClient.LockOutcome outcome;
+            EngineRequests.LockOutcome outcome;
             if (spinner != null) {
                 spinner.update(message);
                 outcome = EngineClient.runLock(EnginePaths.current(), req, quiet);
