@@ -118,7 +118,7 @@ public final class StatusCommand implements CliCommand {
             cache = loadCacheSnapshot();
         }
 
-        // ── Header: ≡ Status  JumpKick Engine v[bold]X.Y.Z[/] is running (pid [yellow]N[/]) ─
+        // ── Header: ≡ Status  JumpKick Engine v[focused]X.Y.Z[/] is running (pid [yellow]N[/]) ─
         // Prep lock / analyzing may already have opened the envelope; this is first chrome if not.
         JkWedge.menu("Status", RichText.parse(engineStatusMarkup(engine))).print();
         CliOutput.out("");
@@ -288,7 +288,7 @@ public final class StatusCommand implements CliCommand {
     // ── rendering helpers ────────────────────────────────────────────────────
 
     /**
-     * Status chip tail: {@code JumpKick Engine v[bold]X[/] is running (pid [yellow]N[/])}.
+     * Status chip tail: {@code JumpKick Engine v[focused]X[/] is running (pid [yellow]N[/])}.
      */
     static String engineStatusMessage(Optional<EngineClient.Status> engine) {
         return RichText.parse(engineStatusMarkup(engine)).render();
@@ -297,9 +297,9 @@ public final class StatusCommand implements CliCommand {
     static String engineStatusMarkup(Optional<EngineClient.Status> engine) {
         String version = Jk.VERSION;
         if (engine.isEmpty()) {
-            return "JumpKick Engine v[bold]" + version + "[/] is not running";
+            return "JumpKick Engine v[focused]" + version + "[/] is not running";
         }
-        return "JumpKick Engine v[bold]"
+        return "JumpKick Engine v[focused]"
                 + version
                 + "[/] is running (pid [yellow]"
                 + engine.get().pid()

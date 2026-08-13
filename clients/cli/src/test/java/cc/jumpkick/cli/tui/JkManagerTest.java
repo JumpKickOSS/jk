@@ -199,17 +199,19 @@ class JkManagerTest {
 
         // No estimate set → single mid-gray count-up from construction.
         String up = cm.renderBuildPlanLines(120, 4_000).get(0);
-        assertThat(TestAnsi.strip(up)).contains("+4s");
+        assertThat(TestAnsi.strip(up)).contains("4s");
+        assertThat(TestAnsi.strip(up)).doesNotContain("+4s");
 
-        // Seeded with a 60s estimate: dual clock — countdown ~56s + elapsed +4s.
+        // Seeded with a 60s estimate: dual clock — countdown ~56s · elapsed 4s (no +).
         cm.setEtaEstimate(60_000);
         String header = cm.renderBuildPlanLines(120, 4_000).get(0);
         String plain = TestAnsi.strip(header);
         assertThat(plain).contains("ETA ~56s");
-        assertThat(plain).contains("+4s");
-        // Countdown is mid-gray with tilde; count-up is dim while remaining > 0.
+        assertThat(plain).contains("· 4s");
+        // Countdown is mid-gray with tilde; elapsed is dim with no plus.
         assertThat(header).contains(Theme.colorize("~56s", Theme.active().midGray()));
-        assertThat(header).contains(Theme.colorize("+4s", Theme.active().darkGray()));
+        assertThat(header).contains(Theme.colorize("4s", Theme.active().darkGray()));
+        assertThat(header).doesNotContain(Theme.colorize("+4s", Theme.active().darkGray()));
         assertThat(header).contains(Theme.colorize("·", Theme.active().darkGray()));
     }
 
@@ -258,28 +260,28 @@ class JkManagerTest {
     }
 
     @Test
-    void eta_countdown_freezes_at_zero_and_count_up_promotes_after_grace() {
+    void eta_countdown_counts_up_past_zero_without_a_color_swap() {
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
         cm.setEtaEstimate(10_000); // 10s estimate
         Theme t = Theme.active();
 
-        // Just past deadline: countdown at dim 0s; count-up still dim (grace window).
-        String early = cm.renderBuildPlanLines(120, 11_000).get(0);
-        assertThat(TestAnsi.strip(early)).contains("ETA 0s").contains("+11s");
-        assertThat(early).contains(Theme.colorize("0s", t.darkGray()));
-        assertThat(early).contains(Theme.colorize("+11s", t.darkGray()));
-        assertThat(early).doesNotContain(Theme.colorize("+11s", t.midGray()));
+        // Hits zero: countdown stays mid-gray 0s; elapsed stays dim with no plus.
+        String atZero = cm.renderBuildPlanLines(120, 10_000).get(0);
+        assertThat(TestAnsi.strip(atZero)).contains("ETA 0s").contains("· 10s");
+        assertThat(atZero).contains(Theme.colorize("0s", t.midGray()));
+        assertThat(atZero).contains(Theme.colorize("10s", t.darkGray()));
+        assertThat(atZero).doesNotContain(Theme.colorize("0s", t.darkGray()));
+        assertThat(atZero).doesNotContain(Theme.colorize("+10s", t.darkGray()));
 
-        // Past the 2s grace → count-up mid-gray (countdown's former color). Rendered at +3s
-        // past deadline, not the exact 2 000 ms boundary: the seed's set-at base is real wall
-        // clock (nanoTime since plan()), so an exact-boundary assertion flaked whenever ≥1 ms
-        // elapsed between plan() and setEtaEstimate() (JK-1824). The strictly->= boundary
-        // itself is covered by the clock-injected sibling test.
-        String promoted = cm.renderBuildPlanLines(120, 13_000).get(0);
-        assertThat(TestAnsi.strip(promoted)).contains("ETA 0s").contains("+13s");
-        assertThat(promoted).contains(Theme.colorize("+13s", t.midGray()));
-        assertThat(promoted).doesNotContain(Theme.colorize("+13s", t.warning()));
+        // Next second: countdown adds + and counts the miss; elapsed keeps ticking, still dim.
+        String over = cm.renderBuildPlanLines(120, 11_000).get(0);
+        assertThat(TestAnsi.strip(over)).contains("ETA +1s").contains("· 11s");
+        assertThat(over).contains(Theme.colorize("+1s", t.midGray()));
+        assertThat(over).contains(Theme.colorize("11s", t.darkGray()));
+        assertThat(over).doesNotContain(Theme.colorize("11s", t.midGray()));
+        assertThat(over).doesNotContain(Theme.colorize("+1s", t.warning()));
+        assertThat(over).doesNotContain(Theme.colorize("0s", t.darkGray()));
     }
 
     @Test
@@ -292,15 +294,15 @@ class JkManagerTest {
         cm.setEtaEstimate(60_100); // 60s + 100ms
         String mid = TestAnsi.strip(cm.renderBuildPlanLines(120, 4_050).get(0));
         assertThat(mid).contains("ETA ~56s");
-        assertThat(mid).contains("+4s");
+        assertThat(mid).contains("· 4s");
         // Still the same pair just under the next second (old code would drop countdown here).
         String justBefore = TestAnsi.strip(cm.renderBuildPlanLines(120, 4_999).get(0));
         assertThat(justBefore).contains("ETA ~56s");
-        assertThat(justBefore).contains("+4s");
+        assertThat(justBefore).contains("· 4s");
         // One paint advances both faces.
         String next = TestAnsi.strip(cm.renderBuildPlanLines(120, 5_000).get(0));
         assertThat(next).contains("ETA ~55s");
-        assertThat(next).contains("+5s");
+        assertThat(next).contains("· 5s");
     }
 
     @Test
@@ -326,11 +328,11 @@ class JkManagerTest {
         cm.setEtaEstimate(30_000 + 90_000);
         String at30 = TestAnsi.strip(cm.renderBuildPlanLines(120, 30_000).get(0));
         assertThat(at30).contains("ETA ~1m 30s");
-        assertThat(at30).contains("+30s");
-        // At end of remaining work (elapsed 120s) → frozen 0s + mid-gray full elapsed.
+        assertThat(at30).contains("· 30s");
+        // At end of remaining work (elapsed 120s) → mid-gray 0s · dim elapsed (no plus).
         String done = TestAnsi.strip(cm.renderBuildPlanLines(120, 120_000).get(0));
         assertThat(done).contains("ETA 0s");
-        assertThat(done).contains("+2m 00s");
+        assertThat(done).contains("· 2m 00s");
     }
 
     @Test
@@ -352,12 +354,13 @@ class JkManagerTest {
         // Next whole second samples the latest residual: 20s re-anchor at ~0 → ~9s at 11s elapsed.
         String mid = TestAnsi.strip(cm.renderBuildPlanLines(120, 11_000).get(0));
         assertThat(mid).contains("ETA ~9s");
-        assertThat(mid).contains("+11s");
-        // Residual 0 snaps to 0s immediately (end on time — no 1s hold on zero).
+        assertThat(mid).contains("· 11s");
+        // Residual 0 snaps immediately (end on time — no 1s hold). Painted well past that
+        // deadline the countdown counts the miss; elapsed stays a bare dim clock.
         cm.setBarResidualRemaining(0);
         String done = TestAnsi.strip(cm.renderBuildPlanLines(120, 40_000).get(0));
-        assertThat(done).contains("ETA 0s");
-        assertThat(done).contains("+40s");
+        assertThat(done).contains("ETA +40s");
+        assertThat(done).contains("· 40s");
     }
 
     @Test
@@ -369,7 +372,8 @@ class JkManagerTest {
         cm.setEtaEstimate(30_000);
         cm.setModuleProgress(1, 2);
         String zero = TestAnsi.strip(cm.renderBuildPlanLines(120, 40_000).get(0));
-        assertThat(zero).contains("ETA 0s");
+        // 10s past the 30s seed — countdown is already counting the miss.
+        assertThat(zero).contains("ETA +10s");
         cm.startNanos = System.nanoTime() - 40_000_000_000L; // re-anchor lands at ~40s elapsed
         cm.setBarResidualRemaining(15_000);
         String raised = TestAnsi.strip(cm.renderBuildPlanLines(120, 40_000).get(0));
@@ -406,7 +410,7 @@ class JkManagerTest {
         cm.setBarResidualRemaining(20_000);
         String header = TestAnsi.strip(cm.renderBuildPlanLines(120, 10_000).get(0));
         assertThat(header).contains("ETA ~10s");
-        assertThat(header).contains("+10s");
+        assertThat(header).contains("· 10s");
         // Bar also speeds up from residual (raw residual, not wall-decayed).
         long[] bar = cm.displayBar(10_000);
         assertThat(bar[0]).isEqualTo(333); // 10/(10+20)
@@ -455,23 +459,25 @@ class JkManagerTest {
     void cold_count_up_is_run_wide_until_a_remaining_seed_arrives() {
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
-        // No seed → +elapsed for the whole command.
-        assertThat(TestAnsi.strip(cm.renderBuildPlanLines(120, 12_000).get(0))).contains("+12s");
+        // No seed → elapsed for the whole command (no plus).
+        assertThat(TestAnsi.strip(cm.renderBuildPlanLines(120, 12_000).get(0))).contains("12s");
+        assertThat(TestAnsi.strip(cm.renderBuildPlanLines(120, 12_000).get(0))).doesNotContain("+12s");
         // Positive remaining seeds the dual clock (R0=30s at apply time ≈ elapsed 0).
         cm.setEtaEstimate(30_000);
         String seeded = TestAnsi.strip(cm.renderBuildPlanLines(120, 12_000).get(0));
         assertThat(seeded).contains("ETA ~18s");
-        assertThat(seeded).contains("+12s");
+        assertThat(seeded).contains("· 12s");
         // Zero before lock is ignored (unknown clear) — seed remains open-loop.
         cm.setEtaEstimate(0);
         String still = TestAnsi.strip(cm.renderBuildPlanLines(120, 12_000).get(0));
         assertThat(still).contains("ETA ~18s");
-        assertThat(still).contains("+12s");
+        assertThat(still).contains("· 12s");
     }
 
     @Test
     void header_countdown_has_dim_eta_prefix_and_no_module_counter() {
-        // Dual clock: dim italic "ETA " + ~remaining · +elapsed; module n/m lives on tree rows only.
+        // Dual clock: dim italic "ETA " + mid-gray ~remaining · dim elapsed; module n/m lives on
+        // tree rows only.
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
         cm.progress(50, 100);
@@ -479,13 +485,14 @@ class JkManagerTest {
         cm.setModuleProgress(2, 8);
         String header = TestAnsi.strip(cm.renderBuildPlanLines(120, 4_000).get(0));
         assertThat(header).contains("ETA ~56s");
-        assertThat(header).contains("+4s");
+        assertThat(header).contains("· 4s");
         assertThat(header).doesNotContain("2/8");
         // Cold count-up has no ETA prefix.
         String cold = TestAnsi.strip(JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false)
                 .renderBuildPlanLines(120, 12_000)
                 .get(0));
-        assertThat(cold).contains("+12s");
+        assertThat(cold).contains("12s");
+        assertThat(cold).doesNotContain("+12s");
         assertThat(cold).doesNotContain("ETA ");
     }
 
@@ -615,53 +622,56 @@ class JkManagerTest {
     }
 
     @Test
-    void header_countdown_is_mid_gray_count_up_is_dim_then_mid_gray_on_overrun() {
+    void header_countdown_stays_mid_gray_and_elapsed_stays_dim() {
         Theme t = Theme.active();
-        // Seeded ETA with remaining > 0 → dim italic "ETA " + mid-gray "~remaining" · dim "+elapsed".
+        // Seeded ETA with remaining > 0 → dim italic "ETA " + mid-gray "~remaining" · dim elapsed.
         var down = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         down.nerdfont = false;
         down.progress(10, 100);
         down.setEtaEstimate(60_000);
         String downHeader = down.renderBuildPlanLines(120, 4_000).get(0);
         assertThat(TestAnsi.strip(downHeader)).contains("ETA ~56s");
-        assertThat(TestAnsi.strip(downHeader)).contains("+4s");
+        assertThat(TestAnsi.strip(downHeader)).contains("· 4s");
         assertThat(downHeader).contains(Theme.colorize("ETA ", t.darkGray().italic()));
         assertThat(downHeader).contains(Theme.colorize("~56s", t.midGray()));
-        assertThat(downHeader).contains(Theme.colorize("+4s", t.darkGray()));
-        assertThat(downHeader).doesNotContain(Theme.colorize("+4s", t.warning()));
+        assertThat(downHeader).contains(Theme.colorize("4s", t.darkGray()));
+        assertThat(downHeader).doesNotContain(Theme.colorize("+4s", t.darkGray()));
+        assertThat(downHeader).doesNotContain(Theme.colorize("4s", t.warning()));
 
-        // No seed → +elapsed count-up (mid-gray, same as countdown), no ETA prefix.
+        // No seed → elapsed count-up (mid-gray, same as countdown), no ETA prefix, no plus.
         var up = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         up.nerdfont = false;
         up.progress(10, 100);
         String upHeader = up.renderBuildPlanLines(120, 12_000).get(0);
-        assertThat(TestAnsi.strip(upHeader)).contains("+12s");
+        assertThat(TestAnsi.strip(upHeader)).contains("12s");
+        assertThat(TestAnsi.strip(upHeader)).doesNotContain("+12s");
         assertThat(TestAnsi.strip(upHeader)).doesNotContain("ETA ");
-        assertThat(upHeader).contains(Theme.colorize("+12s", t.midGray()));
-        assertThat(upHeader).doesNotContain(Theme.colorize("+12s", t.warning()));
+        assertThat(upHeader).contains(Theme.colorize("12s", t.midGray()));
+        assertThat(upHeader).doesNotContain(Theme.colorize("12s", t.warning()));
 
-        // Seed overrun within grace → frozen dim 0s + still-dim count-up.
-        var earlyOver = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        earlyOver.nerdfont = false;
-        earlyOver.progress(90, 100);
-        earlyOver.setEtaEstimate(10_000);
-        String earlyHeader = earlyOver.renderBuildPlanLines(120, 11_000).get(0);
-        assertThat(TestAnsi.strip(earlyHeader)).contains("ETA 0s").contains("+11s");
-        assertThat(earlyHeader).contains(Theme.colorize("0s", t.darkGray()));
-        assertThat(earlyHeader).contains(Theme.colorize("+11s", t.darkGray()));
+        // At the deadline: mid-gray 0s, still-dim elapsed.
+        var atZero = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
+        atZero.nerdfont = false;
+        atZero.progress(90, 100);
+        atZero.setEtaEstimate(10_000);
+        String zeroHeader = atZero.renderBuildPlanLines(120, 10_000).get(0);
+        assertThat(TestAnsi.strip(zeroHeader)).contains("ETA 0s").contains("· 10s");
+        assertThat(zeroHeader).contains(Theme.colorize("0s", t.midGray()));
+        assertThat(zeroHeader).contains(Theme.colorize("10s", t.darkGray()));
 
-        // Past grace → mid-gray full elapsed (countdown's former color).
+        // Past deadline → mid-gray +overrun on the countdown; elapsed stays dim, no plus.
         var over = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
         over.nerdfont = false;
         over.progress(90, 100);
         over.setEtaEstimate(10_000);
         String overHeader = over.renderBuildPlanLines(120, 15_000).get(0);
-        assertThat(TestAnsi.strip(overHeader)).contains("ETA 0s");
-        assertThat(TestAnsi.strip(overHeader)).contains("+15s");
+        assertThat(TestAnsi.strip(overHeader)).contains("ETA +5s");
+        assertThat(TestAnsi.strip(overHeader)).contains("· 15s");
         assertThat(overHeader).contains(Theme.colorize("ETA ", t.darkGray().italic()));
-        assertThat(overHeader).contains(Theme.colorize("0s", t.darkGray()));
-        assertThat(overHeader).contains(Theme.colorize("+15s", t.midGray()));
-        assertThat(overHeader).doesNotContain(Theme.colorize("+15s", t.warning()));
+        assertThat(overHeader).contains(Theme.colorize("+5s", t.midGray()));
+        assertThat(overHeader).contains(Theme.colorize("15s", t.darkGray()));
+        assertThat(overHeader).doesNotContain(Theme.colorize("15s", t.midGray()));
+        assertThat(overHeader).doesNotContain(Theme.colorize("+5s", t.warning()));
     }
 
     @Test
@@ -853,8 +863,7 @@ class JkManagerTest {
     @Test
     void colorDetail_strips_fqcns_from_java_member_labels() {
         Theme t = Theme.active();
-        String painted = JkManager.colorDetail(
-                "Test", "cc.jumpkick.runtime.FooTest.bar(java.nio.file.Path)", t);
+        String painted = JkManager.colorDetail("Test", "cc.jumpkick.runtime.FooTest.bar(java.nio.file.Path)", t);
         assertThat(TestAnsi.strip(painted)).isEqualTo("FooTest.bar(Path)");
         assertThat(TestAnsi.strip(painted)).doesNotContain("java.nio");
         assertThat(painted).contains(Theme.colorize("Path", t.synType()));

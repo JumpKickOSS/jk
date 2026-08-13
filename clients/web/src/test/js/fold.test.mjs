@@ -26,6 +26,7 @@ const {
   MAX_OUTPUT_LINES,
   normalizeDiagnostic,
   testFailureReport,
+  stackFrameLines,
   isTestFailureDiag,
   parseAssertJMessage,
   shortTestLabel,
@@ -367,7 +368,51 @@ test('diagnostics attach to their module by dir, survive finish, and are capped 
   for (let i = 0; i < MAX_DIAGNOSTICS + 5; i++) {
     foldEvent(cards, { type: 'diagnostic', data: { requestId: 1, dir: '/w/core', task: 'p', message: 'm' + i } });
   }
-  assert.equal(core.diagnostics.length, MAX_DIAGNOSTICS); // capped per module
+  assert.equal(core.diagnostics.length, MAX_DIAGNOSTICS); // compile/other still capped
+  const startLen = core.diagnostics.length;
+  for (let i = 0; i < 15; i++) {
+    foldEvent(cards, {
+      type: 'diagnostic',
+      data: {
+        requestId: 1,
+        dir: '/w/core',
+        task: 'run-tests',
+        code: 'test-failure',
+        message: 'fail ' + i,
+        class: 'T',
+        method: 'm' + i + '()',
+      },
+    });
+  }
+  assert.equal(core.diagnostics.length, startLen + 15); // test-failure has its own, higher cap
+});
+
+test('test-failure diagnostics are bounded by their own ceiling (JK-1881)', async () => {
+  const { MAX_TEST_FAILURE_DIAGNOSTICS } = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const cards = [];
+  foldEvent(cards, start(1, '/w'));
+  for (let i = 0; i < MAX_TEST_FAILURE_DIAGNOSTICS + 40; i++) {
+    foldEvent(cards, {
+      type: 'diagnostic',
+      data: {
+        requestId: 1,
+        dir: '/w/core',
+        task: 'run-tests',
+        code: 'test-failure',
+        message: 'fail ' + i,
+        class: 'T',
+        method: 'm' + i + '()',
+      },
+    });
+  }
+  const core = cards[0].modules.find((m) => m.dir === '/w/core');
+  assert.equal(
+    core.diagnostics.filter((d) => isTestFailureDiag(d)).length,
+    MAX_TEST_FAILURE_DIAGNOSTICS,
+  );
+  // Other codes still get their slice under the flood.
+  foldEvent(cards, { type: 'diagnostic', data: { requestId: 1, dir: '/w/core', task: 'p', message: 'other' } });
+  assert.equal(core.diagnostics.length, MAX_TEST_FAILURE_DIAGNOSTICS + 1);
 });
 
 test('module summary counts modules and failures', () => {
@@ -1246,6 +1291,21 @@ test('shortTestLabel strips package and keeps method params simplified', () => {
     }),
     'FooTest.freshen(Path, String)',
   );
+  assert.equal(
+    shortTestLabel({
+      className: 'demo.FooTest',
+      method: 'bar(java.lang.String[])',
+    }),
+    'FooTest.bar(String[])',
+  );
+  assert.equal(
+    shortTestLabel({
+      className: 'demo.FooTest',
+      method: 'bar()',
+      worker: 2,
+    }),
+    'FooTest.bar()  [w2]',
+  );
 });
 
 test('shortDisplayLabel never leaves package FQCNs in client text', () => {
@@ -1254,6 +1314,7 @@ test('shortDisplayLabel never leaves package FQCNs in client text', () => {
     'FooTest.bar(Path)',
   );
   assert.equal(simplifyMethodParams('m(java.lang.String[])'), 'm(String[])');
+  assert.equal(simplifyMethodParams('foo(java.lang.String)[#2]'), 'foo(String)[#2]');
   assert.equal(shortDisplayLabel('FooTest.bar(Path)  [w2]'), 'FooTest.bar(Path)  [w2]');
   // Live detail path shortens too.
   assert.equal(
@@ -1306,6 +1367,7 @@ test('testFailureReport builds CLI-shaped model with snippet rows and error line
   assert.equal(rep.line, 22);
   assert.equal(rep.rows.length, 4);
   assert.equal(rep.rows[0].num, 20);
+  assert.deepEqual(rep.frames, []);
   assert.equal(rep.rows[2].num, 22);
   assert.equal(rep.rows[2].error, true);
   assert.equal(rep.rows[0].error, false);
@@ -1313,6 +1375,26 @@ test('testFailureReport builds CLI-shaped model with snippet rows and error line
   const second = testFailureReport(d, { count: 2, showHeader: false });
   assert.equal(second.showHeader, false);
   assert.equal(second.count, 2);
+});
+
+test('testFailureReport falls back to stack frames when snippet is missing', () => {
+  const d = normalizeDiagnostic({
+    code: 'test-failure',
+    message: 'boom',
+    class: 'pkg.FooTest',
+    method: 'bar()',
+    exceptionClass: 'java.lang.AssertionError',
+    stack: 'java.lang.AssertionError: boom\n\tat pkg.FooTest.bar(FooTest.java:4)\n\tat java.base/java.lang.Thread.run(Thread.java:1)\n',
+  });
+  const rep = testFailureReport(d, { count: 1 });
+  assert.ok(rep);
+  assert.equal(rep.file, '');
+  assert.equal(rep.exceptionClass, 'AssertionError');
+  assert.deepEqual(rep.frames, [
+    '\tat pkg.FooTest.bar(FooTest.java:4)',
+    '\tat java.base/java.lang.Thread.run(Thread.java:1)',
+  ]);
+  assert.deepEqual(stackFrameLines('not a stack'), []);
 });
 
 test('live diagnostic event folds snippet fields onto the module', () => {

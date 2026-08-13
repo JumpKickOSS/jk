@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.ide;
 
-import cc.jumpkick.cli.CliOutput;
-import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.cli.tui.RichText;
-import cc.jumpkick.cli.tui.Tree;
 import cc.jumpkick.engine.protocol.IdeWireModel;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.Scope;
@@ -22,7 +17,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.jline.utils.AttributedStyle;
 
 /**
  * Emits IntelliJ IDEA project files ({@code.idea/} + {@code *.iml}) from {@link IdeModel}. Modules
@@ -36,7 +30,7 @@ public final class IntellijIdeGenerator implements IdeGenerator {
     }
 
     @Override
-    public List<String> generate(IdeModel model) throws IOException {
+    public IdeGeneration generate(IdeModel model) throws IOException {
         Path wsRoot = model.wsRoot();
         Map<Path, IdeModule> modules = model.modules();
         Map<Path, IdeModule> allModules = model.allModules();
@@ -102,35 +96,13 @@ public final class IntellijIdeGenerator implements IdeGenerator {
             files++;
         }
 
-        // ---- presentation ---------------------------------------------------
-        Theme t = Theme.active();
-        String check = Theme.colorize(Glyphs.CHECK, t.success());
-
-        Tree tree = new Tree(JkWedge.ok(
-                        "IDEA",
-                        RichText.parse("The [focused]" + RichText.escape(model.rootName()) + "[/] project is ready")))
-                .gap(Tree.Gap.NONE);
+        List<RichText> details = new ArrayList<>();
         if (!touchedTables.isEmpty()) {
-            tree.child(Tree.node(RichText.ansi(
-                    check + " Registered the " + Theme.colorize(defaultSdk.sdkName(), t.cyan()) + " JDK")));
+            details.add(RichText.parse("Registered the [cyan]" + RichText.escape(defaultSdk.sdkName()) + "[/] JDK"));
         }
-        tree.child(Tree.node(RichText.ansi(check
-                + " Generated "
-                + files
-                + " project file"
-                + (files == 1 ? "" : "s")
-                + " in "
-                + Theme.colorize(".idea", t.path()))));
-        tree.print();
-
-        CliOutput.out();
-        CliOutput.out(" "
-                + Theme.colorize(Glyphs.BANG + " Note", t.warning())
-                + ": You may need to "
-                + Theme.colorize("restart your IDE", AttributedStyle.DEFAULT.italic())
-                + " for changes to take effect");
-
-        return List.of("IntelliJ: " + files + " file" + (files == 1 ? "" : "s"));
+        details.add(RichText.parse(
+                "Generated " + files + " project file" + (files == 1 ? "" : "s") + " in [path].idea[/]"));
+        return IdeGeneration.of(details);
     }
 
     // =========================================================================

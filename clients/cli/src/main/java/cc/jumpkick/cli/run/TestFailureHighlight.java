@@ -39,6 +39,9 @@ public final class TestFailureHighlight {
     /** Engine sentinel title — must stay byte-identical to {@code TestSupport.renderFailures}. */
     public static final String HEADER_SENTINEL = "Test Failure";
 
+    /** Engine closer — must stay byte-identical to {@code TestSupport.renderFailures}. */
+    public static final String FOOTER_SENTINEL = "Test Failure end";
+
     /** Heavy vertical box-drawing used as the failure rail (U+2503). */
     public static final String RAIL = "┃";
 
@@ -47,8 +50,9 @@ public final class TestFailureHighlight {
     private static final Pattern COUNT_LINE = Pattern.compile("^(\\d+) test(s?) failed:?$");
     private static final Pattern THROWN_AT =
             Pattern.compile("^[›\\s]*(?<ex>[A-Za-z_][\\w$]*) thrown at line (?<n>\\d+)\\s*$");
-    private static final Pattern FQCN_LINE =
-            Pattern.compile("^(?<indent>[ \\t]*)(?<fqcn>[a-zA-Z_][\\w$]*(?:\\.[a-zA-Z_][\\w$]*)+)$");
+
+    /** The no-snippet exception locus {@code TestSupport} emits: four spaces + simple type name. */
+    private static final Pattern BARE_EXCEPTION = Pattern.compile("^ {4}[A-Z][\\w$]*$");
 
     private TestFailureHighlight() {}
 
@@ -75,6 +79,7 @@ public final class TestFailureHighlight {
                 int end = findBlockEnd(lines, i);
                 out.addAll(paintBlock(lines.subList(i, end)));
                 i = end;
+                if (i < lines.size() && FOOTER_SENTINEL.equals(strip(lines.get(i)))) i++;
                 while (i < lines.size() && (lines.get(i) == null || lines.get(i).isEmpty())) i++;
                 continue;
             }
@@ -111,19 +116,6 @@ public final class TestFailureHighlight {
         }
     }
 
-    public static String paintBodyLine(String raw) {
-        Stream s = new Stream();
-        s.line(HEADER_SENTINEL);
-        s.line(raw);
-        List<String> painted = s.finish();
-        return painted.size() > 1 ? painted.get(1) : (painted.isEmpty() ? raw : painted.get(0));
-    }
-
-    /** Styled header fragment: red Test pill + mid-gray "Failure" (legacy callers). */
-    public static String paintHeader() {
-        return paintHeaderLine(null, 1, false);
-    }
-
     /**
      * {@code Test Failure in group:artifact › 1 test failed}
      *
@@ -135,7 +127,8 @@ public final class TestFailureHighlight {
         Theme t = Theme.active();
         if (!t.isAnsi()) {
             String m = module == null || module.isBlank() ? "" : " in " + module;
-            return "[Test] Failure" + m + " › " + count + " test" + (plural ? "s" : "") + " failed";
+            // ASCII only: plain mode's consumers (dumb terminals, CI logs) are why it exists (JK-1910).
+            return "[Test] Failure" + m + " > " + count + " test" + (plural ? "s" : "") + " failed";
         }
         // Same red/white chip as DiagnosticReport Compile Java failures.
         AttributedStyle body = t.withBackground(t.bright(255, 255, 255), t.planFailColor());
@@ -219,6 +212,10 @@ public final class TestFailureHighlight {
                 continue;
             }
 
+            if (FOOTER_SENTINEL.equals(raw.strip())) {
+                break;
+            }
+
             if (raw.startsWith("@@source ")) {
                 flushAssert(out, assertBuf, collectingAssert, t);
                 collectingAssert = false;
@@ -232,8 +229,7 @@ public final class TestFailureHighlight {
             }
 
             Matcher thrown = THROWN_AT.matcher(raw.strip());
-            if (thrown.matches()
-                    || raw.strip().matches("^[›\\s]*[A-Za-z_][\\w$]* thrown at line \\d+\\s*$")) {
+            if (thrown.matches() || raw.strip().matches("^[›\\s]*[A-Za-z_][\\w$]* thrown at line \\d+\\s*$")) {
                 flushAssert(out, assertBuf, collectingAssert, t);
                 collectingAssert = false;
                 assertBuf.clear();
@@ -247,10 +243,10 @@ public final class TestFailureHighlight {
                 flushAssert(out, assertBuf, collectingAssert, t);
                 collectingAssert = false;
                 assertBuf.clear();
-                String rest = failed.matches() ? failed.group("rest") : raw.strip().substring("FAILED ".length());
-                String failedWord = t.isAnsi()
-                        ? Theme.colorize("FAILED", t.error().bold())
-                        : "FAILED";
+                String rest =
+                        failed.matches() ? failed.group("rest") : raw.strip().substring("FAILED ".length());
+                String failedWord =
+                        t.isAnsi() ? Theme.colorize("FAILED", t.error().bold()) : "FAILED";
                 out.add(rail(failedWord + " " + paintShortLabel(rest, t), t));
                 out.add(rail("", t));
                 collectingAssert = true; // assertion body follows until source
@@ -265,6 +261,27 @@ public final class TestFailureHighlight {
                 collectingAssert = false;
                 assertBuf.clear();
                 out.add(rail(StackTraceHighlight.line(raw), t));
+                i++;
+                continue;
+            }
+
+            // Bare exception locus on the no-snippet path ("    AssertionFailedError" between the
+            // assertion body and the stack frames). It must flush the assertion buffer — buffered,
+            // it defeats the AssertJ reformat and paints as an actual-value line (JK-1883). Only a
+            // blank-line boundary qualifies, so an indented capitalized token inside a multi-line
+            // assertion value stays part of the body.
+            if (BARE_EXCEPTION.matcher(raw).matches()
+                    && (!collectingAssert
+                            || assertBuf.isEmpty()
+                            || strip(assertBuf.get(assertBuf.size() - 1)).isEmpty())) {
+                while (!assertBuf.isEmpty()
+                        && strip(assertBuf.get(assertBuf.size() - 1)).isEmpty()) {
+                    assertBuf.remove(assertBuf.size() - 1);
+                }
+                flushAssert(out, assertBuf, collectingAssert, t);
+                collectingAssert = false;
+                assertBuf.clear();
+                out.add(rail(paintThrownAt(raw, t), t));
                 i++;
                 continue;
             }
@@ -333,10 +350,14 @@ public final class TestFailureHighlight {
     static List<String> paintSourceBlock(List<String> markers, Theme t) {
         if (markers.isEmpty()) return List.of();
         String header = markers.get(0);
-        String path = attr(header, "path");
+        String path = pathAttr(header);
         String lang = attr(header, "lang");
         SyntaxHighlight.Language language = languageOf(lang);
 
+        // Clamp to the terminal: one over-long source line otherwise pads EVERY row past the
+        // width, wrapping continuation rows without the rail and spilling the band (JK-1914).
+        // Tabs expand first — the pad math is column-based, and a raw '\t' misaligns the band end.
+        int budget = Math.max(40, cc.jumpkick.cli.tui.TerminalSize.columns() - ROW_OVERHEAD);
         List<SrcRow> rows = new ArrayList<>();
         int maxCode = 0;
         for (int i = 1; i < markers.size(); i++) {
@@ -344,6 +365,8 @@ public final class TestFailureHighlight {
             if (m == null || m.equals("@@src-end") || !m.startsWith("@@src ")) continue;
             SrcRow row = parseSrcRow(m);
             if (row == null) continue;
+            String code = clampCode(expandTabs(row.code), budget);
+            row = new SrcRow(row.num, row.error, code);
             rows.add(row);
             maxCode = Math.max(maxCode, row.code.length());
         }
@@ -363,6 +386,30 @@ public final class TestFailureHighlight {
         return out;
     }
 
+    /** Visible columns a painted row spends before code: rail {@code " ┃ "} + gutter + bar + gap. */
+    private static final int ROW_OVERHEAD = 9;
+
+    private static String expandTabs(String code) {
+        if (code == null || code.indexOf('\t') < 0) return code == null ? "" : code;
+        StringBuilder sb = new StringBuilder(code.length() + 8);
+        for (int i = 0; i < code.length(); i++) {
+            char c = code.charAt(i);
+            if (c == '\t') {
+                do {
+                    sb.append(' ');
+                } while (sb.length() % 4 != 0);
+            } else {
+                sb.append(c);
+            }
+        }
+        return sb.toString();
+    }
+
+    private static String clampCode(String code, int budget) {
+        if (code.length() <= budget) return code;
+        return code.substring(0, Math.max(1, budget - 1)) + "…";
+    }
+
     private record SrcRow(String num, boolean error, String code) {}
 
     private static SrcRow parseSrcRow(String marker) {
@@ -376,7 +423,7 @@ public final class TestFailureHighlight {
     }
 
     private static String plainSrcLine(SrcRow row, int maxCode) {
-        return String.format("%4s│ %s", row.num, padRight(row.code, maxCode));
+        return String.format("%4s| %s", row.num, padRight(row.code, maxCode));
     }
 
     private static String paintSrcLine(
@@ -429,9 +476,7 @@ public final class TestFailureHighlight {
             String after = body.substring(dot + 1, searchEnd);
             // method / <init> after the last pre-paren dot → class is everything before it
             if (!after.isEmpty()
-                    && (Character.isLowerCase(after.charAt(0))
-                            || after.charAt(0) == '_'
-                            || after.startsWith("<"))) {
+                    && (Character.isLowerCase(after.charAt(0)) || after.charAt(0) == '_' || after.startsWith("<"))) {
                 String cls = simpleName(body.substring(0, dot));
                 String method = simplifyMethodParams(body.substring(dot + 1));
                 body = cls.isEmpty() ? method : cls + "." + method;
@@ -471,8 +516,7 @@ public final class TestFailureHighlight {
             return Character.isUpperCase(c0); // FooTest / AssertionFailedError
         }
         // package.Class / package.Class.method / FooTest.bar
-        return body.matches(
-                "(?:[a-z][\\w$]*\\.)*[A-Z][\\w$]*(?:\\.[A-Za-z_][\\w$]*)?");
+        return body.matches("(?:[a-z][\\w$]*\\.)*[A-Z][\\w$]*(?:\\.[A-Za-z_][\\w$]*)?");
     }
 
     /**
@@ -486,26 +530,27 @@ public final class TestFailureHighlight {
         if (open < 0 || close <= open) return method.strip();
         String name = method.substring(0, open).strip();
         String inside = method.substring(open + 1, close).strip();
-        if (inside.isEmpty()) return name + "()";
+        String after = method.substring(close + 1);
+        if (inside.isEmpty()) return name + "()" + after;
         StringBuilder simplified = new StringBuilder();
         for (String part : inside.split(",")) {
             String p = part.strip();
-            String suffix = "";
+            String arraySuffix = "";
             while (p.endsWith("...") || p.endsWith("[]")) {
                 if (p.endsWith("...")) {
-                    suffix = "..." + suffix;
+                    arraySuffix = "..." + arraySuffix;
                     p = p.substring(0, p.length() - 3).strip();
                 } else {
-                    suffix = "[]" + suffix;
+                    arraySuffix = "[]" + arraySuffix;
                     p = p.substring(0, p.length() - 2).strip();
                 }
             }
             int d = p.lastIndexOf('.');
             if (d >= 0) p = p.substring(d + 1);
             if (!simplified.isEmpty()) simplified.append(", ");
-            simplified.append(p).append(suffix);
+            simplified.append(p).append(arraySuffix);
         }
-        return name + "(" + simplified + ")";
+        return name + "(" + simplified + ")" + after;
     }
 
     /** {@code SimpleClass.method()} / {@code SimpleClass.method(Path)} — type + function roles. */
@@ -571,7 +616,8 @@ public final class TestFailureHighlight {
         }
         sb.append(Theme.colorize(")", t.darkGray()));
         if (close + 1 < method.length()) {
-            sb.append(Theme.colorize(method.substring(close + 1), SyntaxHighlight.styleFor(SyntaxHighlight.Role.FUNCTION)));
+            sb.append(Theme.colorize(
+                    method.substring(close + 1), SyntaxHighlight.styleFor(SyntaxHighlight.Role.FUNCTION)));
         }
         return sb.toString();
     }
@@ -581,8 +627,7 @@ public final class TestFailureHighlight {
         Matcher m = THROWN_AT.matcher(s);
         if (!m.matches()) {
             if (!s.isEmpty() && s.indexOf(' ') < 0) {
-                return BODY_INDENT
-                        + Theme.colorize(simpleName(s), SyntaxHighlight.styleFor(SyntaxHighlight.Role.TYPE));
+                return BODY_INDENT + Theme.colorize(simpleName(s), SyntaxHighlight.styleFor(SyntaxHighlight.Role.TYPE));
             }
             return Theme.colorize(raw, t.midGray());
         }
@@ -697,6 +742,23 @@ public final class TestFailureHighlight {
         return header.substring(s, e);
     }
 
+    /**
+     * The {@code path=} value runs to end-of-line (the emitter puts it last so paths with spaces
+     * survive the space-delimited header — JK-1905). Old-format headers carried path mid-line;
+     * detect the trailing {@code line=} attr and fall back to the first-whitespace cut.
+     */
+    private static String pathAttr(String header) {
+        String needle = "path=";
+        int i = header.indexOf(needle);
+        if (i < 0) return "";
+        String tail = header.substring(i + needle.length());
+        if (tail.matches("\\S+ line=\\d+.*")) {
+            int sp = tail.indexOf(' ');
+            return tail.substring(0, sp);
+        }
+        return tail.strip();
+    }
+
     private static SyntaxHighlight.Language languageOf(String lang) {
         if (lang == null) return SyntaxHighlight.Language.JAVA;
         return switch (lang.toLowerCase(java.util.Locale.ROOT)) {
@@ -725,45 +787,17 @@ public final class TestFailureHighlight {
         return current;
     }
 
+    /**
+     * End of the report: {@link #FOOTER_SENTINEL} (exclusive), the next {@link #HEADER_SENTINEL},
+     * or EOF. A blank-line heuristic would truncate assertion bodies that contain a blank followed
+     * by an unindented value, leaking {@code @@source} markers into the terminal.
+     */
     static int findBlockEnd(List<String> lines, int start) {
-        boolean sawFailed = false;
         for (int i = start + 1; i < lines.size(); i++) {
-            String s = lines.get(i);
-            if (s != null && s.contains("FAILED ")) sawFailed = true;
-            if (s == null || !s.isEmpty()) continue;
-            if (!sawFailed) continue;
-            if (i + 1 >= lines.size()) return i;
-            String next = lines.get(i + 1);
-            if (next == null || next.isEmpty() || !isFailureContinuation(next)) {
-                return i;
-            }
+            String s = strip(lines.get(i));
+            if (FOOTER_SENTINEL.equals(s) || HEADER_SENTINEL.equals(s)) return i;
         }
         return lines.size();
-    }
-
-    static boolean isFailureContinuation(String line) {
-        if (line == null) return false;
-        if (line.startsWith(" ") || line.startsWith("\t")) return true;
-        if (line.startsWith("@@source ") || line.startsWith("@@src ") || line.equals("@@src-end")) return true;
-        String t = line.stripLeading();
-        if (t.startsWith("FAILED ") || t.startsWith("module: ") || t.startsWith("at ") || t.startsWith("...")) {
-            return true;
-        }
-        if (t.startsWith("›") || t.contains(" thrown at line ")) return true;
-        // Indented exception locus under FAILED
-        if (t.matches("[A-Za-z_][\\w$]* thrown at line \\d+")) return true;
-        if (t.startsWith("[") && t.contains("]")) return true;
-        if (COUNT_LINE.matcher(t).matches()) return true;
-        if (FQCN_LINE.matcher(line).matches() && looksLikeExceptionOrClass(t)) return true;
-        String lower = t.toLowerCase(java.util.Locale.ROOT);
-        return lower.startsWith("expected")
-                || lower.startsWith("but was")
-                || lower.startsWith("but had")
-                || lower.contains("expect")
-                || lower.contains("actual")
-                || lower.contains("between")
-                || lower.contains("but was")
-                || lower.contains("but had");
     }
 
     private static String paintFallbackContent(String raw, Theme t, ValueRole valueRole) {
@@ -789,12 +823,6 @@ public final class TestFailureHighlight {
             return Theme.colorize(indent, t.midGray()) + Theme.colorize(stripped, v);
         }
         return Theme.colorize(raw, t.midGray());
-    }
-
-    private static boolean looksLikeExceptionOrClass(String fqcn) {
-        if (fqcn.indexOf('.') < 0) return false;
-        String simple = fqcn.substring(fqcn.lastIndexOf('.') + 1);
-        return Character.isUpperCase(simple.charAt(0));
     }
 
     private static String rail(String paintedContent, Theme t) {

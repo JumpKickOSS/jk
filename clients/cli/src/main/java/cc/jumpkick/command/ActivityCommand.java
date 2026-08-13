@@ -5,7 +5,6 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Pill;
-import cc.jumpkick.cli.tui.RenderContext;
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Tree;
 import cc.jumpkick.engine.EnginePaths;
@@ -92,25 +91,6 @@ public final class ActivityCommand implements CliCommand {
         }
         if (max <= 0) return 1;
         return String.valueOf(max).length();
-    }
-
-    /** Blue menu CommandWedge: {@code ≡ Build Jobs}. */
-    static String titleLine() {
-        return new Tree("Build Jobs").render(RenderContext.current()).getFirst();
-    }
-
-    /**
-     * Body of one Jobs row (no tree prefix) from a flat {@code history-entry} JSONL line.
-     * Package-visible for unit tests. {@code buildNumberWidth} zero-pads {@code #N} across the list.
-     */
-    static String formatLine(String entry, long now, Theme t) {
-        return formatLine(entry, now, t, 1);
-    }
-
-    static String formatLine(String entry, long now, Theme t, int buildNumberWidth) {
-        Tree.Node node = jobNode(entry, now, t, buildNumberWidth);
-        RenderContext ctx = RenderContext.current();
-        return node.pill().renderInline(ctx) + node.label().render(ctx);
     }
 
     /** {@code id: N} with the number bold white when ANSI is on. */
@@ -204,7 +184,9 @@ public final class ActivityCommand implements CliCommand {
         sb.append(glyph).append(' ');
         if (buildNumber > 0) {
             int width = Math.max(1, buildNumberWidth);
-            sb.append('#').append(String.format("%0" + width + "d", buildNumber)).append(' ');
+            sb.append('#')
+                    .append(String.format("%0" + width + "d", buildNumber))
+                    .append(' ');
         } else if (!running) {
             sb.append("#— ");
         }

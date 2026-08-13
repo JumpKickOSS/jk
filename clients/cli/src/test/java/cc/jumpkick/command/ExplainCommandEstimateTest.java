@@ -16,30 +16,22 @@ class ExplainCommandEstimateTest {
 
     @Test
     void fully_cached_build_time_is_under_one_second_not_unknown() {
-        String label = TestAnsi.strip(ExplainCommand.buildTimeEstimate(0, true, Theme.active()));
-        assertThat(label).isEqualTo("Build time estimate <1s");
-        assertThat(label).doesNotContain("unknown");
         assertThat(ExplainCommand.buildTimeEstimateValue(0, true)).isEqualTo("<1s");
     }
 
     @Test
     void dirty_with_no_eta_is_not_yet_measured() {
-        String label = TestAnsi.strip(ExplainCommand.buildTimeEstimate(0, false, Theme.active()));
-        assertThat(label).isEqualTo("Build time estimate not yet measured");
-        assertThat(label).doesNotContain("unknown");
         assertThat(ExplainCommand.buildTimeEstimateValue(0, false)).isEqualTo("not yet measured");
     }
 
     @Test
     void sub_second_eta_formats_as_under_one_second() {
-        String label = TestAnsi.strip(ExplainCommand.buildTimeEstimate(400, false, Theme.active()));
-        assertThat(label).isEqualTo("Build time estimate <1s");
+        assertThat(ExplainCommand.buildTimeEstimateValue(400, false)).isEqualTo("<1s");
     }
 
     @Test
     void multi_second_eta_uses_tilde_estimate() {
-        String label = TestAnsi.strip(ExplainCommand.buildTimeEstimate(8_000, false, Theme.active()));
-        assertThat(label).isEqualTo("Build time estimate ~8s");
+        assertThat(ExplainCommand.buildTimeEstimateValue(8_000, false)).isEqualTo("~8s");
         assertThat(ExplainCommand.buildTimeEstimateValue(158_000, false)).isEqualTo("~2m 38s");
     }
 
@@ -135,7 +127,7 @@ class ExplainCommandEstimateTest {
                 true,
                 false);
 
-        String chain = TestAnsi.strip(ExplainCommand.renderPhaseChain(module, Theme.active(), false));
+        String chain = TestAnsi.strip(ExplainCommand.renderStageChain(module, Theme.active(), false));
         // Bookkeeping write-stamp is omitted; cached compile, dirty test/package with counts.
         assertThat(chain).isEqualTo("+ Compile > [ ] Test ~28 tests > [ ] Package");
     }
@@ -161,9 +153,47 @@ class ExplainCommandEstimateTest {
                 true,
                 false);
 
-        String chain = TestAnsi.strip(ExplainCommand.renderPhaseChain(module, Theme.active(), false));
+        String chain = TestAnsi.strip(ExplainCommand.renderStageChain(module, Theme.active(), false));
         assertThat(chain).isEqualTo("[ ] Compile 239 sources > [ ] Test ~1,103 tests > [ ] Package > [ ] Native");
         assertThat(ExplainCommand.producesNative(module)).isTrue();
+    }
+
+    @Test
+    void dirty_compile_shows_the_changed_count_not_the_module_total() {
+        // JK-1897: an incremental recompile must read as one — the forecast says how many
+        // sources actually changed; the module's full source count overstates the work.
+        var module = TaskForecast.Module.fromWire(
+                Path.of("/tmp/m"),
+                "com.example:app",
+                List.of(
+                        new TaskForecast.Task(
+                                "compile-main", TaskForecast.Status.RUN, "compile · 3 sources changed", null),
+                        new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests · ~28 tests", null)),
+                239,
+                28,
+                true,
+                false);
+        String chain = TestAnsi.strip(ExplainCommand.renderStageChain(module, Theme.active(), false));
+        assertThat(chain).isEqualTo("[ ] Compile 3 sources changed > [ ] Test ~28 tests");
+        assertThat(ExplainCommand.changedSourceCount(module)).isEqualTo(3);
+    }
+
+    @Test
+    void single_changed_source_and_single_test_are_singular() {
+        // JK-1897/JK-1898: "1 source changed", "~1 test" — never "~1 tests".
+        var module = TaskForecast.Module.fromWire(
+                Path.of("/tmp/m"),
+                "com.example:app",
+                List.of(
+                        new TaskForecast.Task(
+                                "compile-main", TaskForecast.Status.RUN, "compile · 1 source changed", null),
+                        new TaskForecast.Task("run-tests", TaskForecast.Status.RUN, "run tests", null)),
+                239,
+                1,
+                true,
+                false);
+        String chain = TestAnsi.strip(ExplainCommand.renderStageChain(module, Theme.active(), false));
+        assertThat(chain).isEqualTo("[ ] Compile 1 source changed > [ ] Test ~1 test");
     }
 
     @Test

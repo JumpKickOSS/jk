@@ -171,9 +171,10 @@ public final class TestSupport {
      * › AssertionFailedError thrown at line 23
      * </pre>
      *
-     * <p>Simple class/method names only (no package FQCNs, no method params). When {@code moduleDir}
+     * <p>Simple class/method names only (no package FQCNs; params stay as simple type names). When {@code moduleDir}
      * is set, a 7-line source snippet is resolved from the stack. The leading {@code Test Failure}
-     * title is a fixed sentinel the CLI rewrites into a red pill + header line.
+     * title and trailing {@code Test Failure end} are sentinels the CLI rewrites into a red pill +
+     * header / rail (the closer keeps a blank line inside the assertion body from ending the paint).
      */
     public static List<String> renderFailures(TestSummary result) {
         return renderFailures(result, null);
@@ -181,9 +182,15 @@ public final class TestSupport {
 
     /** As {@link #renderFailures(TestSummary)} with module-dir source resolution. */
     public static List<String> renderFailures(TestSummary result, Path moduleDir) {
+        return renderFailures(result, moduleDir, null);
+    }
+
+    /** Share {@code cache} with {@link #bridgeListener} so each failure is resolved once. */
+    public static List<String> renderFailures(TestSummary result, Path moduleDir, TestFailureSource.Cache cache) {
         List<String> out = new ArrayList<>();
         List<TestSummary.Failure> failures = result.failures();
         if (failures.isEmpty()) return out;
+        TestFailureSource.Cache effectiveCache = cache != null ? cache : new TestFailureSource.Cache();
         // No leading blank — the CLI leaves a single blank under the prompt / live region.
         out.add("Test Failure");
         // First non-blank module wins for the header (multi-module reports still list each FAILED).
@@ -199,7 +206,7 @@ public final class TestSupport {
             out.add("FAILED " + shortTestLabel(f));
             Optional<TestFailureSource.Snippet> snippet = Optional.empty();
             if (moduleDir != null) {
-                snippet = TestFailureSource.resolve(moduleDir, f.className(), f.stack());
+                snippet = effectiveCache.resolve(moduleDir, f.className(), f.stack());
             }
             // Assertion body, then source snippet, then exception locus under the snippet.
             List<String> body = failureBodyLines(f);
@@ -229,14 +236,15 @@ public final class TestSupport {
                 }
             }
         }
-        // No trailing blank — the settle wedge ("✘ Build …") follows immediately.
+        // Closer so the CLI does not treat a blank inside the assertion body as end-of-report.
+        out.add("Test Failure end");
         return out;
     }
 
     /**
      * {@code SimpleClass.method()} / {@code SimpleClass.method(Path)} — no package FQCN; keep
-     * parentheses (and param type names when present). Falls back to the failure's test name when
-     * class/method are unknown.
+     * parentheses, simple param type names, and a trailing invocation tag ({@code [#1]}). Falls
+     * back to the failure's test name when class/method are unknown.
      */
     static String shortTestLabel(TestSummary.Failure f) {
         String cls = simpleClassName(f.className());
@@ -263,9 +271,9 @@ public final class TestSupport {
             method = method + "()";
         }
         if (cls.isEmpty() && method.isEmpty()) return f.testName() == null ? "?" : f.testName();
-        if (cls.isEmpty()) return method;
-        if (method.isEmpty()) return cls;
-        return cls + "." + method;
+        String label = cls.isEmpty() ? method : (method.isEmpty() ? cls : cls + "." + method);
+        if (f.workerId() > 0) label = label + "  [w" + f.workerId() + "]";
+        return label;
     }
 
     /**
@@ -279,7 +287,8 @@ public final class TestSupport {
         if (open < 0 || close <= open) return method.strip();
         String name = method.substring(0, open).strip();
         String inside = method.substring(open + 1, close).strip();
-        if (inside.isEmpty()) return name + "()";
+        String suffix = method.substring(close + 1);
+        if (inside.isEmpty()) return name + "()" + suffix;
         StringBuilder simplified = new StringBuilder();
         for (String part : inside.split(",")) {
             String p = part.strip();
@@ -288,7 +297,7 @@ public final class TestSupport {
             if (!simplified.isEmpty()) simplified.append(", ");
             simplified.append(p);
         }
-        return name + "(" + simplified + ")";
+        return name + "(" + simplified + ")" + suffix;
     }
 
     /** {@code org.opentest4j.AssertionFailedError} → {@code AssertionFailedError}. */
@@ -380,8 +389,20 @@ public final class TestSupport {
      */
     public static TestProgressListener bridgeListener(
             TaskContext ctx, int workerCount, boolean verbose, String moduleLabel, Path moduleDir) {
+        return bridgeListener(ctx, workerCount, verbose, moduleLabel, moduleDir, null);
+    }
+
+    /** As {@link #bridgeListener(TaskContext, int, boolean, String, Path)} with a shared snippet cache. */
+    public static TestProgressListener bridgeListener(
+            TaskContext ctx,
+            int workerCount,
+            boolean verbose,
+            String moduleLabel,
+            Path moduleDir,
+            TestFailureSource.Cache cache) {
         String module = moduleLabel == null ? "" : moduleLabel.trim();
         Path dir = moduleDir;
+        TestFailureSource.Cache snippets = cache != null ? cache : new TestFailureSource.Cache();
         return new TestProgressListener() {
             @Override
             public void onTestStarted(String id, String display, boolean isTest, int workerId) {
@@ -444,7 +465,7 @@ public final class TestSupport {
                 int snippetStart = 0;
                 java.util.List<String> snippetLines = java.util.List.of();
                 if (dir != null) {
-                    var snip = TestFailureSource.resolve(dir, className, stack);
+                    var snip = snippets.resolve(dir, className, stack);
                     if (snip.isPresent()) {
                         var s = snip.get();
                         file = s.relativePath();

@@ -875,9 +875,11 @@ public final class EngineClient {
 
     /**
      * Forecast a build against the engine ({@code jk explain}) — see {@link
-     * EngineBuildListenerAdapter#explain} for the exact contract. {@code etaOut} (a single-slot
-     * holder, may be {@code null}) receives the engine-computed build-time estimate in millis
-     * ({@code 0} = unknown).
+     * EngineBuildListenerAdapter#explain} for the exact contract. {@code etaOut} (may be
+     * {@code null}) receives engine-computed estimates in millis, {@code 0} = unknown:
+     * slot {@code [0]} the remaining-work ETA, and — when the array has a second slot — slot
+     * {@code [1]} the full-rebuild ETA (the rebuild-effort denominator). Length-guarded, so a
+     * one-slot caller still gets the plain ETA.
      */
     public static ExplainPlan explain(EnginePaths.Paths paths, ExplainRequest req, long[] etaOut) throws IOException {
         return EngineBuildListenerAdapter.explain(paths, req, etaOut);

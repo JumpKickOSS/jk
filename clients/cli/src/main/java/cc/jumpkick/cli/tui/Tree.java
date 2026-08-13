@@ -173,7 +173,13 @@ public final class Tree implements Widget {
     }
 
     private static void renderNode(
-            Node node, String prefix, boolean last, boolean isRoot, RenderContext ctx, Gap inherited, List<String> lines) {
+            Node node,
+            String prefix,
+            boolean last,
+            boolean isRoot,
+            RenderContext ctx,
+            Gap inherited,
+            List<String> lines) {
         Gap gap = node.gap != null ? node.gap : inherited;
         String childPrefix;
         if (isRoot) {

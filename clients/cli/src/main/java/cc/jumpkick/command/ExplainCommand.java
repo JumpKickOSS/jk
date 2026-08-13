@@ -237,7 +237,7 @@ public final class ExplainCommand implements CliCommand {
 
     /**
      * Build Graph: wedge title, {@code ● group:artifact} root, Fully Cached / Rebuild section
-     * pills, name-only branded module pills, hanging phase-chain (or {@code --verbose} step
+     * pills, name-only branded module pills, hanging stage-chain (or {@code --verbose} step
      * children).
      */
     static Tree buildGraph(
@@ -282,7 +282,7 @@ public final class ExplainCommand implements CliCommand {
         return new Tree("Build Graph").gap(Tree.Gap.CHILDREN).root(root);
     }
 
-    /** One rebuild (or verbose cached) module: branded name pill + phase chain or step children. */
+    /** One rebuild (or verbose cached) module: branded name pill + stage chain or step children. */
     private static Tree.Node moduleNode(TaskForecast.Module m, boolean verbose, Theme t, boolean ansi) {
         Tree.Node node = Tree.node(Pill.branded(shortName(m.coord())));
         if (verbose) {
@@ -303,19 +303,10 @@ public final class ExplainCommand implements CliCommand {
             return node;
         }
         if (m.dirty()) {
-            String chain = renderPhaseChain(m, t, ansi);
+            String chain = renderStageChain(m, t, ansi);
             if (!chain.isEmpty()) node.body(RichText.ansi(chain));
         }
         return node;
-    }
-
-    /**
-     * Header estimate fragment: {@code Build time estimate ~8s}, {@code Build time estimate <1s}
-     * (fully cached / sub-second), or {@code Build time estimate not yet measured} when dirty work
-     * has no host/project timings yet.
-     */
-    static String buildTimeEstimate(long etaMillis, boolean fullyCached, Theme t) {
-        return "Build time estimate " + Theme.colorize(buildTimeEstimateValue(etaMillis, fullyCached), t.warning());
     }
 
     /**
@@ -347,11 +338,11 @@ public final class ExplainCommand implements CliCommand {
     private static final int CACHED_NAMES_PER_LINE = 4;
 
     /**
-     * Roll material tasks up into a web-style phase chain: {@code ✓ Compile › □ Test ~28 tests › □
+     * Roll material tasks up into a stage chain: {@code ✓ Compile › □ Test ~28 tests › □
      * Package}. Stages follow {@link BuildStage} pipeline order; bookkeeping-only steps are
      * omitted so stamp/resolve noise never appears.
      */
-    static String renderPhaseChain(TaskForecast.Module m, Theme t, boolean ansi) {
+    static String renderStageChain(TaskForecast.Module m, Theme t, boolean ansi) {
         Map<BuildStage, List<TaskForecast.Task>> byStage = new LinkedHashMap<>();
         for (TaskForecast.Task step : m.steps()) {
             if (!TaskForecast.Module.isMaterialWork(step.name())) continue;
@@ -372,13 +363,13 @@ public final class ExplainCommand implements CliCommand {
             if (!sb.isEmpty()) sb.append(sep);
             List<TaskForecast.Task> steps = byStage.get(stage);
             boolean dirty = steps.stream().anyMatch(s -> !s.cached());
-            sb.append(renderPhaseToken(stage, dirty, phaseDetail(stage, dirty, m), t, ansi));
+            sb.append(renderStageToken(stage, dirty, stageDetail(stage, dirty, m), t, ansi));
         }
         return sb.toString();
     }
 
-    /** One phase token: {@code ✓ Compile} (green) or {@code □ Test ~28 tests} (blue + dim detail). */
-    private static String renderPhaseToken(BuildStage stage, boolean dirty, String detail, Theme t, boolean ansi) {
+    /** One stage token: {@code ✓ Compile} (green) or {@code □ Test ~28 tests} (blue + dim detail). */
+    private static String renderStageToken(BuildStage stage, boolean dirty, String detail, Theme t, boolean ansi) {
         String glyph = dirty ? Glyphs.PENDING : Glyphs.CHECK;
         String label = stage.displayName();
         if (!ansi) {
@@ -392,16 +383,43 @@ public final class ExplainCommand implements CliCommand {
     }
 
     /**
-     * Short detail next to a dirty phase — source/test counts for Compile/Test; nothing for
-     * package/native/image (the phase name is enough).
+     * Short detail next to a dirty stage — source/test counts for Compile/Test; nothing for
+     * package/native/image (the stage name is enough).
      */
-    private static String phaseDetail(BuildStage stage, boolean dirty, TaskForecast.Module m) {
+    private static String stageDetail(BuildStage stage, boolean dirty, TaskForecast.Module m) {
         if (!dirty) return null;
         return switch (stage) {
-            case COMPILE -> m.sourceCount() > 0 ? fmtCount(m.sourceCount(), "source", "sources") : null;
-            case TEST -> m.testCount() > 0 ? "~" + String.format("%,d", m.testCount()) + " tests" : null;
+            case COMPILE -> {
+                // An incremental recompile must read as one: the forecast step text carries the
+                // real changed count ("3 sources changed"); the module total would overstate the
+                // work (JK-1897).
+                int changed = changedSourceCount(m);
+                if (changed >= 0) yield fmtCount(changed, "source changed", "sources changed");
+                yield m.sourceCount() > 0 ? fmtCount(m.sourceCount(), "source", "sources") : null;
+            }
+            case TEST -> m.testCount() > 0 ? "~" + fmtCount(m.testCount(), "test", "tests") : null;
             default -> null;
         };
+    }
+
+    /** {@code "N source(s) changed"} from {@code JavaIncrementalCompile}, digit-guarded (JK-1836). */
+    private static final java.util.regex.Pattern CHANGED_SOURCES =
+            java.util.regex.Pattern.compile("(?<!\\d)(\\d+) sources? changed");
+
+    /**
+     * Changed-source count summed over the module's non-cached compile steps, or {@code -1} when
+     * no step states one (full compile, no incremental state).
+     */
+    static int changedSourceCount(TaskForecast.Module m) {
+        int total = -1;
+        for (TaskForecast.Task s : m.steps()) {
+            if (s.cached() || BuildStage.ofTaskName(s.name()) != BuildStage.COMPILE) continue;
+            var matcher = CHANGED_SOURCES.matcher(s.text() == null ? "" : s.text());
+            while (matcher.find()) {
+                total = Math.max(0, total) + Integer.parseInt(matcher.group(1));
+            }
+        }
+        return total;
     }
 
     /** True when the module plan includes a material native stage task. */
@@ -652,46 +670,6 @@ public final class ExplainCommand implements CliCommand {
 
     private static String padRight(String s, int width) {
         return s.length() >= width ? s : s + " ".repeat(width - s.length());
-    }
-
-    /**
-     * Join {@code units} with {@code ", "} to fit {@code available} visible columns. When the full
-     * list is too wide, show as many leading units as fit followed by a {@code …+N more…} marker,
-     * where {@code N} is the count of remaining units that didn't fit. {@code available} is
-     * effectively unbounded on a non-TTY, so the full list is shown there.
-     */
-    static String elideDeps(List<String> units, int available) {
-        String full = String.join(", ", units);
-        if (available <= 0 || units.size() <= 1 || full.length() <= available) return full;
-        String best = "…+" + units.size() + " more…"; // marker-only, if even one unit won't fit
-        for (int k = 1; k < units.size(); k++) {
-            String candidate = String.join(", ", units.subList(0, k)) + ", …+" + (units.size() - k) + " more…";
-            if (candidate.length() > available) break; // front grows monotonically
-            best = candidate;
-        }
-        return best;
-    }
-
-    /**
-     * Greedily pack {@code tokens} into {@code ", "}-joined lines, each at most {@code avail} visible
-     * columns wide (the wrap point drops the separator rather than leaving a trailing comma). On a
-     * non-TTY {@code avail} is effectively unbounded, so the whole list lands on one line.
-     */
-    static List<String> wrapNames(List<String> tokens, int avail) {
-        List<String> lines = new ArrayList<>();
-        StringBuilder cur = new StringBuilder();
-        for (String tok : tokens) {
-            if (cur.length() == 0) {
-                cur.append(tok);
-            } else if (cur.length() + 2 + tok.length() <= avail) {
-                cur.append(", ").append(tok);
-            } else {
-                lines.add(cur.toString());
-                cur = new StringBuilder(tok);
-            }
-        }
-        if (cur.length() > 0) lines.add(cur.toString());
-        return lines;
     }
 
     /**

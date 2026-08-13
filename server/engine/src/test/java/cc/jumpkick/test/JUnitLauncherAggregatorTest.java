@@ -17,10 +17,11 @@ class JUnitLauncherAggregatorTest {
         var agg = new JUnitLauncher.ResultAggregator();
         agg.accept("{\"event\":\"finished\",\"id\":\"a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
         agg.accept("{\"event\":\"finished\",\"id\":\"b\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
-        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"[engine:junit-jupiter]/[class:C]/[method:c()]\","
-                + "\"testEngine\":\"junit-jupiter\",\"testClass\":\"C\",\"testMethod\":\"c()\","
-                + "\"type\":\"TEST\",\"status\":\"FAILED\","
-                + "\"throwable\":{\"class\":\"AssertionError\",\"message\":\"nope\",\"stack\":\"AssertionError: nope\\n\\tat C.c(C.java:1)\"}}");
+        agg.accept(
+                "{\"event\":\"finished\",\"uniqueId\":\"[engine:junit-jupiter]/[class:C]/[method:c()]\","
+                        + "\"testEngine\":\"junit-jupiter\",\"testClass\":\"C\",\"testMethod\":\"c()\","
+                        + "\"type\":\"TEST\",\"status\":\"FAILED\","
+                        + "\"throwable\":{\"class\":\"AssertionError\",\"message\":\"nope\",\"stack\":\"AssertionError: nope\\n\\tat C.c(C.java:1)\"}}");
         agg.accept("{\"event\":\"skipped\",\"uniqueId\":\"d\",\"type\":\"TEST\",\"reason\":\"@Disabled\"}");
 
         var result = agg.toResult(0);
@@ -40,6 +41,20 @@ class JUnitLauncherAggregatorTest {
     }
 
     @Test
+    void pathological_stacks_are_truncated_at_capture() {
+        // The stack is worker-controlled input copied onto wire, SSE, and journal — a
+        // deep-recursion failure must not ride megabytes of frames through the pipeline (JK-1880).
+        String frame = "\tat C.recurse(C.java:2)\n";
+        String stack = "StackOverflowError\n" + frame.repeat(200_000 / frame.length());
+        String truncated = JUnitLauncher.ResultAggregator.truncateStack(stack);
+        assertThat(truncated.length()).isLessThanOrEqualTo(JUnitLauncher.ResultAggregator.MAX_STACK_CHARS + 64);
+        assertThat(truncated).endsWith("more chars)");
+        // Cuts on a line boundary, keeping whole frames.
+        assertThat(truncated).contains("... stack truncated (");
+        assertThat(JUnitLauncher.ResultAggregator.truncateStack("short")).isEqualTo("short");
+    }
+
+    @Test
     void container_events_do_not_count_toward_test_totals() {
         // JUnit fires FINISHED for engine roots and test classes too — those
         // are CONTAINER nodes and must not inflate the test count.
@@ -52,14 +67,32 @@ class JUnitLauncherAggregatorTest {
     }
 
     @Test
+    void engines_without_class_method_segments_keep_their_display_label() {
+        // Spock/Cucumber uniqueIds have no [class:]/[method:] segments; the worker sends the
+        // display name for those and labels must use it — not the raw bracketed id (JK-1903).
+        var agg = new JUnitLauncher.ResultAggregator();
+        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"[engine:spock]/[spec:LockSpec]/[feature:floats the lock]\","
+                + "\"testEngine\":\"spock\",\"display\":\"floats the lock\","
+                + "\"type\":\"TEST\",\"status\":\"FAILED\","
+                + "\"throwable\":{\"class\":\"E\",\"message\":\"m\",\"stack\":\"\"}}");
+        var result = agg.toResult(0);
+        assertThat(result.failures()).singleElement().satisfies(f -> {
+            assertThat(f.testName()).isEqualTo("floats the lock");
+        });
+    }
+
+    @Test
     void merges_event_streams_from_multiple_workers() {
         // Simulate two parallel workers each running a couple of classes.
         var agg = new JUnitLauncher.ResultAggregator();
-        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"w1.a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\",\"worker\":1}");
-        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"w2.x\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\",\"worker\":2}");
+        agg.accept(
+                "{\"event\":\"finished\",\"uniqueId\":\"w1.a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\",\"worker\":1}");
+        agg.accept(
+                "{\"event\":\"finished\",\"uniqueId\":\"w2.x\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\",\"worker\":2}");
         agg.accept("{\"event\":\"finished\",\"uniqueId\":\"w1.b\",\"type\":\"TEST\",\"status\":\"FAILED\",\"worker\":1,"
                 + "\"testMethod\":\"b()\",\"throwable\":{\"class\":\"E\",\"message\":\"m\",\"stack\":\"\"}}");
-        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"w2.y\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\",\"worker\":2}");
+        agg.accept(
+                "{\"event\":\"finished\",\"uniqueId\":\"w2.y\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\",\"worker\":2}");
 
         var result = agg.toResult(0);
         assertThat(result.total()).isEqualTo(4);
@@ -76,6 +109,19 @@ class JUnitLauncherAggregatorTest {
         agg.accept("{\"event\":\"finished\",\"id\":\"a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
 
         assertThat(agg.toResult(0).total()).isEqualTo(1);
+    }
+
+    @Test
+    void unique_id_percent_decode_and_class_extract() {
+        assertThat(JUnitLauncher.percentDecode("bar(int%5B%5D)")).isEqualTo("bar(int[])");
+        assertThat(JUnitLauncher.percentDecode("foo%2Fbar%251")).isEqualTo("foo/bar%1");
+        assertThat(JUnitLauncher.percentDecode("plain")).isEqualTo("plain");
+        assertThat(JUnitLauncher.classFromUniqueId(
+                        "[engine:junit-jupiter]/[class:demo.FooTest]/[method:bar(int%5B%5D)]"))
+                .isEqualTo("demo.FooTest");
+        assertThat(JUnitLauncher.engineFromUniqueId(
+                        "[engine:junit-jupiter]/[class:demo.FooTest]/[method:bar(int%5B%5D)]"))
+                .isEqualTo("junit-jupiter");
     }
 
     @Test
@@ -109,7 +155,8 @@ class JUnitLauncherAggregatorTest {
         var agg = new JUnitLauncher.ResultAggregator(listener, 0);
 
         // Plain static test — no preceding dynamic_registered.
-        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"static-1\"," + "\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
+        agg.accept(
+                "{\"event\":\"finished\",\"uniqueId\":\"static-1\"," + "\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
         // Parameterized invocation — preceded by dynamic_registered.
         agg.accept("{\"event\":\"dynamic_registered\",\"uniqueId\":\"dyn-1\",\"type\":\"TEST\"}");
         agg.accept("{\"event\":\"finished\",\"uniqueId\":\"dyn-1\"," + "\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
@@ -117,7 +164,8 @@ class JUnitLauncherAggregatorTest {
         // test id — its later finished (also CONTAINER) shouldn't affect
         // progress regardless.
         agg.accept("{\"event\":\"dynamic_registered\",\"uniqueId\":\"c-1\",\"type\":\"CONTAINER\"}");
-        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"c-1\"," + "\"type\":\"CONTAINER\",\"status\":\"SUCCESSFUL\"}");
+        agg.accept(
+                "{\"event\":\"finished\",\"uniqueId\":\"c-1\"," + "\"type\":\"CONTAINER\",\"status\":\"SUCCESSFUL\"}");
 
         assertThat(captured).hasSize(3);
         assertThat(captured.get(0)).containsExactly(true, true); // static @Test

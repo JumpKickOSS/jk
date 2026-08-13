@@ -31,6 +31,23 @@ public final class ProgressBar {
         this(Theme.active().progressGradient());
     }
 
+    private static volatile ProgressBar shared;
+
+    /**
+     * Cached default-gradient instance. The constructor precomputes a {@value #SEGMENTS}-style
+     * gradient — too heavy to rebuild on every 80ms animation frame (JK-1893). Instances are
+     * immutable, so sharing is safe; the cache refreshes if the active theme's gradient changes.
+     */
+    public static ProgressBar shared() {
+        Gradient g = Theme.active().progressGradient();
+        ProgressBar s = shared;
+        if (s == null || s.gradient != g) {
+            s = new ProgressBar(g);
+            shared = s;
+        }
+        return s;
+    }
+
     /** Bar in an explicit gradient (e.g. the failure gradient for a stopped run). */
     public ProgressBar(Gradient gradient) {
         this.gradient = gradient;

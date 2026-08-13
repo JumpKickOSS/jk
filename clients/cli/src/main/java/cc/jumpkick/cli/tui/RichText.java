@@ -82,11 +82,11 @@ public final class RichText {
         return spans.isEmpty() || plainText().isEmpty();
     }
 
-    /** Visible text with markup / CSI stripped. */
+    /** Visible text with markup / CSI / OSC stripped (hyperlink URLs are not visible text). */
     public String plainText() {
         var sb = new StringBuilder();
         for (Span span : spans) {
-            sb.append(AttributedString.stripAnsi(span.text));
+            sb.append(RenderContext.stripAnsi(span.text));
         }
         return sb.toString();
     }

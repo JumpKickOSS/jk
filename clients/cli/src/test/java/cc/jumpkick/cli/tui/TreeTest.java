@@ -48,10 +48,10 @@ class TreeTest {
         assertThat(bodyLines).containsExactly(" = T >", " * root", " |", " `-[Leaf] note", "    `- names");
 
         Tree branched = new Tree("T")
-                .root(Tree.node(Icon.pulse(), "root").child(Tree.node(Pill.branded("mod")).child(Tree.node("step"))));
+                .root(Tree.node(Icon.pulse(), "root")
+                        .child(Tree.node(Pill.branded("mod")).child(Tree.node("step"))));
         List<String> branchLines = branched.render(RenderContext.current().withAnsi(false));
-        assertThat(branchLines)
-                .containsExactly(" = T >", " * root", " |", " `-[mod]", "    |", "    `- step");
+        assertThat(branchLines).containsExactly(" = T >", " * root", " |", " `-[mod]", "    |", "    `- step");
     }
 
     @Test
@@ -126,9 +126,11 @@ class TreeTest {
     void nerd_pills_use_half_circles_ansi_does_not() {
         if (!Theme.active().isAnsi()) return;
         String nerd = String.join(
-                "\n", sampleGraph().render(RenderContext.current().withAnsi(true).withNerd(true)));
+                "\n",
+                sampleGraph().render(RenderContext.current().withAnsi(true).withNerd(true)));
         String ansi = String.join(
-                "\n", sampleGraph().render(RenderContext.current().withAnsi(true).withNerd(false)));
+                "\n",
+                sampleGraph().render(RenderContext.current().withAnsi(true).withNerd(false)));
         String nerdPlain = TestAnsi.strip(nerd);
         String ansiPlain = TestAnsi.strip(ansi);
         assertThat(nerd).contains(Glyphs.PILL_LEFT_NERD).contains(Glyphs.PILL_RIGHT_NERD);

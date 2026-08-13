@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.ide;
 
-import java.util.List;
-
 /**
  * A strategy that emits project configuration for one IDE from the shared {@link IdeModel}. The
  * model is computed once by {@link IdeSupport#build} and handed to every selected generator, so a
@@ -14,8 +12,8 @@ public interface IdeGenerator {
     IdeTarget target();
 
     /**
-     * Emit the IDE's project files into the workspace described by {@code model}. Returns a short
-     * summary of what was written (one line per notable artifact), for the command's output tree.
+     * Emit the IDE's project files into the workspace described by {@code model}. Returns the
+     * detail rows for the shared {@code IDE} wedge — generators must not print.
      */
-    List<String> generate(IdeModel model) throws Exception;
+    IdeGeneration generate(IdeModel model) throws Exception;
 }

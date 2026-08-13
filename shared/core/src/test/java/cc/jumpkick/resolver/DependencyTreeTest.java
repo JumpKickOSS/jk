@@ -354,14 +354,71 @@ class DependencyTreeTest {
         assertThat(transitive).doesNotContain("(missing)");
         assertThat(transitive).doesNotContain("[workspace]");
 
-        String flat = DependencyTree.render(
-                member, lock, b, Integer.MAX_VALUE, DependencyTree.Styling.plain(), true);
+        String flat = DependencyTree.render(member, lock, b, Integer.MAX_VALUE, DependencyTree.Styling.plain(), true);
         assertThat(flat)
                 .contains("com.acme:a:9.9.9")
                 .contains("com.acme:c:9.9.9")
                 .contains("com.foo:leaf:1.0")
                 .contains("com.foo:grand:1.0");
         assertThat(flat).doesNotContain("(missing)").doesNotContain("[workspace]");
+    }
+
+    @Test
+    void sibling_subtree_shows_its_contributed_surface_not_the_consuming_scope(
+            @org.junit.jupiter.api.io.TempDir Path root) throws Exception {
+        // b consumes a under [test-dependencies]. The expanded sibling must show what the member
+        // actually inherits from it — a's export/main/runtime deps — and never a's own test-only
+        // deps (JK-1884: previously the subtree reused the consuming edge's scope, listing a's
+        // junit as if it were on b's classpath and hiding a's export dep entirely).
+        Files.writeString(root.resolve("jk.toml"), """
+                [project]
+                group = "com.acme"
+                name = "ws"
+                version = "1.0"
+
+                [workspace]
+                modules = ["a", "b"]
+                """);
+        Files.writeString(root.resolve("jk-lock.toml"), EMPTY_LOCK);
+        Path a = Files.createDirectories(root.resolve("a"));
+        Files.writeString(a.resolve("jk.toml"), """
+                [project]
+                name = "a"
+
+                [export-dependencies]
+                api = { group = "com.foo", name = "api", version = "1.0" }
+
+                [runtime-dependencies]
+                driver = { group = "com.foo", name = "driver", version = "1.0" }
+
+                [test-dependencies]
+                mocks = { group = "com.foo", name = "mocks", version = "1.0" }
+                """);
+        Path b = Files.createDirectories(root.resolve("b"));
+        Files.writeString(b.resolve("jk.toml"), """
+                [project]
+                name = "b"
+
+                [test-dependencies]
+                a = { workspace = true }
+                """);
+        Lockfile lock = lockOf(
+                pkg("com.foo:api", "1.0", List.of()),
+                pkg("com.foo:driver", "1.0", List.of()),
+                pkg("com.foo:mocks", "1.0", List.of()));
+
+        JkBuild member = cc.jumpkick.config.JkBuildParser.parse(b.resolve("jk.toml"));
+        String tree = DependencyTree.render(
+                member, lock, b, Integer.MAX_VALUE, DependencyTree.Styling.plain(), false, List.of(Scope.TEST));
+        assertThat(tree).contains("com.acme:a:1.0");
+        assertThat(tree).contains("com.foo:api:1.0"); // a's export dep IS on b's classpath
+        assertThat(tree).contains("com.foo:driver:1.0"); // a's runtime dep rides too
+        assertThat(tree).doesNotContain("com.foo:mocks"); // a's test deps never do
+
+        String flat = DependencyTree.render(
+                member, lock, b, Integer.MAX_VALUE, DependencyTree.Styling.plain(), true, List.of(Scope.TEST));
+        assertThat(flat).contains("com.foo:api:1.0").contains("com.foo:driver:1.0");
+        assertThat(flat).doesNotContain("com.foo:mocks");
     }
 
     @Test

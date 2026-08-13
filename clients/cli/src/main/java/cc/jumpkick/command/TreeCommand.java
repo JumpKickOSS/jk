@@ -192,8 +192,8 @@ public final class TreeCommand implements CliCommand {
             return TreeDir.fail(selected.errorMessage());
         }
         if (selected.moduleDirs().size() != 1) {
-            return TreeDir.fail("`" + spec + "` matched " + selected.moduleDirs().size()
-                    + " modules — pick one path or :name");
+            return TreeDir.fail(
+                    "`" + spec + "` matched " + selected.moduleDirs().size() + " modules — pick one path or :name");
         }
         return TreeDir.ok(selected.moduleDirs().iterator().next());
     }
@@ -266,7 +266,8 @@ public final class TreeCommand implements CliCommand {
     }
 
     private static RichText rootCoord(String rootLine) {
-        String vis = org.jline.utils.AttributedString.stripAnsi(rootLine == null ? "" : rootLine).strip();
+        String vis = org.jline.utils.AttributedString.stripAnsi(rootLine == null ? "" : rootLine)
+                .strip();
         if (vis.startsWith("● ")) vis = vis.substring(2);
         else if (vis.startsWith("* ")) vis = vis.substring(2);
         return boldGav(vis);

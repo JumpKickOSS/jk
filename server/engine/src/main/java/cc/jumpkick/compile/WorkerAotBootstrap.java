@@ -56,6 +56,7 @@ public final class WorkerAotBootstrap {
         // Groovy, …). Pre-training a thin worker jar alone fails (no compiler on -cp) or keys a
         // cache no real compile will map.
         skipped.add("kotlinc (train-on-miss on first Kotlin compile)");
+        skipped.add("formatter (train-on-miss on first jk format)");
         skipped.add("groovy (not AOT-cached; GroovycDriver has no cache integration)");
         // test-runner: suite -cp always includes the module's test classes + runtime deps, so every
         // project would need its own AOT key; caches would not transfer and would thrash disk.

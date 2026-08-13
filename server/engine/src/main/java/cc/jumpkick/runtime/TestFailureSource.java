@@ -3,14 +3,19 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.SourceLayout;
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.JkBuild;
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -31,11 +36,11 @@ public final class TestFailureSource {
     private static final int MAX_SCAN_FILES = 4_000;
 
     /**
-     * Stack frame: {@code at pkg.Class.method(File.java:42)} or {@code (File.kt:12)} /
+     * Owner + location after {@code at } and after a {@code module/} or {@code loader/module/}
+     * prefix: {@code pkg.Class.method(File.java:42)} / {@code (File.kt:12)} /
      * {@code (Native Method)} / {@code (Unknown Source)}.
      */
-    private static final Pattern FRAME = Pattern.compile(
-            "^\\s*at\\s+([\\w.$]+)\\.([\\w$<>]+)\\(([^:)]+)(?::(\\d+))?\\)\\s*$");
+    private static final Pattern FRAME = Pattern.compile("^([\\w.$]+)\\.([\\w$<>]+)\\(([^:)]+)(?::(\\d+))?\\)\\s*$");
 
     private TestFailureSource() {}
 
@@ -45,12 +50,7 @@ public final class TestFailureSource {
      * {@code lines.get(0)}.
      */
     public record Snippet(
-            Path absolutePath,
-            String relativePath,
-            int errorLine,
-            int startLine,
-            List<String> lines,
-            String language) {
+            Path absolutePath, String relativePath, int errorLine, int startLine, List<String> lines, String language) {
 
         public Snippet {
             lines = List.copyOf(lines);
@@ -59,41 +59,118 @@ public final class TestFailureSource {
         }
     }
 
-    /** Best-effort: empty when module dir, stack, or file cannot be resolved. */
-    public static Optional<Snippet> resolve(Path moduleDir, String testClass, String stack) {
+    /**
+     * Per-run cache: one snippet resolve and one suite-root walk per module. Share one instance
+     * between {@code onFailure} diagnostics and {@code renderFailures}.
+     */
+    public static final class Cache {
+        private final ConcurrentHashMap<SnipKey, Optional<Snippet>> snippets = new ConcurrentHashMap<>();
+        private final ConcurrentHashMap<FileKey, Optional<Path>> files = new ConcurrentHashMap<>();
+        private final ConcurrentHashMap<Path, Layout> layouts = new ConcurrentHashMap<>();
+        private final LongAdder walks = new LongAdder();
+
+        public Optional<Snippet> resolve(Path moduleDir, String testClass, String stack) {
+            return TestFailureSource.resolve(this, moduleDir, testClass, stack);
+        }
+
+        /** Times {@code Files.walk} ran (tests). */
+        public int walkCount() {
+            return walks.intValue();
+        }
+
+        Layout layout(Path moduleDir) {
+            return layouts.computeIfAbsent(moduleDir.toAbsolutePath().normalize(), TestFailureSource::loadLayout);
+        }
+    }
+
+    private record SnipKey(Path module, String testClass, String fileName, int line) {}
+
+    private record FileKey(Path module, String testClass, String fileName) {}
+
+    private record Layout(boolean simple, List<Path> roots) {}
+
+    static Optional<Snippet> resolve(Cache cache, Path moduleDir, String testClass, String stack) {
         if (moduleDir == null || !Files.isDirectory(moduleDir)) return Optional.empty();
         if (stack == null || stack.isBlank()) return Optional.empty();
         Optional<Frame> frame = primaryFrame(stack, testClass);
         if (frame.isEmpty() || frame.get().line <= 0) return Optional.empty();
         Frame f = frame.get();
-        Optional<Path> file = locateFile(moduleDir, testClass, f.fileName);
+        Path mod = moduleDir.toAbsolutePath().normalize();
+        SnipKey key = new SnipKey(mod, testClass == null ? "" : testClass, f.fileName, f.line);
+        // No static fallback: a process-wide cache in the resident engine would serve pre-edit
+        // snippet lines forever and grow without bound (JK-1906) — callers own a per-run Cache.
+        Cache c = cache == null ? new Cache() : cache;
+        return c.snippets.computeIfAbsent(key, k -> resolveUncached(c, mod, testClass, f));
+    }
+
+    private static Optional<Snippet> resolveUncached(Cache cache, Path moduleDir, String testClass, Frame f) {
+        FileKey fk = new FileKey(moduleDir, testClass == null ? "" : testClass, f.fileName);
+        Optional<Path> file = cache.files.computeIfAbsent(fk, k -> locateFile(cache, moduleDir, testClass, f.fileName));
         if (file.isEmpty()) return Optional.empty();
         try {
-            List<String> all = Files.readAllLines(file.get(), StandardCharsets.UTF_8);
-            if (all.isEmpty()) return Optional.empty();
-            int errorLine = Math.min(f.line, all.size());
-            int[] window = window(all.size(), errorLine, CONTEXT_LINES);
-            List<String> slice = new ArrayList<>(window[1] - window[0] + 1);
-            for (int i = window[0]; i <= window[1]; i++) slice.add(all.get(i));
-            Path abs = file.get().toAbsolutePath().normalize();
-            String rel = relativize(moduleDir, abs);
-            return Optional.of(new Snippet(abs, rel, errorLine, window[0] + 1, slice, languageOf(f.fileName)));
+            int lineCount = countLines(file.get());
+            if (lineCount <= 0 || f.line < 1 || f.line > lineCount) return Optional.empty();
+            int[] w = window(lineCount, f.line, CONTEXT_LINES);
+            List<String> slice = readWindow(file.get(), w[0], w[1]);
+            if (slice.isEmpty()) return Optional.empty();
+            Path abs = file.get();
+            return Optional.of(
+                    new Snippet(abs, relativize(moduleDir, abs), f.line, w[0] + 1, slice, languageOf(f.fileName)));
         } catch (IOException e) {
             return Optional.empty();
         }
     }
 
+    /**
+     * UTF-8 with substitution: {@code Files.newBufferedReader}'s REPORT-mode decoder throws on the
+     * first malformed byte (a Latin-1 {@code é} anywhere in the file), dropping the whole snippet;
+     * a replacement char in one line is strictly better (JK-1907).
+     */
+    private static BufferedReader lenientReader(Path file) throws IOException {
+        var decoder = StandardCharsets.UTF_8
+                .newDecoder()
+                .onMalformedInput(java.nio.charset.CodingErrorAction.REPLACE)
+                .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPLACE);
+        return new BufferedReader(new java.io.InputStreamReader(Files.newInputStream(file), decoder));
+    }
+
+    private static int countLines(Path file) throws IOException {
+        int n = 0;
+        try (BufferedReader r = lenientReader(file)) {
+            while (r.readLine() != null) n++;
+        }
+        return n;
+    }
+
+    /** Lines {@code from}..{@code to} inclusive, 0-based. */
+    static List<String> readWindow(Path file, int from, int to) throws IOException {
+        if (to < from) return List.of();
+        List<String> slice = new ArrayList<>(to - from + 1);
+        try (BufferedReader r = lenientReader(file)) {
+            int n = 0;
+            String line;
+            while ((line = r.readLine()) != null) {
+                if (n >= from && n <= to) slice.add(line);
+                if (n >= to) break;
+                n++;
+            }
+        }
+        return slice;
+    }
+
     /** Plain-text markers for {@link TestSupport#renderFailures} / CLI paint. */
     public static List<String> encodeMarkers(Snippet s) {
         List<String> out = new ArrayList<>(s.lines().size() + 2);
-        out.add("@@source path="
-                + s.relativePath()
-                + " line="
+        // path is LAST and runs to end-of-line: the header is space-delimited and paths may
+        // contain spaces, which a mid-line unquoted value would truncate (JK-1905).
+        out.add("@@source line="
                 + s.errorLine()
                 + " start="
                 + s.startLine()
                 + " lang="
-                + s.language());
+                + s.language()
+                + " path="
+                + s.relativePath());
         int n = s.startLine();
         for (String line : s.lines()) {
             boolean err = n == s.errorLine();
@@ -133,7 +210,17 @@ public final class TestFailureSource {
 
     static Optional<Frame> parseFrame(String raw) {
         if (raw == null) return Optional.empty();
-        Matcher m = FRAME.matcher(raw.stripTrailing());
+        String s = raw.stripTrailing();
+        int at = s.indexOf("at ");
+        if (at < 0) return Optional.empty();
+        s = s.substring(at + 3).stripLeading();
+        int paren = s.lastIndexOf('(');
+        if (paren <= 0) return Optional.empty();
+        String owner = s.substring(0, paren);
+        int slash = owner.lastIndexOf('/');
+        if (slash >= 0) owner = owner.substring(slash + 1);
+        String loc = s.substring(paren);
+        Matcher m = FRAME.matcher(owner + loc);
         if (!m.matches()) return Optional.empty();
         String file = m.group(3);
         int line = 0;
@@ -169,66 +256,93 @@ public final class TestFailureSource {
 
     // ---- file locate ----------------------------------------------------------
 
-    static Optional<Path> locateFile(Path moduleDir, String testClass, String fileName) {
-        if (fileName == null || fileName.isBlank()) return Optional.empty();
+    private static Optional<Path> locateFile(Cache cache, Path moduleDir, String testClass, String fileName) {
+        if (fileName == null || fileName.isBlank() || fileName.indexOf('\0') >= 0) return Optional.empty();
+        // Reject path-shaped names before resolve — stack file names are basenames.
+        if (fileName.indexOf('/') >= 0 || fileName.indexOf('\\') >= 0) return Optional.empty();
         String pkgPath = packagePath(testClass);
-        List<Path> candidates = new ArrayList<>();
-
-        // Prefer layout from jk.toml when parseable; still try both trees.
-        boolean simplePreferred = isSimpleLayout(moduleDir);
-        addLayoutCandidates(candidates, moduleDir, pkgPath, fileName, simplePreferred);
-        addLayoutCandidates(candidates, moduleDir, pkgPath, fileName, !simplePreferred);
-
-        for (Path p : candidates) {
-            if (Files.isRegularFile(p)) return Optional.of(p);
+        Layout layout = cache.layout(moduleDir);
+        try {
+            for (Path root : layout.roots()) {
+                if (!pkgPath.isEmpty()) {
+                    Optional<Path> hit =
+                            insideModuleFile(moduleDir, root.resolve(pkgPath).resolve(fileName));
+                    if (hit.isPresent()) return hit;
+                }
+                Optional<Path> hit = insideModuleFile(moduleDir, root.resolve(fileName));
+                if (hit.isPresent()) return hit;
+            }
+            return scanByFileName(cache, moduleDir, pkgPath, fileName, layout);
+        } catch (java.nio.file.InvalidPathException e) {
+            // Filesystem-specific rejects (beyond the sanitizing above) degrade to no snippet.
+            return Optional.empty();
         }
-        return scanByFileName(moduleDir, pkgPath, fileName, simplePreferred);
     }
 
-    private static void addLayoutCandidates(
-            List<Path> out, Path moduleDir, String pkgPath, String fileName, boolean simple) {
-        if (simple) {
-            // Simple Mill-like: test/src[/package]/File.ext
-            if (!pkgPath.isEmpty()) out.add(moduleDir.resolve("test/src").resolve(pkgPath).resolve(fileName));
-            out.add(moduleDir.resolve("test/src").resolve(fileName));
-        } else {
-            for (String lang : List.of("java", "kotlin", "groovy")) {
-                Path root = moduleDir.resolve("src/test").resolve(lang);
-                if (!pkgPath.isEmpty()) out.add(root.resolve(pkgPath).resolve(fileName));
-                out.add(root.resolve(fileName));
-            }
-        }
+    private static Layout loadLayout(Path moduleDir) {
+        boolean simple = isSimpleLayout(moduleDir);
+        LinkedHashSet<Path> roots = new LinkedHashSet<>();
+        addSuiteRoots(roots, moduleDir, simple);
+        addSuiteRoots(roots, moduleDir, !simple);
+        return new Layout(simple, List.copyOf(roots));
     }
 
     private static Optional<Path> scanByFileName(
-            Path moduleDir, String pkgPath, String fileName, boolean simplePreferred) {
-        List<Path> roots = new ArrayList<>();
-        if (simplePreferred) {
-            roots.add(moduleDir.resolve("test/src"));
-            roots.add(moduleDir.resolve("src/test"));
-        } else {
-            roots.add(moduleDir.resolve("src/test"));
-            roots.add(moduleDir.resolve("test/src"));
-        }
-        Path preferSuffix =
-                pkgPath.isEmpty() ? Path.of(fileName) : Path.of(pkgPath.replace('/', java.io.File.separatorChar), fileName);
+            Cache cache, Path moduleDir, String pkgPath, String fileName, Layout layout) {
+        Path preferSuffix = pkgPath.isEmpty()
+                ? Path.of(fileName)
+                : Path.of(pkgPath.replace('/', java.io.File.separatorChar), fileName);
         Path best = null;
         int seen = 0;
-        for (Path root : roots) {
+        for (Path root : layout.roots()) {
             if (!Files.isDirectory(root)) continue;
+            if (!containedIn(moduleDir, root)) continue;
+            cache.walks.increment();
             try (Stream<Path> walk = Files.walk(root)) {
                 for (Path p : (Iterable<Path>) walk::iterator) {
                     if (!Files.isRegularFile(p)) continue;
                     if (++seen > MAX_SCAN_FILES) return Optional.ofNullable(best);
                     if (!fileName.equals(p.getFileName().toString())) continue;
-                    if (p.endsWith(preferSuffix)) return Optional.of(p);
-                    if (best == null) best = p;
+                    Optional<Path> ok = insideModuleFile(moduleDir, p);
+                    if (ok.isEmpty()) continue;
+                    if (p.endsWith(preferSuffix)) return ok;
+                    if (best == null) best = ok.get();
                 }
             } catch (IOException ignored) {
                 // try next root
             }
         }
         return Optional.ofNullable(best);
+    }
+
+    private static void addSuiteRoots(java.util.Set<Path> roots, Path moduleDir, boolean compact) {
+        List<String> suites = TestSuites.discover(moduleDir, compact);
+        if (suites.isEmpty()) suites = List.of(TestSuites.DEFAULT);
+        for (String suite : suites) {
+            roots.addAll(TestSuites.javaRoots(moduleDir, compact, suite));
+            roots.addAll(TestSuites.kotlinRoots(moduleDir, compact, suite));
+            roots.addAll(TestSuites.groovyRoots(moduleDir, compact, suite));
+        }
+    }
+
+    /** True when {@code candidate} normalizes to a path inside {@code moduleDir}. */
+    static boolean containedIn(Path moduleDir, Path candidate) {
+        if (moduleDir == null || candidate == null) return false;
+        Path root = moduleDir.toAbsolutePath().normalize();
+        Path abs = candidate.toAbsolutePath().normalize();
+        return abs.startsWith(root);
+    }
+
+    /** Regular file under {@code moduleDir} after normalize; empty if missing or a path escape. */
+    static Optional<Path> insideModule(Path moduleDir, Path candidate) {
+        return insideModuleFile(moduleDir, candidate);
+    }
+
+    private static Optional<Path> insideModuleFile(Path moduleDir, Path candidate) {
+        if (!containedIn(moduleDir, candidate)) return Optional.empty();
+        Path abs = candidate.toAbsolutePath().normalize();
+        if (!Files.isRegularFile(abs)) return Optional.empty();
+        return Optional.of(abs);
     }
 
     private static boolean isSimpleLayout(Path moduleDir) {
@@ -254,7 +368,16 @@ public final class TestFailureSource {
         if (dollar >= 0) cls = cls.substring(0, dollar);
         int dot = cls.lastIndexOf('.');
         if (dot <= 0) return "";
-        return cls.substring(0, dot).replace('.', '/');
+        String pkg = cls.substring(0, dot).replace('.', '/');
+        // The class name is wire input from the worker. A hostile/malformed value (NUL, '\\',
+        // a '..' segment) must degrade to no-package — Path.resolve would throw the unchecked
+        // InvalidPathException past the IOException-only catches into the worker-drain thread
+        // (JK-1908); absolute-path escapes are separately caught by containedIn.
+        if (pkg.indexOf('\0') >= 0 || pkg.indexOf('\\') >= 0) return "";
+        for (String seg : pkg.split("/")) {
+            if (seg.equals("..")) return "";
+        }
+        return pkg;
     }
 
     private static String languageOf(String fileName) {

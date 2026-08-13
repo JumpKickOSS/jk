@@ -41,6 +41,21 @@ class SyntaxHighlightTest {
     }
 
     @Test
+    void groovy_single_quoted_strings_highlight_at_any_length() {
+        // JK-1912: Groovy single quotes are the default string form — the Java char-literal
+        // {1,6} bound had capped them at six characters.
+        if (!Theme.active().isAnsi()) return;
+        String styled =
+                Theme.colorize("'expected lock to float'", Theme.active().synString());
+        assertThat(SyntaxHighlight.highlight(
+                        "assert reason == 'expected lock to float'", -1, SyntaxHighlight.Language.GROOVY))
+                .contains(styled);
+        // Triple-quoted strings still win over the single-quote rule.
+        String out = SyntaxHighlight.highlight("def s = '''multi'''", -1, SyntaxHighlight.Language.GROOVY);
+        assertThat(plain(out)).isEqualTo("def s = '''multi'''");
+    }
+
+    @Test
     void capitalized_identifiers_are_colored_as_types() {
         String type = Theme.colorize("ParseException", Theme.active().synType());
         assertThat(SyntaxHighlight.highlight("ParseException tooMany;", -1)).contains(type);

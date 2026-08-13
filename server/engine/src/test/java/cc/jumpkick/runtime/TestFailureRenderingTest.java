@@ -39,6 +39,7 @@ class TestFailureRenderingTest {
         assertThat(lines).anyMatch(l -> l.equals("Test Failure"));
         assertThat(lines).anyMatch(l -> l.equals("1 test failed"));
         assertThat(lines).anyMatch(l -> l.equals("FAILED FooTest.bar()"));
+        assertThat(lines.getLast()).isEqualTo("Test Failure end");
         assertThat(text).contains("expected: <1> but was: <2>");
         assertThat(text).contains("at cc.jumpkick.FooTest.bar(FooTest.java:42)");
         // No package FQCN on the FAILED line
@@ -70,11 +71,18 @@ class TestFailureRenderingTest {
                 2,
                 "junit-jupiter",
                 "freshen_preserves_pins(java.nio.file.Path)");
-        assertThat(TestSupport.shortTestLabel(f)).isEqualTo("FooTest.freshen_preserves_pins(Path)");
+        assertThat(TestSupport.shortTestLabel(f)).isEqualTo("FooTest.freshen_preserves_pins(Path)  [w2]");
+        var invoked = new TestSummary.Failure(
+                "bar(java.lang.String)[#2]", "", "", "", "", "demo.FooTest", 0, "", "bar(java.lang.String)[#2]");
+        assertThat(TestSupport.shortTestLabel(invoked)).isEqualTo("FooTest.bar(String)[#2]");
         List<String> lines = TestSupport.renderFailures(new TestSummary(1, 0, 1, 0, List.of(f)));
         assertThat(lines).anyMatch(l -> l.equals("module: cc.jumpkick:jk-core"));
-        assertThat(lines).anyMatch(l -> l.equals("FAILED FooTest.freshen_preserves_pins(Path)"));
+        assertThat(lines).anyMatch(l -> l.equals("FAILED FooTest.freshen_preserves_pins(Path)  [w2]"));
         assertThat(String.join("\n", lines)).doesNotContain("class: cc.jumpkick");
+        var info = f.toInfo();
+        var diag = new cc.jumpkick.run.BuildPlanResult.Diagnostic("run-tests", "test-failure", f.message(), info);
+        assertThat(diag.worker()).isEqualTo(2);
+        assertThat(diag.testFailure().worker()).isEqualTo(2);
     }
 
     @Test
@@ -102,6 +110,25 @@ class TestFailureRenderingTest {
                         true))
                 .isEqualTo("VariantSwitchTest.switching_variants(Path)");
         assertThat(TestSupport.simpleClassName("cc.jumpkick.runtime.FooTest")).isEqualTo("FooTest");
+        assertThat(TestSupport.liveTestDetail(
+                        "[engine:junit-jupiter]/[class:demo.FooTest]/[method:bar(java.lang.String%5B%5D)]",
+                        "bar(java.lang.String[])", true))
+                .isEqualTo("FooTest.bar(String[])");
+    }
+
+    @Test
+    void short_label_decodes_array_params_to_simple_names() {
+        var f = new TestSummary.Failure(
+                "bar(java.lang.String[])",
+                "java.lang.AssertionError",
+                "nope",
+                "",
+                "",
+                "demo.FooTest",
+                0,
+                "junit-jupiter",
+                "bar(java.lang.String[])");
+        assertThat(TestSupport.shortTestLabel(f)).isEqualTo("FooTest.bar(String[])");
     }
 
     @Test

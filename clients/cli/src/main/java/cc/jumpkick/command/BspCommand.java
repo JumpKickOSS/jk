@@ -69,11 +69,12 @@ public final class BspCommand implements CliCommand {
 
     private static int install(Path projectDir) throws Exception {
         if (!Files.isRegularFile(projectDir.resolve("jk.toml"))) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("BSP", "no jk.toml in " + projectDir));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "BSP", "no jk.toml in " + cc.jumpkick.cli.PathDisplay.of(projectDir)));
             return Exit.CONFIG;
         }
         Path out = writeConnectionFile(projectDir);
-        cc.jumpkick.cli.tui.CommandWedge.printOk("BSP", "Wrote " + out);
+        cc.jumpkick.cli.tui.CommandWedge.printOk("BSP", "Wrote " + cc.jumpkick.cli.PathDisplay.of(out, projectDir));
         CliOutput.out("Open this project in an IDE with BSP support (IntelliJ via Scala plugin / Metals).");
         return 0;
     }

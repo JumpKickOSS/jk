@@ -12,6 +12,13 @@ export const MAX_OUTPUT_LINES = 8;
 export const MAX_DIAGNOSTICS = 12;
 
 /**
+ * Client-side ceiling for rich test-failure diagnostics per module. The live SSE feed is already
+ * server-capped (JK-1880), but journal history replay is not — a pathological record must not
+ * inject thousands of snippet+stack payloads into one card.
+ */
+export const MAX_TEST_FAILURE_DIAGNOSTICS = 120;
+
+/**
  * Fold one SSE event into the newest-first card list, mutating and returning it.
  * An event is `{type, data, at}` where `data` is the parsed flat JSON payload the engine
  * publishes and `at` is the client-clock receipt time (fold stays clock-free and pure):
@@ -255,8 +262,12 @@ export function foldEvent(cards, event) {
       const card = resolveCard(cards, d);
       if (card) {
         const mod = moduleRow(card, d.dir, event.at);
-        if (mod.diagnostics.length < MAX_DIAGNOSTICS) {
-          mod.diagnostics.push(normalizeDiagnostic(d));
+        const nd = normalizeDiagnostic(d);
+        // Per-kind ceilings (server policy, JK-1880): a test-failure flood must not evict the
+        // compile/resolve slice, and vice versa.
+        const kindCount = mod.diagnostics.filter((x) => isTestFailureDiag(x) === isTestFailureDiag(nd)).length;
+        if (kindCount < (isTestFailureDiag(nd) ? MAX_TEST_FAILURE_DIAGNOSTICS : MAX_DIAGNOSTICS)) {
+          mod.diagnostics.push(nd);
         }
       }
       break;
@@ -694,13 +705,14 @@ export function normalizeDiagnostic(d) {
     exceptionClass: d.exceptionClass || '',
     module: d.module || '',
     engine: d.engine || '',
-    className: d.class || d.className || '',
+    className: d.testClass || d.class || d.className || '',
     method: d.method || '',
     stack: d.stack || (d.throwable && d.throwable.stack) || '',
     file: d.file || '',
     line: typeof d.line === 'number' ? d.line : 0,
     snippetStart: typeof d.snippetStart === 'number' ? d.snippetStart : 0,
     snippet,
+    worker: typeof d.worker === 'number' ? d.worker : 0,
   };
 }
 
@@ -801,11 +813,26 @@ function historyModules(rec) {
     state,
     millis: rec.millis ?? null,
     steps,
-    diagnostics: (rec.diagnostics || [])
+    diagnostics: boundDiagnostics((rec.diagnostics || [])
       .filter((d) => d.severity !== 'warning')
-      .map((d) => normalizeDiagnostic(d)),
+      .map((d) => normalizeDiagnostic(d))),
     lastActivity: activity,
   }];
+}
+
+/** Apply the per-kind diagnostic ceilings (same policy as the live path) to a replayed list. */
+function boundDiagnostics(list) {
+  const out = [];
+  let tests = 0;
+  let other = 0;
+  for (const d of list) {
+    if (isTestFailureDiag(d)) {
+      if (tests < MAX_TEST_FAILURE_DIAGNOSTICS) { out.push(d); tests++; }
+    } else if (other < MAX_DIAGNOSTICS) {
+      out.push(d); other++;
+    }
+  }
+  return out;
 }
 
 /** True when any step actually failed (FAIL) — not merely cancelled mid-flight. */
@@ -1295,9 +1322,10 @@ export function shortTestLabel(d) {
   method = simplifyMethodParams(method);
   if (method && method.indexOf('(') < 0 && method !== '(test run)') method += '()';
   if (!cls && !method) return shortDisplayLabel(d.test || '') || '?';
-  if (!cls) return shortDisplayLabel(method);
-  if (!method) return cls;
-  return shortDisplayLabel(cls + '.' + method);
+  let label = !cls ? shortDisplayLabel(method) : !method ? cls : shortDisplayLabel(cls + '.' + method);
+  const worker = typeof d.worker === 'number' ? d.worker : 0;
+  if (worker > 0 && !label.includes('  [w')) label = label + '  [w' + worker + ']';
+  return label;
 }
 
 /** Keep {@code (…)} but strip package prefixes inside params. */
@@ -1308,7 +1336,8 @@ export function simplifyMethodParams(method) {
   if (open < 0 || close <= open) return String(method).trim();
   const name = method.slice(0, open).trim();
   const inside = method.slice(open + 1, close).trim();
-  if (!inside) return name + '()';
+  const suffix = method.slice(close + 1);
+  if (!inside) return name + '()' + suffix;
   const parts = inside.split(',').map((raw) => {
     let p = raw.trim();
     let suffix = '';
@@ -1325,7 +1354,7 @@ export function simplifyMethodParams(method) {
     if (d >= 0) p = p.slice(d + 1);
     return p + suffix;
   });
-  return name + '(' + parts.join(', ') + ')';
+  return name + '(' + parts.join(', ') + ')' + suffix;
 }
 
 /**
@@ -1385,12 +1414,16 @@ export function testFailureReport(d, opts) {
   const errorLine = d.line > 0 ? d.line : 0;
   let maxCode = 0;
   for (const line of snippet) maxCode = Math.max(maxCode, String(line).length);
+  // Gutter sizes to the widest line number — a fixed 4ch overflows into the rail at
+  // five digits (large generated test files), where the CLI's %4s widens naturally (JK-1913).
+  const gutter = Math.max(4, String(start + Math.max(0, snippet.length - 1)).length);
   const rows = snippet.map((code, i) => {
     const num = start + i;
     const text = String(code);
     const pad = Math.max(0, maxCode - text.length);
     return {
       num,
+      gutter: String(num).padStart(gutter, ' '),
       error: errorLine > 0 && num === errorLine,
       code: text,
       pad,
@@ -1407,7 +1440,20 @@ export function testFailureReport(d, opts) {
     line: errorLine,
     exceptionClass: simpleEx,
     rows,
+    // CLI paints `at …` frames when there is no snippet; hide them when source is present.
+    frames: d.file && snippet.length ? [] : stackFrameLines(d.stack),
   };
+}
+
+/** {@code at …} / {@code ... N more} lines from a printStackTrace string. */
+export function stackFrameLines(stack) {
+  if (!stack) return [];
+  const out = [];
+  for (const line of String(stack).split('\n')) {
+    const t = line.trimStart();
+    if (t.startsWith('at ') || t.startsWith('...')) out.push(line);
+  }
+  return out;
 }
 
 /** True when the diagnostic should use the rich test-failure report. */

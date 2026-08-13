@@ -110,6 +110,8 @@ public final class CommandManagerListener implements BuildPlanListener {
     @Override
     public void output(String step, String line) {
         if (TestFailureHighlight.isHeader(line)) {
+            // A second header must not reset() away an un-flushed first block (JK-1915).
+            flushBufferedFailure();
             inTestFailure = true;
             testFailStream.reset();
             testFailStream.line(line);
@@ -120,6 +122,16 @@ public final class CommandManagerListener implements BuildPlanListener {
             return;
         }
         cm.writeAbove(StackTraceHighlight.line(line));
+    }
+
+    /** Paint any buffered failure block now — already-received lines must not be dropped (JK-1915). */
+    private void flushBufferedFailure() {
+        if (!inTestFailure) return;
+        for (String painted : testFailStream.finish()) {
+            if (painted != null) cm.writeAbove(painted);
+        }
+        inTestFailure = false;
+        testFailStream.reset();
     }
 
     @Override
@@ -146,13 +158,7 @@ public final class CommandManagerListener implements BuildPlanListener {
 
     @Override
     public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
-        if (inTestFailure) {
-            for (String painted : testFailStream.finish()) {
-                if (painted != null) cm.writeAbove(painted);
-            }
-        }
-        inTestFailure = false;
-        testFailStream.reset();
+        flushBufferedFailure();
         // SKIPPED = cache hit / up-to-date — green terminal, same as SUCCESS.
         boolean ok = status == TaskStatus.SUCCESS || status == TaskStatus.SKIPPED;
         cm.stepDone(module, step, ok, group == null ? "" : group);
@@ -160,6 +166,9 @@ public final class CommandManagerListener implements BuildPlanListener {
 
     @Override
     public void planFinish(BuildPlanResult result) {
+        // A cancel/disconnect between a block's lines and stepFinish must still show what
+        // already arrived (JK-1915).
+        flushBufferedFailure();
         // Restore the real streams before settling so the result line isn't
         // itself routed back above the (closing) region.
         if (capture != null) capture.close();

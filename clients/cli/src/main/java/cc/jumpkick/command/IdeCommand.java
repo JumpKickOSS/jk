@@ -2,6 +2,8 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.command.ide.IdeChrome;
+import cc.jumpkick.command.ide.IdeGeneration;
 import cc.jumpkick.command.ide.IdeGenerator;
 import cc.jumpkick.command.ide.IdeModel;
 import cc.jumpkick.command.ide.IdeSupport;
@@ -78,37 +80,51 @@ public final class IdeCommand implements CliCommand {
 
         Set<IdeTarget> targets = selectTargets(in);
 
-        IdeModel model;
-        try {
-            model = IdeSupport.build(in);
-        } catch (IdeSupport.IdeException e) {
-            // null message = already reported (e.g. EnsureFreshLock failure wedge)
-            if (e.getMessage() != null && !e.getMessage().isBlank()) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("IDE", e.getMessage()));
-            }
-            return e.code();
-        }
-
-        for (IdeGenerator gen : GENERATORS) {
-            if (!targets.contains(gen.target())) continue;
+        try (IdeChrome chrome = IdeChrome.start("Sync")) {
+            IdeModel model;
             try {
-                gen.generate(model);
+                model = IdeSupport.build(in, chrome);
             } catch (IdeSupport.IdeException e) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("IDE", e.getMessage()));
+                // null message = already reported (e.g. EnsureFreshLock failure wedge)
+                if (e.getMessage() != null && !e.getMessage().isBlank()) {
+                    chrome.fail(e.getMessage());
+                } else {
+                    chrome.dismiss();
+                }
                 return e.code();
             }
+
+            String rootName = model.rootName();
+            for (IdeGenerator gen : GENERATORS) {
+                if (!targets.contains(gen.target())) continue;
+                chrome.phase(IdeChrome.phaseReady(gen.target().label(), rootName));
+                try {
+                    IdeGeneration result = gen.generate(model);
+                    chrome.addDetails(result.details());
+                } catch (IdeSupport.IdeException e) {
+                    chrome.fail(e.getMessage());
+                    return e.code();
+                } catch (Exception e) {
+                    chrome.fail(
+                            e.getMessage() != null
+                                    ? e.getMessage()
+                                    : e.getClass().getSimpleName());
+                    return 1;
+                }
+            }
+            // BSP discovery is part of "IDE ready" — Metals / JetBrains BSP spawn via .bsp/jk.json.
+            try {
+                Path bsp = BspCommand.writeConnectionFile(model.wsRoot());
+                chrome.phase(IdeChrome.bspWrote(bsp, model.wsRoot()));
+            } catch (Exception e) {
+                chrome.fail(
+                        e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+                return 1;
+            }
+            chrome.note(IdeChrome.restartNote());
+            chrome.succeed(IdeChrome.projectReady(rootName));
+            return 0;
         }
-        // BSP discovery is part of "IDE ready" — Metals / JetBrains BSP spawn via .bsp/jk.json.
-        try {
-            Path bsp = BspCommand.writeConnectionFile(model.wsRoot());
-            cc.jumpkick.cli.tui.CommandWedge.printOk("BSP", "Wrote " + bsp);
-        } catch (Exception e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "BSP",
-                    e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()));
-            return 1;
-        }
-        return 0;
     }
 
     /**

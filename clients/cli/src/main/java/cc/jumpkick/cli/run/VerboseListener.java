@@ -9,6 +9,9 @@ import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.TaskStatus;
 import java.io.PrintStream;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -21,6 +24,7 @@ public final class VerboseListener implements BuildPlanListener {
     private final PrintStream out;
     private final PrintStream err;
     private final ConcurrentMap<String, String> labels = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, List<String>> outputBuf = new ConcurrentHashMap<>();
 
     public VerboseListener(PrintStream out, PrintStream err) {
         this.out = out;
@@ -60,13 +64,40 @@ public final class VerboseListener implements BuildPlanListener {
         labels.put(step, label);
     }
 
+    /**
+     * Non-failure output streams immediately — watching a hung test live is a primary use of
+     * {@code --verbose}, so lines must not sit in a buffer until stepFinish (JK-1882). Only a
+     * {@code Test Failure} block is held back, from its header sentinel to its footer, so the
+     * report paints as one unit (JK-1874); the footer flushes it without waiting for the step.
+     */
     @Override
     public void output(String step, String line) {
+        List<String> buf = outputBuf.get(step);
+        if (buf == null && TestFailureHighlight.isHeader(line)) {
+            buf = Collections.synchronizedList(new ArrayList<>());
+            outputBuf.put(step, buf);
+        }
+        if (buf != null) {
+            buf.add(line);
+            if (line != null && TestFailureHighlight.FOOTER_SENTINEL.equals(line.strip())) {
+                flushOutput(step);
+            }
+            return;
+        }
         out.println(StackTraceHighlight.line(line));
+    }
+
+    private void flushOutput(String step) {
+        List<String> buf = outputBuf.remove(step);
+        if (buf == null || buf.isEmpty()) return;
+        for (String painted : TestFailureHighlight.paintLines(List.copyOf(buf))) {
+            out.println(painted);
+        }
     }
 
     @Override
     public void stepFinish(String step, String group, TaskStatus status, Duration duration) {
+        flushOutput(step);
         String glyph =
                 switch (status) {
                     case SUCCESS -> Theme.colorize(Glyphs.CHECK, Theme.active().completedStep());
@@ -101,6 +132,7 @@ public final class VerboseListener implements BuildPlanListener {
 
     @Override
     public void planFinish(BuildPlanResult result) {
+        for (String step : new ArrayList<>(outputBuf.keySet())) flushOutput(step);
         String summary = result.success()
                 ? Theme.colorize(Glyphs.CHECK + " done", Theme.active().completedStep())
                 : Theme.colorize(Glyphs.CROSS + " failed", Theme.active().error());

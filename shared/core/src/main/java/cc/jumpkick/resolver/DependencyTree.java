@@ -311,7 +311,14 @@ public final class DependencyTree {
             }
         } else if (flatten) {
             renderFlatScopes(
-                    project, lock, projectDir, styling, scopeOrder, stack, workspaceGraphForMember(projectDir, lock), out);
+                    project,
+                    lock,
+                    projectDir,
+                    styling,
+                    scopeOrder,
+                    stack,
+                    workspaceGraphForMember(projectDir, lock),
+                    out);
         } else {
             renderScopeSections(
                     project,
@@ -444,14 +451,13 @@ public final class DependencyTree {
             Path root = rootDir.get();
             JkBuild rootBuild = JkBuildParser.parseLocal(root.resolve("jk.toml"));
             if (!rootBuild.isWorkspaceRoot()) return WorkspaceGraph.none();
-            List<LoadedModule> loaded = loadModules(rootBuild.workspace().modules(), root);
+            List<LoadedModule> loaded = loadModules(rootBuild.workspace().modules(), root, lock);
             List<JkBuild> siblingBuilds = new ArrayList<>(loaded.size());
             for (LoadedModule m : loaded) siblingBuilds.add(m.build());
             Map<String, String> byName = new HashMap<>();
             Map<String, LoadedModule> byGa = new HashMap<>();
             for (LoadedModule m : loaded) {
-                JkBuild rewritten =
-                        WorkspaceMerge.resolveSiblingCoordinates(rootBuild, m.build(), siblingBuilds);
+                JkBuild rewritten = WorkspaceMerge.resolveSiblingCoordinates(rootBuild, m.build(), siblingBuilds);
                 // Members share the workspace lock GraphOps already loaded.
                 Lockfile moduleLock = lock != null ? lock : m.lock();
                 String ga = moduleGa(rewritten);
@@ -464,6 +470,14 @@ public final class DependencyTree {
             return new WorkspaceGraph(byName, byGa, true);
         } catch (Exception e) {
             return WorkspaceGraph.none();
+        }
+    }
+
+    private static Lockfile readLockOrNull(Path lockFile) {
+        try {
+            return LockfileReader.read(lockFile);
+        } catch (Exception e) {
+            return null;
         }
     }
 
@@ -594,18 +608,7 @@ public final class DependencyTree {
                 .append('\n');
         String modPrefix = scopePrefix + styling.rail().apply(lastMod ? "   " : "│  ");
         renderScopeDepList(
-                m.build(),
-                m.lock(),
-                m.dir(),
-                scopes,
-                1,
-                maxDepth,
-                modPrefix,
-                styling,
-                ws,
-                seenModules,
-                seenDirs,
-                out);
+                m.build(), m.lock(), m.dir(), scopes, 1, maxDepth, modPrefix, styling, ws, seenModules, seenDirs, out);
     }
 
     /** Scopes shown as sections, in display order; only non-empty ones render. */
@@ -784,6 +787,17 @@ public final class DependencyTree {
      * dropped.
      */
     private static List<LoadedModule> loadModules(List<String> moduleRels, Path rootDir) {
+        return loadModules(moduleRels, rootDir, null);
+    }
+
+    /**
+     * As {@link #loadModules(List, Path)}, but when {@code sharedLock} is non-null every member
+     * uses it directly — modules never own a lockfile ({@code LockPaths} resolves each to the same
+     * root {@code jk-lock.toml}), and re-parsing that ~2,300-line file once per member threw away
+     * ~15 identical parses per render (JK-1920). With no shared lock, each distinct lock path is
+     * still parsed at most once.
+     */
+    private static List<LoadedModule> loadModules(List<String> moduleRels, Path rootDir, Lockfile sharedLock) {
         JkBuild rootBuild = null;
         if (rootDir != null) {
             try {
@@ -794,15 +808,22 @@ public final class DependencyTree {
             }
         }
         List<LoadedModule> modules = new ArrayList<>();
+        Map<Path, Lockfile> lockMemo = new HashMap<>();
         for (String rel : moduleRels) {
             Path dir = rootDir == null ? null : rootDir.resolve(rel).normalize();
             JkBuild build = null;
-            Lockfile lock = null;
+            Lockfile lock = sharedLock;
             try {
                 Path toml = dir == null ? null : dir.resolve("jk.toml");
-                Path lf = dir == null ? null : cc.jumpkick.lock.LockPaths.lockFile(dir);
                 if (toml != null && Files.isRegularFile(toml)) build = JkBuildParser.parseLocal(toml);
-                if (lf != null && Files.isRegularFile(lf)) lock = LockfileReader.read(lf);
+                if (lock == null && dir != null) {
+                    Path lf = cc.jumpkick.lock.LockPaths.lockFile(dir);
+                    if (lf != null && Files.isRegularFile(lf)) {
+                        Path key = lf.toAbsolutePath().normalize();
+                        if (!lockMemo.containsKey(key)) lockMemo.put(key, readLockOrNull(key));
+                        lock = lockMemo.get(key);
+                    }
+                }
             } catch (Exception ignored) {
                 // unreadable module — dropped (can't read its scopes)
             }
@@ -887,7 +908,8 @@ public final class DependencyTree {
     private static void renderFlatWorkspaceScopes(
             JkBuild root, Path rootDir, Styling styling, List<Scope> scopeOrder, boolean stack, StringBuilder out) {
 
-        WorkspaceGraph ws = WorkspaceGraph.collapse(workspaceModulesByName(root.workspace().modules(), rootDir));
+        WorkspaceGraph ws =
+                WorkspaceGraph.collapse(workspaceModulesByName(root.workspace().modules(), rootDir));
         List<LoadedModule> modules = loadModules(root.workspace().modules(), rootDir);
 
         List<Scope> sections = new ArrayList<>();
@@ -982,20 +1004,20 @@ public final class DependencyTree {
 
         LoadedModule sibling = resolveSibling(module, ws);
         if (sibling != null) {
+            // resolveSibling only hits in the member graph (byGa populated ⇒ expandSiblings=true);
+            // the collapsed [workspace] form renders via Dependency.isWorkspaceRef below (JK-1919).
             String ga = moduleGa(sibling.build());
             String ver = sibling.build().project().version();
-            if (ws.expandSiblings()) {
-                if (!visited.add(ga)) return;
-                putFlat(out, new FlatDep(ga, ver, ""));
-                Map<String, Lockfile.Artifact> siblingIndex =
-                        sibling.lock() == null ? byModule : indexByModule(sibling.lock());
-                for (Scope s : walkScopes) {
-                    for (String dep : directModules(sibling.build(), s)) {
-                        collectFlat(dep, composite, siblingIndex, ws, walkScopes, visited, out);
-                    }
+            if (!visited.add(ga)) return;
+            putFlat(out, new FlatDep(ga, ver, ""));
+            Map<String, Lockfile.Artifact> siblingIndex =
+                    sibling.lock() == null ? byModule : indexByModule(sibling.lock());
+            // The sibling contributes its own surface (export/main/runtime), not whatever
+            // scope section of the consumer declared it (JK-1884).
+            for (Scope s : siblingContributedScopes()) {
+                for (String dep : directModules(sibling.build(), s)) {
+                    collectFlat(dep, composite, siblingIndex, ws, siblingContributedScopes(), visited, out);
                 }
-            } else {
-                putFlat(out, new FlatDep(ga, ver, " [workspace]"));
             }
             return;
         }
@@ -1085,27 +1107,9 @@ public final class DependencyTree {
 
         LoadedModule sibling = resolveSibling(module, ws);
         if (sibling != null) {
-            if (ws.expandSiblings()) {
-                renderSiblingModule(
-                        sibling,
-                        scopes,
-                        depth,
-                        maxDepth,
-                        isLast,
-                        prefix,
-                        styling,
-                        ws,
-                        seenModules,
-                        seenDirs,
-                        out);
-                return;
-            }
-            String coord = moduleGa(sibling.build());
-            out.append(prefix)
-                    .append(styling.rail().apply(isLast ? "╰─ " : "├─ "))
-                    .append(coordLabel(coord, styling))
-                    .append(styling.rail().apply(" [workspace]"))
-                    .append('\n');
+            // Member graph only (JK-1919): collapsed [workspace] rows come from isWorkspaceRef.
+            renderSiblingModule(
+                    sibling, scopes, depth, maxDepth, isLast, prefix, styling, ws, seenModules, seenDirs, out);
             return;
         }
         if (Dependency.isWorkspaceRef(module)) {
@@ -1143,8 +1147,19 @@ public final class DependencyTree {
     }
 
     /**
+     * The scope surface a consumed workspace sibling contributes to its consumer: export, main,
+     * runtime — matching {@code ModuleRuntimeClasspath}/{@code WorkspaceClasspath}. A sibling's
+     * test/dev/processor deps never ride the member's classpath, and its export/runtime deps
+     * always do — regardless of which section of the member declared the sibling (JK-1884).
+     */
+    private static List<Scope> siblingContributedScopes() {
+        return List.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME);
+    }
+
+    /**
      * A workspace sibling as a real module node (version from its {@code jk.toml}). When depth
-     * allows, walk its declared deps — and those deps' lockfile transitives.
+     * allows, walk its contributed surface ({@link #siblingContributedScopes()}) — and those deps'
+     * lockfile transitives.
      */
     private static void renderSiblingModule(
             LoadedModule sibling,
@@ -1186,7 +1201,7 @@ public final class DependencyTree {
                 sibling.build(),
                 sibling.lock(),
                 sibling.dir(),
-                scopes,
+                siblingContributedScopes(),
                 depth + 1,
                 maxDepth,
                 childPrefix,

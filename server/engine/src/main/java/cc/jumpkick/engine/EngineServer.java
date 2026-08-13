@@ -2013,15 +2013,60 @@ public final class EngineServer implements AutoCloseable {
                         requestId));
     }
 
-    /** Failure detail is bounded on the wire: a compile explosion must not flood the event stream. */
-    private static final int MAX_DIAGNOSTIC_EVENTS = 8;
+    /** Compile-error flood cap. {@code test-failure} diagnostics get their own, higher cap. */
+    static final int MAX_DIAGNOSTIC_EVENTS = 8;
+
+    /**
+     * Test-failure flood cap for the live card. JK-1871's intent stands — a normal red run shows
+     * every failure — but a broken shared fixture can fail thousands of tests, each carrying a
+     * stack and snippet; an SSE card is not the place to stream that (the CLI report and journal
+     * still have everything).
+     */
+    static final int MAX_TEST_FAILURE_EVENTS = 100;
+
+    /**
+     * Which diagnostics to put on the live SSE card. {@code test-failure} diagnostics are kept up
+     * to {@link #MAX_TEST_FAILURE_EVENTS}; other codes (javac, resolve, …) are capped at
+     * {@link #MAX_DIAGNOSTIC_EVENTS}.
+     */
+    static java.util.List<BuildPlanResult.Diagnostic> selectPublishedDiagnostics(
+            java.util.List<BuildPlanResult.Diagnostic> errors) {
+        if (errors == null || errors.isEmpty()) return java.util.List.of();
+        java.util.ArrayList<BuildPlanResult.Diagnostic> out = new java.util.ArrayList<>(errors.size());
+        int tests = 0;
+        int other = 0;
+        for (BuildPlanResult.Diagnostic d : errors) {
+            if ("test-failure".equals(d.code())) {
+                if (tests < MAX_TEST_FAILURE_EVENTS) {
+                    out.add(d);
+                    tests++;
+                }
+                continue;
+            }
+            if (other < MAX_DIAGNOSTIC_EVENTS) {
+                out.add(d);
+                other++;
+            }
+        }
+        return out;
+    }
+
+    /** How many diagnostics {@link #selectPublishedDiagnostics} dropped — feeds the "+N more" line. */
+    static int unpublishedCount(java.util.List<BuildPlanResult.Diagnostic> errors) {
+        if (errors == null) return 0;
+        int tests = 0;
+        int other = 0;
+        for (BuildPlanResult.Diagnostic d : errors) {
+            if ("test-failure".equals(d.code())) tests++;
+            else other++;
+        }
+        return Math.max(0, other - MAX_DIAGNOSTIC_EVENTS) + Math.max(0, tests - MAX_TEST_FAILURE_EVENTS);
+    }
 
     /** Publish structured {@link BuildPlanResult.Diagnostic}s for a failed request card. */
     private void publishDiagnostics(long requestId, String dir, java.util.List<BuildPlanResult.Diagnostic> errors) {
         if (!eventsWanted() || errors.isEmpty()) return;
-        int shown = Math.min(errors.size(), MAX_DIAGNOSTIC_EVENTS);
-        for (int i = 0; i < shown; i++) {
-            BuildPlanResult.Diagnostic d = errors.get(i);
+        for (BuildPlanResult.Diagnostic d : selectPublishedDiagnostics(errors)) {
             // type "error" matches CLI JsonlShape; SSE event name stays "diagnostic" for the SPA.
             var o = cc.jumpkick.engine.http.JsonOut.object()
                     .put("schema", 1)
@@ -2037,16 +2082,18 @@ public final class EngineServer implements AutoCloseable {
             if (d.method() != null && !d.method().isEmpty()) o.put("method", d.method());
             if (d.exceptionClass() != null && !d.exceptionClass().isEmpty())
                 o.put("exceptionClass", d.exceptionClass());
-            if (d.stack() != null && !d.stack().isEmpty()) o.put("stack", d.stack());
+            if (d.stack() != null && !d.stack().isEmpty()) o.put("stack", redactEnv(dir, d.stack()));
             if (d.file() != null && !d.file().isEmpty()) o.put("file", d.file());
             if (d.line() > 0) o.put("line", d.line());
             if (d.snippetStart() > 0) o.put("snippetStart", d.snippetStart());
             if (d.snippet() != null && !d.snippet().isEmpty()) o.putStrings("snippet", d.snippet());
+            if (d.worker() > 0) o.put("worker", d.worker());
             if (d.test() != null && !d.test().isEmpty()) o.put("test", d.test());
             publishEvent("diagnostic", withProgress(o, requestId));
         }
-        if (errors.size() > shown) {
-            publishRequestError(requestId, dir, "+ " + (errors.size() - shown) + " more errors — see the CLI output");
+        int dropped = unpublishedCount(errors);
+        if (dropped > 0) {
+            publishRequestError(requestId, dir, "+ " + dropped + " more errors — see the CLI output");
         }
     }
 
@@ -5198,17 +5245,7 @@ public final class EngineServer implements AutoCloseable {
             stepCount++;
         }
         for (BuildRecord.Diag d : r.diagnostics()) {
-            send(
-                    writer,
-                    JsonOut.object()
-                            .put("type", EngineProtocol.HISTORY_DIAG)
-                            .put("severity", d.severity())
-                            .put("task", d.step())
-                            .put("code", d.code())
-                            .put("message", d.message())
-                            .put("test", d.test())
-                            .put("exceptionClass", d.exceptionClass())
-                            .toString());
+            send(writer, historyDiagLine(d));
         }
         send(
                 writer,
@@ -5218,6 +5255,33 @@ public final class EngineServer implements AutoCloseable {
                                 "count",
                                 r.modules().size() + stepCount + r.diagnostics().size())
                         .toString());
+    }
+
+    /**
+     * A {@code history-diag} replay line carrying the FULL persisted shape — the journal keeps
+     * module/class/method/stack/snippet/worker (JK-1869) and replay must not flatten a failure
+     * back to task+message (JK-1909).
+     */
+    static String historyDiagLine(BuildRecord.Diag d) {
+        var o = JsonOut.object()
+                .put("type", EngineProtocol.HISTORY_DIAG)
+                .put("severity", d.severity())
+                .put("task", d.step())
+                .put("code", d.code())
+                .put("message", d.message())
+                .put("test", d.test())
+                .put("exceptionClass", d.exceptionClass());
+        if (d.module() != null && !d.module().isEmpty()) o.put("module", d.module());
+        if (d.engine() != null && !d.engine().isEmpty()) o.put("engine", d.engine());
+        if (d.className() != null && !d.className().isEmpty()) o.put("class", d.className());
+        if (d.method() != null && !d.method().isEmpty()) o.put("method", d.method());
+        if (d.stack() != null && !d.stack().isEmpty()) o.put("stack", d.stack());
+        if (d.file() != null && !d.file().isEmpty()) o.put("file", d.file());
+        if (d.line() > 0) o.put("line", d.line());
+        if (d.snippetStart() > 0) o.put("snippetStart", d.snippetStart());
+        if (d.snippet() != null && !d.snippet().isEmpty()) o.putStrings("snippet", d.snippet());
+        if (d.worker() > 0) o.put("worker", d.worker());
+        return o.toString();
     }
 
     /** A {@code history-task} line, optionally tagged with its module label (null for single-plan). */
@@ -5394,14 +5458,13 @@ public final class EngineServer implements AutoCloseable {
             }
 
             @Override
-            public void error(
-                    String step, String code, String message, cc.jumpkick.run.TestFailureInfo failure) {
+            public void error(String step, String code, String message, cc.jumpkick.run.TestFailureInfo failure) {
                 if (failure == null) {
                     error(step, code, message);
                     return;
                 }
                 String msg = redactEnv(dir, message == null || message.isEmpty() ? failure.message() : message);
-                sendQuiet(writer, EngineProtocol.errorLine(dir, step, code, msg, failure));
+                sendQuiet(writer, EngineProtocol.errorLine(dir, step, code, msg, redactFailure(dir, failure)));
             }
 
             @Override
@@ -5420,7 +5483,7 @@ public final class EngineServer implements AutoCloseable {
                         sendQuiet(
                                 writer,
                                 EngineProtocol.planDiagnostic(
-                                        dir, d.step(), d.code(), redactEnv(dir, d.message()), tf));
+                                        dir, d.step(), d.code(), redactEnv(dir, d.message()), redactFailure(dir, tf)));
                     } else {
                         sendQuiet(
                                 writer,
@@ -5490,6 +5553,33 @@ public final class EngineServer implements AutoCloseable {
         } catch (RuntimeException e) {
             return text;
         }
+    }
+
+    /**
+     * {@link #redactEnv} over the free-text fields of a test failure. The first line of
+     * {@code printStackTrace} text repeats the raw exception message, so masking {@code message}
+     * alone still leaks the secret through {@code stack} (wire, SSE, journal).
+     */
+    static cc.jumpkick.run.TestFailureInfo redactFailure(String dir, cc.jumpkick.run.TestFailureInfo f) {
+        if (f == null) return null;
+        String message = redactEnv(dir, f.message());
+        String stack = redactEnv(dir, f.stack());
+        if (java.util.Objects.equals(message, f.message()) && java.util.Objects.equals(stack, f.stack())) {
+            return f;
+        }
+        return new cc.jumpkick.run.TestFailureInfo(
+                f.module(),
+                f.engine(),
+                f.className(),
+                f.method(),
+                f.exceptionClass(),
+                message,
+                stack,
+                f.worker(),
+                f.file(),
+                f.line(),
+                f.snippetStart(),
+                f.snippet());
     }
 
     /** {@link EngineProtocol#requestFailed} with {@code .env} values masked. */
@@ -6781,11 +6871,12 @@ public final class EngineServer implements AutoCloseable {
                         d.engine(),
                         d.className(),
                         d.method(),
-                        d.stack(),
+                        redactEnv(redactDir, d.stack()),
                         d.file(),
                         d.line(),
                         d.snippetStart(),
-                        d.snippet()));
+                        d.snippet(),
+                        d.worker()));
             }
             for (BuildPlanResult.Diagnostic d : result.warnings()) {
                 diagnostics.add(new BuildRecord.Diag(
@@ -6800,11 +6891,12 @@ public final class EngineServer implements AutoCloseable {
                         d.engine(),
                         d.className(),
                         d.method(),
-                        d.stack(),
+                        redactEnv(redactDir, d.stack()),
                         d.file(),
                         d.line(),
                         d.snippetStart(),
-                        d.snippet()));
+                        d.snippet(),
+                        d.worker()));
             }
             // Capture the step dependency edges from the genuine in-process result (engine-side
             // result.steps is reliably populated, unlike a client-side reconstruction).

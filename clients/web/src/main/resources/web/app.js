@@ -253,7 +253,78 @@ function cssVar(name, fallback) {
   return v || fallback;
 }
 
+
+// One fail-report body shared by the compact-card and workspace-module branches — the two
+// inline template copies drifted once already (JK-1873); a single component cannot (JK-1916).
+const FailReport = {
+  props: { rep: { type: Object, required: true } },
+  methods: {
+    failLabelSegs(label) {
+      return detailSegments(label);
+    },
+  },
+  template: `
+    <template v-if="rep.showHeader">
+      <div class="fail-head">
+        <span class="console-err">\u2718</span>
+        <span class="fail-mid"> Test failure</span>
+        <template v-if="rep.module">
+          <span class="fail-mid"> in </span><span class="det-coord">{{ rep.module }}</span>
+        </template>
+        <span class="console-sep"> \u203a </span>
+        <span class="det-focus">{{ rep.count }}</span>
+        <span class="fail-mid"> test{{ rep.count === 1 ? '' : 's' }} failed</span>
+      </div>
+      <div class="fail-blank"></div>
+    </template>
+    <div class="fail-line">
+      <span class="fail-failed">FAILED&nbsp;</span><template v-for="(seg, si) in failLabelSegs(rep.label)" :key="si">
+        <span :class="seg.cls">{{ seg.text }}</span>
+      </template>
+    </div>
+    <div class="fail-blank"></div>
+    <template v-if="rep.assertj">
+      <div v-if="rep.assertj.desc" class="fail-line">
+        <span class="fail-dim">"</span><span class="fail-desc">{{ rep.assertj.desc }}</span><span class="fail-dim">"</span>
+      </div>
+      <div class="fail-line">
+        <span class="fail-mid">&nbsp;Expected:&nbsp;</span><span class="fail-ok">{{ rep.assertj.expected }}</span>
+      </div>
+      <div class="fail-line">
+        <span class="fail-mid">&nbsp;&nbsp;But Was:&nbsp;</span><span class="fail-err">{{ rep.assertj.actual }}</span>
+      </div>
+    </template>
+    <template v-else-if="rep.message">
+      <div class="fail-line fail-mid" v-for="(ml, mi) in rep.message.split('\\n')" :key="'m'+mi">{{ ml }}</div>
+    </template>
+    <template v-if="rep.file">
+      <div class="fail-blank"></div>
+      <div class="fail-line fail-path">{{ rep.file }}</div>
+      <div
+        v-for="(row, ri) in rep.rows"
+        :key="'s'+ri"
+        class="fail-src"
+        :class="{ 'fail-src-err': row.error }"
+      >
+        <span class="fail-gutter" :class="{ 'fail-gutter-err': row.error }">{{ row.gutter }}</span><span class="fail-gutter-rail">\u2502</span><span class="fail-src-code">{{ row.code }}{{ ' '.repeat(row.pad) }}</span>
+      </div>
+      <div v-if="rep.exceptionClass" class="fail-line fail-thrown">
+        <span class="det-type">{{ rep.exceptionClass }}</span><span class="fail-mid"> thrown at line </span><span class="det-focus">{{ rep.line }}</span>
+      </div>
+    </template>
+    <template v-else>
+      <div v-if="rep.exceptionClass" class="fail-line fail-thrown">
+        <span class="det-type">{{ rep.exceptionClass }}</span>
+      </div>
+      <div v-for="(fr, fi) in (rep.frames || [])" :key="'st'+fi" class="fail-line fail-stack">{{ fr }}</div>
+    </template>
+  `,
+};
+
 const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+
+/** Memoized test-failure report models, keyed by the (immutable) diagnostic object. */
+const TF_REPORT_CACHE = new WeakMap();
 /** Escape a value for interpolation into an HTML tooltip string — dependency names/versions/paths
  * come from a project's jk.toml/jk-lock.toml, which is attacker-adjacent (a shared or malicious
  * repo someone opens in the dashboard), so they must never reach innerHTML unescaped. */
@@ -1338,8 +1409,9 @@ Vue.createApp({
 
     // Live ETA dual-clock (CLI parity). Both faces share one whole-second elapsed counter so they
     // tick on the same paint — flooring remaining-ms and elapsed-ms independently desynced them.
-    // Countdown re-anchors to residual RemainingWork so it eases into R(t) and freezes at "0s"
-    // with residual → 0; count-up is always full elapsed. No seed → count-up only.
+    // Countdown re-anchors to residual RemainingWork so it eases into R(t), paints "0s" at
+    // the deadline, then counts the miss as "+Ns". Elapsed is always full run time, no plus.
+    // No seed → count-up only.
     hasEta(card) {
       if (this.outcome(card) !== 'running') return false;
       const haveR0 = typeof card.r0Ms === 'number' && card.r0Ms > 0 && card.r0At != null;
@@ -1386,16 +1458,13 @@ Vue.createApp({
       const total = etaTotalMillis(card);
       return total == null ? 0 : Math.max(0, Math.floor(total / 1000));
     },
-    etaOverdue(card) {
-      // Countdown has frozen at 0s (residual/R0 exhausted). Same whole-second counter as the
-      // faces so the freeze and the paint flip together.
+    /** Seconds past the residual/R0 deadline, or 0 while the countdown is still decaying. */
+    etaOverrunSeconds(card) {
+      const rem = this.etaFaceSeconds(card);
+      if (rem == null || rem > 0) return 0;
       const deadline = this.etaDeadlineSeconds(card);
-      return deadline != null && this.elapsedSeconds(card) >= deadline;
-    },
-    /** Count-up mid-gray only after 2s past deadline — matches CLI COUNT_UP_PROMOTE_GRACE_MS. */
-    etaCountUpPromoted(card) {
-      const deadline = this.etaDeadlineSeconds(card);
-      return deadline != null && this.elapsedSeconds(card) >= deadline + 2;
+      if (deadline == null) return 0;
+      return Math.max(0, this.elapsedSeconds(card) - deadline);
     },
     /**
      * Whole-second countdown with the CLI's 1s jitter buffer (b1e4f58b / JK-1849): the face
@@ -1423,7 +1492,9 @@ Vue.createApp({
     etaCountdown(card) {
       const rem = this.etaFaceSeconds(card);
       if (rem == null) return '';
-      return rem <= 0 ? '0s' : '~' + this.fmtClockSeconds(rem);
+      if (rem > 0) return '~' + this.fmtClockSeconds(rem);
+      const over = this.etaOverrunSeconds(card);
+      return over > 0 ? '+' + this.fmtClockSeconds(over) : '0s';
     },
     // Back-compat alias used by older snapshots/tests: bare countdown string (no "ETA " label).
     eta(card) {
@@ -1486,17 +1557,24 @@ Vue.createApp({
     },
 
     /**
-     * CLI-parity report model for a test-failure diagnostic. {@code count} is how many
-     * test-failure diags this module carries (header "N test failed"); only the first
-     * failure in the module shows that header.
+     * CLI-parity report model for a test-failure diagnostic, as a 0/1-element array for a single
+     * {@code v-for} evaluation. {@code count} is how many test-failure diags this module carries
+     * (header "N tests failed"); only the first failure in the module shows that header. Report
+     * models are memoized per diagnostic — these are methods, not computeds, so they re-run on
+     * every SSE-driven tick, and rebuilding label/assertj/snippet parses for every failure on
+     * every tick made the card O(n²) in failures (JK-1881).
      */
-    testFailure(mod, d) {
+    tfReports(mod, d) {
+      if (!isTestFailureDiag(d)) return [];
       const diags = ((mod && mod.diagnostics) || []).filter((x) => isTestFailureDiag(x));
-      const n = diags.length;
-      return testFailureReport(d, {
-        count: Math.max(1, n),
-        showHeader: n === 0 || diags[0] === d,
-      });
+      const n = Math.max(1, diags.length);
+      const showHeader = diags.length === 0 || diags[0] === d;
+      let hit = TF_REPORT_CACHE.get(d);
+      if (!hit || hit.n !== n || hit.showHeader !== showHeader) {
+        hit = { n, showHeader, rep: testFailureReport(d, { count: n, showHeader }) };
+        TF_REPORT_CACHE.set(d, hit);
+      }
+      return hit.rep ? [hit.rep] : [];
     },
 
     /** Syntax segments for {@code SimpleClass.method()} labels. */
@@ -2199,8 +2277,9 @@ Vue.createApp({
     },
     elapsed(card) {
       if (card.startedAt == null) return '';
-      // Full run-wide count-up from the same whole-second counter as the countdown.
-      return '+' + this.fmtClockSeconds(this.elapsedSeconds(card));
+      // Full run-wide count-up from the same whole-second counter as the countdown. No plus —
+      // the + lives on the ETA face once the estimate is past.
+      return this.fmtClockSeconds(this.elapsedSeconds(card));
     },
     ago(card) {
       if (card.finishedAt == null) return '';
@@ -2278,6 +2357,7 @@ Vue.createApp({
 })
   .component('jk-icon', JkIcon)
   .component('phase-chain', PhaseChain)
+  .component('fail-report', FailReport)
   .component('build-bars', BuildBars)
   .component('module-dep-graph', ModuleDepGraph)
   .mount('#app');

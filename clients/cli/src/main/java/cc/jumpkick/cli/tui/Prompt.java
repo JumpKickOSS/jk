@@ -88,8 +88,7 @@ public final class Prompt<T> implements Widget {
             while (true) {
                 T result = interpret(KeyReader.read(reader));
                 if (result != null) {
-                    String answer = settleLabel(result);
-                    err.print(Ansi.cursorBack(hint.length() + 1) + answer + Ansi.ERASE_LINE_TO_END + "\r\n");
+                    err.print(settleOverwrite(hint, settleLabel(result)));
                     err.flush();
                     return result;
                 }
@@ -97,6 +96,15 @@ public final class Prompt<T> implements Widget {
         } finally {
             Wizard.restoreCooked(terminal, saved);
         }
+    }
+
+    /**
+     * Rewinds over the printed hint plus its trailing space and paints the settled answer. The
+     * hint carries SGR color when ANSI is active, so the rewind must count visible columns, not
+     * raw chars — overshooting drags the cursor into the question text and the erase wipes it.
+     */
+    static String settleOverwrite(String hint, String answer) {
+        return Ansi.cursorBack(RenderContext.visibleWidth(hint) + 1) + answer + Ansi.ERASE_LINE_TO_END + "\r\n";
     }
 
     @Override

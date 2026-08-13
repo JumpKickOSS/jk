@@ -117,10 +117,15 @@ public final class Table implements Widget {
         this.title = title == null ? "" : title;
     }
 
-    /** Italic header text when ANSI is on. */
+    /** Italic header text when ANSI is on (global-theme convenience for one-shot callers). */
     public static String headerCell(String text) {
+        return headerCell(text, Theme.active().isAnsi());
+    }
+
+    /** Like every other paint decision, the plain fallback follows the render context (JK-1889). */
+    static String headerCell(String text, boolean ansi) {
         String s = text == null ? "" : text;
-        if (s.isEmpty() || !Theme.active().isAnsi()) return s;
+        if (s.isEmpty() || !ansi) return s;
         return Theme.colorize(s, org.jline.utils.AttributedStyle.DEFAULT.italic());
     }
 
@@ -128,7 +133,7 @@ public final class Table implements Widget {
         return RenderContext.visibleWidth(s);
     }
 
-    /** String-cell table (replaces {@code BoxTable.render}). */
+    /** String-cell table (replaces the deleted {@code BoxTable.render}). */
     public static Table of(String title, List<String> headers, List<? extends List<String>> rows) {
         Table table = new Table(title).columns(headers.toArray(String[]::new));
         int cols = headers.size();
@@ -223,8 +228,23 @@ public final class Table implements Widget {
             resolved = sameColumns(this.columns, other.columns) ? Append.MERGE : Append.SECTION;
         }
         if (resolved == Append.MERGE) {
+            // A merge absorbs the whole child, not just its rows: its own appended sections keep
+            // rendering, and sticky styling flags survive (JK-1890). Alignment stays the parent's —
+            // matching columns were the precondition for MERGE.
             rows.addAll(other.rows);
+            appended.addAll(other.appended);
+            warning |= other.warning;
+            rowSeparators |= other.rowSeparators;
             return this;
+        }
+        // A SECTION child snaps each of its columns onto a span of parent columns, so it can
+        // never have more columns than the parent — snapSpans would produce out-of-range,
+        // non-monotonic span ends and the painter would throw AIOOBE mid-render (JK-1886).
+        // Fail here, at the call site that can actually fix the layout.
+        if (other.columns.size() > this.columns.size()) {
+            throw new IllegalArgumentException("appended section has more columns ("
+                    + other.columns.size() + ") than the parent table (" + this.columns.size()
+                    + ") — swap parent and child, or merge columns");
         }
         appended.add(other);
         return this;
@@ -363,13 +383,22 @@ public final class Table implements Widget {
                 if (row.kind() == RowKind.SEPARATOR) {
                     out.add(divider(ctx, "├", "┼", "┤", cw));
                 } else if (row.kind() == RowKind.SPAN) {
+                    // Same treatment as the parent loop: collapse the column rails before a
+                    // full-span row instead of colliding into it without junctions (JK-1891).
+                    if (isFullSpan(row, cw.length)) {
+                        out.add(divider(ctx, "├", "┴", "┤", cw));
+                    }
                     out.add(spanRow(ctx, row, cw, plain));
                 } else {
                     out.add(dataRow(ctx, row, child.columnsView(), cw, plain));
                 }
             }
             if (childLast) {
-                out.add(divider(ctx, "╰", "┴", "╯", cw));
+                if (lastVisibleIsFullSpan(child.rows, cw.length)) {
+                    out.add(flatClose(ctx, innerWidth(cw)));
+                } else {
+                    out.add(divider(ctx, "╰", "┴", "╯", cw));
+                }
             }
         }
         return out;
@@ -584,7 +613,9 @@ public final class Table implements Widget {
         for (int i = 0; i < widths.length; i++) {
             String name = i < cols.size() ? cols.get(i).name() : "";
             if (plain) name = PlainAscii.transform(name);
-            String cell = pad(headerCell(name), widths[i], Align.LEFT);
+            // Headers sit over their data — a CENTER column centers its header too (JK-1888).
+            Align align = i < cols.size() ? cols.get(i).align() : Align.LEFT;
+            String cell = pad(headerCell(name, ansi), widths[i], align);
             sb.append(' ').append(cell).append(' ').append(bar);
         }
         return sb.toString();
@@ -609,7 +640,9 @@ public final class Table implements Widget {
             String padL = i == 0 ? leftPad : sp;
             String padR = i == widths.length - 1 ? rightPad : sp;
             String rail = i == widths.length - 1 ? outerBar : innerBar;
-            sb.append(padL).append(pad(raw, widths[i], align)).append(padR).append(rail);
+            // Alignment fill must carry the band background too, or a banded row shows
+            // terminal-background stripes inside every cell shorter than its column.
+            sb.append(padL).append(pad(raw, widths[i], align, sp)).append(padR).append(rail);
         }
         return sb.toString();
     }
@@ -636,13 +669,18 @@ public final class Table implements Widget {
     }
 
     private static String pad(String s, int width, Align align) {
+        return pad(s, width, align, " ");
+    }
+
+    /** {@code fill} is one visible column (possibly styled, e.g. a band-background space). */
+    private static String pad(String s, int width, Align align, String fill) {
         int vis = RenderContext.visibleWidth(s);
         int extra = Math.max(0, width - vis);
-        if (align == Align.RIGHT) return " ".repeat(extra) + s;
+        if (align == Align.RIGHT) return fill.repeat(extra) + s;
         if (align == Align.CENTER) {
             int left = extra / 2;
-            return " ".repeat(left) + s + " ".repeat(extra - left);
+            return fill.repeat(left) + s + fill.repeat(extra - left);
         }
-        return s + " ".repeat(extra);
+        return s + fill.repeat(extra);
     }
 }

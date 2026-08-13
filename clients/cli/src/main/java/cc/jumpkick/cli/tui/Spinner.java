@@ -328,14 +328,22 @@ public final class Spinner implements AutoCloseable {
         return buildPulseStyles(n, PULSE_CHIP_BRIGHT, dim);
     }
 
+    private record PulseKey(int n, Rgb bright, Rgb dim, Theme theme) {}
+
+    /** A handful of (frame-count, color-pair) combos exist; live renders ask every frame (JK-1893). */
+    private static final java.util.concurrent.ConcurrentHashMap<PulseKey, AttributedStyle[]> PULSE_CACHE =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     /** Pulse styles: {@code bright} at the ends of the cycle, {@code dim} at the midpoint. */
     static AttributedStyle[] buildPulseStyles(int n, Rgb bright, Rgb dim) {
-        Gradient gradient = new Gradient(bright, dim);
-        AttributedStyle[] a = new AttributedStyle[n];
-        for (int i = 0; i < n; i++) {
-            a[i] = Theme.active().bright(gradient.at(pulseWave(i, n)));
-        }
-        return a;
+        return PULSE_CACHE.computeIfAbsent(new PulseKey(n, bright, dim, Theme.active()), k -> {
+            Gradient gradient = new Gradient(k.bright(), k.dim());
+            AttributedStyle[] a = new AttributedStyle[k.n()];
+            for (int i = 0; i < k.n(); i++) {
+                a[i] = k.theme().bright(gradient.at(pulseWave(i, k.n())));
+            }
+            return a;
+        });
     }
 
     /** 0 at frame 0 and last, 1 at the midpoint — bright→dim→bright when used as gradient {@code t}. */

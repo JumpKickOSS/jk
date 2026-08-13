@@ -26,12 +26,16 @@ public record RenderContext(Theme theme, boolean ansi, boolean nerdfont, int wid
         if (frame < 0) frame = 0;
     }
 
-    /** Snapshot of the process-wide theme / nerd flag / terminal columns. */
+    /**
+     * Snapshot of the process-wide theme / nerd flag / terminal columns. Called on every
+     * animation frame, so the width comes from the {@link TerminalSize} cache — never a fresh
+     * probe (probing forks a subprocess).
+     */
     public static RenderContext current() {
         Theme theme = Theme.active();
         boolean ansi = theme.isAnsi();
         boolean nerd = ansi && GlobalConfig.nerdfont();
-        return new RenderContext(theme, ansi, nerd, JkManager.detectColumns(), 0);
+        return new RenderContext(theme, ansi, nerd, TerminalSize.columns(), 0);
     }
 
     public Mode mode() {
@@ -56,12 +60,27 @@ public record RenderContext(Theme theme, boolean ansi, boolean nerdfont, int wid
         return new RenderContext(theme, ansi, nerdfont, newWidth, frame);
     }
 
+    /** OSC sequences (hyperlinks, taskbar progress): {@code ESC ] … (BEL | ESC \)}. */
+    private static final java.util.regex.Pattern OSC_SEQUENCE =
+            java.util.regex.Pattern.compile("\\u001b\\][^\\u0007\\u001b]*(?:\\u0007|\\u001b\\\\)");
+
+    /**
+     * Strip CSI and OSC alike. JLine's {@code AttributedString.stripAnsi} leaves OSC bytes in
+     * place, so an OSC-8 hyperlink would otherwise inflate measured width by its URL plus escape
+     * bytes (JK-1887).
+     */
+    public static String stripAnsi(String s) {
+        if (s == null) return "";
+        String noOsc = s.indexOf('\u001b') < 0 ? s : OSC_SEQUENCE.matcher(s).replaceAll("");
+        return AttributedString.stripAnsi(noOsc);
+    }
+
     /**
      * Visible terminal columns: CSI/OSC stripped, then wcwidth (CJK = 2). Shared by every widget
      * that pads cells or fills a title bar.
      */
     public static int visibleWidth(String s) {
         if (s == null || s.isEmpty()) return 0;
-        return new AttributedString(AttributedString.stripAnsi(s)).columnLength();
+        return new AttributedString(stripAnsi(s)).columnLength();
     }
 }

@@ -54,4 +54,31 @@ class EngineBuildListenerAdapterStreamTest {
         assertThat(result.success()).isFalse();
         assertThat(EngineClient.ActiveJobs.snapshot()).isEmpty();
     }
+
+    @Test
+    void test_failure_does_not_take_class_from_nested_throwable() throws Exception {
+        var info = new cc.jumpkick.run.TestFailureInfo(
+                "",
+                "junit-jupiter",
+                "",
+                "bar()",
+                "java.lang.AssertionError",
+                "boom",
+                "java.lang.AssertionError: boom\n\tat x.Y.z(Y.java:1)");
+        BufferedReader reader = stream(
+                EngineProtocol.planDone(0),
+                EngineProtocol.planDiagnostic("/p", "run-tests", "test-failure", "boom", info),
+                EngineProtocol.planFinish("/p", false, false));
+
+        BuildPlanResult result = EngineBuildListenerAdapter.streamSingleBuildPlanEvents(
+                reader, steps -> new cc.jumpkick.run.BuildPlanListener() {}, null, null);
+
+        assertThat(result.errors()).singleElement().satisfies(d -> {
+            assertThat(d.className()).isEmpty();
+            assertThat(d.method()).isEqualTo("bar()");
+            assertThat(d.exceptionClass()).isEqualTo("java.lang.AssertionError");
+            assertThat(d.testFailure()).isNotNull();
+            assertThat(d.testFailure().className()).isEmpty();
+        });
+    }
 }

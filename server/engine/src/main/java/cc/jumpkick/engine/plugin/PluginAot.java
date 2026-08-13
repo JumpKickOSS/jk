@@ -21,11 +21,12 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * JEP 514 AOT caches for short-lived <em>{@code java … PluginMain}</em> workers (kotlin-compiler,
- * java-compiler ToolProvider host). <strong>Not</strong> used for bare {@code javac} launcher
- * forks — that path saw no win and no longer trains or maps caches. Background train on first miss;
- * later forks map the cache. Key includes JDK home/vendor/version, GC, and plugin classpath.
- * Switches: {@link cc.jumpkick.util.AotSettings} — {@code JK_WORKER_AOT=off} disables map+train;
- * {@code JK_AOT_TRAIN=off} disables train-on-miss only. HotSpot 25+ only (Graal ineligible).
+ * java-compiler ToolProvider host, formatter). <strong>Not</strong> used for bare {@code javac}
+ * launcher forks — that path saw no win and no longer trains or maps caches. Background train on
+ * first miss; later forks map the cache. Key includes JDK home/vendor/version, GC, and plugin
+ * classpath. Switches: {@link cc.jumpkick.util.AotSettings} — {@code JK_WORKER_AOT=off} disables
+ * map+train; {@code JK_AOT_TRAIN=off} disables train-on-miss only. HotSpot 25+ only (Graal
+ * ineligible).
  */
 public final class PluginAot {
 
@@ -101,8 +102,8 @@ public final class PluginAot {
      * key because the plugin <em>is</em> the app (Kotlin compiler, java-compiler ToolProvider host,
      * …). Never blocks, never throws.
      *
-     * <p>{@code tool} is a short prefix ({@code kotlinc}, {@code java-compiler}) so caches do not
-     * collide across plugin kinds that share a jar path shape. File names are
+     * <p>{@code tool} is a short prefix ({@code kotlinc}, {@code java-compiler}, {@code formatter})
+     * so caches do not collide across plugin kinds that share a jar path shape. File names are
      * {@code <tool>-<jk-version>-<16hex>.aot} so a primary wipe can keep the live product line
      * (JK-1452).
      */
@@ -148,6 +149,16 @@ public final class PluginAot {
      */
     public static List<String> javaCompilerFlags(Path javaHome, String workerClasspath, TrainerCommand trainer) {
         return pluginWorkerFlags("java-compiler", javaHome, workerClasspath, trainer);
+    }
+
+    /**
+     * JVM flags for the {@code jk-formatter} plugin spawn. Tool tag {@code formatter}. Trains on
+     * first miss (same as kotlinc) — the worker classpath is host-stable, but Palantir/ktfmt are
+     * resolved per run and loaded from the spec, so idle bootstrap would record a thinner set
+     * than the first real {@code jk format}.
+     */
+    public static List<String> formatterFlags(Path javaHome, String workerClasspath, TrainerCommand trainer) {
+        return pluginWorkerFlags("formatter", javaHome, workerClasspath, trainer);
     }
 
     /** True when this host JDK can record AOT caches (HotSpot 25+, not Graal). */

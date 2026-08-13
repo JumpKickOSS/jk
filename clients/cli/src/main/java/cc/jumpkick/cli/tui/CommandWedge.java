@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Human-facing settled command result chrome.
  *
- * <p>Preferred name for what historically lived as {@link BuildPlanWedge}: every interactive
+ * <p>Preferred name for what historically lived as {@code BuildPlanWedge} (now {@link JkWedge}): every interactive
  * command should settle with a wedge (or a tree / table / wizard substitute). Agents should use
  * {@code --json} / wire / BSP — not scrape these lines.
  *

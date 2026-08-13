@@ -103,7 +103,7 @@ public final class Progress {
     public String render(RenderContext ctx) {
         String core =
                 switch (look) {
-                    case PLAN -> new ProgressBar().render(numerator, denominator);
+                    case PLAN -> ProgressBar.shared().render(numerator, denominator);
                     case TRACK -> trackBar(ctx);
                 };
         return suffix.isEmpty() ? core : core + " " + suffix.render(ctx);
@@ -111,7 +111,7 @@ public final class Progress {
 
     private String trackBar(RenderContext ctx) {
         Theme theme = ctx.theme();
-        String bar = new ProgressBar()
+        String bar = ProgressBar.shared()
                 .renderBar(numerator, denominator, segments, theme.bright(theme.planBadgeColor()), theme.darkGray());
         String pct = percent() + "%";
         String painted = ctx.ansi() ? Theme.colorize(pct, theme.brightWhite()) : pct;

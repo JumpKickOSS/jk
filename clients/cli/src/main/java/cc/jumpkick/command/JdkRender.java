@@ -46,7 +46,7 @@ public final class JdkRender {
     }
 
     /**
-     * BuildPlanWedge chip line for a JDK availability result:
+     * JkWedge chip line for a JDK availability result:
      *
      * <ul>
      *   <li>{@code downloaded=false}: {@code ✓ JDK ▶ {bold name} is available at {~/path}} — used
@@ -65,7 +65,7 @@ public final class JdkRender {
     }
 
     /**
-     * BuildPlanWedge chip line for a successful uninstall:
+     * JkWedge chip line for a successful uninstall:
      *
      * <pre>
      *   ✓ JDK ▶ Removed {source}/identifier

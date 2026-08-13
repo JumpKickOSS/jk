@@ -541,17 +541,15 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
   font-size: 12px;
   font-family: var(--mono);
 }
-/* Running count-up: dim while ETA remaining > 0 and for 2s after freeze at 0; then mid-gray
-   (CLI COUNT_UP_PROMOTE_GRACE_MS). Yellow only when there is no ETA seed (single count-up). */
+/* Running count-up: dim whenever a seeded ETA is showing; yellow when there is no seed. */
 .millis.elapsed-dim { color: var(--dim); }
-.millis.elapsed-mid { color: var(--det-mid); } /* #a0a0a0 — CLI midGray / countdown's former color */
 .millis.elapsed-warn { color: var(--warn); }
 .millis.has-io {
   cursor: help;
   border-bottom: 1px dotted var(--dim);
 }
 .ago { color: var(--dim); font-size: 11.5px; }
-/* ETA dual-clock: italic/dim "ETA" label + mid-gray ~remaining (dim frozen 0s on overrun). */
+/* ETA dual-clock: italic/dim "ETA" label + mid-gray ~remaining / 0s / +overrun. */
 .eta {
   display: inline-flex;
   align-items: baseline;
@@ -566,7 +564,6 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
   font-weight: 400;
 }
 .eta-cd { color: var(--det-mid); }
-.eta-cd.zero { color: var(--dim); }
 
 /* Per-run byte counters as a hover tooltip on `.millis`: one row per scope, `scope  N ↑ / N ↓`.
  * Deliberately colourless (mono + muted) — colour on a card means state, and a byte count is not a
@@ -1246,6 +1243,7 @@ table.stats td.err { color: var(--err); }
   padding-left: 4ch;
 }
 .fail-thrown { padding-left: 4ch; }
+.fail-stack { color: var(--dim); padding-left: 2ch; }
 .fail-src {
   display: flex;
   white-space: pre;
@@ -1254,7 +1252,8 @@ table.stats td.err { color: var(--err); }
 }
 .fail-gutter {
   flex: none;
-  width: 4ch;
+  min-width: 4ch; /* sizes to the padded number; 4ch floor keeps short snippets aligned (JK-1913) */
+  white-space: pre;
   text-align: right;
   color: var(--dim);
   user-select: none;

@@ -112,11 +112,6 @@ public final class JkManager implements AutoCloseable, LiveRegion {
      * {@link ClockProgressStrategy} when R0 is seeded, else {@link WeightedProgressStrategy}.
      */
     private long remainingWorkMs = -1;
-    /**
-     * Hold the dual-clock count-up at dim for this long after countdown freezes at {@code 0s}, so a
-     * 1–2s bar/wrap-up lag does not flash mid-gray and draw attention.
-     */
-    static final long COUNT_UP_PROMOTE_GRACE_MS = 2_000L;
     /** {@link #elapsedMillis()} when the R0 seed was taken. */
     private long remainingSetAtElapsedMs;
     /**
@@ -239,7 +234,8 @@ public final class JkManager implements AutoCloseable, LiveRegion {
      * "Building"}); set the active module with {@link #target}.
      */
     public static JkManager plan(PrintStream out, String name, boolean animate) {
-        int[] size = animate ? detectSize() : new int[] {DEFAULT_HEIGHT, DEFAULT_WIDTH};
+        // Probe here — a plan start is a natural boundary — never from the frame-render path.
+        int[] size = animate ? TerminalSize.refresh() : new int[] {DEFAULT_HEIGHT, DEFAULT_WIDTH};
         JkManager cm = new JkManager(out, animate, true, size[1]);
         cm.height = size[0];
         cm.name = name;
@@ -657,7 +653,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     /**
      * Settle the build plan with the green chip: {@code ✓ Build ▶ Successfully <tail>}. The {@code
      * tail} (e.g. "built 17 modules took 1.4s") is pre-styled by the caller; this owns only the chip
-     * + cap + command. See {@link BuildPlanWedge}.
+     * + cap + command. See {@link JkWedge}.
      */
     public void finishBuildPlanSuccess(String tail, List<String> above) {
         settle(JkWedge.ok(planName(), tail).renderLine(headerContext()), above);
@@ -712,7 +708,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     /**
      * Settle the build plan with the red chip, but a fully caller-composed sentence instead of the
      * "Failed to &lt;plan&gt;" derivation {@link #finishBuildPlanFailure} applies — see {@link
-     * BuildPlanWedge#failureLineCustom}.
+     * JkWedge#failedTo}.
      */
     public void finishBuildPlanFailureCustom(String sentence, List<String> above) {
         settle(JkWedge.fail(planName(), RichText.ansi(sentence)).renderLine(headerContext()), above);
@@ -1160,7 +1156,8 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             budget--;
             shown++;
             if (entry.briefError != null && !entry.briefError.isEmpty() && budget > 0) {
-                node.body(RichText.ansi(Theme.colorize(entry.briefError, Theme.active().error())))
+                node.body(RichText.ansi(
+                                Theme.colorize(entry.briefError, Theme.active().error())))
                         .bodyFit(Tree.BodyFit.INDENT);
                 budget--;
             }
@@ -1745,7 +1742,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         // Deadline = setAt + R so target remainingSec and elapsedSec share whole-second boundaries.
         long remainingSec;
         boolean seeded;
-        long overrunMs = 0;
+        long overrunSec = 0;
         synchronized (lock) {
             long anchorRem;
             long anchorAt;
@@ -1765,14 +1762,14 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             }
             if (seeded) {
                 long deadlineMs = anchorAt + anchorRem;
-                long targetSec = Math.max(0L, deadlineMs / 1000L - elapsedSec);
+                long deadlineSec = deadlineMs / 1000L;
+                long targetSec = Math.max(0L, deadlineSec - elapsedSec);
                 // Jitter buffer: sample latest target at most once per whole-second elapsed tick.
                 // Same-second residual re-anchors update the private target only; the painted face
                 // holds until elapsedSec advances (or first paint / seed / snap-to-zero). One
                 // asymmetry is deliberate the other way: a re-anchor that RAISES the target in the
                 // same second a zero was committed repaints immediately — holding the 0s until the
-                // next second manufactured a 0s → Ns bounce and briefly flipped the count-up
-                // promote styling (JK-1850).
+                // next second manufactured a 0s → Ns bounce (JK-1850).
                 if (countdownDisplayElapsedSec < 0
                         || elapsedSec != countdownDisplayElapsedSec
                         || targetSec == 0
@@ -1782,15 +1779,15 @@ public final class JkManager implements AutoCloseable, LiveRegion {
                 }
                 remainingSec = countdownDisplayRemainingSec;
                 if (remainingSec <= 0) {
-                    // Overrun from the true residual/R0 deadline (not the held face).
-                    overrunMs = Math.max(0L, elapsedMillis - deadlineMs);
+                    // How far past the residual/R0 deadline, on the same whole-second counter.
+                    overrunSec = Math.max(0L, elapsedSec - deadlineSec);
                 }
             } else {
                 remainingSec = 0;
                 countdownDisplayElapsedSec = -1;
             }
         }
-        RichText clock = clockFace(seeded, remainingSec, overrunMs, elapsedSec);
+        RichText clock = clockFace(seeded, remainingSec, overrunSec, elapsedSec);
         RenderContext ctx = headerContext();
         if (phase1) {
             RichText msg = RichText.of(
@@ -1805,21 +1802,27 @@ public final class JkManager implements AutoCloseable, LiveRegion {
                 .renderLine(ctx);
     }
 
-    private RichText clockFace(boolean seeded, long remainingSec, long overrunMs, long elapsedSec) {
+    private RichText clockFace(boolean seeded, long remainingSec, long overrunSec, long elapsedSec) {
         String elapsed = fmtClockSeconds(elapsedSec);
         if (!seeded) {
-            return RichText.parse("[dark-gray]·[/] [mid-gray]+" + elapsed + "[/]");
+            return RichText.parse("[dark-gray]·[/] [mid-gray]" + elapsed + "[/]");
         }
-        String rem = remainingSec <= 0 ? "[dark-gray]0s[/]" : "[mid-gray]~" + fmtClockSeconds(remainingSec) + "[/]";
-        String up = remainingSec <= 0 && overrunMs >= COUNT_UP_PROMOTE_GRACE_MS ? "mid-gray" : "dark-gray";
+        // Countdown stays mid-gray: ~remaining, then 0s, then +overrun. Elapsed stays dim, no +.
+        String rem;
+        if (remainingSec > 0) {
+            rem = "[mid-gray]~" + fmtClockSeconds(remainingSec) + "[/]";
+        } else if (overrunSec > 0) {
+            rem = "[mid-gray]+" + fmtClockSeconds(overrunSec) + "[/]";
+        } else {
+            rem = "[mid-gray]0s[/]";
+        }
         return RichText.parse(
-                "[dark-gray]·[/] [dark-gray italic]ETA [/]" + rem + " [dark-gray]·[/] [" + up + "]+" + elapsed + "[/]");
+                "[dark-gray]·[/] [dark-gray italic]ETA [/]" + rem + " [dark-gray]·[/] [dark-gray]" + elapsed + "[/]");
     }
 
     /**
      * Countdown/elapsed duration from milliseconds: {@code "42s"}, {@code "1m 02s"},
-     * {@code "1h 05m 09s"} (units past the lead zero-padded). Callers prepend {@code "+"} for
-     * count-up display.
+     * {@code "1h 05m 09s"} (units past the lead zero-padded).
      */
     static String fmtClock(long millis) {
         return fmtClockSeconds(Math.max(0L, millis) / 1000L);
@@ -2033,53 +2036,6 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             i = j;
         }
         return true;
-    }
-
-    /**
-     * Terminal size {@code {rows, cols}}, detected once, leak-free. We deliberately do NOT build a
-     * JLine terminal: JLine probes the terminal with capability queries (DA1 {@code \e[c}, mode
-     * reports like {@code \e[?2027$p}), and a transient build-then-close races the async replies
-     * they arrive after we exit and the shell echoes them as garbage. Instead ask the tty directly
-     * via {@code stty size} (an ioctl, no escape sequences), then the {@code $LINES}/{@code $COLUMNS}
-     * env, then conservative defaults. Only called when animating (interactive tty).
-     */
-    /** Terminal width in columns ({@code stty size} → {@code $COLUMNS} → {@value #DEFAULT_WIDTH}). */
-    public static int detectColumns() {
-        return detectSize()[1];
-    }
-
-    private static int[] detectSize() {
-        try {
-            Process p = new ProcessBuilder("stty", "size")
-                    .redirectInput(ProcessBuilder.Redirect.from(new java.io.File("/dev/tty")))
-                    .redirectError(ProcessBuilder.Redirect.DISCARD)
-                    .start();
-            String out =
-                    new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.US_ASCII).trim();
-            p.waitFor();
-            String[] parts = out.split("\\s+"); // "<rows> <cols>"
-            if (parts.length == 2) {
-                int rows = Integer.parseInt(parts[0]);
-                int cols = Integer.parseInt(parts[1]);
-                if (rows > 0 && cols > 0) return new int[] {rows, cols};
-            }
-        } catch (Exception ignored) {
-            // no /dev/tty, no stty (e.g. Windows), or unparsable — fall through
-        }
-        return new int[] {envInt("LINES", DEFAULT_HEIGHT), envInt("COLUMNS", DEFAULT_WIDTH)};
-    }
-
-    private static int envInt(String name, int fallback) {
-        try {
-            String v = System.getenv(name);
-            if (v != null) {
-                int n = Integer.parseInt(v.trim());
-                if (n > 0) return n;
-            }
-        } catch (NumberFormatException ignored) {
-            // not a number — use the fallback
-        }
-        return fallback;
     }
 
     /** Restores {@code System.out}/{@code System.err} when closed (no checked exception). */

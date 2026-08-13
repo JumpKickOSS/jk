@@ -259,7 +259,7 @@ public final class LockCommand implements CliCommand {
 
     // ---- shared rendering helpers --------------------------------------------
 
-    /** Failure result tail for the Lock chip (BuildPlanWedge prepends "Failed to lock"). */
+    /** Failure result tail for the Lock chip (JkWedge prepends "Failed to lock"). */
     static String lockFailTail() {
         return "dependencies";
     }

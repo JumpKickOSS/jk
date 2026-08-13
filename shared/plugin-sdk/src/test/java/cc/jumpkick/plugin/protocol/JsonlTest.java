@@ -71,6 +71,12 @@ class JsonlTest {
         assertThat(nested).isEqualTo("{\"class\":\"E\",\"message\":\"boom {x}\"}");
         assertThat(Jsonl.str(nested, "class")).isEqualTo("E");
         assertThat(Jsonl.str(nested, "message")).isEqualTo("boom {x}");
+        // Nested throwable.class must not be read as the top-level test class.
+        assertThat(Jsonl.topStr(json, "class")).isNull();
+        assertThat(Jsonl.str(json, "class")).isEqualTo("E");
+        String withClass = "{\"class\":\"pkg.Foo\",\"throwable\":{\"class\":\"AssertionError\",\"message\":\"x\"}}";
+        assertThat(Jsonl.topStr(withClass, "class")).isEqualTo("pkg.Foo");
+        assertThat(Jsonl.topStr(withClass, "testClass")).isNull();
     }
 
     @Test
@@ -85,6 +91,29 @@ class JsonlTest {
     @Test
     void quoteEscapesControlCharsAsUnicode() {
         assertThat(Jsonl.quote("\u0001")).isEqualTo("\"\\u0001\"");
+    }
+
+    @Test
+    void controlCharsRoundTripThroughEveryStringReader() {
+        // quote() emits \\uXXXX for control chars; every decoder must read them back (JK-1879) —
+        // an assertion message with ESC or a vertical tab crosses worker → engine → CLI intact.
+        String raw = "esc \u001b vt \u000b bell \u0007 end";
+        String quoted = Jsonl.quote(raw);
+        assertThat(quoted).contains("\\u001b").contains("\\u000b").contains("\\u0007");
+
+        assertThat(Jsonl.str("{\"v\":" + quoted + "}", "v")).isEqualTo(raw);
+        assertThat(Jsonl.topStr("{\"v\":" + quoted + "}", "v")).isEqualTo(raw);
+        assertThat(Jsonl.strArray("{\"a\":[" + quoted + "]}", "a")).containsExactly(raw);
+        assertThat(Jsonl.strMap("{\"m\":{\"k\":" + quoted + "}}", "m")).containsEntry("k", raw);
+
+        // Re-encoding the decoded value is stable (no double-escaping across hops).
+        assertThat(Jsonl.quote(Jsonl.str("{\"v\":" + quoted + "}", "v"))).isEqualTo(quoted);
+    }
+
+    @Test
+    void malformedUnicodeEscapesAreKeptLiterally() {
+        assertThat(Jsonl.str("{\"v\":\"a\\uzzzz b\"}", "v")).isEqualTo("a\\uzzzz b");
+        assertThat(Jsonl.str("{\"v\":\"tail\\u12\"}", "v")).isEqualTo("tail\\u12");
     }
 
     @Test

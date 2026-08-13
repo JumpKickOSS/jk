@@ -75,6 +75,64 @@ class TableAppendTest {
     }
 
     @Test
+    void merge_carries_the_childs_own_sections_and_flags() {
+        // JK-1890: a.append(b) with matching columns must not silently drop b's appended
+        // section (or its warning/rowSeparators styling).
+        Table child = new Table("").columns("A", "B").row("c1", "c2").warning(true);
+        child.append(new Table("").columns("L").row("child-section-row"), Table.Append.SECTION);
+        Table parent = new Table("T").columns("A", "B").row("p1", "p2");
+        parent.append(child); // AUTO → MERGE (same columns)
+
+        String all = String.join("\n", parent.render(RenderContext.current()));
+        assertThat(all).contains("p1");
+        assertThat(all).contains("c1");
+        assertThat(all).contains("child-section-row");
+    }
+
+    @Test
+    void appending_a_wider_section_fails_loudly_not_with_aioobe_mid_render() {
+        // A child with more columns than the parent cannot snap; snapSpans used to produce
+        // out-of-range span ends and the painter threw AIOOBE mid-render (JK-1886).
+        Table parent = new Table("T").columns("A", "B").row("a", "b");
+        Table wider = new Table("").columns("W", "X", "Y", "Z").row("1", "2", "3", "4");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> parent.append(wider, Table.Append.SECTION))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("more columns");
+        // AUTO resolves differing columns to SECTION — same guard.
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> parent.append(wider))
+                .isInstanceOf(IllegalArgumentException.class);
+        // Equal-width and narrower children still append fine.
+        parent.append(new Table("").columns("L", "V").row("l", "v"), Table.Append.SECTION);
+        assertThat(parent.render(RenderContext.current())).isNotEmpty();
+    }
+
+    @Test
+    void section_child_span_rows_get_collapse_dividers_like_the_parent() {
+        // JK-1891: a full-span row inside a SECTION child needs the rail-collapse divider above
+        // it and a flat close beneath, exactly as the parent row loop renders spans.
+        Table parent = new Table("T").columns("A", "B").row("a", "b");
+        Table child = new Table("").columns("L", "V").row("l", "v");
+        child.row(Table.Row.span(Table.Cell.of("utilization bar goes here").span(2)));
+        parent.append(child, Table.Append.SECTION);
+
+        List<String> out = parent.render(RenderContext.current());
+        int span = -1;
+        for (int i = 0; i < out.size(); i++) {
+            if (out.get(i).contains("utilization bar")) span = i;
+        }
+        assertThat(span).isGreaterThan(0);
+        String above = TestAnsi.strip(out.get(span - 1));
+        String below = TestAnsi.strip(out.get(span + 1));
+        if (ThemeAnsi.ansi()) {
+            assertThat(above).startsWith("├").doesNotContain("┼"); // rails collapse: ┴ only
+            assertThat(above).contains("┴");
+            assertThat(below).doesNotContain("┴"); // flat close under a full-span last row
+        }
+        // Every line still shares one width.
+        assertThat(out.stream().map(RenderContext::visibleWidth).distinct()).hasSize(1);
+    }
+
+    @Test
     void all_lines_share_one_visible_width() {
         Table t = new Table("Build Plan")
                 .columns("Plan Item", "Total", "Rebuild", "Delta")
