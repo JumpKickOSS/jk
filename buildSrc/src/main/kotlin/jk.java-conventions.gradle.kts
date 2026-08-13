@@ -27,6 +27,9 @@ tasks.withType<JavaCompile>().configureEach {
 val libs = extensions.getByType<VersionCatalogsExtension>().named("libs")
 
 dependencies {
+    // House nullness (code-as-art.md). compileOnly: zero runtime; safe on the Graal CLI.
+    "compileOnly"(libs.findLibrary("jspecify").orElseThrow())
+    "testCompileOnly"(libs.findLibrary("jspecify").orElseThrow())
     "testImplementation"(libs.findLibrary("junit-jupiter").orElseThrow())
     "testImplementation"(libs.findLibrary("assertj-core").orElseThrow())
     "testRuntimeOnly"(libs.findLibrary("junit-platform-launcher").orElseThrow())
