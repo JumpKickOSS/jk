@@ -8,6 +8,7 @@ import cc.jumpkick.engine.EngineServer;
 import cc.jumpkick.engine.http.JsonOut;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.BuildMetrics;
@@ -129,7 +130,7 @@ public final class JournalWriter {
             long buildNumber = a.buildNumber();
             if (buildNumber > 0) record = record.withBuildNumber(buildNumber);
             a.flushTimeline().ifPresent(path -> {
-                if (writer != null) EngineServer.sendQuiet(writer, EngineProtocol.timeline(path.toString()));
+                if (writer != null) EngineServer.sendQuiet(writer, ProtoJobs.timeline(path.toString()));
             });
             if (!historyConfig.enabled()) return;
             Path dir = Path.of(a.dir());

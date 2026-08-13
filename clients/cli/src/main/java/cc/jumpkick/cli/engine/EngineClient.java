@@ -3,6 +3,8 @@ package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoLifecycle;
+import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.runtime.ExplainPlan;
 import cc.jumpkick.runtime.WorkspaceBuildListener;
@@ -79,7 +81,7 @@ public final class EngineClient {
      */
     public static boolean ping(Path socket) {
         try (SocketChannel ch = connect(socket)) {
-            String reply = exchange(ch, EngineProtocol.ping());
+            String reply = exchange(ch, ProtoLifecycle.ping());
             return EngineProtocol.PONG.equals(EngineProtocol.typeOf(reply));
         } catch (IOException e) {
             return false;
@@ -89,7 +91,7 @@ public final class EngineClient {
     /** Connect and perform the {@code hello}/{@code hello-ack} handshake; empty if unreachable. */
     public static Optional<Handshake> handshake(Path socket, String clientVersion) {
         try (SocketChannel ch = connect(socket)) {
-            String ack = exchange(ch, EngineProtocol.hello(clientVersion));
+            String ack = exchange(ch, ProtoLifecycle.hello(clientVersion));
             if (!EngineProtocol.HELLO_ACK.equals(EngineProtocol.typeOf(ack))) return Optional.empty();
             // Protocol-zero's teeth: an engine speaking a NEWER protocol than this client is not
             // usable — treat it as unreachable so the ensure path elects/starts a matching one
@@ -128,8 +130,8 @@ public final class EngineClient {
         try (SocketChannel ch = connect(socket)) {
             exchange(
                     ch,
-                    EngineProtocol.hello(cc.jumpkick.cli.Jk.VERSION, "probe")); // handshake first, response discarded
-            String ack = exchange(ch, EngineProtocol.statusRequest());
+                    ProtoLifecycle.hello(cc.jumpkick.cli.Jk.VERSION, "probe")); // handshake first, response discarded
+            String ack = exchange(ch, ProtoLifecycle.statusRequest());
             if (!EngineProtocol.STATUS_ACK.equals(EngineProtocol.typeOf(ack))) return Optional.empty();
             String httpUrl = Jsonl.str(ack, "httpUrl");
             String mcpUrl = Jsonl.str(ack, "mcpUrl"); // null = MCP disabled
@@ -166,7 +168,7 @@ public final class EngineClient {
             return true; // nothing reachable — a no-op "stop" is success
         }
         try (ch) {
-            String bye = exchange(ch, EngineProtocol.shutdown());
+            String bye = exchange(ch, ProtoLifecycle.shutdown());
             return EngineProtocol.BYE.equals(EngineProtocol.typeOf(bye));
         } catch (IOException e) {
             return false; // reachable but didn't behave — a real problem, not "already stopped"
@@ -180,7 +182,7 @@ public final class EngineClient {
      */
     public static int drain(Path socket) {
         try (SocketChannel ch = connect(socket)) {
-            String bye = exchange(ch, EngineProtocol.shutdown(false));
+            String bye = exchange(ch, ProtoLifecycle.shutdown(false));
             if (!EngineProtocol.BYE.equals(EngineProtocol.typeOf(bye))) return -1;
             return Jsonl.intValue(bye, "plans", 0);
         } catch (IOException e) {
@@ -207,7 +209,7 @@ public final class EngineClient {
             return true;
         }
         try (ch) {
-            String bye = exchange(ch, EngineProtocol.shutdown(true));
+            String bye = exchange(ch, ProtoLifecycle.shutdown(true));
             boolean ok = EngineProtocol.BYE.equals(EngineProtocol.typeOf(bye));
             if (pid > 0) waitForDeathOrKill(pid, STOP_DEATH_WAIT);
             else if (!ok) {
@@ -291,17 +293,17 @@ public final class EngineClient {
 
     /** Newest-first {@code history-entry} lines (flat JSONL), spawning the engine if none is running. */
     public static List<String> historyList(EnginePaths.Paths paths, int limit) throws IOException {
-        return streamHistory(paths, EngineProtocol.historyListRequest(limit));
+        return streamHistory(paths, ProtoSession.historyListRequest(limit));
     }
 
     /** One entry's detail: a {@code history-record} header line plus module/step/diag lines. */
     public static List<String> historyShow(EnginePaths.Paths paths, String id) throws IOException {
-        return streamHistory(paths, EngineProtocol.historyShowRequest(id));
+        return streamHistory(paths, ProtoSession.historyShowRequest(id));
     }
 
     /** Delete one entry; {@code true} if it existed. */
     public static boolean historyDelete(EnginePaths.Paths paths, String id) throws IOException {
-        for (String line : streamHistory(paths, EngineProtocol.historyDeleteRequest(id))) {
+        for (String line : streamHistory(paths, ProtoSession.historyDeleteRequest(id))) {
             if (EngineProtocol.HISTORY_DELETED.equals(EngineProtocol.typeOf(line))) {
                 return Jsonl.bool(line, "deleted", false);
             }
@@ -315,7 +317,7 @@ public final class EngineClient {
      */
     public static Optional<String> cancel(EnginePaths.Paths paths, long jid) throws IOException {
         ensureRunning(paths, cc.jumpkick.cli.Jk.VERSION);
-        return cancelOnce(EnginePaths.activeSocket(paths), EngineProtocol.cancelRequest(jid), jid);
+        return cancelOnce(EnginePaths.activeSocket(paths), ProtoLifecycle.cancelRequest(jid), jid);
     }
 
     /**
@@ -323,7 +325,7 @@ public final class EngineClient {
      */
     public static Optional<String> cancelForDir(EnginePaths.Paths paths, String dir) throws IOException {
         ensureRunning(paths, cc.jumpkick.cli.Jk.VERSION);
-        Optional<String> ack = cancelOnce(EnginePaths.activeSocket(paths), EngineProtocol.cancelRequestForDir(dir), -1);
+        Optional<String> ack = cancelOnce(EnginePaths.activeSocket(paths), ProtoLifecycle.cancelRequestForDir(dir), -1);
         if (ack.isPresent()) ActiveJobs.forgetAll();
         return ack;
     }
@@ -345,14 +347,14 @@ public final class EngineClient {
             for (long jid : ActiveJobs.snapshot()) {
                 if (System.nanoTime() >= deadline) break;
                 try {
-                    cancelOnce(socket, EngineProtocol.cancelRequest(jid), jid);
+                    cancelOnce(socket, ProtoLifecycle.cancelRequest(jid), jid);
                 } catch (Exception ignored) {
                     // best-effort — halt follows
                 }
             }
             if (cwd != null && System.nanoTime() < deadline) {
                 try {
-                    Optional<String> ack = cancelOnce(socket, EngineProtocol.cancelRequestForDir(cwd.toString()), -1);
+                    Optional<String> ack = cancelOnce(socket, ProtoLifecycle.cancelRequestForDir(cwd.toString()), -1);
                     if (ack.isPresent()) ActiveJobs.forgetAll();
                 } catch (Exception ignored) {
                     // best-effort
@@ -438,7 +440,7 @@ public final class EngineClient {
      * plus the global tiers; {@code null} dir asks for every row. Spawns the engine if needed.
      */
     public static List<String> metrics(EnginePaths.Paths paths, String dir) throws IOException {
-        return streamHistory(paths, EngineProtocol.metricsRequest(dir));
+        return streamHistory(paths, ProtoSession.metricsRequest(dir));
     }
 
     /**
@@ -458,7 +460,7 @@ public final class EngineClient {
         try (SocketChannel ch = connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            writer.write(EngineProtocol.calibrateRequest(force, engineColdStartMs, allowNetwork));
+            writer.write(ProtoLifecycle.calibrateRequest(force, engineColdStartMs, allowNetwork));
             writer.write('\n');
             writer.flush();
             BufferedReader reader = protocolReader(ch);

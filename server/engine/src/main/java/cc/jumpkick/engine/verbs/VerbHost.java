@@ -50,7 +50,7 @@ public interface VerbHost {
     String requestFailedLine(@Nullable String dir, Throwable e);
 
     default String requestFailedLine(@Nullable String dir, String message) {
-        return cc.jumpkick.engine.protocol.EngineProtocol.requestFailed(redactEnv(dir, message));
+        return cc.jumpkick.engine.protocol.ProtoLifecycle.requestFailed(redactEnv(dir, message));
     }
 
     void publishRequestError(long rid, @Nullable String dir, String message);

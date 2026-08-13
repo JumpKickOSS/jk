@@ -4,6 +4,7 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedWriter;
 import java.net.URI;
@@ -79,7 +80,7 @@ public final class PublishVerb implements HostedVerb {
                         plan,
                         session,
                         writer,
-                        result -> EngineProtocol.planFinishPublish(
+                        result -> ProtoEvents.planFinishPublish(
                                 dir,
                                 result.success(),
                                 plan.get(cc.jumpkick.runtime.PublishPlans.FILES).orElse(-1)));

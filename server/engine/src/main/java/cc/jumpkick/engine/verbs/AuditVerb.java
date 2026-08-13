@@ -4,6 +4,8 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoEvents;
+import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedWriter;
 import java.net.URI;
@@ -50,7 +52,7 @@ public final class AuditVerb implements HostedVerb {
                         .withWorkingDir(entryDir)
                         .withCacheDir(cache)
                         .withCancel(cancelToken)
-                        .withJvm(EngineProtocol.jvmTuning(requestLine));
+                        .withJvm(ProtoSession.jvmTuning(requestLine));
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 cc.jumpkick.run.BuildPlan plan = cc.jumpkick.runtime.AuditPlans.auditBuildPlan(
                         cc.jumpkick.lock.LockPaths.lockFile(entryDir),
@@ -59,9 +61,8 @@ public final class AuditVerb implements HostedVerb {
                         batch != null ? URI.create(batch) : null,
                         vulns != null ? URI.create(vulns) : null,
                         (module, version, vulnId, sev, summary) -> host.sendQuiet(
-                                writer, EngineProtocol.auditFinding(dir, module, version, vulnId, sev, summary)));
-                host.streamSinglePlan(
-                        plan, session, writer, result -> EngineProtocol.planFinish(dir, result.success()));
+                                writer, ProtoEvents.auditFinding(dir, module, version, vulnId, sev, summary)));
+                host.streamSinglePlan(plan, session, writer, result -> ProtoEvents.planFinish(dir, result.success()));
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
             }

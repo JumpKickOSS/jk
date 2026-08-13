@@ -4,6 +4,7 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoReads;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -52,7 +53,7 @@ public final class TreeVerb implements HostedVerb {
             } catch (IOException | RuntimeException e) {
                 error = String.valueOf(e.getMessage());
             }
-            host.sendQuiet(writer, EngineProtocol.treeAck(error, rendered));
+            host.sendQuiet(writer, ProtoReads.treeAck(error, rendered));
 
         } catch (Exception e) {
             host.sendQuiet(writer, host.requestFailedLine(null, e));

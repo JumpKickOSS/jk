@@ -4,6 +4,7 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
@@ -60,12 +61,12 @@ public final class FormatVerb implements HostedVerb {
                         removeUnusedImports,
                         rewriteConfig != null ? Path.of(rewriteConfig) : null,
                         (path, status, message, index, total) -> host.sendQuiet(
-                                writer, EngineProtocol.formatFile(dir, path, status, message, index, total)));
+                                writer, ProtoEvents.formatFile(dir, path, status, message, index, total)));
                 host.streamSinglePlan(
                         plan,
                         session,
                         writer,
-                        result -> EngineProtocol.planFinishFormat(
+                        result -> ProtoEvents.planFinishFormat(
                                 dir,
                                 result.success(),
                                 plan.get(cc.jumpkick.runtime.FormatPlans.CHANGED)

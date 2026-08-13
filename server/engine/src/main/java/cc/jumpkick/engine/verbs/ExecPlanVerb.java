@@ -4,6 +4,7 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
@@ -51,8 +52,8 @@ public final class ExecPlanVerb implements HostedVerb {
                         Jsonl.str(requestLine, "binName"),
                         binDir == null ? null : Path.of(binDir),
                         libDir == null ? null : Path.of(libDir),
-                        EngineProtocol.variantOf(requestLine),
-                        EngineProtocol.clientEnvOf(requestLine));
+                        ProtoSession.variantOf(requestLine),
+                        ProtoSession.clientEnvOf(requestLine));
             } catch (RuntimeException e) {
                 plan = cc.jumpkick.engine.protocol.ExecPlan.error("unknown", String.valueOf(e.getMessage()));
             }

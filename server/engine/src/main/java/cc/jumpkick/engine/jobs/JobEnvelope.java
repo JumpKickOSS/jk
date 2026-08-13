@@ -10,6 +10,9 @@ import cc.jumpkick.engine.http.JsonOut;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoEvents;
+import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.runtime.progress.ProgressBarMode;
 import java.io.BufferedReader;
@@ -155,7 +158,7 @@ public final class JobEnvelope {
             try {
                 send(
                         writer,
-                        EngineProtocol.error(
+                        ProtoLifecycle.error(
                                 EngineProtocol.ERR_SHUTTING_DOWN,
                                 "the engine is shutting down (draining) — retry; the successor engine takes over"));
             } catch (IOException ignored) {
@@ -168,7 +171,7 @@ public final class JobEnvelope {
         long eventRequestId = host.nextRequestId();
         // The requesting shell's JK_PROGRESS_MODE rides the request — the resident engine's own
         // startup env is not the client's (JK-1816).
-        host.putMode(eventRequestId, EngineProtocol.progressModeOf(requestLine));
+        host.putMode(eventRequestId, ProtoJobs.progressModeOf(requestLine));
         // The kind rides explicitly from the dispatch site (never parsed back out of a thread
         // name); the journal dir falls back to a request's specific location field so non-build
         // requests never record the literal string "null".
@@ -193,7 +196,7 @@ public final class JobEnvelope {
                 throw new IllegalStateException(msg);
             }
             try {
-                send(writer, EngineProtocol.alreadyRunning(h.buildNumber(), h.requestId(), msg));
+                send(writer, ProtoLifecycle.alreadyRunning(h.buildNumber(), h.requestId(), msg));
             } catch (IOException ignored) {
                 // client gone
             }
@@ -298,7 +301,7 @@ public final class JobEnvelope {
                     }
                     if (done.getCount() == 0) return;
                     if (heartbeatMs > 0) {
-                        sendQuiet(writer, EngineProtocol.heartbeat(host.nowMillis() - start));
+                        sendQuiet(writer, ProtoLifecycle.heartbeat(host.nowMillis() - start));
                     }
                 }
             });
@@ -540,8 +543,8 @@ public final class JobEnvelope {
      */
     public static String cancelledTerminalLine(boolean workspaceStream, @Nullable String dir) {
         return workspaceStream
-                ? EngineProtocol.workspaceFinish(false, 1, List.of(), true)
-                : EngineProtocol.planFinish(dir == null ? "" : dir, false, true);
+                ? ProtoEvents.workspaceFinish(false, 1, List.of(), true)
+                : ProtoEvents.planFinish(dir == null ? "" : dir, false, true);
     }
 
     /** Cancel every live job whose dir matches (canonical absolute path). */
@@ -597,7 +600,7 @@ public final class JobEnvelope {
         interruptRunner(runnerThread);
         sendQuiet(
                 writer,
-                EngineProtocol.error(
+                ProtoLifecycle.error(
                         EngineProtocol.ERR_DEADLINE,
                         "job exceeded "
                                 + deadlineMs

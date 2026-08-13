@@ -4,6 +4,7 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -51,7 +52,7 @@ public final class CacheMaintenanceVerb implements HostedVerb {
                 boolean dryRun = Jsonl.bool(requestLine, "dryRun", false);
 
                 if (!host.cacheGate().writeLock().tryLock()) {
-                    host.sendQuiet(writer, EngineProtocol.pruneWait(host.activePlanCount(), false));
+                    host.sendQuiet(writer, ProtoSession.pruneWait(host.activePlanCount(), false));
                     host.cacheGate().writeLock().lock();
                 }
                 try {
@@ -61,7 +62,7 @@ public final class CacheMaintenanceVerb implements HostedVerb {
                         FileLock pruneLock = lockChan.tryLock();
                         if (pruneLock == null) {
                             // Another process's prune holds the cross-process lock — wait for it too.
-                            host.sendQuiet(writer, EngineProtocol.pruneWait(0, true));
+                            host.sendQuiet(writer, ProtoSession.pruneWait(0, true));
                             pruneLock = lockChan.lock();
                         }
                         try {
@@ -100,7 +101,7 @@ public final class CacheMaintenanceVerb implements HostedVerb {
                                         // best-effort stamp; the clean itself succeeded
                                     }
                                 }
-                                return EngineProtocol.planFinishCache(
+                                return ProtoSession.planFinishCache(
                                         dir,
                                         result.success(),
                                         plan.get(cc.jumpkick.runtime.CachePlans.FILES)

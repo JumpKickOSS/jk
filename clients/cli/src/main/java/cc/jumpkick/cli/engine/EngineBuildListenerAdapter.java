@@ -8,6 +8,9 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.EngineWireException;
+import cc.jumpkick.engine.protocol.ProtoJobs;
+import cc.jumpkick.engine.protocol.ProtoReads;
+import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
@@ -88,8 +91,8 @@ final class EngineBuildListenerAdapter {
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader reader = EngineClient.protocolReader(ch);
 
-            writer.write(EngineProtocol.withSession(
-                    EngineProtocol.buildRequest(
+            writer.write(ProtoSession.withSession(
+                    ProtoJobs.buildRequest(
                             req.entryDir().toString(),
                             req.cache().toString(),
                             req.jdksDir() != null ? req.jdksDir().toString() : null,
@@ -159,8 +162,8 @@ final class EngineBuildListenerAdapter {
             var sel = req.testSelection() != null
                     ? req.testSelection()
                     : SessionContext.current().testSelection();
-            writer.write(EngineProtocol.withSession(
-                    EngineProtocol.testRequest(
+            writer.write(ProtoSession.withSession(
+                    ProtoJobs.testRequest(
                             req.entryDir().toString(),
                             req.cache().toString(),
                             req.jdksDir() != null ? req.jdksDir().toString() : null,
@@ -204,8 +207,8 @@ final class EngineBuildListenerAdapter {
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader reader = EngineClient.protocolReader(ch);
 
-            writer.write(EngineProtocol.withSession(
-                    EngineProtocol.singleBuildRequest(
+            writer.write(ProtoSession.withSession(
+                    ProtoJobs.singleBuildRequest(
                             req.entryDir().toString(),
                             req.cache().toString(),
                             req.jdksDir() != null ? req.jdksDir().toString() : null,
@@ -255,8 +258,8 @@ final class EngineBuildListenerAdapter {
                     if (p != null) moduleDirs.add(p.toString());
                 }
             }
-            writer.write(EngineProtocol.withSession(
-                    EngineProtocol.nativeRequest(
+            writer.write(ProtoSession.withSession(
+                    ProtoJobs.nativeRequest(
                             req.entryDir().toString(),
                             req.cache().toString(),
                             req.jdksDir() != null ? req.jdksDir().toString() : null,
@@ -299,8 +302,8 @@ final class EngineBuildListenerAdapter {
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader reader = EngineClient.protocolReader(ch);
 
-            writer.write(EngineProtocol.withSession(
-                    EngineProtocol.installRequest(
+            writer.write(ProtoSession.withSession(
+                    ProtoJobs.installRequest(
                             req.entryDir().toString(),
                             req.cache().toString(),
                             req.m2Dir().toString(),
@@ -342,7 +345,7 @@ final class EngineBuildListenerAdapter {
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader reader = EngineClient.protocolReader(ch);
 
-            writer.write(EngineProtocol.explainRequest(
+            writer.write(ProtoReads.explainRequest(
                     req.entryDir().toString(),
                     req.cache().toString(),
                     req.workers(),
@@ -481,7 +484,7 @@ final class EngineBuildListenerAdapter {
     static boolean edit(EnginePaths.Paths paths, Path file, String op, java.util.List<String> args) throws IOException {
         return request(
                 paths,
-                EngineProtocol.editRequest(file.toString(), op, args),
+                ProtoReads.editRequest(file.toString(), op, args),
                 EngineProtocol.EDIT_ACK,
                 "edit request",
                 line -> {
@@ -504,7 +507,7 @@ final class EngineBuildListenerAdapter {
         try {
             request(
                     paths,
-                    EngineProtocol.freshenCatalogRequest(catalog, offline, url, cacheFile),
+                    ProtoReads.freshenCatalogRequest(catalog, offline, url, cacheFile),
                     EngineProtocol.FRESHEN_CATALOG_ACK,
                     catalog + " freshen request",
                     line -> Jsonl.bool(line, "ok", false));
@@ -524,7 +527,7 @@ final class EngineBuildListenerAdapter {
             throws IOException {
         return request(
                 paths,
-                EngineProtocol.treeRequest(dir.toString(), maxDepth, flatten, stack, scopes),
+                ProtoReads.treeRequest(dir.toString(), maxDepth, flatten, stack, scopes),
                 EngineProtocol.TREE_ACK,
                 "tree request",
                 line -> {
@@ -539,7 +542,7 @@ final class EngineBuildListenerAdapter {
             throws IOException {
         return request(
                 paths,
-                EngineProtocol.whyRequest(dir.toString(), query),
+                ProtoReads.whyRequest(dir.toString(), query),
                 EngineProtocol.WHY_ACK,
                 "why request",
                 cc.jumpkick.engine.protocol.WhyReport::decode);
@@ -550,7 +553,7 @@ final class EngineBuildListenerAdapter {
             EnginePaths.Paths paths, Path dir, Path cache, Path jdksDir) throws IOException {
         return request(
                 paths,
-                EngineProtocol.ideModelRequest(
+                ProtoReads.ideModelRequest(
                         dir.toString(), cache.toString(), jdksDir == null ? null : jdksDir.toString()),
                 EngineProtocol.IDE_MODEL_ACK,
                 "ide-model request",
@@ -562,7 +565,7 @@ final class EngineBuildListenerAdapter {
             EnginePaths.Paths paths, Path dir, String kind, java.util.Map<String, String> params) throws IOException {
         return request(
                 paths,
-                EngineProtocol.generateRequest(dir.toString(), kind, params),
+                ProtoReads.generateRequest(dir.toString(), kind, params),
                 EngineProtocol.GENERATE_ACK,
                 "generate request",
                 cc.jumpkick.engine.protocol.GeneratedFiles::decode);
@@ -574,8 +577,8 @@ final class EngineBuildListenerAdapter {
             throws IOException {
         return request(
                 paths,
-                EngineProtocol.withSession(
-                        EngineProtocol.pluginCommandRequest(dir.toString(), cache.toString(), command, args),
+                ProtoSession.withSession(
+                        ProtoReads.pluginCommandRequest(dir.toString(), cache.toString(), command, args),
                         SessionContext.current().variant(),
                         SessionContext.current().clientEnv(),
                         SessionContext.current().jvm(),
@@ -590,7 +593,7 @@ final class EngineBuildListenerAdapter {
     static cc.jumpkick.engine.protocol.DenyReport denyCheck(EnginePaths.Paths paths, Path dir) throws IOException {
         return request(
                 paths,
-                EngineProtocol.denyCheckRequest(dir.toString()),
+                ProtoReads.denyCheckRequest(dir.toString()),
                 EngineProtocol.DENY_CHECK_ACK,
                 "deny check",
                 cc.jumpkick.engine.protocol.DenyReport::decode);
@@ -599,7 +602,7 @@ final class EngineBuildListenerAdapter {
     static cc.jumpkick.engine.protocol.ProjectInfo projectInfo(EnginePaths.Paths paths, Path dir) throws IOException {
         return request(
                 paths,
-                EngineProtocol.projectInfoRequest(dir.toString(), ""),
+                ProtoReads.projectInfoRequest(dir.toString(), ""),
                 EngineProtocol.PROJECT_INFO_ACK,
                 "project-info request",
                 cc.jumpkick.engine.protocol.ProjectInfo::decode);
@@ -617,8 +620,8 @@ final class EngineBuildListenerAdapter {
             throws IOException {
         return request(
                 paths,
-                EngineProtocol.withSession(
-                        EngineProtocol.execPlanRequest(
+                ProtoSession.withSession(
+                        ProtoReads.execPlanRequest(
                                 dir.toString(),
                                 cache.toString(),
                                 kind,
@@ -647,7 +650,7 @@ final class EngineBuildListenerAdapter {
         Session session = SessionContext.current();
         return request(
                 paths,
-                EngineProtocol.forecastRequest(
+                ProtoReads.forecastRequest(
                         entryDir.toString(),
                         cache.toString(),
                         skipTests,

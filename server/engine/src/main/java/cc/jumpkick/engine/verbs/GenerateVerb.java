@@ -4,6 +4,7 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoReads;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
@@ -44,7 +45,7 @@ public final class GenerateVerb implements HostedVerb {
                 files = cc.jumpkick.runtime.GenerateOps.generate(
                         Path.of(Jsonl.str(requestLine, "dir")),
                         Jsonl.str(requestLine, "kind"),
-                        EngineProtocol.generateParams(requestLine));
+                        ProtoReads.generateParams(requestLine));
             } catch (RuntimeException e) {
                 files = cc.jumpkick.engine.protocol.GeneratedFiles.error(String.valueOf(e.getMessage()));
             }

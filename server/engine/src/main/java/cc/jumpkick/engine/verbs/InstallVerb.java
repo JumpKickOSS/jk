@@ -5,6 +5,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
@@ -61,8 +62,8 @@ public final class InstallVerb implements HostedVerb {
                     cc.jumpkick.run.TestSummary testResult = plan.get(cc.jumpkick.runtime.BuildPlanner.TEST_RESULT)
                             .orElse(null);
                     return testResult == null
-                            ? EngineProtocol.planFinish(dir, result.success())
-                            : EngineProtocol.planFinish(
+                            ? ProtoEvents.planFinish(dir, result.success())
+                            : ProtoEvents.planFinish(
                                     dir,
                                     result.success(),
                                     testResult.total(),

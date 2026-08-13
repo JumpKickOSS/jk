@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -79,7 +80,7 @@ class EngineTakeoverTest {
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader r =
                     new BufferedReader(new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8));
-            w.write(EngineProtocol.hello("probe"));
+            w.write(ProtoLifecycle.hello("probe"));
             w.write('\n');
             w.flush();
             String ack = r.readLine();
