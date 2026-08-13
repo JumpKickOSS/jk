@@ -255,8 +255,9 @@ export function foldEvent(cards, event) {
       const card = resolveCard(cards, d);
       if (card) {
         const mod = moduleRow(card, d.dir, event.at);
-        if (mod.diagnostics.length < MAX_DIAGNOSTICS) {
-          mod.diagnostics.push(normalizeDiagnostic(d));
+        const nd = normalizeDiagnostic(d);
+        if (isTestFailureDiag(nd) || mod.diagnostics.length < MAX_DIAGNOSTICS) {
+          mod.diagnostics.push(nd);
         }
       }
       break;

@@ -368,7 +368,23 @@ test('diagnostics attach to their module by dir, survive finish, and are capped 
   for (let i = 0; i < MAX_DIAGNOSTICS + 5; i++) {
     foldEvent(cards, { type: 'diagnostic', data: { requestId: 1, dir: '/w/core', task: 'p', message: 'm' + i } });
   }
-  assert.equal(core.diagnostics.length, MAX_DIAGNOSTICS); // capped per module
+  assert.equal(core.diagnostics.length, MAX_DIAGNOSTICS); // compile/other still capped
+  const startLen = core.diagnostics.length;
+  for (let i = 0; i < 15; i++) {
+    foldEvent(cards, {
+      type: 'diagnostic',
+      data: {
+        requestId: 1,
+        dir: '/w/core',
+        task: 'run-tests',
+        code: 'test-failure',
+        message: 'fail ' + i,
+        class: 'T',
+        method: 'm' + i + '()',
+      },
+    });
+  }
+  assert.equal(core.diagnostics.length, startLen + 15); // test-failure is not capped
 });
 
 test('module summary counts modules and failures', () => {

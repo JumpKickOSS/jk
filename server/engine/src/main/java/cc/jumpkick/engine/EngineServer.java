@@ -2013,15 +2013,44 @@ public final class EngineServer implements AutoCloseable {
                         requestId));
     }
 
-    /** Failure detail is bounded on the wire: a compile explosion must not flood the event stream. */
-    private static final int MAX_DIAGNOSTIC_EVENTS = 8;
+    /** Compile-error flood cap. {@code test-failure} diagnostics are never dropped (JK-1871). */
+    static final int MAX_DIAGNOSTIC_EVENTS = 8;
+
+    /**
+     * Which diagnostics to put on the live SSE card. Every {@code test-failure} is kept; other
+     * codes (javac, resolve, …) are capped at {@link #MAX_DIAGNOSTIC_EVENTS}.
+     */
+    static java.util.List<BuildPlanResult.Diagnostic> selectPublishedDiagnostics(
+            java.util.List<BuildPlanResult.Diagnostic> errors) {
+        if (errors == null || errors.isEmpty()) return java.util.List.of();
+        java.util.ArrayList<BuildPlanResult.Diagnostic> out = new java.util.ArrayList<>(errors.size());
+        int other = 0;
+        for (BuildPlanResult.Diagnostic d : errors) {
+            if ("test-failure".equals(d.code())) {
+                out.add(d);
+                continue;
+            }
+            if (other < MAX_DIAGNOSTIC_EVENTS) {
+                out.add(d);
+                other++;
+            }
+        }
+        return out;
+    }
+
+    static int unpublishedOtherCount(java.util.List<BuildPlanResult.Diagnostic> errors) {
+        if (errors == null) return 0;
+        int other = 0;
+        for (BuildPlanResult.Diagnostic d : errors) {
+            if (!"test-failure".equals(d.code())) other++;
+        }
+        return Math.max(0, other - MAX_DIAGNOSTIC_EVENTS);
+    }
 
     /** Publish structured {@link BuildPlanResult.Diagnostic}s for a failed request card. */
     private void publishDiagnostics(long requestId, String dir, java.util.List<BuildPlanResult.Diagnostic> errors) {
         if (!eventsWanted() || errors.isEmpty()) return;
-        int shown = Math.min(errors.size(), MAX_DIAGNOSTIC_EVENTS);
-        for (int i = 0; i < shown; i++) {
-            BuildPlanResult.Diagnostic d = errors.get(i);
+        for (BuildPlanResult.Diagnostic d : selectPublishedDiagnostics(errors)) {
             // type "error" matches CLI JsonlShape; SSE event name stays "diagnostic" for the SPA.
             var o = cc.jumpkick.engine.http.JsonOut.object()
                     .put("schema", 1)
@@ -2046,8 +2075,9 @@ public final class EngineServer implements AutoCloseable {
             if (d.test() != null && !d.test().isEmpty()) o.put("test", d.test());
             publishEvent("diagnostic", withProgress(o, requestId));
         }
-        if (errors.size() > shown) {
-            publishRequestError(requestId, dir, "+ " + (errors.size() - shown) + " more errors — see the CLI output");
+        int dropped = unpublishedOtherCount(errors);
+        if (dropped > 0) {
+            publishRequestError(requestId, dir, "+ " + dropped + " more errors — see the CLI output");
         }
     }
 
