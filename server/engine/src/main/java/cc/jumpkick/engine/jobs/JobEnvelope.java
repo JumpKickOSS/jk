@@ -443,8 +443,10 @@ public final class JobEnvelope {
                                                 .put("activeBuildPlans", host.activeBuildPlans()),
                                         eventRequestId),
                                 eventRequestId));
-                host.clearProgress(eventRequestId);
+                // Journal first: clearProgress retires the JobSession (drops the accumulator).
+                // Writing after retire leaves a permanent running=true stub in jk jobs.
                 host.writeJournal(eventRequestId, cancelled, elapsedMillis, writer);
+                host.clearProgress(eventRequestId);
                 // Idle boundary after finish side-effects so prune/GC see journal + event garbage too.
                 // Cache maintenance (plan=false) only GCs when nothing else is in flight.
                 if (plan) host.maybeIdleBoundary();

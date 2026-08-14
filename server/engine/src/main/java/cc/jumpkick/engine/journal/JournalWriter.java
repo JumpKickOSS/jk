@@ -120,7 +120,12 @@ public final class JournalWriter {
 
     public void write(long requestId, boolean cancelled, long millis, @Nullable BufferedWriter writer) {
         BuildAccumulator a = sessions.takeAccumulator(requestId);
-        if (a == null) return;
+        if (a == null) {
+            // Usually means clearProgress/retire ran first — leaves a permanent running=true journal
+            // stub (jk jobs "Building" forever). Surface it; do not silently drop.
+            log.accept("jk engine: build journal skip requestId=" + requestId + " (no accumulator)");
+            return;
+        }
         try {
             long finishedAt = clock.getAsLong();
             String commit = gitCommit(a.dir());
