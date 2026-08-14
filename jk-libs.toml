@@ -1,18 +1,4 @@
 # SPDX-License-Identifier: Apache-2.0
-#
-# Self-host catalog pins (JK-1840). Workspace short-name -> group:artifact, the top layer of
-# the catalog chain (project -> system global -> bundled). jk's own manifests resolve their
-# short names HERE, so an edited/compromised registry catalog (the downloaded
-# libs.global.toml shadows the bundled floor) can never silently repoint jk's own
-# dependencies at the next re-lock (the JK-1811/JK-1812 hazard class).
-#
-# Keep every catalog-resolved short name used by any workspace jk.toml in this table, with
-# the same GA the bundled catalog ships. SelfHostingTomlTest#catalog_pins_cover_every
-# _self_host_short_name fails when a manifest starts using a short name missing here, and
-# when a pin drifts from the bundled coordinate.
-#
-# Name -> GA only. Versions live in the manifests / jk-lock.toml, never here.
-
 [libraries]
 apksig = "com.android.tools.build:apksig"
 asm = "org.ow2.asm:asm"

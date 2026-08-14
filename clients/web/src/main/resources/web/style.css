@@ -822,6 +822,9 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 .det-focus { color: var(--bright); font-weight: 700; }
 .det-path { color: var(--path); }
 .det-coord { color: var(--cn); }
+.det-jdk { color: var(--cn); }           /* ensure-jdk product name — CLI Theme.cyan */
+.det-bar-fill { color: var(--run); }     /* ▰ — CLI Theme.blue */
+.det-bar-empty { color: var(--dim); }    /* ▱ — CLI Theme.darkGray */
 .det-dim { color: var(--dim); }
 .phase-steps {
   display: flex;

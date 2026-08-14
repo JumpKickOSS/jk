@@ -273,8 +273,8 @@ public final class EngineStatusCommand implements CliCommand {
 
     /**
      * A stacked heap bar aligned under the memory value: {@code used} in bright-cyan, {@code
-     * committed}-beyond-used in cyan, and the rest (up to {@code max}) in bright-black. {@code null}
-     * when the heap max isn't observable (nothing to scale against).
+     * committed}-beyond-used in indigo, and the rest (up to {@code max}) in bright-black. {@code
+     * null} when the heap max isn't observable (nothing to scale against).
      */
     private static String memoryBar(EngineClient.Status s) {
         long max = s.heapMaxBytes();
@@ -284,7 +284,7 @@ public final class EngineStatusCommand implements CliCommand {
         int committed = clamp((int) Math.round((double) s.heapCommittedBytes() / max * width), used, width);
         Theme t = Theme.active();
         return Theme.colorize("▰".repeat(used), t.brightCyan())
-                + Theme.colorize("▰".repeat(committed - used), t.blue())
+                + Theme.colorize("▰".repeat(committed - used), t.indigo())
                 + Theme.colorize("▱".repeat(width - committed), t.darkGray());
     }
 

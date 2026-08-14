@@ -43,6 +43,7 @@ public final class JkDarkTheme implements Theme {
     public static final Rgb PIPELINE_GREEN = NORMAL_GREEN.darker(0.30); // deep green × 0.7 — build wedge background
     public static final Rgb NORMAL_YELLOW = Rgb.hex(0xFFB800); // web --warn (neon amber)
     public static final Rgb NORMAL_BLUE = Rgb.hex(0x3D9BFF); // web --run (neon electric blue)
+    public static final Rgb INDIGO = Rgb.hex(0x3F51B5); // web --indigo (Material indigo)
     public static final Rgb NORMAL_MAGENTA = Rgb.hex(0xC04DFF); // web --prog-b (neon violet)
     public static final Rgb NORMAL_CYAN = Rgb.hex(0x00D4E0); // web --cg (neon cyan, secondary)
     public static final Rgb HEADER_BLUE = Rgb.hex(0x0F4786); // dark royal blue (#1565C0 × 0.7)
@@ -215,6 +216,11 @@ public final class JkDarkTheme implements Theme {
     @Override
     public AttributedStyle blue() {
         return withColor(AttributedStyle.DEFAULT, BRIGHT_BLUE);
+    }
+
+    @Override
+    public AttributedStyle indigo() {
+        return withColor(AttributedStyle.DEFAULT, INDIGO);
     }
 
     @Override

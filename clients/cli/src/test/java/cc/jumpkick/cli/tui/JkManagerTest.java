@@ -934,6 +934,31 @@ class JkManagerTest {
     }
 
     @Test
+    void jdk_download_detail_is_cyan_name_blue_bar_gray_percent() {
+        Theme t = Theme.active();
+        String detail = "downloading Temurin 25 ▰▰▰▰▰▱▱▱▱▱ 50%";
+        String painted = JkManager.colorDetail("Resolve", detail, t);
+        assertThat(TestAnsi.strip(painted)).isEqualTo(detail);
+        assertThat(painted).contains(Theme.colorize("downloading", t.midGray()));
+        assertThat(painted).contains(Theme.colorize("Temurin 25", t.cyan()));
+        assertThat(painted).contains(Theme.colorize("▰", t.blue()));
+        assertThat(painted).contains(Theme.colorize("▱", t.darkGray()));
+        assertThat(painted).contains(Theme.colorize("50%", t.midGray()));
+        assertThat(painted).doesNotContain(Theme.colorize("50", t.warning()));
+    }
+
+    @Test
+    void jdk_install_detail_swaps_the_verb() {
+        Theme t = Theme.active();
+        String detail = "installing Temurin 25 ▰▰▰▰▰▰▰▰▰▰ 100%";
+        String painted = JkManager.colorDetail("Resolve", detail, t);
+        assertThat(TestAnsi.strip(painted)).isEqualTo(detail);
+        assertThat(painted).contains(Theme.colorize("installing", t.midGray()));
+        assertThat(painted).contains(Theme.colorize("Temurin 25", t.cyan()));
+        assertThat(painted).contains(Theme.colorize("100%", t.midGray()));
+    }
+
+    @Test
     void fetch_detail_colors_library_short_name() {
         String painted = JkManager.colorDetail("Resolve", "fetched jackson-core", Theme.active());
         assertThat(TestAnsi.strip(painted)).isEqualTo("fetched jackson-core");

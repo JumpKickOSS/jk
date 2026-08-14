@@ -79,6 +79,9 @@ public interface Theme {
     /** Blue — used elsewhere; no longer a gradient endpoint. */
     AttributedStyle blue();
 
+    /** Material indigo ({@code #3F51B5}) — the web {@code --indigo} token. */
+    AttributedStyle indigo();
+
     /** Brand primary — neon electric blue, the brand base color (Jk Dark primary, {@code #3D9BFF}). */
     AttributedStyle primary();
 
@@ -339,6 +342,7 @@ public interface Theme {
             case "success", "green" -> success();
             case "warning", "yellow" -> warning();
             case "blue" -> blue();
+            case "indigo" -> indigo();
             case "primary", "plan" -> primary();
             case "cyan" -> cyan();
             case "black" -> black();

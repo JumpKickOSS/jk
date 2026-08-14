@@ -63,6 +63,11 @@ public final class JkManagerColor {
             body = detail.substring(0, w);
             worker = detail.substring(w);
         }
+        // ensure-jdk: "downloading Temurin 25 ▰▰▰▰▰▱▱▱▱▱ 50%" — cyan name, blue/gray bar.
+        String jdkPainted = colorJdkProgressDetail(body, t);
+        if (jdkPainted != null) {
+            return worker.isEmpty() ? jdkPainted : jdkPainted + Theme.colorize(worker, t.midGray());
+        }
         // native-image: "{bin} · classpath input size: ~N MiB" — path color + bold white size.
         String nativePainted = colorNativeClasspathSizeDetail(body, t);
         if (nativePainted != null) {
@@ -78,6 +83,30 @@ public final class JkManagerColor {
                 : colorProseDetail(body, t);
         if (worker.isEmpty()) return painted;
         return painted + Theme.colorize(worker, t.midGray());
+    }
+
+    /**
+     * Paint {@code downloading Temurin 25 ▰▰▰▰▰▱▱▱▱▱ 50%} / {@code installing … 100%}: verb and
+     * percent mid-gray, product name cyan, filled bar cells blue, empty cells dark gray.
+     */
+    static String colorJdkProgressDetail(String detail, Theme t) {
+        cc.jumpkick.jdk.JdkProgressLabel.Parsed p = cc.jumpkick.jdk.JdkProgressLabel.tryParse(detail);
+        if (p == null) return null;
+        StringBuilder out = new StringBuilder(detail.length() + 64);
+        out.append(Theme.colorize(p.verb(), t.midGray()));
+        out.append(Theme.colorize(" ", t.midGray()));
+        out.append(Theme.colorize(p.name(), t.cyan()));
+        if (p.hasBar()) {
+            out.append(Theme.colorize(" ", t.midGray()));
+            for (int i = 0; i < p.bar().length(); i++) {
+                char c = p.bar().charAt(i);
+                out.append(Theme.colorize(
+                        String.valueOf(c), c == cc.jumpkick.jdk.JdkProgressLabel.FILLED ? t.blue() : t.darkGray()));
+            }
+            out.append(Theme.colorize(" ", t.midGray()));
+            out.append(Theme.colorize(p.percent() + "%", t.midGray()));
+        }
+        return out.toString();
     }
 
     /**

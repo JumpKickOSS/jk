@@ -1141,6 +1141,20 @@ test('detailSegments syntax-highlights test members and mid-grays prose', () => 
   assert.ok(withWorker.some((s) => s.cls === 'det-mid' && s.text === '  [w2]'));
 });
 
+test('detailSegments paints ensure-jdk download and install labels', () => {
+  const down = detailSegments('downloading Temurin 25 ▰▰▰▰▰▱▱▱▱▱ 50%');
+  assert.ok(down.some((s) => s.cls === 'det-mid' && s.text === 'downloading'));
+  assert.ok(down.some((s) => s.cls === 'det-jdk' && s.text === 'Temurin 25'));
+  assert.ok(down.filter((s) => s.cls === 'det-bar-fill' && s.text === '▰').length === 5);
+  assert.ok(down.filter((s) => s.cls === 'det-bar-empty' && s.text === '▱').length === 5);
+  assert.ok(down.some((s) => s.cls === 'det-mid' && s.text === '50%'));
+
+  const inst = detailSegments('installing Temurin 25 ▰▰▰▰▰▰▰▰▰▰ 100%');
+  assert.ok(inst.some((s) => s.cls === 'det-mid' && s.text === 'installing'));
+  assert.ok(inst.some((s) => s.cls === 'det-jdk' && s.text === 'Temurin 25'));
+  assert.ok(inst.filter((s) => s.cls === 'det-bar-fill').length === 10);
+});
+
 test('request-finish folds the run\'s byte counters onto the card', () => {
   const cards = [];
   foldEvent(cards, start(1, '/w'));

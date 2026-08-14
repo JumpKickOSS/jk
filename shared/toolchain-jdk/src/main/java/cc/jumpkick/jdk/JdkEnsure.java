@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
-import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
@@ -57,6 +56,22 @@ public final class JdkEnsure {
             java.util.function.Consumer<String> warn,
             boolean allowInstall)
             throws IOException, InterruptedException {
+        return ensure(projectDir, jdksDirOverride, build, lock, warn, allowInstall, JdkInstallListener.NO_OP);
+    }
+
+    /**
+     * As {@link #ensure(Path, Path, JkBuild, Lockfile, java.util.function.Consumer, boolean)}
+     * with a progress sink for a missing-JDK install.
+     */
+    public static Outcome ensure(
+            Path projectDir,
+            Path jdksDirOverride,
+            JkBuild build,
+            Lockfile lock,
+            java.util.function.Consumer<String> warn,
+            boolean allowInstall,
+            JdkInstallListener progress)
+            throws IOException, InterruptedException {
         return ensure(
                 projectDir,
                 jdksDirOverride,
@@ -64,7 +79,8 @@ public final class JdkEnsure {
                 (build != null && build.project() != null) ? build.project().javaRelease() : 0,
                 lock != null ? lock.jdk() : null,
                 warn,
-                allowInstall);
+                allowInstall,
+                progress);
     }
 
     /**
@@ -80,6 +96,32 @@ public final class JdkEnsure {
             String lockJdkId,
             java.util.function.Consumer<String> warn,
             boolean allowInstall)
+            throws IOException, InterruptedException {
+        return ensure(
+                projectDir,
+                jdksDirOverride,
+                projectJdkSpec,
+                javaRelease,
+                lockJdkId,
+                warn,
+                allowInstall,
+                JdkInstallListener.NO_OP);
+    }
+
+    /**
+     * As {@link #ensure(Path, Path, String, int, String, java.util.function.Consumer, boolean)}
+     * with a progress sink for a missing-JDK install (TUI {@code downloading}/{@code installing}
+     * labels). Already-on-disk resolution does not call {@code progress}.
+     */
+    public static Outcome ensure(
+            Path projectDir,
+            Path jdksDirOverride,
+            String projectJdkSpec,
+            int javaRelease,
+            String lockJdkId,
+            java.util.function.Consumer<String> warn,
+            boolean allowInstall,
+            JdkInstallListener progress)
             throws IOException, InterruptedException {
         JdkRegistry registry = jdksDirOverride != null ? new JdkRegistry(jdksDirOverride) : new JdkRegistry();
         GlobalDefaultJdk defaults = GlobalDefaultJdk.current();
@@ -115,7 +157,7 @@ public final class JdkEnsure {
 
         // A named pin (or the bootstrap latest-LTS) isn't on disk — install it.
         String spec = r.installSpec();
-        InstalledJdk installed = install(spec, registry, warn);
+        InstalledJdk installed = install(spec, registry, warn, progress);
 
         // A bootstrap install (no JDK was pinned or configured) becomes the
         // de-facto default — but only when no default is set yet, and only for
@@ -140,10 +182,11 @@ public final class JdkEnsure {
      */
     public static InstalledJdk install(String spec, java.util.function.Consumer<String> warn)
             throws IOException, InterruptedException {
-        return install(spec, new JdkRegistry(), warn);
+        return install(spec, new JdkRegistry(), warn, JdkInstallListener.NO_OP);
     }
 
-    private static InstalledJdk install(String spec, JdkRegistry registry, java.util.function.Consumer<String> warn)
+    private static InstalledJdk install(
+            String spec, JdkRegistry registry, java.util.function.Consumer<String> warn, JdkInstallListener progress)
             throws IOException, InterruptedException {
         if (!HostPlatform.supported()) {
             throw new IOException("host "
@@ -161,6 +204,35 @@ public final class JdkEnsure {
             throw new IOException(
                     "no JDK matches " + spec + " on " + HostPlatform.currentOs() + "/" + HostPlatform.currentArch());
         }
-        return new JdkInstaller(new Http(), registry).install(entry.get());
+        JdkCatalog.Entry chosen = entry.get();
+        String name = JdkProgressLabel.compactName(chosen);
+        JdkInstallListener sink = progress == null ? JdkInstallListener.NO_OP : progress;
+        JdkInstallListener named = new JdkInstallListener() {
+            @Override
+            public void onDownloadStart(String ignored, long totalBytes) {
+                sink.onDownloadStart(name, totalBytes);
+            }
+
+            @Override
+            public void onDownloadProgress(long readBytes, long totalBytes) {
+                sink.onDownloadProgress(readBytes, totalBytes);
+            }
+
+            @Override
+            public void onExtractStart(String ignored) {
+                sink.onExtractStart(name);
+            }
+
+            @Override
+            public void onInstalled(InstalledJdk jdk) {
+                sink.onInstalled(jdk);
+            }
+
+            @Override
+            public void onAlreadyInstalled(InstalledJdk jdk) {
+                sink.onAlreadyInstalled(jdk);
+            }
+        };
+        return new JdkService().install(chosen, registry, false, named);
     }
 }
