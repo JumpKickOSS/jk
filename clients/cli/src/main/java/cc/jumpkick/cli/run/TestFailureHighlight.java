@@ -365,7 +365,7 @@ public final class TestFailureHighlight {
             if (m == null || m.equals("@@src-end") || !m.startsWith("@@src ")) continue;
             SrcRow row = parseSrcRow(m);
             if (row == null) continue;
-            String code = clampCode(expandTabs(row.code), budget);
+            String code = clampCode(expandTabs(row.code), budget, t.isAnsi());
             row = new SrcRow(row.num, row.error, code);
             rows.add(row);
             maxCode = Math.max(maxCode, row.code.length());
@@ -405,9 +405,15 @@ public final class TestFailureHighlight {
         return sb.toString();
     }
 
-    private static String clampCode(String code, int budget) {
+    private static String clampCode(String code, int budget, boolean ansi) {
         if (code.length() <= budget) return code;
-        return code.substring(0, Math.max(1, budget - 1)) + "…";
+        // Plain mode stays pure ASCII (JK-1910/JK-1949): the clamp ran before the ANSI/plain fork
+        // and re-leaked U+2026 into output the ASCII pass had just cleaned. Reserve the marker's
+        // own columns, and never cut a surrogate pair in half.
+        String ellipsis = ansi ? "…" : "...";
+        int cut = Math.max(1, budget - ellipsis.length());
+        if (Character.isHighSurrogate(code.charAt(cut - 1))) cut = Math.max(1, cut - 1);
+        return code.substring(0, cut) + ellipsis;
     }
 
     private record SrcRow(String num, boolean error, String code) {}

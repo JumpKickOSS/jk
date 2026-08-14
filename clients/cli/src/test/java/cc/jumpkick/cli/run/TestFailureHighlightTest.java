@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import java.util.List;
+import java.util.Optional;
 import org.jline.utils.AttributedString;
 import org.junit.jupiter.api.Test;
 
@@ -183,6 +184,38 @@ class TestFailureHighlightTest {
                         "\n",
                         painted.stream().map(TestFailureHighlightTest::plain).toList()))
                 .contains("…");
+    }
+
+    @Test
+    void plain_mode_snippet_clamp_stays_pure_ascii() throws Exception {
+        // JK-1949: clampCode appended U+2026 before the ANSI/plain fork, re-leaking a non-ASCII
+        // char into output JK-1910 had just made pure ASCII on CI/dumb terminals.
+        String longLine = "        assertThat(x)" + ".describedAs(\"padding\")".repeat(20) + ";";
+        List<String> raw = List.of(
+                "Test Failure",
+                "1 test failed",
+                "",
+                "FAILED Foo.bar()",
+                "",
+                "@@source line=2 start=1 lang=java path=Foo.java",
+                "@@src 1|int ok = 1;",
+                "@@src 2*|" + longLine,
+                "@@src-end",
+                "Test Failure end");
+        cc.jumpkick.config.JkConfig noAnsi = cc.jumpkick.config.JkConfig.empty().withNoAnsi(Optional.of(true));
+        cc.jumpkick.config.Session original = cc.jumpkick.config.SessionContext.current();
+        List<String> painted;
+        try {
+            painted = cc.jumpkick.config.SessionContext.where(
+                    original.withConfig(noAnsi), () -> TestFailureHighlight.paintLines(raw));
+        } finally {
+            cc.jumpkick.config.SessionContext.install(original);
+        }
+        String all = String.join("\n", painted);
+        assertThat(all.chars().allMatch(c -> c < 128))
+                .as("plain mode output must be pure ASCII, got: %s", all)
+                .isTrue();
+        assertThat(all).contains("...");
     }
 
     @Test
