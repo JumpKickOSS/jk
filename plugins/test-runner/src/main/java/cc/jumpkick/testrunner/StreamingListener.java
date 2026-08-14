@@ -111,6 +111,13 @@ final class StreamingListener implements EngineExecutionListener {
     }
 
     /**
+     * Bound for a failure message on the wire — keep in lock-step with the engine aggregator's
+     * {@code JUnitLauncher.ResultAggregator.MAX_MESSAGE_CHARS} (JK-1948). Capping here bounds the
+     * JSONL line itself; the engine re-caps for workers that predate this.
+     */
+    private static final int MAX_MESSAGE_CHARS = 8_192;
+
+    /**
      * Render a throwable in a form the parent process can display without needing the failure's
      * classes on its own classpath. {@code stack} is a single string ({@code printStackTrace} text).
      */
@@ -119,7 +126,14 @@ final class StreamingListener implements EngineExecutionListener {
         t.printStackTrace(new PrintWriter(sw));
         var map = new LinkedHashMap<String, Object>();
         map.put("class", t.getClass().getName());
-        map.put("message", t.getMessage() == null ? "" : t.getMessage());
+        String message = t.getMessage() == null ? "" : t.getMessage();
+        if (message.length() > MAX_MESSAGE_CHARS) {
+            int cut = MAX_MESSAGE_CHARS;
+            if (Character.isHighSurrogate(message.charAt(cut - 1))) cut--;
+            message =
+                    message.substring(0, cut) + " ... message truncated (" + (message.length() - cut) + " more chars)";
+        }
+        map.put("message", message);
         map.put("stack", sw.toString()); // single string — not a line array
         return map;
     }

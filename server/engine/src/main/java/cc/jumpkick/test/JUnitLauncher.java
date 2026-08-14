@@ -888,6 +888,7 @@ public final class JUnitLauncher {
             if (exClass == null) exClass = "?";
             String message = throwableJson != null ? Jsonl.str(throwableJson, "message") : null;
             if (message == null) message = "";
+            message = truncateMessage(message);
             String stack = readStack(throwableJson);
             String className = classNameOf(json);
             String method = methodOf(json);
@@ -991,6 +992,24 @@ public final class JUnitLauncher {
             int cut = stack.lastIndexOf('\n', MAX_STACK_CHARS);
             if (cut <= 0) cut = MAX_STACK_CHARS;
             return stack.substring(0, cut) + "\n\t... stack truncated (" + (stack.length() - cut) + " more chars)";
+        }
+
+        /**
+         * Bound for a single failure's message. Same rationale as {@link #MAX_STACK_CHARS}
+         * (JK-1948): the message is worker-controlled input that rides every downstream copy —
+         * wire, SSE, journal, web card — and an {@code assertEquals} diff of two multi-MB strings
+         * otherwise puts hundreds of MB of transients through the engine for one bad suite. The
+         * copy of the message inside the stack's first line was already bounded; the field itself
+         * was not. {@code StreamingListener} applies the same cap worker-side so the JSONL line is
+         * bounded on the wire too; this cap covers workers that predate it.
+         */
+        static final int MAX_MESSAGE_CHARS = 8_192;
+
+        static String truncateMessage(String message) {
+            if (message == null || message.length() <= MAX_MESSAGE_CHARS) return message;
+            int cut = MAX_MESSAGE_CHARS;
+            if (Character.isHighSurrogate(message.charAt(cut - 1))) cut--;
+            return message.substring(0, cut) + " ... message truncated (" + (message.length() - cut) + " more chars)";
         }
 
         synchronized TestSummary toResult(int exitCode) {

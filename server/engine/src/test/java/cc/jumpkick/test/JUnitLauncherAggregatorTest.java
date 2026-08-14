@@ -55,6 +55,23 @@ class JUnitLauncherAggregatorTest {
     }
 
     @Test
+    void pathological_messages_are_truncated_at_capture() {
+        // Same rationale as the stack cap (JK-1948): an assertEquals diff of two multi-MB
+        // strings is a single-line message that rides wire, SSE, journal, and web card.
+        String message = "expected: <" + "x".repeat(3_000_000) + "> but was: <y>";
+        String truncated = JUnitLauncher.ResultAggregator.truncateMessage(message);
+        assertThat(truncated.length()).isLessThanOrEqualTo(JUnitLauncher.ResultAggregator.MAX_MESSAGE_CHARS + 64);
+        assertThat(truncated).contains("... message truncated (");
+        assertThat(JUnitLauncher.ResultAggregator.truncateMessage("short")).isEqualTo("short");
+        // A cut landing on a surrogate pair backs off one char instead of emitting a lone surrogate.
+        String astral = "a".repeat(JUnitLauncher.ResultAggregator.MAX_MESSAGE_CHARS - 1) + "😀tail";
+        String cutAstral = JUnitLauncher.ResultAggregator.truncateMessage(astral);
+        assertThat(cutAstral).doesNotContain("😀");
+        assertThat(Character.isHighSurrogate(cutAstral.charAt(cutAstral.indexOf(" ... message truncated") - 1)))
+                .isFalse();
+    }
+
+    @Test
     void container_events_do_not_count_toward_test_totals() {
         // JUnit fires FINISHED for engine roots and test classes too — those
         // are CONTAINER nodes and must not inflate the test count.
