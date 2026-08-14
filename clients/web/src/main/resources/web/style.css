@@ -1971,7 +1971,7 @@ main.code-view { max-width: min(96rem, 100%); display: flex; flex-direction: col
 /* 4px of breathing room so the editor's gutter and minimap are not flush with the pane border.
  * box-sizing is border-box globally, and Monaco sizes itself off the content box, so it lays out
  * inside the inset instead of overflowing it. */
-.code-editor { height: 100%; min-width: 0; padding: 4px; }
+.code-editor { height: 100%; min-width: 0; padding: 8px; }
 /* ?line= target, drawn by Monaco decorations (lineDecorations in code.js). */
 .code-line-hl { background: rgba(255, 255, 255, 0.08); }
 .code-line-hl-gutter { border-left: 2px solid var(--cn); }
