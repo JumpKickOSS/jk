@@ -1965,7 +1965,10 @@ main.code-view { max-width: min(96rem, 100%); display: flex; flex-direction: col
 .code-empty p { margin: 0; }
 .code-empty-head { font: 600 13px var(--mono); color: var(--mu); }
 .code-empty-sub { font: 400 11.5px var(--mono); color: var(--dim); }
-.code-editor { height: 100%; min-width: 0; }
+/* 4px of breathing room so the editor's gutter and minimap are not flush with the pane border.
+ * box-sizing is border-box globally, and Monaco sizes itself off the content box, so it lays out
+ * inside the inset instead of overflowing it. */
+.code-editor { height: 100%; min-width: 0; padding: 4px; }
 /* ?line= target, drawn by Monaco decorations (lineDecorations in code.js). */
 .code-line-hl { background: rgba(255, 255, 255, 0.08); }
 .code-line-hl-gutter { border-left: 2px solid var(--cn); }
