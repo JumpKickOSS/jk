@@ -868,11 +868,15 @@ class HttpEngineServerTest {
             assertThat(plus.body()).contains("class APlusB");
 
             HttpResponse<String> amp = get("/api/project/file?project=" + id + "&path=src%2FA%26B.java");
-            assertThat(amp.statusCode()).as("encoded ampersand does not split the value").isEqualTo(200);
+            assertThat(amp.statusCode())
+                    .as("encoded ampersand does not split the value")
+                    .isEqualTo(200);
             assertThat(amp.body()).contains("class AAmpB");
 
             HttpResponse<String> pct = get("/api/project/file?project=" + id + "&path=src%2FA%252.java");
-            assertThat(pct.statusCode()).as("literal percent decodes once, not twice").isEqualTo(200);
+            assertThat(pct.statusCode())
+                    .as("literal percent decodes once, not twice")
+                    .isEqualTo(200);
             assertThat(pct.body()).contains("class APct");
 
             // Double-encoded traversal must decode to a literal ".." segment and be rejected.

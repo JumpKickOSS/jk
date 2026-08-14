@@ -231,8 +231,8 @@ final class HttpProjectApi {
                 return;
             }
             projectDir = Path.of(dir);
-            scopes = cc.jumpkick.resolver.DependencyGraphModel.parseScopes(
-                    HttpEngineServer.queryParam(query, "scopes"));
+            scopes =
+                    cc.jumpkick.resolver.DependencyGraphModel.parseScopes(HttpEngineServer.queryParam(query, "scopes"));
         } catch (IllegalArgumentException e) {
             HttpEngineServer.sendJson(
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());

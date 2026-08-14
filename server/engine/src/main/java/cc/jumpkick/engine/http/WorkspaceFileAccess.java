@@ -5,15 +5,11 @@ import cc.jumpkick.builds.ProjectIdentity;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileVisitOption;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -130,46 +126,61 @@ final class WorkspaceFileAccess {
         return true;
     }
 
+    /**
+     * Breadth-first listing bounded at {@link #MAX_LIST_FILES} entries (JK-1944). Truncation
+     * therefore trims the deepest leaves — the old walk sorted everything lexically and kept the
+     * first 2000, so a big workspace lost {@code jk.toml} and the whole tail of the alphabet
+     * (including the pane's default file), and the walk materialised every servable path before
+     * the cap. The workspace-root {@code jk.toml} is pre-seeded so the default-open contract
+     * survives any truncation. Prune rules match {@link #servable}: the per-file ancestor re-walk
+     * the old visitor paid (~depth×8 stats per file) is unnecessary because ancestors are pruned
+     * before descent.
+     */
     static FileList list(Path root) throws IOException {
         Path absRoot = root.toAbsolutePath().normalize();
         List<ListedFile> collected = new ArrayList<>();
-        Files.walkFileTree(absRoot, EnumSet.noneOf(FileVisitOption.class), MAX_WALK_DEPTH, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
-                if (dir.equals(absRoot)) return FileVisitResult.CONTINUE;
-                Path name = dir.getFileName();
-                String n = name == null ? "" : name.toString();
-                if (n.startsWith(".") || n.equals("node_modules") || isSkippedOutputDir(dir)) {
-                    return FileVisitResult.SKIP_SUBTREE;
+        boolean rootManifest = Files.isRegularFile(absRoot.resolve("jk.toml"));
+        if (rootManifest) collected.add(new ListedFile("jk.toml", langOf("jk.toml")));
+        boolean truncated = false;
+        List<Path> level = List.of(absRoot);
+        for (int depth = 0; depth < MAX_WALK_DEPTH && !level.isEmpty() && !truncated; depth++) {
+            List<Path> next = new ArrayList<>();
+            for (Path dir : level) {
+                if (truncated) break;
+                try (var entries = Files.newDirectoryStream(dir)) {
+                    for (Path entry : entries) {
+                        Path name = entry.getFileName();
+                        String n = name == null ? "" : name.toString();
+                        if (n.startsWith(".") || n.equals("node_modules")) continue;
+                        BasicFileAttributes attrs;
+                        try {
+                            attrs = Files.readAttributes(
+                                    entry, BasicFileAttributes.class, java.nio.file.LinkOption.NOFOLLOW_LINKS);
+                        } catch (IOException unreadable) {
+                            continue;
+                        }
+                        if (attrs.isDirectory()) {
+                            if (!isSkippedOutputDir(entry)) next.add(entry);
+                            continue;
+                        }
+                        String lang = langOf(n);
+                        if (lang == null) continue;
+                        String posix = absRoot.relativize(entry).toString().replace('\\', '/');
+                        if (rootManifest && posix.equals("jk.toml")) continue; // pre-seeded
+                        if (collected.size() >= MAX_LIST_FILES) {
+                            truncated = true;
+                            break;
+                        }
+                        collected.add(new ListedFile(posix, lang));
+                    }
+                } catch (IOException unreadable) {
+                    // skip unreadable dirs, keep walking the rest of the level
                 }
-                return FileVisitResult.CONTINUE;
             }
-
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                Path rel;
-                try {
-                    rel = absRoot.relativize(file);
-                } catch (IllegalArgumentException e) {
-                    return FileVisitResult.CONTINUE;
-                }
-                String posix = rel.toString().replace('\\', '/');
-                String lang = langOf(file.getFileName().toString());
-                if (lang != null && servable(absRoot, posix)) {
-                    collected.add(new ListedFile(posix, lang));
-                }
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFileFailed(Path file, IOException exc) {
-                return FileVisitResult.CONTINUE;
-            }
-        });
+            level = next;
+        }
         collected.sort(Comparator.comparing(ListedFile::path));
-        boolean truncated = collected.size() > MAX_LIST_FILES;
-        List<ListedFile> files = truncated ? List.copyOf(collected.subList(0, MAX_LIST_FILES)) : List.copyOf(collected);
-        return new FileList(absRoot, files, truncated);
+        return new FileList(absRoot, List.copyOf(collected), truncated);
     }
 
     static ReadResult read(Path root, @Nullable String rawRel) {

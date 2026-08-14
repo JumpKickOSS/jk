@@ -149,7 +149,9 @@ fallback — a tree that merely contains a `jk.toml` is not enough.
 Response: `{ projectId, dir, truncated, files: [{ path, lang }] }`. `path` is workspace-relative
 with `/` separators. `lang` is `java` / `kotlin` / `groovy` / `toml` / `json` / `markdown`. Hidden
 segments, `node_modules`, module-root `target`/`build`/`out`, and unknown extensions are omitted.
-The walk is capped at 2000 files after a path sort; `truncated: true` means more remain.
+The walk is breadth-first and capped at 2000 files, so truncation drops the deepest paths
+first; the workspace-root `jk.toml` is always included when it exists. Entries are sorted by
+path; `truncated: true` means more remain.
 
 Errors: missing `project` → **400**; unknown id or missing checkout → **404**. Token-gated.
 

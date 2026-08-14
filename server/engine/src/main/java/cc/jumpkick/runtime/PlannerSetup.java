@@ -10,6 +10,8 @@ import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkEnsure;
+import cc.jumpkick.jdk.JdkInstallListener;
+import cc.jumpkick.jdk.JdkProgressLabel;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -20,6 +22,7 @@ import cc.jumpkick.resolver.CacheSync;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
@@ -348,8 +351,14 @@ public final class PlannerSetup {
                     Lockfile lock = ctx.require(LOCKFILE);
                     JkBuild project = ctx.require(PROJECT);
                     try {
-                        JdkEnsure.Outcome outcome =
-                                JdkEnsure.ensure(in.dir(), in.jdksDir(), project, lock, m -> ctx.warn("jdk", m));
+                        JdkEnsure.Outcome outcome = JdkEnsure.ensure(
+                                in.dir(),
+                                in.jdksDir(),
+                                project,
+                                lock,
+                                m -> ctx.warn("jdk", m),
+                                true,
+                                new EnsureJdkProgress(ctx));
                         // JAVA_HOME is published HERE, not in parse-build: resolving before the
                         // ensure meant the FIRST build against a never-installed pin snapshotted
                         // the running JVM and compiled/tested on the wrong JDK (self-healing on
@@ -369,5 +378,50 @@ public final class PlannerSetup {
                     ctx.progress(1);
                 })
                 .build();
+    }
+
+    /**
+     * Live {@code ensure-jdk} detail: {@code downloading Temurin 25 ▰…▱ 50%} then
+     * {@code installing … 100%}. Percent-throttled so the wire coalescer is not flooded.
+     */
+    static final class EnsureJdkProgress implements JdkInstallListener {
+        private final TaskContext ctx;
+        private volatile String name = "JDK";
+        private volatile int lastPct = Integer.MIN_VALUE;
+
+        EnsureJdkProgress(TaskContext ctx) {
+            this.ctx = ctx;
+        }
+
+        @Override
+        public void onDownloadStart(String label, long totalBytes) {
+            if (label != null && !label.isBlank()) name = label;
+            lastPct = Integer.MIN_VALUE;
+            emitDownload(0, totalBytes);
+        }
+
+        @Override
+        public void onDownloadProgress(long readBytes, long totalBytes) {
+            emitDownload(readBytes, totalBytes);
+        }
+
+        @Override
+        public void onExtractStart(String label) {
+            if (label != null && !label.isBlank()) name = label;
+            ctx.label(JdkProgressLabel.installing(name));
+        }
+
+        private void emitDownload(long read, long total) {
+            if (total <= 0) {
+                if (lastPct == -1) return;
+                lastPct = -1;
+                ctx.label(JdkProgressLabel.downloading(name, 0, 0));
+                return;
+            }
+            int pct = JdkProgressLabel.percent(read, total);
+            if (pct == lastPct) return;
+            lastPct = pct;
+            ctx.label(JdkProgressLabel.downloading(name, read, total));
+        }
     }
 }

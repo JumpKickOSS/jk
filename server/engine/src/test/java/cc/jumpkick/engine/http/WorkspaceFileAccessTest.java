@@ -9,6 +9,7 @@ import cc.jumpkick.engine.http.WorkspaceFileAccess.ReadResult;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -158,7 +159,7 @@ class WorkspaceFileAccessTest {
     }
 
     @Test
-    void list_sorts_then_caps(@TempDir Path root) throws Exception {
+    void list_caps_and_stays_sorted(@TempDir Path root) throws Exception {
         writeJkToml(root, "demo");
         Files.createDirectories(root.resolve("src"));
         for (int i = 0; i < 2010; i++) {
@@ -168,9 +169,41 @@ class WorkspaceFileAccessTest {
         assertThat(list.truncated()).isTrue();
         assertThat(list.files()).hasSize(WorkspaceFileAccess.MAX_LIST_FILES);
         assertThat(list.files().getFirst().path()).isEqualTo("jk.toml");
-        assertThat(list.files().get(1).path()).isEqualTo("src/f-0000.java");
-        assertThat(list.files().getLast().path()).isEqualTo("src/f-1998.java");
-        assertThat(list.files()).noneMatch(f -> f.path().equals("src/f-2009.java"));
+        assertThat(list.files()).isSortedAccordingTo(Comparator.comparing(f -> f.path()));
+    }
+
+    @Test
+    void truncation_never_drops_the_root_manifest(@TempDir Path root) throws Exception {
+        // JK-1944: the old walk sorted lexically and kept the first 2000, so 2000+ files sorting
+        // before "jk.toml" amputated the default file (empty pane) and the tail of the alphabet.
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("aaa"));
+        for (int i = 0; i < 2100; i++) {
+            Files.writeString(root.resolve(String.format("aaa/f-%04d.java", i)), "class F {}");
+        }
+        var list = WorkspaceFileAccess.list(root);
+        assertThat(list.truncated()).isTrue();
+        assertThat(list.files()).hasSize(WorkspaceFileAccess.MAX_LIST_FILES);
+        assertThat(list.files()).anyMatch(f -> f.path().equals("jk.toml"));
+    }
+
+    @Test
+    void truncation_trims_the_deepest_leaves_first(@TempDir Path root) throws Exception {
+        // Breadth-first: when the cap hits, deep subtrees are what goes missing — not an
+        // arbitrary alphabetic slice spanning every depth.
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("src"));
+        Files.createDirectories(root.resolve("a/b"));
+        for (int i = 0; i < 2100; i++) {
+            Files.writeString(root.resolve(String.format("src/f-%04d.java", i)), "class F {}");
+        }
+        for (int i = 0; i < 20; i++) {
+            Files.writeString(root.resolve(String.format("a/b/deep-%02d.java", i)), "class D {}");
+        }
+        var list = WorkspaceFileAccess.list(root);
+        assertThat(list.truncated()).isTrue();
+        assertThat(list.files()).noneMatch(f -> f.path().startsWith("a/b/"));
+        assertThat(list.files()).anyMatch(f -> f.path().equals("jk.toml"));
     }
 
     @Test
