@@ -390,7 +390,7 @@ Same charter, one patient at a time. **Shipped** (JK-1933–1941):
 
 | File | Before | After | How |
 |---|---|---|---|
-| `EngineServer` | 7,073 | 1,088 | elect/accept/drain/close + composition root |
+| `EngineServer` | 3,418¹ | 1,088 | elect/accept/drain/close + composition root |
 | `JobEnvelope` | — | 683 | one submit path |
 | `HttpEngineServer` | 1,592 | 768 | router / history / project / live |
 | `EngineClient` | 2,616 | 942 | spawn, wire, hosted verbs |
@@ -399,6 +399,9 @@ Same charter, one patient at a time. **Shipped** (JK-1933–1941):
 | `BuildPlanner` | 5,348 | 1,191 | `Planner*` step clusters; facade `coreBuilder` |
 | `JkBuildParser` | 2,238 | 391 | `Manifest*` table parsers |
 | `JkManager` / `NewCommand` | 2,204 / 1,403 | 1,178 / 1,164 | view/color + wizard; no Lombok |
+
+¹ EngineServer entered this batch at 3,418 lines; the earlier JK-1875..1922 charter had already
+taken it from its 7,073-line peak.
 
 ---
 
