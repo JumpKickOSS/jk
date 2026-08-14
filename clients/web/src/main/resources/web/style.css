@@ -1005,6 +1005,9 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
   padding: 2px 0;
 }
 .back:hover { color: var(--cn); }
+/* Labelless variant (files pane): no gap to collapse, and a bigger glyph so it stays a target. */
+.back.chevron-only { gap: 0; padding: 2px 4px; }
+.back.chevron-only .ico { width: 18px; height: 18px; }
 .coord.detail { font-weight: 600; }
 .coord.detail .cn { font-size: 22px; }
 .coord.detail .cg { font-size: 15px; }
@@ -1888,16 +1891,28 @@ main.code-view { max-width: min(96rem, 100%); display: flex; flex-direction: col
   padding: 8px 0 12px;
   background: var(--s1);
 }
+/* Filter box: the funnel sits inside the field, so the input carries the left padding. */
+.code-filter-box { position: relative; margin: 0 8px 8px; }
+.code-filter-ico {
+  position: absolute;
+  left: 7px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 12px;
+  height: 12px;
+  color: var(--dim);
+  pointer-events: none;
+}
+.code-filter-box:focus-within .code-filter-ico { color: var(--cn); }
 .code-filter {
   display: block;
-  width: calc(100% - 16px);
-  margin: 0 8px 8px;
+  width: 100%;
   background: var(--s2);
   border: 1px solid var(--bd);
   border-radius: var(--r-sm);
   color: var(--tx);
   font: 400 12px var(--mono);
-  padding: 5px 8px;
+  padding: 5px 8px 5px 25px;
 }
 /* Tree rows (folders + files). One flat list of buttons; depth is inline padding-left from
  * visibleRows(), so nesting costs no extra DOM. Folder rows toggle, file rows navigate. */

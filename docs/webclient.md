@@ -77,8 +77,10 @@ Source files hang off the same route:
 ```
 
 The cyan folder **Browse this codebase** control (same icon button as Activity’s workspace
-picker) sits next to **Build** and opens `#project/<id>/files` (tree). Selecting a file
-appends the workspace-relative path as extra hash segments (each segment `encodeURIComponent`;
+picker) sits next to **Build** and opens `#project/<id>/files` (tree). It is hidden *on* the files
+pane — you are already browsing there — which is also where the header's back control drops its
+label: a bare chevron that goes up one level to `#project/<id>`, not out to the project list.
+Selecting a file appends the workspace-relative path as extra hash segments (each `encodeURIComponent`;
 `/` stays a separator). Optional `?line=` is a 1-based highlight for fail-report jumps.
 Test-failure paths (module-relative) join `rel(checkout, module.dir)` + `rep.file` first;
 basename-only paths stay text.

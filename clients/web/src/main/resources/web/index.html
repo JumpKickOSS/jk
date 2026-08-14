@@ -287,7 +287,10 @@
 
     <main v-if="view === 'project'" class="project-detail" :class="{ 'code-view': filesOpen }">
       <div class="detail-head">
-        <button class="ghost back" @click="setView('projects')"><jk-icon name="chevron-left"></jk-icon>Projects</button>
+        <!-- Files pane: chevron only, one level up to the project page. Otherwise: out to the list. -->
+        <button v-if="filesOpen" class="ghost back chevron-only" @click="closeCode()"
+                aria-label="Back to project" data-tip="Back to project"><jk-icon name="chevron-left"></jk-icon></button>
+        <button v-else class="ghost back" @click="setView('projects')"><jk-icon name="chevron-left"></jk-icon>Projects</button>
         <span class="coord detail">
           <template v-if="projectDetail && projectDetail.group"><span class="cg">{{ projectDetail.group }}</span><span class="csep">:</span></template>
           <span class="cn">{{ projectDetail ? projectDetail.name : '' }}</span>
@@ -307,7 +310,9 @@
           <button v-if="filesOpen" class="ghost" :disabled="!codePath" @click="copyOpenFile()" data-tip="Copy file contents">
             <jk-icon name="copy"></jk-icon>{{ $refs.codeView && $refs.codeView.copied ? 'Copied' : 'Copy' }}
           </button>
+          <!-- Not on the files pane itself — you are already browsing the codebase there. -->
           <button
+            v-if="!filesOpen"
             type="button"
             class="browse"
             :disabled="!selectedProjectId"

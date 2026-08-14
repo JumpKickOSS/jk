@@ -683,8 +683,11 @@ export const CodeView = {
   template: `
     <div class="code-split">
       <aside class="code-tree">
-        <input class="code-filter" v-model="filter" placeholder="Filter files" spellcheck="false"
-               aria-label="Filter files">
+        <div class="code-filter-box">
+          <jk-icon class="code-filter-ico" name="filter"></jk-icon>
+          <input class="code-filter" v-model="filter" placeholder="Filter files" spellcheck="false"
+                 aria-label="Filter files">
+        </div>
         <p v-if="truncated" class="warn">File list truncated at 2000</p>
         <p v-if="loadingList" class="empty">Listing…</p>
         <p v-else-if="!treeRows.length" class="empty">{{ filtering ? 'No matching files' : 'No files' }}</p>

@@ -77,6 +77,8 @@ const ICON_PATHS = {
   cpu: 'M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM9 9h6v6H9zM9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3',
   'folder-open': 'M6 14l1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2',
   'chevron-down': 'M6 9l6 6 6-6',
+  // Funnel — sits inside the file-tree filter box (code.js).
+  filter: 'M22 3H2l8 9.46V19l4 2v-8.54L22 3z',
   // Dog-eared sheet — the generic file glyph in the #project/<id>/files tree (two subpaths).
   file: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zM14 2v6h6',
   plus: 'M12 5v14M5 12h14',
@@ -1321,6 +1323,12 @@ Vue.createApp({
       if (!projectId) return;
       if (dir) this.selectedProjectDir = dir;
       location.hash = buildProjectHash({ projectId });
+    },
+
+    /** The files pane's Back control: up one level to the project page, not out to the list. */
+    closeCode() {
+      if (this.selectedProjectId) this.openProject(this.selectedProjectId);
+      else this.setView('projects');
     },
 
     /** Activity card badge / coord → project detail (by projectId, with dir fallback). */
