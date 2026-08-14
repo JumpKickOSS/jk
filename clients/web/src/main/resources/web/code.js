@@ -754,6 +754,8 @@ export const CodeView = {
               </div>
             </pre>
           </template>
+          <p v-if="file && file.encoding && file.encoding !== 'utf-8'" class="warn">
+            Not valid UTF-8 — decoded as {{ file.encoding }}</p>
         </div>
         <div v-show="editorVisible" class="code-editor" ref="editor"></div>
       </section>

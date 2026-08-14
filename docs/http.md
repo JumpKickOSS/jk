@@ -163,7 +163,9 @@ UTF-8 body of one allow-listed file. `path` is workspace-relative (`src%2FMain.j
 sandbox as the list: identity checkout, real-path containment, shared allow-list. Hidden /
 output / unsupported paths are **404** (existence is not distinguishable).
 
-Response: `{ projectId, dir, path, lang, bytes, lines, content }`.
+Response: `{ projectId, dir, path, lang, bytes, lines, encoding, content }`. `encoding` is
+`utf-8`, or `iso-8859-1` when the bytes were not valid UTF-8 (the pane labels the fallback
+instead of silently substituting U+FFFD).
 
 | Status | When |
 | --- | --- |

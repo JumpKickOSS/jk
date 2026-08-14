@@ -411,6 +411,7 @@ final class HttpProjectApi {
                 body.put("lang", b.lang());
                 body.put("bytes", b.bytes());
                 body.put("lines", b.lines());
+                body.put("encoding", b.encoding());
                 body.put("content", b.content());
                 HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.plugin.protocol.MiniJson.write(body));
             }

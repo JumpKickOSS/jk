@@ -7,6 +7,7 @@ import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.builds.ProjectIdentity;
 import cc.jumpkick.engine.http.WorkspaceFileAccess.ReadResult;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
@@ -134,6 +135,26 @@ class WorkspaceFileAccessTest {
         var too = (ReadResult.TooLarge) read;
         assertThat(too.bytes()).isEqualTo(WorkspaceFileAccess.MAX_FILE_BYTES + 1);
         assertThat(too.maxBytes()).isEqualTo(WorkspaceFileAccess.MAX_FILE_BYTES);
+    }
+
+    @Test
+    void non_utf8_files_fall_back_to_latin1_with_the_encoding_flagged(@TempDir Path root) throws Exception {
+        // JK-1954: a Latin-1 source previously decoded with silent U+FFFD substitution and no
+        // indicator — corrupted content presented as the file's true text.
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("src"));
+        byte[] latin1 = "class Café {}".getBytes(StandardCharsets.ISO_8859_1);
+        Files.write(root.resolve("src/Latin.java"), latin1);
+        var read = WorkspaceFileAccess.read(root, "src/Latin.java");
+        assertThat(read).isInstanceOf(ReadResult.Ok.class);
+        var body = ((ReadResult.Ok) read).body();
+        assertThat(body.encoding()).isEqualTo("iso-8859-1");
+        assertThat(body.content()).contains("Café").doesNotContain("�");
+
+        Files.writeString(root.resolve("src/Utf.java"), "class Café {}");
+        var utf = ((ReadResult.Ok) WorkspaceFileAccess.read(root, "src/Utf.java")).body();
+        assertThat(utf.encoding()).isEqualTo("utf-8");
+        assertThat(utf.content()).contains("Café");
     }
 
     @Test

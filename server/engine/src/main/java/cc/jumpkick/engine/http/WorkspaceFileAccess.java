@@ -43,7 +43,8 @@ final class WorkspaceFileAccess {
 
     record FileList(Path root, List<ListedFile> files, boolean truncated) {}
 
-    record FileBody(Path root, String path, String lang, long bytes, int lines, String content) {}
+    /** {@code encoding} is {@code utf-8}, or {@code iso-8859-1} when the bytes were not valid UTF-8 (JK-1954). */
+    record FileBody(Path root, String path, String lang, long bytes, int lines, String content, String encoding) {}
 
     sealed interface ReadResult {
         record Ok(FileBody body) implements ReadResult {}
@@ -232,11 +233,28 @@ final class WorkspaceFileAccess {
         for (int i = 0; i < probe; i++) {
             if (bytes[i] == 0) return new ReadResult.Binary();
         }
-        String content = new String(bytes, StandardCharsets.UTF_8);
+        // Strict decode first (JK-1954): new String(bytes, UTF_8) silently swaps every bad byte
+        // for U+FFFD, so a Latin-1 source rendered as mojibake presented as the file's true text.
+        // Non-UTF-8 files fall back to ISO-8859-1 (every byte maps) with the encoding flagged so
+        // the pane can say so.
+        String content;
+        String encoding = "utf-8";
+        try {
+            content = StandardCharsets.UTF_8
+                    .newDecoder()
+                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                    .decode(java.nio.ByteBuffer.wrap(bytes))
+                    .toString();
+        } catch (java.nio.charset.CharacterCodingException notUtf8) {
+            content = new String(bytes, StandardCharsets.ISO_8859_1);
+            encoding = "iso-8859-1";
+        }
         String name = file.getFileName().toString();
         String lang = langOf(name);
         if (lang == null) return new ReadResult.NotFound();
-        return new ReadResult.Ok(new FileBody(absRoot, rel, lang, bytes.length, countLines(content), content));
+        return new ReadResult.Ok(
+                new FileBody(absRoot, rel, lang, bytes.length, countLines(content), content, encoding));
     }
 
     /** Split on {@code \n}; drop the last empty segment from a trailing newline. */
