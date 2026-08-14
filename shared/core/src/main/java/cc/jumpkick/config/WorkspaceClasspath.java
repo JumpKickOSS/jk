@@ -27,6 +27,15 @@ import java.util.Set;
  */
 public final class WorkspaceClasspath {
 
+    /**
+     * Scopes through which a consumed sibling's MODULE (workspace) deps propagate to its
+     * consumer's classpath. A sibling's {@code runtime-dependencies} that are themselves
+     * workspace modules do NOT ride — only export/main module edges chain. This is the single
+     * source of truth: {@code jk tree}'s sibling walk mirrors it (JK-1962), so display and the
+     * real classpath cannot drift apart again.
+     */
+    public static final List<Scope> SIBLING_MODULE_SCOPES = List.of(Scope.EXPORT, Scope.MAIN);
+
     private WorkspaceClasspath() {}
 
     /**
@@ -120,7 +129,7 @@ public final class WorkspaceClasspath {
             // (api semantics) ride along to anything that depends on it, and MAIN
             // deps stay visible down the workspace chain (io→core→model).
             // Tests kind never propagates transitively.
-            for (Scope scope : Set.of(Scope.EXPORT, Scope.MAIN)) {
+            for (Scope scope : SIBLING_MODULE_SCOPES) {
                 for (Dependency dep : sibBuild.dependencies().of(scope)) {
                     String depModule = resolveWorkspaceRef(dep.module(), siblingCoordByName);
                     if (siblingJarByModule.containsKey(depModule) && visited.add(depModule)) {
