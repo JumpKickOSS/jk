@@ -70,13 +70,12 @@ public final class Jsonl {
             case 'b' -> sb.append('\b');
             case 'f' -> sb.append('\f');
             case 'u' -> {
-                if (i + 4 < s.length()) {
-                    try {
-                        sb.append((char) Integer.parseInt(s, i + 1, i + 5, 16));
-                        return i + 4;
-                    } catch (NumberFormatException ignored) {
-                        // malformed hex — fall through to literal
-                    }
+                // Explicit hex check (JK-1961): Integer.parseInt accepts a leading +/- sign, so a
+                // malformed backslash-u-123 escape would otherwise decode to garbage and eat 4
+                // chars instead of being kept literally as the javadoc promises.
+                if (i + 4 < s.length() && isHex4(s, i + 1)) {
+                    sb.append((char) Integer.parseInt(s, i + 1, i + 5, 16));
+                    return i + 4;
                 }
                 sb.append('\\').append(n);
             }
@@ -86,6 +85,16 @@ public final class Jsonl {
             }
         }
         return i;
+    }
+
+    /** True when the four chars at {@code from} are all hex digits. */
+    private static boolean isHex4(String s, int from) {
+        for (int k = from; k < from + 4; k++) {
+            char c = s.charAt(k);
+            boolean hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+            if (!hex) return false;
+        }
+        return true;
     }
 
     /**

@@ -114,6 +114,10 @@ class JsonlTest {
     void malformedUnicodeEscapesAreKeptLiterally() {
         assertThat(Jsonl.str("{\"v\":\"a\\uzzzz b\"}", "v")).isEqualTo("a\\uzzzz b");
         assertThat(Jsonl.str("{\"v\":\"tail\\u12\"}", "v")).isEqualTo("tail\\u12");
+        // Signed "hex" is malformed too (JK-1961): Integer.parseInt would accept it and decode
+        // garbage while eating four chars.
+        assertThat(Jsonl.str("{\"v\":\"a\\u-123 b\"}", "v")).isEqualTo("a\\u-123 b");
+        assertThat(Jsonl.str("{\"v\":\"a\\u+0AB b\"}", "v")).isEqualTo("a\\u+0AB b");
     }
 
     @Test
