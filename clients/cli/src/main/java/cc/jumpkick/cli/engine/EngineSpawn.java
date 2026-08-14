@@ -523,7 +523,12 @@ public final class EngineSpawn {
                     .key(hash)
                     .jkVersion(version)
                     .status(status)
-                    .jvmFlags(List.of("-XX:+UseSerialGC", "--enable-native-access=ALL-UNNAMED"));
+                    .jvmFlags(List.of(
+                            "-XX:+UseSerialGC",
+                            "-XX:MinHeapFreeRatio=10",
+                            "-XX:MaxHeapFreeRatio=25",
+                            "-XX:-ShrinkHeapInSteps",
+                            "--enable-native-access=ALL-UNNAMED"));
             if (ready) {
                 b.sizeBytes(Files.size(cache)).lastUsed(cc.jumpkick.util.AotManifest.nowIso());
             }
@@ -594,6 +599,16 @@ public final class EngineSpawn {
                         .resolve(HostPlatform.isWindows() ? "java.exe" : "java")
                         .toString());
                 command.add("-XX:+UseSerialGC");
+                // Heap-return ergonomics (JK-1942): SerialGC's defaults (MaxHeapFreeRatio=70,
+                // ShrinkHeapInSteps) keep committed ≈ 3.3× live and shrink one slice per full GC —
+                // an idle coordinator that GCs once at the build boundary never gives memory back.
+                // Tight free ratios + whole-step shrink make that single idle GC snap committed to
+                // ~live. Metaspace/stack mirror what workers already get from JvmOptions.
+                command.add("-XX:MinHeapFreeRatio=10");
+                command.add("-XX:MaxHeapFreeRatio=25");
+                command.add("-XX:-ShrinkHeapInSteps");
+                command.add("-XX:MaxMetaspaceSize=256m");
+                command.add("-Xss512k");
                 // AOT cache (JEP 514, JDK 25+): pre-parsed class metadata AND AOT-compiled code,
                 // taming the cold engine's JIT-warmup tail. USE maps an existing cache. TRAIN no
                 // longer records THROUGH the serving engine (the old train→stop→assemble→restart
@@ -644,6 +659,11 @@ public final class EngineSpawn {
                     command.add("-Xms" + config.minHeapMb() + "m");
                     command.add("-Xmx" + config.maxHeapMb() + "m");
                 }
+                // Same heap-return ergonomics as the JAR spawn (JK-1942); like -Xm* above these
+                // land as argv for the wrapper to consume, and an ignoring wrapper stays alive.
+                command.add("-XX:MinHeapFreeRatio=10");
+                command.add("-XX:MaxHeapFreeRatio=25");
+                command.add("-XX:-ShrinkHeapInSteps");
             }
         }
         ProcessBuilder pb = new ProcessBuilder(command);

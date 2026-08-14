@@ -130,6 +130,9 @@ public final class EngineMain {
         return java.util.List.of(
                 javaExe,
                 "-XX:+UseSerialGC",
+                "-XX:MinHeapFreeRatio=10",
+                "-XX:MaxHeapFreeRatio=25",
+                "-XX:-ShrinkHeapInSteps",
                 "-XX:AOTCacheOutput=" + tmpOut,
                 "--enable-native-access=ALL-UNNAMED",
                 "-cp",

@@ -7,7 +7,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -27,8 +26,23 @@ public final class FileHashMemo {
     /** Distrust stat-identity for files modified within this window (mtime-granularity guard). */
     private static final long SETTLE_MS = 2_000;
 
+    /**
+     * Every live thread's walk cache, weakly held so a dead thread's map can be collected. The
+     * idle boundary clears them all ({@link #clearAllThreadCaches}) — without that, the immortal
+     * {@code jk-cpu-N} pool threads accrete entries forever, because the cache key embeds the
+     * nanosecond mtime and every rebuild mints new keys (JK-1942).
+     */
+    private static final java.util.Set<Map<String, String>> LIVE_CACHES =
+            java.util.Collections.synchronizedSet(java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>()));
+
     /** Absolute-path → hex for the current thread (request / plan worker). */
-    private static final ThreadLocal<Map<String, String>> THREAD_CACHE = ThreadLocal.withInitial(HashMap::new);
+    private static final ThreadLocal<Map<String, String>> THREAD_CACHE = ThreadLocal.withInitial(() -> {
+        // Concurrent map: the owner thread is the only writer on the hot path, but the idle
+        // boundary clears from another thread, and a plain HashMap can corrupt under that race.
+        Map<String, String> m = new java.util.concurrent.ConcurrentHashMap<>();
+        LIVE_CACHES.add(m);
+        return m;
+    });
 
     private static final AtomicLong CONTENT_HASH_INVOCATIONS = new AtomicLong();
     private static final AtomicLong THREAD_HITS = new AtomicLong();
@@ -101,6 +115,16 @@ public final class FileHashMemo {
     /** Drop this thread's walk cache (tests / long-lived worker threads). */
     public static void clearThreadCache() {
         THREAD_CACHE.remove();
+    }
+
+    /**
+     * Drop every live thread's walk cache. Called at the idle boundary so pool-thread caches do
+     * not outlive the build that filled them; safe cross-thread because the maps are concurrent.
+     */
+    public static void clearAllThreadCaches() {
+        synchronized (LIVE_CACHES) {
+            for (Map<String, String> m : LIVE_CACHES) m.clear();
+        }
     }
 
     /** Test seam: total {@link #contentHash} calls since process start (or last {@link #resetStats}). */

@@ -8,6 +8,8 @@ import cc.jumpkick.config.SessionContext;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.util.concurrent.Callable;
+import java.util.concurrent.Executors;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -132,5 +134,42 @@ class FileHashMemoTest {
                 throw new RuntimeException(e);
             }
         });
+    }
+
+    @Test
+    void clearAllThreadCaches_drops_another_threads_walk_cache(@TempDir Path dir) throws Exception {
+        // The idle boundary (IdleHousekeeping.dropHeapResidue, JK-1942) clears from the
+        // housekeeping thread; entries on the immortal pool threads must not survive it.
+        Path f = Files.writeString(dir.resolve("Src.java"), "class Src {}");
+        long mtime = System.currentTimeMillis() - 60_000;
+        Files.setLastModifiedTime(f, FileTime.fromMillis(mtime));
+        var pool = Executors.newSingleThreadExecutor();
+        try {
+            withCache(dir.resolve("cache"), () -> {
+                try {
+                    Callable<String> onPool = () -> FileHashMemo.contentHash(f);
+                    FileHashMemo.resetStats();
+                    pool.submit(() -> {
+                                FileHashMemo.clearThreadCache();
+                                return null;
+                            })
+                            .get();
+                    pool.submit(onPool).get();
+                    pool.submit(onPool).get();
+                    assertThat(FileHashMemo.threadHits())
+                            .as("second same-thread call hits the walk cache")
+                            .isEqualTo(1);
+                    FileHashMemo.clearAllThreadCaches(); // main thread — cross-thread clear
+                    pool.submit(onPool).get();
+                    assertThat(FileHashMemo.threadHits())
+                            .as("after the idle-boundary clear the pool thread must miss")
+                            .isEqualTo(1);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+        } finally {
+            pool.shutdownNow();
+        }
     }
 }

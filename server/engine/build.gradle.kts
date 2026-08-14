@@ -44,8 +44,14 @@ application {
     applicationName = "jk-engine"
     // PosixDetach setsid(2) FFM; heap/GC for a long-lived engine are set on the spawn line by the
     // client (EngineClient) for the resident daemon — installDist/run defaults stay modest.
-    applicationDefaultJvmArgs =
-            listOf("-XX:+UseSerialGC", "-Xms32m", "-Xmx256m", "--enable-native-access=ALL-UNNAMED")
+    applicationDefaultJvmArgs = listOf(
+            "-XX:+UseSerialGC",
+            "-XX:MinHeapFreeRatio=10",
+            "-XX:MaxHeapFreeRatio=25",
+            "-XX:-ShrinkHeapInSteps",
+            "-Xms32m",
+            "-Xmx256m",
+            "--enable-native-access=ALL-UNNAMED")
 }
 
 // The engine artifact of the native dist (docs/architecture.md "Two artifacts"): this module's
