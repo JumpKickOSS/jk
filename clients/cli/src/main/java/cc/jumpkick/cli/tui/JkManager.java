@@ -342,11 +342,15 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     /**
      * Mark a step running and record its coarse {@code phase} (wire name, e.g. {@code compile}) for
      * the vertical phase chain. Empty phase falls back to the step key (same as the web dashboard).
+     *
+     * <p>No-ops when the step already has a terminal status so a late/out-of-order {@code stepStart}
+     * cannot resurrect a finished row (same rule as the dashboard rehydrate path).
      */
     public void stepRunning(String module, String stepKey, String phase) {
         synchronized (lock) {
             String phaseKey = phaseKey(phase, stepKey);
             Row r = rows.computeIfAbsent(key(module, stepKey), k -> new Row(module, humanize(stepKey), phaseKey));
+            if (r.state == RowState.DONE || r.state == RowState.FAILED) return;
             r.phase = phaseKey;
             r.state = RowState.ACTIVE;
             this.target = module;
@@ -376,11 +380,32 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         synchronized (lock) {
             String phaseKey = phaseKey(phase, stepKey);
             Row r = rows.computeIfAbsent(key(module, stepKey), k -> new Row(module, humanize(stepKey), phaseKey));
+            if (r.state == RowState.DONE || r.state == RowState.FAILED) return;
             r.phase = phaseKey;
             r.state = ok ? RowState.DONE : RowState.FAILED;
             r.message = "";
             r.seq = ++finishSeq;
             touchPhaseFinish(phaseKey, ok);
+        }
+    }
+
+    /**
+     * Terminal cleanup for one module's plan: any still-{@link RowState#ACTIVE} rows (lost wire
+     * {@code task-finish}, cancel between start and finish, …) settle so they leave the live tree
+     * instead of lingering for the rest of the workspace build.
+     */
+    public void finishModule(String module, boolean ok) {
+        synchronized (lock) {
+            if (module == null) return;
+            for (Row r : rows.values()) {
+                if (!module.equals(r.module) || r.state != RowState.ACTIVE) continue;
+                r.state = ok ? RowState.DONE : RowState.FAILED;
+                r.message = "";
+                r.seq = ++finishSeq;
+                if (r.phase != null && !r.phase.isEmpty()) {
+                    touchPhaseFinish(r.phase, ok);
+                }
+            }
         }
     }
 

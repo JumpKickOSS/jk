@@ -153,6 +153,9 @@ public final class AggregateModuleListener implements BuildPlanListener {
     @Override
     public void planFinish(BuildPlanResult result) {
         flushBufferedFailure();
+        // Clear leftover ACTIVE rows (e.g. a lost task-finish for ensure-jdk) so the module
+        // does not linger in the live tree after its plan is done.
+        cm.finishModule(module, result.success());
         if (!result.success()) {
             agg.notifyErrors(result.errors());
         }

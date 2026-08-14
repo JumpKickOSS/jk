@@ -141,6 +141,41 @@ class AggregateModuleListenerTest {
         assertThat(all).contains("FAILED Foo.bar()");
     }
 
+    @Test
+    void plan_finish_clears_orphan_active_steps_so_resolve_jdk_cannot_linger() {
+        // A lost task-finish (concurrent wire interleave) used to leave ensure-jdk ACTIVE for the
+        // rest of the workspace build with detail "resolve JDK".
+        var buf = new ByteArrayOutputStream();
+        JkManager view = JkManager.plan(new PrintStream(buf, true, StandardCharsets.UTF_8), "Build", false);
+        var agg = new AggregateContext(view);
+
+        var a = new AggregateModuleListener(
+                agg, "cc.jumpkick:jk-client-io", List.of(step("ensure-jdk", "JDK"), step("compile-java", "Compile")));
+        a.planStart(new BuildPlanView("build", 0, 10, 2, 0, false));
+        a.stepStart("ensure-jdk", "resolve", 1);
+        a.label("ensure-jdk", "resolve JDK");
+        // No stepFinish for ensure-jdk — wire drop / cancel mid-step.
+        a.stepStart("compile-java", "compile", 1);
+        a.stepFinish("compile-java", "compile", TaskStatus.SUCCESS, Duration.ZERO);
+        a.planFinish(result(true));
+
+        // Sibling module still running — the orphan row must not stay in the live tree.
+        var b = new AggregateModuleListener(agg, "cc.jumpkick:jk-cli", List.of(step("native-image", "Native")));
+        b.planStart(new BuildPlanView("build", 0, 10, 1, 0, false));
+        b.stepStart("native-image", "native", 1);
+        b.label("native-image", "[2/8] Performing analysis...");
+
+        String all = String.join(
+                "\n",
+                view.renderBuildPlanLines(120, 0).stream()
+                        .map(AggregateModuleListenerTest::strip)
+                        .toList());
+        assertThat(all).contains("jk-cli").contains("Native");
+        assertThat(all).doesNotContain("jk-client-io");
+        assertThat(all).doesNotContain("resolve JDK");
+        assertThat(all).doesNotContain("Resolve");
+    }
+
     private static Task step(String name, String label) {
         return Task.builder(name).label(label).ticks(1).execute(ctx -> {}).build();
     }

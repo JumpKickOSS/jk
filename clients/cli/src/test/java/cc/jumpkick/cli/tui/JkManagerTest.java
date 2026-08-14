@@ -1053,6 +1053,36 @@ class JkManagerTest {
     }
 
     @Test
+    void finishModule_drops_orphan_active_rows() {
+        var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdfont = false;
+        cm.stepRunning("cc.jumpkick:jk-client-io", "ensure-jdk", "resolve");
+        cm.stepMessage("cc.jumpkick:jk-client-io", "ensure-jdk", "resolve JDK");
+        cm.stepRunning("cc.jumpkick:jk-cli", "native-image", "native");
+
+        cm.finishModule("cc.jumpkick:jk-client-io", true);
+
+        String all = String.join("\n", stripAll(cm.renderBuildPlanLines(120, 0)));
+        assertThat(all).contains("jk-cli").contains("Native");
+        assertThat(all).doesNotContain("jk-client-io");
+        assertThat(all).doesNotContain("resolve JDK");
+    }
+
+    @Test
+    void stepRunning_does_not_resurrect_a_finished_step() {
+        var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdfont = false;
+        cm.stepRunning("m", "ensure-jdk", "resolve");
+        cm.stepDone("m", "ensure-jdk", true, "resolve");
+        cm.stepRunning("m", "ensure-jdk", "resolve"); // late / out-of-order start
+        cm.stepMessage("m", "ensure-jdk", "resolve JDK");
+
+        String all = String.join("\n", stripAll(cm.renderBuildPlanLines(120, 0)));
+        assertThat(all).doesNotContain("Resolve");
+        assertThat(all).doesNotContain("resolve JDK");
+    }
+
+    @Test
     void failed_phase_shows_brief_error_below() {
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Building", false);
         cm.nerdfont = false;

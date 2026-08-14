@@ -170,6 +170,7 @@ public final class CommandManagerListener implements BuildPlanListener {
         // A cancel/disconnect between a block's lines and stepFinish must still show what
         // already arrived (JK-1915).
         flushBufferedFailure();
+        if (cm != null) cm.finishModule(module, result.success());
         // Restore the real streams before settling so the result line isn't
         // itself routed back above the (closing) region.
         if (capture != null) capture.close();

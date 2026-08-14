@@ -7,7 +7,13 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import org.jspecify.annotations.Nullable;
 
-/** Encodes {@link EngineEvent} as CLI JSONL via {@link EngineProtocol}. */
+/**
+ * Encodes {@link EngineEvent} as CLI JSONL via {@link EngineProtocol}.
+ *
+ * <p>Writes are synchronized on the {@link BufferedWriter}: concurrent modules (and the heartbeat)
+ * share one socket. Unsynchronized interleaving corrupts JSONL lines so the client drops them —
+ * a lost {@code task-finish} leaves a zombie ACTIVE row in the live tree for the rest of the build.
+ */
 public final class WireEventSink implements EventSink {
     private final @Nullable BufferedWriter writer;
 
@@ -21,9 +27,12 @@ public final class WireEventSink implements EventSink {
         String line = encode(event);
         if (line == null) return;
         try {
-            writer.write(line);
-            writer.write('\n');
-            writer.flush();
+            // Same monitor as EngineServer.send — plan workers and heartbeats share the writer.
+            synchronized (writer) {
+                writer.write(line);
+                writer.write('\n');
+                writer.flush();
+            }
         } catch (IOException ignored) {
             // client gone
         }
