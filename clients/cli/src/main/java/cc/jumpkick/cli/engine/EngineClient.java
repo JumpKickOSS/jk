@@ -226,6 +226,11 @@ public final class EngineClient {
     /**
      * Last-resort SIGTERM→SIGKILL when a clean {@link #forceStop} can't reach a wedged engine. Never
      * targets the calling process (in-process {@code EngineServer} tests share this JVM's pid).
+     *
+     * <p>Interrupt escalates immediately (JK-1956): a Ctrl-C during the 30s grace window means the
+     * user wants out now, so the wedged engine gets SIGKILL right away instead of the pre-peel
+     * behavior of waiting out the full deadline with the interrupt flag parked. The target is
+     * already known-wedged — there is no clean-exit path worth 30 more seconds of a held terminal.
      */
     public static void hardKill(long pid) {
         if (pid <= 0 || pid == ProcessHandle.current().pid()) return;

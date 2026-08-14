@@ -192,7 +192,7 @@ public final class EngineSpawn {
     }
 
     /** How a spawn should treat the AOT cache. */
-    public enum AotMode {
+    enum AotMode {
         TRAIN,
         USE,
         NONE
@@ -206,11 +206,10 @@ public final class EngineSpawn {
      * HotSpot/C2 JVM (AOT is only stable there), the AOT cache path, and whether a {@code.noaot}
      * marker already says AOT can't apply for this key.
      */
-    public record EngineTarget(
-            EngineArtifact engine, Path javaHome, boolean hotspot, Path aotCache, boolean noAotMarker) {}
+    record EngineTarget(EngineArtifact engine, Path javaHome, boolean hotspot, Path aotCache, boolean noAotMarker) {}
 
     /** A host JDK for the engine: home, vendor, and version (from its {@code release} file). */
-    public record EngineJdk(Path home, cc.jumpkick.jdk.JdkVendor vendor, String version) {}
+    record EngineJdk(Path home, cc.jumpkick.jdk.JdkVendor vendor, String version) {}
 
     /** Resolve everything the spawn/mode decision needs, self-healing a missing/skewed engine jar. */
     private static EngineTarget resolveEngineTarget(EnginePaths.Paths paths, String clientVersion) throws IOException {
@@ -372,17 +371,6 @@ public final class EngineSpawn {
         return vendor != cc.jumpkick.jdk.JdkVendor.ORACLE_GRAALVM && vendor != cc.jumpkick.jdk.JdkVendor.GRAALVM_CE;
     }
 
-    private static void killStale(long pid, Duration timeout) {
-        ProcessHandle.of(pid).ifPresent(h -> {
-            h.destroy();
-            long deadline = System.nanoTime() + timeout.toNanos();
-            while (h.isAlive() && System.nanoTime() < deadline) {
-                sleepQuietly(20);
-            }
-            if (h.isAlive()) h.destroyForcibly();
-        });
-    }
-
     /**
      * Which engine artifact a spawn chose. {@code EXE}: {@code path} is an executable whose {@code
      * main} IS the engine loop. {@code JAR}: {@code path} is the engine's fat jar ({@code
@@ -390,7 +378,7 @@ public final class EngineSpawn {
      * cc.jumpkick.engine.EngineMain} — the engine is a plain JVM app, never a native image. There is
      * no client-binary FALLBACK: the slim client never hosts the engine.
      */
-    public record EngineArtifact(Kind kind, String path, String how) {
+    record EngineArtifact(Kind kind, String path, String how) {
         enum Kind {
             EXE,
             JAR
