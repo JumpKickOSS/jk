@@ -10,6 +10,7 @@ import java.security.spec.X509EncodedKeySpec;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Release authenticity: Ed25519 signature over {@code SHA256SUMS}, then hash check, before
@@ -81,12 +82,12 @@ public final class ReleaseVerifier {
                 + " REFUSING this release (a mirror, proxy, or the release site may be compromised)");
     }
 
-    private static java.util.Optional<PublicKey> parse(String base64Spki) {
+    private static Optional<PublicKey> parse(String base64Spki) {
         try {
             byte[] der = Base64.getDecoder().decode(base64Spki.trim());
-            return java.util.Optional.of(KeyFactory.getInstance("Ed25519").generatePublic(new X509EncodedKeySpec(der)));
+            return Optional.of(KeyFactory.getInstance("Ed25519").generatePublic(new X509EncodedKeySpec(der)));
         } catch (GeneralSecurityException | IllegalArgumentException e) {
-            return java.util.Optional.empty();
+            return Optional.empty();
         }
     }
 }

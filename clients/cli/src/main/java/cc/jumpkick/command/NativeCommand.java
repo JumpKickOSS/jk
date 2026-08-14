@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -45,7 +46,7 @@ public final class NativeCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        var opts = new java.util.ArrayList<Opt>();
+        var opts = new ArrayList<Opt>();
         opts.add(Opt.value("<class>", "Main class (jk.toml image.main / main)", "--main"));
         opts.add(cc.jumpkick.cli.CommonOpts.cacheDirHidden());
         opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
@@ -211,7 +212,7 @@ public final class NativeCommand implements CliCommand {
             }
         }
 
-        Map<Path, Path> graalHomes = new java.util.HashMap<>();
+        Map<Path, Path> graalHomes = new HashMap<>();
         long nativeCount = 0;
         int considered = 0;
         for (String rel : rootInfo.moduleDirs()) {

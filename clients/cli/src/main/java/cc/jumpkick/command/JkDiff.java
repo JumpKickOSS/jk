@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Prior {@code jk hook-env} overrides for undo: base64 {@code KEY\\0previous\\n} in {@code __JK_DIFF}.
@@ -55,7 +56,7 @@ public final class JkDiff {
     }
 
     /** Keys currently tracked. */
-    public java.util.Set<String> keys() {
+    public Set<String> keys() {
         return previous.keySet();
     }
 

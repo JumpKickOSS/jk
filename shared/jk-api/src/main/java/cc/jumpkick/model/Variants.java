@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.model;
 
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 
 /**
  * The {@code [variants]} block: product dimensions (axes) with named values, each an overlay
@@ -89,23 +84,22 @@ public record Variants(List<Dimension> dimensions) {
         if (build.variants().isEmpty()) return build;
         // Same-module different-selector across the union is a hard error: highest-wins would
         // silently build the "losing" value against the other value's version.
-        Map<String, String[]> seen = new java.util.HashMap<>(); // scope|module → {selector, origin}
-        Map<Scope, java.util.LinkedHashSet<Dependency>> merged = new java.util.EnumMap<>(Scope.class);
+        Map<String, String[]> seen = new HashMap<>(); // scope|module → {selector, origin}
+        Map<Scope, LinkedHashSet<Dependency>> merged = new EnumMap<>(Scope.class);
         build.dependencies().byScope().forEach((scope, deps) -> {
             for (Dependency d : deps) note(seen, scope, d, "[" + scope.tomlSection() + "]");
-            merged.computeIfAbsent(scope, s -> new java.util.LinkedHashSet<>()).addAll(deps);
+            merged.computeIfAbsent(scope, s -> new LinkedHashSet<>()).addAll(deps);
         });
         for (Dimension dimension : build.variants().dimensions()) {
             for (Map.Entry<String, Value> e : dimension.values().entrySet()) {
                 String origin = "[variants." + dimension.name() + "." + e.getKey() + "]";
                 e.getValue().dependencies().forEach((scope, deps) -> {
                     for (Dependency d : deps) note(seen, scope, d, origin);
-                    merged.computeIfAbsent(scope, s -> new java.util.LinkedHashSet<>())
-                            .addAll(deps);
+                    merged.computeIfAbsent(scope, s -> new LinkedHashSet<>()).addAll(deps);
                 });
             }
         }
-        Map<Scope, List<Dependency>> out = new java.util.EnumMap<>(Scope.class);
+        Map<Scope, List<Dependency>> out = new EnumMap<>(Scope.class);
         merged.forEach((scope, deps) -> out.put(scope, List.copyOf(deps)));
         return build.withDependencies(new JkBuild.Dependencies(out));
     }
@@ -123,10 +117,10 @@ public record Variants(List<Dimension> dimensions) {
 
     /** Per-value dependency overlay lines for conflict hints ({@code "contentType=demo → ads"}). */
     public static List<String> describeDependencyOverlays(JkBuild build) {
-        List<String> out = new java.util.ArrayList<>();
+        List<String> out = new ArrayList<>();
         for (Dimension dimension : build.variants().dimensions()) {
             for (Map.Entry<String, Value> e : dimension.values().entrySet()) {
-                List<String> names = new java.util.ArrayList<>();
+                List<String> names = new ArrayList<>();
                 e.getValue().dependencies().values().forEach(deps -> deps.forEach(d -> names.add(d.name())));
                 if (!names.isEmpty()) {
                     out.add(dimension.name() + "=" + e.getKey() + " → " + String.join(", ", names));

@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -100,7 +101,7 @@ public final class CompileSupport {
      * cc.jumpkick.layout.ModuleLayout#mainGroovyRoots} (SIMPLE shares {@code src/} by extension).
      */
     public static List<Path> collectGroovySources(Path projectDir, boolean compact) throws IOException {
-        var out = new java.util.LinkedHashSet<Path>();
+        var out = new LinkedHashSet<Path>();
         for (Path root : cc.jumpkick.layout.ModuleLayout.mainGroovyRoots(projectDir, compact)) {
             out.addAll(collectFilesWithExtension(root, ".groovy"));
         }
@@ -132,7 +133,7 @@ public final class CompileSupport {
     public static List<Path> withExtraSources(List<Path> base, List<Path> extraDirs, String extension)
             throws IOException {
         if (extraDirs.isEmpty()) return base;
-        var all = new java.util.LinkedHashSet<>(base);
+        var all = new LinkedHashSet<>(base);
         for (Path dir : extraDirs) all.addAll(collectFilesWithExtension(dir, extension));
         return new ArrayList<>(all);
     }

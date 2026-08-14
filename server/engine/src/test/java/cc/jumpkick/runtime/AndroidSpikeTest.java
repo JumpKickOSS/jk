@@ -8,8 +8,12 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import java.io.File;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -82,7 +86,7 @@ class AndroidSpikeTest {
                 false,
                 false,
                 false,
-                java.util.Set.of(),
+                Set.of(),
                 cc.jumpkick.config.SessionContext.current());
         BuildPlan plan = BuildPlanner.coreBuilder(in).build();
 
@@ -231,13 +235,13 @@ class AndroidSpikeTest {
     private static boolean verifiedByApksig(Path apk) throws Exception {
         String cp = System.getProperty("jk.android.apksig.classpath", "");
         assertThat(cp).as("jk.android.apksig.classpath system property").isNotBlank();
-        java.util.List<java.net.URL> urls = new java.util.ArrayList<>();
-        for (String part : cp.split(java.io.File.pathSeparator)) {
+        List<URL> urls = new ArrayList<>();
+        for (String part : cp.split(File.pathSeparator)) {
             if (!part.isBlank()) urls.add(Path.of(part).toUri().toURL());
         }
-        try (var loader = new java.net.URLClassLoader(urls.toArray(new java.net.URL[0]))) {
+        try (var loader = new URLClassLoader(urls.toArray(new URL[0]))) {
             Class<?> builderClass = loader.loadClass("com.android.apksig.ApkVerifier$Builder");
-            Object builder = builderClass.getConstructor(java.io.File.class).newInstance(apk.toFile());
+            Object builder = builderClass.getConstructor(File.class).newInstance(apk.toFile());
             Object verifier = builderClass.getMethod("build").invoke(builder);
             Object apkResult = verifier.getClass().getMethod("verify").invoke(verifier);
             return (boolean) apkResult.getClass().getMethod("isVerified").invoke(apkResult);

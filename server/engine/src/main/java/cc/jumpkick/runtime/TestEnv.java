@@ -6,6 +6,7 @@ import cc.jumpkick.model.JkBuild;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.UnaryOperator;
 
 /**
  * The environment handed to a forked test JVMa sandbox jk supplies by default, plus
@@ -43,7 +44,7 @@ public final class TestEnv {
 
     /** As {@link #forModule(JkBuild, Path, BuildLayout)}, resolving {@code ${VAR}} through {@code env}. */
     public static Map<String, String> forModule(
-            JkBuild project, Path moduleDir, BuildLayout layout, java.util.function.UnaryOperator<String> env) {
+            JkBuild project, Path moduleDir, BuildLayout layout, UnaryOperator<String> env) {
         Path target = layout.moduleTargetDir();
         Map<String, String> out = new LinkedHashMap<>();
         // Sandbox first so a declared value replaces it.

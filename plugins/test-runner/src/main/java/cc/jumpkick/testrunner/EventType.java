@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.testrunner;
 
+import java.util.Locale;
+
 /**
  * Stable event names used in the jk-test wire protocol. The string form (lowercase enum name) is
  * what travels on the wire — kept short to keep the payload tight, and stable across encodings so
@@ -63,6 +65,6 @@ public enum EventType {
 
     /** Lowercase wire form, e.g. {@code "plan_started"}. */
     public String wire() {
-        return name().toLowerCase(java.util.Locale.ROOT);
+        return name().toLowerCase(Locale.ROOT);
     }
 }

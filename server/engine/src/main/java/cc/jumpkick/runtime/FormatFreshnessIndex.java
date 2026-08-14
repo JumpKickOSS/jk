@@ -183,17 +183,27 @@ public final class FormatFreshnessIndex {
         }
     }
 
+    /**
+     * Worker identity is path:size:mtime of the thin jar <em>and</em> its {@code .classpath}
+     * sidecar. OpenRewrite/Spotless live on the sidecar; fingerprinting only the thin jar left
+     * freshness green across formatter dependency upgrades.
+     */
     private static String identity(Path workerJar) {
         if (workerJar == null || !Files.isRegularFile(workerJar)) return "none";
+        return fileIdentity(workerJar) + "|" + fileIdentity(Path.of(workerJar.toString() + ".classpath"));
+    }
+
+    private static String fileIdentity(Path path) {
+        if (path == null || !Files.isRegularFile(path)) return "none";
         try {
-            BasicFileAttributes attrs = Files.readAttributes(workerJar, BasicFileAttributes.class);
-            return workerJar.toAbsolutePath().normalize()
+            BasicFileAttributes attrs = Files.readAttributes(path, BasicFileAttributes.class);
+            return path.toAbsolutePath().normalize()
                     + ":"
                     + attrs.size()
                     + ":"
                     + attrs.lastModifiedTime().toMillis();
         } catch (IOException e) {
-            return workerJar.toAbsolutePath().normalize().toString();
+            return path.toAbsolutePath().normalize().toString();
         }
     }
 

@@ -8,6 +8,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashSet;
+import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -38,7 +40,7 @@ class VerifyBuildCommandTest {
                 .isEqualTo(0);
         // Verify's scratch rebuild bypasses the action cache in BOTH directions: its keys hash
         // the (random, never-recurring) scratch paths, so any store would be a permanent orphan.
-        java.util.Set<String> keysBefore = actionKeys(cache);
+        Set<String> keysBefore = actionKeys(cache);
         assertThat(run("verify", "-C", tempDir.toString(), "--cache-dir", cache.toString()))
                 .isEqualTo(0);
         assertThat(actionKeys(cache))
@@ -47,12 +49,11 @@ class VerifyBuildCommandTest {
     }
 
     /** Filenames under {@code <cache>/actions/keys} — the action-cache entry set. */
-    private static java.util.Set<String> actionKeys(Path cache) throws IOException {
+    private static Set<String> actionKeys(Path cache) throws IOException {
         Path keys = cache.resolve("actions/keys");
-        if (!Files.isDirectory(keys)) return java.util.Set.of();
+        if (!Files.isDirectory(keys)) return Set.of();
         try (var list = Files.list(keys)) {
-            return new java.util.HashSet<>(
-                    list.map(p -> p.getFileName().toString()).toList());
+            return new HashSet<>(list.map(p -> p.getFileName().toString()).toList());
         }
     }
 

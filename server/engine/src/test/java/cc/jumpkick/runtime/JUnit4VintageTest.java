@@ -11,6 +11,8 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -69,7 +71,7 @@ class JUnit4VintageTest {
 
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
         BuildPlan lock = LockPlans.lockBuildPlan(
-                project, build, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
+                project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).isTrue();
 
         BuildPlanner.Inputs in = new BuildPlanner.Inputs(
@@ -86,7 +88,7 @@ class JUnit4VintageTest {
                 false,
                 false,
                 false,
-                java.util.Set.of(),
+                Set.of(),
                 SessionContext.current());
         BuildPlanResult result = BuildPlanner.coreBuilder(in).build().run();
         assertThat(result.errors()).isEmpty();

@@ -3,6 +3,8 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Theme;
+import java.util.Locale;
+import java.util.regex.Pattern;
 import org.jline.utils.AttributedStyle;
 import org.jspecify.annotations.NullMarked;
 
@@ -250,7 +252,7 @@ public final class JkManagerColor {
             if (isFetchOrResolveVerb(prevWord) && looksLikeLibraryShortName(tok)) {
                 out.append(cc.jumpkick.cli.theme.Coords.shortName(tok));
                 if (!trail.isEmpty()) out.append(Theme.colorize(trail, gray));
-                prevWord = tok.toLowerCase(java.util.Locale.ROOT);
+                prevWord = tok.toLowerCase(Locale.ROOT);
                 i = j;
                 continue;
             }
@@ -258,7 +260,7 @@ public final class JkManagerColor {
             // 5. Plain gray word (and remember it for verb context).
             out.append(Theme.colorize(tok, gray));
             if (!trail.isEmpty()) out.append(Theme.colorize(trail, gray));
-            prevWord = tok.toLowerCase(java.util.Locale.ROOT);
+            prevWord = tok.toLowerCase(Locale.ROOT);
             i = j;
         }
         return out.toString();
@@ -364,7 +366,7 @@ public final class JkManagerColor {
             if (!(Character.isLetterOrDigit(c) || c == '-' || c == '_' || c == '.')) return false;
         }
         // Reject common English words that follow "resolve" in prose.
-        return switch (tok.toLowerCase(java.util.Locale.ROOT)) {
+        return switch (tok.toLowerCase(Locale.ROOT)) {
             case "deps",
                     "dependencies",
                     "classpath",
@@ -443,7 +445,7 @@ public final class JkManagerColor {
         if (tok.startsWith("~")) return true;
         int dot = tok.lastIndexOf('.');
         if (dot <= 0 || dot == tok.length() - 1) return false;
-        String ext = tok.substring(dot + 1).toLowerCase(java.util.Locale.ROOT);
+        String ext = tok.substring(dot + 1).toLowerCase(Locale.ROOT);
         return switch (ext) {
             case "jar",
                     "aar",
@@ -477,8 +479,7 @@ public final class JkManagerColor {
      * Compiled once: this runs per visible row on every 80 ms animator frame — with a 128 MB
      * heap, per-frame {@code String.matches} (a fresh {@code Pattern.compile}) is real garbage.
      */
-    static final java.util.regex.Pattern JAVA_MEMBER =
-            java.util.regex.Pattern.compile("[A-Z][\\w$]*(?:\\.[A-Za-z_][\\w$]*(?:\\([^)]*\\))?)?");
+    static final Pattern JAVA_MEMBER = Pattern.compile("[A-Z][\\w$]*(?:\\.[A-Za-z_][\\w$]*(?:\\([^)]*\\))?)?");
 
     /** {@code FooTest}, {@code FooTest.bar()}, or {@code FooTest.bar(Path)} — not free text. */
     static boolean looksLikeJavaMember(String s) {

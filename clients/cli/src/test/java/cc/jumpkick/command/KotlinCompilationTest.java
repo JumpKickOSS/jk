@@ -7,6 +7,7 @@ import cc.jumpkick.cli.Jk;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.jar.JarFile;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -103,13 +104,13 @@ class KotlinCompilationTest {
 
         // Edit the source forward in time so its mtime exceeds the stamp; the
         // next build must fall through the freshness check and recompile.
-        Files.setLastModifiedTime(src, java.nio.file.attribute.FileTime.fromMillis(firstMtime + 5_000));
+        Files.setLastModifiedTime(src, FileTime.fromMillis(firstMtime + 5_000));
         Files.writeString(src, """
                 package example
 
                 fun greet(): String = "hi, again"
                 """);
-        Files.setLastModifiedTime(src, java.nio.file.attribute.FileTime.fromMillis(firstMtime + 5_000));
+        Files.setLastModifiedTime(src, FileTime.fromMillis(firstMtime + 5_000));
 
         assertThat(run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()))
                 .isEqualTo(0);

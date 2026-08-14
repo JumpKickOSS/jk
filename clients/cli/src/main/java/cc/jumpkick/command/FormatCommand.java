@@ -22,6 +22,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Consumer;
 
 /**
@@ -86,7 +87,7 @@ public final class FormatCommand implements CliCommand {
                 triFlag(in, "remove-unused-imports", "no-remove-unused-imports", "JK_FORMAT_REMOVE_UNUSED_IMPORTS");
         // --rewrite-config / env var
         Path rewriteConfig = in.value("rewrite-config")
-                .or(() -> java.util.Optional.ofNullable(System.getenv("JK_FORMAT_REWRITE_CONFIG")))
+                .or(() -> Optional.ofNullable(System.getenv("JK_FORMAT_REWRITE_CONFIG")))
                 .map(Path::of)
                 .orElse(null);
 

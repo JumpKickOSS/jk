@@ -13,6 +13,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -772,7 +773,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
                     printPlainDone();
                 }
                 // Ctrl-C: "by user" + took duration.
-                String took = cc.jumpkick.cli.run.ConsoleSpec.took(java.time.Duration.ofMillis(elapsedMillis()));
+                String took = cc.jumpkick.cli.run.ConsoleSpec.took(Duration.ofMillis(elapsedMillis()));
                 out.println(JkWedge.cancelled(planName(), true, took).renderLine(headerContext()));
                 out.flush();
                 return true;

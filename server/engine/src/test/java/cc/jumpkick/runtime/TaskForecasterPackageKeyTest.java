@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -62,7 +63,7 @@ class TaskForecasterPackageKeyTest {
         // otherwise the post-clean assembly forecast can never key-match.
         // JK-1511: the pinned sha names a payload blob in the CACHE-tier pool the action records
         // write to — recovery must consult the action cache's own CAS, not the artifact store.
-        byte[] bytes = "sibling-jar-bytes".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] bytes = "sibling-jar-bytes".getBytes(StandardCharsets.UTF_8);
         String sha = cc.jumpkick.util.Hashing.sha256Hex(bytes);
         Path cacheRoot = tmp.resolve("cache");
         var actionCache = new cc.jumpkick.task.ActionCache(
@@ -87,7 +88,7 @@ class TaskForecasterPackageKeyTest {
         Path cacheRoot = tmp.resolve("cache");
         var ac = new cc.jumpkick.task.ActionCache(
                 cc.jumpkick.cache.JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"));
-        byte[] bytes = "payload".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] bytes = "payload".getBytes(StandardCharsets.UTF_8);
         String sha = cc.jumpkick.util.Hashing.sha256Hex(bytes);
         Path blob = ac.cas().put(bytes, sha);
         ac.storeWithOutputs("task@x", "key-1", Map.of(), Map.of("lib.jar", sha), Map.of());

@@ -106,7 +106,7 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         Path mainJar = ctx.mainArtifact().orElseThrow(() -> new IOException("image goal needs a built main artifact"));
         List<Path> depJars = new ArrayList<>();
         List<Path> snapshotJars = new ArrayList<>();
-        java.util.Map<Path, String> jarNames = new java.util.LinkedHashMap<>();
+        Map<Path, String> jarNames = new LinkedHashMap<>();
         for (PackageIo.RuntimeEntry e : ctx.runtimeEntries()) {
             if (e.jar() == null) continue;
             (e.snapshot() ? snapshotJars : depJars).add(e.jar());

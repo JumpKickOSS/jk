@@ -12,10 +12,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import org.junit.platform.engine.ConfigurationParameters;
 import org.junit.platform.engine.DiscoveryFilter;
 import org.junit.platform.engine.DiscoverySelector;
@@ -99,7 +96,7 @@ public final class TestRunner implements Plugin {
         }
         var streaming = new StreamingListener(writer, args.workerId);
         var request = baseRequest(args);
-        var engines = java.util.ServiceLoader.load(TestEngine.class);
+        var engines = ServiceLoader.load(TestEngine.class);
         long planStart = System.nanoTime();
         for (var engine : engines) {
             var uid = UniqueId.root("[engine]", engine.getId());
@@ -123,7 +120,7 @@ public final class TestRunner implements Plugin {
         }
         var streaming = new StreamingListener(writer, args.workerId);
         var request = baseRequest(args);
-        var engines = java.util.ServiceLoader.load(TestEngine.class);
+        var engines = ServiceLoader.load(TestEngine.class);
         for (var engine : engines) {
             var uid = UniqueId.root("[engine]", engine.getId());
             var descriptor = engine.discover(request, uid);
@@ -162,8 +159,8 @@ public final class TestRunner implements Plugin {
         boolean useLauncher = LauncherPath.available();
         var engines = useLauncher
                 ? List.<TestEngine>of()
-                : java.util.ServiceLoader.load(TestEngine.class).stream()
-                        .map(java.util.ServiceLoader.Provider::get)
+                : ServiceLoader.load(TestEngine.class).stream()
+                        .map(ServiceLoader.Provider::get)
                         .toList();
         boolean launcherFailed = false;
 
@@ -505,20 +502,20 @@ public final class TestRunner implements Plugin {
     private static final class SystemPropertyConfigParams implements ConfigurationParameters {
         static final SystemPropertyConfigParams INSTANCE = new SystemPropertyConfigParams();
 
-        private final java.util.Map<String, String> fromFile = loadPlatformProperties();
+        private final Map<String, String> fromFile = loadPlatformProperties();
 
         @Override
-        public java.util.Optional<String> get(String key) {
-            if (key == null) return java.util.Optional.empty();
+        public Optional<String> get(String key) {
+            if (key == null) return Optional.empty();
             String sys = System.getProperty(key);
-            if (sys != null && !sys.isBlank()) return java.util.Optional.of(sys);
+            if (sys != null && !sys.isBlank()) return Optional.of(sys);
             String file = fromFile.get(key);
-            if (file != null && !file.isBlank()) return java.util.Optional.of(file);
-            return java.util.Optional.empty();
+            if (file != null && !file.isBlank()) return Optional.of(file);
+            return Optional.empty();
         }
 
         @Override
-        public java.util.Optional<Boolean> getBoolean(String key) {
+        public Optional<Boolean> getBoolean(String key) {
             return get(key).map(v -> {
                 String s = v.trim();
                 if (s.equalsIgnoreCase("true") || s.equals("1")) return true;
@@ -528,8 +525,8 @@ public final class TestRunner implements Plugin {
         }
 
         @Override
-        public java.util.Set<String> keySet() {
-            var keys = new java.util.LinkedHashSet<>(fromFile.keySet());
+        public Set<String> keySet() {
+            var keys = new LinkedHashSet<>(fromFile.keySet());
             for (var e : System.getProperties().entrySet()) {
                 String k = String.valueOf(e.getKey());
                 if (k.startsWith("junit.")) keys.add(k);
@@ -537,12 +534,12 @@ public final class TestRunner implements Plugin {
             return keys;
         }
 
-        private static java.util.Map<String, String> loadPlatformProperties() {
-            var map = new java.util.LinkedHashMap<String, String>();
+        private static Map<String, String> loadPlatformProperties() {
+            var map = new LinkedHashMap<String, String>();
             try (var in =
                     Thread.currentThread().getContextClassLoader().getResourceAsStream("junit-platform.properties")) {
                 if (in == null) return map;
-                var props = new java.util.Properties();
+                var props = new Properties();
                 props.load(in);
                 for (String name : props.stringPropertyNames()) {
                     map.put(name, props.getProperty(name));

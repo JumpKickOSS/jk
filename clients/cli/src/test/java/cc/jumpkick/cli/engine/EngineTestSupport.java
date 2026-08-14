@@ -7,8 +7,10 @@ import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -117,7 +119,7 @@ public final class EngineTestSupport {
             }
             if (!EngineClient.forceStop(socket)) {
                 EngineClient.hardKill(pid);
-                EngineClient.waitForDeathOrKill(pid, java.time.Duration.ofMillis(1_500));
+                EngineClient.waitForDeathOrKill(pid, Duration.ofMillis(1_500));
             }
         } catch (RuntimeException ignored) {
             // best-effort
@@ -158,7 +160,7 @@ public final class EngineTestSupport {
                     // engine may still be tearing down
                 }
             });
-        } catch (IOException | java.io.UncheckedIOException ignored) {
+        } catch (IOException | UncheckedIOException ignored) {
             // Engine may delete socket/pid/lock while we walk — Files.walk wraps a mid-walk
             // disappearance as UncheckedIOException (not IOException). Best-effort only.
         }

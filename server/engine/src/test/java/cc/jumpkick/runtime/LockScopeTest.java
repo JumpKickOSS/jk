@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -53,9 +54,9 @@ class LockScopeTest {
                 """);
     }
 
-    private static java.util.List<String> depModules(cc.jumpkick.model.JkBuild build) {
+    private static List<String> depModules(cc.jumpkick.model.JkBuild build) {
         return build.dependencies().byScope().values().stream()
-                .flatMap(java.util.List::stream)
+                .flatMap(List::stream)
                 .map(cc.jumpkick.model.Dependency::module)
                 .toList();
     }

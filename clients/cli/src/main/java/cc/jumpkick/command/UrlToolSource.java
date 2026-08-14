@@ -18,6 +18,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Client half of a web-URL tool target: trust gate (TTY, against the typed URL), forge rewrite,
@@ -26,10 +28,8 @@ import java.util.Locale;
  */
 final class UrlToolSource {
 
-    private static final java.util.regex.Pattern GIST_PAGE =
-            java.util.regex.Pattern.compile("https://gist\\.github\\.com/([^/]+)/([0-9a-fA-F]+)/?");
-    private static final java.util.regex.Pattern GIST_RAW_URL =
-            java.util.regex.Pattern.compile("\"raw_url\":\"([^\"]+)\"");
+    private static final Pattern GIST_PAGE = Pattern.compile("https://gist\\.github\\.com/([^/]+)/([0-9a-fA-F]+)/?");
+    private static final Pattern GIST_RAW_URL = Pattern.compile("\"raw_url\":\"([^\"]+)\"");
 
     private UrlToolSource() {}
 
@@ -64,7 +64,7 @@ final class UrlToolSource {
      * had.
      */
     static Path fetch(String url, Path cacheDir, boolean refresh) throws IOException, InterruptedException {
-        java.util.regex.Matcher gist = GIST_PAGE.matcher(url.trim());
+        Matcher gist = GIST_PAGE.matcher(url.trim());
         if (gist.matches()) {
             return fetchGist(gist.group(2), url.trim(), cacheDir, refresh);
         }

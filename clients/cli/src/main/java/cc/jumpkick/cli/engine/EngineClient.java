@@ -21,8 +21,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+import java.util.function.ObjIntConsumer;
 
 /**
  * CLI-side counterpart to {@link cc.jumpkick.engine.EngineServer}: connects, ensures a live
@@ -418,8 +420,7 @@ public final class EngineClient {
      * Ctrl-C cancels these as a best-effort supplement to dir-based cancel.
      */
     public static final class ActiveJobs {
-        private static final java.util.concurrent.ConcurrentHashMap.KeySetView<Long, Boolean> LIVE =
-                java.util.concurrent.ConcurrentHashMap.newKeySet();
+        private static final ConcurrentHashMap.KeySetView<Long, Boolean> LIVE = ConcurrentHashMap.newKeySet();
 
         private ActiveJobs() {}
 
@@ -435,8 +436,8 @@ public final class EngineClient {
             LIVE.clear();
         }
 
-        public static java.util.Set<Long> snapshot() {
-            return java.util.Set.copyOf(LIVE);
+        public static Set<Long> snapshot() {
+            return Set.copyOf(LIVE);
         }
     }
 
@@ -482,7 +483,7 @@ public final class EngineClient {
     /** Send a history/metrics request, collect the flat reply lines up to (not including) the terminal. */
     private static List<String> streamHistory(EnginePaths.Paths paths, String request) throws IOException {
         ensureRunning(paths, cc.jumpkick.cli.Jk.VERSION);
-        List<String> out = new java.util.ArrayList<>();
+        List<String> out = new ArrayList<>();
         try (SocketChannel ch = connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
@@ -531,7 +532,7 @@ public final class EngineClient {
     public static cc.jumpkick.run.BuildPlanResult runTest(
             EnginePaths.Paths paths,
             EngineRequests.TestRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
+            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
             cc.jumpkick.run.TestSummary[] testResultOut)
             throws IOException {
         return EngineBuildListenerAdapter.runTest(paths, req, listenerFactory, testResultOut);
@@ -545,7 +546,7 @@ public final class EngineClient {
     public static cc.jumpkick.run.BuildPlanResult runSingleBuild(
             EnginePaths.Paths paths,
             EngineRequests.SingleBuildRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
+            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
             cc.jumpkick.run.TestSummary[] testResultOut,
             String[] buildOutcomeOut)
             throws IOException {
@@ -553,9 +554,8 @@ public final class EngineClient {
     }
 
     /** One engine-hosted jk.toml edit (EDIT_REQUEST): returns changed; throws on error. */
-    public static boolean edit(
-            cc.jumpkick.engine.EnginePaths.Paths paths, java.nio.file.Path file, String op, java.util.List<String> args)
-            throws java.io.IOException {
+    public static boolean edit(cc.jumpkick.engine.EnginePaths.Paths paths, Path file, String op, List<String> args)
+            throws IOException {
         return EngineBuildListenerAdapter.edit(paths, file, op, args);
     }
 
@@ -572,15 +572,11 @@ public final class EngineClient {
      * #freshenCatalogIfRunning} instead, which never starts an engine.
      */
     public static void freshenCatalog(
-            cc.jumpkick.engine.EnginePaths.Paths paths,
-            String catalog,
-            boolean offline,
-            String url,
-            java.nio.file.Path cacheFile) {
+            cc.jumpkick.engine.EnginePaths.Paths paths, String catalog, boolean offline, String url, Path cacheFile) {
         if (offline) return; // nothing to freshen without a network
         try {
             ensureRunning(paths, cc.jumpkick.cli.Jk.VERSION);
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             return; // no engine to host the freshen — local resolution proceeds against the cache
         }
         EngineBuildListenerAdapter.freshenCatalog(
@@ -600,7 +596,7 @@ public final class EngineClient {
      * that actually touches the JDK feed's network when the engine is available.
      */
     public static boolean freshenCatalogIfRunning(
-            cc.jumpkick.engine.EnginePaths.Paths paths, String catalog, String url, java.nio.file.Path cacheFile) {
+            cc.jumpkick.engine.EnginePaths.Paths paths, String catalog, String url, Path cacheFile) {
         if (!reachable(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) return false;
         EngineBuildListenerAdapter.freshenCatalog(
                 paths, catalog, false, url, cacheFile == null ? null : cacheFile.toString());
@@ -612,7 +608,7 @@ public final class EngineClient {
      * In-process twin under test/no-engine.
      */
     public static cc.jumpkick.engine.protocol.ProjectInfo projectInfo(
-            cc.jumpkick.engine.EnginePaths.Paths paths, java.nio.file.Path dir) throws java.io.IOException {
+            cc.jumpkick.engine.EnginePaths.Paths paths, Path dir) throws IOException {
         return EngineBuildListenerAdapter.projectInfo(paths, dir);
     }
 
@@ -622,63 +618,50 @@ public final class EngineClient {
      */
     /** Thin-client IDE model: engine computes the workspace model, client generates the files. */
     public static cc.jumpkick.engine.protocol.IdeWireModel ideModel(
-            cc.jumpkick.engine.EnginePaths.Paths paths,
-            java.nio.file.Path dir,
-            java.nio.file.Path cache,
-            java.nio.file.Path jdksDir)
-            throws java.io.IOException {
+            cc.jumpkick.engine.EnginePaths.Paths paths, Path dir, Path cache, Path jdksDir) throws IOException {
         return EngineBuildListenerAdapter.ideModel(paths, dir, cache, jdksDir);
     }
 
     /** A plugin-declared command, worker-executed engine-side (found=false → normal help). */
     public static cc.jumpkick.engine.protocol.PluginCommandReport pluginCommand(
-            cc.jumpkick.engine.EnginePaths.Paths paths,
-            java.nio.file.Path dir,
-            java.nio.file.Path cache,
-            String command,
-            java.util.List<String> args)
-            throws java.io.IOException {
+            cc.jumpkick.engine.EnginePaths.Paths paths, Path dir, Path cache, String command, List<String> args)
+            throws IOException {
         return EngineBuildListenerAdapter.pluginCommand(paths, dir, cache, command, args);
     }
 
     /** Thin-client generator run: engine renders content, client guards/writes/prints. */
     public static cc.jumpkick.engine.protocol.GeneratedFiles generate(
-            cc.jumpkick.engine.EnginePaths.Paths paths, java.nio.file.Path dir, String kind)
-            throws java.io.IOException {
-        return EngineBuildListenerAdapter.generate(paths, dir, kind, java.util.Map.of());
+            cc.jumpkick.engine.EnginePaths.Paths paths, Path dir, String kind) throws IOException {
+        return EngineBuildListenerAdapter.generate(paths, dir, kind, Map.of());
     }
 
     /** As above with generator parameters (scaffold inputs etc.). */
     public static cc.jumpkick.engine.protocol.GeneratedFiles generate(
-            cc.jumpkick.engine.EnginePaths.Paths paths,
-            java.nio.file.Path dir,
-            String kind,
-            java.util.Map<String, String> params)
-            throws java.io.IOException {
+            cc.jumpkick.engine.EnginePaths.Paths paths, Path dir, String kind, Map<String, String> params)
+            throws IOException {
         return EngineBuildListenerAdapter.generate(paths, dir, kind, params);
     }
 
     /** Thin-client tree render: engine walks the graph, client substitutes its Theme into the tags. */
     public static String treeRender(
             cc.jumpkick.engine.EnginePaths.Paths paths,
-            java.nio.file.Path dir,
+            Path dir,
             int maxDepth,
             boolean flatten,
             boolean stack,
-            java.util.List<String> scopes)
-            throws java.io.IOException {
+            List<String> scopes)
+            throws IOException {
         return EngineBuildListenerAdapter.treeRender(paths, dir, maxDepth, flatten, stack, scopes);
     }
 
     /** Thin-client why lookup: lock matching + provenance paths, engine-side. */
     public static cc.jumpkick.engine.protocol.WhyReport why(
-            cc.jumpkick.engine.EnginePaths.Paths paths, java.nio.file.Path dir, String query)
-            throws java.io.IOException {
+            cc.jumpkick.engine.EnginePaths.Paths paths, Path dir, String query) throws IOException {
         return EngineBuildListenerAdapter.why(paths, dir, query);
     }
 
-    public static cc.jumpkick.engine.protocol.DenyReport denyCheck(
-            cc.jumpkick.engine.EnginePaths.Paths paths, java.nio.file.Path dir) throws java.io.IOException {
+    public static cc.jumpkick.engine.protocol.DenyReport denyCheck(cc.jumpkick.engine.EnginePaths.Paths paths, Path dir)
+            throws IOException {
         return EngineBuildListenerAdapter.denyCheck(paths, dir);
     }
 
@@ -688,26 +671,26 @@ public final class EngineClient {
      */
     public static cc.jumpkick.engine.protocol.ExecPlan execPlan(
             cc.jumpkick.engine.EnginePaths.Paths paths,
-            java.nio.file.Path dir,
-            java.nio.file.Path cache,
+            Path dir,
+            Path cache,
             String kind,
             String mainOverride,
             String binName)
-            throws java.io.IOException {
+            throws IOException {
         return EngineBuildListenerAdapter.execPlan(paths, dir, cache, kind, mainOverride, binName, null, null);
     }
 
     /** As above with install-destination overrides ({@code --bin-dir}/{@code --lib-dir}). */
     public static cc.jumpkick.engine.protocol.ExecPlan execPlan(
             cc.jumpkick.engine.EnginePaths.Paths paths,
-            java.nio.file.Path dir,
-            java.nio.file.Path cache,
+            Path dir,
+            Path cache,
             String kind,
             String mainOverride,
             String binName,
-            java.nio.file.Path binDir,
-            java.nio.file.Path libDir)
-            throws java.io.IOException {
+            Path binDir,
+            Path libDir)
+            throws IOException {
         return EngineBuildListenerAdapter.execPlan(paths, dir, cache, kind, mainOverride, binName, binDir, libDir);
     }
 
@@ -771,7 +754,7 @@ public final class EngineClient {
     public static cc.jumpkick.run.BuildPlanResult runSync(
             EnginePaths.Paths paths,
             EngineRequests.SyncRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
+            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
             long[] fetchedOut,
             long[] upToDateOut)
             throws IOException {
@@ -791,7 +774,7 @@ public final class EngineClient {
     public static cc.jumpkick.run.BuildPlanResult runAudit(
             EnginePaths.Paths paths,
             EngineRequests.AuditRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
+            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
             cc.jumpkick.runtime.HostedEvents.FindingObserver findings)
             throws IOException {
         return EngineHosted.runAudit(paths, req, listenerFactory, findings);
@@ -800,7 +783,7 @@ public final class EngineClient {
     public static EngineRequests.FormatOutcome runFormat(
             EnginePaths.Paths paths,
             EngineRequests.FormatRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
+            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
             cc.jumpkick.runtime.HostedEvents.FileObserver files)
             throws IOException {
         return EngineHosted.runFormat(paths, req, listenerFactory, files);
@@ -809,7 +792,7 @@ public final class EngineClient {
     public static EngineRequests.PublishOutcome runPublish(
             EnginePaths.Paths paths,
             EngineRequests.PublishRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
+            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
             throws IOException {
         return EngineHosted.runPublish(paths, req, listenerFactory);
     }
@@ -817,7 +800,7 @@ public final class EngineClient {
     public static cc.jumpkick.run.BuildPlanResult runImage(
             EnginePaths.Paths paths,
             EngineRequests.ImageRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
+            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
             EngineRequests.ImageSummary[] summaryOut)
             throws IOException {
         return EngineHosted.runImage(paths, req, listenerFactory, summaryOut);
@@ -826,19 +809,14 @@ public final class EngineClient {
     public static EngineRequests.ImportOutcome runImport(
             EnginePaths.Paths paths,
             EngineRequests.ImportRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
+            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
             cc.jumpkick.runtime.HostedEvents.NoteObserver notes)
             throws IOException {
         return EngineHosted.runImport(paths, req, listenerFactory, notes);
     }
 
     public static cc.jumpkick.runtime.HostedEvents.Provision provision(
-            EnginePaths.Paths paths,
-            java.nio.file.Path cache,
-            java.nio.file.Path projectDir,
-            java.nio.file.Path toolsRoot,
-            boolean noDiscover,
-            boolean gradle)
+            EnginePaths.Paths paths, Path cache, Path projectDir, Path toolsRoot, boolean noDiscover, boolean gradle)
             throws IOException {
         return EngineHosted.provision(paths, cache, projectDir, toolsRoot, noDiscover, gradle);
     }
@@ -846,7 +824,7 @@ public final class EngineClient {
     public static cc.jumpkick.run.BuildPlanResult runCompile(
             EnginePaths.Paths paths,
             EngineRequests.CompileRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
+            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
             throws IOException {
         return EngineHosted.runCompile(paths, req, listenerFactory);
     }
@@ -854,7 +832,7 @@ public final class EngineClient {
     public static cc.jumpkick.run.BuildPlanResult runTrain(
             EnginePaths.Paths paths,
             EngineRequests.TrainRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
+            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
             throws IOException {
         return EngineHosted.runTrain(paths, req, listenerFactory);
     }
@@ -868,7 +846,7 @@ public final class EngineClient {
     public static cc.jumpkick.run.BuildPlanResult runInstall(
             EnginePaths.Paths paths,
             EngineRequests.InstallRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
+            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
             cc.jumpkick.run.TestSummary[] testResultOut)
             throws IOException {
         return EngineHosted.runInstall(paths, req, listenerFactory, testResultOut);
@@ -877,7 +855,7 @@ public final class EngineClient {
     public static EngineRequests.GitFetchOutcome runGitFetch(
             EnginePaths.Paths paths,
             EngineRequests.GitFetchRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
+            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
             throws IOException {
         return EngineHosted.runGitFetch(paths, req, listenerFactory);
     }
@@ -885,7 +863,7 @@ public final class EngineClient {
     public static EngineRequests.ToolResolveOutcome runToolResolve(
             EnginePaths.Paths paths,
             EngineRequests.ToolResolveRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
+            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
             throws IOException {
         return EngineHosted.runToolResolve(paths, req, listenerFactory);
     }
@@ -893,7 +871,7 @@ public final class EngineClient {
     public static EngineRequests.ScriptPrepareOutcome runScriptPrepare(
             EnginePaths.Paths paths,
             EngineRequests.ScriptPrepareRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
+            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
             throws IOException {
         return EngineHosted.runScriptPrepare(paths, req, listenerFactory);
     }
@@ -901,8 +879,8 @@ public final class EngineClient {
     public static cc.jumpkick.run.BuildPlanResult runCacheMaintenance(
             EnginePaths.Paths paths,
             EngineRequests.CacheMaintRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
-            java.util.function.ObjIntConsumer<Boolean> onWait,
+            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
+            ObjIntConsumer<Boolean> onWait,
             EngineRequests.CacheMaintSummary[] summaryOut)
             throws IOException {
         return EngineHosted.runCacheMaintenance(paths, req, listenerFactory, onWait, summaryOut);

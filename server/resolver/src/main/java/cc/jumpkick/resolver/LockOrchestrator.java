@@ -30,10 +30,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiConsumer;
+import java.util.function.BooleanSupplier;
 
 /**
  * End-to-end lock: {@link JkBuild} → three independent scope solves (main / test / processor) →
@@ -155,8 +155,8 @@ public final class LockOrchestrator {
 
     private PubGrubResolver buildResolver(
             cc.jumpkick.repo.RepoGroup repos,
-            java.util.Map<String, String> bomConstraints,
-            java.util.Map<String, String> lockedVersionPrefs,
+            Map<String, String> bomConstraints,
+            Map<String, String> lockedVersionPrefs,
             KmpRedirects kmp) {
         PubGrubResolver r =
                 new PubGrubResolver(repos, bomConstraints, lockedVersionPrefs, kmp, platformPolicy, unmappedPolicy);
@@ -409,7 +409,7 @@ public final class LockOrchestrator {
         BlockingQueue<MaterializeDone> doneQ = new LinkedBlockingQueue<>();
         // First failure wins: tasks still waiting on a permit/queue skip their download instead
         // of hammering the host for a lock that is already dead.
-        java.util.concurrent.atomic.AtomicBoolean failed = new java.util.concurrent.atomic.AtomicBoolean();
+        AtomicBoolean failed = new AtomicBoolean();
         List<CompletableFuture<?>> inFlight = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
             final int idx = i;
@@ -587,7 +587,7 @@ public final class LockOrchestrator {
             throws IOException, InterruptedException {
         if (roots.isEmpty()) return new Resolution(Map.of());
         if (resolverOverride != null) return resolverOverride.resolve(roots);
-        java.util.function.BiConsumer<String, String> liveGraph = (pkg, ver) -> {
+        BiConsumer<String, String> liveGraph = (pkg, ver) -> {
             // Solver keys are package-id; display as module for progress.
             String mod = displayModule(pkg);
             if (!graphSeen.add(mod)) return;
@@ -628,7 +628,7 @@ public final class LockOrchestrator {
         for (CompletableFuture<?> f : inFlight) {
             try {
                 f.join();
-            } catch (CompletionException | java.util.concurrent.CancellationException ignored) {
+            } catch (CompletionException | CancellationException ignored) {
                 // the failure that got us here, or a sibling's — already reported
             }
         }
@@ -837,7 +837,7 @@ public final class LockOrchestrator {
             Map<String, String> bomConstraints,
             Map<String, String> constraintProvenance,
             ResolveObserver observer,
-            java.util.function.BooleanSupplier abort)
+            BooleanSupplier abort)
             throws IOException, InterruptedException {
         Coordinate coord = mod.coordinate();
         // Stream GA to lock-package events for human-readable UI; lock row name stays package key.
@@ -1000,7 +1000,7 @@ public final class LockOrchestrator {
      * only selector that opts into pre-releases.
      */
     private static Set<String> snapshotModules(List<Dependency> roots) {
-        Set<String> out = new java.util.LinkedHashSet<>();
+        Set<String> out = new LinkedHashSet<>();
         for (Dependency d : roots) {
             if (d.version() instanceof VersionSelector.Snapshot) out.add(d.module());
         }

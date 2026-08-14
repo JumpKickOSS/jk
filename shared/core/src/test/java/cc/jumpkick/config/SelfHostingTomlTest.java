@@ -8,7 +8,11 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.WorkspaceMerge;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -56,7 +60,7 @@ class SelfHostingTomlTest {
             Path candidate = classPath.toAbsolutePath().normalize();
             for (int i = 0; i < 12 && candidate != null; i++) {
                 Path manifest = candidate.resolve("jk.toml");
-                if (java.nio.file.Files.isRegularFile(manifest)) {
+                if (Files.isRegularFile(manifest)) {
                     try {
                         JkBuild parsed = JkBuildParser.parse(manifest);
                         if (parsed.isWorkspaceRoot()) return candidate;
@@ -119,7 +123,7 @@ class SelfHostingTomlTest {
         // catalog (project jk-libs.toml → global → bundled). Self-host manifests must not
         // resurrect the old per-manifest pin — the workspace-root jk-libs.toml pins them instead
         // (JK-1840, see catalog_pins_cover_every_self_host_short_name).
-        for (String rel : java.util.List.of(
+        for (String rel : List.of(
                 "jk.toml",
                 "clients/cli/jk.toml",
                 "plugins/android/jk.toml",
@@ -127,7 +131,7 @@ class SelfHostingTomlTest {
                 "plugins/groovy-compiler/jk.toml",
                 "plugins/kotlin-compiler/jk.toml",
                 "plugins/quarkus/jk.toml")) {
-            String text = java.nio.file.Files.readString(REPO.resolve(rel));
+            String text = Files.readString(REPO.resolve(rel));
             assertThat(text).as("%s must not set catalog = (removed)", rel).doesNotContain("catalog =");
         }
     }
@@ -143,7 +147,7 @@ class SelfHostingTomlTest {
     @Test
     void catalog_pins_cover_every_self_host_short_name() throws Exception {
         JkBuild root = JkBuildParser.parseLocal(REPO.resolve("jk.toml"));
-        java.util.List<Path> manifests = new java.util.ArrayList<>();
+        List<Path> manifests = new ArrayList<>();
         manifests.add(REPO.resolve("jk.toml"));
         for (Path moduleDir :
                 cc.jumpkick.config.WorkspaceLoader.loadModules(REPO, root).keySet()) {
@@ -152,9 +156,8 @@ class SelfHostingTomlTest {
         }
         // Catalog-resolved short names: `name = "<version>"` entries in *dependencies tables,
         // excluding workspace refs and structured { group = … } coordinates.
-        java.util.regex.Pattern entry =
-                java.util.regex.Pattern.compile("^([A-Za-z0-9._-]+)\\s*=\\s*\"[^\"]*\"\\s*(#.*)?$");
-        java.util.Set<String> shortNames = new java.util.TreeSet<>();
+        Pattern entry = Pattern.compile("^([A-Za-z0-9._-]+)\\s*=\\s*\"[^\"]*\"\\s*(#.*)?$");
+        Set<String> shortNames = new TreeSet<>();
         for (Path manifest : manifests) {
             String table = "";
             for (String raw : Files.readAllLines(manifest)) {

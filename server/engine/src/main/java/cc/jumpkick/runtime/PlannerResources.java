@@ -12,8 +12,11 @@ import cc.jumpkick.task.ActionCache;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 /**
  * copy-resources and SPI build-logic anchors around compile / package.
@@ -26,11 +29,10 @@ public final class PlannerResources {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
-        java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
-        java.util.concurrent.atomic.AtomicReference<List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
-        java.util.concurrent.atomic.AtomicReference<List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
-        java.util.concurrent.atomic.AtomicReference<List<String>> buildLogicInputTokensRef =
-                cx.buildLogicInputTokensRef();
+        Supplier<EffortWeights.Plan> plan = cx.plan();
+        AtomicReference<List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
+        AtomicReference<List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
+        AtomicReference<List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
         Path javaMainSrcDir = cx.javaMainSrcDir();
         boolean compact = cx.compact();
         boolean mixed = cx.mixed();
@@ -67,7 +69,7 @@ public final class PlannerResources {
                         for (ExtraResources.Copy c : extra) {
                             Path target = classes.resolve(c.destination());
                             Files.createDirectories(target.getParent());
-                            Files.copy(c.source(), target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                            Files.copy(c.source(), target, StandardCopyOption.REPLACE_EXISTING);
                         }
                         copied = true;
                     } else {
@@ -102,9 +104,8 @@ public final class PlannerResources {
     static Task buildLogicBeforeCompileStep(BuildPlanner.Ctx cx) {
         BuildPlanner.Inputs in = cx.in();
         ActionCache actionCache = cx.actionCache();
-        java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
-        java.util.concurrent.atomic.AtomicReference<List<String>> buildLogicInputTokensRef =
-                cx.buildLogicInputTokensRef();
+        Supplier<EffortWeights.Plan> plan = cx.plan();
+        AtomicReference<List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
         return Task.builder(TaskNames.BUILD_LOGIC_BEFORE_COMPILE)
                 .stage(BuildStage.GENERATE)
                 .label("Build logic (before compile)")
@@ -138,10 +139,9 @@ public final class PlannerResources {
     static Task buildLogicAfterCompileStep(BuildPlanner.Ctx cx) {
         BuildPlanner.Inputs in = cx.in();
         ActionCache actionCache = cx.actionCache();
-        java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
+        Supplier<EffortWeights.Plan> plan = cx.plan();
         String mainCompile = cx.mainCompile();
-        java.util.concurrent.atomic.AtomicReference<List<String>> buildLogicInputTokensRef =
-                cx.buildLogicInputTokensRef();
+        AtomicReference<List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
         return Task.builder(TaskNames.BUILD_LOGIC_AFTER_COMPILE)
                 .stage(BuildStage.COMPILE)
                 .label("Build logic (after compile)")
@@ -175,9 +175,8 @@ public final class PlannerResources {
     static Task buildLogicBeforePackageStep(BuildPlanner.Ctx cx) {
         BuildPlanner.Inputs in = cx.in();
         ActionCache actionCache = cx.actionCache();
-        java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
-        java.util.concurrent.atomic.AtomicReference<List<String>> buildLogicInputTokensRef =
-                cx.buildLogicInputTokensRef();
+        Supplier<EffortWeights.Plan> plan = cx.plan();
+        AtomicReference<List<String>> buildLogicInputTokensRef = cx.buildLogicInputTokensRef();
         return Task.builder(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE)
                 .stage(BuildStage.PACKAGE)
                 .label("Build logic (before package)")

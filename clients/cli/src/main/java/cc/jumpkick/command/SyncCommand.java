@@ -15,9 +15,11 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.function.LongSupplier;
 
 /**
  * {@code jk sync} — align local toolchain + dependency cache with {@code jk-lock.toml}. CAS/auto-lock
@@ -27,7 +29,7 @@ public final class SyncCommand implements CliCommand {
 
     private Path cacheDir;
     private Path jdksDir;
-    private java.net.URI repoUrl;
+    private URI repoUrl;
     private boolean offlinePrepare;
     private boolean sources;
     private GlobalOptions global;
@@ -58,7 +60,7 @@ public final class SyncCommand implements CliCommand {
     public int run(Invocation in) throws Exception {
         this.cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
         this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
-        this.repoUrl = in.value("repo-url").map(java.net.URI::create).orElse(null);
+        this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
         this.offlinePrepare = in.isSet("offline-prepare");
         this.sources = in.isSet("sources");
         this.global = GlobalOptions.from(in);
@@ -131,7 +133,7 @@ public final class SyncCommand implements CliCommand {
     }
 
     /** The Sync chip spec; counts are read lazily, at result-line render time. */
-    static ConsoleSpec syncSpec(java.util.function.LongSupplier fetched, java.util.function.LongSupplier upToDate) {
+    static ConsoleSpec syncSpec(LongSupplier fetched, LongSupplier upToDate) {
         return new ConsoleSpec(
                 "Sync",
                 r -> {

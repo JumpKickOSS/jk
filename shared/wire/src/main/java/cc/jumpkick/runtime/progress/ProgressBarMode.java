@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.progress;
 
+import java.util.Locale;
+
 /**
  * How aggregate progress percent is painted (CLI header, engine workspace-progress, web).
  *
@@ -25,7 +27,7 @@ public enum ProgressBarMode {
 
     public static ProgressBarMode parse(String raw) {
         if (raw == null || raw.isBlank()) return AUTO;
-        String v = raw.trim().toLowerCase(java.util.Locale.ROOT);
+        String v = raw.trim().toLowerCase(Locale.ROOT);
         return switch (v) {
             case "clock", "open-loop", "openloop", "r0", "eta" -> CLOCK;
             case "weighted", "weight", "work", "weights" -> WEIGHTED;
@@ -36,7 +38,7 @@ public enum ProgressBarMode {
 
     /** Wire name for the per-request {@code progressMode} field. */
     public String wireName() {
-        return name().toLowerCase(java.util.Locale.ROOT);
+        return name().toLowerCase(Locale.ROOT);
     }
 
     public HeaderProgressStrategy select(HeaderProgressStrategy clock, HeaderProgressStrategy weighted, long r0Ms) {

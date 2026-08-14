@@ -2,10 +2,7 @@
 package cc.jumpkick.engine.http;
 
 import java.util.Objects;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
@@ -147,7 +144,7 @@ public final class LiveVitals implements AutoCloseable {
         if (!events.hasDashboardSubscribers()) return;
         try {
             scheduler.execute(() -> publishCache(false));
-        } catch (java.util.concurrent.RejectedExecutionException ignored) {
+        } catch (RejectedExecutionException ignored) {
             // closing — nothing left to notify
         }
     }

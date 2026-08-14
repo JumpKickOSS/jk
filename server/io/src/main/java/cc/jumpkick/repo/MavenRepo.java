@@ -8,11 +8,15 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.util.Hashing;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 
 /**
  * One Maven-style repository: fetch into {@link Cas}, materialize under {@code repos/<name>/}.
@@ -43,12 +47,10 @@ public final class MavenRepo {
             cc.jumpkick.http.CentralMirror.standard(cc.jumpkick.util.JkDirs.store());
 
     /** Artifacts pinned this run without an upstream checksum sidecar. */
-    private final java.util.concurrent.atomic.AtomicInteger missingUpstreamChecksums =
-            new java.util.concurrent.atomic.AtomicInteger();
+    private final AtomicInteger missingUpstreamChecksums = new AtomicInteger();
 
     /** Once-per-instance warn for plaintext http:// base URLs. */
-    private final java.util.concurrent.atomic.AtomicBoolean httpWarned =
-            new java.util.concurrent.atomic.AtomicBoolean();
+    private final AtomicBoolean httpWarned = new AtomicBoolean();
 
     public MavenRepo(String name, URI baseUrl, Http http, Cas cas) {
         this(name, baseUrl, http, cas, RepoCredential.ANONYMOUS);
@@ -182,8 +184,7 @@ public final class MavenRepo {
      * downloads). A leg in progress always completes cleanly — the check runs only before the
      * network leg starts and right after the host permit is granted, never mid-download.
      */
-    public Fetched fetchArtifact(Coordinate coord, java.util.function.BooleanSupplier abort)
-            throws IOException, InterruptedException {
+    public Fetched fetchArtifact(Coordinate coord, BooleanSupplier abort) throws IOException, InterruptedException {
         return fetch(coord, MavenLayout.artifactPath(coord), true, Leg.ARTIFACT, abort);
     }
 
@@ -246,15 +247,14 @@ public final class MavenRepo {
     }
 
     /** Abort supplier for callers with no abort semantics (POM / metadata legs). */
-    private static final java.util.function.BooleanSupplier NO_ABORT = () -> false;
+    private static final BooleanSupplier NO_ABORT = () -> false;
 
     private Fetched fetch(Coordinate coord, String relativePath, boolean mirror, Leg leg)
             throws IOException, InterruptedException {
         return fetch(coord, relativePath, mirror, leg, NO_ABORT);
     }
 
-    private Fetched fetch(
-            Coordinate coord, String relativePath, boolean mirror, Leg leg, java.util.function.BooleanSupplier abort)
+    private Fetched fetch(Coordinate coord, String relativePath, boolean mirror, Leg leg, BooleanSupplier abort)
             throws IOException, InterruptedException {
         if (cc.jumpkick.config.SessionContext.current().config().offlineOr(false)) {
             return fetchOffline(coord, relativePath);
@@ -380,7 +380,7 @@ public final class MavenRepo {
         try {
             var resp = http.get(URI.create(uri + ".sha1"));
             if (resp.statusCode() < 200 || resp.statusCode() >= 300) return Optional.empty();
-            String body = new String(resp.body(), java.nio.charset.StandardCharsets.UTF_8).strip();
+            String body = new String(resp.body(), StandardCharsets.UTF_8).strip();
             if (body.isEmpty()) return Optional.empty();
             String first = body.split("\\s+")[0];
             // 40 hex chars, or it is not a SHA-1 (some repos serve an HTML error page with HTTP 200).
@@ -484,7 +484,7 @@ public final class MavenRepo {
             throws IOException, InterruptedException {
         Optional<byte[]> sha256Side = transport.fetch(sidecarUri(artifactUri, ".sha256"), credential);
         if (sha256Side.isPresent()) {
-            String expected = normalizeChecksum(new String(sha256Side.get(), java.nio.charset.StandardCharsets.UTF_8));
+            String expected = normalizeChecksum(new String(sha256Side.get(), StandardCharsets.UTF_8));
             if (isHexChecksum(expected, 64)) {
                 if (!expected.equalsIgnoreCase(actualSha256)) {
                     throw new ChecksumMismatchException("upstream checksum mismatch for "
@@ -504,7 +504,7 @@ public final class MavenRepo {
         }
         Optional<byte[]> sha1Side = transport.fetch(sidecarUri(artifactUri, ".sha1"), credential);
         if (sha1Side.isPresent()) {
-            String expected = normalizeChecksum(new String(sha1Side.get(), java.nio.charset.StandardCharsets.UTF_8));
+            String expected = normalizeChecksum(new String(sha1Side.get(), StandardCharsets.UTF_8));
             if (isHexChecksum(expected, 40)) {
                 Path blob = cas.pathFor(actualSha256);
                 String actualSha1 = Hashing.hashHex("SHA-1", Files.readAllBytes(blob));
@@ -586,8 +586,7 @@ public final class MavenRepo {
         }
     }
 
-    private static void checkAbort(java.util.function.BooleanSupplier abort, Coordinate coord)
-            throws FetchAbortedException {
+    private static void checkAbort(BooleanSupplier abort, Coordinate coord) throws FetchAbortedException {
         if (abort.getAsBoolean()) {
             throw new FetchAbortedException("fetch aborted before starting " + coord + " (lock already failed)");
         }

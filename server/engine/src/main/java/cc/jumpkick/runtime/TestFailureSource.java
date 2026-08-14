@@ -6,14 +6,15 @@ import cc.jumpkick.layout.SourceLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.JkBuild;
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.regex.Matcher;
@@ -129,9 +130,9 @@ public final class TestFailureSource {
     private static BufferedReader lenientReader(Path file) throws IOException {
         var decoder = StandardCharsets.UTF_8
                 .newDecoder()
-                .onMalformedInput(java.nio.charset.CodingErrorAction.REPLACE)
-                .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPLACE);
-        return new BufferedReader(new java.io.InputStreamReader(Files.newInputStream(file), decoder));
+                .onMalformedInput(CodingErrorAction.REPLACE)
+                .onUnmappableCharacter(CodingErrorAction.REPLACE);
+        return new BufferedReader(new InputStreamReader(Files.newInputStream(file), decoder));
     }
 
     private static int countLines(Path file) throws IOException {
@@ -273,7 +274,7 @@ public final class TestFailureSource {
                 if (hit.isPresent()) return hit;
             }
             return scanByFileName(cache, moduleDir, pkgPath, fileName, layout);
-        } catch (java.nio.file.InvalidPathException e) {
+        } catch (InvalidPathException e) {
             // Filesystem-specific rejects (beyond the sanitizing above) degrade to no snippet.
             return Optional.empty();
         }
@@ -289,9 +290,8 @@ public final class TestFailureSource {
 
     private static Optional<Path> scanByFileName(
             Cache cache, Path moduleDir, String pkgPath, String fileName, Layout layout) {
-        Path preferSuffix = pkgPath.isEmpty()
-                ? Path.of(fileName)
-                : Path.of(pkgPath.replace('/', java.io.File.separatorChar), fileName);
+        Path preferSuffix =
+                pkgPath.isEmpty() ? Path.of(fileName) : Path.of(pkgPath.replace('/', File.separatorChar), fileName);
         Path best = null;
         int seen = 0;
         for (Path root : layout.roots()) {
@@ -315,7 +315,7 @@ public final class TestFailureSource {
         return Optional.ofNullable(best);
     }
 
-    private static void addSuiteRoots(java.util.Set<Path> roots, Path moduleDir, boolean compact) {
+    private static void addSuiteRoots(Set<Path> roots, Path moduleDir, boolean compact) {
         List<String> suites = TestSuites.discover(moduleDir, compact);
         if (suites.isEmpty()) suites = List.of(TestSuites.DEFAULT);
         for (String suite : suites) {

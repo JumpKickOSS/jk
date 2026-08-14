@@ -5,8 +5,11 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Locale;
+import java.util.function.UnaryOperator;
 
 /**
  * When Maven Central rate-limits us, route Central traffic to Google's GCS mirror for a while
@@ -83,10 +86,10 @@ public final class CentralMirror {
         return new CentralMirror(cacheDir, DEFAULT_WINDOW, enabledByEnv(System::getenv));
     }
 
-    static boolean enabledByEnv(java.util.function.UnaryOperator<String> env) {
+    static boolean enabledByEnv(UnaryOperator<String> env) {
         String raw = env.apply(ENV_DISABLE);
         if (raw == null || raw.isBlank()) return true;
-        String v = raw.strip().toLowerCase(java.util.Locale.ROOT);
+        String v = raw.strip().toLowerCase(Locale.ROOT);
         return !(v.equals("off") || v.equals("false") || v.equals("0") || v.equals("no"));
     }
 
@@ -123,7 +126,7 @@ public final class CentralMirror {
         try {
             Files.createDirectories(stamp.getParent());
             if (Files.exists(stamp)) {
-                Files.setLastModifiedTime(stamp, java.nio.file.attribute.FileTime.from(Instant.now()));
+                Files.setLastModifiedTime(stamp, FileTime.from(Instant.now()));
             } else {
                 Files.writeString(
                         stamp,

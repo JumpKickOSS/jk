@@ -17,11 +17,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
+import java.util.function.Consumer;
 
 /**
  * Engine build-plugin code layer: describe-protocol discovery (file-cached), execution specs, and
@@ -260,7 +257,7 @@ public final class PluginBuild {
 
     @SuppressWarnings("unchecked")
     private static void appendToken(StringBuilder b, Map<String, Object> values) {
-        for (Map.Entry<String, Object> e : new java.util.TreeMap<>(values).entrySet()) {
+        for (Map.Entry<String, Object> e : new TreeMap<>(values).entrySet()) {
             if (e.getValue() instanceof Map<?, ?> m) {
                 b.append('|').append(e.getKey()).append("={");
                 appendToken(b, (Map<String, Object>) m);
@@ -393,7 +390,7 @@ public final class PluginBuild {
 
         Path staging = Files.createTempDirectory(Files.createDirectories(dir.getParent()), ".closure-");
         // Dedupe by GAV so package-id keys (g:a:type:classifier) don't double-link the same jar.
-        java.util.LinkedHashSet<String> seenGav = new java.util.LinkedHashSet<>();
+        LinkedHashSet<String> seenGav = new LinkedHashSet<>();
         for (var resolved : resolution.modules().values()) {
             cc.jumpkick.model.Coordinate coord = resolved.coordinate();
             if (!seenGav.add(coord.toGav())) continue;
@@ -577,9 +574,7 @@ public final class PluginBuild {
         }
         try {
             var siblings = cc.jumpkick.config.WorkspaceClasspath.resolve(
-                    projectDir,
-                    project,
-                    java.util.Set.of(cc.jumpkick.model.Scope.EXPORT, cc.jumpkick.model.Scope.MAIN));
+                    projectDir, project, Set.of(cc.jumpkick.model.Scope.EXPORT, cc.jumpkick.model.Scope.MAIN));
             for (Path jar : siblings.jars()) {
                 if (!classpath.contains(jar)) classpath.add(jar);
             }
@@ -649,9 +644,7 @@ public final class PluginBuild {
         }
         try {
             var siblings = cc.jumpkick.config.WorkspaceClasspath.resolve(
-                    projectDir,
-                    project,
-                    java.util.Set.of(cc.jumpkick.model.Scope.EXPORT, cc.jumpkick.model.Scope.MAIN));
+                    projectDir, project, Set.of(cc.jumpkick.model.Scope.EXPORT, cc.jumpkick.model.Scope.MAIN));
             for (Path jar : siblings.jars()) {
                 Path container = null;
                 String name = jar.getFileName().toString();
@@ -903,14 +896,13 @@ public final class PluginBuild {
      * Fork the plugin on the spec and collect its protocol lines. Throws with the
      * plugin's own error message when it reports one (or exits non-zero without reporting).
      */
-    public static List<String> runWorker(
-            Active active, Path cache, Path spec, java.util.function.Consumer<String> onLabel)
+    public static List<String> runWorker(Active active, Path cache, Path spec, Consumer<String> onLabel)
             throws IOException, InterruptedException {
         Path jar = workerJarFor(active, cache);
         List<String> collected = new ArrayList<>();
         // Non-protocol output (stack traces land here — stderr is merged by PluginProcess).
         // Kept so a worker that dies without reporting a protocol error is still diagnosable.
-        java.util.ArrayDeque<String> tail = new java.util.ArrayDeque<>();
+        ArrayDeque<String> tail = new ArrayDeque<>();
         String[] error = new String[1];
         PluginClient client = new PluginClient(active.manifest().code().protocolPrefix())
                 .on("label", line -> {

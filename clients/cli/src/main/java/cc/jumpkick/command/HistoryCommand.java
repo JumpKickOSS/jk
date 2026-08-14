@@ -12,7 +12,9 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.plugin.protocol.Jsonl;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 
 /**
  * {@code jk history} — browse and prune the persisted build-history journal
@@ -113,7 +115,7 @@ public final class HistoryCommand extends GroupCommand {
                 return 0;
             }
             long now = System.currentTimeMillis();
-            List<List<String>> rows = new java.util.ArrayList<>();
+            List<List<String>> rows = new ArrayList<>();
             for (String e : entries) {
                 boolean success = Jsonl.bool(e, "success", false);
                 boolean cancelled = Jsonl.bool(e, "cancelled", false);
@@ -258,8 +260,7 @@ public final class HistoryCommand extends GroupCommand {
             return success ? 0 : 1;
         }
 
-        private static void printRows(
-                List<String> lines, String type, String header, java.util.function.Function<String, String> render) {
+        private static void printRows(List<String> lines, String type, String header, Function<String, String> render) {
             List<String> rows = lines.stream()
                     .filter(l -> type.equals(EngineProtocol.typeOf(l)))
                     .toList();

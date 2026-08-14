@@ -4,6 +4,8 @@ package cc.jumpkick.plugin.manifest;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.PluginConfig;
+import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -19,7 +21,7 @@ final class Interpolation {
     private Interpolation() {}
 
     /** Manifest-load validation: every referenced variable must exist in the closed vocabulary. */
-    static void validate(String template, java.util.Set<String> schemaKeys, String where) {
+    static void validate(String template, Set<String> schemaKeys, String where) {
         Matcher m = VAR.matcher(template);
         while (m.find()) {
             String var = m.group(1);
@@ -48,7 +50,7 @@ final class Interpolation {
 
     /** Host OS classifier: {@code linux} / {@code osx} / {@code windows}. */
     static String hostOs() {
-        String os = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT);
+        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
         if (os.contains("mac") || os.contains("darwin")) return "osx";
         if (os.contains("win")) return "windows";
         return "linux";
@@ -56,7 +58,7 @@ final class Interpolation {
 
     /** Host OS+arch classifier (protoc style: {@code linux-x86_64}, {@code osx-aarch_64}, …). */
     static String hostOsArch() {
-        String arch = System.getProperty("os.arch", "").toLowerCase(java.util.Locale.ROOT);
+        String arch = System.getProperty("os.arch", "").toLowerCase(Locale.ROOT);
         String normalized =
                 switch (arch) {
                     case "amd64", "x86_64" -> "x86_64";

@@ -4,6 +4,7 @@ package cc.jumpkick.jdk;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -89,16 +90,16 @@ class JdkToolUninstallerTest {
     }
 
     /** Reflective shim so tests can poke at the private command builder. */
-    private static java.util.List<String> commandFor(String source, String identifier) {
+    private static List<String> commandFor(String source, String identifier) {
         return commandFor(hit(Path.of("/tmp/" + identifier), source), identifier);
     }
 
     @SuppressWarnings("unchecked")
-    private static java.util.List<String> commandFor(JdkHit hit, String identifier) {
+    private static List<String> commandFor(JdkHit hit, String identifier) {
         try {
             var m = JdkToolUninstaller.class.getDeclaredMethod("commandFor", JdkHit.class, String.class);
             m.setAccessible(true);
-            return (java.util.List<String>) m.invoke(null, hit, identifier);
+            return (List<String>) m.invoke(null, hit, identifier);
         } catch (ReflectiveOperationException e) {
             throw new RuntimeException(e);
         }

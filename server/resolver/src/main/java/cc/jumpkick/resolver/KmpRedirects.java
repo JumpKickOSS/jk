@@ -8,9 +8,12 @@ import cc.jumpkick.repo.RepoGroup;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -44,8 +47,7 @@ public final class KmpRedirects {
      * Completed futures stay as the memo. Bounded like the sibling process memos; past the cap
      * lookups run uncached.
      */
-    private static final Map<String, java.util.concurrent.CompletableFuture<Optional<Selection>>> PROCESS_CACHE =
-            new ConcurrentHashMap<>();
+    private static final Map<String, CompletableFuture<Optional<Selection>>> PROCESS_CACHE = new ConcurrentHashMap<>();
 
     private static final int PROCESS_CACHE_MAX = 8_192;
 
@@ -69,7 +71,7 @@ public final class KmpRedirects {
      * resolution — a graph reaching a platform artifact with no redirected root keeps it.
      */
     public Map<String, String> droppedSiblings() {
-        return java.util.Collections.unmodifiableMap(droppedSiblings);
+        return Collections.unmodifiableMap(droppedSiblings);
     }
 
     public KmpRedirects(RepoGroup repos, String jvmEnvironment) {
@@ -134,12 +136,10 @@ public final class KmpRedirects {
      * only fires on an {@link Error}, unparking joiners without memoizing a guess.
      */
     private Optional<Selection> processMemoized(String processKey, String module, String version) {
-        java.util.concurrent.CompletableFuture<Optional<Selection>> flight = PROCESS_CACHE.get(processKey);
+        CompletableFuture<Optional<Selection>> flight = PROCESS_CACHE.get(processKey);
         if (flight == null && PROCESS_CACHE.size() < PROCESS_CACHE_MAX) {
-            java.util.concurrent.CompletableFuture<Optional<Selection>> mine =
-                    new java.util.concurrent.CompletableFuture<>();
-            java.util.concurrent.CompletableFuture<Optional<Selection>> raced =
-                    PROCESS_CACHE.putIfAbsent(processKey, mine);
+            CompletableFuture<Optional<Selection>> mine = new CompletableFuture<>();
+            CompletableFuture<Optional<Selection>> raced = PROCESS_CACHE.putIfAbsent(processKey, mine);
             if (raced != null) {
                 flight = raced;
             } else {
@@ -197,7 +197,7 @@ public final class KmpRedirects {
      * stops one chunk after the root element appears — a long license header pushes the marker
      * past the first chunk, but a plain-Maven POM still costs at most one extra chunk.
      */
-    static boolean pomHasGradleMetadataMarker(java.nio.file.Path pomPath) throws IOException {
+    static boolean pomHasGradleMetadataMarker(Path pomPath) throws IOException {
         // Overlap enough to reassemble a marker split across a chunk boundary (ASCII marker:
         // byte-aligned regardless of surrounding multi-byte sequences).
         final int overlap = GradleModuleMetadata.POM_MARKER.length() - 1;

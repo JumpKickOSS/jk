@@ -8,12 +8,9 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.Enumeration;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.nio.file.StandardCopyOption;
+import java.time.LocalDateTime;
+import java.util.*;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -33,7 +30,7 @@ import java.util.zip.ZipEntry;
 final class MinifiedJarPackager {
 
     /** Fixed entry timestamp (zip's floor is 1980) — reproducible output, same as jk's packagers. */
-    private static final java.time.LocalDateTime ENTRY_TIME = java.time.LocalDateTime.of(1980, 2, 1, 0, 0);
+    private static final LocalDateTime ENTRY_TIME = LocalDateTime.of(1980, 2, 1, 0, 0);
 
     /**
      * A pinned-time entry via {@link JarEntry#setTimeLocal} — NOT {@code setTime}, whose DOS-time
@@ -49,7 +46,7 @@ final class MinifiedJarPackager {
     private MinifiedJarPackager() {}
 
     /** Alias every extensionless jar as {@code .jar} under {@code work} (R8 judges by extension). */
-    private static List<Path> jarSuffixed(Path work, List<Path> jars) throws java.io.IOException {
+    private static List<Path> jarSuffixed(Path work, List<Path> jars) throws IOException {
         List<Path> out = new ArrayList<>(jars.size());
         Path dir = null;
         int i = 0;
@@ -62,7 +59,7 @@ final class MinifiedJarPackager {
                 Path alias = dir.resolve("rt-" + i + "-" + name + ".jar");
                 try {
                     Files.createLink(alias, jar);
-                } catch (java.io.IOException | UnsupportedOperationException e) {
+                } catch (IOException | UnsupportedOperationException e) {
                     Files.copy(jar, alias);
                 }
                 out.add(alias);
@@ -111,7 +108,7 @@ final class MinifiedJarPackager {
             // exactly, so deriving the rules beats any pattern a user could write: it covers
             // hand-written framework internals that match no naming convention, and it tracks
             // whatever the project actually depends on.
-            Set<String> derived = new java.util.TreeSet<>(ByNameIndex.referencedClasses(program));
+            Set<String> derived = new TreeSet<>(ByNameIndex.referencedClasses(program));
             derived.retainAll(ByNameIndex.classesIn(program));
 
             // Libraries describe their own reflective surface in META-INF/native-image for
@@ -127,7 +124,7 @@ final class MinifiedJarPackager {
                     .resolve("merged")
                     .resolve(cc.jumpkick.surface.TrainLayout.SURFACE_JSON);
             cc.jumpkick.surface.DynamicSurface trained = cc.jumpkick.surface.DynamicSurface.empty();
-            if (java.nio.file.Files.isRegularFile(trainSurface)) {
+            if (Files.isRegularFile(trainSurface)) {
                 trained = cc.jumpkick.surface.DynamicSurfaceIo.readJson(trainSurface);
                 surface = surface.merge(trained);
             }
@@ -150,7 +147,7 @@ final class MinifiedJarPackager {
             // The effective rule set, next to the artifact: the one place to look when R8 kept
             // something unexpected, or when writing a rule to cover what it could not derive.
             Path effectiveRules = io.artifactPath().resolveSibling(stripExtension(io.artifactPath()) + "-keep.pro");
-            Files.copy(rules, effectiveRules, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(rules, effectiveRules, StandardCopyOption.REPLACE_EXISTING);
             io.produced(effectiveRules);
 
             Path shrunk = work.resolve("shrunk.jar");
@@ -228,7 +225,7 @@ final class MinifiedJarPackager {
      */
     // Package-private for MinifiedJarAuditTest.
     static void auditByNameIndexes(List<Path> program, Path shrunk) throws IOException {
-        Set<String> expected = new java.util.TreeSet<>(ByNameIndex.referencedClasses(program));
+        Set<String> expected = new TreeSet<>(ByNameIndex.referencedClasses(program));
         expected.retainAll(ByNameIndex.classesIn(program));
         expected.removeAll(ByNameIndex.classesIn(List.of(shrunk)));
         if (expected.isEmpty()) return;
@@ -395,7 +392,7 @@ final class MinifiedJarPackager {
     }
 
     private static String mb(long bytes) {
-        return String.format(java.util.Locale.ROOT, "%.1f MB", bytes / 1_000_000.0);
+        return String.format(Locale.ROOT, "%.1f MB", bytes / 1_000_000.0);
     }
 
     // Local copy by design: plugins stay dependency-free of jk's kernel modules.

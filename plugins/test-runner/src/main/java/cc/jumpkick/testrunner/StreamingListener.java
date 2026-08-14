@@ -181,7 +181,7 @@ final class StreamingListener implements EngineExecutionListener {
      * class/method segments (Spock spec/feature, Cucumber feature/scenario) — without it, progress
      * and FAILED labels regress to the raw bracketed uniqueId (JK-1903).
      */
-    private static void putIdentityWithDisplay(TestDescriptor descriptor, java.util.Map<String, Object> payload) {
+    private static void putIdentityWithDisplay(TestDescriptor descriptor, Map<String, Object> payload) {
         JUnitUniqueId.parse(descriptor.getUniqueId().toString()).putIdentity(payload);
         if (!payload.containsKey("testClass") && !payload.containsKey("testMethod")) {
             String display = descriptor.getDisplayName();

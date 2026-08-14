@@ -14,6 +14,7 @@ import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -133,7 +134,7 @@ class CentralMirrorTest {
      */
     @Test
     void a_central_429_is_reissued_against_the_mirror_in_the_same_call(@TempDir Path dir) throws Exception {
-        var hits = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        var hits = new CopyOnWriteArrayList<String>();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/maven2/", ex -> {
             hits.add("central" + ex.getRequestURI().getPath());
@@ -180,7 +181,7 @@ class CentralMirrorTest {
     @Test
     void once_the_window_is_open_central_is_never_asked_again(@TempDir Path dir) throws Exception {
         // One 429 should cost one request to Central, not one per call.
-        var hits = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        var hits = new CopyOnWriteArrayList<String>();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/maven2/", ex -> {
             hits.add("central");

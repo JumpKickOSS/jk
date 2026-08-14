@@ -7,6 +7,7 @@ import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.resolver.ResolveObserver;
 import com.sun.net.httpserver.HttpServer;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -16,6 +17,9 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.jar.JarOutputStream;
+import java.util.jar.Manifest;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -139,7 +143,7 @@ class LockFreshenConservativeTest {
         String withoutStamp = Files.readString(lockFile)
                 .lines()
                 .filter(l -> !l.contains("manifests-sha256"))
-                .collect(java.util.stream.Collectors.joining("\n", "", "\n"));
+                .collect(Collectors.joining("\n", "", "\n"));
         Files.writeString(lockFile, withoutStamp);
         assertThat(LockFreshness.isStale(tmp, lockFile)).isTrue();
 
@@ -329,8 +333,8 @@ class LockFreshenConservativeTest {
      */
     private static byte[] emptyJar() {
         try {
-            var bytes = new java.io.ByteArrayOutputStream();
-            new java.util.jar.JarOutputStream(bytes, new java.util.jar.Manifest()).close();
+            var bytes = new ByteArrayOutputStream();
+            new JarOutputStream(bytes, new Manifest()).close();
             return bytes.toByteArray();
         } catch (IOException e) {
             throw new IllegalStateException(e);

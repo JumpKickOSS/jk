@@ -2,8 +2,10 @@
 package cc.jumpkick.plugin.image;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.jar.JarFile;
@@ -68,7 +70,7 @@ final class BootLayout {
         // the timeout below unreachable while the child holds its pipe open (JK-1761).
         StringBuilder captured = new StringBuilder();
         Thread reader = Thread.ofVirtual().start(() -> {
-            try (var in = process.inputReader(java.nio.charset.StandardCharsets.UTF_8)) {
+            try (var in = process.inputReader(StandardCharsets.UTF_8)) {
                 in.lines().forEach(l -> captured.append(l).append('\n'));
             } catch (IOException ignored) {
             }
@@ -109,7 +111,7 @@ final class BootLayout {
     private static void deleteRecursively(Path root) throws IOException {
         if (!Files.exists(root)) return;
         try (var walk = Files.walk(root)) {
-            for (Path p : walk.sorted(java.util.Comparator.reverseOrder()).toList()) {
+            for (Path p : walk.sorted(Comparator.reverseOrder()).toList()) {
                 Files.deleteIfExists(p);
             }
         }

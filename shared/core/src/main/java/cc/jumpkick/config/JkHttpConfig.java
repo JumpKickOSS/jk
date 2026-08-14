@@ -2,6 +2,7 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.util.JkDirs;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.function.Function;
@@ -84,7 +85,7 @@ public record JkHttpConfig(
      * unreadable file → empty (fail closed).
      */
     public static Optional<JkHttpConfig> fromToml(Path file) {
-        if (!java.nio.file.Files.isRegularFile(file)) return Optional.of(DEFAULTS);
+        if (!Files.isRegularFile(file)) return Optional.of(DEFAULTS);
         Optional<TomlParseResult> parsed = TomlValues.parse(file);
         if (parsed.isEmpty()) return Optional.empty(); // exists but unreadable → fail closed
         TomlTable http = parsed.get().getTable("http");

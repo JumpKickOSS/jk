@@ -5,12 +5,7 @@ import cc.jumpkick.cache.Cas;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Stream;
 
 /**
@@ -159,7 +154,7 @@ public final class LruEvictor {
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("unparseable size: " + spec, e);
         }
-        String unit = s.substring(i).trim().toUpperCase(java.util.Locale.ROOT);
+        String unit = s.substring(i).trim().toUpperCase(Locale.ROOT);
         long mult =
                 switch (unit) {
                     case "", "B" -> 1L;

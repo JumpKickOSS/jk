@@ -14,6 +14,7 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -143,7 +144,7 @@ public final class EngineStopCommand implements CliCommand {
         int stopped = 0;
         int killed = 0;
         int draining = 0;
-        List<Long> survived = new java.util.ArrayList<>();
+        List<Long> survived = new ArrayList<>();
         for (EngineFleet.StopResult r : results) {
             switch (r.outcome()) {
                 case STOPPED -> stopped++;

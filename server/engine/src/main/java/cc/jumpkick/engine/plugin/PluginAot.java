@@ -9,14 +9,14 @@ import cc.jumpkick.util.Hashing;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
-import java.util.Properties;
-import java.util.Set;
+import java.nio.file.attribute.FileTime;
+import java.time.OffsetDateTime;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -69,7 +69,7 @@ public final class PluginAot {
     static final long LAST_USED_REFRESH_MILLIS = 60L * 60 * 1_000;
 
     /** When this JVM last rewrote a cache's manifest {@code last_used} (throttle memory). */
-    private static final java.util.concurrent.ConcurrentMap<Path, Long> LAST_USED_WRITTEN = new ConcurrentHashMap<>();
+    private static final ConcurrentMap<Path, Long> LAST_USED_WRITTEN = new ConcurrentHashMap<>();
 
     /** In-JVM double-spawn guard (the claim file guards across processes). */
     private static final Set<Path> TRAINING = ConcurrentHashMap.newKeySet();
@@ -415,7 +415,7 @@ public final class PluginAot {
         try {
             Files.createFile(claim);
             return true;
-        } catch (java.nio.file.FileAlreadyExistsException e) {
+        } catch (FileAlreadyExistsException e) {
             try {
                 long age = System.currentTimeMillis()
                         - Files.getLastModifiedTime(claim).toMillis();
@@ -509,7 +509,7 @@ public final class PluginAot {
         } catch (IOException ignored) {
             return; // opportunistic: a leftover cache costs disk, not correctness
         }
-        primaries.sort(java.util.Comparator.comparingLong(PluginAot::mtime).reversed());
+        primaries.sort(Comparator.comparingLong(PluginAot::mtime).reversed());
         List<String> removed = new ArrayList<>();
         for (int i = 0; i < primaries.size(); i++) {
             Path p = primaries.get(i);
@@ -549,7 +549,7 @@ public final class PluginAot {
 
     private static void touch(Path p) {
         try {
-            Files.setLastModifiedTime(p, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis()));
+            Files.setLastModifiedTime(p, FileTime.fromMillis(System.currentTimeMillis()));
         } catch (IOException ignored) {
             // best-effort; worst case the cache looks colder than it is
         }
@@ -624,7 +624,7 @@ public final class PluginAot {
             String lastUsed = e.lastUsed();
             if (lastUsed == null || lastUsed.isBlank()) return false;
             try {
-                long t = java.time.OffsetDateTime.parse(lastUsed).toInstant().toEpochMilli();
+                long t = OffsetDateTime.parse(lastUsed).toInstant().toEpochMilli();
                 return now - t < LAST_USED_REFRESH_MILLIS;
             } catch (RuntimeException parse) {
                 return false;
@@ -706,7 +706,7 @@ public final class PluginAot {
 
     private static void deleteRecursivelyQuietly(Path root) {
         try (var walk = Files.walk(root)) {
-            walk.sorted(java.util.Comparator.reverseOrder()).forEach(PluginAot::deleteQuietly);
+            walk.sorted(Comparator.reverseOrder()).forEach(PluginAot::deleteQuietly);
         } catch (IOException ignored) {
             // best-effort
         }

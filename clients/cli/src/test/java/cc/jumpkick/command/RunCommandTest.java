@@ -10,6 +10,7 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.function.IntConsumer;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -185,7 +186,7 @@ class RunCommandTest {
      * the live progress region it replaces — while ad hoc {@code CliOutput.err} messages go to
      * stderr; capture both since callers don't need to care which one a given message rides.
      */
-    private static String runCapturingOutput(Path tempDir, java.util.function.IntConsumer assertExit) {
+    private static String runCapturingOutput(Path tempDir, IntConsumer assertExit) {
         var captured = new ByteArrayOutputStream();
         var prevOut = System.out;
         var prevErr = System.err;

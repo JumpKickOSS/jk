@@ -5,13 +5,7 @@ import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Resolves the build graph for an entry project: the workspace root + its modules, as one
@@ -67,9 +61,9 @@ public final class BuildGraph {
      * explain} agree.
      */
     public static int maxReadyWidth(List<BuildUnit> units, Map<Path, Set<Path>> edges) {
-        Set<Path> unitDirs = new java.util.HashSet<>();
+        Set<Path> unitDirs = new HashSet<>();
         for (BuildUnit u : units) unitDirs.add(u.dir());
-        Set<Path> done = new java.util.HashSet<>();
+        Set<Path> done = new HashSet<>();
         List<BuildUnit> remaining = new ArrayList<>(units);
         int max = 1;
         while (!remaining.isEmpty()) {

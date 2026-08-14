@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.jar.JarEntry;
@@ -77,7 +78,7 @@ class MinifiedJarAuditTest {
 
     @Test
     void the_message_caps_the_list_and_says_how_many_more(@TempDir Path dir) throws Exception {
-        var inputEntries = new java.util.LinkedHashMap<String, String>();
+        var inputEntries = new LinkedHashMap<String, String>();
         var serviceBody = new StringBuilder();
         for (int i = 0; i < 25; i++) {
             serviceBody.append("com.acme.Impl").append(i).append('\n');

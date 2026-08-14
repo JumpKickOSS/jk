@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Theme;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.jline.utils.AttributedStyle;
@@ -82,7 +83,7 @@ final class JkManagerView {
      * took …} — no "by user".
      */
     public void finishBuildPlanCancelled(List<String> above) {
-        String took = cc.jumpkick.cli.run.ConsoleSpec.took(java.time.Duration.ofMillis(m.elapsedMillis()));
+        String took = cc.jumpkick.cli.run.ConsoleSpec.took(Duration.ofMillis(m.elapsedMillis()));
         m.settle(JkWedge.cancelled(m.planName(), false, took).renderLine(m.headerContext()), above);
     }
 

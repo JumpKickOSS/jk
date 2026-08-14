@@ -6,6 +6,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.repo.RepoGroup;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -13,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Stream;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -283,7 +285,7 @@ final class SourceProjectBuilder {
         String path = System.getenv("PATH");
         if (path == null) return null;
         List<String> names = isWindows() ? List.of(bin + ".bat", bin + ".cmd", bin + ".exe", bin) : List.of(bin);
-        for (String dir : path.split(java.io.File.pathSeparator)) {
+        for (String dir : path.split(File.pathSeparator)) {
             if (dir.isBlank()) continue;
             for (String name : names) {
                 Path candidate = Path.of(dir, name);
@@ -341,8 +343,6 @@ final class SourceProjectBuilder {
     }
 
     private static boolean isWindows() {
-        return System.getProperty("os.name", "")
-                .toLowerCase(java.util.Locale.ROOT)
-                .contains("win");
+        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
     }
 }

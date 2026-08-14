@@ -2,6 +2,7 @@
 package cc.jumpkick.cache;
 
 import java.io.IOException;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -31,7 +32,7 @@ public final class Linking {
         try {
             Files.createLink(target, source);
             return;
-        } catch (UnsupportedOperationException | java.nio.file.FileSystemException ignored) {
+        } catch (UnsupportedOperationException | FileSystemException ignored) {
             // Fall through to copy. UnsupportedOperationException covers
             // filesystems that don't implement hard links at all
             // (some FUSE mounts); FileSystemException covers cross-volume,

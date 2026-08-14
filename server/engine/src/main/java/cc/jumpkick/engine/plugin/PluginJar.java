@@ -12,10 +12,12 @@ import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Registry of jk's child-JVM plugin jars. Locates each by Maven coordinate
@@ -176,7 +178,7 @@ public enum PluginJar {
             return; // no sidecar reachable — legacy repo
         }
         if (depsResp.statusCode() < 200 || depsResp.statusCode() >= 300) return;
-        List<String> lines = new String(depsResp.body(), java.nio.charset.StandardCharsets.UTF_8)
+        List<String> lines = new String(depsResp.body(), StandardCharsets.UTF_8)
                 .lines()
                 .map(String::trim)
                 .filter(l -> !l.isEmpty() && !l.startsWith("#"))
@@ -237,10 +239,10 @@ public enum PluginJar {
     }
 
     /** The plugin whose {@code artifactId} (e.g. {@code jk-git-client}) matches, if any. */
-    public static java.util.Optional<PluginJar> byArtifactId(String artifactId) {
+    public static Optional<PluginJar> byArtifactId(String artifactId) {
         for (PluginJar w : values()) {
-            if (w.artifactId.equals(artifactId)) return java.util.Optional.of(w);
+            if (w.artifactId.equals(artifactId)) return Optional.of(w);
         }
-        return java.util.Optional.empty();
+        return Optional.empty();
     }
 }

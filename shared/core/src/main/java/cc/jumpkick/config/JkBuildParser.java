@@ -20,11 +20,7 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import org.tomlj.Toml;
 import org.tomlj.TomlArray;
@@ -302,12 +298,12 @@ public final class JkBuildParser {
     /** Convert a tomlj value to a plain JDK type so plugin-api stays tomlj-free. */
     static Object tomlToJava(Object value) {
         if (value instanceof TomlTable t) {
-            java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
+            Map<String, Object> map = new LinkedHashMap<>();
             for (String k : t.keySet()) map.put(k, tomlToJava(t.get(k)));
-            return java.util.Collections.unmodifiableMap(map);
+            return Collections.unmodifiableMap(map);
         }
         if (value instanceof TomlArray arr) {
-            java.util.List<Object> list = new ArrayList<>(arr.size());
+            List<Object> list = new ArrayList<>(arr.size());
             for (int i = 0; i < arr.size(); i++) list.add(tomlToJava(arr.get(i)));
             return List.copyOf(list);
         }

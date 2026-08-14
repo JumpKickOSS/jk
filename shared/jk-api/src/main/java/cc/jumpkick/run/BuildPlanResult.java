@@ -81,12 +81,12 @@ public record BuildPlanResult(
             String file,
             int line,
             int snippetStart,
-            java.util.List<String> snippet,
+            List<String> snippet,
             int worker) {
 
         /** Diagnostic with no test identity — the common case (javac, resolver, …). */
         public Diagnostic(String step, String code, String message) {
-            this(step, code, message, "", "", "", "", "", "", "", "", 0, 0, java.util.List.of(), 0);
+            this(step, code, message, "", "", "", "", "", "", "", "", 0, 0, List.of(), 0);
         }
 
         /** Legacy two-field test failure (display label + exception class). */
@@ -105,7 +105,7 @@ public record BuildPlanResult(
                     "",
                     0,
                     0,
-                    java.util.List.of(),
+                    List.of(),
                     0);
         }
 
@@ -125,13 +125,13 @@ public record BuildPlanResult(
                     failure == null ? "" : failure.file(),
                     failure == null ? 0 : failure.line(),
                     failure == null ? 0 : failure.snippetStart(),
-                    failure == null ? java.util.List.of() : failure.snippet(),
+                    failure == null ? List.of() : failure.snippet(),
                     failure == null ? 0 : failure.worker());
         }
 
         public Diagnostic {
-            if (snippet == null) snippet = java.util.List.of();
-            else snippet = java.util.List.copyOf(snippet);
+            if (snippet == null) snippet = List.of();
+            else snippet = List.copyOf(snippet);
             if (file == null) file = "";
         }
 

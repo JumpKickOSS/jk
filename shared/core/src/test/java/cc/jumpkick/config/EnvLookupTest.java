@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -48,9 +49,7 @@ class EnvLookupTest {
         // Redaction resolves per output line, so reads are memoizedbut an edit
         // (new size/mtime) must invalidate.
         Files.writeString(module.resolve(".env"), "TOKEN=second-longer\n");
-        Files.setLastModifiedTime(
-                module.resolve(".env"),
-                java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 2_000));
+        Files.setLastModifiedTime(module.resolve(".env"), FileTime.fromMillis(System.currentTimeMillis() + 2_000));
 
         assertThat(EnvLookup.forModule(module, name -> null).get("TOKEN")).isEqualTo("second-longer");
     }

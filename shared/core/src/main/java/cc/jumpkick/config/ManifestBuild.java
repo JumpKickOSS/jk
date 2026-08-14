@@ -15,11 +15,7 @@ import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginDescriptorStore;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.EnumMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import org.jspecify.annotations.NullMarked;
 import org.tomlj.TomlArray;
 import org.tomlj.TomlTable;
@@ -33,10 +29,10 @@ public final class ManifestBuild {
     private ManifestBuild() {}
 
     /** Core top-level tables; anything else must be owned by an installed plugin. */
-    static final java.util.Set<String> CORE_TABLES = coreTables();
+    static final Set<String> CORE_TABLES = coreTables();
 
-    static java.util.Set<String> coreTables() {
-        java.util.Set<String> out = new java.util.HashSet<>(java.util.Set.of(
+    static Set<String> coreTables() {
+        Set<String> out = new HashSet<>(Set.of(
                 "project",
                 "repositories",
                 "profiles",
@@ -59,7 +55,7 @@ public final class ManifestBuild {
                 "forge",
                 "kotlin-plugins"));
         for (Scope scope : Scope.values()) out.add(scope.tomlSection()); // [dependencies] + scoped spellings
-        return java.util.Set.copyOf(out);
+        return Set.copyOf(out);
     }
 
     /**
@@ -69,7 +65,7 @@ public final class ManifestBuild {
     static void checkUnownedTables(
             TomlTable root, Path moduleDir, List<PluginDeclaration> plugins, List<PluginDescriptor> installed) {
         if (!plugins.isEmpty() && PluginDescriptorStore.hasUnresolved(moduleDir, plugins)) return;
-        java.util.Set<String> owned = new java.util.HashSet<>(CORE_TABLES);
+        Set<String> owned = new HashSet<>(CORE_TABLES);
         for (PluginDescriptor m : installed) owned.add(m.table());
         for (String key : root.keySet()) {
             if (owned.contains(key)) continue;
@@ -348,7 +344,7 @@ public final class ManifestBuild {
         if (test == null) return Map.of();
         TomlTable env = test.getTable("env");
         if (env == null) return Map.of();
-        Map<String, String> out = new java.util.LinkedHashMap<>();
+        Map<String, String> out = new LinkedHashMap<>();
         for (String key : env.keySet()) {
             Object value = env.get(List.of(key));
             if (value == null) continue;
@@ -435,8 +431,7 @@ public final class ManifestBuild {
         return out;
     }
 
-    static final java.util.Set<String> PLUGIN_RESERVED =
-            java.util.Set.of("group", "name", "version", "path", "sha256", "coordinate");
+    static final Set<String> PLUGIN_RESERVED = Set.of("group", "name", "version", "path", "sha256", "coordinate");
 
     static List<PluginDeclaration> parsePlugins(TomlTable root) {
         TomlTable plugins = root.getTable("plugins");
@@ -486,7 +481,7 @@ public final class ManifestBuild {
                             "plugins." + alias + " must declare `version` (or `path` / `coordinate`)");
             }
             // Every key other than the reserved identity fields becomes plugin config.
-            java.util.Map<String, Object> config = new java.util.LinkedHashMap<>();
+            Map<String, Object> config = new LinkedHashMap<>();
             for (String key : entry.keySet()) {
                 if (!PLUGIN_RESERVED.contains(key)) {
                     config.put(key, tomlToJava(entry.get(key)));
@@ -500,7 +495,7 @@ public final class ManifestBuild {
                         version,
                         pathPin ? path : null,
                         shaRaw,
-                        java.util.Collections.unmodifiableMap(config)));
+                        Collections.unmodifiableMap(config)));
             } catch (IllegalArgumentException e) {
                 throw new JkBuildParseException("plugins." + alias + ": " + e.getMessage());
             }

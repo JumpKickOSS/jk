@@ -13,6 +13,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.util.JkDirs;
+import java.net.HttpURLConnection;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -115,7 +116,7 @@ class QuarkusLockPerfTest {
 
     private static boolean networkOk() {
         try {
-            var c = (java.net.HttpURLConnection)
+            var c = (HttpURLConnection)
                     URI.create("https://repo1.maven.org/maven2/").toURL().openConnection();
             c.setConnectTimeout(3000);
             c.setReadTimeout(3000);

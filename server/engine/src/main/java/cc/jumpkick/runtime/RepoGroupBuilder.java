@@ -20,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.function.UnaryOperator;
 
 /**
  * Builds a {@link RepoGroup} from project/global repositories (project wins on name clash),
@@ -54,7 +55,7 @@ public final class RepoGroupBuilder {
      * from the cause.
      */
     private static ObjectStoreConfig expandObjectStore(
-            String repoName, ObjectStoreConfig cfg, java.util.function.UnaryOperator<String> env) {
+            String repoName, ObjectStoreConfig cfg, UnaryOperator<String> env) {
         if (cfg == null || cfg.isEmpty()) return ObjectStoreConfig.EMPTY;
         return new ObjectStoreConfig(
                 interp(repoName, cfg.region(), env),
@@ -64,7 +65,7 @@ public final class RepoGroupBuilder {
                 interp(repoName, cfg.sessionToken(), env));
     }
 
-    private static String interp(String repoName, String raw, java.util.function.UnaryOperator<String> env) {
+    private static String interp(String repoName, String raw, UnaryOperator<String> env) {
         return cc.jumpkick.config.RepositoryToml.interpolate(raw, var -> {
             String value = env.apply(var);
             if (value == null) {
@@ -88,8 +89,7 @@ public final class RepoGroupBuilder {
      * {@code Inputs.env}, which layers the project's {@code.env} under the caller's shell
      * environment; the three-argument overload keeps ambient behaviour for tooling and tests.
      */
-    public static RepoGroup buildFor(
-            JkBuild project, URI overrideUrl, Cas cas, java.util.function.UnaryOperator<String> env) {
+    public static RepoGroup buildFor(JkBuild project, URI overrideUrl, Cas cas, UnaryOperator<String> env) {
         Http http = new Http();
         List<MavenRepo> repos = new ArrayList<>();
         boolean mirrorToM2 = project.project().m2install();

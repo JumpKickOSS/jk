@@ -10,6 +10,7 @@ import cc.jumpkick.model.PathSource;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -91,7 +92,7 @@ class PathSourceMaterializerTest {
     void fails_when_the_target_directory_is_missing(@TempDir Path tmp) throws Exception {
         assertThatThrownBy(
                         () -> materializer(tmp, tmp.resolve("path-artifacts")).materialize(new PathSource("./nope")))
-                .isInstanceOf(java.io.IOException.class)
+                .isInstanceOf(IOException.class)
                 .hasMessageContaining("does not resolve to a directory");
     }
 }

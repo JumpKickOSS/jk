@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -85,8 +86,8 @@ class EnginePathsEnumerationTest {
         Path newer = dir.resolve("new00000.endpoint");
         Files.writeString(older, "x");
         Files.writeString(newer, "x");
-        Files.setLastModifiedTime(older, java.nio.file.attribute.FileTime.fromMillis(1_000_000_000_000L));
-        Files.setLastModifiedTime(newer, java.nio.file.attribute.FileTime.fromMillis(1_700_000_000_000L));
+        Files.setLastModifiedTime(older, FileTime.fromMillis(1_000_000_000_000L));
+        Files.setLastModifiedTime(newer, FileTime.fromMillis(1_700_000_000_000L));
 
         assertThat(EnginePaths.identitiesIn(tmp))
                 .extracting(EnginePaths.Paths::key)

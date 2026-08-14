@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -106,15 +107,13 @@ class NativeWeightDirtyJarTest {
 
         // The production path (BuildPlan.estimatedTotalWeight) evaluates weight suppliers on
         // JkThreads.io() workers — the flag must survive that hop (JK-1807).
-        int reservedViaPool =
-                EffortWeights.withOverReserveTails(() -> java.util.concurrent.CompletableFuture.supplyAsync(
-                                () -> EffortWeights.nativeWeight(dir), cc.jumpkick.run.JkThreads.io())
-                        .join());
+        int reservedViaPool = EffortWeights.withOverReserveTails(() -> CompletableFuture.supplyAsync(
+                        () -> EffortWeights.nativeWeight(dir), cc.jumpkick.run.JkThreads.io())
+                .join());
         assertThat(reservedViaPool).isGreaterThanOrEqualTo(100);
 
         // And a worker outside the scope must NOT see the flag (no leak into pooled threads).
-        boolean leaked = java.util.concurrent.CompletableFuture.supplyAsync(
-                        EffortWeights::overReserveTails, cc.jumpkick.run.JkThreads.io())
+        boolean leaked = CompletableFuture.supplyAsync(EffortWeights::overReserveTails, cc.jumpkick.run.JkThreads.io())
                 .join();
         assertThat(leaked).isFalse();
     }

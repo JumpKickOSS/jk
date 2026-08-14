@@ -4,12 +4,9 @@ package cc.jumpkick.command;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkRegistry;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 
 /**
  * Enumerates every JDK installed on the host for the {@code jk init} wizard's "Select a JDK" step.
@@ -85,9 +82,9 @@ public final class NewJdkOptions {
      * temurin-25.0.1} or {@code corretto-21}. Returns empty when the identifier has no recognizable
      * digit cluster.
      */
-    static java.util.Optional<Integer> parseMajorFromIdentifier(String identifier) {
+    static Optional<Integer> parseMajorFromIdentifier(String identifier) {
         int dash = identifier.lastIndexOf('-');
-        if (dash < 0 || dash == identifier.length() - 1) return java.util.Optional.empty();
+        if (dash < 0 || dash == identifier.length() - 1) return Optional.empty();
         return parseMajor(identifier.substring(dash + 1));
     }
 
@@ -95,8 +92,8 @@ public final class NewJdkOptions {
      * Parse the leading major version out of a Java version string. Handles both the JDK 9+ form
      * ({@code 25.0.1} → 25) and the legacy JDK 8 form ({@code 1.8.0_412} → 8).
      */
-    static java.util.Optional<Integer> parseMajor(String version) {
-        if (version == null || version.isEmpty()) return java.util.Optional.empty();
+    static Optional<Integer> parseMajor(String version) {
+        if (version == null || version.isEmpty()) return Optional.empty();
         var head = version;
         int dot = head.indexOf('.');
         var first = dot > 0 ? head.substring(0, dot) : head;
@@ -107,11 +104,11 @@ public final class NewJdkOptions {
             if (Character.isDigit(c)) clean.append(c);
             else break;
         }
-        if (clean.length() == 0) return java.util.Optional.empty();
+        if (clean.length() == 0) return Optional.empty();
         int n = Integer.parseInt(clean.toString());
-        if (n != 1) return java.util.Optional.of(n);
+        if (n != 1) return Optional.of(n);
         // Legacy 1.x → x is the major.
-        if (dot < 0) return java.util.Optional.of(1);
+        if (dot < 0) return Optional.of(1);
         var rest = version.substring(dot + 1);
         int dot2 = rest.indexOf('.');
         var second = dot2 > 0 ? rest.substring(0, dot2) : rest;
@@ -121,15 +118,15 @@ public final class NewJdkOptions {
             if (Character.isDigit(c)) sb2.append(c);
             else break;
         }
-        return sb2.length() == 0 ? java.util.Optional.of(1) : java.util.Optional.of(Integer.parseInt(sb2.toString()));
+        return sb2.length() == 0 ? Optional.of(1) : Optional.of(Integer.parseInt(sb2.toString()));
     }
 
     /** Fallback that reads {@code $JAVA_HOME/release} when other sources don't pin a version. */
-    static java.util.Optional<Integer> readReleaseMajor(Path home) {
+    static Optional<Integer> readReleaseMajor(Path home) {
         var release = home.resolve("release");
-        if (!java.nio.file.Files.isRegularFile(release)) return java.util.Optional.empty();
+        if (!Files.isRegularFile(release)) return Optional.empty();
         try {
-            for (var line : java.nio.file.Files.readAllLines(release)) {
+            for (var line : Files.readAllLines(release)) {
                 var trimmed = line.trim();
                 if (!trimmed.startsWith("JAVA_VERSION=")) continue;
                 var raw = trimmed.substring("JAVA_VERSION=".length()).trim();
@@ -141,7 +138,7 @@ public final class NewJdkOptions {
         } catch (IOException ignored) {
             // best-effort
         }
-        return java.util.Optional.empty();
+        return Optional.empty();
     }
 
     private static Path canonicalize(Path home) {
@@ -173,7 +170,7 @@ public final class NewJdkOptions {
         var parts = new ArrayList<String>();
         for (var token : name.split("_")) {
             if (token.isEmpty()) continue;
-            parts.add(token.charAt(0) + token.substring(1).toLowerCase(java.util.Locale.ROOT));
+            parts.add(token.charAt(0) + token.substring(1).toLowerCase(Locale.ROOT));
         }
         return String.join(" ", parts);
     }

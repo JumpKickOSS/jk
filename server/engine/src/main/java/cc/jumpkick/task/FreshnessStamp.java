@@ -12,6 +12,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.stream.Stream;
 
 /**
  * Cheap mtime-based up-to-date check stamped into a compile output dir ({@link #JAVA_STAMP} /
@@ -246,7 +247,7 @@ public final class FreshnessStamp {
         // nested files are rewritten — walk for the newest nested mtime. Deletions
         // bump the parent dir's mtime, which the walk also sees.
         if (Files.isDirectory(file)) {
-            try (java.util.stream.Stream<Path> walk = Files.walk(file)) {
+            try (Stream<Path> walk = Files.walk(file)) {
                 for (Path p : (Iterable<Path>) walk::iterator) {
                     if (Files.getLastModifiedTime(p).toMillis() >= stampMillis) return true;
                 }

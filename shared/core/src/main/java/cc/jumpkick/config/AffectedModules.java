@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Map changed paths onto workspace modules and close over reverse dependency edges (dependents).
@@ -73,7 +74,7 @@ public final class AffectedModules {
                     e.getKey().toAbsolutePath().normalize(),
                     ModuleOrder.modulePrereqs(e.getKey(), e.getValue(), dirByCoord, dirByName).stream()
                             .map(p -> p.toAbsolutePath().normalize())
-                            .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new)));
+                            .collect(Collectors.toCollection(LinkedHashSet::new)));
         }
         return edges;
     }

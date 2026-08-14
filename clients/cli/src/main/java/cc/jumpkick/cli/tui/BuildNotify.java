@@ -5,6 +5,7 @@ import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.config.JkConfig;
 import java.io.PrintStream;
+import java.util.ArrayList;
 
 /**
  * Desktop notifications for long (or forced) builds via OSC&nbsp;99.
@@ -84,7 +85,7 @@ public final class BuildNotify {
         totalSec %= 3_600;
         long mins = totalSec / 60;
         long secs = totalSec % 60;
-        java.util.ArrayList<String> parts = new java.util.ArrayList<>(4);
+        ArrayList<String> parts = new ArrayList<>(4);
         if (days > 0) parts.add(days + "d");
         if (hours > 0) parts.add(hours + "h");
         if (mins > 0) parts.add(mins + "m");

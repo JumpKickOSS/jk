@@ -5,12 +5,18 @@ import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.JkDirs;
+import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 import org.tomlj.TomlParseResult;
 import org.tomlj.TomlTable;
 
@@ -77,12 +83,12 @@ public final class GlobalConfig {
         long size;
         long modified;
         try {
-            if (!java.nio.file.Files.exists(file)) return fallback;
-            var attrs = java.nio.file.Files.readAttributes(file, java.nio.file.attribute.BasicFileAttributes.class);
+            if (!Files.exists(file)) return fallback;
+            var attrs = Files.readAttributes(file, BasicFileAttributes.class);
             cacheKey = file + "|global." + key;
             size = attrs.size();
             modified = attrs.lastModifiedTime().toMillis();
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             return fallback;
         }
         String value = memoized(
@@ -112,13 +118,13 @@ public final class GlobalConfig {
     }
 
     /** {@code [release] trusted-keys}: base64 Ed25519 SPKI keys (extends baked-in trust). */
-    public static java.util.List<String> releaseTrustedKeys() {
+    public static List<String> releaseTrustedKeys() {
         return stringFromGlobal(JkDirs.userConfigFile(), "release", "trusted-keys")
-                .map(v -> java.util.Arrays.stream(v.split(","))
+                .map(v -> Arrays.stream(v.split(","))
                         .map(String::trim)
                         .filter(k -> !k.isEmpty())
                         .toList())
-                .orElse(java.util.List.of());
+                .orElse(List.of());
     }
 
     /** Read a single string value from an arbitrary {@code [table].key}, leniently, via TomlScan. */
@@ -129,12 +135,12 @@ public final class GlobalConfig {
         long size;
         long modified;
         try {
-            if (!java.nio.file.Files.exists(file)) return Optional.empty();
-            var attrs = java.nio.file.Files.readAttributes(file, java.nio.file.attribute.BasicFileAttributes.class);
+            if (!Files.exists(file)) return Optional.empty();
+            var attrs = Files.readAttributes(file, BasicFileAttributes.class);
             cacheKey = file + "|" + dotted;
             size = attrs.size();
             modified = attrs.lastModifiedTime().toMillis();
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             return Optional.empty();
         }
         return memoized(
@@ -173,7 +179,7 @@ public final class GlobalConfig {
             String key,
             long size,
             long modifiedMillis,
-            java.util.function.Supplier<T> compute) {
+            Supplier<T> compute) {
         Stamped<T> hit = cache.get(key);
         if (hit != null && hit.matches(size, modifiedMillis)) return hit.value();
         T fresh = compute.get();
@@ -187,12 +193,12 @@ public final class GlobalConfig {
         long size;
         long modified;
         try {
-            if (!java.nio.file.Files.exists(file)) return Optional.empty();
-            var attrs = java.nio.file.Files.readAttributes(file, java.nio.file.attribute.BasicFileAttributes.class);
+            if (!Files.exists(file)) return Optional.empty();
+            var attrs = Files.readAttributes(file, BasicFileAttributes.class);
             key = file.toAbsolutePath().toString();
             size = attrs.size();
             modified = attrs.lastModifiedTime().toMillis();
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             return TomlValues.parse(file); // uncached fallback on stat failure
         }
         return memoized(CONFIG_CACHE, key, size, modified, () -> TomlValues.parse(file));
@@ -261,9 +267,8 @@ public final class GlobalConfig {
      * {@code ${VAR}} text (global config must never fail a build). Field parsing lives in {@link
      * RepositoryToml}.
      */
-    private static final java.util.function.UnaryOperator<String> LENIENT_INTERP =
-            raw -> RepositoryToml.interpolate(raw, var -> {
-                String v = System.getenv(var);
-                return v != null ? v : "${" + var + "}";
-            });
+    private static final UnaryOperator<String> LENIENT_INTERP = raw -> RepositoryToml.interpolate(raw, var -> {
+        String v = System.getenv(var);
+        return v != null ? v : "${" + var + "}";
+    });
 }

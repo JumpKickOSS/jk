@@ -8,9 +8,11 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * SHA-256-keyed content-addressed store ({@code <root>/sha256/AB/CD/<rest>}). Atomic writes;
@@ -50,19 +52,19 @@ public final class Cas {
      * <root>/sha256/AA/BB/<rest>} contributes its hash to the reachable set, regardless of the file
      * format it came from.
      */
-    public java.util.Optional<String> hashFromPath(Path candidate) {
+    public Optional<String> hashFromPath(Path candidate) {
         Path normalised = candidate.toAbsolutePath().normalize();
         Path shaRoot = root.resolve("sha256");
-        if (!normalised.startsWith(shaRoot)) return java.util.Optional.empty();
+        if (!normalised.startsWith(shaRoot)) return Optional.empty();
         Path rel = shaRoot.relativize(normalised);
-        if (rel.getNameCount() != 3) return java.util.Optional.empty();
+        if (rel.getNameCount() != 3) return Optional.empty();
         String aa = rel.getName(0).toString();
         String bb = rel.getName(1).toString();
         String rest = rel.getName(2).toString();
-        if (aa.length() != 2 || bb.length() != 2) return java.util.Optional.empty();
+        if (aa.length() != 2 || bb.length() != 2) return Optional.empty();
         String hex = aa + bb + rest;
-        if (!isHex(hex)) return java.util.Optional.empty();
-        return java.util.Optional.of(hex);
+        if (!isHex(hex)) return Optional.empty();
+        return Optional.of(hex);
     }
 
     private static boolean isHex(String s) {
@@ -179,7 +181,7 @@ public final class Cas {
         Files.createDirectories(target.getParent());
         Path tmp = Files.createTempFile(target.getParent(), ".put-", ".tmp");
         try {
-            Files.copy(source, tmp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(source, tmp, StandardCopyOption.REPLACE_EXISTING);
             AtomicWrites.moveInto(tmp, target);
         } finally {
             Files.deleteIfExists(tmp);

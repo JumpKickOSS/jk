@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http;
 
 import java.util.ArrayDeque;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -274,7 +275,7 @@ public final class HttpEvents {
          * Drain up to {@code max} frames without blocking — used by the SSE writer to batch a
          * burst into one socket write/flush so a full queue does not force 256 syscalls.
          */
-        int drainTo(java.util.List<String> out, int max) {
+        int drainTo(List<String> out, int max) {
             if (out == null || max <= 0) return 0;
             lock.lock();
             try {

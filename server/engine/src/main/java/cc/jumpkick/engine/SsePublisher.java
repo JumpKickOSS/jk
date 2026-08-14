@@ -11,7 +11,10 @@ import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.engine.protocol.ProtoEvents;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
+import java.io.BufferedWriter;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.LongSupplier;
@@ -204,7 +207,7 @@ public final class SsePublisher {
      * {@code workspace-progress} + updated remaining ETA.
      */
     public void trackModuleBuildPlan(
-            long requestId, String dir, BuildPlanView view, java.io.BufferedWriter writer, boolean forceEmit) {
+            long requestId, String dir, BuildPlanView view, BufferedWriter writer, boolean forceEmit) {
         if (requestId <= 0 || view == null) return;
         double frac = view.denominator() > 0
                 ? Math.min(1.0, Math.max(0.0, (double) view.numerator() / (double) view.denominator()))
@@ -219,19 +222,19 @@ public final class SsePublisher {
             // wire remainingMs (JK-1830). rw's own methods synchronize on rw, so this monitor
             // is reentrant and orders the notes with their computations.
             synchronized (rw) {
-                rw.moduleProgress(java.nio.file.Path.of(dir), frac);
+                rw.moduleProgress(Path.of(dir), frac);
                 tracker(requestId).noteRemaining(rw.remaining(), rw.R0());
             }
         }
         emitWorkspaceProgress(requestId, writer, forceEmit);
     }
 
-    public void trackModuleComplete(long requestId, String dir, long lastDen, java.io.BufferedWriter writer) {
+    public void trackModuleComplete(long requestId, String dir, long lastDen, BufferedWriter writer) {
         if (requestId <= 0) return;
         cc.jumpkick.runtime.RemainingWork rw = remaining(requestId);
         if (rw != null && dir != null) {
             synchronized (rw) {
-                rw.moduleComplete(java.nio.file.Path.of(dir));
+                rw.moduleComplete(Path.of(dir));
                 tracker(requestId).noteRemaining(rw.remaining(), rw.R0());
             }
         }
@@ -243,12 +246,11 @@ public final class SsePublisher {
      * Emit filterable {@code workspace-progress} on the socket (when {@code writer} non-null) and SSE
      * hub. Throttled unless {@code force} (stage boundaries, module complete, finish).
      */
-    public void emitWorkspaceProgress(long requestId, java.io.BufferedWriter writer, boolean force) {
+    public void emitWorkspaceProgress(long requestId, BufferedWriter writer, boolean force) {
         emitWorkspaceProgress(requestId, writer, force, false);
     }
 
-    public void emitWorkspaceProgress(
-            long requestId, java.io.BufferedWriter writer, boolean force, boolean dashboardOnly) {
+    public void emitWorkspaceProgress(long requestId, BufferedWriter writer, boolean force, boolean dashboardOnly) {
         if (requestId <= 0) return;
         // A straggler from an abandoned job must not re-register the maps teardown just cleared,
         // nor take a fresh emit lock that no longer serializes against anything (JK-1474).
@@ -464,10 +466,9 @@ public final class SsePublisher {
      * to {@link #MAX_TEST_FAILURE_EVENTS}; other codes (javac, resolve, …) are capped at
      * {@link #MAX_DIAGNOSTIC_EVENTS}.
      */
-    public static java.util.List<BuildPlanResult.Diagnostic> selectPublishedDiagnostics(
-            java.util.List<BuildPlanResult.Diagnostic> errors) {
-        if (errors == null || errors.isEmpty()) return java.util.List.of();
-        java.util.ArrayList<BuildPlanResult.Diagnostic> out = new java.util.ArrayList<>(errors.size());
+    public static List<BuildPlanResult.Diagnostic> selectPublishedDiagnostics(List<BuildPlanResult.Diagnostic> errors) {
+        if (errors == null || errors.isEmpty()) return List.of();
+        ArrayList<BuildPlanResult.Diagnostic> out = new ArrayList<>(errors.size());
         int tests = 0;
         int other = 0;
         for (BuildPlanResult.Diagnostic d : errors) {
@@ -487,7 +488,7 @@ public final class SsePublisher {
     }
 
     /** How many diagnostics {@link #selectPublishedDiagnostics} dropped — feeds the "+N more" line. */
-    public static int unpublishedCount(java.util.List<BuildPlanResult.Diagnostic> errors) {
+    public static int unpublishedCount(List<BuildPlanResult.Diagnostic> errors) {
         if (errors == null) return 0;
         int tests = 0;
         int other = 0;
@@ -499,7 +500,7 @@ public final class SsePublisher {
     }
 
     /** Publish structured {@link BuildPlanResult.Diagnostic}s for a failed request card. */
-    public void publishDiagnostics(long requestId, String dir, java.util.List<BuildPlanResult.Diagnostic> errors) {
+    public void publishDiagnostics(long requestId, String dir, List<BuildPlanResult.Diagnostic> errors) {
         if (!eventsWanted() || errors.isEmpty()) return;
         for (BuildPlanResult.Diagnostic d : selectPublishedDiagnostics(errors)) {
             // type "error" matches CLI JsonlShape; SSE event name stays "diagnostic" for the SPA.

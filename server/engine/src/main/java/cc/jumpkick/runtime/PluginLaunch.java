@@ -6,9 +6,11 @@ import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.JavaHomes;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.jar.JarFile;
 
 /**
  * Builds the plugin worker command line every plugin fork uses. Workers are <strong>thin
@@ -51,13 +53,13 @@ final class PluginLaunch {
      * {@code ServiceLoader}-look for a {@code Plugin} the jar never registers and exit 70 (JK-1449).
      */
     private static String mainClassOf(Path workerJar) {
-        try (var jar = new java.util.jar.JarFile(workerJar.toFile())) {
+        try (var jar = new JarFile(workerJar.toFile())) {
             var manifest = jar.getManifest();
             if (manifest != null) {
                 String declared = manifest.getMainAttributes().getValue("Main-Class");
                 if (declared != null && !declared.isBlank()) return declared.strip();
             }
-        } catch (java.io.IOException ignored) {
+        } catch (IOException ignored) {
             // unreadable jar — the launch itself will surface the real error
         }
         return PluginLoader.WORKER_MAIN;

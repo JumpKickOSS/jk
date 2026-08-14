@@ -21,9 +21,7 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
+import java.util.*;
 import java.util.stream.Stream;
 
 /**
@@ -242,13 +240,13 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
      * runtime closure. Empty when the closure has no Quarkus core — the caller falls back to the
      * configured floor and the augment reports whatever Maven makes of it.
      */
-    static java.util.Optional<String> resolvedQuarkusVersion(List<PackageIo.RuntimeEntry> entries) {
+    static Optional<String> resolvedQuarkusVersion(List<PackageIo.RuntimeEntry> entries) {
         for (PackageIo.RuntimeEntry e : entries) {
             if ("io.quarkus".equals(e.group()) && "quarkus-core".equals(e.artifact())) {
-                return e.version().isEmpty() ? java.util.Optional.empty() : java.util.Optional.of(e.version());
+                return e.version().isEmpty() ? Optional.empty() : Optional.of(e.version());
             }
         }
-        return java.util.Optional.empty();
+        return Optional.empty();
     }
 
     private static Path pluginJar() throws IOException {
@@ -310,6 +308,6 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         if (output == null || output.isBlank()) return "";
         String[] lines = output.split("\n");
         int from = Math.max(0, lines.length - 60);
-        return String.join("\n", java.util.Arrays.copyOfRange(lines, from, lines.length));
+        return String.join("\n", Arrays.copyOfRange(lines, from, lines.length));
     }
 }

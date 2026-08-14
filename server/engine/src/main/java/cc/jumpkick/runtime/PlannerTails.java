@@ -15,6 +15,7 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionKey;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -94,7 +95,7 @@ public final class PlannerTails {
                     })
                     .build());
             b.terminal(DELIVER_JOIN);
-        } catch (cc.jumpkick.config.JkBuildParseException | java.io.IOException ignored) {
+        } catch (cc.jumpkick.config.JkBuildParseException | IOException ignored) {
             // Core planning parses the same file and has already reported an unreadable or
             // malformed jk.toml loudly; re-reporting here would double the diagnostic. Anything
             // else must propagate — swallowing it silently dropped -all.jar/-min.jar/native

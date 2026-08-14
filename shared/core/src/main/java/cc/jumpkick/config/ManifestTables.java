@@ -23,6 +23,7 @@ import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -32,6 +33,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.UnaryOperator;
 import org.jspecify.annotations.NullMarked;
 import org.tomlj.Toml;
 import org.tomlj.TomlParseResult;
@@ -170,7 +172,7 @@ public final class ManifestTables {
     static Map<String, String> parseManifest(TomlParseResult root) {
         TomlTable table = root.getTable("manifest");
         if (table == null) return Map.of();
-        Map<String, String> attrs = new java.util.LinkedHashMap<>();
+        Map<String, String> attrs = new LinkedHashMap<>();
         for (String key : table.keySet()) {
             String value = table.getString(key);
             if (value == null) {
@@ -204,8 +206,8 @@ public final class ManifestTables {
                 url = u;
                 // Left unexpanded on purpose: ${VAR} in a credential or object-store value is expanded at
                 // the credential resolver, not here, so a parsed manifest never carries a secret.
-                credential = RepositoryToml.credential(t, java.util.function.UnaryOperator.identity());
-                objectStore = RepositoryToml.objectStore(t, java.util.function.UnaryOperator.identity());
+                credential = RepositoryToml.credential(t, UnaryOperator.identity());
+                objectStore = RepositoryToml.objectStore(t, UnaryOperator.identity());
                 try {
                     groups = RepositoryToml.groups(t, "repositories." + name);
                 } catch (IllegalArgumentException e) {
@@ -270,11 +272,11 @@ public final class ManifestTables {
      * CLI overrides apply. Empty lists when the table/key is absent.
      */
     public static JkBuildParser.TestTomlTags parseTestTags(Path buildFile) {
-        if (buildFile == null || !java.nio.file.Files.isRegularFile(buildFile)) {
+        if (buildFile == null || !Files.isRegularFile(buildFile)) {
             return JkBuildParser.TestTomlTags.EMPTY;
         }
         try {
-            String toml = java.nio.file.Files.readString(buildFile);
+            String toml = Files.readString(buildFile);
             TomlParseResult result = Toml.parse(toml);
             if (result.hasErrors()) return JkBuildParser.TestTomlTags.EMPTY;
             TomlTable test = result.getTable("test");

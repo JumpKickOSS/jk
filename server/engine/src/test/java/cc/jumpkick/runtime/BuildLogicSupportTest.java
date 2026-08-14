@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -312,7 +313,7 @@ class BuildLogicSupportTest {
         Files.createDirectories(classes);
 
         int before = BuildLogicSupport.PROJECT_INPUT_TOKENS_CALLS_FOR_TESTS.get();
-        var sharedTokens = new java.util.concurrent.atomic.AtomicReference<java.util.List<String>>();
+        var sharedTokens = new AtomicReference<List<String>>();
         assertTrue(BuildLogicSupport.run(
                 project, layout, ac, classes, BuildLogicAnchor.BEFORE_COMPILE, s -> {}, sharedTokens));
         assertTrue(BuildLogicSupport.run(

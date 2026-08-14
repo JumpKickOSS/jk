@@ -85,7 +85,7 @@ public final class JkBuildRenderer {
                 sb.append(schemaKey.name()).append(" = ");
                 if (value instanceof String str) {
                     sb.append(quote(str));
-                } else if (value instanceof java.util.List<?> list) {
+                } else if (value instanceof List<?> list) {
                     sb.append('[');
                     for (int i = 0; i < list.size(); i++) {
                         if (i > 0) sb.append(", ");

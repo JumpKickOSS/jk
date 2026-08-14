@@ -8,14 +8,7 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
-import java.util.TreeSet;
+import java.util.*;
 import java.util.function.Consumer;
 import org.tomlj.TomlTable;
 
@@ -269,7 +262,7 @@ public final class LibraryCatalog {
         if (unknownName == null || unknownName.isBlank() || maxResults <= 0) {
             return List.of();
         }
-        String lowerInput = unknownName.toLowerCase(java.util.Locale.ROOT);
+        String lowerInput = unknownName.toLowerCase(Locale.ROOT);
         List<String> parts = new ArrayList<>();
         for (String p : lowerInput.split("-")) {
             if (!p.isEmpty()) parts.add(p);
@@ -278,7 +271,7 @@ public final class LibraryCatalog {
         List<String> hits = new ArrayList<>();
         for (String name : names()) {
             if (name.equalsIgnoreCase(unknownName)) continue; // not a "suggestion"
-            String lower = name.toLowerCase(java.util.Locale.ROOT);
+            String lower = name.toLowerCase(Locale.ROOT);
             boolean allMatch = true;
             for (String p : parts) {
                 if (!lower.contains(p)) {

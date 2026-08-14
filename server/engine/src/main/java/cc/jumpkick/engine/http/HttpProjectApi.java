@@ -6,10 +6,8 @@ import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 
 /** New-project, templates, project metadata, and dependency graph. */
@@ -22,7 +20,7 @@ final class HttpProjectApi {
      */
     private record TemplatesCache(String json, long atNanos) {}
 
-    private static final long TEMPLATES_TTL_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
+    private static final long TEMPLATES_TTL_NANOS = TimeUnit.SECONDS.toNanos(30);
 
     private final BuildJournal journal;
     private volatile @Nullable TemplatesCache templatesCache;
@@ -103,7 +101,7 @@ final class HttpProjectApi {
             // journal empty / unreadable — parent guess still works without it
         }
         Path parent = cc.jumpkick.scaffold.NewParentDirGuess.guess(
-                java.util.Optional.ofNullable(System.getProperty("user.home"))
+                Optional.ofNullable(System.getProperty("user.home"))
                         .map(Path::of)
                         .orElse(null),
                 historyDirs);
@@ -421,7 +419,7 @@ final class HttpProjectApi {
     /** Query flag: true for {@code 1}/{@code true}/{@code yes}/{@code on} (case-insensitive). */
     private static boolean parseTruthy(String raw) {
         if (raw == null || raw.isBlank()) return false;
-        String t = raw.trim().toLowerCase(java.util.Locale.ROOT);
+        String t = raw.trim().toLowerCase(Locale.ROOT);
         return t.equals("1") || t.equals("true") || t.equals("yes") || t.equals("on");
     }
 }

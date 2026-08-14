@@ -6,6 +6,7 @@ import cc.jumpkick.util.PathUtil;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
@@ -64,9 +65,9 @@ public final class JdkGarbage {
             if (trimmed.isEmpty()) continue;
             Path dir = canonical(Path.of(trimmed));
             if (!dir.startsWith(root)) continue; // defensive: never wander outside the managed JDK root
-            if (!Files.exists(dir, java.nio.file.LinkOption.NOFOLLOW_LINKS)) continue; // already gone
+            if (!Files.exists(dir, LinkOption.NOFOLLOW_LINKS)) continue; // already gone
             deleteRecursively(dir);
-            if (Files.exists(dir, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+            if (Files.exists(dir, LinkOption.NOFOLLOW_LINKS)) {
                 survivors.add(trimmed); // still locked — try again next run
             }
         }

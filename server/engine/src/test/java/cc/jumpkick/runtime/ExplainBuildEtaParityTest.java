@@ -3,8 +3,10 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -45,7 +47,7 @@ class ExplainBuildEtaParityTest {
 
     @Test
     void estimate_eta_is_deterministic_for_identical_inputs(@org.junit.jupiter.api.io.TempDir Path tmp) {
-        ExplainPlan empty = new ExplainPlan(List.of(), java.util.Map.of(), 1, List.of());
+        ExplainPlan empty = new ExplainPlan(List.of(), Map.of(), 1, List.of());
         long a = BuildService.estimateEtaMillis(empty, tmp, tmp.resolve("c"), 0, null, null, false, false, true, 8);
         long b = BuildService.estimateEtaMillis(empty, tmp, tmp.resolve("c"), 0, null, null, false, false, true, 8);
         assertThat(a).isEqualTo(b).isZero();
@@ -56,15 +58,15 @@ class ExplainBuildEtaParityTest {
             throws Exception {
         // Mirrors the dirty-memo fast path: no TaskForecaster, empty steps, ETA 0.
         Path mod = tmp.resolve("m");
-        java.nio.file.Files.createDirectories(mod);
-        java.nio.file.Files.writeString(mod.resolve("jk.toml"), """
+        Files.createDirectories(mod);
+        Files.writeString(mod.resolve("jk.toml"), """
                 [project]
                 group = "ex"
                 name = "m"
                 version = "1.0"
                 java = 25
                 """);
-        java.nio.file.Files.writeString(tmp.resolve("jk.toml"), """
+        Files.writeString(tmp.resolve("jk.toml"), """
                 [project]
                 group = "ex"
                 name = "ws"

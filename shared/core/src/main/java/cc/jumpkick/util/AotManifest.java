@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.util;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
@@ -20,6 +21,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.regex.Pattern;
 
 /**
  * Human-readable index of files under {@code state/aot/}: {@code aot.toml}. Opaque
@@ -169,9 +171,9 @@ public final class AotManifest {
                     this.classpath = List.of();
                     return this;
                 }
-                String sep = java.io.File.pathSeparator;
+                String sep = File.pathSeparator;
                 List<String> parts = new ArrayList<>();
-                for (String p : cp.split(java.util.regex.Pattern.quote(sep), -1)) {
+                for (String p : cp.split(Pattern.quote(sep), -1)) {
                     if (!p.isBlank()) parts.add(p);
                 }
                 this.classpath = List.copyOf(parts);

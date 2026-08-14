@@ -12,6 +12,7 @@ import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -145,7 +146,7 @@ class TaskForecasterCleanPackageTest {
     private static void deleteTree(Path root) throws Exception {
         if (!Files.exists(root)) return;
         try (var walk = Files.walk(root)) {
-            walk.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+            walk.sorted(Comparator.reverseOrder()).forEach(p -> {
                 try {
                     Files.deleteIfExists(p);
                 } catch (Exception ignored) {

@@ -13,6 +13,8 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -104,7 +106,7 @@ class LockCommandLibraryRegistryTest {
     private static void makeStale(Path file) throws IOException {
         Files.setLastModifiedTime(
                 file,
-                java.nio.file.attribute.FileTime.from(java.time.Instant.now()
+                FileTime.from(Instant.now()
                         .minus(cc.jumpkick.repo.LibraryRegistrySync.FRESH_FOR)
                         .minusSeconds(60)));
     }

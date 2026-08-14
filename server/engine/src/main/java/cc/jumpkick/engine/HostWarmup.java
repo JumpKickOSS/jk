@@ -12,6 +12,7 @@ import cc.jumpkick.util.AotSettings;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
@@ -123,7 +124,7 @@ public final class HostWarmup {
      * Full warmup pass on the idle daemon: store feeds + templates first, then AOT/cal if needed.
      * Best-effort; never throws. Network errors are quiet (no retries).
      */
-    public static void runIdle(boolean forceAot, java.util.function.Consumer<String> log) {
+    public static void runIdle(boolean forceAot, Consumer<String> log) {
         if (log == null) log = s -> {};
         // Always attempt cheap feed/template refresh first (etag/mtime gated; fail quiet).
         try {

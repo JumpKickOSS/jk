@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 /** Request/outcome records for engine-hosted verbs. */
 public final class EngineRequests {
@@ -79,7 +81,7 @@ public final class EngineRequests {
             boolean offline,
             boolean force,
             String variant,
-            java.util.Map<String, String> clientEnv) {
+            Map<String, String> clientEnv) {
 
         /** Back-compat: default variant, no client env. */
         public SingleBuildRequest(
@@ -92,18 +94,7 @@ public final class EngineRequests {
                 boolean verbose,
                 boolean offline,
                 boolean force) {
-            this(
-                    entryDir,
-                    cache,
-                    jdksDir,
-                    workers,
-                    profile,
-                    skipTests,
-                    verbose,
-                    offline,
-                    force,
-                    "",
-                    java.util.Map.of());
+            this(entryDir, cache, jdksDir, workers, profile, skipTests, verbose, offline, force, "", Map.of());
         }
     }
 
@@ -184,7 +175,7 @@ public final class EngineRequests {
             List<String> features,
             boolean noDefaultFeatures,
             boolean sources,
-            java.net.URI repoUrl,
+            URI repoUrl,
             boolean offline,
             boolean force,
             boolean verbose,
@@ -196,7 +187,7 @@ public final class EngineRequests {
                 List<String> features,
                 boolean noDefaultFeatures,
                 boolean sources,
-                java.net.URI repoUrl,
+                URI repoUrl,
                 boolean offline,
                 boolean force,
                 boolean verbose) {
@@ -210,7 +201,7 @@ public final class EngineRequests {
             Path cache,
             List<String> features,
             boolean noDefaultFeatures,
-            java.net.URI repoUrl,
+            URI repoUrl,
             boolean offline,
             boolean force,
             boolean verbose,
@@ -221,7 +212,7 @@ public final class EngineRequests {
                 Path cache,
                 List<String> features,
                 boolean noDefaultFeatures,
-                java.net.URI repoUrl,
+                URI repoUrl,
                 boolean offline,
                 boolean force,
                 boolean verbose) {
@@ -234,7 +225,7 @@ public final class EngineRequests {
             Path entryDir,
             Path cache,
             Path jdksDir,
-            java.net.URI repoUrl,
+            URI repoUrl,
             boolean sources,
             boolean offline,
             boolean force,
@@ -279,13 +270,12 @@ public final class EngineRequests {
     public record LockOutcome(boolean success, int exitCode, List<String> errors, int refreshed) {}
 
     /** Everything an engine-hosted {@code jk outdated} needs — mirrors {@code OutdatedCommand}'s local fields. */
-    public record OutdatedRequest(Path entryDir, Path cache, java.net.URI repoUrl, boolean offline, boolean force) {}
+    public record OutdatedRequest(Path entryDir, Path cache, URI repoUrl, boolean offline, boolean force) {}
 
     // ---- hosted worker commands -------------------------------------------------------------------
 
     /** Everything an engine-hosted {@code jk audit} needs — mirrors {@code AuditCommand}'s local fields. */
-    public record AuditRequest(
-            Path entryDir, Path cache, String severity, java.net.URI osvBatchUrl, java.net.URI osvVulnsUrl) {}
+    public record AuditRequest(Path entryDir, Path cache, String severity, URI osvBatchUrl, URI osvVulnsUrl) {}
 
     /** Everything an engine-hosted {@code jk format} needs — resolved styles, not raw flags. */
     public record FormatRequest(
@@ -313,7 +303,7 @@ public final class EngineRequests {
     public record PublishRequest(
             Path entryDir,
             Path cache,
-            java.net.URI repoUrl,
+            URI repoUrl,
             String region,
             String endpoint,
             Path jarPath,
@@ -402,7 +392,7 @@ public final class EngineRequests {
             boolean force,
             boolean verbose,
             List<String> extraArgs,
-            java.util.Map<Path, Path> graalByDir,
+            Map<Path, Path> graalByDir,
             /** When non-null/non-empty: only these module dirs (+ their build prereqs) run. */
             List<Path> selectedModuleDirs) {}
 
@@ -440,7 +430,7 @@ public final class EngineRequests {
      * {@code null}); {@code repoUrl} overrides Maven Central (may be {@code null}).
      */
     public record ToolResolveRequest(
-            String coord, List<String> with, String bin, String mainClass, java.net.URI repoUrl, Path cache) {}
+            String coord, List<String> with, String bin, String mainClass, URI repoUrl, Path cache) {}
 
     /**
      * A hosted tool resolution's outcome: the plan result plus the pinned {@code g:a:v} the engine
@@ -460,11 +450,11 @@ public final class EngineRequests {
             Path script,
             Path cache,
             Path stateDir,
-            java.net.URI repoUrl,
+            URI repoUrl,
             boolean forceRecompile,
             List<String> with) {
         public ScriptPrepareRequest(
-                String mode, Path script, Path cache, Path stateDir, java.net.URI repoUrl, boolean forceRecompile) {
+                String mode, Path script, Path cache, Path stateDir, URI repoUrl, boolean forceRecompile) {
             this(mode, script, cache, stateDir, repoUrl, forceRecompile, List.of());
         }
     }

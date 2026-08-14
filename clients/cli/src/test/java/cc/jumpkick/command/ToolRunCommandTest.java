@@ -11,12 +11,16 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.jar.Attributes;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
+import javax.tools.JavaCompiler;
+import javax.tools.ToolProvider;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -739,7 +743,7 @@ class ToolRunCommandTest {
                         + " { public static void main(String[] a) { System.exit("
                         + exitCode
                         + "); } }\n");
-        javax.tools.JavaCompiler compiler = javax.tools.ToolProvider.getSystemJavaCompiler();
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         int rc = compiler.run(null, null, null, src.toString());
         if (rc != 0) throw new IllegalStateException("compile of " + src + " failed");
         Path classFile = src.resolveSibling(className + ".class");
@@ -763,7 +767,7 @@ class ToolRunCommandTest {
         Files.writeString(
                 src,
                 "public class " + className + " { public static void main(String[] a) { System.exit(a.length); } }\n");
-        javax.tools.JavaCompiler compiler = javax.tools.ToolProvider.getSystemJavaCompiler();
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         int rc = compiler.run(null, null, null, src.toString());
         if (rc != 0) throw new IllegalStateException("compile of " + src + " failed");
         Path classFile = src.resolveSibling(className + ".class");
@@ -811,7 +815,7 @@ class ToolRunCommandTest {
                 """);
         Path out = tempDir.resolve("greeter-classes");
         Files.createDirectories(out);
-        javax.tools.JavaCompiler compiler = javax.tools.ToolProvider.getSystemJavaCompiler();
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         int rc = compiler.run(null, null, null, "-d", out.toString(), src.toString());
         if (rc != 0) throw new IllegalStateException("compile of Greeter failed");
         Path classFile = out.resolve("com/example/Greeter.class");
@@ -845,7 +849,7 @@ class ToolRunCommandTest {
 
     /** Drive the system git for local-repo fixtures (identity + signing pinned for hermeticity). */
     private static void git(Path dir, String... args) throws Exception {
-        java.util.List<String> cmd = new java.util.ArrayList<>(java.util.List.of(
+        List<String> cmd = new ArrayList<>(List.of(
                 "git",
                 "-C",
                 dir.toString(),
@@ -855,7 +859,7 @@ class ToolRunCommandTest {
                 "user.email=t@t",
                 "-c",
                 "commit.gpgsign=false"));
-        cmd.addAll(java.util.List.of(args));
+        cmd.addAll(List.of(args));
         Process p = new ProcessBuilder(cmd).redirectErrorStream(true).start();
         String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         if (p.waitFor() != 0) {

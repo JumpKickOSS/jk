@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Tag;
@@ -189,7 +190,7 @@ class VscodeCommandTest {
 
         Path cache = tmp.resolve("cache");
         // Seed via JkStores: the engine's CAS root is the ambient store, not the raw cache dir.
-        cc.jumpkick.cache.JkStores.cas(cache).put("dummy-jar".getBytes(java.nio.charset.StandardCharsets.UTF_8), hex);
+        cc.jumpkick.cache.JkStores.cas(cache).put("dummy-jar".getBytes(StandardCharsets.UTF_8), hex);
 
         Path jdks = tmp.resolve("jdks");
         fakeJdk(jdks, "temurin-25.0.3", "25.0.3");

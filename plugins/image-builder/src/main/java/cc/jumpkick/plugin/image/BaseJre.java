@@ -9,14 +9,17 @@ import com.google.cloud.tools.jib.api.RegistryImage;
 import com.google.cloud.tools.jib.api.TarImage;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.FileTime;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
-import java.util.List;
-import java.util.Locale;
+import java.util.*;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
@@ -96,8 +99,7 @@ final class BaseJre {
                     .containerize(Containerizer.to(TarImage.at(tar).named("jk-base-jre")));
         } catch (InvalidImageReferenceException | RegistryException e) {
             throw new IOException("cannot read base image " + base + ": " + e.getMessage(), e);
-        } catch (com.google.cloud.tools.jib.api.CacheDirectoryCreationException
-                | java.util.concurrent.ExecutionException e) {
+        } catch (com.google.cloud.tools.jib.api.CacheDirectoryCreationException | ExecutionException e) {
             throw new IOException("cannot extract base image " + base + ": " + e.getMessage(), e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -111,7 +113,7 @@ final class BaseJre {
         }
         if (resolved.equals(previous)) {
             // Same bytes — refresh the trust window and keep the tree.
-            Files.setLastModifiedTime(marker, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis()));
+            Files.setLastModifiedTime(marker, FileTime.fromMillis(System.currentTimeMillis()));
             Files.deleteIfExists(tar);
             return;
         }
@@ -164,11 +166,10 @@ final class BaseJre {
         Path manifest = layers.resolve("manifest.json");
         if (!Files.isRegularFile(manifest)) return List.of();
         String body = Files.readString(manifest);
-        var m = java.util.regex.Pattern.compile("\"Layers\"\\s*:\\s*\\[(.*?)]", java.util.regex.Pattern.DOTALL)
-                .matcher(body);
+        var m = Pattern.compile("\"Layers\"\\s*:\\s*\\[(.*?)]", Pattern.DOTALL).matcher(body);
         if (!m.find()) return List.of();
-        List<Path> out = new java.util.ArrayList<>();
-        var entry = java.util.regex.Pattern.compile("\"([^\"]+)\"").matcher(m.group(1));
+        List<Path> out = new ArrayList<>();
+        var entry = Pattern.compile("\"([^\"]+)\"").matcher(m.group(1));
         while (entry.find()) {
             Path layer = layers.resolve(entry.group(1)).normalize();
             if (layer.startsWith(layers) && Files.isRegularFile(layer)) out.add(layer);
@@ -179,7 +180,7 @@ final class BaseJre {
     private static void deleteRecursively(Path root) throws IOException {
         if (!Files.exists(root)) return;
         try (var walk = Files.walk(root)) {
-            for (Path p : walk.sorted(java.util.Comparator.reverseOrder()).toList()) {
+            for (Path p : walk.sorted(Comparator.reverseOrder()).toList()) {
                 Files.deleteIfExists(p);
             }
         }
@@ -229,7 +230,7 @@ final class BaseJre {
                 if (entry.isSymbolicLink() || entry.isLink() || !entry.isFile()) continue;
                 Files.createDirectories(target.getParent());
                 try {
-                    Files.copy(tar, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    Files.copy(tar, target, StandardCopyOption.REPLACE_EXISTING);
                     if ((entry.getMode() & 0100) != 0) target.toFile().setExecutable(true, false);
                 } catch (IOException e) {
                     if (!tolerate) throw e;
@@ -260,7 +261,7 @@ final class BaseJre {
                             return false;
                         }
                     })
-                    .sorted(java.util.Comparator.comparingInt((Path p) -> p.getNameCount())
+                    .sorted(Comparator.comparingInt((Path p) -> p.getNameCount())
                             .reversed())
                     .toList();
         }
@@ -277,7 +278,7 @@ final class BaseJre {
             Process p = new ProcessBuilder(javaBin.toString(), "-version")
                     .redirectErrorStream(true)
                     .start();
-            String out = new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             return p.waitFor(60, TimeUnit.SECONDS) && p.exitValue() == 0 && !out.isBlank();
         } catch (IOException e) {
             return false;
@@ -287,7 +288,7 @@ final class BaseJre {
     private static String digest(String text) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(md.digest(text.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            return HexFormat.of().formatHex(md.digest(text.getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }

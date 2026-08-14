@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
+import java.util.regex.Pattern;
 import org.jline.utils.AttributedString;
 
 /**
@@ -65,8 +66,8 @@ public record RenderContext(Theme theme, boolean ansi, boolean nerdfont, int wid
      * alternative also strips a sequence truncated upstream (a tool line clipped mid-OSC) — its
      * payload must measure as zero columns, not as the URL's length (JK-1967).
      */
-    private static final java.util.regex.Pattern OSC_SEQUENCE =
-            java.util.regex.Pattern.compile("\\u001b\\][^\\u0007\\u001b]*(?:\\u0007|\\u001b\\\\|\\z)");
+    private static final Pattern OSC_SEQUENCE =
+            Pattern.compile("\\u001b\\][^\\u0007\\u001b]*(?:\\u0007|\\u001b\\\\|\\z)");
 
     /**
      * Index just past the escape sequence starting at {@code i} ({@code s.charAt(i)} is ESC):

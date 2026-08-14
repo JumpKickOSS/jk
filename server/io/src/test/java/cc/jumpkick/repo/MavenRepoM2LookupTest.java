@@ -13,6 +13,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.AfterEach;
@@ -119,10 +120,10 @@ class MavenRepoM2LookupTest {
 
         MavenRepo.Fetched fetched = repo.fetchArtifact(coord());
 
-        Object blobKey = Files.readAttributes(fetched.cachePath(), java.nio.file.attribute.BasicFileAttributes.class)
+        Object blobKey = Files.readAttributes(fetched.cachePath(), BasicFileAttributes.class)
                 .fileKey();
-        Object m2Key = Files.readAttributes(m2.resolve(REL), java.nio.file.attribute.BasicFileAttributes.class)
-                .fileKey();
+        Object m2Key =
+                Files.readAttributes(m2.resolve(REL), BasicFileAttributes.class).fileKey();
         assertThat(blobKey).isNotEqualTo(m2Key);
     }
 
@@ -144,10 +145,10 @@ class MavenRepoM2LookupTest {
             System.clearProperty("jk.m2.link");
         }
 
-        Object blobKey = Files.readAttributes(fetched.cachePath(), java.nio.file.attribute.BasicFileAttributes.class)
+        Object blobKey = Files.readAttributes(fetched.cachePath(), BasicFileAttributes.class)
                 .fileKey();
-        Object m2Key = Files.readAttributes(m2.resolve(REL), java.nio.file.attribute.BasicFileAttributes.class)
-                .fileKey();
+        Object m2Key =
+                Files.readAttributes(m2.resolve(REL), BasicFileAttributes.class).fileKey();
         assertThat(blobKey).isEqualTo(m2Key);
     }
 

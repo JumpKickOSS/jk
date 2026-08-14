@@ -17,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
@@ -60,7 +61,7 @@ class BuildPlannerTestOnlyPlanTest {
                         JkBuildParser.reparse(dir.resolve("jk.toml")),
                         dir,
                         cc.jumpkick.model.Variants.Selection.parse(""),
-                        java.util.Map.of())
+                        Map.of())
                 .build();
         seedDescribeCache(
                 dir,

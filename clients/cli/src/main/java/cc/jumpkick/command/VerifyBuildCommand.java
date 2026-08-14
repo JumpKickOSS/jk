@@ -27,6 +27,7 @@ import cc.jumpkick.runtime.WorkspaceResult;
 import cc.jumpkick.util.Hashing;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.PathUtil;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -354,7 +355,7 @@ public final class VerifyBuildCommand implements CliCommand {
 
     private static String displayPath(Path root, Path artifact) {
         try {
-            return root.relativize(artifact).toString().replace(java.io.File.separatorChar, '/');
+            return root.relativize(artifact).toString().replace(File.separatorChar, '/');
         } catch (RuntimeException e) {
             return artifact.getFileName().toString();
         }

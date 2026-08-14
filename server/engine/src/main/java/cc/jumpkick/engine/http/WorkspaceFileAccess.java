@@ -4,8 +4,12 @@ package cc.jumpkick.engine.http;
 import cc.jumpkick.builds.ProjectIdentity;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
@@ -155,8 +159,7 @@ final class WorkspaceFileAccess {
                         if (n.startsWith(".") || n.equals("node_modules")) continue;
                         BasicFileAttributes attrs;
                         try {
-                            attrs = Files.readAttributes(
-                                    entry, BasicFileAttributes.class, java.nio.file.LinkOption.NOFOLLOW_LINKS);
+                            attrs = Files.readAttributes(entry, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
                         } catch (IOException unreadable) {
                             continue;
                         }
@@ -242,11 +245,11 @@ final class WorkspaceFileAccess {
         try {
             content = StandardCharsets.UTF_8
                     .newDecoder()
-                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
-                    .decode(java.nio.ByteBuffer.wrap(bytes))
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(bytes))
                     .toString();
-        } catch (java.nio.charset.CharacterCodingException notUtf8) {
+        } catch (CharacterCodingException notUtf8) {
             content = new String(bytes, StandardCharsets.ISO_8859_1);
             encoding = "iso-8859-1";
         }

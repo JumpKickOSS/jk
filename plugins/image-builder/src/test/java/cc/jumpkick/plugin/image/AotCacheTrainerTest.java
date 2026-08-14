@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.image.ImageConfig;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -106,10 +107,9 @@ class AotCacheTrainerTest {
      */
     @Test
     void the_host_can_only_run_a_matching_linux_platform() {
-        boolean linuxAmd64 = System.getProperty("os.name", "")
-                        .toLowerCase(java.util.Locale.ROOT)
-                        .contains("linux")
-                && List.of("amd64", "x86_64").contains(System.getProperty("os.arch", ""));
+        boolean linuxAmd64 =
+                System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("linux")
+                        && List.of("amd64", "x86_64").contains(System.getProperty("os.arch", ""));
         assertThat(BaseJre.hostCanExecute(List.of("linux/amd64"))).isEqualTo(linuxAmd64);
         assertThat(BaseJre.hostCanExecute(List.of())).isEqualTo(linuxAmd64); // default is linux/amd64
         assertThat(BaseJre.hostCanExecute(List.of("linux/s390x"))).isFalse();

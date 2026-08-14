@@ -72,7 +72,7 @@ public record Pom(
             cc.jumpkick.model.Coordinate to = applyTo(from);
             return !to.group().equals(from.group())
                     || !to.artifact().equals(from.artifact())
-                    || !java.util.Objects.equals(to.version(), from.version());
+                    || !Objects.equals(to.version(), from.version());
         }
     }
 

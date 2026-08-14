@@ -8,13 +8,25 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import cc.jumpkick.config.JkHttpConfig;
 import java.io.IOException;
+import java.net.BindException;
 import java.net.Socket;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -62,10 +74,10 @@ class HttpEngineServerTest {
     private Path tokenFile;
     private Path logFile;
     private HttpEvents events;
-    private final java.util.List<String> triggeredDirs = new java.util.ArrayList<>();
+    private final List<String> triggeredDirs = new ArrayList<>();
 
     /** Rows served by {@code GET /api/metrics} — tests seed this list directly. */
-    private final java.util.List<cc.jumpkick.runtime.BuildMetrics.Entry> metricsRows = new java.util.ArrayList<>();
+    private final List<cc.jumpkick.runtime.BuildMetrics.Entry> metricsRows = new ArrayList<>();
 
     /** The snapshot served by {@code GET /api/cache} — tests reassign the field directly. */
     private static final CacheSnapshot EMPTY_CACHE = new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -202,7 +214,7 @@ class HttpEngineServerTest {
         Files.writeString(secret, "TOP SECRET");
         try {
             Files.createSymbolicLink(webRoot.resolve("leak.txt"), secret);
-        } catch (UnsupportedOperationException | java.io.IOException unsupported) {
+        } catch (UnsupportedOperationException | IOException unsupported) {
             return; // filesystem without symlink support — nothing to prove here
         }
         HttpResponse<String> resp = get("/leak.txt");
@@ -307,7 +319,7 @@ class HttpEngineServerTest {
                 new HttpEvents(),
                 stubJobs,
                 testJournal(),
-                java.util.List::of,
+                List::of,
                 () -> EMPTY_CACHE,
                 null);
         try {
@@ -472,7 +484,7 @@ class HttpEngineServerTest {
                 new HttpEvents(),
                 stubJobs,
                 testJournal(),
-                java.util.List::of,
+                List::of,
                 () -> EMPTY_CACHE,
                 null);
         try {
@@ -511,7 +523,7 @@ class HttpEngineServerTest {
                     HttpResponse.BodyHandlers.ofString());
             assertThat(status.statusCode()).isEqualTo(200);
             assertThat(status.body()).contains("\"mcpEnabled\":false").contains("\"mcpUrl\":null");
-            HttpResponse<java.util.stream.Stream<String>> events = client.send(
+            HttpResponse<Stream<String>> events = client.send(
                     HttpRequest.newBuilder(URI.create(url + "api/events?access_token=" + tok))
                             .build(),
                     HttpResponse.BodyHandlers.ofLines());
@@ -575,7 +587,7 @@ class HttpEngineServerTest {
     @Test
     void api_all_routes_require_token_including_history_status_and_cache() throws Exception {
         // Fail closed: bare browser / curl without a bearer must not see engine data.
-        for (String path : java.util.List.of("api/status", "api/cache", "api/history", "api/events")) {
+        for (String path : List.of("api/status", "api/cache", "api/history", "api/events")) {
             HttpResponse<String> noToken = client.send(
                     HttpRequest.newBuilder(URI.create(baseUrl + path)).build(), HttpResponse.BodyHandlers.ofString());
             assertThat(noToken.statusCode()).as(path).isEqualTo(401);
@@ -680,7 +692,7 @@ class HttpEngineServerTest {
 
         String body = get(
                         "/api/project/graph?dir=" + solo + "&scopes="
-                                + java.net.URLEncoder.encode("main,test", java.nio.charset.StandardCharsets.UTF_8),
+                                + URLEncoder.encode("main,test", StandardCharsets.UTF_8),
                         "Authorization",
                         "Bearer " + token())
                 .body();
@@ -1045,8 +1057,8 @@ class HttpEngineServerTest {
         Files.writeString(pick.resolve("jk.toml"), "[project]");
         try {
             String rel = home.relativize(pick).toString().replace('\\', '/');
-            String enc = java.net.URLEncoder.encode(rel, UTF_8);
-            String encTilde = java.net.URLEncoder.encode("~/" + rel, UTF_8);
+            String enc = URLEncoder.encode(rel, UTF_8);
+            String encTilde = URLEncoder.encode("~/" + rel, UTF_8);
             HttpResponse<String> fromTilde = get("/api/fs?dir=" + encTilde, "Authorization", "Bearer " + token());
             HttpResponse<String> fromRel = get("/api/fs?dir=" + enc, "Authorization", "Bearer " + token());
             assertThat(fromTilde.statusCode()).isEqualTo(200);
@@ -1125,10 +1137,8 @@ class HttpEngineServerTest {
     @Test
     void token_file_is_owner_only() throws IOException {
         assertThat(token()).isNotEmpty();
-        assertThat(java.nio.file.Files.getPosixFilePermissions(tokenFile))
-                .containsExactlyInAnyOrder(
-                        java.nio.file.attribute.PosixFilePermission.OWNER_READ,
-                        java.nio.file.attribute.PosixFilePermission.OWNER_WRITE);
+        assertThat(Files.getPosixFilePermissions(tokenFile))
+                .containsExactlyInAnyOrder(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE);
     }
 
     @Test
@@ -1149,7 +1159,7 @@ class HttpEngineServerTest {
                 events,
                 stubJobs,
                 testJournal(),
-                java.util.List::of,
+                List::of,
                 () -> EMPTY_CACHE,
                 null);
         try {
@@ -1185,7 +1195,7 @@ class HttpEngineServerTest {
                 events,
                 stubJobs,
                 testJournal(),
-                java.util.List::of,
+                List::of,
                 () -> EMPTY_CACHE,
                 null);
         try {
@@ -1212,12 +1222,12 @@ class HttpEngineServerTest {
                 events,
                 stubJobs,
                 testJournal(),
-                java.util.List::of,
+                List::of,
                 () -> EMPTY_CACHE,
                 null);
         try {
-            assertTimeoutPreemptively(java.time.Duration.ofSeconds(10), () -> assertThatThrownBy(collider::start)
-                    .isInstanceOf(java.net.BindException.class));
+            assertTimeoutPreemptively(Duration.ofSeconds(10), () -> assertThatThrownBy(collider::start)
+                    .isInstanceOf(BindException.class));
         } finally {
             collider.close();
         }
@@ -1237,7 +1247,7 @@ class HttpEngineServerTest {
                 new HttpEvents(),
                 stubJobs,
                 testJournal(),
-                java.util.List::of,
+                List::of,
                 () -> EMPTY_CACHE,
                 null);
         try {
@@ -1292,16 +1302,16 @@ class HttpEngineServerTest {
                 new HttpEvents(),
                 stubJobs,
                 testJournal(),
-                java.util.List::of,
+                List::of,
                 () -> EMPTY_CACHE,
                 null);
-        var streams = new java.util.ArrayList<HttpResponse<java.util.stream.Stream<String>>>();
+        var streams = new ArrayList<HttpResponse<Stream<String>>>();
         try {
             tiny.start();
             String url = tiny.url();
             String tok = Files.readString(stateDir.resolve("tiny.http-token")).trim();
             for (int i = 0; i < 3; i++) { // more streams than the whole RPC budget
-                HttpResponse<java.util.stream.Stream<String>> resp = client.send(
+                HttpResponse<Stream<String>> resp = client.send(
                         HttpRequest.newBuilder(URI.create(url + "api/events?access_token=" + tok))
                                 .build(),
                         HttpResponse.BodyHandlers.ofLines());
@@ -1326,7 +1336,7 @@ class HttpEngineServerTest {
     void sse_beyond_its_own_cap_is_503_without_touching_rpc_admission() throws Exception {
         int drained = server.webSseAdmission().drainPermits();
         try {
-            assertTimeoutPreemptively(java.time.Duration.ofSeconds(5), () -> {
+            assertTimeoutPreemptively(Duration.ofSeconds(5), () -> {
                 HttpResponse<String> resp = get("/api/events");
                 assertThat(resp.statusCode()).isEqualTo(503);
                 assertThat(resp.body()).contains("too many event streams");
@@ -1343,7 +1353,7 @@ class HttpEngineServerTest {
         int drained = server.webSseAdmission().drainPermits();
         try {
             assertThat(get("/api/events").statusCode()).isEqualTo(503);
-            HttpResponse<java.util.stream.Stream<String>> mcpStream = openMcpEvents();
+            HttpResponse<Stream<String>> mcpStream = openMcpEvents();
             try {
                 assertThat(mcpStream.statusCode()).isEqualTo(200); // separate budget
                 assertThat(nextLine(mcpStream.body().iterator())).isEqualTo(": mcp-events connected");
@@ -1359,7 +1369,7 @@ class HttpEngineServerTest {
     void exhausted_mcp_sse_budget_leaves_web_streams_connectable() throws Exception {
         int drained = server.mcpSseAdmission().drainPermits();
         try {
-            HttpResponse<java.util.stream.Stream<String>> rejected = openMcpEvents();
+            HttpResponse<Stream<String>> rejected = openMcpEvents();
             assertThat(rejected.statusCode()).isEqualTo(503);
             assertThat(String.join("\n", rejected.body().toList())).contains("too many MCP event streams");
 
@@ -1384,7 +1394,7 @@ class HttpEngineServerTest {
     // ---- /api/events (SSE) ----------------------------------------------------------------------
 
     /** Open the SSE stream and return a line iterator (the JDK client de-chunks for us). */
-    private java.util.Iterator<String> openEvents(String query) throws Exception {
+    private Iterator<String> openEvents(String query) throws Exception {
         String q = query == null ? "" : query;
         if (!q.contains("access_token=")) {
             String tok = "access_token=" + token();
@@ -1392,7 +1402,7 @@ class HttpEngineServerTest {
             else if (q.startsWith("?")) q = q + "&" + tok;
             else q = "?" + q + "&" + tok;
         }
-        HttpResponse<java.util.stream.Stream<String>> resp = client.send(
+        HttpResponse<Stream<String>> resp = client.send(
                 HttpRequest.newBuilder(URI.create(baseUrl + "api/events" + q)).build(),
                 HttpResponse.BodyHandlers.ofLines());
         assertThat(resp.statusCode()).isEqualTo(200);
@@ -1401,7 +1411,7 @@ class HttpEngineServerTest {
     }
 
     /** Open the MCP progress stream (token + event-stream Accept) without asserting the status. */
-    private HttpResponse<java.util.stream.Stream<String>> openMcpEvents() throws Exception {
+    private HttpResponse<Stream<String>> openMcpEvents() throws Exception {
         return client.send(
                 HttpRequest.newBuilder(URI.create(baseUrl + "mcp"))
                         .header("Authorization", "Bearer " + token())
@@ -1411,9 +1421,8 @@ class HttpEngineServerTest {
     }
 
     /** Read the next line with a timeout — a hung stream must fail the test, not the build. */
-    private static String nextLine(java.util.Iterator<String> lines) throws Exception {
-        return java.util.concurrent.CompletableFuture.supplyAsync(lines::next)
-                .get(5, java.util.concurrent.TimeUnit.SECONDS);
+    private static String nextLine(Iterator<String> lines) throws Exception {
+        return CompletableFuture.supplyAsync(lines::next).get(5, TimeUnit.SECONDS);
     }
 
     @Test
@@ -1440,7 +1449,7 @@ class HttpEngineServerTest {
      * Read SSE lines until {@code event: <type>}, then return the following {@code data:} line.
      * Skips connect-hydrate vitals and other interleaved frames.
      */
-    private static String awaitSseEvent(java.util.Iterator<String> lines, String type) throws Exception {
+    private static String awaitSseEvent(Iterator<String> lines, String type) throws Exception {
         String want = "event: " + type;
         for (int i = 0; i < 200; i++) {
             String line = nextLine(lines);
@@ -1454,7 +1463,7 @@ class HttpEngineServerTest {
     }
 
     /** Read until a comment line equals {@code comment} (e.g. {@code : heartbeat}). */
-    private static String awaitSseComment(java.util.Iterator<String> lines, String comment) throws Exception {
+    private static String awaitSseComment(Iterator<String> lines, String comment) throws Exception {
         for (int i = 0; i < 200; i++) {
             String line = nextLine(lines);
             if (comment.equals(line)) return line;
@@ -1475,7 +1484,7 @@ class HttpEngineServerTest {
                 new HttpEvents(),
                 stubJobs,
                 testJournal(),
-                java.util.List::of,
+                List::of,
                 () -> EMPTY_CACHE,
                 null);
         try {
@@ -1489,7 +1498,7 @@ class HttpEngineServerTest {
                     HttpResponse.BodyHandlers.ofString());
             assertThat(unauthorized.statusCode()).isEqualTo(401); // EventSource can't send headers...
 
-            HttpResponse<java.util.stream.Stream<String>> authorized = client.send(
+            HttpResponse<Stream<String>> authorized = client.send(
                     HttpRequest.newBuilder(URI.create(lanUrl + "api/events?access_token=" + lanToken))
                             .build(),
                     HttpResponse.BodyHandlers.ofLines()); // ...so the query param is its way in
@@ -1583,7 +1592,7 @@ class HttpEngineServerTest {
         // the signal that stops an orphaned engine exiting under a developer's open dashboard tab.
         assertThat(server.liveEventStreams()).isZero();
 
-        java.util.Iterator<String> lines = openEvents("");
+        Iterator<String> lines = openEvents("");
 
         assertThat(nextLine(lines)).isNotNull(); // connected
         assertThat(server.liveEventStreams()).isEqualTo(1);
@@ -1594,13 +1603,13 @@ class HttpEngineServerTest {
         // JK-1522: a stale running record with a real buildNumber that fails the strict match is a
         // DIFFERENT run (crashed-engine stub) — it must not rebind to the current run's stream.
         var run = new HttpLive.Run(42, 6, "build", "/w", "g:w", 0, Double.NaN, "j6");
-        server.setLiveRunSupport(() -> java.util.List.of(run), null);
+        server.setLiveRunSupport(() -> List.of(run), null);
 
-        assertThat(server.matchLiveRun(java.util.Map.of("dir", "/w", "buildNumber", 6L)))
+        assertThat(server.matchLiveRun(Map.of("dir", "/w", "buildNumber", 6L)))
                 .isEqualTo(run); // strict (dir, buildNumber)
-        assertThat(server.matchLiveRun(java.util.Map.of("id", "j6"))).isEqualTo(run); // journal id
-        assertThat(server.matchLiveRun(java.util.Map.of("dir", "/w"))).isEqualTo(run); // legacy stub
-        assertThat(server.matchLiveRun(java.util.Map.of("dir", "/w", "buildNumber", 5L)))
+        assertThat(server.matchLiveRun(Map.of("id", "j6"))).isEqualTo(run); // journal id
+        assertThat(server.matchLiveRun(Map.of("dir", "/w"))).isEqualTo(run); // legacy stub
+        assertThat(server.matchLiveRun(Map.of("dir", "/w", "buildNumber", 5L)))
                 .isNull(); // stale record, wrong build — no dir-only rebind
     }
 }

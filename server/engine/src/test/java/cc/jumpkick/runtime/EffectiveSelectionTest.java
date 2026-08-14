@@ -7,6 +7,7 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.protocol.ProtoJobs;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -34,7 +35,7 @@ class EffectiveSelectionTest {
     @Test
     void cleared_selection_stays_cleared(@TempDir Path dir) throws Exception {
         moduleWithExcludes(dir);
-        var cleared = TestSelection.of(java.util.List.of(), false, java.util.List.of(), java.util.List.of(), true);
+        var cleared = TestSelection.of(List.of(), false, List.of(), List.of(), true);
         var eff = BuildPlanner.effectiveSelection(cleared, dir);
         assertThat(eff.excludeTags()).isEmpty();
         assertThat(eff.includeTags()).isEmpty();
@@ -50,7 +51,7 @@ class EffectiveSelectionTest {
     @Test
     void tags_resolved_survives_the_wire_round_trip(@TempDir Path dir) throws Exception {
         moduleWithExcludes(dir);
-        var cleared = TestSelection.of(java.util.List.of(), false, java.util.List.of(), java.util.List.of(), true);
+        var cleared = TestSelection.of(List.of(), false, List.of(), List.of(), true);
         String json = "{" + ProtoJobs.testSelectionFields(cleared).substring(1) + "}";
         var decoded = ProtoJobs.testSelectionOf(json);
         assertThat(decoded.tagsResolved()).isTrue();

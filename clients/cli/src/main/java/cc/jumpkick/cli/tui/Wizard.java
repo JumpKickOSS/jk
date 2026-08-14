@@ -5,12 +5,7 @@ import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Theme;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import org.jline.terminal.Attributes;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
@@ -416,7 +411,7 @@ public final class Wizard {
                 // (a free-form custom value) render verbatim. Iterate the
                 // stored list so selection order — including the appended
                 // custom value — is preserved.
-                var byId = new java.util.HashMap<String, String>();
+                var byId = new HashMap<String, String>();
                 for (var c : ms.choicesFor(Answers.of(answers))) {
                     byId.put(c.id(), c.label());
                 }
@@ -507,11 +502,11 @@ public final class Wizard {
         private List<Choice> multiVisible(WizardStep.MultiSelectStep ms) {
             List<Choice> all = ms.choicesFor(snapshot);
             if (!ms.filterable() || filter.isEmpty()) return all;
-            String q = filter.toString().toLowerCase(java.util.Locale.ROOT);
+            String q = filter.toString().toLowerCase(Locale.ROOT);
             var out = new ArrayList<Choice>();
             for (var c : all) {
-                if (c.id().toLowerCase(java.util.Locale.ROOT).contains(q)
-                        || c.label().toLowerCase(java.util.Locale.ROOT).contains(q)) {
+                if (c.id().toLowerCase(Locale.ROOT).contains(q)
+                        || c.label().toLowerCase(Locale.ROOT).contains(q)) {
                     out.add(c);
                 }
             }

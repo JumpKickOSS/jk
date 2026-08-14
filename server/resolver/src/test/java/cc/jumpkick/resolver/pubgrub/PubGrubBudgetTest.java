@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -156,7 +157,7 @@ class PubGrubBudgetTest {
         PackageSource src = new PackageSource() {
             @Override
             public List<String> versions(String pkg) throws IOException, InterruptedException {
-                List<String> v = new java.util.ArrayList<>(base.versions(pkg));
+                List<String> v = new ArrayList<>(base.versions(pkg));
                 if (pkg.equals("shared")) {
                     v.remove("50.0.0");
                     v.add(0, "50.0.0");

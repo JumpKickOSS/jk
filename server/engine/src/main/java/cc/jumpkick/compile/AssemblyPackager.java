@@ -8,14 +8,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.TreeMap;
+import java.util.*;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -141,7 +134,7 @@ public final class AssemblyPackager {
         // merged entry and some loaders trust it over scanning. Shadow and Shade both drop it
         // (JK-1677).
         if (name.equals("META-INF/INDEX.LIST")) return true;
-        String upper = name.toUpperCase(java.util.Locale.ROOT);
+        String upper = name.toUpperCase(Locale.ROOT);
         return upper.endsWith(".SF")
                 || upper.endsWith(".RSA")
                 || upper.endsWith(".DSA")

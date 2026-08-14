@@ -2,6 +2,8 @@
 package cc.jumpkick.config;
 
 import java.util.Locale;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 
 /**
@@ -35,7 +37,7 @@ public final class NerdFontDetect {
      * on any workstation with a Nerd Font, which is precisely backwards from what a test should key
      * on.
      */
-    public static Result detect(Function<String, String> env, java.util.function.BooleanSupplier fontProbe) {
+    public static Result detect(Function<String, String> env, BooleanSupplier fontProbe) {
         String forced = env.apply("JK_NERDFONT");
         if (forced != null && !forced.isBlank()) {
             boolean on = EnvValues.parseBool(forced).orElse(false);
@@ -89,7 +91,7 @@ public final class NerdFontDetect {
                     .redirectErrorStream(true)
                     .start();
             String out = new String(p.getInputStream().readAllBytes());
-            if (!p.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)) {
+            if (!p.waitFor(2, TimeUnit.SECONDS)) {
                 p.destroyForcibly();
                 return false;
             }

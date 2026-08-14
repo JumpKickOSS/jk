@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 
 /**
  * Materializes a git dep into a per-commit {@code file://} Maven repo via {@link
@@ -153,7 +154,7 @@ public final class GitSourceMaterializer {
         Path pomPath = artifactPom(repo, group, artifact, version);
         Files.createDirectories(jarPath.getParent());
         // Streaming copy from the build-output jar — never buffers the whole jar in the heap.
-        Files.copy(builtJar, jarPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        Files.copy(builtJar, jarPath, StandardCopyOption.REPLACE_EXISTING);
         Files.writeString(pomPath, pomXml);
 
         // maven-metadata.xml lets the resolver enumerate this artifact's versions through the

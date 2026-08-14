@@ -17,12 +17,11 @@ import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionKey;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Stream;
 
 /**
  * Plugin task wiring, packager invocation, and application SBOM.
@@ -214,7 +213,7 @@ public final class PlannerPlugin {
 
                     // Manifest-contributed tool artifacts (aapt2, r8, a platform jar) — fetched
                     // into the cache, handed to the body by artifact name, keyed like any input.
-                    java.util.Map<String, Path> toolExtras = PluginBuild.fetchStepDependencies(
+                    Map<String, Path> toolExtras = PluginBuild.fetchStepDependencies(
                             project, in.dir(), cx.cas(), PluginBuild.sdkPins(in.lockFile()));
 
                     // Action key: exactly the declared inputs, plus the facts the body sees.
@@ -320,7 +319,7 @@ public final class PlannerPlugin {
                     } finally {
                         Files.deleteIfExists(spec);
                     }
-                    actionCache.store(taskId, actionKey, java.util.Map.of(), scratch);
+                    actionCache.store(taskId, actionKey, Map.of(), scratch);
                     // A transform's output IS the classes dir from here on: re-point MAIN_CLASSES
                     // so packaging, later steps' In.classes, and the native tail read it
                     // (ordering: consumers carry a requires edge on this step).
@@ -366,7 +365,7 @@ public final class PlannerPlugin {
         // Packagers get the packager-dependency artifacts AND the step-dependency tools (the
         // same artifacts commands receive — an AAB packager forks bundletool exactly like a step
         // forks aapt2). A packager-dependency wins a name collision.
-        java.util.Map<String, Path> extras = new LinkedHashMap<>(
+        Map<String, Path> extras = new LinkedHashMap<>(
                 PluginBuild.fetchStepDependencies(project, in.dir(), cas, PluginBuild.sdkPins(in.lockFile())));
         extras.putAll(PluginBuild.fetchPackagerDependencies(project, in.dir(), cas));
 
@@ -409,12 +408,11 @@ public final class PlannerPlugin {
             // A changed signing credential re-signs (the signature is part of the artifact);
             // the key carries only a digest — a secret value never appears anywhere readable.
             StringBuilder sb = new StringBuilder();
-            for (var e : new java.util.TreeMap<>(secrets).entrySet()) {
+            for (var e : new TreeMap<>(secrets).entrySet()) {
                 sb.append(e.getKey()).append('=').append(e.getValue()).append('\n');
             }
             tokens.add("secrets:"
-                    + cc.jumpkick.util.Hashing.sha256Hex(
-                            sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+                    + cc.jumpkick.util.Hashing.sha256Hex(sb.toString().getBytes(StandardCharsets.UTF_8)));
         }
         tokens.add("facts:" + project.project().group() + ":"
                 + project.project().name() + ":" + project.project().version() + ":" + startClass);
@@ -522,7 +520,7 @@ public final class PlannerPlugin {
             if (Files.isRegularFile(p)) {
                 produced.add(p);
             } else if (Files.isDirectory(p)) {
-                try (java.util.stream.Stream<Path> walk = Files.walk(p)) {
+                try (Stream<Path> walk = Files.walk(p)) {
                     walk.filter(Files::isRegularFile).forEach(produced::add);
                 }
             }

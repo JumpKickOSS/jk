@@ -17,7 +17,9 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.zip.GZIPOutputStream;
 import org.junit.jupiter.api.AfterEach;
@@ -277,7 +279,7 @@ class JdkInstallerTest {
                 "21.0.5",
                 true,
                 false,
-                java.util.List.of("temurin-21.0.5", "temurin-21", "21.0.5", "21"),
+                List.of("temurin-21.0.5", "temurin-21", "21.0.5", "21"),
                 os,
                 arch,
                 "targz",
@@ -337,7 +339,7 @@ class JdkInstallerTest {
             header[263] = ' ';
             header[264] = 0;
             // checksum (148-155): fill with spaces first, then compute
-            java.util.Arrays.fill(header, 148, 156, (byte) ' ');
+            Arrays.fill(header, 148, 156, (byte) ' ');
             int sum = 0;
             for (byte b : header) sum += (b & 0xFF);
             putOctal(header, 148, 8, sum);

@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import java.util.EnumSet;
 import java.util.List;
 
 /**
@@ -13,7 +14,7 @@ import java.util.List;
  */
 public final class ExportIdeaCommand implements CliCommand {
 
-    private final IdeCommand delegate = new IdeCommand(java.util.EnumSet.of(cc.jumpkick.command.ide.IdeTarget.IDEA));
+    private final IdeCommand delegate = new IdeCommand(EnumSet.of(cc.jumpkick.command.ide.IdeTarget.IDEA));
 
     @Override
     public String name() {

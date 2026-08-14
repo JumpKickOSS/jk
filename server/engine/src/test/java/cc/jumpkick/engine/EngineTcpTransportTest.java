@@ -7,11 +7,9 @@ import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.plugin.protocol.Jsonl;
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
+import java.io.*;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.nio.channels.Channels;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
@@ -69,7 +67,7 @@ class EngineTcpTransportTest {
                     } catch (IOException ignored) {
                     }
                 });
-            } catch (IOException | java.io.UncheckedIOException ignored) {
+            } catch (IOException | UncheckedIOException ignored) {
             }
         }
     }
@@ -87,8 +85,7 @@ class EngineTcpTransportTest {
         try {
             int port = Integer.parseInt(Files.readString(socketFile).trim());
             String token = Files.readString(EnginePaths.tokenFor(socketFile)).trim();
-            try (SocketChannel ch = SocketChannel.open(
-                    new java.net.InetSocketAddress(java.net.InetAddress.getLoopbackAddress(), port))) {
+            try (SocketChannel ch = SocketChannel.open(new InetSocketAddress(InetAddress.getLoopbackAddress(), port))) {
                 BufferedWriter w = new BufferedWriter(
                         new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
                 BufferedReader r =

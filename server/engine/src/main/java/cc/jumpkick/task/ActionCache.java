@@ -9,14 +9,11 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.TreeMap;
+import java.nio.file.StandardOpenOption;
+import java.security.DigestOutputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.*;
 import java.util.stream.Stream;
 
 /**
@@ -91,7 +88,7 @@ public final class ActionCache {
     public ActionRecord store(String taskId, String actionKey, Map<String, String> inputs, Path outputDir)
             throws IOException {
         Map<String, String> outputs = new TreeMap<>();
-        java.util.Set<String> executables = new java.util.TreeSet<>();
+        Set<String> executables = new TreeSet<>();
         if (Files.exists(outputDir)) {
             try (Stream<Path> stream = Files.walk(outputDir)) {
                 for (Path file : (Iterable<Path>) stream::iterator) {
@@ -158,7 +155,7 @@ public final class ActionCache {
             Map<String, String> outputs,
             Map<String, List<String>> units)
             throws IOException {
-        return storeWithOutputs(taskId, actionKey, inputs, outputs, units, java.util.Set.of());
+        return storeWithOutputs(taskId, actionKey, inputs, outputs, units, Set.of());
     }
 
     /** As above, recording which outputs were executable so a restore can put the bit back. */
@@ -168,7 +165,7 @@ public final class ActionCache {
             Map<String, String> inputs,
             Map<String, String> outputs,
             Map<String, List<String>> units,
-            java.util.Set<String> executables)
+            Set<String> executables)
             throws IOException {
         Files.createDirectories(keysDir());
         Files.createDirectories(tasksDir());
@@ -295,23 +292,23 @@ public final class ActionCache {
      * {@code expectedSha}. A mismatching target is deleted before returning false.
      */
     private static boolean copyVerified(Path blob, Path target, String expectedSha) throws IOException {
-        java.security.MessageDigest md;
+        MessageDigest md;
         try {
-            md = java.security.MessageDigest.getInstance("SHA-256");
-        } catch (java.security.NoSuchAlgorithmException e) {
+            md = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }
         try (var in = Files.newInputStream(blob);
-                var out = new java.security.DigestOutputStream(
+                var out = new DigestOutputStream(
                         Files.newOutputStream(
                                 target,
-                                java.nio.file.StandardOpenOption.CREATE,
-                                java.nio.file.StandardOpenOption.TRUNCATE_EXISTING,
-                                java.nio.file.StandardOpenOption.WRITE),
+                                StandardOpenOption.CREATE,
+                                StandardOpenOption.TRUNCATE_EXISTING,
+                                StandardOpenOption.WRITE),
                         md)) {
             in.transferTo(out);
         }
-        if (expectedSha.equalsIgnoreCase(java.util.HexFormat.of().formatHex(md.digest()))) {
+        if (expectedSha.equalsIgnoreCase(HexFormat.of().formatHex(md.digest()))) {
             return true;
         }
         Files.deleteIfExists(target);
@@ -342,7 +339,7 @@ public final class ActionCache {
         // layout (quarkus fast-jar lib/ app/ quarkus-app/) restored over a dirty target/
         // otherwise keeps stale extras beside the restored set — real packager runs clean
         // up, restores must too. Top-level FILE outputs are handled per-file below.
-        java.util.Set<String> dirRoots = new java.util.TreeSet<>();
+        Set<String> dirRoots = new TreeSet<>();
         for (String rel : record.outputs().keySet()) {
             int slash = rel.indexOf('/');
             if (slash > 0) dirRoots.add(rel.substring(0, slash));
@@ -353,7 +350,7 @@ public final class ActionCache {
         // FreshnessStamp compares classpath entries by mtime. Dropping only the files this record
         // does NOT own clears stale extras just as well and leaves the unchanged ones alone.
         if (!dirRoots.isEmpty()) {
-            java.util.Set<Path> owned = new java.util.HashSet<>();
+            Set<Path> owned = new HashSet<>();
             for (String rel : record.outputs().keySet()) {
                 owned.add(baseDir.resolve(rel).normalize());
             }
@@ -398,11 +395,11 @@ public final class ActionCache {
      * empty — so a restore clears stale extras without disturbing the outputs it is about
      * to restore. Deepest-first, so a directory is only tested once its children are gone.
      */
-    private static void pruneUnowned(Path dir, java.util.Set<Path> owned) throws IOException {
+    private static void pruneUnowned(Path dir, Set<Path> owned) throws IOException {
         if (!Files.isDirectory(dir)) return;
         List<Path> deepestFirst;
         try (var walk = Files.walk(dir)) {
-            deepestFirst = walk.sorted(java.util.Comparator.reverseOrder()).toList();
+            deepestFirst = walk.sorted(Comparator.reverseOrder()).toList();
         }
         for (Path p : deepestFirst) {
             if (Files.isDirectory(p)) {
@@ -441,7 +438,7 @@ public final class ActionCache {
             String taskId, String actionKey, Map<String, String> inputs, Path baseDir, List<Path> artifacts)
             throws IOException {
         Map<String, String> outputs = new TreeMap<>();
-        java.util.Set<String> executables = new java.util.TreeSet<>();
+        Set<String> executables = new TreeSet<>();
         for (Path a : artifacts) {
             if (!Files.isRegularFile(a)) continue;
             String hex = Hashing.sha256Hex(a);
@@ -497,14 +494,14 @@ public final class ActionCache {
              * the second build onwards. Empty for records written before this was recorded, which
              * restore exactly as they used to.
              */
-            java.util.Set<String> executables) {
+            Set<String> executables) {
 
         public ActionRecord {
             Objects.requireNonNull(taskId, "taskId");
             Objects.requireNonNull(actionKey, "actionKey");
             inputs = Map.copyOf(inputs);
             outputs = Map.copyOf(outputs);
-            executables = executables == null ? java.util.Set.of() : java.util.Set.copyOf(executables);
+            executables = executables == null ? Set.of() : Set.copyOf(executables);
             // units: source-abs-path → output relPaths it produced. Populated by
             // an incremental compiler; empty for full rebuilds / legacy records.
             Map<String, List<String>> u = new LinkedHashMap<>();
@@ -518,12 +515,12 @@ public final class ActionCache {
                 Map<String, String> inputs,
                 Map<String, String> outputs,
                 Map<String, List<String>> units) {
-            this(taskId, actionKey, inputs, outputs, units, java.util.Set.of());
+            this(taskId, actionKey, inputs, outputs, units, Set.of());
         }
 
         /** Back-compat: a record with no per-source unit grouping. */
         public ActionRecord(String taskId, String actionKey, Map<String, String> inputs, Map<String, String> outputs) {
-            this(taskId, actionKey, inputs, outputs, Map.of(), java.util.Set.of());
+            this(taskId, actionKey, inputs, outputs, Map.of(), Set.of());
         }
     }
 
@@ -546,13 +543,13 @@ public final class ActionCache {
                     .append('\n');
         }
         // EXEC <relPath> — the output was executable when stored.
-        for (String rel : new java.util.TreeSet<>(record.executables())) {
+        for (String rel : new TreeSet<>(record.executables())) {
             sb.append("EXEC ").append(rel).append('\n');
         }
         // UNIT <relPath> <sourceAbsPath> — relPath is space-free (Java class
         // path), source is the rest of the line so it may contain spaces.
         for (Map.Entry<String, List<String>> e : new TreeMap<>(record.units()).entrySet()) {
-            List<String> rels = new java.util.ArrayList<>(e.getValue());
+            List<String> rels = new ArrayList<>(e.getValue());
             rels.sort(Comparator.naturalOrder());
             for (String rel : rels) {
                 sb.append("UNIT ").append(rel).append(' ').append(e.getKey()).append('\n');
@@ -567,7 +564,7 @@ public final class ActionCache {
         Map<String, String> inputs = new LinkedHashMap<>();
         Map<String, String> outputs = new LinkedHashMap<>();
         Map<String, List<String>> units = new LinkedHashMap<>();
-        java.util.Set<String> executables = new java.util.LinkedHashSet<>();
+        Set<String> executables = new LinkedHashSet<>();
         for (String line : content.split("\n")) {
             if (line.isBlank()) continue;
             if (line.startsWith("TASK ")) {

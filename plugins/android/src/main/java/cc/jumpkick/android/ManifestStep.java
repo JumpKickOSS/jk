@@ -2,6 +2,7 @@
 package cc.jumpkick.android;
 
 import cc.jumpkick.plugin.build.TaskExec;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -47,8 +48,8 @@ final class ManifestStep {
         StringBuilder libs = new StringBuilder();
         if (!library) {
             for (AndroidDeps.Aar aar : AndroidDeps.aars(exec.runtimeEntries())) {
-                if (!java.nio.file.Files.isRegularFile(aar.manifest())) continue;
-                if (libs.length() > 0) libs.append(java.io.File.pathSeparatorChar);
+                if (!Files.isRegularFile(aar.manifest())) continue;
+                if (libs.length() > 0) libs.append(File.pathSeparatorChar);
                 libs.append(aar.manifest().toAbsolutePath());
             }
         }

@@ -8,6 +8,7 @@ import cc.jumpkick.run.Task;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -112,7 +113,7 @@ class BuildPlannerKotlinStepTest {
                 false,
                 false,
                 false,
-                java.util.Set.of(),
+                Set.of(),
                 cc.jumpkick.config.SessionContext.current());
         BuildPlan plan = BuildPlanner.coreBuilder(in).build();
         return plan.steps().stream().map(Task::name).toList();

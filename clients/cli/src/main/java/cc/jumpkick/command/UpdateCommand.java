@@ -17,6 +17,7 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.util.JkDirs;
+import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -131,7 +132,7 @@ public final class UpdateCommand implements CliCommand {
         try {
             outcome = EngineClient.runUpdate(
                     cc.jumpkick.engine.EnginePaths.current(), updateRequest(dir, cache), handler);
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Update", e.getMessage()));
             return Exit.SOFTWARE;
         }
@@ -147,7 +148,7 @@ public final class UpdateCommand implements CliCommand {
         try {
             outcome = EngineClient.runUpdateGitOnly(
                     cc.jumpkick.engine.EnginePaths.current(), updateRequest(dir, cache), gitTarget);
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Update", e.getMessage()));
             return Exit.SOFTWARE;
         }

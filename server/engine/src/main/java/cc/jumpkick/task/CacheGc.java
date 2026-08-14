@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -56,7 +57,7 @@ public final class CacheGc {
         long maxAgeMillis = MAX_AGE.toMillis();
 
         Set<String> purged = new HashSet<>();
-        java.util.ArrayList<Path> casPaths = new java.util.ArrayList<>();
+        ArrayList<Path> casPaths = new ArrayList<>();
         long freed = 0;
         if (Files.isDirectory(shaRoot)) {
             try (Stream<Path> stream = Files.walk(shaRoot)) {

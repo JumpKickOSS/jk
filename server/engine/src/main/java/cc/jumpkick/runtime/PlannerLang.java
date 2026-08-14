@@ -10,10 +10,13 @@ import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Shared Kotlin / Groovy compiler invocation used by main and test compile steps.
@@ -40,7 +43,7 @@ public final class PlannerLang {
         // all-open, and no-arg gated on jakarta.persistence via classpath-has) — evaluated
         // from the manifest, fetched version-locked to the compiler actually used. The
         // embeddable variants match the BTA plugin's embeddable compiler.
-        java.util.Set<String> lockModules = lockModules(ctx.require(LOCKFILE));
+        Set<String> lockModules = lockModules(ctx.require(LOCKFILE));
         List<KotlincRequest.Plugin> ktPlugins = new ArrayList<>();
         try {
             cc.jumpkick.repo.RepoGroup repos = RepoGroupBuilder.buildFor(ctx.require(PROJECT), null, cas);
@@ -110,8 +113,8 @@ public final class PlannerLang {
                                 + "|" + moduleName + "|" + String.join(",", ktArgs) + "|"
                                 + ktPlugins.stream()
                                         .map(p -> p.id() + "=" + p.options())
-                                        .collect(java.util.stream.Collectors.joining(",")))
-                        .getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                                        .collect(Collectors.joining(",")))
+                        .getBytes(StandardCharsets.UTF_8))
                 .substring(0, 12);
         Path icWorkingDir =
                 workingDir == null ? null : workingDir.resolveSibling(workingDir.getFileName() + "-" + configToken);
@@ -203,7 +206,7 @@ public final class PlannerLang {
         @SuppressWarnings("unchecked")
         List<Path> processorCp = javaSourceRoots == null
                 ? List.of()
-                : (List<Path>) ctx.get(PROCESSOR_CP).orElse(java.util.List.of());
+                : (List<Path>) ctx.get(PROCESSOR_CP).orElse(List.of());
         GroovycRequest req = GroovycRequest.builder()
                 .sources(sources)
                 .javaSourceRoots(javaSourceRoots == null ? List.of() : javaSourceRoots)

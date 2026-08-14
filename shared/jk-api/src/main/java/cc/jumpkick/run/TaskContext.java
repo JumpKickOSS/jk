@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.run;
 
+import java.util.Optional;
+
 /**
  * Step → BuildPlan handle. Thread-safe for worker threads. Report {@link #progress}, grow
  * {@link #updateTicks}, set {@link #label}, poll {@link #cancelled}, emit {@link #warn}/{@link #error}.
@@ -64,7 +66,7 @@ public interface TaskContext {
     <T> void put(BuildPlanKey<T> key, T value);
 
     /** Previously stashed value, or empty if never put. */
-    <T> java.util.Optional<T> get(BuildPlanKey<T> key);
+    <T> Optional<T> get(BuildPlanKey<T> key);
 
     /** Required upstream value; throws {@link IllegalStateException} if missing. */
     <T> T require(BuildPlanKey<T> key);

@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -42,7 +43,7 @@ class PublisherDryRunTest {
                         .configString("repoAuthType", "anonymous")
                         .configBool("dryRun", true)
                         .artifact(jar)
-                        .layout(java.util.Map.of("moduleDir", dir))
+                        .layout(Map.of("moduleDir", dir))
                         .lines());
 
         var buffer = new ByteArrayOutputStream();

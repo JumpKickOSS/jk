@@ -27,6 +27,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 
 /**
  * Assembles {@link BuildPlan} DAGs for build-family commands: core tasks via {@link #coreBuilder},
@@ -108,7 +112,7 @@ public final class BuildPlanner {
     public static final BuildPlanKey<Boolean> NO_TEST_SOURCES = BuildPlanKey.of("no-test-sources", Boolean.class);
 
     /** Serializes {@code run-tests} across concurrent modules unless {@code parallelTests}. */
-    static final java.util.concurrent.Semaphore TEST_GATE = new java.util.concurrent.Semaphore(1);
+    static final Semaphore TEST_GATE = new Semaphore(1);
 
     /** Everything a build needs that isn't carried through the plan's state. */
     public record Inputs(
@@ -245,7 +249,7 @@ public final class BuildPlanner {
          * client env, did see it. Same precedence the plugin-config {@code env:} indirection
          * already documents.
          */
-        public java.util.function.UnaryOperator<String> env() {
+        public UnaryOperator<String> env() {
             return cc.jumpkick.config.BuildEnv.forModule(dir);
         }
 
@@ -453,9 +457,8 @@ public final class BuildPlanner {
         // run (skipped/cached steps collapse to ~1; real work dominates). Computed
         // once, lazily, when the first weight supplier fires during plan-start
         // estimation — so the prediction (stamps/lock/CAS) is read off disk once.
-        final java.util.concurrent.atomic.AtomicReference<EffortWeights.Plan> planRef =
-                new java.util.concurrent.atomic.AtomicReference<>();
-        final java.util.function.Supplier<EffortWeights.Plan> plan = () -> {
+        final AtomicReference<EffortWeights.Plan> planRef = new AtomicReference<>();
+        final Supplier<EffortWeights.Plan> plan = () -> {
             EffortWeights.Plan p = planRef.get();
             if (p == null) {
                 planRef.compareAndSet(
@@ -473,19 +476,15 @@ public final class BuildPlanner {
         // instead of walking the same directories again. Using AtomicReference
         // with lazy init: whichever side fires first populates the cache; the
         // other side finds the value already set.
-        final java.util.concurrent.atomic.AtomicReference<List<Path>> javaMainSrcRef =
-                new java.util.concurrent.atomic.AtomicReference<>();
-        final java.util.concurrent.atomic.AtomicReference<List<Path>> kotlinMainSrcRef =
-                new java.util.concurrent.atomic.AtomicReference<>();
-        final java.util.concurrent.atomic.AtomicReference<List<Path>> groovyMainSrcRef =
-                new java.util.concurrent.atomic.AtomicReference<>();
+        final AtomicReference<List<Path>> javaMainSrcRef = new AtomicReference<>();
+        final AtomicReference<List<Path>> kotlinMainSrcRef = new AtomicReference<>();
+        final AtomicReference<List<Path>> groovyMainSrcRef = new AtomicReference<>();
         // Build-logic anchors (BEFORE_COMPILE / AFTER_COMPILE / AFTER_RESOURCES / BEFORE_PACKAGE)
         // each call BuildLogicSupport.run() independently; a module registering tasks at more
         // than one anchor used to hash its whole source tree once per anchor with tasks. Shared
         // here the same lazy-init-race pattern as javaMainSrcRef above: computed once by whichever
         // anchor task needs it first, reused by the rest (JK-1655).
-        final java.util.concurrent.atomic.AtomicReference<List<String>> buildLogicInputTokensRef =
-                new java.util.concurrent.atomic.AtomicReference<>();
+        final AtomicReference<List<String>> buildLogicInputTokensRef = new AtomicReference<>();
         final Path javaMainSrcDir = compact ? in.dir().resolve("src") : in.dir().resolve("src/main/java");
 
         // ---- parse-build ------------------------------------------------
@@ -695,11 +694,11 @@ public final class BuildPlanner {
             Inputs in,
             Cas cas,
             ActionCache actionCache,
-            java.util.function.Supplier<EffortWeights.Plan> plan,
-            java.util.concurrent.atomic.AtomicReference<List<Path>> javaMainSrcRef,
-            java.util.concurrent.atomic.AtomicReference<List<Path>> kotlinMainSrcRef,
-            java.util.concurrent.atomic.AtomicReference<List<Path>> groovyMainSrcRef,
-            java.util.concurrent.atomic.AtomicReference<List<String>> buildLogicInputTokensRef,
+            Supplier<EffortWeights.Plan> plan,
+            AtomicReference<List<Path>> javaMainSrcRef,
+            AtomicReference<List<Path>> kotlinMainSrcRef,
+            AtomicReference<List<Path>> groovyMainSrcRef,
+            AtomicReference<List<String>> buildLogicInputTokensRef,
             Path javaMainSrcDir,
             boolean compact,
             boolean mixed,
@@ -873,7 +872,7 @@ public final class BuildPlanner {
         return PlannerSupport.mainStampClasspath(compileCp, processorCp, useKotlin, useGroovy, layout, groovyJar);
     }
 
-    static java.util.Set<String> lockModules(Lockfile lock) {
+    static Set<String> lockModules(Lockfile lock) {
         return PlannerSupport.lockModules(lock);
     }
 
@@ -953,7 +952,7 @@ public final class BuildPlanner {
     }
 
     static PluginBuild.Declarations pluginDeclarationsFor(JkBuild project, BuildLayout layout, Path cache)
-            throws java.io.IOException, InterruptedException {
+            throws IOException, InterruptedException {
         return PlannerSupport.pluginDeclarationsFor(project, layout, cache);
     }
 
@@ -961,13 +960,12 @@ public final class BuildPlanner {
         return PlannerSupport.existingContributedDirs(decls, layout);
     }
 
-    static String contributionsToken(List<Path> contributed) throws java.io.IOException {
+    static String contributionsToken(List<Path> contributed) throws IOException {
         return PlannerSupport.contributionsToken(contributed);
     }
 
     static Path stageClassesWithContributions(
-            cc.jumpkick.run.TaskContext ctx, Path classes, List<Path> extra, BuildLayout layout)
-            throws java.io.IOException {
+            cc.jumpkick.run.TaskContext ctx, Path classes, List<Path> extra, BuildLayout layout) throws IOException {
         return PlannerSupport.stageClassesWithContributions(ctx, classes, extra, layout);
     }
 

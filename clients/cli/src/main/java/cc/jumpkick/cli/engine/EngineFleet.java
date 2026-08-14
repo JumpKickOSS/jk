@@ -3,9 +3,8 @@ package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.engine.EnginePaths;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
+import java.time.Duration;
+import java.util.*;
 
 /**
  * Every engine running under this {@code JK_HOME} / platform product layout, and the one reliable way to stop them.
@@ -94,7 +93,7 @@ public final class EngineFleet {
                 out.add(new Member(paths, socket, null, pid, isCurrent));
             }
         }
-        java.util.Set<Long> known = new java.util.HashSet<>();
+        Set<Long> known = new HashSet<>();
         for (Member m : out) known.add(m.pid());
         out.addAll(untracked(known));
         return List.copyOf(out);
@@ -114,7 +113,7 @@ public final class EngineFleet {
      * a candidate. AOT training sidecars are excluded — they are bounded and self-halting, and killing one
      * mid-recording would discard work for no benefit.
      */
-    private static List<Member> untracked(java.util.Set<Long> known) {
+    private static List<Member> untracked(Set<Long> known) {
         String home =
                 cc.jumpkick.util.JkDirs.home().toAbsolutePath().normalize().toString();
         long self = ProcessHandle.current().pid();
@@ -209,8 +208,7 @@ public final class EngineFleet {
 
     private static boolean waitGone(long pid, long withinMs) {
         if (pid <= 0) return true; // nothing addressable; treat as gone rather than claim a kill
-        long deadline =
-                System.nanoTime() + java.time.Duration.ofMillis(withinMs).toNanos();
+        long deadline = System.nanoTime() + Duration.ofMillis(withinMs).toNanos();
         while (System.nanoTime() < deadline) {
             if (!alive(pid)) return true;
             try {

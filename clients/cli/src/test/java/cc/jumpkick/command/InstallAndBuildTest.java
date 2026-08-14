@@ -5,10 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.util.Hashing;
+import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -188,7 +190,7 @@ class InstallAndBuildTest {
                 import lib.Util;
                 public class Main { public int v() { return new Util().x() + 1; } }
                 """);
-        Files.setLastModifiedTime(src, java.nio.file.attribute.FileTime.fromMillis(mtimeAfterFirst + 5_000));
+        Files.setLastModifiedTime(src, FileTime.fromMillis(mtimeAfterFirst + 5_000));
 
         assertThat(run("build", "-C", projectDir.toString(), "--cache-dir=" + cache))
                 .isEqualTo(0);
@@ -224,7 +226,7 @@ class InstallAndBuildTest {
         try (Stream<Path> walk = Files.walk(out)) {
             for (Path p : (Iterable<Path>) walk::iterator) {
                 if (!p.toString().endsWith(".class")) continue;
-                String rel = out.relativize(p).toString().replace(java.io.File.separatorChar, '/');
+                String rel = out.relativize(p).toString().replace(File.separatorChar, '/');
                 classes.put(
                         rel.substring(0, rel.length() - ".class".length()).replace('/', '.'), Files.readAllBytes(p));
             }

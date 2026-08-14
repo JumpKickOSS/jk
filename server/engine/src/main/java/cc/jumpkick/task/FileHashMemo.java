@@ -7,7 +7,13 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.util.Collections;
 import java.util.Map;
+import java.util.Set;
+import java.util.WeakHashMap;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -39,14 +45,14 @@ public final class FileHashMemo {
      * {@code jk-cpu-N} pool threads accrete entries forever, because the cache key embeds the
      * nanosecond mtime and every rebuild mints new keys (JK-1942).
      */
-    private static final java.util.Set<Map<String, String>> LIVE_CACHES =
-            java.util.Collections.synchronizedSet(java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>()));
+    private static final Set<Map<String, String>> LIVE_CACHES =
+            Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
 
     /** Absolute-path → hex for the current thread (request / plan worker). */
     private static final ThreadLocal<Map<String, String>> THREAD_CACHE = ThreadLocal.withInitial(() -> {
         // Concurrent map: the owner thread is the only writer on the hot path, but the idle
         // boundary clears from another thread, and a plain HashMap can corrupt under that race.
-        Map<String, String> m = new java.util.concurrent.ConcurrentHashMap<>();
+        Map<String, String> m = new ConcurrentHashMap<>();
         LIVE_CACHES.add(m);
         return m;
     });
@@ -69,12 +75,12 @@ public final class FileHashMemo {
         CONTENT_HASH_INVOCATIONS.incrementAndGet();
         Path abs = file.toAbsolutePath().normalize();
         long size = Files.size(abs);
-        java.nio.file.attribute.FileTime ft = Files.getLastModifiedTime(abs);
+        FileTime ft = Files.getLastModifiedTime(abs);
         long mtime = ft.toMillis();
         boolean unsettled = System.currentTimeMillis() - mtime < SETTLE_MS;
         // Key includes size+mtime (nanosecond precision) so a same-path rewrite — even one
         // landing inside the same millisecond tick — never hits a stale entry.
-        String tkey = abs + "\0" + size + "\0" + ft.to(java.util.concurrent.TimeUnit.NANOSECONDS);
+        String tkey = abs + "\0" + size + "\0" + ft.to(TimeUnit.NANOSECONDS);
         Map<String, String> thread = THREAD_CACHE.get();
         String cached = thread.get(tkey);
         if (cached != null) {
@@ -190,7 +196,7 @@ public final class FileHashMemo {
                 long recorded = Long.parseLong(token.substring(nanoAt + " nano=".length()));
                 token = token.substring(0, nanoAt).trim();
                 if (token.isEmpty()) return null;
-                long current = Files.getLastModifiedTime(file).to(java.util.concurrent.TimeUnit.NANOSECONDS);
+                long current = Files.getLastModifiedTime(file).to(TimeUnit.NANOSECONDS);
                 return recorded == current ? token : null;
             }
             if (System.currentTimeMillis() - mtimeMillis < SETTLE_MS) return null;
@@ -223,8 +229,8 @@ public final class FileHashMemo {
             Path abs = file.toAbsolutePath().normalize();
             if (!Files.isRegularFile(abs)) return;
             long size = Files.size(abs);
-            java.nio.file.attribute.FileTime ft = Files.getLastModifiedTime(abs);
-            long nanos = ft.to(java.util.concurrent.TimeUnit.NANOSECONDS);
+            FileTime ft = Files.getLastModifiedTime(abs);
+            long nanos = ft.to(TimeUnit.NANOSECONDS);
             String tkey = abs + "\0" + size + "\0" + nanos;
             Map<String, String> thread = THREAD_CACHE.get();
             if (thread.size() >= MAX_THREAD_ENTRIES) thread.clear();

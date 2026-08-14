@@ -14,11 +14,10 @@ import java.io.IOException;
 import java.nio.channels.SocketChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 /**
  * Spawn, takeover, and AOT-cache selection for the resident engine. Mode, artifact, and
@@ -545,7 +544,7 @@ public final class EngineSpawn {
     private static void deleteRecursivelyQuietly(Path root) {
         if (!Files.isDirectory(root)) return;
         try (var walk = Files.walk(root)) {
-            walk.sorted(java.util.Comparator.reverseOrder()).forEach(EngineSpawn::deleteQuietly);
+            walk.sorted(Comparator.reverseOrder()).forEach(EngineSpawn::deleteQuietly);
         } catch (IOException ignored) {
             // best-effort
         }
@@ -716,8 +715,8 @@ public final class EngineSpawn {
             Files.writeString(
                     log,
                     "jk engine: spawning " + engine.path() + " (" + engine.how() + ")" + System.lineSeparator(),
-                    java.nio.file.StandardOpenOption.CREATE,
-                    java.nio.file.StandardOpenOption.TRUNCATE_EXISTING);
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING);
             return true;
         } catch (IOException e) {
             return false;
@@ -740,10 +739,7 @@ public final class EngineSpawn {
     private static void rotateLog(Path log) {
         if (!Files.exists(log)) return;
         try {
-            Files.move(
-                    log,
-                    log.resolveSibling(log.getFileName() + ".1"),
-                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            Files.move(log, log.resolveSibling(log.getFileName() + ".1"), StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException ignored) {
             // Best-effort — the next start still truncates/overwrites `log` either way.
         }
@@ -833,8 +829,8 @@ public final class EngineSpawn {
             Files.writeString(
                     paths.log(),
                     "jk engine: " + message + System.lineSeparator(),
-                    java.nio.file.StandardOpenOption.CREATE,
-                    java.nio.file.StandardOpenOption.APPEND);
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.APPEND);
         } catch (IOException ignored) {
             // best-effort
         }

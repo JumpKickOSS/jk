@@ -4,9 +4,13 @@ package cc.jumpkick.plugin.manifest;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.PluginConfig;
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * Evaluates declarative plugin contributions (platforms, compiler args, Kotlin plugins) against
@@ -28,7 +32,7 @@ public final class PluginContributions {
      * (before resolution; the manifest loader already rejected classpath-has conditions here).
      */
     public static List<PlatformDep> platformDependencies(
-            JkBuild.Project project, boolean nativeDeclared, java.util.Map<String, PluginConfig> pluginConfigs) {
+            JkBuild.Project project, boolean nativeDeclared, Map<String, PluginConfig> pluginConfigs) {
         return platformDependencies(project, nativeDeclared, pluginConfigs, PluginTableRegistry.manifests());
     }
 
@@ -36,7 +40,7 @@ public final class PluginContributions {
     public static List<PlatformDep> platformDependencies(
             JkBuild.Project project,
             boolean nativeDeclared,
-            java.util.Map<String, PluginConfig> pluginConfigs,
+            Map<String, PluginConfig> pluginConfigs,
             List<PluginDescriptor> manifests) {
         List<PlatformDep> out = new ArrayList<>();
         for (PluginDescriptor manifest : manifests) {
@@ -53,17 +57,17 @@ public final class PluginContributions {
     }
 
     /** The javac args every present plugin contributes, conditions evaluated against {@code classpathModules}. */
-    public static List<String> javacArgs(JkBuild build, java.nio.file.Path moduleDir, Set<String> classpathModules) {
+    public static List<String> javacArgs(JkBuild build, Path moduleDir, Set<String> classpathModules) {
         return compilerArgs(build, moduleDir, classpathModules, PluginDescriptor.CompilerArgs::javac);
     }
 
     /** The kotlinc args every present plugin contributes. */
-    public static List<String> kotlinArgs(JkBuild build, java.nio.file.Path moduleDir, Set<String> classpathModules) {
+    public static List<String> kotlinArgs(JkBuild build, Path moduleDir, Set<String> classpathModules) {
         return compilerArgs(build, moduleDir, classpathModules, PluginDescriptor.CompilerArgs::kotlin);
     }
 
     /** The groovyc args every present plugin contributes (e.g. grails' {@code --parameters}). */
-    public static List<String> groovyArgs(JkBuild build, java.nio.file.Path moduleDir, Set<String> classpathModules) {
+    public static List<String> groovyArgs(JkBuild build, Path moduleDir, Set<String> classpathModules) {
         return compilerArgs(build, moduleDir, classpathModules, PluginDescriptor.CompilerArgs::groovy);
     }
 
@@ -76,7 +80,7 @@ public final class PluginContributions {
      * fingerprints) exactly like the conventional layout dirs. Evaluated before resolution
      * (classpath-has was rejected at manifest load).
      */
-    public static List<SourceRoot> sourceRoots(JkBuild build, java.nio.file.Path moduleDir) {
+    public static List<SourceRoot> sourceRoots(JkBuild build, Path moduleDir) {
         List<SourceRoot> out = new ArrayList<>();
         for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
             PluginConfig config = build.pluginConfig(manifest.id()).orElse(null);
@@ -101,7 +105,7 @@ public final class PluginContributions {
      * The KSP processor options ({@code key=value}) every present plugin contributes — handed to
      * the KSP round as {@code -processor-options} (Hilt's superclass-validation toggle et al.).
      */
-    public static List<String> kspOptions(JkBuild build, java.nio.file.Path moduleDir, Set<String> classpathModules) {
+    public static List<String> kspOptions(JkBuild build, Path moduleDir, Set<String> classpathModules) {
         return compilerArgs(build, moduleDir, classpathModules, PluginDescriptor.CompilerArgs::ksp);
     }
 
@@ -110,7 +114,7 @@ public final class PluginContributions {
      * {@code ${kotlin.version}} so plugin jars stay lockstep with the compiler actually used.
      */
     public static List<KotlinPluginUse> kotlinPlugins(
-            JkBuild build, java.nio.file.Path moduleDir, String kotlinVersion, Set<String> classpathModules) {
+            JkBuild build, Path moduleDir, String kotlinVersion, Set<String> classpathModules) {
         List<KotlinPluginUse> out = new ArrayList<>();
         for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
             PluginConfig config = build.pluginConfigs().get(manifest.id());
@@ -145,9 +149,9 @@ public final class PluginContributions {
 
     private static List<String> compilerArgs(
             JkBuild build,
-            java.nio.file.Path moduleDir,
+            Path moduleDir,
             Set<String> classpathModules,
-            java.util.function.Function<PluginDescriptor.CompilerArgs, List<String>> lane) {
+            Function<PluginDescriptor.CompilerArgs, List<String>> lane) {
         List<String> out = new ArrayList<>();
         for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
             PluginConfig config = build.pluginConfigs().get(manifest.id());
@@ -180,7 +184,7 @@ public final class PluginContributions {
      *
      * <p>The caller places these before {@code [native] args} so a user can override.
      */
-    public static List<String> nativeArgs(JkBuild build, java.nio.file.Path moduleDir) {
+    public static List<String> nativeArgs(JkBuild build, Path moduleDir) {
         List<String> out = new ArrayList<>();
         for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
             PluginConfig config = build.pluginConfigs().get(manifest.id());
@@ -221,19 +225,19 @@ public final class PluginContributions {
             String sdkComponent,
             String sdkPath,
             String managedBy,
-            java.util.List<String> with) {
+            List<String> with) {
 
         public StepDep {
-            with = with == null ? java.util.List.of() : java.util.List.copyOf(with);
+            with = with == null ? List.of() : List.copyOf(with);
         }
 
         public StepDep(String artifact, String coordinateSpec) {
-            this(artifact, coordinateSpec, false, null, null, null, java.util.List.of());
+            this(artifact, coordinateSpec, false, null, null, null, List.of());
         }
 
         public StepDep(
                 String artifact, String coordinateSpec, boolean transitive, String sdkComponent, String sdkPath) {
-            this(artifact, coordinateSpec, transitive, sdkComponent, sdkPath, null, java.util.List.of());
+            this(artifact, coordinateSpec, transitive, sdkComponent, sdkPath, null, List.of());
         }
     }
 
@@ -242,8 +246,8 @@ public final class PluginContributions {
      * and coordinates interpolated — the engine fetches these into the cache (never into the
      * project's dependency graph) and hands them to the step worker by name.
      */
-    public static java.util.List<StepDep> stepDependencies(JkBuild build, java.nio.file.Path moduleDir) {
-        java.util.List<StepDep> out = new java.util.ArrayList<>();
+    public static List<StepDep> stepDependencies(JkBuild build, Path moduleDir) {
+        List<StepDep> out = new ArrayList<>();
         for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
             PluginConfig config = build.pluginConfig(manifest.id()).orElse(null);
             if (config == null) continue;
@@ -254,8 +258,7 @@ public final class PluginContributions {
                 }
                 if (sd.sdkComponent() != null) {
                     String component = Interpolation.resolve(sd.sdkComponent(), config, build.project(), null);
-                    out.add(new StepDep(
-                            sd.artifact(), null, false, component, sd.sdkPath(), null, java.util.List.of()));
+                    out.add(new StepDep(sd.artifact(), null, false, component, sd.sdkPath(), null, List.of()));
                     continue;
                 }
                 String coordinate = Interpolation.resolve(sd.coordinate(), config, build.project(), null);
@@ -267,7 +270,7 @@ public final class PluginContributions {
                 String managedBy = sd.managedBy() == null
                         ? null
                         : Interpolation.resolve(sd.managedBy(), config, build.project(), null);
-                java.util.List<String> with = new java.util.ArrayList<>();
+                List<String> with = new ArrayList<>();
                 for (String w : sd.with()) {
                     String resolved = Interpolation.resolve(w, config, build.project(), null);
                     String[] wp = resolved.split(":");
@@ -288,8 +291,8 @@ public final class PluginContributions {
      * evaluated: names of declared step-dependency artifacts whose resolved paths join the
      * module's COMPILE classpath (PROVIDED posture — compile-only, never runtime/packaging).
      */
-    public static java.util.List<String> providedClasspath(JkBuild build, java.nio.file.Path moduleDir) {
-        java.util.List<String> out = new java.util.ArrayList<>();
+    public static List<String> providedClasspath(JkBuild build, Path moduleDir) {
+        List<String> out = new ArrayList<>();
         for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
             PluginConfig config = build.pluginConfig(manifest.id()).orElse(null);
             if (config == null) continue;
@@ -317,7 +320,7 @@ public final class PluginContributions {
      * uses {@code android}. Otherwise AndroidX multiplatform roots resolve to {@code -jvmstubs}
      * and PubGrub cannot align suites that expect the android line (Now in Android).
      */
-    public static String jvmEnvironment(JkBuild build, java.nio.file.Path moduleDir) {
+    public static String jvmEnvironment(JkBuild build, Path moduleDir) {
         String selected = jvmEnvironmentLocal(build, moduleDir);
         if ("android".equals(selected)) return selected;
         if (build.isWorkspaceRoot()) {
@@ -328,7 +331,7 @@ public final class PluginContributions {
                         return "android";
                     }
                 }
-            } catch (java.io.IOException ignored) {
+            } catch (IOException ignored) {
                 // Fall through to the root's selection / default.
             }
         }
@@ -336,7 +339,7 @@ public final class PluginContributions {
     }
 
     /** Plugin-local environment for one module only (no workspace walk). */
-    private static String jvmEnvironmentLocal(JkBuild build, java.nio.file.Path moduleDir) {
+    private static String jvmEnvironmentLocal(JkBuild build, Path moduleDir) {
         String selected = null;
         String selectedBy = null;
         for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
@@ -358,8 +361,8 @@ public final class PluginContributions {
      * evaluated and coordinates interpolated — the engine fetches these (never into the project's
      * dependency graph) and hands them to the packager worker by name.
      */
-    public static java.util.List<PackagerDep> packagerDependencies(JkBuild build, java.nio.file.Path moduleDir) {
-        java.util.List<PackagerDep> out = new java.util.ArrayList<>();
+    public static List<PackagerDep> packagerDependencies(JkBuild build, Path moduleDir) {
+        List<PackagerDep> out = new ArrayList<>();
         for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
             PluginConfig config = build.pluginConfig(manifest.id()).orElse(null);
             if (config == null) continue;

@@ -4,6 +4,7 @@ package cc.jumpkick.config;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -32,7 +33,7 @@ public record Session(
         CancelToken cancel,
         // Variant selection + client-resolved env (env: indirection for signing secrets).
         String variant,
-        java.util.Map<String, String> clientEnv,
+        Map<String, String> clientEnv,
         /** CLI packaging override: empty, {@code fat}, or {@code minified} ({@code jk assemble --minified}). */
         String assemblyOverride,
         /** Test suite / tag selection ({@code jk test --suite}/tags); default = unit suite only. */
@@ -47,7 +48,7 @@ public record Session(
         Objects.requireNonNull(jvm, "jvm");
         cancel = (cancel == null) ? CancelToken.NONE : cancel;
         variant = (variant == null) ? "" : variant;
-        clientEnv = (clientEnv == null || clientEnv.isEmpty()) ? java.util.Map.of() : java.util.Map.copyOf(clientEnv);
+        clientEnv = (clientEnv == null || clientEnv.isEmpty()) ? Map.of() : Map.copyOf(clientEnv);
         assemblyOverride = (assemblyOverride == null || assemblyOverride.isBlank()) ? "" : assemblyOverride.trim();
         testSelection = testSelection == null ? TestSelection.DEFAULT : testSelection;
         io = (io == null) ? new IoLedger() : io;
@@ -64,7 +65,7 @@ public record Session(
             boolean parallelTests,
             CancelToken cancel,
             String variant,
-            java.util.Map<String, String> clientEnv,
+            Map<String, String> clientEnv,
             String assemblyOverride,
             TestSelection testSelection,
             IoLedger io) {
@@ -86,7 +87,7 @@ public record Session(
     }
 
     /** A copy carrying the given variant selection + client-resolved env. */
-    public Session withVariant(String variant, java.util.Map<String, String> clientEnv) {
+    public Session withVariant(String variant, Map<String, String> clientEnv) {
         return copy(
                 config,
                 workingDir,

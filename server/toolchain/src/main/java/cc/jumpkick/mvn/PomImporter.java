@@ -23,13 +23,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.EnumMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 import org.w3c.dom.Document;
@@ -472,7 +466,7 @@ public final class PomImporter {
     private static void uniquifyHandles(Map<Scope, List<Dependency>> byScope, ImportReport.Builder report) {
         for (Map.Entry<Scope, List<Dependency>> e : byScope.entrySet()) {
             List<Dependency> deps = e.getValue();
-            java.util.Set<String> seen = new java.util.HashSet<>();
+            Set<String> seen = new HashSet<>();
             for (int i = 0; i < deps.size(); i++) {
                 Dependency d = deps.get(i);
                 if (seen.add(d.library())) continue;

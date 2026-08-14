@@ -10,6 +10,8 @@ import cc.jumpkick.runtime.WorkspaceResult;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.function.Function;
+import java.util.function.ObjIntConsumer;
 
 /** Hosted verb bodies that are more than a one-line adapter call. */
 final class EngineHosted {
@@ -23,7 +25,7 @@ final class EngineHosted {
     static cc.jumpkick.run.BuildPlanResult runAudit(
             EnginePaths.Paths paths,
             EngineRequests.AuditRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
+            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
             cc.jumpkick.runtime.HostedEvents.FindingObserver findings)
             throws IOException {
         return EnginePluginAdapter.stream(
@@ -53,7 +55,7 @@ final class EngineHosted {
     static EngineRequests.FormatOutcome runFormat(
             EnginePaths.Paths paths,
             EngineRequests.FormatRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
+            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
             cc.jumpkick.runtime.HostedEvents.FileObserver files)
             throws IOException {
         EnginePluginAdapter.HostedFinish finish = EnginePluginAdapter.stream(
@@ -91,7 +93,7 @@ final class EngineHosted {
     static EngineRequests.PublishOutcome runPublish(
             EnginePaths.Paths paths,
             EngineRequests.PublishRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
+            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
             throws IOException {
         String authType;
         String user = null;
@@ -145,7 +147,7 @@ final class EngineHosted {
     static cc.jumpkick.run.BuildPlanResult runImage(
             EnginePaths.Paths paths,
             EngineRequests.ImageRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
+            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
             EngineRequests.ImageSummary[] summaryOut)
             throws IOException {
         return EnginePluginAdapter.stream(
@@ -191,7 +193,7 @@ final class EngineHosted {
     static EngineRequests.ImportOutcome runImport(
             EnginePaths.Paths paths,
             EngineRequests.ImportRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
+            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
             cc.jumpkick.runtime.HostedEvents.NoteObserver notes)
             throws IOException {
         EnginePluginAdapter.HostedFinish finish = EnginePluginAdapter.stream(
@@ -237,7 +239,7 @@ final class EngineHosted {
     static cc.jumpkick.run.BuildPlanResult runCompile(
             EnginePaths.Paths paths,
             EngineRequests.CompileRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
+            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
             throws IOException {
         return EnginePluginAdapter.stream(
                         paths,
@@ -258,7 +260,7 @@ final class EngineHosted {
     static cc.jumpkick.run.BuildPlanResult runTrain(
             EnginePaths.Paths paths,
             EngineRequests.TrainRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
+            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
             throws IOException {
         return EnginePluginAdapter.stream(
                         paths,
@@ -298,7 +300,7 @@ final class EngineHosted {
     static cc.jumpkick.run.BuildPlanResult runInstall(
             EnginePaths.Paths paths,
             EngineRequests.InstallRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
+            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
             cc.jumpkick.run.TestSummary[] testResultOut)
             throws IOException {
         return EngineBuildListenerAdapter.runInstall(paths, req, listenerFactory, testResultOut);
@@ -312,7 +314,7 @@ final class EngineHosted {
     static EngineRequests.GitFetchOutcome runGitFetch(
             EnginePaths.Paths paths,
             EngineRequests.GitFetchRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
+            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
             throws IOException {
         EnginePluginAdapter.HostedFinish finish = EnginePluginAdapter.stream(
                 paths,
@@ -339,7 +341,7 @@ final class EngineHosted {
     static EngineRequests.ToolResolveOutcome runToolResolve(
             EnginePaths.Paths paths,
             EngineRequests.ToolResolveRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
+            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
             throws IOException {
         EnginePluginAdapter.HostedFinish finish = EnginePluginAdapter.stream(
                 paths,
@@ -371,7 +373,7 @@ final class EngineHosted {
     static EngineRequests.ScriptPrepareOutcome runScriptPrepare(
             EnginePaths.Paths paths,
             EngineRequests.ScriptPrepareRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
+            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory)
             throws IOException {
         EnginePluginAdapter.HostedFinish finish = EnginePluginAdapter.stream(
                 paths,
@@ -412,8 +414,8 @@ final class EngineHosted {
     static cc.jumpkick.run.BuildPlanResult runCacheMaintenance(
             EnginePaths.Paths paths,
             EngineRequests.CacheMaintRequest req,
-            java.util.function.Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
-            java.util.function.ObjIntConsumer<Boolean> onWait,
+            Function<List<cc.jumpkick.run.Task>, cc.jumpkick.run.BuildPlanListener> listenerFactory,
+            ObjIntConsumer<Boolean> onWait,
             EngineRequests.CacheMaintSummary[] summaryOut)
             throws IOException {
         String requestLine = "clear".equals(req.op())

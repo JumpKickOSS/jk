@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.run;
 
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -225,7 +226,7 @@ final class DefaultTaskContext implements TaskContext {
     }
 
     @Override
-    public <T> java.util.Optional<T> get(BuildPlanKey<T> key) {
+    public <T> Optional<T> get(BuildPlanKey<T> key) {
         return plan.get(key);
     }
 

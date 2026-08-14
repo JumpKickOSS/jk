@@ -2,6 +2,8 @@
 package cc.jumpkick.engine.protocol;
 
 import cc.jumpkick.plugin.protocol.Jsonl;
+import java.util.List;
+import java.util.Map;
 
 /** Explain/forecast/tree/why/generate and other sync-read builders. */
 public final class ProtoReads {
@@ -165,8 +167,7 @@ public final class ProtoReads {
                 + "}";
     }
 
-    public static String treeRequest(
-            String dir, int maxDepth, boolean flatten, boolean stack, java.util.List<String> scopes) {
+    public static String treeRequest(String dir, int maxDepth, boolean flatten, boolean stack, List<String> scopes) {
         return "{\"type\":\"" + EngineProtocol.TREE_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
                 + ",\"maxDepth\":" + maxDepth
                 + ",\"flatten\":" + flatten
@@ -194,11 +195,11 @@ public final class ProtoReads {
     }
 
     public static String generateRequest(String dir, String kind) {
-        return generateRequest(dir, kind, java.util.Map.of());
+        return generateRequest(dir, kind, Map.of());
     }
 
     /** As above with generator parameters (scaffold inputs etc.) as a flat map. */
-    public static String generateRequest(String dir, String kind, java.util.Map<String, String> params) {
+    public static String generateRequest(String dir, String kind, Map<String, String> params) {
         return "{\"type\":\"" + EngineProtocol.GENERATE_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
                 + ",\"kind\":" + Jsonl.quote(kind)
                 + ",\"params\":" + Jsonl.map(params)
@@ -206,11 +207,11 @@ public final class ProtoReads {
     }
 
     /** Decode side of {@link #generateRequest(String, String, java.util.Map)}. */
-    public static java.util.Map<String, String> generateParams(String requestLine) {
+    public static Map<String, String> generateParams(String requestLine) {
         return Jsonl.strMap(requestLine, "params");
     }
 
-    public static String pluginCommandRequest(String dir, String cache, String command, java.util.List<String> args) {
+    public static String pluginCommandRequest(String dir, String cache, String command, List<String> args) {
         return "{\"type\":\"" + EngineProtocol.PLUGIN_VERB_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
                 + ",\"cache\":" + Jsonl.quote(cache)
                 + ",\"command\":" + Jsonl.quote(command)
@@ -222,7 +223,7 @@ public final class ProtoReads {
         return "{\"type\":\"" + EngineProtocol.DENY_CHECK_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + "}";
     }
 
-    public static String editRequest(String file, String op, java.util.List<String> args) {
+    public static String editRequest(String file, String op, List<String> args) {
         return "{\"type\":\"" + EngineProtocol.EDIT_REQUEST + "\",\"file\":" + Jsonl.quote(file)
                 + ",\"op\":" + Jsonl.quote(op)
                 + ",\"args\":" + EngineProtocol.quoteArray(args) + "}";
@@ -272,8 +273,7 @@ public final class ProtoReads {
                 + "}";
     }
 
-    public static String forecastAck(
-            java.util.List<String> dirtyDirs, boolean lockStale, boolean empty, java.util.List<String> errors) {
+    public static String forecastAck(List<String> dirtyDirs, boolean lockStale, boolean empty, List<String> errors) {
         return "{\"type\":\""
                 + EngineProtocol.FORECAST_ACK
                 + "\",\"dirtyDirs\":"

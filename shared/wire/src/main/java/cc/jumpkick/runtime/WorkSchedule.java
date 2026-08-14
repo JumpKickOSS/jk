@@ -2,13 +2,7 @@
 package cc.jumpkick.runtime;
 
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.PriorityQueue;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Wall-time schedule model for workspace module costs — shared by ETA seed, residual {@code R(t)},
@@ -60,7 +54,7 @@ public final class WorkSchedule {
 
         Map<Path, Long> doneAt = new HashMap<>();
         record Flight(long finish, Path dir) {}
-        PriorityQueue<Flight> inFlight = new PriorityQueue<>(java.util.Comparator.comparingLong(Flight::finish));
+        PriorityQueue<Flight> inFlight = new PriorityQueue<>(Comparator.comparingLong(Flight::finish));
         long t = 0;
         int free = slots;
         Set<Path> dirtyDirs = byDir.keySet();

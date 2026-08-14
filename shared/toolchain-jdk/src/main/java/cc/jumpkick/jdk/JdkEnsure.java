@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
  * Resolve-or-install a project JDK for {@code jk sync} via {@link JdkResolution}. Missing pins
@@ -31,11 +32,7 @@ public final class JdkEnsure {
     private JdkEnsure() {}
 
     public static Outcome ensure(
-            Path projectDir,
-            Path jdksDirOverride,
-            JkBuild build,
-            Lockfile lock,
-            java.util.function.Consumer<String> warn)
+            Path projectDir, Path jdksDirOverride, JkBuild build, Lockfile lock, Consumer<String> warn)
             throws IOException, InterruptedException {
         return ensure(projectDir, jdksDirOverride, build, lock, warn, true);
     }
@@ -53,7 +50,7 @@ public final class JdkEnsure {
             Path jdksDirOverride,
             JkBuild build,
             Lockfile lock,
-            java.util.function.Consumer<String> warn,
+            Consumer<String> warn,
             boolean allowInstall)
             throws IOException, InterruptedException {
         return ensure(projectDir, jdksDirOverride, build, lock, warn, allowInstall, JdkInstallListener.NO_OP);
@@ -68,7 +65,7 @@ public final class JdkEnsure {
             Path jdksDirOverride,
             JkBuild build,
             Lockfile lock,
-            java.util.function.Consumer<String> warn,
+            Consumer<String> warn,
             boolean allowInstall,
             JdkInstallListener progress)
             throws IOException, InterruptedException {
@@ -94,7 +91,7 @@ public final class JdkEnsure {
             String projectJdkSpec,
             int javaRelease,
             String lockJdkId,
-            java.util.function.Consumer<String> warn,
+            Consumer<String> warn,
             boolean allowInstall)
             throws IOException, InterruptedException {
         return ensure(
@@ -119,7 +116,7 @@ public final class JdkEnsure {
             String projectJdkSpec,
             int javaRelease,
             String lockJdkId,
-            java.util.function.Consumer<String> warn,
+            Consumer<String> warn,
             boolean allowInstall,
             JdkInstallListener progress)
             throws IOException, InterruptedException {
@@ -180,13 +177,12 @@ public final class JdkEnsure {
      * default-JDK side effects. The engine-host bootstrap uses this to satisfy jk's own runtime
      * floor without consulting (or disturbing) the user's project pins and global default.
      */
-    public static InstalledJdk install(String spec, java.util.function.Consumer<String> warn)
-            throws IOException, InterruptedException {
+    public static InstalledJdk install(String spec, Consumer<String> warn) throws IOException, InterruptedException {
         return install(spec, new JdkRegistry(), warn, JdkInstallListener.NO_OP);
     }
 
     private static InstalledJdk install(
-            String spec, JdkRegistry registry, java.util.function.Consumer<String> warn, JdkInstallListener progress)
+            String spec, JdkRegistry registry, Consumer<String> warn, JdkInstallListener progress)
             throws IOException, InterruptedException {
         if (!HostPlatform.supported()) {
             throw new IOException("host "

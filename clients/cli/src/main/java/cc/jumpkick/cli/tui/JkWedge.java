@@ -5,6 +5,7 @@ import cc.jumpkick.cli.theme.JkDarkTheme;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import java.util.List;
+import java.util.Locale;
 import org.jline.utils.AttributedStyle;
 
 /**
@@ -289,7 +290,7 @@ public final class JkWedge implements Widget {
     }
 
     public static JkWedge failedTo(String title, String tail) {
-        String verb = title == null || title.isEmpty() ? "" : " to " + title.toLowerCase(java.util.Locale.ROOT);
+        String verb = title == null || title.isEmpty() ? "" : " to " + title.toLowerCase(Locale.ROOT);
         if (!Theme.active().isAnsi()) {
             return fail(title, "Failed" + verb + " " + tail);
         }

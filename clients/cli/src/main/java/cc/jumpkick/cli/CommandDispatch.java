@@ -78,10 +78,9 @@ import cc.jumpkick.model.command.Command;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.*;
 
 /**
  * Routes every command through jk's own {@link ArgParser} + {@link HelpRenderer} (picocli is long
@@ -234,8 +233,8 @@ public final class CommandDispatch {
      * the normal unknown-command help follows).
      */
     private static Integer tryPluginCommand(String command, List<String> args) {
-        java.nio.file.Path dir = java.nio.file.Path.of("").toAbsolutePath().normalize();
-        if (!java.nio.file.Files.isRegularFile(dir.resolve("jk.toml"))) return null;
+        Path dir = Path.of("").toAbsolutePath().normalize();
+        if (!Files.isRegularFile(dir.resolve("jk.toml"))) return null;
         try {
             cc.jumpkick.engine.protocol.PluginCommandReport report;
             var paths = cc.jumpkick.engine.EnginePaths.current();
@@ -361,7 +360,7 @@ public final class CommandDispatch {
      */
     private static Command withGlobals(CliCommand cmd) {
         List<Opt> opts = new ArrayList<>(cmd.options());
-        java.util.Set<String> own = new java.util.HashSet<>();
+        Set<String> own = new HashSet<>();
         for (Opt opt : opts) own.addAll(opt.allNames());
         for (Opt global : GlobalOptions.globalOpts()) {
             for (String n : global.allNames()) {
@@ -413,7 +412,7 @@ public final class CommandDispatch {
         String jk = ansi ? Ansi.sgr(t.helpHint()) + "jk" + Ansi.RESET : "jk";
         System.err.println(label + " " + jar + " not found.");
         System.err.println("  Coordinate: " + coord);
-        for (java.nio.file.Path p : e.pathsChecked()) {
+        for (Path p : e.pathsChecked()) {
             System.err.println("  Checked:    " + HelpRenderer.paint(p.toString(), t.path(), ansi));
         }
         System.err.println("  Reinstall " + jk + " or set -D" + e.jarProperty() + "=<path>");

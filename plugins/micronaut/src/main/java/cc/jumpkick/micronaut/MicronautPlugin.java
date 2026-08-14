@@ -13,10 +13,7 @@ import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
-import java.util.Properties;
+import java.util.*;
 import java.util.stream.Stream;
 
 /**
@@ -68,8 +65,7 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
 
         // Unset follows the project: a [native] build wants native-oriented AOT, and getting JIT
         // optimizers into an image is what JK-1695 is about. An explicit value always wins.
-        java.util.Optional<String> declared =
-                exec.config().stringOpt("aot-runtime").filter(s -> !s.isBlank());
+        Optional<String> declared = exec.config().stringOpt("aot-runtime").filter(s -> !s.isBlank());
         String runtime = declared.map(s -> s.trim().toLowerCase(Locale.ROOT))
                 .orElse(exec.project().nativeDeclared() ? RUNTIME_NATIVE : RUNTIME_JIT);
         if (!runtime.equals(RUNTIME_JIT) && !runtime.equals(RUNTIME_NATIVE)) {
@@ -171,8 +167,8 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
      * <p>Source translation ({@code logback.xml}, YAML) helps both, and helps native twice over
      * by removing a by-name instantiation path nothing can otherwise see.
      */
-    static java.util.Map<String, String> defaultsFor(String runtime) {
-        java.util.Map<String, String> props = new java.util.LinkedHashMap<>();
+    static Map<String, String> defaultsFor(String runtime) {
+        Map<String, String> props = new LinkedHashMap<>();
         props.put("logback.xml.to.java.enabled", "true");
         props.put("yaml.to.java.config.enabled", "true");
         props.put("scan.reactive.types.enabled", "true");
@@ -194,7 +190,7 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
     static String renderProperties(Properties props) {
         StringBuilder sb = new StringBuilder("# Effective Micronaut AOT configuration (jk)\n");
         List<String> keys = new ArrayList<>(props.stringPropertyNames());
-        keys.sort(java.util.Comparator.naturalOrder());
+        keys.sort(Comparator.naturalOrder());
         for (String key : keys) {
             sb.append(escape(key, true))
                     .append('=')
@@ -280,7 +276,7 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
         // order entries were created. This list becomes both --classpath and the forked JVM's
         // -cp, so an unsorted closure hands AOT a different classpath on two machines holding
         // identical jars, and a duplicate class resolves differently (JK-1665).
-        out.sort(java.util.Comparator.comparing(Path::toString));
+        out.sort(Comparator.comparing(Path::toString));
         return out;
     }
 
@@ -318,6 +314,6 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
         if (output == null || output.isBlank()) return "(no output)";
         String[] lines = output.split("\n");
         int from = Math.max(0, lines.length - 40);
-        return String.join("\n", java.util.Arrays.copyOfRange(lines, from, lines.length));
+        return String.join("\n", Arrays.copyOfRange(lines, from, lines.length));
     }
 }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.glob;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -85,7 +86,7 @@ final class IgnoreRules {
             return null;
         }
         // Match "a/b" as well as "b" so a name-only pattern hits at any depth.
-        Path normalized = Path.of(rel.toString().replace(java.io.File.separatorChar, '/'));
+        Path normalized = Path.of(rel.toString().replace(File.separatorChar, '/'));
         Boolean verdict = null;
         for (Rule r : rules) {
             if (r.dirOnly() && !isDir) continue;

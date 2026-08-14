@@ -3,6 +3,7 @@ package cc.jumpkick.engine.protocol;
 
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.util.List;
+import java.util.Map;
 
 /** Session envelope, tool/script/cache/history request builders. */
 public final class ProtoSession {
@@ -227,10 +228,7 @@ public final class ProtoSession {
      * identical. The splice is validated: {@code request} must be a one-line encoded object.
      */
     public static String withSession(
-            String request,
-            String variant,
-            java.util.Map<String, String> clientEnv,
-            cc.jumpkick.config.PluginTuning t) {
+            String request, String variant, Map<String, String> clientEnv, cc.jumpkick.config.PluginTuning t) {
         return withSession(request, variant, clientEnv, t, false, false);
     }
 
@@ -238,7 +236,7 @@ public final class ProtoSession {
     public static String withSession(
             String request,
             String variant,
-            java.util.Map<String, String> clientEnv,
+            Map<String, String> clientEnv,
             cc.jumpkick.config.PluginTuning t,
             boolean rebuild) {
         return withSession(request, variant, clientEnv, t, rebuild, false);
@@ -251,7 +249,7 @@ public final class ProtoSession {
     public static String withSession(
             String request,
             String variant,
-            java.util.Map<String, String> clientEnv,
+            Map<String, String> clientEnv,
             cc.jumpkick.config.PluginTuning t,
             boolean rebuild,
             boolean noTimeline) {
@@ -265,7 +263,7 @@ public final class ProtoSession {
     public static String withSession(
             String request,
             String variant,
-            java.util.Map<String, String> clientEnv,
+            Map<String, String> clientEnv,
             cc.jumpkick.config.PluginTuning t,
             boolean rebuild,
             boolean noTimeline,
@@ -323,7 +321,7 @@ public final class ProtoSession {
     }
 
     /** Decode side of {@link #withSession}: the client-resolved env values, or empty. */
-    public static java.util.Map<String, String> clientEnvOf(String request) {
+    public static Map<String, String> clientEnvOf(String request) {
         return Jsonl.strMap(request, "env");
     }
 

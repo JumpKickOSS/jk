@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
+import java.util.Optional;
 
 /**
  * Persists forge tokens, keyed by host, under {@code ~/.jk/credentials/}. One file per host
@@ -33,14 +34,14 @@ public final class TokenStore {
         this.dir = dir;
     }
 
-    public java.util.Optional<String> read(String host) {
+    public Optional<String> read(String host) {
         Path file = fileFor(host);
         try {
-            if (!Files.exists(file)) return java.util.Optional.empty();
+            if (!Files.exists(file)) return Optional.empty();
             String token = Files.readString(file, StandardCharsets.UTF_8).strip();
-            return token.isBlank() ? java.util.Optional.empty() : java.util.Optional.of(token);
+            return token.isBlank() ? Optional.empty() : Optional.of(token);
         } catch (IOException e) {
-            return java.util.Optional.empty();
+            return Optional.empty();
         }
     }
 

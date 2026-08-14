@@ -5,8 +5,9 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.command.*;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkConfigLoader;
-import java.util.List;
-import java.util.Map;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.*;
 
 /** jk CLI entrypoint — routes commands through {@link CommandDispatch}. */
 public final class Jk {
@@ -78,7 +79,7 @@ public final class Jk {
         if (ported != null) return ported;
         // No command: check for --help / --version / bare invocation.
         boolean ansi = CommandDispatch.ansiEnabled();
-        java.util.List<String> argList = java.util.List.of(rewritten);
+        List<String> argList = List.of(rewritten);
         if (argList.contains("-V") || argList.contains("--version")) {
             System.out.println("jk " + VERSION);
             return 0;
@@ -95,7 +96,7 @@ public final class Jk {
 
     /** Full `jk --help` screen: commands grouped + global options. */
     private static String fullHelp(boolean ansi) {
-        java.util.Map<String, SubcommandModel> byName = new java.util.LinkedHashMap<>();
+        Map<String, SubcommandModel> byName = new LinkedHashMap<>();
         for (var c : CommandDispatch.commands()) {
             if (!c.hidden()) byName.put(c.name(), new SubcommandModel(c.name(), new String[] {c.description()}, false));
         }
@@ -118,7 +119,7 @@ public final class Jk {
             sb.append("Usage: jk <COMMAND> [OPTIONS]").append(nl);
         }
         // Group by UsageGroups (same grouping as before)
-        java.util.Set<String> placed = new java.util.LinkedHashSet<>();
+        Set<String> placed = new LinkedHashSet<>();
         boolean firstGroup = true;
         for (CommandGroup group : UsageGroups.COMMAND_GROUPS) {
             List<String> visible =
@@ -177,46 +178,46 @@ public final class Jk {
      * here; everything else flows through the dispatcher.
      */
     private static void applyCliOverrides(String[] args) {
-        java.util.Optional<JkConfig.ColorChoice> color = java.util.Optional.empty();
-        java.util.Optional<Boolean> offline = java.util.Optional.empty();
-        java.util.Optional<Boolean> force = java.util.Optional.empty();
-        java.util.Optional<Boolean> rebuild = java.util.Optional.empty();
-        java.util.Optional<Boolean> noProgress = java.util.Optional.empty();
-        java.util.Optional<Boolean> noAnsi = java.util.Optional.empty();
-        java.util.Optional<Boolean> noOsc = java.util.Optional.empty();
-        java.util.Optional<JkConfig.NotifyChoice> notify = java.util.Optional.empty();
-        java.util.Optional<Boolean> quiet = java.util.Optional.empty();
-        java.util.Optional<Boolean> verbose = java.util.Optional.empty();
-        java.util.Optional<java.nio.file.Path> directory = java.util.Optional.empty();
+        Optional<JkConfig.ColorChoice> color = Optional.empty();
+        Optional<Boolean> offline = Optional.empty();
+        Optional<Boolean> force = Optional.empty();
+        Optional<Boolean> rebuild = Optional.empty();
+        Optional<Boolean> noProgress = Optional.empty();
+        Optional<Boolean> noAnsi = Optional.empty();
+        Optional<Boolean> noOsc = Optional.empty();
+        Optional<JkConfig.NotifyChoice> notify = Optional.empty();
+        Optional<Boolean> quiet = Optional.empty();
+        Optional<Boolean> verbose = Optional.empty();
+        Optional<Path> directory = Optional.empty();
         for (int i = 0; i < args.length; i++) {
             String a = args[i];
             switch (a) {
-                case "-q", "--quiet" -> quiet = java.util.Optional.of(true);
-                case "-v", "--verbose" -> verbose = java.util.Optional.of(true);
-                case "--offline" -> offline = java.util.Optional.of(true);
-                case "-F", "--force" -> force = java.util.Optional.of(true);
-                case "-r", "--redo", "--rebuild" -> rebuild = java.util.Optional.of(true);
-                case "--no-progress" -> noProgress = java.util.Optional.of(true);
+                case "-q", "--quiet" -> quiet = Optional.of(true);
+                case "-v", "--verbose" -> verbose = Optional.of(true);
+                case "--offline" -> offline = Optional.of(true);
+                case "-F", "--force" -> force = Optional.of(true);
+                case "-r", "--redo", "--rebuild" -> rebuild = Optional.of(true);
+                case "--no-progress" -> noProgress = Optional.of(true);
                 // --no-ansi: strip ALL ANSI (color + bold/italic + CSI). Progress still runs as
                 // multi-line plain frames (JK-1379) — use --no-progress to silence chrome entirely.
                 // Distinct from --color never which strips color but preserves text attributes.
-                case "--no-ansi" -> noAnsi = java.util.Optional.of(true);
-                case "--no-osc" -> noOsc = java.util.Optional.of(true);
-                case "--notify" -> notify = java.util.Optional.of(JkConfig.NotifyChoice.ALWAYS);
-                case "--no-notify" -> notify = java.util.Optional.of(JkConfig.NotifyChoice.NEVER);
+                case "--no-ansi" -> noAnsi = Optional.of(true);
+                case "--no-osc" -> noOsc = Optional.of(true);
+                case "--notify" -> notify = Optional.of(JkConfig.NotifyChoice.ALWAYS);
+                case "--no-notify" -> notify = Optional.of(JkConfig.NotifyChoice.NEVER);
                 case "--color" -> {
                     if (i + 1 < args.length) color = JkConfig.ColorChoice.parse(args[++i]);
                 }
                 case "-C", "--dir", "--directory" -> {
-                    if (i + 1 < args.length) directory = java.util.Optional.of(java.nio.file.Path.of(args[++i]));
+                    if (i + 1 < args.length) directory = Optional.of(Path.of(args[++i]));
                 }
                 default -> {
                     if (a.startsWith("--color=")) {
                         color = JkConfig.ColorChoice.parse(a.substring("--color=".length()));
                     } else if (a.startsWith("--dir=")) {
-                        directory = java.util.Optional.of(java.nio.file.Path.of(a.substring("--dir=".length())));
+                        directory = Optional.of(Path.of(a.substring("--dir=".length())));
                     } else if (a.startsWith("--directory=")) {
-                        directory = java.util.Optional.of(java.nio.file.Path.of(a.substring("--directory=".length())));
+                        directory = Optional.of(Path.of(a.substring("--directory=".length())));
                     }
                 }
             }
@@ -238,21 +239,21 @@ public final class Jk {
      */
     private static void loadAndInstallConfig(String[] args) {
         boolean noConfig = false;
-        java.util.Optional<java.nio.file.Path> explicit = java.util.Optional.empty();
+        Optional<Path> explicit = Optional.empty();
         for (int i = 0; i < args.length; i++) {
             String a = args[i];
             if ("--no-config".equals(a)) {
                 noConfig = true;
             } else if ("--config-file".equals(a) && i + 1 < args.length) {
-                explicit = java.util.Optional.of(java.nio.file.Path.of(args[++i]));
+                explicit = Optional.of(Path.of(args[++i]));
             } else if (a.startsWith("--config-file=")) {
-                explicit = java.util.Optional.of(java.nio.file.Path.of(a.substring("--config-file=".length())));
+                explicit = Optional.of(Path.of(a.substring("--config-file=".length())));
             }
         }
         try {
-            JkConfig resolved = JkConfigLoader.load(java.nio.file.Path.of("").toAbsolutePath(), noConfig, explicit);
+            JkConfig resolved = JkConfigLoader.load(Path.of("").toAbsolutePath(), noConfig, explicit);
             cc.jumpkick.config.SessionContext.installConfig(resolved);
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             // Best-effort — a broken user/project config shouldn't kill the CLI.
             System.err.println("jk: warning: could not load config (" + e.getMessage() + "); using defaults.");
             cc.jumpkick.config.SessionContext.installConfig(JkConfig.empty());

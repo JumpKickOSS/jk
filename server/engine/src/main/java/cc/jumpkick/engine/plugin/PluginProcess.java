@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
@@ -239,7 +240,7 @@ public final class PluginProcess {
         if (m == null || m.isBlank()) {
             return e.getClass().getSimpleName().contains("Closed");
         }
-        String lower = m.toLowerCase(java.util.Locale.ROOT);
+        String lower = m.toLowerCase(Locale.ROOT);
         return lower.equals("closed")
                 || lower.contains("stream closed")
                 || lower.contains("pipe closed")

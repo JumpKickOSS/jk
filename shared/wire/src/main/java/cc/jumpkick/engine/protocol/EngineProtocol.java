@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.protocol;
 
 import cc.jumpkick.plugin.protocol.Jsonl;
+import java.util.List;
 
 /**
  * Engine wire vocabulary: JSONL {@code "type"} discriminators. Builders live in {@link ProtoLifecycle},
@@ -458,7 +459,7 @@ public final class EngineProtocol {
         return ProtoLifecycle.typeOf(json);
     }
 
-    static String quoteArray(java.util.List<String> values) {
+    static String quoteArray(List<String> values) {
         return Jsonl.array(values);
     }
 }

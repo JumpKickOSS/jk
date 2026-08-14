@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.repo.RepoArtifactStore;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -61,7 +62,7 @@ public final class JkPluginSync {
             }
 
             // Try to copy from ~/.m2/repository into repos/local/
-            Path m2Jar = m2.resolve(relPath.replace('/', java.io.File.separatorChar));
+            Path m2Jar = m2.resolve(relPath.replace('/', File.separatorChar));
             if (!Files.isRegularFile(m2Jar)) {
                 missing++;
                 obs.missing(w.artifactId(), "not found in ~/.m2 or cache");

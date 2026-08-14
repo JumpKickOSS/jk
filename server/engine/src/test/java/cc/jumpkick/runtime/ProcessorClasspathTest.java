@@ -82,8 +82,7 @@ class ProcessorClasspathTest {
         Path consumer = workspace(tmp).resolve("consumer");
         JkBuild build = JkBuildParser.parse(consumer.resolve("jk.toml"));
         // parse() rewrites workspace:proc → com.example:proc; WorkspaceClasspath still owns it.
-        WorkspaceClasspath.Result siblings =
-                WorkspaceClasspath.resolve(consumer, build, java.util.Set.of(Scope.PROCESSOR));
+        WorkspaceClasspath.Result siblings = WorkspaceClasspath.resolve(consumer, build, Set.of(Scope.PROCESSOR));
 
         assertThat(BuildPlanner.unresolvedProcessorDeps(build, Lockfile.empty("test"), siblings))
                 .isEmpty();

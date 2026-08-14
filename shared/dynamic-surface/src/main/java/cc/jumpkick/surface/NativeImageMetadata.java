@@ -14,6 +14,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.UnaryOperator;
+import java.util.regex.Pattern;
 
 /**
  * Library-published GraalVM metadata, read into a {@link DynamicSurface}.
@@ -237,7 +239,7 @@ public final class NativeImageMetadata {
             char c = glob.charAt(i);
             if (c == '*') {
                 if (!literal.isEmpty()) {
-                    regex.append(java.util.regex.Pattern.quote(literal.toString()));
+                    regex.append(Pattern.quote(literal.toString()));
                     literal.setLength(0);
                 }
                 if (i + 1 < glob.length() && glob.charAt(i + 1) == '*') {
@@ -252,7 +254,7 @@ public final class NativeImageMetadata {
                 literal.append(c);
             }
         }
-        if (!literal.isEmpty()) regex.append(java.util.regex.Pattern.quote(literal.toString()));
+        if (!literal.isEmpty()) regex.append(Pattern.quote(literal.toString()));
         return regex.toString();
     }
 
@@ -317,7 +319,7 @@ public final class NativeImageMetadata {
         return false;
     }
 
-    private static void addName(Object member, java.util.function.UnaryOperator<String> tag, Set<String> sink) {
+    private static void addName(Object member, UnaryOperator<String> tag, Set<String> sink) {
         String name = Json.str(member, "name");
         if (name != null && !name.isBlank()) sink.add(tag.apply(name));
     }

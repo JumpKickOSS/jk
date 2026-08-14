@@ -12,6 +12,7 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.util.Hashing;
 import cc.jumpkick.util.JkDirs;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpResponse;
@@ -20,6 +21,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
+import java.util.Locale;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 /**
  * {@code jk self} — self-update: download a verified release into {@code ~/.local/share/jk/versions/<v>/},
@@ -317,7 +321,7 @@ public final class SelfCommand extends GroupCommand {
 
         /** {@code jk-<os>-<arch>.zip} in HostPlatform's release vocabulary (releases.md). */
         private static String clientArtifactName(String version) {
-            String os = cc.jumpkick.jdk.HostPlatform.currentOs().toLowerCase(java.util.Locale.ROOT);
+            String os = cc.jumpkick.jdk.HostPlatform.currentOs().toLowerCase(Locale.ROOT);
             String arch = cc.jumpkick.jdk.HostPlatform.currentArch();
             String suffix = "windows".equals(os) ? ".exe.zip" : ".zip";
             return "jk-" + os + "-" + arch + suffix;
@@ -325,8 +329,8 @@ public final class SelfCommand extends GroupCommand {
 
         private static Path unzipSingleBinary(byte[] zip) throws IOException {
             Path tmp = Files.createTempFile("jk-self-", ".bin");
-            try (var zin = new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(zip))) {
-                java.util.zip.ZipEntry e;
+            try (var zin = new ZipInputStream(new ByteArrayInputStream(zip))) {
+                ZipEntry e;
                 while ((e = zin.getNextEntry()) != null) {
                     if (e.isDirectory()) continue;
                     Files.copy(zin, tmp, StandardCopyOption.REPLACE_EXISTING);

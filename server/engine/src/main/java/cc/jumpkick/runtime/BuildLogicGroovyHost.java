@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.util.JkDirs;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Method;
@@ -65,7 +66,7 @@ final class BuildLogicGroovyHost {
             }
             Class<?> shellCl = Class.forName("groovy.lang.GroovyShell", true, cl);
             Object shell = shellCl.getConstructor(bindingCl).newInstance(binding);
-            Method evaluate = shellCl.getMethod("evaluate", java.io.File.class);
+            Method evaluate = shellCl.getMethod("evaluate", File.class);
             evaluate.invoke(shell, script.toFile());
         }
     }

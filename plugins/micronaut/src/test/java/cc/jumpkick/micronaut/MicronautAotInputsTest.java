@@ -9,7 +9,9 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -43,8 +45,8 @@ class MicronautAotInputsTest {
     void the_declared_input_is_the_file_the_body_opens(@TempDir Path dir) throws Exception {
         Files.createDirectories(dir.resolve("cfg"));
         Files.writeString(dir.resolve("cfg/native-aot.properties"), "scan.reactive.types.enabled=false\n");
-        String spec = MicronautPlugin.configSpec(new cc.jumpkick.plugin.PluginConfig(
-                "micronaut", java.util.Map.of("aot-config", "cfg/native-aot.properties")));
+        String spec = MicronautPlugin.configSpec(
+                new cc.jumpkick.plugin.PluginConfig("micronaut", Map.of("aot-config", "cfg/native-aot.properties")));
         assertThat(dir.resolve(spec)).isEqualTo(MicronautPlugin.userConfigFile(dir, "cfg/native-aot.properties"));
         assertThat(inputsOf(describe(dir, "cfg/native-aot.properties"))).contains("project:" + spec);
     }
@@ -52,7 +54,7 @@ class MicronautAotInputsTest {
     /** The `micronaut-aot` task line from a describe run with aot forced on. */
     private static String describe(Path dir, String aotConfig) throws Exception {
         Path spec = dir.resolve("describe.spec");
-        List<String> lines = new java.util.ArrayList<>(List.of(
+        List<String> lines = new ArrayList<>(List.of(
                 "{\"t\":\"op\",\"op\":\"describe\",\"plugin\":\"jk-micronaut\"}",
                 "{\"t\":\"config\",\"key\":\"version\",\"kind\":\"string\",\"value\":\"5\"}",
                 "{\"t\":\"config\",\"key\":\"aot\",\"kind\":\"bool\",\"value\":true}",

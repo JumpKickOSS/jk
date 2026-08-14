@@ -12,6 +12,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -2049,19 +2050,18 @@ class JkBuildParserTest {
      * grow the cache, not that size is exactly 1.
      */
     @Test
-    void parse_memo_replaces_the_entry_for_a_rewritten_file(@org.junit.jupiter.api.io.TempDir java.nio.file.Path tmp)
+    void parse_memo_replaces_the_entry_for_a_rewritten_file(@org.junit.jupiter.api.io.TempDir Path tmp)
             throws Exception {
-        java.nio.file.Path file = tmp.resolve("jk.toml");
-        java.nio.file.Files.writeString(file, PROJECT);
+        Path file = tmp.resolve("jk.toml");
+        Files.writeString(file, PROJECT);
         JkBuild first = JkBuildParser.parseLocal(file);
         assertThat(JkBuildParser.parseLocal(file)).isSameAs(first); // warm hit
         int sizeAfterFirst = JkBuildParser.parseCacheSizeForTest();
 
         for (int i = 0; i < 20; i++) {
-            java.nio.file.Files.writeString(file, PROJECT + "\n# edit " + i + "\n");
+            Files.writeString(file, PROJECT + "\n# edit " + i + "\n");
             // Distinct mtime so the stamp really moves on every rewrite.
-            java.nio.file.Files.setLastModifiedTime(
-                    file, java.nio.file.attribute.FileTime.fromMillis(1_700_000_000_000L + i * 1000L));
+            Files.setLastModifiedTime(file, FileTime.fromMillis(1_700_000_000_000L + i * 1000L));
             JkBuildParser.parseLocal(file);
         }
         assertThat(JkBuildParser.parseCacheSizeForTest())

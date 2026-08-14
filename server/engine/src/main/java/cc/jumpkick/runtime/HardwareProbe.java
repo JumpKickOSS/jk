@@ -15,11 +15,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
@@ -459,12 +455,12 @@ final class HardwareProbe {
             // never persist unverified bytes. No.sha1, no cache entry.
             byte[] sha1 = httpGet(CENTRAL_BASE + relativeMavenPath + ".sha1");
             if (sha1 == null || sha1.length == 0) return null;
-            String expected = new String(sha1, java.nio.charset.StandardCharsets.US_ASCII)
+            String expected = new String(sha1, StandardCharsets.US_ASCII)
                     .trim()
                     .split("\\s+")[0]
-                    .toLowerCase(java.util.Locale.ROOT);
-            String actual = java.util.HexFormat.of()
-                    .formatHex(java.security.MessageDigest.getInstance("SHA-1").digest(body));
+                    .toLowerCase(Locale.ROOT);
+            String actual =
+                    HexFormat.of().formatHex(MessageDigest.getInstance("SHA-1").digest(body));
             if (!actual.equals(expected)) return null;
             Path dest = cacheRoot.resolve("repos").resolve("central").resolve(relativeMavenPath);
             Files.createDirectories(dest.getParent());
@@ -601,7 +597,7 @@ final class HardwareProbe {
 
     private static void deleteTree(Path dir) {
         try (var walk = Files.walk(dir)) {
-            walk.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+            walk.sorted(Comparator.reverseOrder()).forEach(p -> {
                 try {
                     Files.deleteIfExists(p);
                 } catch (IOException ignored) {

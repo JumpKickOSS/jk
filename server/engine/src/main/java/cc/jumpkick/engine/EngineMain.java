@@ -2,6 +2,14 @@
 package cc.jumpkick.engine;
 
 import cc.jumpkick.model.JkVersion;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.Comparator;
+import java.util.List;
+import java.util.stream.Stream;
 
 /**
  * Engine JVM entrypoint ({@code:engine}). Plain Java — never a native image. Spawned by the slim
@@ -42,10 +50,8 @@ public final class EngineMain {
                     JkVersion.VERSION,
                     System.err::println);
             server.serveJob(
-                    new java.io.BufferedReader(
-                            new java.io.InputStreamReader(System.in, java.nio.charset.StandardCharsets.UTF_8)),
-                    new java.io.BufferedWriter(
-                            new java.io.OutputStreamWriter(System.out, java.nio.charset.StandardCharsets.UTF_8)));
+                    new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8)),
+                    new BufferedWriter(new OutputStreamWriter(System.out, StandardCharsets.UTF_8)));
             return 0;
         } catch (RuntimeException e) {
             System.err.println("jk engine (job): " + e.getMessage());
@@ -74,12 +80,12 @@ public final class EngineMain {
             // yet (see EngineClient.spawn). The server invokes the factory only after WINNING its
             // election — a losing redundant spawn never trains — and owns the child end-to-end.
             String aotOut = System.getProperty("jk.aot.train.output");
-            if (aotOut != null && !aotOut.isBlank() && !java.nio.file.Files.exists(java.nio.file.Path.of(aotOut))) {
+            if (aotOut != null && !aotOut.isBlank() && !Files.exists(Path.of(aotOut))) {
                 server.aotTrainerSpawner(() -> spawnAotTrainer(aotOut));
             }
             server.run();
             return 0;
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             System.err.println("jk engine: failed to start: " + e.getMessage());
             return 1;
         }
@@ -98,10 +104,10 @@ public final class EngineMain {
      */
     private static Process spawnAotTrainer(String aotOut) {
         try {
-            java.nio.file.Path finalPath = java.nio.file.Path.of(aotOut);
-            java.nio.file.Path tmp = trainerTmpPath(finalPath);
+            Path finalPath = Path.of(aotOut);
+            Path tmp = trainerTmpPath(finalPath);
             cleanStaleTrainerTmps(finalPath);
-            String javaExe = ProcessHandle.current().info().command().orElseGet(() -> java.nio.file.Path.of(
+            String javaExe = ProcessHandle.current().info().command().orElseGet(() -> Path.of(
                             System.getProperty("java.home"), "bin", "java")
                     .toString());
             ProcessBuilder pb =
@@ -111,23 +117,23 @@ public final class EngineMain {
             Process p = pb.start();
             p.onExit().thenAccept(proc -> promoteTrainedCache(tmp, finalPath, proc.exitValue()));
             return p;
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             System.err.println("jk engine: could not spawn the AOT training sidecar: " + e.getMessage());
             return null;
         }
     }
 
     /** The trainer's private assembly target: a same-directory sibling, atomically movable. */
-    static java.nio.file.Path trainerTmpPath(java.nio.file.Path finalPath) {
+    static Path trainerTmpPath(Path finalPath) {
         return finalPath.resolveSibling(
                 finalPath.getFileName() + ".tmp-" + ProcessHandle.current().pid());
     }
 
     /** The sidecar command line; {@code tmpOut} — never the final cache path — receives the cache. */
-    static java.util.List<String> aotTrainerCommand(String javaExe, String classpath, java.nio.file.Path tmpOut) {
+    static List<String> aotTrainerCommand(String javaExe, String classpath, Path tmpOut) {
         // --enable-native-access must match the serving spawn line (EngineClient.spawn): JEP 514
         // rejects mapping when dump-time and runtime property sets differ (JK-1399).
-        return java.util.List.of(
+        return List.of(
                 javaExe,
                 "-XX:+UseSerialGC",
                 "-XX:MinHeapFreeRatio=10",
@@ -146,13 +152,13 @@ public final class EngineMain {
      * the final path; anything else (nonzero exit, watchdog halt, empty file) is discarded — the
      * final path either holds a complete cache or nothing.
      */
-    static void promoteTrainedCache(java.nio.file.Path tmp, java.nio.file.Path finalPath, int exit) {
+    static void promoteTrainedCache(Path tmp, Path finalPath, int exit) {
         try {
-            if (exit == 0 && java.nio.file.Files.isRegularFile(tmp) && java.nio.file.Files.size(tmp) > 0) {
+            if (exit == 0 && Files.isRegularFile(tmp) && Files.size(tmp) > 0) {
                 cc.jumpkick.util.AtomicWrites.moveInto(tmp, finalPath);
                 return;
             }
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             System.err.println("jk engine: could not publish the AOT cache: " + e.getMessage());
         }
         deleteQuietly(tmp);
@@ -163,22 +169,22 @@ public final class EngineMain {
      * Drop temp assemblies a dead engine left behind for this cache stem. Safe: the engine spawns
      * a trainer only after winning its election, so no live sibling shares the stem.
      */
-    private static void cleanStaleTrainerTmps(java.nio.file.Path finalPath) {
-        java.nio.file.Path dir = finalPath.getParent();
+    private static void cleanStaleTrainerTmps(Path finalPath) {
+        Path dir = finalPath.getParent();
         if (dir == null) return;
         String prefix = finalPath.getFileName() + ".tmp-";
-        try (var entries = java.nio.file.Files.newDirectoryStream(
-                dir, p -> p.getFileName().toString().startsWith(prefix))) {
-            for (java.nio.file.Path p : entries) deleteQuietly(p);
-        } catch (java.io.IOException ignored) {
+        try (var entries =
+                Files.newDirectoryStream(dir, p -> p.getFileName().toString().startsWith(prefix))) {
+            for (Path p : entries) deleteQuietly(p);
+        } catch (IOException ignored) {
             // best-effort — a leftover tmp costs disk, not correctness
         }
     }
 
-    private static void deleteQuietly(java.nio.file.Path p) {
+    private static void deleteQuietly(Path p) {
         try {
-            java.nio.file.Files.deleteIfExists(p);
-        } catch (java.io.IOException ignored) {
+            Files.deleteIfExists(p);
+        } catch (IOException ignored) {
             // best-effort
         }
     }
@@ -238,14 +244,13 @@ public final class EngineMain {
      * that a genuinely slow machine never trips it, tight enough that a stuck trainer is gone before it
      * matters.
      */
-    private static final long AOT_TRAINING_HARD_LIMIT_MS =
-            java.time.Duration.ofMinutes(2).toMillis();
+    private static final long AOT_TRAINING_HARD_LIMIT_MS = Duration.ofMinutes(2).toMillis();
 
     static int runAotTraining() {
         startTrainerWatchdog(AOT_TRAINING_HARD_LIMIT_MS);
-        java.nio.file.Path tmp = null;
+        Path tmp = null;
         try {
-            tmp = java.nio.file.Files.createTempDirectory("jk-aot-train-");
+            tmp = Files.createTempDirectory("jk-aot-train-");
             EnginePaths.Paths paths = EnginePaths.resolve(tmp);
             EngineServer server = new EngineServer(
                     paths, cc.jumpkick.config.JkEngineConfig.resolve(), null, JkVersion.VERSION, System.err::println);
@@ -253,20 +258,20 @@ public final class EngineMain {
                     () -> {
                         try {
                             server.run();
-                        } catch (java.io.IOException e) {
+                        } catch (IOException e) {
                             System.err.println("jk engine (aot-training): " + e.getMessage());
                         }
                     },
                     "jk-aot-training");
             serving.start();
-            java.nio.file.Path endpoint = EnginePaths.endpoint(paths);
-            long deadline = System.nanoTime() + java.time.Duration.ofSeconds(60).toNanos();
-            while (!java.nio.file.Files.exists(endpoint) && serving.isAlive() && System.nanoTime() < deadline) {
+            Path endpoint = EnginePaths.endpoint(paths);
+            long deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos();
+            while (!Files.exists(endpoint) && serving.isAlive() && System.nanoTime() < deadline) {
                 Thread.sleep(20);
             }
             Thread.sleep(AOT_TRAINING_UPTIME_MS);
             server.close();
-            serving.join(java.time.Duration.ofSeconds(30).toMillis());
+            serving.join(Duration.ofSeconds(30).toMillis());
             return 0;
         } catch (Exception e) {
             System.err.println("jk engine (aot-training): " + e.getMessage());
@@ -276,16 +281,16 @@ public final class EngineMain {
         }
     }
 
-    private static void deleteRecursively(java.nio.file.Path root) {
-        try (java.util.stream.Stream<java.nio.file.Path> walk = java.nio.file.Files.walk(root)) {
-            walk.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+    private static void deleteRecursively(Path root) {
+        try (Stream<Path> walk = Files.walk(root)) {
+            walk.sorted(Comparator.reverseOrder()).forEach(p -> {
                 try {
-                    java.nio.file.Files.deleteIfExists(p);
-                } catch (java.io.IOException ignored) {
+                    Files.deleteIfExists(p);
+                } catch (IOException ignored) {
                     // best-effort cleanup
                 }
             });
-        } catch (java.io.IOException ignored) {
+        } catch (IOException ignored) {
             // best-effort cleanup
         }
     }

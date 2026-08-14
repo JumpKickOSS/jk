@@ -16,6 +16,7 @@ import java.net.URI;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -126,7 +127,7 @@ public final class AutoLock {
                     effective, existing, jkVersion, features == null ? List.of() : features, withDefaults, observer);
 
             // Stamp git-source provenance using already-locked SHAs (no re-fetch).
-            java.util.Map<String, String> lockedShas = GitSourceResolution.lockedImmutableShas(existing);
+            Map<String, String> lockedShas = GitSourceResolution.lockedImmutableShas(existing);
             cc.jumpkick.runtime.GitSourceResolution.Prepared prep;
             try {
                 prep = GitSourceResolution.prepare(

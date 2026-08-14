@@ -28,11 +28,12 @@ import cc.jumpkick.runtime.WorkspaceRequest;
 import cc.jumpkick.runtime.WorkspaceResult;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.time.Duration;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * {@code jk test} — compile main + test sources and run JUnit Platform tests.
@@ -61,7 +62,7 @@ public final class TestCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        var opts = new java.util.ArrayList<Opt>(List.of(
+        var opts = new ArrayList<Opt>(List.of(
                 Opt.value("<name>", "Build profile (default auto)", "-p", "--profile"),
                 Opt.flag("Skip profile tag filters", "--no-profile"),
                 Opt.value("<N>", "Test JVMs per module (0=auto)", "-w", "--workers")));
@@ -133,7 +134,7 @@ public final class TestCommand implements CliCommand {
         // Workspace root: fan out to members (JK-1285). Bare `jk test` at the root used to run
         // only the root module's (usually empty) suite and print a green "No tests".
         if (entry.isWorkspaceRoot()) {
-            java.util.Set<Path> moduleDirs;
+            Set<Path> moduleDirs;
             boolean selective = (affectedSince != null && !affectedSince.isBlank())
                     || (modulesSpec != null && !modulesSpec.isBlank());
             if (selective) {
@@ -263,8 +264,8 @@ public final class TestCommand implements CliCommand {
     }
 
     /** Absolute dirs of every workspace member (declaration order). */
-    static java.util.Set<Path> allWorkspaceModuleDirs(Path workspaceRoot, cc.jumpkick.model.JkBuild entry) {
-        java.util.LinkedHashSet<Path> dirs = new java.util.LinkedHashSet<>();
+    static Set<Path> allWorkspaceModuleDirs(Path workspaceRoot, cc.jumpkick.model.JkBuild entry) {
+        LinkedHashSet<Path> dirs = new LinkedHashSet<>();
         if (!entry.isWorkspaceRoot()) return dirs;
         Path root = workspaceRoot.toAbsolutePath().normalize();
         for (String m : entry.workspaceOpt().orElseThrow().modules()) {
@@ -300,9 +301,9 @@ public final class TestCommand implements CliCommand {
         JkManager view = JkManager.plan(CliOutput.stdout(), "Test", animate);
         view.setWindowTitle("JumpKick - Testing " + BuildCommand.projectGavLabel(entryDir, entryBuild) + "...");
         AggregateContext agg = new AggregateContext(view);
-        Map<Path, List<String>> buffers = new java.util.concurrent.ConcurrentHashMap<>();
-        List<String> deferredOutput = java.util.Collections.synchronizedList(new ArrayList<>());
-        java.util.concurrent.atomic.AtomicInteger completed = new java.util.concurrent.atomic.AtomicInteger();
+        Map<Path, List<String>> buffers = new ConcurrentHashMap<>();
+        List<String> deferredOutput = Collections.synchronizedList(new ArrayList<>());
+        AtomicInteger completed = new AtomicInteger();
         int[] total = {0};
         var request = workspaceTestRequest(entryDir, entryBuild, cache, workerCount, dirtyDirs);
         WorkspaceResult result;
@@ -344,7 +345,7 @@ public final class TestCommand implements CliCommand {
                         @Override
                         public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
                             var log = EventLogListener.open(m.cache(), m.plan().name());
-                            List<String> buf = java.util.Collections.synchronizedList(new ArrayList<>());
+                            List<String> buf = Collections.synchronizedList(new ArrayList<>());
                             buffers.put(m.dir(), buf);
                             var lis = new AggregateModuleListener(
                                     agg, m.coord(), m.plan().steps(), m.weight());
@@ -446,8 +447,8 @@ public final class TestCommand implements CliCommand {
         int[] total = {0};
         // Per-module console buffers (BuildCommand's headless pattern): modules stream
         // concurrently, so output is buffered and printed as one block per module finish.
-        var buffers = new java.util.concurrent.ConcurrentHashMap<Path, List<String>>();
-        var done = new java.util.concurrent.atomic.AtomicInteger();
+        var buffers = new ConcurrentHashMap<Path, List<String>>();
+        var done = new AtomicInteger();
         var request = workspaceTestRequest(entryDir, entryBuild, cache, workerCount, dirtyDirs);
         WorkspaceResult result;
         try {
@@ -483,7 +484,7 @@ public final class TestCommand implements CliCommand {
                                 return CompositeBuildPlanListener.of(
                                         new cc.jumpkick.cli.run.JsonlListener(System.out, false), log);
                             }
-                            List<String> buf = java.util.Collections.synchronizedList(new ArrayList<>());
+                            List<String> buf = Collections.synchronizedList(new ArrayList<>());
                             buffers.put(m.dir(), buf);
                             var outLis = new cc.jumpkick.run.BuildPlanListener() {
                                 @Override
@@ -587,7 +588,7 @@ public final class TestCommand implements CliCommand {
         if (n == 0 || planned == 0) {
             return "No tests to run";
         }
-        String took = ConsoleSpec.took(java.time.Duration.ofMillis(elapsedMs));
+        String took = ConsoleSpec.took(Duration.ofMillis(elapsedMs));
         if (n == 1) {
             return "Tests passed " + took;
         }
@@ -602,7 +603,7 @@ public final class TestCommand implements CliCommand {
                         .map(cc.jumpkick.runtime.ModuleOutcome::coord)
                         .findFirst()
                         .orElse("tests");
-        return failed + " — failed " + ConsoleSpec.took(java.time.Duration.ofMillis(elapsedMs));
+        return failed + " — failed " + ConsoleSpec.took(Duration.ofMillis(elapsedMs));
     }
 
     /**
@@ -660,7 +661,7 @@ public final class TestCommand implements CliCommand {
         // tag option so e.g. `jk test --include-tags slow` is not beaten by profile filters.
         boolean cliTags = cliInclude || cliExclude;
         try {
-            if (!in.isSet("no-profile") && java.nio.file.Files.isRegularFile(toml)) {
+            if (!in.isSet("no-profile") && Files.isRegularFile(toml)) {
                 var build = cc.jumpkick.config.JkBuildParser.parse(toml);
                 String explicit = in.value("profile").orElse(null);
                 boolean explicitProfile = explicit != null && !explicit.isBlank();

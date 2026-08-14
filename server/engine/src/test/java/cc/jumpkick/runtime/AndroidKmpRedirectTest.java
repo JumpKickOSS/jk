@@ -12,6 +12,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -105,7 +106,7 @@ class AndroidKmpRedirectTest {
 
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
         BuildPlan lock = LockPlans.lockBuildPlan(
-                project, build, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
+                project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         BuildPlanResult result = lock.run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();

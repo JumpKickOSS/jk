@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import java.util.concurrent.Callable;
+
 /**
  * Ambient holder for the current {@link Session}. {@link #current()} prefers a per-thread
  * {@link ScopedValue} binding ({@link #where}/{@link #runWhere}) so concurrent in-JVM builds each
@@ -30,7 +32,7 @@ public final class SessionContext {
             }
 
             @Override
-            public <T> java.util.concurrent.Callable<T> wrapCallable(java.util.concurrent.Callable<T> c) {
+            public <T> Callable<T> wrapCallable(Callable<T> c) {
                 Session s = current();
                 return () -> where(s, c);
             }
@@ -61,7 +63,7 @@ public final class SessionContext {
      * Run {@code body} with {@code s} bound as the current session for the dynamic extent of the call
      * (and any threads it structurally forks). {@link #current()} returns {@code s} within that scope.
      */
-    public static <T> T where(Session s, java.util.concurrent.Callable<T> body) throws Exception {
+    public static <T> T where(Session s, Callable<T> body) throws Exception {
         // Java 25's finalized Carrier.call takes a ScopedValue.CallableOp; adapt the Callable via a
         // method reference (Callable.call and CallableOp.call share the R call() throws X shape).
         return ScopedValue.where(SCOPED, s).<T, Exception>call(body::call);

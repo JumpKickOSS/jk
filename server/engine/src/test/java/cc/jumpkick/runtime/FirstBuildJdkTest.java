@@ -10,6 +10,8 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -74,7 +76,7 @@ import org.junit.jupiter.api.Tag;
         Session nested = Session.defaults().withCacheDir(cache).withJdksDir(freshJdks);
         SessionContext.runWhere(nested, () -> {
             BuildPlan lock = LockPlans.lockBuildPlan(
-                    project, parsed, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
+                    project, parsed, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
             assertThat(lock.run().errors()).isEmpty();
 
             BuildPlanner.Inputs in = new BuildPlanner.Inputs(
@@ -91,7 +93,7 @@ import org.junit.jupiter.api.Tag;
                     false,
                     false,
                     false,
-                    java.util.Set.of(),
+                    Set.of(),
                     nested);
             BuildPlan plan = BuildPlanner.coreBuilder(in).build();
             BuildPlanResult result = plan.run();

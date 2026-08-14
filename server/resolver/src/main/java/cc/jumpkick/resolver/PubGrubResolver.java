@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 
 /** {@link Resolver} backed by {@link PubGrubSolver} — maps jk deps onto solver terms. */
@@ -35,7 +36,7 @@ public final class PubGrubResolver implements Resolver {
     private final PackageSource source;
 
     /** {@code from->to} pairs already reported this resolve — one relocation line per lock. */
-    private final java.util.Set<String> reportedRelocations = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private final Set<String> reportedRelocations = ConcurrentHashMap.newKeySet();
 
     private final EffectivePomBuilder pomBuilder;
     private KmpRedirects kmp = KmpRedirects.NONE;

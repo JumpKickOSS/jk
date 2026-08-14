@@ -6,20 +6,13 @@ import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileAlreadyExistsException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import java.nio.file.*;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
 /**
@@ -237,8 +230,7 @@ public final class BuildJournal {
      * without this one of the two silently loses (JK-1491). Keyed by run dir; entries are dropped
      * once the run is complete.
      */
-    private static final java.util.concurrent.ConcurrentHashMap<Path, Object> METRICS_LOCKS =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Path, Object> METRICS_LOCKS = new ConcurrentHashMap<>();
 
     private static Object metricsLock(Path runDir) {
         // complete() removes entries, but a crashed/cancelled run leaks its key — bound the
@@ -422,7 +414,7 @@ public final class BuildJournal {
      */
     static boolean isImplausibleHeavyWall(String task, long millis) {
         if (task == null || millis <= 0) return false;
-        String t = task.toLowerCase(java.util.Locale.ROOT);
+        String t = task.toLowerCase(Locale.ROOT);
         if (t.contains("native-image") || t.equals("native")) return millis < 5_000L;
         if (t.contains("write-image") || t.equals("image")) return millis < 3_000L;
         return false;
@@ -744,7 +736,7 @@ public final class BuildJournal {
     private static void move(Path from, Path to) throws IOException {
         try {
             Files.move(from, to, StandardCopyOption.ATOMIC_MOVE);
-        } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+        } catch (AtomicMoveNotSupportedException e) {
             Files.move(from, to);
         }
     }

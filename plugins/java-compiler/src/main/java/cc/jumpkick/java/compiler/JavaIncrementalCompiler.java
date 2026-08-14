@@ -6,6 +6,7 @@ import cc.jumpkick.plugin.PluginManifest;
 import cc.jumpkick.plugin.protocol.PluginReply;
 import cc.jumpkick.plugin.protocol.PluginSpec;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
+import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Path;
@@ -72,7 +73,7 @@ public final class JavaIncrementalCompiler implements Plugin {
         for (int i = 0; i < processorPath.size(); i++) {
             try {
                 urls[i] = processorPath.get(i).toUri().toURL();
-            } catch (java.net.MalformedURLException e) {
+            } catch (MalformedURLException e) {
                 throw new IllegalArgumentException("bad processor path entry: " + processorPath.get(i), e);
             }
         }

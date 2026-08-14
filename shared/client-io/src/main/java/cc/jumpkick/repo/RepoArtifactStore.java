@@ -4,8 +4,10 @@ package cc.jumpkick.repo;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.Hashing;
 import java.io.IOException;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -203,8 +205,8 @@ public final class RepoArtifactStore {
             // FileSystemException; providers without hard links throw UnsupportedOperationException.
             try {
                 Files.createLink(tmp, casBlob);
-            } catch (UnsupportedOperationException | java.nio.file.FileSystemException linkRefused) {
-                Files.copy(casBlob, tmp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            } catch (UnsupportedOperationException | FileSystemException linkRefused) {
+                Files.copy(casBlob, tmp, StandardCopyOption.REPLACE_EXISTING);
             }
             AtomicWrites.moveInto(tmp, artifact);
             Files.createDirectories(sidecar.getParent());
@@ -390,7 +392,7 @@ public final class RepoArtifactStore {
         if (root == null || shas.isEmpty() || !Files.isDirectory(root)) return 0;
         // Collect BEFORE deleting: pruning directories under a still-lazy Files.walk iterator
         // throws NoSuchFileException from the stream.
-        java.util.List<Path> sidecars;
+        List<Path> sidecars;
         try (Stream<Path> walk = Files.walk(root)) {
             sidecars = walk.filter(p -> p.toString().endsWith(".sha256")).toList();
         } catch (IOException e) {
@@ -488,7 +490,7 @@ public final class RepoArtifactStore {
         Path target = artifactRoot.resolve("repos/local/" + relativePath);
         Files.createDirectories(target.getParent());
         Path tmp = target.resolveSibling(target.getFileName() + ".part");
-        Files.copy(source, tmp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        Files.copy(source, tmp, StandardCopyOption.REPLACE_EXISTING);
         AtomicWrites.moveInto(tmp, target);
         String hex = Hashing.sha256Hex(target);
         Files.writeString(Path.of(target + ".sha256"), hex);

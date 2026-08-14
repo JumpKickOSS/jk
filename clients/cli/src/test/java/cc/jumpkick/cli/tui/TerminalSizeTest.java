@@ -3,11 +3,13 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import sun.misc.Signal;
 
 /**
  * Probing terminal size forks a {@code stty} subprocess, and {@link RenderContext#current()} runs
@@ -75,8 +77,8 @@ class TerminalSizeTest {
             probes.incrementAndGet();
             return new int[] {40, 66};
         };
-        sun.misc.Signal.raise(new sun.misc.Signal("WINCH"));
-        long deadline = System.nanoTime() + java.time.Duration.ofSeconds(5).toNanos();
+        Signal.raise(new Signal("WINCH"));
+        long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
         while (TerminalSize.columns() != 66 && System.nanoTime() < deadline) {
             Thread.sleep(10);
         }

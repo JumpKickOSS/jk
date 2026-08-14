@@ -5,6 +5,7 @@ import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.tui.PlainAscii;
 import cc.jumpkick.cli.tui.Rail;
 import cc.jumpkick.config.JkConfig;
+import java.util.Locale;
 import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStyle;
 
@@ -327,7 +328,7 @@ public interface Theme {
      */
     default AttributedStyle styleNamedOrNull(String name) {
         if (name == null || name.isBlank()) return null;
-        String key = name.trim().toLowerCase(java.util.Locale.ROOT).replace('_', '-');
+        String key = name.trim().toLowerCase(Locale.ROOT).replace('_', '-');
         return switch (key) {
             case "dim" -> dim();
             case "dark-gray", "darkgray" -> darkGray();

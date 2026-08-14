@@ -8,8 +8,11 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.StandardProtocolFamily;
 import java.net.UnixDomainSocketAddress;
+import java.nio.channels.AsynchronousCloseException;
 import java.nio.channels.Channels;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
@@ -68,8 +71,7 @@ public final class EngineWire {
             int port = Integer.parseInt(Files.readString(socket).trim());
             String token = Files.readString(cc.jumpkick.engine.EnginePaths.tokenFor(socket))
                     .trim();
-            SocketChannel ch =
-                    SocketChannel.open(new java.net.InetSocketAddress(java.net.InetAddress.getLoopbackAddress(), port));
+            SocketChannel ch = SocketChannel.open(new InetSocketAddress(InetAddress.getLoopbackAddress(), port));
             BufferedWriter authWriter =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             authWriter.write(ProtoLifecycle.auth(token));
@@ -112,7 +114,7 @@ public final class EngineWire {
             String reply = reader.readLine();
             if (reply == null) throw new IOException("engine closed the connection without replying");
             return reply;
-        } catch (java.nio.channels.AsynchronousCloseException e) {
+        } catch (AsynchronousCloseException e) {
             throw new IOException("engine did not reply within " + SOCKET_TIMEOUT_MILLIS + "ms", e);
         } finally {
             watchdog.interrupt();

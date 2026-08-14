@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.scaffold;
 
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 /**
  * Official Giter8 short-name catalog shared by {@code jk new --template}, {@code GET
@@ -137,7 +132,7 @@ public final class Giter8ShortNames {
         if (raw == null) return List.of();
         // A "language=25" style JDK pin is not a language name — only accept known JVM langs.
         String[] parts = raw.split("[,\\s]+");
-        java.util.ArrayList<String> out = new java.util.ArrayList<>();
+        ArrayList<String> out = new ArrayList<>();
         for (String p : parts) {
             if (p.isEmpty()) continue;
             String l = p.strip().toLowerCase(Locale.ROOT);

@@ -10,6 +10,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import org.jline.terminal.Attributes;
 import org.jline.terminal.Terminal;
 import org.jline.utils.NonBlockingReader;
@@ -192,7 +193,7 @@ public final class Prompt<T> implements Widget {
 
     private String settleLabel(T result) {
         for (Binding<T> b : bindings) {
-            if (java.util.Objects.equals(b.value(), result)) {
+            if (Objects.equals(b.value(), result)) {
                 boolean ok = result instanceof Boolean bool && bool;
                 var style = ok ? Theme.active().success() : Theme.active().error();
                 if (result instanceof Boolean) {
@@ -206,7 +207,7 @@ public final class Prompt<T> implements Widget {
 
     private static <T> char defaultKeyOf(List<Binding<T>> bindings, T onEnter) {
         for (Binding<T> b : bindings) {
-            if (java.util.Objects.equals(b.value(), onEnter)) return b.key();
+            if (Objects.equals(b.value(), onEnter)) return b.key();
         }
         return bindings.isEmpty() ? '?' : bindings.getFirst().key();
     }

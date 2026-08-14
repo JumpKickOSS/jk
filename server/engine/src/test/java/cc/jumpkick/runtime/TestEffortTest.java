@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -41,7 +42,7 @@ class TestEffortTest {
      * have been trained by unrelated projects.
      */
     @Test
-    void project_median_beats_host_absolute(@org.junit.jupiter.api.io.TempDir java.nio.file.Path tmp) {
+    void project_median_beats_host_absolute(@org.junit.jupiter.api.io.TempDir Path tmp) {
         StepTimings.record(
                 tmp,
                 List.of(

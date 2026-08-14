@@ -26,6 +26,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
+import java.util.Map;
 
 /**
  * {@code jk publish} plan: validate, then assemble/sign/upload via {@code jk-publisher}.
@@ -199,7 +200,7 @@ public final class PublishPlans {
         if (req.region() != null && !req.region().isBlank()) sw.configString("objectStoreRegion", req.region());
         if (req.endpoint() != null && !req.endpoint().isBlank()) sw.configString("objectStoreEndpoint", req.endpoint());
         sw.artifact(jar);
-        sw.layout(java.util.Map.of("moduleDir", projectDir));
+        sw.layout(Map.of("moduleDir", projectDir));
 
         // Use a 0600 temp file so credentials aren't world-readable.
         Path spec;

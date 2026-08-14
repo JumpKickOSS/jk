@@ -10,9 +10,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
+import java.util.jar.*;
 
 /**
  * {@code jk build --aot-cache}: extract the app under {@code target/aot-cache/} and train a JVM
@@ -412,13 +414,13 @@ final class AotCachePackage {
         // Class-Path is resolved against the jar's own location, so the layout is relocatable.
         String appJarName = mainJar.getFileName().toString();
         Path appJar = outDir.resolve(appJarName);
-        try (var jarIn = new java.util.jar.JarInputStream(Files.newInputStream(mainJar))) {
-            java.util.jar.Manifest manifest = jarIn.getManifest();
-            if (manifest == null) manifest = new java.util.jar.Manifest();
-            manifest.getMainAttributes().putIfAbsent(java.util.jar.Attributes.Name.MANIFEST_VERSION, "1.0");
-            if (manifest.getMainAttributes().getValue(java.util.jar.Attributes.Name.MAIN_CLASS) == null
+        try (var jarIn = new JarInputStream(Files.newInputStream(mainJar))) {
+            Manifest manifest = jarIn.getManifest();
+            if (manifest == null) manifest = new Manifest();
+            manifest.getMainAttributes().putIfAbsent(Attributes.Name.MANIFEST_VERSION, "1.0");
+            if (manifest.getMainAttributes().getValue(Attributes.Name.MAIN_CLASS) == null
                     && !plan.mainClass().isEmpty()) {
-                manifest.getMainAttributes().put(java.util.jar.Attributes.Name.MAIN_CLASS, plan.mainClass());
+                manifest.getMainAttributes().put(Attributes.Name.MAIN_CLASS, plan.mainClass());
             }
             if (!libNames.isEmpty()) {
                 StringBuilder cp = new StringBuilder();
@@ -426,13 +428,13 @@ final class AotCachePackage {
                     if (cp.length() > 0) cp.append(' ');
                     cp.append("lib/").append(name);
                 }
-                manifest.getMainAttributes().put(java.util.jar.Attributes.Name.CLASS_PATH, cp.toString());
+                manifest.getMainAttributes().put(Attributes.Name.CLASS_PATH, cp.toString());
             }
-            try (var jarOut = new java.util.jar.JarOutputStream(Files.newOutputStream(appJar), manifest)) {
-                java.util.jar.JarEntry entry;
+            try (var jarOut = new JarOutputStream(Files.newOutputStream(appJar), manifest)) {
+                JarEntry entry;
                 while ((entry = jarIn.getNextJarEntry()) != null) {
                     if (entry.getName().equals("META-INF/MANIFEST.MF")) continue;
-                    jarOut.putNextEntry(new java.util.jar.JarEntry(entry.getName()));
+                    jarOut.putNextEntry(new JarEntry(entry.getName()));
                     jarIn.transferTo(jarOut);
                     jarOut.closeEntry();
                 }
@@ -445,6 +447,6 @@ final class AotCachePackage {
     private static String tail(String output) {
         String[] lines = output.split("\n");
         int from = Math.max(0, lines.length - 25);
-        return String.join("\n", java.util.Arrays.copyOfRange(lines, from, lines.length));
+        return String.join("\n", Arrays.copyOfRange(lines, from, lines.length));
     }
 }

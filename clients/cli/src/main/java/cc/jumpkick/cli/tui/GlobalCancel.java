@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Theme;
+import java.nio.file.Path;
 import org.jline.utils.Signals;
 
 /**
@@ -42,17 +43,16 @@ public final class GlobalCancel {
             // The session's working dir honors -C/--dir (the raw process CWD does not),
             // and jobs register their workspace-root ENTRY dir — resolve to it so Ctrl-C from a
             // member dir cancels the covering workspace build.
-            java.nio.file.Path invocationDir;
+            Path invocationDir;
             try {
                 invocationDir = cc.jumpkick.config.SessionContext.current().workingDir();
             } catch (RuntimeException e) {
                 invocationDir = null;
             }
             if (invocationDir == null) {
-                invocationDir = java.nio.file.Path.of("").toAbsolutePath().normalize();
+                invocationDir = Path.of("").toAbsolutePath().normalize();
             }
-            java.nio.file.Path dir =
-                    cc.jumpkick.config.WorkspaceScan.findRoot(invocationDir).orElse(invocationDir);
+            Path dir = cc.jumpkick.config.WorkspaceScan.findRoot(invocationDir).orElse(invocationDir);
             Thread rpc = Thread.ofPlatform()
                     .daemon(true)
                     .name("jk-sigint-cancel")

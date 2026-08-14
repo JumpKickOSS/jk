@@ -18,6 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -105,7 +106,7 @@ class RebuildRunTestsMarkerTest {
                                 false,
                                 false,
                                 false,
-                                java.util.Set.of(),
+                                Set.of(),
                                 rebuild))
                         .build()
                         .run();

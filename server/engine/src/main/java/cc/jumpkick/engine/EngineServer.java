@@ -25,6 +25,8 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.StandardProtocolFamily;
 import java.net.UnixDomainSocketAddress;
 import java.nio.channels.Channels;
@@ -38,12 +40,16 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.security.MessageDigest;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 
 /**
  * Resident engine: election, accept loop, drain/close, and four-arm {@link VerbShape} dispatch.
@@ -143,7 +149,7 @@ public final class EngineServer implements AutoCloseable {
     private final cc.jumpkick.engine.http.HttpEvents httpEvents;
 
     /** Ids for {@code request-start}/{@code request-finish} events and {@code POST /api/build} acks. */
-    private final java.util.concurrent.atomic.AtomicLong requestIds = new java.util.concurrent.atomic.AtomicLong();
+    private final AtomicLong requestIds = new AtomicLong();
 
     /**
      * One row per request: progress, accumulator, emit throttle. Retired ids cannot
@@ -182,8 +188,7 @@ public final class EngineServer implements AutoCloseable {
      * never delete under an in-flight plan. Cross-process safety still uses on-disk {@code
      * .prune.lock}.
      */
-    private final java.util.concurrent.locks.ReentrantReadWriteLock cacheGate =
-            new java.util.concurrent.locks.ReentrantReadWriteLock(true);
+    private final ReentrantReadWriteLock cacheGate = new ReentrantReadWriteLock(true);
 
     private volatile boolean shuttingDown;
     // Graceful-drain pre-state: the listener stays open and quick commands (hello/ping/status) keep
@@ -430,8 +435,8 @@ public final class EngineServer implements AutoCloseable {
             // port instead, and gate every connection on a shared secret (see EngineTransport),
             // since a TCP port (unlike a socket file) isn't filesystem-permission-gated by default.
             serverChannel = ServerSocketChannel.open();
-            serverChannel.bind(new java.net.InetSocketAddress(java.net.InetAddress.getLoopbackAddress(), 0));
-            int port = ((java.net.InetSocketAddress) serverChannel.getLocalAddress()).getPort();
+            serverChannel.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
+            int port = ((InetSocketAddress) serverChannel.getLocalAddress()).getPort();
             expectedToken = EngineTransport.newToken();
             // This token gates every engine RPC — i.e. arbitrary code execution as the engine
             // owner. It must be owner-only, like the HTTP bearer token, not left to the ambient
@@ -514,8 +519,8 @@ public final class EngineServer implements AutoCloseable {
         if (!Files.exists(previousActive)) return;
         if (namesSelf(previousActive)) return; // a stale flat pointer we just re-claimed — never self-drain
         try (SocketChannel ch = openClient(previousActive)) {
-            java.io.BufferedWriter w = new java.io.BufferedWriter(new java.io.OutputStreamWriter(
-                    java.nio.channels.Channels.newOutputStream(ch), StandardCharsets.UTF_8));
+            BufferedWriter w =
+                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             w.write(ProtoLifecycle.shutdown(false));
             w.write('\n');
             w.flush();
@@ -550,10 +555,10 @@ public final class EngineServer implements AutoCloseable {
     private static Incumbent helloProbe(Path socket, String probeVersion) {
         if (socket == null || !Files.exists(socket)) return null;
         try (SocketChannel ch = openClient(socket)) {
-            java.io.BufferedWriter w = new java.io.BufferedWriter(new java.io.OutputStreamWriter(
-                    java.nio.channels.Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(
-                    java.nio.channels.Channels.newInputStream(ch), StandardCharsets.UTF_8));
+            BufferedWriter w =
+                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
+            BufferedReader r =
+                    new BufferedReader(new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8));
             w.write(ProtoLifecycle.hello(probeVersion, "probe"));
             w.write('\n');
             w.flush();
@@ -572,11 +577,10 @@ public final class EngineServer implements AutoCloseable {
     private static SocketChannel openClient(Path socket) throws IOException {
         if (EngineTransport.useLoopbackTcp()) {
             int port = Integer.parseInt(Files.readString(socket).trim());
-            SocketChannel ch =
-                    SocketChannel.open(new java.net.InetSocketAddress(java.net.InetAddress.getLoopbackAddress(), port));
+            SocketChannel ch = SocketChannel.open(new InetSocketAddress(InetAddress.getLoopbackAddress(), port));
             Path token = EnginePaths.tokenFor(socket);
-            java.io.BufferedWriter w = new java.io.BufferedWriter(new java.io.OutputStreamWriter(
-                    java.nio.channels.Channels.newOutputStream(ch), StandardCharsets.UTF_8));
+            BufferedWriter w =
+                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             // The auth envelope, exactly as the CLI client sends it — authenticate accepts
             // nothing else (a raw token line here once broke takeover/election on TCP).
             w.write(ProtoLifecycle.auth(Files.readString(token).trim()));
@@ -684,7 +688,7 @@ public final class EngineServer implements AutoCloseable {
         if (line == null || !EngineProtocol.AUTH.equals(EngineProtocol.typeOf(line))) return false;
         String presented = Jsonl.str(line, "token");
         if (presented == null) return false;
-        return java.security.MessageDigest.isEqual(
+        return MessageDigest.isEqual(
                 expectedToken.getBytes(StandardCharsets.UTF_8), presented.getBytes(StandardCharsets.UTF_8));
     }
 
@@ -890,8 +894,7 @@ public final class EngineServer implements AutoCloseable {
      * publish after it reaches the attached queue. Overlap yields duplicates, which the SPA
      * folds idempotently — gaps, which it cannot heal, are impossible.
      */
-    private final java.util.concurrent.locks.ReentrantReadWriteLock sseConnect =
-            new java.util.concurrent.locks.ReentrantReadWriteLock();
+    private final ReentrantReadWriteLock sseConnect = new ReentrantReadWriteLock();
 
     /** The current thread's hosted-request id for dashboard events; {@code -1} outside a request. */
     private long eventRequestId() {
@@ -945,7 +948,7 @@ public final class EngineServer implements AutoCloseable {
      * is invoked once, only if this engine wins its election and starts serving; it may return
      * {@code null} (nothing to train after all — e.g. the cache appeared meanwhile).
      */
-    public void aotTrainerSpawner(java.util.function.Supplier<Process> spawner) {
+    public void aotTrainerSpawner(Supplier<Process> spawner) {
         aot.spawner(spawner);
     }
 

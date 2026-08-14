@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -73,7 +74,7 @@ class ActionCacheVerifiedRestoreTest {
         Path out = Files.createDirectories(tmp.resolve("out"));
         Path jar = out.resolve("lib.jar");
         Files.writeString(jar, "jar-bytes");
-        var rec = ac.storeArtifacts("package-jar", "pkg", Map.of(), out, java.util.List.of(jar));
+        var rec = ac.storeArtifacts("package-jar", "pkg", Map.of(), out, List.of(jar));
         String sha = rec.outputs().values().iterator().next();
 
         Files.writeString(cas.pathFor(sha), "corrupt!!");

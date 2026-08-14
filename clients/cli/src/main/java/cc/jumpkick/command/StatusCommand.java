@@ -35,11 +35,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -537,7 +533,7 @@ public final class StatusCommand implements CliCommand {
                     p.description(),
                     p.m2install(),
                     p.layout(),
-                    java.util.Set.of());
+                    Set.of());
             return build.withProject(resolved);
         } catch (Exception e) {
             return build;
@@ -695,7 +691,7 @@ public final class StatusCommand implements CliCommand {
         long mins = totalSec / 60;
         long secs = totalSec % 60;
         // Omit zero components: "1d 4h 12s", "3m 12s", "22s".
-        java.util.ArrayList<String> parts = new java.util.ArrayList<>(4);
+        ArrayList<String> parts = new ArrayList<>(4);
         if (days > 0) parts.add(days + "d");
         if (hours > 0) parts.add(hours + "h");
         if (mins > 0) parts.add(mins + "m");

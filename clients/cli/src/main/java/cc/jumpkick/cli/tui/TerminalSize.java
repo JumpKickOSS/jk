@@ -1,15 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.function.Supplier;
+import sun.misc.Signal;
 
 /**
  * Process-wide terminal-size cache. Probing costs a subprocess fork — {@code stty size} against
  * {@code /dev/tty}. We deliberately do NOT build a JLine terminal: JLine probes the terminal with
- * capability queries (DA1 {@code \e[c}, mode reports like {@code \e[?2027$p}), and a transient
- * build-then-close races the async replies — they arrive after we exit and the shell echoes them
- * as garbage. Instead ask the tty directly via {@code stty size} (an ioctl, no escape sequences),
- * then the {@code $LINES}/{@code $COLUMNS} env, then conservative defaults.
+ * capability queries, and a transient build-then-close races the async replies — they arrive
+ * after we exit and the shell echoes them as garbage. Instead ask the tty directly via
+ * {@code stty size} (an ioctl, no escape sequences), then the {@code $LINES}/{@code $COLUMNS}
+ * env, then conservative defaults.
  *
  * <p>The probe runs once and the result is reused; {@link #refresh()} re-probes at natural
  * boundaries (the start of a live plan), which also picks up a resize between builds. Render
@@ -39,11 +43,11 @@ public final class TerminalSize {
     private static void ensureWinchHandler() {
         if (winchAttempted) return;
         winchAttempted = true;
-        if (System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win")) {
+        if (System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")) {
             return;
         }
         try {
-            sun.misc.Signal.handle(new sun.misc.Signal("WINCH"), sig -> cached = null);
+            Signal.handle(new Signal("WINCH"), sig -> cached = null);
         } catch (Throwable t) {
             // unsupported runtime — the plan-start refresh still applies
         }
@@ -82,11 +86,10 @@ public final class TerminalSize {
     private static int[] probeTty() {
         try {
             Process p = new ProcessBuilder("stty", "size")
-                    .redirectInput(ProcessBuilder.Redirect.from(new java.io.File("/dev/tty")))
+                    .redirectInput(ProcessBuilder.Redirect.from(new File("/dev/tty")))
                     .redirectError(ProcessBuilder.Redirect.DISCARD)
                     .start();
-            String out =
-                    new String(p.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.US_ASCII).trim();
+            String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.US_ASCII).trim();
             p.waitFor();
             String[] parts = out.split("\\s+"); // "<rows> <cols>"
             if (parts.length == 2) {

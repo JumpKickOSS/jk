@@ -10,13 +10,12 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Forks {@code TestRunner} child JVM(s): one-shot when {@code workers=1}, else discovery + N
@@ -147,9 +146,7 @@ public final class JUnitLauncher {
         if (!Files.isRegularFile(jkToml)) return;
         try {
             String toml = Files.readString(jkToml);
-            if (!java.util.regex.Pattern.compile("(?m)^\\s*\\[quarkus]\\s*$")
-                    .matcher(toml)
-                    .find()) {
+            if (!Pattern.compile("(?m)^\\s*\\[quarkus]\\s*$").matcher(toml).find()) {
                 return;
             }
             // Only ever replace a pom jk itself generated (the marker comment below) or a raw
@@ -218,11 +215,10 @@ public final class JUnitLauncher {
 
     private static String tomlField(String toml, String key, String def) {
         // Match `key = "value"` or `key = value` at line start (project / quarkus tables).
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
-                        "(?m)^\\s*" + java.util.regex.Pattern.quote(key) + "\\s*=\\s*\"([^\"]+)\"")
+        Matcher m = Pattern.compile("(?m)^\\s*" + Pattern.quote(key) + "\\s*=\\s*\"([^\"]+)\"")
                 .matcher(toml);
         if (m.find()) return m.group(1).trim();
-        m = java.util.regex.Pattern.compile("(?m)^\\s*" + java.util.regex.Pattern.quote(key) + "\\s*=\\s*(\\S+)")
+        m = Pattern.compile("(?m)^\\s*" + Pattern.quote(key) + "\\s*=\\s*(\\S+)")
                 .matcher(toml);
         if (m.find()) return m.group(1).trim().replace("\"", "");
         return def;
@@ -277,17 +273,14 @@ public final class JUnitLauncher {
     }
 
     private static String quarkusVersion(String toml, String def) {
-        java.util.regex.Matcher table =
-                java.util.regex.Pattern.compile("(?m)^\\s*\\[quarkus]\\s*$").matcher(toml);
+        Matcher table = Pattern.compile("(?m)^\\s*\\[quarkus]\\s*$").matcher(toml);
         if (!table.find()) return def;
         // Scan only until the next table header — a `version` in a later table (e.g.
         // [project]) must not become the platform BOM version.
         String rest = toml.substring(table.end());
-        java.util.regex.Matcher nextTable =
-                java.util.regex.Pattern.compile("(?m)^\\s*\\[").matcher(rest);
+        Matcher nextTable = Pattern.compile("(?m)^\\s*\\[").matcher(rest);
         if (nextTable.find()) rest = rest.substring(0, nextTable.start());
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?m)^\\s*version\\s*=\\s*\"([^\"]+)\"")
-                .matcher(rest);
+        Matcher m = Pattern.compile("(?m)^\\s*version\\s*=\\s*\"([^\"]+)\"").matcher(rest);
         if (m.find()) return m.group(1).trim();
         return def;
     }
@@ -523,7 +516,7 @@ public final class JUnitLauncher {
         MarkdownTestReport md = testResultsDir != null ? new MarkdownTestReport() : null;
 
         var queue = new ConcurrentLinkedDeque<>(classes);
-        var aggregators = new java.util.ArrayList<ResultAggregator>();
+        var aggregators = new ArrayList<ResultAggregator>();
         var workerThreads = new ArrayList<Thread>();
         int[] exits = new int[actualWorkers];
         var captures = new ArrayList<CaptureBuffer>();
@@ -619,7 +612,7 @@ public final class JUnitLauncher {
             TestProgressListener listener,
             CaptureBuffer crash) {
         // Pull protocol: each "ready" pulls the next class from the shared queue.
-        java.util.function.BiConsumer<String, PluginProcess.Conversation> handler = (json, convo) -> {
+        BiConsumer<String, PluginProcess.Conversation> handler = (json, convo) -> {
             String event = Jsonl.str(json, "event");
             if ("ready".equals(event)) {
                 String next = queue.pollFirst();
@@ -633,7 +626,7 @@ public final class JUnitLauncher {
                 aggregator.accept(json);
             }
         };
-        java.util.function.Consumer<String> passthrough = line -> {
+        Consumer<String> passthrough = line -> {
             crash.add(line);
             listener.onUserOutput(workerId, line);
         };
@@ -771,13 +764,13 @@ public final class JUnitLauncher {
         // @RepeatedTest invocations that weren't in the static plan. Used
         // to mark their later `finished`/`skipped` events as wasStatic=false
         // so progress UIs can keep a stable static-plan denominator.
-        private final java.util.Set<String> dynamicIds = new java.util.HashSet<>();
+        private final Set<String> dynamicIds = new HashSet<>();
         // Distinct classes with at least one executed (finished/skipped) test — the
         // class-rate ETA prior's denominator. Workers partition by class, so
         // per-worker counts sum without overlap.
-        private final java.util.Set<String> executedClasses = new java.util.HashSet<>();
+        private final Set<String> executedClasses = new HashSet<>();
         /** FQCN → wall-ms for CONTAINER finished events (class-level timing for ETA). */
-        private final java.util.Map<String, Long> classWallMs = new java.util.LinkedHashMap<>();
+        private final Map<String, Long> classWallMs = new LinkedHashMap<>();
 
         /** Test-friendly ctor: no listener, no worker id, no reports. */
         ResultAggregator() {
@@ -983,7 +976,7 @@ public final class JUnitLauncher {
             if (throwableJson == null) return "";
             String s = Jsonl.str(throwableJson, "stack");
             if (s == null) {
-                java.util.List<String> lines = Jsonl.strArray(throwableJson, "stack");
+                List<String> lines = Jsonl.strArray(throwableJson, "stack");
                 if (lines.isEmpty()) return "";
                 s = String.join("\n", lines);
             }
@@ -1150,7 +1143,7 @@ public final class JUnitLauncher {
      */
     static final class CaptureBuffer {
         private static final int MAX_LINES = 400;
-        private final java.util.ArrayDeque<String> lines = new java.util.ArrayDeque<>();
+        private final ArrayDeque<String> lines = new ArrayDeque<>();
 
         synchronized void add(String line) {
             if (line == null) return;

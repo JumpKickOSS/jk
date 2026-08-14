@@ -25,6 +25,7 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -368,9 +369,9 @@ public final class JdkUpdateCommand implements CliCommand {
     }
 
     private static Path ephemeralCachePath() throws IOException {
-        Path tmp = java.nio.file.Files.createTempFile("jk-feed-", ".json.xz");
+        Path tmp = Files.createTempFile("jk-feed-", ".json.xz");
         tmp.toFile().deleteOnExit();
-        java.nio.file.Files.delete(tmp); // force a fresh fetch
+        Files.delete(tmp); // force a fresh fetch
         return tmp;
     }
 }

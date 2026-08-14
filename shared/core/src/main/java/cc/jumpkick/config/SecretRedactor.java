@@ -9,6 +9,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Masks {@code.env}-sourced values in text that leaves the process.
@@ -83,8 +84,7 @@ public final class SecretRedactor {
      * {@code.env} file (not the real environment).
      */
     /** Redactors are immutable; memo by value-set so per-line redaction reuses one. */
-    private static final java.util.concurrent.ConcurrentHashMap<Set<String>, SecretRedactor> MEMO =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Set<String>, SecretRedactor> MEMO = new ConcurrentHashMap<>();
 
     public static SecretRedactor from(EnvLookup env) {
         Objects.requireNonNull(env, "env");

@@ -11,6 +11,8 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Set;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
@@ -50,7 +52,7 @@ class KspRoomHiltTest {
 
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
         BuildPlan lock = LockPlans.lockBuildPlan(
-                project, build, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
+                project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         BuildPlanResult lockResult = lock.run();
         assertThat(lockResult.errors()).isEmpty();
         assertThat(lockResult.success()).isTrue();
@@ -69,7 +71,7 @@ class KspRoomHiltTest {
                 false,
                 false,
                 false,
-                java.util.Set.of(),
+                Set.of(),
                 SessionContext.current());
         BuildPlanResult result = BuildPlanner.coreBuilder(in).build().run();
         assertThat(result.errors().stream()

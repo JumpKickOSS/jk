@@ -19,6 +19,7 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.util.JkDirs;
+import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -151,7 +152,7 @@ public final class JshellCommand implements CliCommand {
                     "JShell",
                     missing + " lock classpath entry(ies) missing on disk — run `jk sync`"));
         }
-        String classpath = String.join(java.io.File.pathSeparator, cp);
+        String classpath = String.join(File.pathSeparator, cp);
 
         List<String> cmd = new ArrayList<>();
         cmd.add(jshellBin.toString());

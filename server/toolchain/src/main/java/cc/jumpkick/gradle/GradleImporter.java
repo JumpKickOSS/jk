@@ -60,7 +60,7 @@ public final class GradleImporter {
 
     /** Gradle plugin id → import rule, from every installed manifest's [[import.gradle-plugin]]. */
     private static Map<String, PluginImportRule> pluginImportRules() {
-        Map<String, PluginImportRule> rules = new java.util.LinkedHashMap<>();
+        Map<String, PluginImportRule> rules = new LinkedHashMap<>();
         for (var manifest : cc.jumpkick.plugin.manifest.PluginTableRegistry.manifests()) {
             for (var rule : manifest.gradleImports()) {
                 rules.put(
@@ -90,7 +90,7 @@ public final class GradleImporter {
             Matcher m = versionPattern.matcher(pluginsBody);
             if (m.find()) {
                 out.add(new cc.jumpkick.plugin.PluginConfig(
-                        rule.manifestId(), java.util.Map.of(rule.versionTo(), firstNonNull(m.group(1), m.group(2)))));
+                        rule.manifestId(), Map.of(rule.versionTo(), firstNonNull(m.group(1), m.group(2)))));
             } else if (rule.missingVersionWarning() != null) {
                 report.warning(rule.missingVersionWarning());
             }
@@ -242,8 +242,8 @@ public final class GradleImporter {
     private static Map<String, String> detectManifestAttributes(
             String text, String group, String artifact, String version, ImportReport.Builder report) {
         String body = extractBlock(text, "manifest").orElse(null);
-        if (body == null) return new java.util.LinkedHashMap<>();
-        Map<String, String> attrs = new java.util.LinkedHashMap<>();
+        if (body == null) return new LinkedHashMap<>();
+        Map<String, String> attrs = new LinkedHashMap<>();
         for (Matcher m = MANIFEST_ATTR.matcher(body); m.find(); ) {
             String key = firstNonNull(m.group(1), m.group(2));
             if (key == null) continue;

@@ -9,6 +9,7 @@ import java.io.OutputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -209,7 +210,7 @@ class WizardTest {
         var wizard = Wizard.builder()
                 .command("Test")
                 .step(WizardStep.InputStep.of("name", "Name").build())
-                .step(WizardStep.OutputStep.of("preview", a -> java.util.List.of("Hello " + a.get("name")))
+                .step(WizardStep.OutputStep.of("preview", a -> List.of("Hello " + a.get("name")))
                         .build())
                 .build();
 

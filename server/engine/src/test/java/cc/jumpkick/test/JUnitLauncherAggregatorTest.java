@@ -4,6 +4,7 @@ package cc.jumpkick.test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.run.TestSummary;
+import java.util.ArrayList;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -155,7 +156,7 @@ class JUnitLauncherAggregatorTest {
         // (TEST type) and stamp wasStatic=false on the matching finished
         // event. Plain @Test methods are not preceded by dynamic_registered
         // and should arrive as wasStatic=true.
-        var captured = new java.util.ArrayList<boolean[]>(); // [isTest, wasStatic]
+        var captured = new ArrayList<boolean[]>(); // [isTest, wasStatic]
         var listener = new TestProgressListener() {
             @Override
             public void onTestFinished(

@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver.pubgrub;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.TreeMap;
+import java.util.*;
 
 /**
  * PubGrub assignment stack (decisions + derivations) with decision-level backtracking. Per-package
@@ -256,12 +251,12 @@ public final class PartialSolution {
      * path.
      */
     public List<Assignment> assignments() {
-        return java.util.Collections.unmodifiableList(assignments);
+        return Collections.unmodifiableList(assignments);
     }
 
     /** Snapshot of decisions without sorting (hot path). Prefer over {@link #decisions()} in the solver. */
     public Map<String, String> decisionsUnsorted() {
-        return java.util.Collections.unmodifiableMap(decisionByPackage);
+        return Collections.unmodifiableMap(decisionByPackage);
     }
 
     /**

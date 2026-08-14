@@ -12,10 +12,7 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -82,10 +79,10 @@ class JavaIncrementalCompileTest {
         // adds an overload, an ABI change A's bytecode must react to.
         JavacFixture.compile(
                 dir.resolve("depv1"),
-                java.util.Map.of("dep.Lib", "package dep; public class Lib { public void f(Object o) {} }"));
+                Map.of("dep.Lib", "package dep; public class Lib { public void f(Object o) {} }"));
         JavacFixture.compile(
                 dir.resolve("depv2"),
-                java.util.Map.of(
+                Map.of(
                         "dep.Lib",
                         "package dep; public class Lib { public void f(Object o) {} public void f(String s) {} }"));
         Path depV1 = dir.resolve("depv1").resolve("out");
@@ -229,11 +226,10 @@ class JavaIncrementalCompileTest {
     @Test
     void predict_classpath_change_reasons_full(@TempDir Path dir) throws Exception {
         JavacFixture.compile(
-                dir.resolve("depv1"),
-                java.util.Map.of("dep.Lib", "package dep; public class Lib { public void f() {} }"));
+                dir.resolve("depv1"), Map.of("dep.Lib", "package dep; public class Lib { public void f() {} }"));
         JavacFixture.compile(
                 dir.resolve("depv2"),
-                java.util.Map.of("dep.Lib", "package dep; public class Lib { public void f() {} public void g() {} }"));
+                Map.of("dep.Lib", "package dep; public class Lib { public void f() {} public void g() {} }"));
         Path depV1 = dir.resolve("depv1").resolve("out");
         Path depV2 = dir.resolve("depv2").resolve("out");
 

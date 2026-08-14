@@ -16,10 +16,7 @@ import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Stream;
 
 /**
@@ -120,7 +117,7 @@ public final class SpringBootPlugin implements Plugin, BuildExtension, PackageEx
     private static String tail(String output) {
         String[] lines = output.split("\n");
         int from = Math.max(0, lines.length - 40);
-        return String.join("\n", java.util.Arrays.copyOfRange(lines, from, lines.length));
+        return String.join("\n", Arrays.copyOfRange(lines, from, lines.length));
     }
 
     // ---- boot-jar packager ------------------------------------------------------------------

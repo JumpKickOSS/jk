@@ -21,8 +21,11 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.EnumSet;
+import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -77,7 +80,7 @@ public final class InstallCommand {
         }
 
         boolean isJar = filePath.getFileName().toString().toLowerCase().endsWith(".jar");
-        java.util.Optional<Coordinate> detected = java.util.Optional.empty();
+        Optional<Coordinate> detected = Optional.empty();
         if (isJar) {
             try {
                 detected = JarManifest.coordinateFrom(filePath);
@@ -153,7 +156,7 @@ public final class InstallCommand {
             outcome = cc.jumpkick.cli.engine.EngineClient.runToolResolve(
                     cc.jumpkick.engine.EnginePaths.current(),
                     new cc.jumpkick.cli.engine.EngineRequests.ToolResolveRequest(
-                            resolved.coordSpec(), java.util.List.of(), bin, mainClass, repoUrl, cacheDir),
+                            resolved.coordSpec(), List.of(), bin, mainClass, repoUrl, cacheDir),
                     steps -> BuildPlanConsole.chooseConsoleListener("install-maven", steps, mode));
         } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Install", e.getMessage()));
@@ -170,7 +173,7 @@ public final class InstallCommand {
                 JavaHomes.runningJavaHome(),
                 env,
                 new cc.jumpkick.tool.ToolProvenance("gav", coord, env.primary().toGav()),
-                java.util.List.of());
+                List.of());
         announceInstall(Coords.gav(env.primary()), launcher, binDir);
         return 0;
     }
@@ -261,8 +264,7 @@ public final class InstallCommand {
         // never run inside the engine).
         Path graalHome = null;
         if (isNative) {
-            java.util.Optional<Path> resolved =
-                    new cc.jumpkick.cli.GraalResolver(null, false).resolve(projectDir, proj.graal());
+            Optional<Path> resolved = new cc.jumpkick.cli.GraalResolver(null, false).resolve(projectDir, proj.graal());
             if (resolved.isEmpty()) return 1; // GraalResolver already printed why
             graalHome = resolved.get();
         }
@@ -348,7 +350,7 @@ public final class InstallCommand {
             Files.createDirectories(dest.getParent());
             // COPY, never link: src is a target/ artifact the next build rewrites in place —
             // an installed tool must be a stable snapshot, not an alias of the build tree.
-            Files.copy(src, dest, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(src, dest, StandardCopyOption.REPLACE_EXISTING);
         }
         if (!plan.launcherScript().isEmpty()) {
             Path launcher = Path.of(plan.launcherPath());

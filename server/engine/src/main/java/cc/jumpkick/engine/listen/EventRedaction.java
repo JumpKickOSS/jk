@@ -4,6 +4,7 @@ package cc.jumpkick.engine.listen;
 import cc.jumpkick.run.TestFailureInfo;
 import java.nio.file.Path;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -37,8 +38,7 @@ public final class EventRedaction {
      * discoverable (JK-1965). One warning per engine run, on stderr (merged into the engine log
      * by the spawn line).
      */
-    private static final java.util.concurrent.atomic.AtomicBoolean WARNED_FAIL_OPEN =
-            new java.util.concurrent.atomic.AtomicBoolean();
+    private static final AtomicBoolean WARNED_FAIL_OPEN = new AtomicBoolean();
 
     static void warnFailOpen(RuntimeException e) {
         if (WARNED_FAIL_OPEN.compareAndSet(false, true)) {

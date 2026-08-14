@@ -32,6 +32,8 @@ import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.io.PrintStream;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -62,8 +64,8 @@ public final class JdkUninstallCommand implements CliCommand {
     }
 
     @Override
-    public java.util.List<String> aliases() {
-        return java.util.List.of("remove", "rm", "del");
+    public List<String> aliases() {
+        return List.of("remove", "rm", "del");
     }
 
     @Override
@@ -72,15 +74,15 @@ public final class JdkUninstallCommand implements CliCommand {
     }
 
     @Override
-    public java.util.List<Opt> options() {
-        return java.util.List.of(
+    public List<Opt> options() {
+        return List.of(
                 Opt.value("<dir>", "Override the JDK install root. Default: the IntelliJ JDK directory.", "--jdks-dir")
                         .hide());
     }
 
     @Override
-    public java.util.List<Param> parameters() {
-        return java.util.List.of(Param.of(
+    public List<Param> parameters() {
+        return List.of(Param.of(
                 "spec",
                 Arity.ZERO_OR_ONE,
                 "The vendor/version of JDK you'd like to uninstall\n"
@@ -448,8 +450,8 @@ public final class JdkUninstallCommand implements CliCommand {
     }
 
     /** Swallow stderr from {@code applyLts} when we're going to fall back ourselves. */
-    private static java.io.PrintStream swallow() {
-        return new java.io.PrintStream(new java.io.OutputStream() {
+    private static PrintStream swallow() {
+        return new PrintStream(new OutputStream() {
             @Override
             public void write(int b) {}
 

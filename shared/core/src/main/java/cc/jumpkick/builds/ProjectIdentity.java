@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Optional;
@@ -338,7 +339,7 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
     private static String git(Path cwd, String... args) {
         try {
             ProcessBuilder pb = new ProcessBuilder();
-            pb.command(new java.util.ArrayList<>() {
+            pb.command(new ArrayList<>() {
                 {
                     add("git");
                     for (String a : args) add(a);

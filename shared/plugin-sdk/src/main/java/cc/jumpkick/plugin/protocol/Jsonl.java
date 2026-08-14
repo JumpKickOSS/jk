@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.protocol;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 
 /**
  * Dependency-free JSONL field codec for plugin wire lines: readers return defaults on missing/bad
@@ -341,8 +339,8 @@ public final class Jsonl {
      * empty (mutable-safe, insertion-ordered) map when absent or malformed. The ONE wire encoding
      * for maps — parallel name/value arrays are gone.
      */
-    public static java.util.Map<String, String> strMap(String json, String key) {
-        var out = new java.util.LinkedHashMap<String, String>();
+    public static Map<String, String> strMap(String json, String key) {
+        var out = new LinkedHashMap<String, String>();
         String obj = nested(json, key);
         if (obj == null) return out;
         // obj is "{...}" — scan "k":"v" pairs at depth 1.
@@ -387,7 +385,7 @@ public final class Jsonl {
      * Encode a flat string map as a JSON object ({@code {"a":"1"}}), keys in iteration order —
      * the writer half of {@link #strMap}. Null maps encode as {@code {}}.
      */
-    public static String map(java.util.Map<String, String> m) {
+    public static String map(Map<String, String> m) {
         if (m == null || m.isEmpty()) return "{}";
         StringBuilder b = new StringBuilder("{");
         boolean first = true;

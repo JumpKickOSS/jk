@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Stream;
 
 /**
@@ -65,9 +66,8 @@ final class ProtocStep {
     /** Stage the fetched binary into scratch with the executable bit set (cache files are read-only). */
     private static Path executable(TaskExec exec) throws IOException {
         Path fetched = exec.requireExtra("protoc");
-        boolean windows = System.getProperty("os.name", "")
-                .toLowerCase(java.util.Locale.ROOT)
-                .contains("win");
+        boolean windows =
+                System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
         Path staged =
                 Files.createDirectories(exec.scratch().resolve("tools")).resolve(windows ? "protoc.exe" : "protoc");
         Files.copy(fetched, staged, StandardCopyOption.REPLACE_EXISTING);

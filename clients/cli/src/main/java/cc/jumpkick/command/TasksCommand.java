@@ -23,12 +23,7 @@ import cc.jumpkick.runtime.TaskForecast;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 
 /**
  * {@code jk tasks} — Mill-lite task list / show / inspect.
@@ -56,7 +51,7 @@ public final class TasksCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        var opts = new java.util.ArrayList<Opt>();
+        var opts = new ArrayList<Opt>();
         opts.addAll(cc.jumpkick.cli.CommonOpts.moduleSelection());
         opts.add(cc.jumpkick.cli.CommonOpts.cacheDirHidden());
         return opts;
@@ -127,7 +122,7 @@ public final class TasksCommand implements CliCommand {
             }
             if (!first) CliOutput.out("");
             first = false;
-            List<List<String>> rows = new java.util.ArrayList<>();
+            List<List<String>> rows = new ArrayList<>();
             for (TaskCatalog.TaskDef t : TaskCatalog.buildTasks()) {
                 rows.add(List.of(t.name(), t.stage(), t.description()));
             }

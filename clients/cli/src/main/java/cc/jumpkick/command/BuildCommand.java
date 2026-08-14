@@ -26,12 +26,14 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.util.JkDirs;
+import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.time.Duration;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /** {@code jk build} — orchestrates lock, sync, compile, test, and package. */
 public final class BuildCommand implements CliCommand {
@@ -48,7 +50,7 @@ public final class BuildCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        List<Opt> opts = new java.util.ArrayList<>();
+        List<Opt> opts = new ArrayList<>();
         opts.add(Opt.value("<name>", "Build profile (default auto)", "--profile"));
         opts.add(Opt.value("<N>", "Test JVMs per module (0=auto)", "-w", "--workers"));
         opts.add(cc.jumpkick.cli.CommonOpts.cacheDir());
@@ -77,7 +79,7 @@ public final class BuildCommand implements CliCommand {
     String variant;
     String affectedSince;
     String modulesSpec;
-    java.util.Map<String, String> clientEnv = java.util.Map.of();
+    Map<String, String> clientEnv = Map.of();
     /** Best-effort session transcript; null when disabled / no project. */
     private CliSessionTranscript session;
     // ---- BuildPlanKeys -------------------------------------------------------
@@ -350,9 +352,9 @@ public final class BuildCommand implements CliCommand {
                         true, // single-process CLI: plan our own worker-JVM memory budget
                         true) // jk build: auto-freshen a stale workspace lock engine-side
                 .withVariant(variant, clientEnv);
-        Map<Path, List<String>> buffers = new java.util.concurrent.ConcurrentHashMap<>();
+        Map<Path, List<String>> buffers = new ConcurrentHashMap<>();
         int[] total = {0};
-        java.util.concurrent.atomic.AtomicInteger done = new java.util.concurrent.atomic.AtomicInteger();
+        AtomicInteger done = new AtomicInteger();
         long start = System.nanoTime();
         boolean json = global.outputIsJson();
         cc.jumpkick.runtime.WorkspaceResult result;
@@ -399,7 +401,7 @@ public final class BuildCommand implements CliCommand {
                                 return cc.jumpkick.cli.run.CompositeBuildPlanListener.of(
                                         new cc.jumpkick.cli.run.JsonlListener(System.out, false), log);
                             }
-                            List<String> buf = java.util.Collections.synchronizedList(new ArrayList<>());
+                            List<String> buf = Collections.synchronizedList(new ArrayList<>());
                             buffers.put(m.dir(), buf);
                             var outLis = new cc.jumpkick.run.BuildPlanListener() {
                                 @Override
@@ -450,13 +452,13 @@ public final class BuildCommand implements CliCommand {
             cc.jumpkick.cli.run.JsonlShape.emitJsonl(
                     cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsed, total[0]), json);
             if (!json) {
-                String took = ConsoleSpec.took(java.time.Duration.ofMillis(elapsed));
+                String took = ConsoleSpec.took(Duration.ofMillis(elapsed));
                 CliOutput.out(JkWedge.cancelledJobLine("Build", GlobalConfig.nerdfont(), false, took));
             }
             if (session != null) session.wedge("Build job was cancelled");
             notifyBuild(BuildNotify.Outcome.CANCELLED, entryDir, entryBuild, 0, elapsed);
             return 1;
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             long elapsed = (System.nanoTime() - start) / 1_000_000;
             cc.jumpkick.cli.run.JsonlShape.emitJsonl(
                     cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsed, total[0]), json);
@@ -474,7 +476,7 @@ public final class BuildCommand implements CliCommand {
             cc.jumpkick.cli.run.JsonlShape.emitJsonl(
                     cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]), json);
             if (!json) {
-                String took = ConsoleSpec.took(java.time.Duration.ofMillis(elapsedMs));
+                String took = ConsoleSpec.took(Duration.ofMillis(elapsedMs));
                 CliOutput.out(JkWedge.cancelledJobLine("Build", GlobalConfig.nerdfont(), false, took));
             }
             if (session != null) session.wedge("Build job was cancelled");
@@ -549,9 +551,9 @@ public final class BuildCommand implements CliCommand {
             long start,
             Set<Path> dirtyDirs,
             boolean lockStale) {
-        Map<Path, List<String>> buffers = new java.util.concurrent.ConcurrentHashMap<>();
-        List<String> deferredOutput = java.util.Collections.synchronizedList(new ArrayList<>());
-        java.util.concurrent.atomic.AtomicInteger completed = new java.util.concurrent.atomic.AtomicInteger();
+        Map<Path, List<String>> buffers = new ConcurrentHashMap<>();
+        List<String> deferredOutput = Collections.synchronizedList(new ArrayList<>());
+        AtomicInteger completed = new AtomicInteger();
         int[] total = {0};
         // Reuse the forecast dirty set unless the workspace lock is stale (engine re-locks and
         // re-forecasts). Exceptionan explicit --modules / --affected-since selection
@@ -618,7 +620,7 @@ public final class BuildCommand implements CliCommand {
                     // the headless path's onModuleStart above for why.
                     var log = cc.jumpkick.cli.run.EventLogListener.open(
                             m.cache(), m.plan().name());
-                    List<String> buf = java.util.Collections.synchronizedList(new ArrayList<>());
+                    List<String> buf = Collections.synchronizedList(new ArrayList<>());
                     buffers.put(m.dir(), buf);
                     // Step tree + output only; aggregate bar is engine-owned.
                     var lis = new cc.jumpkick.cli.run.AggregateModuleListener(
@@ -673,7 +675,7 @@ public final class BuildCommand implements CliCommand {
             if (session != null) session.wedge("Build job was cancelled");
             notifyBuild(BuildNotify.Outcome.CANCELLED, entryDir, entryBuild, view.etaEstimateMs(), elapsedMs);
             return 1;
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             // finishBuildPlanFailure's own `tail` already gets wrapped in JkWedge.failureLine(planName,
             // nerdfont, tail) internally — pass the plain message, not a pre-rendered failure line
             // (passing one double-wraps it into a garbled "‼ Build ‼ Build..." chip).
@@ -783,7 +785,7 @@ public final class BuildCommand implements CliCommand {
             // Green + strike matches web success modules (was plain white strike).
             sb.append(Theme.colorize(coord, th.success().crossedOut()))
                     .append(' ')
-                    .append(ConsoleSpec.took(java.time.Duration.ofMillis(millis)));
+                    .append(ConsoleSpec.took(Duration.ofMillis(millis)));
         } else {
             sb.append(JkManager.coloredModule(coord)).append(' ').append(Theme.colorize("— failed", th.error()));
         }
@@ -806,7 +808,7 @@ public final class BuildCommand implements CliCommand {
 
         try {
             dir = dir.toRealPath();
-        } catch (java.io.IOException ignored) {
+        } catch (IOException ignored) {
         }
         String target = buildTarget(buildFile, dir);
 
@@ -825,7 +827,7 @@ public final class BuildCommand implements CliCommand {
                     if (session != null) session.module(target).wedge(upToDate);
                     return 0;
                 }
-            } catch (java.io.IOException | RuntimeException ignored) {
+            } catch (IOException | RuntimeException ignored) {
                 // best-effort shortcut — fall through to the real build
             }
         }
@@ -877,7 +879,7 @@ public final class BuildCommand implements CliCommand {
             CliOutput.out(JkWedge.cancelledJobLine("Build", GlobalConfig.nerdfont(), false, ""));
             if (session != null) session.wedge("Build job was cancelled");
             return 1;
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", e.getMessage()));
             if (session != null) session.error(e.getMessage());
             return Exit.SOFTWARE;
@@ -925,7 +927,7 @@ public final class BuildCommand implements CliCommand {
      */
     static String elapsedSince(long startNanos) {
         long ms = (System.nanoTime() - startNanos) / 1_000_000;
-        return cc.jumpkick.cli.run.ConsoleSpec.took(java.time.Duration.ofMillis(ms));
+        return cc.jumpkick.cli.run.ConsoleSpec.took(Duration.ofMillis(ms));
     }
 
     /** The green {@code Build successful} lead that opens every build success message. */
@@ -947,10 +949,7 @@ public final class BuildCommand implements CliCommand {
      * @param dirtyDirs preflight dirty set when known; empty means up-to-date shortcut
      */
     static String successTail(
-            List<cc.jumpkick.runtime.ModuleOutcome> modules,
-            int planned,
-            java.util.Set<java.nio.file.Path> dirtyDirs,
-            long start) {
+            List<cc.jumpkick.runtime.ModuleOutcome> modules, int planned, Set<Path> dirtyDirs, long start) {
         if (planned == 0 || (dirtyDirs != null && dirtyDirs.isEmpty())) {
             return upToDateTail("all modules", start);
         }
@@ -1046,8 +1045,8 @@ public final class BuildCommand implements CliCommand {
 
     /** The headline artifact from ProjectInfo's candidate paths (native > assembly > jar). */
     static String builtArtifact(Path moduleRoot, cc.jumpkick.engine.protocol.ProjectInfo info) {
-        for (String candidate : java.util.List.of(
-                info.nativeBinPath(), info.nativeLibPath(), info.assemblyJarPath(), info.mainJarPath())) {
+        for (String candidate :
+                List.of(info.nativeBinPath(), info.nativeLibPath(), info.assemblyJarPath(), info.mainJarPath())) {
             if (candidate.isEmpty()) continue;
             Path p = Path.of(candidate);
             if (Files.isRegularFile(p)) {
@@ -1102,7 +1101,7 @@ public final class BuildCommand implements CliCommand {
      */
     private static String relForDisplay(Path base, Path p) {
         try {
-            return base.relativize(p).toString().replace(java.io.File.separatorChar, '/');
+            return base.relativize(p).toString().replace(File.separatorChar, '/');
         } catch (RuntimeException e) {
             return p.getFileName().toString();
         }

@@ -37,6 +37,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashSet;
@@ -553,7 +554,7 @@ public final class ScriptPlans {
                 throw new IOException("//FILES source not found: " + from + " (from `" + spec + "`)");
             }
             Files.createDirectories(to.getParent());
-            Files.copy(from, to, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(from, to, StandardCopyOption.REPLACE_EXISTING);
         }
     }
 

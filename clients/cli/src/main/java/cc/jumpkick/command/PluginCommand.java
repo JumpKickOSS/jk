@@ -23,10 +23,7 @@ import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * {@code jk plugin …} — first-party worker packaging helpers for self-host / dogfood.
@@ -95,8 +92,7 @@ public final class PluginCommand extends GroupCommand {
             Path repoDir = installRoot.resolve("repos/local/cc/jumpkick").resolve(artifactId);
             if (Files.isDirectory(repoDir)) {
                 try (var walk = Files.walk(repoDir)) {
-                    for (Path p :
-                            walk.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                    for (Path p : walk.sorted(Comparator.reverseOrder()).toList()) {
                         Files.deleteIfExists(p);
                     }
                 }

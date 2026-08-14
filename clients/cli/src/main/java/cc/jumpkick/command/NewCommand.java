@@ -27,10 +27,8 @@ import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import org.jline.terminal.Terminal;
 
 /**
@@ -106,9 +104,9 @@ public final class NewCommand implements CliCommand {
     boolean micronaut;
     boolean plugin;
     String templateRef;
-    java.util.List<String> templateParams = java.util.List.of();
+    List<String> templateParams = List.of();
     /** One-shot third-party git sources for short-name lookup (JK-1380). */
-    java.util.List<String> templateSources = java.util.List.of();
+    List<String> templateSources = List.of();
 
     String depsCsv;
     String layoutFlag;
@@ -331,7 +329,7 @@ public final class NewCommand implements CliCommand {
                 return Exit.SOFTWARE;
             }
         }
-        Map<String, String> params = new java.util.LinkedHashMap<>();
+        Map<String, String> params = new LinkedHashMap<>();
         for (String p : templateParams) {
             int eq = p.indexOf('=');
             if (eq <= 0) {
@@ -403,10 +401,8 @@ public final class NewCommand implements CliCommand {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("discover JDKs + fetch catalog + open terminal");
-                    var jdkOptionsFuture =
-                            java.util.concurrent.CompletableFuture.supplyAsync(NewJdkOptions::discover, JkThreads.io());
-                    var catalogFuture = java.util.concurrent.CompletableFuture.supplyAsync(
-                            NewCommand::fetchCatalogQuiet, JkThreads.io());
+                    var jdkOptionsFuture = CompletableFuture.supplyAsync(NewJdkOptions::discover, JkThreads.io());
+                    var catalogFuture = CompletableFuture.supplyAsync(NewCommand::fetchCatalogQuiet, JkThreads.io());
                     Terminal terminal;
                     try {
                         terminal = Wizard.openTerminal();
@@ -664,7 +660,7 @@ public final class NewCommand implements CliCommand {
             Path rootToml = root.resolve("jk.toml");
             // Registers the module, promoting a plain project into a workspace
             // root (creating the [workspace] table) when this is its first module.
-            EngineEdits.apply(rootToml, "register-workspace-module", java.util.List.of(rel));
+            EngineEdits.apply(rootToml, "register-workspace-module", List.of(rel));
             registered = new Module(root, rel, parent.displayName());
         }
     }

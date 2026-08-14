@@ -21,6 +21,8 @@ import cc.jumpkick.runtime.ModuleOutcome;
 import cc.jumpkick.runtime.WorkspaceBuildListener;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
+import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
 import org.jspecify.annotations.Nullable;
@@ -131,7 +133,7 @@ public final class EngineListeners {
             }
 
             @Override
-            public void moduleGraph(java.util.Map<Path, java.util.Set<Path>> prereqs) {
+            public void moduleGraph(Map<Path, Set<Path>> prereqs) {
                 journal.accModuleGraph(rid, prereqs);
             }
 

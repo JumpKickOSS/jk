@@ -8,6 +8,7 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -181,7 +182,7 @@ public final class BuildPlanConsole {
         EventLogListener log = EventLogListener.open(cacheRoot, plan.name());
         if (log != null) plan.addListener(log);
         attachSessionMirror(plan, Mode.QUIET);
-        List<String> lines = new java.util.ArrayList<>();
+        List<String> lines = new ArrayList<>();
         plan.addListener(new BuildPlanListener() {
             @Override
             public synchronized void output(String step, String line) {
@@ -201,7 +202,7 @@ public final class BuildPlanConsole {
         });
         BuildPlanResult r = plan.run();
         synchronized (lines) { // visibility barrier after the plan's threads finish
-            return new Buffered(r, new java.util.ArrayList<>(TestFailureHighlight.paintLines(lines)));
+            return new Buffered(r, new ArrayList<>(TestFailureHighlight.paintLines(lines)));
         }
     }
 
@@ -266,12 +267,7 @@ public final class BuildPlanConsole {
      * events still feed the shared aggregate view live (the running rows + bar).
      */
     public static BuildPlanResult runBuildPlanIntoBuffered(
-            BuildPlan plan,
-            Path cacheRoot,
-            String module,
-            AggregateContext agg,
-            long slice,
-            java.util.List<String> outBuffer) {
+            BuildPlan plan, Path cacheRoot, String module, AggregateContext agg, long slice, List<String> outBuffer) {
         EventLogListener log = EventLogListener.open(cacheRoot, plan.name());
         if (log != null) plan.addListener(log);
         attachSessionMirror(plan, Mode.AUTO);

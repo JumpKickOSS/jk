@@ -11,6 +11,7 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -74,7 +75,7 @@ class EngineJarFetcherTest {
      * unit tests exercise CAS materialize + SHA256SUMS parsing without signing fixtures.
      */
     private static cc.jumpkick.repo.ReleaseVerifier noSig() {
-        return cc.jumpkick.repo.ReleaseVerifier.of(java.util.List.of());
+        return cc.jumpkick.repo.ReleaseVerifier.of(List.of());
     }
 
     private Path fetch(Path root) throws IOException {
