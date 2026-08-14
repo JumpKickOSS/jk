@@ -13,7 +13,6 @@ class UnownedTableTest {
     @Test
     void unowned_table_is_an_error_naming_the_remedy() {
         assertThatThrownBy(() -> JkBuildParser.parse("""
-                        [project]
                         name = "demo"
                         group = "com.example"
                         version = "1.0.0"
@@ -29,7 +28,6 @@ class UnownedTableTest {
     @Test
     void core_and_plugin_tables_pass() {
         var build = JkBuildParser.parse("""
-                [project]
                 name = "demo"
                 group = "com.example"
                 version = "1.0.0"
@@ -54,7 +52,6 @@ class UnownedTableTest {
         // [acme] cannot be judged: the declared plugin's manifest is not materialized (no lock,
         // no store), so the parse must stay soft — the engine materializes and re-parses.
         var build = JkBuildParser.parse("""
-                [project]
                 name = "demo"
                 group = "com.example"
                 version = "1.0.0"

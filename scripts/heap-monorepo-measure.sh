@@ -54,7 +54,6 @@ for i in $(seq 1 "$MODULES"); do
  dir="$FIXTURE_DIR/$name"
  mkdir -p "$dir/src"
  cat >"$dir/jk.toml" <<EOF
-[project]
 group = "bench"
 name = "$name"
 version = "0.0.1"
@@ -72,7 +71,6 @@ EOF
 done
 
 cat >"$FIXTURE_DIR/jk.toml" <<EOF
-[project]
 group = "bench"
 name = "heap-monorepo"
 version = "0.0.1"

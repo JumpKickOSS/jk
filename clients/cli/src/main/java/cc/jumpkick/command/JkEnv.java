@@ -49,7 +49,7 @@ public final class JkEnv {
     /**
      * Resolve the desired env for a {@code cwd} via the one canonical JDK order ({@link
      * cc.jumpkick.jdk.JdkResolution}): {@code JK_JDK} env, the project's {@code .jdk-version} /
-     * {@code jk-lock.toml} / {@code project.jdk}, then the global current / default JDK, then {@code
+     * {@code jk-lock.toml} / {@code jdk}, then the global current / default JDK, then {@code
      * JAVA_HOME} / {@code GRAALVM_HOME} / {@code PATH}. Never installs (the hook must not block the
      * shell). Empty only when nothing resolves. Carries JAVA_HOME / GRAALVM_HOME / PATH plus the
      * project root (when a {@code jk.toml} was found upstream).
@@ -63,10 +63,9 @@ public final class JkEnv {
         String projectGraal = null;
         int javaRelease = 0;
         if (root.isPresent()) {
-            var scan = cc.jumpkick.config.TomlScan.scan(
-                    root.get().resolve("jk.toml"), "project.jdk", "project.java", "native.graal");
-            projectJdk = scan.get("project.jdk");
-            javaRelease = scan.getInt("project.java", 0);
+            var scan = cc.jumpkick.config.TomlScan.scan(root.get().resolve("jk.toml"), "jdk", "java", "native.graal");
+            projectJdk = scan.get("jdk");
+            javaRelease = scan.getInt("java", 0);
             // [native] present without an explicit graal spec defaults to "graalvm" —
             // mirror JkBuildParser.parseNativeConfig.
             projectGraal = scan.get("native.graal");

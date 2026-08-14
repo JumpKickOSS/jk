@@ -84,7 +84,7 @@ final class PathSourceMaterializer {
 
         boolean isJk = Files.isRegularFile(projectDir.resolve("jk.toml"));
 
-        // Coordinate: read cheaply from a jk target's [project]; a foreign target reveals it only
+        // Coordinate: read cheaply from a jk target's project identity; a foreign target reveals it only
         // after building (cached in the marker for a fingerprint hit).
         String group = null;
         String artifact = null;

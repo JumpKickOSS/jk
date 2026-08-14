@@ -27,7 +27,6 @@ class SourceProjectBuilderTest {
     void jk_target_builds_jar_and_pom_from_the_project_coordinate(@TempDir Path dir) throws Exception {
         // A trivial no-dependency jk.toml project (offline: resolution finds nothing to fetch).
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group    = "com.example"
                 name     = "widgets"
                 version  = "0.1.0"
@@ -64,7 +63,6 @@ class SourceProjectBuilderTest {
     @Test
     void jk_target_uses_the_project_version_when_no_override(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group   = "com.example"
                 name    = "lib"
                 version = "2.5.0"

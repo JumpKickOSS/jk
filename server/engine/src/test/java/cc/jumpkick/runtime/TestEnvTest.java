@@ -130,7 +130,6 @@ class TestEnvTest {
 
     private static JkBuild project(Path dir, String extra) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group   = "com.example"
                 name    = "m"
                 version = "1.0.0"

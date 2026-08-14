@@ -307,7 +307,6 @@ class CacheCommandTest {
     private static void writeProject(Path dir, String group, String name, String version) throws Exception {
         Files.createDirectories(dir);
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "%s"
                 name  = "%s"
                 version = "%s"

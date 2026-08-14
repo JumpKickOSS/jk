@@ -69,7 +69,7 @@ public final class Glyphs {
     /** Progress bar empty cell (plain ASCII). */
     public static final char BAR_EMPTY_PLAIN = '-';
 
-    // Nerd Font powerline pill caps for badges (gated on the *pill* axis of [global].nerd-font).
+    // Nerd Font powerline pill caps for badges (gated on the *pill* axis of nerd-font).
     // Paint the cap in the badge's *background* color (as foreground) so it reads
     // as the chip's rounded edge. Without a Nerd Font there's no good half-circle,
     // so badges fall back to a plain padded chip (no caps). These two live only in

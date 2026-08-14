@@ -99,7 +99,6 @@ class ThirdPartyPluginTest {
         String hex = cc.jumpkick.util.Hashing.sha256Hex(jar);
 
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 name = "demo"
                 group = "com.demo"
                 version = "0.1.0"

@@ -735,7 +735,7 @@ public final class LockPlans {
     }
 
     /**
-     * Display coordinate for a module: {@code group:artifact} from its {@code [project]}, falling
+     * Display coordinate for a module: {@code group:artifact} from its project identity, falling
      * back to the directory name.
      */
     public static String coordLabel(JkBuild build, Path dir) {

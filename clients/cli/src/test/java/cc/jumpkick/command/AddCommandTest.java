@@ -24,7 +24,6 @@ class AddCommandTest {
 
     private static String module(String artifact, String version) {
         return """
-                [project]
                 group    = "cc.jumpkick"
                 name     = "%s"
                 version  = "%s"
@@ -34,7 +33,6 @@ class AddCommandTest {
     @Test
     void add_path_adds_dep_edge_and_registers_module(@TempDir Path tmp) throws IOException {
         write(tmp.resolve("jk.toml"), """
-                [project]
                 group    = "cc.jumpkick"
                 name     = "jk"
                 version  = "0.1.0"
@@ -62,7 +60,6 @@ class AddCommandTest {
     void add_colon_prefixed_name_is_a_local_module(@TempDir Path tmp) throws IOException {
         // `:jackson` — explicit local marker, no path separator.
         write(tmp.resolve("jk.toml"), """
-                [project]
                 group    = "cc.jumpkick"
                 name     = "jk"
                 version  = "0.1.0"
@@ -83,7 +80,6 @@ class AddCommandTest {
     @Test
     void add_trailing_slash_is_a_local_module(@TempDir Path tmp) throws IOException {
         write(tmp.resolve("jk.toml"), """
-                [project]
                 group    = "cc.jumpkick"
                 name     = "jk"
                 version  = "0.1.0"
@@ -102,7 +98,6 @@ class AddCommandTest {
     @Test
     void add_backslash_path_within_workspace_is_a_local_module(@TempDir Path tmp) throws IOException {
         write(tmp.resolve("jk.toml"), """
-                [project]
                 group    = "cc.jumpkick"
                 name     = "jk"
                 version  = "0.1.0"
@@ -126,7 +121,6 @@ class AddCommandTest {
     void add_bare_name_is_path_when_relative_dir_exists(@TempDir Path tmp) throws IOException {
         // Bare token + existing relative directory → local module (not catalog library).
         write(tmp.resolve("jk.toml"), """
-                [project]
                 group    = "cc.jumpkick"
                 name     = "jk"
                 version  = "0.1.0"
@@ -148,7 +142,6 @@ class AddCommandTest {
     void add_bare_name_is_library_when_no_relative_dir(@TempDir Path tmp) throws IOException {
         // No directory by that name → library short name. Unknown catalog entry → usage error.
         write(tmp.resolve("jk.toml"), """
-                [project]
                 group    = "cc.jumpkick"
                 name     = "jk"
                 version  = "0.1.0"
@@ -167,7 +160,6 @@ class AddCommandTest {
     void add_at_version_is_library_even_when_dir_exists(@TempDir Path tmp) throws IOException {
         // name@version is always a library — path disambiguation does not apply.
         write(tmp.resolve("jk.toml"), """
-                [project]
                 group    = "cc.jumpkick"
                 name     = "jk"
                 version  = "0.1.0"
@@ -188,7 +180,6 @@ class AddCommandTest {
     @Test
     void add_at_exact_version_selector(@TempDir Path tmp) throws IOException {
         write(tmp.resolve("jk.toml"), """
-                [project]
                 group    = "cc.jumpkick"
                 name     = "jk"
                 version  = "0.1.0"
@@ -202,7 +193,6 @@ class AddCommandTest {
     @Test
     void add_group_artifact_trailing_colon_is_latest(@TempDir Path tmp) throws IOException {
         write(tmp.resolve("jk.toml"), """
-                [project]
                 group    = "cc.jumpkick"
                 name     = "jk"
                 version  = "0.1.0"
@@ -220,7 +210,6 @@ class AddCommandTest {
         // and defaults to floating "latest" when --ver is omitted, matching the
         // group:artifact coord form. Resolution happens later at `jk lock`.
         write(tmp.resolve("jk.toml"), """
-                [project]
                 group    = "cc.jumpkick"
                 name     = "jk"
                 version  = "0.1.0"
@@ -243,7 +232,6 @@ class AddCommandTest {
         // `library@version` resolves the library and uses the @version as a
         // caret-floating selector, matching group:artifact@version.
         write(tmp.resolve("jk.toml"), """
-                [project]
                 group    = "cc.jumpkick"
                 name     = "jk"
                 version  = "0.1.0"
@@ -261,7 +249,6 @@ class AddCommandTest {
     void add_bare_catalog_name_with_at_latest_is_latest(@TempDir Path tmp) throws IOException {
         // `library@latest` is equivalent to omitting the version.
         write(tmp.resolve("jk.toml"), """
-                [project]
                 group    = "cc.jumpkick"
                 name     = "jk"
                 version  = "0.1.0"
@@ -278,7 +265,6 @@ class AddCommandTest {
     @Test
     void add_maven_coord_is_unchanged_and_leaves_workspace_alone(@TempDir Path tmp) throws IOException {
         write(tmp.resolve("jk.toml"), """
-                [project]
                 group    = "cc.jumpkick"
                 name     = "jk"
                 version  = "0.1.0"

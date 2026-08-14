@@ -20,7 +20,6 @@ class ReleaseCommandTest {
     @Test
     void dist_is_alias_for_release(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "t"
                 version = "0.0.1"
@@ -42,7 +41,6 @@ class ReleaseCommandTest {
     @Test
     void dry_run_prints_plan_without_building(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "app"
                 version = "0.0.1"
@@ -73,7 +71,6 @@ class ReleaseCommandTest {
         Files.createDirectories(eng);
         Files.createDirectories(cli);
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "cc.jumpkick"
                 name = "jk"
                 version = "0.12.0"
@@ -82,7 +79,6 @@ class ReleaseCommandTest {
                 modules = ["server/engine", "clients/cli"]
                 """);
         Files.writeString(eng.resolve("jk.toml"), """
-                [project]
                 group = "cc.jumpkick"
                 name = "jk-engine"
                 version = "0.12.0"
@@ -92,7 +88,6 @@ class ReleaseCommandTest {
                 assembly = true
                 """);
         Files.writeString(cli.resolve("jk.toml"), """
-                [project]
                 group = "cc.jumpkick"
                 name = "jk-cli"
                 version = "0.12.0"
@@ -140,7 +135,6 @@ class ReleaseCommandTest {
         Path engSrc = eng.resolve("src/main/java/cc/jumpkick/engine");
         Files.createDirectories(engSrc);
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "cc.jumpkick"
                 name = "jk"
                 version = "0.12.0"
@@ -150,7 +144,6 @@ class ReleaseCommandTest {
                 modules = ["server/engine"]
                 """);
         Files.writeString(eng.resolve("jk.toml"), """
-                [project]
                 group = "cc.jumpkick"
                 name = "jk-engine"
                 version = "0.12.0"

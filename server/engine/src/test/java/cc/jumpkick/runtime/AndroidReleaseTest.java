@@ -221,7 +221,6 @@ class AndroidReleaseTest {
 
     private static void writeApp(Path app) throws Exception {
         Files.writeString(app.resolve("jk.toml"), """
-                [project]
                 name    = "relapp"
                 group   = "com.example"
                 version = "1.0.0"

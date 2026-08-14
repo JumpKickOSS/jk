@@ -17,7 +17,6 @@ class GradleExporterTest {
     @Test
     void application_project_emits_plugins_toolchain_and_mainClass() {
         JkBuild b = parse("""
-                [project]
                 group = "com.example"
                 name  = "app"
                 version = "1.2.3"
@@ -47,7 +46,6 @@ class GradleExporterTest {
     @Test
     void locked_version_overrides_declared_selector() {
         JkBuild b = parse("""
-                [project]
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
@@ -68,7 +66,6 @@ class GradleExporterTest {
     @Test
     void floating_selector_without_lock_warns() {
         JkBuild b = parse("""
-                [project]
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
@@ -87,7 +84,6 @@ class GradleExporterTest {
     @Test
     void kotlin_shadow_and_native_emit_their_plugins() {
         JkBuild b = parse("""
-                [project]
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
@@ -112,7 +108,6 @@ class GradleExporterTest {
     @Test
     void settings_includes_foojay_and_workspace_modules() {
         JkBuild root = parse("""
-                [project]
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
@@ -122,7 +117,6 @@ class GradleExporterTest {
                 modules = ["mod-a", "mod-b"]
                 """);
         JkBuild a = parse("""
-                [project]
                 group = "com.example"
                 name  = "mod-a"
                 version = "1.0.0"
@@ -144,7 +138,6 @@ class GradleExporterTest {
     @Test
     void git_dependency_is_dropped_with_warning() {
         JkBuild b = parse("""
-                [project]
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"

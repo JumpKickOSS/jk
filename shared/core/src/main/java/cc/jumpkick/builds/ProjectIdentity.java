@@ -26,7 +26,7 @@ import java.util.stream.Stream;
  * <p>Resolution order (first hit wins):
  *
  * <ol>
- *   <li>Explicit {@code [project] id} in {@code jk.toml} (rare override)
+ *   <li>Explicit root-level {@code id} in {@code jk.toml} (rare override)
  *   <li>{@code project-id} in root {@code jk-lock.toml} (normal auto-id)
  *   <li>Recovered id from an existing {@code identity.toml} (path or git match — JK-1794)
  *   <li>Git remote + path relative to worktree root
@@ -98,7 +98,7 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
             return new ProjectIdentity(recovered.get(), coord, abs, Source.PATH, null, null);
         }
 
-        // Coord ([project] group:name) is display metadata, NOT identity material: hashing it in
+        // Coord (group:name) is display metadata, NOT identity material: hashing it in
         // would split a lockless project's identity on rename (JK-1794). The remote+relPath (GIT)
         // or the absolute path (PATH) alone are the identity.
         if (git.isPresent()) {
@@ -242,12 +242,10 @@ public record ProjectIdentity(String id, String coord, Path path, Source source,
         Path toml = projectDir.resolve("jk.toml");
         if (!Files.isRegularFile(toml)) return Optional.empty();
         try {
-            // Read raw TOML so [project] id stays an unadvertised escape hatch without widening
+            // Read raw TOML so root-level `id` stays an unadvertised escape hatch without widening
             // JkBuild.Project (rare override; not on the happy-path model).
             var result = org.tomlj.Toml.parse(toml);
-            var project = result.getTable("project");
-            if (project == null) return Optional.empty();
-            String id = project.getString("id");
+            String id = result.getString("id");
             if (id == null || id.isBlank()) return Optional.empty();
             return Optional.of(normalizeId(id));
         } catch (Exception e) {

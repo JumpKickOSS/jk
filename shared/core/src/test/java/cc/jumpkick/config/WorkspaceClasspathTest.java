@@ -43,7 +43,6 @@ class WorkspaceClasspathTest {
     /** lib ←(export)— app ←(main)— top */
     private static void scaffold(Path root) throws IOException {
         Files.writeString(root.resolve("jk.toml"), """
-                [project]
                 group = "com.ex"
                 name = "ws"
                 version = "0.1.0"
@@ -66,7 +65,6 @@ class WorkspaceClasspathTest {
     private static void module(Path root, String name, String depsBlock) throws IOException {
         Path dir = Files.createDirectories(root.resolve(name));
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "com.ex"
                 name = "%s"
                 version = "0.1.0"
@@ -79,7 +77,6 @@ class WorkspaceClasspathTest {
     @Test
     void tests_kind_puts_sibling_test_classes_on_the_test_classpath(@TempDir Path root) throws Exception {
         Files.writeString(root.resolve("jk.toml"), """
-                [project]
                 group = "com.ex"
                 name = "ws"
                 version = "0.1.0"
@@ -117,7 +114,6 @@ class WorkspaceClasspathTest {
     @Test
     void kind_tests_outside_test_scope_is_rejected(@TempDir Path root) throws Exception {
         Files.writeString(root.resolve("jk.toml"), """
-                [project]
                 group = "com.ex"
                 name = "ws"
                 version = "0.1.0"
@@ -130,7 +126,6 @@ class WorkspaceClasspathTest {
         Path appToml = root.resolve("app/jk.toml");
         Files.createDirectories(appToml.getParent());
         Files.writeString(appToml, """
-                [project]
                 group = "com.ex"
                 name = "app"
                 version = "0.1.0"

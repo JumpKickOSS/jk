@@ -487,7 +487,7 @@ public record JkBuild(
     public static final String VERSION_FROM_WORKSPACE = "__jk.workspace__";
 
     /**
-     * {@code [project]} keys that may use Cargo-style {@code field.workspace = true}. {@code name} is
+     * Root-level project keys that may use Cargo-style {@code field.workspace = true}. {@code name} is
      * intentionally excluded — every module keeps its own artifact id.
      */
     public enum ProjectInherit {
@@ -563,7 +563,7 @@ public record JkBuild(
                     Set.of());
         }
 
-        /** True when any {@code [project]} field still needs workspace-root resolution. */
+        /** True when any project identity field still needs workspace-root resolution. */
         public boolean inheritsFromWorkspace() {
             return !workspaceInherits.isEmpty();
         }

@@ -26,14 +26,12 @@ class TaskForecasterDepScopeTest {
         Files.createDirectories(eng);
         Files.createDirectories(cli);
         Files.writeString(eng.resolve("jk.toml"), """
-                [project]
                 group = "cc.example"
                 name = "engine"
                 version = "1.0.0"
                 java = 25
                 """);
         Files.writeString(cli.resolve("jk.toml"), """
-                [project]
                 group = "cc.example"
                 name = "cli"
                 version = "1.0.0"
@@ -48,7 +46,6 @@ class TaskForecasterDepScopeTest {
         Path core = tmp.resolve("core");
         Files.createDirectories(core);
         Files.writeString(core.resolve("jk.toml"), """
-                [project]
                 group = "cc.example"
                 name = "core"
                 version = "1.0.0"
@@ -89,14 +86,12 @@ class TaskForecasterDepScopeTest {
         Files.createDirectories(lib);
         Files.createDirectories(app);
         Files.writeString(lib.resolve("jk.toml"), """
-                [project]
                 group = "cc.example"
                 name = "lib"
                 version = "1.0.0"
                 java = 25
                 """);
         Files.writeString(app.resolve("jk.toml"), """
-                [project]
                 group = "cc.example"
                 name = "app"
                 version = "1.0.0"
@@ -124,14 +119,12 @@ class TaskForecasterDepScopeTest {
         Files.createDirectories(gen);
         Files.createDirectories(app);
         Files.writeString(gen.resolve("jk.toml"), """
-                [project]
                 group = "cc.example"
                 name = "gen"
                 version = "1.0.0"
                 java = 25
                 """);
         Files.writeString(app.resolve("jk.toml"), """
-                [project]
                 group = "cc.example"
                 name = "app"
                 version = "1.0.0"

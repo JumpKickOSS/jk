@@ -26,7 +26,6 @@ class PublisherDryRunTest {
     void dry_run_assembles_artifacts_and_reports_them(@TempDir Path dir) throws Exception {
         // A minimal, parseable project + a stand-in jar.
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group   = "com.example"
                 name    = "widget"
                 version = "1.2.3"

@@ -24,7 +24,6 @@ import org.junit.jupiter.api.io.TempDir;
 class NewModuleTest {
 
     private static final String PLAIN_PROJECT = """
-            [project]
             group    = "com.acme"
             name     = "root"
             version  = "0.1.0"
@@ -62,7 +61,6 @@ class NewModuleTest {
         // both, even though the wizard never exposes the release choice.
         // (Explicit older `java = 17` is intentional: prove inheritance of a floor, not defaults.)
         Files.writeString(tempDir.resolve("jk.toml"), """
-                [project]
                 group    = "com.acme"
                 name     = "root"
                 version  = "0.1.0"
@@ -83,7 +81,6 @@ class NewModuleTest {
     @Test
     void module_inherits_kotlin_language(@TempDir Path tempDir) throws IOException {
         Files.writeString(tempDir.resolve("jk.toml"), """
-                [project]
                 group    = "com.acme"
                 name     = "root"
                 version  = "0.1.0"

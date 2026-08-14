@@ -29,7 +29,6 @@ class IdeSuiteRunConfigTest {
         Files.createDirectories(mod.resolve("integration").resolve("src"));
         Files.writeString(mod.resolve("integration/src/I.java"), "class I {}");
         Files.writeString(mod.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "mod"
                 version = "1.0.0"
@@ -56,7 +55,6 @@ class IdeSuiteRunConfigTest {
         Files.createDirectories(mod.resolve("integration").resolve("src"));
         Files.writeString(mod.resolve("integration/src/I.java"), "class I {}");
         Files.writeString(mod.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "m"
                 version = "1.0.0"

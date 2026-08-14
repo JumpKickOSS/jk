@@ -10,7 +10,7 @@ import java.util.regex.Pattern;
 
 /**
  * Minimal merge editor for {@code ~/.config/jk/config.toml}. Preserves unknown keys; only
- * touches {@code [global].nerd-font}.
+ * touches root-level {@code nerd-font}.
  */
 public final class UserConfigEditor {
 
@@ -24,8 +24,7 @@ public final class UserConfigEditor {
     private UserConfigEditor() {}
 
     /**
-     * Set {@code [global].nerd-font}, creating the file / {@code [global]} table as needed. Returns
-     * the path written.
+     * Set root-level {@code nerd-font}, creating the file as needed. Returns the path written.
      */
     public static Path setNerdFont(Path configFile, NerdFontMode mode) throws IOException {
         Path parent = configFile.getParent();
@@ -41,6 +40,9 @@ public final class UserConfigEditor {
      * NerdFontMode#toToml} and is a closed set of literals ({@code true}, {@code false},
      * {@code "auto"}, {@code "wedge"}, {@code "pill"}) — none contains a {@code $} or {@code \},
      * so it is safe to splice into a replacement without escaping.
+     *
+     * <p>Inserts at the top of the file when missing so the key stays root-level (TOML bare keys
+     * after a {@code [table]} header would land under that table).
      */
     static String upsertNerdFont(String toml, String value) {
         if (toml == null) toml = "";
@@ -48,12 +50,8 @@ public final class UserConfigEditor {
         if (m.find()) {
             return m.replaceFirst(m.group(1) + "nerd-font = " + value);
         }
-        if (toml.contains("[global]")) {
-            // Insert after [global] header line
-            return toml.replaceFirst("(?m)^(\\[global\\][^\\n]*\\n)", "$1nerd-font = " + value + "\n");
-        }
-        String block = "[global]\nnerd-font = " + value + "\n";
-        if (toml.isBlank()) return block;
-        return toml.stripTrailing() + "\n\n" + block;
+        String line = "nerd-font = " + value + "\n";
+        if (toml.isBlank()) return line;
+        return line + "\n" + toml.stripLeading();
     }
 }

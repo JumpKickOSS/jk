@@ -95,7 +95,7 @@ class BuildPlannerKotlinStepTest {
     }
 
     private static void writeManifest(Path dir, String projectBody) throws Exception {
-        Files.writeString(dir.resolve("jk.toml"), "[project]\n" + projectBody);
+        Files.writeString(dir.resolve("jk.toml"), "" + projectBody);
     }
 
     private static List<String> stepNames(Path dir) {

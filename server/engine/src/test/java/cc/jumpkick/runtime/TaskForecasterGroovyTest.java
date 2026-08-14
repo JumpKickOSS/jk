@@ -23,7 +23,6 @@ class TaskForecasterGroovyTest {
     @Test
     void groovy_module_forecasts_full_then_cached_on_stamp(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "ws"
                 version = "0.1.0"
@@ -35,7 +34,6 @@ class TaskForecasterGroovyTest {
                 """);
         Path mod = Files.createDirectories(tmp.resolve("a"));
         Files.writeString(mod.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "a"
                 version = "0.1.0"

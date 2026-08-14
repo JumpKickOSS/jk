@@ -40,7 +40,6 @@ class BuildLogicCodegenE2eTest {
         Path project = Files.createDirectories(tmp.resolve("gen"));
         Path cache = cache();
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 name    = "gen"
                 group   = "com.example"
                 version = "1.0.0"

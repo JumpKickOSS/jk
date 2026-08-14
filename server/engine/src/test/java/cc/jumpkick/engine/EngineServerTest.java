@@ -420,7 +420,6 @@ class EngineServerTest {
 
             Path project = shortTempDir();
             Files.writeString(project.resolve("jk.toml"), """
-                    [project]
                     group   = "com.example"
                     name    = "app"
                     version = "1.0.0"
@@ -635,7 +634,6 @@ class EngineServerTest {
     void rebuild_in_the_session_envelope_defeats_the_freshness_fast_path() throws Exception {
         Path project = shortTempDir();
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 group   = "com.example"
                 name    = "app"
                 version = "1.0.0"
@@ -702,7 +700,6 @@ class EngineServerTest {
     void compile_request_compiles_the_project_over_the_socket() throws Exception {
         Path project = shortTempDir();
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 group   = "com.example"
                 name    = "app"
                 version = "1.0.0"
@@ -932,7 +929,6 @@ class EngineServerTest {
         Path cache = shortTempDir();
         Path project = shortTempDir();
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "proj"
                 version = "0.1.0"

@@ -67,7 +67,6 @@ class AutoLockWorkspaceTest {
         Path ws = tmp.resolve("ws");
         Files.createDirectories(ws);
         Files.writeString(ws.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
@@ -80,7 +79,6 @@ class AutoLockWorkspaceTest {
         Files.createDirectories(ws.resolve("core"));
         // util is declared ONLY by core: it must survive a relock triggered from app.
         Files.writeString(ws.resolve("core/jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "core"
                 version = "1.0.0"
@@ -92,7 +90,6 @@ class AutoLockWorkspaceTest {
                 """);
         Files.createDirectories(ws.resolve("app"));
         Files.writeString(ws.resolve("app/jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
@@ -107,7 +104,6 @@ class AutoLockWorkspaceTest {
         LockfileWriter.write(new Lockfile(1, "test", "jk-test", List.of()), rootLock);
         // Now app grows a dep: the workspace digest no longer matches the stamp → stale.
         Files.writeString(ws.resolve("app/jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
@@ -149,7 +145,6 @@ class AutoLockWorkspaceTest {
         Path proj = tmp.resolve("proj");
         Files.createDirectories(proj);
         Files.writeString(proj.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "solo"
                 version = "1.0.0"
@@ -167,7 +162,6 @@ class AutoLockWorkspaceTest {
         // Then the project bumps its version: content digest diverges (mtimes are irrelevant
         // under the LockFreshness digest regime) and auto-relock must restamp identity.
         Files.writeString(proj.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "solo"
                 version = "2.0.0"

@@ -58,7 +58,6 @@ class PrivatePluginPathTest {
         Path relVendor = project.relativize(jar);
         Files.writeString(
                 project.resolve("jk.toml"), """
-                [project]
                 name = "demo"
                 group = "com.demo"
                 version = "0.1.0"
@@ -103,7 +102,6 @@ class PrivatePluginPathTest {
     void missing_sha256_is_a_parse_error(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("proj"));
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 name = "demo"
                 group = "com.demo"
                 version = "0.1.0"
@@ -123,7 +121,6 @@ class PrivatePluginPathTest {
         Path jar = writePluginJar(vendor.resolve("acme.jar"));
         Path project = Files.createDirectories(tmp.resolve("proj"));
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 name = "demo"
                 group = "com.demo"
                 version = "0.1.0"
@@ -146,7 +143,6 @@ class PrivatePluginPathTest {
     @Test
     void coord_without_sha256_is_a_parse_error() {
         assertThatThrownBy(() -> JkBuildParser.parse("""
-                        [project]
                         name = "demo"
                         group = "com.demo"
                         version = "0.1.0"

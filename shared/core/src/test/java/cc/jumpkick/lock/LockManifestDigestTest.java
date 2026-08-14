@@ -35,7 +35,6 @@ class LockManifestDigestTest {
     @Test
     void compute_stable_for_standalone_project(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0.0"
@@ -49,7 +48,6 @@ class LockManifestDigestTest {
     void crlf_manifest_hashes_like_lf(@TempDir Path dir) throws Exception {
         // JK-1357: autocrlf checkouts must not read as permanently stale.
         String lf = """
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0.0"
@@ -69,7 +67,6 @@ class LockManifestDigestTest {
         Files.createDirectories(app);
         Files.createDirectories(lib);
         Files.writeString(app.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0.0"
@@ -78,14 +75,12 @@ class LockManifestDigestTest {
                 lib = { path = "../lib" }
                 """);
         Files.writeString(lib.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "lib"
                 version = "1.0.0"
                 """);
         String before = LockManifestDigest.compute(app);
         Files.writeString(lib.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "lib"
                 version = "2.0.0"
@@ -102,7 +97,6 @@ class LockManifestDigestTest {
         org.junit.jupiter.api.Assumptions.assumeTrue(!"root".equals(System.getProperty("user.name")));
         Path toml = dir.resolve("jk.toml");
         Files.writeString(toml, """
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0.0"
@@ -124,7 +118,6 @@ class LockManifestDigestTest {
     void manifest_edited_mid_lock_reads_stale(@TempDir Path dir) throws Exception {
         // JK-1357 TOCTOU: the stamp reflects the bytes that fed resolution, not the live files.
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0.0"
@@ -133,7 +126,6 @@ class LockManifestDigestTest {
 
         // Manifest edited while the (slow) resolution is still running…
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "9.9.9"
@@ -148,14 +140,12 @@ class LockManifestDigestTest {
     void compute_changes_when_manifest_edited(@TempDir Path dir) throws Exception {
         Path toml = dir.resolve("jk.toml");
         Files.writeString(toml, """
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0.0"
                 """);
         String before = LockManifestDigest.compute(dir);
         Files.writeString(toml, """
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0.1"

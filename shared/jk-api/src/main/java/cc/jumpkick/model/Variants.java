@@ -8,7 +8,7 @@ import java.util.*;
  * ({@code extra-src}, dependency additions, plugin config keys). Built-in {@link #BUILD_TYPE}
  * defaults to {@code debug}; a custom dimension without a default makes selection mandatory.
  * Overlays fold at parse time — custom dimensions first, then {@code build-type}.
- * {@code [project]}, repos, profiles, features, and toolchain flags are not overlayable.
+ * Project identity, repos, profiles, features, and toolchain flags are not overlayable.
  */
 public record Variants(List<Dimension> dimensions) {
 

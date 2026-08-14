@@ -1,4 +1,3 @@
-[project]
 name = "jk-spring-boot"
 description = "JumpKick's Spring Boot packaging plugin"
 

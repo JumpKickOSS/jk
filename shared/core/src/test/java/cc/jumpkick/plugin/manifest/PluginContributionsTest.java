@@ -19,7 +19,6 @@ class PluginContributionsTest {
 
     private static JkBuild boot(String extra) {
         return JkBuildParser.parse("""
-                [project]
                 name = "demo"
                 group = "com.example"
                 version = "1.0.0"
@@ -68,7 +67,6 @@ class PluginContributionsTest {
     @Test
     void non_boot_project_contributes_nothing() {
         JkBuild build = JkBuildParser.parse("""
-                [project]
                 name = "plain"
                 group = "com.example"
                 version = "1.0.0"
@@ -108,7 +106,6 @@ class PluginContributionsTest {
 
     private static JkBuild grails(String extra) {
         return JkBuildParser.parse("""
-                [project]
                 name = "gapp"
                 group = "com.example"
                 version = "1.0.0"

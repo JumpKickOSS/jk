@@ -1,4 +1,3 @@
-[project]
 name = "jk-cli"
 description = "The CLI (and primary) client for interacting with the JumpKick build system"
 

@@ -65,7 +65,6 @@ class PublishCommandTest {
         // sources = true → PUBLISH mode: the sources jar is assembled at publish time
         // (sourcesMode defaults to DISABLED, so it must be opted into here).
         Files.writeString(tempDir.resolve("jk.toml"), """
-                [project]
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
@@ -98,7 +97,6 @@ class PublishCommandTest {
     @Test
     void snapshot_version_refused_by_default(@TempDir Path tempDir) throws Exception {
         Files.writeString(tempDir.resolve("jk.toml"), """
-                [project]
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0-SNAPSHOT"
@@ -114,7 +112,6 @@ class PublishCommandTest {
     @Test
     void snapshot_version_allowed_with_flag(@TempDir Path tempDir) throws Exception {
         Files.writeString(tempDir.resolve("jk.toml"), """
-                [project]
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0-SNAPSHOT"
@@ -245,7 +242,6 @@ class PublishCommandTest {
 
     private static void writeJkBuild(Path projectDir) throws IOException {
         Files.writeString(projectDir.resolve("jk.toml"), """
-                [project]
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
@@ -256,7 +252,6 @@ class PublishCommandTest {
     @Test
     void refuses_to_publish_a_composite_path_dependency(@TempDir Path tempDir) throws Exception {
         Files.writeString(tempDir.resolve("jk.toml"), """
-                [project]
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"

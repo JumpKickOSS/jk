@@ -151,7 +151,8 @@ public final class JkBuildParser {
         // version".
         Interpolation.guard(result);
         rejectRemovedCatalogConfig(result);
-        // Workspace roots keep concrete [project] defaults; members may omit fields and inherit.
+        rejectRemovedProjectTable(result);
+        // Workspace roots keep concrete project defaults; members may omit fields and inherit.
         boolean workspaceRoot = hasWorkspaceModules(result);
         JkBuild.Project project = ManifestProject.parseProject(result, workspaceRoot);
         LibraryCatalog effective = catalog;
@@ -206,9 +207,9 @@ public final class JkBuildParser {
         }
         JkBuild.FormatConfig format = ManifestTables.parseFormat(result);
         Variants variants = ManifestTables.parseVariants(result, workspace, effective, installedManifests);
-        // project.*.workspace = true is for members only — the root is the inheritance source.
+        // *.workspace = true is for members only — the root is the inheritance source.
         if (project.inheritsFromWorkspace() && workspace != null && !workspace.isEmpty()) {
-            throw new JkBuildParseException("workspace root must set concrete [project] values"
+            throw new JkBuildParseException("workspace root must set concrete project values"
                     + " (`*.workspace = true` is only valid on workspace modules)");
         }
         return new JkBuild(
@@ -284,6 +285,14 @@ public final class JkBuildParser {
                     "[libraries] in jk.toml was removed — put short-name → group:artifact entries in "
                             + LibraryCatalog.PROJECT_FILE
                             + " at the workspace root (standalone: project root)");
+        }
+    }
+
+    /** {@code [project]} is gone — identity keys are bare top-level fields. */
+    static void rejectRemovedProjectTable(TomlTable root) {
+        if (root.getTable("project") != null) {
+            throw new JkBuildParseException("[project] was removed — move its keys to the top level of jk.toml"
+                    + " (e.g. name = \"…\", group = \"…\", version = \"…\")");
         }
     }
 

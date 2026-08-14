@@ -21,7 +21,7 @@ class ScaffoldOpsTest {
                         "package", "com.example",
                         "simpleLayout", "true",
                         "sample", "true",
-                        "baseToml", "[project]\nname = \"demo\"\n"));
+                        "baseToml", "name = \"demo\"\n"));
         assertThat(files.error()).isNull();
         assertThat(files.paths())
                 .anyMatch(p -> p.endsWith("jk.toml"))
@@ -50,7 +50,7 @@ class ScaffoldOpsTest {
                         "package", "com.example",
                         "simpleLayout", "true",
                         "sample", "true",
-                        "baseToml", "[project]\nname = \"demo\"\n"));
+                        "baseToml", "name = \"demo\"\n"));
         assertThat(files.error()).isNull();
         assertThat(files.paths())
                 .anyMatch(p -> p.endsWith("src/com/example/Application.java"))
@@ -69,7 +69,7 @@ class ScaffoldOpsTest {
                         "package", "com.example",
                         "simpleLayout", "false",
                         "sample", "true",
-                        "baseToml", "[project]\nname = \"demo\"\n"));
+                        "baseToml", "name = \"demo\"\n"));
         assertThat(files.error()).isNull();
         assertThat(files.paths())
                 .anyMatch(p -> p.endsWith("src/main/java/com/example/Application.java"))
@@ -98,7 +98,7 @@ class ScaffoldOpsTest {
                         "quarkus.version", "3",
                         "simpleLayout", "false",
                         "sample", "true",
-                        "baseToml", "[project]\nname = \"demo\"\ngroup = \"com.example\"\n"));
+                        "baseToml", "name = \"demo\"\ngroup = \"com.example\"\n"));
         assertThat(files.error()).isNull();
         int pom = -1;
         for (int i = 0; i < files.paths().size(); i++) {

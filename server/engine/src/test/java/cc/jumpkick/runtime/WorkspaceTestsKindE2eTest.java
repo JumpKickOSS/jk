@@ -33,7 +33,6 @@ class WorkspaceTestsKindE2eTest {
         Path ws = Files.createDirectories(tmp.resolve("ws"));
 
         Files.writeString(ws.resolve("jk.toml"), """
-                [project]
                 group   = "com.example"
                 name    = "ws"
                 version = "1.0.0"
@@ -45,7 +44,6 @@ class WorkspaceTestsKindE2eTest {
 
         Path lib = Files.createDirectories(ws.resolve("lib"));
         Files.writeString(lib.resolve("jk.toml"), """
-                [project]
                 group   = "com.example"
                 name    = "lib"
                 version = "1.0.0"
@@ -85,7 +83,6 @@ class WorkspaceTestsKindE2eTest {
 
         Path app = Files.createDirectories(ws.resolve("app"));
         Files.writeString(app.resolve("jk.toml"), """
-                [project]
                 group   = "com.example"
                 name    = "app"
                 version = "1.0.0"

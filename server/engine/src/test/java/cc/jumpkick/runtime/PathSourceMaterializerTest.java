@@ -26,7 +26,6 @@ class PathSourceMaterializerTest {
     private static void writeLibrary(Path libDir, String returnValue) throws Exception {
         Files.createDirectories(libDir);
         Files.writeString(libDir.resolve("jk.toml"), """
-                [project]
                 group   = "com.acme"
                 name    = "widgets"
                 version = "0.1.0"

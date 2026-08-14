@@ -18,7 +18,6 @@ class LockScopeTest {
 
     private static void workspace(Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
@@ -30,7 +29,6 @@ class LockScopeTest {
                 """);
         Files.createDirectories(tmp.resolve("core"));
         Files.writeString(tmp.resolve("core/jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "core"
                 version = "1.0.0"
@@ -42,7 +40,6 @@ class LockScopeTest {
                 """);
         Files.createDirectories(tmp.resolve("app"));
         Files.writeString(tmp.resolve("app/jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
@@ -87,7 +84,6 @@ class LockScopeTest {
     @Test
     void standalone_project_locks_itself(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "solo"
                 version = "1.0.0"

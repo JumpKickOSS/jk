@@ -70,7 +70,6 @@ class InstallCommandTest {
     @Test
     void library_project_does_cache_install_only(@TempDir Path tempDir) throws IOException {
         Files.writeString(tempDir.resolve("jk.toml"), """
-                [project]
                 group    = "com.example"
                 name     = "lib-only"
                 version  = "0.1.0"
@@ -162,7 +161,6 @@ class InstallCommandTest {
     @Test
     void m2install_writes_jar_and_pom_to_local_maven_repo(@TempDir Path tempDir) throws IOException {
         Files.writeString(tempDir.resolve("jk.toml"), """
-                [project]
                 group     = "com.example"
                 name      = "lib-only"
                 version   = "0.1.0"

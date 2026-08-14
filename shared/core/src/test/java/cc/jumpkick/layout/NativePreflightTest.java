@@ -40,16 +40,14 @@ class NativePreflightTest {
 
     @Test
     void specified_application_main(@TempDir Path dir) throws Exception {
-        writeToml(
-                dir,
-                "[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njava=25\n\n[application]\nmain=\"com.Acme\"\n");
+        writeToml(dir, "group=\"g\"\nname=\"n\"\nversion=\"1\"\njava=25\n\n[application]\nmain=\"com.Acme\"\n");
         assertThat(NativePreflight.resolveMain(dir, null)).isEqualTo(new NativePreflight.Main.Unique("com.Acme"));
         assertThat(NativePreflight.resolveMain(dir, "cli.Main")).isEqualTo(new NativePreflight.Main.Unique("cli.Main"));
     }
 
     @Test
     void no_main_when_nothing_declared_or_found(@TempDir Path dir) throws Exception {
-        writeToml(dir, "[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njava=25\n");
+        writeToml(dir, "group=\"g\"\nname=\"n\"\nversion=\"1\"\njava=25\n");
         Path src = dir.resolve("src/main/java/com/Lib.java");
         Files.createDirectories(src.getParent());
         Files.writeString(src, "package com; public class Lib { public int n() { return 1; } }\n");
@@ -59,7 +57,7 @@ class NativePreflightTest {
 
     @Test
     void source_scan_finds_a_single_main(@TempDir Path dir) throws Exception {
-        writeToml(dir, "[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njava=25\n");
+        writeToml(dir, "group=\"g\"\nname=\"n\"\nversion=\"1\"\njava=25\n");
         Path src = dir.resolve("src/main/java/com/App.java");
         Files.createDirectories(src.getParent());
         Files.writeString(src, "package com;\npublic class App { public static void main(String[] a) {} }\n");
@@ -69,7 +67,7 @@ class NativePreflightTest {
 
     @Test
     void specified_main_wins_over_several_sources(@TempDir Path dir) throws Exception {
-        writeToml(dir, "[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njava=25\n\n[application]\nmain=\"A\"\n");
+        writeToml(dir, "group=\"g\"\nname=\"n\"\nversion=\"1\"\njava=25\n\n[application]\nmain=\"A\"\n");
         Path a = dir.resolve("src/main/java/A.java");
         Path b = dir.resolve("src/main/java/B.java");
         Files.createDirectories(a.getParent());
@@ -80,7 +78,7 @@ class NativePreflightTest {
 
     @Test
     void source_scan_reports_multiple_mains(@TempDir Path dir) throws Exception {
-        writeToml(dir, "[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njava=25\n");
+        writeToml(dir, "group=\"g\"\nname=\"n\"\nversion=\"1\"\njava=25\n");
         Path a = dir.resolve("src/main/java/A.java");
         Path b = dir.resolve("src/main/java/B.java");
         Files.createDirectories(a.getParent());
@@ -93,7 +91,7 @@ class NativePreflightTest {
 
     @Test
     void source_scan_ignores_commented_main(@TempDir Path dir) throws Exception {
-        writeToml(dir, "[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njava=25\n");
+        writeToml(dir, "group=\"g\"\nname=\"n\"\nversion=\"1\"\njava=25\n");
         Path src = dir.resolve("src/main/java/Lib.java");
         Files.createDirectories(src.getParent());
         Files.writeString(src, """

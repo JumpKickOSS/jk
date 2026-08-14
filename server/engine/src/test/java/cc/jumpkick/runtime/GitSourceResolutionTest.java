@@ -40,7 +40,6 @@ class GitSourceResolutionTest {
     private GitSource buildLibraryRepo(Path repoDir) throws Exception {
         Files.createDirectories(repoDir);
         Files.writeString(repoDir.resolve("jk.toml"), """
-                [project]
                 group    = "com.acme"
                 name     = "widgets"
                 version  = "0.1.0"
@@ -119,7 +118,6 @@ class GitSourceResolutionTest {
         Path repoDir = tmp.resolve("lib");
         Files.createDirectories(repoDir);
         Files.writeString(repoDir.resolve("jk.toml"), """
-                [project]
                 group    = "com.acme"
                 name     = "widgets"
                 version  = "0.1.0"

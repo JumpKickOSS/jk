@@ -32,7 +32,6 @@ class JUnit4VintageTest {
         Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
 
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 name    = "j4"
                 group   = "com.example"
                 version = "1.0.0"

@@ -26,7 +26,6 @@ import org.junit.jupiter.api.io.TempDir;
 class BuildPlannerStagedClassesTest {
 
     private static final String MANIFEST = """
-            [project]
             group = "com.example"
             name = "svc"
             version = "0.1.0"

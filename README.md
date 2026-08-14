@@ -31,7 +31,6 @@ jk build
 
 ```toml
 # jk.toml — the whole build, no scripting language required
-[project]
 group   = "com.example"
 name    = "my-app"
 version = "0.1.0"
@@ -218,7 +217,6 @@ jk run
 Or declare a BOM and versionless deps (managed by the platform):
 
 ```toml
-[project]
 group = "com.acme"
 name = "payments-api"
 version = "0.1.0"
@@ -249,7 +247,6 @@ jackson-databind = { group = "com.fasterxml.jackson.core", name = "jackson-datab
 
 ```toml
 # services/api/jk.toml
-[project]
 name = "api"
 
 [dependencies]

@@ -17,7 +17,6 @@ class CancelCommandScopeTest {
     @Test
     void a_workspace_member_resolves_to_the_root(@TempDir Path ws) throws Exception {
         Files.writeString(ws.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
@@ -29,7 +28,6 @@ class CancelCommandScopeTest {
                 """);
         Files.createDirectories(ws.resolve("app"));
         Files.writeString(ws.resolve("app/jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
@@ -44,7 +42,6 @@ class CancelCommandScopeTest {
     @Test
     void a_standalone_project_is_its_own_scope(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "solo"
                 version = "1.0.0"

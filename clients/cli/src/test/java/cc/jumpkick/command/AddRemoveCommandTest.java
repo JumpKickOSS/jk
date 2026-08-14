@@ -117,13 +117,11 @@ class AddRemoveCommandTest {
         Path lib = tempDir.resolve("libb");
         Files.createDirectories(lib);
         Files.writeString(lib.resolve("jk.toml"), """
-                [project]
                 group = "cc.jumpkick"
                 name = "libb"
                 version = "0.2.0"
                 """);
         Files.writeString(tempDir.resolve("jk.toml"), """
-                [project]
                 group = "cc.jumpkick"
                 name = "app"
                 version = "0.1.0"
@@ -190,7 +188,6 @@ class AddRemoveCommandTest {
         Path shadow = tempDir.resolve("jackson");
         Files.createDirectories(shadow);
         Files.writeString(shadow.resolve("jk.toml"), """
-                [project]
                 group = "g"
                 name = "jackson-core"
                 version = "1.0.0"
@@ -212,7 +209,6 @@ class AddRemoveCommandTest {
         Path lib = tempDir.resolve("libb");
         Files.createDirectories(lib);
         Files.writeString(lib.resolve("jk.toml"), """
-                [project]
                 group = "cc.jumpkick"
                 name = "libb"
                 version = "0.2.0"
@@ -235,7 +231,6 @@ class AddRemoveCommandTest {
         Path lib = tempDir.resolve("libb");
         Files.createDirectories(lib);
         Files.writeString(lib.resolve("jk.toml"), """
-                [project]
                 group = "cc.jumpkick"
                 name = "libb"
                 version = "0.2.0"

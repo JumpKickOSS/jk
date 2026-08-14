@@ -15,7 +15,6 @@ class LockfileModulesTest {
     @Test
     void capture_workspace_resolves_inherited_project_fields(@TempDir Path tmp) throws IOException {
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group       = "com.acme"
                 name        = "root"
                 version     = "9.9.9"
@@ -29,7 +28,6 @@ class LockfileModulesTest {
         Path lib = tmp.resolve("lib");
         Files.createDirectories(lib);
         Files.writeString(lib.resolve("jk.toml"), """
-                [project]
                 name = "lib"
                 description.workspace = true
                 """);
@@ -55,7 +53,6 @@ class LockfileModulesTest {
     @Test
     void stamp_attaches_modules_to_lock(@TempDir Path tmp) throws IOException {
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group   = "com.example"
                 name    = "solo"
                 version = "1.0.0"

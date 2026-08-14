@@ -36,7 +36,6 @@ class BuildLogicSupportTest {
         Path project = dir.resolve("proj");
         Files.createDirectories(project.resolve("src/main/java/demo"));
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "t"
                 version = "0.0.1"
@@ -58,7 +57,6 @@ class BuildLogicSupportTest {
         Path project = dir.resolve("proj");
         Files.createDirectories(project.resolve("src/main/java/demo"));
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "t"
                 version = "0.0.1"
@@ -83,7 +81,6 @@ class BuildLogicSupportTest {
         Path project = dir.resolve("proj");
         Files.createDirectories(project.resolve("src/main/java/demo"));
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "t"
                 version = "0.0.1"
@@ -126,7 +123,6 @@ class BuildLogicSupportTest {
         Path project = dir.resolve("proj");
         Files.createDirectories(project.resolve("src/main/java/demo"));
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "t"
                 version = "0.0.1"
@@ -206,7 +202,6 @@ class BuildLogicSupportTest {
         Path project = dir.resolve("proj");
         Files.createDirectories(project.resolve("src/main/java/demo"));
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "t"
                 version = "0.0.1"
@@ -277,7 +272,6 @@ class BuildLogicSupportTest {
         Path project = dir.resolve("proj");
         Files.createDirectories(project.resolve("src/main/java/demo"));
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "t"
                 version = "0.0.1"
@@ -339,7 +333,6 @@ class BuildLogicSupportTest {
         Path project = dir.resolve("proj");
         Files.createDirectories(project.resolve("src/main/java/demo"));
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "t"
                 version = "0.0.1"
@@ -401,7 +394,6 @@ class BuildLogicSupportTest {
         Path project = dir.resolve("proj");
         Files.createDirectories(project.resolve("src/main/java/demo"));
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "t"
                 version = "0.0.1"
@@ -436,7 +428,6 @@ class BuildLogicSupportTest {
 
         // Same logic, only jk.toml's own content changed: the embedded text must change too.
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "t"
                 version = "0.0.2"
@@ -465,7 +456,6 @@ class BuildLogicSupportTest {
         Path project = dir.resolve("proj");
         Files.createDirectories(project.resolve("src/main/java/demo"));
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "t"
                 version = "0.0.1"
@@ -518,7 +508,6 @@ class BuildLogicSupportTest {
         Path project = dir.resolve("proj");
         Files.createDirectories(project.resolve("src/main/java/demo"));
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "t"
                 version = "0.0.1"
@@ -572,7 +561,6 @@ class BuildLogicSupportTest {
         Path project = dir.resolve("proj");
         Files.createDirectories(project.resolve(".jk-build/src"));
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "t"
                 version = "0.0.1"
@@ -589,7 +577,6 @@ class BuildLogicSupportTest {
         Path project = dir.resolve("proj");
         Files.createDirectories(project.resolve("src/main/java/demo"));
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "t"
                 version = "0.0.1"
@@ -631,7 +618,6 @@ class BuildLogicSupportTest {
         Path project = dir.resolve("proj");
         Files.createDirectories(project.resolve("src/main/java/demo"));
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "t"
                 version = "0.0.1"
@@ -687,7 +673,6 @@ class BuildLogicSupportTest {
         Path project = dir.resolve("proj");
         Files.createDirectories(project.resolve(".jk-build"));
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "t"
                 version = "0.0.1"
@@ -711,7 +696,6 @@ class BuildLogicSupportTest {
         Path project = dir.resolve("proj");
         Files.createDirectories(project.resolve("src/main/java/demo"));
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "t"
                 version = "0.0.1"

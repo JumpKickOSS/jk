@@ -107,7 +107,6 @@ class AndroidRemoteAarTest {
 
     private static void writeProject(Path project) throws Exception {
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 name    = "remote"
                 group   = "com.example"
                 version = "1.0.0"

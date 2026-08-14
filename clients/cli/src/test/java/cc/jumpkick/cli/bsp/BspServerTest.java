@@ -49,7 +49,6 @@ class BspServerTest {
     @Test
     void initialize_advertises_run_provider(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "t"
                 version = "0.0.1"
@@ -68,7 +67,6 @@ class BspServerTest {
     @Test
     void initialize_advertises_test_provider(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "t"
                 version = "0.0.1"
@@ -89,7 +87,6 @@ class BspServerTest {
     @Test
     void buildTargets_includes_canTest_capabilities(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "app"
                 version = "0.0.1"
@@ -115,7 +112,6 @@ class BspServerTest {
     void buildTarget_test_returns_statusCode(@TempDir Path dir) throws Exception {
         Path src = Files.createDirectories(dir.resolve("src"));
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "app"
                 version = "0.0.1"
@@ -145,7 +141,6 @@ class BspServerTest {
     @Test
     void multi_header_content_length_is_read(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "t"
                 version = "0.0.1"

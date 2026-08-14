@@ -19,7 +19,6 @@ class PluginInstallLocalTest {
 
     /** Thin PluginMain worker — no assembly (JK-1347). */
     private static final String WORKER_TOML = """
-            [project]
             group = "cc.jumpkick"
             name = "jk-test-runner"
             version = "0.12.0"
@@ -35,7 +34,6 @@ class PluginInstallLocalTest {
         Path mod = dir.resolve("plugins/worker");
         Files.createDirectories(mod);
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
@@ -75,7 +73,6 @@ class PluginInstallLocalTest {
         Path mod = dir.resolve("plugins/worker");
         Files.createDirectories(mod);
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
@@ -84,7 +81,6 @@ class PluginInstallLocalTest {
                 modules = ["plugins/worker"]
                 """);
         Files.writeString(mod.resolve("jk.toml"), """
-                [project]
                 group = "cc.jumpkick"
                 name = "jk-test-runner"
                 version = "0.12.0"
@@ -153,7 +149,6 @@ class PluginInstallLocalTest {
         Path mod = dir.resolve("plugins/worker");
         Files.createDirectories(mod);
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
@@ -188,7 +183,6 @@ class PluginInstallLocalTest {
         Files.createDirectories(a);
         Files.createDirectories(b);
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
@@ -197,7 +191,6 @@ class PluginInstallLocalTest {
                 modules = ["plugins/alpha", "plugins/beta"]
                 """);
         Files.writeString(a.resolve("jk.toml"), """
-                [project]
                 group = "cc.jumpkick"
                 name = "jk-alpha"
                 version = "0.12.0"
@@ -207,7 +200,6 @@ class PluginInstallLocalTest {
                 main = "cc.jumpkick.plugin.process.PluginMain"
                 """);
         Files.writeString(b.resolve("jk.toml"), """
-                [project]
                 group = "cc.jumpkick"
                 name = "jk-beta"
                 version = "0.12.0"
@@ -245,7 +237,6 @@ class PluginInstallLocalTest {
         Path mod = dir.resolve("plugins/worker");
         Files.createDirectories(mod);
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
@@ -254,7 +245,6 @@ class PluginInstallLocalTest {
                 modules = ["plugins/worker"]
                 """);
         Files.writeString(mod.resolve("jk.toml"), """
-                [project]
                 group = "cc.jumpkick"
                 name = "jk-iso-worker"
                 version = "0.12.0"
@@ -282,7 +272,6 @@ class PluginInstallLocalTest {
         Path mod = dir.resolve("plugins/worker");
         Files.createDirectories(mod);
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
@@ -313,7 +302,6 @@ class PluginInstallLocalTest {
     void no_plugin_main_modules_is_config_error(@TempDir Path dir) throws Exception {
         Path cache = dir.resolve("cache");
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "solo"
                 version = "0.0.1"

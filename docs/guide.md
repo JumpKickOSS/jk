@@ -225,7 +225,6 @@ cd my-app
 A minimal manifest:
 
 ```toml
-[project]
 group   = "com.example"
 name    = "my-app"
 version = "0.1.0"
@@ -664,7 +663,6 @@ Grails 8 (Apache, Spring Boot 4.1) on the Groovy lane — `jk new --grails` scaf
 minimal REST app (GORM domain, controller, `grails-app/conf/application.yml`):
 
 ```toml
-[project]
 groovy = "5.0.7"
 
 [grails]
@@ -749,7 +747,7 @@ BSP, the engine wire, or (later) MCP — not scrape prose. Opt out of rich chrom
 `--no-ansi`, or `JK_NERD_FONT=false`. Full charter: kanartist **JK-1076**–**JK-1081**; machine
 surface: [machine-output.md](machine-output.md).
 
-Nerd Font glyphs are detected per launch and need no setup — `[global].nerd-font` defaults to
+Nerd Font glyphs are detected per launch and need no setup — `nerd-font` defaults to
 `"auto"`. Pin it only to override detection:
 
 ```bash
@@ -1135,7 +1133,6 @@ See `jk --help` for the canonical set; aliases are for muscle memory only.
 
 ```toml
 # root jk.toml
-[project]
 group   = "com.example"
 name    = "root"
 version = "1.2.3"   # concrete — the inheritance source
@@ -1147,13 +1144,12 @@ modules = ["libs/*", "services/*"]
 jackson-databind = { group = "com.fasterxml.jackson.core", name = "jackson-databind", version = "2.18.2" }
 ```
 
-Workspace **modules** may omit most `[project]` fields; omitted fields resolve from the workspace
+Workspace **modules** may omit most top-level identity fields; omitted fields resolve from the workspace
 root. **`name` is always required.** **`description` is optional** and does **not** auto-inherit
 when omitted (stays unset unless you set it or use `description.workspace = true`).
 
 ```toml
 # libs/core/jk.toml — minimal module
-[project]
 name = "core"
 # group, version, java, jdk, … come from the workspace root
 ```
@@ -1162,7 +1158,7 @@ Explicit overrides still work (`version = "2.0.0"`, `java = 17`, or `version.wor
 The root must keep concrete values for fields members inherit. Inheritance is resolved when the
 workspace loads members (lock, build, tree, publish). The **resolved** values are frozen into
 `jk-lock.toml` as `[[module]]` rows, so a re-lock is required after changing root or member
-`[project]` identity.
+project identity.
 
 Monorepo tip: rebuild or retest only what you need:
 
@@ -1176,7 +1172,7 @@ jk build -m api,worker
 jk test -m 'libs/*'
 jk explain -m '{api,worker}'
 
-# Selectors also accept [project] names and Gradle-style colon paths
+# Selectors also accept project names and Gradle-style colon paths
 jk build -m jk-engine
 jk build -m :server:engine
 
@@ -1206,13 +1202,12 @@ Outside a git repo or with an invalid ref, jk prints a clear error. If nothing u
 workspace matched, it exits 0 with “nothing affected” / “nothing selected”.
 ```toml
 # services/api/jk.toml
-[project]
 name = "api"
 # …
 
 [dependencies]
 jackson-databind.workspace = true   # shared external
-widget-core.workspace = true        # sibling module (matches [project].name)
+widget-core.workspace = true        # sibling module (matches name)
 
 # Sibling *test* output (Mill testModuleDeps / Maven test-jar) — test scope only:
 [test-dependencies]

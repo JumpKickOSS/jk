@@ -57,7 +57,6 @@ class QuarkusLockPerfTest {
     void quarkus_rest_arc_resolves_under_the_warm_budget(@TempDir Path tmp) throws Exception {
         assumeTrue(networkOk(), "Maven Central unreachable");
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 name = "quarkus-hello"
                 group = "com.example.qhello"
                 version = "0.1.0"

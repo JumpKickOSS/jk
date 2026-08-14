@@ -253,7 +253,7 @@ public final class LockFlow {
             String kotlinVersion = LockPlans.resolveKotlinVersion(effective, pathPrep.repos());
             if (kotlinVersion != null) lock = lock.withKotlin(kotlinVersion);
         }
-        // Freeze resolved first-party [project] identity (incl. workspace-inherited fields).
+        // Freeze resolved first-party project identity (incl. workspace-inherited fields).
         lock = cc.jumpkick.lock.LockfileModules.stamp(lock, lockDir);
         LockfileWriter.write(lock, lockFile, manifestsSha);
         cc.jumpkick.task.AccessLedger.atDefaultPath().touchLock(lock);

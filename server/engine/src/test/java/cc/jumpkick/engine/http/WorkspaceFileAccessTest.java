@@ -22,7 +22,6 @@ class WorkspaceFileAccessTest {
         Files.createDirectories(root.resolve("src"));
         Files.writeString(root.resolve("src/Main.java"), "package demo;\nclass Main {}\n");
         Files.writeString(root.resolve("jk.toml"), """
-                [project]
                 group = "g"
                 name = "demo"
                 version = "1"
@@ -305,7 +304,6 @@ class WorkspaceFileAccessTest {
     private static void writeJkToml(Path dir, String name) throws Exception {
         Files.createDirectories(dir);
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "g"
                 name = "%s"
                 version = "1"

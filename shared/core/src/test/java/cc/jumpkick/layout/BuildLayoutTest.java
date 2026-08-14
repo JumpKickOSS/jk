@@ -20,7 +20,6 @@ class BuildLayoutTest {
     /** Application project: has {@code [application].main}. Artifacts land in {@code target/}. */
     private static JkBuild appProject(String artifact, String version) {
         return cc.jumpkick.config.JkBuildParser.parse("""
-                [project]
                 group   = "com.acme"
                 name    = "%s"
                 version = "%s"
@@ -141,7 +140,6 @@ class BuildLayoutTest {
     @Test
     void of_auto_discovers_enclosing_workspace_root(@TempDir Path workspace) throws IOException {
         Files.writeString(workspace.resolve("jk.toml"), """
-                [project]
                 group    = "com.example"
                 name     = "ws-root"
                 version  = "1.0.0"
@@ -152,7 +150,6 @@ class BuildLayoutTest {
         Path module = workspace.resolve("core");
         Files.createDirectories(module);
         Files.writeString(module.resolve("jk.toml"), """
-                [project]
                 group    = "com.example"
                 name     = "core"
                 version  = "1.0.0"
@@ -179,7 +176,6 @@ class BuildLayoutTest {
 
     private static JkBuild workspaceRootProject(String artifact, String version) {
         return cc.jumpkick.config.JkBuildParser.parse("""
-                [project]
                 group    = "com.example"
                 name     = "%s"
                 version  = "%s"

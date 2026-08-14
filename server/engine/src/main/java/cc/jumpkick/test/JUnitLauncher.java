@@ -276,7 +276,7 @@ public final class JUnitLauncher {
         Matcher table = Pattern.compile("(?m)^\\s*\\[quarkus]\\s*$").matcher(toml);
         if (!table.find()) return def;
         // Scan only until the next table header — a `version` in a later table (e.g.
-        // [project]) must not become the platform BOM version.
+        // project version) must not become the platform BOM version.
         String rest = toml.substring(table.end());
         Matcher nextTable = Pattern.compile("(?m)^\\s*\\[").matcher(rest);
         if (nextTable.find()) rest = rest.substring(0, nextTable.start());

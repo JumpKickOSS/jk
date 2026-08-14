@@ -51,7 +51,6 @@ class ModuleSelectionTest {
     @Test
     void single_project_matches_dot_or_name(@TempDir Path root) throws Exception {
         Files.writeString(root.resolve("jk.toml"), """
-                [project]
                 group = "com.ex"
                 name = "solo"
                 version = "1.0.0"
@@ -167,7 +166,6 @@ class ModuleSelectionTest {
             mods.append('"').append(m.path()).append('"');
             Files.createDirectories(root.resolve(m.path()));
             Files.writeString(root.resolve(m.path()).resolve("jk.toml"), """
-                    [project]
                     group = "com.ex"
                     name = "%s"
                     version = "1.0.0"
@@ -175,7 +173,6 @@ class ModuleSelectionTest {
                     """.formatted(m.projectName()));
         }
         Files.writeString(root.resolve("jk.toml"), """
-                [project]
                 group = "com.ex"
                 name = "ws"
                 version = "1.0.0"

@@ -9,7 +9,7 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** {@code [global].nerd-font} reading from ~/.config/jk/config.toml, leniently. */
+/** Root-level {@code nerd-font} reading from ~/.config/jk/config.toml, leniently. */
 class GlobalConfigTest {
 
     // Precedence is asserted through nerdFontMode, which is pure. nerdFont() resolves "auto" against
@@ -17,27 +17,29 @@ class GlobalConfigTest {
 
     @Test
     void reads_every_config_spelling(@TempDir Path dir) throws IOException {
-        assertThat(mode(write(dir, "[global]\nnerd-font = false\n"))).isEqualTo(NerdFontMode.OFF);
-        assertThat(mode(write(dir, "[global]\nnerd-font = true\n"))).isEqualTo(NerdFontMode.ON);
-        assertThat(mode(write(dir, "[global]\nnerd-font = \"auto\"\n"))).isEqualTo(NerdFontMode.AUTO);
-        assertThat(mode(write(dir, "[global]\nnerd-font = \"wedge\"\n"))).isEqualTo(NerdFontMode.WEDGE);
-        assertThat(mode(write(dir, "[global]\nnerd-font = \"pill\"\n"))).isEqualTo(NerdFontMode.PILL);
+        assertThat(mode(write(dir, "nerd-font = false\n"))).isEqualTo(NerdFontMode.OFF);
+        assertThat(mode(write(dir, "nerd-font = true\n"))).isEqualTo(NerdFontMode.ON);
+        assertThat(mode(write(dir, "nerd-font = \"auto\"\n"))).isEqualTo(NerdFontMode.AUTO);
+        assertThat(mode(write(dir, "nerd-font = \"wedge\"\n"))).isEqualTo(NerdFontMode.WEDGE);
+        assertThat(mode(write(dir, "nerd-font = \"pill\"\n"))).isEqualTo(NerdFontMode.PILL);
     }
 
     @Test
     void defaults_to_auto_when_unset_or_unparseable(@TempDir Path dir) throws IOException {
         assertThat(mode(dir.resolve("nope.toml"))).isEqualTo(NerdFontMode.AUTO); // no file
-        assertThat(mode(write(dir, "[global]\n"))).isEqualTo(NerdFontMode.AUTO); // table, no key
-        assertThat(mode(write(dir, "[cache]\nauto-prune = true\n"))).isEqualTo(NerdFontMode.AUTO); // no [global]
+        assertThat(mode(write(dir, "# empty-ish\n"))).isEqualTo(NerdFontMode.AUTO);
+        assertThat(mode(write(dir, "[cache]\nauto-prune = true\n"))).isEqualTo(NerdFontMode.AUTO); // no nerd-font
         // An unknown word is not an error: it falls through to the default, so a typo degrades to
         // detection rather than failing a build.
-        assertThat(mode(write(dir, "[global]\nnerd-font = \"sparkle\"\n"))).isEqualTo(NerdFontMode.AUTO);
+        assertThat(mode(write(dir, "nerd-font = \"sparkle\"\n"))).isEqualTo(NerdFontMode.AUTO);
+        // Legacy [global] table is ignored (breaking change — keys must be root-level).
+        assertThat(mode(write(dir, "[global]\nnerd-font = false\n"))).isEqualTo(NerdFontMode.AUTO);
     }
 
     @Test
     void jk_env_overrides_config(@TempDir Path dir) throws IOException {
-        Path cfgOn = write(dir, "[global]\nnerd-font = true\n");
-        Path cfgOff = write(dir, "[global]\nnerd-font = false\n");
+        Path cfgOn = write(dir, "nerd-font = true\n");
+        Path cfgOff = write(dir, "nerd-font = false\n");
 
         assertThat(GlobalConfig.nerdFontMode(cfgOn, "false", null)).isEqualTo(NerdFontMode.OFF);
         assertThat(GlobalConfig.nerdFontMode(cfgOn, "0", null)).isEqualTo(NerdFontMode.OFF);
@@ -59,8 +61,8 @@ class GlobalConfigTest {
 
     @Test
     void host_nerd_font_env_sits_between_jk_env_and_config(@TempDir Path dir) throws IOException {
-        Path cfgOn = write(dir, "[global]\nnerd-font = true\n");
-        Path cfgOff = write(dir, "[global]\nnerd-font = false\n");
+        Path cfgOn = write(dir, "nerd-font = true\n");
+        Path cfgOff = write(dir, "nerd-font = false\n");
 
         // NERD_FONT beats the file
         assertThat(GlobalConfig.nerdFontMode(cfgOn, null, "0")).isEqualTo(NerdFontMode.OFF);
@@ -75,7 +77,7 @@ class GlobalConfigTest {
     void host_nerd_font_env_ignores_mode_words(@TempDir Path dir) throws IOException {
         // NERD_FONT is a cross-tool variable with no notion of jk's two axes, so a mode word there
         // is ignored rather than honoured — it must not silently mean something jk-specific.
-        Path cfgOn = write(dir, "[global]\nnerd-font = true\n");
+        Path cfgOn = write(dir, "nerd-font = true\n");
         assertThat(GlobalConfig.nerdFontMode(cfgOn, null, "wedge")).isEqualTo(NerdFontMode.ON);
         assertThat(GlobalConfig.nerdFontMode(cfgOn, null, "auto")).isEqualTo(NerdFontMode.ON);
     }
@@ -84,7 +86,7 @@ class GlobalConfigTest {
     void color_disabled_degrades_to_no_glyphs(@TempDir Path dir) throws IOException {
         // colorEnabled=false (--color never / NO_COLOR / --no-ansi / TERM=dumb / CI) must win over
         // everything: PUA glyphs without color produce misaligned or blank-box output.
-        Path cfgOn = write(dir, "[global]\nnerd-font = true\n");
+        Path cfgOn = write(dir, "nerd-font = true\n");
         assertThat(GlobalConfig.nerdFont(cfgOn, null, null, false)).isEqualTo(NerdFontCaps.NONE);
         assertThat(GlobalConfig.nerdFont(cfgOn, "true", null, false)).isEqualTo(NerdFontCaps.NONE);
         assertThat(GlobalConfig.nerdFont(cfgOn, "wedge", null, false)).isEqualTo(NerdFontCaps.NONE);
@@ -114,7 +116,7 @@ class GlobalConfigTest {
     void engine_jdk_pin_empty_when_unset_or_missing(@TempDir Path dir) throws IOException {
         assertThat(GlobalConfig.engineJdkPin(dir.resolve("nope.toml"), null)).isEmpty(); // no file
         assertThat(GlobalConfig.engineJdkPin(write(dir, "[toolchain]\n"), null)).isEmpty(); // table, no key
-        assertThat(GlobalConfig.engineJdkPin(write(dir, "[global]\nnerd-font = true\n"), null))
+        assertThat(GlobalConfig.engineJdkPin(write(dir, "nerd-font = true\n"), null))
                 .isEmpty(); // no [toolchain]
     }
 

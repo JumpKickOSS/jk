@@ -84,7 +84,6 @@ class BuildLogicAnchorGatingTest {
         Path project = dir.resolve("proj");
         Files.createDirectories(project.resolve("src/main/java/demo"));
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "t"
                 version = "0.0.1"

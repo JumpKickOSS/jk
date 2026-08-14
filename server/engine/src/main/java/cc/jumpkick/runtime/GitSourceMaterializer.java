@@ -97,7 +97,7 @@ public final class GitSourceMaterializer {
 
         boolean isJk = Files.isRegularFile(projectDir.resolve("jk.toml"));
 
-        // Determine the coordinate. For a jk target it's read cheaply from [project] (+ the
+        // Determine the coordinate. For a jk target it's read cheaply from project identity (+ the
         // ref-derived version), so an already-built commit is a cache hit with no build. A foreign
         // (Gradle/Maven) target only reveals its GAV once built — cache it in a coordinate marker.
         String group = null;

@@ -31,7 +31,7 @@ class PathDisplayTest {
         // Workspace root with two modules; run from one, reference a file in the other.
         Files.writeString(
                 tmp.resolve("jk.toml"),
-                "[project]\ngroup = \"x\"\nname = \"root\"\nversion = \"1\"\n[workspace]\nmodules = [\"app\", \"lib\"]\n");
+                "group = \"x\"\nname = \"root\"\nversion = \"1\"\n[workspace]\nmodules = [\"app\", \"lib\"]\n");
         Path app = Files.createDirectories(tmp.resolve("app"));
         Path libFile = tmp.resolve("lib/src/Util.java");
 
@@ -43,7 +43,7 @@ class PathDisplayTest {
     void prefers_working_dir_over_workspace_root_when_deeper(@TempDir Path tmp) throws IOException {
         Files.writeString(
                 tmp.resolve("jk.toml"),
-                "[project]\ngroup = \"x\"\nname = \"root\"\nversion = \"1\"\n[workspace]\nmodules = [\"app\"]\n");
+                "group = \"x\"\nname = \"root\"\nversion = \"1\"\n[workspace]\nmodules = [\"app\"]\n");
         Path app = Files.createDirectories(tmp.resolve("app"));
         Path file = app.resolve("src/Main.java");
 

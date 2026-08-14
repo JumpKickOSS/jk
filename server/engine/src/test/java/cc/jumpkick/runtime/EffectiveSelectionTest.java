@@ -20,7 +20,6 @@ class EffectiveSelectionTest {
 
     private static Path moduleWithExcludes(Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 name = "demo"
                 group = "t"
                 version = "0.0.1"

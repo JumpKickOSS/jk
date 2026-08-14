@@ -19,7 +19,6 @@ class NativeArgsContributionTest {
     @Test
     void a_micronaut_project_with_native_gets_the_plugins_args(@TempDir Path dir) throws Exception {
         JkBuild build = parse(dir, """
-                [project]
                 group = "com.example"
                 name = "svc"
                 version = "0.1.0"
@@ -42,7 +41,6 @@ class NativeArgsContributionTest {
     @Test
     void without_native_declared_the_args_do_not_apply(@TempDir Path dir) throws Exception {
         JkBuild build = parse(dir, """
-                [project]
                 group = "com.example"
                 name = "svc"
                 version = "0.1.0"
@@ -58,7 +56,6 @@ class NativeArgsContributionTest {
     @Test
     void a_project_with_no_plugin_table_contributes_nothing(@TempDir Path dir) throws Exception {
         JkBuild build = parse(dir, """
-                [project]
                 group = "com.example"
                 name = "svc"
                 version = "0.1.0"

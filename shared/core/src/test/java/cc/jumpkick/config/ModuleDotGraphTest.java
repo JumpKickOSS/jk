@@ -16,13 +16,11 @@ class ModuleDotGraphTest {
     @Test
     void multi_module_emits_expected_edge() {
         JkBuild lib = JkBuildParser.parse("""
-                [project]
                 group = "com.example"
                 name = "lib"
                 version = "1.0.0"
                 """);
         JkBuild app = JkBuildParser.parse("""
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0.0"
@@ -52,13 +50,11 @@ class ModuleDotGraphTest {
     @Test
     void filter_drops_unselected_modules_and_edges() {
         JkBuild lib = JkBuildParser.parse("""
-                [project]
                 group = "com.example"
                 name = "lib"
                 version = "1.0.0"
                 """);
         JkBuild app = JkBuildParser.parse("""
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0.0"
@@ -67,7 +63,6 @@ class ModuleDotGraphTest {
                 lib = { group = "com.example", name = "lib", version = "1.0.0" }
                 """);
         JkBuild other = JkBuildParser.parse("""
-                [project]
                 group = "com.example"
                 name = "other"
                 version = "1.0.0"
@@ -103,7 +98,6 @@ class ModuleDotGraphTest {
     @Test
     void single_module_dot_one_node() {
         JkBuild b = JkBuildParser.parse("""
-                [project]
                 group = "g"
                 name = "n"
                 version = "1"
@@ -121,13 +115,11 @@ class ModuleDotGraphTest {
     @Test
     void mermaid_multi_module_emits_edge() {
         JkBuild lib = JkBuildParser.parse("""
-                [project]
                 group = "com.example"
                 name = "lib"
                 version = "1.0.0"
                 """);
         JkBuild app = JkBuildParser.parse("""
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0.0"
@@ -153,13 +145,11 @@ class ModuleDotGraphTest {
     @Test
     void mermaid_filter_and_empty() {
         JkBuild lib = JkBuildParser.parse("""
-                [project]
                 group = "com.example"
                 name = "lib"
                 version = "1.0.0"
                 """);
         JkBuild app = JkBuildParser.parse("""
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0.0"
@@ -184,7 +174,6 @@ class ModuleDotGraphTest {
     @Test
     void single_module_mermaid() {
         JkBuild b = JkBuildParser.parse("""
-                [project]
                 group = "g"
                 name = "n"
                 version = "1"
@@ -203,13 +192,11 @@ class ModuleDotGraphTest {
     @Test
     void graph_data_matches_mermaid_edges() {
         JkBuild lib = JkBuildParser.parse("""
-                [project]
                 group = "com.example"
                 name = "lib"
                 version = "1.0.0"
                 """);
         JkBuild app = JkBuildParser.parse("""
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0.0"
@@ -248,7 +235,6 @@ class ModuleDotGraphTest {
     @Test
     void single_module_data_one_node() {
         JkBuild b = JkBuildParser.parse("""
-                [project]
                 group = "g"
                 name = "n"
                 version = "1"
@@ -267,7 +253,6 @@ class ModuleDotGraphTest {
         Files.createDirectories(ws.resolve("lib"));
         Files.createDirectories(ws.resolve("app"));
         Files.writeString(ws.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "ws"
                 version = "1.0.0"
@@ -276,13 +261,11 @@ class ModuleDotGraphTest {
                 modules = ["lib", "app"]
                 """);
         Files.writeString(ws.resolve("lib/jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "lib"
                 version = "1.0.0"
                 """);
         Files.writeString(ws.resolve("app/jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0.0"

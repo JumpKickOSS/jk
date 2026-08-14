@@ -1,4 +1,3 @@
-[project]
 name = "jk-minified"
 description = "JumpKick's R8 minify plugin"
 

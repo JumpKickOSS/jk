@@ -25,7 +25,7 @@ public final class WorkspaceLoader {
         Objects.requireNonNull(root, "root");
         if (!root.isWorkspaceRoot()) return Map.of();
         if (root.project().inheritsFromWorkspace()) {
-            throw new JkBuildParseException("workspace root must set concrete [project] values"
+            throw new JkBuildParseException("workspace root must set concrete project values"
                     + " (`*.workspace = true` is only valid on workspace modules)");
         }
 
@@ -120,8 +120,7 @@ public final class WorkspaceLoader {
                         + thisLabel
                         + "`. Final artifacts share <workspaceRoot>/target/, so two "
                         + "modules can't emit the same `<artifact>-<version>.jar`. "
-                        + "Differentiate via the modules' [project].artifact or "
-                        + "[project].version.");
+                        + "Differentiate via the modules' name or version.");
             }
             claimed.put(key, e.dir);
         }

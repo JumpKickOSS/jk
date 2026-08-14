@@ -48,7 +48,6 @@ public final class JkBuildRenderer {
     }
 
     private static void renderProject(StringBuilder sb, JkBuild.Project p) {
-        sb.append("[project]\n");
         sb.append("group    = ").append(quote(p.group())).append('\n');
         sb.append("name     = ").append(quote(p.name())).append('\n');
         sb.append("version  = ").append(quote(p.version())).append('\n');

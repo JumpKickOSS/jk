@@ -30,7 +30,6 @@ class DependencyGraphModelTest {
     @Test
     void standalone_declared_only_omits_transitive(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0.0"
@@ -76,7 +75,6 @@ class DependencyGraphModelTest {
     @Test
     void test_scope_only_when_selected(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1"
@@ -100,7 +98,6 @@ class DependencyGraphModelTest {
     @Test
     void workspace_modules_and_external_declared(@TempDir Path root) throws Exception {
         Files.writeString(root.resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name = "ws"
                 version = "1"
@@ -110,14 +107,12 @@ class DependencyGraphModelTest {
                 """);
         Files.createDirectories(root.resolve("lib"));
         Files.writeString(root.resolve("lib").resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name = "lib"
                 version = "1"
                 """);
         Files.createDirectories(root.resolve("app"));
         Files.writeString(root.resolve("app").resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name = "app"
                 version = "1"
@@ -149,7 +144,6 @@ class DependencyGraphModelTest {
         assertThat(DependencyGraphModel.parseScopes(null)).isEqualTo(DependencyTree.defaultScopeOrder());
 
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "g"
                 name = "n"
                 version = "1"
@@ -167,7 +161,6 @@ class DependencyGraphModelTest {
     @Test
     void external_dep_whose_table_key_matches_a_module_name_stays_external(@TempDir Path root) throws Exception {
         Files.writeString(root.resolve("jk.toml"), """
-                [project]
                 group = "cc.jumpkick"
                 name = "ws"
                 version = "1"
@@ -177,7 +170,6 @@ class DependencyGraphModelTest {
                 """);
         Files.createDirectories(root.resolve("jk-api"));
         Files.writeString(root.resolve("jk-api").resolve("jk.toml"), """
-                [project]
                 group = "cc.jumpkick"
                 name = "jk-api"
                 version = "0.10.0"
@@ -185,7 +177,6 @@ class DependencyGraphModelTest {
         Files.createDirectories(root.resolve("compat"));
         // Table key "jk-api", but the coordinate names a DIFFERENT (published) artifact group.
         Files.writeString(root.resolve("compat").resolve("jk.toml"), """
-                [project]
                 group = "cc.jumpkick"
                 name = "compat"
                 version = "1"
@@ -211,7 +202,6 @@ class DependencyGraphModelTest {
     @Test
     void missing_module_jk_toml_throws_instead_of_returning_empty(@TempDir Path root) throws Exception {
         Files.writeString(root.resolve("jk.toml"), """
-                [project]
                 group = "g"
                 name = "ws"
                 version = "1"
@@ -252,7 +242,6 @@ class DependencyGraphModelTest {
     void transitive_expansion_shares_the_walk_and_truncates_at_the_cap(@TempDir Path dir) throws Exception {
         int artifacts = DependencyGraphModel.MAX_NODES + 100;
         StringBuilder toml = new StringBuilder("""
-                [project]
                 group = "com.bench"
                 name = "app"
                 version = "1"
@@ -309,7 +298,6 @@ class DependencyGraphModelTest {
     @Test
     void one_ga_two_kinds_is_two_nodes_with_both_subtrees(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "g"
                 name = "n"
                 version = "1"
@@ -379,7 +367,6 @@ class DependencyGraphModelTest {
     @Test
     void workspace_root_dependencies_appear_with_a_root_node(@TempDir Path root) throws Exception {
         Files.writeString(root.resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name = "ws"
                 version = "1"
@@ -392,7 +379,6 @@ class DependencyGraphModelTest {
                 """);
         Files.createDirectories(root.resolve("lib"));
         Files.writeString(root.resolve("lib").resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name = "lib"
                 version = "1"
@@ -418,7 +404,6 @@ class DependencyGraphModelTest {
     @Test
     void module_dir_draws_siblings_as_modules(@TempDir Path root) throws Exception {
         Files.writeString(root.resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name = "ws"
                 version = "1"
@@ -428,14 +413,12 @@ class DependencyGraphModelTest {
                 """);
         Files.createDirectories(root.resolve("lib"));
         Files.writeString(root.resolve("lib").resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name = "lib"
                 version = "1"
                 """);
         Files.createDirectories(root.resolve("app"));
         Files.writeString(root.resolve("app").resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name = "app"
                 version = "1"

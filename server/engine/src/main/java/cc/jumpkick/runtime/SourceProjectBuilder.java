@@ -38,7 +38,7 @@ final class SourceProjectBuilder {
     }
 
     /**
-     * Build the project at {@code projectDir}. {@code versionOverride} replaces jk {@code [project]}
+     * Build the project at {@code projectDir}. {@code versionOverride} replaces jk project
      * version (git deps); ignored for Gradle/Maven.
      */
     static Built build(

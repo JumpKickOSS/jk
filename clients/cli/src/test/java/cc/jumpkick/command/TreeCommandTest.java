@@ -107,7 +107,6 @@ class TreeCommandTest {
         String mods =
                 String.join(", ", Arrays.stream(modules).map(m -> '"' + m + '"').toList());
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group   = "com.example"
                 name    = "root"
                 version = "1.0.0"
@@ -120,7 +119,6 @@ class TreeCommandTest {
     private static void module(Path dir, String name) throws IOException {
         Files.createDirectories(dir);
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group   = "com.example"
                 name    = "%s"
                 version = "1.0.0"

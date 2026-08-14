@@ -38,7 +38,6 @@ class FirstBuildJdkTest {
         Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
 
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 name    = "first17"
                 group   = "com.example"
                 version = "1.0.0"

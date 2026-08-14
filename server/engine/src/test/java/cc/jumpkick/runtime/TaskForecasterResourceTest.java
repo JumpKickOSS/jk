@@ -74,7 +74,6 @@ class TaskForecasterResourceTest {
         Files.createDirectories(module.resolve("src/main/java"));
         Files.createDirectories(module.resolve("src/main/resources"));
         Files.writeString(module.resolve("jk.toml"), """
-                [project]
                 group = "ex"
                 name = "mod"
                 version = "1.0.0"

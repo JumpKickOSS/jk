@@ -75,7 +75,6 @@ class LibraryCatalogLayeringTest {
         Path mod = root.resolve("app");
         Files.createDirectories(mod);
         Files.writeString(root.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "ws"
                 version = "1.0.0"
@@ -84,7 +83,6 @@ class LibraryCatalogLayeringTest {
                 modules = ["app"]
                 """);
         Files.writeString(mod.resolve("jk.toml"), """
-                [project]
                 name = "app"
                 """);
         Files.writeString(root.resolve("jk-libs.toml"), """
@@ -109,7 +107,6 @@ class LibraryCatalogLayeringTest {
         Path mod = root.resolve("app");
         Files.createDirectories(mod);
         Files.writeString(root.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "ws"
                 version = "1.0.0"
@@ -117,7 +114,7 @@ class LibraryCatalogLayeringTest {
                 [workspace]
                 modules = ["app"]
                 """);
-        Files.writeString(mod.resolve("jk.toml"), "[project]\nname = \"app\"\n");
+        Files.writeString(mod.resolve("jk.toml"), "name = \"app\"\n");
         Files.writeString(mod.resolve("jk-libs.toml"), """
                 [libraries]
                 x = "com.acme:x"

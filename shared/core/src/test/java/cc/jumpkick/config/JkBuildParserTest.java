@@ -20,7 +20,6 @@ import org.junit.jupiter.api.io.TempDir;
 class JkBuildParserTest {
 
     private static final String PROJECT = """
-            [project]
             group    = "com.example"
             name     = "widget"
             version  = "1.0.0"
@@ -100,7 +99,6 @@ class JkBuildParserTest {
     @Test
     void parses_groovy_version_pin() {
         JkBuild parsed = JkBuildParser.parse("""
-                [project]
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
@@ -231,30 +229,40 @@ class JkBuildParserTest {
     }
 
     @Test
-    void missing_project_block_rejected() {
+    void missing_name_rejected() {
         assertThatThrownBy(() -> JkBuildParser.parse(""))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("[project]");
+                .hasMessageContaining("name");
+    }
+
+    @Test
+    void rejects_legacy_project_table() {
+        assertThatThrownBy(() -> JkBuildParser.parse("""
+                [project]
+                group    = "com.example"
+                name     = "widget"
+                version  = "1.0.0"
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[project] was removed");
     }
 
     @Test
     void rejects_project_java_below_17() {
         assertThatThrownBy(() -> JkBuildParser.parse("""
-                [project]
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
                 java     = 11
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("project.java = 11")
+                .hasMessageContaining("java = 11")
                 .hasMessageContaining("JDK 17 and above");
     }
 
     @Test
     void java_accepts_quoted_string_and_coerces() {
         JkBuild parsed = JkBuildParser.parse("""
-                [project]
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
@@ -266,20 +274,18 @@ class JkBuildParserTest {
     @Test
     void rejects_non_numeric_java_string() {
         assertThatThrownBy(() -> JkBuildParser.parse("""
-                [project]
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
                 java     = "twenty-five"
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("project.java");
+                .hasMessageContaining("java");
     }
 
     @Test
     void rejects_project_jdk_below_17() {
         assertThatThrownBy(() -> JkBuildParser.parse("""
-                [project]
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
@@ -287,13 +293,12 @@ class JkBuildParserTest {
                 java     = 25
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("project.jdk = 8");
+                .hasMessageContaining("jdk = 8");
     }
 
     @Test
     void parses_format_block() {
         JkBuild parsed = JkBuildParser.parse("""
-                [project]
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
@@ -314,7 +319,6 @@ class JkBuildParserTest {
     @Test
     void parses_format_hygiene_toggles() {
         JkBuild parsed = JkBuildParser.parse("""
-                [project]
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
@@ -339,7 +343,6 @@ class JkBuildParserTest {
     @Test
     void parses_jdk_vendor_major_spec() {
         JkBuild parsed = JkBuildParser.parse("""
-                [project]
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
@@ -357,7 +360,6 @@ class JkBuildParserTest {
         // .jdk-version accept) — resolved downstream by JdkKeywords, not by this parser.
         for (String keyword : new String[] {"lts", "stable", "latest", "native"}) {
             JkBuild parsed = JkBuildParser.parse("""
-                    [project]
                     group    = "com.example"
                     name     = "widget"
                     version  = "1.0.0"
@@ -370,7 +372,6 @@ class JkBuildParserTest {
     @Test
     void parses_jdk_bare_major_string() {
         JkBuild parsed = JkBuildParser.parse("""
-                [project]
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
@@ -409,7 +410,6 @@ class JkBuildParserTest {
     void accepts_unquoted_integer_jdk_as_bare_major() {
         // Back-compat: the old integer form coerces to a bare-major string.
         JkBuild parsed = JkBuildParser.parse("""
-                [project]
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
@@ -421,7 +421,6 @@ class JkBuildParserTest {
     @Test
     void rejects_jdk_point_release() {
         assertThatThrownBy(() -> JkBuildParser.parse("""
-                [project]
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
@@ -434,7 +433,6 @@ class JkBuildParserTest {
     @Test
     void rejects_jdk_vendor_point_release() {
         assertThatThrownBy(() -> JkBuildParser.parse("""
-                [project]
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
@@ -448,7 +446,6 @@ class JkBuildParserTest {
     void missing_version_on_standalone_marks_workspace_inherit() {
         // Non-root omit of version is inheritance (member-shaped); not a hard parse error.
         JkBuild parsed = JkBuildParser.parse("""
-                [project]
                 group    = "com.example"
                 name     = "widget"
                 """);
@@ -459,7 +456,6 @@ class JkBuildParserTest {
     @Test
     void workspace_root_still_requires_concrete_version() {
         assertThatThrownBy(() -> JkBuildParser.parse("""
-                [project]
                 group    = "com.example"
                 name     = "root"
 
@@ -467,13 +463,12 @@ class JkBuildParserTest {
                 modules = ["lib"]
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("project.version");
+                .hasMessageContaining("version");
     }
 
     @Test
     void module_shaped_only_name_is_valid_parse() {
         JkBuild parsed = JkBuildParser.parse("""
-                [project]
                 name = "foo"
                 """);
         assertThat(parsed.project().name()).isEqualTo("foo");
@@ -489,7 +484,6 @@ class JkBuildParserTest {
     void version_workspace_true_parses_as_inheritance_sentinel() {
         // Dotted key form (Cargo-style).
         JkBuild dotted = JkBuildParser.parse("""
-                [project]
                 group   = "com.example"
                 name    = "mod"
                 version.workspace = true
@@ -501,7 +495,6 @@ class JkBuildParserTest {
 
         // Inline table form.
         JkBuild inline = JkBuildParser.parse("""
-                [project]
                 group   = "com.example"
                 name    = "mod"
                 version = { workspace = true }
@@ -514,7 +507,6 @@ class JkBuildParserTest {
     @Test
     void project_field_workspace_inheritance_parses_multiple_fields() {
         JkBuild parsed = JkBuildParser.parse("""
-                [project]
                 group.workspace = true
                 name    = "mod"
                 version.workspace = true
@@ -535,20 +527,18 @@ class JkBuildParserTest {
     @Test
     void name_workspace_inheritance_rejected() {
         assertThatThrownBy(() -> JkBuildParser.parse("""
-                [project]
                 group   = "com.example"
                 name.workspace = true
                 version = "1.0.0"
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("project.name")
+                .hasMessageContaining("name")
                 .hasMessageContaining("workspace");
     }
 
     @Test
     void version_workspace_true_rejected_on_workspace_root() {
         assertThatThrownBy(() -> JkBuildParser.parse("""
-                [project]
                 group   = "com.example"
                 name    = "root"
                 version.workspace = true
@@ -563,7 +553,6 @@ class JkBuildParserTest {
     @Test
     void version_workspace_must_be_true() {
         assertThatThrownBy(() -> JkBuildParser.parse("""
-                [project]
                 group   = "com.example"
                 name    = "mod"
                 version = { workspace = false }
@@ -737,7 +726,7 @@ class JkBuildParserTest {
         var dep = parsed.dependencies().of(Scope.MAIN).getFirst();
         assertThat(dep.isGit()).isTrue();
         // Discovery: a placeholder module the resolver rewrites once the repo's
-        // [project] coordinate is known.
+        // project coordinate is known.
         assertThat(dep.module()).isEqualTo("git:mylib");
         assertThat(dep.gitSource().ref()).isEqualTo(new GitRefSpec.Tag("v1.4.0"));
     }
@@ -1635,7 +1624,6 @@ class JkBuildParserTest {
         Path mod = root.resolve("lib");
         Files.createDirectories(mod);
         Files.writeString(root.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "ws"
                 version = "1.0.0"
@@ -1644,7 +1632,6 @@ class JkBuildParserTest {
                 modules = ["lib"]
                 """);
         Files.writeString(mod.resolve("jk.toml"), """
-                [project]
                 name = "lib"
                 """);
         Files.writeString(mod.resolve("jk-libs.toml"), """
@@ -1897,7 +1884,6 @@ class JkBuildParserTest {
     void dev_and_test_dev_scope_tables_parse() {
         // Dev-loop scopes (spring-boot plan §3.2): run-only / run+test, never packaged.
         JkBuild b = JkBuildParser.parse("""
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0"
@@ -1917,7 +1903,6 @@ class JkBuildParserTest {
     @Test
     void versionless_dep_with_group_parses_as_platform_managed() {
         JkBuild b = JkBuildParser.parse("""
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0"
@@ -1936,7 +1921,6 @@ class JkBuildParserTest {
     @Test
     void versionless_dep_without_group_still_errors() {
         assertThatThrownBy(() -> JkBuildParser.parse("""
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0"
@@ -1951,7 +1935,6 @@ class JkBuildParserTest {
         // [platform-dependencies] (BOM imports) and [runtime-dependencies] were previously
         // importer-only; hand-written manifests must be able to declare them (Boot BOM flow).
         JkBuild b = JkBuildParser.parse("""
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0"
@@ -1969,7 +1952,6 @@ class JkBuildParserTest {
     @Test
     void spring_boot_table_parses_and_auto_imports_the_bom() {
         JkBuild b = JkBuildParser.parse("""
-                [project]
                 group = "com.example"
                 name = "shop"
                 version = "1.0"

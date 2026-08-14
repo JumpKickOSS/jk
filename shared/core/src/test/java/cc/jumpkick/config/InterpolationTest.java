@@ -18,7 +18,6 @@ import org.junit.jupiter.api.Test;
 class InterpolationTest {
 
     private static final String PROJECT = """
-            [project]
             group   = "com.example"
             name    = "m"
             version = "1.0.0"
@@ -90,13 +89,12 @@ class InterpolationTest {
     @Test
     void a_version_may_not_interpolate() {
         assertThatThrownBy(() -> parse("""
-                        [project]
                         group   = "com.example"
                         name    = "m"
                         version = "${MY_VERSION}"
                         """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("project.version");
+                .hasMessageContaining("version");
     }
 
     @Test
@@ -150,7 +148,6 @@ class InterpolationTest {
     @Test
     void the_error_names_every_offending_position() {
         assertThatThrownBy(() -> parse("""
-                        [project]
                         group   = "com.example"
                         name    = "m"
                         version = "${A}"
@@ -159,7 +156,7 @@ class InterpolationTest {
                         X = "${B}"
                         """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("project.version")
+                .hasMessageContaining("version")
                 .hasMessageContaining("manifest.X");
     }
 

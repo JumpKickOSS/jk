@@ -15,7 +15,6 @@ class HttpHistoryApiTest {
     @Test
     void records_persisted_before_write_time_redaction_replay_masked(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "g"
                 name = "demo"
                 version = "1"
@@ -37,7 +36,6 @@ class HttpHistoryApiTest {
     @Test
     void records_with_no_env_pass_through_unchanged(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "g"
                 name = "demo"
                 version = "1"

@@ -25,7 +25,6 @@ class RepoGroupBuilderHttpTest {
     @Test
     void every_http_repo_in_a_real_resolve_gets_a_metadata_cache(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "demo"
                 name = "demo"
                 version = "1.0.0"

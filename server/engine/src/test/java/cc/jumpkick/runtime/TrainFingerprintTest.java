@@ -23,7 +23,7 @@ class TrainFingerprintTest {
     @Test
     void filtered_profile_selection_changes_the_fingerprint(@TempDir Path tmp) throws Exception {
         Path toml = tmp.resolve("jk.toml");
-        Files.writeString(toml, "[project]\nname = \"app\"\ngroup = \"g\"\nversion = \"1\"\n");
+        Files.writeString(toml, "name = \"app\"\ngroup = \"g\"\nversion = \"1\"\n");
         JkBuild project = JkBuildParser.parse(toml);
         TrainConfig config = new TrainConfig(
                 null,

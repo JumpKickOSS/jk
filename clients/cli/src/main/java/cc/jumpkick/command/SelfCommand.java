@@ -49,7 +49,7 @@ public final class SelfCommand extends GroupCommand {
     }
 
     /**
-     * {@code jk self setup-terminal} — persist {@code [global].nerd-font} in {@code
+     * {@code jk self setup-terminal} — persist root-level {@code nerd-font} in {@code
      * ~/.config/jk/config.toml}. Also invoked from install.sh.
      *
      * <p>Writing {@code auto} is the useful default: detection now runs cheaply on every launch, so
@@ -65,7 +65,7 @@ public final class SelfCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Write [global].nerd-font (default: auto)";
+            return "Write nerd-font in config.toml (default: auto)";
         }
 
         @Override

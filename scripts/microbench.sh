@@ -16,7 +16,6 @@ if [[ -z "$PROJECT" ]]; then
     rm -rf "$FIX"
     "$JK_BIN" init microbench-app --dir "$FIX" 2>/dev/null \
       || { mkdir -p "$FIX/src/main/java/demo" && cat >"$FIX/jk.toml" <<'EOF'
-[project]
 group = "demo"
 name = "microbench"
 version = "0.0.1"

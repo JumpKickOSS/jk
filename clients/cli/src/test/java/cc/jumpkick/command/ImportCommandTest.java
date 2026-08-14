@@ -61,7 +61,7 @@ class ImportCommandTest {
                 """, StandardCharsets.UTF_8);
 
         Path existing = tempDir.resolve("jk.toml");
-        Files.writeString(existing, "[project]\ngroup = \"prior\"\n");
+        Files.writeString(existing, "group = \"prior\"\n");
 
         int exit = run("import", pom.toString());
         assertThat(exit).isEqualTo(73); // EX_CANTCREAT
@@ -79,7 +79,7 @@ class ImportCommandTest {
                   <version>1.0</version>
                 </project>
                 """, StandardCharsets.UTF_8);
-        Files.writeString(tempDir.resolve("jk.toml"), "[project]\ngroup = \"prior\"\n");
+        Files.writeString(tempDir.resolve("jk.toml"), "group = \"prior\"\n");
 
         int exit = run(
                 "import",

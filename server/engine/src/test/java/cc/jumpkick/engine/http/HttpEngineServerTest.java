@@ -602,7 +602,6 @@ class HttpEngineServerTest {
         Files.createDirectories(ws.resolve("lib"));
         Files.createDirectories(ws.resolve("app"));
         Files.writeString(ws.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "ws"
                 version = "1.0.0"
@@ -611,13 +610,11 @@ class HttpEngineServerTest {
                 modules = ["lib", "app"]
                 """);
         Files.writeString(ws.resolve("lib").resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "lib"
                 version = "1.0.0"
                 """);
         Files.writeString(ws.resolve("app").resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0.0"
@@ -650,7 +647,6 @@ class HttpEngineServerTest {
         Path solo = stateDir.resolve("solo");
         Files.createDirectories(solo);
         Files.writeString(solo.resolve("jk.toml"), """
-                [project]
                 group = "g"
                 name = "n"
                 version = "1"
@@ -678,7 +674,6 @@ class HttpEngineServerTest {
         Path solo = stateDir.resolve("solo");
         Files.createDirectories(solo);
         Files.writeString(solo.resolve("jk.toml"), """
-                [project]
                 group = "g"
                 name = "n"
                 version = "1"
@@ -713,7 +708,6 @@ class HttpEngineServerTest {
         Path ws = stateDir.resolve("broken-ws");
         Files.createDirectories(ws);
         Files.writeString(ws.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "ws"
                 version = "1.0.0"
@@ -782,7 +776,6 @@ class HttpEngineServerTest {
             Path checkout = stateDir.resolve("src-app");
             Files.createDirectories(checkout.resolve("src"));
             Files.writeString(checkout.resolve("jk.toml"), """
-                    [project]
                     group = "g"
                     name = "n"
                     version = "1"
@@ -861,7 +854,6 @@ class HttpEngineServerTest {
             Path checkout = stateDir.resolve("src-decode");
             Files.createDirectories(checkout.resolve("src"));
             Files.writeString(checkout.resolve("jk.toml"), """
-                    [project]
                     group = "g"
                     name = "n"
                     version = "1"
@@ -1022,7 +1014,7 @@ class HttpEngineServerTest {
         Files.createDirectories(stateDir.resolve("workspace/module-a"));
         Files.createDirectories(stateDir.resolve("workspace/module-b"));
         Files.createDirectories(stateDir.resolve("workspace/.git")); // hidden: skipped
-        Files.writeString(stateDir.resolve("workspace/jk.toml"), "[project]");
+        Files.writeString(stateDir.resolve("workspace/jk.toml"), "");
         Files.writeString(stateDir.resolve("workspace/README.md"), "not a dir");
         HttpResponse<String> resp =
                 get("/api/fs?dir=" + stateDir.resolve("workspace"), "Authorization", "Bearer " + token());
@@ -1054,7 +1046,7 @@ class HttpEngineServerTest {
         Path home = Path.of(System.getProperty("user.home")).toAbsolutePath().normalize();
         Path pick = home.resolve("jk-fs-home-rel-" + ProcessHandle.current().pid());
         Files.createDirectories(pick.resolve("child-a"));
-        Files.writeString(pick.resolve("jk.toml"), "[project]");
+        Files.writeString(pick.resolve("jk.toml"), "");
         try {
             String rel = home.relativize(pick).toString().replace('\\', '/');
             String enc = URLEncoder.encode(rel, UTF_8);

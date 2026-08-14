@@ -37,7 +37,6 @@ class QuarkusLockPhaseTimingTest {
         Path store = QuarkusLockPerfTest.developerStore();
         assumeTrue(Files.isDirectory(store));
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 name = "q-phase"
                 group = "demo"
                 version = "0.1.0"

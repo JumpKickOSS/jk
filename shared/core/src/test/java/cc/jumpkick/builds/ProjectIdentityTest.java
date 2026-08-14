@@ -15,7 +15,6 @@ class ProjectIdentityTest {
     @Test
     void path_tier_is_stable_for_same_checkout(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "demo"
                 version = "0.1.0"
@@ -31,7 +30,6 @@ class ProjectIdentityTest {
     @Test
     void lock_project_id_wins_over_path(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "demo"
                 version = "0.1.0"
@@ -46,7 +44,6 @@ class ProjectIdentityTest {
     @Test
     void ensure_project_id_mints_and_preserves(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "demo"
                 version = "0.1.0"
@@ -63,19 +60,17 @@ class ProjectIdentityTest {
     @Test
     void coord_rename_preserves_identity_for_lockless_projects(@TempDir Path dir, @TempDir Path buildsDir)
             throws Exception {
-        // Coord is display metadata, not identity material (JK-1794): renaming [project]
+        // Coord is display metadata, not identity material (JK-1794): renaming project
         // group/name must not split a lockless project into two dashboard projects.
         System.setProperty("jk.env.JK_BUILDS_DIR", buildsDir.toString());
         try {
             Files.writeString(dir.resolve("jk.toml"), """
-                    [project]
                     group = "com.example"
                     name = "demo"
                     version = "0.1.0"
                     """);
             ProjectIdentity before = ProjectIdentity.resolve(dir);
             Files.writeString(dir.resolve("jk.toml"), """
-                    [project]
                     group = "org.renamed"
                     name = "other"
                     version = "0.1.0"
@@ -111,7 +106,6 @@ class ProjectIdentityTest {
     @Test
     void explicit_toml_id_wins(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "demo"
                 version = "0.1.0"

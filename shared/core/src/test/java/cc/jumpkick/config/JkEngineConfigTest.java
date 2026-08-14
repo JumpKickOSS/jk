@@ -52,7 +52,7 @@ class JkEngineConfigTest {
     @Test
     void table_absent_yields_defaults(@TempDir Path tempDir) throws IOException {
         Path toml = tempDir.resolve("config.toml");
-        Files.writeString(toml, "[project]\ngroup = \"x\"\n");
+        Files.writeString(toml, "group = \"x\"\n");
         assertThat(JkEngineConfig.fromToml(toml)).isEqualTo(JkEngineConfig.DEFAULTS);
     }
 

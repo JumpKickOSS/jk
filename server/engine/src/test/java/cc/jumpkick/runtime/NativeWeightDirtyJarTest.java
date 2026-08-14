@@ -19,7 +19,6 @@ class NativeWeightDirtyJarTest {
     @Test
     void nativeWeight_over_reserves_when_main_sources_are_dirty(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 name = "demo"
                 group = "t"
                 version = "0.0.1"
@@ -56,7 +55,6 @@ class NativeWeightDirtyJarTest {
     @Test
     void jar_dirty_implies_native_and_oci_dirty(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 name = "demo"
                 group = "t"
                 version = "0.0.1"
@@ -78,7 +76,6 @@ class NativeWeightDirtyJarTest {
     @Test
     void overReserveTails_forces_full_native_even_when_binary_looks_fresh(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 name = "demo"
                 group = "t"
                 version = "0.0.1"

@@ -37,7 +37,7 @@ class LanguageRuntimeInjectTest {
     void inferred_groovy_without_pin_injects_the_runtime(@TempDir Path dir) throws IOException {
         Files.createDirectories(dir.resolve("src/main/groovy"));
         Files.writeString(dir.resolve("src/main/groovy/A.groovy"), "class A {}");
-        JkBuild p = project("[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\n");
+        JkBuild p = project("group=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
         LockOrchestrator.injectLanguageRuntimes(p, dir, Map.of(), deps);
         assertThat(deps).containsKey(key(GROOVY));
@@ -49,7 +49,7 @@ class LanguageRuntimeInjectTest {
         // Mirrors BuildPlanner: java = 25 declared → groovy sources are ignored, no lane,
         // so no runtime inject either.
         Files.createDirectories(dir.resolve("src/main/groovy"));
-        JkBuild p = project("[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njava=25\n");
+        JkBuild p = project("group=\"g\"\nname=\"n\"\nversion=\"1\"\njava=25\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
         LockOrchestrator.injectLanguageRuntimes(p, dir, Map.of(), deps);
         assertThat(deps).isEmpty();
@@ -61,7 +61,7 @@ class LanguageRuntimeInjectTest {
         // own bom manages) — it wins and is NOT in the strip skip-list.
         Files.createDirectories(dir.resolve("src/main/groovy"));
         Files.writeString(dir.resolve("src/main/groovy/A.groovy"), "class A {}");
-        JkBuild p = project("[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\ngroovy=\"5.0.7\"\n");
+        JkBuild p = project("group=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\ngroovy=\"5.0.7\"\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
         var skipStrip =
                 LockOrchestrator.injectLanguageRuntimes(p, dir, Map.of("org.apache.groovy:groovy", "5.0.6"), deps);
@@ -73,7 +73,7 @@ class LanguageRuntimeInjectTest {
     void unpinned_inferred_runtime_follows_the_bom_and_skips_the_strip(@TempDir Path dir) throws IOException {
         Files.createDirectories(dir.resolve("src/main/groovy"));
         Files.writeString(dir.resolve("src/main/groovy/A.groovy"), "class A {}");
-        JkBuild p = project("[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\n");
+        JkBuild p = project("group=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
         var skipStrip =
                 LockOrchestrator.injectLanguageRuntimes(p, dir, Map.of("org.apache.groovy:groovy", "5.0.6"), deps);
@@ -85,7 +85,7 @@ class LanguageRuntimeInjectTest {
     void sourceless_pin_does_not_inject_the_runtime(@TempDir Path dir) throws IOException {
         // A compiler-version pin on a module with no sources of that language locks the
         // compiler but has nothing to run — no runtime dep.
-        JkBuild p = project("[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\nkotlin=\"=2.1.0\"\n");
+        JkBuild p = project("group=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\nkotlin=\"=2.1.0\"\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
         LockOrchestrator.injectLanguageRuntimes(p, dir, Map.of(), deps);
         assertThat(deps).isEmpty();
@@ -95,7 +95,7 @@ class LanguageRuntimeInjectTest {
     void pinned_groovy_still_injects_and_user_dep_wins(@TempDir Path dir) throws IOException {
         Files.createDirectories(dir.resolve("src/main/groovy"));
         Files.writeString(dir.resolve("src/main/groovy/A.groovy"), "class A {}");
-        JkBuild p = project("[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\ngroovy=\"5.0.4\"\n");
+        JkBuild p = project("group=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\ngroovy=\"5.0.4\"\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
         Dependency user = new Dependency("org.apache.groovy:groovy", cc.jumpkick.model.VersionSelector.parse("=5.0.7"));
         deps.put(user.packageKey(), user);
@@ -114,8 +114,8 @@ class LanguageRuntimeInjectTest {
     void unpinned_groovy_does_not_double_root_a_user_declared_dep(@TempDir Path dir) throws IOException {
         Files.createDirectories(dir.resolve("src/main/groovy"));
         Files.writeString(dir.resolve("src/main/groovy/A.groovy"), "class A {}");
-        // No [project] groovy pin — the inject would otherwise float to the fallback major.
-        JkBuild p = project("[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\n");
+        // No project groovy pin — the inject would otherwise float to the fallback major.
+        JkBuild p = project("group=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
         Dependency user =
                 new Dependency("org.apache.groovy:groovy", cc.jumpkick.model.VersionSelector.parse("=4.0.21"));
@@ -131,7 +131,7 @@ class LanguageRuntimeInjectTest {
     void unpinned_kotlin_does_not_double_root_a_user_declared_stdlib(@TempDir Path dir) throws IOException {
         Files.createDirectories(dir.resolve("src/main/kotlin"));
         Files.writeString(dir.resolve("src/main/kotlin/A.kt"), "class A");
-        JkBuild p = project("[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\n");
+        JkBuild p = project("group=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
         Dependency user =
                 new Dependency("org.jetbrains.kotlin:kotlin-stdlib", cc.jumpkick.model.VersionSelector.parse("=2.1.0"));

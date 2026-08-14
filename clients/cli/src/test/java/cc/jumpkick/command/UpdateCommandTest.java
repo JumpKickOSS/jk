@@ -148,7 +148,6 @@ class UpdateCommandTest {
         registerJar("com.foo.update", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
 
         Files.writeString(tempDir.resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name     = "ws"
                 version = "0.1.0"
@@ -158,7 +157,6 @@ class UpdateCommandTest {
                 """);
         Path app = Files.createDirectories(tempDir.resolve("app"));
         Files.writeString(app.resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name     = "app"
                 version = "0.1.0"
@@ -169,7 +167,6 @@ class UpdateCommandTest {
                 """);
         Path libb = Files.createDirectories(tempDir.resolve("libb"));
         Files.writeString(libb.resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name     = "libb"
                 version = "0.1.0"

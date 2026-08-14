@@ -1098,7 +1098,7 @@ public final class LockOrchestrator {
             Map<String, String> bomConstraints, String module, VersionSelector declared, String fallbackMajor) {
         String lit = declared != null ? versionLiteral(declared) : null;
         if (lit != null && !lit.isBlank()) {
-            // Any [project] version literal (bare/caret/tilde all carry one) is a deliberate
+            // Any project version literal (bare/caret/tilde all carry one) is a deliberate
             // choice — same contract as the original inject.
             return VersionSelector.parse("=" + lit);
         }

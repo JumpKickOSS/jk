@@ -28,7 +28,6 @@ class IdeEngineClientTest {
     void projectInfo_and_connect_work_without_shelling_out(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("app"));
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 name = "app"
                 group = "com.example"
                 version = "1.0.0"
@@ -51,7 +50,6 @@ class IdeEngineClientTest {
     void sync_fires_progress_callbacks(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("app"));
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 name = "app"
                 group = "com.example"
                 version = "1.0.0"
@@ -86,7 +84,6 @@ class IdeEngineClientTest {
     void build_listener_sees_module_boundaries(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("app"));
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 name = "app"
                 group = "com.example"
                 version = "1.0.0"
@@ -125,7 +122,6 @@ class IdeEngineClientTest {
     void testModule_runs_against_wire(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("app"));
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 name = "app"
                 group = "com.example"
                 version = "1.0.0"

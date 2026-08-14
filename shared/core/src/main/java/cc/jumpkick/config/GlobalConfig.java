@@ -21,7 +21,7 @@ import org.tomlj.TomlParseResult;
 import org.tomlj.TomlTable;
 
 /**
- * Machine-scoped preferences from {@code ~/.config/jk/config.toml}: {@code [global]} UI flags (e.g.
+ * Machine-scoped preferences from {@code ~/.config/jk/config.toml}: root-level UI flags (e.g.
  * {@code nerd-font}) and global {@code [repositories]}. Not project-overridable; env overrides
  * apply. Project {@code [repositories]} win on name collision; global fills gaps.
  */
@@ -37,7 +37,7 @@ public final class GlobalConfig {
      *       {@code --color never}. Absolute: beats even an explicit env override.
      *   <li>env {@code JK_NERD_FONT} — the full value set, including the mode words.
      *   <li>env {@code NERD_FONT} — the host-wide cross-tool variable, booleans only.
-     *   <li>{@code ~/.config/jk/config.toml} {@code [global].nerd-font}.
+     *   <li>{@code ~/.config/jk/config.toml} root-level {@code nerd-font}.
      *   <li>default {@code "auto"} → {@link NerdFontDetect}.
      * </ol>
      *
@@ -109,7 +109,7 @@ public final class GlobalConfig {
     static NerdFontMode nerdFontMode(Path configFile, String jkEnv, String hostEnv) {
         return NerdFontMode.parse(jkEnv)
                 .or(() -> NerdFontMode.parseBooleanOnly(hostEnv))
-                .or(() -> stringFromGlobal(configFile, "global", "nerd-font").flatMap(NerdFontMode::parse))
+                .or(() -> stringFromRoot(configFile, "nerd-font").flatMap(NerdFontMode::parse))
                 .orElse(NerdFontMode.AUTO);
     }
 
@@ -137,10 +137,19 @@ public final class GlobalConfig {
                 .orElse(List.of());
     }
 
-    /** Read a single string value from an arbitrary {@code [table].key}, leniently, via TomlScan. */
+    /** Read a single top-level string value, leniently, via TomlScan. */
+    private static Optional<String> stringFromRoot(Path file, String key) {
+        return stringFromGlobal(file, key);
+    }
+
+    /** Read a single string value from {@code [table].key} (or a bare top-level key), leniently. */
     private static Optional<String> stringFromGlobal(Path file, String table, String key) {
+        return stringFromGlobal(file, table + "." + key);
+    }
+
+    /** Read a dotted or bare key via TomlScan, leniently. */
+    private static Optional<String> stringFromGlobal(Path file, String dotted) {
         if (file == null) return Optional.empty();
-        String dotted = table + "." + key;
         String cacheKey;
         long size;
         long modified;

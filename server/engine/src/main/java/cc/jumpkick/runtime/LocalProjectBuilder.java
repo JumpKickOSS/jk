@@ -165,7 +165,7 @@ public final class LocalProjectBuilder {
         return new Built(group, artifact, version, jarOut, pomXml);
     }
 
-    /** A copy of {@code project} whose {@code [project]} coordinate/version are replaced. */
+    /** A copy of {@code project} whose project coordinate/version are replaced. */
     private static JkBuild withCoordinate(JkBuild project, String group, String artifact, String version) {
         JkBuild.Project p = project.project();
         JkBuild.Project overridden = new JkBuild.Project(

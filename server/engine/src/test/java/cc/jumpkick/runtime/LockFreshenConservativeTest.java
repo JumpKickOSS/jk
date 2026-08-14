@@ -184,7 +184,6 @@ class LockFreshenConservativeTest {
         serveLib("1.0");
         serveLeaf("com.foo", "extra", "1.0");
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "demo"
                 version = "1.0.0"
@@ -221,7 +220,6 @@ class LockFreshenConservativeTest {
         serveLib("1.0");
         serveLeaf("org.jetbrains.kotlin", "kotlin-compiler-embeddable", "2.1.0");
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "demo"
                 version = "1.0.0"
@@ -246,7 +244,6 @@ class LockFreshenConservativeTest {
 
     private static void project(Path tmp) throws IOException {
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "demo"
                 version = "1.0.0"

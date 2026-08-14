@@ -21,7 +21,6 @@ class QuarkusPlatformContribTest {
                 .contains("quarkus");
 
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 name = "q"
                 group = "g"
                 version = "0.1.0"

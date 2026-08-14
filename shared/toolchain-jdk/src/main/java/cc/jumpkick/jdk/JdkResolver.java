@@ -10,7 +10,7 @@ import java.util.Optional;
 /**
  * Reads and resolves the project's {@code .jdk-version} pin — the {@code .jdk-version}
  * <em>tier</em> of the resolution order. The full cross-tier order (switch / env / {@code
- * .jdk-version} / lock / {@code [project].jdk} / current / default / …) lives in {@link
+ * .jdk-version} / lock / {@code jdk} / current / default / …) lives in {@link
  * JdkResolution}; this class only owns the file: read it ({@link #readJdkVersion}), validate it
  * ({@link #validatePin}), and resolve it to an installed (or provisioned) JDK.
  *

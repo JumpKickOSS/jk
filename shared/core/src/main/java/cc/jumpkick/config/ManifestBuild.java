@@ -33,7 +33,6 @@ public final class ManifestBuild {
 
     static Set<String> coreTables() {
         Set<String> out = new HashSet<>(Set.of(
-                "project",
                 "repositories",
                 "profiles",
                 "features",
@@ -69,11 +68,17 @@ public final class ManifestBuild {
         for (PluginDescriptor m : installed) owned.add(m.table());
         for (String key : root.keySet()) {
             if (owned.contains(key)) continue;
+            // Project identity keys (and Cargo-style inherit tables like group = { workspace = true }).
+            if (ManifestProject.PROJECT_KEYS.contains(key)) continue;
             if (!(root.get(key) instanceof TomlTable) && !(root.get(key) instanceof org.tomlj.TomlArray)) continue;
             StringBuilder known = new StringBuilder();
             for (PluginDescriptor m : installed) {
                 if (known.length() > 0) known.append(", ");
                 known.append('[').append(m.table()).append(']');
+            }
+            if ("project".equals(key)) {
+                throw new JkBuildParseException("[project] was removed — move its keys to the top level of jk.toml"
+                        + " (e.g. name = \"…\", group = \"…\", version = \"…\")");
             }
             if ("shrink".equals(key)) {
                 // The plugin was renamed (JK-1798); steer pre-rename projects the same way the

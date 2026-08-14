@@ -174,7 +174,6 @@ class LockCommandTest {
         // Workspace root + two modules. `app` depends on its sibling `libb`
         // (must be filtered out, never fetched) and the external com.foo:root.
         Files.writeString(tempDir.resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name     = "ws"
                 version = "0.1.0"
@@ -184,7 +183,6 @@ class LockCommandTest {
                 """);
         Path app = Files.createDirectories(tempDir.resolve("app"));
         Files.writeString(app.resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name     = "app"
                 version = "0.1.0"
@@ -195,7 +193,6 @@ class LockCommandTest {
                 """);
         Path libb = Files.createDirectories(tempDir.resolve("libb"));
         Files.writeString(libb.resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name     = "libb"
                 version = "0.1.0"
@@ -239,7 +236,6 @@ class LockCommandTest {
         registerJar("com.foo", "root", "1.0", "root".getBytes(StandardCharsets.UTF_8));
 
         Files.writeString(tempDir.resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name     = "ws"
                 version = "0.1.0"
@@ -249,7 +245,6 @@ class LockCommandTest {
                 """);
         Path app = Files.createDirectories(tempDir.resolve("app"));
         Files.writeString(app.resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name     = "app"
                 version = "0.1.0"
@@ -260,7 +255,6 @@ class LockCommandTest {
                 """);
         Path libb = Files.createDirectories(tempDir.resolve("libb"));
         Files.writeString(libb.resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name     = "libb"
                 version = "0.1.0"
@@ -396,7 +390,6 @@ class LockCommandTest {
                 "3.0.0");
         Files.createDirectories(tempDir);
         Files.writeString(tempDir.resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name     = "app"
                 version = "0.1.0"
@@ -424,7 +417,6 @@ class LockCommandTest {
         // must short-circuit and lock without hitting the repo.
         Files.createDirectories(tempDir);
         Files.writeString(tempDir.resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name     = "app"
                 version = "0.1.0"
@@ -486,7 +478,6 @@ class LockCommandTest {
     private static void writeProjectWithRootDep(Path dir) throws IOException {
         Files.createDirectories(dir);
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "com.acme"
                 name     = "app"
                 version = "0.1.0"

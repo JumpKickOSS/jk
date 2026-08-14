@@ -15,15 +15,15 @@ import java.util.regex.Pattern;
  *
  * <ul>
  *   <li>workspace path: {@code api}, {@code server/engine}, {@code plugins/kotlin-compiler}
- *   <li>project {@code [project] name}: {@code jk-engine}
+ *   <li>project {@code name}: {@code jk-engine}
  *   <li>Gradle-style path/name (leading {@code :}, {@code :} as path seps): {@code :engine}, {@code
  *       :jk-engine}, {@code :server:engine}
  *   <li>brace expansion: {@code {api,worker}}
  *   <li>glob ({@code *} / {@code ?}) against path aliases: {@code libs/*}, {@code :plugins:*}
  * </ul>
  *
- * Matching is case-insensitive against each module's path, last path segment, and {@code
- * [project] name}. Single-project trees match {@code .}, the project name, or the directory name.
+ * Matching is case-insensitive against each module's path, last path segment, and {@code name}.
+ * Single-project trees match {@code .}, the project name, or the directory name.
  */
 public final class ModuleSelection {
 
@@ -168,7 +168,7 @@ public final class ModuleSelection {
 
     /**
      * Build aliases for a workspace member: path, last segment, and (when {@code withNames})
-     * {@code [project] name} plus its form without a leading {@code jk-}.
+     * {@code name} plus its form without a leading {@code jk-}.
      */
     private static Candidate candidateFor(Path root, String rel, boolean withNames) {
         LinkedHashSet<String> aliases = new LinkedHashSet<>();

@@ -13,7 +13,6 @@ import org.junit.jupiter.api.io.TempDir;
 class WorkspaceLocatorTest {
 
     private static final String ROOT = """
-            [project]
             group    = "cc.jumpkick"
             name     = "jk"
             version  = "0.1.0"
@@ -56,7 +55,6 @@ class WorkspaceLocatorTest {
     @Test
     void standalone_project_has_no_enclosing_workspace(@TempDir Path tmp) throws IOException {
         write(tmp.resolve("jk.toml"), """
-                [project]
                 group    = "com.example"
                 name     = "widget"
                 version  = "0.1.0"

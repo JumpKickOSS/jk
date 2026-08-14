@@ -17,7 +17,7 @@ class EnsureFreshLockTest {
 
     @Test
     void soft_failure_with_existing_lock_proceeds(@TempDir Path tmp) throws Exception {
-        Files.writeString(tmp.resolve("jk.toml"), "[project]\nname = \"demo\"\n");
+        Files.writeString(tmp.resolve("jk.toml"), "name = \"demo\"\n");
         Files.writeString(tmp.resolve("jk-lock.toml"), "version = 1\n");
 
         int code = EnsureFreshLock.failSoftOrHard(tmp, "Explain", "connect timed out", 6, null);
@@ -27,7 +27,7 @@ class EnsureFreshLockTest {
 
     @Test
     void unsatisfiable_resolution_hard_fails_even_with_a_lock(@TempDir Path tmp) throws Exception {
-        Files.writeString(tmp.resolve("jk.toml"), "[project]\nname = \"demo\"\n");
+        Files.writeString(tmp.resolve("jk.toml"), "name = \"demo\"\n");
         Files.writeString(tmp.resolve("jk-lock.toml"), "version = 1\n");
 
         int code = EnsureFreshLock.failSoftOrHard(tmp, "Explain", "‼ Cannot resolve dependencies:\n  │ …", 6, null);
@@ -37,7 +37,7 @@ class EnsureFreshLockTest {
 
     @Test
     void missing_lock_hard_fails(@TempDir Path tmp) throws Exception {
-        Files.writeString(tmp.resolve("jk.toml"), "[project]\nname = \"demo\"\n");
+        Files.writeString(tmp.resolve("jk.toml"), "name = \"demo\"\n");
 
         int code = EnsureFreshLock.failSoftOrHard(tmp, "Tree", "connect timed out", 6, null);
 
@@ -46,7 +46,7 @@ class EnsureFreshLockTest {
 
     @Test
     void zero_exit_code_maps_to_config_on_hard_failure(@TempDir Path tmp) throws Exception {
-        Files.writeString(tmp.resolve("jk.toml"), "[project]\nname = \"demo\"\n");
+        Files.writeString(tmp.resolve("jk.toml"), "name = \"demo\"\n");
 
         int code = EnsureFreshLock.failSoftOrHard(tmp, "Tree", "boom", 0, null);
 

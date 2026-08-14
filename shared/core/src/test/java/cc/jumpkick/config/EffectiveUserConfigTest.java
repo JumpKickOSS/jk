@@ -34,7 +34,6 @@ class EffectiveUserConfigTest {
     void file_overrides_mark_only_changed_keys(@TempDir Path dir) throws Exception {
         Path toml = dir.resolve("config.toml");
         Files.writeString(toml, """
-                [global]
                 nerd-font = true
 
                 [http]
@@ -44,8 +43,8 @@ class EffectiveUserConfigTest {
                 max-cache-size-gb = 2
                 """);
         var rows = EffectiveUserConfig.rows(toml, env(), () -> BIG_DISK);
-        assertThat(find(rows, "global.nerd-font").overridden()).isTrue();
-        assertThat(find(rows, "global.nerd-font").effectiveValue()).isEqualTo("true");
+        assertThat(find(rows, "nerd-font").overridden()).isTrue();
+        assertThat(find(rows, "nerd-font").effectiveValue()).isEqualTo("true");
         assertThat(find(rows, "http.port").overridden()).isTrue();
         assertThat(find(rows, "http.port").effectiveValue()).isEqualTo("9000");
         assertThat(find(rows, "http.host").overridden()).isFalse();

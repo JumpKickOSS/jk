@@ -14,8 +14,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Captures resolved first-party {@code [project]} identity into {@link Lockfile.ModuleEntry} rows
- * for {@code jk-lock.toml}. Inheritance ({@code project.*.workspace = true}) is already applied by
+ * Captures resolved first-party project identity into {@link Lockfile.ModuleEntry} rows for
+ * {@code jk-lock.toml}. Inheritance ({@code *.workspace = true}) is already applied by
  * {@link WorkspaceLoader} before capture, so the lock always stores concrete values.
  */
 public final class LockfileModules {

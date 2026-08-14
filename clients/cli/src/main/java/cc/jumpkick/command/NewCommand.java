@@ -141,7 +141,7 @@ public final class NewCommand implements CliCommand {
     /** Global {@code default-jdk} id from {@code ~/.jk/config/jk.toml}, or empty. */
     private Optional<String> defaultJdk = Optional.empty();
 
-    /** Inherited context from the parent project's {@code [project]} block. */
+    /** Inherited context from the parent project's identity keys. */
     record ParentInfo(Path root, cc.jumpkick.engine.protocol.ProjectInfo info) {
         String displayName() {
             return info.name();

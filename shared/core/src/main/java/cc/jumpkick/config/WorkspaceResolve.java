@@ -47,7 +47,7 @@ public final class WorkspaceResolve {
                 return module;
             }
             // Failure scope matters: a member is only entitled to fail for problems in the
-            // pieces it actually needs. Root errors hit members with pending [project]
+            // pieces it actually needs. Root errors hit members with pending project
             // inherits; sibling errors hit members with workspace:<name> deps. A fully
             // concrete member mid-refactor keeps parsing either way — the broken file's
             // error belongs to whoever builds it.

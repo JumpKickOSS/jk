@@ -21,7 +21,6 @@ class ModuleFlagValidationTest {
 
     private static void workspace(Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
@@ -33,7 +32,6 @@ class ModuleFlagValidationTest {
             Path mod = dir.resolve("mods/" + m);
             Files.createDirectories(mod);
             Files.writeString(mod.resolve("jk.toml"), """
-                    [project]
                     group = "t"
                     name = "%s"
                     version = "0.0.1"
@@ -80,7 +78,6 @@ class ModuleFlagValidationTest {
     void single_project_build_and_native_reject_unknown_selectors(@TempDir Path dir) throws Exception {
         // JK-1366: single-project trees validate -m like the workspace paths do.
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "solo"
                 version = "0.0.1"

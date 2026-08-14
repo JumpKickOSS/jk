@@ -39,7 +39,6 @@ class SourcelessModuleForecastTest {
     private static Path workspaceWithSourcelessModule(Path tmp) throws Exception {
         tmp = tmp.toRealPath();
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "ws"
                 version = "0.1.0"
@@ -51,7 +50,6 @@ class SourcelessModuleForecastTest {
                 """);
         Path libb = Files.createDirectories(tmp.resolve("libb")).toRealPath();
         Files.writeString(libb.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "libb"
                 version = "0.1.0"

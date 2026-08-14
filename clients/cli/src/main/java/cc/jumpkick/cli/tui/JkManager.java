@@ -62,7 +62,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     int height = DEFAULT_HEIGHT; // package-private: tests set it directly
 
     /**
-     * [global].nerd-font caps — gate the powerline pill header. Package-private: tests set it directly.
+     * nerd-font caps — gate the powerline pill header. Package-private: tests set it directly.
      */
     NerdFontCaps nerdFont = GlobalConfig.nerdFont();
     /**

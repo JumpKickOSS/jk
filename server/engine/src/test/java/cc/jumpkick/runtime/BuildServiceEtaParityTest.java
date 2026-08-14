@@ -35,7 +35,6 @@ class BuildServiceEtaParityTest {
         Path dir = java.nio.file.Files.createDirectories(tmp.resolve("mod"));
         java.nio.file.Files.createDirectories(dir.resolve("src/main/java"));
         java.nio.file.Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "ex"
                 name = "m"
                 version = "1.0"

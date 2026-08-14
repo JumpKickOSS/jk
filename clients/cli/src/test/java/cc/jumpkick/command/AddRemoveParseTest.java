@@ -97,7 +97,6 @@ class AddRemoveParseTest {
         Path lib = tmp.resolve("libb");
         Files.createDirectories(lib);
         Files.writeString(lib.resolve("jk.toml"), """
-                [project]
                 group = "g"
                 name = "libb"
                 version = "1.0.0"

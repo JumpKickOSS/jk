@@ -1,4 +1,3 @@
-[project]
 name = "jk-java-compiler"
 description = "JumpKick's Java compiler plugin"
 

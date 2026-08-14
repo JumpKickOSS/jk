@@ -1,4 +1,3 @@
-[project]
 name = "jk-dynamic-surface"
 description = "Dynamic surface modeling for R8 keep rules and GraalVM metadata"
 

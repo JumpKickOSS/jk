@@ -36,7 +36,6 @@ class GrailsBuildE2eTest {
         Path project = Files.createDirectories(tmp.resolve("gnotes"));
         Path cache = cache();
         Files.writeString(project.resolve("jk.toml"), """
-                [project]
                 name    = "gnotes"
                 group   = "com.example"
                 version = "1.0.0"

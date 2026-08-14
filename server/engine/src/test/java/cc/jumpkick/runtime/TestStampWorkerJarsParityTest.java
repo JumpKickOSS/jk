@@ -27,7 +27,6 @@ class TestStampWorkerJarsParityTest {
         Path cli = tmp.resolve("clients/cli");
         Files.createDirectories(cli);
         Files.writeString(cli.resolve("jk.toml"), """
-                [project]
                 group = "cc.jumpkick"
                 name = "jk-cli"
                 version = "0.0.1"
@@ -41,18 +40,16 @@ class TestStampWorkerJarsParityTest {
         Path engine = tmp.resolve("server/engine");
         Files.createDirectories(engine);
         Files.writeString(engine.resolve("jk.toml"), """
-                [project]
                 group = "cc.jumpkick"
                 name = "jk-engine"
                 version = "0.0.1"
                 java = 25
                 """);
-        // The root manifest needs [project]: JkBuildParser rejects a project-less jk.toml, so
+        // The root manifest needs identity keys: JkBuildParser rejects a name-less jk.toml, so
         // a workspace-only root would make WorkspaceLocator.findRoot silently fail and sibling
         // discovery return nothing (the old fixture had exactly that bug, masked by the ambient
         // host jar — JK-1917).
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "cc.jumpkick"
                 name = "ws"
                 version = "0.0.1"
@@ -123,7 +120,6 @@ class TestStampWorkerJarsParityTest {
         Path lib = tmp.resolve("lib");
         Files.createDirectories(lib);
         Files.writeString(lib.resolve("jk.toml"), """
-                [project]
                 group = "ex"
                 name = "lib"
                 version = "1.0"
@@ -141,7 +137,6 @@ class TestStampWorkerJarsParityTest {
         Path cli = tmp.resolve("clients/cli");
         Files.createDirectories(cli);
         Files.writeString(cli.resolve("jk.toml"), """
-                [project]
                 group = "cc.jumpkick"
                 name = "jk-cli"
                 version = "0.0.1"
@@ -154,7 +149,6 @@ class TestStampWorkerJarsParityTest {
         Path engine = tmp.resolve("server/engine");
         Files.createDirectories(engine);
         Files.writeString(engine.resolve("jk.toml"), """
-                [project]
                 group = "cc.jumpkick"
                 name = "jk-engine"
                 version = "0.0.1"
@@ -164,12 +158,11 @@ class TestStampWorkerJarsParityTest {
                 main = "cc.jumpkick.engine.EngineMain"
                 assembly = true
                 """);
-        // The root manifest needs [project]: JkBuildParser rejects a project-less jk.toml, so
+        // The root manifest needs identity keys: JkBuildParser rejects a name-less jk.toml, so
         // a workspace-only root would make WorkspaceLocator.findRoot silently fail and sibling
         // discovery return nothing (the old fixture had exactly that bug, masked by the ambient
         // host jar — JK-1917).
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "cc.jumpkick"
                 name = "ws"
                 version = "0.0.1"

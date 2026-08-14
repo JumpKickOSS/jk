@@ -106,7 +106,6 @@ class EffortWeightsTest {
     @Test
     void predict_reserves_groovy_compile_until_the_stamp_holds(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "t"
                 name = "g"
                 version = "0.1.0"

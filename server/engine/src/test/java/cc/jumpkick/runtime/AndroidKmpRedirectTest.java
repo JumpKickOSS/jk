@@ -32,7 +32,6 @@ class AndroidKmpRedirectTest {
     @Test
     void android_project_selects_the_android_variant_and_aliases_the_root(@TempDir Path tmp) throws Exception {
         Lockfile lockfile = lockProject(tmp, """
-                [project]
                 name    = "kmp"
                 group   = "com.example"
                 version = "1.0.0"
@@ -72,7 +71,6 @@ class AndroidKmpRedirectTest {
     @Test
     void plain_jvm_project_selects_the_jvm_variant(@TempDir Path tmp) throws Exception {
         Lockfile lockfile = lockProject(tmp, """
-                [project]
                 name    = "kmpjvm"
                 group   = "com.example"
                 version = "1.0.0"

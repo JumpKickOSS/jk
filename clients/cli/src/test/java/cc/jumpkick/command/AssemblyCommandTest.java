@@ -26,7 +26,6 @@ class AssemblyCommandTest {
     }
 
     private static final String TOML = """
-            [project]
             group = "t"
             name = "t"
             version = "0.0.1"

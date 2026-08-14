@@ -69,7 +69,7 @@ class TestCommandTest {
         Files.createDirectories(dir);
         Files.writeString(
                 dir.resolve("jk.toml"),
-                "[project]\ngroup = \"com.example\"\nname = \"x\"\nversion = \"0.1.0\"\njdk = \"25\"\njava = 25\n");
+                "group = \"com.example\"\nname = \"x\"\nversion = \"0.1.0\"\njdk = \"25\"\njava = 25\n");
         ScaffoldTestSupport.writeEmptyLock(dir); // jk test needs a lock; nothing to resolve
     }
 

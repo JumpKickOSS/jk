@@ -22,7 +22,6 @@ class PreflightThinManifestTest {
     @Test
     void path_parse_of_a_thin_member_resolves_a_graph(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "ws"
                 version = "1.0.0"
@@ -35,7 +34,6 @@ class PreflightThinManifestTest {
         Path member = Files.createDirectories(tmp.resolve("member"));
         // Thin manifest: identity inherited from the workspace root.
         Files.writeString(member.resolve("jk.toml"), """
-                [project]
                 name = "member"
                 """);
 

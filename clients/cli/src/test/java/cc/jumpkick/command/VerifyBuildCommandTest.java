@@ -119,7 +119,6 @@ class VerifyBuildCommandTest {
     @Test
     void verify_covers_every_module_of_a_workspace(@TempDir Path tempDir) throws IOException {
         Files.writeString(tempDir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "ws"
                 version = "1.0.0"
@@ -154,7 +153,6 @@ class VerifyBuildCommandTest {
     private static void module(Path dir, String name, String pkg, String cls, String extra) throws IOException {
         Files.createDirectories(dir.resolve("src/main/java/" + pkg));
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name  = "%s"
                 version = "1.0.0"

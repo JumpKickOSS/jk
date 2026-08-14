@@ -15,7 +15,6 @@ class ExecPlansWorkspaceRunTest {
     @Test
     void workspace_run_uses_declared_application_main(@TempDir Path root) throws Exception {
         Files.writeString(root.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "ws"
                 version = "0.1.0"
@@ -45,7 +44,6 @@ class ExecPlansWorkspaceRunTest {
         // Silently launching the first-listed app would make [workspace].modules ORDER change
         // what `jk run` executesname the candidates instead.
         Files.writeString(root.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "ws"
                 version = "0.1.0"
@@ -59,7 +57,6 @@ class ExecPlansWorkspaceRunTest {
             Path dir = root.resolve(m);
             Files.createDirectories(dir.resolve("src"));
             Files.writeString(dir.resolve("jk.toml"), """
-                    [project]
                     group = "com.example"
                     name = "%s"
                     version = "0.1.0"
@@ -85,7 +82,6 @@ class ExecPlansWorkspaceRunTest {
     @Test
     void workspace_run_errors_when_no_main_anywhere(@TempDir Path root) throws Exception {
         Files.writeString(root.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "ws"
                 version = "0.1.0"
@@ -103,7 +99,6 @@ class ExecPlansWorkspaceRunTest {
     private static void writeLib(Path dir) throws Exception {
         Files.createDirectories(dir);
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "lib"
                 version = "0.1.0"
@@ -122,7 +117,6 @@ class ExecPlansWorkspaceRunTest {
                 main = "com.example.App"
                 """ : "";
         Files.writeString(dir.resolve("jk.toml"), """
-                [project]
                 group = "com.example"
                 name = "app"
                 version = "0.1.0"

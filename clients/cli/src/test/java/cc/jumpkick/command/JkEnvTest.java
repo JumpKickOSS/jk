@@ -30,7 +30,7 @@ class JkEnvTest {
     void empty_when_jk_toml_exists_but_lock_has_no_jdk(@TempDir Path tempDir) throws IOException {
         var project = tempDir.resolve("project");
         Files.createDirectories(project);
-        Files.writeString(project.resolve("jk.toml"), "[project]\ngroup=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
+        Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
         LockfileWriter.write(Lockfile.empty("0.1"), project.resolve("jk-lock.toml"));
 
         var env = new JkEnv(new JdkRegistry(tempDir.resolve("jdks")), "/usr/bin", noGlobalDefault(tempDir));
@@ -51,7 +51,7 @@ class JkEnvTest {
 
         var project = tempDir.resolve("project");
         Files.createDirectories(project);
-        Files.writeString(project.resolve("jk.toml"), "[project]\ngroup=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
+        Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
         LockfileWriter.write(Lockfile.empty("0.1", "temurin-25.0.3"), project.resolve("jk-lock.toml"));
 
         var env = new JkEnv(new JdkRegistry(jdksRoot), "/usr/bin:/bin", noGlobalDefault(tempDir));
@@ -83,7 +83,7 @@ class JkEnvTest {
 
         var project = tempDir.resolve("project");
         Files.createDirectories(project);
-        Files.writeString(project.resolve("jk.toml"), "[project]\ngroup=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
+        Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
         LockfileWriter.write(Lockfile.empty("0.1", "graalvm-jdk-25"), project.resolve("jk-lock.toml"));
 
         var env = new JkEnv(new JdkRegistry(jdksRoot), "/usr/bin", noGlobalDefault(tempDir));
@@ -101,7 +101,7 @@ class JkEnvTest {
         var project = tempDir.resolve("proj");
         var nested = project.resolve("src/main/java/com/example");
         Files.createDirectories(nested);
-        Files.writeString(project.resolve("jk.toml"), "[project]\ngroup=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
+        Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
 
         // No JDK pinned → still walks up successfully but yields empty target.
         var found = JkEnv.findProjectRoot(nested);
@@ -112,7 +112,7 @@ class JkEnvTest {
     void unknown_jdk_identifier_yields_empty_target(@TempDir Path tempDir) throws IOException {
         var project = tempDir.resolve("project");
         Files.createDirectories(project);
-        Files.writeString(project.resolve("jk.toml"), "[project]\ngroup=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
+        Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
         LockfileWriter.write(Lockfile.empty("0.1", "nonexistent-jdk-999"), project.resolve("jk-lock.toml"));
 
         var env = new JkEnv(new JdkRegistry(tempDir.resolve("jdks")), "/usr/bin", noGlobalDefault(tempDir));
@@ -145,7 +145,7 @@ class JkEnvTest {
 
         var project = tempDir.resolve("project");
         Files.createDirectories(project);
-        Files.writeString(project.resolve("jk.toml"), "[project]\ngroup=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
+        Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
         LockfileWriter.write(Lockfile.empty("0.1"), project.resolve("jk-lock.toml"));
 
         var env = new JkEnv(new JdkRegistry(jdksRoot), "/usr/bin", defaults);

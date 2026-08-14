@@ -21,7 +21,6 @@ class PomExporterTest {
     @Test
     void tests_kind_exports_maven_test_jar() {
         JkBuild b = parse("""
-                [project]
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
@@ -43,7 +42,6 @@ class PomExporterTest {
     @Test
     void coords_release_and_dependency() {
         JkBuild b = parse("""
-                [project]
                 group = "com.example"
                 name  = "app"
                 version = "1.2.3"
@@ -67,7 +65,6 @@ class PomExporterTest {
         // Compat: defaults are newest stable, but java=17 / java=21 remain valid floors.
         for (int release : new int[] {17, 21}) {
             JkBuild b = parse("""
-                    [project]
                     group = "com.example"
                     name  = "app"
                     version = "1.0.0"
@@ -81,7 +78,6 @@ class PomExporterTest {
     @Test
     void locked_version_wins_over_selector() {
         JkBuild b = parse("""
-                [project]
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
@@ -103,7 +99,6 @@ class PomExporterTest {
         // The engine's lock map keys on the full package id (g:a:type:classifier) — the
         // exporter must hit it for the plain jar AND the tests-kind test-jar edge (JK-1642).
         JkBuild b = parse("""
-                [project]
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
@@ -132,7 +127,6 @@ class PomExporterTest {
     @Test
     void jdk_emits_toolchains_plugin_and_main_emits_jar_plugin() {
         JkBuild b = parse("""
-                [project]
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
@@ -153,7 +147,6 @@ class PomExporterTest {
     @Test
     void kotlin_shadow_and_native_emit_plugins() {
         JkBuild b = parse("""
-                [project]
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
@@ -184,7 +177,6 @@ class PomExporterTest {
     @Test
     void executions_use_maven_element_vocabulary_and_parse_as_xml() throws Exception {
         JkBuild b = parse("""
-                [project]
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
@@ -216,7 +208,6 @@ class PomExporterTest {
     @Test
     void processor_scope_becomes_annotation_processor_path() {
         JkBuild b = parse("""
-                [project]
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
@@ -235,7 +226,6 @@ class PomExporterTest {
     @Test
     void workspace_root_is_pom_packaging_with_modules() {
         JkBuild root = parse("""
-                [project]
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
@@ -255,7 +245,6 @@ class PomExporterTest {
     @Test
     void git_dependency_warns() {
         JkBuild b = parse("""
-                [project]
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
