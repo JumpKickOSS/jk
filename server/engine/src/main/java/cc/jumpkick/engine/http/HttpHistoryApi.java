@@ -50,27 +50,84 @@ final class HttpHistoryApi {
                     exchange, 200, enrichHistoryJson(Files.readString(record.get(), StandardCharsets.UTF_8)));
             return;
         }
-        List<String> raw = journal.rawRecords(Math.max(HISTORY_LIST_LIMIT * 4, HISTORY_LIST_LIMIT));
-        List<String> parts = new ArrayList<>(HISTORY_LIST_LIMIT);
-        for (String r : raw) {
-            if (!isBuildLikeHistoryJson(r)) continue;
-            parts.add(enrichHistoryJson(r));
-            if (parts.size() >= HISTORY_LIST_LIMIT) break;
+        // Single pass, single parse, streamed out (JK-1942): the kind gate and the "does this row
+        // even need enrichment" checks are lexical scans over the raw JSON, so a finished,
+        // id-stamped record — the overwhelming majority — is written through verbatim without ever
+        // being parsed; only in-flight or legacy rows pay MiniJson. The response is chunked
+        // straight to the socket instead of join-then-copy (a 200-row page was previously joined
+        // into one String and then copied again to bytes).
+        List<String> raw = journal.rawRecords(HISTORY_LIST_LIMIT * 4);
+        exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+        exchange.getResponseHeaders().set("Cache-Control", "no-store");
+        if (exchange.getRequestMethod().equals("HEAD")) {
+            exchange.sendResponseHeaders(200, -1);
+            return;
         }
-        HttpEngineServer.sendJson(exchange, 200, "[" + String.join(",", parts) + "]");
+        exchange.sendResponseHeaders(200, 0);
+        try (var out = exchange.getResponseBody()) {
+            out.write('[');
+            int sent = 0;
+            for (String r : raw) {
+                if (!isBuildLikeHistoryJson(r)) continue;
+                String part = needsEnrichment(r) ? enrichHistoryJson(r) : r;
+                if (sent > 0) out.write(',');
+                out.write(part.getBytes(StandardCharsets.UTF_8));
+                if (++sent >= HISTORY_LIST_LIMIT) break;
+            }
+            out.write(']');
+        }
     }
 
-    /** True when a journal JSON blob's {@code kind} is a durable project build. */
+    /** True when a journal JSON blob's {@code kind} is a durable project build (lexical scan). */
     private static boolean isBuildLikeHistoryJson(String raw) {
         if (raw == null || raw.isBlank()) return false;
-        try {
-            Object parsed = cc.jumpkick.plugin.protocol.MiniJson.parse(raw);
-            if (!(parsed instanceof Map<?, ?> m)) return false;
-            Object k = m.get("kind");
-            return k instanceof String s && cc.jumpkick.engine.BuildHistoryKinds.isBuildLike(s);
-        } catch (RuntimeException e) {
-            return false;
+        String kind = scanStringField(raw, "kind");
+        return kind != null && cc.jumpkick.engine.BuildHistoryKinds.isBuildLike(kind);
+    }
+
+    /**
+     * True when {@link #enrichHistoryJson} could change this row: it is in-flight
+     * ({@code "running": true}) or lacks a non-blank {@code projectId} (legacy stub). Lexical and
+     * conservative — a false positive costs one parse, a finished stamped row costs zero.
+     */
+    private static boolean needsEnrichment(String raw) {
+        String pid = scanStringField(raw, "projectId");
+        if (pid == null || pid.isBlank()) return true;
+        return scanBooleanTrue(raw, "running");
+    }
+
+    /**
+     * The first {@code "name"} key's string value, scanned without parsing, or {@code null} when
+     * the key is absent or its value is not a string. Journal records write these keys top-level
+     * ahead of any free-text payload (see {@code journal.Json}), so the first occurrence is the
+     * real key in both compact and pretty output. Escapes are left as-is — callers only read
+     * machine-written identifier-shaped values.
+     */
+    private static @Nullable String scanStringField(String raw, String name) {
+        int i = raw.indexOf('"' + name + '"');
+        if (i < 0) return null;
+        int j = i + name.length() + 2;
+        while (j < raw.length() && (raw.charAt(j) == ':' || Character.isWhitespace(raw.charAt(j)))) j++;
+        if (j >= raw.length() || raw.charAt(j) != '"') return null;
+        int end = j + 1;
+        while (end < raw.length()) {
+            char c = raw.charAt(end);
+            if (c == '\\') end += 2;
+            else if (c == '"') break;
+            else end++;
         }
+        return end < raw.length() ? raw.substring(j + 1, end) : null;
+    }
+
+    /** True when any {@code "name"} key is lexically followed by {@code true} (never misses the top-level one). */
+    private static boolean scanBooleanTrue(String raw, String name) {
+        String key = '"' + name + '"';
+        for (int i = raw.indexOf(key); i >= 0; i = raw.indexOf(key, i + 1)) {
+            int j = i + key.length();
+            while (j < raw.length() && (raw.charAt(j) == ':' || Character.isWhitespace(raw.charAt(j)))) j++;
+            if (raw.startsWith("true", j)) return true;
+        }
+        return false;
     }
 
     /**
