@@ -49,8 +49,49 @@ class WorkspaceFileAccessTest {
         assertThat(WorkspaceFileAccess.normalizeRel("src/./Main.java")).isNull();
         assertThat(WorkspaceFileAccess.normalizeRel("src//Main.java")).isNull();
         assertThat(WorkspaceFileAccess.normalizeRel("src\\Main.java")).isNull();
+        assertThat(WorkspaceFileAccess.normalizeRel("src/Ma\0in.java")).isNull(); // NUL byte (JK-1955)
         assertThat(WorkspaceFileAccess.read(root, "../x.java")).isInstanceOf(ReadResult.BadRequest.class);
+        assertThat(WorkspaceFileAccess.read(root, "src/Ma\0in.java")).isInstanceOf(ReadResult.BadRequest.class);
         assertThat(WorkspaceFileAccess.read(root, "")).isInstanceOf(ReadResult.BadRequest.class);
+    }
+
+    @Test
+    void symlinked_directory_escape_is_not_found(@TempDir Path root, @TempDir Path outside) throws Exception {
+        // JK-1955: the real-path containment must also catch a symlinked PARENT directory —
+        // src/link/Secret.java where link -> outside.
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("src"));
+        Files.writeString(outside.resolve("Secret.java"), "class Secret {}");
+        try {
+            Files.createSymbolicLink(root.resolve("src/link"), outside);
+        } catch (UnsupportedOperationException | IOException unsupported) {
+            return;
+        }
+        assertThat(WorkspaceFileAccess.read(root, "src/link/Secret.java")).isInstanceOf(ReadResult.NotFound.class);
+    }
+
+    @Test
+    void empty_file_reads_as_ok_with_no_content(@TempDir Path root) throws Exception {
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("src"));
+        Files.write(root.resolve("src/Empty.java"), new byte[0]);
+        var read = WorkspaceFileAccess.read(root, "src/Empty.java");
+        assertThat(read).isInstanceOf(ReadResult.Ok.class);
+        var body = ((ReadResult.Ok) read).body();
+        assertThat(body.content()).isEmpty();
+        assertThat(body.bytes()).isZero();
+        assertThat(body.lines()).isZero();
+    }
+
+    @Test
+    void file_deleted_between_list_and_read_is_not_found(@TempDir Path root) throws Exception {
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("src"));
+        Files.writeString(root.resolve("src/Gone.java"), "class Gone {}");
+        assertThat(WorkspaceFileAccess.list(root).files())
+                .anyMatch(f -> f.path().equals("src/Gone.java"));
+        Files.delete(root.resolve("src/Gone.java"));
+        assertThat(WorkspaceFileAccess.read(root, "src/Gone.java")).isInstanceOf(ReadResult.NotFound.class);
     }
 
     @Test
