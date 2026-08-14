@@ -779,7 +779,9 @@ function historyModules(rec) {
         state,
         millis: m.millis ?? null,
         steps,
-        diagnostics: historyDiags(rec.diagnostics, m.dir || ''),
+        // Same per-kind ceilings as the single-project path below (JK-1947): a pathological
+        // workspace record must not inject thousands of snippet+stack payloads into one card.
+        diagnostics: boundDiagnostics(historyDiags(rec.diagnostics, m.dir || '')),
         // Preserve journal order as a tie-break (later modules slightly higher lastActivity).
         lastActivity: activity + i,
       };
@@ -1184,8 +1186,33 @@ export function detailSegments(detail) {
     worker = body.slice(w);
     body = body.slice(0, w);
   }
-  const segs = looksLikeJavaMember(body) ? javaMemberSegments(body) : proseSegments(body);
+  const jdk = jdkProgressSegments(body);
+  const segs = jdk || (looksLikeJavaMember(body) ? javaMemberSegments(body) : proseSegments(body));
   if (worker) segs.push({ text: worker, cls: 'det-mid' });
+  return segs;
+}
+
+/** {@code downloading Temurin 25 ▰▰▰▰▰▱▱▱▱▱ 50%} — CLI JdkProgressLabel / colorJdkProgressDetail. */
+const JDK_PROGRESS =
+  /^(downloading|installing) (.+?)(?: ([▰▱]+) (\d+)%)?$/;
+
+export function jdkProgressSegments(detail) {
+  if (detail == null || detail === '') return null;
+  const m = String(detail).trim().match(JDK_PROGRESS);
+  if (!m) return null;
+  const segs = [
+    { text: m[1], cls: 'det-mid' },
+    { text: ' ', cls: 'det-mid' },
+    { text: m[2], cls: 'det-jdk' },
+  ];
+  if (m[3]) {
+    segs.push({ text: ' ', cls: 'det-mid' });
+    for (const ch of m[3]) {
+      segs.push({ text: ch, cls: ch === '▰' ? 'det-bar-fill' : 'det-bar-empty' });
+    }
+    segs.push({ text: ' ', cls: 'det-mid' });
+    segs.push({ text: `${m[4]}%`, cls: 'det-mid' });
+  }
   return segs;
 }
 

@@ -184,7 +184,7 @@ public final class ProtoJobs {
         return "{\"type\":\"" + EngineProtocol.BUILD_CANCEL + "\"}";
     }
 
-    /** Start a single-project test run (see {@link #EngineProtocol.TEST_REQUEST}). {@code jdksDir}/{@code profile} may be {@code null}. */
+    /** Start a single-project test run (see {@link EngineProtocol#TEST_REQUEST}). {@code jdksDir}/{@code profile} may be {@code null}. */
     public static String testRequest(
             String dir,
             String cache,
@@ -256,7 +256,7 @@ public final class ProtoJobs {
                 + "}";
     }
 
-    /** Encode suite/tag fields for {@link #EngineProtocol.TEST_REQUEST} (and siblings that carry the same shape). */
+    /** Encode suite/tag fields for {@link EngineProtocol#TEST_REQUEST} (and siblings that carry the same shape). */
     public static String testSelectionFields(cc.jumpkick.config.TestSelection selection) {
         cc.jumpkick.config.TestSelection s = selection == null ? cc.jumpkick.config.TestSelection.DEFAULT : selection;
         StringBuilder sb = new StringBuilder();
@@ -326,7 +326,7 @@ public final class ProtoJobs {
         return List.copyOf(out);
     }
 
-    /** Start a single-project build (see {@link #EngineProtocol.SINGLE_BUILD_REQUEST}). {@code jdksDir}/{@code profile} may be {@code null}. */
+    /** Start a single-project build (see {@link EngineProtocol#SINGLE_BUILD_REQUEST}). {@code jdksDir}/{@code profile} may be {@code null}. */
     public static String singleBuildRequest(
             String dir,
             String cache,
@@ -367,7 +367,7 @@ public final class ProtoJobs {
     }
 
     /**
-     * Resolve + write {@code jk-lock.toml} (see {@link #EngineProtocol.LOCK_REQUEST}). {@code repoUrl} may be {@code
+     * Resolve + write {@code jk-lock.toml} (see {@link EngineProtocol#LOCK_REQUEST}). {@code repoUrl} may be {@code
      * null}. {@code offline}/{@code force}/{@code verbose} reconstruct the session config engine-side
      * (the same fields {@link #buildRequest} carries). {@code conservative} marks an invisible
      * freshen: existing lock pins are kept as solver preferences instead of floating to latest.
@@ -409,7 +409,7 @@ public final class ProtoJobs {
     }
 
     /**
-     * Re-resolve fresh and overwrite {@code jk-lock.toml} (see {@link #EngineProtocol.UPDATE_REQUEST}). {@code gitTarget}
+     * Re-resolve fresh and overwrite {@code jk-lock.toml} (see {@link EngineProtocol#UPDATE_REQUEST}). {@code gitTarget}
      * is the {@code --git <name>} argument ({@code null} = every git dep) and is only read when
      * {@code gitOnly} is set.
      */
@@ -473,7 +473,7 @@ public final class ProtoJobs {
     }
 
     /**
-     * Sync the CAS + toolchain with {@code jk-lock.toml} (see {@link #EngineProtocol.SYNC_REQUEST}). {@code jdksDir}/
+     * Sync the CAS + toolchain with {@code jk-lock.toml} (see {@link EngineProtocol#SYNC_REQUEST}). {@code jdksDir}/
      * {@code repoUrl} may be {@code null}. {@code refresh} rides separately from {@code force} for
      * the same reason {@code rerun} does on {@link #buildRequest}: it re-downloads locked artifacts
      * without implying the rest of {@code force}'s cache bypasses.
@@ -512,7 +512,7 @@ public final class ProtoJobs {
     }
 
     /**
-     * Scan the lockfile against OSV (see {@link #EngineProtocol.AUDIT_REQUEST}). {@code severity} is the client's
+     * Scan the lockfile against OSV (see {@link EngineProtocol#AUDIT_REQUEST}). {@code severity} is the client's
      * threshold, carried only for the evaluate step's label (the client applies the threshold
      * itself); {@code osvBatchUrl}/{@code osvVulnsUrl} are the hidden test overrides and may be
      * {@code null}.
@@ -535,7 +535,7 @@ public final class ProtoJobs {
     }
 
     /**
-     * Format sources (see {@link #EngineProtocol.FORMAT_REQUEST}). Style names and hygiene toggles arrive already
+     * Format sources (see {@link EngineProtocol#FORMAT_REQUEST}). Style names and hygiene toggles arrive already
      * resolved (flags + env + the {@code [format]} block are client-side concerns); {@code
      * rewriteConfig} may be {@code null}.
      */
@@ -579,7 +579,7 @@ public final class ProtoJobs {
     }
 
     /**
-     * Publish artifacts (see {@link #EngineProtocol.PUBLISH_REQUEST}). The credential fields ({@code authType} =
+     * Publish artifacts (see {@link EngineProtocol#PUBLISH_REQUEST}). The credential fields ({@code authType} =
      * {@code basic}/{@code bearer}/{@code anonymous} + {@code user}/{@code pass}/{@code token}) and
      * {@code gpgPassphrase} were resolved client-side; nullable string fields may be {@code null}.
      */
@@ -644,7 +644,7 @@ public final class ProtoJobs {
     }
 
     /**
-     * Build an OCI image (see {@link #EngineProtocol.IMAGE_REQUEST}). {@code tarball} is tri-state: {@code null}
+     * Build an OCI image (see {@link EngineProtocol#IMAGE_REQUEST}). {@code tarball} is tri-state: {@code null}
      * (no tarball — daemon/push mode), {@code ""} (default layout path), or an explicit path — the
      * same tri-state {@code --tarball}'s optional value has. {@code offline}/{@code force}/{@code
      * rerun}/{@code verbose} reconstruct the session config engine-side, as on {@link
@@ -693,7 +693,7 @@ public final class ProtoJobs {
     }
 
     /**
-     * Convert a foreign build to {@code jk.toml} (see {@link #EngineProtocol.IMPORT_REQUEST}). All paths are
+     * Convert a foreign build to {@code jk.toml} (see {@link EngineProtocol#IMPORT_REQUEST}). All paths are
      * absolute (the client pre-flighted detection/overwrite checks); {@code report} may be {@code
      * null}.
      */
@@ -719,7 +719,7 @@ public final class ProtoJobs {
     }
 
     /**
-     * Provision a Maven/Gradle distribution (see {@link #EngineProtocol.PROVISION_REQUEST}). Project directory
+     * Provision a Maven/Gradle distribution (see {@link EngineProtocol#PROVISION_REQUEST}). Project directory
      * field is {@code dir} — same spelling as every other hosted request.
      */
     public static String provisionRequest(
@@ -740,7 +740,7 @@ public final class ProtoJobs {
     }
 
     /**
-     * Type-check the project (see {@link #EngineProtocol.COMPILE_REQUEST}). {@code profile} may be {@code null};
+     * Type-check the project (see {@link EngineProtocol#COMPILE_REQUEST}). {@code profile} may be {@code null};
      * {@code offline}/{@code force}/{@code verbose} reconstruct the session config engine-side.
      */
     public static String compileRequest(
@@ -763,7 +763,7 @@ public final class ProtoJobs {
     }
 
     /**
-     * Observe dynamic surface / optional AOT cache (see {@link #EngineProtocol.TRAIN_REQUEST}). {@code profile}
+     * Observe dynamic surface / optional AOT cache (see {@link EngineProtocol#TRAIN_REQUEST}). {@code profile}
      * selects one {@code [[train.profile]]} or null for all; {@code graalHome} is the client-resolved
      * GraalVM home that provides the tracing agent (may be null — engine tries JAVA_HOME).
      */
@@ -801,7 +801,7 @@ public final class ProtoJobs {
     }
 
     /**
-     * Build native artifacts (see {@link #EngineProtocol.NATIVE_REQUEST}). {@code mainClass} is the {@code --main}
+     * Build native artifacts (see {@link EngineProtocol#NATIVE_REQUEST}). {@code mainClass} is the {@code --main}
      * override (may be {@code null} — the engine resolves {@code [native].main-class}/{@code
      * [image].main}/{@code [project].main} itself); {@code extraArgs} are forwarded to {@code
      * native-image}; {@code graalHomes} maps each native-eligible module dir to the GraalVM home
@@ -867,7 +867,7 @@ public final class ProtoJobs {
     }
 
     /**
-     * Build + cache-install the project (see {@link #EngineProtocol.INSTALL_REQUEST}). {@code m2Dir} is the
+     * Build + cache-install the project (see {@link EngineProtocol#INSTALL_REQUEST}). {@code m2Dir} is the
      * resolved local Maven repo root ({@code ~/.m2} or {@code --m2-dir}); {@code graalHome} is
      * non-null only for a native application (resolved client-side).
      */
@@ -902,7 +902,7 @@ public final class ProtoJobs {
     }
 
     /**
-     * Materialize a git checkout (see {@link #EngineProtocol.GIT_FETCH_REQUEST}). {@code url} is the expanded
+     * Materialize a git checkout (see {@link EngineProtocol#GIT_FETCH_REQUEST}). {@code url} is the expanded
      * fetch URL, {@code canonicalUrl} its canonical identity, {@code ref} the tag-or-branch name;
      * {@code refresh} forces a re-fetch of an already-materialized ref.
      */

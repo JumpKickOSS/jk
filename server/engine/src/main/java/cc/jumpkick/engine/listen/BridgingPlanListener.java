@@ -48,6 +48,33 @@ public final class BridgingPlanListener implements BuildPlanListener {
         this.finishEncoder = finishEncoder;
     }
 
+    /**
+     * One redactor per plan (JK-1942): building it re-derives the env lookup (workspace-root walk
+     * + {@code .env} parse), which is far too heavy per output line. The {@code .env} set is
+     * frozen for the plan's life; a failed build is never broken by redaction (fail open,
+     * uncached so a transient failure retries on the next event).
+     */
+    private volatile cc.jumpkick.config.@Nullable SecretRedactor redactor;
+
+    private cc.jumpkick.config.SecretRedactor redactor() {
+        var r = redactor;
+        if (r == null) {
+            r = EventRedaction.redactorFor(dir);
+            redactor = r;
+        }
+        return r;
+    }
+
+    private @Nullable String redact(@Nullable String text) {
+        if (text == null || text.isEmpty()) return text;
+        try {
+            return redactor().redact(text);
+        } catch (RuntimeException e) {
+            EventRedaction.warnFailOpen(e);
+            return text;
+        }
+    }
+
     public static String phaseWire(@Nullable String group) {
         return group == null ? "" : group;
     }
@@ -102,21 +129,21 @@ public final class BridgingPlanListener implements BuildPlanListener {
 
     @Override
     public void label(String step, String label) {
-        String safe = EventRedaction.redactEnv(dir, label);
+        String safe = redact(label);
         sink.emit(new EngineEvent.Label(dir, step, safe));
         hooks.labeled(dir, step, safe);
     }
 
     @Override
     public void output(String step, String line) {
-        String safe = EventRedaction.redactEnv(dir, line);
+        String safe = redact(line);
         sink.emit(new EngineEvent.Output(dir, step, safe));
         hooks.output(dir, step, safe);
     }
 
     @Override
     public void warn(String step, String code, String message) {
-        sink.emit(new EngineEvent.Warn(dir, step, code, EventRedaction.redactEnv(dir, message)));
+        sink.emit(new EngineEvent.Warn(dir, step, code, redact(message)));
     }
 
     @Override
@@ -126,8 +153,7 @@ public final class BridgingPlanListener implements BuildPlanListener {
 
     @Override
     public void error(String step, String code, String message, String test, String exceptionClass) {
-        sink.emit(new EngineEvent.ErrorLine(
-                dir, step, code, EventRedaction.redactEnv(dir, message), test, exceptionClass));
+        sink.emit(new EngineEvent.ErrorLine(dir, step, code, redact(message), test, exceptionClass));
     }
 
     @Override
@@ -136,9 +162,17 @@ public final class BridgingPlanListener implements BuildPlanListener {
             error(step, code, message);
             return;
         }
-        TestFailureInfo safe = EventRedaction.redactFailure(dir, failure);
-        String msg = EventRedaction.redactEnv(dir, message == null || message.isEmpty() ? failure.message() : message);
+        TestFailureInfo safe = redactFailureHoisted(failure);
+        String msg = redact(message == null || message.isEmpty() ? failure.message() : message);
         sink.emit(new EngineEvent.ErrorFailure(dir, step, code, msg, safe));
+    }
+
+    private @Nullable TestFailureInfo redactFailureHoisted(@Nullable TestFailureInfo f) {
+        try {
+            return EventRedaction.redactFailure(redactor(), f);
+        } catch (RuntimeException e) {
+            return f;
+        }
     }
 
     @Override
@@ -155,17 +189,11 @@ public final class BridgingPlanListener implements BuildPlanListener {
         for (BuildPlanResult.Diagnostic d : result.errors()) {
             var tf = d.testFailure();
             if (tf != null) {
-                TestFailureInfo safe = EventRedaction.redactFailure(dir, tf);
-                sink.emit(new EngineEvent.PlanDiagnosticFailure(
-                        dir, d.step(), d.code(), EventRedaction.redactEnv(dir, d.message()), safe));
+                TestFailureInfo safe = redactFailureHoisted(tf);
+                sink.emit(new EngineEvent.PlanDiagnosticFailure(dir, d.step(), d.code(), redact(d.message()), safe));
             } else {
                 sink.emit(new EngineEvent.PlanDiagnostic(
-                        dir,
-                        d.step(),
-                        d.code(),
-                        EventRedaction.redactEnv(dir, d.message()),
-                        d.test(),
-                        d.exceptionClass()));
+                        dir, d.step(), d.code(), redact(d.message()), d.test(), d.exceptionClass()));
             }
         }
         // Timeline + exclusive-slot release must precede the terminal plan-finish line

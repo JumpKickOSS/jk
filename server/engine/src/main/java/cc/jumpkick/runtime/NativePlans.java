@@ -8,6 +8,7 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskNames;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 
 /**
  * {@code jk native} plan: {@link BuildPlanner} plus {@link BuildPlanner#nativeStep} for
@@ -90,7 +91,7 @@ public final class NativePlans {
                 verbose,
                 false,
                 false,
-                java.util.Set.of(),
+                Set.of(),
                 cc.jumpkick.config.SessionContext.current());
         BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs);
         // Assembly / sources tails only here — native carries CLI main/args from this command.

@@ -13,6 +13,7 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -75,7 +76,7 @@ public final class WrapperCommand implements CliCommand {
         VersionStore store = VersionStore.current();
         cc.jumpkick.http.Http http = new cc.jumpkick.http.Http();
         if ("latest".equals(target)) {
-            var resp = http.get(java.net.URI.create(SelfCommand.UpdateSub.releasesBase() + "/latest/VERSION"));
+            var resp = http.get(URI.create(SelfCommand.UpdateSub.releasesBase() + "/latest/VERSION"));
             if (resp.statusCode() != 200) {
                 CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
                         "Wrapper", "could not resolve the latest release (HTTP " + resp.statusCode() + ")"));

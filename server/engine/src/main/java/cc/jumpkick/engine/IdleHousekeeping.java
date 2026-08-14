@@ -105,6 +105,7 @@ public final class IdleHousekeeping {
                 return;
             }
             if (activeBuildPlans.get() == 0 && !warmupRunning.get()) {
+                dropHeapResidue();
                 System.gc();
             }
         } finally {
@@ -189,6 +190,7 @@ public final class IdleHousekeeping {
                     } finally {
                         boolean more = pendingWarmupForce.get() != null;
                         if (trailGc && !more && activeBuildPlans.get() == 0) {
+                            dropHeapResidue();
                             System.gc();
                         }
                         warmupRunning.set(false);
@@ -200,6 +202,23 @@ public final class IdleHousekeeping {
                 "jk-idle-warmup");
         t.setDaemon(true);
         t.start();
+    }
+
+    /**
+     * Drop process-wide memos whose payoff is intra-build so the trailing GC has something to
+     * reclaim (JK-1942): pool-thread hash caches (keys embed nano-mtime, so rebuilds mint new
+     * entries forever), resolve memos (rebuilt cheaply from the on-disk caches), the metrics
+     * aggregate, and any unclaimed test-wall snapshots. All are optimisations, never correctness.
+     */
+    private static void dropHeapResidue() {
+        try {
+            cc.jumpkick.task.FileHashMemo.clearAllThreadCaches();
+            cc.jumpkick.resolve.ResolveProcessCacheControl.clearAll();
+            BuildMetrics.clearSessionAggregatesMemo();
+            cc.jumpkick.runtime.TestClassWalls.takeAll();
+        } catch (RuntimeException ignored) {
+            // hygiene, never load-bearing
+        }
     }
 
     private void pruneJournal() {

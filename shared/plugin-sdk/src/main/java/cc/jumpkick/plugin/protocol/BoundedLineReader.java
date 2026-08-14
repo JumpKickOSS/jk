@@ -2,8 +2,13 @@
 package cc.jumpkick.plugin.protocol;
 
 import java.io.BufferedReader;
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.Reader;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
  * {@link BufferedReader} with a max line length ({@link #DEFAULT_MAX_LINE}) and optional idle
@@ -14,15 +19,14 @@ public final class BoundedLineReader extends BufferedReader {
     /** Generous for real traffic (large dep graphs, long diagnostics); fatal for runaway peers. */
     public static final int DEFAULT_MAX_LINE = 64 * 1024 * 1024;
 
-    private static final java.util.concurrent.ScheduledExecutorService WATCHDOG =
-            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
-                Thread t = new Thread(r, "jk-protocol-idle-watchdog");
-                t.setDaemon(true);
-                return t;
-            });
+    private static final ScheduledExecutorService WATCHDOG = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "jk-protocol-idle-watchdog");
+        t.setDaemon(true);
+        return t;
+    });
 
     private final int maxLine;
-    private final java.io.Closeable onTimeout;
+    private final Closeable onTimeout;
     private final long idleTimeoutMillis;
     private volatile boolean timedOut;
 
@@ -31,7 +35,7 @@ public final class BoundedLineReader extends BufferedReader {
     }
 
     /** With an idle timeout: {@code onTimeout} (the socket/channel) is closed when a read stalls. */
-    public BoundedLineReader(Reader in, java.io.Closeable onTimeout, long idleTimeoutMillis) {
+    public BoundedLineReader(Reader in, Closeable onTimeout, long idleTimeoutMillis) {
         super(in);
         this.maxLine = DEFAULT_MAX_LINE;
         this.onTimeout = onTimeout;
@@ -49,7 +53,7 @@ public final class BoundedLineReader extends BufferedReader {
 
     @Override
     public String readLine() throws IOException {
-        java.util.concurrent.ScheduledFuture<?> guard = null;
+        ScheduledFuture<?> guard = null;
         if (onTimeout != null && idleTimeoutMillis > 0) {
             guard = WATCHDOG.schedule(
                     () -> {
@@ -60,7 +64,7 @@ public final class BoundedLineReader extends BufferedReader {
                         }
                     },
                     idleTimeoutMillis,
-                    java.util.concurrent.TimeUnit.MILLISECONDS);
+                    TimeUnit.MILLISECONDS);
         }
         try {
             StringBuilder line = new StringBuilder(128);

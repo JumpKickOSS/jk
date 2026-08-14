@@ -98,6 +98,10 @@ public final class JobSessions {
         return s == null ? null : s.accumulator();
     }
 
+    /**
+     * Remove and return the accumulator for {@code id}. Safe only while the session is still live —
+     * callers must take before {@link #retire(long)} (JobEnvelope: writeJournal then clearProgress).
+     */
     public @Nullable BuildAccumulator takeAccumulator(long id) {
         JobSession s = get(id);
         if (s == null) return null;

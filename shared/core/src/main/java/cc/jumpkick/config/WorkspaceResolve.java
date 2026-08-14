@@ -4,6 +4,9 @@ package cc.jumpkick.config;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.WorkspaceMerge;
 import java.nio.file.Path;
+import java.util.Collection;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 /**
  * Rewrite a workspace member's {@code workspace:<name>} dependency placeholders into the siblings'
@@ -66,7 +69,7 @@ public final class WorkspaceResolve {
             // Conditioned plugin contributions (kotlin-project, …) were folded pre-inheritance;
             // re-evaluate them now that the project is concrete (idempotent).
             module = JkBuildParser.reapplyPlatformContributions(moduleDir, module);
-            java.util.Collection<JkBuild> siblings;
+            Collection<JkBuild> siblings;
             try {
                 siblings = WorkspaceLoader.loadModules(rootDir.get(), root).values();
             } catch (JkBuildParseException e) {
@@ -94,20 +97,20 @@ public final class WorkspaceResolve {
      * {@link WorkspaceMerge#resolveSiblingCoordinates} has rewritten them to real coordinates —
      * e.g. to omit tests-kind sibling edges whose test-jar jk never produces (JK-1643).
      */
-    public static java.util.Set<String> siblingCoordinates(Path moduleDir) {
+    public static Set<String> siblingCoordinates(Path moduleDir) {
         try {
             var rootDir = WorkspaceLocator.findRoot(moduleDir);
-            if (rootDir.isEmpty()) return java.util.Set.of();
+            if (rootDir.isEmpty()) return Set.of();
             JkBuild root = JkBuildParser.parseLocal(rootDir.get().resolve("jk.toml"));
-            if (!root.isWorkspaceRoot()) return java.util.Set.of();
-            java.util.Set<String> out = new java.util.LinkedHashSet<>();
+            if (!root.isWorkspaceRoot()) return Set.of();
+            Set<String> out = new LinkedHashSet<>();
             out.add(root.project().group() + ":" + root.project().name());
             for (JkBuild m : WorkspaceLoader.loadModules(rootDir.get(), root).values()) {
                 out.add(m.project().group() + ":" + m.project().name());
             }
             return out;
         } catch (Exception e) {
-            return java.util.Set.of(); // best-effort, same policy as applyWorkspace
+            return Set.of(); // best-effort, same policy as applyWorkspace
         }
     }
 

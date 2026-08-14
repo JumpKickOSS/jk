@@ -2,10 +2,7 @@
 package cc.jumpkick.plugin.manifest;
 
 import cc.jumpkick.config.JkBuildParseException;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import org.tomlj.Toml;
 import org.tomlj.TomlArray;
 import org.tomlj.TomlParseResult;
@@ -266,7 +263,7 @@ public final class PluginDescriptors {
     // ---- [[contribute.*]] — the declarative layer (P2) --------------------------------------
 
     private static PluginDescriptor.Contributions parseContributions(
-            TomlParseResult result, java.util.Set<String> schemaKeys, String displayPath) {
+            TomlParseResult result, Set<String> schemaKeys, String displayPath) {
         TomlTable contribute = result.getTable("contribute");
         if (contribute == null) return PluginDescriptor.Contributions.NONE;
 

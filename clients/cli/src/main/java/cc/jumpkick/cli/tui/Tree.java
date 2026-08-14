@@ -321,17 +321,9 @@ public final class Tree implements Widget {
     }
 
     private static int skipEscape(String s, int i) {
-        if (i + 1 >= s.length()) return s.length();
-        char n = s.charAt(i + 1);
-        if (n == '[') {
-            int j = i + 2;
-            while (j < s.length()) {
-                char c = s.charAt(j++);
-                if (c >= '@' && c <= '~') break;
-            }
-            return j;
-        }
-        return i + 1;
+        // Shared scanner: CSI and OSC alike (JK-1967) — a private CSI-only copy counted an
+        // OSC payload as visible columns.
+        return RenderContext.skipEscape(s, i);
     }
 
     /** One tree node: optional bullet/pill/label, hanging body, child nodes. */

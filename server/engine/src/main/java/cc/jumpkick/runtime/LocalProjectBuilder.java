@@ -19,6 +19,7 @@ import cc.jumpkick.resolver.LockOrchestrator;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -201,7 +202,7 @@ public final class LocalProjectBuilder {
                     Files.createDirectories(target);
                 } else {
                     Files.createDirectories(target.getParent());
-                    Files.copy(p, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    Files.copy(p, target, StandardCopyOption.REPLACE_EXISTING);
                 }
             }
         }

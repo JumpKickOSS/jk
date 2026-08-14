@@ -6,11 +6,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.jar.Attributes;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
@@ -40,8 +36,8 @@ public final class JarPackager {
             // Sort by relative path for deterministic entry order.
             files.sort(Comparator.comparing(p -> normalize(request.inputDir(), p)));
 
-            java.util.Set<String> written = new java.util.HashSet<>();
-            java.util.Set<String> dirs = new java.util.HashSet<>();
+            Set<String> written = new HashSet<>();
+            Set<String> dirs = new HashSet<>();
             for (Path file : files) {
                 String name = normalize(request.inputDir(), file);
                 if (name.equals("META-INF/MANIFEST.MF")) continue; // already written
@@ -53,7 +49,7 @@ public final class JarPackager {
 
             // Generated entries (e.g. the CycloneDX SBOM) — sorted for reproducibility;
             // filesystem content wins on a path collision.
-            for (Map.Entry<String, byte[]> e : new java.util.TreeMap<>(request.extraEntries()).entrySet()) {
+            for (Map.Entry<String, byte[]> e : new TreeMap<>(request.extraEntries()).entrySet()) {
                 if (written.contains(e.getKey())) continue;
                 DeterministicJar.writeParentDirs(jos, e.getKey(), epoch, dirs);
                 DeterministicJar.writeEntry(jos, e.getKey(), e.getValue(), epoch);

@@ -11,6 +11,7 @@ import cc.jumpkick.plugin.build.PackagerSpec;
 import cc.jumpkick.plugin.build.PluginCommandSpec;
 import cc.jumpkick.plugin.build.TaskSpec;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -92,7 +93,7 @@ public final class AndroidPlugin implements Plugin, BuildPlugin {
                 // aapt2's generated rules, AAR consumer rules, and the app's proguard-files
                 // (declared inputs, so a rules edit re-shrinks).
                 dexStep = "android-r8";
-                List<In> r8Inputs = new java.util.ArrayList<>(
+                List<In> r8Inputs = new ArrayList<>(
                         List.of(In.classes(), In.runtimeEntries(), In.stepOutput("android-res"), In.config()));
                 for (String rel : ctx.config().stringList("proguard-files")) {
                     r8Inputs.add(In.projectFiles(rel));

@@ -21,6 +21,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.stream.Collectors;
 
 /**
  * {@code jk run [<target>] [<args>…]} — universal runner, mounted as top-level {@code run} and
@@ -108,7 +110,7 @@ public final class ToolRunCommand implements CliCommand {
             return null;
         }
         // Obvious non-module targets.
-        String lower = name.toLowerCase(java.util.Locale.ROOT);
+        String lower = name.toLowerCase(Locale.ROOT);
         if (lower.endsWith(".java")
                 || lower.endsWith(".kt")
                 || lower.endsWith(".kts")
@@ -155,9 +157,8 @@ public final class ToolRunCommand implements CliCommand {
                 if (suffixHits.size() > 1) {
                     // Two modules share the leaf: picking whichever is declared first silently
                     // runs the wrong one — name the candidates instead.
-                    String candidates = suffixHits.stream()
-                            .map(d -> wsRoot(d, start))
-                            .collect(java.util.stream.Collectors.joining(", "));
+                    String candidates =
+                            suffixHits.stream().map(d -> wsRoot(d, start)).collect(Collectors.joining(", "));
                     throw new AmbiguousModuleTarget("`" + want + "` matches several workspace modules (" + candidates
                             + ") — use the full module path");
                 }
@@ -216,7 +217,7 @@ public final class ToolRunCommand implements CliCommand {
         try (var listing = Files.list(dir)) {
             scripts = listing.filter(Files::isRegularFile)
                     .filter(p -> {
-                        String n = p.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
+                        String n = p.getFileName().toString().toLowerCase(Locale.ROOT);
                         return n.endsWith(".java") || n.endsWith(".kt") || n.endsWith(".kts");
                     })
                     .sorted()

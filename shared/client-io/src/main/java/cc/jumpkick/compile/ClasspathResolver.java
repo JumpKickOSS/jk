@@ -7,20 +7,11 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Scope;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.EnumSet;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Queue;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Maps a {@link Lockfile}'s checksummed packages to on-disk artifact paths in the {@link Cas},
@@ -252,9 +243,8 @@ public final class ClasspathResolver {
                     Path container = cc.jumpkick.cache.ExplodedArchives.explode(cas, hex);
                     Path classesJar = container.resolve("classes.jar");
                     result.add(new Entry(pkg, Files.isRegularFile(classesJar) ? classesJar : null, container));
-                } catch (java.io.IOException e) {
-                    throw new java.io.UncheckedIOException(
-                            pkg.name() + " v" + pkg.version() + ": " + e.getMessage(), e);
+                } catch (IOException e) {
+                    throw new UncheckedIOException(pkg.name() + " v" + pkg.version() + ": " + e.getMessage(), e);
                 }
                 ledger.touch(hex);
                 continue;
@@ -270,7 +260,7 @@ public final class ClasspathResolver {
 
     /** One jar per module when dual-scoped; prefer processor, then test dual, else main/runtime. */
     static List<Lockfile.Artifact> selectPerModule(List<Lockfile.Artifact> matched, Set<Scope> scopes) {
-        Map<String, Lockfile.Artifact> best = new java.util.LinkedHashMap<>();
+        Map<String, Lockfile.Artifact> best = new LinkedHashMap<>();
         Map<String, Integer> bestScore = new HashMap<>();
         boolean processorOnlyFilter = scopes.size() == 1 && scopes.contains(Scope.PROCESSOR);
         boolean wantsTest = scopes.contains(Scope.TEST) || scopes.contains(Scope.TEST_DEV);

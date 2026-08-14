@@ -19,6 +19,12 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.Map;
+import java.util.Optional;
+import java.util.OptionalLong;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
@@ -88,7 +94,7 @@ public final class JournalWriter {
         if (a != null) a.addModule(o);
     }
 
-    public void accModuleGraph(long requestId, java.util.Map<Path, java.util.Set<Path>> prereqs) {
+    public void accModuleGraph(long requestId, Map<Path, Set<Path>> prereqs) {
         BuildAccumulator a = sessions.accumulator(requestId);
         if (a != null) a.setModuleEdges(prereqs);
     }
@@ -120,7 +126,12 @@ public final class JournalWriter {
 
     public void write(long requestId, boolean cancelled, long millis, @Nullable BufferedWriter writer) {
         BuildAccumulator a = sessions.takeAccumulator(requestId);
-        if (a == null) return;
+        if (a == null) {
+            // Usually means clearProgress/retire ran first — leaves a permanent running=true journal
+            // stub (jk jobs "Building" forever). Surface it; do not silently drop.
+            log.accept("jk engine: build journal skip requestId=" + requestId + " (no accumulator)");
+            return;
+        }
         try {
             long finishedAt = clock.getAsLong();
             String commit = gitCommit(a.dir());
@@ -162,10 +173,10 @@ public final class JournalWriter {
     private CacheBenefit.@Nullable Result computeBenefit(BuildAccumulator a, long millis) {
         if (!a.succeeded() || a.wasCancelled()) return null;
         BuildMetrics metrics = BuildMetrics.load(metricsFile.get());
-        java.util.function.BiFunction<String, String, java.util.OptionalLong> baseline = (dir, step) -> {
-            java.util.Optional<BuildMetrics.Entry> e = metrics.step(dir, step).filter(x -> x.ok().count() > 0);
+        BiFunction<String, String, OptionalLong> baseline = (dir, step) -> {
+            Optional<BuildMetrics.Entry> e = metrics.step(dir, step).filter(x -> x.ok().count() > 0);
             if (e.isEmpty()) e = metrics.step("", step).filter(x -> x.ok().count() > 0);
-            return e.map(x -> java.util.OptionalLong.of(x.ok().avgMillis())).orElse(java.util.OptionalLong.empty());
+            return e.map(x -> OptionalLong.of(x.ok().avgMillis())).orElse(OptionalLong.empty());
         };
         return CacheBenefit.compute(a.benefitModules(), a.benefitModuleEdges(), millis, baseline);
     }
@@ -226,7 +237,7 @@ public final class JournalWriter {
                     "jk-git-commit-probe");
             drainer.setDaemon(true);
             drainer.start();
-            if (!p.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)) {
+            if (!p.waitFor(1, TimeUnit.SECONDS)) {
                 p.destroyForcibly();
                 return null;
             }

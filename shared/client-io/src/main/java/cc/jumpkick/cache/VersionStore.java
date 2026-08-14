@@ -5,14 +5,19 @@ import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.Hashing;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermission;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.ToLongFunction;
 
 /**
  * Side-by-side materialized jk versions under {@code ~/.local/share/jk/versions/<v>/} (client, engine jar,
@@ -56,11 +61,7 @@ public final class VersionStore {
      * Remove versions that are neither {@code keep} nor used within {@code retention} per the
      * ledger, including version-scoped AOT state and legacy {@code state/engine/<v>/}.
      */
-    public List<String> prune(
-            String keep,
-            java.time.Duration retention,
-            java.util.function.ToLongFunction<String> lastUsedMillis,
-            Path stateDir) {
+    public List<String> prune(String keep, Duration retention, ToLongFunction<String> lastUsedMillis, Path stateDir) {
         List<String> pruned = new ArrayList<>();
         Path dir = versionsDir();
         if (!Files.isDirectory(dir)) return pruned;
@@ -273,9 +274,8 @@ public final class VersionStore {
         // nondeterministic). The lock file lives beside the version dirs; content addressing
         // makes the serialized loser's resolve below hit the winner's identical tree.
         Path lockPath = versionsDir().resolve("." + version + ".lock");
-        try (java.nio.channels.FileChannel lockCh = java.nio.channels.FileChannel.open(
-                        lockPath, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE);
-                java.nio.channels.FileLock lock = lockCh.lock()) {
+        try (FileChannel lockCh = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+                FileLock lock = lockCh.lock()) {
             Optional<Materialized> raced = resolve(version);
             if (raced.isPresent() && hasContent(raced.get(), engineJarSha, clientBinSha)) return raced.get();
             if (raced.isPresent()) {
@@ -293,7 +293,7 @@ public final class VersionStore {
      * EXPECTED engine identity (a running engine reporting a different content identity for the
      * same -SNAPSHOT version is stale and gets taken over).
      */
-    public java.util.Optional<String> engineSha(String version) {
+    public Optional<String> engineSha(String version) {
         try {
             Path manifest = versionsDir().resolve(version).resolve(MANIFEST);
             for (String line : Files.readAllLines(manifest)) {
@@ -301,13 +301,13 @@ public final class VersionStore {
                 if (trimmed.startsWith("engine-sha256 = \"")) {
                     String v = trimmed.substring("engine-sha256 = \"".length());
                     int q = v.indexOf('"');
-                    if (q > 0) return java.util.Optional.of(v.substring(0, q));
+                    if (q > 0) return Optional.of(v.substring(0, q));
                 }
             }
         } catch (IOException ignored) {
             // no manifest — no expectation
         }
-        return java.util.Optional.empty();
+        return Optional.empty();
     }
 
     /**

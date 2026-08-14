@@ -15,6 +15,7 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -36,7 +37,7 @@ public final class TrainCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        var opts = new java.util.ArrayList<Opt>();
+        var opts = new ArrayList<Opt>();
         opts.add(Opt.value("<name>", "Train profile name (default: all profiles)", "--profile"));
         opts.add(cc.jumpkick.cli.CommonOpts.cacheDir());
         opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")

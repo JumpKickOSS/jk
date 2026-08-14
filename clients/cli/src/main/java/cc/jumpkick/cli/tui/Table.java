@@ -630,8 +630,8 @@ public final class Table implements Widget {
         String innerBar = banded ? Theme.colorize("│", theme.withBackground(theme.darkGray(), band)) : outerBar;
         String sp =
                 banded ? Theme.colorize(" ", theme.withBackground(org.jline.utils.AttributedStyle.DEFAULT, band)) : " ";
-        String leftPad = banded && ctx.nerdfont() ? Theme.colorize(Glyphs.PILL_LEFT_NERD, theme.bright(band)) : sp;
-        String rightPad = banded && ctx.nerdfont() ? Theme.colorize(Glyphs.PILL_RIGHT_NERD, theme.bright(band)) : sp;
+        String leftPad = banded && ctx.pill() ? Theme.colorize(Glyphs.PILL_LEFT_NERD, theme.bright(band)) : sp;
+        String rightPad = banded && ctx.pill() ? Theme.colorize(Glyphs.PILL_RIGHT_NERD, theme.bright(band)) : sp;
         var sb = new StringBuilder(outerBar);
         for (int i = 0; i < widths.length; i++) {
             RichText text = i < row.cells().size() ? row.cells().get(i).text() : RichText.empty();

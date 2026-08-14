@@ -4,8 +4,10 @@ package cc.jumpkick.cli;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Global flags that apply to every {@code jk} subcommand. Populated from a parsed {@link
@@ -108,7 +110,7 @@ public final class GlobalOptions {
         Path abs = raw.toAbsolutePath().normalize();
         try {
             return abs.toRealPath();
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             return abs; // not on disk yet (jk new target) — textual identity is all there is
         }
     }
@@ -177,20 +179,20 @@ public final class GlobalOptions {
         // Re-fold CLI/config OSC+notify into the session so mid-run readers see the same policy.
         // (applyCliOverrides already merged early argv; this covers flags after the subcommand.)
         JkConfig cliOverlay = new JkConfig(
-                java.util.Optional.empty(),
+                Optional.empty(),
                 // offline + rebuild ride the overlay too (JK-1365): the engine reads them off the
                 // session wire, and Jk.applyCliOverrides only catches exact tokens — a bundled
                 // `-rq` or abbreviated `--red` / `--offl` lands here, in the parsed Invocation.
-                g.offline ? java.util.Optional.of(true) : java.util.Optional.empty(),
-                g.rebuild ? java.util.Optional.of(true) : java.util.Optional.empty(),
-                g.noProgress ? java.util.Optional.of(true) : java.util.Optional.empty(),
-                g.quiet ? java.util.Optional.of(true) : java.util.Optional.empty(),
-                g.verbose ? java.util.Optional.of(true) : java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                g.force ? java.util.Optional.of(true) : java.util.Optional.empty(),
-                g.noAnsi ? java.util.Optional.of(true) : java.util.Optional.empty(),
-                g.noOsc ? java.util.Optional.of(true) : java.util.Optional.empty(),
-                java.util.Optional.of(g.notify));
+                g.offline ? Optional.of(true) : Optional.empty(),
+                g.rebuild ? Optional.of(true) : Optional.empty(),
+                g.noProgress ? Optional.of(true) : Optional.empty(),
+                g.quiet ? Optional.of(true) : Optional.empty(),
+                g.verbose ? Optional.of(true) : Optional.empty(),
+                Optional.empty(),
+                g.force ? Optional.of(true) : Optional.empty(),
+                g.noAnsi ? Optional.of(true) : Optional.empty(),
+                g.noOsc ? Optional.of(true) : Optional.empty(),
+                Optional.of(g.notify));
         cc.jumpkick.config.SessionContext.installConfig(cfg.mergedWith(cliOverlay));
         // Engine-owned chrome profile; CLI only forwards the preference on the wire.
         cc.jumpkick.cli.run.TimelineOpts.setNoTimeline(g.noTimeline);
@@ -276,6 +278,6 @@ public final class GlobalOptions {
      */
     public int jobsEffective() {
         return cc.jumpkick.config.Jobs.resolve(
-                java.util.Optional.ofNullable(jobs), cc.jumpkick.config.JkEngineConfig.resolve(), System::getenv);
+                Optional.ofNullable(jobs), cc.jumpkick.config.JkEngineConfig.resolve(), System::getenv);
     }
 }

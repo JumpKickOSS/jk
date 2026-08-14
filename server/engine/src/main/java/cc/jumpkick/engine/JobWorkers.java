@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 /**
  * Per-request registry of forked worker {@link Process}es (plugin/test JVMs). On cancel or job wall
@@ -68,7 +69,7 @@ public final class JobWorkers {
             }
 
             @Override
-            public <T> java.util.concurrent.Callable<T> wrapCallable(java.util.concurrent.Callable<T> c) {
+            public <T> Callable<T> wrapCallable(Callable<T> c) {
                 Long captured = CURRENT.get();
                 return () -> {
                     Long previous = CURRENT.get();
@@ -118,8 +119,8 @@ public final class JobWorkers {
     /** Test seam: force the shared CPU pool's threads to exist under the caller's scope. */
     static void warmPoolForTest() throws Exception {
         int n = Math.max(2, Runtime.getRuntime().availableProcessors());
-        java.util.List<java.util.concurrent.Future<?>> pending = new java.util.ArrayList<>();
-        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        List<Future<?>> pending = new ArrayList<>();
+        CountDownLatch release = new CountDownLatch(1);
         for (int i = 0; i < n; i++) {
             pending.add(cc.jumpkick.run.JkThreads.cpu().submit(() -> {
                 try {

@@ -3,11 +3,14 @@ package cc.jumpkick.util;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFileAttributeView;
+import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.util.Set;
 
 /**
  * Writes secret files as {@code 0600} inside a {@code 0700} directory. On non-POSIX filesystems
@@ -31,7 +34,7 @@ public final class OwnerOnlyFiles {
         if (!Files.exists(file) && Files.getFileAttributeView(file, PosixFileAttributeView.class) != null) {
             try {
                 Files.createFile(file, PosixFilePermissions.asFileAttribute(OWNER_ONLY));
-            } catch (java.nio.file.FileAlreadyExistsException | UnsupportedOperationException ignored) {
+            } catch (FileAlreadyExistsException | UnsupportedOperationException ignored) {
                 // raced or non-POSIX — the tighten below still applies
             }
         }
@@ -45,8 +48,7 @@ public final class OwnerOnlyFiles {
         setOwnerOnly(file, "rw-------");
     }
 
-    private static final java.util.Set<java.nio.file.attribute.PosixFilePermission> OWNER_ONLY =
-            PosixFilePermissions.fromString("rw-------");
+    private static final Set<PosixFilePermission> OWNER_ONLY = PosixFilePermissions.fromString("rw-------");
 
     /** Best-effort tighten POSIX permissions on {@code path}; a no-op where POSIX perms are unsupported. */
     public static void setOwnerOnly(Path path, String perms) {

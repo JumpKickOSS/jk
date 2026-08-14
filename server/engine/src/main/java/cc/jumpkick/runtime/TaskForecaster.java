@@ -24,11 +24,7 @@ import cc.jumpkick.task.JavaIncrementalCompile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Read-only step forecast for each module in a {@link BuildGraph}, using the same cache keys as the
@@ -59,11 +55,11 @@ public final class TaskForecaster {
                 || cc.jumpkick.config.SessionContext.current().config().rebuildOr(false);
         // Dirs whose *main output* will change this build — seeds downstream and
         // cross-module dirtiness. Filled as we walk in dependency order.
-        Set<Path> dirty = new java.util.HashSet<>();
+        Set<Path> dirty = new HashSet<>();
         // Jar CAS shas recovered from each walked module's CURRENT package-jar record —
         // consumers fingerprint wiped sibling jars from here, never from an unvalidated
         // last-record pointer (which may name a different edit of the sibling).
-        Map<Path, String> restoredJarShas = new java.util.HashMap<>();
+        Map<Path, String> restoredJarShas = new HashMap<>();
         // Sibling lookup for scope-aware dirtiness (coord + bare name → dir).
         Map<String, Path> dirByCoord = new HashMap<>();
         Map<String, Path> dirByName = new HashMap<>();
@@ -233,7 +229,7 @@ public final class TaskForecaster {
                         verbose,
                         testOnly,
                         false,
-                        java.util.Set.of(),
+                        Set.of(),
                         cc.jumpkick.config.SessionContext.current())
                 .withProjectModules(projectModules);
     }
@@ -851,7 +847,7 @@ public final class TaskForecaster {
         for (Path jar : depJars) {
             parts.add(fingerprintJarOrCached(jar, actionCache, restoredJarShas));
         }
-        parts.sort(java.util.Comparator.naturalOrder());
+        parts.sort(Comparator.naturalOrder());
         return cc.jumpkick.util.Hashing.sha256Hex(String.join("\n", parts));
     }
 
@@ -949,7 +945,7 @@ public final class TaskForecaster {
     // --- the build's test classpaths, mirrored (best-effort; misses fail safe) ---
 
     private static List<Path> testCompileClasspath(Path dir, JkBuild project, Lockfile lock, ClasspathResolver resolver)
-            throws java.io.IOException {
+            throws IOException {
         WorkspaceClasspath.Result sib =
                 WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
         List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_TEST));
@@ -966,7 +962,7 @@ public final class TaskForecaster {
     }
 
     private static List<Path> testRuntimeClasspath(Path dir, JkBuild project, Lockfile lock, ClasspathResolver resolver)
-            throws java.io.IOException {
+            throws IOException {
         WorkspaceClasspath.Result sib =
                 WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
         List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.TEST));

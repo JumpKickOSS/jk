@@ -13,6 +13,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -130,8 +131,8 @@ class WorkspaceTestsKindE2eTest {
 
         // Lock at workspace root (union).
         JkBuild root = JkBuildParser.parse(ws.resolve("jk.toml"));
-        BuildPlan lock = LockPlans.lockBuildPlan(
-                ws, root, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
+        BuildPlan lock =
+                LockPlans.lockBuildPlan(ws, root, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).as("workspace lock").isTrue();
         // Members redirect to the root lock.
         Files.copy(ws.resolve("jk-lock.toml"), lib.resolve("jk-lock.toml"));
@@ -175,7 +176,7 @@ class WorkspaceTestsKindE2eTest {
                 false,
                 false,
                 false,
-                java.util.Set.of(),
+                Set.of(),
                 SessionContext.current());
         return BuildPlanner.coreBuilder(in).build().run();
     }

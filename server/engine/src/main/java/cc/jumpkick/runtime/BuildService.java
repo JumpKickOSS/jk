@@ -17,7 +17,7 @@ import org.jspecify.annotations.NullMarked;
  * results are returned for the caller's view layer.
  *
  * <p>Lock-guard, execute, and fold live in {@link WorkspaceLock}, {@link WorkspaceExecute}, and
- * {@link BuildEta}/{@link BuildForecast}. This type is the stable call surface.
+ * {@link BuildEta}/{@link BuildForecasting}. This type is the stable call surface.
  */
 @NullMarked
 public final class BuildService {
@@ -82,7 +82,7 @@ public final class BuildService {
      * error, pessimistically returns all modules (so nothing is under-reserved).
      */
     public static Set<Path> forecastDirtyDirs(BuildGraph.Result graph, Path cache) {
-        return BuildForecast.forecastDirtyDirs(graph, cache);
+        return BuildForecasting.forecastDirtyDirs(graph, cache);
     }
 
     /**
@@ -92,7 +92,7 @@ public final class BuildService {
      * test-stamp content hashing.
      */
     public static Set<Path> forecastDirtyDirs(BuildGraph.Result graph, Path cache, boolean skipTests) {
-        return BuildForecast.forecastDirtyDirs(graph, cache, skipTests);
+        return BuildForecasting.forecastDirtyDirs(graph, cache, skipTests);
     }
 
     /**
@@ -101,7 +101,7 @@ public final class BuildService {
      * unchanged, returns the memoized dirty set without a full {@link TaskForecaster} walk.
      */
     public static Set<Path> forecastDirtyDirs(BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
-        return BuildForecast.forecastDirtyDirs(graph, cache, skipTests, entryDir);
+        return BuildForecasting.forecastDirtyDirs(graph, cache, skipTests, entryDir);
     }
 
     /**
@@ -112,7 +112,7 @@ public final class BuildService {
      * {@link IOException} probing the workspace still propagates, exactly as the direct resolve did.
      */
     public static ExplainPlan explain(Path entryDir, JkBuild entryBuild, Path cache) throws IOException {
-        return BuildForecast.explain(entryDir, entryBuild, cache);
+        return BuildForecasting.explain(entryDir, entryBuild, cache);
     }
 
     /**
@@ -122,7 +122,7 @@ public final class BuildService {
      */
     public static ExplainPlan explain(Path entryDir, JkBuild entryBuild, Path cache, boolean skipTests)
             throws IOException {
-        return BuildForecast.explain(entryDir, entryBuild, cache, skipTests);
+        return BuildForecasting.explain(entryDir, entryBuild, cache, skipTests);
     }
 
     /**
@@ -130,7 +130,7 @@ public final class BuildService {
      * build} uses for its countdown seed so explain and build never price different step sets.
      */
     public static ExplainPlan explainFromGraph(BuildGraph.Result graph, Path cache, boolean skipTests) {
-        return BuildForecast.explainFromGraph(graph, cache, skipTests);
+        return BuildForecasting.explainFromGraph(graph, cache, skipTests);
     }
 
     /**
@@ -140,7 +140,7 @@ public final class BuildService {
      * {@code jk build}). ETA is 0; the plan is "Fully Cached" for every module.
      */
     public static ExplainPlan explainFromGraph(BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
-        return BuildForecast.explainFromGraph(graph, cache, skipTests, entryDir);
+        return BuildForecasting.explainFromGraph(graph, cache, skipTests, entryDir);
     }
 
     /**
@@ -148,7 +148,7 @@ public final class BuildService {
      * step lists ⇒ {@link TaskForecast.Module#dirty()} is false for every module; ETA is 0.
      */
     static ExplainPlan fullyCachedExplainPlan(BuildGraph.Result graph) {
-        return BuildForecast.fullyCachedExplainPlan(graph);
+        return BuildForecasting.fullyCachedExplainPlan(graph);
     }
 
     /**
@@ -259,7 +259,7 @@ public final class BuildService {
      * its cache-check cost — matching what scheduling will actually do.
      */
     static ExplainPlan restrictToSelection(ExplainPlan plan, Set<Path> selection) {
-        return BuildForecast.restrictToSelection(plan, selection);
+        return BuildForecasting.restrictToSelection(plan, selection);
     }
 
     /**

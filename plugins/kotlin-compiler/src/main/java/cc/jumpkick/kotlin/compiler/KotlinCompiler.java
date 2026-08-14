@@ -6,11 +6,15 @@ import cc.jumpkick.plugin.PluginManifest;
 import cc.jumpkick.plugin.protocol.PluginSpec;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.File;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.jetbrains.kotlin.buildtools.api.CompilationResult;
 import org.jetbrains.kotlin.buildtools.api.ExecutionPolicy;
@@ -90,7 +94,7 @@ public final class KotlinCompiler implements Plugin {
                                 eq < 0 ? opt : opt.substring(0, eq), eq < 0 ? "" : opt.substring(eq + 1)));
                     }
                     plugins.add(new org.jetbrains.kotlin.buildtools.api.arguments.CompilerPlugin(
-                            plugin.id(), List.of(jarSuffixed(plugin.jar().toPath())), options, java.util.Set.of()));
+                            plugin.id(), List.of(jarSuffixed(plugin.jar().toPath())), options, Set.of()));
                 }
                 op.getCompilerArguments()
                         .set(
@@ -163,8 +167,8 @@ public final class KotlinCompiler implements Plugin {
     }
 
     /** Stable snapshot filename for a classpath entry (its path is content-unique in the CAS). */
-    private static String snapshotName(File entry) throws java.security.NoSuchAlgorithmException {
-        byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+    private static String snapshotName(File entry) throws NoSuchAlgorithmException {
+        byte[] digest = MessageDigest.getInstance("SHA-256")
                 .digest(entry.getAbsolutePath().getBytes(StandardCharsets.UTF_8));
         StringBuilder sb = new StringBuilder(digest.length * 2);
         for (byte b : digest) sb.append(String.format("%02x", b & 0xff));
@@ -213,14 +217,14 @@ public final class KotlinCompiler implements Plugin {
      * {@code .jar}-suffixed temp file. Silent is the operative word: nothing fails, the plugin
      * just never runs.
      */
-    private static java.nio.file.Path jarSuffixed(java.nio.file.Path jar) throws java.io.IOException {
+    private static Path jarSuffixed(Path jar) throws IOException {
         if (jar.getFileName().toString().endsWith(".jar")) return jar;
-        java.nio.file.Path suffixed = java.nio.file.Files.createTempFile("jk-kotlin-plugin-", ".jar");
-        java.nio.file.Files.delete(suffixed); // createLink needs the target absent
+        Path suffixed = Files.createTempFile("jk-kotlin-plugin-", ".jar");
+        Files.delete(suffixed); // createLink needs the target absent
         try {
-            java.nio.file.Files.createLink(suffixed, jar);
-        } catch (java.io.IOException | UnsupportedOperationException e) {
-            java.nio.file.Files.copy(jar, suffixed); // cross-device: copy instead
+            Files.createLink(suffixed, jar);
+        } catch (IOException | UnsupportedOperationException e) {
+            Files.copy(jar, suffixed); // cross-device: copy instead
         }
         suffixed.toFile().deleteOnExit();
         return suffixed;

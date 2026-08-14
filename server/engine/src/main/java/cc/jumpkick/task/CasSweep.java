@@ -6,6 +6,7 @@ import cc.jumpkick.repo.RepoArtifactStore;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Stream;
@@ -45,7 +46,7 @@ public final class CasSweep {
         int kept = 0;
         // Collect first: unlink repos before CAS so reclaim is complete and crash-safe.
         record Victim(Path file, String hex, long size) {}
-        java.util.ArrayList<Victim> victims = new java.util.ArrayList<>();
+        ArrayList<Victim> victims = new ArrayList<>();
         Set<String> deletedShas = new HashSet<>();
         try (Stream<Path> stream = Files.walk(shaRoot)) {
             for (Path file : (Iterable<Path>) stream::iterator) {

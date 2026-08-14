@@ -23,6 +23,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
@@ -72,7 +73,7 @@ final class EnginePluginAdapter {
             String planName,
             Function<List<Task>, BuildPlanListener> listenerFactory,
             BiConsumer<String, String> onEvent,
-            java.util.function.Consumer<String> preFinish)
+            Consumer<String> preFinish)
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
 

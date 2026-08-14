@@ -9,6 +9,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
  * {@code instrument} — install app (+ optional test APK), run {@code am instrument -r -w}, parse
@@ -127,12 +129,12 @@ final class InstrumentCommand {
         }
     }
 
-    private static java.util.Optional<Path> pathArg(PluginCommandExec exec, String flag) {
+    private static Optional<Path> pathArg(PluginCommandExec exec, String flag) {
         List<String> args = exec.args();
         for (int i = 0; i < args.size() - 1; i++) {
-            if (flag.equals(args.get(i))) return java.util.Optional.of(Path.of(args.get(i + 1)));
+            if (flag.equals(args.get(i))) return Optional.of(Path.of(args.get(i + 1)));
         }
-        return java.util.Optional.empty();
+        return Optional.empty();
     }
 
     private static int adb(PluginCommandExec exec, Path adb, boolean quiet, String... args)
@@ -140,8 +142,7 @@ final class InstrumentCommand {
         return adbLines(exec, adb, quiet ? l -> {} : l -> exec.out("  " + l), args);
     }
 
-    private static int adbLines(
-            PluginCommandExec exec, Path adb, java.util.function.Consumer<String> sink, String... args)
+    private static int adbLines(PluginCommandExec exec, Path adb, Consumer<String> sink, String... args)
             throws IOException, InterruptedException {
         List<String> command = new ArrayList<>();
         command.add(adb.toAbsolutePath().toString());

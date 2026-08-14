@@ -15,6 +15,7 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -40,7 +41,7 @@ public final class CompileCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        var opts = new java.util.ArrayList<Opt>();
+        var opts = new ArrayList<Opt>();
         opts.add(Opt.value("<name>", "Build profile (default auto)", "--profile"));
         opts.add(cc.jumpkick.cli.CommonOpts.cacheDir());
         opts.addAll(cc.jumpkick.cli.CommonOpts.moduleSelection());

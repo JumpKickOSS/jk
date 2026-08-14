@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.net.http.HttpClient;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
@@ -131,9 +132,7 @@ class HostCooldownTest {
         HostCooldown cooldown = new HostCooldown(tmp);
         cooldown.noteRateLimited("nonexistent.invalid", Optional.empty());
         Http http = new Http(
-                java.net.http.HttpClient.newBuilder()
-                        .connectTimeout(Duration.ofSeconds(2))
-                        .build(),
+                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build(),
                 new Duration[] {Duration.ofMillis(1)},
                 new CentralMirror(
                         tmp.resolve("m"), Duration.ofHours(4), true, "unused.example", "http://unused.example"),
@@ -163,7 +162,7 @@ class HostCooldownTest {
             URI uri = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/a/b.jar");
             HostCooldown cooldown = new HostCooldown(tmp);
             Http http = new Http(
-                    java.net.http.HttpClient.newBuilder()
+                    HttpClient.newBuilder()
                             .connectTimeout(Duration.ofSeconds(5))
                             .build(),
                     new Duration[] {Duration.ofMillis(1)},

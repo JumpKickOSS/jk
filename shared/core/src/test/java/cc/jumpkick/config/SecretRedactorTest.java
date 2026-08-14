@@ -39,6 +39,20 @@ class SecretRedactorTest {
     }
 
     @Test
+    void a_dangling_secret_prefix_at_a_truncation_cut_is_masked() {
+        // JK-1960: capture-time truncation can cut mid-value; the surviving prefix no longer
+        // matches the exact-substring pass and must be masked at the seam by the caller.
+        SecretRedactor r = SecretRedactor.of(List.of("s3cret-token-value"));
+        assertThat(r.maskTrailingSecretPrefix("Bearer s3cret-tok")).isEqualTo("Bearer " + SecretRedactor.MASK);
+        // Below the floor, or unrelated tails, stay untouched.
+        assertThat(r.maskTrailingSecretPrefix("Bearer s3cr")).isEqualTo("Bearer s3cr");
+        assertThat(r.maskTrailingSecretPrefix("nothing here")).isEqualTo("nothing here");
+        // A full occurrence is redact()'s job, not the seam's — the whole value at the tail is
+        // still caught here (prefix length capped below the full value keeps them disjoint).
+        assertThat(r.maskTrailingSecretPrefix("x s3cret-token-value")).isEqualTo("x s3cret-token-value");
+    }
+
+    @Test
     void short_common_values_are_config_not_credentials() {
         // NODE_ENV=test / PORT=8080 style.env entries must not mangle output.
         SecretRedactor r = SecretRedactor.of(List.of("test", "8080", "info"));

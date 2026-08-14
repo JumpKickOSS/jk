@@ -22,13 +22,16 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.util.JkDirs;
+import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -144,9 +147,9 @@ public final class LockCommand implements CliCommand {
         // Per-module package counts (cumulative wire samples, then the authoritative lockfile
         // count). The engine restarts totalSeen per module, so the workspace total is the SUM
         // of per-module counts — folding with max reported only the largest module.
-        Map<String, Integer> lockedByDir = new java.util.concurrent.ConcurrentHashMap<>();
+        Map<String, Integer> lockedByDir = new ConcurrentHashMap<>();
         List<String> errorLines = new ArrayList<>();
-        Map<String, String> coordByDir = new java.util.HashMap<>();
+        Map<String, String> coordByDir = new HashMap<>();
 
         EngineRequests.LockHandler handler = new EngineRequests.LockHandler() {
             @Override
@@ -213,7 +216,7 @@ public final class LockCommand implements CliCommand {
         EngineRequests.LockOutcome outcome;
         try {
             outcome = EngineClient.runLock(cc.jumpkick.engine.EnginePaths.current(), lockRequest(dir, cache), handler);
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             view.finishBuildPlanFailure(String.valueOf(e.getMessage()), List.of());
             return Exit.SOFTWARE;
         }
@@ -248,7 +251,7 @@ public final class LockCommand implements CliCommand {
         EngineRequests.LockOutcome outcome;
         try {
             outcome = EngineClient.runLock(cc.jumpkick.engine.EnginePaths.current(), lockRequest(dir, cache), handler);
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Lock", e.getMessage()));
             return Exit.SOFTWARE;
         }

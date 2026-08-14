@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
@@ -90,7 +91,7 @@ final class DeterministicJar {
      * entries; a jar with file entries only makes those lookups come back empty (JK-1414). Thin
      * and fat jars owe the same contract, so they share one implementation (JK-1667).
      */
-    static void writeParentDirs(JarOutputStream jos, String name, long epochSeconds, java.util.Set<String> dirs)
+    static void writeParentDirs(JarOutputStream jos, String name, long epochSeconds, Set<String> dirs)
             throws IOException {
         int slash = -1;
         while ((slash = name.indexOf('/', slash + 1)) >= 0) {

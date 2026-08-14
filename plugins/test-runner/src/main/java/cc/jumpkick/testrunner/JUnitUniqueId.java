@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.testrunner;
 
+import java.util.Map;
+
 /**
  * Parsed JUnit Platform {@code UniqueId} segments. Jupiter (and other engines) build the opaque
  * {@code [engine:…][class:…][method:…]} string; we only split it for the wire — we do not invent
@@ -74,7 +76,7 @@ final class JUnitUniqueId {
     }
 
     /** Put identity fields on a payload map (no display name — callers own presentation). */
-    void putIdentity(java.util.Map<String, Object> payload) {
+    void putIdentity(Map<String, Object> payload) {
         if (!uniqueId.isEmpty()) payload.put("uniqueId", uniqueId);
         if (!testEngine.isEmpty()) payload.put("testEngine", testEngine);
         if (!testClass.isEmpty()) payload.put("testClass", testClass);

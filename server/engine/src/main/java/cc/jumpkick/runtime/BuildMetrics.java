@@ -11,15 +11,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.OptionalLong;
-import java.util.TreeMap;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 
@@ -213,7 +207,7 @@ public final class BuildMetrics {
         AggMemo memo = AGG_MEMO.get();
         if (memo != null
                 && memo.builds().equals(builds)
-                && java.util.Objects.equals(memo.work(), memoKey)
+                && Objects.equals(memo.work(), memoKey)
                 && now - memo.atMillis() < AGG_MEMO_TTL_MS) {
             return memo.agg();
         }
@@ -226,8 +220,7 @@ public final class BuildMetrics {
 
     private record AggMemo(Path builds, Path work, long atMillis, cc.jumpkick.builds.AggregatedMetrics agg) {}
 
-    private static final java.util.concurrent.atomic.AtomicReference<AggMemo> AGG_MEMO =
-            new java.util.concurrent.atomic.AtomicReference<>();
+    private static final AtomicReference<AggMemo> AGG_MEMO = new AtomicReference<>();
     private static final long AGG_MEMO_TTL_MS = 3_000;
 
     /** Test seam: drop the session-aggregate memo (tests repoint JK_STATE_DIR between cases). */

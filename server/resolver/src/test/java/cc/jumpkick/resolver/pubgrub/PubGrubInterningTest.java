@@ -4,6 +4,7 @@ package cc.jumpkick.resolver.pubgrub;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -132,7 +133,7 @@ class PubGrubInterningTest {
         PackageSource base = b.build();
         PackageSource src = new PackageSource() {
             @Override
-            public List<String> versions(String pkg) throws java.io.IOException, InterruptedException {
+            public List<String> versions(String pkg) throws IOException, InterruptedException {
                 List<String> v = new ArrayList<>(base.versions(pkg));
                 if (pkg.equals("shared")) {
                     v.remove("50.0.0");
@@ -142,8 +143,7 @@ class PubGrubInterningTest {
             }
 
             @Override
-            public List<Term> dependencies(String pkg, String version)
-                    throws java.io.IOException, InterruptedException {
+            public List<Term> dependencies(String pkg, String version) throws IOException, InterruptedException {
                 return base.dependencies(pkg, version);
             }
         };

@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Engine-hosted plugin commands: fork the active code plugin over JSONL, stream {@code command-out},
@@ -22,7 +23,7 @@ public final class PluginCommands {
     private PluginCommands() {}
 
     public static PluginCommandReport run(Path dir, Path cache, String command, List<String> args) {
-        return run(dir, cache, command, args, "", java.util.Map.of());
+        return run(dir, cache, command, args, "", Map.of());
     }
 
     /**
@@ -30,12 +31,7 @@ public final class PluginCommands {
      * must resolve the release packaging (the AAB) and its config, not the debug default's.
      */
     public static PluginCommandReport run(
-            Path dir,
-            Path cache,
-            String command,
-            List<String> args,
-            String variant,
-            java.util.Map<String, String> clientEnv) {
+            Path dir, Path cache, String command, List<String> args, String variant, Map<String, String> clientEnv) {
         try {
             Path buildFile = dir.resolve("jk.toml");
             if (!Files.isRegularFile(buildFile)) return PluginCommandReport.notFound();

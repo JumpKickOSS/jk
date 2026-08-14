@@ -3,6 +3,7 @@ package cc.jumpkick.config;
 
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
+import java.util.Optional;
 import java.util.function.Function;
 import org.tomlj.TomlParseResult;
 import org.tomlj.TomlTable;
@@ -36,7 +37,7 @@ public record JkHistoryConfig(boolean enabled, int maxAgeDays, int maxDiskMb) {
                 envNonNegativeInt(env, "JK_HISTORY_MAX_DISK_MB").orElse(base.maxDiskMb));
     }
 
-    private static java.util.Optional<Integer> envNonNegativeInt(Function<String, String> env, String name) {
+    private static Optional<Integer> envNonNegativeInt(Function<String, String> env, String name) {
         return EnvValues.intValue(env, name).filter(i -> i >= 0);
     }
 
@@ -47,7 +48,7 @@ public record JkHistoryConfig(boolean enabled, int maxAgeDays, int maxDiskMb) {
      * default.
      */
     public static JkHistoryConfig fromToml(Path file) {
-        java.util.Optional<TomlParseResult> parsed = TomlValues.parse(file);
+        Optional<TomlParseResult> parsed = TomlValues.parse(file);
         if (parsed.isEmpty()) return DEFAULTS;
         TomlTable history = parsed.get().getTable("history");
         if (history == null) return DEFAULTS;
@@ -58,7 +59,7 @@ public record JkHistoryConfig(boolean enabled, int maxAgeDays, int maxDiskMb) {
         return new JkHistoryConfig(enabled, maxAge, maxDisk);
     }
 
-    private static java.util.Optional<Integer> nonNegative(java.util.Optional<Integer> value) {
+    private static Optional<Integer> nonNegative(Optional<Integer> value) {
         return value.filter(i -> i >= 0);
     }
 

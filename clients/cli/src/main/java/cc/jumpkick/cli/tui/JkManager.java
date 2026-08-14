@@ -4,6 +4,7 @@ package cc.jumpkick.cli.tui;
 import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.runtime.progress.ClockProgressStrategy;
 import cc.jumpkick.runtime.progress.HeaderProgressState;
 import cc.jumpkick.runtime.progress.HeaderProgressStrategy;
@@ -13,6 +14,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -60,9 +62,9 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     int height = DEFAULT_HEIGHT; // package-private: tests set it directly
 
     /**
-     * [global].nerdfont — gates the powerline pill header. Package-private: tests set it directly.
+     * [global].nerd-font caps — gate the powerline pill header. Package-private: tests set it directly.
      */
-    boolean nerdfont = GlobalConfig.nerdfont();
+    NerdFontCaps nerdFont = GlobalConfig.nerdFont();
     /**
      * When set and {@code denominator == 0}, the header shows this text instead of the progress
      * bar — used by {@code jk lock} to display "Resolving dependencies…" during the PubGrub solve
@@ -341,11 +343,15 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     /**
      * Mark a step running and record its coarse {@code phase} (wire name, e.g. {@code compile}) for
      * the vertical phase chain. Empty phase falls back to the step key (same as the web dashboard).
+     *
+     * <p>No-ops when the step already has a terminal status so a late/out-of-order {@code stepStart}
+     * cannot resurrect a finished row (same rule as the dashboard rehydrate path).
      */
     public void stepRunning(String module, String stepKey, String phase) {
         synchronized (lock) {
             String phaseKey = phaseKey(phase, stepKey);
             Row r = rows.computeIfAbsent(key(module, stepKey), k -> new Row(module, humanize(stepKey), phaseKey));
+            if (r.state == RowState.DONE || r.state == RowState.FAILED) return;
             r.phase = phaseKey;
             r.state = RowState.ACTIVE;
             this.target = module;
@@ -375,11 +381,32 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         synchronized (lock) {
             String phaseKey = phaseKey(phase, stepKey);
             Row r = rows.computeIfAbsent(key(module, stepKey), k -> new Row(module, humanize(stepKey), phaseKey));
+            if (r.state == RowState.DONE || r.state == RowState.FAILED) return;
             r.phase = phaseKey;
             r.state = ok ? RowState.DONE : RowState.FAILED;
             r.message = "";
             r.seq = ++finishSeq;
             touchPhaseFinish(phaseKey, ok);
+        }
+    }
+
+    /**
+     * Terminal cleanup for one module's plan: any still-{@link RowState#ACTIVE} rows (lost wire
+     * {@code task-finish}, cancel between start and finish, …) settle so they leave the live tree
+     * instead of lingering for the rest of the workspace build.
+     */
+    public void finishModule(String module, boolean ok) {
+        synchronized (lock) {
+            if (module == null) return;
+            for (Row r : rows.values()) {
+                if (!module.equals(r.module) || r.state != RowState.ACTIVE) continue;
+                r.state = ok ? RowState.DONE : RowState.FAILED;
+                r.message = "";
+                r.seq = ++finishSeq;
+                if (r.phase != null && !r.phase.isEmpty()) {
+                    touchPhaseFinish(r.phase, ok);
+                }
+            }
         }
     }
 
@@ -772,7 +799,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
                     printPlainDone();
                 }
                 // Ctrl-C: "by user" + took duration.
-                String took = cc.jumpkick.cli.run.ConsoleSpec.took(java.time.Duration.ofMillis(elapsedMillis()));
+                String took = cc.jumpkick.cli.run.ConsoleSpec.took(Duration.ofMillis(elapsedMillis()));
                 out.println(JkWedge.cancelled(planName(), true, took).renderLine(headerContext()));
                 out.flush();
                 return true;

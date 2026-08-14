@@ -9,6 +9,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.util.List;
 
 /**
@@ -42,7 +43,7 @@ public final class EngineRotateTokenCommand implements CliCommand {
     public int run(Invocation in) {
         EnginePaths.Paths paths = EnginePaths.current();
         try {
-            java.nio.file.Files.deleteIfExists(paths.httpToken());
+            Files.deleteIfExists(paths.httpToken());
         } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
                     "Engine", "could not remove the token file (" + e.getMessage() + ")"));

@@ -8,6 +8,8 @@ import cc.jumpkick.model.JkBuild;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -205,8 +207,8 @@ class TestStampWorkerJarsParityTest {
 
     /** Minimal zip so path existence / monorepo product discovery has a real file. */
     private static void writeMinimalJar(Path jar) throws Exception {
-        try (var zos = new java.util.zip.ZipOutputStream(Files.newOutputStream(jar))) {
-            zos.putNextEntry(new java.util.zip.ZipEntry("META-INF/MANIFEST.MF"));
+        try (var zos = new ZipOutputStream(Files.newOutputStream(jar))) {
+            zos.putNextEntry(new ZipEntry("META-INF/MANIFEST.MF"));
             zos.write("Manifest-Version: 1.0\n".getBytes());
             zos.closeEntry();
         }

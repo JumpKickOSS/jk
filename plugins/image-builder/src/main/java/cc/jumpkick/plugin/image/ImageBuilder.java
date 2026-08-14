@@ -17,15 +17,12 @@ import com.google.cloud.tools.jib.api.buildplan.FileEntriesLayer;
 import com.google.cloud.tools.jib.api.buildplan.FilePermissions;
 import com.google.cloud.tools.jib.api.buildplan.Platform;
 import com.google.cloud.tools.jib.api.buildplan.Port;
+import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ExecutionException;
 
 /**
@@ -201,7 +198,7 @@ public final class ImageBuilder {
     /** Ship {@code src} under {@code /app}: a directory verbatim, or a single file at {@code as}. */
     private static FileEntriesLayer treeLayer(Path src, String as) throws IOException {
         FileEntriesLayer.Builder layer = FileEntriesLayer.builder();
-        if (java.nio.file.Files.isRegularFile(src)) {
+        if (Files.isRegularFile(src)) {
             layer.addEntry(
                     src,
                     AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR + "/" + (as == null ? src.getFileName() : as)),
@@ -209,9 +206,8 @@ public final class ImageBuilder {
                     AotCacheTrainer.LAYER_TIME.toInstant());
             return layer.build();
         }
-        try (var walk = java.nio.file.Files.walk(src)) {
-            for (Path file :
-                    walk.filter(java.nio.file.Files::isRegularFile).sorted().toList()) {
+        try (var walk = Files.walk(src)) {
+            for (Path file : walk.filter(Files::isRegularFile).sorted().toList()) {
                 layer.addEntry(
                         file,
                         AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR + "/"
@@ -227,9 +223,8 @@ public final class ImageBuilder {
     private static FileEntriesLayer stagedTreeLayer(AotCacheTrainer.Result aot) throws IOException {
         Path root = aot.stagingRoot();
         FileEntriesLayer.Builder layer = FileEntriesLayer.builder();
-        try (var walk = java.nio.file.Files.walk(root)) {
-            for (Path file :
-                    walk.filter(java.nio.file.Files::isRegularFile).sorted().toList()) {
+        try (var walk = Files.walk(root)) {
+            for (Path file : walk.filter(Files::isRegularFile).sorted().toList()) {
                 String rel = root.relativize(file).toString().replace('\\', '/');
                 if (!aot.stagedFiles().contains(rel)) continue; // training-run droppings
                 layer.addEntry(
@@ -258,7 +253,7 @@ public final class ImageBuilder {
     /** Dependency jars at {@code /app/libs}, named by coordinate rather than by CAS digest. */
     private static FileEntriesLayer namedJarLayer(Plan plan, List<Path> jars) {
         FileEntriesLayer.Builder layer = FileEntriesLayer.builder();
-        java.util.Set<String> seen = new java.util.HashSet<>();
+        Set<String> seen = new HashSet<>();
         for (Path jar : jars) {
             String name = plan.nameOf(jar);
             // Two entries at one path would extract as "last tar entry wins" — a jar silently
@@ -392,8 +387,7 @@ public final class ImageBuilder {
         // repeated builds of unchanged code, accurate when code changes, and git-independent.
         Instant creationTime;
         try {
-            creationTime =
-                    java.nio.file.Files.getLastModifiedTime(plan.mainJar()).toInstant();
+            creationTime = Files.getLastModifiedTime(plan.mainJar()).toInstant();
         } catch (IOException ignored) {
             creationTime = Instant.now();
         }
@@ -417,12 +411,12 @@ public final class ImageBuilder {
                 .setName("classes");
         AbsoluteUnixPath target = AbsoluteUnixPath.get("/app/classes");
         List<Path> files = new ArrayList<>();
-        try (var stream = java.nio.file.Files.walk(classesDir)) {
-            stream.filter(java.nio.file.Files::isRegularFile).forEach(files::add);
+        try (var stream = Files.walk(classesDir)) {
+            stream.filter(Files::isRegularFile).forEach(files::add);
         }
-        files.sort(java.util.Comparator.comparing(p -> classesDir.relativize(p).toString()));
+        files.sort(Comparator.comparing(p -> classesDir.relativize(p).toString()));
         for (Path file : files) {
-            String rel = classesDir.relativize(file).toString().replace(java.io.File.separatorChar, '/');
+            String rel = classesDir.relativize(file).toString().replace(File.separatorChar, '/');
             if (rel.endsWith(".jstamp") || rel.endsWith(".kstamp") || rel.endsWith(".test-stamp")) continue;
             layer.addEntry(file, target.resolve(rel));
         }

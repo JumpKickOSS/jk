@@ -17,9 +17,12 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.Hashing;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * {@code jk install} heavy halves: {@link #projectInstallBuildPlan} (build + cache-install into
@@ -66,7 +69,7 @@ public final class InstallPlans {
                 verbose,
                 false,
                 false,
-                java.util.Set.of(),
+                Set.of(),
                 cc.jumpkick.config.SessionContext.current());
         BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs);
         // ALWAYS modules get native from appendDeclaredTails (same as jk build); pass the
@@ -75,7 +78,7 @@ public final class InstallPlans {
 
         // cache-install reads the freshly-built jar and must run after every runnable artifact
         // this project produces (so a follow-up client-side make-install finds them all built).
-        java.util.List<String> requires = new java.util.ArrayList<>(List.of(TaskNames.PACKAGE_JAR));
+        List<String> requires = new ArrayList<>(List.of(TaskNames.PACKAGE_JAR));
         if (isNative) requires.add(TaskNames.NATIVE_IMAGE);
         if (proj.isApplication() && proj.assembly() && !isNative) requires.add(TaskNames.PACKAGE_ASSEMBLY);
 
@@ -180,7 +183,7 @@ public final class InstallPlans {
         String pomXml = cc.jumpkick.publish.PublishablePom.render(
                         project, null, cc.jumpkick.config.WorkspaceResolve.siblingCoordinates(layout.moduleRoot()))
                 .xml();
-        byte[] pomBytes = pomXml.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] pomBytes = pomXml.getBytes(StandardCharsets.UTF_8);
 
         if (p.m2install()) {
             // The local Maven repo is primary. m2Dir is caller-resolved (--m2-dir redirects it).

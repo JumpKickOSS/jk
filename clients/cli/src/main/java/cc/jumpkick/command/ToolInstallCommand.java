@@ -18,10 +18,13 @@ import cc.jumpkick.tool.ToolLauncher;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * {@code jk tool install [<target>]} — install a catalog name, Maven coord, script/jar, project dir,
@@ -301,7 +304,7 @@ public final class ToolInstallCommand implements CliCommand {
             Path file, cc.jumpkick.tool.ToolProvenance provenance, List<String> with, List<String> jvmArgs)
             throws IOException, InterruptedException {
         String name = file.getFileName().toString();
-        String lower = name.toLowerCase(java.util.Locale.ROOT);
+        String lower = name.toLowerCase(Locale.ROOT);
         if (!Files.isRegularFile(file)) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", "file not found: " + file));
             return Exit.NO_INPUT;
@@ -310,7 +313,7 @@ public final class ToolInstallCommand implements CliCommand {
                 lower.endsWith(".jar") ? "jar" : lower.endsWith(".kts") ? "kts" : lower.endsWith(".kt") ? "kt" : "java";
         String bin = binName != null && !binName.isBlank()
                 ? binName
-                : name.substring(0, name.lastIndexOf('.')).toLowerCase(java.util.Locale.ROOT);
+                : name.substring(0, name.lastIndexOf('.')).toLowerCase(Locale.ROOT);
 
         Path cacheDir = cacheDirOverride != null ? cacheDirOverride : JkDirs.cache();
         Path stateDir = stateDirOverride != null ? stateDirOverride : JkDirs.state();
@@ -341,7 +344,7 @@ public final class ToolInstallCommand implements CliCommand {
             // write a kotlinc -script launcher over it + the resolved dep classpath.
             if (prep.kotlincBin() == null) return 1;
             Files.createDirectories(envDir);
-            String source = Files.readString(file, java.nio.charset.StandardCharsets.UTF_8);
+            String source = Files.readString(file, StandardCharsets.UTF_8);
             String neutralized = cc.jumpkick.script.ScriptHeaderParser.neutralizeKotlinAnnotations(source);
             Path scriptCopy = envDir.resolve(name);
             Files.writeString(scriptCopy, neutralized != null ? neutralized : source);
@@ -359,7 +362,7 @@ public final class ToolInstallCommand implements CliCommand {
         if ("jar".equals(mode)) {
             Files.createDirectories(envDir);
             Path jarCopy = envDir.resolve(name);
-            Files.copy(file, jarCopy, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(file, jarCopy, StandardCopyOption.REPLACE_EXISTING);
             classpath.add(jarCopy);
             // prep.classpath() leads with the source jar; keep only the resolved deps.
             prep.classpath().stream().skip(1).forEach(classpath::add);
@@ -409,7 +412,7 @@ public final class ToolInstallCommand implements CliCommand {
                     Files.createDirectories(dst);
                 } else {
                     Files.createDirectories(dst.getParent());
-                    Files.copy(src, dst, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    Files.copy(src, dst, StandardCopyOption.REPLACE_EXISTING);
                 }
             }
         }

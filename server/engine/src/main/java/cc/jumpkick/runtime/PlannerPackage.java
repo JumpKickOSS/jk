@@ -23,6 +23,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 /**
  * package-jar, freshness stamps, and mixed-module class assembly.
@@ -39,9 +41,9 @@ public final class PlannerPackage {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
-        java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
-        java.util.concurrent.atomic.AtomicReference<List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
-        java.util.concurrent.atomic.AtomicReference<List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
+        Supplier<EffortWeights.Plan> plan = cx.plan();
+        AtomicReference<List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
+        AtomicReference<List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
         Path javaMainSrcDir = cx.javaMainSrcDir();
         boolean compact = cx.compact();
         boolean mixed = cx.mixed();
@@ -203,9 +205,9 @@ public final class PlannerPackage {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
-        java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
-        java.util.concurrent.atomic.AtomicReference<List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
-        java.util.concurrent.atomic.AtomicReference<List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
+        Supplier<EffortWeights.Plan> plan = cx.plan();
+        AtomicReference<List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
+        AtomicReference<List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
         Path javaMainSrcDir = cx.javaMainSrcDir();
         boolean compact = cx.compact();
         boolean mixed = cx.mixed();
@@ -263,9 +265,9 @@ public final class PlannerPackage {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
-        java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
-        java.util.concurrent.atomic.AtomicReference<List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
-        java.util.concurrent.atomic.AtomicReference<List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
+        Supplier<EffortWeights.Plan> plan = cx.plan();
+        AtomicReference<List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
+        AtomicReference<List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
         Path javaMainSrcDir = cx.javaMainSrcDir();
         boolean compact = cx.compact();
         boolean mixed = cx.mixed();
@@ -306,7 +308,7 @@ public final class PlannerPackage {
 
     static Task writeStampGroovyStep(BuildPlanner.Ctx cx) {
         BuildPlanner.Inputs in = cx.in();
-        java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
+        Supplier<EffortWeights.Plan> plan = cx.plan();
         boolean mixedGroovy = cx.mixedGroovy();
         return Task.builder(TaskNames.WRITE_STAMP_GROOVY)
                 .stage(BuildStage.COMPILE)
@@ -344,9 +346,9 @@ public final class PlannerPackage {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
-        java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
-        java.util.concurrent.atomic.AtomicReference<List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
-        java.util.concurrent.atomic.AtomicReference<List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
+        Supplier<EffortWeights.Plan> plan = cx.plan();
+        AtomicReference<List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
+        AtomicReference<List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
         Path javaMainSrcDir = cx.javaMainSrcDir();
         boolean compact = cx.compact();
         boolean mixed = cx.mixed();

@@ -716,6 +716,29 @@ public final class DependencyTree {
             Set<String> seenModules,
             Set<String> seenDirs,
             StringBuilder out) {
+        renderScopeDepList(
+                project, lock, dir, scopes, depth, maxDepth, prefix, styling, ws, seenModules, seenDirs, out, false);
+    }
+
+    /**
+     * {@code siblingSurface}: rendering a consumed sibling's contributed deps — its module
+     * (workspace) edges then chain only through {@code WorkspaceClasspath.SIBLING_MODULE_SCOPES}
+     * (JK-1962); external deps keep the full export/main/runtime surface.
+     */
+    private static void renderScopeDepList(
+            JkBuild project,
+            Lockfile lock,
+            Path dir,
+            List<Scope> scopes,
+            int depth,
+            int maxDepth,
+            String prefix,
+            Styling styling,
+            WorkspaceGraph ws,
+            Set<String> seenModules,
+            Set<String> seenDirs,
+            StringBuilder out,
+            boolean siblingSurface) {
 
         Map<String, Lockfile.Artifact> byModule = lock == null ? Map.of() : indexByModule(lock);
         Map<String, Dependency> composite = Map.of();
@@ -723,8 +746,11 @@ public final class DependencyTree {
         Map<String, String> declaredVersions = declaredVersions(project, scopes);
         Set<String> platformModules = platformModules(project);
         List<String> mods = scopes.stream()
-                .flatMap(s -> project.dependencies().of(s).stream())
-                .map(Dependency::module)
+                .flatMap(s -> project.dependencies().of(s).stream()
+                        .filter(d -> !siblingSurface
+                                || cc.jumpkick.config.WorkspaceClasspath.SIBLING_MODULE_SCOPES.contains(s)
+                                || !isSiblingModuleDep(d.module(), ws))
+                        .map(Dependency::module))
                 .distinct()
                 .sorted()
                 .toList();
@@ -1013,9 +1039,13 @@ public final class DependencyTree {
             Map<String, Lockfile.Artifact> siblingIndex =
                     sibling.lock() == null ? byModule : indexByModule(sibling.lock());
             // The sibling contributes its own surface (export/main/runtime), not whatever
-            // scope section of the consumer declared it (JK-1884).
+            // scope section of the consumer declared it (JK-1884). Module (workspace) edges chain
+            // only through export/main — WorkspaceClasspath never adds a sibling's RUNTIME module
+            // deps to the consumer's classpath, so the tree must not draw them either (JK-1962).
             for (Scope s : siblingContributedScopes()) {
+                boolean moduleEdges = cc.jumpkick.config.WorkspaceClasspath.SIBLING_MODULE_SCOPES.contains(s);
                 for (String dep : directModules(sibling.build(), s)) {
+                    if (!moduleEdges && isSiblingModuleDep(dep, ws)) continue;
                     collectFlat(dep, composite, siblingIndex, ws, siblingContributedScopes(), visited, out);
                 }
             }
@@ -1136,6 +1166,11 @@ public final class DependencyTree {
                 platformPin);
     }
 
+    /** True when {@code module} names a workspace sibling (either form) in this graph. */
+    private static boolean isSiblingModuleDep(String module, WorkspaceGraph ws) {
+        return Dependency.isWorkspaceRef(module) || resolveSibling(module, ws) != null;
+    }
+
     private static LoadedModule resolveSibling(String module, WorkspaceGraph ws) {
         if (ws == null || ws.byGa().isEmpty() && ws.byName().isEmpty()) return null;
         if (Dependency.isWorkspaceRef(module)) {
@@ -1209,7 +1244,8 @@ public final class DependencyTree {
                 ws,
                 seenModules,
                 seenDirs,
-                out);
+                out,
+                /* siblingSurface= */ true);
     }
 
     /**

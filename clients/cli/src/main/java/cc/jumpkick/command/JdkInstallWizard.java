@@ -7,13 +7,7 @@ import cc.jumpkick.cli.tui.Wizard;
 import cc.jumpkick.cli.tui.WizardStep;
 import cc.jumpkick.jdk.JdkCatalog;
 import cc.jumpkick.jdk.JdkSelector;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.TreeMap;
+import java.util.*;
 import org.jline.terminal.Terminal;
 
 /**
@@ -29,7 +23,7 @@ final class JdkInstallWizard {
      * hard-coded, so when JDK 27 ships we don't have to update a constant.
      */
     static List<Integer> supportedMajorsFrom(JdkCatalog catalog, String os, String arch) {
-        var sorted = new java.util.TreeSet<Integer>(Comparator.reverseOrder());
+        var sorted = new TreeSet<Integer>(Comparator.reverseOrder());
         for (JdkCatalog.Entry e : catalog.entries()) {
             if (e.preview()) continue;
             if (!e.os().equals(os)) continue;

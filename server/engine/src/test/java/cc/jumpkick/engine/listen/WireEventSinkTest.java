@@ -4,6 +4,15 @@ package cc.jumpkick.engine.listen;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import java.io.BufferedWriter;
+import java.io.StringWriter;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 class WireEventSinkTest {
@@ -43,5 +52,49 @@ class WireEventSinkTest {
         new CompositeEventSink(a, b).emit(new EngineEvent.PlanDone(1));
         assertThat(a.events()).hasSize(1);
         assertThat(b.events()).hasSize(1);
+    }
+
+    @Test
+    void concurrent_emits_do_not_interleave_jsonl_lines() throws Exception {
+        // Parallel modules share one writer; unsynchronized writes used to corrupt lines so the
+        // client dropped task-finish and left zombie ACTIVE rows (resolve JDK stuck in the tree).
+        StringWriter sw = new StringWriter();
+        BufferedWriter bw = new BufferedWriter(sw);
+        WireEventSink sink = new WireEventSink(bw);
+        int threads = 8;
+        int perThread = 200;
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(threads);
+        AtomicInteger failures = new AtomicInteger();
+        try (ExecutorService pool = Executors.newFixedThreadPool(threads)) {
+            for (int t = 0; t < threads; t++) {
+                final int id = t;
+                pool.execute(() -> {
+                    try {
+                        start.await();
+                        for (int i = 0; i < perThread; i++) {
+                            sink.emit(new EngineEvent.StepFinish("mod-" + id, "ensure-jdk", "resolve", "SUCCESS", i));
+                        }
+                    } catch (Exception e) {
+                        failures.incrementAndGet();
+                    } finally {
+                        done.countDown();
+                    }
+                });
+            }
+            start.countDown();
+            assertThat(done.await(30, TimeUnit.SECONDS)).isTrue();
+        }
+        bw.flush();
+        assertThat(failures.get()).isZero();
+        List<String> lines = new ArrayList<>();
+        for (String line : sw.toString().split("\n", -1)) {
+            if (!line.isEmpty()) lines.add(line);
+        }
+        assertThat(lines).hasSize(threads * perThread);
+        for (String line : lines) {
+            assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.TASK_FINISH);
+            assertThat(line).startsWith("{").endsWith("}");
+        }
     }
 }

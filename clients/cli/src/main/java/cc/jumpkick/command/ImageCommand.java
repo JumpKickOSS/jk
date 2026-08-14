@@ -16,6 +16,7 @@ import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -36,7 +37,7 @@ public final class ImageCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        var opts = new java.util.ArrayList<Opt>(List.of(
+        var opts = new ArrayList<Opt>(List.of(
                 Opt.value("<class>", "Main class to set as the image entrypoint.", "--main"),
                 Opt.value("<registry>", "Override image.registry from jk.toml.", "--registry"),
                 Opt.value("<tag>", "Override image.tag from jk.toml.", "--tag"),

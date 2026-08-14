@@ -681,13 +681,13 @@ public final class ProtoEvents {
                 + "}";
     }
 
-    /** Opens one module's event scope in a {@code jk lock}/{@code jk update} cascade (see {@link #EngineProtocol.LOCK_MODULE}). */
+    /** Opens one module's event scope in a {@code jk lock}/{@code jk update} cascade (see {@link EngineProtocol#LOCK_MODULE}). */
     public static String lockModule(String dir, String coord) {
         return "{\"type\":\"" + EngineProtocol.LOCK_MODULE + "\",\"dir\":" + Jsonl.quote(dir) + ",\"coord\":"
                 + Jsonl.quote(coord) + "}";
     }
 
-    /** One resolved package, streamed as it is recorded (see {@link #EngineProtocol.LOCK_PACKAGE}). */
+    /** One resolved package, streamed as it is recorded (see {@link EngineProtocol#LOCK_PACKAGE}). */
     public static String lockPackage(String dir, String name, String version) {
         return lockPackage(dir, name, version, -1);
     }
@@ -736,7 +736,7 @@ public final class ProtoEvents {
 
     // ---- hosted worker-command events (server → client) --------------------------------------------
 
-    /** One OSV finding (see {@link #EngineProtocol.AUDIT_FINDING}) — plain structured fields, no theming. */
+    /** One OSV finding (see {@link EngineProtocol#AUDIT_FINDING}) — plain structured fields, no theming. */
     public static String auditFinding(
             String dir, String module, String version, String vulnId, String severity, String summary) {
         return "{\"type\":\""
@@ -757,7 +757,7 @@ public final class ProtoEvents {
     }
 
     /**
-     * One file's format result (see {@link #EngineProtocol.FORMAT_FILE}). {@code index}/{@code total} drive the
+     * One file's format result (see {@link EngineProtocol#FORMAT_FILE}). {@code index}/{@code total} drive the
      * client's per-file progress bar ({@code total} is known engine-side before the worker forks).
      */
     public static String formatFile(String dir, String path, String status, String message, int index, int total) {
@@ -778,7 +778,7 @@ public final class ProtoEvents {
                 + "}";
     }
 
-    /** One import progress note (see {@link #EngineProtocol.IMPORT_NOTE}). */
+    /** One import progress note (see {@link EngineProtocol#IMPORT_NOTE}). */
     public static String importNote(String dir, String kind, String text) {
         return "{\"type\":\""
                 + EngineProtocol.IMPORT_NOTE
@@ -792,7 +792,7 @@ public final class ProtoEvents {
     }
 
     /**
-     * Terminal for {@link #EngineProtocol.PROVISION_REQUEST}. {@code bin} is the provisioned tool's launcher path
+     * Terminal for {@link EngineProtocol#PROVISION_REQUEST}. {@code bin} is the provisioned tool's launcher path
      * ({@code null} on failure); {@code source}/{@code version} feed the client's one-line
      * "Maven X downloaded" note; {@code diag} is the worker's passthrough chatter, carried only when
      * {@code exit != 0}.
@@ -844,7 +844,7 @@ public final class ProtoEvents {
     }
 
     /**
-     * As {@link #planFinish(String, boolean)}, additionally carrying a {@link #EngineProtocol.GIT_FETCH_REQUEST}'s
+     * As {@link #planFinish(String, boolean)}, additionally carrying a {@link EngineProtocol#GIT_FETCH_REQUEST}'s
      * materialized checkout path and resolved commit sha ({@code null} when the fetch failed).
      */
     public static String planFinishGitFetch(String dir, boolean success, String checkout, String sha) {

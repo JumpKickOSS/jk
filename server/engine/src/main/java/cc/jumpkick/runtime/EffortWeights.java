@@ -12,10 +12,10 @@ import cc.jumpkick.test.TestWorkers;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
+import java.util.concurrent.Callable;
+import java.util.function.Function;
+import java.util.function.ToDoubleFunction;
 
 /**
  * Predicts each build step's progress-bar weight from on-disk state at plan start. Skip
@@ -58,7 +58,7 @@ public final class EffortWeights {
             }
 
             @Override
-            public <T> java.util.concurrent.Callable<T> wrapCallable(java.util.concurrent.Callable<T> c) {
+            public <T> Callable<T> wrapCallable(Callable<T> c) {
                 if (!overReserveTails()) return c;
                 return () -> {
                     OVER_RESERVE_TAILS.set(Boolean.TRUE);
@@ -73,7 +73,7 @@ public final class EffortWeights {
     }
 
     /** Run {@code body} with jar-derived tails forced to full bar weight (dirty prepare / run). */
-    public static <T> T withOverReserveTails(java.util.concurrent.Callable<T> body) {
+    public static <T> T withOverReserveTails(Callable<T> body) {
         OVER_RESERVE_TAILS.set(Boolean.TRUE);
         try {
             return body.call();
@@ -342,7 +342,7 @@ public final class EffortWeights {
 
     /** Back-compat overload with no project context — a two-tier fallback (module → host-median). */
     static int learned(StepTimings timings, String dir, String step, int count, int staticWeight) {
-        return learned(timings, dir, step, count, staticWeight, java.util.List.of());
+        return learned(timings, dir, step, count, staticWeight, List.of());
     }
 
     /**
@@ -354,12 +354,7 @@ public final class EffortWeights {
      * when the trained unit count and the forecast count disagree.
      */
     static int learned(
-            StepTimings timings,
-            String dir,
-            String step,
-            int count,
-            int staticWeight,
-            java.util.Collection<String> projectDirs) {
+            StepTimings timings, String dir, String step, int count, int staticWeight, Collection<String> projectDirs) {
         return learned(
                 timings, BuildMetrics.load(BuildMetrics.defaultFile()), dir, step, count, staticWeight, projectDirs);
     }
@@ -371,7 +366,7 @@ public final class EffortWeights {
             String step,
             int count,
             int staticWeight,
-            java.util.Collection<String> projectDirs) {
+            Collection<String> projectDirs) {
         String key = metricsStepName(step);
         // Prefer this module's own measured whole-step wall (even a single success).
         long ownMs = stepOkAvgMillisOwn(metrics, dir, key);
@@ -417,8 +412,8 @@ public final class EffortWeights {
      * the build countdown so it shares {@link #costFromRunningSteps} with explain rather than
      * re-pricing with empty counts (which collapses cold test ETA to suite-startup only).
      */
-    public static java.util.Map<String, Integer> stepCountsFromBuildPlan(cc.jumpkick.run.BuildPlan plan) {
-        java.util.Map<String, Integer> counts = new java.util.HashMap<>();
+    public static Map<String, Integer> stepCountsFromBuildPlan(cc.jumpkick.run.BuildPlan plan) {
+        Map<String, Integer> counts = new HashMap<>();
         if (plan == null) return counts;
         for (cc.jumpkick.run.Task s : plan.steps()) {
             String key = metricsStepName(s.name());
@@ -438,8 +433,8 @@ public final class EffortWeights {
      * Steps that will do real work in a prepared plan (weight &gt; {@link #TOKEN}). Cached/skip
      * checks stay as tokens and are omitted — same idea as forecast {@code !step.cached}.
      */
-    public static java.util.List<String> runningStepsFromBuildPlan(cc.jumpkick.run.BuildPlan plan) {
-        java.util.List<String> running = new java.util.ArrayList<>();
+    public static List<String> runningStepsFromBuildPlan(cc.jumpkick.run.BuildPlan plan) {
+        List<String> running = new ArrayList<>();
         if (plan == null) return running;
         for (cc.jumpkick.run.Task s : plan.steps()) {
             try {
@@ -462,11 +457,11 @@ public final class EffortWeights {
     public static ModuleCost costFromRunningSteps(
             Path dir,
             Set<Path> prereqs,
-            java.util.Collection<String> runningSteps,
+            Collection<String> runningSteps,
             BuildMetrics metrics,
             StepTimings timings,
-            java.util.Collection<String> projectDirs,
-            java.util.Map<String, Integer> stepCounts) {
+            Collection<String> projectDirs,
+            Map<String, Integer> stepCounts) {
         return costFromRunningSteps(dir, prereqs, runningSteps, metrics, timings, projectDirs, stepCounts, 1);
     }
 
@@ -477,18 +472,18 @@ public final class EffortWeights {
     public static ModuleCost costFromRunningSteps(
             Path dir,
             Set<Path> prereqs,
-            java.util.Collection<String> runningSteps,
+            Collection<String> runningSteps,
             BuildMetrics metrics,
             StepTimings timings,
-            java.util.Collection<String> projectDirs,
-            java.util.Map<String, Integer> stepCounts,
+            Collection<String> projectDirs,
+            Map<String, Integer> stepCounts,
             int testWorkers) {
         if (runningSteps == null || runningSteps.isEmpty()) {
             return new ModuleCost(dir, prereqs, 0, 0);
         }
         if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
-        if (projectDirs == null) projectDirs = java.util.List.of();
-        if (stepCounts == null) stepCounts = java.util.Map.of();
+        if (projectDirs == null) projectDirs = List.of();
+        if (stepCounts == null) stepCounts = Map.of();
         int weight = 0;
         int testWeight = 0;
         String mod = dir == null ? "" : dir.toString();
@@ -539,7 +534,7 @@ public final class EffortWeights {
             var agg = cc.jumpkick.builds.AggregatedMetrics.loadAll(cc.jumpkick.util.JkDirs.builds());
             String prefix = "module." + cc.jumpkick.builds.AggregatedMetrics.sanitize(moduleDir) + ".test-class.";
             String suffix = ".wall-ms";
-            Map<String, Long> out = new java.util.LinkedHashMap<>();
+            Map<String, Long> out = new LinkedHashMap<>();
             for (var e : agg.meanMap().entrySet()) {
                 String k = e.getKey();
                 if (!k.startsWith(prefix) || !k.endsWith(suffix)) continue;
@@ -1000,7 +995,7 @@ public final class EffortWeights {
      * <p>Callers that reserve progress weight for jar-derived steps must also check {@link
      * #mainJarWillChange} first — see {@link #nativeWeight}.
      */
-    private static boolean artifactFresh(Path dir, java.util.function.Function<BuildLayout, Path> artifact) {
+    private static boolean artifactFresh(Path dir, Function<BuildLayout, Path> artifact) {
         try {
             if (cc.jumpkick.config.SessionContext.current().config().rebuildOr(false)) return false;
             if (cc.jumpkick.config.SessionContext.current().config().forceOr(false)) return false;
@@ -1152,7 +1147,7 @@ public final class EffortWeights {
             int concurrency,
             boolean serial,
             boolean parallelTests,
-            java.util.function.ToDoubleFunction<Path> msPerWeightForModule) {
+            ToDoubleFunction<Path> msPerWeightForModule) {
         List<ModuleCost> inMs = new ArrayList<>(mods.size());
         for (ModuleCost m : mods) {
             double r = msPerWeightForModule.applyAsDouble(m.dir());

@@ -281,10 +281,7 @@ public final class McpHandler {
     }
 
     private Map<String, Object> jobPayload(
-            String kind,
-            Map<String, Object> args,
-            java.util.function.Function<String, Long> trigger,
-            String progressToken) {
+            String kind, Map<String, Object> args, Function<String, Long> trigger, String progressToken) {
         String dir = string(args.get("dir"));
         if (dir == null || dir.isBlank()) throw new McpError(-32602, "requires arguments.dir");
         try {

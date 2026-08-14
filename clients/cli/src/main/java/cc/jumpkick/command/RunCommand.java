@@ -15,8 +15,13 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Project run plan (not a {@code CliCommand}): build then exec. {@link ToolRunCommand}
@@ -117,11 +122,11 @@ public final class RunCommand {
                     if (wr == null) return 1; // failure already settled on the view
                 } else {
                     // Quiet / JSON / non-tty: append-only per-module completions (unchanged).
-                    java.util.concurrent.atomic.AtomicInteger done = new java.util.concurrent.atomic.AtomicInteger();
+                    AtomicInteger done = new AtomicInteger();
                     int[] total = {0};
                     var listener = new cc.jumpkick.runtime.WorkspaceBuildListener() {
                         @Override
-                        public void onPlan(java.util.List<cc.jumpkick.runtime.ModulePlan> plan) {
+                        public void onPlan(List<cc.jumpkick.runtime.ModulePlan> plan) {
                             total[0] = plan.size();
                         }
 
@@ -141,8 +146,7 @@ public final class RunCommand {
                     return 1;
                 }
                 // Synthetic success result so the exec chip path continues unchanged.
-                result = new BuildPlanResult(
-                        "workspace", true, java.time.Duration.ZERO, List.of(), List.of(), List.of(), false);
+                result = new BuildPlanResult("workspace", true, Duration.ZERO, List.of(), List.of(), List.of(), false);
                 testResult = null;
             } else {
                 // Engine-hosted single-module build (SINGLE_BUILD_REQUEST, skipTests).
@@ -346,9 +350,9 @@ public final class RunCommand {
     private cc.jumpkick.runtime.WorkspaceResult runWorkspaceLive(cc.jumpkick.runtime.WorkspaceRequest request) {
         var view = cc.jumpkick.cli.tui.JkManager.plan(CliOutput.stdout(), "Run", true);
         var agg = new cc.jumpkick.cli.run.AggregateContext(view);
-        java.util.Map<Path, List<String>> buffers = new java.util.concurrent.ConcurrentHashMap<>();
-        List<String> deferredOutput = java.util.Collections.synchronizedList(new ArrayList<>());
-        java.util.concurrent.atomic.AtomicInteger completed = new java.util.concurrent.atomic.AtomicInteger();
+        Map<Path, List<String>> buffers = new ConcurrentHashMap<>();
+        List<String> deferredOutput = Collections.synchronizedList(new ArrayList<>());
+        AtomicInteger completed = new AtomicInteger();
         int[] total = {0};
         var listener = new cc.jumpkick.runtime.WorkspaceBuildListener() {
             @Override
@@ -375,7 +379,7 @@ public final class RunCommand {
             public cc.jumpkick.run.BuildPlanListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
                 var log = cc.jumpkick.cli.run.EventLogListener.open(
                         m.cache(), m.plan().name());
-                List<String> buf = java.util.Collections.synchronizedList(new ArrayList<String>());
+                List<String> buf = Collections.synchronizedList(new ArrayList<String>());
                 buffers.put(m.dir(), buf);
                 var lis = new cc.jumpkick.cli.run.AggregateModuleListener(
                         agg, m.coord(), m.plan().steps(), m.weight());

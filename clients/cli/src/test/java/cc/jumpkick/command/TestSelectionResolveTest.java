@@ -7,6 +7,7 @@ import cc.jumpkick.cli.args.ArgParser;
 import cc.jumpkick.model.command.Invocation;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -33,7 +34,7 @@ class TestSelectionResolveTest {
 
         @Override
         public List<cc.jumpkick.model.command.Opt> options() {
-            var opts = new java.util.ArrayList<>(new TestCommand().options());
+            var opts = new ArrayList<>(new TestCommand().options());
             opts.addAll(cc.jumpkick.cli.GlobalOptions.globalOpts());
             return opts;
         }

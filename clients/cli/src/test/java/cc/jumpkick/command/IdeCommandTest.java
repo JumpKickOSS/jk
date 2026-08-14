@@ -4,7 +4,10 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Tag;
@@ -52,10 +55,10 @@ class IdeCommandTest {
         fakeJdk(jdks, "temurin-25.0.3", "25.0.3");
         Path ideConfig = ideConfig(tmp);
 
-        java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
         var prev = System.out;
         try {
-            System.setOut(new java.io.PrintStream(buf, true, java.nio.charset.StandardCharsets.UTF_8));
+            System.setOut(new PrintStream(buf, true, StandardCharsets.UTF_8));
             assertThat(Jk.execute(new String[] {
                         "ide",
                         "-C",
@@ -71,7 +74,7 @@ class IdeCommandTest {
         } finally {
             System.setOut(prev);
         }
-        String visible = cc.jumpkick.cli.TestAnsi.strip(buf.toString(java.nio.charset.StandardCharsets.UTF_8));
+        String visible = cc.jumpkick.cli.TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
         assertThat(visible).contains("IDE");
         assertThat(visible).contains("The widget project is ready");
         // One command chip — not a Sync / IDEA / Code / BSP stack.
@@ -141,10 +144,10 @@ class IdeCommandTest {
         Path cache = tmp.resolve("cache");
 
         // Capture stdout from Jk.execute — use process-level capture via System.out redirect.
-        java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
         var prev = System.out;
         try {
-            System.setOut(new java.io.PrintStream(buf, true, java.nio.charset.StandardCharsets.UTF_8));
+            System.setOut(new PrintStream(buf, true, StandardCharsets.UTF_8));
             assertThat(Jk.execute(new String[] {
                         "ide",
                         "--print-model",
@@ -159,7 +162,7 @@ class IdeCommandTest {
         } finally {
             System.setOut(prev);
         }
-        String out = buf.toString(java.nio.charset.StandardCharsets.UTF_8);
+        String out = buf.toString(StandardCharsets.UTF_8);
         assertThat(out).contains("\"type\":\"ide-model-ack\"");
         assertThat(out).contains("\"wsRoot\"");
         assertThat(out).contains("\"moduleDirs\"");

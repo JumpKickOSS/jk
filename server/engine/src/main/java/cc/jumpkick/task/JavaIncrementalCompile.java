@@ -9,10 +9,7 @@ import cc.jumpkick.compile.JavacRunner;
 import cc.jumpkick.compile.incremental.ClassAbi;
 import cc.jumpkick.compile.incremental.ClassDependencies;
 import cc.jumpkick.util.Hashing;
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.IOException;
-import java.io.StringReader;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -765,7 +762,7 @@ public final class JavaIncrementalCompile {
                         .processorPath(processorPath)
                         .build());
             } catch (IOException e) {
-                throw new java.io.UncheckedIOException(e);
+                throw new UncheckedIOException(e);
             }
             return new CompileOut(r, Map.of());
         };

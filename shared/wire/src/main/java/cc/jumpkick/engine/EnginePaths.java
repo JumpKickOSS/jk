@@ -4,7 +4,12 @@ package cc.jumpkick.engine;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.Hashing;
 import cc.jumpkick.util.JkDirs;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 
 /**
  * Resolves the on-disk identity of the engine for a given state directory: a short key
@@ -80,14 +85,13 @@ public final class EnginePaths {
      * <p>Discovered from {@code <key>.endpoint} files rather than from any registry, so it stays true even
      * for an engine started by a jk that predates this method.
      */
-    public static java.util.List<Paths> identitiesIn(Path stateDir) {
+    public static List<Paths> identitiesIn(Path stateDir) {
         Path dir = stateDir.resolve("engine");
-        if (!java.nio.file.Files.isDirectory(dir)) return java.util.List.of();
-        java.util.List<Paths> out = new java.util.ArrayList<>();
-        try (var listing = java.nio.file.Files.list(dir)) {
-            java.util.List<Path> pointers = listing.filter(
-                            f -> f.getFileName().toString().endsWith(".endpoint"))
-                    .sorted(java.util.Comparator.comparingLong(EnginePaths::lastModifiedOrZero)
+        if (!Files.isDirectory(dir)) return List.of();
+        List<Paths> out = new ArrayList<>();
+        try (var listing = Files.list(dir)) {
+            List<Path> pointers = listing.filter(f -> f.getFileName().toString().endsWith(".endpoint"))
+                    .sorted(Comparator.comparingLong(EnginePaths::lastModifiedOrZero)
                             .reversed())
                     .toList();
             for (Path pointer : pointers) {
@@ -95,16 +99,16 @@ public final class EnginePaths {
                 String key = file.substring(0, file.length() - ".endpoint".length());
                 out.add(forKey(key, stateDir));
             }
-        } catch (java.io.IOException e) {
-            return java.util.List.copyOf(out);
+        } catch (IOException e) {
+            return List.copyOf(out);
         }
-        return java.util.List.copyOf(out);
+        return List.copyOf(out);
     }
 
     private static long lastModifiedOrZero(Path p) {
         try {
-            return java.nio.file.Files.getLastModifiedTime(p).toMillis();
-        } catch (java.io.IOException e) {
+            return Files.getLastModifiedTime(p).toMillis();
+        } catch (IOException e) {
             return 0L;
         }
     }
@@ -156,11 +160,11 @@ public final class EnginePaths {
     public static Path activeSocket(Paths paths) {
         Path ep = endpoint(paths);
         try {
-            String name = java.nio.file.Files.readString(ep).trim();
+            String name = Files.readString(ep).trim();
             if (!name.isEmpty() && !name.contains("/") && !name.contains("\\")) {
                 return paths.dir().resolve(name);
             }
-        } catch (java.io.IOException ignored) {
+        } catch (IOException ignored) {
             // No pointer → no engine. The flat path below is a never-bound placeholder (nothing
             // creates it since the legacy compat pointer was retired): probes against it fail
             // cleanly, which is exactly the "no engine running" answer.
@@ -169,7 +173,7 @@ public final class EnginePaths {
     }
 
     /** Atomically point the endpoint at {@code socket} (a sibling of the engine dir). */
-    public static void writeEndpoint(Paths paths, Path socket) throws java.io.IOException {
+    public static void writeEndpoint(Paths paths, Path socket) throws IOException {
         Path ep = endpoint(paths);
         AtomicWrites.replace(ep, socket.getFileName().toString());
     }

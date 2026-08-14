@@ -21,9 +21,9 @@ import org.jspecify.annotations.NullMarked;
  * Preflight dirty-forecast and explain-plan assembly for {@link BuildService}.
  */
 @NullMarked
-public final class BuildForecast {
+public final class BuildForecasting {
 
-    private BuildForecast() {}
+    private BuildForecasting() {}
 
     /**
      * The set of module dirs the forecast predicts will do real work this build — used to reserve

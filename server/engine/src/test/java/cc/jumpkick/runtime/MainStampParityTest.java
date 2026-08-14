@@ -8,6 +8,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.task.FreshnessStamp;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -36,7 +37,7 @@ class MainStampParityTest {
 
     /** Backdate an input so same-millisecond creation never trips the {@code >=} mtime check. */
     private static Path aged(Path p) throws Exception {
-        Files.setLastModifiedTime(p, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() - 60_000));
+        Files.setLastModifiedTime(p, FileTime.fromMillis(System.currentTimeMillis() - 60_000));
         return p;
     }
 

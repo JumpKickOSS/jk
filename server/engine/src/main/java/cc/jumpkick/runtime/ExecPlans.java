@@ -25,11 +25,9 @@ import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * Client exec plans: {@link #projectInfo} (parse/summarize) and {@link #execPlan} (decide, don't
@@ -132,7 +130,7 @@ public final class ExecPlans {
         return out;
     }
 
-    private static String layoutOf(JkBuild build, Path dir, java.util.function.Function<BuildLayout, Path> f) {
+    private static String layoutOf(JkBuild build, Path dir, Function<BuildLayout, Path> f) {
         try {
             return f.apply(BuildLayout.of(dir, build)).toAbsolutePath().toString();
         } catch (RuntimeException e) {
@@ -144,13 +142,13 @@ public final class ExecPlans {
 
     /** Compute the plan for {@code kind} — never throws; failures ride {@code error}. */
     public static ExecPlan execPlan(Path dir, Path cache, String kind, String mainOverride, String binName) {
-        return execPlan(dir, cache, kind, mainOverride, binName, null, null, "", java.util.Map.of());
+        return execPlan(dir, cache, kind, mainOverride, binName, null, null, "", Map.of());
     }
 
     /** As above with install-destination overrides ({@code --bin-dir}/{@code --lib-dir}). */
     public static ExecPlan execPlan(
             Path dir, Path cache, String kind, String mainOverride, String binName, Path binDir, Path libDir) {
-        return execPlan(dir, cache, kind, mainOverride, binName, binDir, libDir, "", java.util.Map.of());
+        return execPlan(dir, cache, kind, mainOverride, binName, binDir, libDir, "", Map.of());
     }
 
     /**
@@ -167,7 +165,7 @@ public final class ExecPlans {
             Path binDir,
             Path libDir,
             String variant,
-            java.util.Map<String, String> clientEnv) {
+            Map<String, String> clientEnv) {
         try {
             JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
             project = VariantApply.applyLenient(
@@ -239,15 +237,15 @@ public final class ExecPlans {
                     null,
                     "",
                     dev ? "dev" : "run",
-                    java.util.List.of(),
+                    List.of(),
                     dir.toString(),
                     "deploy → device (" + deployCommand + ")",
                     "",
                     false,
                     false,
                     deviceWatch,
-                    java.util.List.of(),
-                    java.util.List.of(),
+                    List.of(),
+                    List.of(),
                     "",
                     "",
                     "",
@@ -255,8 +253,8 @@ public final class ExecPlans {
                     "",
                     "",
                     "",
-                    java.util.List.of(),
-                    java.util.List.of(),
+                    List.of(),
+                    List.of(),
                     deployCommand);
         }
         Path javaHome = projectJavaHome(dir);
@@ -424,7 +422,7 @@ public final class ExecPlans {
         if (declaredApps.size() > 1) {
             String names = declaredApps.stream()
                     .map(d -> root.relativize(d).toString())
-                    .collect(java.util.stream.Collectors.joining(", "));
+                    .collect(Collectors.joining(", "));
             return ExecPlan.error(
                     kind,
                     "multiple modules declare [application] main (" + names + ") — run one explicitly: jk " + kind
@@ -467,11 +465,11 @@ public final class ExecPlans {
                     "missing");
         }
         // Same rule as declared apps: scanned mains across SEVERAL modules are ambiguous.
-        java.util.Set<Path> scannedModules = new java.util.LinkedHashSet<>(mainToModule.values());
+        Set<Path> scannedModules = new LinkedHashSet<>(mainToModule.values());
         if (scannedModules.size() > 1) {
             String names = scannedModules.stream()
                     .map(d -> root.relativize(d).toString())
-                    .collect(java.util.stream.Collectors.joining(", "));
+                    .collect(Collectors.joining(", "));
             return ExecPlan.error(
                     kind,
                     "multiple modules contain a runnable main (" + names + ") — run one explicitly: jk " + kind

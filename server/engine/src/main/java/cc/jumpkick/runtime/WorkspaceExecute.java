@@ -189,7 +189,7 @@ public final class WorkspaceExecute {
         // --force/--redo short-circuits forecastDirtyDirs to "all" without per-step hashing.
         // when forecasting here, consult/store the local dirty memo under target/.jk/preflight/.
         Set<Path> dirty;
-        BuildForecast.Preflight preflight = null;
+        BuildForecasting.Preflight preflight = null;
         if (req.dirtyHint() != null) {
             listener.onPreflight("checking", 0, 0, "Using dirty set…");
             dirty = req.dirtyHint();
@@ -197,7 +197,7 @@ public final class WorkspaceExecute {
                     "checking", 1, 1, dirty.isEmpty() ? "Nothing dirty" : dirty.size() + " module(s) dirty");
         } else {
             listener.onPreflight("checking", 0, 0, "Checking cache…");
-            preflight = BuildForecast.forecastWithFingerprints(graph, req.cache(), req.skipTests(), req.entryDir());
+            preflight = BuildForecasting.forecastWithFingerprints(graph, req.cache(), req.skipTests(), req.entryDir());
             dirty = preflight.dirty();
             listener.onPreflight(
                     "checking", 1, 1, dirty.isEmpty() ? "All modules up to date" : dirty.size() + " module(s) dirty");
@@ -239,13 +239,13 @@ public final class WorkspaceExecute {
             etaPlan = new ExplainPlan(preflight.modules(), graph.edges(), graph.maxReadyWidth(), List.of());
         } else if (dirtyUnits.isEmpty() && !distrust) {
             // Fully cached — same as explain's empty-memo fast path.
-            etaPlan = BuildForecast.fullyCachedExplainPlan(graph);
+            etaPlan = BuildForecasting.fullyCachedExplainPlan(graph);
         } else {
             // Memo hit with dirty set but no modules, or force/rebuild: one explain walk.
-            etaPlan = BuildForecast.explainFromGraph(graph, req.cache(), req.skipTests());
+            etaPlan = BuildForecasting.explainFromGraph(graph, req.cache(), req.skipTests());
         }
         if (req.dirtyHint() != null) {
-            etaPlan = BuildForecast.restrictToSelection(etaPlan, dirty);
+            etaPlan = BuildForecasting.restrictToSelection(etaPlan, dirty);
         }
         BuildService.EtaModel etaModel = BuildEta.estimateEtaModel(
                 etaPlan,
@@ -554,13 +554,7 @@ public final class WorkspaceExecute {
         }
     }
 
-    /**
-     * True when any productive step (compile / test / package / native / image / …) terminated
-     * {@link TaskStatus#SUCCESS} rather than cache-hit {@link TaskStatus#SKIPPED}. Setup steps
-     * (parse, resolve, ensure-jdk, copy-resources, write-stamp) always succeed without marking
-     * cached and must not make a pure check look like a rebuild.
-     *
-     * /** Test failures exit 4; every other plan failure exits 1. */
+    /** Test failures exit 4; every other plan failure exits 1. */
     private static int exitCodeFor(BuildPlan plan) {
         TestSummary tr = plan.get(TEST_RESULT).orElse(null);
         return tr != null && !tr.allPassed() ? 4 : 1;

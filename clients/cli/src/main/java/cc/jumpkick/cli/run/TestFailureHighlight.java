@@ -5,6 +5,7 @@ import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Badge;
+import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.config.GlobalConfig;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,7 +29,7 @@ import org.jline.utils.AttributedStyle;
  *  ┃  Expected: 42
  *  ┃   But Was: 41
  *  ┃
- *  ┃     path/to/File.java
+ *  ┃     path/to/File.java   ← OSC-8 deep link into the dashboard code editor when known
  *  ┃   19│ …
  *  ┃     AssertionFailedError thrown at line 23
  *  ┗━
@@ -133,7 +134,7 @@ public final class TestFailureHighlight {
         // Same red/white chip as DiagnosticReport Compile Java failures.
         AttributedStyle body = t.withBackground(t.bright(255, 255, 255), t.planFailColor());
         AttributedStyle caps = t.bright(t.planFailColor());
-        String pill = Badge.pill("Test", GlobalConfig.nerdfont(), body, caps);
+        String pill = Badge.pill("Test", GlobalConfig.nerdFont().pill(), body, caps);
         StringBuilder sb = new StringBuilder();
         // "Failure" is mid-gray — the FAILED badge carries the error color.
         sb.append(pill).append(' ').append(Theme.colorize("Failure", t.midGray()));
@@ -365,7 +366,7 @@ public final class TestFailureHighlight {
             if (m == null || m.equals("@@src-end") || !m.startsWith("@@src ")) continue;
             SrcRow row = parseSrcRow(m);
             if (row == null) continue;
-            String code = clampCode(expandTabs(row.code), budget);
+            String code = clampCode(expandTabs(row.code), budget, t.isAnsi());
             row = new SrcRow(row.num, row.error, code);
             rows.add(row);
             maxCode = Math.max(maxCode, row.code.length());
@@ -378,12 +379,38 @@ public final class TestFailureHighlight {
             return out;
         }
 
-        out.add(rail(BODY_INDENT + Theme.colorize(path, t.path().underline()), t));
+        out.add(rail(BODY_INDENT + paintSourcePath(path, header, t), t));
         Rgb pane = CONSOLE_BG;
         for (SrcRow row : rows) {
             out.add(rail(paintSrcLine(row, maxCode, language, t, pane), t));
         }
         return out;
+    }
+
+    /**
+     * Path color + underline; when the dashboard HTTP surface and project id are known, wrap in an
+     * OSC-8 deep link ({@code [link url][path underline]…[/][/]}) to the Monaco files pane.
+     */
+    static String paintSourcePath(String path, String sourceHeader, Theme t) {
+        if (path == null || path.isEmpty()) return "";
+        int line = parsePositiveInt(attr(sourceHeader, "line"));
+        String url = DashboardCodeLink.urlForSnippet(path, line);
+        if (url != null && !url.isBlank()) {
+            // RichText owns OSC-8; path + underline match the unlinked Theme.colorize form.
+            return RichText.parse("[link " + url + "][path underline]" + RichText.escape(path) + "[/][/]")
+                    .render();
+        }
+        return Theme.colorize(path, t.path().underline());
+    }
+
+    private static int parsePositiveInt(String raw) {
+        if (raw == null || raw.isBlank()) return 0;
+        try {
+            int n = Integer.parseInt(raw.strip());
+            return n > 0 ? n : 0;
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     /** Visible columns a painted row spends before code: rail {@code " ┃ "} + gutter + bar + gap. */
@@ -405,9 +432,15 @@ public final class TestFailureHighlight {
         return sb.toString();
     }
 
-    private static String clampCode(String code, int budget) {
+    private static String clampCode(String code, int budget, boolean ansi) {
         if (code.length() <= budget) return code;
-        return code.substring(0, Math.max(1, budget - 1)) + "…";
+        // Plain mode stays pure ASCII (JK-1910/JK-1949): the clamp ran before the ANSI/plain fork
+        // and re-leaked U+2026 into output the ASCII pass had just cleaned. Reserve the marker's
+        // own columns, and never cut a surrogate pair in half.
+        String ellipsis = ansi ? "…" : "...";
+        int cut = Math.max(1, budget - ellipsis.length());
+        if (Character.isHighSurrogate(code.charAt(cut - 1))) cut = Math.max(1, cut - 1);
+        return code.substring(0, cut) + ellipsis;
     }
 
     private record SrcRow(String num, boolean error, String code) {}

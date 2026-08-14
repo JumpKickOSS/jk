@@ -34,10 +34,8 @@ import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.function.Function;
 
 /**
  * Engine-hosted workspace build: send {@link EngineProtocol#BUILD_REQUEST}, decode wire events into
@@ -149,7 +147,7 @@ final class EngineBuildListenerAdapter {
     static BuildPlanResult runTest(
             EnginePaths.Paths paths,
             EngineRequests.TestRequest req,
-            java.util.function.Function<List<Task>, BuildPlanListener> listenerFactory,
+            Function<List<Task>, BuildPlanListener> listenerFactory,
             cc.jumpkick.run.TestSummary[] testResultOut)
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
@@ -196,7 +194,7 @@ final class EngineBuildListenerAdapter {
     static BuildPlanResult runSingleBuild(
             EnginePaths.Paths paths,
             EngineRequests.SingleBuildRequest req,
-            java.util.function.Function<List<Task>, BuildPlanListener> listenerFactory,
+            Function<List<Task>, BuildPlanListener> listenerFactory,
             cc.jumpkick.run.TestSummary[] testResultOut,
             String[] buildOutcomeOut)
             throws IOException {
@@ -248,11 +246,11 @@ final class EngineBuildListenerAdapter {
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader reader = EngineClient.protocolReader(ch);
 
-            Map<String, String> graalHomes = new java.util.LinkedHashMap<>();
+            Map<String, String> graalHomes = new LinkedHashMap<>();
             for (Map.Entry<Path, Path> e : req.graalByDir().entrySet()) {
                 graalHomes.put(e.getKey().toString(), e.getValue().toString());
             }
-            List<String> moduleDirs = new java.util.ArrayList<>();
+            List<String> moduleDirs = new ArrayList<>();
             if (req.selectedModuleDirs() != null) {
                 for (Path p : req.selectedModuleDirs()) {
                     if (p != null) moduleDirs.add(p.toString());
@@ -292,7 +290,7 @@ final class EngineBuildListenerAdapter {
     static BuildPlanResult runInstall(
             EnginePaths.Paths paths,
             EngineRequests.InstallRequest req,
-            java.util.function.Function<List<Task>, BuildPlanListener> listenerFactory,
+            Function<List<Task>, BuildPlanListener> listenerFactory,
             cc.jumpkick.run.TestSummary[] testResultOut)
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
@@ -366,7 +364,7 @@ final class EngineBuildListenerAdapter {
             Map<String, int[]> countsByDir = new LinkedHashMap<>(); // [sourceCount, testCount]
             Map<String, boolean[]> flagsByDir = new LinkedHashMap<>(); // [producesJar, producesImage]
             List<String> order = new ArrayList<>();
-            Map<Path, java.util.Set<Path>> edges = new LinkedHashMap<>();
+            Map<Path, Set<Path>> edges = new LinkedHashMap<>();
             List<String> errors = new ArrayList<>();
 
             String line;
@@ -407,7 +405,7 @@ final class EngineBuildListenerAdapter {
                         case EngineProtocol.EXPLAIN_EDGE -> {
                             Path dir = Path.of(Jsonl.str(line, "dir"));
                             Path dependsOn = Path.of(Jsonl.str(line, "dependsOnDir"));
-                            edges.computeIfAbsent(dir, d -> new java.util.LinkedHashSet<>())
+                            edges.computeIfAbsent(dir, d -> new LinkedHashSet<>())
                                     .add(dependsOn);
                         }
                         case EngineProtocol.ERROR -> errors.add(Jsonl.str(line, "message"));
@@ -481,7 +479,7 @@ final class EngineBuildListenerAdapter {
     }
 
     /** One engine-hosted jk.toml edit: returns changed; throws with the engine's message. */
-    static boolean edit(EnginePaths.Paths paths, Path file, String op, java.util.List<String> args) throws IOException {
+    static boolean edit(EnginePaths.Paths paths, Path file, String op, List<String> args) throws IOException {
         return request(
                 paths,
                 ProtoReads.editRequest(file.toString(), op, args),
@@ -518,12 +516,7 @@ final class EngineBuildListenerAdapter {
 
     /** One engine-hosted tree render: the marker-tagged tree; throws with the engine's message. */
     static String treeRender(
-            EnginePaths.Paths paths,
-            Path dir,
-            int maxDepth,
-            boolean flatten,
-            boolean stack,
-            java.util.List<String> scopes)
+            EnginePaths.Paths paths, Path dir, int maxDepth, boolean flatten, boolean stack, List<String> scopes)
             throws IOException {
         return request(
                 paths,
@@ -562,7 +555,7 @@ final class EngineBuildListenerAdapter {
 
     /** One engine-hosted generator run: file payloads back, guards/writes stay client-side. */
     static cc.jumpkick.engine.protocol.GeneratedFiles generate(
-            EnginePaths.Paths paths, Path dir, String kind, java.util.Map<String, String> params) throws IOException {
+            EnginePaths.Paths paths, Path dir, String kind, Map<String, String> params) throws IOException {
         return request(
                 paths,
                 ProtoReads.generateRequest(dir.toString(), kind, params),
@@ -573,8 +566,7 @@ final class EngineBuildListenerAdapter {
 
     /** One engine-hosted plugin command run. */
     static cc.jumpkick.engine.protocol.PluginCommandReport pluginCommand(
-            EnginePaths.Paths paths, Path dir, Path cache, String command, java.util.List<String> args)
-            throws IOException {
+            EnginePaths.Paths paths, Path dir, Path cache, String command, List<String> args) throws IOException {
         return request(
                 paths,
                 ProtoSession.withSession(
@@ -660,7 +652,7 @@ final class EngineBuildListenerAdapter {
                 EngineProtocol.FORECAST_ACK,
                 "forecast request",
                 line -> {
-                    java.util.Set<Path> dirty = new java.util.LinkedHashSet<>();
+                    Set<Path> dirty = new LinkedHashSet<>();
                     for (String d : Jsonl.strArray(line, "dirtyDirs")) dirty.add(Path.of(d));
                     return new cc.jumpkick.runtime.BuildForecast(
                             dirty,
@@ -673,7 +665,7 @@ final class EngineBuildListenerAdapter {
     // Package-visible for tests (ActiveJobs lifecycle, cancel terminals —.
     static BuildPlanResult streamSingleBuildPlanEvents(
             BufferedReader reader,
-            java.util.function.Function<List<Task>, BuildPlanListener> listenerFactory,
+            Function<List<Task>, BuildPlanListener> listenerFactory,
             cc.jumpkick.run.TestSummary[] testResultOut,
             String[] buildOutcomeOut)
             throws IOException {
@@ -1037,7 +1029,7 @@ final class EngineBuildListenerAdapter {
         String file = nz(Jsonl.str(line, "file"));
         int lineNo = Jsonl.intValue(line, "line", 0);
         int snippetStart = Jsonl.intValue(line, "snippetStart", 0);
-        java.util.List<String> snippet = Jsonl.strArray(line, "snippet");
+        List<String> snippet = Jsonl.strArray(line, "snippet");
         if (module.isEmpty()
                 && engine.isEmpty()
                 && className.isEmpty()

@@ -2,15 +2,7 @@
 package cc.jumpkick.model;
 
 import cc.jumpkick.plugin.PluginConfig;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.EnumMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Merges workspace root + modules into a synthetic {@link JkBuild} for single-pass locking.
@@ -67,7 +59,7 @@ public final class WorkspaceMerge {
 
         // Transitive MAIN+EXPORT externals from reachable siblings into this module's main scope.
         Set<String> visited = new LinkedHashSet<>(dependedSiblingNames);
-        java.util.ArrayDeque<String> queue = new java.util.ArrayDeque<>(dependedSiblingNames);
+        ArrayDeque<String> queue = new ArrayDeque<>(dependedSiblingNames);
         while (!queue.isEmpty()) {
             JkBuild sibling = siblingByArtifact.get(queue.poll());
             if (sibling == null) continue;

@@ -116,7 +116,7 @@ public final class JdkDefaultCommand implements CliCommand {
         String name = Theme.colorize(renderDisplayName(hit), Theme.active().focused());
         String message = "Default JDK set to " + name + ": " + JdkRender.coord(hit.source(), identifier);
         CommandWedge.envelopeStart(out);
-        out.println(JkWedge.chipLine(Glyphs.CHECK, "JDK", GlobalConfig.nerdfont(), message));
+        out.println(JkWedge.chipLine(Glyphs.CHECK, "JDK", GlobalConfig.nerdFont(), message));
     }
 
     private static String renderDisplayName(JdkHit hit) {

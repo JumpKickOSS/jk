@@ -36,12 +36,11 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
+import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 
@@ -333,7 +332,7 @@ public final class LockPlans {
                             entries.add(new Lockfile.PluginEntry(pd.coordinate(), pd.version(), "sha256:" + hex));
                             try {
                                 PluginDescriptorOps.materialize(dir, hex, jarPath);
-                            } catch (java.io.IOException e) {
+                            } catch (IOException e) {
                                 ctx.output("note: " + pd.coordinate() + " has no jk-plugin.toml — locked, but"
                                         + " it will not own a jk.toml table");
                             }
@@ -354,7 +353,7 @@ public final class LockPlans {
                 .execute(ctx -> {
                     // Lockfile pins for every sdk-component a plugin contributes: installed → on-disk
                     // revision; else feed stable revision when reachable.
-                    java.util.LinkedHashSet<String> components = new java.util.LinkedHashSet<>();
+                    LinkedHashSet<String> components = new LinkedHashSet<>();
                     try {
                         for (var sd :
                                 cc.jumpkick.plugin.manifest.PluginContributions.stepDependencies(effective, dir)) {
@@ -531,7 +530,7 @@ public final class LockPlans {
             String targetLibrary)
             throws Exception {
         JkBuild effectiveRoot = applyWorkspaceContextIfModule(dir, root);
-        var scopes = new java.util.LinkedHashMap<Path, JkBuild>();
+        var scopes = new LinkedHashMap<Path, JkBuild>();
         scopes.put(dir, effectiveRoot);
         if (effectiveRoot.isWorkspaceRoot()) {
             Map<Path, JkBuild> modules;
@@ -607,10 +606,10 @@ public final class LockPlans {
                 .lock(pathPrep.project(), JkVersion.VERSION, features, withDefaultFeatures);
         newLock = GitSourceResolution.stamp(newLock, prep.gitInfoByKey());
 
-        java.util.Set<String> targetKeys = new java.util.LinkedHashSet<>();
+        Set<String> targetKeys = new LinkedHashSet<>();
         for (Dependency d : targeted) targetKeys.add(gitKey(d.gitSource()));
 
-        Map<String, Lockfile.Artifact> oldByName = new java.util.LinkedHashMap<>();
+        Map<String, Lockfile.Artifact> oldByName = new LinkedHashMap<>();
         if (oldLock != null) for (Lockfile.Artifact a : oldLock.artifacts()) oldByName.put(a.name(), a);
 
         List<Lockfile.Artifact> spliced = new ArrayList<>();
@@ -660,7 +659,7 @@ public final class LockPlans {
     /** Every git-sourced dependency directly declared across all scopes, deduped by library name. */
     private static List<Dependency> declaredGitDeps(JkBuild project) {
         List<Dependency> out = new ArrayList<>();
-        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+        Set<String> seen = new LinkedHashSet<>();
         for (List<Dependency> deps : project.dependencies().byScope().values()) {
             for (Dependency d : deps) {
                 if (d.isGit() && seen.add(d.library())) out.add(d);
@@ -713,7 +712,7 @@ public final class LockPlans {
     public record LockScope(Path lockDir, JkBuild effective, String coord) {}
 
     /** Resolve the {@link LockScope} for {@code entryDir}. Throws like {@link JkBuildParser#parse}. */
-    public static LockScope lockScope(Path entryDir) throws java.io.IOException {
+    public static LockScope lockScope(Path entryDir) throws IOException {
         // Ensure libs.global.toml exists before short-name expansion (closes race with the engine's
         // background StoreFeedRefresh on first start of a host).
         cc.jumpkick.repo.LibraryRegistrySync.ensurePresent(
@@ -787,7 +786,7 @@ public final class LockPlans {
         List<String> available;
         try {
             available = repos.availableVersions(coord);
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             return null;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -835,7 +834,7 @@ public final class LockPlans {
      * Throw if an existing lockfile can't be honored entirely from the local CAS while offline.
      */
     private static void requireOfflineSatisfiable(JkBuild effective, Lockfile lock, Cas cas) {
-        java.util.Set<String> locked = new java.util.HashSet<>();
+        Set<String> locked = new HashSet<>();
         for (Lockfile.Artifact pkg : lock.artifacts()) {
             // Index package key and GA — declared deps use GA; lock rows use g:a:type:classifier.
             locked.add(pkg.name());

@@ -6,20 +6,13 @@ import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileAlreadyExistsException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import java.nio.file.*;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
 /**
@@ -237,10 +230,12 @@ public final class BuildJournal {
      * without this one of the two silently loses (JK-1491). Keyed by run dir; entries are dropped
      * once the run is complete.
      */
-    private static final java.util.concurrent.ConcurrentHashMap<Path, Object> METRICS_LOCKS =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Path, Object> METRICS_LOCKS = new ConcurrentHashMap<>();
 
     private static Object metricsLock(Path runDir) {
+        // complete() removes entries, but a crashed/cancelled run leaks its key — bound the
+        // residue (ProjectIds idiom, JK-1942).
+        if (METRICS_LOCKS.size() >= 4_096) METRICS_LOCKS.clear();
         return METRICS_LOCKS.computeIfAbsent(runDir.toAbsolutePath().normalize(), k -> new Object());
     }
 
@@ -419,7 +414,7 @@ public final class BuildJournal {
      */
     static boolean isImplausibleHeavyWall(String task, long millis) {
         if (task == null || millis <= 0) return false;
-        String t = task.toLowerCase(java.util.Locale.ROOT);
+        String t = task.toLowerCase(Locale.ROOT);
         if (t.contains("native-image") || t.equals("native")) return millis < 5_000L;
         if (t.contains("write-image") || t.equals("image")) return millis < 3_000L;
         return false;
@@ -495,8 +490,20 @@ public final class BuildJournal {
      * (JK-1479). Keeping the source JSON alongside the parsed record makes the second pass free.
      */
     private List<Loaded> loadAll() {
+        return loadNewest(Integer.MAX_VALUE);
+    }
+
+    /**
+     * The newest {@code limit} records, reading no further down the journal than the limit
+     * requires. {@code entryDirs()} is already newest-first by run-dir mtime (one stat per dir,
+     * JK-1480), so stopping after {@code limit} loads bounds the whole pass at O(limit) reads +
+     * parses instead of materialising every record on disk — at the 2000-run retention default a
+     * 200-row dashboard page used to read and parse 10× what it returned (JK-1942).
+     */
+    private List<Loaded> loadNewest(int limit) {
         List<Loaded> out = new ArrayList<>();
         for (Path dir : entryDirs()) {
+            if (out.size() >= limit) break;
             Path record = dir.resolve(RECORD);
             if (!Files.isRegularFile(record)) continue;
             String json;
@@ -537,22 +544,21 @@ public final class BuildJournal {
         return Optional.empty();
     }
 
-    /** The newest {@code limit} records as their raw JSON — no second read (see {@link #loadAll}). */
+    /** The newest {@code limit} records as their raw JSON — no second read (see {@link #loadNewest}). */
     public List<String> rawRecords(int limit) {
         List<String> out = new ArrayList<>();
-        for (Loaded l : loadAll()) {
+        for (Loaded l : loadNewest(Math.max(limit, 0))) {
             if (out.size() >= limit) break;
             out.add(l.json());
         }
         return out;
     }
 
-    /** The newest {@code limit} records, parsed — truncated without materialising the rest. */
+    /** The newest {@code limit} records, parsed — the rest of the journal is never read. */
     public List<BuildRecord> list(int limit) {
         if (limit <= 0) return List.of();
-        List<Loaded> all = loadAll();
-        List<BuildRecord> out = new ArrayList<>(Math.min(limit, all.size()));
-        for (Loaded l : all) {
+        List<BuildRecord> out = new ArrayList<>();
+        for (Loaded l : loadNewest(limit)) {
             if (out.size() >= limit) break;
             out.add(l.record());
         }
@@ -730,7 +736,7 @@ public final class BuildJournal {
     private static void move(Path from, Path to) throws IOException {
         try {
             Files.move(from, to, StandardCopyOption.ATOMIC_MOVE);
-        } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+        } catch (AtomicMoveNotSupportedException e) {
             Files.move(from, to);
         }
     }

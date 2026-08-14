@@ -20,6 +20,11 @@ public final class LockGate {
     /** The monitor object for one lock owner dir (normalized); never {@code null}. */
     public static Object monitorFor(Path lockDir) {
         String key = lockDir.toAbsolutePath().normalize().toString();
+        // Clear-on-overflow (ProjectIds idiom, JK-1942): one entry per distinct checkout the
+        // engine ever served, forever. Overflow needs thousands of checkouts; dropping monitors
+        // then only weakens single-flighting to last-writer-wins on the atomically-replaced lock
+        // file — never corruption.
+        if (MONITORS.size() >= 4_096) MONITORS.clear();
         return MONITORS.computeIfAbsent(key, k -> new Object());
     }
 }

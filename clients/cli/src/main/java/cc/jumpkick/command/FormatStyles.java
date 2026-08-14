@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import cc.jumpkick.model.JkBuild;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -104,7 +105,7 @@ final class FormatStyles {
 
     private static StylePair alias(String name, String source) {
         if (name == null || name.isBlank()) return null;
-        StylePair pair = ALIASES.get(name.trim().toLowerCase(java.util.Locale.ROOT));
+        StylePair pair = ALIASES.get(name.trim().toLowerCase(Locale.ROOT));
         if (pair == null) {
             throw new IllegalArgumentException(source
                     + " = \""

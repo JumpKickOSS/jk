@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.UnaryOperator;
 
 /**
@@ -69,8 +74,7 @@ public final class EnvLookup {
     /** One cached {@code .env} parse, invalidated by (size, mtime). */
     private record CachedEnv(long size, long mtime, Map<String, String> values) {}
 
-    private static final java.util.concurrent.ConcurrentHashMap<Path, CachedEnv> READ_MEMO =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Path, CachedEnv> READ_MEMO = new ConcurrentHashMap<>();
 
     /**
      * {@link DotEnv#read} behind a freshness memo. Redaction resolves the lookup for every output
@@ -80,7 +84,7 @@ public final class EnvLookup {
     private static Map<String, String> readCached(Path file) {
         Path key = file.toAbsolutePath().normalize();
         try {
-            var attrs = java.nio.file.Files.readAttributes(key, java.nio.file.attribute.BasicFileAttributes.class);
+            var attrs = Files.readAttributes(key, BasicFileAttributes.class);
             long size = attrs.size();
             long mtime = attrs.lastModifiedTime().toMillis();
             CachedEnv hit = READ_MEMO.get(key);
@@ -89,7 +93,7 @@ public final class EnvLookup {
             if (READ_MEMO.size() > 256) READ_MEMO.clear(); // tiny working set; crude bound is fine
             READ_MEMO.put(key, new CachedEnv(size, mtime, parsed));
             return parsed;
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             return Map.of(); // missing/unreadable → empty, exactly like DotEnv.read
         }
     }
@@ -119,7 +123,7 @@ public final class EnvLookup {
     }
 
     /** Every name a {@code .env} file contributed, whether or not the real environment shadows it. */
-    public java.util.Set<String> fileNames() {
+    public Set<String> fileNames() {
         return fromFiles.keySet();
     }
 

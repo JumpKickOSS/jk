@@ -9,6 +9,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.function.IntSupplier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -63,7 +64,7 @@ class CacheRedirectStubTest {
 
     private record Capture(int exit, String stdout, String stderr) {}
 
-    private static Capture capture(java.util.function.IntSupplier body) {
+    private static Capture capture(IntSupplier body) {
         PrintStream origOut = System.out;
         PrintStream origErr = System.err;
         ByteArrayOutputStream out = new ByteArrayOutputStream();

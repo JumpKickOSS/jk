@@ -5,8 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import javax.xml.parsers.DocumentBuilderFactory;
 import org.junit.jupiter.api.Test;
+import org.w3c.dom.Document;
 
 class PomExporterTest {
 
@@ -202,10 +206,9 @@ class PomExporterTest {
                 .doesNotContain("<step>", "<pipelines>", "<pipeline>");
 
         // The whole document must be well-formed XML (what mvn's parser sees first).
-        javax.xml.parsers.DocumentBuilderFactory dbf = javax.xml.parsers.DocumentBuilderFactory.newInstance();
+        DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
         dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-        org.w3c.dom.Document doc = dbf.newDocumentBuilder()
-                .parse(new java.io.ByteArrayInputStream(xml.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        Document doc = dbf.newDocumentBuilder().parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
         assertThat(doc.getElementsByTagName("goals").getLength()).isGreaterThanOrEqualTo(3);
         assertThat(doc.getElementsByTagName("step").getLength()).isZero();
     }

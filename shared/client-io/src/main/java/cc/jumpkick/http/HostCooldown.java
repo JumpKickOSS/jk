@@ -7,8 +7,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * Remembers that a host rate-limited us, and stops asking until it is worth asking again.
@@ -55,13 +58,13 @@ public final class HostCooldown {
     private static final String DIR_NAME = "host-cooldown";
 
     private final Path dir;
-    private final java.util.function.Supplier<Instant> clock;
+    private final Supplier<Instant> clock;
 
     public HostCooldown(Path stateRoot) {
         this(stateRoot, Instant::now);
     }
 
-    HostCooldown(Path stateRoot, java.util.function.Supplier<Instant> clock) {
+    HostCooldown(Path stateRoot, Supplier<Instant> clock) {
         this.dir = stateRoot.resolve(DIR_NAME);
         this.clock = clock;
     }
@@ -152,8 +155,8 @@ public final class HostCooldown {
             // not delta-seconds; try the date form
         }
         try {
-            Instant when = java.time.ZonedDateTime.parse(v, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME)
-                    .toInstant();
+            Instant when =
+                    ZonedDateTime.parse(v, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant();
             Duration d = Duration.between(now, when);
             return d.isNegative() ? Optional.empty() : Optional.of(d);
         } catch (RuntimeException e) {

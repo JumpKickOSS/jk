@@ -5,9 +5,7 @@ import cc.jumpkick.cache.Linking;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.DirectoryStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.nio.file.*;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -108,8 +106,8 @@ public final class WorkerLib {
                 Files.move(d, old);
             }
             try {
-                Files.move(tmp, d, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
-            } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+                Files.move(tmp, d, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException e) {
                 Files.move(tmp, d);
             }
             if (old != null) deleteTree(old);

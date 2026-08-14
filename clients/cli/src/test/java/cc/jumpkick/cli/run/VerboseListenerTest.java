@@ -92,4 +92,24 @@ class VerboseListenerTest {
         String after = AttributedString.stripAnsi(buf.toString(StandardCharsets.UTF_8));
         assertThat(after.indexOf("FAILED Foo.bar()", first + 1)).isNegative();
     }
+
+    @Test
+    void second_header_without_a_footer_flushes_the_first_block() {
+        // JK-1964 (JK-1915 parity): a worker killed mid-block never delivers the footer; the next
+        // failure's header must paint the stranded first block instead of appending into it —
+        // otherwise both sit until stepFinish and paint as one malformed unit.
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        PrintStream out = new PrintStream(buf, true, StandardCharsets.UTF_8);
+        var v = new VerboseListener(out, out);
+        for (String line : List.of("Test Failure", "1 test failed", "", "FAILED First.a()")) {
+            v.output("run-tests", line); // no footer — stranded block
+        }
+        for (String line : List.of("Test Failure", "1 test failed", "", "FAILED Second.b()", "Test Failure end")) {
+            v.output("run-tests", line);
+        }
+        String plain = AttributedString.stripAnsi(buf.toString(StandardCharsets.UTF_8));
+        assertThat(plain).contains("FAILED First.a()");
+        assertThat(plain).contains("FAILED Second.b()");
+        assertThat(plain.indexOf("FAILED First.a()")).isLessThan(plain.indexOf("FAILED Second.b()"));
+    }
 }

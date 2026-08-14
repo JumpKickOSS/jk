@@ -6,11 +6,9 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.TaskStatus;
 import java.time.Duration;
+import java.util.ArrayDeque;
 import java.util.Objects;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -56,7 +54,7 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
     private String labelText;
 
     /** Pending output lines in arrival order — bounded FIFO, never latest-wins (JK-1833). */
-    private final java.util.ArrayDeque<PendingOutput> outputQueue = new java.util.ArrayDeque<>();
+    private final ArrayDeque<PendingOutput> outputQueue = new ArrayDeque<>();
 
     private long droppedOutputLines;
 
@@ -92,7 +90,7 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
      * costs no platform thread and isolates plans from each other. Per-listener ordering is
      * still guaranteed by {@link #lock}.
      */
-    private static final java.util.concurrent.ExecutorService FLUSHERS = Executors.newThreadPerTaskExecutor(
+    private static final ExecutorService FLUSHERS = Executors.newThreadPerTaskExecutor(
             Thread.ofVirtual().name("jk-wire-flush-", 0).factory());
 
     public CoalescingBuildPlanListener(BuildPlanListener delegate) {
@@ -320,7 +318,7 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
         if (closed.get()) return;
         try {
             FLUSHERS.execute(this::flushSafe);
-        } catch (java.util.concurrent.RejectedExecutionException shuttingDown) {
+        } catch (RejectedExecutionException shuttingDown) {
             // engine going down — dropping a coalesced progress frame is fine
         }
     }

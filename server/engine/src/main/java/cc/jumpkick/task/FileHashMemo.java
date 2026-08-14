@@ -7,8 +7,13 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
+import java.nio.file.attribute.FileTime;
+import java.util.Collections;
 import java.util.Map;
+import java.util.Set;
+import java.util.WeakHashMap;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -27,8 +32,30 @@ public final class FileHashMemo {
     /** Distrust stat-identity for files modified within this window (mtime-granularity guard). */
     private static final long SETTLE_MS = 2_000;
 
+    /**
+     * Pathology backstop per thread cache (JK-1942): the idle boundary clears these anyway, but a
+     * single build over an enormous tree must not grow one map without limit either. ~300 bytes
+     * per entry; the disk memo absorbs the cost of a mid-build clear.
+     */
+    private static final int MAX_THREAD_ENTRIES = 131_072;
+
+    /**
+     * Every live thread's walk cache, weakly held so a dead thread's map can be collected. The
+     * idle boundary clears them all ({@link #clearAllThreadCaches}) — without that, the immortal
+     * {@code jk-cpu-N} pool threads accrete entries forever, because the cache key embeds the
+     * nanosecond mtime and every rebuild mints new keys (JK-1942).
+     */
+    private static final Set<Map<String, String>> LIVE_CACHES =
+            Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
+
     /** Absolute-path → hex for the current thread (request / plan worker). */
-    private static final ThreadLocal<Map<String, String>> THREAD_CACHE = ThreadLocal.withInitial(HashMap::new);
+    private static final ThreadLocal<Map<String, String>> THREAD_CACHE = ThreadLocal.withInitial(() -> {
+        // Concurrent map: the owner thread is the only writer on the hot path, but the idle
+        // boundary clears from another thread, and a plain HashMap can corrupt under that race.
+        Map<String, String> m = new ConcurrentHashMap<>();
+        LIVE_CACHES.add(m);
+        return m;
+    });
 
     private static final AtomicLong CONTENT_HASH_INVOCATIONS = new AtomicLong();
     private static final AtomicLong THREAD_HITS = new AtomicLong();
@@ -48,12 +75,12 @@ public final class FileHashMemo {
         CONTENT_HASH_INVOCATIONS.incrementAndGet();
         Path abs = file.toAbsolutePath().normalize();
         long size = Files.size(abs);
-        java.nio.file.attribute.FileTime ft = Files.getLastModifiedTime(abs);
+        FileTime ft = Files.getLastModifiedTime(abs);
         long mtime = ft.toMillis();
         boolean unsettled = System.currentTimeMillis() - mtime < SETTLE_MS;
         // Key includes size+mtime (nanosecond precision) so a same-path rewrite — even one
         // landing inside the same millisecond tick — never hits a stale entry.
-        String tkey = abs + "\0" + size + "\0" + ft.to(java.util.concurrent.TimeUnit.NANOSECONDS);
+        String tkey = abs + "\0" + size + "\0" + ft.to(TimeUnit.NANOSECONDS);
         Map<String, String> thread = THREAD_CACHE.get();
         String cached = thread.get(tkey);
         if (cached != null) {
@@ -87,6 +114,7 @@ public final class FileHashMemo {
         if (token != null) {
             DISK_HITS.incrementAndGet();
             // known: always trusted; hash: only when settled (same tick rewrite safety).
+            if (thread.size() >= MAX_THREAD_ENTRIES) thread.clear();
             thread.put(tkey, (casSeed ? "known:" : "hash:") + token);
             return token;
         }
@@ -94,6 +122,7 @@ public final class FileHashMemo {
         CONTENT_READS.incrementAndGet();
         token = Hashing.sha256Hex(abs);
         store(abs, size, mtime, token);
+        if (thread.size() >= MAX_THREAD_ENTRIES) thread.clear();
         thread.put(tkey, "hash:" + token);
         return token;
     }
@@ -101,6 +130,16 @@ public final class FileHashMemo {
     /** Drop this thread's walk cache (tests / long-lived worker threads). */
     public static void clearThreadCache() {
         THREAD_CACHE.remove();
+    }
+
+    /**
+     * Drop every live thread's walk cache. Called at the idle boundary so pool-thread caches do
+     * not outlive the build that filled them; safe cross-thread because the maps are concurrent.
+     */
+    public static void clearAllThreadCaches() {
+        synchronized (LIVE_CACHES) {
+            for (Map<String, String> m : LIVE_CACHES) m.clear();
+        }
     }
 
     /** Test seam: total {@link #contentHash} calls since process start (or last {@link #resetStats}). */
@@ -157,7 +196,7 @@ public final class FileHashMemo {
                 long recorded = Long.parseLong(token.substring(nanoAt + " nano=".length()));
                 token = token.substring(0, nanoAt).trim();
                 if (token.isEmpty()) return null;
-                long current = Files.getLastModifiedTime(file).to(java.util.concurrent.TimeUnit.NANOSECONDS);
+                long current = Files.getLastModifiedTime(file).to(TimeUnit.NANOSECONDS);
                 return recorded == current ? token : null;
             }
             if (System.currentTimeMillis() - mtimeMillis < SETTLE_MS) return null;
@@ -190,10 +229,12 @@ public final class FileHashMemo {
             Path abs = file.toAbsolutePath().normalize();
             if (!Files.isRegularFile(abs)) return;
             long size = Files.size(abs);
-            java.nio.file.attribute.FileTime ft = Files.getLastModifiedTime(abs);
-            long nanos = ft.to(java.util.concurrent.TimeUnit.NANOSECONDS);
+            FileTime ft = Files.getLastModifiedTime(abs);
+            long nanos = ft.to(TimeUnit.NANOSECONDS);
             String tkey = abs + "\0" + size + "\0" + nanos;
-            THREAD_CACHE.get().put(tkey, "known:" + sha256Hex);
+            Map<String, String> thread = THREAD_CACHE.get();
+            if (thread.size() >= MAX_THREAD_ENTRIES) thread.clear();
+            thread.put(tkey, "known:" + sha256Hex);
             // Disk: file: form so entry() short-circuits; contentHash strips the prefix. The
             // nano= stamp is the seed's provenance mark — lookup trusts it immediately but only
             // while the file's nanosecond mtime is unchanged (see lookup).

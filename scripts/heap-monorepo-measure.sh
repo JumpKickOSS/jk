@@ -189,4 +189,63 @@ else:
 PY
 
 rm -f "$peak_file"
-exit "$build_ec"
+
+# --- idle settle + optional gate (JK-1942) ----------------------------------
+# The engine's idle boundary (post-build) drops process memos and runs one GC; with the
+# heap-return flags on the spawn line, committed heap must snap back near live within one
+# idle cycle. Gate on the BEST post-build sample so GC timing jitter cannot flake CI.
+# Env:
+#   IDLE_WAIT_S           max seconds to watch for the idle settle (default 90)
+#   GATE_COMMITTED_MIB    fail if best committed-after-idle exceeds this (unset = report only)
+#   GATE_USED_MIB         fail if best used-after-idle exceeds this (unset = report only)
+IDLE_WAIT_S="${IDLE_WAIT_S:-90}"
+best_c="" best_u=""
+for i in $(seq 1 "$IDLE_WAIT_S"); do
+ sleep 1
+ j=$(status_json)
+ c=$(field "$j" heapCommittedBytes)
+ u=$(field "$j" heapUsedBytes)
+ [[ -z "$c" || -z "$u" ]] && continue
+ if [[ -z "$best_c" || "$c" -lt "$best_c" ]]; then best_c=$c; fi
+ if [[ -z "$best_u" || "$u" -lt "$best_u" ]]; then best_u=$u; fi
+ if [[ -n "${GATE_COMMITTED_MIB:-}" ]]; then
+  under=$(python3 -c "print(1 if int('${best_c:-0}')<=int('$GATE_COMMITTED_MIB')*1048576 and int('${best_u:-0}')<=int('${GATE_USED_MIB:-99999}')*1048576 else 0)" 2>/dev/null || echo 0)
+  [[ "$under" == "1" ]] && break
+ elif [[ "$i" -ge 15 ]]; then
+  break
+ fi
+done
+
+echo
+echo "## Idle settle (JK-1942 committed-after-idle)"
+echo "| metric | bytes | MiB |"
+echo "|---|---:|---:|"
+echo "| best heapUsed after idle | ${best_u:-?} | $(mib "${best_u:-0}") |"
+echo "| best heapCommitted after idle | ${best_c:-?} | $(mib "${best_c:-0}") |"
+
+gate_ec=0
+if [[ -n "${GATE_COMMITTED_MIB:-}" || -n "${GATE_USED_MIB:-}" ]]; then
+ if ! python3 - <<PY
+import sys
+c = int("${best_c:-0}" or 0)
+u = int("${best_u:-0}" or 0)
+gc = "${GATE_COMMITTED_MIB:-}"
+gu = "${GATE_USED_MIB:-}"
+fail = False
+if gc and c > int(gc) * 1048576:
+    print(f"GATE FAIL: committed-after-idle {c/1048576:.1f} MiB > {gc} MiB")
+    fail = True
+if gu and u > int(gu) * 1048576:
+    print(f"GATE FAIL: used-after-idle {u/1048576:.1f} MiB > {gu} MiB")
+    fail = True
+if not fail:
+    print("GATE OK: committed-after-idle within budget")
+sys.exit(1 if fail else 0)
+PY
+ then
+  gate_ec=1
+ fi
+fi
+
+if [[ "$build_ec" -ne 0 ]]; then exit "$build_ec"; fi
+exit "$gate_ec"

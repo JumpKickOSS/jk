@@ -7,6 +7,7 @@ import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.compile.KotlincResult;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.Optional;
 
@@ -96,7 +97,7 @@ public final class KotlinCompile {
     }
 
     /** Any {@code .class} anywhere under {@code dir}? */
-    private static boolean hasClasses(java.nio.file.Path dir) throws IOException {
+    private static boolean hasClasses(Path dir) throws IOException {
         if (!Files.isDirectory(dir)) return false;
         try (var walk = Files.walk(dir)) {
             return walk.anyMatch(f -> f.toString().endsWith(".class"));

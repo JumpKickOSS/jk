@@ -7,10 +7,7 @@ import cc.jumpkick.cli.tui.WizardStep;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.scaffold.NewInputs;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
-import java.util.Optional;
+import java.util.*;
 import org.jspecify.annotations.NullMarked;
 
 /** Wizard construction and flag/name helpers for jk new. */
@@ -143,7 +140,7 @@ public final class NewWizard {
                 .choicesFn(a -> libraryPickerChoices())
                 .filterable(true)
                 .customOption("group:artifact or short-name (e.g. com.google.guava:guava)")
-                .defaults(java.util.Set.of("jspecify"))
+                .defaults(Set.of("jspecify"))
                 .when(a -> "java".equals(a.get("lang")))
                 .build();
 
@@ -151,13 +148,13 @@ public final class NewWizard {
                 .choicesFn(a -> libraryPickerChoices())
                 .filterable(true)
                 .customOption("group:artifact or short-name")
-                .defaults(java.util.Set.of("kotest"))
+                .defaults(Set.of("kotest"))
                 .when(a -> "kotlin".equals(a.get("lang")))
                 .build();
 
         var kotlinOptions = WizardStep.MultiSelectStep.vertical("kotlinOptions", "Kotlin options:")
                 .choice("module", "Set module name")
-                .defaults(java.util.Set.of("module"))
+                .defaults(Set.of("module"))
                 .when(a -> "kotlin".equals(a.get("lang")))
                 .build();
 
@@ -165,7 +162,7 @@ public final class NewWizard {
                 .choice("jar", "Regular jar")
                 .choice("assembly", "Assembly (fat) jar")
                 .choice("native", "Native binary")
-                .defaults(java.util.Set.of("jar"))
+                .defaults(Set.of("jar"))
                 .when(a -> "executable".equals(a.get("kind")))
                 .build();
 
@@ -303,7 +300,7 @@ public final class NewWizard {
      * since GraalVM tracks LTS releases and we can't know a newer native-capable major offline.
      */
     static List<Integer> offlineMajors(boolean nativeTrack) {
-        List<Integer> out = new java.util.ArrayList<>();
+        List<Integer> out = new ArrayList<>();
         for (int v = cc.jumpkick.jdk.JdkLts.OFFLINE_LATEST_LTS; v >= cc.jumpkick.jdk.SupportedJdk.MIN_MAJOR; v--) {
             if (cc.jumpkick.jdk.JdkLts.isLtsMajor(v)) out.add(v);
         }

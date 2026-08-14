@@ -5,11 +5,13 @@ import cc.jumpkick.model.Coordinate;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BooleanSupplier;
 
 /**
  * Ordered {@link MavenRepo}s with try-each / first-hit-wins semantics, plus optional exclusive
@@ -47,8 +49,7 @@ public final class RepoGroup {
     private static final ConcurrentHashMap<String, VersionsEntry> VERSIONS_CACHE = new ConcurrentHashMap<>();
 
     /** Long enough to cover one build's resolves, short enough that a daemon re-checks. */
-    private static final long VERSIONS_TTL_NANOS =
-            java.time.Duration.ofSeconds(60).toNanos();
+    private static final long VERSIONS_TTL_NANOS = Duration.ofSeconds(60).toNanos();
 
     private record VersionsEntry(List<String> versions, long expiresAtNanos) {
         boolean expired() {
@@ -178,7 +179,7 @@ public final class RepoGroup {
      * before the network leg, before/after host-permit acquisition — with a
      * {@link MavenRepo.FetchAbortedException}. Legs in progress always complete cleanly.
      */
-    public Optional<RepoFetched> tryFetchArtifact(Coordinate coord, java.util.function.BooleanSupplier abort)
+    public Optional<RepoFetched> tryFetchArtifact(Coordinate coord, BooleanSupplier abort)
             throws IOException, InterruptedException {
         String key = repoIdentity
                 + "|"
@@ -336,7 +337,7 @@ public final class RepoGroup {
     }
 
     private Optional<RepoFetched> tryFetch(
-            Coordinate coord, LocalProbe localProbe, Fetcher fetcher, java.util.function.BooleanSupplier abort)
+            Coordinate coord, LocalProbe localProbe, Fetcher fetcher, BooleanSupplier abort)
             throws IOException, InterruptedException {
         List<MavenRepo> eligible = eligibleRepos(coord);
         Optional<RepoFetched> found = tryFetchFrom(eligible, coord, localProbe, fetcher, abort);
@@ -346,11 +347,7 @@ public final class RepoGroup {
     }
 
     private Optional<RepoFetched> tryFetchFrom(
-            List<MavenRepo> candidates,
-            Coordinate coord,
-            LocalProbe localProbe,
-            Fetcher fetcher,
-            java.util.function.BooleanSupplier abort)
+            List<MavenRepo> candidates, Coordinate coord, LocalProbe localProbe, Fetcher fetcher, BooleanSupplier abort)
             throws IOException, InterruptedException {
         for (MavenRepo repo : candidates) {
             Optional<MavenRepo.Fetched> local = localProbe.probe(repo, coord);
@@ -374,7 +371,7 @@ public final class RepoGroup {
     }
 
     /** Abort supplier for fetch paths with no abort semantics (POM / metadata). */
-    private static final java.util.function.BooleanSupplier NO_ABORT = () -> false;
+    private static final BooleanSupplier NO_ABORT = () -> false;
 
     private static List<List<String>> normalizeExclusive(int n, List<List<String>> raw) {
         List<List<String>> out = new ArrayList<>(n);

@@ -3,6 +3,8 @@ package cc.jumpkick.config;
 
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
+import java.util.Locale;
+import java.util.Optional;
 import java.util.function.Function;
 
 /**
@@ -41,13 +43,13 @@ public record JkM2Config(boolean enabled, boolean link) {
                 property("jk.m2.link").orElse(base.link()));
     }
 
-    private static java.util.Optional<Boolean> property(String name) {
+    private static Optional<Boolean> property(String name) {
         String raw = System.getProperty(name);
-        if (raw == null || raw.isBlank()) return java.util.Optional.empty();
-        return switch (raw.strip().toLowerCase(java.util.Locale.ROOT)) {
-            case "true", "on", "1", "yes" -> java.util.Optional.of(true);
-            case "false", "off", "0", "no" -> java.util.Optional.of(false);
-            default -> java.util.Optional.empty();
+        if (raw == null || raw.isBlank()) return Optional.empty();
+        return switch (raw.strip().toLowerCase(Locale.ROOT)) {
+            case "true", "on", "1", "yes" -> Optional.of(true);
+            case "false", "off", "0", "no" -> Optional.of(false);
+            default -> Optional.empty();
         };
     }
 

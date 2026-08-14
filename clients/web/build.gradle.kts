@@ -14,6 +14,10 @@ description = "jk web dashboard: the resident engine's single-page dashboard (Vu
 // SOURCE tree at runtime — Gradle can't see that, so declare them as inputs or editing fold.js
 // leaves :web:test UP-TO-DATE and the suite silently never reruns.
 tasks.named<Test>("test") {
-    inputs.files("src/main/resources/web/fold.js", "src/test/js/fold.test.mjs")
+    inputs.files(
+                    "src/main/resources/web/fold.js",
+                    "src/test/js/fold.test.mjs",
+                    "src/main/resources/web/code.js",
+                    "src/test/js/code.test.mjs")
             .withPathSensitivity(PathSensitivity.RELATIVE)
 }

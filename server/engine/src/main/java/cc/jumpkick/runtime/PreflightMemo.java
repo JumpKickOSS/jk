@@ -478,6 +478,8 @@ public final class PreflightMemo {
     public static void storeShape(Path entryDir, Path moduleDir, boolean skipTests, BuildPlanShape shape) {
         if (shape == null) return;
         Path root = entryDir.toAbsolutePath().normalize();
+        // Clear-on-overflow (ProjectIds idiom, JK-1942): one entry per entry dir ever prepared.
+        if (SHAPE_LOCKS.size() >= 4_096) SHAPE_LOCKS.clear();
         Object lock = SHAPE_LOCKS.computeIfAbsent(root, k -> new Object());
         synchronized (lock) {
             try {

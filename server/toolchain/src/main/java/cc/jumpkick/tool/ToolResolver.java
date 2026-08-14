@@ -143,12 +143,12 @@ public final class ToolResolver {
      * Platform-native binary for {@code primary}: {@code native-<arch>-<os>} then protoc-style
      * {@code <os>-<arch>} classifiers (type {@code exe}). Empty → fall through to jar path.
      */
-    private java.util.Optional<Path> fetchNativeBinary(Coordinate primary) throws IOException, InterruptedException {
+    private Optional<Path> fetchNativeBinary(Coordinate primary) throws IOException, InterruptedException {
         String os = cc.jumpkick.jdk.HostPlatform.currentOs();
         String arch = cc.jumpkick.jdk.HostPlatform.currentArch();
         if (cc.jumpkick.jdk.HostPlatform.UNSUPPORTED.equals(os)
                 || cc.jumpkick.jdk.HostPlatform.UNSUPPORTED.equals(arch)) {
-            return java.util.Optional.empty();
+            return Optional.empty();
         }
         String protocOs = "macos".equals(os) ? "osx" : os;
         String protocArch = "aarch64".equals(arch) ? "aarch_64" : arch;
@@ -157,10 +157,10 @@ public final class ToolResolver {
             var fetched = repos.tryFetchArtifact(
                     new Coordinate(primary.group(), primary.artifact(), primary.version(), classifier, "exe"));
             if (fetched.isPresent()) {
-                return java.util.Optional.of(fetched.get().fetched().cachePath());
+                return Optional.of(fetched.get().fetched().cachePath());
             }
         }
-        return java.util.Optional.empty();
+        return Optional.empty();
     }
 
     private Path fetchJar(Coordinate coord) throws IOException, InterruptedException {

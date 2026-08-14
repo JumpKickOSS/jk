@@ -54,6 +54,9 @@ class JobEnvelopeTest {
                 .isTrue();
         assertThat(host.finished).isEqualTo(1);
         assertThat(host.cleared).containsExactly(1L);
+        // writeJournal must run before clearProgress: the real host retires the session on
+        // clear, and takeAccumulator then returns null — permanent "Building" in jk jobs.
+        assertThat(host.teardownOrder).containsExactly("writeJournal", "clearProgress");
     }
 
     @Test
@@ -70,6 +73,7 @@ class JobEnvelopeTest {
         int finished;
         final List<String> events = new ArrayList<>();
         final List<Long> cleared = new ArrayList<>();
+        final List<String> teardownOrder = new ArrayList<>();
         final InFlightBuilds inFlight = new InFlightBuilds();
         final AtomicLong ids = new AtomicLong();
         final ReentrantReadWriteLock gate = new ReentrantReadWriteLock();
@@ -172,11 +176,14 @@ class JobEnvelopeTest {
 
         @Override
         public void clearProgress(long id) {
+            teardownOrder.add("clearProgress");
             cleared.add(id);
         }
 
         @Override
-        public void writeJournal(long id, boolean cancelled, long millis, BufferedWriter writer) {}
+        public void writeJournal(long id, boolean cancelled, long millis, BufferedWriter writer) {
+            teardownOrder.add("writeJournal");
+        }
 
         @Override
         public void maybeIdleBoundary() {}

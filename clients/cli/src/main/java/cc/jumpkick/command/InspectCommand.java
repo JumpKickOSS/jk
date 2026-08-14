@@ -11,6 +11,7 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -31,7 +32,7 @@ public final class InspectCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        var opts = new java.util.ArrayList<Opt>();
+        var opts = new ArrayList<Opt>();
         opts.addAll(cc.jumpkick.cli.CommonOpts.moduleSelection());
         opts.add(cc.jumpkick.cli.CommonOpts.cacheDirHidden());
         return opts;

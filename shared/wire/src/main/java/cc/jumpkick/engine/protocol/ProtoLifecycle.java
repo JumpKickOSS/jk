@@ -293,7 +293,7 @@ public final class ProtoLifecycle {
         return bye(0, false);
     }
 
-    /** Ack for {@link #EngineProtocol.SHUTDOWN}: reports the in-flight job count and whether a drain is now underway. */
+    /** Ack for {@link EngineProtocol#SHUTDOWN}: reports the in-flight job count and whether a drain is now underway. */
     public static String bye(int plans, boolean draining) {
         return "{\"type\":\"" + EngineProtocol.BYE + "\",\"plans\":" + plans + ",\"draining\":" + draining + "}";
     }
@@ -305,14 +305,14 @@ public final class ProtoLifecycle {
      * only. {@code freshenLock} auto-refreshes a stale workspace lock ({@code jk verify} sends
      * false). Engine forecasts dirty modules itself — no client {@code dirtyHint}.
      *
-     * /** The one error envelope; see {@link #EngineProtocol.ERROR} for the code vocabulary. */
+     * /** The one error envelope; see {@link EngineProtocol#ERROR} for the code vocabulary. */
     public static String error(String code, String message) {
         return "{\"type\":\"" + EngineProtocol.ERROR + "\",\"code\":" + Jsonl.quote(code) + ",\"message\":"
                 + Jsonl.quote(message) + "}";
     }
 
     /**
-     * {@link #EngineProtocol.ERR_ALREADY_RUNNING}: same fingerprint already in flight. Includes {@code buildNumber}
+     * {@link EngineProtocol#ERR_ALREADY_RUNNING}: same fingerprint already in flight. Includes {@code buildNumber}
      * and holder {@code requestId} when known so clients can render {@code Build #N is already running}.
      */
     public static String alreadyRunning(long buildNumber, long holderRequestId, String message) {
@@ -331,13 +331,13 @@ public final class ProtoLifecycle {
                 + "}";
     }
 
-    /** {@link #EngineProtocol.JOB_START}: job admitted — {@code jid} is the public cancel handle. */
+    /** {@link EngineProtocol#JOB_START}: job admitted — {@code jid} is the public cancel handle. */
     public static String jobStart(long jid, String kind, String dir, long buildNumber) {
         return jobStart(jid, kind, dir, buildNumber, null, -1);
     }
 
     /**
-     * {@link #EngineProtocol.JOB_START} with details binding for the CLI session transcript.
+     * {@link EngineProtocol#JOB_START} with details binding for the CLI session transcript.
      *
      * @param detailsPath absolute path to {@code runs/<buildNumber>/details.jsonl} (may be null)
      * @param etaMs estimated wall ms at admit (-1 omit)
@@ -361,18 +361,18 @@ public final class ProtoLifecycle {
         return b.append('}').toString();
     }
 
-    /** {@link #EngineProtocol.CANCEL_REQUEST}: cancel by {@code jid} (optional {@code dir} to cancel all for a project). */
+    /** {@link EngineProtocol#CANCEL_REQUEST}: cancel by {@code jid} (optional {@code dir} to cancel all for a project). */
     public static String cancelRequest(long jid) {
         return "{\"type\":\"" + EngineProtocol.CANCEL_REQUEST + "\",\"jid\":" + jid + ",\"requestId\":" + jid + "}";
     }
 
-    /** {@link #EngineProtocol.CANCEL_REQUEST} with no jid: cancel every live job under {@code dir}. */
+    /** {@link EngineProtocol#CANCEL_REQUEST} with no jid: cancel every live job under {@code dir}. */
     public static String cancelRequestForDir(String dir) {
         return "{\"type\":\"" + EngineProtocol.CANCEL_REQUEST + "\",\"dir\":" + Jsonl.quote(dir == null ? "" : dir)
                 + "}";
     }
 
-    /** {@link #EngineProtocol.CANCEL_ACK}. */
+    /** {@link EngineProtocol#CANCEL_ACK}. */
     public static String cancelAck(long jid, boolean cancelled, String note) {
         StringBuilder b = new StringBuilder("{\"type\":\"")
                 .append(EngineProtocol.CANCEL_ACK)
@@ -386,7 +386,7 @@ public final class ProtoLifecycle {
         return b.append('}').toString();
     }
 
-    /** {@code error} with {@link #EngineProtocol.ERR_REQUEST_FAILED} — the former build-error catch-all. */
+    /** {@code error} with {@link EngineProtocol#ERR_REQUEST_FAILED} — the former build-error catch-all. */
     public static String requestFailed(String message) {
         return error(EngineProtocol.ERR_REQUEST_FAILED, message);
     }

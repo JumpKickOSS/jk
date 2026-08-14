@@ -4,13 +4,13 @@ package cc.jumpkick.engine.http;
 import cc.jumpkick.config.JkHttpConfig;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryIteratorException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.function.Supplier;
 
 /** Read-tier status surfaces plus POST build/cancel. */
@@ -106,7 +106,7 @@ final class HttpReadApi {
      */
     void handleLog(HttpExchange exchange) throws IOException {
         int requested = 120;
-        String param = HttpEngineServer.queryParam(exchange.getRequestURI().getQuery(), "lines");
+        String param = HttpEngineServer.queryParam(exchange.getRequestURI().getRawQuery(), "lines");
         if (param != null) {
             try {
                 requested = Math.max(1, Math.min(400, Integer.parseInt(param)));
@@ -136,8 +136,8 @@ final class HttpReadApi {
         if (!Files.isRegularFile(file)) return "";
         long size = Files.size(file);
         long from = Math.max(0, size - 256 * 1024);
-        var buf = java.nio.ByteBuffer.allocate((int) (size - from));
-        try (var channel = java.nio.channels.FileChannel.open(file)) {
+        var buf = ByteBuffer.allocate((int) (size - from));
+        try (var channel = FileChannel.open(file)) {
             channel.position(from);
             while (buf.hasRemaining() && channel.read(buf) >= 0) {}
         }
@@ -145,15 +145,14 @@ final class HttpReadApi {
         String[] all = new String(bytes, StandardCharsets.UTF_8).split("\n", -1);
         int end = all.length > 0 && all[all.length - 1].isEmpty() ? all.length - 1 : all.length;
         int start = Math.max(0, end - lines);
-        return String.join("\n", java.util.Arrays.copyOfRange(all, start, end));
+        return String.join("\n", Arrays.copyOfRange(all, start, end));
     }
 
     /**
      * {@code GET /api/fs?dir=…} — the workspace picker behind the dashboard's Browse button.
      */
     void handleFs(HttpExchange exchange) throws IOException {
-        String requested = HttpEngineServer.decode(
-                HttpEngineServer.queryParam(exchange.getRequestURI().getQuery(), "dir"));
+        String requested = HttpEngineServer.queryParam(exchange.getRequestURI().getRawQuery(), "dir");
         Path dir;
         try {
             dir = requested == null || requested.isBlank()
@@ -174,7 +173,7 @@ final class HttpReadApi {
                 String name = entry.getFileName().toString();
                 if (!name.startsWith(".") && Files.isDirectory(entry)) subdirs.add(name);
             }
-        } catch (IOException | java.nio.file.DirectoryIteratorException e) {
+        } catch (IOException | DirectoryIteratorException e) {
             HttpEngineServer.sendJson(
                     exchange,
                     400,
@@ -203,8 +202,7 @@ final class HttpReadApi {
      * {@code GET /api/metrics[?dir=…]} — running build aggregates as a flat JSON array.
      */
     void handleMetrics(HttpExchange exchange) throws IOException {
-        String dirFilter = HttpEngineServer.decode(
-                HttpEngineServer.queryParam(exchange.getRequestURI().getQuery(), "dir"));
+        String dirFilter = HttpEngineServer.queryParam(exchange.getRequestURI().getRawQuery(), "dir");
         StringBuilder body = new StringBuilder("[");
         for (cc.jumpkick.runtime.BuildMetrics.Entry e : metrics.get()) {
             if (dirFilter != null && !e.dir().isEmpty() && !e.dir().equals(dirFilter)) continue;

@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * {@code avd create|list|boot} — managed AVDs under the jk SDK root ({@code ANDROID_AVD_HOME}).
@@ -131,7 +132,7 @@ final class AvdCommand {
             exec.out("jk avd boot: the emulator component is not installed — " + "run `jk android sdk emulator` first");
             return 1;
         }
-        String os = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT);
+        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
         if (os.contains("linux") && !Files.exists(Path.of("/dev/kvm"))) {
             exec.out("jk avd boot: /dev/kvm is unavailable — hardware acceleration is required "
                     + "for a usable emulator");

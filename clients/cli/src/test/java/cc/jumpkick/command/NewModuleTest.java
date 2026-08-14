@@ -9,6 +9,7 @@ import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -181,7 +182,7 @@ class NewModuleTest {
     }
 
     private static cc.jumpkick.cli.tui.Answers answers(String... kv) {
-        var map = new java.util.HashMap<String, Object>();
+        var map = new HashMap<String, Object>();
         for (int i = 0; i < kv.length; i += 2) map.put(kv[i], kv[i + 1]);
         return cc.jumpkick.cli.tui.Answers.of(map);
     }

@@ -10,11 +10,14 @@ import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
+import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * KSP round, generated-source unions, and plugin source-contribution helpers.
@@ -243,7 +246,7 @@ public final class PlannerKsp {
                     for (Path root : srcRoots) {
                         if (Files.isDirectory(root)) ktRoots.add(root);
                     }
-                    String sep = java.io.File.pathSeparator;
+                    String sep = File.pathSeparator;
                     List<Path> libs = new ArrayList<>(classpath);
                     libs.add(stdlib);
 
@@ -306,7 +309,7 @@ public final class PlannerKsp {
                             byte[] buf = new byte[8192];
                             int n;
                             while ((n = in2.read(buf)) >= 0) {
-                                captured.append(new String(buf, 0, n, java.nio.charset.StandardCharsets.UTF_8));
+                                captured.append(new String(buf, 0, n, StandardCharsets.UTF_8));
                             }
                         } catch (IOException ignored) {
                             // stream closed with the process
@@ -316,7 +319,7 @@ public final class PlannerKsp {
                     drainer.start();
                     int exit;
                     try {
-                        if (!proc.waitFor(15, java.util.concurrent.TimeUnit.MINUTES)) {
+                        if (!proc.waitFor(15, TimeUnit.MINUTES)) {
                             proc.destroyForcibly();
                             ctx.error("ksp", "KSP timed out after 15 minutes\n" + captured);
                             throw new RuntimeException("KSP timed out");

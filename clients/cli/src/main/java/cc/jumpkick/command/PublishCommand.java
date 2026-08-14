@@ -19,6 +19,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -41,7 +42,7 @@ public final class PublishCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        var opts = new java.util.ArrayList<Opt>(List.of(
+        var opts = new ArrayList<Opt>(List.of(
                 Opt.value("<url>", "Target Maven repository base URL.", "--repo-url")
                         .require(),
                 Opt.value("<user>", "HTTP Basic username (PUBLISH_USER env).", "--user"),

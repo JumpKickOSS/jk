@@ -9,7 +9,9 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalDouble;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 /**
@@ -171,7 +173,7 @@ public record JkCacheConfig(
      * free split evenly). Otherwise the logical default is kept. Explicit config never goes through
      * this path.
      */
-    static double clampDefaultGb(double logicalGb, DiskSpace disk, java.util.function.LongSupplier tierUsedBytes) {
+    static double clampDefaultGb(double logicalGb, DiskSpace disk, LongSupplier tierUsedBytes) {
         if (disk == null || disk.totalBytes() >= SMALL_DISK_THRESHOLD_BYTES) {
             return logicalGb;
         }
@@ -279,8 +281,7 @@ public record JkCacheConfig(
         return OptionalDouble.of(mb.getAsDouble() / 1024.0);
     }
 
-    private static final java.util.concurrent.atomic.AtomicBoolean LEGACY_WARNED =
-            new java.util.concurrent.atomic.AtomicBoolean();
+    private static final AtomicBoolean LEGACY_WARNED = new AtomicBoolean();
 
     private static void warnLegacyOnce(String message) {
         if (LEGACY_WARNED.compareAndSet(false, true)) {

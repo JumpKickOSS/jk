@@ -6,6 +6,7 @@ import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.util.Hashing;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -130,10 +131,10 @@ public final class ActionKey {
         // edit to a swept file invalidates the key just like an explicit source would.
         List<Path> rootJava = new ArrayList<>();
         for (Path root : request.javaSourceRoots()) {
-            if (!java.nio.file.Files.isDirectory(root)) continue;
-            try (var walk = java.nio.file.Files.walk(root)) {
+            if (!Files.isDirectory(root)) continue;
+            try (var walk = Files.walk(root)) {
                 walk.filter(p -> p.toString().endsWith(".java"))
-                        .filter(java.nio.file.Files::isRegularFile)
+                        .filter(Files::isRegularFile)
                         .sorted()
                         .forEach(rootJava::add);
             }
@@ -205,7 +206,7 @@ public final class ActionKey {
     private static void appendCpToken(StringBuilder sb, String prefix, Path entry) throws IOException {
         Path p = FreshnessStamp.identityKey(entry);
         sb.append(prefix).append(p);
-        if (java.nio.file.Files.isDirectory(p)) {
+        if (Files.isDirectory(p)) {
             sb.append('=').append(ClasspathFingerprint.entry(p));
         }
         sb.append('\n');

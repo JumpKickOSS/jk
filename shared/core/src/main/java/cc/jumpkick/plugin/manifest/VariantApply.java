@@ -10,11 +10,7 @@ import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.Variants.Selection;
 import cc.jumpkick.plugin.PluginConfig;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.EnumMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * Folds selected {@code [variants]} overlays into a flat effective {@link JkBuild} (and plugin
@@ -210,7 +206,7 @@ public final class VariantApply {
 
     /** Every {@code env:NAME} name referenced anywhere in {@code build}'s plugin configs. */
     public static List<String> envRefs(JkBuild build) {
-        java.util.LinkedHashSet<String> names = new java.util.LinkedHashSet<>();
+        LinkedHashSet<String> names = new LinkedHashSet<>();
         for (PluginConfig config : build.pluginConfigs().values()) {
             collectEnvRefs(config.values(), names);
         }
@@ -218,7 +214,7 @@ public final class VariantApply {
     }
 
     @SuppressWarnings("unchecked")
-    private static void collectEnvRefs(Map<String, Object> values, java.util.Set<String> names) {
+    private static void collectEnvRefs(Map<String, Object> values, Set<String> names) {
         for (Object v : values.values()) {
             if (v instanceof String s && s.startsWith("env:")) {
                 names.add(s.substring("env:".length()).trim());

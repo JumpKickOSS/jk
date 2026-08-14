@@ -7,7 +7,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 /**
  * Cache-prune cadence: {@code .last-pruned} bookkeeping consulted by the engine's idle-boundary
@@ -81,7 +83,7 @@ public final class CachePruneScheduler {
     static Optional<String> resolveFromJvmInstallLayout(String classPath) {
         if (classPath == null || classPath.isBlank()) return Optional.empty();
         String sep = System.getProperty("path.separator", ":");
-        for (String entry : classPath.split(java.util.regex.Pattern.quote(sep))) {
+        for (String entry : classPath.split(Pattern.quote(sep))) {
             if (entry.isBlank()) continue;
             Path p;
             try {
@@ -117,7 +119,7 @@ public final class CachePruneScheduler {
     }
 
     private static boolean isJavaLauncher(Path p) {
-        String name = fileName(p).toLowerCase(java.util.Locale.ROOT);
+        String name = fileName(p).toLowerCase(Locale.ROOT);
         return name.equals("java") || name.equals("java.exe") || name.equals("javaw.exe");
     }
 }

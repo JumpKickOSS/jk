@@ -5,8 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -25,8 +27,8 @@ class TuiModeFixturesTest {
     void wedge_ok_fail_and_box_table_in_all_modes() throws Exception {
         // Plain: forced no-ansi.
         withConfig(noAnsiConfig(), () -> {
-            String ok = CommandWedge.ok("Build", "done", false);
-            String fail = CommandWedge.fail("Build", "boom", false);
+            String ok = CommandWedge.ok("Build", "done", NerdFontCaps.NONE);
+            String fail = CommandWedge.fail("Build", "boom", NerdFontCaps.NONE);
             String table = JkWedge.menu("Installed JDKs").renderTitleBar(RenderContext.current(), 40);
             assertThat(ok).isEqualTo(" + Build > done");
             assertThat(fail).isEqualTo(" ! Build > boom");
@@ -37,8 +39,8 @@ class TuiModeFixturesTest {
         });
 
         // When ANSI is available in the suite, check nerd vs non-nerd caps.
-        String nerd = JkWedge.chipLine(Glyphs.CHECK, "Clean", true, "ok");
-        String ansi = JkWedge.chipLine(Glyphs.CHECK, "Clean", false, "ok");
+        String nerd = JkWedge.chipLine(Glyphs.CHECK, "Clean", NerdFontCaps.ALL, "ok");
+        String ansi = JkWedge.chipLine(Glyphs.CHECK, "Clean", NerdFontCaps.NONE, "ok");
         if (!nerd.startsWith("+")) {
             assertThat(nerd).contains(PUA);
             assertThat(ansi).doesNotContain(PUA);
@@ -89,7 +91,7 @@ class TuiModeFixturesTest {
         var colors = Spinner.buildChipPulseStyles(
                 Spinner.PULSE_FRAMES, cc.jumpkick.cli.theme.Theme.active().planBadgeColor());
         // Force plain path inside renderWedgeFrame via Theme — under CI isAnsi is often false already.
-        String frame = Spinner.renderWedgeFrame(0, "Status", "working", false, colors);
+        String frame = Spinner.renderWedgeFrame(0, "Status", "working", NerdFontCaps.NONE, colors);
         if (frame.contains("Status") && !frame.contains(CSI)) {
             assertThat(frame).isEqualTo(" * Status > working");
             assertThat(frame).doesNotContain(Glyphs.PULSE).doesNotContain(PUA).doesNotContain(CSI);
@@ -116,8 +118,8 @@ class TuiModeFixturesTest {
     @Test
     void format_settle_plain_shape_matches_wedge_and_took() throws Exception {
         withConfig(noAnsiConfig(), () -> {
-            String took = cc.jumpkick.cli.run.ConsoleSpec.took(java.time.Duration.ofMillis(547));
-            String settle = CommandWedge.ok("Format", "Already formatted " + took, false);
+            String took = cc.jumpkick.cli.run.ConsoleSpec.took(Duration.ofMillis(547));
+            String settle = CommandWedge.ok("Format", "Already formatted " + took, NerdFontCaps.NONE);
             assertThat(settle).isEqualTo(" + Format > Already formatted - took 547ms");
             assertThat(settle).doesNotContain(CSI).doesNotContain(Glyphs.CHECK);
             return null;

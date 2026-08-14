@@ -9,6 +9,9 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Objects;
 
 /**
@@ -34,7 +37,7 @@ public final class LibraryRegistrySync {
      * How long a downloaded registry counts as fresh. The engine's {@code StoreFeedRefresh}
      * cadence aliases this so the two never drift apart.
      */
-    public static final java.time.Duration FRESH_FOR = java.time.Duration.ofHours(12);
+    public static final Duration FRESH_FOR = Duration.ofHours(12);
 
     private LibraryRegistrySync() {}
 
@@ -61,7 +64,7 @@ public final class LibraryRegistrySync {
                     new LibraryRegistryClient(new Http()).fetch(source, etagFile, cacheFile);
             if (result instanceof LibraryRegistryClient.Result.Unchanged) {
                 // Re-arm the freshness window so the next FRESH_FOR of commands skip the network.
-                Files.setLastModifiedTime(cacheFile, java.nio.file.attribute.FileTime.from(java.time.Instant.now()));
+                Files.setLastModifiedTime(cacheFile, FileTime.from(Instant.now()));
                 return;
             }
             if (!(result instanceof LibraryRegistryClient.Result.Updated updated)) {
@@ -95,8 +98,8 @@ public final class LibraryRegistrySync {
     private static boolean isFresh(Path file) {
         try {
             if (!isNonEmptyFile(file)) return false;
-            java.time.Instant mtime = Files.getLastModifiedTime(file).toInstant();
-            return java.time.Duration.between(mtime, java.time.Instant.now()).compareTo(FRESH_FOR) < 0;
+            Instant mtime = Files.getLastModifiedTime(file).toInstant();
+            return Duration.between(mtime, Instant.now()).compareTo(FRESH_FOR) < 0;
         } catch (IOException e) {
             return false;
         }

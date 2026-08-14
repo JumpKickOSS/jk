@@ -7,6 +7,8 @@ import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.runtime.WorkspaceProgressTracker;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
+import java.time.Duration;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -37,24 +39,13 @@ class AggregateProgressTest {
     void workspace_member_console_listener_keeps_engine_rider() {
         LiveProgress.get().setPercent(70.0); // engine snapshot already applied
         var lis = new CommandManagerListener(
-                new PrintStream(new ByteArrayOutputStream()),
-                (ConsoleSpec) null,
-                "g:a",
-                java.util.List.of(),
-                false,
-                false);
+                new PrintStream(new ByteArrayOutputStream()), (ConsoleSpec) null, "g:a", List.of(), false, false);
         lis.planStart(new cc.jumpkick.run.BuildPlanView("build", 1, 10, 1, 0, false));
         lis.progress("compile", 1, new cc.jumpkick.run.BuildPlanView("build", 2, 10, 1, 0, false));
         lis.tickUpdate("compile", 1, new cc.jumpkick.run.BuildPlanView("build", 3, 10, 1, 0, false));
         assertThat(LiveProgress.get().percent()).isEqualTo(70.0);
         lis.planFinish(new cc.jumpkick.run.BuildPlanResult(
-                "build",
-                true,
-                java.time.Duration.ZERO,
-                java.util.List.of(),
-                java.util.List.of(),
-                java.util.List.of(),
-                false));
+                "build", true, Duration.ZERO, List.of(), List.of(), List.of(), false));
     }
 
     @Test

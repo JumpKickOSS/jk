@@ -66,8 +66,7 @@ public final class LockfileWriter {
     /** Engine-jar sha from {@code versions/<v>/manifest.toml}, or {@code ""} if absent. */
     private static String runningEngineSha(String version) {
         try {
-            java.nio.file.Path manifest =
-                    cc.jumpkick.util.JkDirs.versions().resolve(version).resolve("manifest.toml");
+            Path manifest = cc.jumpkick.util.JkDirs.versions().resolve(version).resolve("manifest.toml");
             for (String line : Files.readAllLines(manifest, StandardCharsets.UTF_8)) {
                 line = line.trim();
                 if (line.startsWith("engine-sha256")) {
@@ -76,7 +75,7 @@ public final class LockfileWriter {
                     if (q >= 0 && e > q) return line.substring(q + 1, e);
                 }
             }
-        } catch (java.io.IOException ignored) {
+        } catch (IOException ignored) {
             // no materialized manifest — dev builds
         }
         return "";

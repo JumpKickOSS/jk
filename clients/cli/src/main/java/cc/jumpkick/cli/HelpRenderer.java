@@ -3,6 +3,7 @@ package cc.jumpkick.cli;
 
 import cc.jumpkick.cli.theme.Theme;
 import java.io.PrintStream;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jline.utils.AttributedStyle;
@@ -197,7 +198,7 @@ public final class HelpRenderer {
         out.println();
 
         // Index by name for group lookup
-        Map<String, cc.jumpkick.model.command.CliCommand> byName = new java.util.LinkedHashMap<>();
+        Map<String, cc.jumpkick.model.command.CliCommand> byName = new LinkedHashMap<>();
         for (cc.jumpkick.model.command.CliCommand c : commands) {
             if (!c.hidden()) byName.put(c.name(), c);
         }

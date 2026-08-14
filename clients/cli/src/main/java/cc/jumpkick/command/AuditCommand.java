@@ -36,8 +36,8 @@ public final class AuditCommand implements CliCommand {
     }
 
     @Override
-    public java.util.List<Opt> options() {
-        return java.util.List.of(
+    public List<Opt> options() {
+        return List.of(
                 Opt.value("<level>", "Severity: CRITICAL|HIGH|MEDIUM|LOW. Default: LOW.", "--severity"),
                 Opt.value("<url>", "Override the OSV batch query URL (for tests).", "--osv-batch-url")
                         .hide(),
@@ -51,8 +51,8 @@ public final class AuditCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
         GlobalOptions global = GlobalOptions.from(in);
-        this.osvBatchUrl = in.value("osv-batch-url").map(java.net.URI::create).orElse(null);
-        this.osvVulnsUrl = in.value("osv-vulns-url").map(java.net.URI::create).orElse(null);
+        this.osvBatchUrl = in.value("osv-batch-url").map(URI::create).orElse(null);
+        this.osvVulnsUrl = in.value("osv-vulns-url").map(URI::create).orElse(null);
         String severity = in.value("severity").orElse("LOW");
         Path projectDir = global.workingDir();
         if (!Files.exists(projectDir.resolve("jk.toml"))) {

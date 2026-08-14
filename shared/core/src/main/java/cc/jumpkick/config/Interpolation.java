@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -75,7 +76,7 @@ public final class Interpolation {
      * {@code $}.
      */
     public static void guard(TomlTable root) {
-        List<String> offenders = new java.util.ArrayList<>();
+        List<String> offenders = new ArrayList<>();
         walk(root, "", offenders);
         if (offenders.isEmpty()) return;
         throw new JkBuildParseException("environment references are not allowed here: "

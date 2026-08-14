@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.config.NerdFontCaps;
 import java.io.PrintWriter;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jline.terminal.Attributes;
@@ -20,7 +21,7 @@ public final class DrainView implements LiveRegion, AutoCloseable {
     private final Attributes saved;
     private final NonBlockingReader reader;
     private final PrintWriter out;
-    private final boolean nerdfont;
+    private final NerdFontCaps nerdFont;
     private final long startNanos;
 
     private final Object lock = new Object();
@@ -33,20 +34,20 @@ public final class DrainView implements LiveRegion, AutoCloseable {
     private Thread keys;
     private Thread restoreHook;
 
-    private DrainView(Terminal terminal, Attributes saved, int jobs, boolean nerdfont, long startNanos) {
+    private DrainView(Terminal terminal, Attributes saved, int jobs, NerdFontCaps nerdFont, long startNanos) {
         this.terminal = terminal;
         this.saved = saved;
         this.reader = terminal == null ? null : terminal.reader();
         this.out = terminal == null ? null : terminal.writer();
         this.jobs = jobs;
-        this.nerdfont = nerdfont;
+        this.nerdFont = nerdFont;
         this.startNanos = startNanos;
     }
 
     /** Start the live drain region, or a silent no-op instance when non-interactive / no-progress. */
-    public static DrainView start(int initialJobs, boolean nerdfont) {
+    public static DrainView start(int initialJobs, NerdFontCaps nerdFont) {
         long now = System.nanoTime();
-        if (!interactive()) return new DrainView(null, null, initialJobs, nerdfont, now);
+        if (!interactive()) return new DrainView(null, null, initialJobs, nerdFont, now);
         try {
             Terminal t = Wizard.openTerminal();
             Attributes saved = t.getAttributes();
@@ -56,7 +57,7 @@ public final class DrainView implements LiveRegion, AutoCloseable {
             // ISIG stays on: Ctrl-C keeps raising SIGINT so GlobalCancel settles this region.
             t.setAttributes(raw);
             Wizard.drainInput(t.reader(), 40); // flush terminal probe replies
-            DrainView v = new DrainView(t, saved, initialJobs, nerdfont, now);
+            DrainView v = new DrainView(t, saved, initialJobs, nerdFont, now);
             v.out.print(Ansi.HIDE_CURSOR);
             v.out.flush();
             LiveRegion.setActive(v);
@@ -70,7 +71,7 @@ public final class DrainView implements LiveRegion, AutoCloseable {
             v.keys.start();
             return v;
         } catch (Exception e) {
-            return new DrainView(null, null, initialJobs, nerdfont, now); // degrade to no-op
+            return new DrainView(null, null, initialJobs, nerdFont, now); // degrade to no-op
         }
     }
 
@@ -122,7 +123,7 @@ public final class DrainView implements LiveRegion, AutoCloseable {
         String l1 = JkWedge.chipLine(
                 Spinner.PULSE_GLYPH,
                 "Engine",
-                nerdfont,
+                nerdFont,
                 "Draining " + n + " job" + (n == 1 ? "" : "s") + "… " + elapsed);
         String hint = Theme.colorize(
                         "Wait for jobs to finish, or press ", Theme.active().dim())

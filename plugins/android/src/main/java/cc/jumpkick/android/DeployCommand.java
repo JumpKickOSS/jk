@@ -3,13 +3,17 @@ package cc.jumpkick.android;
 
 import cc.jumpkick.plugin.build.PluginCommandExec;
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.zip.ZipFile;
+import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
@@ -62,7 +66,7 @@ final class DeployCommand {
         command.add("-cp");
         StringBuilder cp = new StringBuilder();
         for (Path jar : ManifestStep.jarsIn(bundletool)) {
-            if (cp.length() > 0) cp.append(java.io.File.pathSeparatorChar);
+            if (cp.length() > 0) cp.append(File.pathSeparatorChar);
             cp.append(jar.toAbsolutePath());
         }
         command.add(cp.toString());
@@ -83,13 +87,13 @@ final class DeployCommand {
         }
         // universal.apks is a zip: universal.apk + toc.pb.
         Path universal = work.resolve("universal.apk");
-        try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(apks.toFile())) {
+        try (ZipFile zip = new ZipFile(apks.toFile())) {
             var entry = zip.getEntry("universal.apk");
             if (entry == null) {
                 throw new IllegalStateException("bundletool build-apks produced no universal.apk");
             }
             try (var in = zip.getInputStream(entry)) {
-                Files.copy(in, universal, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                Files.copy(in, universal, StandardCopyOption.REPLACE_EXISTING);
             }
         }
         return universal;
@@ -163,7 +167,7 @@ final class DeployCommand {
             throw new IllegalStateException("no AndroidManifest.xml at " + manifest);
         }
         var dbf = DocumentBuilderFactory.newInstance();
-        dbf.setFeature(javax.xml.XMLConstants.FEATURE_SECURE_PROCESSING, true);
+        dbf.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
         var doc = dbf.newDocumentBuilder().parse(manifest.toFile());
         NodeList activities = doc.getElementsByTagName("activity");
         for (int i = 0; i < activities.getLength(); i++) {

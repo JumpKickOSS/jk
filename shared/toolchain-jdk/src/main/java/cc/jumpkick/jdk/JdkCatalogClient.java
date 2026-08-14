@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * Client for the JetBrains JDK feed ({@value #DEFAULT_FEED_URL}). Fetches the JSON catalog, caches
@@ -53,7 +54,7 @@ public final class JdkCatalogClient {
      * CLI view layer owns the streams, so callers there install {@code System.err::println} via
      * {@link #onWarning}, and in-step callers route it to {@code TaskContext::warn}.
      */
-    private java.util.function.Consumer<String> warn = s -> {};
+    private Consumer<String> warn = s -> {};
 
     public JdkCatalogClient() {
         this(new Http(), URI.create(DEFAULT_FEED_URL), defaultCachePath(), DEFAULT_TTL);
@@ -67,7 +68,7 @@ public final class JdkCatalogClient {
     }
 
     /** Install a sink for degradation warnings; returns {@code this} for chaining. */
-    public JdkCatalogClient onWarning(java.util.function.Consumer<String> sink) {
+    public JdkCatalogClient onWarning(Consumer<String> sink) {
         this.warn = Objects.requireNonNull(sink, "sink");
         return this;
     }

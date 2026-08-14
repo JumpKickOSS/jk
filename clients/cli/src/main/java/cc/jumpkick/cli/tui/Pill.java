@@ -102,7 +102,7 @@ public final class Pill implements Widget {
             chip = fill.chip();
             ends = fill.caps();
         }
-        return Badge.pill(text, ctx.nerdfont(), chip, ends);
+        return Badge.pill(text, ctx.pill(), chip, ends);
     }
 
     private record Fill(AttributedStyle chip, AttributedStyle caps) {}

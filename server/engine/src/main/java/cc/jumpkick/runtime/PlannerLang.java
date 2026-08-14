@@ -6,18 +6,17 @@ import static cc.jumpkick.runtime.BuildPlanner.*;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.compile.KotlincRequest;
-import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Stream;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Shared Kotlin / Groovy compiler invocation used by main and test compile steps.
@@ -44,7 +43,7 @@ public final class PlannerLang {
         // all-open, and no-arg gated on jakarta.persistence via classpath-has) — evaluated
         // from the manifest, fetched version-locked to the compiler actually used. The
         // embeddable variants match the BTA plugin's embeddable compiler.
-        java.util.Set<String> lockModules = lockModules(ctx.require(LOCKFILE));
+        Set<String> lockModules = lockModules(ctx.require(LOCKFILE));
         List<KotlincRequest.Plugin> ktPlugins = new ArrayList<>();
         try {
             cc.jumpkick.repo.RepoGroup repos = RepoGroupBuilder.buildFor(ctx.require(PROJECT), null, cas);
@@ -114,8 +113,8 @@ public final class PlannerLang {
                                 + "|" + moduleName + "|" + String.join(",", ktArgs) + "|"
                                 + ktPlugins.stream()
                                         .map(p -> p.id() + "=" + p.options())
-                                        .collect(java.util.stream.Collectors.joining(",")))
-                        .getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                                        .collect(Collectors.joining(",")))
+                        .getBytes(StandardCharsets.UTF_8))
                 .substring(0, 12);
         Path icWorkingDir =
                 workingDir == null ? null : workingDir.resolveSibling(workingDir.getFileName() + "-" + configToken);
@@ -207,7 +206,7 @@ public final class PlannerLang {
         @SuppressWarnings("unchecked")
         List<Path> processorCp = javaSourceRoots == null
                 ? List.of()
-                : (List<Path>) ctx.get(PROCESSOR_CP).orElse(java.util.List.of());
+                : (List<Path>) ctx.get(PROCESSOR_CP).orElse(List.of());
         GroovycRequest req = GroovycRequest.builder()
                 .sources(sources)
                 .javaSourceRoots(javaSourceRoots == null ? List.of() : javaSourceRoots)
@@ -241,115 +240,4 @@ public final class PlannerLang {
                 actionCache.cas(),
                 actionCache);
     }
-
-    /**
-     * The compile-main freshness-stamp classpath side — ONE recipe shared by the live check,
-     * {@code write-stamp}, and the forecastthe base compile classpath, then the
-     * mixed-language sibling outputs javac sees (kotlin/groovy classes dirs + the version-matched
-     * groovy jar), then the annotation-processor path (not on the compile classpath, but a
-     * processor bump must bust the stamp). Hand-maintained copies of this recipe drifted twice:
-     * the forecast missed the mixed-language entries and write-stamp missed {@code processorCp},
-     * so mixed and processor modules never stamp-matched.
-     */
-    static List<Path> mainStampClasspath(
-            List<Path> baseClasspath,
-            List<Path> processorCp,
-            boolean mixedKotlin,
-            boolean mixedGroovy,
-            BuildLayout layout,
-            Path groovyCompileJar) {
-        List<Path> inputs = new ArrayList<>(baseClasspath);
-        if (mixedKotlin) inputs.add(layout.kotlinClassesDir());
-        if (mixedGroovy) {
-            inputs.add(layout.groovyClassesDir());
-            if (groovyCompileJar != null) inputs.add(groovyCompileJar);
-        }
-        if (processorCp != null) inputs.addAll(processorCp);
-        return inputs;
-    }
-
-    /**
-     * The version-matched {@code groovy} jar for javac's classpath in a mixed module: every Groovy
-     * class implements {@code groovy.lang.GroovyObject}, so Java code referencing a Groovy type
-     * needs the jar to resolve the supertype. Warm after compile-groovy's setup (CAS-memoized).
-     */
-    static Path groovyCompileJar(TaskContext ctx, Cas cas) throws IOException {
-        String groovyVersion = CompileToolchain.groovyVersionFor(ctx.require(LOCKFILE), ctx.require(PROJECT));
-        try {
-            cc.jumpkick.repo.RepoGroup repos = RepoGroupBuilder.buildFor(ctx.require(PROJECT), null, cas);
-            return GroovyPluginSetup.prepare(repos, cas, groovyVersion).groovyJar();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("interrupted resolving the Groovy compile jar", e);
-        }
-    }
-
-    /**
-     * The version-matched Groovy runtime closure (already in the CAS from the worker setup).
-     * Groovy output needs it on the <em>runtime</em> classpath — compilation pairs the groovy jar
-     * onto the compile classpath, but the JVM still needs the full runtime closure when the code
-     * runs (mirrors {@link #kotlinStdlib}).
-     */
-    static List<Path> groovyRuntime(TaskContext ctx, Cas cas) throws IOException {
-        String groovyVersion = CompileToolchain.groovyVersionFor(ctx.require(LOCKFILE), ctx.require(PROJECT));
-        if (groovyVersion == null || groovyVersion.isBlank()) {
-            groovyVersion = cc.jumpkick.groovy.GroovyResolver.DEFAULT_VERSION;
-        }
-        try {
-            cc.jumpkick.repo.RepoGroup repos = RepoGroupBuilder.buildFor(ctx.require(PROJECT), null, cas);
-            return GroovyToolResolver.resolveRuntime(repos, cas, groovyVersion);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("interrupted resolving the Groovy runtime", e);
-        }
-    }
-
-    /** The resolved lock's {@code group:artifact} names — the classpath-has condition's universe. */
-    static java.util.Set<String> lockModules(Lockfile lock) {
-        java.util.Set<String> out = new java.util.HashSet<>();
-        for (var a : lock.artifacts()) {
-            out.add(a.name());
-            // Rows are keyed by full package id (g:a:type:classifier) since package identity
-            // gained type/classifier; consumers (classpath-has conditions, processor-dependency
-            // checks) still speak plain group:artifact — expose that form too.
-            out.add(a.moduleGroup() + ":" + a.moduleArtifact());
-        }
-        return out;
-    }
-
-    /**
-     * The version-matched {@code kotlin-stdlib} path (already in the CAS from the plugin closure).
-     * Kotlin output needs it on the <em>runtime</em> classpath too — compilation pairs the stdlib
-     * with {@code -no-stdlib}, but the JVM still needs {@code kotlin.jvm.internal.*} etc. when the
-     * code runs.
-     */
-    static Path kotlinStdlib(TaskContext ctx, Cas cas) throws IOException {
-        String kotlinVersion = CompileToolchain.kotlinVersionFor(ctx.require(LOCKFILE), ctx.require(PROJECT));
-        try {
-            cc.jumpkick.repo.RepoGroup repos = RepoGroupBuilder.buildFor(ctx.require(PROJECT), null, cas);
-            return KotlinPluginSetup.prepare(repos, cas, kotlinVersion).stdlib();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("interrupted resolving the Kotlin stdlib", e);
-        }
-    }
-
-    static void copyResources(Path resourceDir, Path classesDir) throws IOException {
-        if (!Files.exists(resourceDir)) return;
-        try (Stream<Path> stream = Files.walk(resourceDir)) {
-            for (Path source : (Iterable<Path>) stream::iterator) {
-                if (Files.isDirectory(source)) continue;
-                Path relative = resourceDir.relativize(source);
-                Path target = classesDir.resolve(relative);
-                Files.createDirectories(target.getParent());
-                Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
-            }
-        }
-    }
-
-    /**
-     * Map each workspace sibling to its main output jar, keyed by both project name and {@code
-     * group:artifact} coord. Used by {@link #workerJarProps} to locate {@code test-plugin-jars}
-     * entries. Empty when this module isn't in a workspace.
-     */
 }

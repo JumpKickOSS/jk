@@ -10,6 +10,7 @@ import cc.jumpkick.model.VersionSelector;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Renders a {@link JkBuild} (and workspace) as a Gradle Kotlin-DSL build: {@code
@@ -77,7 +78,7 @@ public final class GradleExporter {
         return l != null ? l : JkBuild.Layout.AUTO;
     }
 
-    private static String renderSettings(JkBuild root, java.util.Set<String> moduleRelPaths) {
+    private static String renderSettings(JkBuild root, Set<String> moduleRelPaths) {
         StringBuilder sb = new StringBuilder();
         sb.append("plugins {\n");
         sb.append("    // Auto-provisions JDK toolchains via the foojay Disco API (jk's `project.jdk`).\n");

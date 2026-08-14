@@ -139,6 +139,45 @@ The default scope set is defined once — `DependencyTree.defaultScopeOrder()` (
 `runtime`) — and shared verbatim by `jk tree` and this endpoint. Declared-only is the default on
 both; `transitive=1` matches `jk tree -t` / `--transitive`.
 
+### `GET /api/project/files`
+
+`GET /api/project/files?project=<id>`
+
+Allow-listed source paths under the identity checkout (`ProjectIdentity.pathForId`). No `dir=`
+fallback — a tree that merely contains a `jk.toml` is not enough.
+
+Response: `{ projectId, dir, truncated, files: [{ path, lang }] }`. `path` is workspace-relative
+with `/` separators. `lang` is `java` / `kotlin` / `groovy` / `toml` / `json` / `markdown`. Hidden
+segments, `node_modules`, module-root `target`/`build`/`out`, and unknown extensions are omitted.
+The walk is breadth-first and capped at 2000 files, so truncation drops the deepest paths
+first; the workspace-root `jk.toml` is always included when it exists. Entries are sorted by
+path; `truncated: true` means more remain.
+
+Errors: missing `project` → **400**; unknown id or missing checkout → **404**. Token-gated.
+
+### `GET /api/project/file`
+
+`GET /api/project/file?project=<id>&path=<rel>`
+
+UTF-8 body of one allow-listed file. `path` is workspace-relative (`src%2FMain.java`). Same
+sandbox as the list: identity checkout, real-path containment, shared allow-list. Hidden /
+output / unsupported paths are **404** (existence is not distinguishable).
+
+Response: `{ projectId, dir, path, lang, bytes, lines, encoding, content }`. `encoding` is
+`utf-8`, or `iso-8859-1` when the bytes were not valid UTF-8 (the pane labels the fallback
+instead of silently substituting U+FFFD).
+
+| Status | When |
+| --- | --- |
+| 200 | OK |
+| 400 | missing `project` / `path`, or illegal relative path |
+| 401 | no / bad bearer |
+| 404 | unknown project, missing file, or non-servable path |
+| 413 | servable file larger than 1 MiB |
+| 415 | servable path whose bytes look binary (NUL in the first 8 KiB) |
+
+No write methods. The dashboard `#project/<id>/files/…` viewer is the consumer.
+
 ### `GET /api/metrics`
 
 Aggregate build history as a flat array, one object per row, averages pre-computed so clients stay

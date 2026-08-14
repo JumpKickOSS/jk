@@ -9,6 +9,8 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -136,7 +138,7 @@ class GroovyBuildE2eTest {
     private static BuildPlanResult build(Path project, Path cache) throws Exception {
         var build = cc.jumpkick.config.JkBuildParser.parse(project.resolve("jk.toml"));
         BuildPlan lock = LockPlans.lockBuildPlan(
-                project, build, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
+                project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         BuildPlanResult lockResult = lock.run();
         assertThat(lockResult.errors()).isEmpty();
 
@@ -154,7 +156,7 @@ class GroovyBuildE2eTest {
                 false,
                 false,
                 false,
-                java.util.Set.of(),
+                Set.of(),
                 SessionContext.current());
         return BuildPlanner.coreBuilder(in).build().run();
     }

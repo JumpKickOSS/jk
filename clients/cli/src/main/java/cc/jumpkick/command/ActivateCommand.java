@@ -10,6 +10,7 @@ import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.cli.tui.Wizard;
 import cc.jumpkick.cli.tui.WizardStep;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -109,7 +110,7 @@ public final class ActivateCommand implements CliCommand {
         Path binDir = JkDirs.binDir();
         Path dataDir = JkDirs.data();
         String block = ShellInstallerBlock.render(shell, binDir, dataDir);
-        boolean nerdfont = GlobalConfig.nerdfont();
+        NerdFontCaps nerdFont = GlobalConfig.nerdFont();
         Theme t = Theme.active();
 
         String previous = Files.exists(rcFile) ? Files.readString(rcFile, StandardCharsets.UTF_8) : "";
@@ -122,7 +123,7 @@ public final class ActivateCommand implements CliCommand {
             CliOutput.out(JkWedge.chipLine(
                     Glyphs.CHECK,
                     "Activate",
-                    nerdfont,
+                    nerdFont,
                     "Shell integration is already configured in " + Theme.colorize(rcDisplay, t.path())));
             return 0;
         }
@@ -135,7 +136,7 @@ public final class ActivateCommand implements CliCommand {
         CliOutput.out(JkWedge.chipLine(
                 Glyphs.CHECK,
                 "Activate",
-                nerdfont,
+                nerdFont,
                 "Shell integration configured in " + Theme.colorize(rcDisplay, t.path())));
         CliOutput.out("  PATH ← " + Theme.colorize(binDir.toString(), t.path()) + "  (real jk / jkx)");
         CliOutput.out("  hooks ← directory JAVA_HOME via hook-env");
@@ -156,7 +157,7 @@ public final class ActivateCommand implements CliCommand {
         Path rcFile = shell.rcFile(home());
         String rcDisplay = shell.rcFileDisplay();
         String block = ShellInstallerBlock.render(shell, JkDirs.binDir(), JkDirs.data());
-        boolean nerdfont = GlobalConfig.nerdfont();
+        NerdFontCaps nerdFont = GlobalConfig.nerdFont();
         Theme t = Theme.active();
 
         if (Files.exists(rcFile)) {
@@ -168,7 +169,7 @@ public final class ActivateCommand implements CliCommand {
                 CliOutput.out(JkWedge.chipLine(
                         Glyphs.CHECK,
                         "Activate",
-                        nerdfont,
+                        nerdFont,
                         "Shell integration is already configured in " + Theme.colorize(rcDisplay, t.path())));
                 return 0;
             }
@@ -180,7 +181,7 @@ public final class ActivateCommand implements CliCommand {
         CliOutput.out(JkWedge.chipLine(
                 Glyphs.BANG,
                 "Activate",
-                nerdfont,
+                nerdFont,
                 "Add this block to " + Theme.colorize(rcDisplay, t.path()) + " to finish activation:"));
         for (String line : block.split("\n", -1)) {
             CliOutput.out("  " + Theme.colorize(line, t.shell()));
@@ -191,7 +192,7 @@ public final class ActivateCommand implements CliCommand {
     private int runWizard(Shell shell) throws IOException {
         Path rcFile = shell.rcFile(home());
         String rcDisplay = shell.rcFileDisplay();
-        boolean nerdfont = GlobalConfig.nerdfont();
+        NerdFontCaps nerdFont = GlobalConfig.nerdFont();
 
         if (Files.exists(rcFile)) {
             String existing = Files.readString(rcFile, StandardCharsets.UTF_8);
@@ -203,7 +204,7 @@ public final class ActivateCommand implements CliCommand {
                 CliOutput.out(JkWedge.chipLine(
                         Glyphs.CHECK,
                         "Activate",
-                        nerdfont,
+                        nerdFont,
                         "Shell integration is already configured in " + Theme.colorize(rcDisplay, t.path())));
                 return 0;
             }
@@ -236,7 +237,7 @@ public final class ActivateCommand implements CliCommand {
             CliOutput.out(JkWedge.chipLine(
                     Glyphs.BANG,
                     "Activate",
-                    nerdfont,
+                    nerdFont,
                     "Skipped — add this block to " + Theme.colorize(rcDisplay, t.path()) + " manually:"));
             for (String line : block.split("\n", -1)) {
                 CliOutput.out("  " + Theme.colorize(line, t.shell()));

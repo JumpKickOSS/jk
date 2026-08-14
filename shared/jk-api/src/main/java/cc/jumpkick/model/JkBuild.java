@@ -2,16 +2,7 @@
 package cc.jumpkick.model;
 
 import cc.jumpkick.plugin.PluginConfig;
-import java.util.Collections;
-import java.util.EnumMap;
-import java.util.EnumSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 
 /** Parsed contents of a project's {@code jk.toml}. */
 public record JkBuild(
@@ -905,7 +896,7 @@ public record JkBuild(
             testPluginJars = testPluginJars == null ? List.of() : List.copyOf(testPluginJars);
             kotlinPlugins = kotlinPlugins == null ? List.of() : List.copyOf(kotlinPlugins);
             kspOptions = kspOptions == null ? List.of() : List.copyOf(kspOptions);
-            extraSrc = extraSrc == null ? List.of() : List.copyOf(new java.util.LinkedHashSet<>(extraSrc));
+            extraSrc = extraSrc == null ? List.of() : List.copyOf(new LinkedHashSet<>(extraSrc));
             if (testWorkers != null && testWorkers < 0) testWorkers = 0;
             platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
             unmappedPolicy = unmappedPolicy == null ? UnmappedPolicy.MEDIATE : unmappedPolicy;
@@ -916,7 +907,7 @@ public record JkBuild(
         /** Append {@code dirs} to {@code extra-src} (variant fold point). */
         public Build withExtraSrc(List<String> dirs) {
             if (dirs.isEmpty()) return this;
-            var all = new java.util.ArrayList<>(extraSrc);
+            var all = new ArrayList<>(extraSrc);
             all.addAll(dirs);
             return new Build(
                     orderAfter,
@@ -959,7 +950,7 @@ public record JkBuild(
         /** {@code orderAfter} plus every {@code testPluginJars} module, de-duplicated. */
         public List<String> allOrderAfter() {
             if (testPluginJars.isEmpty()) return orderAfter;
-            var all = new java.util.LinkedHashSet<>(orderAfter);
+            var all = new LinkedHashSet<>(orderAfter);
             all.addAll(testPluginJars);
             return List.copyOf(all);
         }

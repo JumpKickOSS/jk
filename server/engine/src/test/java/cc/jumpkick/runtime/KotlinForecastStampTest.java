@@ -9,6 +9,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.task.FreshnessStamp;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -70,16 +71,14 @@ class KotlinForecastStampTest {
         assertThat(FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.KOTLIN_STAMP, sources))
                 .isTrue();
 
-        Files.setLastModifiedTime(
-                source, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 3_600_000));
+        Files.setLastModifiedTime(source, FileTime.fromMillis(System.currentTimeMillis() + 3_600_000));
         assertThat(FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.KOTLIN_STAMP, sources))
                 .isFalse();
     }
 
     /** Push a file's mtime an hour back so stamp comparisons don't race the wall clock. */
     private static void agedByAnHour(Path file) throws Exception {
-        Files.setLastModifiedTime(
-                file, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() - 3_600_000));
+        Files.setLastModifiedTime(file, FileTime.fromMillis(System.currentTimeMillis() - 3_600_000));
     }
 
     private static Path project(Path tmp) throws Exception {

@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.protocol;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 
 /**
  * Dependency-free JSONL field codec for plugin wire lines: readers return defaults on missing/bad
@@ -70,13 +68,12 @@ public final class Jsonl {
             case 'b' -> sb.append('\b');
             case 'f' -> sb.append('\f');
             case 'u' -> {
-                if (i + 4 < s.length()) {
-                    try {
-                        sb.append((char) Integer.parseInt(s, i + 1, i + 5, 16));
-                        return i + 4;
-                    } catch (NumberFormatException ignored) {
-                        // malformed hex — fall through to literal
-                    }
+                // Explicit hex check (JK-1961): Integer.parseInt accepts a leading +/- sign, so a
+                // malformed backslash-u-123 escape would otherwise decode to garbage and eat 4
+                // chars instead of being kept literally as the javadoc promises.
+                if (i + 4 < s.length() && isHex4(s, i + 1)) {
+                    sb.append((char) Integer.parseInt(s, i + 1, i + 5, 16));
+                    return i + 4;
                 }
                 sb.append('\\').append(n);
             }
@@ -86,6 +83,16 @@ public final class Jsonl {
             }
         }
         return i;
+    }
+
+    /** True when the four chars at {@code from} are all hex digits. */
+    private static boolean isHex4(String s, int from) {
+        for (int k = from; k < from + 4; k++) {
+            char c = s.charAt(k);
+            boolean hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+            if (!hex) return false;
+        }
+        return true;
     }
 
     /**
@@ -332,8 +339,8 @@ public final class Jsonl {
      * empty (mutable-safe, insertion-ordered) map when absent or malformed. The ONE wire encoding
      * for maps — parallel name/value arrays are gone.
      */
-    public static java.util.Map<String, String> strMap(String json, String key) {
-        var out = new java.util.LinkedHashMap<String, String>();
+    public static Map<String, String> strMap(String json, String key) {
+        var out = new LinkedHashMap<String, String>();
         String obj = nested(json, key);
         if (obj == null) return out;
         // obj is "{...}" — scan "k":"v" pairs at depth 1.
@@ -378,7 +385,7 @@ public final class Jsonl {
      * Encode a flat string map as a JSON object ({@code {"a":"1"}}), keys in iteration order —
      * the writer half of {@link #strMap}. Null maps encode as {@code {}}.
      */
-    public static String map(java.util.Map<String, String> m) {
+    public static String map(Map<String, String> m) {
         if (m == null || m.isEmpty()) return "{}";
         StringBuilder b = new StringBuilder("{");
         boolean first = true;

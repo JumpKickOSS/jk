@@ -6,6 +6,7 @@ import cc.jumpkick.plugin.PluginManifest;
 import cc.jumpkick.plugin.protocol.PluginSpec;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.File;
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Files;
@@ -16,6 +17,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.codehaus.groovy.GroovyBugError;
 import org.codehaus.groovy.control.CompilationFailedException;
@@ -108,7 +111,7 @@ public final class GroovyCompiler implements Plugin {
                         "processorpath",
                         spec.processorPath.stream()
                                 .map(File::getAbsolutePath)
-                                .collect(java.util.stream.Collectors.joining(File.pathSeparator)),
+                                .collect(Collectors.joining(File.pathSeparator)),
                         "s",
                         generated.getAbsolutePath()));
             }
@@ -151,7 +154,7 @@ public final class GroovyCompiler implements Plugin {
      * resolution needs the whole Java neighborhood on javac's compile set, since only stubs (not
      * the roots) ride its sourcepath. Deduped by absolute path, spec order first.
      */
-    static List<File> allSources(CompileSpec spec) throws java.io.IOException {
+    static List<File> allSources(CompileSpec spec) throws IOException {
         Set<File> out = new LinkedHashSet<>();
         for (File f : spec.sources) out.add(f.getAbsoluteFile());
         for (File root : spec.javaSourceRoots) {
@@ -214,7 +217,7 @@ public final class GroovyCompiler implements Plugin {
         return any;
     }
 
-    private static String render(java.util.function.Consumer<PrintWriter> write) {
+    private static String render(Consumer<PrintWriter> write) {
         StringWriter sw = new StringWriter();
         try (PrintWriter pw = new PrintWriter(sw)) {
             write.accept(pw);
@@ -223,7 +226,7 @@ public final class GroovyCompiler implements Plugin {
     }
 
     /** The scratch root for joint-mode side products: the spec's workdir, else a temp dir. */
-    private static File scratchDir(CompileSpec spec) throws java.io.IOException {
+    private static File scratchDir(CompileSpec spec) throws IOException {
         if (spec.workDir != null) {
             spec.workDir.mkdirs();
             return spec.workDir;

@@ -5,10 +5,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.OptionalDouble;
-import java.util.OptionalLong;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -96,7 +93,7 @@ public final class AggregatedMetrics {
         // a loser's `last` beside a winner's mean, and letting a mean-less row's count beat real
         // data. A key's mean/last/count now move together, and rows with a real mean outrank
         // mean-less rows regardless of count (count describes the mean's sample size).
-        java.util.LinkedHashSet<String> keys = new java.util.LinkedHashSet<>();
+        LinkedHashSet<String> keys = new LinkedHashSet<>();
         if (srcMean != null) keys.addAll(srcMean.keySet());
         if (srcLast != null) keys.addAll(srcLast.keySet());
         for (String key : keys) {

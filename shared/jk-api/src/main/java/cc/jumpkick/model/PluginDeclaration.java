@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.model;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -75,6 +76,6 @@ public record PluginDeclaration(
         if (raw == null) return "";
         String s = raw.trim();
         if (s.regionMatches(true, 0, "sha256:", 0, 7)) s = s.substring(7).trim();
-        return s.toLowerCase(java.util.Locale.ROOT);
+        return s.toLowerCase(Locale.ROOT);
     }
 }

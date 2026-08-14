@@ -78,14 +78,14 @@ public final class AndroidSdk {
      * ({@code Pkg.Revision} — the sdkmanager on-disk contract), or null when absent/unreadable.
      */
     public String installedRevision(String componentPath) {
-        java.nio.file.Path props = componentDir(componentPath).resolve("source.properties");
-        if (!java.nio.file.Files.isRegularFile(props)) return null;
+        Path props = componentDir(componentPath).resolve("source.properties");
+        if (!Files.isRegularFile(props)) return null;
         try {
-            for (String line : java.nio.file.Files.readAllLines(props)) {
+            for (String line : Files.readAllLines(props)) {
                 if (line.startsWith("Pkg.Revision="))
                     return line.substring("Pkg.Revision=".length()).strip();
             }
-        } catch (java.io.IOException ignored) {
+        } catch (IOException ignored) {
             // unreadable — treated as unknown
         }
         return null;

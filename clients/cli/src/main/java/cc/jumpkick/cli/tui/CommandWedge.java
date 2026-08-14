@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.config.NerdFontCaps;
 import java.io.PrintStream;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -17,8 +18,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * <table>
  * <tr><th>Mode</th><th>Trigger</th><th>Chrome</th></tr>
- * <tr><td>nerd</td><td>ansi + {@link GlobalConfig#nerdfont}</td><td>PUA caps + Unicode glyphs</td></tr>
- * <tr><td>ansi</td><td>ansi, nerdfont false</td><td>colored chip + trailing bg space, Unicode glyphs, no PUA</td></tr>
+ * <tr><td>nerd</td><td>ansi + {@link GlobalConfig#nerdFont}</td><td>PUA caps + Unicode glyphs</td></tr>
+ * <tr><td>ansi</td><td>ansi, no PUA axis granted</td><td>colored chip + trailing bg space, Unicode glyphs, no PUA</td></tr>
  * <tr><td>plain</td><td>NO_COLOR / --no-ansi</td><td>{@code +}/{@code !}/{@code *} prefixes</td></tr>
  * <tr><td>verbose</td><td>{@code -v}</td><td>same wedge + extra post-wedge detail (caller)</td></tr>
  * <tr><td>json</td><td>{@code --output json}</td><td>no wedge — structured events only</td></tr>
@@ -102,16 +103,16 @@ public final class CommandWedge {
 
     /** Settled failure with "Failed to &lt;command&gt;" phrasing. */
     public static String failedTo(String command, String tail) {
-        return JkWedge.failureLine(command, GlobalConfig.nerdfont(), tail);
+        return JkWedge.failureLine(command, GlobalConfig.nerdFont(), tail);
     }
 
-    /** Explicit nerdfont flag for tests / custom rendering. */
-    public static String ok(String command, String message, boolean nerdfont) {
-        return JkWedge.ok(command, message).renderLine(RenderContext.current().withNerd(nerdfont));
+    /** Explicit capability pair for tests / custom rendering. */
+    public static String ok(String command, String message, NerdFontCaps caps) {
+        return JkWedge.ok(command, message).renderLine(RenderContext.current().withCaps(caps));
     }
 
-    public static String fail(String command, String message, boolean nerdfont) {
-        return JkWedge.fail(command, message).renderLine(RenderContext.current().withNerd(nerdfont));
+    public static String fail(String command, String message, NerdFontCaps caps) {
+        return JkWedge.fail(command, message).renderLine(RenderContext.current().withCaps(caps));
     }
 
     /**

@@ -17,15 +17,12 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.task.ActionCache;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Stream;
 
 /**
@@ -44,7 +41,7 @@ public final class PlannerSupport {
         List<String> names = cc.jumpkick.plugin.manifest.PluginContributions.providedClasspath(project, in.dir());
         if (names.isEmpty()) return List.of();
         try {
-            java.util.Map<String, Path> fetched =
+            Map<String, Path> fetched =
                     PluginBuild.fetchStepDependencies(project, in.dir(), cas, PluginBuild.sdkPins(in.lockFile()));
             List<Path> out = new ArrayList<>();
             for (String name : names) {
@@ -56,7 +53,7 @@ public final class PlannerSupport {
                 out.add(path);
             }
             return out;
-        } catch (java.io.IOException | InterruptedException e) {
+        } catch (IOException | InterruptedException e) {
             throw new RuntimeException("cannot resolve the plugin-contributed compile classpath: " + e.getMessage(), e);
         }
     }
@@ -106,8 +103,8 @@ public final class PlannerSupport {
 
     public static List<String> unresolvedProcessorDeps(
             JkBuild project, Lockfile lock, WorkspaceClasspath.Result processorSiblings) {
-        java.util.Set<String> locked = lockModules(lock);
-        java.util.Set<String> siblings = new java.util.HashSet<>();
+        Set<String> locked = lockModules(lock);
+        Set<String> siblings = new HashSet<>();
         if (processorSiblings != null) {
             siblings.addAll(processorSiblings.siblingCoords());
         }
@@ -214,8 +211,8 @@ public final class PlannerSupport {
     }
 
     /** The resolved lock's {@code group:artifact} names — the classpath-has condition's universe. */
-    static java.util.Set<String> lockModules(Lockfile lock) {
-        java.util.Set<String> out = new java.util.HashSet<>();
+    static Set<String> lockModules(Lockfile lock) {
+        Set<String> out = new HashSet<>();
         for (var a : lock.artifacts()) {
             out.add(a.name());
             // Rows are keyed by full package id (g:a:type:classifier) since package identity
@@ -468,7 +465,7 @@ public final class PlannerSupport {
             // fall through — exploded test classpath is common under Gradle
         }
         String cp = System.getProperty("java.class.path", "");
-        for (String entry : cp.split(java.io.File.pathSeparator)) {
+        for (String entry : cp.split(File.pathSeparator)) {
             if (entry == null || entry.isBlank()) continue;
             Path p = Path.of(entry);
             String name = p.getFileName() != null ? p.getFileName().toString() : "";
@@ -656,7 +653,7 @@ public final class PlannerSupport {
         // [test] env changes what the suite sees, so it must retest.
         cc.jumpkick.config.SecretRedactor secrets =
                 redactor == null ? cc.jumpkick.config.SecretRedactor.none() : redactor;
-        for (Map.Entry<String, String> e : new java.util.TreeMap<>(testEnv).entrySet()) {
+        for (Map.Entry<String, String> e : new TreeMap<>(testEnv).entrySet()) {
             String raw = e.getValue() == null ? "" : e.getValue();
             String expanded = raw;
             boolean envResolved = false;
@@ -701,7 +698,7 @@ public final class PlannerSupport {
 
     /** Package-private for {@link TaskForecaster} package-jar key parity with the live step. */
     static PluginBuild.Declarations pluginDeclarationsFor(JkBuild project, BuildLayout layout, Path cache)
-            throws java.io.IOException, InterruptedException {
+            throws IOException, InterruptedException {
         var active = PluginBuild.activeCodePlugin(project, layout.moduleRoot());
         if (active.isEmpty()) return null;
         return PluginBuild.declarations(active.get(), project, layout.moduleRoot(), cache, layout.moduleTargetDir());
@@ -730,7 +727,7 @@ public final class PlannerSupport {
      * merge first-wins, so declaration order is part of what the packaged output depends on.
      */
     /** Package-private for {@link TaskForecaster} package-jar key parity. */
-    static String contributionsToken(List<Path> contributed) throws java.io.IOException {
+    static String contributionsToken(List<Path> contributed) throws IOException {
         if (contributed == null || contributed.isEmpty()) return "";
         StringBuilder sb = new StringBuilder();
         for (Path dir : contributed) {
@@ -750,8 +747,7 @@ public final class PlannerSupport {
      */
     // Package-private for BuildPlannerStagedClassesTest.
     static Path stageClassesWithContributions(
-            cc.jumpkick.run.TaskContext ctx, Path classes, List<Path> extra, BuildLayout layout)
-            throws java.io.IOException {
+            cc.jumpkick.run.TaskContext ctx, Path classes, List<Path> extra, BuildLayout layout) throws IOException {
         if (extra.isEmpty()) return classes;
         Path stage = layout.moduleTargetDir().resolve("package-classes");
         String inputs = cc.jumpkick.task.ClasspathFingerprint.entry(classes) + "|" + contributionsToken(extra);
@@ -770,7 +766,7 @@ public final class PlannerSupport {
         return stage;
     }
 
-    static void copyTreeInto(Path from, Path to) throws java.io.IOException {
+    static void copyTreeInto(Path from, Path to) throws IOException {
         if (!Files.isDirectory(from)) return;
         try (var walk = Files.walk(from)) {
             for (Path src : (Iterable<Path>) walk::iterator) {
@@ -780,7 +776,7 @@ public final class PlannerSupport {
                     Files.createDirectories(dst);
                 } else {
                     Files.createDirectories(dst.getParent());
-                    Files.copy(src, dst, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    Files.copy(src, dst, StandardCopyOption.REPLACE_EXISTING);
                 }
             }
         }

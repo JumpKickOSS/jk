@@ -24,7 +24,9 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -545,7 +547,7 @@ public final class JdkListCommand implements CliCommand {
                                     new Http(),
                                     feedUrl,
                                     cacheFile != null ? cacheFile : ephemeralCachePath(),
-                                    java.time.Duration.ZERO)
+                                    Duration.ZERO)
                             : new JdkCatalogClient())
                     .onWarning(CliOutput.stderr()::println);
             // --all is the "show me everything" view: every vendor/product at
@@ -560,9 +562,9 @@ public final class JdkListCommand implements CliCommand {
     }
 
     private static Path ephemeralCachePath() throws IOException {
-        Path tmp = java.nio.file.Files.createTempFile("jk-feed-", ".json.xz");
+        Path tmp = Files.createTempFile("jk-feed-", ".json.xz");
         tmp.toFile().deleteOnExit();
-        java.nio.file.Files.delete(tmp);
+        Files.delete(tmp);
         return tmp;
     }
 }

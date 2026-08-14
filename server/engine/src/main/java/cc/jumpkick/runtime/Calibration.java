@@ -12,10 +12,8 @@ import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.OptionalDouble;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.tomlj.Toml;
 import org.tomlj.TomlParseResult;
@@ -728,7 +726,7 @@ public final class Calibration {
         }
     }
 
-    private static final long FAILURE_BACKOFF_MS = java.util.concurrent.TimeUnit.HOURS.toMillis(24);
+    private static final long FAILURE_BACKOFF_MS = TimeUnit.HOURS.toMillis(24);
 
     static Path failureMarker() {
         return JkDirs.builds().resolve("calibration.failed");
@@ -1053,7 +1051,7 @@ public final class Calibration {
             // as single-sample learned priors. Skip run-harvest keys (task.*/phase.*/module.*).
             if (t.getTable("mean") != null) {
                 org.tomlj.TomlTable mean = t.getTable("mean");
-                Map<String, List<Double>> rings = new java.util.LinkedHashMap<>(learned.samples());
+                Map<String, List<Double>> rings = new LinkedHashMap<>(learned.samples());
                 for (String key : mean.keySet()) {
                     if (!cc.jumpkick.builds.MetricsHarvest.isContinuousMeanKey(key)) continue;
                     Object v = mean.get(key);
@@ -1177,7 +1175,7 @@ public final class Calibration {
      */
     static HostLearnedRates foldLanguageBuckets(TomlParseResult t, HostLearnedRates learned) {
         if (t == null) return learned == null ? new HostLearnedRates() : learned;
-        Map<String, List<Double>> rings = new java.util.LinkedHashMap<>(learned == null ? Map.of() : learned.samples());
+        Map<String, List<Double>> rings = new LinkedHashMap<>(learned == null ? Map.of() : learned.samples());
         foldLang(t, "java", HostLearnedRates.COMPILE_JAVA_PER_SOURCE_MS, rings);
         foldLang(t, "kotlin", HostLearnedRates.COMPILE_KOTLIN_PER_SOURCE_MS, rings);
         foldLang(t, "groovy", HostLearnedRates.COMPILE_GROOVY_PER_SOURCE_MS, rings);
@@ -1212,7 +1210,7 @@ public final class Calibration {
             try {
                 String existing = Files.readString(file);
                 // Keep [mean] and non-calibration sections from harvest / lock-fetch writers.
-                for (String section : java.util.List.of("mean", "lock", "fetch", "bootstrap")) {
+                for (String section : List.of("mean", "lock", "fetch", "bootstrap")) {
                     int idx = existing.indexOf("\n[" + section + "]");
                     if (idx < 0) idx = existing.startsWith("[" + section + "]") ? 0 : -1;
                     if (idx >= 0) {

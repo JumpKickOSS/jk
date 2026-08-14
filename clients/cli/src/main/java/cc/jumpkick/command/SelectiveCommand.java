@@ -19,14 +19,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -221,7 +216,7 @@ public final class SelectiveCommand implements CliCommand {
         if (plan != null && !plan.contentHashes.isEmpty() && !g.force && !g.rebuild) {
             List<String> planned = !plan.modules.isEmpty()
                     ? plan.modules
-                    : java.util.Arrays.stream(effectiveModules == null ? new String[0] : effectiveModules.split(","))
+                    : Arrays.stream(effectiveModules == null ? new String[0] : effectiveModules.split(","))
                             .map(String::trim)
                             .filter(s -> !s.isEmpty())
                             .toList();
@@ -324,35 +319,30 @@ public final class SelectiveCommand implements CliCommand {
             md.update(Files.readAllBytes(f));
             md.update((byte) 0);
         }
-        return "sha256:" + java.util.HexFormat.of().formatHex(md.digest());
+        return "sha256:" + HexFormat.of().formatHex(md.digest());
     }
 
     private static Map<String, String> extractJsonStringMap(String json, String field) {
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
-                        "\"" + field + "\"\\s*:\\s*\\{(.*?)}", java.util.regex.Pattern.DOTALL)
+        Matcher m = Pattern.compile("\"" + field + "\"\\s*:\\s*\\{(.*?)}", Pattern.DOTALL)
                 .matcher(json);
         if (!m.find()) return Map.of();
         Map<String, String> out = new LinkedHashMap<>();
-        java.util.regex.Matcher pair = java.util.regex.Pattern.compile("\"([^\"]+)\"\\s*:\\s*\"([^\"]*)\"")
-                .matcher(m.group(1));
+        Matcher pair = Pattern.compile("\"([^\"]+)\"\\s*:\\s*\"([^\"]*)\"").matcher(m.group(1));
         while (pair.find()) out.put(pair.group(1), pair.group(2));
         return out;
     }
 
     private static String extractJsonString(String json, String field) {
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"" + field + "\"\\s*:\\s*\"([^\"]*)\"")
-                .matcher(json);
+        Matcher m = Pattern.compile("\"" + field + "\"\\s*:\\s*\"([^\"]*)\"").matcher(json);
         return m.find() ? m.group(1) : null;
     }
 
     private static List<String> extractJsonStringArray(String json, String field) {
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
-                        "\"" + field + "\"\\s*:\\s*\\[(.*?)]", java.util.regex.Pattern.DOTALL)
+        Matcher m = Pattern.compile("\"" + field + "\"\\s*:\\s*\\[(.*?)]", Pattern.DOTALL)
                 .matcher(json);
         if (!m.find()) return List.of();
         List<String> out = new ArrayList<>();
-        java.util.regex.Matcher s =
-                java.util.regex.Pattern.compile("\"([^\"]*)\"").matcher(m.group(1));
+        Matcher s = Pattern.compile("\"([^\"]*)\"").matcher(m.group(1));
         while (s.find()) out.add(s.group(1));
         return out;
     }

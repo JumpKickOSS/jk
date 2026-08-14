@@ -8,6 +8,7 @@ import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.BufferedWriter;
+import java.util.Objects;
 import java.util.Optional;
 
 public final class HistoryShowVerb implements HostedVerb {
@@ -105,8 +106,12 @@ public final class HistoryShowVerb implements HostedVerb {
                 host.send(writer, stepLine(p, null));
                 stepCount++;
             }
+            // Defense in depth (JK-1963): records persisted before write-time redaction (JK-1878)
+            // may carry .env secrets in message/stack — re-redact on replay against the record's
+            // own dir. One redactor per record; SecretRedactor memoizes by value-set.
+            cc.jumpkick.config.SecretRedactor redactor = replayRedactor(r.dir());
             for (BuildRecord.Diag d : r.diagnostics()) {
-                host.send(writer, cc.jumpkick.engine.journal.JournalWriter.historyDiagLine(d));
+                host.send(writer, cc.jumpkick.engine.journal.JournalWriter.historyDiagLine(redactDiag(redactor, d)));
             }
             host.send(
                     writer,
@@ -132,5 +137,48 @@ public final class HistoryShowVerb implements HostedVerb {
                 .put("status", p.status())
                 .put("millis", p.millis())
                 .toString();
+    }
+
+    private static cc.jumpkick.config.SecretRedactor replayRedactor(String dir) {
+        try {
+            return cc.jumpkick.engine.listen.EventRedaction.redactorFor(dir);
+        } catch (RuntimeException e) {
+            return cc.jumpkick.config.SecretRedactor.none();
+        }
+    }
+
+    private static BuildRecord.Diag redactDiag(cc.jumpkick.config.SecretRedactor r, BuildRecord.Diag d) {
+        String message = redactSafe(r, d.message());
+        String stack = redactSafe(r, d.stack());
+        if (Objects.equals(message, d.message()) && Objects.equals(stack, d.stack())) {
+            return d;
+        }
+        return new BuildRecord.Diag(
+                d.severity(),
+                d.dir(),
+                d.step(),
+                d.code(),
+                message,
+                d.test(),
+                d.exceptionClass(),
+                d.module(),
+                d.engine(),
+                d.className(),
+                d.method(),
+                stack,
+                d.file(),
+                d.line(),
+                d.snippetStart(),
+                d.snippet(),
+                d.worker());
+    }
+
+    private static String redactSafe(cc.jumpkick.config.SecretRedactor r, String text) {
+        if (text == null || text.isEmpty()) return text;
+        try {
+            return r.redact(text);
+        } catch (RuntimeException e) {
+            return text;
+        }
     }
 }

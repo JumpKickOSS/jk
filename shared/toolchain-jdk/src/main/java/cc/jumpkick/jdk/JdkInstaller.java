@@ -21,6 +21,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.function.LongConsumer;
 import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
@@ -428,7 +429,7 @@ public final class JdkInstaller {
             try {
                 CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
                         .join();
-            } catch (java.util.concurrent.CompletionException e) {
+            } catch (CompletionException e) {
                 Throwable cause = e.getCause() != null ? e.getCause() : e;
                 if (cause instanceof UncheckedIOException uio) throw uio.getCause();
                 if (cause instanceof IOException io) throw io;

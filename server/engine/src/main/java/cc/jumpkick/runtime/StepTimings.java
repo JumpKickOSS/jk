@@ -10,13 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.OptionalDouble;
-import java.util.OptionalLong;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import org.tomlj.Toml;
@@ -158,7 +152,7 @@ public final class StepTimings {
     }
 
     /** True when any of {@code dirs} has a learned rate (countdown ETA is trustworthy). */
-    public boolean hasTimingsFor(java.util.Collection<String> dirs) {
+    public boolean hasTimingsFor(Collection<String> dirs) {
         for (String d : dirs) {
             String prefix = d + ' ';
             for (String k : entries.keySet()) {
@@ -202,12 +196,12 @@ public final class StepTimings {
     }
 
     /** Project-local median per-unit rate for {@code step} across {@code dirs}. */
-    public OptionalDouble medianPerUnit(String step, java.util.Collection<String> dirs) {
+    public OptionalDouble medianPerUnit(String step, Collection<String> dirs) {
         if (dirs == null || dirs.isEmpty()) return OptionalDouble.empty();
         double[] rates = dirs.stream()
                 .distinct()
                 .map(d -> entries.get(key(d, step)))
-                .filter(java.util.Objects::nonNull)
+                .filter(Objects::nonNull)
                 .mapToDouble(Entry::perUnit)
                 .sorted()
                 .toArray();
@@ -300,8 +294,7 @@ public final class StepTimings {
             if (keep < m.size()) {
                 // Drop the oldest (smallest updatedMillis) first.
                 List<Map.Entry<String, Entry>> sorted = new ArrayList<>(m.entrySet());
-                sorted.sort(
-                        java.util.Comparator.comparingLong(en -> en.getValue().updatedMillis()));
+                sorted.sort(Comparator.comparingLong(en -> en.getValue().updatedMillis()));
                 for (int i = 0; i < sorted.size() - keep; i++) {
                     m.remove(sorted.get(i).getKey());
                     bySize++;

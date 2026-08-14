@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.journal;
 
 import java.util.List;
+import java.util.Locale;
 
 /**
  * The structured outcome of one build run, frozen at request-finish and persisted as {@code
@@ -119,7 +120,7 @@ public record BuildRecord(
      */
     public boolean synthetic() {
         if (trigger == null || trigger.isBlank()) return false;
-        String t = trigger.trim().toLowerCase(java.util.Locale.ROOT);
+        String t = trigger.trim().toLowerCase(Locale.ROOT);
         return "optimize".equals(t) || "calibrate".equals(t) || "synthetic".equals(t);
     }
 
@@ -226,12 +227,12 @@ public record BuildRecord(
             String file,
             int line,
             int snippetStart,
-            java.util.List<String> snippet,
+            List<String> snippet,
             int worker) {
 
         public Diag {
-            if (snippet == null) snippet = java.util.List.of();
-            else snippet = java.util.List.copyOf(snippet);
+            if (snippet == null) snippet = List.of();
+            else snippet = List.copyOf(snippet);
             if (file == null) file = "";
         }
 
@@ -265,7 +266,7 @@ public record BuildRecord(
                     "",
                     0,
                     0,
-                    java.util.List.of(),
+                    List.of(),
                     0);
         }
 

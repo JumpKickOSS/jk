@@ -6,6 +6,7 @@ import cc.jumpkick.util.Hashing;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -86,7 +87,7 @@ final class EngineJarFetcher {
         // checksums alone.
         if (verifier != null && verifier.available()) {
             byte[] sig = get(http, versionDir.resolve("SHA256SUMS.sig"), "release signature");
-            verifier.verify(sumsBytes, new String(sig, java.nio.charset.StandardCharsets.UTF_8));
+            verifier.verify(sumsBytes, new String(sig, StandardCharsets.UTF_8));
         }
         String expectedSha = shaFor(sumsBytes, jarName);
         byte[] jar = get(http, versionDir.resolve(jarName), "engine jar");
@@ -130,7 +131,7 @@ final class EngineJarFetcher {
 
     /** Parse coreutils-style {@code SHA256SUMS} lines ({@code <hex>  <name>}) for {@code jarName}. */
     private static String shaFor(byte[] sumsBody, String jarName) throws IOException {
-        String sums = new String(sumsBody, java.nio.charset.StandardCharsets.UTF_8);
+        String sums = new String(sumsBody, StandardCharsets.UTF_8);
         for (String line : sums.split("\n")) {
             String[] parts = line.trim().split("\\s+");
             if (parts.length == 2 && parts[1].equals(jarName)) return parts[0];

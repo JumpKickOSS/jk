@@ -115,6 +115,12 @@ tasks.named<Test>("test") {
     environment("TERM", "xterm-256color")
     environment("CI", "false")
     environment("NO_COLOR", "")
+    // Same reason, for glyphs: nerd-font defaults to "auto", which inspects TERM_PROGRAM and the
+    // terminal's own config. Unpinned, the developer's terminal decides whether PUA caps appear and
+    // TUI assertions differ between Ghostty, Terminal.app, and CI. Tests that exercise the glyphs
+    // pass caps explicitly (withCaps / NerdFontCaps args), so pinning the ambient default off costs
+    // no coverage (JK-1970).
+    environment("JK_NERD_FONT", "false")
     // Do not autoload EngineTestExtension (materialize + stop-after-every-class).
     systemProperty("junit.jupiter.extensions.autodetection.enabled", "false")
     systemProperty(
@@ -127,6 +133,8 @@ tasks.named<Test>("test") {
 
 tasks.named<Test>("integrationTest") {
     jvmArgs("--enable-native-access=ALL-UNNAMED")
+    // As :cli:test — keep ambient terminal detection out of rendered-output assertions (JK-1970).
+    environment("JK_NERD_FONT", "false")
     // Single fork: one resident engine / JK_STATE_DIR per suite.
     maxParallelForks = 1
     dependsOn(

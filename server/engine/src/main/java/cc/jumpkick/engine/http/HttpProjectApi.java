@@ -6,10 +6,8 @@ import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 
 /** New-project, templates, project metadata, and dependency graph. */
@@ -22,7 +20,7 @@ final class HttpProjectApi {
      */
     private record TemplatesCache(String json, long atNanos) {}
 
-    private static final long TEMPLATES_TTL_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
+    private static final long TEMPLATES_TTL_NANOS = TimeUnit.SECONDS.toNanos(30);
 
     private final BuildJournal journal;
     private volatile @Nullable TemplatesCache templatesCache;
@@ -103,7 +101,7 @@ final class HttpProjectApi {
             // journal empty / unreadable — parent guess still works without it
         }
         Path parent = cc.jumpkick.scaffold.NewParentDirGuess.guess(
-                java.util.Optional.ofNullable(System.getProperty("user.home"))
+                Optional.ofNullable(System.getProperty("user.home"))
                         .map(Path::of)
                         .orElse(null),
                 historyDirs);
@@ -154,9 +152,9 @@ final class HttpProjectApi {
      * Prefer {@code project=} (durable identity); {@code dir=} remains for direct checkout ops.
      */
     void handleProject(HttpExchange exchange) throws IOException {
-        String q = exchange.getRequestURI().getQuery();
-        String projectId = HttpEngineServer.decode(HttpEngineServer.queryParam(q, "project"));
-        String dir = HttpEngineServer.decode(HttpEngineServer.queryParam(q, "dir"));
+        String q = exchange.getRequestURI().getRawQuery();
+        String projectId = HttpEngineServer.queryParam(q, "project");
+        String dir = HttpEngineServer.queryParam(q, "dir");
         if ((projectId == null || projectId.isBlank()) && (dir == null || dir.isBlank())) {
             HttpEngineServer.sendJson(
                     exchange,
@@ -218,11 +216,11 @@ final class HttpProjectApi {
      * for the Project page ECharts panel (JK-1542).
      */
     void handleProjectGraph(HttpExchange exchange) throws IOException {
-        String query = exchange.getRequestURI().getQuery();
+        String query = exchange.getRequestURI().getRawQuery();
         Path projectDir;
         List<cc.jumpkick.model.Scope> scopes;
         try {
-            String dir = HttpEngineServer.decode(HttpEngineServer.queryParam(query, "dir"));
+            String dir = HttpEngineServer.queryParam(query, "dir");
             if (dir == null || dir.isBlank()) {
                 HttpEngineServer.sendJson(
                         exchange,
@@ -231,8 +229,8 @@ final class HttpProjectApi {
                 return;
             }
             projectDir = Path.of(dir);
-            scopes = cc.jumpkick.resolver.DependencyGraphModel.parseScopes(
-                    HttpEngineServer.decode(HttpEngineServer.queryParam(query, "scopes")));
+            scopes =
+                    cc.jumpkick.resolver.DependencyGraphModel.parseScopes(HttpEngineServer.queryParam(query, "scopes"));
         } catch (IllegalArgumentException e) {
             HttpEngineServer.sendJson(
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
@@ -278,10 +276,150 @@ final class HttpProjectApi {
         HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.plugin.protocol.MiniJson.write(body));
     }
 
+    /**
+     * {@code GET /api/project/files?project=&lt;id&gt;} — allow-listed source paths under the
+     * identity checkout. No {@code dir=} fallback.
+     */
+    void handleProjectFiles(HttpExchange exchange) throws IOException {
+        String projectId;
+        try {
+            projectId = HttpEngineServer.queryParam(exchange.getRequestURI().getRawQuery(), "project");
+        } catch (IllegalArgumentException e) {
+            HttpEngineServer.sendJson(
+                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
+            return;
+        }
+        if (projectId == null || projectId.isBlank()) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    400,
+                    JsonOut.object().put("error", "missing \"project\"").toString());
+            return;
+        }
+        var root = WorkspaceFileAccess.resolveRoot(projectId);
+        if (root.isEmpty()) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    404,
+                    JsonOut.object()
+                            .put("error", "unknown project id or checkout path missing: " + projectId)
+                            .put("projectId", projectId)
+                            .toString());
+            return;
+        }
+        WorkspaceFileAccess.FileList list;
+        try {
+            list = WorkspaceFileAccess.list(root.get());
+        } catch (IOException e) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    500,
+                    JsonOut.object()
+                            .put("error", e.getMessage() == null ? "list failed" : e.getMessage())
+                            .toString());
+            return;
+        }
+        List<Map<String, Object>> files = new ArrayList<>(list.files().size());
+        for (var f : list.files()) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("path", f.path());
+            row.put("lang", f.lang());
+            files.add(row);
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("projectId", projectId);
+        body.put("dir", list.root().toString());
+        body.put("truncated", list.truncated());
+        body.put("files", files);
+        HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.plugin.protocol.MiniJson.write(body));
+    }
+
+    /**
+     * {@code GET /api/project/file?project=&lt;id&gt;&amp;path=&lt;rel&gt;} — UTF-8 source body
+     * for one allow-listed path. Identity-scoped; no {@code dir=}.
+     */
+    void handleProjectFile(HttpExchange exchange) throws IOException {
+        String projectId;
+        String path;
+        try {
+            String q = exchange.getRequestURI().getRawQuery();
+            projectId = HttpEngineServer.queryParam(q, "project");
+            path = HttpEngineServer.queryParam(q, "path");
+        } catch (IllegalArgumentException e) {
+            HttpEngineServer.sendJson(
+                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
+            return;
+        }
+        if (projectId == null || projectId.isBlank()) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    400,
+                    JsonOut.object().put("error", "missing \"project\"").toString());
+            return;
+        }
+        if (path == null || path.isBlank()) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    400,
+                    JsonOut.object().put("error", "missing \"path\"").toString());
+            return;
+        }
+        var root = WorkspaceFileAccess.resolveRoot(projectId);
+        if (root.isEmpty()) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    404,
+                    JsonOut.object()
+                            .put("error", "unknown project id or checkout path missing: " + projectId)
+                            .put("projectId", projectId)
+                            .toString());
+            return;
+        }
+        switch (WorkspaceFileAccess.read(root.get(), path)) {
+            case WorkspaceFileAccess.ReadResult.BadRequest bad ->
+                HttpEngineServer.sendJson(
+                        exchange,
+                        400,
+                        JsonOut.object().put("error", bad.error()).toString());
+            case WorkspaceFileAccess.ReadResult.NotFound ignored ->
+                HttpEngineServer.sendJson(
+                        exchange,
+                        404,
+                        JsonOut.object().put("error", "not found").toString());
+            case WorkspaceFileAccess.ReadResult.TooLarge too ->
+                HttpEngineServer.sendJson(
+                        exchange,
+                        413,
+                        JsonOut.object()
+                                .put("error", "file too large")
+                                .put("bytes", too.bytes())
+                                .put("maxBytes", too.maxBytes())
+                                .toString());
+            case WorkspaceFileAccess.ReadResult.Binary ignored ->
+                HttpEngineServer.sendJson(
+                        exchange,
+                        415,
+                        JsonOut.object().put("error", "binary file").toString());
+            case WorkspaceFileAccess.ReadResult.Ok ok -> {
+                var b = ok.body();
+                Map<String, Object> body = new LinkedHashMap<>();
+                body.put("projectId", projectId);
+                body.put("dir", b.root().toString());
+                body.put("path", b.path());
+                body.put("lang", b.lang());
+                body.put("bytes", b.bytes());
+                body.put("lines", b.lines());
+                body.put("encoding", b.encoding());
+                body.put("content", b.content());
+                HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.plugin.protocol.MiniJson.write(body));
+            }
+        }
+    }
+
     /** Query flag: true for {@code 1}/{@code true}/{@code yes}/{@code on} (case-insensitive). */
     private static boolean parseTruthy(String raw) {
         if (raw == null || raw.isBlank()) return false;
-        String t = raw.trim().toLowerCase(java.util.Locale.ROOT);
+        String t = raw.trim().toLowerCase(Locale.ROOT);
         return t.equals("1") || t.equals("true") || t.equals("yes") || t.equals("on");
     }
 }

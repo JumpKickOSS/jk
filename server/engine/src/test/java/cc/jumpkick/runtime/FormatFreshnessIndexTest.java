@@ -66,4 +66,21 @@ class FormatFreshnessIndexTest {
         FormatFreshnessIndex other = FormatFreshnessIndex.open(tmp.resolve("cache"), project, google);
         assertThat(other.partition(List.of(src), List.of()).dirtyJava()).containsExactly(src);
     }
+
+    @Test
+    void worker_classpath_sidecar_change_is_a_different_index(@TempDir Path tmp) throws Exception {
+        Path worker = tmp.resolve("jk-formatter.jar");
+        Path sidecar = Path.of(worker + ".classpath");
+        Files.writeString(worker, "thin");
+        Files.writeString(sidecar, "/lib/rewrite-java-8.56.1.jar\n");
+
+        String before = FormatFreshnessIndex.configKey(
+                "palantir", "2.80.0", "kotlinlang", "0.61", true, true, true, null, worker);
+
+        Files.writeString(sidecar, "/lib/rewrite-java-8.89.2.jar\n");
+        String after = FormatFreshnessIndex.configKey(
+                "palantir", "2.80.0", "kotlinlang", "0.61", true, true, true, null, worker);
+
+        assertThat(after).isNotEqualTo(before);
+    }
 }

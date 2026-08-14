@@ -5,13 +5,13 @@ import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
+import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -61,7 +61,7 @@ public final class GroovycDriver {
             Path hostJavaHome = cc.jumpkick.jdk.JavaHomes.runningJavaHome();
             String classpath = request.workerClasspath().stream()
                     .map(Path::toString)
-                    .collect(Collectors.joining(java.io.File.pathSeparator));
+                    .collect(Collectors.joining(File.pathSeparator));
             List<String> rest = new ArrayList<>(List.of(
                     // Silence the JDK's native-access / Unsafe warnings the compiler triggers.
                     "--enable-native-access=ALL-UNNAMED", "-cp", classpath, WORKER_MAIN, "@" + spec.toAbsolutePath()));
@@ -74,7 +74,7 @@ public final class GroovycDriver {
             // that DIES before speaking protocol (a broken classpath, a JVM crash) leaves its
             // whole story there — keep a bounded tail and surface it on failure, or the build
             // fails with an empty diagnostic and no way to see why.
-            java.util.ArrayDeque<String> chatter = new java.util.ArrayDeque<>();
+            ArrayDeque<String> chatter = new ArrayDeque<>();
             int exit = new PluginClient(PROTOCOL_PREFIX)
                     .on(
                             PluginProtocol.DIAGNOSTIC,
@@ -101,7 +101,7 @@ public final class GroovycDriver {
         SpecWriter sw = new SpecWriter()
                 .op(PluginProtocol.OP_COMPILE, null, "jk-groovy-compiler")
                 .configString("jvmTarget", String.valueOf(request.jvmTarget()));
-        java.util.Map<String, Path> layout = new java.util.LinkedHashMap<>();
+        Map<String, Path> layout = new LinkedHashMap<>();
         layout.put("classesDir", request.outputDir());
         if (request.workDir() != null) layout.put("workdir", request.workDir());
         sw.layout(layout);

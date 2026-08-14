@@ -3,14 +3,14 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Theme;
+import java.util.Locale;
+import java.util.regex.Pattern;
 import org.jline.utils.AttributedStyle;
 import org.jspecify.annotations.NullMarked;
 
 /** Token coloring and format helpers for JkManager tree/header rows. */
 @NullMarked
 public final class JkManagerColor {
-
-    private static final String ELLIPSIS = "…";
 
     private JkManagerColor() {}
 
@@ -65,6 +65,11 @@ public final class JkManagerColor {
             body = detail.substring(0, w);
             worker = detail.substring(w);
         }
+        // ensure-jdk: "downloading Temurin 25 ▰▰▰▰▰▱▱▱▱▱ 50%" — cyan name, blue/gray bar.
+        String jdkPainted = colorJdkProgressDetail(body, t);
+        if (jdkPainted != null) {
+            return worker.isEmpty() ? jdkPainted : jdkPainted + Theme.colorize(worker, t.midGray());
+        }
         // native-image: "{bin} · classpath input size: ~N MiB" — path color + bold white size.
         String nativePainted = colorNativeClasspathSizeDetail(body, t);
         if (nativePainted != null) {
@@ -80,6 +85,30 @@ public final class JkManagerColor {
                 : colorProseDetail(body, t);
         if (worker.isEmpty()) return painted;
         return painted + Theme.colorize(worker, t.midGray());
+    }
+
+    /**
+     * Paint {@code downloading Temurin 25 ▰▰▰▰▰▱▱▱▱▱ 50%} / {@code installing … 100%}: verb and
+     * percent mid-gray, product name cyan, filled bar cells blue, empty cells dark gray.
+     */
+    static String colorJdkProgressDetail(String detail, Theme t) {
+        cc.jumpkick.jdk.JdkProgressLabel.Parsed p = cc.jumpkick.jdk.JdkProgressLabel.tryParse(detail);
+        if (p == null) return null;
+        StringBuilder out = new StringBuilder(detail.length() + 64);
+        out.append(Theme.colorize(p.verb(), t.midGray()));
+        out.append(Theme.colorize(" ", t.midGray()));
+        out.append(Theme.colorize(p.name(), t.cyan()));
+        if (p.hasBar()) {
+            out.append(Theme.colorize(" ", t.midGray()));
+            for (int i = 0; i < p.bar().length(); i++) {
+                char c = p.bar().charAt(i);
+                out.append(Theme.colorize(
+                        String.valueOf(c), c == cc.jumpkick.jdk.JdkProgressLabel.FILLED ? t.blue() : t.darkGray()));
+            }
+            out.append(Theme.colorize(" ", t.midGray()));
+            out.append(Theme.colorize(p.percent() + "%", t.midGray()));
+        }
+        return out.toString();
     }
 
     /**
@@ -223,7 +252,7 @@ public final class JkManagerColor {
             if (isFetchOrResolveVerb(prevWord) && looksLikeLibraryShortName(tok)) {
                 out.append(cc.jumpkick.cli.theme.Coords.shortName(tok));
                 if (!trail.isEmpty()) out.append(Theme.colorize(trail, gray));
-                prevWord = tok.toLowerCase(java.util.Locale.ROOT);
+                prevWord = tok.toLowerCase(Locale.ROOT);
                 i = j;
                 continue;
             }
@@ -231,7 +260,7 @@ public final class JkManagerColor {
             // 5. Plain gray word (and remember it for verb context).
             out.append(Theme.colorize(tok, gray));
             if (!trail.isEmpty()) out.append(Theme.colorize(trail, gray));
-            prevWord = tok.toLowerCase(java.util.Locale.ROOT);
+            prevWord = tok.toLowerCase(Locale.ROOT);
             i = j;
         }
         return out.toString();
@@ -337,7 +366,7 @@ public final class JkManagerColor {
             if (!(Character.isLetterOrDigit(c) || c == '-' || c == '_' || c == '.')) return false;
         }
         // Reject common English words that follow "resolve" in prose.
-        return switch (tok.toLowerCase(java.util.Locale.ROOT)) {
+        return switch (tok.toLowerCase(Locale.ROOT)) {
             case "deps",
                     "dependencies",
                     "classpath",
@@ -416,7 +445,7 @@ public final class JkManagerColor {
         if (tok.startsWith("~")) return true;
         int dot = tok.lastIndexOf('.');
         if (dot <= 0 || dot == tok.length() - 1) return false;
-        String ext = tok.substring(dot + 1).toLowerCase(java.util.Locale.ROOT);
+        String ext = tok.substring(dot + 1).toLowerCase(Locale.ROOT);
         return switch (ext) {
             case "jar",
                     "aar",
@@ -450,8 +479,7 @@ public final class JkManagerColor {
      * Compiled once: this runs per visible row on every 80 ms animator frame — with a 128 MB
      * heap, per-frame {@code String.matches} (a fresh {@code Pattern.compile}) is real garbage.
      */
-    static final java.util.regex.Pattern JAVA_MEMBER =
-            java.util.regex.Pattern.compile("[A-Z][\\w$]*(?:\\.[A-Za-z_][\\w$]*(?:\\([^)]*\\))?)?");
+    static final Pattern JAVA_MEMBER = Pattern.compile("[A-Z][\\w$]*(?:\\.[A-Za-z_][\\w$]*(?:\\([^)]*\\))?)?");
 
     /** {@code FooTest}, {@code FooTest.bar()}, or {@code FooTest.bar(Path)} — not free text. */
     static boolean looksLikeJavaMember(String s) {
@@ -508,19 +536,29 @@ public final class JkManagerColor {
     }
 
     /**
-     * Truncate an ANSI-colored string to {@code maxCols} visible columns, copying escape sequences
-     * without counting them and appending a reset if the text was cut. Treats every visible codepoint
+     * Columns safe to paint on a single row of a {@code terminalCols}-wide terminal. Leaves the last
+     * column free so a full-width write does not trip DEC auto-wrap (which can park the trailing
+     * {@code …} on the next row where EL / the next tree line erase it).
+     */
+    static int rowColumnBudget(int terminalCols) {
+        if (terminalCols <= 1) return Math.max(1, terminalCols);
+        return terminalCols - 1;
+    }
+
+    /**
+     * Hard-truncate an ANSI-colored string to {@code maxCols} visible columns (never wraps). When
+     * cut, ends with {@code …} so long test member names stay on one line. Copies escape sequences
+     * without counting them and appends a reset if the text was cut. Treats every visible code unit
      * as one column (good enough for our ASCII + single-width glyphs).
+     *
+     * <p>Callers painting to a live TTY should pass {@link #rowColumnBudget(int)} of the terminal
+     * width, not the raw column count — see that method.
      *
      * <p>JLine can do this width-aware ({@code AttributedString.fromAnsi} / {@code WCWidth}), but
      * measured at +187–312 KB on the native image — its ANSI parser / width tables aren't otherwise
      * reachable — to gain East-Asian wide-glyph handling that jk's ASCII coordinates and single-width
      * box/spinner glyphs never need. Not worth the binary growth, so this stays hand-rolled by
      * design.
-     */
-    /**
-     * Hard-truncate to {@code maxCols} visible columns (never wraps). When cut, ends with {@code …}
-     * so long test member names stay on one line.
      */
     static String truncateVisible(String s, int maxCols) {
         if (maxCols <= 0) return "";
@@ -532,19 +570,22 @@ public final class JkManagerColor {
         boolean truncated = false;
         for (int i = 0; i < s.length(); ) {
             char c = s.charAt(i);
-            if (c == '\033') { // copy the whole CSI sequence verbatim
-                int j = i + 1;
-                if (j < s.length() && s.charAt(j) == '[') {
-                    j++;
-                    while (j < s.length() && !Character.isLetter(s.charAt(j))) j++;
-                    if (j < s.length()) j++; // include the final letter
-                }
-                sb.append(s, i, j);
+            if (c == '\033') { // copy the whole escape (CSI or OSC) verbatim — zero columns (JK-1967)
+                int j = RenderContext.skipEscape(s, i);
+                boolean unterminatedOsc = i + 1 < s.length()
+                        && s.charAt(i + 1) == ']'
+                        && !(j - 1 > i
+                                && (s.charAt(j - 1) == '\u0007'
+                                        || (j - 2 > i && s.charAt(j - 2) == '\u001b' && s.charAt(j - 1) == '\\')));
+                // A live unterminated OSC must never reach the terminal — it would swallow the
+                // following output up to the next BEL.
+                if (!unterminatedOsc) sb.append(s, i, j);
                 i = j;
             } else {
-                // Reserve one column for … when more content remains.
+                // Reserve one column for … when more content remains after this code unit.
+                // need=1 ⇒ stop once visible == budget-1 so the ellipsis still fits in budget.
                 boolean moreAfter = i + 1 < s.length() && !isOnlyAnsiFrom(s, i + 1);
-                int need = moreAfter ? 1 : 0; // room for ellipsis
+                int need = moreAfter ? 1 : 0;
                 if (visible + 1 + need > budget) {
                     truncated = true;
                     break;
@@ -555,24 +596,17 @@ public final class JkManagerColor {
             }
         }
         if (truncated) {
-            sb.append(ELLIPSIS);
+            sb.append(JkManager.ELLIPSIS);
             sb.append(Ansi.RESET);
         }
         return sb.toString();
     }
 
-    /** True when {@code s[from..]} is only ANSI escapes (no more visible text). */
+    /** True when {@code s[from..]} is only ANSI escapes (CSI or OSC — no more visible text). */
     static boolean isOnlyAnsiFrom(String s, int from) {
         for (int i = from; i < s.length(); ) {
-            char c = s.charAt(i);
-            if (c != '\033') return false;
-            int j = i + 1;
-            if (j < s.length() && s.charAt(j) == '[') {
-                j++;
-                while (j < s.length() && !Character.isLetter(s.charAt(j))) j++;
-                if (j < s.length()) j++;
-            }
-            i = j;
+            if (s.charAt(i) != '\033') return false;
+            i = RenderContext.skipEscape(s, i);
         }
         return true;
     }

@@ -4,6 +4,7 @@ package cc.jumpkick.test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.run.TestSummary;
+import java.util.ArrayList;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -52,6 +53,23 @@ class JUnitLauncherAggregatorTest {
         // Cuts on a line boundary, keeping whole frames.
         assertThat(truncated).contains("... stack truncated (");
         assertThat(JUnitLauncher.ResultAggregator.truncateStack("short")).isEqualTo("short");
+    }
+
+    @Test
+    void pathological_messages_are_truncated_at_capture() {
+        // Same rationale as the stack cap (JK-1948): an assertEquals diff of two multi-MB
+        // strings is a single-line message that rides wire, SSE, journal, and web card.
+        String message = "expected: <" + "x".repeat(3_000_000) + "> but was: <y>";
+        String truncated = JUnitLauncher.ResultAggregator.truncateMessage(message);
+        assertThat(truncated.length()).isLessThanOrEqualTo(JUnitLauncher.ResultAggregator.MAX_MESSAGE_CHARS + 64);
+        assertThat(truncated).contains("... message truncated (");
+        assertThat(JUnitLauncher.ResultAggregator.truncateMessage("short")).isEqualTo("short");
+        // A cut landing on a surrogate pair backs off one char instead of emitting a lone surrogate.
+        String astral = "a".repeat(JUnitLauncher.ResultAggregator.MAX_MESSAGE_CHARS - 1) + "😀tail";
+        String cutAstral = JUnitLauncher.ResultAggregator.truncateMessage(astral);
+        assertThat(cutAstral).doesNotContain("😀");
+        assertThat(Character.isHighSurrogate(cutAstral.charAt(cutAstral.indexOf(" ... message truncated") - 1)))
+                .isFalse();
     }
 
     @Test
@@ -138,7 +156,7 @@ class JUnitLauncherAggregatorTest {
         // (TEST type) and stamp wasStatic=false on the matching finished
         // event. Plain @Test methods are not preceded by dynamic_registered
         // and should arrive as wasStatic=true.
-        var captured = new java.util.ArrayList<boolean[]>(); // [isTest, wasStatic]
+        var captured = new ArrayList<boolean[]>(); // [isTest, wasStatic]
         var listener = new TestProgressListener() {
             @Override
             public void onTestFinished(

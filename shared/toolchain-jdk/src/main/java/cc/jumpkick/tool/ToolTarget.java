@@ -2,6 +2,7 @@
 package cc.jumpkick.tool;
 
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Objects;
@@ -134,7 +135,7 @@ public sealed interface ToolTarget {
     private static Path safePath(String s) {
         try {
             return Path.of(s);
-        } catch (java.nio.file.InvalidPathException e) {
+        } catch (InvalidPathException e) {
             return null;
         }
     }

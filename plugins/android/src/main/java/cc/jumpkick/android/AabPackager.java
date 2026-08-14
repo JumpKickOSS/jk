@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.zip.CRC32;
@@ -116,7 +117,7 @@ final class AabPackager {
             storePass = "android";
             keyPass = "android";
         }
-        Files.copy(unsigned, out, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        Files.copy(unsigned, out, StandardCopyOption.REPLACE_EXISTING);
         TaskExec.ToolRun.Result signed = io.tool("jarsigner")
                 .arg("-keystore")
                 .arg(keystore.toAbsolutePath().toString())

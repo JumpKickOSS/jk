@@ -11,6 +11,8 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Set;
 import java.util.jar.JarFile;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -78,7 +80,7 @@ class MinifiedPluginTest {
         assertThat(build.pluginConfig("minified")).isPresent();
 
         BuildPlan lock = LockPlans.lockBuildPlan(
-                project, build, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
+                project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         BuildPlanResult lockResult = lock.run();
         assertThat(lockResult.errors()).isEmpty();
 
@@ -96,7 +98,7 @@ class MinifiedPluginTest {
                 false,
                 false,
                 false,
-                java.util.Set.of(),
+                Set.of(),
                 SessionContext.current());
         // The tails carry the additive artifacts (-all.jar, -min.jar); coreBuilder stops at the
         // thin jar, so a plan without them is not what `jk build` runs.

@@ -9,11 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.LinkedHashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Best-effort append-only CAS access journal ({@code ~/.cache/jk/.access.log}): {@code
@@ -46,7 +42,7 @@ public final class AccessLedger {
      * skips corrupt lines, so the worst case is a lost LRU signal, never breakage.
      */
     public void touch(String hex) {
-        touchAll(java.util.List.of(hex));
+        touchAll(List.of(hex));
     }
 
     /** Record a batch of accesses in a single append (one line per hex; see torn-write note above). */

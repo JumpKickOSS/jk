@@ -7,11 +7,7 @@ import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.plugin.protocol.Jsonl;
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
+import java.io.*;
 import java.net.StandardProtocolFamily;
 import java.net.UnixDomainSocketAddress;
 import java.nio.channels.Channels;
@@ -24,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
@@ -60,7 +57,7 @@ class EngineTakeoverTest {
                     } catch (IOException ignored) {
                     }
                 });
-            } catch (IOException | java.io.UncheckedIOException ignored) {
+            } catch (IOException | UncheckedIOException ignored) {
             }
         }
     }
@@ -127,7 +124,7 @@ class EngineTakeoverTest {
         });
         rebuiltT.start();
         try {
-            assertThat(staleDone.await(15, java.util.concurrent.TimeUnit.SECONDS))
+            assertThat(staleDone.await(15, TimeUnit.SECONDS))
                     .as("stale same-version engine is drained by the rebuilt one")
                     .isTrue();
             assertThat(helloVersion(EnginePaths.activeSocket(p))).isEqualTo("1.0.0-SNAPSHOT");
@@ -172,7 +169,7 @@ class EngineTakeoverTest {
 
         waitUntil(Duration.ofSeconds(10), () -> "2.0.0-test".equals(helloVersion(EnginePaths.activeSocket(p))));
         assertThat(EnginePaths.activeSocket(p)).isNotEqualTo(firstSocket);
-        assertThat(oldDone.await(10, java.util.concurrent.TimeUnit.SECONDS))
+        assertThat(oldDone.await(10, TimeUnit.SECONDS))
                 .as("displaced engine drains and exits at idle")
                 .isTrue();
         assertThat(oldExited).isTrue();
@@ -206,7 +203,7 @@ class EngineTakeoverTest {
         Files.writeString(EnginePaths.endpoint(p), p.key() + ".gen999.sock");
 
         // The watchdog (5s tick) notices and, idle, exits.
-        assertThat(done.await(20, java.util.concurrent.TimeUnit.SECONDS))
+        assertThat(done.await(20, TimeUnit.SECONDS))
                 .as("watchdog self-drains a displaced engine")
                 .isTrue();
     }

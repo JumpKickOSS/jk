@@ -822,6 +822,9 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 .det-focus { color: var(--bright); font-weight: 700; }
 .det-path { color: var(--path); }
 .det-coord { color: var(--cn); }
+.det-jdk { color: var(--cn); }           /* ensure-jdk product name — CLI Theme.cyan */
+.det-bar-fill { color: var(--run); }     /* ▰ — CLI Theme.blue */
+.det-bar-empty { color: var(--dim); }    /* ▱ — CLI Theme.darkGray */
 .det-dim { color: var(--dim); }
 .phase-steps {
   display: flex;
@@ -992,7 +995,7 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 
 /* ---- project detail ---- */
 
-.detail-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 4px; }
+.detail-head { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; margin-bottom: 4px; }
 .back {
   display: inline-flex;
   align-items: center;
@@ -1005,11 +1008,14 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
   padding: 2px 0;
 }
 .back:hover { color: var(--cn); }
+/* Labelless variant (files pane): no gap to collapse, and a bigger glyph so it stays a target. */
+.back.chevron-only { gap: 0; padding: 2px 4px; }
+.back.chevron-only .ico { width: 18px; height: 18px; }
 .coord.detail { font-weight: 600; }
 .coord.detail .cn { font-size: 22px; }
 .coord.detail .cg { font-size: 15px; }
 .detail-actions { display: flex; gap: 8px; align-self: center; }
-.detail-actions button {
+.detail-actions button:not(.browse) {
   background: var(--okc);
   border: none;
   border-radius: var(--r-md);
@@ -1242,6 +1248,15 @@ table.stats td.err { color: var(--err); }
   text-underline-offset: 2px;
   padding-left: 4ch;
 }
+/* Real <a> deep link into #project/<id>/files/…?line= — keep path chrome, not browser blue. */
+a.fail-path {
+  display: block;
+  color: var(--path);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.fail-path.link { cursor: pointer; }
+a.fail-path:hover { color: var(--bright, var(--path)); }
 .fail-thrown { padding-left: 4ch; }
 .fail-stack { color: var(--dim); padding-left: 2ch; }
 .fail-src {
@@ -1451,7 +1466,7 @@ a:focus-visible {
  * button. inline-flex + gap so the leading icon sits with the label. (.browse is excluded — cyan.) */
 .trigger button:not(.ghost):not(.browse),
 .use-folder,
-.detail-actions button:not(.ghost),
+.detail-actions button:not(.ghost):not(.browse),
 button.new-project,
 .new-project-form button.primary {
   position: relative;
@@ -1471,7 +1486,7 @@ button.new-project,
 }
 .trigger button:not(.ghost):not(.browse):hover:not(:disabled),
 .use-folder:hover:not(:disabled),
-.detail-actions button:not(.ghost):hover:not(:disabled),
+.detail-actions button:not(.ghost):not(.browse):hover:not(:disabled),
 button.new-project:hover:not(:disabled),
 .new-project-form button.primary:hover:not(:disabled) {
   background: rgba(var(--ok-rgb), 0.22);
@@ -1480,7 +1495,7 @@ button.new-project:hover:not(:disabled),
 }
 .trigger button:not(.ghost):not(.browse)::before,
 .use-folder::before,
-.detail-actions button:not(.ghost)::before,
+.detail-actions button:not(.ghost):not(.browse)::before,
 button.new-project::before,
 .new-project-form button.primary::before {
   content: '';
@@ -1494,7 +1509,7 @@ button.new-project::before,
 }
 .trigger button:not(.ghost):not(.browse):hover:not(:disabled)::before,
 .use-folder:hover:not(:disabled)::before,
-.detail-actions button:not(.ghost):hover:not(:disabled)::before,
+.detail-actions button:not(.ghost):not(.browse):hover:not(:disabled)::before,
 button.new-project:hover:not(:disabled)::before,
 .new-project-form button.primary:hover:not(:disabled)::before {
   left: 100%;
@@ -1506,8 +1521,9 @@ button.new-project:hover:not(:disabled)::before,
 }
 
 /* Browse — a neon-cyan icon button (accent colour at rest, brighter on hover). Used on Activity
- * (workspace picker) and New project (parent-dir picker). Square-ish icon control. */
-button.browse {
+ * (workspace picker), the project page (codebase), and New project (parent-dir picker). */
+button.browse,
+.detail-actions button.browse {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1523,7 +1539,8 @@ button.browse {
   transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
     box-shadow var(--dur-fast) var(--ease);
 }
-button.browse:hover {
+button.browse:hover,
+.detail-actions button.browse:hover {
   background: rgba(var(--cn-rgb), 0.2);
   border-color: rgba(var(--cn-rgb), 0.65);
   box-shadow: 0 0 14px rgba(var(--cn-rgb), 0.2);
@@ -1855,3 +1872,135 @@ label.check:hover .check-box {
 }
 .about-dl dt { color: var(--mu); }
 .about-dl dd { margin: 0; text-align: right; color: var(--bright); overflow-wrap: anywhere; }
+
+/* ---- #project/<id>/files viewer (layout only; syntax colours come from Monaco's vs-dark) ---- */
+main.code-view { max-width: min(96rem, 100%); display: flex; flex-direction: column; min-height: 0; }
+.code-path-pill {
+  font: 500 12px var(--mono);
+  color: var(--path);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 40vw;
+}
+/* Monaco needs a definite height to lay itself out (and it scrolls internally instead of growing
+ * the page), so the split is viewport-bounded: header + detail-head + page padding ≈ 13.5rem. */
+.code-split {
+  display: grid;
+  grid-template-columns: minmax(13rem, 21rem) minmax(0, 1fr);
+  gap: 0;
+  height: calc(100vh - 13.5rem);
+  min-height: 28rem;
+  border: 1px solid var(--bd);
+  border-radius: var(--r);
+  overflow: hidden;
+  background: var(--s1);
+}
+.code-tree {
+  border-right: 1px solid var(--bd);
+  overflow: auto;
+  padding: 8px 0 12px;
+  background: var(--s1);
+}
+/* Filter box: the funnel sits inside the field, so the input carries the left padding. */
+.code-filter-box { position: relative; margin: 0 8px 8px; }
+.code-filter-ico {
+  position: absolute;
+  left: 7px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 12px;
+  height: 12px;
+  color: var(--dim);
+  pointer-events: none;
+}
+.code-filter-box:focus-within .code-filter-ico { color: var(--cn); }
+.code-filter {
+  display: block;
+  width: 100%;
+  background: var(--s2);
+  border: 1px solid var(--bd);
+  border-radius: var(--r-sm);
+  color: var(--tx);
+  font: 400 12px var(--mono);
+  padding: 5px 8px 5px 25px;
+}
+/* Tree rows (folders + files). One flat list of buttons; depth is inline padding-left from
+ * visibleRows(), so nesting costs no extra DOM. Folder rows toggle, file rows navigate. */
+.code-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  color: var(--tx);
+  font: 400 12px/1.5 var(--mono);
+  padding: 3px 10px 3px 8px;
+  cursor: pointer;
+}
+.code-row:hover { background: var(--s2); }
+.code-row.on { background: var(--s3); color: var(--cn); }
+.code-row.dir { color: var(--bright); }
+/* The disclosure column: an .ico for folders, an equally wide spacer for files, so names line up. */
+.code-twist { flex: 0 0 12px; width: 12px; height: 12px; color: var(--mu); }
+.code-row.dir:hover .code-twist { color: var(--cn); }
+.code-glyph { flex: 0 0 13px; width: 13px; height: 13px; color: var(--mu); }
+.code-row.dir .code-glyph { color: var(--cg); }
+.code-row.on .code-glyph { color: var(--cn); }
+.code-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Same token the editor's theme override reads (consoleBackground in code.js) — the pane already
+ * shows the final canvas while Monaco is still loading. */
+.code-pane { overflow: auto; min-width: 0; background: var(--console-bg); }
+/* Sibling of .code-editor, and the only place the pane's conditional messages render: that keeps
+ * the editor host a static node Vue never swaps out from under a live editor. */
+.code-msgs:empty { display: none; }
+/* Full height only when it has something to say, so .code-empty can centre inside the pane.
+ * The plain-text fallback must not shrink to fit — the pane scrolls it. */
+.code-msgs:not(:empty) { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+.code-msgs > .code-pre { flex: 0 0 auto; }
+/* No file open: centred glyph + prompt, instead of one dim line stranded in the top-left. */
+.code-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 24px;
+  text-align: center;
+}
+.code-empty .ico { width: 34px; height: 34px; color: var(--dim); stroke-width: 1.5; }
+.code-empty p { margin: 0; }
+.code-empty-head { font: 600 13px var(--mono); color: var(--mu); }
+.code-empty-sub { font: 400 11.5px var(--mono); color: var(--dim); }
+/* 4px of breathing room so the editor's gutter and minimap are not flush with the pane border.
+ * box-sizing is border-box globally, and Monaco sizes itself off the content box, so it lays out
+ * inside the inset instead of overflowing it. */
+.code-editor { height: 100%; min-width: 0; padding: 8px; }
+/* ?line= target, drawn by Monaco decorations (lineDecorations in code.js). */
+.code-line-hl { background: rgba(255, 255, 255, 0.08); }
+.code-line-hl-gutter { border-left: 2px solid var(--cn); }
+/* Plain-text fallback: file over the highlight budget, or Monaco failed to load. */
+.code-pane .code-pre {
+  margin: 0;
+  padding: 1em;
+  min-height: 100%;
+  font: 400 12.5px/1.5 var(--mono);
+}
+.code-plain { padding-left: 0 !important; }
+.code-plain-row { display: flex; white-space: pre; }
+.code-line-on { background: rgba(255, 255, 255, 0.08); }
+.code-pick { display: flex; flex-direction: column; gap: 4px; max-width: 36rem; }
+.code-pick-row {
+  text-align: left;
+  background: var(--s1);
+  border: 1px solid var(--bd);
+  border-radius: var(--r-sm);
+  color: var(--tx);
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.code-pick-row:hover { border-color: var(--cn); }

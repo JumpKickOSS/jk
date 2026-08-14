@@ -8,13 +8,25 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import cc.jumpkick.config.JkHttpConfig;
 import java.io.IOException;
+import java.net.BindException;
 import java.net.Socket;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -62,10 +74,10 @@ class HttpEngineServerTest {
     private Path tokenFile;
     private Path logFile;
     private HttpEvents events;
-    private final java.util.List<String> triggeredDirs = new java.util.ArrayList<>();
+    private final List<String> triggeredDirs = new ArrayList<>();
 
     /** Rows served by {@code GET /api/metrics} — tests seed this list directly. */
-    private final java.util.List<cc.jumpkick.runtime.BuildMetrics.Entry> metricsRows = new java.util.ArrayList<>();
+    private final List<cc.jumpkick.runtime.BuildMetrics.Entry> metricsRows = new ArrayList<>();
 
     /** The snapshot served by {@code GET /api/cache} — tests reassign the field directly. */
     private static final CacheSnapshot EMPTY_CACHE = new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -202,7 +214,7 @@ class HttpEngineServerTest {
         Files.writeString(secret, "TOP SECRET");
         try {
             Files.createSymbolicLink(webRoot.resolve("leak.txt"), secret);
-        } catch (UnsupportedOperationException | java.io.IOException unsupported) {
+        } catch (UnsupportedOperationException | IOException unsupported) {
             return; // filesystem without symlink support — nothing to prove here
         }
         HttpResponse<String> resp = get("/leak.txt");
@@ -256,6 +268,7 @@ class HttpEngineServerTest {
         // The real SPA (clients/web/src/main/resources/web) rides the same classpath fallback the
         // test resources exercise — a bare [http] table gives a working dashboard with no file copying.
         assertThat(get("/app.js").body()).contains("Vue.createApp");
+        assertThat(get("/code.js").body()).contains("export function routeFromHash");
         assertThat(get("/fold.js").body()).contains("export function foldEvent");
         assertThat(get("/api.js").body()).contains("bootstrapToken");
         assertThat(get("/jk-logo.svg").headers().firstValue("Content-Type")).contains("image/svg+xml");
@@ -275,9 +288,9 @@ class HttpEngineServerTest {
         assertThat(shell).contains("crossorigin=\"anonymous\"");
         HttpResponse<String> js = get("/app.js");
         assertThat(js.headers().firstValue("Content-Security-Policy"))
-                .contains("default-src 'self'; script-src 'self' 'unsafe-eval' https://unpkg.com; "
-                        + "style-src 'self' https://fonts.googleapis.com; "
-                        + "font-src https://fonts.gstatic.com");
+                .contains("default-src 'self'; script-src 'self' 'unsafe-eval' blob: https://unpkg.com; "
+                        + "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; "
+                        + "font-src https://fonts.gstatic.com data:; worker-src blob:");
     }
 
     @Test
@@ -306,7 +319,7 @@ class HttpEngineServerTest {
                 new HttpEvents(),
                 stubJobs,
                 testJournal(),
-                java.util.List::of,
+                List::of,
                 () -> EMPTY_CACHE,
                 null);
         try {
@@ -325,7 +338,10 @@ class HttpEngineServerTest {
 
     @Test
     void matching_etag_yields_304() throws Exception {
-        HttpResponse<String> resp = get("/classpath-only.txt", "If-None-Match", "\"jk-9.9.9-test\"");
+        HttpResponse<String> first = get("/classpath-only.txt");
+        String etag = first.headers().firstValue("ETag").orElseThrow();
+        assertThat(etag).startsWith("\"jk-9.9.9-test-");
+        HttpResponse<String> resp = get("/classpath-only.txt", "If-None-Match", etag);
         assertThat(resp.statusCode()).isEqualTo(304);
         assertThat(resp.body()).isEmpty();
     }
@@ -468,7 +484,7 @@ class HttpEngineServerTest {
                 new HttpEvents(),
                 stubJobs,
                 testJournal(),
-                java.util.List::of,
+                List::of,
                 () -> EMPTY_CACHE,
                 null);
         try {
@@ -507,7 +523,7 @@ class HttpEngineServerTest {
                     HttpResponse.BodyHandlers.ofString());
             assertThat(status.statusCode()).isEqualTo(200);
             assertThat(status.body()).contains("\"mcpEnabled\":false").contains("\"mcpUrl\":null");
-            HttpResponse<java.util.stream.Stream<String>> events = client.send(
+            HttpResponse<Stream<String>> events = client.send(
                     HttpRequest.newBuilder(URI.create(url + "api/events?access_token=" + tok))
                             .build(),
                     HttpResponse.BodyHandlers.ofLines());
@@ -571,7 +587,7 @@ class HttpEngineServerTest {
     @Test
     void api_all_routes_require_token_including_history_status_and_cache() throws Exception {
         // Fail closed: bare browser / curl without a bearer must not see engine data.
-        for (String path : java.util.List.of("api/status", "api/cache", "api/history", "api/events")) {
+        for (String path : List.of("api/status", "api/cache", "api/history", "api/events")) {
             HttpResponse<String> noToken = client.send(
                     HttpRequest.newBuilder(URI.create(baseUrl + path)).build(), HttpResponse.BodyHandlers.ofString());
             assertThat(noToken.statusCode()).as(path).isEqualTo(401);
@@ -676,7 +692,7 @@ class HttpEngineServerTest {
 
         String body = get(
                         "/api/project/graph?dir=" + solo + "&scopes="
-                                + java.net.URLEncoder.encode("main,test", java.nio.charset.StandardCharsets.UTF_8),
+                                + URLEncoder.encode("main,test", StandardCharsets.UTF_8),
                         "Authorization",
                         "Bearer " + token())
                 .body();
@@ -756,6 +772,132 @@ class HttpEngineServerTest {
         }
 
         assertThat(response).startsWith("HTTP/1.1 400");
+    }
+
+    @Test
+    void api_project_files_and_file_are_identity_scoped() throws Exception {
+        Path buildsDir = stateDir.resolve("file-builds");
+        System.setProperty("jk.env.JK_BUILDS_DIR", buildsDir.toString());
+        try {
+            Path checkout = stateDir.resolve("src-app");
+            Files.createDirectories(checkout.resolve("src"));
+            Files.writeString(checkout.resolve("jk.toml"), """
+                    [project]
+                    group = "g"
+                    name = "n"
+                    version = "1"
+                    """);
+            Files.writeString(checkout.resolve("src/Main.java"), "class Main {}\n");
+            Files.createDirectories(checkout.resolve("target"));
+            Files.writeString(checkout.resolve("target/Gen.java"), "class Gen {}");
+            Files.writeString(checkout.resolve(".env"), "SECRET=1");
+            var identity = cc.jumpkick.builds.ProjectIdentity.resolve(checkout);
+            cc.jumpkick.builds.ProjectIdentity.IdentityFile.write(
+                    cc.jumpkick.builds.ProjectBuilds.projectHome(identity.id()), identity);
+            String id = identity.id();
+
+            HttpResponse<String> noToken = client.send(
+                    HttpRequest.newBuilder(
+                                    URI.create(baseUrl + "api/project/file?project=" + id + "&path=src/Main.java"))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(noToken.statusCode()).isEqualTo(401);
+
+            HttpResponse<String> missing = get("/api/project/files");
+            assertThat(missing.statusCode()).isEqualTo(400);
+            assertThat(missing.body()).contains("missing");
+
+            HttpResponse<String> dirOnly = get("/api/project/file?dir=" + checkout + "&path=src/Main.java");
+            assertThat(dirOnly.statusCode()).isEqualTo(400);
+            assertThat(dirOnly.body()).contains("missing");
+
+            HttpResponse<String> unknown = get("/api/project/files?project=zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz");
+            assertThat(unknown.statusCode()).isEqualTo(404);
+
+            HttpResponse<String> listed = get("/api/project/files?project=" + id);
+            assertThat(listed.statusCode()).isEqualTo(200);
+            assertThat(listed.body())
+                    .contains("\"path\":\"src/Main.java\"")
+                    .contains("\"lang\":\"java\"")
+                    .contains("\"path\":\"jk.toml\"")
+                    .doesNotContain("target/Gen.java")
+                    .doesNotContain(".env");
+
+            HttpResponse<String> file = get("/api/project/file?project=" + id + "&path=src%2FMain.java");
+            assertThat(file.statusCode()).isEqualTo(200);
+            assertThat(file.body()).contains("class Main").contains("\"lang\":\"java\"");
+
+            assertThat(get("/api/project/file?project=" + id + "&path=target%2FGen.java")
+                            .statusCode())
+                    .isEqualTo(404);
+            assertThat(get("/api/project/file?project=" + id + "&path=.env").statusCode())
+                    .isEqualTo(404);
+            assertThat(get("/api/project/file?project=" + id + "&path=../jk.toml")
+                            .statusCode())
+                    .isEqualTo(400);
+
+            Files.write(checkout.resolve("src/Big.java"), new byte[WorkspaceFileAccess.MAX_FILE_BYTES + 1]);
+            HttpResponse<String> huge = get("/api/project/file?project=" + id + "&path=src%2FBig.java");
+            assertThat(huge.statusCode()).isEqualTo(413);
+            assertThat(huge.body()).contains("file too large");
+
+            Files.write(checkout.resolve("src/Bin.java"), new byte[] {'x', 0, 'y'});
+            HttpResponse<String> bin = get("/api/project/file?project=" + id + "&path=src%2FBin.java");
+            assertThat(bin.statusCode()).isEqualTo(415);
+            assertThat(bin.body()).contains("binary");
+        } finally {
+            System.clearProperty("jk.env.JK_BUILDS_DIR");
+        }
+    }
+
+    @Test
+    void api_project_file_decodes_query_values_exactly_once() throws Exception {
+        // JK-1943: getQuery() already percent-decodes, and a second URLDecoder pass mapped '+'
+        // to space and truncated at a decoded '&' — so any file the tree listed with those
+        // characters could never be opened, and %252e%252e relied on validation order alone.
+        Path buildsDir = stateDir.resolve("decode-builds");
+        System.setProperty("jk.env.JK_BUILDS_DIR", buildsDir.toString());
+        try {
+            Path checkout = stateDir.resolve("src-decode");
+            Files.createDirectories(checkout.resolve("src"));
+            Files.writeString(checkout.resolve("jk.toml"), """
+                    [project]
+                    group = "g"
+                    name = "n"
+                    version = "1"
+                    """);
+            Files.writeString(checkout.resolve("src/A+B.java"), "class APlusB {}\n");
+            Files.writeString(checkout.resolve("src/A&B.java"), "class AAmpB {}\n");
+            Files.writeString(checkout.resolve("src/A%2.java"), "class APct {}\n");
+            var identity = cc.jumpkick.builds.ProjectIdentity.resolve(checkout);
+            cc.jumpkick.builds.ProjectIdentity.IdentityFile.write(
+                    cc.jumpkick.builds.ProjectBuilds.projectHome(identity.id()), identity);
+            String id = identity.id();
+
+            // Exactly what code.js's encodeURIComponent sends for each listed path.
+            HttpResponse<String> plus = get("/api/project/file?project=" + id + "&path=src%2FA%2BB.java");
+            assertThat(plus.statusCode()).as("plus sign survives one decode").isEqualTo(200);
+            assertThat(plus.body()).contains("class APlusB");
+
+            HttpResponse<String> amp = get("/api/project/file?project=" + id + "&path=src%2FA%26B.java");
+            assertThat(amp.statusCode())
+                    .as("encoded ampersand does not split the value")
+                    .isEqualTo(200);
+            assertThat(amp.body()).contains("class AAmpB");
+
+            HttpResponse<String> pct = get("/api/project/file?project=" + id + "&path=src%2FA%252.java");
+            assertThat(pct.statusCode())
+                    .as("literal percent decodes once, not twice")
+                    .isEqualTo(200);
+            assertThat(pct.body()).contains("class APct");
+
+            // Double-encoded traversal must decode to a literal ".." segment and be rejected.
+            assertThat(get("/api/project/file?project=" + id + "&path=%252e%252e%2Fjk.toml")
+                            .statusCode())
+                    .isEqualTo(400);
+        } finally {
+            System.clearProperty("jk.env.JK_BUILDS_DIR");
+        }
     }
 
     @Test
@@ -915,8 +1057,8 @@ class HttpEngineServerTest {
         Files.writeString(pick.resolve("jk.toml"), "[project]");
         try {
             String rel = home.relativize(pick).toString().replace('\\', '/');
-            String enc = java.net.URLEncoder.encode(rel, UTF_8);
-            String encTilde = java.net.URLEncoder.encode("~/" + rel, UTF_8);
+            String enc = URLEncoder.encode(rel, UTF_8);
+            String encTilde = URLEncoder.encode("~/" + rel, UTF_8);
             HttpResponse<String> fromTilde = get("/api/fs?dir=" + encTilde, "Authorization", "Bearer " + token());
             HttpResponse<String> fromRel = get("/api/fs?dir=" + enc, "Authorization", "Bearer " + token());
             assertThat(fromTilde.statusCode()).isEqualTo(200);
@@ -995,10 +1137,8 @@ class HttpEngineServerTest {
     @Test
     void token_file_is_owner_only() throws IOException {
         assertThat(token()).isNotEmpty();
-        assertThat(java.nio.file.Files.getPosixFilePermissions(tokenFile))
-                .containsExactlyInAnyOrder(
-                        java.nio.file.attribute.PosixFilePermission.OWNER_READ,
-                        java.nio.file.attribute.PosixFilePermission.OWNER_WRITE);
+        assertThat(Files.getPosixFilePermissions(tokenFile))
+                .containsExactlyInAnyOrder(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE);
     }
 
     @Test
@@ -1019,7 +1159,7 @@ class HttpEngineServerTest {
                 events,
                 stubJobs,
                 testJournal(),
-                java.util.List::of,
+                List::of,
                 () -> EMPTY_CACHE,
                 null);
         try {
@@ -1055,7 +1195,7 @@ class HttpEngineServerTest {
                 events,
                 stubJobs,
                 testJournal(),
-                java.util.List::of,
+                List::of,
                 () -> EMPTY_CACHE,
                 null);
         try {
@@ -1082,12 +1222,12 @@ class HttpEngineServerTest {
                 events,
                 stubJobs,
                 testJournal(),
-                java.util.List::of,
+                List::of,
                 () -> EMPTY_CACHE,
                 null);
         try {
-            assertTimeoutPreemptively(java.time.Duration.ofSeconds(10), () -> assertThatThrownBy(collider::start)
-                    .isInstanceOf(java.net.BindException.class));
+            assertTimeoutPreemptively(Duration.ofSeconds(10), () -> assertThatThrownBy(collider::start)
+                    .isInstanceOf(BindException.class));
         } finally {
             collider.close();
         }
@@ -1107,7 +1247,7 @@ class HttpEngineServerTest {
                 new HttpEvents(),
                 stubJobs,
                 testJournal(),
-                java.util.List::of,
+                List::of,
                 () -> EMPTY_CACHE,
                 null);
         try {
@@ -1162,16 +1302,16 @@ class HttpEngineServerTest {
                 new HttpEvents(),
                 stubJobs,
                 testJournal(),
-                java.util.List::of,
+                List::of,
                 () -> EMPTY_CACHE,
                 null);
-        var streams = new java.util.ArrayList<HttpResponse<java.util.stream.Stream<String>>>();
+        var streams = new ArrayList<HttpResponse<Stream<String>>>();
         try {
             tiny.start();
             String url = tiny.url();
             String tok = Files.readString(stateDir.resolve("tiny.http-token")).trim();
             for (int i = 0; i < 3; i++) { // more streams than the whole RPC budget
-                HttpResponse<java.util.stream.Stream<String>> resp = client.send(
+                HttpResponse<Stream<String>> resp = client.send(
                         HttpRequest.newBuilder(URI.create(url + "api/events?access_token=" + tok))
                                 .build(),
                         HttpResponse.BodyHandlers.ofLines());
@@ -1196,7 +1336,7 @@ class HttpEngineServerTest {
     void sse_beyond_its_own_cap_is_503_without_touching_rpc_admission() throws Exception {
         int drained = server.webSseAdmission().drainPermits();
         try {
-            assertTimeoutPreemptively(java.time.Duration.ofSeconds(5), () -> {
+            assertTimeoutPreemptively(Duration.ofSeconds(5), () -> {
                 HttpResponse<String> resp = get("/api/events");
                 assertThat(resp.statusCode()).isEqualTo(503);
                 assertThat(resp.body()).contains("too many event streams");
@@ -1213,7 +1353,7 @@ class HttpEngineServerTest {
         int drained = server.webSseAdmission().drainPermits();
         try {
             assertThat(get("/api/events").statusCode()).isEqualTo(503);
-            HttpResponse<java.util.stream.Stream<String>> mcpStream = openMcpEvents();
+            HttpResponse<Stream<String>> mcpStream = openMcpEvents();
             try {
                 assertThat(mcpStream.statusCode()).isEqualTo(200); // separate budget
                 assertThat(nextLine(mcpStream.body().iterator())).isEqualTo(": mcp-events connected");
@@ -1229,7 +1369,7 @@ class HttpEngineServerTest {
     void exhausted_mcp_sse_budget_leaves_web_streams_connectable() throws Exception {
         int drained = server.mcpSseAdmission().drainPermits();
         try {
-            HttpResponse<java.util.stream.Stream<String>> rejected = openMcpEvents();
+            HttpResponse<Stream<String>> rejected = openMcpEvents();
             assertThat(rejected.statusCode()).isEqualTo(503);
             assertThat(String.join("\n", rejected.body().toList())).contains("too many MCP event streams");
 
@@ -1254,7 +1394,7 @@ class HttpEngineServerTest {
     // ---- /api/events (SSE) ----------------------------------------------------------------------
 
     /** Open the SSE stream and return a line iterator (the JDK client de-chunks for us). */
-    private java.util.Iterator<String> openEvents(String query) throws Exception {
+    private Iterator<String> openEvents(String query) throws Exception {
         String q = query == null ? "" : query;
         if (!q.contains("access_token=")) {
             String tok = "access_token=" + token();
@@ -1262,7 +1402,7 @@ class HttpEngineServerTest {
             else if (q.startsWith("?")) q = q + "&" + tok;
             else q = "?" + q + "&" + tok;
         }
-        HttpResponse<java.util.stream.Stream<String>> resp = client.send(
+        HttpResponse<Stream<String>> resp = client.send(
                 HttpRequest.newBuilder(URI.create(baseUrl + "api/events" + q)).build(),
                 HttpResponse.BodyHandlers.ofLines());
         assertThat(resp.statusCode()).isEqualTo(200);
@@ -1271,7 +1411,7 @@ class HttpEngineServerTest {
     }
 
     /** Open the MCP progress stream (token + event-stream Accept) without asserting the status. */
-    private HttpResponse<java.util.stream.Stream<String>> openMcpEvents() throws Exception {
+    private HttpResponse<Stream<String>> openMcpEvents() throws Exception {
         return client.send(
                 HttpRequest.newBuilder(URI.create(baseUrl + "mcp"))
                         .header("Authorization", "Bearer " + token())
@@ -1281,9 +1421,8 @@ class HttpEngineServerTest {
     }
 
     /** Read the next line with a timeout — a hung stream must fail the test, not the build. */
-    private static String nextLine(java.util.Iterator<String> lines) throws Exception {
-        return java.util.concurrent.CompletableFuture.supplyAsync(lines::next)
-                .get(5, java.util.concurrent.TimeUnit.SECONDS);
+    private static String nextLine(Iterator<String> lines) throws Exception {
+        return CompletableFuture.supplyAsync(lines::next).get(5, TimeUnit.SECONDS);
     }
 
     @Test
@@ -1310,7 +1449,7 @@ class HttpEngineServerTest {
      * Read SSE lines until {@code event: <type>}, then return the following {@code data:} line.
      * Skips connect-hydrate vitals and other interleaved frames.
      */
-    private static String awaitSseEvent(java.util.Iterator<String> lines, String type) throws Exception {
+    private static String awaitSseEvent(Iterator<String> lines, String type) throws Exception {
         String want = "event: " + type;
         for (int i = 0; i < 200; i++) {
             String line = nextLine(lines);
@@ -1324,7 +1463,7 @@ class HttpEngineServerTest {
     }
 
     /** Read until a comment line equals {@code comment} (e.g. {@code : heartbeat}). */
-    private static String awaitSseComment(java.util.Iterator<String> lines, String comment) throws Exception {
+    private static String awaitSseComment(Iterator<String> lines, String comment) throws Exception {
         for (int i = 0; i < 200; i++) {
             String line = nextLine(lines);
             if (comment.equals(line)) return line;
@@ -1345,7 +1484,7 @@ class HttpEngineServerTest {
                 new HttpEvents(),
                 stubJobs,
                 testJournal(),
-                java.util.List::of,
+                List::of,
                 () -> EMPTY_CACHE,
                 null);
         try {
@@ -1359,7 +1498,7 @@ class HttpEngineServerTest {
                     HttpResponse.BodyHandlers.ofString());
             assertThat(unauthorized.statusCode()).isEqualTo(401); // EventSource can't send headers...
 
-            HttpResponse<java.util.stream.Stream<String>> authorized = client.send(
+            HttpResponse<Stream<String>> authorized = client.send(
                     HttpRequest.newBuilder(URI.create(lanUrl + "api/events?access_token=" + lanToken))
                             .build(),
                     HttpResponse.BodyHandlers.ofLines()); // ...so the query param is its way in
@@ -1453,7 +1592,7 @@ class HttpEngineServerTest {
         // the signal that stops an orphaned engine exiting under a developer's open dashboard tab.
         assertThat(server.liveEventStreams()).isZero();
 
-        java.util.Iterator<String> lines = openEvents("");
+        Iterator<String> lines = openEvents("");
 
         assertThat(nextLine(lines)).isNotNull(); // connected
         assertThat(server.liveEventStreams()).isEqualTo(1);
@@ -1464,13 +1603,13 @@ class HttpEngineServerTest {
         // JK-1522: a stale running record with a real buildNumber that fails the strict match is a
         // DIFFERENT run (crashed-engine stub) — it must not rebind to the current run's stream.
         var run = new HttpLive.Run(42, 6, "build", "/w", "g:w", 0, Double.NaN, "j6");
-        server.setLiveRunSupport(() -> java.util.List.of(run), null);
+        server.setLiveRunSupport(() -> List.of(run), null);
 
-        assertThat(server.matchLiveRun(java.util.Map.of("dir", "/w", "buildNumber", 6L)))
+        assertThat(server.matchLiveRun(Map.of("dir", "/w", "buildNumber", 6L)))
                 .isEqualTo(run); // strict (dir, buildNumber)
-        assertThat(server.matchLiveRun(java.util.Map.of("id", "j6"))).isEqualTo(run); // journal id
-        assertThat(server.matchLiveRun(java.util.Map.of("dir", "/w"))).isEqualTo(run); // legacy stub
-        assertThat(server.matchLiveRun(java.util.Map.of("dir", "/w", "buildNumber", 5L)))
+        assertThat(server.matchLiveRun(Map.of("id", "j6"))).isEqualTo(run); // journal id
+        assertThat(server.matchLiveRun(Map.of("dir", "/w"))).isEqualTo(run); // legacy stub
+        assertThat(server.matchLiveRun(Map.of("dir", "/w", "buildNumber", 5L)))
                 .isNull(); // stale record, wrong build — no dir-only rebind
     }
 }

@@ -14,6 +14,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -106,8 +108,8 @@ class NiaScratchTest {
         var rootManifest = JkBuildParser.parse(NIA.resolve("jk.toml"));
         var modules = WorkspaceLoader.loadModules(NIA, rootManifest);
         build = WorkspaceMerge.applyToModule(rootManifest, build, modules.values());
-        BuildPlan lock = LockPlans.lockBuildPlan(
-                module, build, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
+        BuildPlan lock =
+                LockPlans.lockBuildPlan(module, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         BuildPlanResult lockResult = lock.run();
         System.out.println("NIA-RELEASE lock: " + lockResult.errors());
 
@@ -125,11 +127,11 @@ class NiaScratchTest {
                         false,
                         false,
                         false,
-                        java.util.Set.of(),
+                        Set.of(),
                         SessionContext.current())
                 .withVariant(
                         "release|contentType=demo",
-                        java.util.Map.of(
+                        Map.of(
                                 "RELEASE_KEYSTORE", keystore.toAbsolutePath().toString(),
                                 "RELEASE_STORE_PASSWORD", "rel-store-pass",
                                 // PKCS12: the key password IS the store password (keytool
@@ -158,8 +160,8 @@ class NiaScratchTest {
                 build = WorkspaceMerge.applyToModule(rootManifest, build, modules.values());
             }
         }
-        BuildPlan lock = LockPlans.lockBuildPlan(
-                module, build, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
+        BuildPlan lock =
+                LockPlans.lockBuildPlan(module, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         BuildPlanResult lockResult = lock.run();
         if (!lockResult.errors().isEmpty())
             return "lock: " + lockResult.errors().getFirst();
@@ -177,7 +179,7 @@ class NiaScratchTest {
                 false,
                 false,
                 false,
-                java.util.Set.of(),
+                Set.of(),
                 SessionContext.current());
         // Flavored modules build the demo variant (the flavor NiA's own CI exercises — no
         // backend needed). True workspace variant propagation (the app's selection reaching
@@ -185,7 +187,7 @@ class NiaScratchTest {
         // per-module.
         if (Files.readString(module.resolve("jk.toml")).contains("[variants.contentType]")
                 || module.getFileName().toString().equals("app")) {
-            in = in.withVariant("contentType=demo", java.util.Map.of());
+            in = in.withVariant("contentType=demo", Map.of());
         }
         BuildPlanResult result = BuildPlanner.coreBuilder(in).build().run();
         if (!result.errors().isEmpty()) return "build: ALL-DIAGS " + result.errors();

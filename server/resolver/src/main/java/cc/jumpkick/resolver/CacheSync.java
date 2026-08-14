@@ -11,12 +11,10 @@ import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.nio.file.Path;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 
 /**
  * Ensures every lockfile sha256 is present in the CAS (fetch+verify on miss). Parallel on {@link
@@ -155,7 +153,7 @@ public final class CacheSync {
             FetchResult r;
             try {
                 r = f.get();
-            } catch (java.util.concurrent.ExecutionException e) {
+            } catch (ExecutionException e) {
                 // Unwrap unexpected throwables from supplyAsync.
                 Throwable cause = e.getCause() != null ? e.getCause() : e;
                 errors.add(cause.getMessage());
@@ -192,16 +190,15 @@ public final class CacheSync {
         }
 
         int fetched = 0;
-        List<java.util.concurrent.CompletableFuture<FetchResult>> futures = new ArrayList<>();
+        List<CompletableFuture<FetchResult>> futures = new ArrayList<>();
         for (PendingFetch p : pending) {
-            futures.add(java.util.concurrent.CompletableFuture.supplyAsync(
-                    () -> fetchSources(p), cc.jumpkick.run.JkThreads.io()));
+            futures.add(CompletableFuture.supplyAsync(() -> fetchSources(p), cc.jumpkick.run.JkThreads.io()));
         }
         for (int i = 0; i < futures.size(); i++) {
             FetchResult r;
             try {
                 r = futures.get(i).get();
-            } catch (java.util.concurrent.ExecutionException e) {
+            } catch (ExecutionException e) {
                 observer.failed(pending.get(i).pkg, e.getMessage());
                 continue;
             }
@@ -304,8 +301,7 @@ public final class CacheSync {
         if (!cc.jumpkick.repo.RepoArtifactResolver.isNamedRemote(repoName)) return;
         try {
             String m2Path = cc.jumpkick.repo.MavenLayout.artifactPath(toCoord(pkg));
-            java.nio.file.Path target =
-                    cc.jumpkick.repo.M2Dirs.localRepository().resolve(m2Path);
+            Path target = cc.jumpkick.repo.M2Dirs.localRepository().resolve(m2Path);
             var hashes = cc.jumpkick.repo.M2CompatWriter.copyToM2AndHash(cas.pathFor(hex), target);
             cc.jumpkick.repo.M2CompatWriter.writeMavenSidecars(target, hashes.sha1(), hashes.md5());
         } catch (IOException | RuntimeException ignored) {
@@ -321,13 +317,12 @@ public final class CacheSync {
     private boolean materializeLocal(Lockfile.Artifact pkg, String hex) {
         if (cas.contains(hex)) return true;
         cc.jumpkick.repo.RepoArtifactStore local = cc.jumpkick.repo.RepoArtifactStore.forRepoName(cas.root(), "local");
-        java.util.Optional<java.nio.file.Path> jar =
-                local.locate(cc.jumpkick.repo.MavenLayout.artifactPath(toCoord(pkg)));
+        Optional<Path> jar = local.locate(cc.jumpkick.repo.MavenLayout.artifactPath(toCoord(pkg)));
         if (jar.isEmpty()) return false;
         try {
             cas.putFile(jar.get(), hex);
             return true;
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             return false;
         }
     }
@@ -341,7 +336,7 @@ public final class CacheSync {
             throw new IllegalArgumentException("lockfile package source must be '<name>+<url>', got: " + source);
         }
         URI url = URI.create(rs.url());
-        var cred = creds.resolve(name, url, java.util.Optional.empty());
+        var cred = creds.resolve(name, url, Optional.empty());
         MavenRepo repo = new MavenRepo(name, url, http, cas, cred, mirrorToM2);
         cache.put(source, repo);
         return repo;

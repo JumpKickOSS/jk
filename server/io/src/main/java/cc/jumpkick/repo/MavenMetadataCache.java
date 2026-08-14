@@ -18,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.Callable;
 
 /**
  * On-disk {@code maven-metadata.xml} cache (mutable index — not content-addressed).
@@ -57,7 +58,7 @@ public final class MavenMetadataCache {
      * Run {@code body} with metadata TTL bypassed on this thread (conditional GET still applies).
      * Nested calls keep the outer flag.
      */
-    public static <T> T withForceRevalidate(java.util.concurrent.Callable<T> body) throws Exception {
+    public static <T> T withForceRevalidate(Callable<T> body) throws Exception {
         Boolean prev = FORCE_REVALIDATE.get();
         FORCE_REVALIDATE.set(Boolean.TRUE);
         // Force means do not trust process-wide resolve memos computed against a prior view.

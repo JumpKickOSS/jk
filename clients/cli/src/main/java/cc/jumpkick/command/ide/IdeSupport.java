@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Client half of the {@code jk ide} model build. The model math — workspace + module parsing,
@@ -261,8 +262,7 @@ public final class IdeSupport {
                 wsRoot, cache, jdksDir, null, false, session.offline(), session.force(), false, global.verbose);
         // Time-box: best-effort must never hang the CLI. On timeout, force-stop the engine so the
         // blocked protocol read unblocks via channel close.
-        java.util.concurrent.atomic.AtomicReference<Exception> fail =
-                new java.util.concurrent.atomic.AtomicReference<>();
+        AtomicReference<Exception> fail = new AtomicReference<>();
         Thread t = new Thread(
                 () -> {
                     try {

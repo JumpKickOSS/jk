@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -529,12 +530,12 @@ public final class BspServer {
         // pretty-printed payloads ("suites": [...]) and non-object data values.
         try {
             Object parsed = cc.jumpkick.plugin.protocol.MiniJson.parse(requestJson);
-            if (!(parsed instanceof java.util.Map<?, ?> outer)) {
+            if (!(parsed instanceof Map<?, ?> outer)) {
                 return cc.jumpkick.config.TestSelection.DEFAULT;
             }
             // Full request envelope or bare params object — unwrap either.
-            java.util.Map<?, ?> params = outer.get("params") instanceof java.util.Map<?, ?> inner ? inner : outer;
-            java.util.Map<?, ?> src = params.get("data") instanceof java.util.Map<?, ?> d ? d : params;
+            Map<?, ?> params = outer.get("params") instanceof Map<?, ?> inner ? inner : outer;
+            Map<?, ?> src = params.get("data") instanceof Map<?, ?> d ? d : params;
             boolean all = Boolean.TRUE.equals(src.get("allSuites"));
             return cc.jumpkick.config.TestSelection.of(
                     stringList(src.get("suites")),
@@ -609,15 +610,15 @@ public final class BspServer {
         // nested inside data payloads.
         try {
             Object parsed = cc.jumpkick.plugin.protocol.MiniJson.parse(json);
-            if (!(parsed instanceof java.util.Map<?, ?> outer)) return List.of();
-            java.util.Map<?, ?> params = outer.get("params") instanceof java.util.Map<?, ?> inner ? inner : outer;
+            if (!(parsed instanceof Map<?, ?> outer)) return List.of();
+            Map<?, ?> params = outer.get("params") instanceof Map<?, ?> inner ? inner : outer;
             Object targets = params.get("targets");
             List<?> list = targets instanceof List<?> l
                     ? l
                     : params.get("target") instanceof Object single ? List.of(single) : List.of();
             List<String> out = new ArrayList<>();
             for (Object t : list) {
-                if (t instanceof java.util.Map<?, ?> m && m.get("uri") instanceof String u && !u.isBlank()) {
+                if (t instanceof Map<?, ?> m && m.get("uri") instanceof String u && !u.isBlank()) {
                     out.add(u);
                 }
             }
@@ -697,8 +698,7 @@ public final class BspServer {
     }
 
     /** Compiled once, not per JSON-RPC message (JK-1490): the field set is small and fixed. */
-    private static final java.util.Map<String, Pattern> STRING_FIELD_PATTERNS =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final Map<String, Pattern> STRING_FIELD_PATTERNS = new ConcurrentHashMap<>();
 
     private static final Pattern ID_PATTERN = Pattern.compile("\"id\"\\s*:\\s*(\"[^\"]*\"|\\d+)");
 

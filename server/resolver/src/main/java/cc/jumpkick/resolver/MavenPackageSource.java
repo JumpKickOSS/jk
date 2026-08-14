@@ -14,16 +14,11 @@ import cc.jumpkick.resolver.pubgrub.Term;
 import cc.jumpkick.resolver.pubgrub.VersionSet;
 import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Maven-backed PubGrub {@link PackageSource}. Caches versions/deps per solve; prefetches transitive
@@ -60,7 +55,7 @@ public final class MavenPackageSource implements PackageSource {
      * GA keys the manifest asked for with the {@code snapshot} selector — the one opt-in that wants
      * pre-releases. Mutable for the same reason as {@link #lockedVersionPrefs}.
      */
-    private volatile java.util.Set<String> snapshotPackages = java.util.Set.of();
+    private volatile Set<String> snapshotPackages = Set.of();
 
     private final Map<String, List<String>> versionCache = new ConcurrentHashMap<>();
     private final Map<String, List<String>> expandedVersionCache = new ConcurrentHashMap<>();
@@ -91,8 +86,7 @@ public final class MavenPackageSource implements PackageSource {
     private final Semaphore prefetchSlots = new Semaphore(PREFETCH_PERMITS);
 
     /** Speculative prefetches submitted and not yet finished. Guards {@link #quiesce}. */
-    private final java.util.concurrent.atomic.AtomicInteger outstandingPrefetches =
-            new java.util.concurrent.atomic.AtomicInteger();
+    private final AtomicInteger outstandingPrefetches = new AtomicInteger();
 
     private final Object prefetchIdle = new Object();
 
@@ -181,8 +175,8 @@ public final class MavenPackageSource implements PackageSource {
      * candidate window enforces. {@code snapshot} is the sanctioned way out, so those packages skip
      * that narrowing and take the newest advertised version, pre-release or not.
      */
-    public void setSnapshotPackages(java.util.Set<String> gaKeys) {
-        this.snapshotPackages = java.util.Set.copyOf(Objects.requireNonNull(gaKeys, "gaKeys"));
+    public void setSnapshotPackages(Set<String> gaKeys) {
+        this.snapshotPackages = Set.copyOf(Objects.requireNonNull(gaKeys, "gaKeys"));
         // The compact window differs for snapshot packages, so a list cached under the previous
         // policy would be stale.
         versionCache.clear();
@@ -341,7 +335,7 @@ public final class MavenPackageSource implements PackageSource {
         String naturalMax = highestOf(sortedHighestFirst);
         boolean pinnedFront = !front.equals(naturalMax);
 
-        java.util.LinkedHashSet<String> picked = new java.util.LinkedHashSet<>();
+        LinkedHashSet<String> picked = new LinkedHashSet<>();
         if (pinnedFront) {
             picked.add(front);
             // Keep the natural max too. AllowedSet infers "this front is a pin, take it
@@ -667,7 +661,7 @@ public final class MavenPackageSource implements PackageSource {
         if (!warmedUp.compareAndSet(false, true)) return;
         if (bomConstraints.isEmpty() && lockedVersionPrefs.isEmpty()) return;
 
-        Map<String, String> pins = new java.util.LinkedHashMap<>();
+        Map<String, String> pins = new LinkedHashMap<>();
         for (var e : bomConstraints.entrySet()) {
             if (e.getValue() == null || e.getValue().isBlank()) continue;
             try {

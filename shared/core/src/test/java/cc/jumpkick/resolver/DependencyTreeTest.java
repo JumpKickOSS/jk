@@ -422,6 +422,63 @@ class DependencyTreeTest {
     }
 
     @Test
+    void sibling_runtime_module_edges_do_not_chain(@org.junit.jupiter.api.io.TempDir Path root) throws Exception {
+        // b -> a, and a declares sibling c under [runtime-dependencies]. WorkspaceClasspath only
+        // chains sibling->sibling module edges through export/main (SIBLING_MODULE_SCOPES), so c's
+        // jar is never on b's classpath — the tree must not draw it (JK-1962). a's EXTERNAL
+        // runtime dep still rides.
+        Files.writeString(root.resolve("jk.toml"), """
+                [project]
+                group = "com.acme"
+                name = "ws"
+                version = "1.0"
+
+                [workspace]
+                modules = ["a", "b", "c"]
+                """);
+        Files.writeString(root.resolve("jk-lock.toml"), EMPTY_LOCK);
+        Path a = Files.createDirectories(root.resolve("a"));
+        Files.writeString(a.resolve("jk.toml"), """
+                [project]
+                name = "a"
+
+                [runtime-dependencies]
+                driver = { group = "com.foo", name = "driver", version = "1.0" }
+                c = { workspace = true }
+                """);
+        Path b = Files.createDirectories(root.resolve("b"));
+        Files.writeString(b.resolve("jk.toml"), """
+                [project]
+                name = "b"
+
+                [dependencies]
+                a = { workspace = true }
+                """);
+        Path c = Files.createDirectories(root.resolve("c"));
+        Files.writeString(c.resolve("jk.toml"), """
+                [project]
+                name = "c"
+
+                [export-dependencies]
+                hidden = { group = "com.foo", name = "hidden", version = "1.0" }
+                """);
+        Lockfile lock = lockOf(pkg("com.foo:driver", "1.0", List.of()), pkg("com.foo:hidden", "1.0", List.of()));
+
+        JkBuild member = cc.jumpkick.config.JkBuildParser.parse(b.resolve("jk.toml"));
+        String tree = DependencyTree.render(
+                member, lock, b, Integer.MAX_VALUE, DependencyTree.Styling.plain(), false, List.of(Scope.MAIN));
+        assertThat(tree).contains("com.acme:a:1.0");
+        assertThat(tree).contains("com.foo:driver:1.0"); // a's external runtime dep rides
+        assertThat(tree).doesNotContain("com.acme:c"); // a's runtime MODULE edge does not chain
+        assertThat(tree).doesNotContain("com.foo:hidden");
+
+        String flat = DependencyTree.render(
+                member, lock, b, Integer.MAX_VALUE, DependencyTree.Styling.plain(), true, List.of(Scope.MAIN));
+        assertThat(flat).contains("com.foo:driver:1.0");
+        assertThat(flat).doesNotContain("com.acme:c").doesNotContain("com.foo:hidden");
+    }
+
+    @Test
     void flatten_lists_each_scope_dep_once_without_nesting(@org.junit.jupiter.api.io.TempDir Path dir) {
         // Diamond: root -> a -> leaf ; root -> b -> leaf.
         JkBuild project = projectWithMainDeps("com.foo:root");

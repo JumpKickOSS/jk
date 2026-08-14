@@ -6,11 +6,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.TreeSet;
+import java.util.*;
 
 /**
  * Per-project CAS reachability roots written by {@code jk sync} under {@code
@@ -43,8 +39,8 @@ public final class SyncManifest {
     }
 
     /** Parse one manifest file. Returns empty if the file is malformed. */
-    public static java.util.Optional<Manifest> read(Path file) throws IOException {
-        if (!Files.isRegularFile(file)) return java.util.Optional.empty();
+    public static Optional<Manifest> read(Path file) throws IOException {
+        if (!Files.isRegularFile(file)) return Optional.empty();
         String project = null;
         Path lockFile = null;
         long stamp = 0;
@@ -59,14 +55,14 @@ public final class SyncManifest {
                 try {
                     stamp = Long.parseLong(line.substring("STAMP ".length()).trim());
                 } catch (NumberFormatException ignored) {
-                    return java.util.Optional.empty();
+                    return Optional.empty();
                 }
             } else if (line.startsWith("REF ")) {
                 refs.add(line.substring("REF ".length()).trim());
             }
         }
-        if (project == null) return java.util.Optional.empty();
-        return java.util.Optional.of(new Manifest(project, lockFile, stamp, refs));
+        if (project == null) return Optional.empty();
+        return Optional.of(new Manifest(project, lockFile, stamp, refs));
     }
 
     /** Parsed manifest; sweep callers mainly need {@link #refs}. */

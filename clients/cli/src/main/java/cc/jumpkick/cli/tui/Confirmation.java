@@ -38,7 +38,7 @@ public final class Confirmation implements Widget {
     }
 
     @Override
-    public java.util.List<String> render(RenderContext ctx) {
+    public List<String> render(RenderContext ctx) {
         return prompt.render(ctx);
     }
 }

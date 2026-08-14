@@ -118,8 +118,8 @@ public final class M2CompatWriter {
         MessageDigest sha1 = newDigest("SHA-1");
         MessageDigest md5 = newDigest("MD5");
         try {
-            try (InputStream in = java.nio.file.Files.newInputStream(source);
-                    OutputStream out = java.nio.file.Files.newOutputStream(tmp)) {
+            try (InputStream in = Files.newInputStream(source);
+                    OutputStream out = Files.newOutputStream(tmp)) {
                 byte[] buf = new byte[64 * 1024];
                 int n;
                 while ((n = in.read(buf)) > 0) {

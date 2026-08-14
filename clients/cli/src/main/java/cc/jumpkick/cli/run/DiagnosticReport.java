@@ -119,11 +119,13 @@ public final class DiagnosticReport {
         if (!t.isAnsi()) {
             return "[" + title + "] " + word;
         }
-        // Fail chip red / warn amber — same tokens as activity pills and the web phase strip.
+        // Fail chip: white on plan red. Warn chip: black on amber — same ink as Pill.Look.WARNING
+        // / cancelled-job chips (white-on-amber washes out on most terminals).
         Rgb chipRgb = role == Role.ERROR ? t.planFailColor() : Rgb.hex(0xFFB800);
-        AttributedStyle body = t.withBackground(t.bright(255, 255, 255), chipRgb);
+        AttributedStyle ink = role == Role.ERROR ? t.bright(255, 255, 255) : t.bright(0, 0, 0);
+        AttributedStyle body = t.withBackground(ink, chipRgb);
         AttributedStyle caps = t.bright(chipRgb);
-        String pill = Badge.pill(title, GlobalConfig.nerdfont(), body, caps);
+        String pill = Badge.pill(title, GlobalConfig.nerdFont().pill(), body, caps);
         AttributedStyle wordStyle =
                 role == Role.ERROR ? t.error().bold() : t.warning().bold();
         return pill + " " + Theme.colorize(word, wordStyle);

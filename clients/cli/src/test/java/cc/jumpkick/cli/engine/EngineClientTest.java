@@ -7,6 +7,10 @@ import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.EngineServer;
 import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.net.StandardProtocolFamily;
+import java.net.UnixDomainSocketAddress;
+import java.nio.channels.ServerSocketChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -53,7 +57,7 @@ class EngineClientTest {
                         // best-effort
                     }
                 });
-            } catch (IOException | java.io.UncheckedIOException ignored) {
+            } catch (IOException | UncheckedIOException ignored) {
                 // engine under test may still be tearing down its own files concurrently — Files.walk's
                 // lazy traversal wraps a file disappearing mid-walk as an UncheckedIOException, not IOException
             }
@@ -183,8 +187,8 @@ class EngineClientTest {
         // Accept connections, never read or write — models a wedged engine.
         Path dir = shortTempDir();
         Path sock = dir.resolve("silent.sock");
-        try (var server = java.nio.channels.ServerSocketChannel.open(java.net.StandardProtocolFamily.UNIX)) {
-            server.bind(java.net.UnixDomainSocketAddress.of(sock));
+        try (var server = ServerSocketChannel.open(StandardProtocolFamily.UNIX)) {
+            server.bind(UnixDomainSocketAddress.of(sock));
             Thread acceptor = new Thread(
                     () -> {
                         try {

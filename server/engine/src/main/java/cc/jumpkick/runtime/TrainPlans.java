@@ -10,6 +10,7 @@ import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
 import java.nio.file.Path;
+import java.util.Set;
 
 /**
  * {@code jk train} plan: core build through package-jar, then a single train observation task.
@@ -48,7 +49,7 @@ public final class TrainPlans {
                 verbose,
                 false,
                 false,
-                java.util.Set.of(),
+                Set.of(),
                 cc.jumpkick.config.SessionContext.current());
         BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs);
         // No assembly/native/minified tails — train only needs a runnable package.

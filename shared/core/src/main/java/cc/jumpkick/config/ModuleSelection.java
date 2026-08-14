@@ -4,10 +4,7 @@ package cc.jumpkick.config;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.regex.Pattern;
 
 /**
@@ -53,7 +50,7 @@ public final class ModuleSelection {
      */
     record Candidate(String relPath, Set<String> aliases) {
         Candidate {
-            aliases = java.util.Collections.unmodifiableSet(new LinkedHashSet<>(aliases));
+            aliases = Collections.unmodifiableSet(new LinkedHashSet<>(aliases));
         }
     }
 

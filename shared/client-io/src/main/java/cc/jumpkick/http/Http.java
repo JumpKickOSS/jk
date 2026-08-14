@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.http;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.UncheckedIOException;
+import java.io.*;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -14,7 +11,9 @@ import java.net.http.HttpResponse.BodyHandler;
 import java.net.http.HttpResponse.BodySubscribers;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
+import java.util.Optional;
 import java.util.zip.GZIPInputStream;
 
 /**
@@ -132,7 +131,7 @@ public final class Http {
         // Drain the streamed body before each retry so the connection can be reused.
         return sendWithRetry("GET", uri, request, gzipAwareInputStream(), response -> {
             try (var body = response.body()) {
-                body.transferTo(java.io.OutputStream.nullOutputStream());
+                body.transferTo(OutputStream.nullOutputStream());
             }
         });
     }
@@ -222,8 +221,7 @@ public final class Http {
             // Do not ask a host that is already refusing. One 429 costs one request, not one
             // per permit per attempt — six concurrent permits times five attempts would turn a single
             // refusal into thirty more, which is how a quota window gets held open.
-            java.util.Optional<java.time.Instant> cooling =
-                    cooldown.until(request.uri().getHost());
+            Optional<Instant> cooling = cooldown.until(request.uri().getHost());
             if (cooling.isPresent()) {
                 throw new RateLimitedException(request.uri().getHost(), cooling.get());
             }
@@ -236,8 +234,7 @@ public final class Http {
                     cooldown.noteRateLimited(
                             request.uri().getHost(),
                             HostCooldown.parseRetryAfter(
-                                    response.headers().firstValue("Retry-After").orElse(null),
-                                    java.time.Instant.now()));
+                                    response.headers().firstValue("Retry-After").orElse(null), Instant.now()));
                 }
                 // Central's per-IP quota. Open the mirror window and reissue this very
                 // request against the mirror, so the resolve that tripped the limit still completes

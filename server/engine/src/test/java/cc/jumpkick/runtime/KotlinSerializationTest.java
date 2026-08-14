@@ -9,8 +9,11 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -81,7 +84,7 @@ class KotlinSerializationTest {
                 .isEqualTo("kotlin-serialization-compiler-plugin-embeddable");
 
         BuildPlan lock = LockPlans.lockBuildPlan(
-                project, build, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
+                project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         BuildPlanResult lockResult = lock.run();
         assertThat(lockResult.errors()).isEmpty();
 
@@ -99,7 +102,7 @@ class KotlinSerializationTest {
                 false,
                 false,
                 false,
-                java.util.Set.of(),
+                Set.of(),
                 SessionContext.current());
         BuildPlan plan = BuildPlanner.coreBuilder(in).build();
         BuildPlanResult result = plan.run();
@@ -107,7 +110,7 @@ class KotlinSerializationTest {
                 "STEPS: " + plan.steps().stream().map(ph -> ph.name()).toList());
         try (var w = Files.walk(project.resolve("target"))) {
             w.forEach(f -> System.out.println("TREE: " + project.relativize(f)));
-        } catch (java.io.IOException ignored) {
+        } catch (IOException ignored) {
             System.out.println("TREE: (no target)");
         }
         assertThat(result.errors()).isEmpty();
@@ -121,7 +124,7 @@ class KotlinSerializationTest {
                 .isTrue();
     }
 
-    private static boolean anyFile(Path root, String nameFragment) throws java.io.IOException {
+    private static boolean anyFile(Path root, String nameFragment) throws IOException {
         if (!Files.isDirectory(root)) return false;
         try (var walk = Files.walk(root)) {
             return walk.anyMatch(f -> f.getFileName().toString().contains(nameFragment));

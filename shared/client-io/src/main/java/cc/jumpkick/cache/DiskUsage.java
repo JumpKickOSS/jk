@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -15,8 +16,14 @@ import java.util.Set;
  *
  * <p>CAS blobs under {@code sha256/…} and Maven-layout views under {@code repos/…} share one
  * allocation via hard link. Naïve {@code Files.size} sums over both trees report ~2× true disk
- * use. This helper keys on {@link BasicFileAttributes#fileKey()} (inode / NTFS file id) so each
- * underlying blob contributes once — same idea as {@code du} across hard links.
+ * use. This helper deduplicates on {@code (dev, ino)} so each underlying blob contributes once —
+ * same idea as {@code du} across hard links.
+ *
+ * <p>Only files with {@code nlink > 1} enter the seen-set at all (a single-link file cannot be
+ * met twice), and the set itself is a primitive open-addressed long set — the previous
+ * one-boxed-{@code fileKey}-per-file {@code HashSet} allocated tens of MB per cache-vitals walk
+ * on a large store, every 60&nbsp;s while a dashboard tab was open (JK-1942). Platforms without
+ * the {@code unix:} attribute view (Windows) fall back to the old per-{@code fileKey} object set.
  */
 public final class DiskUsage {
 
@@ -27,7 +34,7 @@ public final class DiskUsage {
 
     /**
      * Walk one directory tree. Every regular file is counted in {@link Stats#files()}; each
-     * distinct {@code fileKey} contributes its size once (hard links within the tree are not
+     * distinct inode contributes its size once (hard links within the tree are not
      * double-counted).
      */
     public static Stats of(Path dir) throws IOException {
@@ -40,15 +47,15 @@ public final class DiskUsage {
      * link — later trees add 0 bytes for that key. Put the CAS ({@code sha256/}) before
      * {@code repos/} so blob bytes land under CAS and repo hard links do not inflate storage.
      *
-     * <p>Missing or unreadable roots contribute zeros. A null {@code fileKey} (rare providers)
-     * falls back to the absolute path so accounting never drops a file.
+     * <p>Missing or unreadable roots contribute zeros. A null {@code fileKey} on the fallback
+     * path (rare providers) falls back to the absolute path so accounting never drops a file.
      */
     public static Stats[] exclusive(List<Path> roots) throws IOException {
         Objects.requireNonNull(roots, "roots");
-        Set<Object> seenKeys = new HashSet<>();
+        SeenLinks seen = new SeenLinks();
         Stats[] out = new Stats[roots.size()];
         for (int i = 0; i < roots.size(); i++) {
-            out[i] = walkExclusive(roots.get(i), seenKeys);
+            out[i] = walkExclusive(roots.get(i), seen);
         }
         return out;
     }
@@ -76,7 +83,7 @@ public final class DiskUsage {
         return n;
     }
 
-    private static Stats walkExclusive(Path dir, Set<Object> seenKeys) throws IOException {
+    private static Stats walkExclusive(Path dir, SeenLinks seen) throws IOException {
         if (dir == null || !Files.isDirectory(dir)) {
             return new Stats(0, 0);
         }
@@ -84,6 +91,28 @@ public final class DiskUsage {
         long bytes = 0;
         try (var stream = Files.walk(dir)) {
             for (Path p : (Iterable<Path>) stream::iterator) {
+                if (seen.unixSupported) {
+                    Map<String, Object> u = null;
+                    try {
+                        u = Files.readAttributes(p, "unix:isRegularFile,nlink,size,dev,ino");
+                    } catch (UnsupportedOperationException | IllegalArgumentException e) {
+                        seen.unixSupported = false; // fall through to the fileKey path for this file
+                    } catch (IOException unreadable) {
+                        continue;
+                    }
+                    if (u != null) {
+                        if (!Boolean.TRUE.equals(u.get("isRegularFile"))) continue;
+                        files++;
+                        long nlink = ((Number) u.get("nlink")).longValue();
+                        // A single-link file cannot be met again on any tree — skip the set entirely.
+                        if (nlink <= 1
+                                || seen.addInode(
+                                        ((Number) u.get("dev")).longValue(), ((Number) u.get("ino")).longValue())) {
+                            bytes += ((Number) u.get("size")).longValue();
+                        }
+                        continue;
+                    }
+                }
                 BasicFileAttributes attrs;
                 try {
                     attrs = Files.readAttributes(p, BasicFileAttributes.class);
@@ -96,11 +125,68 @@ public final class DiskUsage {
                 if (key == null) {
                     key = p.toAbsolutePath().normalize();
                 }
-                if (seenKeys.add(key)) {
+                if (seen.addObject(key)) {
                     bytes += attrs.size();
                 }
             }
         }
         return new Stats(files, bytes);
+    }
+
+    /**
+     * Cross-root seen-set: a primitive open-addressed {@code (dev, ino)} long set on unix,
+     * an object set of {@code fileKey}s elsewhere. ~8 bytes per multi-linked file instead of a
+     * boxed key + node per file.
+     */
+    private static final class SeenLinks {
+        boolean unixSupported = true;
+        private Set<Object> objects; // fallback platforms only, lazily created
+        private long[] slots = new long[1 << 10];
+        private int used;
+        private boolean hasZero;
+
+        boolean addInode(long dev, long ino) {
+            long key = dev * 0x9E3779B97F4A7C15L + ino;
+            if (key == 0) {
+                boolean fresh = !hasZero;
+                hasZero = true;
+                return fresh;
+            }
+            if (used >= slots.length / 2) grow();
+            int mask = slots.length - 1;
+            int i = (int) (mix(key) & mask);
+            while (true) {
+                long cur = slots[i];
+                if (cur == 0) {
+                    slots[i] = key;
+                    used++;
+                    return true;
+                }
+                if (cur == key) return false;
+                i = (i + 1) & mask;
+            }
+        }
+
+        boolean addObject(Object key) {
+            if (objects == null) objects = new HashSet<>();
+            return objects.add(key);
+        }
+
+        private void grow() {
+            long[] old = slots;
+            slots = new long[old.length << 1];
+            used = 0;
+            boolean zero = hasZero;
+            hasZero = false;
+            for (long k : old) {
+                if (k != 0) addInode(0, k); // dev already folded into k; re-insert raw
+            }
+            hasZero = zero;
+        }
+
+        private static long mix(long z) {
+            z = (z ^ (z >>> 33)) * 0xFF51AFD7ED558CCDL;
+            return z ^ (z >>> 33);
+        }
     }
 }

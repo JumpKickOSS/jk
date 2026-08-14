@@ -17,6 +17,8 @@ import java.util.jar.Attributes;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
+import javax.tools.JavaCompiler;
+import javax.tools.ToolProvider;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -538,7 +540,7 @@ class InstallExecCommandTest {
         Path src = tempDir.resolve(className + ".java");
         Files.writeString(
                 src, "public class " + className + " { public static void main(String[] a) { System.exit(0); } }\n");
-        javax.tools.JavaCompiler compiler = javax.tools.ToolProvider.getSystemJavaCompiler();
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         int rc = compiler.run(null, null, null, src.toString());
         if (rc != 0) throw new IllegalStateException("compile of " + src + " failed");
         Path classFile = src.resolveSibling(className + ".class");

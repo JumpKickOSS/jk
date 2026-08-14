@@ -6,13 +6,7 @@ import java.io.InputStream;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Properties;
+import java.util.*;
 
 /**
  * Builds the template picker list: official {@link Giter8ShortNames} catalog, then overlays / adds
@@ -49,7 +43,7 @@ public final class Giter8TemplateIndex {
         for (Giter8ShortNames.Entry e : Giter8ShortNames.entries()) {
             byId.put(e.id(), e);
         }
-        java.util.Set<String> overlaid = new java.util.HashSet<>();
+        Set<String> overlaid = new HashSet<>();
         if (roots != null) {
             for (Path root : roots) {
                 if (root == null) continue;
@@ -70,8 +64,7 @@ public final class Giter8TemplateIndex {
     }
 
     /** Ids still catalog-only after pass 1 — the only ones worth a pass-2 deep probe. */
-    static List<String> idsNeedingProbe(
-            java.util.Collection<Giter8ShortNames.Entry> entries, java.util.Set<String> overlaid) {
+    static List<String> idsNeedingProbe(Collection<Giter8ShortNames.Entry> entries, Set<String> overlaid) {
         List<String> out = new ArrayList<>();
         for (Giter8ShortNames.Entry e : entries) {
             if (!overlaid.contains(e.id())) out.add(e.id());
@@ -105,7 +98,7 @@ public final class Giter8TemplateIndex {
         return roots;
     }
 
-    static void scanRoot(Path root, Map<String, Giter8ShortNames.Entry> byId, java.util.Set<String> overlaid) {
+    static void scanRoot(Path root, Map<String, Giter8ShortNames.Entry> byId, Set<String> overlaid) {
         if (!Files.isDirectory(root)) return;
         // Direct children: name.g8 or bare short-name template roots
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(root)) {
@@ -129,7 +122,7 @@ public final class Giter8TemplateIndex {
     }
 
     private static void scanNestedG8(
-            Path dir, Map<String, Giter8ShortNames.Entry> byId, java.util.Set<String> overlaid, int depth) {
+            Path dir, Map<String, Giter8ShortNames.Entry> byId, Set<String> overlaid, int depth) {
         if (depth > 4 || !Files.isDirectory(dir)) return;
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir)) {
             for (Path child : stream) {
@@ -148,7 +141,7 @@ public final class Giter8TemplateIndex {
     }
 
     private static void mergeInto(
-            Map<String, Giter8ShortNames.Entry> byId, java.util.Set<String> overlaid, String id, Path templateRoot) {
+            Map<String, Giter8ShortNames.Entry> byId, Set<String> overlaid, String id, Path templateRoot) {
         if (id == null || id.isBlank()) return;
         Giter8ShortNames.Entry base =
                 byId.getOrDefault(id, new Giter8ShortNames.Entry(id, id, List.of(), Giter8ShortNames.LAYOUT_SIMPLE));

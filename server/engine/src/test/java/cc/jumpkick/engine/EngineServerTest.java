@@ -9,23 +9,25 @@ import cc.jumpkick.engine.protocol.ProtoJobs;
 import cc.jumpkick.engine.protocol.ProtoLifecycle;
 import cc.jumpkick.engine.protocol.ProtoSession;
 import cc.jumpkick.plugin.protocol.Jsonl;
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
-import java.net.StandardProtocolFamily;
-import java.net.UnixDomainSocketAddress;
+import com.sun.net.httpserver.HttpServer;
+import java.io.*;
+import java.net.*;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.channels.Channels;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -64,7 +66,7 @@ class EngineServerTest {
                         // best-effort
                     }
                 });
-            } catch (IOException | java.io.UncheckedIOException ignored) {
+            } catch (IOException | UncheckedIOException ignored) {
                 // An engine under test may still be deleting its own files (socket/pid/lock) as it
                 // tears down concurrently with this cleanup — Files.walk's lazy traversal wraps a
                 // file disappearing mid-walk as an UncheckedIOException, not IOException. Best-effort
@@ -344,8 +346,7 @@ class EngineServerTest {
             assertThat(token).isNotBlank();
 
             // Wrong token: the server closes the connection without ever replying.
-            try (SocketChannel ch = SocketChannel.open(
-                    new java.net.InetSocketAddress(java.net.InetAddress.getLoopbackAddress(), port))) {
+            try (SocketChannel ch = SocketChannel.open(new InetSocketAddress(InetAddress.getLoopbackAddress(), port))) {
                 BufferedWriter w = new BufferedWriter(
                         new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
                 BufferedReader r =
@@ -363,8 +364,7 @@ class EngineServerTest {
             }
 
             // Correct token: the connection behaves exactly like the Unix-domain-socket transport.
-            try (SocketChannel ch = SocketChannel.open(
-                    new java.net.InetSocketAddress(java.net.InetAddress.getLoopbackAddress(), port))) {
+            try (SocketChannel ch = SocketChannel.open(new InetSocketAddress(InetAddress.getLoopbackAddress(), port))) {
                 BufferedWriter w = new BufferedWriter(
                         new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
                 BufferedReader r =
@@ -397,10 +397,9 @@ class EngineServerTest {
     void lock_request_resolves_and_writes_the_lockfile_over_the_socket() throws Exception {
         String previousM2 = System.getProperty("jk.m2.local");
         System.setProperty("jk.m2.local", shortTempDir().toString()); // never touch the real ~/.m2
-        com.sun.net.httpserver.HttpServer repo =
-                com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        HttpServer repo = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         try {
-            java.util.Map<String, byte[]> served = new java.util.HashMap<>();
+            Map<String, byte[]> served = new HashMap<>();
             // jk injects the latest-stable JUnit Platform into every project's TEST scope, so the
             // mock repo must offer those coords (dependency-free stubs) alongside the project dep.
             seedArtifact(served, "org.junit.jupiter", "junit-jupiter", "6.1.0");
@@ -532,8 +531,7 @@ class EngineServerTest {
      */
     @Test
     void audit_request_forks_the_worker_and_streams_findings_over_the_socket() throws Exception {
-        com.sun.net.httpserver.HttpServer osv =
-                com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        HttpServer osv = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         try {
             osv.createContext("/querybatch", exchange -> {
                 byte[] body = "{\"results\":[{\"vulns\":[{\"id\":\"GHSA-test-1\"}]}]}".getBytes(StandardCharsets.UTF_8);
@@ -786,10 +784,9 @@ class EngineServerTest {
     void tool_resolve_request_resolves_and_fetches_over_the_socket() throws Exception {
         String previousM2 = System.getProperty("jk.m2.local");
         System.setProperty("jk.m2.local", shortTempDir().toString()); // never touch the real ~/.m2
-        com.sun.net.httpserver.HttpServer repo =
-                com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        HttpServer repo = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         try {
-            java.util.Map<String, byte[]> served = new java.util.HashMap<>();
+            Map<String, byte[]> served = new HashMap<>();
             seedArtifact(served, "com.example", "widget-cli", "1.0.0");
             repo.createContext("/", exchange -> {
                 byte[] body = served.get(exchange.getRequestURI().getPath());
@@ -876,7 +873,7 @@ class EngineServerTest {
         Files.writeString(staleKey, "INPUT deadbeef /x");
         Files.setLastModifiedTime(
                 staleKey,
-                java.nio.file.attribute.FileTime.fromMillis(
+                FileTime.fromMillis(
                         System.currentTimeMillis() - Duration.ofDays(90).toMillis()));
         Path putTmp = cache.resolve("sha256").resolve(".put-1234");
         Files.createDirectories(putTmp.getParent());
@@ -992,8 +989,7 @@ class EngineServerTest {
     }
 
     /** Minimal metadata + dependency-free POM + stub jar for one coordinate on the mock repo. */
-    private static void seedArtifact(
-            java.util.Map<String, byte[]> served, String group, String artifact, String version) {
+    private static void seedArtifact(Map<String, byte[]> served, String group, String artifact, String version) {
         String base = "/" + group.replace('.', '/') + "/" + artifact;
         served.put(
                 base + "/maven-metadata.xml",
@@ -1053,11 +1049,9 @@ class EngineServerTest {
         String url = Files.readString(p.http());
         assertThat(url).startsWith("http://127.0.0.1:").endsWith("/");
 
-        var httpClient = java.net.http.HttpClient.newHttpClient();
+        var httpClient = HttpClient.newHttpClient();
         var response = httpClient.send(
-                java.net.http.HttpRequest.newBuilder(java.net.URI.create(url + "hello.txt"))
-                        .build(),
-                java.net.http.HttpResponse.BodyHandlers.ofString());
+                HttpRequest.newBuilder(URI.create(url + "hello.txt")).build(), HttpResponse.BodyHandlers.ofString());
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body()).isEqualTo("hi from the engine");
 
@@ -1067,17 +1061,15 @@ class EngineServerTest {
         // The REST surface serves the same vitals the socket status-ack carries. /api/* is
         // token-gated even on loopback, so the token is not optional here.
         var apiStatus = httpClient.send(
-                java.net.http.HttpRequest.newBuilder(java.net.URI.create(url + "api/status"))
+                HttpRequest.newBuilder(URI.create(url + "api/status"))
                         .header("Authorization", "Bearer " + token)
                         .build(),
-                java.net.http.HttpResponse.BodyHandlers.ofString());
+                HttpResponse.BodyHandlers.ofString());
         assertThat(apiStatus.statusCode()).isEqualTo(200);
         assertThat(apiStatus.body()).contains("\"version\":\"1.0\"").contains("\"httpUrl\":\"" + url + "\"");
 
         var unauthenticated = httpClient.send(
-                java.net.http.HttpRequest.newBuilder(java.net.URI.create(url + "api/status"))
-                        .build(),
-                java.net.http.HttpResponse.BodyHandlers.ofString());
+                HttpRequest.newBuilder(URI.create(url + "api/status")).build(), HttpResponse.BodyHandlers.ofString());
         assertThat(unauthenticated.statusCode())
                 .as("/api/* fails closed without a token")
                 .isEqualTo(401);
@@ -1100,7 +1092,7 @@ class EngineServerTest {
     void http_bind_failure_is_advisory_not_fatal() throws Exception {
         Path stateDir = shortTempDir();
         EnginePaths.Paths p = paths(stateDir);
-        try (var blocker = new java.net.ServerSocket(0, 1, java.net.InetAddress.getLoopbackAddress())) {
+        try (var blocker = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
             var http = new cc.jumpkick.config.JkHttpConfig(
                     "127.0.0.1",
                     blocker.getLocalPort(),
@@ -1128,8 +1120,7 @@ class EngineServerTest {
 
     /** The value of a flat {@code "key":"value"} pair — enough for one field of a status body. */
     private static String jsonString(String json, String key) {
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"" + key + "\"\\s*:\\s*\"([^\"]*)\"")
-                .matcher(json);
+        Matcher m = Pattern.compile("\"" + key + "\"\\s*:\\s*\"([^\"]*)\"").matcher(json);
         return m.find() ? m.group(1) : "";
     }
 
@@ -1143,15 +1134,15 @@ class EngineServerTest {
         waitUntil(Duration.ofSeconds(5), () -> Files.exists(p.http()) && Files.exists(p.httpToken()));
         String url = Files.readString(p.http());
         String token = Files.readString(p.httpToken()).trim();
-        var httpClient = java.net.http.HttpClient.newHttpClient();
+        var httpClient = HttpClient.newHttpClient();
 
         // Subscribe to the event stream first, so the request events can't race past us. The token
         // rides the query string, which is the only way EventSource can carry it — and the only
         // path for which the server accepts it there.
         var sse = httpClient.send(
-                java.net.http.HttpRequest.newBuilder(java.net.URI.create(url + "api/events?access_token=" + token))
+                HttpRequest.newBuilder(URI.create(url + "api/events?access_token=" + token))
                         .build(),
-                java.net.http.HttpResponse.BodyHandlers.ofLines());
+                HttpResponse.BodyHandlers.ofLines());
         assertThat(sse.statusCode()).isEqualTo(200);
         var lines = sse.body().iterator();
 
@@ -1159,10 +1150,10 @@ class EngineServerTest {
         // restart gets a 409 instead of driving the wrong engine. GET /api/status is bootstrap and
         // hands it over.
         var status = httpClient.send(
-                java.net.http.HttpRequest.newBuilder(java.net.URI.create(url + "api/status"))
+                HttpRequest.newBuilder(URI.create(url + "api/status"))
                         .header("Authorization", "Bearer " + token)
                         .build(),
-                java.net.http.HttpResponse.BodyHandlers.ofString());
+                HttpResponse.BodyHandlers.ofString());
         assertThat(status.statusCode()).isEqualTo(200);
         String epoch = jsonString(status.body(), "engineEpoch");
         assertThat(epoch).isNotBlank();
@@ -1173,33 +1164,33 @@ class EngineServerTest {
         Files.writeString(project.resolve("jk.toml"), "this is [not] valid = toml =");
 
         var staleEpoch = httpClient.send(
-                java.net.http.HttpRequest.newBuilder(java.net.URI.create(url + "api/build"))
+                HttpRequest.newBuilder(URI.create(url + "api/build"))
                         .header("Authorization", "Bearer " + token)
                         .header("X-Jk-Engine-Epoch", "from-a-previous-engine")
-                        .POST(java.net.http.HttpRequest.BodyPublishers.ofString("{\"dir\":\"" + project + "\"}"))
+                        .POST(HttpRequest.BodyPublishers.ofString("{\"dir\":\"" + project + "\"}"))
                         .build(),
-                java.net.http.HttpResponse.BodyHandlers.ofString());
+                HttpResponse.BodyHandlers.ofString());
         assertThat(staleEpoch.statusCode())
                 .as("a request from a previous engine generation is refused")
                 .isEqualTo(409);
 
         var rejected = httpClient.send(
-                java.net.http.HttpRequest.newBuilder(java.net.URI.create(url + "api/build"))
+                HttpRequest.newBuilder(URI.create(url + "api/build"))
                         .header("Authorization", "Bearer " + token)
                         .header("X-Jk-Engine-Epoch", epoch)
-                        .POST(java.net.http.HttpRequest.BodyPublishers.ofString(
+                        .POST(HttpRequest.BodyPublishers.ofString(
                                 "{\"dir\":\"" + stateDir.resolve("no-such-project") + "\"}"))
                         .build(),
-                java.net.http.HttpResponse.BodyHandlers.ofString());
+                HttpResponse.BodyHandlers.ofString());
         assertThat(rejected.statusCode()).isEqualTo(400); // validation runs before any thread forks
 
         var accepted = httpClient.send(
-                java.net.http.HttpRequest.newBuilder(java.net.URI.create(url + "api/build"))
+                HttpRequest.newBuilder(URI.create(url + "api/build"))
                         .header("Authorization", "Bearer " + token)
                         .header("X-Jk-Engine-Epoch", epoch)
-                        .POST(java.net.http.HttpRequest.BodyPublishers.ofString("{\"dir\":\"" + project + "\"}"))
+                        .POST(HttpRequest.BodyPublishers.ofString("{\"dir\":\"" + project + "\"}"))
                         .build(),
-                java.net.http.HttpResponse.BodyHandlers.ofString());
+                HttpResponse.BodyHandlers.ofString());
         assertThat(accepted.statusCode()).isEqualTo(202);
         assertThat(accepted.body()).contains("\"requestId\":");
 
@@ -1213,8 +1204,8 @@ class EngineServerTest {
     }
 
     /** Read SSE lines until an {@code event: <type>} frame, returning its {@code data:} payload. */
-    private static String awaitSseData(java.util.Iterator<String> lines, String type) throws Exception {
-        return java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+    private static String awaitSseData(Iterator<String> lines, String type) throws Exception {
+        return CompletableFuture.supplyAsync(() -> {
                     while (lines.hasNext()) {
                         if (lines.next().equals("event: " + type)) {
                             String data = lines.next();
@@ -1223,6 +1214,6 @@ class EngineServerTest {
                     }
                     throw new AssertionError("stream ended without an 'event: " + type + "' frame");
                 })
-                .get(10, java.util.concurrent.TimeUnit.SECONDS);
+                .get(10, TimeUnit.SECONDS);
     }
 }

@@ -5,6 +5,7 @@ import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.tui.PlainAscii;
 import cc.jumpkick.cli.tui.Rail;
 import cc.jumpkick.config.JkConfig;
+import java.util.Locale;
 import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStyle;
 
@@ -78,6 +79,9 @@ public interface Theme {
 
     /** Blue — used elsewhere; no longer a gradient endpoint. */
     AttributedStyle blue();
+
+    /** Material indigo ({@code #3F51B5}) — the web {@code --indigo} token. */
+    AttributedStyle indigo();
 
     /** Brand primary — neon electric blue, the brand base color (Jk Dark primary, {@code #3D9BFF}). */
     AttributedStyle primary();
@@ -324,7 +328,7 @@ public interface Theme {
      */
     default AttributedStyle styleNamedOrNull(String name) {
         if (name == null || name.isBlank()) return null;
-        String key = name.trim().toLowerCase(java.util.Locale.ROOT).replace('_', '-');
+        String key = name.trim().toLowerCase(Locale.ROOT).replace('_', '-');
         return switch (key) {
             case "dim" -> dim();
             case "dark-gray", "darkgray" -> darkGray();
@@ -339,6 +343,7 @@ public interface Theme {
             case "success", "green" -> success();
             case "warning", "yellow" -> warning();
             case "blue" -> blue();
+            case "indigo" -> indigo();
             case "primary", "plan" -> primary();
             case "cyan" -> cyan();
             case "black" -> black();

@@ -36,6 +36,12 @@ import {
   testFailureReport,
 } from './fold.js';
 import { installTips } from './tip.js';
+import {
+  routeFromHash,
+  buildProjectHash,
+  codePathForFailure,
+  CodeView,
+} from './code.js';
 
 bootstrapToken();
 
@@ -70,6 +76,11 @@ const ICON_PATHS = {
   database: 'M12 3c-4.4 0-8 1.3-8 3s3.6 3 8 3 8-1.3 8-3-3.6-3-8-3zM4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6',
   cpu: 'M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM9 9h6v6H9zM9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3',
   'folder-open': 'M6 14l1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2',
+  'chevron-down': 'M6 9l6 6 6-6',
+  // Funnel — sits inside the file-tree filter box (code.js).
+  filter: 'M22 3H2l8 9.46V19l4 2v-8.54L22 3z',
+  // Dog-eared sheet — the generic file glyph in the #project/<id>/files tree (two subpaths).
+  file: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zM14 2v6h6',
   plus: 'M12 5v14M5 12h14',
   // Two overlapping rectangles — clipboard / copy affordance (lucide-style).
   copy: 'M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2M8 2h8a1 1 0 0 1 1 1v2H7V3a1 1 0 0 1 1-1z',
@@ -257,7 +268,34 @@ function cssVar(name, fallback) {
 // One fail-report body shared by the compact-card and workspace-module branches — the two
 // inline template copies drifted once already (JK-1873); a single component cannot (JK-1916).
 const FailReport = {
-  props: { rep: { type: Object, required: true } },
+  props: {
+    rep: { type: Object, required: true },
+    projectId: { type: String, default: null },
+    checkoutDir: { type: String, default: null },
+    moduleDir: { type: String, default: null },
+  },
+  computed: {
+    codePath() {
+      return codePathForFailure({
+        checkoutDir: this.checkoutDir,
+        moduleDir: this.moduleDir,
+        file: this.rep.file,
+      });
+    },
+    canOpen() {
+      return !!(this.projectId && this.codePath);
+    },
+    /** Real hash deep link into the Monaco files pane (copyable, middle-clickable). */
+    deepLink() {
+      if (!this.canOpen) return undefined;
+      return buildProjectHash({
+        projectId: this.projectId,
+        files: true,
+        path: this.codePath,
+        line: this.rep.line || 0,
+      });
+    },
+  },
   methods: {
     failLabelSegs(label) {
       return detailSegments(label);
@@ -299,7 +337,12 @@ const FailReport = {
     </template>
     <template v-if="rep.file">
       <div class="fail-blank"></div>
-      <div class="fail-line fail-path">{{ rep.file }}</div>
+      <component
+        :is="canOpen ? 'a' : 'div'"
+        class="fail-line fail-path"
+        :class="{ link: canOpen }"
+        :href="deepLink"
+      >{{ rep.file }}</component>
       <div
         v-for="(row, ri) in rep.rows"
         :key="'s'+ri"
@@ -772,21 +815,6 @@ function recordHasErrorDiag(r) {
   return (r.diagnostics || []).some((d) => d && d.severity === 'error');
 }
 
-/**
- * Parse the location hash into a route. Flat top-level views plus one detail route:
- * `#project/<projectId>` — durable identity (not an absolute path). Anything unrecognised falls
- * back to the activity feed.
- */
-function routeFromHash() {
-  const h = location.hash || '';
-  if (h.startsWith('#project/')) {
-    return { view: 'project', projectId: decodeURIComponent(h.slice('#project/'.length)), dir: null };
-  }
-  if (h === '#projects') return { view: 'projects', projectId: null, dir: null };
-  if (h === '#status') return { view: 'status', projectId: null, dir: null };
-  return { view: 'activity', projectId: null, dir: null };
-}
-
 /** Cached-vs-total step counts for one record → the build's "N of M steps served from cache". */
 // The cache's estimated wall-clock benefit for a run, from the engine-computed `benefit` snapshot
 // (a two-level critical-path estimate — see CacheBenefit). Replaces the old "steps skipped" count,
@@ -818,6 +846,9 @@ Vue.createApp({
   data: () => ({
     view: routeFromHash().view, // 'activity' | 'projects' | 'project' | 'status'
     selectedProjectId: routeFromHash().projectId, // durable id (#project/<id>)
+    filesOpen: !!routeFromHash().files, // #project/<id>/files[/<rel>]
+    codePath: routeFromHash().path,
+    codeLine: routeFromHash().line,
     selectedProjectDir: null, // checkout path resolved from project meta
     projectMeta: null, // live /api/project payload (coord + description + dir) for the open project
     // JK-1542: Dependencies panel on the Project page — closed by default; graph fetch + echarts
@@ -1291,7 +1322,13 @@ Vue.createApp({
       }
       if (!projectId) return;
       if (dir) this.selectedProjectDir = dir;
-      location.hash = '#project/' + encodeURIComponent(projectId);
+      location.hash = buildProjectHash({ projectId });
+    },
+
+    /** The files pane's Back control: up one level to the project page, not out to the list. */
+    closeCode() {
+      if (this.selectedProjectId) this.openProject(this.selectedProjectId);
+      else this.setView('projects');
     },
 
     /** Activity card badge / coord → project detail (by projectId, with dir fallback). */
@@ -1307,14 +1344,60 @@ Vue.createApp({
       const idChanged = r.projectId !== this.selectedProjectId;
       this.view = r.view;
       this.selectedProjectId = r.projectId;
+      this.filesOpen = !!r.files;
+      this.codePath = r.path;
+      this.codeLine = r.line;
       // Collapse the expensive graph panel when leaving project view or switching projects.
-      if (r.view !== 'project' || idChanged) this.projectGraphOpen = false;
-      if (r.view === 'project' && r.projectId) this.loadProjectMeta(r.projectId);
+      if (r.view !== 'project' || idChanged || r.files) this.projectGraphOpen = false;
+      // Project identity cannot change between two clicks on the same #project/<id> route, and
+      // every /api/project hit re-runs identity resolution engine-side (git probe + project-home
+      // scan) — so reload metadata only on an actual project switch or when it was never loaded
+      // (JK-1945). This also stops the header flicker from nulling projectMeta per file click.
+      if (r.view === 'project' && r.projectId && (idChanged || !this.projectMeta)) {
+        this.loadProjectMeta(r.projectId);
+      }
       if (r.view === 'projects') {
         this.loadProjectHistory();
         this.refreshMetrics();
       }
       if (r.view === 'status') this.refresh();
+    },
+
+    browseCodebase() {
+      this.openCode({ projectId: this.selectedProjectId });
+    },
+
+    openCode({ projectId, path, line, replace } = {}) {
+      if (this.authModal) return;
+      const id = projectId || this.selectedProjectId;
+      if (!id) return;
+      const hash = buildProjectHash({
+        projectId: id,
+        files: true,
+        path: path || null,
+        line: line || 0,
+      });
+      if (replace) {
+        // replaceState does not fire hashchange — apply the route ourselves.
+        history.replaceState(null, '', hash);
+        this.applyRoute();
+      } else {
+        location.hash = hash;
+      }
+    },
+
+    onCodeNavigate({ path, line, replace }) {
+      this.openCode({
+        projectId: this.selectedProjectId,
+        path,
+        line: line || 0,
+        replace: !!replace,
+      });
+    },
+
+    copyOpenFile() {
+      const view = this.$refs.codeView;
+      if (view && typeof view.copy === 'function') view.copy();
     },
 
     /** Toggle the Project-page Dependencies accordion (lazy graph load on open). */
@@ -2360,6 +2443,7 @@ Vue.createApp({
   .component('fail-report', FailReport)
   .component('build-bars', BuildBars)
   .component('module-dep-graph', ModuleDepGraph)
+  .component('code-view', CodeView)
   .mount('#app');
 
 // Themed tooltips for data-tip / title (native title= is unstyleable OS chrome — JK-1726).

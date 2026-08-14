@@ -18,7 +18,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -45,7 +44,10 @@ public final class BuildAccumulator {
      */
     private final cc.jumpkick.task.IoLedger io = new cc.jumpkick.task.IoLedger();
 
-    private final List<ModuleOutcome> modules = new CopyOnWriteArrayList<>();
+    // Plain lists under their own monitor (snapshot to iterate): CopyOnWriteArrayList copied the
+    // whole backing array per append — O(n²) array churn for a build with many modules or
+    // diagnostics, on the engine heap (JK-1942).
+    private final List<ModuleOutcome> modules = new ArrayList<>();
     // Steps per module dir (name → Step, arrival order, last status wins). The single-plan path
     // uses the "" (SINGLE_PLAN_DIR) bucket; workspace modules use their real dir. Rendered as a
     // chain per module (the dashboard shows one chain per module, not one merged strip).
@@ -56,7 +58,8 @@ public final class BuildAccumulator {
     private final Map<String, Map<String, List<String>>> requiresByDir = new ConcurrentHashMap<>();
     // Module dependency graph (dir → prereq dirs) from onModuleGraph; empty for single-plan builds.
     private volatile Map<String, Set<String>> moduleEdges = Map.of();
-    private final List<BuildRecord.Diag> diagnostics = new CopyOnWriteArrayList<>();
+    private final List<BuildRecord.Diag> diagnostics = new ArrayList<>();
+    private int droppedDiagnostics;
     private volatile BuildRecord.Tests tests;
     private volatile boolean anyFailure;
     private volatile boolean userCancelled;
@@ -166,8 +169,62 @@ public final class BuildAccumulator {
     }
 
     public void addModule(ModuleOutcome o) {
-        modules.add(o);
+        synchronized (modules) {
+            modules.add(o);
+        }
         if (!o.success()) anyFailure = true;
+    }
+
+    /**
+     * Journal-path diagnostics cap. Wire and SSE bound theirs at capture (JK-1880); the journal
+     * previously kept every row, so one pathological plan could persist an unbounded record.
+     * Overflow is dropped with an explicit {@code +N more} marker row at record time.
+     */
+    static final int MAX_JOURNAL_DIAGNOSTICS = 500;
+
+    private void addDiag(BuildRecord.Diag d) {
+        synchronized (diagnostics) {
+            if (diagnostics.size() >= MAX_JOURNAL_DIAGNOSTICS) {
+                droppedDiagnostics++;
+                return;
+            }
+            diagnostics.add(d);
+        }
+    }
+
+    /** Snapshot including the overflow marker row when anything was dropped. */
+    private List<BuildRecord.Diag> diagSnapshot() {
+        synchronized (diagnostics) {
+            List<BuildRecord.Diag> out = new ArrayList<>(diagnostics);
+            if (droppedDiagnostics > 0) {
+                out.add(new BuildRecord.Diag(
+                        "warning",
+                        "",
+                        null,
+                        "diagnostics-truncated",
+                        "+" + droppedDiagnostics + " more diagnostics dropped at the journal cap ("
+                                + MAX_JOURNAL_DIAGNOSTICS + ")",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        0,
+                        0,
+                        List.of(),
+                        0));
+            }
+            return out;
+        }
+    }
+
+    private List<ModuleOutcome> moduleSnapshot() {
+        synchronized (modules) {
+            return new ArrayList<>(modules);
+        }
     }
 
     /**
@@ -215,7 +272,7 @@ public final class BuildAccumulator {
     public MidFlight midFlight() {
         List<cc.jumpkick.engine.http.HttpLive.Module> moduleList = new ArrayList<>();
         Set<String> covered = new HashSet<>();
-        for (ModuleOutcome o : modules) {
+        for (ModuleOutcome o : moduleSnapshot()) {
             String mdir = o.dir() == null ? "" : o.dir().toString();
             covered.add(mdir);
             moduleList.add(new cc.jumpkick.engine.http.HttpLive.Module(
@@ -282,7 +339,7 @@ public final class BuildAccumulator {
         // Prefer the plan's own dir for.env lookup; fall back to the run's entry dir.
         String redactDir = (dir != null && !dir.isBlank()) ? dir : this.dir;
         for (BuildPlanResult.Diagnostic d : result.errors()) {
-            diagnostics.add(new BuildRecord.Diag(
+            addDiag(new BuildRecord.Diag(
                     "error",
                     d0,
                     d.step(),
@@ -302,7 +359,7 @@ public final class BuildAccumulator {
                     d.worker()));
         }
         for (BuildPlanResult.Diagnostic d : result.warnings()) {
-            diagnostics.add(new BuildRecord.Diag(
+            addDiag(new BuildRecord.Diag(
                     "warning",
                     d0,
                     d.step(),
@@ -392,9 +449,10 @@ public final class BuildAccumulator {
     }
 
     public String diagnosticsText() {
-        if (diagnostics.isEmpty()) return null;
+        List<BuildRecord.Diag> diags = diagSnapshot();
+        if (diags.isEmpty()) return null;
         StringBuilder b = new StringBuilder();
-        for (BuildRecord.Diag d : diagnostics) {
+        for (BuildRecord.Diag d : diags) {
             b.append('[').append(d.severity()).append("] ");
             if (notBlank(d.step())) b.append(d.step()).append(": ");
             if (notBlank(d.test())) b.append(d.test()).append(" — ");
@@ -427,7 +485,7 @@ public final class BuildAccumulator {
         // build has no module rows, so its steps live in the record's top-level list (the ""
         // bucket). This is exactly the two shapes the dashboard renders (per-module vs compact).
         List<BuildRecord.Module> moduleList = new ArrayList<>();
-        for (ModuleOutcome o : modules) {
+        for (ModuleOutcome o : moduleSnapshot()) {
             String mdir = o.dir() == null ? "" : o.dir().toString();
             moduleList.add(
                     new BuildRecord.Module(o.coord(), mdir, o.success(), o.exitCode(), o.millis(), stepsFor(mdir)));
@@ -462,7 +520,7 @@ public final class BuildAccumulator {
                 tests,
                 moduleList,
                 topSteps,
-                new ArrayList<>(diagnostics),
+                diagSnapshot(),
                 trigger,
                 commit,
                 benefitRow,

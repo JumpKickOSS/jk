@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
+import java.util.regex.Pattern;
 import org.apache.maven.artifact.versioning.ComparableVersion;
 
 /**
@@ -26,14 +27,13 @@ public final class Versions {
      * not false-positive; {@code m}/{@code M} milestones require a following digit ({@code M2},
      * {@code m1}).
      */
-    private static final java.util.regex.Pattern PRE_RELEASE = java.util.regex.Pattern.compile("(?i)(?:^|[-_.+])("
+    private static final Pattern PRE_RELEASE = Pattern.compile("(?i)(?:^|[-_.+])("
             + "alpha|beta|milestone|rc|cr|pre|preview|snapshot|dev|ea|canary|nightly"
             + "|m\\d+"
             + ")(?:$|[-_.+\\d])");
 
     /** Maven's resolved-snapshot form, e.g. {@code 1.0-20260520.123456-7} — always a pre-release. */
-    private static final java.util.regex.Pattern SNAPSHOT_TIMESTAMP =
-            java.util.regex.Pattern.compile("-\\d{8}\\.\\d{6}-\\d+$");
+    private static final Pattern SNAPSHOT_TIMESTAMP = Pattern.compile("-\\d{8}\\.\\d{6}-\\d+$");
 
     /**
      * True for a stable release: sorts ≥ its numeric core under {@link ComparableVersion}, has no

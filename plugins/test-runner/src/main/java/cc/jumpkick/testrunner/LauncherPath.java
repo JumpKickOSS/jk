@@ -3,10 +3,12 @@ package cc.jumpkick.testrunner;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.platform.engine.TestExecutionResult;
@@ -56,7 +58,7 @@ final class LauncherPath {
         Adapter adapter = new Adapter(writer, workerId);
 
         LauncherDiscoveryRequestBuilder b = LauncherDiscoveryRequestBuilder.request()
-                .selectors(DiscoverySelectors.selectClasspathRoots(java.util.Set.of(scanClasspath)));
+                .selectors(DiscoverySelectors.selectClasspathRoots(Set.of(scanClasspath)));
         if (filter != null && !filter.isBlank()) {
             b.filters(ClassNameFilter.includeClassNamePatterns(TestRunner.classNamePattern(filter)));
         }
@@ -90,7 +92,7 @@ final class LauncherPath {
             JsonEventWriter writer) {
         Adapter adapter = new Adapter(writer, workerId);
         LauncherDiscoveryRequestBuilder b = LauncherDiscoveryRequestBuilder.request()
-                .selectors(DiscoverySelectors.selectClasspathRoots(java.util.Set.of(scanClasspath)));
+                .selectors(DiscoverySelectors.selectClasspathRoots(Set.of(scanClasspath)));
         if (filter != null && !filter.isBlank()) {
             b.filters(ClassNameFilter.includeClassNamePatterns(TestRunner.classNamePattern(filter)));
         }
@@ -143,8 +145,8 @@ final class LauncherPath {
     }
 
     private static long countClassFiles(Path root) {
-        if (root == null || !java.nio.file.Files.isDirectory(root)) return 0;
-        try (var stream = java.nio.file.Files.walk(root)) {
+        if (root == null || !Files.isDirectory(root)) return 0;
+        try (var stream = Files.walk(root)) {
             return stream.filter(p -> p.getFileName() != null
                             && p.getFileName().toString().endsWith(".class"))
                     .count();

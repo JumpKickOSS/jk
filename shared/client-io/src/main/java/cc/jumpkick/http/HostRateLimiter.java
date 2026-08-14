@@ -2,6 +2,8 @@
 package cc.jumpkick.http;
 
 import java.net.URI;
+import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Semaphore;
@@ -23,8 +25,8 @@ public final class HostRateLimiter {
     public static final int MIRROR_PERMITS = 20;
 
     /** Hosts whose cap differs from {@link #DEFAULT_PERMITS}. */
-    private static final java.util.Map<String, Integer> PERMIT_OVERRIDES =
-            java.util.Map.of(URI.create(CentralMirror.MIRROR_BASE).getHost(), MIRROR_PERMITS);
+    private static final Map<String, Integer> PERMIT_OVERRIDES =
+            Map.of(URI.create(CentralMirror.MIRROR_BASE).getHost(), MIRROR_PERMITS);
 
     private static final HostRateLimiter SHARED = new HostRateLimiter(DEFAULT_PERMITS);
 
@@ -42,7 +44,7 @@ public final class HostRateLimiter {
         // at any other capacity was an explicit choice by its caller and is left exactly as asked — being
         // "helpfully" widened to 20 is the last thing a caller that said 2 wants.
         if (host == null || permitsPerHost != DEFAULT_PERMITS) return permitsPerHost;
-        Integer override = PERMIT_OVERRIDES.get(host.toLowerCase(java.util.Locale.ROOT));
+        Integer override = PERMIT_OVERRIDES.get(host.toLowerCase(Locale.ROOT));
         return override != null ? override : permitsPerHost;
     }
 

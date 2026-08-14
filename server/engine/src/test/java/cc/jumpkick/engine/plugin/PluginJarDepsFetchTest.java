@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -77,7 +78,7 @@ class PluginJarDepsFetchTest {
         assertThat(Files.readString(jar)).isEqualTo("thin-worker-jar");
         Path sidecar = WorkerClasspath.sidecarPath(jar);
         assertThat(sidecar).exists();
-        java.util.List<String> entries = Files.readAllLines(sidecar).stream()
+        List<String> entries = Files.readAllLines(sidecar).stream()
                 .filter(l -> !l.isBlank() && !l.startsWith("#"))
                 .toList();
         assertThat(entries).hasSize(1);

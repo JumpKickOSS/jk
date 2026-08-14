@@ -14,11 +14,10 @@ import java.io.IOException;
 import java.nio.channels.SocketChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 /**
  * Spawn, takeover, and AOT-cache selection for the resident engine. Mode, artifact, and
@@ -87,7 +86,7 @@ public final class EngineSpawn {
 
     /**
      * Outcome of a one-shot ensure probe: live handshake, nothing listening, silent peer (connect
-     * works, no reply within {@link EngineWire#EngineWire.SOCKET_TIMEOUT_MILLIS}), or connected-but-not-usable (e.g.
+     * works, no reply within {@link EngineWire#SOCKET_TIMEOUT_MILLIS}), or connected-but-not-usable (e.g.
      * newer protocol).
      */
     private sealed interface Reachability {
@@ -192,7 +191,7 @@ public final class EngineSpawn {
     }
 
     /** How a spawn should treat the AOT cache. */
-    public enum AotMode {
+    enum AotMode {
         TRAIN,
         USE,
         NONE
@@ -206,11 +205,10 @@ public final class EngineSpawn {
      * HotSpot/C2 JVM (AOT is only stable there), the AOT cache path, and whether a {@code.noaot}
      * marker already says AOT can't apply for this key.
      */
-    public record EngineTarget(
-            EngineArtifact engine, Path javaHome, boolean hotspot, Path aotCache, boolean noAotMarker) {}
+    record EngineTarget(EngineArtifact engine, Path javaHome, boolean hotspot, Path aotCache, boolean noAotMarker) {}
 
     /** A host JDK for the engine: home, vendor, and version (from its {@code release} file). */
-    public record EngineJdk(Path home, cc.jumpkick.jdk.JdkVendor vendor, String version) {}
+    record EngineJdk(Path home, cc.jumpkick.jdk.JdkVendor vendor, String version) {}
 
     /** Resolve everything the spawn/mode decision needs, self-healing a missing/skewed engine jar. */
     private static EngineTarget resolveEngineTarget(EnginePaths.Paths paths, String clientVersion) throws IOException {
@@ -372,17 +370,6 @@ public final class EngineSpawn {
         return vendor != cc.jumpkick.jdk.JdkVendor.ORACLE_GRAALVM && vendor != cc.jumpkick.jdk.JdkVendor.GRAALVM_CE;
     }
 
-    private static void killStale(long pid, Duration timeout) {
-        ProcessHandle.of(pid).ifPresent(h -> {
-            h.destroy();
-            long deadline = System.nanoTime() + timeout.toNanos();
-            while (h.isAlive() && System.nanoTime() < deadline) {
-                sleepQuietly(20);
-            }
-            if (h.isAlive()) h.destroyForcibly();
-        });
-    }
-
     /**
      * Which engine artifact a spawn chose. {@code EXE}: {@code path} is an executable whose {@code
      * main} IS the engine loop. {@code JAR}: {@code path} is the engine's fat jar ({@code
@@ -390,7 +377,7 @@ public final class EngineSpawn {
      * cc.jumpkick.engine.EngineMain} — the engine is a plain JVM app, never a native image. There is
      * no client-binary FALLBACK: the slim client never hosts the engine.
      */
-    public record EngineArtifact(Kind kind, String path, String how) {
+    record EngineArtifact(Kind kind, String path, String how) {
         enum Kind {
             EXE,
             JAR
@@ -523,7 +510,12 @@ public final class EngineSpawn {
                     .key(hash)
                     .jkVersion(version)
                     .status(status)
-                    .jvmFlags(List.of("-XX:+UseSerialGC", "--enable-native-access=ALL-UNNAMED"));
+                    .jvmFlags(List.of(
+                            "-XX:+UseSerialGC",
+                            "-XX:MinHeapFreeRatio=10",
+                            "-XX:MaxHeapFreeRatio=25",
+                            "-XX:-ShrinkHeapInSteps",
+                            "--enable-native-access=ALL-UNNAMED"));
             if (ready) {
                 b.sizeBytes(Files.size(cache)).lastUsed(cc.jumpkick.util.AotManifest.nowIso());
             }
@@ -552,7 +544,7 @@ public final class EngineSpawn {
     private static void deleteRecursivelyQuietly(Path root) {
         if (!Files.isDirectory(root)) return;
         try (var walk = Files.walk(root)) {
-            walk.sorted(java.util.Comparator.reverseOrder()).forEach(EngineSpawn::deleteQuietly);
+            walk.sorted(Comparator.reverseOrder()).forEach(EngineSpawn::deleteQuietly);
         } catch (IOException ignored) {
             // best-effort
         }
@@ -594,6 +586,16 @@ public final class EngineSpawn {
                         .resolve(HostPlatform.isWindows() ? "java.exe" : "java")
                         .toString());
                 command.add("-XX:+UseSerialGC");
+                // Heap-return ergonomics (JK-1942): SerialGC's defaults (MaxHeapFreeRatio=70,
+                // ShrinkHeapInSteps) keep committed ≈ 3.3× live and shrink one slice per full GC —
+                // an idle coordinator that GCs once at the build boundary never gives memory back.
+                // Tight free ratios + whole-step shrink make that single idle GC snap committed to
+                // ~live. Metaspace/stack mirror what workers already get from JvmOptions.
+                command.add("-XX:MinHeapFreeRatio=10");
+                command.add("-XX:MaxHeapFreeRatio=25");
+                command.add("-XX:-ShrinkHeapInSteps");
+                command.add("-XX:MaxMetaspaceSize=256m");
+                command.add("-Xss512k");
                 // AOT cache (JEP 514, JDK 25+): pre-parsed class metadata AND AOT-compiled code,
                 // taming the cold engine's JIT-warmup tail. USE maps an existing cache. TRAIN no
                 // longer records THROUGH the serving engine (the old train→stop→assemble→restart
@@ -644,6 +646,11 @@ public final class EngineSpawn {
                     command.add("-Xms" + config.minHeapMb() + "m");
                     command.add("-Xmx" + config.maxHeapMb() + "m");
                 }
+                // Same heap-return ergonomics as the JAR spawn (JK-1942); like -Xm* above these
+                // land as argv for the wrapper to consume, and an ignoring wrapper stays alive.
+                command.add("-XX:MinHeapFreeRatio=10");
+                command.add("-XX:MaxHeapFreeRatio=25");
+                command.add("-XX:-ShrinkHeapInSteps");
             }
         }
         ProcessBuilder pb = new ProcessBuilder(command);
@@ -708,8 +715,8 @@ public final class EngineSpawn {
             Files.writeString(
                     log,
                     "jk engine: spawning " + engine.path() + " (" + engine.how() + ")" + System.lineSeparator(),
-                    java.nio.file.StandardOpenOption.CREATE,
-                    java.nio.file.StandardOpenOption.TRUNCATE_EXISTING);
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING);
             return true;
         } catch (IOException e) {
             return false;
@@ -725,17 +732,14 @@ public final class EngineSpawn {
      * Keep exactly one historical log ({@code <key>.log} → {@code <key>.log.1}) before each fresh
      * engine start truncates {@code <key>.log}. Without this, a crash followed by the next lazy
      * respawn (which happens automatically, often before anyone looks) would silently destroy the
-     * crashed engine's own log — the one file {@link #ensureRunning}'s error message and {@code jk
+     * crashed engine's own log — the one file {@link EngineClient#ensureRunning}'s error message and {@code jk
      * engine status} both point at for post-mortem. Best-effort: a failure here (e.g. permissions)
      * never blocks starting the engine.
      */
     private static void rotateLog(Path log) {
         if (!Files.exists(log)) return;
         try {
-            Files.move(
-                    log,
-                    log.resolveSibling(log.getFileName() + ".1"),
-                    java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            Files.move(log, log.resolveSibling(log.getFileName() + ".1"), StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException ignored) {
             // Best-effort — the next start still truncates/overwrites `log` either way.
         }
@@ -825,8 +829,8 @@ public final class EngineSpawn {
             Files.writeString(
                     paths.log(),
                     "jk engine: " + message + System.lineSeparator(),
-                    java.nio.file.StandardOpenOption.CREATE,
-                    java.nio.file.StandardOpenOption.APPEND);
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.APPEND);
         } catch (IOException ignored) {
             // best-effort
         }

@@ -8,9 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -142,13 +140,11 @@ public final class Giter8LocalApply {
 
     /** Giter8 name normalization: lowercase, runs of non-alphanumerics collapse to '-'. */
     public static String normalize(String name) {
-        return name.toLowerCase(java.util.Locale.ROOT)
-                .replaceAll("[^a-z0-9]+", "-")
-                .replaceAll("(^-|-$)", "");
+        return name.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-").replaceAll("(^-|-$)", "");
     }
 
     /** The template's own {@code default.properties} {@code name}, when present. */
-    public static java.util.Optional<String> defaultName(Path templateRoot) {
+    public static Optional<String> defaultName(Path templateRoot) {
         Path g8 = templateRoot.resolve("src/main/g8");
         Path contentRoot = Files.isDirectory(g8) ? g8 : templateRoot;
         for (Path propsFile :
@@ -158,11 +154,11 @@ public final class Giter8LocalApply {
             try (var in = Files.newInputStream(propsFile)) {
                 p.load(in);
             } catch (IOException e) {
-                return java.util.Optional.empty();
+                return Optional.empty();
             }
             String n = p.getProperty("name");
-            if (n != null && !n.isBlank()) return java.util.Optional.of(n.trim());
+            if (n != null && !n.isBlank()) return Optional.of(n.trim());
         }
-        return java.util.Optional.empty();
+        return Optional.empty();
     }
 }

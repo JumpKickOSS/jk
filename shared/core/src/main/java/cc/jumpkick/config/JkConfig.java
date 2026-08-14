@@ -2,6 +2,7 @@
 package cc.jumpkick.config;
 
 import java.nio.file.Path;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -46,7 +47,7 @@ public record JkConfig(
 
         public static Optional<ColorChoice> parse(String s) {
             if (s == null || s.isBlank()) return Optional.empty();
-            return switch (s.trim().toLowerCase(java.util.Locale.ROOT)) {
+            return switch (s.trim().toLowerCase(Locale.ROOT)) {
                 case "auto" -> Optional.of(AUTO);
                 case "always" -> Optional.of(ALWAYS);
                 case "never" -> Optional.of(NEVER);
@@ -67,7 +68,7 @@ public record JkConfig(
 
         public static Optional<NotifyChoice> parse(String s) {
             if (s == null || s.isBlank()) return Optional.empty();
-            return switch (s.trim().toLowerCase(java.util.Locale.ROOT)) {
+            return switch (s.trim().toLowerCase(Locale.ROOT)) {
                 case "auto" -> Optional.of(AUTO);
                 case "always", "true", "yes", "on", "1" -> Optional.of(ALWAYS);
                 case "never", "false", "no", "off", "0" -> Optional.of(NEVER);
@@ -137,7 +138,7 @@ public record JkConfig(
                 color, offline, rebuild, noProgress, quiet, v, directory, force, noAnsi, noOsc, notifyPolicy);
     }
 
-    public JkConfig withDirectory(Optional<java.nio.file.Path> v) {
+    public JkConfig withDirectory(Optional<Path> v) {
         return new JkConfig(color, offline, rebuild, noProgress, quiet, verbose, v, force, noAnsi, noOsc, notifyPolicy);
     }
 

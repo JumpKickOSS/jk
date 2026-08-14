@@ -59,15 +59,41 @@ final class StaticContent {
      * Snapshot builds revalidate classpath assets on every load: the version-derived ETag never
      * moves between {@code -SNAPSHOT} jars, so an hour of {@code max-age} would keep serving the
      * previous jar's dashboard from the browser cache after an upgrade. Releases bump the
-     * version, so they keep real caching.
+     * version, so they keep real caching. {@code installLocal} of the same version also changes
+     * the jar's {@code /web/index.html} mtime, which is folded into the ETag so a same-version
+     * bounce is not a perpetual 304 of the previous shell.
      */
     private final boolean snapshotVersion;
 
     /** @param root the resolved {@code web-root} — need not exist (classpath still serves) */
     StaticContent(Path root, String version) {
         this.root = root.normalize();
-        this.classpathEtag = "\"jk-" + version + "\"";
+        this.classpathEtag = "\"jk-" + version + "-" + classpathStamp() + "\"";
         this.snapshotVersion = version.endsWith("-SNAPSHOT");
+    }
+
+    private static String classpathStamp() {
+        long modified = 0;
+        try {
+            var src = StaticContent.class.getProtectionDomain().getCodeSource();
+            URL loc = src == null ? null : src.getLocation();
+            if (loc != null && "file".equals(loc.getProtocol())) {
+                modified = Files.getLastModifiedTime(Path.of(loc.toURI())).toMillis();
+            }
+        } catch (Exception ignored) {
+            // fall through to the shell resource
+        }
+        if (modified == 0) {
+            URL resource = StaticContent.class.getResource(CLASSPATH_PREFIX + "index.html");
+            if (resource != null) {
+                try {
+                    modified = resource.openConnection().getLastModified();
+                } catch (IOException ignored) {
+                    // keep 0
+                }
+            }
+        }
+        return Long.toHexString(modified);
     }
 
     void serve(HttpExchange exchange) throws IOException {
@@ -166,17 +192,26 @@ final class StaticContent {
                 return false;
             }
         }
-        // The shipped SPA's only external resources: Vue + ECharts from unpkg (version-pinned + SRI
-        // in index.html) and the JetBrains Mono + Material Icons webfonts from Google Fonts (CSS on
-        // fonts.googleapis.com, font files on fonts.gstatic.com).
-        // 'unsafe-eval' is Vue's runtime template compiler. Disk web-root content gets a stricter
-        // sandboxing CSP in serveFromDisk (JK-1776) — only the shipped shell earns this policy.
+        // The shipped SPA's only external resources: Vue + ECharts + Monaco (lazy,
+        // #project/…/files) from unpkg (version-pinned; SRI on every static tag) and the JetBrains
+        // Mono webfonts from Google Fonts (CSS on fonts.googleapis.com, font files on
+        // fonts.gstatic.com). style-src includes unpkg for Monaco's editor.main.css, which its
+        // loader injects itself.
+        // 'unsafe-eval' is Vue's runtime template compiler. The rest is Monaco, and each piece was
+        // verified against a real browser (a missing one degrades to a blank/broken pane):
+        //   blob: in script-src + worker-src — it spawns language workers from a generated Blob
+        //     that importScripts the unpkg bundle;
+        //   'unsafe-inline' in style-src — the editor positions every view line, cursor and widget
+        //     with inline style attributes (~100 per paint), which no hash or nonce can cover;
+        //   data: in font-src — editor.main.css inlines the codicon font (gutter/find-widget icons).
+        // Disk web-root content gets a stricter sandboxing CSP in serveFromDisk (JK-1776) — only
+        // the shipped shell earns this policy.
         exchange.getResponseHeaders()
                 .set(
                         "Content-Security-Policy",
-                        "default-src 'self'; script-src 'self' 'unsafe-eval' https://unpkg.com; "
-                                + "style-src 'self' https://fonts.googleapis.com; "
-                                + "font-src https://fonts.gstatic.com");
+                        "default-src 'self'; script-src 'self' 'unsafe-eval' blob: https://unpkg.com; "
+                                + "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; "
+                                + "font-src https://fonts.gstatic.com data:; worker-src blob:");
         if (snapshotVersion) {
             exchange.getResponseHeaders().set("Cache-Control", "no-cache"); // see snapshotVersion javadoc
         } else {

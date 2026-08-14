@@ -19,6 +19,7 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.function.LongSupplier;
 
 /**
  * {@code jk storage} — manage the <strong>artifact store</strong> under {@code $JK_STORE_DIR}:
@@ -106,7 +107,7 @@ public final class StorageCommand extends GroupCommand {
         if (!skipConfirm && !confirmNuke(storeRoot, pre)) {
             CommandWedge.envelopeStart();
             CliOutput.out(cc.jumpkick.cli.tui.JkWedge.chipLine(
-                    Glyphs.CROSS, "Storage", cc.jumpkick.config.GlobalConfig.nerdfont(), "Nuke aborted."));
+                    Glyphs.CROSS, "Storage", cc.jumpkick.config.GlobalConfig.nerdFont(), "Nuke aborted."));
             return 1;
         }
         // Stop engines first — they read/write the store mid-build.
@@ -262,8 +263,7 @@ public final class StorageCommand extends GroupCommand {
             return result.success() ? 0 : 1;
         }
 
-        static ConsoleSpec cleanSpec(
-                boolean dryRun, java.util.function.LongSupplier files, java.util.function.LongSupplier bytes) {
+        static ConsoleSpec cleanSpec(boolean dryRun, LongSupplier files, LongSupplier bytes) {
             return new ConsoleSpec(
                     "Storage",
                     r -> {

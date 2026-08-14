@@ -2,6 +2,8 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.model.JkBuild;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -72,8 +74,7 @@ public final class AffectedSelection {
                     .redirectErrorStream(true)
                     .start();
             List<String> lines = new ArrayList<>();
-            try (var r = new java.io.BufferedReader(
-                    new java.io.InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
+            try (var r = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = r.readLine()) != null) {
                     if (!line.isBlank()) lines.add(line.trim());

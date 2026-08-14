@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -27,8 +28,7 @@ public final class OfficialTemplatesFreshen {
      * {@link #refreshQuiet} from the engine's request path (JK-1454): without this guard an offline
      * host would re-run a 60–120 s git attempt on every retry of a missing template.
      */
-    private static final java.util.concurrent.ConcurrentHashMap<String, Long> LAST_ATTEMPT_NANOS =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Long> LAST_ATTEMPT_NANOS = new ConcurrentHashMap<>();
 
     static final long ATTEMPT_TTL_NANOS = TimeUnit.MINUTES.toNanos(10);
 

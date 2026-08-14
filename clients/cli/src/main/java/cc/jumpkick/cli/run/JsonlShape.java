@@ -7,6 +7,8 @@ import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.TaskStatus;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Stable wire format for plan events as one-JSON-object-per-line text. Shared by {@link
@@ -28,8 +30,7 @@ public final class JsonlShape {
     public static final int SCHEMA = 1;
 
     /** Hot-tick event types: heartbeat flush to disk (M4/M5); everything else flushes per line. */
-    static final java.util.Set<String> HOT_TYPES =
-            java.util.Set.of("progress", "tick-update", "workspace-progress", "label", "output");
+    static final Set<String> HOT_TYPES = Set.of("progress", "tick-update", "workspace-progress", "label", "output");
 
     private static final Object STDOUT_LOCK = new Object();
 
@@ -90,7 +91,7 @@ public final class JsonlShape {
     }
 
     /** Command session opened (details under project run dir). */
-    public static String sessionStart(String command, java.util.List<String> argv) {
+    public static String sessionStart(String command, List<String> argv) {
         StringBuilder sb = open("session-start").append(",\"command\":").append(js(command));
         sb.append(",\"argv\":[");
         if (argv != null) {
@@ -126,7 +127,7 @@ public final class JsonlShape {
     }
 
     /** Command session finished — exit code + wall duration (+ optional summary fields). */
-    public static String sessionFinish(int exit, long durationMs, String wedge, java.util.List<String> modules) {
+    public static String sessionFinish(int exit, long durationMs, String wedge, List<String> modules) {
         StringBuilder sb = open("session-finish")
                 .append(",\"exit\":")
                 .append(exit)

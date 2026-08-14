@@ -2,6 +2,7 @@
 package cc.jumpkick.util;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -30,7 +31,7 @@ public final class AtomicWrites {
 
     /** Write {@code content} (UTF-8) to {@code target} atomically. */
     public static void replace(Path target, String content) throws IOException {
-        replace(target, content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        replace(target, content.getBytes(StandardCharsets.UTF_8));
     }
 
     /**

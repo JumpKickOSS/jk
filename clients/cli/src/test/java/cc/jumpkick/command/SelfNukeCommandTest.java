@@ -7,14 +7,16 @@ import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.command.SelfNukeCommand.Target;
 import cc.jumpkick.util.JkDirs;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.PrintStream;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.function.IntSupplier;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -230,8 +232,8 @@ class SelfNukeCommandTest {
         assertThat(roots).doesNotContain(dataAbs.resolve("completions"));
     }
 
-    private static java.util.function.Function<String, String> env(String... kv) {
-        java.util.Map<String, String> map = new java.util.HashMap<>();
+    private static Function<String, String> env(String... kv) {
+        Map<String, String> map = new HashMap<>();
         for (int i = 0; i < kv.length; i += 2) map.put(kv[i], kv[i + 1]);
         return map::get;
     }
@@ -263,9 +265,9 @@ class SelfNukeCommandTest {
         Path marker = cache.resolve("actions/decline-keep");
         Files.writeString(marker, "keep");
 
-        java.io.InputStream prevIn = System.in;
+        InputStream prevIn = System.in;
         try {
-            System.setIn(new java.io.ByteArrayInputStream(new byte[0]));
+            System.setIn(new ByteArrayInputStream(new byte[0]));
             int exit = capture(() -> Jk.execute("self", "nuke", "--cache"));
             assertThat(exit).isEqualTo(1);
         } finally {
@@ -298,7 +300,7 @@ class SelfNukeCommandTest {
         assertThat(SelfNukeCommand.displayPath(under)).isEqualTo("~/cache/jk");
     }
 
-    private static int capture(java.util.function.IntSupplier body) {
+    private static int capture(IntSupplier body) {
         PrintStream out = System.out;
         PrintStream err = System.err;
         ByteArrayOutputStream buf = new ByteArrayOutputStream();

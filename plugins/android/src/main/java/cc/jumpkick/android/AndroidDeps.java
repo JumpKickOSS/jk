@@ -5,10 +5,11 @@ import cc.jumpkick.plugin.build.PackageIo;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
+import java.nio.file.StandardCopyOption;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.zip.ZipFile;
 
 /**
  * The Android view of the module's runtime entries: every dependency whose artifact is an AAR
@@ -65,8 +66,8 @@ final class AndroidDeps {
      * {@code assets/} written last so the app wins a path conflict (AGP's precedence). Keys are
      * asset-relative paths ({@code /}-separated).
      */
-    static java.util.Map<String, Path> mergedAssets(PackageIo io) throws IOException {
-        java.util.Map<String, Path> out = new java.util.LinkedHashMap<>();
+    static Map<String, Path> mergedAssets(PackageIo io) throws IOException {
+        Map<String, Path> out = new LinkedHashMap<>();
         for (Aar aar : aars(io.runtimeEntries())) {
             collectTree(aar.container().resolve("assets"), out);
         }
@@ -87,15 +88,15 @@ final class AndroidDeps {
     }
 
     /** AAR native libs: {@code jni/<abi>/*.so} → APK {@code lib/<abi>/*.so} keys. */
-    static java.util.Map<String, Path> nativeLibs(PackageIo io) throws IOException {
-        java.util.Map<String, Path> out = new java.util.LinkedHashMap<>();
+    static Map<String, Path> nativeLibs(PackageIo io) throws IOException {
+        Map<String, Path> out = new LinkedHashMap<>();
         for (Aar aar : aars(io.runtimeEntries())) {
             collectTree(aar.container().resolve("jni"), out);
         }
         return out;
     }
 
-    private static void collectTree(Path root, java.util.Map<String, Path> out) throws IOException {
+    private static void collectTree(Path root, Map<String, Path> out) throws IOException {
         if (!Files.isDirectory(root)) return;
         try (var walk = Files.walk(root)) {
             walk.filter(Files::isRegularFile).sorted().forEach(f -> {
@@ -106,19 +107,18 @@ final class AndroidDeps {
 
     /** Extract the per-OS aapt2 binary from its Maven wrapper jar into {@code destDir}. */
     static Path extractAapt2(Path aapt2Jar, Path destDir) throws IOException {
-        boolean windows = System.getProperty("os.name", "")
-                .toLowerCase(java.util.Locale.ROOT)
-                .contains("win");
+        boolean windows =
+                System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
         String binaryName = windows ? "aapt2.exe" : "aapt2";
         Path out = Files.createDirectories(destDir).resolve(binaryName);
-        try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(aapt2Jar.toFile())) {
+        try (ZipFile zip = new ZipFile(aapt2Jar.toFile())) {
             var entry = zip.getEntry(binaryName);
             if (entry == null) {
                 throw new IOException(
                         "no " + binaryName + " inside " + aapt2Jar.getFileName() + " — wrong classifier for this OS?");
             }
             try (var in = zip.getInputStream(entry)) {
-                Files.copy(in, out, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                Files.copy(in, out, StandardCopyOption.REPLACE_EXISTING);
             }
         }
         if (!out.toFile().setExecutable(true) && !Files.isExecutable(out)) {
@@ -140,10 +140,7 @@ final class AndroidDeps {
         Files.createDirectories(targetR8);
         try (var listing = Files.list(mapping)) {
             for (Path file : (Iterable<Path>) listing.sorted()::iterator) {
-                Files.copy(
-                        file,
-                        targetR8.resolve(file.getFileName().toString()),
-                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                Files.copy(file, targetR8.resolve(file.getFileName().toString()), StandardCopyOption.REPLACE_EXISTING);
             }
         }
     }

@@ -7,11 +7,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.nio.file.Path;
+import java.util.*;
+import java.util.function.Supplier;
 import org.tomlj.TomlArray;
 import org.tomlj.TomlTable;
 
@@ -33,13 +31,13 @@ public final class PluginTableRegistry {
     /** Load a plugin resource relative to its manifest ({@code <id>/<relPath>}). */
     public static String resourceText(PluginDescriptor manifest, String relPath) {
         String resource = manifest.id() + "/" + relPath;
-        try (java.io.InputStream in = PluginTableRegistry.class.getResourceAsStream(resource)) {
+        try (InputStream in = PluginTableRegistry.class.getResourceAsStream(resource)) {
             if (in == null) {
                 throw new cc.jumpkick.config.JkBuildParseException(
                         "plugin " + manifest.id() + " names a missing resource: " + relPath);
             }
-            return new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-        } catch (java.io.IOException e) {
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
             throw new cc.jumpkick.config.JkBuildParseException(
                     "plugin " + manifest.id() + " resource " + relPath + " is unreadable: " + e.getMessage());
         }
@@ -69,12 +67,11 @@ public final class PluginTableRegistry {
      * engine materializes (sync/lock/build pre-flight). A third-party manifest claiming a built-in
      * id or an already-owned table is a parse error, not a shadow.
      */
-    public static List<PluginDescriptor> manifestsFor(
-            java.nio.file.Path moduleDir, List<cc.jumpkick.model.PluginDeclaration> decls) {
+    public static List<PluginDescriptor> manifestsFor(Path moduleDir, List<cc.jumpkick.model.PluginDeclaration> decls) {
         if (decls == null || decls.isEmpty()) return manifests();
-        List<PluginDescriptor> out = new java.util.ArrayList<>(manifests());
-        java.util.Set<String> ids = new java.util.HashSet<>();
-        java.util.Set<String> tables = new java.util.HashSet<>();
+        List<PluginDescriptor> out = new ArrayList<>(manifests());
+        Set<String> ids = new HashSet<>();
+        Set<String> tables = new HashSet<>();
         for (PluginDescriptor m : out) {
             ids.add(m.id());
             tables.add(m.table());
@@ -226,7 +223,7 @@ public final class PluginTableRegistry {
     }
 
     /** tomlj throws {@code TomlInvalidTypeException} on mistyped keys — normalize to a parse error. */
-    private static <T> T getOr(java.util.function.Supplier<T> read, String message) {
+    private static <T> T getOr(Supplier<T> read, String message) {
         try {
             return read.get();
         } catch (org.tomlj.TomlInvalidTypeException e) {

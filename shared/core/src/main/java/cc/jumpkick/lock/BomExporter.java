@@ -4,12 +4,7 @@ package cc.jumpkick.lock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Scope;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.EnumSet;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Renders a Maven BOM ({@code packaging=pom} + {@code dependencyManagement}) from a resolved
@@ -62,7 +57,7 @@ public final class BomExporter {
         // duals of the same G:A at different versions, and Maven consumers warn on duplicate
         // managed entries then keep one arbitrarily. MAIN-scoped rows outrank test duals;
         // same-priority collisions keep the higher version (the later row after the sort).
-        java.util.Map<String, Lockfile.Artifact> byModule = new java.util.LinkedHashMap<>();
+        Map<String, Lockfile.Artifact> byModule = new LinkedHashMap<>();
         for (Lockfile.Artifact a : selected) {
             Lockfile.Artifact prev = byModule.get(a.name());
             if (prev == null) {

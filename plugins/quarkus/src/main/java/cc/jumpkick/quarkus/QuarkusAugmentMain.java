@@ -11,6 +11,7 @@ import io.quarkus.bootstrap.resolver.maven.MavenArtifactResolver;
 import io.quarkus.maven.dependency.ArtifactCoords;
 import io.quarkus.maven.dependency.ArtifactDependency;
 import io.quarkus.maven.dependency.Dependency;
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -20,11 +21,8 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Properties;
-import java.util.Set;
+import java.time.LocalDateTime;
+import java.util.*;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -224,7 +222,7 @@ public final class QuarkusAugmentMain {
 
     private static String normalizePackageType(String raw) {
         if (raw == null || raw.isBlank()) return "fast-jar";
-        String t = raw.trim().toLowerCase(java.util.Locale.ROOT);
+        String t = raw.trim().toLowerCase(Locale.ROOT);
         if ("uber-jar".equals(t) || "uberjar".equals(t) || "uber".equals(t) || "fat-jar".equals(t)) {
             return "uber-jar";
         }
@@ -308,7 +306,7 @@ public final class QuarkusAugmentMain {
         }
         try {
             Object file = art.getClass().getMethod("getFile").invoke(art);
-            if (file instanceof java.io.File f) return f.toPath();
+            if (file instanceof File f) return f.toPath();
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException("cannot resolve path for " + art, e);
         }
@@ -354,8 +352,8 @@ public final class QuarkusAugmentMain {
      */
     private static List<Path> mirrorRepoRoots(List<RuntimeCoord> runtime) {
         List<Path> out = new ArrayList<>();
-        java.util.Set<Path> seen = new java.util.LinkedHashSet<>();
-        String marker = java.io.File.separator + "repos" + java.io.File.separator;
+        Set<Path> seen = new LinkedHashSet<>();
+        String marker = File.separator + "repos" + File.separator;
         for (RuntimeCoord r : runtime) {
             if (r.jar() == null) continue;
             String sp = r.jar().toString();
@@ -474,7 +472,7 @@ public final class QuarkusAugmentMain {
                     // Pin entry times (setTimeLocal: TZ-safe) so repeated augments produce
                     // byte-identical jars — raw-jar fingerprints key downstream action caches.
                     JarEntry entry = new JarEntry(name);
-                    entry.setTimeLocal(java.time.LocalDateTime.of(1980, 2, 1, 0, 0));
+                    entry.setTimeLocal(LocalDateTime.of(1980, 2, 1, 0, 0));
                     jos.putNextEntry(entry);
                     Files.copy(file, jos);
                     jos.closeEntry();

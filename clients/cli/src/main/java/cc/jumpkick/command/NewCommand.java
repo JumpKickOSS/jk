@@ -8,6 +8,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Answers;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Wizard;
+import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -27,10 +28,8 @@ import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import org.jline.terminal.Terminal;
 
 /**
@@ -106,9 +105,9 @@ public final class NewCommand implements CliCommand {
     boolean micronaut;
     boolean plugin;
     String templateRef;
-    java.util.List<String> templateParams = java.util.List.of();
+    List<String> templateParams = List.of();
     /** One-shot third-party git sources for short-name lookup (JK-1380). */
-    java.util.List<String> templateSources = java.util.List.of();
+    List<String> templateSources = List.of();
 
     String depsCsv;
     String layoutFlag;
@@ -331,7 +330,7 @@ public final class NewCommand implements CliCommand {
                 return Exit.SOFTWARE;
             }
         }
-        Map<String, String> params = new java.util.LinkedHashMap<>();
+        Map<String, String> params = new LinkedHashMap<>();
         for (String p : templateParams) {
             int eq = p.indexOf('=');
             if (eq <= 0) {
@@ -374,7 +373,7 @@ public final class NewCommand implements CliCommand {
             CliOutput.out(cc.jumpkick.cli.tui.JkWedge.chipLine(
                     cc.jumpkick.cli.tui.Glyphs.CHECK,
                     "New Project",
-                    cc.jumpkick.config.GlobalConfig.nerdfont(),
+                    cc.jumpkick.config.GlobalConfig.nerdFont(),
                     "Applied template (" + n + " files) → " + target.getFileName()));
             return Exit.SUCCESS;
         } catch (IOException e) {
@@ -403,10 +402,8 @@ public final class NewCommand implements CliCommand {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("discover JDKs + fetch catalog + open terminal");
-                    var jdkOptionsFuture =
-                            java.util.concurrent.CompletableFuture.supplyAsync(NewJdkOptions::discover, JkThreads.io());
-                    var catalogFuture = java.util.concurrent.CompletableFuture.supplyAsync(
-                            NewCommand::fetchCatalogQuiet, JkThreads.io());
+                    var jdkOptionsFuture = CompletableFuture.supplyAsync(NewJdkOptions::discover, JkThreads.io());
+                    var catalogFuture = CompletableFuture.supplyAsync(NewCommand::fetchCatalogQuiet, JkThreads.io());
                     Terminal terminal;
                     try {
                         terminal = Wizard.openTerminal();
@@ -664,7 +661,7 @@ public final class NewCommand implements CliCommand {
             Path rootToml = root.resolve("jk.toml");
             // Registers the module, promoting a plain project into a workspace
             // root (creating the [workspace] table) when this is its first module.
-            EngineEdits.apply(rootToml, "register-workspace-module", java.util.List.of(rel));
+            EngineEdits.apply(rootToml, "register-workspace-module", List.of(rel));
             registered = new Module(root, rel, parent.displayName());
         }
     }
@@ -815,7 +812,7 @@ public final class NewCommand implements CliCommand {
 
     private static void emitProjectExistsError(String coord, boolean isModule, boolean isInit, Terminal terminal) {
         Theme t = Theme.active();
-        boolean nerdfont = cc.jumpkick.config.GlobalConfig.nerdfont();
+        NerdFontCaps nerdFont = cc.jumpkick.config.GlobalConfig.nerdFont();
         String noun = isModule ? "module" : "project";
 
         // Style the coord: group:name in coordGroup/coordName; bare name in coordName.
@@ -837,7 +834,7 @@ public final class NewCommand implements CliCommand {
         String bareName = colon > 0 ? coord.substring(colon + 1) : coord;
         String failTail = "Failed to " + (isInit ? "initialize" : "create") + " " + noun + " " + bareName
                 + ". Project already exists.";
-        String chipLine = cc.jumpkick.cli.tui.JkWedge.chipLine(Glyphs.CROSS, chipCommand, nerdfont, failTail);
+        String chipLine = cc.jumpkick.cli.tui.JkWedge.chipLine(Glyphs.CROSS, chipCommand, nerdFont, failTail);
 
         if (terminal != null) {
             var writer = terminal.writer();
@@ -1143,7 +1140,7 @@ public final class NewCommand implements CliCommand {
     }
 
     private static String successLine(NewInputs inputs, Module module, boolean isInit) {
-        boolean nerdfont = cc.jumpkick.config.GlobalConfig.nerdfont();
+        NerdFontCaps nerdFont = cc.jumpkick.config.GlobalConfig.nerdFont();
         org.jline.utils.AttributedStyle accent = Theme.active().brightCyan().bold();
         if (module != null) {
             String message = "New module "
@@ -1151,12 +1148,12 @@ public final class NewCommand implements CliCommand {
                     + Theme.colorize(" added to project ", Theme.active().normalGray())
                     + Theme.colorize(module.projectName(), accent);
             return cc.jumpkick.cli.tui.JkWedge.chipLine(
-                    cc.jumpkick.cli.tui.Glyphs.CHECK, "New Module", nerdfont, message);
+                    cc.jumpkick.cli.tui.Glyphs.CHECK, "New Module", nerdFont, message);
         }
         String chipCommand = isInit ? "Init" : "New Project";
         String action = isInit ? "Initialized" : "Created new";
         String message = action + " project " + Theme.colorize(inputs.name(), accent);
-        return cc.jumpkick.cli.tui.JkWedge.chipLine(cc.jumpkick.cli.tui.Glyphs.CHECK, chipCommand, nerdfont, message);
+        return cc.jumpkick.cli.tui.JkWedge.chipLine(cc.jumpkick.cli.tui.Glyphs.CHECK, chipCommand, nerdFont, message);
     }
 
     static final List<String> CURATED_IDS =

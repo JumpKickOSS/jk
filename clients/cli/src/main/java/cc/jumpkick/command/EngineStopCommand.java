@@ -14,6 +14,7 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -143,7 +144,7 @@ public final class EngineStopCommand implements CliCommand {
         int stopped = 0;
         int killed = 0;
         int draining = 0;
-        List<Long> survived = new java.util.ArrayList<>();
+        List<Long> survived = new ArrayList<>();
         for (EngineFleet.StopResult r : results) {
             switch (r.outcome()) {
                 case STOPPED -> stopped++;
@@ -171,7 +172,7 @@ public final class EngineStopCommand implements CliCommand {
 
     /** Block on a TTY with the live drain region until the engine exits or Ctrl-X forces it. */
     private int drainOnTty(EnginePaths.Paths paths, int jobs, long started) {
-        DrainView view = DrainView.start(jobs, GlobalConfig.nerdfont());
+        DrainView view = DrainView.start(jobs, GlobalConfig.nerdFont());
         try {
             while (true) {
                 if (view.forceRequested()) {
@@ -204,7 +205,7 @@ public final class EngineStopCommand implements CliCommand {
 
     private static String stoppedWedge(long ranMs) {
         return JkWedge.chipLine(
-                Glyphs.STOP, "Engine", GlobalConfig.nerdfont(), "Engine stopped. Ran for " + uptime(ranMs) + ".");
+                Glyphs.STOP, "Engine", GlobalConfig.nerdFont(), "Engine stopped. Ran for " + uptime(ranMs) + ".");
     }
 
     private static void sleep(long ms) {
