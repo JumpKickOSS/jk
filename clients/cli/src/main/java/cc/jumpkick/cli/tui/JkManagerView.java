@@ -29,7 +29,7 @@ final class JkManagerView {
      * Like {@link #finishSuccess(String)}, but first prints {@code above} — buffered subprocess
      * output (compiler warnings, &c.) — as scrollback above the result line, so the {@code ✔
      * Successful} summary is the last thing the user sees. The lines land after the live region is
-     * wiped, under one m.lock, so they never interleave with the bar.
+     * wiped, under one lock, so they never interleave with the bar.
      */
     public void finishSuccess(String message, List<String> above) {
         String head = Glyphs.CHECK + (m.planName().isEmpty() ? "" : " " + m.planName()) + " Successful";
@@ -52,11 +52,11 @@ final class JkManagerView {
 
     /**
      * Settle with the play chip: {@code ▶ Run Executing `java …`} — for commands that hand off to a
-     * subprocess after the plan settles (e.g. {@code jk run}). {@code m.planName} is the
-     * command m.label (typically {@code Run}); {@code tail} is the pre-styled message.
+     * subprocess after the plan settles (e.g. {@code jk run}). {@code planName} is the
+     * command label (typically {@code Run}); {@code tail} is the pre-styled message.
      *
-     * <p>{@code jk run} prints its own single separator before {@code inheritIO} (no m.settle
-     * trailing blank — settles never add one; see {@link #m.settle}).
+     * <p>{@code jk run} prints its own single separator before {@code inheritIO} (no settle
+     * trailing blank — settles never add one; see {@link JkManager#settle}).
      */
     public void finishBuildPlanExec(String tail, List<String> above) {
         m.settle(JkWedge.work(m.planName(), tail).renderLine(m.headerContext()), above);
@@ -113,7 +113,7 @@ final class JkManagerView {
     /**
      * Clear the live region without printing any result line — used when the plan's outcome is
      * communicated externally (e.g. via a post-plan chipLine printed by the caller). Same cleanup
-     * as {@link #m.settle} but outputs nothing.
+     * as {@link JkManager#settle} but outputs nothing.
      */
     public void dismiss() {
         m.restoreStreams();
@@ -130,7 +130,7 @@ final class JkManagerView {
                 m.out.print(Ansi.SHOW_CURSOR);
                 m.out.flush();
             } else if (m.animate && !Theme.active().isAnsi()) {
-                // Plain: end multi-line chrome without a m.settle wedge (caller owns outcome).
+                // Plain: end multi-line chrome without a settle wedge (caller owns outcome).
                 m.printPlainDone();
             } else {
                 m.out.flush();
@@ -138,7 +138,7 @@ final class JkManagerView {
         }
     }
 
-    /** The plan/command m.name shown in the header ("Building", "Locking", …). */
+    /** The plan/command name shown in the header ("Building", "Locking", …). */
     String planName() {
         String n = m.planMode ? m.name : m.label;
         return n == null ? "" : n;
@@ -150,8 +150,8 @@ final class JkManagerView {
 
     /**
      * Print the settled result line. Leading blank only (JK-1373): one blank before chrome starts,
-     * no automatic blank after the m.settle line — that looked like an extra line before the shell
-     * prompt on {@code jk build}/{@code jk m.lock}/one-shot wedges. Callers that hand off to a
+     * no automatic blank after the settle line — that looked like an extra line before the shell
+     * prompt on {@code jk build}/{@code jk lock}/one-shot wedges. Callers that hand off to a
      * subprocess ({@code jk run}) add their own separator when needed.
      */
     void settle(String line, List<String> above) {
@@ -170,12 +170,12 @@ final class JkManagerView {
                 m.out.print(Ansi.taskbarClear());
                 m.out.print(Ansi.SHOW_CURSOR);
             } else if (m.animate && !Theme.active().isAnsi()) {
-                // Plain multi-line: mandatory m.done line before the m.settle wedge (JK-1379).
+                // Plain multi-line: mandatory done line before the settle wedge (JK-1379).
                 m.printPlainDone();
             }
             // Deferred subprocess output (e.g. compiler warnings) prints as
             // scrollback above the result line, with a blank separator, so the
-            // m.settle line stays the last thing on screen.
+            // settle line stays the last thing on screen.
             if (above != null && !above.isEmpty()) {
                 for (String s : above) m.out.println(s);
                 m.out.println();
@@ -190,7 +190,7 @@ final class JkManagerView {
 
     /**
      * Emit plain progress lines for every newly crossed 20% step up to (and not past) 80%.
-     * Must hold {@link #m.lock}. First call always prints the mandatory 0% start line.
+     * Must hold the manager lock. First call always prints the mandatory 0% start line.
      */
     void emitPlainProgressDecades(long num, long den) {
         if (m.done || den <= 0) return;
@@ -221,25 +221,25 @@ final class JkManagerView {
         }
     }
 
-    /** Mandatory plain m.done line — progress ends at 100%, spinner at {@code m.done.}. */
+    /** Mandatory plain done line — progress ends at 100%, spinner at {@code done.}. */
     void printPlainDone() {
         if (!m.animate) return;
         if (m.plainProgressMode) {
-            // Catch up so a fast finish still shows 0% then 100% m.done.
+            // Catch up so a fast finish still shows 0% then 100% done.
             if (m.plainLastDecade < 0) {
                 m.out.println(plainProgressLine(0, false));
                 m.plainLastDecade = 0;
                 m.plainChromeStarted = true;
             }
-            // Do not invent intermediate decades on m.settle if we never crossed them mid-run —
-            // only ensure 0% was printed, then 100% m.done.
+            // Do not invent intermediate decades on settle if we never crossed them mid-run —
+            // only ensure 0% was printed, then 100% done.
             m.out.println(plainProgressLine(100, true));
             m.plainChromeStarted = true;
             m.out.flush();
             return;
         }
         if (m.plainChromeStarted || !m.planMode) {
-            // Simple mode always had a start; plan without progress prints m.done only if started.
+            // Simple mode always had a start; plan without progress prints done only if started.
             if (!m.plainChromeStarted) {
                 m.out.println(plainIndeterminateLine(false));
             }
@@ -250,7 +250,7 @@ final class JkManagerView {
     }
 
     /**
-     * {@code " * Format > Examining source files - 10% - working..."} or {@code … - 100% - m.done.}.
+     * {@code " * Format > Examining source files - 10% - working..."} or {@code … - 100% - done.}.
      */
     static String plainProgressLine(String command, String message, int percent, boolean done) {
         String msg = (message == null || message.isBlank()) ? "working" : message;
@@ -267,7 +267,7 @@ final class JkManagerView {
         return plainProgressLine(planName(), msg, percent, doneLine);
     }
 
-    /** {@code " * Format > Examining source files - working..."} / {@code … - m.done.}. */
+    /** {@code " * Format > Examining source files - working..."} / {@code … - done.}. */
     static String plainIndeterminateLine(String command, String message, boolean done) {
         String msg = (message == null || message.isBlank()) ? "working" : message;
         String tail = msg + " - " + (done ? "done." : "working...");
@@ -281,11 +281,11 @@ final class JkManagerView {
         if (m.planMode) {
             return plainIndeterminateLine(planName(), plainWorkMessage(), doneLine);
         }
-        // Simple mode: the m.label is the whole message (no command chip m.name beyond m.label).
+        // Simple mode: the label is the whole message (no command chip name beyond the label).
         return plainIndeterminateLine(null, m.label, doneLine);
     }
 
-    /** Best-effort work description for plain lines: solve m.label, active step, or plan m.name. */
+    /** Best-effort work description for plain lines: solve label, active step, or plan name. */
     private String plainWorkMessage() {
         String sl = m.solveLabel;
         if (sl != null && !sl.isEmpty()) return sl;
@@ -304,7 +304,7 @@ final class JkManagerView {
 
     /**
      * Leading blank once per command (JK-1373). Shared with prep spinners via
-     * {@link CommandWedge#envelopeStart(PrintStream)} so m.lock/analyze wedges and the live region
+     * {@link CommandWedge#envelopeStart(PrintStream)} so lock/analyze wedges and the live region
      * do not double-space.
      */
     void ensureLeadingBlank() {
@@ -359,9 +359,9 @@ final class JkManagerView {
     }
 
     /**
-     * Repaint the multi-line plan region (must hold {@link #m.lock}), rewriting only the lines that
-     * changed since the last paint to avoid flicker. The spinner header changes every m.frame; the bar
-     * and step m.rows only on real updates, so a steady region mostly just rewrites its top line.
+     * Repaint the multi-line plan region (must hold the manager lock), rewriting only the lines that
+     * changed since the last paint to avoid flicker. The spinner header changes every frame; the bar
+     * and step rows only on real updates, so a steady region mostly just rewrites its top line.
      *
      * <p>Cursor invariant: between paints the cursor is parked at the start of the line immediately
      * below the region. We move up to the first line, walk down rewriting changed lines (and
@@ -401,10 +401,10 @@ final class JkManagerView {
      * tail). Pure — no cursor control. Package-private for tests.
      *
      * <p>Tree (newest at top): only <em>running</em> and <em>failed</em> work — successful steps drop
-     * m.out. Each row is {@code ├─ ● group:m.name · Phase · detail} with a blue pulse spinner while
+     * stdout. Each row is {@code ├─ ● group:name · Phase · detail} with a blue pulse spinner while
      * running (no background pills). The trailing detail is the latest step {@link #stepMessage}
-     * (test class, package sub-task, fetch artifact, …). Failed m.rows use a red cross and keep a
-     * one-line brief under the branch. No blank spacer rails between m.rows — vertically compact.
+     * (test class, package sub-task, fetch artifact, …). Failed rows use a red cross and keep a
+     * one-line brief under the branch. No blank spacer rails between rows — vertically compact.
      */
     public List<String> renderBuildPlanLines(int cols, long elapsedMillis) {
         AttributedStyle dim = Theme.active().darkGray();
@@ -494,8 +494,8 @@ final class JkManagerView {
     }
 
     /**
-     * Step m.label for the tree detail segment. Strips a leading {@code module:: } prefix when the
-     * engine m.label already embeds the coordinate (test progress labels) so the row does not read
+     * Step label for the tree detail segment. Strips a leading {@code module:: } prefix when the
+     * engine label already embeds the coordinate (test progress labels) so the row does not read
      * {@code g:a · Test · g:a:: FooTest}.
      */
     static String detailForDisplay(String module, String message) {
@@ -536,7 +536,7 @@ final class JkManagerView {
     }
 
     /**
-     * Color a live step detail under the phase m.label.
+     * Color a live step detail under the phase label.
      *
      * <ul>
      * <li><b>{@code Class.method(…)} form only</b> (run-tests live labels): Java {@link
@@ -549,7 +549,7 @@ final class JkManagerView {
      * <li>size units ({@code MiB}, {@code KB}, …) stay gray after the number
      * <li>artifact filenames and path-like tokens → {@link Theme#path}
      * <li>Maven {@code group:artifact(:version)} → {@link cc.jumpkick.cli.theme.Coords}
-     * <li>fetched short-names / bare library ids after resolve verbs → coord short-m.name
+     * <li>fetched short-names / bare library ids after resolve verbs → coord short-name
      * <li>short cache key hex → dimmest gray
      * </ul>
      * <li>Trailing {@code [wN]} worker tags stay gray
@@ -600,14 +600,14 @@ final class JkManagerView {
     }
 
     /**
-     * BuildPlan header: pulse circle + m.name on the chip, powerline (or plain) cap, bar, clock.
+     * BuildPlan header: pulse circle + name on the chip, powerline (or plain) cap, bar, clock.
      * Painted via {@link JkWedge} so live and settled chrome share one renderer.
      */
     private String planHeader(long elapsedMillis) {
         long[] bd = m.displayBar(elapsedMillis);
         long barNum = bd[0];
         long barDen = bd[1];
-        // Sample worker-written state under the m.lock — the m.animator thread otherwise read
+        // Sample worker-written state under the lock — the animator thread otherwise read
         // m.denominator/m.solveLabel on plain JMM visibility (JK-1852).
         long den;
         String sl;
@@ -618,7 +618,7 @@ final class JkManagerView {
         boolean hasBar = barDen > 0 || den > 0;
         boolean phase1 = !hasBar && !sl.isEmpty();
         long elapsedSec = Math.max(0L, elapsedMillis) / 1000L;
-        // Dual clock when we have ever received a remaining-work seed (including residual 0 m.done).
+        // Dual clock when we have ever received a remaining-work seed (including residual 0 done).
         // Prefer residual re-anchor (eases into R(t), ends on time); else frozen R0 − elapsed.
         // Deadline = setAt + R so m.target remainingSec and elapsedSec share whole-second boundaries.
         long remainingSec;

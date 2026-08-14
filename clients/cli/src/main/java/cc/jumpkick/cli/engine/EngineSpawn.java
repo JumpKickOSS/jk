@@ -87,7 +87,7 @@ public final class EngineSpawn {
 
     /**
      * Outcome of a one-shot ensure probe: live handshake, nothing listening, silent peer (connect
-     * works, no reply within {@link EngineWire#EngineWire.SOCKET_TIMEOUT_MILLIS}), or connected-but-not-usable (e.g.
+     * works, no reply within {@link EngineWire#SOCKET_TIMEOUT_MILLIS}), or connected-but-not-usable (e.g.
      * newer protocol).
      */
     private sealed interface Reachability {
@@ -733,7 +733,7 @@ public final class EngineSpawn {
      * Keep exactly one historical log ({@code <key>.log} → {@code <key>.log.1}) before each fresh
      * engine start truncates {@code <key>.log}. Without this, a crash followed by the next lazy
      * respawn (which happens automatically, often before anyone looks) would silently destroy the
-     * crashed engine's own log — the one file {@link #ensureRunning}'s error message and {@code jk
+     * crashed engine's own log — the one file {@link EngineClient#ensureRunning}'s error message and {@code jk
      * engine status} both point at for post-mortem. Best-effort: a failure here (e.g. permissions)
      * never blocks starting the engine.
      */

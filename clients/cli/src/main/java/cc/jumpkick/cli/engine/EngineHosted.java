@@ -280,7 +280,7 @@ final class EngineHosted {
 
     /**
      * Run {@code jk native}'s hosted module cascade against the engine, driving {@code listener}
-     * exactly as {@link #buildWorkspace} does (the cascade speaks the workspace event vocabulary; a
+     * exactly as {@link EngineClient#buildWorkspace} does (the cascade speaks the workspace event vocabulary; a
      * single project is a cascade of one). The returned result's {@code exitCode} is authoritative
      * — computed engine-side with {@code jk native}'s 64/4/1 mapping.
      */
@@ -291,7 +291,7 @@ final class EngineHosted {
     }
 
     /**
-     * Run {@code jk install}'s build + cache-install plan against the engine — {@link #runTest}'s
+     * Run {@code jk install}'s build + cache-install plan against the engine — {@link EngineClient#runTest}'s
      * exact contract ({@code testResultOut} settles before the terminal plan-finish reaches the
      * listener). The launcher-writing "make install" half stays in the calling command.
      */

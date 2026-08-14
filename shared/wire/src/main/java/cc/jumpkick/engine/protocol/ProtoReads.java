@@ -9,9 +9,9 @@ public final class ProtoReads {
     private ProtoReads() {}
 
     /**
-     * Forecast a build (see {@link #EngineProtocol.EXPLAIN_REQUEST}). Beyond the plan itself, the fields carry the
+     * Forecast a build (see {@link EngineProtocol#EXPLAIN_REQUEST}). Beyond the plan itself, the fields carry the
      * plan-affecting {@code jk build} options the engine-side EngineProtocol.ETA estimate needs ({@code jdksDir}/
-     * {@code profile} may be {@code null}); the computed estimate rides back as an {@link #EngineProtocol.ETA}
+     * {@code profile} may be {@code null}); the computed estimate rides back as an {@link EngineProtocol#ETA}
      * event inside the explain burst.
      */
     public static String explainRequest(

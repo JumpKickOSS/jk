@@ -12,7 +12,7 @@ public final class ProtoSession {
     // ---- hosted long-tail commands -----------------------------------------------------------------
 
     /**
-     * Resolve a Maven-published CLI tool (see {@link #EngineProtocol.TOOL_RESOLVE_REQUEST}). {@code coord} is a
+     * Resolve a Maven-published CLI tool (see {@link EngineProtocol#TOOL_RESOLVE_REQUEST}). {@code coord} is a
      * {@code ToolCoordSpec} string — pinned {@code g:a:v} or floating {@code g:a[@selector]},
      * pinned engine-side against maven-metadata. {@code with} carries {@code --with} extras (same
      * grammar, may be empty). {@code mainClass} is the {@code --main} override ({@code null} =
@@ -39,7 +39,7 @@ public final class ProtoSession {
     }
 
     /**
-     * As {@link #planFinish(String, boolean)}, additionally carrying a {@link #EngineProtocol.TOOL_RESOLVE_REQUEST}
+     * As {@link #planFinish(String, boolean)}, additionally carrying a {@link EngineProtocol#TOOL_RESOLVE_REQUEST}
      * result: the pinned {@code g:a:v} the resolve landed on (a floating spec's concrete version is
      * decided engine-side against maven-metadata), the resolved {@code Main-Class}, and the
      * transitive classpath in resolution order (absolute CAS paths — a flat string array, per the
@@ -63,7 +63,7 @@ public final class ProtoSession {
     }
 
     /**
-     * Prepare a loose script/jar for execution (see {@link #EngineProtocol.SCRIPT_PREPARE_REQUEST}). {@code
+     * Prepare a loose script/jar for execution (see {@link EngineProtocol#SCRIPT_PREPARE_REQUEST}). {@code
      * stateDir}/{@code repoUrl} may be {@code null} (defaults).
      */
     public static String scriptPrepareRequest(
@@ -126,7 +126,7 @@ public final class ProtoSession {
     }
 
     /**
-     * Run a cache maintenance operation (see {@link #EngineProtocol.CACHE_PRUNE_REQUEST}). {@code op} is {@code
+     * Run a cache maintenance operation (see {@link EngineProtocol#CACHE_PRUNE_REQUEST}). {@code op} is {@code
      * prune}/{@code purge}/{@code gc}/{@code sweep}; {@code olderThanDays}/{@code sweep}/
      * {@code dropAllClassC} apply to {@code prune} only; {@code includeJkTmp} asks the prune to also
      * sweep {@code state/tmp} (only when the default cache dir is in use).
@@ -165,7 +165,7 @@ public final class ProtoSession {
     }
 
     /**
-     * A project-scoped cache-clear request (see {@link #EngineProtocol.CACHE_PRUNE_REQUEST}, {@code op="clear"}):
+     * A project-scoped cache-clear request (see {@link EngineProtocol#CACHE_PRUNE_REQUEST}, {@code op="clear"}):
      * invalidate the action-cache entries for the project at {@code projectRoot} and its workspace.
      * Reuses the maintenance channel; {@code dir} is the project root (the one spelling every
      * request uses for its location), and {@code dryRun} reports what would be removed without
@@ -183,13 +183,13 @@ public final class ProtoSession {
                 + "}";
     }
 
-    /** The maintenance job is waiting for the cache to quiesce (see {@link #EngineProtocol.PRUNE_WAIT}). */
+    /** The maintenance job is waiting for the cache to quiesce (see {@link EngineProtocol#PRUNE_WAIT}). */
     public static String pruneWait(int plans, boolean external) {
         return "{\"type\":\"" + EngineProtocol.PRUNE_WAIT + "\",\"plans\":" + plans + ",\"external\":" + external + "}";
     }
 
     /**
-     * As {@link #planFinish(String, boolean)}, additionally carrying a {@link #EngineProtocol.CACHE_PRUNE_REQUEST}
+     * As {@link #planFinish(String, boolean)}, additionally carrying a {@link EngineProtocol#CACHE_PRUNE_REQUEST}
      * summary: files removed + bytes freed (what would be removed, on a dry run), the LRU evictor's
      * reachable-eviction count ({@code prune --max-size} only), and the repo-mirror links removed
      * ({@code gc} only). {@code -1} = not applicable to the op.

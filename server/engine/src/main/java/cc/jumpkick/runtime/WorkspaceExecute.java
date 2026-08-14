@@ -554,13 +554,7 @@ public final class WorkspaceExecute {
         }
     }
 
-    /**
-     * True when any productive step (compile / test / package / native / image / …) terminated
-     * {@link TaskStatus#SUCCESS} rather than cache-hit {@link TaskStatus#SKIPPED}. Setup steps
-     * (parse, resolve, ensure-jdk, copy-resources, write-stamp) always succeed without marking
-     * cached and must not make a pure check look like a rebuild.
-     *
-     * /** Test failures exit 4; every other plan failure exits 1. */
+    /** Test failures exit 4; every other plan failure exits 1. */
     private static int exitCodeFor(BuildPlan plan) {
         TestSummary tr = plan.get(TEST_RESULT).orElse(null);
         return tr != null && !tr.allPassed() ? 4 : 1;
