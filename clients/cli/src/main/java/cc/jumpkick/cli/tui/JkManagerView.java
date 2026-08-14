@@ -15,8 +15,21 @@ final class JkManagerView {
 
     private final JkManager m;
 
+    /**
+     * When true, the next {@link #paintBuildPlan()} rewrites every row even if content is unchanged
+     * (terminal resize changed the truncation budget).
+     */
+    private boolean forceFullRepaint;
+
+    /**
+     * Terminal columns used for the last paint. On a shrink, already-drawn lines may reflow to more
+     * physical rows than {@code lastLines.size()}; wipe uses this to estimate how far to cursor-up.
+     */
+    private int paintedCols;
+
     JkManagerView(JkManager m) {
         this.m = m;
+        this.paintedCols = m.width;
     }
 
     // --- completion -------------------------------------------------------
@@ -368,8 +381,16 @@ final class JkManagerView {
      * below the region. We move up to the first line, walk down rewriting changed lines (and
      * advancing past unchanged ones with a bare newline), then clear any lines a now-shorter region
      * left behind.
+     *
+     * <p>Terminal size: re-read {@link TerminalSize} (cached; re-probes only after SIGWINCH). When
+     * columns or rows change, force a full rewrite — line <em>content</em> is often identical after a
+     * resize, but the truncation budget is not, so a content-only diff would leave the old clipped
+     * tree row on screen. A column <em>shrink</em> also reflows already-painted lines onto extra
+     * physical rows; a logical {@code cursorUp(lastLines.size())} then undershoots and the next
+     * paint stacks a second header under the orphan — so shrink wipes by estimated physical height.
      */
     void paintBuildPlan() {
+        syncTerminalSize();
         long elapsed = m.elapsedMillis();
         List<String> lines = m.renderBuildPlanLines(m.width, elapsed);
         // Keep the last terminal column free. Writing a full-width line leaves the cursor in
@@ -377,10 +398,12 @@ final class JkManagerView {
         // on the next row and be wiped by EL / the following tree line — so the row looks
         // hard-clipped with no ellipsis until the window is widened and the line reflows.
         int colBudget = JkManagerColor.rowColumnBudget(m.width);
+        boolean force = forceFullRepaint;
+        forceFullRepaint = false;
         int prev = m.lastLines.size();
         if (prev > 0) m.out.print(Ansi.cursorUp(prev)); // to the top of the region
         for (int i = 0; i < lines.size(); i++) {
-            boolean changed = i >= prev || !lines.get(i).equals(m.lastLines.get(i));
+            boolean changed = force || i >= prev || !lines.get(i).equals(m.lastLines.get(i));
             if (changed) {
                 m.out.print('\r');
                 m.out.print(JkManagerColor.truncateVisible(lines.get(i), colBudget));
@@ -400,6 +423,66 @@ final class JkManagerView {
         }
         m.lastLines = lines;
         m.linesDrawn = lines.size();
+        paintedCols = m.width;
+    }
+
+    /**
+     * Pull columns/rows from the process-wide cache (one ioctl only if SIGWINCH cleared it). On a
+     * real size change, mark a full rewrite so every row re-truncates under the new budget. On a
+     * column change with a live region, wipe first — after a shrink the terminal may have reflowed
+     * the old paint onto more physical rows than {@code lastLines.size()}.
+     */
+    private void syncTerminalSize() {
+        int[] size = TerminalSize.size();
+        int cols = size[1] > 0 ? size[1] : m.width;
+        int rows = size[0] > 0 ? size[0] : m.height;
+        if (cols == m.width && rows == m.height) return;
+        if (cols != m.width && !m.lastLines.isEmpty()) {
+            wipeReflowedRegion(paintedCols > 0 ? paintedCols : m.width, cols);
+        }
+        m.width = cols;
+        m.height = rows;
+        // Content often unchanged after a maximize; force rewrite so truncateVisible uses the
+        // new budget (and so a shrink re-clips + EL-clears the prior tail).
+        forceFullRepaint = true;
+    }
+
+    /**
+     * Move to the top of the (possibly reflowed) live region and erase it so the next paint does not
+     * stack under orphans. Cursor is left at the start of the former region — paint treats this as a
+     * first frame ({@code lastLines} cleared).
+     */
+    private void wipeReflowedRegion(int fromCols, int toCols) {
+        int up = physicalRowsAfterReflow(m.lastLines, fromCols, toCols);
+        // Never under-shoot: non-reflow terminals keep one physical row per logical line.
+        up = Math.max(up, m.lastLines.size());
+        if (up > 0) m.out.print(Ansi.cursorUp(up));
+        m.out.print('\r');
+        m.out.print(Ansi.ERASE_DISPLAY_TO_END);
+        m.lastLines = List.of();
+        m.linesDrawn = 0;
+    }
+
+    /**
+     * Physical rows occupied by {@code lines} after the terminal reflows from {@code fromCols} to
+     * {@code toCols}. Each line was painted at most {@link JkManagerColor#rowColumnBudget(int)} of
+     * {@code fromCols} wide (one row then); after a shrink, reflow wraps that text to
+     * {@code ceil(painted / toCols)} rows.
+     */
+    static int physicalRowsAfterReflow(List<String> lines, int fromCols, int toCols) {
+        if (lines == null || lines.isEmpty()) return 0;
+        int width = Math.max(1, toCols);
+        int fromBudget = JkManagerColor.rowColumnBudget(Math.max(1, fromCols));
+        int rows = 0;
+        for (String line : lines) {
+            int painted = Math.min(RenderContext.visibleWidth(line), fromBudget);
+            if (painted <= 0) {
+                rows += 1; // blank logical line still occupies a row
+            } else {
+                rows += (painted + width - 1) / width;
+            }
+        }
+        return rows;
     }
 
     /**

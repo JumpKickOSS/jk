@@ -21,8 +21,10 @@ import org.jline.utils.Signals;
  * and no JLine terminal (JLine capability probes race the shell after a transient build-close).
  *
  * <p>The probe runs once and the result is reused; {@link #refresh()} re-probes at natural
- * boundaries (the start of a live plan), which also picks up a resize between builds. Render
- * paths run every animation frame and must never probe.
+ * boundaries (the start of a live plan), which also picks up a resize between builds. SIGWINCH
+ * only clears the cache — the next {@link #size()} / {@link #columns()} pays one native probe.
+ * Live plan paint and {@link RenderContext#current()} read that cache every frame; they must never
+ * call {@link #refresh()}.
  */
 public final class TerminalSize {
 
@@ -85,6 +87,7 @@ public final class TerminalSize {
 
     /** Re-probe and cache — call at plan start, never from a render path. */
     public static int[] refresh() {
+        ensureWinchHandler();
         int[] s = probe.get();
         cached = s;
         return s;

@@ -849,6 +849,113 @@ class JkManagerTest {
     }
 
     @Test
+    void paint_picks_up_terminal_resize_and_rewrites_truncated_rows() {
+        // Mid-build maximize: SIGWINCH clears TerminalSize's cache, but the live region used to
+        // keep the plan-start width and content-diff paint — so a static long test name stayed
+        // clipped until the message changed. Paint must re-read size and force a full rewrite.
+        var savedProbe = TerminalSize.probe;
+        try {
+            TerminalSize.probe = () -> new int[] {24, 40};
+            TerminalSize.reset();
+
+            var buf = new ByteArrayOutputStream();
+            // animate=true so tick paints; package ctor avoids starting the animator thread.
+            var cm = new JkManager(stream(buf), true, true, 40);
+            cm.height = 24;
+            cm.name = "Build";
+            cm.startNanos = System.nanoTime();
+            cm.nerdFont = NerdFontCaps.NONE;
+            cm.stepRunning("cc.jumpkick:jk-io", "run-tests", "test");
+            String longName = "EffectivePomBuilderTest.concurrent_walkers_on_a_parent_cycle_fail_loudly_in_ci";
+            cm.stepMessage("cc.jumpkick:jk-io", "run-tests", longName);
+
+            cm.tick();
+            assertThat(cm.width()).isEqualTo(40);
+            String narrow = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
+            assertThat(narrow).contains("…");
+            assertThat(narrow).doesNotContain(longName);
+
+            // Same as the SIGWINCH handler: drop the cache; next paint pays one re-probe.
+            TerminalSize.probe = () -> new int[] {24, 160};
+            TerminalSize.reset();
+            buf.reset();
+            cm.tick();
+
+            assertThat(cm.width()).isEqualTo(160);
+            String wide = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
+            assertThat(wide).contains(longName);
+            // Tree detail no longer needs an ellipsis at 160 columns.
+            assertThat(wide.lines()
+                            .filter(l -> l.contains("EffectivePomBuilderTest"))
+                            .findFirst())
+                    .isPresent()
+                    .get()
+                    .asString()
+                    .doesNotContain("…");
+        } finally {
+            TerminalSize.probe = savedProbe;
+            TerminalSize.reset();
+        }
+    }
+
+    @Test
+    void physical_rows_after_reflow_grows_when_columns_shrink() {
+        // A line painted ~79 cols wide reflows to 2 physical rows at 40 cols.
+        String wide = "x".repeat(79);
+        assertThat(JkManagerView.physicalRowsAfterReflow(List.of(wide), 80, 40)).isEqualTo(2);
+        assertThat(JkManagerView.physicalRowsAfterReflow(List.of(wide, wide), 80, 40))
+                .isEqualTo(4);
+        // Widen / same width: still one physical row per logical line.
+        assertThat(JkManagerView.physicalRowsAfterReflow(List.of(wide), 40, 80)).isEqualTo(1);
+        assertThat(JkManagerView.physicalRowsAfterReflow(List.of(""), 80, 40)).isEqualTo(1);
+        assertThat(JkManagerView.physicalRowsAfterReflow(List.of(), 80, 40)).isZero();
+    }
+
+    @Test
+    void paint_on_column_shrink_wipes_reflowed_physical_rows_before_repaint() {
+        // Shrink reflows long painted lines onto extra physical rows. cursorUp(logical) then
+        // undershoots and the next header stacks under the orphan. Wipe must cursor-up by the
+        // reflow estimate (≥ logical) and erase before painting the narrower region.
+        var savedProbe = TerminalSize.probe;
+        try {
+            TerminalSize.probe = () -> new int[] {24, 120};
+            TerminalSize.reset();
+
+            var buf = new ByteArrayOutputStream();
+            var cm = new JkManager(stream(buf), true, true, 120);
+            cm.height = 24;
+            cm.name = "Build";
+            cm.startNanos = System.nanoTime();
+            cm.nerdFont = NerdFontCaps.NONE;
+            cm.stepRunning("cc.jumpkick:jk-cli", "native-image", "native");
+            cm.stepMessage("cc.jumpkick:jk-cli", "native-image", "[5/8] Inlining methods...");
+            cm.tick();
+
+            List<String> painted = cm.lastLines;
+            assertThat(painted).isNotEmpty();
+            int expectedUp = Math.max(JkManagerView.physicalRowsAfterReflow(painted, 120, 50), painted.size());
+
+            TerminalSize.probe = () -> new int[] {24, 50};
+            TerminalSize.reset();
+            buf.reset();
+            cm.tick();
+
+            assertThat(cm.width()).isEqualTo(50);
+            String raw = buf.toString(StandardCharsets.UTF_8);
+            // Wipe path: cursor-up by physical reflow rows, then erase-display-to-end, then paint.
+            assertThat(raw).contains(cc.jumpkick.cli.Ansi.cursorUp(expectedUp));
+            assertThat(raw).contains("\r" + cc.jumpkick.cli.Ansi.ERASE_DISPLAY_TO_END);
+            // Only one Build header in the post-shrink frame (not a stacked orphan + new paint).
+            String visible = TestAnsi.strip(raw);
+            long buildHeaders = visible.lines().filter(l -> l.contains("Build")).count();
+            assertThat(buildHeaders).isEqualTo(1);
+        } finally {
+            TerminalSize.probe = savedProbe;
+            TerminalSize.reset();
+        }
+    }
+
+    @Test
     void truncate_visible_overflow_by_one_still_shows_ellipsis() {
         // Content one column over the budget must not fill the row with raw text and drop ….
         for (int n = 2; n <= 40; n++) {

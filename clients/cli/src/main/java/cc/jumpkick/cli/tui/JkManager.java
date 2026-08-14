@@ -51,13 +51,19 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     final PrintStream out;
     final boolean animate;
     final boolean planMode;
-    final int width;
+
+    /**
+     * Terminal columns. Seeded at plan start; {@link JkManagerView#paintBuildPlan()} re-reads
+     * {@link TerminalSize} each frame so a mid-build SIGWINCH updates truncation budgets without
+     * waiting for the next plan.
+     */
+    int width;
 
     /**
      * Terminal rows. The whole region must fit within this — a region taller than the viewport
      * scrolls its top into scrollback, and cursor-relative repaint/wipe ({@code cursorUp(n)}) clamps
      * at the viewport top and can no longer reach it (leaving stale lines, e.g. a lingering spinner
-     * on cancel).
+     * on cancel). Re-read with {@link #width} on each plan paint after a resize.
      */
     int height = DEFAULT_HEIGHT; // package-private: tests set it directly
 
@@ -258,7 +264,7 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         return cm;
     }
 
-    /** Terminal width detected at construction (columns). */
+    /** Current terminal width in columns (updates on the next paint after a resize). */
     public int width() {
         return width;
     }
