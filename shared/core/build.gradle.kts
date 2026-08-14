@@ -73,6 +73,9 @@ tasks.processResources {
 // jk-libs.toml / jk-lock.toml leaves :core:test UP-TO-DATE and the guard silently never reruns
 // (same trap :web documents for fold.js).
 tasks.named<Test>("test") {
+    // MacPrefs makes CoreFoundation downcalls (JK-1970). Today this is only a JDK 25 warning, but
+    // restricted methods become a hard error in a later release; :cli and :engine already pass it.
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
     inputs.files(
         rootProject.file("jk-lock.toml"),
         rootProject.file("jk-libs.toml"),

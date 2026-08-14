@@ -13,6 +13,10 @@ import java.util.Map;
  *
  * <p>Lives in plugin-sdk at the SPI language floor ({@code --release 17}); written without
  * pattern-switch (Java 21+) so worker JVMs on project JDK 17+ can load the same classes.
+ *
+ * <p>{@link #parse} is strict RFC 8259 — it is the wire-protocol path and must stay that way.
+ * {@link #parseRelaxed} is the JSONC dialect for human-edited files (comments, trailing commas,
+ * byte-order mark); both share one parser, gated on a {@code relaxed} flag.
  */
 public final class MiniJson {
 
@@ -118,16 +122,48 @@ public final class MiniJson {
         for (int i = 0; i < indent; i++) sb.append("  ");
     }
 
-    private final String src;
-    private int pos;
+    /**
+     * Container nesting cap. Without one, a hostile or merely generated document overflows the
+     * stack, and {@code StackOverflowError} is an {@link Error} — it slips straight through every
+     * caller that guards a parse with {@code catch (RuntimeException)}. 512 is far past anything
+     * hand-written or emitted by a real tool.
+     */
+    private static final int MAX_DEPTH = 512;
 
-    private MiniJson(String src) {
+    /** Byte-order mark; {@link Character#isWhitespace} says false, so it needs its own case. */
+    private static final char BOM = '\uFEFF';
+
+    private final String src;
+    private final boolean relaxed;
+    private int pos;
+    private int depth;
+
+    private MiniJson(String src, boolean relaxed) {
         this.src = src;
+        this.relaxed = relaxed;
     }
 
-    /** Parse a complete JSON document; trailing non-whitespace is an error. */
+    /**
+     * Parse a complete JSON document; trailing non-whitespace is an error. Strict: no comments, no
+     * trailing commas, no byte-order mark. This is the plugin wire-protocol path — anything lenient
+     * belongs in {@link #parseRelaxed} instead.
+     */
     public static Object parse(String json) {
-        MiniJson p = new MiniJson(json);
+        return parse(json, false);
+    }
+
+    /**
+     * Parse a JSONC document — {@link #parse}'s grammar plus the three concessions human-edited
+     * config files need: {@code //} line and block comments wherever whitespace is legal, a
+     * trailing comma in objects and arrays, and a leading byte-order mark. None of these are
+     * recognized inside a string literal, so {@code {"a":"// text"}} keeps its value verbatim.
+     */
+    public static Object parseRelaxed(String json) {
+        return parse(json, true);
+    }
+
+    private static Object parse(String json, boolean relaxed) {
+        MiniJson p = new MiniJson(json, relaxed);
         Object value = p.parseValue();
         p.skipWhitespace();
         if (p.pos != json.length()) {
@@ -142,9 +178,16 @@ public final class MiniJson {
         char c = src.charAt(pos);
         switch (c) {
             case '{':
-                return parseObject();
             case '[':
-                return parseArray();
+                // Depth is accounted for here rather than inside parseObject/parseArray: this is
+                // the only call site of either, so one push/pop pair covers both containers and no
+                // early return path can leak a level.
+                if (++depth > MAX_DEPTH) {
+                    throw new IllegalArgumentException("nesting deeper than " + MAX_DEPTH + " at offset " + pos);
+                }
+                Object nested = c == '{' ? parseObject() : parseArray();
+                depth--;
+                return nested;
             case '"':
                 return parseString();
             case 't':
@@ -167,6 +210,12 @@ public final class MiniJson {
         }
         while (true) {
             skipWhitespace();
+            // Only reachable after a ',' (the empty object returned above), so a '}' here is a
+            // trailing comma.
+            if (relaxed && peek() == '}') {
+                pos++;
+                return map;
+            }
             String key = parseString();
             skipWhitespace();
             expect(':');
@@ -187,6 +236,12 @@ public final class MiniJson {
             return list;
         }
         while (true) {
+            skipWhitespace();
+            // Same as the object loop: only reachable after a ',', so ']' is a trailing comma.
+            if (relaxed && peek() == ']') {
+                pos++;
+                return list;
+            }
             list.add(parseValue());
             skipWhitespace();
             char c = next();
@@ -205,6 +260,12 @@ public final class MiniJson {
             if (c != '\\') {
                 sb.append(c);
                 continue;
+            }
+            // A string ending in a lone backslash (truncated line, half-written file) read one
+            // char past the end and raised StringIndexOutOfBoundsException; callers expect every
+            // parse failure to be an IllegalArgumentException carrying an offset.
+            if (pos >= src.length()) {
+                throw new IllegalArgumentException("unterminated escape at offset " + (pos - 1));
             }
             char esc = src.charAt(pos++);
             switch (esc) {
@@ -233,7 +294,15 @@ public final class MiniJson {
                     sb.append('\t');
                     break;
                 case 'u':
-                    sb.append((char) Integer.parseInt(src.substring(pos, pos + 4), 16));
+                    // Explicit hex + bounds check (JK-1961 in Jsonl.appendEscape, same trap):
+                    // Integer.parseInt accepts a leading sign, so a four-char run like "+123"
+                    // would silently decode to U+0123, and a truncated escape at end of input
+                    // threw StringIndexOutOfBoundsException. Jsonl keeps a malformed escape
+                    // literally; this parser is strict by contract, so it rejects instead.
+                    if (pos + 4 > src.length() || !isHex4(src, pos)) {
+                        throw new IllegalArgumentException("bad unicode escape at offset " + (pos - 2));
+                    }
+                    sb.append((char) Integer.parseInt(src, pos, pos + 4, 16));
                     pos += 4;
                     break;
                 default:
@@ -270,8 +339,57 @@ public final class MiniJson {
         return Double.parseDouble(src.substring(start, pos));
     }
 
+    /**
+     * True when the four chars at {@code from} are all hex digits. Mirrors {@code Jsonl.isHex4},
+     * which is private to its own class — the shared piece worth centralizing is escaping
+     * ({@link Jsonl#quote}), not a four-char predicate.
+     */
+    private static boolean isHex4(String s, int from) {
+        for (int k = from; k < from + 4; k++) {
+            char c = s.charAt(k);
+            boolean hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+            if (!hex) return false;
+        }
+        return true;
+    }
+
+    /**
+     * Skip whitespace, plus — in relaxed mode — comments and byte-order marks. Every token boundary
+     * routes through here, which is what makes a comment legal anywhere whitespace is legal;
+     * {@link #parseString} never does, which is what keeps a value of {@code "// text"} intact.
+     */
     private void skipWhitespace() {
-        while (pos < src.length() && Character.isWhitespace(src.charAt(pos))) pos++;
+        while (pos < src.length()) {
+            char c = src.charAt(pos);
+            if (Character.isWhitespace(c) || (relaxed && c == BOM)) {
+                pos++;
+                continue;
+            }
+            if (relaxed && c == '/' && skipComment()) continue;
+            return;
+        }
+    }
+
+    /**
+     * At a {@code '/'}: consume a line comment (to end of line) or a block comment (slash-star to
+     * star-slash) and report true; report false when the slash introduces neither, leaving the
+     * caller to fail on it as an unexpected character.
+     */
+    private boolean skipComment() {
+        if (pos + 1 >= src.length()) return false;
+        char kind = src.charAt(pos + 1);
+        if (kind == '/') {
+            pos += 2;
+            while (pos < src.length() && src.charAt(pos) != '\n' && src.charAt(pos) != '\r') pos++;
+            return true;
+        }
+        if (kind == '*') {
+            int end = src.indexOf("*/", pos + 2);
+            if (end < 0) throw new IllegalArgumentException("unterminated comment at offset " + pos);
+            pos = end + 2;
+            return true;
+        }
+        return false;
     }
 
     private char peek() {

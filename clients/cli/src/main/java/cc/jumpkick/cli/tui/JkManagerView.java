@@ -602,7 +602,7 @@ final class JkManagerView {
     }
 
     RenderContext headerContext() {
-        return RenderContext.current().withNerd(m.nerdfont).withFrame(m.frame);
+        return RenderContext.current().withCaps(m.nerdFont).withFrame(m.frame);
     }
 
     /**

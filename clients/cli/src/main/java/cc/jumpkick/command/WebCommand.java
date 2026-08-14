@@ -72,7 +72,7 @@ public final class WebCommand implements CliCommand {
         String url = tokenizedUrl(status.httpUrl(), paths);
         Theme t = Theme.active();
         CommandWedge.envelopeStart();
-        CliOutput.out(JkWedge.chipLine(Glyphs.PLAY, "Web", GlobalConfig.nerdfont(), "JumpKick Web Interface"));
+        CliOutput.out(JkWedge.chipLine(Glyphs.PLAY, "Web", GlobalConfig.nerdFont(), "JumpKick Web Interface"));
         CliOutput.out("");
         CliOutput.out(
                 Theme.colorize("  Open the URL below if a browser did not launch:", AttributedStyle.DEFAULT.italic()));

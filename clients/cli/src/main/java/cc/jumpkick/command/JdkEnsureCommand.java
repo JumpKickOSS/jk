@@ -255,7 +255,7 @@ public final class JdkEnsureCommand implements CliCommand {
 
     private static void report(String displayName, Path home, boolean downloaded) {
         CommandWedge.envelopeStart();
-        CliOutput.out(JdkRender.available(displayName, home, GlobalConfig.nerdfont(), downloaded));
+        CliOutput.out(JdkRender.available(displayName, home, GlobalConfig.nerdFont(), downloaded));
     }
 
     /** {@code true} when {@code version >= floor} per {@link JdkSelector#versionKey} ordering. */

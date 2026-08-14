@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.config.NerdFontCaps;
 import java.io.PrintStream;
 import org.jline.utils.AttributedStyle;
 
@@ -21,7 +22,7 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
 
     private final PrintStream out;
     private final String displayName; // "Eclipse Temurin 26"
-    private final boolean nerdfont;
+    private final NerdFontCaps nerdFont;
     private final boolean silent;
     private final AttributedStyle[] failColors;
 
@@ -33,10 +34,10 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
     private boolean installing;
     private Thread animator;
 
-    private JdkDownloadBar(PrintStream out, String displayName, boolean nerdfont, boolean silent) {
+    private JdkDownloadBar(PrintStream out, String displayName, NerdFontCaps nerdFont, boolean silent) {
         this.out = out;
         this.displayName = displayName;
-        this.nerdfont = nerdfont;
+        this.nerdFont = nerdFont;
         this.silent = silent;
         this.failColors = SpinnerProgressBar.buildGradient(
                 ProgressBar.SEGMENTS, Theme.active().failureGradient());
@@ -48,8 +49,8 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
      */
     public static JdkDownloadBar show(PrintStream out, String displayName) {
         boolean silent = cc.jumpkick.config.SessionContext.current().config().noProgressOr(false);
-        boolean nerdfont = cc.jumpkick.config.GlobalConfig.nerdfont();
-        JdkDownloadBar db = new JdkDownloadBar(out, displayName, nerdfont, silent);
+        NerdFontCaps nerdFont = cc.jumpkick.config.GlobalConfig.nerdFont();
+        JdkDownloadBar db = new JdkDownloadBar(out, displayName, nerdFont, silent);
         LiveRegion.setActive(db);
         if (!silent) {
             out.print(Ansi.HIDE_CURSOR);
@@ -76,8 +77,8 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
      */
     public static JdkDownloadBar showInstalling(PrintStream out, String displayName) {
         boolean silent = cc.jumpkick.config.SessionContext.current().config().noProgressOr(false);
-        boolean nerdfont = cc.jumpkick.config.GlobalConfig.nerdfont();
-        JdkDownloadBar db = new JdkDownloadBar(out, displayName, nerdfont, silent);
+        NerdFontCaps nerdFont = cc.jumpkick.config.GlobalConfig.nerdFont();
+        JdkDownloadBar db = new JdkDownloadBar(out, displayName, nerdFont, silent);
         db.installing = true;
         LiveRegion.setActive(db);
         if (!silent) {
@@ -171,7 +172,7 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
         Theme t = Theme.active();
         String command = installing ? "Installing " : "Downloading ";
         RichText status = RichText.ansi(Theme.colorize(command + displayName, t.normalGray()));
-        RenderContext ctx = RenderContext.current().withNerd(nerdfont).withFrame(frame);
+        RenderContext ctx = RenderContext.current().withCaps(nerdFont).withFrame(frame);
         JkWedge wedge = new JkWedge(Icon.spinner(), "JDK", installing ? status : RichText.empty())
                 .variant(JkWedge.Variant.WORK);
         if (!installing) {

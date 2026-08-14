@@ -61,7 +61,7 @@ public final class EngineStatusCommand implements CliCommand {
                 CliOutput.out(JkWedge.chipLine(
                         Glyphs.STOP,
                         "Engine",
-                        GlobalConfig.nerdfont(),
+                        GlobalConfig.nerdFont(),
                         others.isEmpty()
                                 ? "Engine is not running"
                                 : "No engine for this directory (" + others.size()
@@ -93,7 +93,7 @@ public final class EngineStatusCommand implements CliCommand {
         }
         CommandWedge.envelopeStart();
         CliOutput.out(JkWedge.chipLine(
-                Glyphs.PLAY, "Engine", GlobalConfig.nerdfont(), "Engine is running (pid " + pidStyled(s.pid()) + ")"));
+                Glyphs.PLAY, "Engine", GlobalConfig.nerdFont(), "Engine is running (pid " + pidStyled(s.pid()) + ")"));
         detail("Version", s.version());
         detail("Uptime", formatUptime(uptimeSeconds));
         detail("Live Jobs", String.valueOf(s.activeBuildPlans()));

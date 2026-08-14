@@ -125,7 +125,7 @@ public final class DiagnosticReport {
         AttributedStyle ink = role == Role.ERROR ? t.bright(255, 255, 255) : t.bright(0, 0, 0);
         AttributedStyle body = t.withBackground(ink, chipRgb);
         AttributedStyle caps = t.bright(chipRgb);
-        String pill = Badge.pill(title, GlobalConfig.nerdfont(), body, caps);
+        String pill = Badge.pill(title, GlobalConfig.nerdFont().pill(), body, caps);
         AttributedStyle wordStyle =
                 role == Role.ERROR ? t.error().bold() : t.warning().bold();
         return pill + " " + Theme.colorize(word, wordStyle);

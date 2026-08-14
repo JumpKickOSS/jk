@@ -69,10 +69,11 @@ public final class Glyphs {
     /** Progress bar empty cell (plain ASCII). */
     public static final char BAR_EMPTY_PLAIN = '-';
 
-    // Nerd Font powerline pill caps for badges (gated on [global].nerdfont).
+    // Nerd Font powerline pill caps for badges (gated on the *pill* axis of [global].nerd-font).
     // Paint the cap in the badge's *background* color (as foreground) so it reads
     // as the chip's rounded edge. Without a Nerd Font there's no good half-circle,
-    // so badges fall back to a plain padded chip (no caps).
+    // so badges fall back to a plain padded chip (no caps). These two live only in
+    // Nerd Font v2+ / Powerline-Extra, unlike the triangles below (JK-1970).
     /** Nerd Font powerline left solid half-circle (U+E0B6). */
     public static final String PILL_LEFT_NERD = "";
 

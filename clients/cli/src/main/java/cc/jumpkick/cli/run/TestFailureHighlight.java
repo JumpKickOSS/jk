@@ -134,7 +134,7 @@ public final class TestFailureHighlight {
         // Same red/white chip as DiagnosticReport Compile Java failures.
         AttributedStyle body = t.withBackground(t.bright(255, 255, 255), t.planFailColor());
         AttributedStyle caps = t.bright(t.planFailColor());
-        String pill = Badge.pill("Test", GlobalConfig.nerdfont(), body, caps);
+        String pill = Badge.pill("Test", GlobalConfig.nerdFont().pill(), body, caps);
         StringBuilder sb = new StringBuilder();
         // "Failure" is mid-gray — the FAILED badge carries the error color.
         sb.append(pill).append(' ').append(Theme.colorize("Failure", t.midGray()));

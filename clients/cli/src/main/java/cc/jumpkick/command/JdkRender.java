@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkWedge;
+import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkVendor;
 import java.nio.file.Path;
@@ -55,13 +56,13 @@ public final class JdkRender {
      *       after a fresh download.
      * </ul>
      */
-    public static String available(String displayName, Path home, boolean nerdfont, boolean downloaded) {
+    public static String available(String displayName, Path home, NerdFontCaps caps, boolean downloaded) {
         Theme t = Theme.active();
         String command = downloaded ? " now is available at " : " is available at ";
         String msg = Theme.colorize(displayName, t.focused())
                 + Theme.colorize(command, t.normalGray())
                 + Theme.colorize(JdkInstallCommand.tildeCollapse(home), t.path());
-        return JkWedge.chipLine(Glyphs.CHECK, "JDK", nerdfont, msg);
+        return JkWedge.chipLine(Glyphs.CHECK, "JDK", caps, msg);
     }
 
     /**
@@ -73,12 +74,12 @@ public final class JdkRender {
      *
      * {@code {source}} is rendered in italic path color; {@code /identifier} in plain path color.
      */
-    public static String removed(String source, String identifier, boolean nerdfont) {
+    public static String removed(String source, String identifier, NerdFontCaps caps) {
         Theme t = Theme.active();
         String coord =
                 Theme.colorize("{" + source + "}", t.path().italic()) + Theme.colorize("/" + identifier, t.path());
         String msg = Theme.colorize("Removed ", t.normalGray()) + coord;
-        return JkWedge.chipLine(Glyphs.CHECK, "JDK", nerdfont, msg);
+        return JkWedge.chipLine(Glyphs.CHECK, "JDK", caps, msg);
     }
 
     // ── internal helpers ────────────────────────────────────────────────────

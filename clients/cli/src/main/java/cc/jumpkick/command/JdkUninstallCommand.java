@@ -373,7 +373,7 @@ public final class JdkUninstallCommand implements CliCommand {
             throw e;
         }
         CommandWedge.envelopeStart();
-        CliOutput.out(JdkRender.removed(hit.source(), identifier, cc.jumpkick.config.GlobalConfig.nerdfont()));
+        CliOutput.out(JdkRender.removed(hit.source(), identifier, cc.jumpkick.config.GlobalConfig.nerdFont()));
     }
 
     /**

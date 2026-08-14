@@ -15,6 +15,7 @@ import cc.jumpkick.cli.tui.Progress;
 import cc.jumpkick.cli.tui.RenderContext;
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Table;
+import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.GroupCommand;
 import cc.jumpkick.model.command.Invocation;
@@ -553,7 +554,7 @@ public final class CacheCommand extends GroupCommand {
      */
     static int runNuke(Path root, boolean dryRun, GlobalOptions global, boolean skipConfirm, boolean localOnly)
             throws IOException {
-        boolean nerdfont = cc.jumpkick.config.GlobalConfig.nerdfont();
+        NerdFontCaps nerdFont = cc.jumpkick.config.GlobalConfig.nerdFont();
         if (!Files.isDirectory(root)) {
             CommandWedge.printOk("Cache", "Nothing to nuke — cache directory does not exist.");
             return 0;
@@ -571,7 +572,7 @@ public final class CacheCommand extends GroupCommand {
         }
         if (!skipConfirm && !CacheNukeCommand.confirmNuke(root, stats)) {
             CommandWedge.envelopeStart();
-            CliOutput.out(cc.jumpkick.cli.tui.JkWedge.chipLine(Glyphs.CROSS, "Cache", nerdfont, "Nuke aborted."));
+            CliOutput.out(cc.jumpkick.cli.tui.JkWedge.chipLine(Glyphs.CROSS, "Cache", nerdFont, "Nuke aborted."));
             return 1;
         }
         // Prefer engine idle-boundary wipe; fall back to in-process delete only when no engine

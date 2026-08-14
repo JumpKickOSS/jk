@@ -7,6 +7,7 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -37,13 +38,13 @@ public final class CompletionCommand implements CliCommand {
     public int run(Invocation in) throws Exception {
         // Always refresh the full set — cheap and keeps activate wiring consistent.
         Path root = ShellCompletions.writeAll();
-        boolean nerdfont = GlobalConfig.nerdfont();
+        NerdFontCaps nerdFont = GlobalConfig.nerdFont();
         Theme t = Theme.active();
         CommandWedge.envelopeStart();
         CliOutput.out(JkWedge.chipLine(
                 Glyphs.CHECK,
                 "Completion",
-                nerdfont,
+                nerdFont,
                 "Wrote completions under " + Theme.colorize(root.toString(), t.path())));
         return Exit.SUCCESS;
     }
