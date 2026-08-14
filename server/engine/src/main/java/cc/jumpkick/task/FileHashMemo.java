@@ -27,6 +27,13 @@ public final class FileHashMemo {
     private static final long SETTLE_MS = 2_000;
 
     /**
+     * Pathology backstop per thread cache (JK-1942): the idle boundary clears these anyway, but a
+     * single build over an enormous tree must not grow one map without limit either. ~300 bytes
+     * per entry; the disk memo absorbs the cost of a mid-build clear.
+     */
+    private static final int MAX_THREAD_ENTRIES = 131_072;
+
+    /**
      * Every live thread's walk cache, weakly held so a dead thread's map can be collected. The
      * idle boundary clears them all ({@link #clearAllThreadCaches}) — without that, the immortal
      * {@code jk-cpu-N} pool threads accrete entries forever, because the cache key embeds the
@@ -101,6 +108,7 @@ public final class FileHashMemo {
         if (token != null) {
             DISK_HITS.incrementAndGet();
             // known: always trusted; hash: only when settled (same tick rewrite safety).
+            if (thread.size() >= MAX_THREAD_ENTRIES) thread.clear();
             thread.put(tkey, (casSeed ? "known:" : "hash:") + token);
             return token;
         }
@@ -108,6 +116,7 @@ public final class FileHashMemo {
         CONTENT_READS.incrementAndGet();
         token = Hashing.sha256Hex(abs);
         store(abs, size, mtime, token);
+        if (thread.size() >= MAX_THREAD_ENTRIES) thread.clear();
         thread.put(tkey, "hash:" + token);
         return token;
     }
@@ -217,7 +226,9 @@ public final class FileHashMemo {
             java.nio.file.attribute.FileTime ft = Files.getLastModifiedTime(abs);
             long nanos = ft.to(java.util.concurrent.TimeUnit.NANOSECONDS);
             String tkey = abs + "\0" + size + "\0" + nanos;
-            THREAD_CACHE.get().put(tkey, "known:" + sha256Hex);
+            Map<String, String> thread = THREAD_CACHE.get();
+            if (thread.size() >= MAX_THREAD_ENTRIES) thread.clear();
+            thread.put(tkey, "known:" + sha256Hex);
             // Disk: file: form so entry() short-circuits; contentHash strips the prefix. The
             // nano= stamp is the seed's provenance mark — lookup trusts it immediately but only
             // while the file's nanosecond mtime is unchanged (see lookup).

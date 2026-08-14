@@ -49,6 +49,9 @@ public final class LockfileReader {
         }
         TomlParseResult result = Toml.parse(file);
         Lockfile lockfile = fromResult(result, file.toString());
+        // Clear-on-overflow (ProjectIds idiom, JK-1942): one parsed Lockfile — potentially MBs —
+        // per distinct lockfile path the process ever read, forever.
+        if (READ_CACHE.size() >= 64) READ_CACHE.clear();
         READ_CACHE.put(key, new Cached(attrs.size(), attrs.lastModifiedTime(), lockfile));
         return lockfile;
     }

@@ -241,6 +241,9 @@ public final class BuildJournal {
             new java.util.concurrent.ConcurrentHashMap<>();
 
     private static Object metricsLock(Path runDir) {
+        // complete() removes entries, but a crashed/cancelled run leaks its key — bound the
+        // residue (ProjectIds idiom, JK-1942).
+        if (METRICS_LOCKS.size() >= 4_096) METRICS_LOCKS.clear();
         return METRICS_LOCKS.computeIfAbsent(runDir.toAbsolutePath().normalize(), k -> new Object());
     }
 

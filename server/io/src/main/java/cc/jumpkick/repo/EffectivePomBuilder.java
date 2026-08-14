@@ -316,13 +316,28 @@ public final class EffectivePomBuilder {
         // managed list (~2k entries for quarkus-bom parents) on every GAV dominated engine heap.
         List<Pom.Dep> retainedManaged = "pom".equalsIgnoreCase(child.packaging()) ? mergedManaged : List.of();
 
+        // Same rule for properties (JK-1942): the flattened ancestor map is only read when this
+        // POM serves as a parent or BOM — always packaging=pom (Maven rejects non-pom parents).
+        // Jar/war artifacts had ${…} substitution applied into their dep lists above; retaining
+        // the whole ancestor flatten (~200 entries for spring/quarkus parents) on every GAV in
+        // the 8192-entry memo multiplied parent maps across the engine heap. They keep their own
+        // declared properties plus the implicit project.* entries.
+        Map<String, String> retainedProps = props;
+        if (!"pom".equalsIgnoreCase(child.packaging())) {
+            retainedProps = new LinkedHashMap<>(child.properties());
+            retainedProps.put("project.groupId", groupId);
+            retainedProps.put("project.artifactId", child.artifactId());
+            retainedProps.put("project.version", version);
+            retainedProps.put("project.packaging", child.packaging());
+        }
+
         // A relocation belongs to the POM that declares it — it is not inherited from a parent.
         return new EffectivePom(
                 groupId,
                 child.artifactId(),
                 version,
                 child.packaging(),
-                props,
+                retainedProps,
                 finalDeps,
                 retainedManaged,
                 child.relocation());

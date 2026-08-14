@@ -110,6 +110,7 @@ class EffectivePomBuilderTest {
                     <version>1.0</version>
                   </parent>
                   <artifactId>child</artifactId>
+                  <packaging>pom</packaging>
                   <properties>
                     <spring.version>6.1.0</spring.version>
                   </properties>
@@ -119,6 +120,53 @@ class EffectivePomBuilderTest {
         EffectivePom pom = newBuilder(tempDir).build(Coordinate.of("org.example", "child", "1.0"));
         assertThat(pom.properties()).containsEntry("spring.version", "6.1.0");
         assertThat(pom.properties()).containsEntry("jackson.version", "2.18.0");
+    }
+
+    @Test
+    void jar_packaging_retains_only_its_own_properties(@TempDir Path tempDir) throws Exception {
+        // The flattened ancestor map is only consumed when a POM serves as parent/BOM
+        // (packaging=pom); retaining it on every jar GAV multiplied parent maps across the
+        // process memo (JK-1942). Substitution into dep fields happens before the trim.
+        registerPom("org.example", "parent", "1.0", """
+                <project>
+                  <groupId>org.example</groupId>
+                  <artifactId>parent</artifactId>
+                  <version>1.0</version>
+                  <packaging>pom</packaging>
+                  <properties>
+                    <spring.version>6.0.0</spring.version>
+                  </properties>
+                </project>
+                """);
+        registerPom("org.example", "child", "1.0", """
+                <project>
+                  <parent>
+                    <groupId>org.example</groupId>
+                    <artifactId>parent</artifactId>
+                    <version>1.0</version>
+                  </parent>
+                  <artifactId>child</artifactId>
+                  <properties>
+                    <own.flag>yes</own.flag>
+                  </properties>
+                  <dependencies>
+                    <dependency>
+                      <groupId>org.springframework</groupId>
+                      <artifactId>spring-core</artifactId>
+                      <version>${spring.version}</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+
+        EffectivePom pom = newBuilder(tempDir).build(Coordinate.of("org.example", "child", "1.0"));
+        assertThat(pom.properties()).containsEntry("own.flag", "yes");
+        assertThat(pom.properties()).containsEntry("project.artifactId", "child");
+        assertThat(pom.properties()).doesNotContainKey("spring.version");
+        assertThat(pom.dependencies())
+                .as("substitution ran against the full ancestor map before the trim")
+                .extracting(Pom.Dep::version)
+                .containsExactly("6.0.0");
     }
 
     @Test
@@ -261,6 +309,7 @@ class EffectivePomBuilderTest {
                     <version>1.0</version>
                   </parent>
                   <artifactId>child</artifactId>
+                  <packaging>pom</packaging>
                 </project>
                 """);
 
