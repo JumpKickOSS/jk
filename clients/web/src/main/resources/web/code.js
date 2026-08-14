@@ -412,6 +412,18 @@ export function ancestorDirs(path) {
   return out;
 }
 
+/** The build definition is the one file every jk workspace has, so it opens by default. */
+export const DEFAULT_FILE = 'jk.toml';
+
+/**
+ * The file to open when the route names none: the workspace-root `jk.toml`, and only if the list
+ * actually served it — a member's `sub/jk.toml` is not the workspace, and an imported Maven/Gradle
+ * tree has none at all, which is what leaves the pane on its empty state.
+ */
+export function defaultFilePath(files) {
+  return (files || []).some((f) => f && f.path === DEFAULT_FILE) ? DEFAULT_FILE : null;
+}
+
 export function plainRows(content) {
   const text = content == null ? '' : String(content);
   if (text === '') return [''];
@@ -487,6 +499,8 @@ export const CodeView = {
       this.loadList();
     },
     path() {
+      // Landing back on a bare /files (the Browse control) re-arms the default file.
+      if (!this.path) this.openDefaultFile();
       this.expandTo(this.path);
       this.loadFile();
     },
@@ -539,6 +553,15 @@ export const CodeView = {
     expandTo(filePath) {
       for (const dir of ancestorDirs(filePath)) this.expanded[dir] = true;
     },
+    /**
+     * `/files` with no path opens the workspace `jk.toml`. `replace` so the pane the user actually
+     * asked for is not left behind a history entry the Back chevron has to walk through.
+     */
+    openDefaultFile() {
+      if (this.path) return;
+      const fallback = defaultFilePath(this.files);
+      if (fallback) this.$emit('navigate', { path: fallback, line: 0, replace: true });
+    },
     selectFile(p) {
       this.$emit('navigate', { path: p, line: 0 });
     },
@@ -565,6 +588,7 @@ export const CodeView = {
         this.truncated = !!data.truncated;
         this.loadingList = false;
         this.expandTo(this.path); // the open file may predate the list (deep link / fail-report jump)
+        this.openDefaultFile(); // and with no file in the route, the list decides the default
       } catch (e) {
         if (e && e.name === 'AbortError') return;
         if (ac.signal.aborted) return;
@@ -706,7 +730,11 @@ export const CodeView = {
       <section class="code-pane">
         <div class="code-msgs">
           <p v-if="error" class="error">{{ error }}</p>
-          <p v-else-if="!path" class="empty">Select a file from the tree.</p>
+          <div v-else-if="!path" class="code-empty">
+            <jk-icon name="file"></jk-icon>
+            <p class="code-empty-head">Select a file from the tree.</p>
+            <p class="code-empty-sub">Filter by path to jump straight to one.</p>
+          </div>
           <p v-else-if="loadingFile" class="empty">Loading…</p>
           <template v-else-if="file && (skippedHighlight || highlighterFailed)">
             <p v-if="skippedHighlight" class="warn">Highlighting skipped (file too large)</p>

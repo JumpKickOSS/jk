@@ -85,6 +85,11 @@ Selecting a file appends the workspace-relative path as extra hash segments (eac
 Test-failure paths (module-relative) join `rel(checkout, module.dir)` + `rep.file` first;
 basename-only paths stay text.
 
+`/files` with **no path opens the workspace-root `jk.toml`** (`replaceState`, so the Back chevron
+still leaves in one hop). Only that exact path counts — a member's `sub/jk.toml` is not the
+workspace and an imported Maven/Gradle tree has none — and when there is none the pane shows a
+centred *Select a file from the tree.* empty state instead.
+
 The tree pane itself is GitHub-shaped: collapsible folders (chevron + `folder`/`folder-open`
 glyph) above files (generic `file` glyph), directories before files at every level, names sorted
 case-insensitively. `buildFileTree` **compacts single-child directory chains** into one row

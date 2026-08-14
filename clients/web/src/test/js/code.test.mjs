@@ -20,6 +20,8 @@ const {
   buildFileTree,
   visibleRows,
   ancestorDirs,
+  defaultFilePath,
+  DEFAULT_FILE,
   canHighlight,
   plainRows,
   MONACO_THEME,
@@ -221,6 +223,17 @@ test('ancestorDirs is every dir prefix, never the file', () => {
   assert.deepEqual(ancestorDirs('a/b/c/D.java'), ['a', 'a/b', 'a/b/c']);
   assert.deepEqual(ancestorDirs('README.md'), []);
   assert.deepEqual(ancestorDirs(null), []);
+});
+
+test('defaultFilePath opens the workspace jk.toml, and only that one', () => {
+  assert.equal(DEFAULT_FILE, 'jk.toml');
+  assert.equal(defaultFilePath([{ path: 'README.md' }, { path: 'jk.toml' }]), 'jk.toml');
+  // A member's jk.toml is not the workspace's, and a tree without one falls through to the
+  // pane's empty state rather than opening something arbitrary.
+  assert.equal(defaultFilePath([{ path: 'sub/jk.toml' }]), null);
+  assert.equal(defaultFilePath([{ path: 'pom.xml' }]), null);
+  assert.equal(defaultFilePath([]), null);
+  assert.equal(defaultFilePath(null), null);
 });
 
 test('highlight budget and plain rows', () => {

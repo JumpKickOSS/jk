@@ -1946,6 +1946,25 @@ main.code-view { max-width: min(96rem, 100%); display: flex; flex-direction: col
 /* Sibling of .code-editor, and the only place the pane's conditional messages render: that keeps
  * the editor host a static node Vue never swaps out from under a live editor. */
 .code-msgs:empty { display: none; }
+/* Full height only when it has something to say, so .code-empty can centre inside the pane.
+ * The plain-text fallback must not shrink to fit — the pane scrolls it. */
+.code-msgs:not(:empty) { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+.code-msgs > .code-pre { flex: 0 0 auto; }
+/* No file open: centred glyph + prompt, instead of one dim line stranded in the top-left. */
+.code-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 24px;
+  text-align: center;
+}
+.code-empty .ico { width: 34px; height: 34px; color: var(--dim); stroke-width: 1.5; }
+.code-empty p { margin: 0; }
+.code-empty-head { font: 600 13px var(--mono); color: var(--mu); }
+.code-empty-sub { font: 400 11.5px var(--mono); color: var(--dim); }
 .code-editor { height: 100%; min-width: 0; }
 /* ?line= target, drawn by Monaco decorations (lineDecorations in code.js). */
 .code-line-hl { background: rgba(255, 255, 255, 0.08); }
