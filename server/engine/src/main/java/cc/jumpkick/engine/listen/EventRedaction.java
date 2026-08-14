@@ -16,11 +16,42 @@ public final class EventRedaction {
 
     public static String redactEnv(@Nullable String dir, @Nullable String text) {
         if (text == null || text.isEmpty()) return text;
+        cc.jumpkick.config.SecretRedactor redactor;
         try {
-            return redactorFor(dir).redact(text);
+            redactor = redactorFor(dir);
         } catch (RuntimeException e) {
+            // A blank dir with no session is a routine off-request call, not a broken redactor.
+            if (dir != null && !dir.isBlank()) warnFailOpen(e);
             return text;
         }
+        try {
+            return redactor.redact(text);
+        } catch (RuntimeException e) {
+            warnFailOpen(e);
+            return text;
+        }
+    }
+
+    /**
+     * Redaction never breaks a build — but a silently-disabled security control must still be
+     * discoverable (JK-1965). One warning per engine run, on stderr (merged into the engine log
+     * by the spawn line).
+     */
+    private static final java.util.concurrent.atomic.AtomicBoolean WARNED_FAIL_OPEN =
+            new java.util.concurrent.atomic.AtomicBoolean();
+
+    static void warnFailOpen(RuntimeException e) {
+        if (WARNED_FAIL_OPEN.compareAndSet(false, true)) {
+            System.err.println("jk engine: secret redaction failed open ("
+                    + e.getClass().getSimpleName()
+                    + (e.getMessage() == null ? "" : ": " + e.getMessage())
+                    + ") — output may contain unmasked .env values for this run");
+        }
+    }
+
+    /** Test seam: re-arm the once-per-run fail-open warning. */
+    static void resetFailOpenWarning() {
+        WARNED_FAIL_OPEN.set(false);
     }
 
     /**
@@ -50,6 +81,7 @@ public final class EventRedaction {
         try {
             return redactFailure(redactorFor(dir), f);
         } catch (RuntimeException e) {
+            if (dir != null && !dir.isBlank()) warnFailOpen(e);
             return f;
         }
     }
@@ -104,6 +136,7 @@ public final class EventRedaction {
         try {
             return redactor.redact(text);
         } catch (RuntimeException e) {
+            warnFailOpen(e);
             return text;
         }
     }

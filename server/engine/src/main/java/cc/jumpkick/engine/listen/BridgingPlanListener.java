@@ -70,6 +70,7 @@ public final class BridgingPlanListener implements BuildPlanListener {
         try {
             return redactor().redact(text);
         } catch (RuntimeException e) {
+            EventRedaction.warnFailOpen(e);
             return text;
         }
     }
