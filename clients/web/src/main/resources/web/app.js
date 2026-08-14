@@ -1349,7 +1349,13 @@ Vue.createApp({
       this.codeLine = r.line;
       // Collapse the expensive graph panel when leaving project view or switching projects.
       if (r.view !== 'project' || idChanged || r.files) this.projectGraphOpen = false;
-      if (r.view === 'project' && r.projectId) this.loadProjectMeta(r.projectId);
+      // Project identity cannot change between two clicks on the same #project/<id> route, and
+      // every /api/project hit re-runs identity resolution engine-side (git probe + project-home
+      // scan) — so reload metadata only on an actual project switch or when it was never loaded
+      // (JK-1945). This also stops the header flicker from nulling projectMeta per file click.
+      if (r.view === 'project' && r.projectId && (idChanged || !this.projectMeta)) {
+        this.loadProjectMeta(r.projectId);
+      }
       if (r.view === 'projects') {
         this.loadProjectHistory();
         this.refreshMetrics();
