@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.config.GlobalConfig;
 import java.nio.file.Path;
 import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStyle;
@@ -69,9 +70,11 @@ class DiagnosticReportTest {
         assertThat(plain).contains("Warning");
         if (Theme.active().isAnsi()) {
             Theme t = Theme.active();
-            // Black on amber chip body. Badge.pill without the pill axis pads the label with spaces.
+            // Black on amber chip body. Pill axis: half-circle caps around bare label;
+            // without it, Badge.pill pads the label with spaces (JK-1970).
             AttributedStyle blackOnAmber = t.withBackground(t.bright(0, 0, 0), Rgb.hex(0xFFB800));
-            assertThat(report).contains(Theme.colorize(" Compile Java ", blackOnAmber));
+            String body = GlobalConfig.nerdFont().pill() ? "Compile Java" : " Compile Java ";
+            assertThat(report).contains(Theme.colorize(body, blackOnAmber));
         }
     }
 
