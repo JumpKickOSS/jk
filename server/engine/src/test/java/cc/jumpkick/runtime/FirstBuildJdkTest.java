@@ -121,7 +121,7 @@ import org.junit.jupiter.api.Tag;
                             .append(" msg=")
                             .append(f.message())
                             .append('\n')
-                            .append(f.details() == null ? "" : f.details())
+                            .append(f.stack() == null ? "" : f.stack())
                             .append('\n');
                 }
             });

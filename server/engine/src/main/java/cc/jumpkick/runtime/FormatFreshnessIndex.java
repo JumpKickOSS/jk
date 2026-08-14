@@ -184,13 +184,14 @@ public final class FormatFreshnessIndex {
     }
 
     /**
-     * Worker identity is path:size:mtime of the thin jar <em>and</em> its {@code .classpath}
-     * sidecar. OpenRewrite/Spotless live on the sidecar; fingerprinting only the thin jar left
-     * freshness green across formatter dependency upgrades.
+     * Worker identity is path:size:mtime of the thin jar <em>and</em> a content hash of its
+     * {@code .classpath} sidecar. OpenRewrite/Spotless live on the sidecar; fingerprinting only
+     * the thin jar left freshness green across formatter dependency upgrades. The sidecar is
+     * hashed (not size:mtime) so same-length, same-millisecond rewrites still invalidate.
      */
     private static String identity(Path workerJar) {
         if (workerJar == null || !Files.isRegularFile(workerJar)) return "none";
-        return fileIdentity(workerJar) + "|" + fileIdentity(Path.of(workerJar.toString() + ".classpath"));
+        return fileIdentity(workerJar) + "|" + classpathIdentity(Path.of(workerJar.toString() + ".classpath"));
     }
 
     private static String fileIdentity(Path path) {
@@ -202,6 +203,15 @@ public final class FormatFreshnessIndex {
                     + attrs.size()
                     + ":"
                     + attrs.lastModifiedTime().toMillis();
+        } catch (IOException e) {
+            return path.toAbsolutePath().normalize().toString();
+        }
+    }
+
+    private static String classpathIdentity(Path path) {
+        if (path == null || !Files.isRegularFile(path)) return "none";
+        try {
+            return path.toAbsolutePath().normalize() + ":" + Hashing.sha256Hex(path);
         } catch (IOException e) {
             return path.toAbsolutePath().normalize().toString();
         }
