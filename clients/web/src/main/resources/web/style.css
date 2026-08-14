@@ -1248,7 +1248,15 @@ table.stats td.err { color: var(--err); }
   text-underline-offset: 2px;
   padding-left: 4ch;
 }
+/* Real <a> deep link into #project/<id>/files/…?line= — keep path chrome, not browser blue. */
+a.fail-path {
+  display: block;
+  color: var(--path);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 .fail-path.link { cursor: pointer; }
+a.fail-path:hover { color: var(--bright, var(--path)); }
 .fail-thrown { padding-left: 4ch; }
 .fail-stack { color: var(--dim); padding-left: 2ch; }
 .fail-src {

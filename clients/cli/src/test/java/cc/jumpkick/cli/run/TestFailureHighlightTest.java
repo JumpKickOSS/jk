@@ -3,15 +3,23 @@ package cc.jumpkick.cli.run;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import org.jline.utils.AttributedString;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 /** {@link TestFailureHighlight} turns the engine's plain failure block into a styled report. */
 class TestFailureHighlightTest {
+
+    @AfterEach
+    void clearLinkCache() {
+        DashboardCodeLink.clearHttpCache();
+    }
 
     @Test
     void paints_header_with_module_and_count() {
@@ -77,6 +85,40 @@ class TestFailureHighlightTest {
 
     private static String plain(String s) {
         return AttributedString.stripAnsi(s == null ? "" : s);
+    }
+
+    @Test
+    void source_path_is_osc8_deep_link_when_dashboard_is_known() {
+        if (!Theme.active().isAnsi()) return;
+        DashboardCodeLink.putHttpCache("http://127.0.0.1:8910/");
+        DashboardCodeLink.putProjectId("proj");
+        String path = "src/test/java/Foo.java";
+        String expectedUrl = "http://127.0.0.1:8910#project/proj/files/src/test/java/Foo.java?line=9";
+        String painted;
+        try (var scope = DashboardCodeLink.open(Path.of("/ws"), Path.of("/ws"))) {
+            painted = TestFailureHighlight.paintSourcePath(
+                    path, "@@source path=" + path + " line=9 lang=java", Theme.active());
+        }
+        // AttributedString.stripAnsi leaves OSC-8; visible text is still the path.
+        assertThat(painted).contains(Ansi.OSC + "8;;" + expectedUrl);
+        assertThat(painted).contains(path);
+        assertThat(cc.jumpkick.cli.tui.RenderContext.stripAnsi(painted)).isEqualTo(path);
+        // Full failure block also carries the OSC-8 target on the path line.
+        List<String> block;
+        try (var scope = DashboardCodeLink.open(Path.of("/ws"), Path.of("/ws"))) {
+            block = TestFailureHighlight.paintLines(List.of(
+                    "Test Failure",
+                    "1 test failed",
+                    "",
+                    "FAILED Foo.bar()",
+                    "",
+                    "@@source path=" + path + " line=9 start=7 lang=java",
+                    "@@src 7|  x();",
+                    "@@src 9*|  assertThat(1).isEqualTo(2);",
+                    "@@src-end",
+                    "    AssertionFailedError thrown at line 9"));
+        }
+        assertThat(String.join("\n", block)).contains(Ansi.OSC + "8;;" + expectedUrl);
     }
 
     @Test

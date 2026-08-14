@@ -196,16 +196,28 @@ export function relativizeUnder(root, abs) {
   return a.slice(prefix.length);
 }
 
+/**
+ * Workspace-relative path for a fail-report jump into {@code #project/<id>/files/…}.
+ *
+ * Test snippets carry a <em>module-relative</em> path. Live single-plan builds use the empty
+ * {@code SINGLE_PLAN_DIR} for the module row, so {@code moduleDir} is often {@code ''} — treat that
+ * (and module === checkout) as "file is already checkout-relative". Basename-only paths stay
+ * non-linkable (ambiguous under multi-module trees).
+ */
 export function codePathForFailure({ checkoutDir, moduleDir, file } = {}) {
   if (!file) return null;
   const isAbs = file.startsWith('/') || /^[A-Za-z]:[\\/]/.test(file);
   if (isAbs) {
+    if (!checkoutDir) return null;
     const rel = relativizeUnder(checkoutDir, file);
     if (rel == null || rel.split('/').includes('..')) return null;
     return rel;
   }
   if (!file.includes('/')) return null;
-  if (!checkoutDir || !moduleDir) return null;
+  if (file.split('/').includes('..')) return null;
+  // Empty moduleDir: single-plan live key — file is already workspace/checkout-relative.
+  if (!moduleDir) return file;
+  if (!checkoutDir) return null;
   const moduleRel = relativizeUnder(checkoutDir, moduleDir);
   if (moduleRel == null) return null;
   const joined = posixJoin(moduleRel, file);

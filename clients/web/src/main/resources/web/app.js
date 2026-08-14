@@ -285,18 +285,20 @@ const FailReport = {
     canOpen() {
       return !!(this.projectId && this.codePath);
     },
+    /** Real hash deep link into the Monaco files pane (copyable, middle-clickable). */
+    deepLink() {
+      if (!this.canOpen) return undefined;
+      return buildProjectHash({
+        projectId: this.projectId,
+        files: true,
+        path: this.codePath,
+        line: this.rep.line || 0,
+      });
+    },
   },
   methods: {
     failLabelSegs(label) {
       return detailSegments(label);
-    },
-    openFile() {
-      if (!this.canOpen) return;
-      this.$emit('open-file', {
-        projectId: this.projectId,
-        path: this.codePath,
-        line: this.rep.line || 0,
-      });
     },
   },
   template: `
@@ -335,14 +337,12 @@ const FailReport = {
     </template>
     <template v-if="rep.file">
       <div class="fail-blank"></div>
-      <div
+      <component
+        :is="canOpen ? 'a' : 'div'"
         class="fail-line fail-path"
         :class="{ link: canOpen }"
-        :role="canOpen ? 'link' : undefined"
-        :tabindex="canOpen ? 0 : undefined"
-        @click="openFile"
-        @keydown.enter.prevent="openFile"
-      >{{ rep.file }}</div>
+        :href="deepLink"
+      >{{ rep.file }}</component>
       <div
         v-for="(row, ri) in rep.rows"
         :key="'s'+ri"

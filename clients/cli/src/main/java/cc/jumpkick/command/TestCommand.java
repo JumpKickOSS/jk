@@ -10,6 +10,7 @@ import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.CliSessionTranscript;
 import cc.jumpkick.cli.run.CompositeBuildPlanListener;
 import cc.jumpkick.cli.run.ConsoleSpec;
+import cc.jumpkick.cli.run.DashboardCodeLink;
 import cc.jumpkick.cli.run.EventLogListener;
 import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.run.SessionMirrorListener;
@@ -363,14 +364,21 @@ public final class TestCommand implements CliCommand {
                                     o.success(), completed.incrementAndGet(), total[0], o.coord(), o.millis());
                             if (view.animating()) {
                                 view.addCompletion(completion);
-                                // Raw lines — snapshot() paints once for the settle dump.
+                                // Paint with module link context now; snapshot() re-paint is a no-op
+                                // on already-styled lines (no Test Failure sentinel left).
                                 synchronized (buf) {
-                                    if (!buf.isEmpty()) deferredOutput.addAll(buf);
+                                    if (!buf.isEmpty()) {
+                                        try (var link = DashboardCodeLink.open(entryDir, o.dir())) {
+                                            deferredOutput.addAll(TestFailureHighlight.paintLines(buf));
+                                        }
+                                    }
                                 }
                             } else {
                                 List<String> painted;
                                 synchronized (buf) {
-                                    painted = TestFailureHighlight.paintLines(buf);
+                                    try (var link = DashboardCodeLink.open(entryDir, o.dir())) {
+                                        painted = TestFailureHighlight.paintLines(buf);
+                                    }
                                 }
                                 StringBuilder block = new StringBuilder();
                                 for (String l : painted) block.append(l).append('\n');
@@ -505,7 +513,10 @@ public final class TestCommand implements CliCommand {
                                     json);
                             if (json) return;
                             List<String> buf = buffers.getOrDefault(o.dir(), List.of());
-                            List<String> painted = TestFailureHighlight.paintLines(buf);
+                            List<String> painted;
+                            try (var link = DashboardCodeLink.open(entryDir, o.dir())) {
+                                painted = TestFailureHighlight.paintLines(buf);
+                            }
                             synchronized (BuildCommand.OUT_LOCK) {
                                 for (String line : painted) CliOutput.out(line);
                                 CliOutput.out(BuildCommand.completionLine(

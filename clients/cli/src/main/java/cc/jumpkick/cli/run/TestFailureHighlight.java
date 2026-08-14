@@ -5,6 +5,7 @@ import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Badge;
+import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.config.GlobalConfig;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,7 +29,7 @@ import org.jline.utils.AttributedStyle;
  *  ┃  Expected: 42
  *  ┃   But Was: 41
  *  ┃
- *  ┃     path/to/File.java
+ *  ┃     path/to/File.java   ← OSC-8 deep link into the dashboard code editor when known
  *  ┃   19│ …
  *  ┃     AssertionFailedError thrown at line 23
  *  ┗━
@@ -378,12 +379,38 @@ public final class TestFailureHighlight {
             return out;
         }
 
-        out.add(rail(BODY_INDENT + Theme.colorize(path, t.path().underline()), t));
+        out.add(rail(BODY_INDENT + paintSourcePath(path, header, t), t));
         Rgb pane = CONSOLE_BG;
         for (SrcRow row : rows) {
             out.add(rail(paintSrcLine(row, maxCode, language, t, pane), t));
         }
         return out;
+    }
+
+    /**
+     * Path color + underline; when the dashboard HTTP surface and project id are known, wrap in an
+     * OSC-8 deep link ({@code [link url][path underline]…[/][/]}) to the Monaco files pane.
+     */
+    static String paintSourcePath(String path, String sourceHeader, Theme t) {
+        if (path == null || path.isEmpty()) return "";
+        int line = parsePositiveInt(attr(sourceHeader, "line"));
+        String url = DashboardCodeLink.urlForSnippet(path, line);
+        if (url != null && !url.isBlank()) {
+            // RichText owns OSC-8; path + underline match the unlinked Theme.colorize form.
+            return RichText.parse("[link " + url + "][path underline]" + RichText.escape(path) + "[/][/]")
+                    .render();
+        }
+        return Theme.colorize(path, t.path().underline());
+    }
+
+    private static int parsePositiveInt(String raw) {
+        if (raw == null || raw.isBlank()) return 0;
+        try {
+            int n = Integer.parseInt(raw.strip());
+            return n > 0 ? n : 0;
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     /** Visible columns a painted row spends before code: rail {@code " ┃ "} + gutter + bar + gap. */

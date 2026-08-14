@@ -82,8 +82,15 @@ pane — you are already browsing there — which is also where the header's bac
 label: a bare chevron that goes up one level to `#project/<id>`, not out to the project list.
 Selecting a file appends the workspace-relative path as extra hash segments (each `encodeURIComponent`;
 `/` stays a separator). Optional `?line=` is a 1-based highlight for fail-report jumps.
-Test-failure paths (module-relative) join `rel(checkout, module.dir)` + `rep.file` first;
-basename-only paths stay text.
+The underlined path above a test-failure snippet is a real hash deep link into that route (so
+middle-click / copy-link work). Module-relative paths join `rel(checkout, module.dir)` +
+`rep.file`; an empty live single-plan module dir leaves `rep.file` as already checkout-relative.
+Basename-only paths stay plain text.
+
+The CLI paints the same path with an OSC-8 hyperlink to that absolute dashboard URL (RichText
+`[link …]`) when the engine HTTP surface is up and the checkout has a project id — click the
+underlined path in a capable terminal to open the editor at the failure line. Auth still comes
+from a prior `jk web` / stored token (`#t=` cannot share the hash with a `#project/…` route).
 
 `/files` with **no path opens the workspace-root `jk.toml`** (`replaceState`, so the Back chevron
 still leaves in one hop). Only that exact path counts — a member's `sub/jk.toml` is not the

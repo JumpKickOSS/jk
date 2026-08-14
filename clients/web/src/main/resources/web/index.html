@@ -172,8 +172,7 @@
                   <div v-if="isTestFailure(d)" class="fail-report">
                     <fail-report v-for="rep in tfReports(singleModule(card), d)" :key="'tf'+i" :rep="rep"
                                  :project-id="card.projectId" :checkout-dir="card.dir"
-                                 :module-dir="singleModule(card) && singleModule(card).dir"
-                                 @open-file="openCode"></fail-report>
+                                 :module-dir="singleModule(card) && singleModule(card).dir"></fail-report>
                   </div>
                   <div v-else class="diag-line">
                     <span class="console-err">✘&nbsp;</span><template v-if="diagPhase(singleModule(card), d)"><span class="console-phase">{{ diagPhase(singleModule(card), d) }}</span><span class="console-sep">&nbsp;›&nbsp;</span></template><span class="console-dir">{{ d.step }}</span><template v-if="d.test"><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.test }}</span></template><template v-if="d.exceptionClass"><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.exceptionClass }}</span></template><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.message }}</span>
@@ -217,7 +216,7 @@
                     <div v-if="isTestFailure(d)" class="fail-report">
                     <fail-report v-for="rep in tfReports(m, d)" :key="'tf'+i" :rep="rep"
                                  :project-id="card.projectId" :checkout-dir="card.dir"
-                                 :module-dir="m.dir" @open-file="openCode"></fail-report>
+                                 :module-dir="m.dir"></fail-report>
                   </div>
                     <div v-else class="diag-line">
                       <span class="console-err">✘&nbsp;</span><template v-if="diagPhase(m, d)"><span class="console-phase">{{ diagPhase(m, d) }}</span><span class="console-sep">&nbsp;›&nbsp;</span></template><span class="console-dir">{{ d.step }}</span><template v-if="d.test"><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.test }}</span></template><template v-if="d.exceptionClass"><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.exceptionClass }}</span></template><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.message }}</span>

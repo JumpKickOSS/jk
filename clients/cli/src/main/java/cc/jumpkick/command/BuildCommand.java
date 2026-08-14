@@ -432,7 +432,10 @@ public final class BuildCommand implements CliCommand {
                                     json);
                             if (json) return;
                             List<String> buf = buffers.getOrDefault(o.dir(), List.of());
-                            List<String> painted = cc.jumpkick.cli.run.TestFailureHighlight.paintLines(buf);
+                            List<String> painted;
+                            try (var link = cc.jumpkick.cli.run.DashboardCodeLink.open(entryDir, o.dir())) {
+                                painted = cc.jumpkick.cli.run.TestFailureHighlight.paintLines(buf);
+                            }
                             synchronized (OUT_LOCK) {
                                 for (String line : painted) CliOutput.out(line);
                                 CliOutput.out(completionLine(
@@ -639,14 +642,21 @@ public final class BuildCommand implements CliCommand {
                             completionLine(o.success(), completed.incrementAndGet(), total[0], o.coord(), o.millis());
                     if (view.animating()) {
                         view.addCompletion(completion);
-                        // Raw lines — snapshot() paints once for the settle dump.
+                        // Paint with module link context now; snapshot() re-paint is a no-op on
+                        // already-styled lines (no Test Failure sentinel left).
                         synchronized (buf) {
-                            if (!buf.isEmpty()) deferredOutput.addAll(buf);
+                            if (!buf.isEmpty()) {
+                                try (var link = cc.jumpkick.cli.run.DashboardCodeLink.open(entryDir, o.dir())) {
+                                    deferredOutput.addAll(cc.jumpkick.cli.run.TestFailureHighlight.paintLines(buf));
+                                }
+                            }
                         }
                     } else {
                         List<String> painted;
                         synchronized (buf) {
-                            painted = cc.jumpkick.cli.run.TestFailureHighlight.paintLines(buf);
+                            try (var link = cc.jumpkick.cli.run.DashboardCodeLink.open(entryDir, o.dir())) {
+                                painted = cc.jumpkick.cli.run.TestFailureHighlight.paintLines(buf);
+                            }
                         }
                         StringBuilder block = new StringBuilder();
                         for (String l : painted) block.append(l).append('\n');

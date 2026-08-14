@@ -96,6 +96,23 @@ test('codePathForFailure joins module-relative paths', () => {
     }),
     'src/Main.java',
   );
+  // Single-plan live key is empty SINGLE_PLAN_DIR — file is already checkout-relative.
+  assert.equal(
+    codePathForFailure({
+      checkoutDir: '/ws',
+      moduleDir: '',
+      file: 'src/test/java/cc/jumpkick/runtime/DogfoodFailureSnippetTest.java',
+    }),
+    'src/test/java/cc/jumpkick/runtime/DogfoodFailureSnippetTest.java',
+  );
+  assert.equal(
+    codePathForFailure({
+      checkoutDir: '/ws',
+      moduleDir: '/ws',
+      file: 'src/test/java/FooTest.java',
+    }),
+    'src/test/java/FooTest.java',
+  );
   assert.equal(
     codePathForFailure({ checkoutDir: '/ws', moduleDir: '/ws/lib', file: 'FooTest.java' }),
     null,
@@ -103,6 +120,27 @@ test('codePathForFailure joins module-relative paths', () => {
   assert.equal(
     codePathForFailure({ checkoutDir: '/ws', moduleDir: '/ws/lib', file: '/etc/passwd' }),
     null,
+  );
+  assert.equal(
+    codePathForFailure({
+      checkoutDir: '/ws',
+      moduleDir: '',
+      file: 'src/../secret/Foo.java',
+    }),
+    null,
+  );
+  // Fail-report deep link shape: path + error line → Monaco ?line= highlight.
+  assert.equal(
+    buildProjectHash({
+      projectId: 'ab12',
+      path: codePathForFailure({
+        checkoutDir: '/ws',
+        moduleDir: '',
+        file: 'src/test/java/FooTest.java',
+      }),
+      line: 23,
+    }),
+    '#project/ab12/files/src/test/java/FooTest.java?line=23',
   );
 });
 
