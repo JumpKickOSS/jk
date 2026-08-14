@@ -779,7 +779,9 @@ function historyModules(rec) {
         state,
         millis: m.millis ?? null,
         steps,
-        diagnostics: historyDiags(rec.diagnostics, m.dir || ''),
+        // Same per-kind ceilings as the single-project path below (JK-1947): a pathological
+        // workspace record must not inject thousands of snippet+stack payloads into one card.
+        diagnostics: boundDiagnostics(historyDiags(rec.diagnostics, m.dir || '')),
         // Preserve journal order as a tie-break (later modules slightly higher lastActivity).
         lastActivity: activity + i,
       };

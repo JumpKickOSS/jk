@@ -333,6 +333,34 @@ test('history backfill maps per-module steps; single-project synthesizes one mod
   assert.equal(sp[0].modules[0].diagnostics[0].message, 'cannot find symbol');
 });
 
+test('workspace history replay applies the per-kind diagnostic ceilings', async () => {
+  // JK-1947: the single-project path was bounded (JK-1881) but the workspace path streamed a
+  // pathological record's diagnostics into the card unbounded.
+  const mod = await import(pathToFileURL(process.env.JK_FOLD_MJS));
+  const { seedFromHistory, MAX_TEST_FAILURE_DIAGNOSTICS, MAX_DIAGNOSTICS } = mod;
+  const diagnostics = [];
+  for (let i = 0; i < MAX_TEST_FAILURE_DIAGNOSTICS + 40; i++) {
+    diagnostics.push({
+      severity: 'error', dir: '/w/api', step: 'test', code: 'test-failure', message: 'assert ' + i,
+      test: 'case' + i + '()', exceptionClass: 'org.opentest4j.AssertionFailedError',
+    });
+  }
+  for (let i = 0; i < MAX_DIAGNOSTICS + 5; i++) {
+    diagnostics.push({ severity: 'error', dir: '/w/api', step: 'compile-java', message: 'err ' + i });
+  }
+  const ws = [];
+  seedFromHistory(ws, [{
+    id: 'w2', kind: 'build', dir: '/w', coord: 'g:w', finishedAt: 7000, success: false,
+    modules: [
+      { coord: 'g:api', dir: '/w/api', success: false, millis: 90, steps: [{ name: 'test', status: 'FAIL' }] },
+    ],
+    steps: [],
+    diagnostics,
+  }]);
+  const api = ws[0].modules.find((m) => m.dir === '/w/api');
+  assert.equal(api.diagnostics.length, MAX_TEST_FAILURE_DIAGNOSTICS + MAX_DIAGNOSTICS);
+});
+
 test('output keeps a bounded tail and clears on finish', () => {
   const cards = [];
   foldEvent(cards, start(1, '/w'));
