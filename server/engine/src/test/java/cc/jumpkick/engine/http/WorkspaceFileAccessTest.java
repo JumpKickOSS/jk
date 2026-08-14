@@ -156,6 +156,15 @@ class WorkspaceFileAccessTest {
             return;
         }
         assertThat(WorkspaceFileAccess.read(root, "src/Leak.java")).isInstanceOf(ReadResult.NotFound.class);
+        // list/read parity (JK-1952): the escaping link must not be listed either …
+        assertThat(WorkspaceFileAccess.list(root).files())
+                .noneMatch(f -> f.path().equals("src/Leak.java"));
+        // … while an in-root symlink stays listed and readable.
+        Files.writeString(root.resolve("src/Real.java"), "class Real {}");
+        Files.createSymbolicLink(root.resolve("src/Alias.java"), root.resolve("src/Real.java"));
+        assertThat(WorkspaceFileAccess.list(root).files())
+                .anyMatch(f -> f.path().equals("src/Alias.java"));
+        assertThat(WorkspaceFileAccess.read(root, "src/Alias.java")).isInstanceOf(ReadResult.Ok.class);
     }
 
     @Test

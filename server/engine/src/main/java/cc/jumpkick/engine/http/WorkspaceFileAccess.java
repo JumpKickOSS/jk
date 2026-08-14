@@ -165,6 +165,19 @@ final class WorkspaceFileAccess {
                         }
                         String lang = langOf(n);
                         if (lang == null) continue;
+                        // list/read parity (JK-1952): read() rejects symlinks whose real path
+                        // escapes the root, so an escaping link must not appear in the tree only
+                        // to 404 on click. Only symlinks pay the real-path check.
+                        if (attrs.isSymbolicLink()) {
+                            try {
+                                if (!Files.isRegularFile(entry)
+                                        || !entry.toRealPath().startsWith(absRoot.toRealPath())) {
+                                    continue;
+                                }
+                            } catch (IOException broken) {
+                                continue;
+                            }
+                        }
                         String posix = absRoot.relativize(entry).toString().replace('\\', '/');
                         if (rootManifest && posix.equals("jk.toml")) continue; // pre-seeded
                         if (collected.size() >= MAX_LIST_FILES) {
