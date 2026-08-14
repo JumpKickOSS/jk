@@ -85,13 +85,14 @@ public final class NativeImageDriver {
          *
          * @param current step number (1-based)
          * @param total total steps declared by native-image (e.g. 8)
-         * @param label human-readable step description stripped of trailing progress indicators and
-         *     timing (e.g. "Performing analysis")
+         * @param label human-readable step description with timing stripped and a trailing ASCII
+         *     {@code ...} normalized to the unicode ellipsis {@code …} (e.g. {@code Performing
+         *     analysis…})
          */
         void onStep(int current, int total, String label);
     }
 
-    /** {@code [N/M] Some label...} — native-image step header. */
+    /** {@code [N/M] Some label...} — native-image step header (optional trailing timing columns). */
     private static final Pattern STEP_PATTERN = Pattern.compile("^\\[(\\d+)/(\\d+)]\\s+(.+?)(?:\\s{2,}.*)?$");
 
     private NativeImageDriver() {}
@@ -178,12 +179,9 @@ public final class NativeImageDriver {
                         while ((line = br.readLine()) != null) {
                             sink.accept(line);
                             if (listener != null) {
-                                Matcher m = STEP_PATTERN.matcher(line);
-                                if (m.matches()) {
-                                    int current = Integer.parseInt(m.group(1));
-                                    int total = Integer.parseInt(m.group(2));
-                                    String label = m.group(3).trim();
-                                    listener.onStep(current, total, label);
+                                StepHeader step = parseStepHeader(line);
+                                if (step != null) {
+                                    listener.onStep(step.current(), step.total(), step.label());
                                 }
                             }
                         }
@@ -279,5 +277,30 @@ public final class NativeImageDriver {
             sb.append(classpath.get(i).toAbsolutePath());
         }
         return sb.toString();
+    }
+
+    /** Parsed {@code [N/M] label…} header, or {@code null} when the line is not a step header. */
+    record StepHeader(int current, int total, String label) {}
+
+    /**
+     * Parse a native-image step header. Strips trailing timing columns and rewrites a trailing
+     * ASCII {@code ...} to {@code …} so live TUI labels match the rest of the CLI.
+     */
+    static StepHeader parseStepHeader(String line) {
+        if (line == null) return null;
+        Matcher m = STEP_PATTERN.matcher(line);
+        if (!m.matches()) return null;
+        int current = Integer.parseInt(m.group(1));
+        int total = Integer.parseInt(m.group(2));
+        return new StepHeader(current, total, normalizeStepLabel(m.group(3).trim()));
+    }
+
+    /** Package-private for tests: trailing {@code ...} → {@code …}; already-ellipsis left alone. */
+    static String normalizeStepLabel(String label) {
+        if (label == null || label.isEmpty()) return "";
+        if (label.endsWith("...")) {
+            return label.substring(0, label.length() - 3) + "…";
+        }
+        return label;
     }
 }
