@@ -19,6 +19,7 @@ import cc.jumpkick.model.command.Opt;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.List;
+import org.jline.utils.AttributedStyle;
 
 /**
  * {@code jk web} — ensure the engine is up, print the authenticated dashboard URL (OSC-8 clickable
@@ -71,23 +72,19 @@ public final class WebCommand implements CliCommand {
         String url = tokenizedUrl(status.httpUrl(), paths);
         Theme t = Theme.active();
         CommandWedge.envelopeStart();
-        CliOutput.out(JkWedge.chipLine(Glyphs.PLAY, "Web", GlobalConfig.nerdfont(), "JumpKick dashboard"));
+        CliOutput.out(JkWedge.chipLine(Glyphs.PLAY, "Web", GlobalConfig.nerdfont(), "JumpKick Web Interface"));
         CliOutput.out("");
-        CliOutput.out("  Live build activity from this host's engine.");
-        CliOutput.out("  Open the URL below if a browser did not launch.");
-        CliOutput.out("");
+        CliOutput.out(
+                Theme.colorize("  Open the URL below if a browser did not launch:", AttributedStyle.DEFAULT.italic()));
         // OSC-8 hyperlink + path color — same treatment as `jk engine status` Web UI line.
         String visible = Theme.colorize(url, t.path());
         CliOutput.out("  " + Ansi.hyperlink(url, visible));
-        CliOutput.out("");
-        CliOutput.out("  Tip: run " + Theme.colorize("jk build", t.cyan())
-                + " in any workspace — activity will stream to the web client");
 
         if (!noOpen) {
             boolean opened = OpenBrowser.open(url);
             if (opened) {
                 CliOutput.out("");
-                CliOutput.out("  Opening in your browser…");
+                CliOutput.out(Theme.colorize("  Opening in your browser…", t.darkGray()));
             } else {
                 CliOutput.out("");
                 CliOutput.out(Theme.colorize("  Could not launch a browser — copy the URL above.", t.warning()));

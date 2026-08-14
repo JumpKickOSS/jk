@@ -4,9 +4,11 @@ package cc.jumpkick.cli.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.theme.Coords;
+import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import java.nio.file.Path;
 import org.jline.utils.AttributedString;
+import org.jline.utils.AttributedStyle;
 import org.junit.jupiter.api.Test;
 
 /** Phase-pill diagnostic reports for non-test-failure errors. */
@@ -57,6 +59,20 @@ class DiagnosticReportTest {
     void test_failure_code_is_suppressed() {
         assertThat(DiagnosticReport.renderError("run-tests", "test-failure", "boom"))
                 .isEmpty();
+    }
+
+    @Test
+    void warning_pill_uses_black_ink_on_amber() {
+        String report = DiagnosticReport.renderWarning("compile-java", "javac", "src/Main.java:1: warning: something");
+        String plain = plain(report);
+        assertThat(plain).contains("Compile Java");
+        assertThat(plain).contains("Warning");
+        if (Theme.active().isAnsi()) {
+            Theme t = Theme.active();
+            // Black on amber chip body. Badge.pill without nerdfont pads the label with spaces.
+            AttributedStyle blackOnAmber = t.withBackground(t.bright(0, 0, 0), Rgb.hex(0xFFB800));
+            assertThat(report).contains(Theme.colorize(" Compile Java ", blackOnAmber));
+        }
     }
 
     @Test
