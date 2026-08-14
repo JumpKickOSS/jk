@@ -8,6 +8,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Wizard;
+import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.jdk.GlobalDefaultJdk;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.InstalledJdk;
@@ -404,11 +405,11 @@ public final class JdkInstallCommand implements CliCommand {
      */
     private static String doneLine(String label, Path home, String command) {
         Theme t = Theme.active();
-        boolean nerdfont = cc.jumpkick.config.GlobalConfig.nerdfont();
+        NerdFontCaps nerdFont = cc.jumpkick.config.GlobalConfig.nerdFont();
         String msg = Theme.colorize(label, t.focused())
                 + Theme.colorize(" " + command + " ", t.normalGray())
                 + Theme.colorize(tildeCollapse(home), t.path());
-        return cc.jumpkick.cli.tui.JkWedge.chipLine(Glyphs.CHECK, "JDK", nerdfont, msg);
+        return cc.jumpkick.cli.tui.JkWedge.chipLine(Glyphs.CHECK, "JDK", nerdFont, msg);
     }
 
     /** Render an absolute path with {@code $HOME} collapsed to {@code ~}. */

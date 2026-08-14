@@ -746,17 +746,25 @@ export JK_OUTPUT=json        # same for any command that uses BuildPlanConsole
 The terminal is for people. Prefer settled **CommandWedge** chips (success green / work blue /
 error red), not `jk <command>: …` log prefixes. Agents should use **`--output json`/`jsonl`**,
 BSP, the engine wire, or (later) MCP — not scrape prose. Opt out of rich chrome with `NO_COLOR`,
-`--no-ansi`, or `JK_NERDFONT=false`. Full charter: kanartist **JK-1076**–**JK-1081**; machine
+`--no-ansi`, or `JK_NERD_FONT=false`. Full charter: kanartist **JK-1076**–**JK-1081**; machine
 surface: [machine-output.md](machine-output.md).
 
+Nerd Font glyphs are detected per launch and need no setup — `[global].nerd-font` defaults to
+`"auto"`. Pin it only to override detection:
+
 ```bash
-# Detect Nerd Font support once; writes ~/.config/jk/config.toml [global].nerdfont
-jk self setup-terminal
-jk self setup-terminal --nerd      # force on
-jk self setup-terminal --no-nerd   # force off
+jk self setup-terminal --explain        # what detection concludes, and why; writes nothing
+jk self setup-terminal                  # write nerd-font = "auto" (the default)
+jk self setup-terminal --mode on        # every PUA glyph
+jk self setup-terminal --mode off       # no PUA glyphs
+jk self setup-terminal --mode wedge     # powerline triangles only (classic Powerline font)
+jk self setup-terminal --mode pill      # half-circle pill caps only
 ```
 
-Install runs `setup-terminal` best-effort after a local dist materialize.
+`auto` grants both axes on Ghostty, kitty, WezTerm, and Windows Terminal (which draw the glyphs
+themselves), the wedge only on Terminal.app, and nothing over SSH, under `CI`, or on an
+unrecognised terminal. iTerm2, Alacritty, VS Code, and Zed resolve from their configured font.
+Env `JK_NERD_FONT` takes all five values; the host-wide `NERD_FONT` takes booleans only.
 
 Global CLI prefs live in the **`[config]`** table of `~/.config/jk/config.toml` and/or project
 `jk.toml` (CLI flags and `JK_*` env win). Precedence: **flag > env > project > machine**.

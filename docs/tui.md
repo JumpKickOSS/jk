@@ -128,18 +128,38 @@ Use `new Table(title).columns(...).row(...)` (or the `Table.render` static for s
 | `jk shell` | prints one line then hands the terminal to the spawned shell — no chrome |
 | `jk auth login` | device-flow prompts own the terminal; spinner while waiting, wedge on settle |
 
-## Glyph modes (JK-1376)
+## Glyph modes (JK-1376, JK-1970)
 
 | Mode | Trigger | Chrome |
 |------|---------|--------|
-| **nerd** | ANSI + `[global].nerdfont = true` | Powerline PUA caps (``) + Unicode glyphs |
-| **ansi** | ANSI, nerdfont false | Colored chips, Unicode glyphs, **no** PUA (bg-colored space cap) |
+| **nerd** | ANSI + a PUA axis granted | Powerline PUA caps + Unicode glyphs |
+| **ansi** | ANSI, no PUA axis granted | Colored chips, Unicode glyphs, **no** PUA (bg-colored space cap) |
 | **plain** | `--no-ansi` / `NO_COLOR` / `TERM=dumb` / `CI` | ASCII `+` / `!` / `*` prefixes; progress `#`/`-`; **no animations** |
+
+### The two PUA axes
+
+jk emits exactly four PUA codepoints, and they are **not** equally available, so nerd capability is
+a pair of flags (`NerdFontCaps`), not one boolean:
+
+| Axis | Codepoints | `Glyphs` constant | Rendered by |
+|------|-----------|-------------------|-------------|
+| **wedge** | `U+E0B0`, `U+E0B2` (solid triangles) | `SEGMENT_END_NERD`, `SEGMENT_BACK_NERD` | any Powerline-patched font |
+| **pill** | `U+E0B6`, `U+E0B4` (solid semi-circles) | `PILL_LEFT_NERD`, `PILL_RIGHT_NERD` | Nerd Font v2+ / Powerline-Extra only |
+
+A classic Powerline patch draws the triangles perfectly and the semi-circles as tofu. That is why
+`nerd-font = "wedge"` exists: under one boolean such a font would have to choose between tofu and no
+chrome at all.
+
+`[global].nerd-font` accepts `false`, `true`, `"auto"` (default), `"wedge"`, or `"pill"`.
+Precedence: color/ANSI gate > `JK_NERD_FONT` > `NERD_FONT` > config > `auto` detection.
 
 Rules:
 
-- Prefer `Glyphs.check()` / `cross()` / `pulse()` (and friends) over hardcoding `✓` when emitting markers outside wedges.
-- Nerd PUA only via `JkWedge.cap(..., nerdfont)` / `GlobalConfig.nerdfont()`.
+- Prefer `Glyphs.check()` / `cross()` / `pulse()` (and friends) over hardcoding a check mark when emitting markers outside wedges.
+- Wedge PUA only via `JkWedge.cap(..., wedge)` gated on `ctx.wedge()`; pill PUA only via
+  `Badge.pill(..., pillCaps)` gated on `ctx.pill()`.
+- **Never branch glyph choice on `ctx.mode()`** — `NERD` there means "some PUA", which is too coarse
+  and re-introduces the tofu bug for wedge-only fonts.
 - Plain mode: no CSI color, no spinner animation frames, no OSC taskbar required for correctness.
 
 ## One-shot vs plan

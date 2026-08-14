@@ -13,6 +13,7 @@ import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.ConfigSources;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleSelection;
+import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
@@ -119,7 +120,7 @@ public final class TreeCommand implements CliCommand {
 
         int max = maxDepth(transitive, depth);
 
-        boolean nerdfont = cc.jumpkick.config.GlobalConfig.nerdfont();
+        NerdFontCaps nerdFont = cc.jumpkick.config.GlobalConfig.nerdFont();
         Theme t = Theme.active();
         boolean ansi = t.isAnsi();
 
@@ -134,7 +135,7 @@ public final class TreeCommand implements CliCommand {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tree", e.getMessage()));
             return Exit.CONFIG;
         }
-        String rendered = DependencyTree.applyStyling(tagged, styling(nerdfont, ansi));
+        String rendered = DependencyTree.applyStyling(tagged, styling(nerdFont.pill(), ansi));
         buildTree(rendered, scopeNames).print();
         if (rendered.contains(DependencyTree.MISSING_SUFFIX)) {
             CliOutput.out();
@@ -350,7 +351,7 @@ public final class TreeCommand implements CliCommand {
      * {@code --color} / {@code NO_COLOR} / dumb terminals, so escapes are dropped cleanly when color
      * is off.
      */
-    private static DependencyTree.Styling styling(boolean nerdfont, boolean ansi) {
+    private static DependencyTree.Styling styling(boolean pillCaps, boolean ansi) {
         if (!ansi) {
             // No-ANSI: replace all Unicode connectors with ASCII equivalents,
             // use [scope] bracket badges, * root bullet, plain uncolored coords.
@@ -374,8 +375,8 @@ public final class TreeCommand implements CliCommand {
             return new DependencyTree.Styling(
                     asciiRail, plain, plain, plain, asciiReference, asciiBadge, plain, asciiRoot);
         }
-        // Scope section badge: a rounded pill (Nerd Font) or space-padded chip.
-        UnaryOperator<String> scopeBadge = s -> cc.jumpkick.cli.tui.Badge.pill(s, nerdfont);
+        // Scope section badge: a rounded pill (pill axis) or space-padded chip.
+        UnaryOperator<String> scopeBadge = s -> cc.jumpkick.cli.tui.Badge.pill(s, pillCaps);
         Theme t = Theme.active();
         // Root-line: ● bullet (dark-gray) + bold coord colors — no pill or background.
         return new DependencyTree.Styling(

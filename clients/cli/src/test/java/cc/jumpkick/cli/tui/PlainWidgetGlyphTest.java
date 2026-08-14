@@ -4,6 +4,7 @@ package cc.jumpkick.cli.tui;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.config.NerdFontCaps;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -13,7 +14,7 @@ import org.junit.jupiter.api.Test;
  */
 class PlainWidgetGlyphTest {
 
-    private static final RenderContext PLAIN = new RenderContext(Theme.active(), false, false, 80, 0);
+    private static final RenderContext PLAIN = new RenderContext(Theme.active(), false, NerdFontCaps.NONE, 80, 0);
 
     @Test
     void radio_buttons_are_ascii_in_plain_mode() {

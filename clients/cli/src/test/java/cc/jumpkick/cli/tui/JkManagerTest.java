@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.config.NerdFontCaps;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -194,7 +195,7 @@ class JkManagerTest {
     @Test
     void header_shows_a_wallclock_countdown_from_the_estimate() {
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.progress(50, 100);
 
         // No estimate set → single mid-gray count-up from construction.
@@ -262,7 +263,7 @@ class JkManagerTest {
     @Test
     void eta_countdown_counts_up_past_zero_without_a_color_swap() {
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.setEtaEstimate(10_000); // 10s estimate
         Theme t = Theme.active();
 
@@ -290,7 +291,7 @@ class JkManagerTest {
         // sub-second remainder (e.g. 100ms after setRemainingWorkEstimate). Both must advance on
         // the same whole-second elapsed boundary.
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.setEtaEstimate(60_100); // 60s + 100ms
         String mid = TestAnsi.strip(cm.renderBuildPlanLines(120, 4_050).get(0));
         assertThat(mid).contains("ETA ~56s");
@@ -309,7 +310,7 @@ class JkManagerTest {
     void eta_seed_may_refine_before_any_module_finishes() {
         // Early shape seed then post-prepare reseed — both before execute — may update the total.
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.setEtaEstimate(60_000);
         cm.setEtaEstimate(38_000); // post-prepare refine while modulesComplete == 0
         // 4s elapsed → 34s remaining from the refined seed.
@@ -321,7 +322,7 @@ class JkManagerTest {
         // Engine reports remaining work (same figure as jk explain). After 30s of lock, a 90s
         // remaining estimate must show ~90s left — not 60s (which would finish 30s early).
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         // Simulate 30s already elapsed by using setEtaEstimate with elapsed+remaining directly
         // via setRemainingWorkEstimate after construction; render at that elapsed.
         // We can't freeze elapsedMillis, so set total = 30s + 90s and render at 30s.
@@ -340,7 +341,7 @@ class JkManagerTest {
         // R0 seed path freezes once a module completes (provisional eta thrash guard). Live
         // residual still re-anchors the countdown so ETA eases into R(t) and ends on time.
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.setEtaEstimate(38_000); // R0
         cm.setModuleProgress(1, 2); // locks seed path
         cm.setEtaEstimate(5_000); // seed-path rewrite — ignored
@@ -368,7 +369,7 @@ class JkManagerTest {
         // Snap-to-zero commits instantly; a residual raise in the SAME second must repaint
         // instead of holding 0s and bouncing 0s → Ns at the next second (JK-1850).
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.setEtaEstimate(30_000);
         cm.setModuleProgress(1, 2);
         String zero = TestAnsi.strip(cm.renderBuildPlanLines(120, 40_000).get(0));
@@ -386,7 +387,7 @@ class JkManagerTest {
         // reset the anchor, so the countdown displayed a constant R0 for the whole prepare window
         // instead of the promised open-loop decay (JK-1843).
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.setEtaEstimate(30_000); // R0 seed anchors residual at ~0 elapsed
         cm.setModuleProgress(1, 2); // execute locks the seed path
         cm.startNanos = System.nanoTime() - 10_000_000_000L; // wall clock: ~10s into the run
@@ -402,7 +403,7 @@ class JkManagerTest {
     @Test
     void residual_speeds_up_countdown_when_work_finishes_early() {
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.setEtaEstimate(100_000); // R0 = 100s
         cm.setModuleProgress(1, 3);
         // Residual re-anchor near t=0 with 20s left (work finishing early). First paint samples it.
@@ -421,7 +422,7 @@ class JkManagerTest {
         // Residual may thrash several times inside one whole second; the painted face holds the
         // first sample for that second, then commits the latest target on the next elapsedSec.
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.setEtaEstimate(60_000); // R0 = 60s
         // First paint at +4s samples open-loop ~56s.
         assertThat(TestAnsi.strip(cm.renderBuildPlanLines(120, 4_000).get(0))).contains("ETA ~56s");
@@ -443,7 +444,7 @@ class JkManagerTest {
         // events (clock strategy active, work model published) must NOT freeze it: the real
         // post-forecast seed replaces it, and only execute activity locks (JK-1806).
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.setEtaEstimate(138_000); // provisional: lockEta + history prior
         cm.progress(100, 1000); // preflight band workspace-progress with R0 seeded
         cm.setModuleProgress(0, 4); // work model publishes modulesTotal before the real seed
@@ -458,7 +459,7 @@ class JkManagerTest {
     @Test
     void cold_count_up_is_run_wide_until_a_remaining_seed_arrives() {
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         // No seed → elapsed for the whole command (no plus).
         assertThat(TestAnsi.strip(cm.renderBuildPlanLines(120, 12_000).get(0))).contains("12s");
         assertThat(TestAnsi.strip(cm.renderBuildPlanLines(120, 12_000).get(0))).doesNotContain("+12s");
@@ -479,7 +480,7 @@ class JkManagerTest {
         // Dual clock: dim italic "ETA " + mid-gray ~remaining · dim elapsed; module n/m lives on
         // tree rows only.
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.progress(50, 100);
         cm.setEtaEstimate(60_000);
         cm.setModuleProgress(2, 8);
@@ -626,7 +627,7 @@ class JkManagerTest {
         Theme t = Theme.active();
         // Seeded ETA with remaining > 0 → dim italic "ETA " + mid-gray "~remaining" · dim elapsed.
         var down = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        down.nerdfont = false;
+        down.nerdFont = NerdFontCaps.NONE;
         down.progress(10, 100);
         down.setEtaEstimate(60_000);
         String downHeader = down.renderBuildPlanLines(120, 4_000).get(0);
@@ -640,7 +641,7 @@ class JkManagerTest {
 
         // No seed → elapsed count-up (mid-gray, same as countdown), no ETA prefix, no plus.
         var up = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        up.nerdfont = false;
+        up.nerdFont = NerdFontCaps.NONE;
         up.progress(10, 100);
         String upHeader = up.renderBuildPlanLines(120, 12_000).get(0);
         assertThat(TestAnsi.strip(upHeader)).contains("12s");
@@ -651,7 +652,7 @@ class JkManagerTest {
 
         // At the deadline: mid-gray 0s, still-dim elapsed.
         var atZero = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        atZero.nerdfont = false;
+        atZero.nerdFont = NerdFontCaps.NONE;
         atZero.progress(90, 100);
         atZero.setEtaEstimate(10_000);
         String zeroHeader = atZero.renderBuildPlanLines(120, 10_000).get(0);
@@ -661,7 +662,7 @@ class JkManagerTest {
 
         // Past deadline → mid-gray +overrun on the countdown; elapsed stays dim, no plus.
         var over = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        over.nerdfont = false;
+        over.nerdFont = NerdFontCaps.NONE;
         over.progress(90, 100);
         over.setEtaEstimate(10_000);
         String overHeader = over.renderBuildPlanLines(120, 15_000).get(0);
@@ -677,7 +678,7 @@ class JkManagerTest {
     @Test
     void goal_header_bar_and_phase_chain() {
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Building", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.progress(45, 100);
         cm.stepDone("acme:api", "parse-build", true, "resolve"); // success → removed from chain
         cm.stepRunning("acme:api", "compile-java", "compile");
@@ -700,7 +701,7 @@ class JkManagerTest {
     @Test
     void nerdfont_header_wraps_the_name_in_a_pill_with_a_powerline_cap() {
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.nerdfont = true;
+        cm.nerdFont = NerdFontCaps.ALL;
         cm.progress(45, 100);
 
         String header = cm.renderBuildPlanLines(120, 0).get(0);
@@ -741,7 +742,7 @@ class JkManagerTest {
     @Test
     void tree_rows_use_blue_spinner_and_blue_phase_not_background_pills() {
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.stepRunning("com.foo:bar", "compile", "compile");
         cm.stepDone("com.foo:baz", "test", false, "test");
         var raw = cm.renderBuildPlanLines(120, 0);
@@ -765,7 +766,7 @@ class JkManagerTest {
     @Test
     void tree_fill_spinner_cycles_circle_bullseye_fisheye() {
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.stepRunning("m", "compile", "compile");
         assertThat(Spinner.FILL_PHASES).containsExactly("\u25CB", "\u25CE", "\u25C9", "\u25CE");
         assertThat(Spinner.FILL_HOLD).isEqualTo(4);
@@ -778,7 +779,7 @@ class JkManagerTest {
     @Test
     void tree_row_appends_step_message_as_detail_after_phase() {
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.stepRunning("cc.jumpkick:jk-java-compiler", "package-jar", "package");
         cm.stepMessage("cc.jumpkick:jk-java-compiler", "package-jar", "shrinking jar");
 
@@ -794,7 +795,7 @@ class JkManagerTest {
     @Test
     void tree_row_strips_redundant_module_prefix_from_test_labels() {
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.stepRunning("cc.jumpkick:jk-core", "run-tests", "test");
         cm.stepMessage("cc.jumpkick:jk-core", "run-tests", "cc.jumpkick:jk-core :: FooTest.bar()  [w2]");
 
@@ -809,7 +810,7 @@ class JkManagerTest {
     @Test
     void test_detail_uses_java_syntax_highlighting() {
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.stepRunning("cc.jumpkick:jk-engine", "run-tests", "test");
         cm.stepMessage("cc.jumpkick:jk-engine", "run-tests", "VariantSwitchTest.switching_variants(Path)");
 
@@ -827,7 +828,7 @@ class JkManagerTest {
     @Test
     void tree_rows_never_wrap_long_test_details() {
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.stepRunning("cc.jumpkick:jk-engine", "run-tests", "test");
         String longName = "VariantSwitchTest.switching_variants_drops_the_previous_values_extra_src_classes(Path)";
         cm.stepMessage("cc.jumpkick:jk-engine", "run-tests", longName);
@@ -1048,7 +1049,7 @@ class JkManagerTest {
     @Test
     void preflight_detail_shows_on_phase_only_tree_row() {
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.preflight("lock", 0, 1, "resolving dependencies");
 
         String all = String.join("\n", stripAll(cm.renderBuildPlanLines(120, 0)));
@@ -1058,7 +1059,7 @@ class JkManagerTest {
     @Test
     void phase_chain_shows_running_and_failed_only_newest_first() {
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Building", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.stepDone("m", "s1", true, "resolve"); // success → dropped
         cm.stepDone("m", "s2", false, "compile"); // failed → stays
         cm.stepRunning("m", "s3", "test");
@@ -1074,7 +1075,7 @@ class JkManagerTest {
     @Test
     void finishModule_drops_orphan_active_rows() {
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.stepRunning("cc.jumpkick:jk-client-io", "ensure-jdk", "resolve");
         cm.stepMessage("cc.jumpkick:jk-client-io", "ensure-jdk", "resolve JDK");
         cm.stepRunning("cc.jumpkick:jk-cli", "native-image", "native");
@@ -1090,7 +1091,7 @@ class JkManagerTest {
     @Test
     void stepRunning_does_not_resurrect_a_finished_step() {
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.stepRunning("m", "ensure-jdk", "resolve");
         cm.stepDone("m", "ensure-jdk", true, "resolve");
         cm.stepRunning("m", "ensure-jdk", "resolve"); // late / out-of-order start
@@ -1104,7 +1105,7 @@ class JkManagerTest {
     @Test
     void failed_phase_shows_brief_error_below() {
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Building", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.stepRunning("m", "compile", "compile");
         cm.attachPhaseError("m", "compile", "compile", "javac failed: cannot find symbol");
         cm.stepDone("m", "compile", false, "compile");
@@ -1118,7 +1119,7 @@ class JkManagerTest {
     void attachPhaseError_uses_row_wire_phase_when_callers_pass_empty_phase() {
         // listeners pass phase=""; step key is compile-java, phase node is compile.
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.stepRunning("m", "compile-java", "compile");
         cm.attachPhaseError("m", "compile-java", "", "cannot find symbol Foo");
         cm.stepDone("m", "compile-java", false, "compile");
@@ -1145,7 +1146,7 @@ class JkManagerTest {
     void brief_error_under_last_tree_entry_uses_space_indent_not_rail() {
         // ╰─ then spaces, not │ under a closing branch.
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.stepRunning("m", "compile-java", "compile");
         cm.attachPhaseError("m", "compile-java", "compile", "boom");
         cm.stepDone("m", "compile-java", false, "compile");
@@ -1167,7 +1168,7 @@ class JkManagerTest {
     @Test
     void tree_is_vertically_compact_without_blank_rail_spacers() {
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Building", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.stepRunning("com.foo:a", "a", "compile");
         cm.stepRunning("com.foo:b", "b", "test");
         var lines = stripAll(cm.renderBuildPlanLines(120, 0));
@@ -1193,7 +1194,7 @@ class JkManagerTest {
     @Test
     void phase_chain_uses_tree_connectors() {
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Building", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.stepRunning("m", "compile", "compile");
         var lines = cm.renderBuildPlanLines(120, 0);
         // lines[0]=header, lines[1]=single work row (closing branch) — no leading blank rail.
@@ -1203,7 +1204,7 @@ class JkManagerTest {
     @Test
     void completed_lines_render_below_the_phase_chain_newest_first() {
         var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.nerdfont = false;
+        cm.nerdFont = NerdFontCaps.NONE;
         cm.stepRunning("m", "compile", "compile");
         cm.addCompletion("✓ [13 of 17] g:a13 took 1s");
         cm.addCompletion("✓ [14 of 17] g:a14 took 1s");

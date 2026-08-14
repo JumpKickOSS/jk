@@ -22,7 +22,7 @@ import org.tomlj.TomlTable;
 
 /**
  * Machine-scoped preferences from {@code ~/.config/jk/config.toml}: {@code [global]} UI flags (e.g.
- * {@code nerdfont}) and global {@code [repositories]}. Not project-overridable; env overrides
+ * {@code nerd-font}) and global {@code [repositories]}. Not project-overridable; env overrides
  * apply. Project {@code [repositories]} win on name collision; global fills gaps.
  */
 public final class GlobalConfig {
@@ -30,14 +30,35 @@ public final class GlobalConfig {
     private GlobalConfig() {}
 
     /**
-     * Whether Nerd Font glyphs may be used. Precedence: env {@code JK_NERDFONT} → {@code
-     * ~/.config/jk/config.toml} {@code [global].nerdfont} → default {@code false} (safer than PUA tofu;
-     * set via {@code jk self setup-terminal} / install —. Forced false when color is
-     * disabled.
+     * Which Nerd Font glyph families may be painted. Precedence, highest first:
+     *
+     * <ol>
+     *   <li>the color/ANSI gate — {@code --no-ansi}, {@code TERM=dumb}, {@code CI}, {@code NO_COLOR},
+     *       {@code --color never}. Absolute: beats even an explicit env override.
+     *   <li>env {@code JK_NERD_FONT} — the full value set, including the mode words.
+     *   <li>env {@code NERD_FONT} — the host-wide cross-tool variable, booleans only.
+     *   <li>{@code ~/.config/jk/config.toml} {@code [global].nerd-font}.
+     *   <li>default {@code "auto"} → {@link NerdFontDetect}.
+     * </ol>
+     *
+     * <p>Memoized for the life of the process. This is load-bearing, not an optimization:
+     * {@code RenderContext.current()} calls it on every animation frame, and {@code auto} can reach
+     * the filesystem.
      */
-    public static boolean nerdfont() {
-        return nerdfont(JkDirs.userConfigFile(), System.getenv("JK_NERDFONT"), colorActivelyEnabled());
+    public static NerdFontCaps nerdFont() {
+        NerdFontCaps hit = resolvedNerdFont;
+        if (hit != null) return hit;
+        NerdFontCaps fresh = nerdFont(
+                JkDirs.userConfigFile(),
+                System.getenv("JK_NERD_FONT"),
+                System.getenv("NERD_FONT"),
+                colorActivelyEnabled());
+        resolvedNerdFont = fresh;
+        return fresh;
     }
+
+    /** The process-wide resolved value; see {@link #nerdFont()}. Cleared by {@link #clearCache()}. */
+    private static volatile NerdFontCaps resolvedNerdFont;
 
     /**
      * True when color output is currently enabled — same logic as {@code Theme.colorEnabled} in
@@ -60,47 +81,36 @@ public final class GlobalConfig {
         };
     }
 
-    /** As {@link #nerdfont()} but against an explicit config file — for tests. */
-    static boolean nerdfont(Path configFile) {
-        return nerdfont(configFile, System.getenv("JK_NERDFONT"), colorActivelyEnabled());
+    /** As {@link #nerdFont()} but against an explicit config file — for tests. */
+    static NerdFontCaps nerdFont(Path configFile) {
+        return nerdFont(configFile, System.getenv("JK_NERD_FONT"), System.getenv("NERD_FONT"), colorActivelyEnabled());
     }
 
-    /** As {@link #nerdfont(Path)} but with an explicit env value — bypasses color check for tests. */
-    static boolean nerdfont(Path configFile, String envValue) {
-        return EnvValues.parseBool(envValue).orElseGet(() -> booleanFromGlobal(configFile, "nerdfont", false));
+    /** As {@link #nerdFont(Path)} but with explicit env values — bypasses the color gate for tests. */
+    static NerdFontCaps nerdFont(Path configFile, String jkEnv, String hostEnv) {
+        return nerdFont(configFile, jkEnv, hostEnv, true);
     }
 
-    /** Full testable overload: config file + env value + explicit color-enabled flag. */
-    static boolean nerdfont(Path configFile, String envValue, boolean colorEnabled) {
-        if (!colorEnabled) return false;
-        return EnvValues.parseBool(envValue).orElseGet(() -> booleanFromGlobal(configFile, "nerdfont", false));
+    /**
+     * Full testable overload: config file + both env values + explicit color-enabled flag. Resolves
+     * {@code auto} against the real environment; {@link #nerdFontMode} is the seam for tests that
+     * need to pin detection.
+     */
+    static NerdFontCaps nerdFont(Path configFile, String jkEnv, String hostEnv, boolean colorEnabled) {
+        if (!colorEnabled) return NerdFontCaps.NONE;
+        NerdFontMode mode = nerdFontMode(configFile, jkEnv, hostEnv);
+        return mode == NerdFontMode.AUTO ? NerdFontDetect.detect().caps() : mode.fixedCaps();
     }
 
-    /** Lenient {@code [global]} boolean via {@link TomlScan}; memoized per path+size+mtime. */
-    private static boolean booleanFromGlobal(Path file, String key, boolean fallback) {
-        if (file == null) return fallback;
-        String cacheKey;
-        long size;
-        long modified;
-        try {
-            if (!Files.exists(file)) return fallback;
-            var attrs = Files.readAttributes(file, BasicFileAttributes.class);
-            cacheKey = file + "|global." + key;
-            size = attrs.size();
-            modified = attrs.lastModifiedTime().toMillis();
-        } catch (IOException e) {
-            return fallback;
-        }
-        String value = memoized(
-                        SCAN_CACHE,
-                        cacheKey,
-                        size,
-                        modified,
-                        () -> Optional.ofNullable(
-                                TomlScan.scan(file, "global." + key).get("global." + key)))
-                .orElse(null);
-        if (value == null) return fallback;
-        return "true".equalsIgnoreCase(value) ? true : "false".equalsIgnoreCase(value) ? false : fallback;
+    /**
+     * The declared mode, before {@code auto} is resolved. Split out so {@code jk self setup-terminal}
+     * can report what was asked for separately from what was detected.
+     */
+    static NerdFontMode nerdFontMode(Path configFile, String jkEnv, String hostEnv) {
+        return NerdFontMode.parse(jkEnv)
+                .or(() -> NerdFontMode.parseBooleanOnly(hostEnv))
+                .or(() -> stringFromGlobal(configFile, "global", "nerd-font").flatMap(NerdFontMode::parse))
+                .orElse(NerdFontMode.AUTO);
     }
 
     /**
@@ -208,6 +218,7 @@ public final class GlobalConfig {
     static void clearCache() {
         CONFIG_CACHE.clear();
         SCAN_CACHE.clear();
+        resolvedNerdFont = null;
     }
 
     // Repositories

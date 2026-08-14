@@ -3,10 +3,7 @@ package cc.jumpkick.config;
 
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -67,8 +64,19 @@ public final class EffectiveUserConfig {
     }
 
     private static void addGlobal(List<Row> out, Path file, Function<String, String> env) {
-        boolean nerdfont = GlobalConfig.nerdfont(file, env.apply("JK_NERDFONT"), true);
-        add(out, "global.nerdfont", false, nerdfont);
+        // The declared mode, not the detected caps: this table reports configuration intent, so
+        // "auto" must read as "auto" rather than as whatever this terminal happens to resolve to.
+        NerdFontMode mode = GlobalConfig.nerdFontMode(file, env.apply("JK_NERD_FONT"), env.apply("NERD_FONT"));
+        add(out, "global.nerd-font", NerdFontMode.AUTO.name().toLowerCase(Locale.ROOT), name(mode));
+    }
+
+    /** Lowercase mode word as it is spelled in config — {@code false} / {@code true} for the booleans. */
+    private static String name(NerdFontMode mode) {
+        return switch (mode) {
+            case OFF -> "false";
+            case ON -> "true";
+            default -> mode.name().toLowerCase(Locale.ROOT);
+        };
     }
 
     private static void addToolchain(List<Row> out, Path file, Function<String, String> env) {

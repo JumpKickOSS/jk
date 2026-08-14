@@ -2,112 +2,147 @@
 package cc.jumpkick.config;
 
 import java.util.Locale;
-import java.util.concurrent.TimeUnit;
-import java.util.function.BooleanSupplier;
+import java.util.Optional;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
- * Best-effort Nerd Font / PUA-glyph capability probe. Intended for <strong>install-time
- * / setup-command</strong> use — write the result to {@code ~/.config/jk/config.toml}, do not call on every
- * build. Env {@code JK_NERDFONT} still overrides at runtime.
+ * Resolves {@code nerd-font = "auto"} into concrete {@link NerdFontCaps}.
+ *
+ * <p>Deny-by-default and env-first. Runs on <strong>every CLI launch</strong>, so the contract is
+ * strict: no subprocesses, no terminal round-trips, and no file I/O at all unless an identified
+ * terminal actually needs its config inspected. The tiers below short-circuit in order, and the
+ * first four are pure environment reads.
+ *
+ * <p>Every failure mode degrades rather than throws — an unreadable, absent, or malformed config
+ * source yields the tier's default, never an exception. Nerd-font detection must not be able to
+ * fail a build.
+ *
+ * <p>Superseded the previous install-time-only probe, which shelled out to {@code fc-list} with a
+ * two-second timeout and so could never run per-launch (JK-1970).
  */
 public final class NerdFontDetect {
 
     private NerdFontDetect() {}
 
-    public record Result(boolean nerdFont, String reason) {}
+    /**
+     * The outcome, with provenance. {@code source} is a short stable token for tests and
+     * {@code jk self setup-terminal}; {@code reason} is human prose.
+     */
+    public record Result(NerdFontCaps caps, String source, String reason) {}
 
-    /** Probe using the process environment. */
+    /** Probe using the real process environment and the real config files. */
     public static Result detect() {
         return detect(System::getenv);
     }
 
-    /** Probe over an env lookup, consulting the real installed-font list. */
+    /** Probe over an env lookup, consulting the real config sources. */
     public static Result detect(Function<String, String> env) {
-        return detect(env, NerdFontDetect::fontListLooksNerdy);
+        return detect(env, TerminalFonts.real(env));
     }
 
     /**
-     * Fully injectable probe: {@code env} for the terminal hints, {@code fontProbe} for "is a Nerd
-     * Font installed".
-     *
-     * <p>The font probe has to be injectable for any of this to be testable. It shells out to {@code
-     * fc-list}, so its answer is a property of the developer's machine, not of the code — asserting
-     * that an unknown terminal defaults to <em>off</em> passed on CI (no fonts installed) and failed
-     * on any workstation with a Nerd Font, which is precisely backwards from what a test should key
-     * on.
+     * Fully injectable probe. {@code fonts} supplies each terminal's configured font name, which is
+     * the only part of this that touches the filesystem — tests pass a stub and stay hermetic.
      */
-    public static Result detect(Function<String, String> env, BooleanSupplier fontProbe) {
-        String forced = env.apply("JK_NERDFONT");
-        if (forced != null && !forced.isBlank()) {
-            boolean on = EnvValues.parseBool(forced).orElse(false);
-            return new Result(on, "JK_NERDFONT=" + forced.trim());
-        }
-        // CI / dumb terminals never want PUA
+    public static Result detect(Function<String, String> env, TerminalFonts fonts) {
+        // T0 — environments that never want PUA, whatever the font situation is.
         String ci = env.apply("CI");
         if ("true".equalsIgnoreCase(ci) || "1".equals(ci)) {
-            return new Result(false, "CI environment");
+            return new Result(NerdFontCaps.NONE, "ci", "CI environment");
         }
         if ("dumb".equals(env.apply("TERM"))) {
-            return new Result(false, "TERM=dumb");
+            return new Result(NerdFontCaps.NONE, "term-dumb", "TERM=dumb");
         }
 
-        String termProgram = nullToEmpty(env.apply("TERM_PROGRAM")).toLowerCase(Locale.ROOT);
-        // Known good hosts for powerline/nerd glyphs when users often install patched fonts
-        if (termProgram.contains("iterm")
-                || termProgram.contains("wezterm")
-                || termProgram.contains("warp")
-                || termProgram.contains("ghostty")
-                || termProgram.contains("alacritty")
-                || termProgram.contains("hyper")) {
-            return new Result(true, "TERM_PROGRAM=" + termProgram);
+        String termProgram = lower(env.apply("TERM_PROGRAM"));
+        String term = lower(env.apply("TERM"));
+
+        // T1 — terminals that render our four codepoints regardless of the configured font,
+        // because they bundle Nerd Font symbols (or draw the glyphs themselves).
+        if (termProgram.equals("ghostty") || term.equals("xterm-ghostty")) {
+            return new Result(NerdFontCaps.ALL, "bundled-terminal", "Ghostty bundles Nerd Font symbols");
         }
-        // VS Code integrated terminal often has a nerd-capable font by default in recent builds
-        // still conservative: only if TERM_PROGRAM=vscode
-        if (termProgram.contains("vscode") || termProgram.contains("cursor")) {
-            return new Result(true, "TERM_PROGRAM=" + termProgram);
+        if (termProgram.equals("kitty") || term.equals("xterm-kitty")) {
+            return new Result(NerdFontCaps.ALL, "bundled-terminal", "kitty bundles Symbols Nerd Font");
         }
-        // Windows Terminal
-        if (env.apply("WT_SESSION") != null && !env.apply("WT_SESSION").isBlank()) {
-            return new Result(true, "Windows Terminal (WT_SESSION)");
+        if (termProgram.equals("wezterm")) {
+            return new Result(NerdFontCaps.ALL, "bundled-terminal", "WezTerm bundles Nerd Font Symbols");
         }
-        // Apple Terminal.app — system font is not nerd by default
-        if (termProgram.contains("apple_terminal") || termProgram.equals("terminal")) {
-            return new Result(false, "Terminal.app (no nerd font by default)");
+        if (notBlank(env.apply("WT_SESSION"))) {
+            // Windows Terminal draws U+E0B0-U+E0BF from an internal vector table (builtinGlyphs,
+            // default on since 1.21), ignoring the configured font. That range covers all four of
+            // our glyphs, so the font is irrelevant here — and this also covers WSL, since
+            // WT_SESSION is deliberately forwarded through WSLENV.
+            return new Result(NerdFontCaps.ALL, "builtin-glyphs", "Windows Terminal draws powerline glyphs itself");
         }
 
-        // Optional: fc-list hint (Linux) — only when PATH allows; ignore failures
-        if (fontProbe.getAsBoolean()) {
-            return new Result(true, "fc-list matched a Nerd Font name");
+        // T2 — remote sessions. The font lives on the client, so any config file we can read here
+        // describes the wrong machine. Ordered after T1 so a forwarded TERM=xterm-ghostty wins.
+        if (notBlank(env.apply("SSH_TTY")) || notBlank(env.apply("SSH_CONNECTION"))) {
+            return new Result(NerdFontCaps.NONE, "remote-session", "SSH session — client font is unknown");
         }
 
-        // Unknown → prefer no PUA (safer than tofu)
-        return new Result(false, "unknown terminal — defaulting to no PUA glyphs");
+        // T3 — identified terminal whose font we can look up.
+        if (termProgram.equals("apple_terminal")) {
+            // Pinned to the wedge. Terminal.app stores its font as an NSKeyedArchiver blob, which
+            // we deliberately do not decode (JK-1970 non-goal); the triangles are the safe subset.
+            return new Result(NerdFontCaps.WEDGE_ONLY, "apple-terminal", "Terminal.app — wedge glyphs only");
+        }
+        if (termProgram.equals("iterm.app")) {
+            return fromFont(safe(fonts::itermFont), "iterm2", "iTerm2");
+        }
+        if (notBlank(env.apply("ALACRITTY_LOG"))
+                || notBlank(env.apply("ALACRITTY_WINDOW_ID"))
+                || notBlank(env.apply("ALACRITTY_SOCKET"))) {
+            return fromFont(safe(fonts::alacrittyFont), "alacritty", "Alacritty");
+        }
+        if (termProgram.equals("vscode")) {
+            return fromFont(safe(fonts::vscodeFont), "vscode", "VS Code");
+        }
+        if (termProgram.equals("zed")) {
+            return fromFont(safe(fonts::zedFont), "zed", "Zed");
+        }
+
+        // T4 — unknown. Prefer no PUA over tofu.
+        return new Result(
+                NerdFontCaps.NONE,
+                termProgram.isEmpty() ? "unknown-terminal" : "no-resolver",
+                termProgram.isEmpty()
+                        ? "no terminal identified — defaulting to no PUA glyphs"
+                        : "no font lookup for TERM_PROGRAM=" + termProgram);
     }
 
-    private static boolean fontListLooksNerdy() {
+    /**
+     * Read one font source without trusting it. The bundled {@link TerminalFonts.Real} already
+     * degrades internally, but {@code fonts} is injectable and this is on the per-launch path of
+     * every build — a source that throws, or breaks its contract by returning {@code null}, must
+     * cost us the glyphs and nothing more.
+     */
+    private static Optional<String> safe(Supplier<Optional<String>> source) {
         try {
-            Process p = new ProcessBuilder("fc-list", ":family")
-                    .redirectErrorStream(true)
-                    .start();
-            String out = new String(p.getInputStream().readAllBytes());
-            if (!p.waitFor(2, TimeUnit.SECONDS)) {
-                p.destroyForcibly();
-                return false;
-            }
-            if (p.exitValue() != 0) return false;
-            String lower = out.toLowerCase(Locale.ROOT);
-            return lower.contains("nerd")
-                    || lower.contains("meslo")
-                    || lower.contains("caskaydia")
-                    || lower.contains("jetbrainsmono nerd")
-                    || lower.contains("fira code");
-        } catch (Exception e) {
-            return false;
+            Optional<String> v = source.get();
+            return v == null ? Optional.empty() : v;
+        } catch (Throwable t) {
+            return Optional.empty();
         }
     }
 
-    private static String nullToEmpty(String s) {
-        return s == null ? "" : s;
+    /** Turn a looked-up font name into caps, keeping the font in the reason for {@code --explain}. */
+    private static Result fromFont(Optional<String> font, String source, String label) {
+        if (font.isEmpty()) {
+            return new Result(NerdFontCaps.NONE, source, label + " — font not determined");
+        }
+        String name = font.get();
+        NerdFontCaps caps = NerdFontNames.caps(name);
+        return new Result(caps, source, label + " font " + name);
+    }
+
+    private static String lower(String s) {
+        return s == null ? "" : s.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static boolean notBlank(String s) {
+        return s != null && !s.isBlank();
     }
 }

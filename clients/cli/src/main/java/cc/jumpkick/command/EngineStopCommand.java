@@ -172,7 +172,7 @@ public final class EngineStopCommand implements CliCommand {
 
     /** Block on a TTY with the live drain region until the engine exits or Ctrl-X forces it. */
     private int drainOnTty(EnginePaths.Paths paths, int jobs, long started) {
-        DrainView view = DrainView.start(jobs, GlobalConfig.nerdfont());
+        DrainView view = DrainView.start(jobs, GlobalConfig.nerdFont());
         try {
             while (true) {
                 if (view.forceRequested()) {
@@ -205,7 +205,7 @@ public final class EngineStopCommand implements CliCommand {
 
     private static String stoppedWedge(long ranMs) {
         return JkWedge.chipLine(
-                Glyphs.STOP, "Engine", GlobalConfig.nerdfont(), "Engine stopped. Ran for " + uptime(ranMs) + ".");
+                Glyphs.STOP, "Engine", GlobalConfig.nerdFont(), "Engine stopped. Ran for " + uptime(ranMs) + ".");
     }
 
     private static void sleep(long ms) {

@@ -35,7 +35,7 @@ class EffectiveUserConfigTest {
         Path toml = dir.resolve("config.toml");
         Files.writeString(toml, """
                 [global]
-                nerdfont = true
+                nerd-font = true
 
                 [http]
                 port = 9000
@@ -44,8 +44,8 @@ class EffectiveUserConfigTest {
                 max-cache-size-gb = 2
                 """);
         var rows = EffectiveUserConfig.rows(toml, env(), () -> BIG_DISK);
-        assertThat(find(rows, "global.nerdfont").overridden()).isTrue();
-        assertThat(find(rows, "global.nerdfont").effectiveValue()).isEqualTo("true");
+        assertThat(find(rows, "global.nerd-font").overridden()).isTrue();
+        assertThat(find(rows, "global.nerd-font").effectiveValue()).isEqualTo("true");
         assertThat(find(rows, "http.port").overridden()).isTrue();
         assertThat(find(rows, "http.port").effectiveValue()).isEqualTo("9000");
         assertThat(find(rows, "http.host").overridden()).isFalse();

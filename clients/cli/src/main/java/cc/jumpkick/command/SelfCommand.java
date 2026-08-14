@@ -22,6 +22,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -48,8 +49,12 @@ public final class SelfCommand extends GroupCommand {
     }
 
     /**
-     * {@code jk self setup-terminal} — detect Nerd Font capability and persist {@code
-     * [global].nerdfont} in {@code ~/.config/jk/config.toml}. Also invoked from install.sh.
+     * {@code jk self setup-terminal} — persist {@code [global].nerd-font} in {@code
+     * ~/.config/jk/config.toml}. Also invoked from install.sh.
+     *
+     * <p>Writing {@code auto} is the useful default: detection now runs cheaply on every launch, so
+     * pinning a value is only for overriding it. {@code --explain} reports what detection currently
+     * concludes and why, without writing anything.
      */
     static final class SetupTerminalSub implements CliCommand {
 
@@ -60,41 +65,52 @@ public final class SelfCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Detect Nerd Fonts; write [global].nerdfont";
+            return "Write [global].nerd-font (default: auto)";
         }
 
         @Override
         public List<Opt> options() {
             return List.of(
-                    Opt.flag("Force nerdfont = true in config.", "--nerd"),
-                    Opt.flag("Force nerdfont = false in config.", "--no-nerd"));
+                    Opt.value("<MODE>", "auto (default), on, off, wedge, or pill", "--mode"),
+                    Opt.flag("Report what detection concludes; write nothing.", "--explain"));
         }
 
         @Override
         public int run(Invocation in) throws Exception {
-            boolean nerd;
-            String reason;
-            if (in.isSet("nerd") && in.isSet("no-nerd")) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Self", "cannot combine --nerd and --no-nerd"));
+            var detected = cc.jumpkick.config.NerdFontDetect.detect();
+            if (in.isSet("explain")) {
+                cc.jumpkick.cli.tui.CommandWedge.printOk("Self", explain(detected));
+                return 0;
+            }
+            String raw = in.value("mode").orElse("auto");
+            var mode = parseMode(raw);
+            if (mode.isEmpty()) {
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                        "Self", "unknown --mode " + raw + " (expected auto|on|off|wedge|pill)"));
                 return Exit.USAGE;
             }
-            if (in.isSet("nerd")) {
-                nerd = true;
-                reason = "--nerd";
-            } else if (in.isSet("no-nerd")) {
-                nerd = false;
-                reason = "--no-nerd";
-            } else {
-                var det = cc.jumpkick.config.NerdFontDetect.detect();
-                nerd = det.nerdFont();
-                reason = det.reason();
-            }
             Path cfg = JkDirs.userConfigFile();
-            cc.jumpkick.config.UserConfigEditor.setNerdfont(cfg, nerd);
-            // Invalidate any process-local config memo so subsequent calls see the write.
-            String msg = "Nerd Font glyphs " + (nerd ? "enabled" : "disabled") + " (" + reason + ") → " + cfg;
+            cc.jumpkick.config.UserConfigEditor.setNerdFont(cfg, mode.get());
+            String msg = "nerd-font = " + mode.get().toToml() + " → " + cfg;
+            if (mode.get() == cc.jumpkick.config.NerdFontMode.AUTO) msg += "\n  " + explain(detected);
             cc.jumpkick.cli.tui.CommandWedge.printOk("Self", msg);
             return 0;
+        }
+
+        /**
+         * Accepts the config spellings plus the friendlier {@code on}/{@code off} that a flag-style
+         * CLI invites, which {@link cc.jumpkick.config.NerdFontMode#parse} already covers via the
+         * jk-wide boolean truth set.
+         */
+        private static Optional<cc.jumpkick.config.NerdFontMode> parseMode(String raw) {
+            return cc.jumpkick.config.NerdFontMode.parse(raw);
+        }
+
+        private static String explain(cc.jumpkick.config.NerdFontDetect.Result r) {
+            var caps = r.caps();
+            String granted =
+                    !caps.any() ? "none" : caps.wedge() && caps.pill() ? "wedge+pill" : caps.wedge() ? "wedge" : "pill";
+            return "detected " + granted + " — " + r.reason() + " [" + r.source() + "]";
         }
     }
 

@@ -69,7 +69,7 @@ class DiagnosticReportTest {
         assertThat(plain).contains("Warning");
         if (Theme.active().isAnsi()) {
             Theme t = Theme.active();
-            // Black on amber chip body. Badge.pill without nerdfont pads the label with spaces.
+            // Black on amber chip body. Badge.pill without the pill axis pads the label with spaces.
             AttributedStyle blackOnAmber = t.withBackground(t.bright(0, 0, 0), Rgb.hex(0xFFB800));
             assertThat(report).contains(Theme.colorize(" Compile Java ", blackOnAmber));
         }

@@ -4,6 +4,7 @@ package cc.jumpkick.cli.tui;
 import cc.jumpkick.cli.theme.JkDarkTheme;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.config.NerdFontCaps;
 import java.util.List;
 import java.util.Locale;
 import org.jline.utils.AttributedStyle;
@@ -125,7 +126,7 @@ public final class JkWedge implements Widget {
         String tail = tailAnsi(ctx);
         if (tail.isEmpty()) return chip + cap;
         // Plan bar sits flush against the nerd cap so the powerline blends into the bar lead.
-        if (progress != null && progress.look() == Progress.Look.PLAN && ctx.nerdfont()) {
+        if (progress != null && progress.look() == Progress.Look.PLAN && ctx.wedge()) {
             return chip + cap + tail;
         }
         return chip + cap + " " + tail;
@@ -133,7 +134,7 @@ public final class JkWedge implements Widget {
 
     private String paintChip(RenderContext ctx, ChipColors colors, String glyph) {
         if (!(icon instanceof Icon.Spinner) || !ctx.ansi()) {
-            return chip(glyph, title, colors.chip, ctx.nerdfont());
+            return chip(glyph, title, colors.chip, ctx.wedge());
         }
         AttributedStyle[] pulseFg = Spinner.buildChipPulseStyles(Spinner.PULSE_FRAMES, colors.cap);
         AttributedStyle pulse =
@@ -141,7 +142,7 @@ public final class JkWedge implements Widget {
         var sb = new StringBuilder();
         sb.append(Theme.colorize(" ", colors.chip));
         sb.append(Theme.colorize(glyph, pulse));
-        if (ctx.nerdfont()) {
+        if (ctx.wedge()) {
             if (title.isEmpty()) {
                 sb.append(Theme.colorize(" ", colors.chip));
             } else {
@@ -156,7 +157,7 @@ public final class JkWedge implements Widget {
     }
 
     private String paintCap(RenderContext ctx, ChipColors colors) {
-        if (!ctx.nerdfont() || !ctx.ansi()) return "";
+        if (!ctx.wedge() || !ctx.ansi()) return "";
         if (progress != null && progress.look() == Progress.Look.PLAN) {
             Rgb lead = ProgressBar.shared().leadColor(progress.numerator(), Math.max(1L, progress.denominator()));
             return Theme.colorize(
@@ -179,7 +180,7 @@ public final class JkWedge implements Widget {
             return head + "-".repeat(fill) + "+";
         }
         ChipColors colors = colors(theme);
-        String wedge = chip(glyph, title, colors.chip, ctx.nerdfont()) + cap(colors.cap, ctx.nerdfont());
+        String wedge = chip(glyph, title, colors.chip, ctx.wedge()) + cap(colors.cap, ctx.wedge());
         int vis = RenderContext.visibleWidth(wedge);
         int fill = Math.max(1, totalWidth - vis - 1);
         return wedge + Theme.colorize("─".repeat(fill) + "╮", theme.darkGray());
@@ -221,18 +222,18 @@ public final class JkWedge implements Widget {
     private record ChipColors(AttributedStyle chip, Rgb cap) {}
 
     /**
-     * Chip body + trailing pad. One trailing space when nerd (powerline follows); two spaces when
-     * not (pill end without PUA).
+     * Chip body + trailing pad. One trailing space when the wedge cap follows; two spaces when it
+     * does not, the extra pad standing in for the missing cap.
      */
-    public static String chip(String glyph, String name, AttributedStyle chip, boolean nerdfont) {
+    public static String chip(String glyph, String name, AttributedStyle chip, boolean wedge) {
         String body = " " + glyph + (name == null || name.isEmpty() ? "" : " " + name);
-        String trail = nerdfont ? " " : "  ";
+        String trail = wedge ? " " : "  ";
         return Theme.colorize(body + trail, chip);
     }
 
-    /** Nerd: U+E0B0 with FG = {@code chipColor}. Otherwise empty. */
-    public static String cap(Rgb chipColor, boolean nerdfont) {
-        if (!nerdfont) return "";
+    /** The wedge cap {@code U+E0B0} with FG = {@code chipColor}. Empty without the wedge axis. */
+    public static String cap(Rgb chipColor, boolean wedge) {
+        if (!wedge) return "";
         return Theme.colorize(Glyphs.SEGMENT_END_NERD, Theme.active().bright(chipColor));
     }
 
@@ -256,33 +257,33 @@ public final class JkWedge implements Widget {
         return fail(title, RichText.ansi(styled));
     }
 
-    public static String chipLine(String glyph, String command, boolean nerdfont, String message) {
+    public static String chipLine(String glyph, String command, NerdFontCaps caps, String message) {
         return new JkWedge(Icon.fromGlyph(glyph), command, RichText.ansi(message == null ? "" : message))
-                .renderLine(RenderContext.current().withNerd(nerdfont));
+                .renderLine(RenderContext.current().withCaps(caps));
     }
 
-    public static String cancelledJobLine(String name, boolean nerdfont, boolean byUser, String tookTail) {
+    public static String cancelledJobLine(String name, NerdFontCaps caps, boolean byUser, String tookTail) {
         return cancelled(name, byUser, tookTail)
-                .renderLine(RenderContext.current().withNerd(nerdfont));
+                .renderLine(RenderContext.current().withCaps(caps));
     }
 
-    public static String cancelledJobLine(String name, boolean nerdfont, String tookTail) {
-        return cancelledJobLine(name, nerdfont, false, tookTail);
+    public static String cancelledJobLine(String name, NerdFontCaps caps, String tookTail) {
+        return cancelledJobLine(name, caps, false, tookTail);
     }
 
-    public static String failureLine(String name, boolean nerdfont, String tail) {
-        return failedTo(name, tail).renderLine(RenderContext.current().withNerd(nerdfont));
+    public static String failureLine(String name, NerdFontCaps caps, String tail) {
+        return failedTo(name, tail).renderLine(RenderContext.current().withCaps(caps));
     }
 
-    public static String failureLineCustom(String name, boolean nerdfont, String sentence) {
+    public static String failureLineCustom(String name, NerdFontCaps caps, String sentence) {
         return fail(name, RichText.ansi(sentence == null ? "" : sentence))
-                .renderLine(RenderContext.current().withNerd(nerdfont));
+                .renderLine(RenderContext.current().withCaps(caps));
     }
 
-    public static String planChip(String glyph, String title, boolean nerdfont) {
+    public static String planChip(String glyph, String title, NerdFontCaps caps) {
         return new JkWedge(Icon.fromGlyph(glyph), title, RichText.empty())
                 .variant(Variant.MENU)
-                .renderLine(RenderContext.current().withNerd(nerdfont));
+                .renderLine(RenderContext.current().withCaps(caps));
     }
 
     public static String plainIconFor(String glyph) {

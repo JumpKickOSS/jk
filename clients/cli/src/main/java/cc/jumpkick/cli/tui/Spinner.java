@@ -5,6 +5,7 @@ import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Gradient;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.config.NerdFontCaps;
 import java.io.PrintStream;
 import org.jline.utils.AttributedStyle;
 
@@ -107,7 +108,7 @@ public final class Spinner implements AutoCloseable {
     /** Non-null when painting as a CommandWedge chip ({@link #showWedge}). */
     private final String wedgeCommand;
 
-    private final boolean nerdfont;
+    private final NerdFontCaps nerdFont;
 
     /** Plain-mode still-working heartbeat interval (JK-1379). */
     public static final long PLAIN_HEARTBEAT_MS = 60_000L;
@@ -161,7 +162,7 @@ public final class Spinner implements AutoCloseable {
         this.out = PlainAscii.wrap(out);
         this.message = message == null ? "" : message;
         this.wedgeCommand = wedge ? (wedgeCommand == null ? "" : wedgeCommand) : null;
-        this.nerdfont = wedge && cc.jumpkick.config.GlobalConfig.nerdfont();
+        this.nerdFont = wedge ? cc.jumpkick.config.GlobalConfig.nerdFont() : NerdFontCaps.NONE;
         this.silent = cc.jumpkick.config.SessionContext.current().config().noProgressOr(false);
         if (wedge) {
             // Glyph FG breathes white↔chip blue; BG applied per frame in step().
@@ -229,7 +230,7 @@ public final class Spinner implements AutoCloseable {
             out.print(oscIndeterminate());
             out.print("\r");
             if (wedgeCommand != null) {
-                out.print(renderWedgeFrame(frame, wedgeCommand, currentMsg, nerdfont, frameColors));
+                out.print(renderWedgeFrame(frame, wedgeCommand, currentMsg, nerdFont, frameColors));
                 out.print(Ansi.ERASE_LINE_TO_END);
             } else {
                 out.print(Theme.colorize(PULSE_GLYPH, frameColors[frame]));
@@ -285,8 +286,8 @@ public final class Spinner implements AutoCloseable {
      * plain) cap, then the message. Package-private for tests.
      */
     static String renderWedgeFrame(
-            int frame, String command, String message, boolean nerdfont, AttributedStyle[] pulseFg) {
-        RenderContext ctx = RenderContext.current().withNerd(nerdfont).withFrame(frame);
+            int frame, String command, String message, NerdFontCaps nerdFont, AttributedStyle[] pulseFg) {
+        RenderContext ctx = RenderContext.current().withCaps(nerdFont).withFrame(frame);
         return new JkWedge(
                         Icon.spinner(), command == null ? "" : command, RichText.ansi(message == null ? "" : message))
                 .variant(JkWedge.Variant.WORK)

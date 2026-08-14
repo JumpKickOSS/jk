@@ -14,6 +14,7 @@ import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.CliCommand;
@@ -261,7 +262,7 @@ public final class BuildCommand implements CliCommand {
         // Live path (AUTO / QUIET): open the TUI immediately so forecast + engine preflight are never
         // silent. Fully-cached builds still settle to a success chip after Checking (no long flash).
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
-        boolean nerdfont = cc.jumpkick.config.GlobalConfig.nerdfont();
+        NerdFontCaps nerdFont = cc.jumpkick.config.GlobalConfig.nerdFont();
 
         // Optimize/start the engine before forecast (may show engine wedge once); then Build TUI.
         cc.jumpkick.cli.engine.EnginePrewarm.ensure();
@@ -453,7 +454,7 @@ public final class BuildCommand implements CliCommand {
                     cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsed, total[0]), json);
             if (!json) {
                 String took = ConsoleSpec.took(Duration.ofMillis(elapsed));
-                CliOutput.out(JkWedge.cancelledJobLine("Build", GlobalConfig.nerdfont(), false, took));
+                CliOutput.out(JkWedge.cancelledJobLine("Build", GlobalConfig.nerdFont(), false, took));
             }
             if (session != null) session.wedge("Build job was cancelled");
             notifyBuild(BuildNotify.Outcome.CANCELLED, entryDir, entryBuild, 0, elapsed);
@@ -477,7 +478,7 @@ public final class BuildCommand implements CliCommand {
                     cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]), json);
             if (!json) {
                 String took = ConsoleSpec.took(Duration.ofMillis(elapsedMs));
-                CliOutput.out(JkWedge.cancelledJobLine("Build", GlobalConfig.nerdfont(), false, took));
+                CliOutput.out(JkWedge.cancelledJobLine("Build", GlobalConfig.nerdFont(), false, took));
             }
             if (session != null) session.wedge("Build job was cancelled");
             notifyBuild(BuildNotify.Outcome.CANCELLED, entryDir, entryBuild, 0, elapsedMs);
@@ -677,7 +678,7 @@ public final class BuildCommand implements CliCommand {
             return 1;
         } catch (IOException e) {
             // finishBuildPlanFailure's own `tail` already gets wrapped in JkWedge.failureLine(planName,
-            // nerdfont, tail) internally — pass the plain message, not a pre-rendered failure line
+            // nerdFont, tail) internally — pass the plain message, not a pre-rendered failure line
             // (passing one double-wraps it into a garbled "‼ Build ‼ Build..." chip).
             long elapsedMs = (System.nanoTime() - start) / 1_000_000;
             view.finishBuildPlanFailure(String.valueOf(e.getMessage()), List.of());
@@ -876,7 +877,7 @@ public final class BuildCommand implements CliCommand {
                     testResultHolder,
                     buildOutcomeHolder);
         } catch (cc.jumpkick.cli.engine.JobCancelledException e) {
-            CliOutput.out(JkWedge.cancelledJobLine("Build", GlobalConfig.nerdfont(), false, ""));
+            CliOutput.out(JkWedge.cancelledJobLine("Build", GlobalConfig.nerdFont(), false, ""));
             if (session != null) session.wedge("Build job was cancelled");
             return 1;
         } catch (IOException e) {

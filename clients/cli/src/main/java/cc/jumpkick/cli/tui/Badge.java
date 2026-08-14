@@ -8,19 +8,20 @@ import org.jline.utils.AttributedStyle;
  * A small "chip" / "pill" label — black text on a gray background, used for {@code jk tree}'s scope
  * sections and {@code jk explain}'s Fully Cached / Rebuild labels so the two read consistently.
  *
- * <p>With a Nerd Font ({@code [global].nerdfont = true}) the chip is rounded into a pill: powerline
- * half-circle caps (drawn in the chip's background color) flank the bare label. Without one, the
- * label is space-padded to give the chip width (the plain Unicode half-circles don't render well,
- * so there are no caps).
+ * <p>When the <em>pill</em> axis is granted (see {@link cc.jumpkick.config.NerdFontCaps}) the chip is
+ * rounded into a pill: powerline half-circle caps {@code U+E0B6} / {@code U+E0B4} (drawn in the
+ * chip's background color) flank the bare label. Otherwise the label is space-padded to give the
+ * chip width. Those two codepoints exist only in Nerd Font v2+ / Powerline-Extra, which is why they
+ * are gated separately from the wedge triangles (JK-1970).
  */
 public final class Badge {
 
     private Badge() {}
 
     /** The shared gray scope/index chip. */
-    public static String pill(String label, boolean nerdfont) {
+    public static String pill(String label, boolean pillCaps) {
         Theme t = Theme.active();
-        return pill(label, nerdfont, t.scopeBadge(), t.gray());
+        return pill(label, pillCaps, t.scopeBadge(), t.gray());
     }
 
     /**
@@ -28,8 +29,8 @@ public final class Badge {
      * caps are painted with {@code caps} — pass a style whose <em>foreground</em> matches the chip's
      * background so they read as rounded edges.
      */
-    public static String pill(String label, boolean nerdfont, AttributedStyle body, AttributedStyle caps) {
-        if (nerdfont) {
+    public static String pill(String label, boolean pillCaps, AttributedStyle body, AttributedStyle caps) {
+        if (pillCaps) {
             return Theme.colorize(Glyphs.PILL_LEFT_NERD, caps)
                     + Theme.colorize(label, body)
                     + Theme.colorize(Glyphs.PILL_RIGHT_NERD, caps);

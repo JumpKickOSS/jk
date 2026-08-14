@@ -4,6 +4,7 @@ package cc.jumpkick.cli.tui;
 import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.runtime.progress.ClockProgressStrategy;
 import cc.jumpkick.runtime.progress.HeaderProgressState;
 import cc.jumpkick.runtime.progress.HeaderProgressStrategy;
@@ -61,9 +62,9 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     int height = DEFAULT_HEIGHT; // package-private: tests set it directly
 
     /**
-     * [global].nerdfont — gates the powerline pill header. Package-private: tests set it directly.
+     * [global].nerd-font caps — gate the powerline pill header. Package-private: tests set it directly.
      */
-    boolean nerdfont = GlobalConfig.nerdfont();
+    NerdFontCaps nerdFont = GlobalConfig.nerdFont();
     /**
      * When set and {@code denominator == 0}, the header shows this text instead of the progress
      * bar — used by {@code jk lock} to display "Resolving dependencies…" during the PubGrub solve
