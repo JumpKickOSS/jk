@@ -1002,10 +1002,6 @@ public final class BuildPlanner {
         return PlannerKsp.kotlinJavaSourceRoots(mixedWithJava, compact, dir, layout, decls);
     }
 
-    static String majorMinor(String version) {
-        return PlannerKsp.majorMinor(version);
-    }
-
     static String joinPaths(List<Path> paths, String sep) {
         return PlannerKsp.joinPaths(paths, sep);
     }
@@ -1029,10 +1025,6 @@ public final class BuildPlanner {
 
     static String[] beforePackageRequires(Inputs in) {
         return PlannerResources.beforePackageRequires(in);
-    }
-
-    static cc.jumpkick.run.TestSummary stampedSummary(cc.jumpkick.task.ActionCache.ActionRecord record) {
-        return PlannerTest.stampedSummary(record);
     }
 
     static void writeWorkerClasspathSidecar(Path moduleDir, JkBuild project, Path jarPath, Path cache) {
@@ -1150,19 +1142,19 @@ public final class BuildPlanner {
     }
 
     static Path groovyCompileJar(TaskContext ctx, Cas cas) throws IOException {
-        return PlannerLang.groovyCompileJar(ctx, cas);
+        return PlannerSupport.groovyCompileJar(ctx, cas);
     }
 
     static List<Path> groovyRuntime(TaskContext ctx, Cas cas) throws IOException {
-        return PlannerLang.groovyRuntime(ctx, cas);
+        return PlannerSupport.groovyRuntime(ctx, cas);
     }
 
     static Path kotlinStdlib(TaskContext ctx, Cas cas) throws IOException {
-        return PlannerLang.kotlinStdlib(ctx, cas);
+        return PlannerSupport.kotlinStdlib(ctx, cas);
     }
 
     static void copyResources(Path resourceDir, Path classesDir) throws IOException {
-        PlannerLang.copyResources(resourceDir, classesDir);
+        PlannerSupport.copyResources(resourceDir, classesDir);
     }
 
     static boolean restorePackaged(Path cacheRoot, String key, Path baseDir) throws IOException {
@@ -1179,13 +1171,5 @@ public final class BuildPlanner {
             boolean persist)
             throws IOException {
         PlannerSupport.storePackaged(cacheRoot, task, key, tokens, baseDir, artifacts, persist);
-    }
-
-    static ActionCache packagingActionCache(Path cacheRoot) {
-        return PlannerSupport.packagingActionCache(cacheRoot);
-    }
-
-    static Map<String, String> workerJarProps(Path moduleDir, List<String> modules) throws IOException {
-        return PlannerSupport.workerJarProps(moduleDir, modules);
     }
 }
