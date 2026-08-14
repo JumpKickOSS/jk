@@ -240,13 +240,18 @@ public final class JobEnvelope {
                 eventKind,
                 workspaceStream);
         Thread started = Thread.ofVirtual().name(threadPrefix, 0).unstarted(() -> {
+            // Nothing between the lock and the try (JK-1959): a throw from the setup calls would
+            // leak the read lock — one leak and the cache prune's write-lock tryLock never
+            // succeeds again for the engine's life — and would strand the in-flight fingerprint
+            // and the done latch. The teardown calls are all remove-style and safe to run even
+            // when their open never happened.
             if (plan) host.cacheGate().readLock().lock();
-            host.bindEventRequestId(eventRequestId);
-            JobWorkers.open(eventRequestId);
-            // Every Session this request builds adopts this ledger, so fetches/cache traffic on
-            // the shared pools all land in one place (see IoLedger).
-            cc.jumpkick.task.IoLedger.open(host.runIo(eventRequestId));
             try {
+                host.bindEventRequestId(eventRequestId);
+                JobWorkers.open(eventRequestId);
+                // Every Session this request builds adopts this ledger, so fetches/cache traffic on
+                // the shared pools all land in one place (see IoLedger).
+                cc.jumpkick.task.IoLedger.open(host.runIo(eventRequestId));
                 runner.run(requestLine, cancelToken, writer);
             } finally {
                 cc.jumpkick.task.IoLedger.close();
