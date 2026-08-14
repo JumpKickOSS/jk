@@ -63,4 +63,23 @@ class TerminalSizeTest {
         assertThat(TerminalSize.columns()).isEqualTo(100);
         assertThat(probes.get()).isEqualTo(2);
     }
+
+    @Test
+    @org.junit.jupiter.api.condition.DisabledOnOs(org.junit.jupiter.api.condition.OS.WINDOWS)
+    void sigwinch_invalidates_the_cache_so_the_next_read_reprobes() throws Exception {
+        // JK-1966: a mid-build resize must reach post-resize rendering (failure snippets,
+        // settle wedges) without waiting for the next plan start. The handler only drops the
+        // cache; the next consumer pays the single re-probe.
+        assertThat(TerminalSize.columns()).isEqualTo(120);
+        TerminalSize.probe = () -> {
+            probes.incrementAndGet();
+            return new int[] {40, 66};
+        };
+        sun.misc.Signal.raise(new sun.misc.Signal("WINCH"));
+        long deadline = System.nanoTime() + java.time.Duration.ofSeconds(5).toNanos();
+        while (TerminalSize.columns() != 66 && System.nanoTime() < deadline) {
+            Thread.sleep(10);
+        }
+        assertThat(TerminalSize.columns()).isEqualTo(66);
+    }
 }

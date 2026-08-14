@@ -25,10 +25,35 @@ public final class TerminalSize {
 
     private static volatile int[] cached;
 
+    /**
+     * SIGWINCH invalidation (JK-1966): with the cache probed only at plan start, everything
+     * rendered after a mid-build resize — failure-snippet budgets, settle wedges — used the stale
+     * width until the next plan. The handler only drops the cache (never probes); the next
+     * consumer pays one {@code stty} fork per physical resize, not per frame. Installed lazily at
+     * the first runtime probe so native-image build-time class init never registers a handler.
+     * Best-effort: platforms without {@code sun.misc.Signal}/WINCH (Windows, exotic runtimes)
+     * keep the plan-start-only behavior.
+     */
+    private static volatile boolean winchAttempted;
+
+    private static void ensureWinchHandler() {
+        if (winchAttempted) return;
+        winchAttempted = true;
+        if (System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win")) {
+            return;
+        }
+        try {
+            sun.misc.Signal.handle(new sun.misc.Signal("WINCH"), sig -> cached = null);
+        } catch (Throwable t) {
+            // unsupported runtime — the plan-start refresh still applies
+        }
+    }
+
     private TerminalSize() {}
 
     /** Cached {@code {rows, cols}}; probes on first use. */
     public static int[] size() {
+        ensureWinchHandler();
         int[] s = cached;
         if (s == null) {
             s = probe.get();
