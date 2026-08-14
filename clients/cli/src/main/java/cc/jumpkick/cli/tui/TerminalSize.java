@@ -12,7 +12,7 @@ import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 import java.util.Locale;
 import java.util.function.Supplier;
-import sun.misc.Signal;
+import org.jline.utils.Signals;
 
 /**
  * Process-wide terminal-size cache. The probe uses Panama FFM system calls —
@@ -43,8 +43,9 @@ public final class TerminalSize {
      * width until the next plan. The handler only drops the cache (never probes); the next
      * consumer pays one native ioctl per physical resize, not per frame. Installed lazily at
      * the first runtime probe so native-image build-time class init never registers a handler.
-     * Best-effort: platforms without {@code sun.misc.Signal}/WINCH (Windows, exotic runtimes)
-     * keep the plan-start-only behavior.
+     * Registered via {@link Signals#register} (reflective {@code sun.misc.Signal} wrapper) so the
+     * compiler never sees an internal proprietary API. Best-effort: platforms without WINCH
+     * (Windows, exotic runtimes) keep the plan-start-only behavior.
      */
     private static volatile boolean winchAttempted;
 
@@ -55,7 +56,8 @@ public final class TerminalSize {
             return;
         }
         try {
-            Signal.handle(new Signal("WINCH"), sig -> cached = null);
+            // Same reflective path as GlobalCancel — avoids sun.misc compile warnings.
+            Signals.register("WINCH", () -> cached = null);
         } catch (Throwable t) {
             // unsupported runtime — the plan-start refresh still applies
         }

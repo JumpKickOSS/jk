@@ -3,13 +3,14 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import sun.misc.Signal;
 
 /**
  * Probing terminal size is a native ioctl / console call. {@link RenderContext#current()} runs on
@@ -77,12 +78,21 @@ class TerminalSizeTest {
             probes.incrementAndGet();
             return new int[] {40, 66};
         };
-        Signal.raise(new Signal("WINCH"));
+        raiseWinch();
         long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
         while (TerminalSize.columns() != 66 && System.nanoTime() < deadline) {
             Thread.sleep(10);
         }
         assertThat(TerminalSize.columns()).isEqualTo(66);
+    }
+
+    /** Reflective {@code sun.misc.Signal.raise(WINCH)} — no direct sun.* compile dependency. */
+    private static void raiseWinch() throws Exception {
+        Class<?> signalClass = Class.forName("sun.misc.Signal");
+        Constructor<?> ctor = signalClass.getConstructor(String.class);
+        Object signal = ctor.newInstance("WINCH");
+        Method raise = signalClass.getMethod("raise", signalClass);
+        raise.invoke(null, signal);
     }
 
     @Test
