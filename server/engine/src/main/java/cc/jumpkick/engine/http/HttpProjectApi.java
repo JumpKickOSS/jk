@@ -154,9 +154,9 @@ final class HttpProjectApi {
      * Prefer {@code project=} (durable identity); {@code dir=} remains for direct checkout ops.
      */
     void handleProject(HttpExchange exchange) throws IOException {
-        String q = exchange.getRequestURI().getQuery();
-        String projectId = HttpEngineServer.decode(HttpEngineServer.queryParam(q, "project"));
-        String dir = HttpEngineServer.decode(HttpEngineServer.queryParam(q, "dir"));
+        String q = exchange.getRequestURI().getRawQuery();
+        String projectId = HttpEngineServer.queryParam(q, "project");
+        String dir = HttpEngineServer.queryParam(q, "dir");
         if ((projectId == null || projectId.isBlank()) && (dir == null || dir.isBlank())) {
             HttpEngineServer.sendJson(
                     exchange,
@@ -218,11 +218,11 @@ final class HttpProjectApi {
      * for the Project page ECharts panel (JK-1542).
      */
     void handleProjectGraph(HttpExchange exchange) throws IOException {
-        String query = exchange.getRequestURI().getQuery();
+        String query = exchange.getRequestURI().getRawQuery();
         Path projectDir;
         List<cc.jumpkick.model.Scope> scopes;
         try {
-            String dir = HttpEngineServer.decode(HttpEngineServer.queryParam(query, "dir"));
+            String dir = HttpEngineServer.queryParam(query, "dir");
             if (dir == null || dir.isBlank()) {
                 HttpEngineServer.sendJson(
                         exchange,
@@ -232,7 +232,7 @@ final class HttpProjectApi {
             }
             projectDir = Path.of(dir);
             scopes = cc.jumpkick.resolver.DependencyGraphModel.parseScopes(
-                    HttpEngineServer.decode(HttpEngineServer.queryParam(query, "scopes")));
+                    HttpEngineServer.queryParam(query, "scopes"));
         } catch (IllegalArgumentException e) {
             HttpEngineServer.sendJson(
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
@@ -285,8 +285,7 @@ final class HttpProjectApi {
     void handleProjectFiles(HttpExchange exchange) throws IOException {
         String projectId;
         try {
-            projectId = HttpEngineServer.decode(
-                    HttpEngineServer.queryParam(exchange.getRequestURI().getQuery(), "project"));
+            projectId = HttpEngineServer.queryParam(exchange.getRequestURI().getRawQuery(), "project");
         } catch (IllegalArgumentException e) {
             HttpEngineServer.sendJson(
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
@@ -345,9 +344,9 @@ final class HttpProjectApi {
         String projectId;
         String path;
         try {
-            String q = exchange.getRequestURI().getQuery();
-            projectId = HttpEngineServer.decode(HttpEngineServer.queryParam(q, "project"));
-            path = HttpEngineServer.decode(HttpEngineServer.queryParam(q, "path"));
+            String q = exchange.getRequestURI().getRawQuery();
+            projectId = HttpEngineServer.queryParam(q, "project");
+            path = HttpEngineServer.queryParam(q, "path");
         } catch (IllegalArgumentException e) {
             HttpEngineServer.sendJson(
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());

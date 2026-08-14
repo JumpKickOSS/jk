@@ -839,6 +839,52 @@ class HttpEngineServerTest {
     }
 
     @Test
+    void api_project_file_decodes_query_values_exactly_once() throws Exception {
+        // JK-1943: getQuery() already percent-decodes, and a second URLDecoder pass mapped '+'
+        // to space and truncated at a decoded '&' — so any file the tree listed with those
+        // characters could never be opened, and %252e%252e relied on validation order alone.
+        Path buildsDir = stateDir.resolve("decode-builds");
+        System.setProperty("jk.env.JK_BUILDS_DIR", buildsDir.toString());
+        try {
+            Path checkout = stateDir.resolve("src-decode");
+            Files.createDirectories(checkout.resolve("src"));
+            Files.writeString(checkout.resolve("jk.toml"), """
+                    [project]
+                    group = "g"
+                    name = "n"
+                    version = "1"
+                    """);
+            Files.writeString(checkout.resolve("src/A+B.java"), "class APlusB {}\n");
+            Files.writeString(checkout.resolve("src/A&B.java"), "class AAmpB {}\n");
+            Files.writeString(checkout.resolve("src/A%2.java"), "class APct {}\n");
+            var identity = cc.jumpkick.builds.ProjectIdentity.resolve(checkout);
+            cc.jumpkick.builds.ProjectIdentity.IdentityFile.write(
+                    cc.jumpkick.builds.ProjectBuilds.projectHome(identity.id()), identity);
+            String id = identity.id();
+
+            // Exactly what code.js's encodeURIComponent sends for each listed path.
+            HttpResponse<String> plus = get("/api/project/file?project=" + id + "&path=src%2FA%2BB.java");
+            assertThat(plus.statusCode()).as("plus sign survives one decode").isEqualTo(200);
+            assertThat(plus.body()).contains("class APlusB");
+
+            HttpResponse<String> amp = get("/api/project/file?project=" + id + "&path=src%2FA%26B.java");
+            assertThat(amp.statusCode()).as("encoded ampersand does not split the value").isEqualTo(200);
+            assertThat(amp.body()).contains("class AAmpB");
+
+            HttpResponse<String> pct = get("/api/project/file?project=" + id + "&path=src%2FA%252.java");
+            assertThat(pct.statusCode()).as("literal percent decodes once, not twice").isEqualTo(200);
+            assertThat(pct.body()).contains("class APct");
+
+            // Double-encoded traversal must decode to a literal ".." segment and be rejected.
+            assertThat(get("/api/project/file?project=" + id + "&path=%252e%252e%2Fjk.toml")
+                            .statusCode())
+                    .isEqualTo(400);
+        } finally {
+            System.clearProperty("jk.env.JK_BUILDS_DIR");
+        }
+    }
+
+    @Test
     void api_metrics_reports_aggregate_rows_with_the_token() throws Exception {
         var ok = new cc.jumpkick.runtime.BuildMetrics.Stats(3, 6000, 1000, 3000);
         var empty = cc.jumpkick.runtime.BuildMetrics.Stats.EMPTY;

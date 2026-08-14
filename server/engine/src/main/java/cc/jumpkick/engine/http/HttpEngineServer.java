@@ -394,7 +394,7 @@ public final class HttpEngineServer implements AutoCloseable {
             }
             // MCP is agent-facing; always token-gated (even loopback) — same CSRF posture as POST /api/build.
             if (!tokenValid(bearerToken(exchange.getRequestHeaders().getFirst("Authorization")))
-                    && !tokenValid(queryParam(exchange.getRequestURI().getQuery(), "access_token"))) {
+                    && !tokenValid(queryParam(exchange.getRequestURI().getRawQuery(), "access_token"))) {
                 exchange.getResponseHeaders().set("WWW-Authenticate", "Bearer");
                 sendText(exchange, 401, "missing or invalid bearer token\n");
                 return;
@@ -507,7 +507,7 @@ public final class HttpEngineServer implements AutoCloseable {
      * _meta.progressToken}).
      */
     private void handleMcpEvents(HttpExchange exchange) throws IOException {
-        Long filter = resolveMcpEventFilter(exchange.getRequestURI().getQuery());
+        Long filter = resolveMcpEventFilter(exchange.getRequestURI().getRawQuery());
         exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
         if (filter != null) {
@@ -613,7 +613,7 @@ public final class HttpEngineServer implements AutoCloseable {
         boolean read = method.equals("GET") || method.equals("HEAD");
         return read
                 && exchange.getRequestURI().getPath().equals("/api/events")
-                && tokenValid(queryParam(exchange.getRequestURI().getQuery(), "access_token"));
+                && tokenValid(queryParam(exchange.getRequestURI().getRawQuery(), "access_token"));
     }
 
     private static String bearerToken(String authorization) {
@@ -621,13 +621,26 @@ public final class HttpEngineServer implements AutoCloseable {
         return authorization.substring("Bearer ".length()).trim();
     }
 
-    static String queryParam(String query, String name) {
-        if (query == null) return null;
-        for (String pair : query.split("&")) {
+    /**
+     * The decoded value of {@code name} in a RAW query string ({@code getRawQuery()}), or null.
+     * Split first, decode each value exactly once (JK-1943): {@code getQuery()} already
+     * percent-decodes, so the old {@code decode(queryParam(getQuery()))} pattern double-decoded —
+     * a filename {@code A+B.java} arrived as {@code A B.java} and an encoded {@code &} truncated
+     * the value at the split. Decoding never maps {@code +} to space, matching the SPA's
+     * {@code encodeURIComponent} (which never emits {@code +} for a space).
+     */
+    static String queryParam(String rawQuery, String name) {
+        if (rawQuery == null) return null;
+        for (String pair : rawQuery.split("&")) {
             int eq = pair.indexOf('=');
-            if (eq > 0 && pair.substring(0, eq).equals(name)) return pair.substring(eq + 1);
+            if (eq > 0 && pair.substring(0, eq).equals(name)) return decodeOnce(pair.substring(eq + 1));
         }
         return null;
+    }
+
+    /** Percent-decode without the {@code application/x-www-form-urlencoded} {@code +}→space rule. */
+    private static String decodeOnce(String raw) {
+        return java.net.URLDecoder.decode(raw.replace("+", "%2B"), StandardCharsets.UTF_8);
     }
 
     private boolean tokenValid(String presented) {
@@ -703,10 +716,6 @@ public final class HttpEngineServer implements AutoCloseable {
     /** Test seam: rebind rules for in-flight history rows (JK-1522). */
     HttpLive.Run matchLiveRun(java.util.Map<String, Object> rec) {
         return historyApi.matchLiveRun(rec);
-    }
-
-    static String decode(String raw) {
-        return raw == null ? null : java.net.URLDecoder.decode(raw, StandardCharsets.UTF_8);
     }
 
     /** Test seam: shrink the SSE heartbeat so quiet-stream behavior is testable in milliseconds. */
