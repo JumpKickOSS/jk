@@ -58,8 +58,10 @@ public final class EventRedaction {
     public static @Nullable TestFailureInfo redactFailure(
             cc.jumpkick.config.SecretRedactor redactor, @Nullable TestFailureInfo f) {
         if (f == null) return null;
-        String message = redactSafe(redactor, f.message());
-        String stack = redactSafe(redactor, f.stack());
+        String message = redactTruncationSeam(
+                redactor, redactSafe(redactor, f.message()), cc.jumpkick.test.JUnitLauncher.MESSAGE_TRUNCATION_MARKER);
+        String stack = redactTruncationSeam(
+                redactor, redactSafe(redactor, f.stack()), cc.jumpkick.test.JUnitLauncher.STACK_TRUNCATION_MARKER);
         if (Objects.equals(message, f.message()) && Objects.equals(stack, f.stack())) {
             return f;
         }
@@ -76,6 +78,25 @@ public final class EventRedaction {
                 f.line(),
                 f.snippetStart(),
                 f.snippet());
+    }
+
+    /**
+     * Capture-time truncation can cut a secret mid-value, leaving a prefix the exact-substring
+     * pass cannot match (JK-1960). When {@code text} carries the capture marker, mask a dangling
+     * secret prefix at the cut point.
+     */
+    private static @Nullable String redactTruncationSeam(
+            cc.jumpkick.config.SecretRedactor redactor, @Nullable String text, String marker) {
+        if (text == null || text.isEmpty()) return text;
+        try {
+            int at = text.lastIndexOf(marker);
+            if (at < 0) return text;
+            String head = text.substring(0, at);
+            String masked = redactor.maskTrailingSecretPrefix(head);
+            return masked.equals(head) ? text : masked + text.substring(at);
+        } catch (RuntimeException e) {
+            return text;
+        }
     }
 
     private static @Nullable String redactSafe(cc.jumpkick.config.SecretRedactor redactor, @Nullable String text) {

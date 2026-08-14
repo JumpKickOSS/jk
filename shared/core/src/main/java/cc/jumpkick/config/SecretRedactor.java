@@ -59,6 +59,26 @@ public final class SecretRedactor {
     }
 
     /**
+     * Mask a trailing fragment of {@code text} that is a leading prefix (≥ {@link
+     * #MIN_SECRET_LENGTH} chars, shorter than the whole value) of any secret. Capture-time
+     * truncation can cut mid-value (JK-1960); the surviving prefix no longer matches the
+     * exact-substring pass in {@link #redact}, so the seam is masked separately by callers that
+     * know where the cut landed.
+     */
+    public String maskTrailingSecretPrefix(String text) {
+        if (text == null || text.isEmpty() || secrets.isEmpty()) return text;
+        for (String secret : secrets) {
+            int max = Math.min(secret.length() - 1, text.length());
+            for (int len = max; len >= MIN_SECRET_LENGTH; len--) {
+                if (text.regionMatches(text.length() - len, secret, 0, len)) {
+                    return text.substring(0, text.length() - len) + MASK;
+                }
+            }
+        }
+        return text;
+    }
+
+    /**
      * Build a redactor from an {@link EnvLookup}: every effective value that came from a
      * {@code.env} file (not the real environment).
      */

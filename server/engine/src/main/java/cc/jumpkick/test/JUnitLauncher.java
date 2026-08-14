@@ -24,6 +24,12 @@ import java.util.concurrent.ConcurrentLinkedDeque;
  */
 public final class JUnitLauncher {
 
+    /** Marker appended by {@code ResultAggregator.truncateStack}; {@code EventRedaction} keys the cut-seam masking off it (JK-1960). */
+    public static final String STACK_TRUNCATION_MARKER = "\n\t... stack truncated (";
+
+    /** Marker appended by {@code ResultAggregator.truncateMessage}. */
+    public static final String MESSAGE_TRUNCATION_MARKER = " ... message truncated (";
+
     /** Marker prefix every protocol line carries. Must match {@code JsonEventWriter.PREFIX}. */
     private static final String PROTOCOL_PREFIX = "##JKT:";
 
@@ -990,8 +996,12 @@ public final class JUnitLauncher {
         static String truncateStack(String stack) {
             if (stack == null || stack.length() <= MAX_STACK_CHARS) return stack;
             int cut = stack.lastIndexOf('\n', MAX_STACK_CHARS);
-            if (cut <= 0) cut = MAX_STACK_CHARS;
-            return stack.substring(0, cut) + "\n\t... stack truncated (" + (stack.length() - cut) + " more chars)";
+            if (cut <= 0) {
+                cut = MAX_STACK_CHARS;
+                // Hard cut (a single >32KB line): never leave a lone high surrogate (JK-1960).
+                if (Character.isHighSurrogate(stack.charAt(cut - 1))) cut--;
+            }
+            return stack.substring(0, cut) + STACK_TRUNCATION_MARKER + (stack.length() - cut) + " more chars)";
         }
 
         /**
@@ -1009,7 +1019,7 @@ public final class JUnitLauncher {
             if (message == null || message.length() <= MAX_MESSAGE_CHARS) return message;
             int cut = MAX_MESSAGE_CHARS;
             if (Character.isHighSurrogate(message.charAt(cut - 1))) cut--;
-            return message.substring(0, cut) + " ... message truncated (" + (message.length() - cut) + " more chars)";
+            return message.substring(0, cut) + MESSAGE_TRUNCATION_MARKER + (message.length() - cut) + " more chars)";
         }
 
         synchronized TestSummary toResult(int exitCode) {
