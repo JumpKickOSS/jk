@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,7 +47,11 @@ final class HttpHistoryApi {
                 return;
             }
             HttpEngineServer.sendJson(
-                    exchange, 200, enrichHistoryJson(Files.readString(record.get(), StandardCharsets.UTF_8)));
+                    exchange,
+                    200,
+                    redactRecordJson(
+                            enrichHistoryJson(Files.readString(record.get(), StandardCharsets.UTF_8)),
+                            new HashMap<>()));
             return;
         }
         // Single pass, single parse, streamed out (JK-1942): the kind gate and the "does this row
@@ -63,17 +68,42 @@ final class HttpHistoryApi {
             return;
         }
         exchange.sendResponseHeaders(200, 0);
+        Map<String, cc.jumpkick.config.SecretRedactor> redactors = new HashMap<>();
         try (var out = exchange.getResponseBody()) {
             out.write('[');
             int sent = 0;
             for (String r : raw) {
                 if (!isBuildLikeHistoryJson(r)) continue;
                 String part = needsEnrichment(r) ? enrichHistoryJson(r) : r;
+                part = redactRecordJson(part, redactors);
                 if (sent > 0) out.write(',');
                 out.write(part.getBytes(StandardCharsets.UTF_8));
                 if (++sent >= HISTORY_LIST_LIMIT) break;
             }
             out.write(']');
+        }
+    }
+
+    /**
+     * Defense in depth (JK-1963): records persisted before write-time redaction (JK-1878) may
+     * carry {@code .env} secrets in message/stack, and this endpoint streams record bodies
+     * verbatim. Re-redact against each record's own dir; {@code cache} amortises the env lookup
+     * per distinct dir across one response (rows overwhelmingly share a dir).
+     */
+    static String redactRecordJson(String raw, Map<String, cc.jumpkick.config.SecretRedactor> cache) {
+        try {
+            String dir = scanStringField(raw, "dir");
+            String key = dir == null ? "" : dir;
+            cc.jumpkick.config.SecretRedactor redactor = cache.computeIfAbsent(key, k -> {
+                try {
+                    return cc.jumpkick.engine.listen.EventRedaction.redactorFor(dir);
+                } catch (RuntimeException e) {
+                    return cc.jumpkick.config.SecretRedactor.none();
+                }
+            });
+            return redactor.redact(raw);
+        } catch (RuntimeException e) {
+            return raw;
         }
     }
 
