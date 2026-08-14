@@ -1,0 +1,210 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.engine.http;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.builds.ProjectIdentity;
+import cc.jumpkick.engine.http.WorkspaceFileAccess.ReadResult;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+class WorkspaceFileAccessTest {
+
+    @Test
+    void happy_path_lists_and_reads_allow_listed_sources(@TempDir Path root) throws Exception {
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("src"));
+        Files.writeString(root.resolve("src/Main.java"), "package demo;\nclass Main {}\n");
+        Files.writeString(root.resolve("jk.toml"), """
+                [project]
+                group = "g"
+                name = "demo"
+                version = "1"
+                """);
+
+        var list = WorkspaceFileAccess.list(root);
+        assertThat(list.truncated()).isFalse();
+        assertThat(list.files())
+                .extracting(WorkspaceFileAccess.ListedFile::path)
+                .containsExactly("jk.toml", "src/Main.java");
+
+        var read = WorkspaceFileAccess.read(root, "src/Main.java");
+        assertThat(read).isInstanceOf(ReadResult.Ok.class);
+        var body = ((ReadResult.Ok) read).body();
+        assertThat(body.lang()).isEqualTo("java");
+        assertThat(body.content()).contains("package demo;");
+        assertThat(body.lines()).isEqualTo(2);
+    }
+
+    @Test
+    void rejects_traversal_absolute_and_dot_segments(@TempDir Path root) {
+        assertThat(WorkspaceFileAccess.normalizeRel("../secret.java")).isNull();
+        assertThat(WorkspaceFileAccess.normalizeRel("/etc/passwd")).isNull();
+        assertThat(WorkspaceFileAccess.normalizeRel("src/./Main.java")).isNull();
+        assertThat(WorkspaceFileAccess.normalizeRel("src//Main.java")).isNull();
+        assertThat(WorkspaceFileAccess.normalizeRel("src\\Main.java")).isNull();
+        assertThat(WorkspaceFileAccess.read(root, "../x.java")).isInstanceOf(ReadResult.BadRequest.class);
+        assertThat(WorkspaceFileAccess.read(root, "")).isInstanceOf(ReadResult.BadRequest.class);
+    }
+
+    @Test
+    void hidden_unsupported_and_output_paths_are_not_servable(@TempDir Path root) throws Exception {
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("target"));
+        Files.createDirectories(root.resolve(".env-dir"));
+        Files.writeString(root.resolve("target/Foo.java"), "class Foo {}");
+        Files.writeString(root.resolve(".env"), "SECRET=1");
+        Files.writeString(root.resolve("build.gradle"), "plugins {}");
+        Files.writeString(root.resolve("notes.txt"), "nope");
+
+        assertThat(WorkspaceFileAccess.servable(root, "target/Foo.java")).isFalse();
+        assertThat(WorkspaceFileAccess.servable(root, ".env")).isFalse();
+        assertThat(WorkspaceFileAccess.servable(root, "build.gradle")).isFalse();
+        assertThat(WorkspaceFileAccess.servable(root, "notes.txt")).isFalse();
+        assertThat(WorkspaceFileAccess.read(root, "target/Foo.java")).isInstanceOf(ReadResult.NotFound.class);
+        assertThat(WorkspaceFileAccess.read(root, ".env")).isInstanceOf(ReadResult.NotFound.class);
+
+        var list = WorkspaceFileAccess.list(root);
+        assertThat(list.files())
+                .extracting(WorkspaceFileAccess.ListedFile::path)
+                .containsExactly("jk.toml");
+    }
+
+    @Test
+    void package_named_build_is_servable(@TempDir Path root) throws Exception {
+        writeJkToml(root, "demo");
+        Path pkg = root.resolve("src/main/java/com/example/build");
+        Files.createDirectories(pkg);
+        Files.writeString(pkg.resolve("Util.java"), "class Util {}");
+        assertThat(WorkspaceFileAccess.servable(root, "src/main/java/com/example/build/Util.java"))
+                .isTrue();
+        assertThat(WorkspaceFileAccess.read(root, "src/main/java/com/example/build/Util.java"))
+                .isInstanceOf(ReadResult.Ok.class);
+    }
+
+    @Test
+    void member_directory_named_build_with_jk_toml_is_listed_and_readable(@TempDir Path root) throws Exception {
+        writeJkToml(root, "ws");
+        Path member = root.resolve("build");
+        Files.createDirectories(member.resolve("src"));
+        writeJkToml(member, "lib");
+        Files.writeString(member.resolve("src/A.java"), "class A {}");
+        Files.createDirectories(member.resolve("target"));
+        Files.writeString(member.resolve("target/A.java"), "class Gen {}");
+
+        assertThat(WorkspaceFileAccess.isSkippedOutputDir(member)).isFalse();
+        assertThat(WorkspaceFileAccess.isSkippedOutputDir(member.resolve("target")))
+                .isTrue();
+        assertThat(WorkspaceFileAccess.servable(root, "build/src/A.java")).isTrue();
+        assertThat(WorkspaceFileAccess.servable(root, "build/target/A.java")).isFalse();
+
+        var list = WorkspaceFileAccess.list(root);
+        assertThat(list.files())
+                .extracting(WorkspaceFileAccess.ListedFile::path)
+                .contains("build/jk.toml", "build/src/A.java")
+                .doesNotContain("build/target/A.java");
+        assertThat(WorkspaceFileAccess.read(root, "build/src/A.java")).isInstanceOf(ReadResult.Ok.class);
+        assertThat(WorkspaceFileAccess.read(root, "build/target/A.java")).isInstanceOf(ReadResult.NotFound.class);
+    }
+
+    @Test
+    void extension_match_is_case_insensitive(@TempDir Path root) throws Exception {
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("src"));
+        Files.writeString(root.resolve("src/Main.JAVA"), "class Main {}");
+        Files.writeString(root.resolve("src/Lib.Kt"), "class Lib");
+        assertThat(WorkspaceFileAccess.langOf("Main.JAVA")).isEqualTo("java");
+        assertThat(WorkspaceFileAccess.langOf("Lib.Kt")).isEqualTo("kotlin");
+        assertThat(WorkspaceFileAccess.read(root, "src/Main.JAVA")).isInstanceOf(ReadResult.Ok.class);
+    }
+
+    @Test
+    void oversize_file_is_too_large_without_reading_as_ok(@TempDir Path root) throws Exception {
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("src"));
+        Path big = root.resolve("src/Big.java");
+        Files.write(big, new byte[WorkspaceFileAccess.MAX_FILE_BYTES + 1]);
+        var read = WorkspaceFileAccess.read(root, "src/Big.java");
+        assertThat(read).isInstanceOf(ReadResult.TooLarge.class);
+        var too = (ReadResult.TooLarge) read;
+        assertThat(too.bytes()).isEqualTo(WorkspaceFileAccess.MAX_FILE_BYTES + 1);
+        assertThat(too.maxBytes()).isEqualTo(WorkspaceFileAccess.MAX_FILE_BYTES);
+    }
+
+    @Test
+    void nul_probe_marks_binary(@TempDir Path root) throws Exception {
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("src"));
+        Files.write(root.resolve("src/Weird.java"), new byte[] {'c', 'l', 'a', 's', 's', 0, 'X'});
+        assertThat(WorkspaceFileAccess.read(root, "src/Weird.java")).isInstanceOf(ReadResult.Binary.class);
+    }
+
+    @Test
+    void symlink_escape_is_not_found(@TempDir Path root, @TempDir Path outside) throws Exception {
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("src"));
+        Path secret = outside.resolve("secret.java");
+        Files.writeString(secret, "class Secret {}");
+        try {
+            Files.createSymbolicLink(root.resolve("src/Leak.java"), secret);
+        } catch (UnsupportedOperationException | IOException unsupported) {
+            return;
+        }
+        assertThat(WorkspaceFileAccess.read(root, "src/Leak.java")).isInstanceOf(ReadResult.NotFound.class);
+    }
+
+    @Test
+    void list_sorts_then_caps(@TempDir Path root) throws Exception {
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("src"));
+        for (int i = 0; i < 2010; i++) {
+            Files.writeString(root.resolve(String.format("src/f-%04d.java", i)), "class F {}");
+        }
+        var list = WorkspaceFileAccess.list(root);
+        assertThat(list.truncated()).isTrue();
+        assertThat(list.files()).hasSize(WorkspaceFileAccess.MAX_LIST_FILES);
+        assertThat(list.files().getFirst().path()).isEqualTo("jk.toml");
+        assertThat(list.files().get(1).path()).isEqualTo("src/f-0000.java");
+        assertThat(list.files().getLast().path()).isEqualTo("src/f-1998.java");
+        assertThat(list.files()).noneMatch(f -> f.path().equals("src/f-2009.java"));
+    }
+
+    @Test
+    void resolve_root_uses_identity_only(@TempDir Path checkout, @TempDir Path buildsDir) throws Exception {
+        writeJkToml(checkout, "demo");
+        System.setProperty("jk.env.JK_BUILDS_DIR", buildsDir.toString());
+        try {
+            var identity = ProjectIdentity.resolve(checkout);
+            ProjectIdentity.IdentityFile.write(ProjectBuilds.projectHome(identity.id()), identity);
+            assertThat(WorkspaceFileAccess.resolveRoot(identity.id()))
+                    .contains(checkout.toAbsolutePath().normalize());
+            assertThat(WorkspaceFileAccess.resolveRoot("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"))
+                    .isEmpty();
+            assertThat(WorkspaceFileAccess.resolveRoot("")).isEmpty();
+        } finally {
+            System.clearProperty("jk.env.JK_BUILDS_DIR");
+        }
+    }
+
+    @Test
+    void count_lines_drops_trailing_newline_segment() {
+        assertThat(WorkspaceFileAccess.countLines("")).isZero();
+        assertThat(WorkspaceFileAccess.countLines("one")).isEqualTo(1);
+        assertThat(WorkspaceFileAccess.countLines("a\nb")).isEqualTo(2);
+        assertThat(WorkspaceFileAccess.countLines("a\nb\n")).isEqualTo(2);
+    }
+
+    private static void writeJkToml(Path dir, String name) throws Exception {
+        Files.createDirectories(dir);
+        Files.writeString(dir.resolve("jk.toml"), """
+                [project]
+                group = "g"
+                name = "%s"
+                version = "1"
+                """.formatted(name));
+    }
+}

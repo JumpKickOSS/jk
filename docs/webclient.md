@@ -50,11 +50,64 @@ script a page that can trigger builds. When bumping a pin, update the `integrity
 `index.html` in the same change. There is no bundler and no npm build step: the shell ships as
 static resources inside the engine jar.
 
+**Monaco is the one partial exception.** Its version is pinned and `loader.js` carries SRI
+(`MONACO_LOADER` in `code.js`), but the loader then fetches `editor.main.js`, `editor.main.css` and
+the per-language chunks itself and has no way to pass an integrity hash down, so those bytes are
+CDN-trusted. It is also what widened the shell CSP (`StaticContent`): `blob:` in `script-src` plus
+`worker-src blob:` for the language workers it spawns from a generated Blob that `importScripts` the
+CDN bundle, `'unsafe-inline'` in `style-src` for the inline style attributes it positions every view
+line and widget with, and `data:` in `font-src` for the codicon font inlined into
+`editor.main.css`. Monaco must load **after** the UMD globals above — its AMD loader claims
+`window.define`, and a UMD script that loads afterwards would register as an AMD module instead of
+setting its global. Vue/ECharts are `defer` tags in `index.html`, and Monaco only loads when a
+user opens `/files`, so that ordering holds.
+
 ## Project routes
 
 Project detail is `#project/<projectId>` — a durable opaque id (from `project-id` in `jk-lock.toml`,
 or hybrid git/path resolution), **not** an absolute filesystem path. `GET /api/project?project=<id>`
 resolves the last-known checkout path via `identity.toml` under the builds state dir.
+
+Source files hang off the same route:
+
+```text
+#project/<projectId>
+#project/<projectId>/files
+#project/<projectId>/files/src/Main.java?line=42
+```
+
+The cyan folder **Browse this codebase** control (same icon button as Activity’s workspace
+picker) sits next to **Build** and opens `#project/<id>/files` (tree). Selecting a file
+appends the workspace-relative path as extra hash segments (each segment `encodeURIComponent`;
+`/` stays a separator). Optional `?line=` is a 1-based highlight for fail-report jumps.
+Test-failure paths (module-relative) join `rel(checkout, module.dir)` + `rep.file` first;
+basename-only paths stay text.
+
+The tree pane itself is GitHub-shaped: collapsible folders (chevron + `folder`/`folder-open`
+glyph) above files (generic `file` glyph), directories before files at every level, names sorted
+case-insensitively. `buildFileTree` **compacts single-child directory chains** into one row
+(`main/java/cc/jumpkick`) so a Java source file is a few rows deep instead of a dozen; a compacted
+node keys off its deepest path, which is what `ancestorDirs` yields for files under it. Folders are
+closed by default, except the ancestors of the open file — so a `?line=` deep link or a fail-report
+jump lands with its file revealed and selected. `visibleRows` flattens only the open parts, so the
+whole tree is one non-recursive `v-for` (2000 paths, no recursive components). Typing in the filter
+box switches to a **flat list of matching full paths** — the tree is for browsing, the filter
+answers like GitHub's file finder; every row carries its full path as a `data-tip`.
+
+The pane lists `GET /api/project/files` and reads `GET /api/project/file` (see [http.md](http.md)).
+Monaco **0.56.0** loads lazily from unpkg (AMD loader SRI-pinned; see the CDN section) only when
+`/files` is open, and renders a **read-only** editor in the built-in **Visual Studio Dark**
+(`vs-dark`) theme: Monaco's own line numbers, folding, minimap and find widget, no context menu or
+suggestions. The theme is registered as `jk-vs-dark` — vs-dark inherited verbatim with a single
+override, `editor.background` read from style.css's `--console-bg`, so a source pane reads as the
+same surface as the console tail and log panels instead of VS Code's `#1e1e1e`. `?line=` is a
+whole-line decoration (`.code-line-hl`) plus `revealLineInCenter`, not a selection. Monaco ships no
+Groovy or TOML grammar, so `.groovy` tokenizes as `java` and `.toml` as
+`ini` (`MONACO_LANG` in `code.js`); anything unknown falls back to `plaintext`. Highlighting is
+skipped above 200 KiB / 4000 lines, and when the CDN is unreachable; the file then renders as
+plain text with a gutter so `?line=` can still scroll.
+
+`code.js` is tested headlessly (`node --test` via `WebClientCodeTest`), same shape as `fold.js`.
 
 ## Project page: dependency graph (lazy)
 

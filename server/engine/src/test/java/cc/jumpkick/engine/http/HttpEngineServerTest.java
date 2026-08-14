@@ -256,6 +256,7 @@ class HttpEngineServerTest {
         // The real SPA (clients/web/src/main/resources/web) rides the same classpath fallback the
         // test resources exercise — a bare [http] table gives a working dashboard with no file copying.
         assertThat(get("/app.js").body()).contains("Vue.createApp");
+        assertThat(get("/code.js").body()).contains("export function routeFromHash");
         assertThat(get("/fold.js").body()).contains("export function foldEvent");
         assertThat(get("/api.js").body()).contains("bootstrapToken");
         assertThat(get("/jk-logo.svg").headers().firstValue("Content-Type")).contains("image/svg+xml");
@@ -275,9 +276,9 @@ class HttpEngineServerTest {
         assertThat(shell).contains("crossorigin=\"anonymous\"");
         HttpResponse<String> js = get("/app.js");
         assertThat(js.headers().firstValue("Content-Security-Policy"))
-                .contains("default-src 'self'; script-src 'self' 'unsafe-eval' https://unpkg.com; "
-                        + "style-src 'self' https://fonts.googleapis.com; "
-                        + "font-src https://fonts.gstatic.com");
+                .contains("default-src 'self'; script-src 'self' 'unsafe-eval' blob: https://unpkg.com; "
+                        + "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; "
+                        + "font-src https://fonts.gstatic.com data:; worker-src blob:");
     }
 
     @Test
@@ -325,7 +326,10 @@ class HttpEngineServerTest {
 
     @Test
     void matching_etag_yields_304() throws Exception {
-        HttpResponse<String> resp = get("/classpath-only.txt", "If-None-Match", "\"jk-9.9.9-test\"");
+        HttpResponse<String> first = get("/classpath-only.txt");
+        String etag = first.headers().firstValue("ETag").orElseThrow();
+        assertThat(etag).startsWith("\"jk-9.9.9-test-");
+        HttpResponse<String> resp = get("/classpath-only.txt", "If-None-Match", etag);
         assertThat(resp.statusCode()).isEqualTo(304);
         assertThat(resp.body()).isEmpty();
     }
@@ -756,6 +760,82 @@ class HttpEngineServerTest {
         }
 
         assertThat(response).startsWith("HTTP/1.1 400");
+    }
+
+    @Test
+    void api_project_files_and_file_are_identity_scoped() throws Exception {
+        Path buildsDir = stateDir.resolve("file-builds");
+        System.setProperty("jk.env.JK_BUILDS_DIR", buildsDir.toString());
+        try {
+            Path checkout = stateDir.resolve("src-app");
+            Files.createDirectories(checkout.resolve("src"));
+            Files.writeString(checkout.resolve("jk.toml"), """
+                    [project]
+                    group = "g"
+                    name = "n"
+                    version = "1"
+                    """);
+            Files.writeString(checkout.resolve("src/Main.java"), "class Main {}\n");
+            Files.createDirectories(checkout.resolve("target"));
+            Files.writeString(checkout.resolve("target/Gen.java"), "class Gen {}");
+            Files.writeString(checkout.resolve(".env"), "SECRET=1");
+            var identity = cc.jumpkick.builds.ProjectIdentity.resolve(checkout);
+            cc.jumpkick.builds.ProjectIdentity.IdentityFile.write(
+                    cc.jumpkick.builds.ProjectBuilds.projectHome(identity.id()), identity);
+            String id = identity.id();
+
+            HttpResponse<String> noToken = client.send(
+                    HttpRequest.newBuilder(
+                                    URI.create(baseUrl + "api/project/file?project=" + id + "&path=src/Main.java"))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(noToken.statusCode()).isEqualTo(401);
+
+            HttpResponse<String> missing = get("/api/project/files");
+            assertThat(missing.statusCode()).isEqualTo(400);
+            assertThat(missing.body()).contains("missing");
+
+            HttpResponse<String> dirOnly = get("/api/project/file?dir=" + checkout + "&path=src/Main.java");
+            assertThat(dirOnly.statusCode()).isEqualTo(400);
+            assertThat(dirOnly.body()).contains("missing");
+
+            HttpResponse<String> unknown = get("/api/project/files?project=zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz");
+            assertThat(unknown.statusCode()).isEqualTo(404);
+
+            HttpResponse<String> listed = get("/api/project/files?project=" + id);
+            assertThat(listed.statusCode()).isEqualTo(200);
+            assertThat(listed.body())
+                    .contains("\"path\":\"src/Main.java\"")
+                    .contains("\"lang\":\"java\"")
+                    .contains("\"path\":\"jk.toml\"")
+                    .doesNotContain("target/Gen.java")
+                    .doesNotContain(".env");
+
+            HttpResponse<String> file = get("/api/project/file?project=" + id + "&path=src%2FMain.java");
+            assertThat(file.statusCode()).isEqualTo(200);
+            assertThat(file.body()).contains("class Main").contains("\"lang\":\"java\"");
+
+            assertThat(get("/api/project/file?project=" + id + "&path=target%2FGen.java")
+                            .statusCode())
+                    .isEqualTo(404);
+            assertThat(get("/api/project/file?project=" + id + "&path=.env").statusCode())
+                    .isEqualTo(404);
+            assertThat(get("/api/project/file?project=" + id + "&path=../jk.toml")
+                            .statusCode())
+                    .isEqualTo(400);
+
+            Files.write(checkout.resolve("src/Big.java"), new byte[WorkspaceFileAccess.MAX_FILE_BYTES + 1]);
+            HttpResponse<String> huge = get("/api/project/file?project=" + id + "&path=src%2FBig.java");
+            assertThat(huge.statusCode()).isEqualTo(413);
+            assertThat(huge.body()).contains("file too large");
+
+            Files.write(checkout.resolve("src/Bin.java"), new byte[] {'x', 0, 'y'});
+            HttpResponse<String> bin = get("/api/project/file?project=" + id + "&path=src%2FBin.java");
+            assertThat(bin.statusCode()).isEqualTo(415);
+            assertThat(bin.body()).contains("binary");
+        } finally {
+            System.clearProperty("jk.env.JK_BUILDS_DIR");
+        }
     }
 
     @Test

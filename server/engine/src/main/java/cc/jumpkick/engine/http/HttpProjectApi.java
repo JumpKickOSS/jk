@@ -278,6 +278,146 @@ final class HttpProjectApi {
         HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.plugin.protocol.MiniJson.write(body));
     }
 
+    /**
+     * {@code GET /api/project/files?project=&lt;id&gt;} — allow-listed source paths under the
+     * identity checkout. No {@code dir=} fallback.
+     */
+    void handleProjectFiles(HttpExchange exchange) throws IOException {
+        String projectId;
+        try {
+            projectId = HttpEngineServer.decode(
+                    HttpEngineServer.queryParam(exchange.getRequestURI().getQuery(), "project"));
+        } catch (IllegalArgumentException e) {
+            HttpEngineServer.sendJson(
+                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
+            return;
+        }
+        if (projectId == null || projectId.isBlank()) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    400,
+                    JsonOut.object().put("error", "missing \"project\"").toString());
+            return;
+        }
+        var root = WorkspaceFileAccess.resolveRoot(projectId);
+        if (root.isEmpty()) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    404,
+                    JsonOut.object()
+                            .put("error", "unknown project id or checkout path missing: " + projectId)
+                            .put("projectId", projectId)
+                            .toString());
+            return;
+        }
+        WorkspaceFileAccess.FileList list;
+        try {
+            list = WorkspaceFileAccess.list(root.get());
+        } catch (IOException e) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    500,
+                    JsonOut.object()
+                            .put("error", e.getMessage() == null ? "list failed" : e.getMessage())
+                            .toString());
+            return;
+        }
+        List<Map<String, Object>> files = new ArrayList<>(list.files().size());
+        for (var f : list.files()) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("path", f.path());
+            row.put("lang", f.lang());
+            files.add(row);
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("projectId", projectId);
+        body.put("dir", list.root().toString());
+        body.put("truncated", list.truncated());
+        body.put("files", files);
+        HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.plugin.protocol.MiniJson.write(body));
+    }
+
+    /**
+     * {@code GET /api/project/file?project=&lt;id&gt;&amp;path=&lt;rel&gt;} — UTF-8 source body
+     * for one allow-listed path. Identity-scoped; no {@code dir=}.
+     */
+    void handleProjectFile(HttpExchange exchange) throws IOException {
+        String projectId;
+        String path;
+        try {
+            String q = exchange.getRequestURI().getQuery();
+            projectId = HttpEngineServer.decode(HttpEngineServer.queryParam(q, "project"));
+            path = HttpEngineServer.decode(HttpEngineServer.queryParam(q, "path"));
+        } catch (IllegalArgumentException e) {
+            HttpEngineServer.sendJson(
+                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
+            return;
+        }
+        if (projectId == null || projectId.isBlank()) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    400,
+                    JsonOut.object().put("error", "missing \"project\"").toString());
+            return;
+        }
+        if (path == null || path.isBlank()) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    400,
+                    JsonOut.object().put("error", "missing \"path\"").toString());
+            return;
+        }
+        var root = WorkspaceFileAccess.resolveRoot(projectId);
+        if (root.isEmpty()) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    404,
+                    JsonOut.object()
+                            .put("error", "unknown project id or checkout path missing: " + projectId)
+                            .put("projectId", projectId)
+                            .toString());
+            return;
+        }
+        switch (WorkspaceFileAccess.read(root.get(), path)) {
+            case WorkspaceFileAccess.ReadResult.BadRequest bad ->
+                HttpEngineServer.sendJson(
+                        exchange,
+                        400,
+                        JsonOut.object().put("error", bad.error()).toString());
+            case WorkspaceFileAccess.ReadResult.NotFound ignored ->
+                HttpEngineServer.sendJson(
+                        exchange,
+                        404,
+                        JsonOut.object().put("error", "not found").toString());
+            case WorkspaceFileAccess.ReadResult.TooLarge too ->
+                HttpEngineServer.sendJson(
+                        exchange,
+                        413,
+                        JsonOut.object()
+                                .put("error", "file too large")
+                                .put("bytes", too.bytes())
+                                .put("maxBytes", too.maxBytes())
+                                .toString());
+            case WorkspaceFileAccess.ReadResult.Binary ignored ->
+                HttpEngineServer.sendJson(
+                        exchange,
+                        415,
+                        JsonOut.object().put("error", "binary file").toString());
+            case WorkspaceFileAccess.ReadResult.Ok ok -> {
+                var b = ok.body();
+                Map<String, Object> body = new LinkedHashMap<>();
+                body.put("projectId", projectId);
+                body.put("dir", b.root().toString());
+                body.put("path", b.path());
+                body.put("lang", b.lang());
+                body.put("bytes", b.bytes());
+                body.put("lines", b.lines());
+                body.put("content", b.content());
+                HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.plugin.protocol.MiniJson.write(body));
+            }
+        }
+    }
+
     /** Query flag: true for {@code 1}/{@code true}/{@code yes}/{@code on} (case-insensitive). */
     private static boolean parseTruthy(String raw) {
         if (raw == null || raw.isBlank()) return false;
