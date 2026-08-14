@@ -72,10 +72,20 @@ public final class VerboseListener implements BuildPlanListener {
      */
     @Override
     public void output(String step, String line) {
-        List<String> buf = outputBuf.get(step);
-        if (buf == null && TestFailureHighlight.isHeader(line)) {
-            buf = Collections.synchronizedList(new ArrayList<>());
-            outputBuf.put(step, buf);
+        // A second header with the first block's footer never delivered (worker killed mid-block)
+        // must flush the open buffer first, not append into it (JK-1915 parity with the other two
+        // listeners, JK-1964) — otherwise both blocks sit until stepFinish and paint as one
+        // malformed unit.
+        if (outputBuf.get(step) != null && TestFailureHighlight.isHeader(line)) {
+            flushOutput(step);
+        }
+        List<String> buf;
+        if (TestFailureHighlight.isHeader(line)) {
+            // computeIfAbsent, not get/put: two threads racing the same step must not discard
+            // each other's buffer (JK-1964 restores what the JK-1882 rework dropped).
+            buf = outputBuf.computeIfAbsent(step, s -> Collections.synchronizedList(new ArrayList<>()));
+        } else {
+            buf = outputBuf.get(step);
         }
         if (buf != null) {
             buf.add(line);
