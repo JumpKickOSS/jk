@@ -10,8 +10,6 @@ import org.jspecify.annotations.NullMarked;
 @NullMarked
 public final class JkManagerColor {
 
-    private static final String ELLIPSIS = "…";
-
     private JkManagerColor() {}
 
     static String detailForDisplay(String module, String message) {
@@ -532,14 +530,16 @@ public final class JkManagerColor {
         boolean truncated = false;
         for (int i = 0; i < s.length(); ) {
             char c = s.charAt(i);
-            if (c == '\033') { // copy the whole CSI sequence verbatim
-                int j = i + 1;
-                if (j < s.length() && s.charAt(j) == '[') {
-                    j++;
-                    while (j < s.length() && !Character.isLetter(s.charAt(j))) j++;
-                    if (j < s.length()) j++; // include the final letter
-                }
-                sb.append(s, i, j);
+            if (c == '\033') { // copy the whole escape (CSI or OSC) verbatim — zero columns (JK-1967)
+                int j = RenderContext.skipEscape(s, i);
+                boolean unterminatedOsc = i + 1 < s.length()
+                        && s.charAt(i + 1) == ']'
+                        && !(j - 1 > i
+                                && (s.charAt(j - 1) == '\u0007'
+                                        || (j - 2 > i && s.charAt(j - 2) == '\u001b' && s.charAt(j - 1) == '\\')));
+                // A live unterminated OSC must never reach the terminal — it would swallow the
+                // following output up to the next BEL.
+                if (!unterminatedOsc) sb.append(s, i, j);
                 i = j;
             } else {
                 // Reserve one column for … when more content remains.
@@ -555,24 +555,17 @@ public final class JkManagerColor {
             }
         }
         if (truncated) {
-            sb.append(ELLIPSIS);
+            sb.append(JkManager.ELLIPSIS);
             sb.append(Ansi.RESET);
         }
         return sb.toString();
     }
 
-    /** True when {@code s[from..]} is only ANSI escapes (no more visible text). */
+    /** True when {@code s[from..]} is only ANSI escapes (CSI or OSC — no more visible text). */
     static boolean isOnlyAnsiFrom(String s, int from) {
         for (int i = from; i < s.length(); ) {
-            char c = s.charAt(i);
-            if (c != '\033') return false;
-            int j = i + 1;
-            if (j < s.length() && s.charAt(j) == '[') {
-                j++;
-                while (j < s.length() && !Character.isLetter(s.charAt(j))) j++;
-                if (j < s.length()) j++;
-            }
-            i = j;
+            if (s.charAt(i) != '\033') return false;
+            i = RenderContext.skipEscape(s, i);
         }
         return true;
     }

@@ -395,9 +395,9 @@ public final class Wizard {
                 .renderLine(RenderContext.current());
     }
 
-    /** Returns the visible (print-column) length of {@code s} by stripping CSI escape sequences. */
+    /** Visible (print-column) length of {@code s}: CSI and OSC stripped (JK-1967), raw chars counted. */
     private static int visibleLength(String s) {
-        return s.replaceAll("\033\\[[^m]*m", "").length();
+        return RenderContext.stripAnsi(s).length();
     }
 
     private static List<AttributedString> summarize(WizardStep step, Map<String, Object> answers) {

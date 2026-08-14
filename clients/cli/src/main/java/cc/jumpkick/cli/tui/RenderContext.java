@@ -60,9 +60,46 @@ public record RenderContext(Theme theme, boolean ansi, boolean nerdfont, int wid
         return new RenderContext(theme, ansi, nerdfont, newWidth, frame);
     }
 
-    /** OSC sequences (hyperlinks, taskbar progress): {@code ESC ] … (BEL | ESC \)}. */
+    /**
+     * OSC sequences (hyperlinks, taskbar progress): {@code ESC ] … (BEL | ESC \)}. The {@code \z}
+     * alternative also strips a sequence truncated upstream (a tool line clipped mid-OSC) — its
+     * payload must measure as zero columns, not as the URL's length (JK-1967).
+     */
     private static final java.util.regex.Pattern OSC_SEQUENCE =
-            java.util.regex.Pattern.compile("\\u001b\\][^\\u0007\\u001b]*(?:\\u0007|\\u001b\\\\)");
+            java.util.regex.Pattern.compile("\\u001b\\][^\\u0007\\u001b]*(?:\\u0007|\\u001b\\\\|\\z)");
+
+    /**
+     * Index just past the escape sequence starting at {@code i} ({@code s.charAt(i)} is ESC):
+     * CSI {@code ESC [ … final}, OSC {@code ESC ] … (BEL | ESC \)} — an unterminated OSC consumes
+     * to end-of-string — else the two-char {@code ESC x} form. The one escape scanner shared by
+     * the width/truncation helpers, so a private copy can never again learn only CSI and count a
+     * hyperlink's URL as columns (JK-1967).
+     */
+    public static int skipEscape(String s, int i) {
+        if (i + 1 >= s.length()) return s.length();
+        char n = s.charAt(i + 1);
+        if (n == '[') {
+            int j = i + 2;
+            while (j < s.length()) {
+                char c = s.charAt(j++);
+                if (c >= '@' && c <= '~') break;
+            }
+            return j;
+        }
+        if (n == ']') {
+            int j = i + 2;
+            while (j < s.length()) {
+                char c = s.charAt(j);
+                if (c == '\u0007') return j + 1;
+                if (c == '\u001b') {
+                    return (j + 1 < s.length() && s.charAt(j + 1) == '\\') ? j + 2 : j;
+                }
+                j++;
+            }
+            return s.length();
+        }
+        return i + 2;
+    }
 
     /**
      * Strip CSI and OSC alike. JLine's {@code AttributedString.stripAnsi} leaves OSC bytes in
