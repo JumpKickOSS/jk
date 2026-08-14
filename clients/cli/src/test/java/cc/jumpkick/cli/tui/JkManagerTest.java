@@ -833,17 +833,36 @@ class JkManagerTest {
         cm.stepMessage("cc.jumpkick:jk-engine", "run-tests", longName);
 
         int cols = 60;
+        // Paint uses rowColumnBudget (terminal width − 1) so the trailing … is not lost to
+        // DEC auto-wrap on the last column.
+        int paintCols = JkManagerColor.rowColumnBudget(cols);
         for (String line : cm.renderBuildPlanLines(cols, 0)) {
-            // Paint path hard-truncates; each rendered line must fit the terminal width.
-            assertThat(JkManager.truncateVisible(line, cols)
-                            .replaceAll("\033\\[[0-9;]*[A-Za-z]", "")
-                            .length())
-                    .isLessThanOrEqualTo(cols);
+            assertThat(RenderContext.visibleWidth(JkManager.truncateVisible(line, paintCols)))
+                    .isLessThanOrEqualTo(paintCols);
         }
         // Truncation adds an ellipsis rather than wrapping.
         String painted =
-                JkManager.truncateVisible(cm.renderBuildPlanLines(cols, 0).get(1), cols);
+                JkManager.truncateVisible(cm.renderBuildPlanLines(cols, 0).get(1), paintCols);
         assertThat(TestAnsi.strip(painted)).contains("…");
+        assertThat(TestAnsi.strip(painted)).endsWith("…");
+    }
+
+    @Test
+    void truncate_visible_overflow_by_one_still_shows_ellipsis() {
+        // Content one column over the budget must not fill the row with raw text and drop ….
+        for (int n = 2; n <= 40; n++) {
+            String cut = JkManager.truncateVisible("x".repeat(n + 1), n);
+            assertThat(RenderContext.stripAnsi(cut)).isEqualTo("x".repeat(n - 1) + "…");
+            assertThat(RenderContext.visibleWidth(cut)).isEqualTo(n);
+        }
+    }
+
+    @Test
+    void row_column_budget_leaves_last_column_free() {
+        assertThat(JkManagerColor.rowColumnBudget(80)).isEqualTo(79);
+        assertThat(JkManagerColor.rowColumnBudget(2)).isEqualTo(1);
+        assertThat(JkManagerColor.rowColumnBudget(1)).isEqualTo(1);
+        assertThat(JkManagerColor.rowColumnBudget(0)).isEqualTo(1);
     }
 
     @Test

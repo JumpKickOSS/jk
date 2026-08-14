@@ -536,19 +536,29 @@ public final class JkManagerColor {
     }
 
     /**
-     * Truncate an ANSI-colored string to {@code maxCols} visible columns, copying escape sequences
-     * without counting them and appending a reset if the text was cut. Treats every visible codepoint
+     * Columns safe to paint on a single row of a {@code terminalCols}-wide terminal. Leaves the last
+     * column free so a full-width write does not trip DEC auto-wrap (which can park the trailing
+     * {@code …} on the next row where EL / the next tree line erase it).
+     */
+    static int rowColumnBudget(int terminalCols) {
+        if (terminalCols <= 1) return Math.max(1, terminalCols);
+        return terminalCols - 1;
+    }
+
+    /**
+     * Hard-truncate an ANSI-colored string to {@code maxCols} visible columns (never wraps). When
+     * cut, ends with {@code …} so long test member names stay on one line. Copies escape sequences
+     * without counting them and appends a reset if the text was cut. Treats every visible code unit
      * as one column (good enough for our ASCII + single-width glyphs).
+     *
+     * <p>Callers painting to a live TTY should pass {@link #rowColumnBudget(int)} of the terminal
+     * width, not the raw column count — see that method.
      *
      * <p>JLine can do this width-aware ({@code AttributedString.fromAnsi} / {@code WCWidth}), but
      * measured at +187–312 KB on the native image — its ANSI parser / width tables aren't otherwise
      * reachable — to gain East-Asian wide-glyph handling that jk's ASCII coordinates and single-width
      * box/spinner glyphs never need. Not worth the binary growth, so this stays hand-rolled by
      * design.
-     */
-    /**
-     * Hard-truncate to {@code maxCols} visible columns (never wraps). When cut, ends with {@code …}
-     * so long test member names stay on one line.
      */
     static String truncateVisible(String s, int maxCols) {
         if (maxCols <= 0) return "";
@@ -572,9 +582,10 @@ public final class JkManagerColor {
                 if (!unterminatedOsc) sb.append(s, i, j);
                 i = j;
             } else {
-                // Reserve one column for … when more content remains.
+                // Reserve one column for … when more content remains after this code unit.
+                // need=1 ⇒ stop once visible == budget-1 so the ellipsis still fits in budget.
                 boolean moreAfter = i + 1 < s.length() && !isOnlyAnsiFrom(s, i + 1);
-                int need = moreAfter ? 1 : 0; // room for ellipsis
+                int need = moreAfter ? 1 : 0;
                 if (visible + 1 + need > budget) {
                     truncated = true;
                     break;

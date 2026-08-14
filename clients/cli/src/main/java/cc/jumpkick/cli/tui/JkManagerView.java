@@ -372,13 +372,18 @@ final class JkManagerView {
     void paintBuildPlan() {
         long elapsed = m.elapsedMillis();
         List<String> lines = m.renderBuildPlanLines(m.width, elapsed);
+        // Keep the last terminal column free. Writing a full-width line leaves the cursor in
+        // DEC auto-wrap-pending state: the final glyph (usually … on a long test name) can land
+        // on the next row and be wiped by EL / the following tree line — so the row looks
+        // hard-clipped with no ellipsis until the window is widened and the line reflows.
+        int colBudget = JkManagerColor.rowColumnBudget(m.width);
         int prev = m.lastLines.size();
         if (prev > 0) m.out.print(Ansi.cursorUp(prev)); // to the top of the region
         for (int i = 0; i < lines.size(); i++) {
             boolean changed = i >= prev || !lines.get(i).equals(m.lastLines.get(i));
             if (changed) {
                 m.out.print('\r');
-                m.out.print(JkManagerColor.truncateVisible(lines.get(i), m.width));
+                m.out.print(JkManagerColor.truncateVisible(lines.get(i), colBudget));
                 m.out.print(Ansi.ERASE_LINE_TO_END); // wipe any tail from a longer prior line
             }
             m.out.print('\n'); // advance to the next line / below region
