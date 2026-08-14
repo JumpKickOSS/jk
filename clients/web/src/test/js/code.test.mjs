@@ -241,3 +241,15 @@ test('highlight budget and plain rows', () => {
   assert.equal(canHighlight({ bytes: HIGHLIGHT_MAX_BYTES + 1, lines: 1, content: 'x' }), false);
   assert.deepEqual(plainRows('a\nb\n'), ['a', 'b']);
 });
+
+test('a failed monaco load does not latch — the next open retries', async () => {
+  // JK-1953: the memoized promise previously cached its own rejection, so one CDN hiccup
+  // meant plain text for the tab's life. Headless node has no document, so every attempt
+  // rejects — which is exactly the shape that must not latch.
+  const { ensureMonaco } = await import(pathToFileURL(process.env.JK_CODE_MJS));
+  const p1 = ensureMonaco();
+  await assert.rejects(p1);
+  const p2 = ensureMonaco();
+  assert.notStrictEqual(p1, p2, 'second open must start a fresh load, not replay the rejection');
+  await assert.rejects(p2);
+});

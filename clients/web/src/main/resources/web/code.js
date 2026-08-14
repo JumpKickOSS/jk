@@ -291,7 +291,10 @@ function loadScript({ src, integrity }) {
     s.integrity = integrity;
     s.crossOrigin = 'anonymous';
     s.onload = () => resolve();
-    s.onerror = () => reject(new Error('failed to load ' + src));
+    s.onerror = () => {
+      s.remove(); // retries append a fresh tag; don't accumulate dead ones (JK-1953)
+      reject(new Error('failed to load ' + src));
+    };
     document.head.appendChild(s);
   });
 }
@@ -311,6 +314,7 @@ export function ensureMonaco() {
   if (monacoPromise) return monacoPromise;
   if (typeof document === 'undefined' || typeof window === 'undefined') {
     monacoPromise = Promise.reject(new Error('no document'));
+    monacoPromise.catch(() => { monacoPromise = null; });
     return monacoPromise;
   }
   monacoPromise = (async () => {
@@ -326,6 +330,9 @@ export function ensureMonaco() {
     window.monaco.editor.defineTheme(MONACO_THEME, themeDefinition(consoleBackground()));
     return window.monaco;
   })();
+  // A transient CDN hiccup must not latch the plain-text fallback for the tab's life
+  // (JK-1953): drop the memo on rejection so the next file open retries the load.
+  monacoPromise.catch(() => { monacoPromise = null; });
   return monacoPromise;
 }
 
@@ -637,6 +644,7 @@ export const CodeView = {
       let monaco = null;
       try {
         monaco = await ensureMonaco();
+        this.highlighterFailed = false; // a later successful load clears the banner (JK-1953)
       } catch {
         this.highlighterFailed = true;
       }
