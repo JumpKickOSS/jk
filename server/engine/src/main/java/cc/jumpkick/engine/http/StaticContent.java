@@ -215,7 +215,10 @@ final class StaticContent {
                                 + "font-src https://fonts.gstatic.com data:; worker-src blob:; "
                                 // Preview pane: auth-fetch → blob: for in-repo images; https: for badges /
                                 // remote README images (shields.io, etc.); data: for rare inlines.
-                                + "img-src 'self' blob: data: https: http:;");
+                                + "img-src 'self' blob: data: https: http:; "
+                                // No form ever submits from the shell; injected markup (rendered
+                                // previews) must not be able to add one that posts off-origin (JK-1976).
+                                + "form-action 'none';");
         if (snapshotVersion) {
             exchange.getResponseHeaders().set("Cache-Control", "no-cache"); // see snapshotVersion javadoc
         } else {

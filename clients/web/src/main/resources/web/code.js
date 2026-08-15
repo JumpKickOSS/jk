@@ -1534,13 +1534,17 @@ export const CodeView = {
           if (gen !== this._previewGen) return;
           this.previewHtml = '<div class="code-preview-diagram">' + svg + '</div>';
         } else if (kind === 'graphviz') {
-          const Viz = await ensureCdn('viz');
+          // Sanitize like markdown/asciidoc (JK-1976): .dot files from a cloned repo control
+          // the SVG (URL= attrs, arbitrary markup) — one DOMPurify chokepoint for all renderers.
+          const [Viz, purify] = await Promise.all([ensureCdn('viz'), ensureCdn('purify')]);
           if (gen !== this._previewGen) return;
           const viz = await Viz.instance();
           if (gen !== this._previewGen) return;
           this.previewHtml =
             '<div class="code-preview-diagram">' +
-            viz.renderSVGElement(this.currentContent()).outerHTML +
+            purify.sanitize(viz.renderSVGElement(this.currentContent()).outerHTML, {
+              USE_PROFILES: { svg: true, svgFilters: true },
+            }) +
             '</div>';
         } else if (kind === 'asciidoc') {
           const Asciidoctor = await ensureCdn('asciidoctor');
@@ -1557,10 +1561,13 @@ export const CodeView = {
           const d2 = new D2();
           const result = await d2.compile(this.currentContent());
           const rendered = await d2.render(result.diagram || result);
+          const purify = await ensureCdn('purify');
           if (gen !== this._previewGen) return;
           this.previewHtml =
             '<div class="code-preview-diagram">' +
-            (typeof rendered === 'string' ? rendered : String(rendered)) +
+            purify.sanitize(typeof rendered === 'string' ? rendered : String(rendered), {
+              USE_PROFILES: { svg: true, svgFilters: true },
+            }) +
             '</div>';
         } else {
           this.previewError = 'No preview for this file type';
