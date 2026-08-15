@@ -103,7 +103,7 @@ public final class TestFailureSource {
         Path mod = moduleDir.toAbsolutePath().normalize();
         SnipKey key = new SnipKey(mod, testClass == null ? "" : testClass, f.fileName, f.line);
         // No static fallback: a process-wide cache in the resident engine would serve pre-edit
-        // snippet lines forever and grow without bound (JK-1906) — callers own a per-run Cache.
+        // snippet lines forever and grow without bound — callers own a per-run Cache.
         Cache c = cache == null ? new Cache() : cache;
         return c.snippets.computeIfAbsent(key, k -> resolveUncached(c, mod, testClass, f));
     }
@@ -129,7 +129,7 @@ public final class TestFailureSource {
     /**
      * UTF-8 with substitution: {@code Files.newBufferedReader}'s REPORT-mode decoder throws on the
      * first malformed byte (a Latin-1 {@code é} anywhere in the file), dropping the whole snippet;
-     * a replacement char in one line is strictly better (JK-1907).
+     * a replacement char in one line is strictly better.
      */
     private static BufferedReader lenientReader(Path file) throws IOException {
         var decoder = StandardCharsets.UTF_8
@@ -167,7 +167,7 @@ public final class TestFailureSource {
     public static List<String> encodeMarkers(Snippet s) {
         List<String> out = new ArrayList<>(s.lines().size() + 2);
         // path is LAST and runs to end-of-line: the header is space-delimited and paths may
-        // contain spaces, which a mid-line unquoted value would truncate (JK-1905).
+        // contain spaces, which a mid-line unquoted value would truncate.
         out.add("@@source line="
                 + s.errorLine()
                 + " start="
@@ -376,7 +376,7 @@ public final class TestFailureSource {
         // The class name is wire input from the worker. A hostile/malformed value (NUL, '\\',
         // a '..' segment) must degrade to no-package — Path.resolve would throw the unchecked
         // InvalidPathException past the IOException-only catches into the worker-drain thread
-        // (JK-1908); absolute-path escapes are separately caught by containedIn.
+        // ; absolute-path escapes are separately caught by containedIn.
         if (pkg.indexOf('\0') >= 0 || pkg.indexOf('\\') >= 0) return "";
         for (String seg : pkg.split("/")) {
             if (seg.equals("..")) return "";

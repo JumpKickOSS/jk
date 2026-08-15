@@ -76,7 +76,7 @@ public final class PlannerPackage {
                     // Plain/assembly packaging merges plugin contributesClasses (Micronaut AOT, …);
                     // custom packagers (boot-jar) merge step outputs themselves. The dirs are only
                     // *listed* here — staging them is a copy, and it must not happen before the
-                    // cache check below (JK-1658).
+                    // cache check below.
                     List<Path> contributed = existingContributedDirs(pluginDecls, layout);
                     Files.createDirectories(jarPath.getParent());
                     String mainClass = project.mainClass();
@@ -130,7 +130,7 @@ public final class PlannerPackage {
                             List.of(jarPath),
                             !in.ephemeralActions());
                     // Thin PluginMain workers: write .classpath next to the jar so -cp launches
-                    // find plugin-sdk and other runtime deps (JK-1347).
+                    // find plugin-sdk and other runtime deps.
                     writeWorkerClasspathSidecar(in.dir(), project, jarPath, in.cache());
                     ctx.put(JAR_PATH, jarPath);
                     ctx.progress(1);
@@ -141,7 +141,7 @@ public final class PlannerPackage {
     /**
      * When packaging a PluginMain worker, write {@code <jar>.classpath} for thin launches. No-op
      * for libraries / ordinary applications. Prefer lock/workspace closure; fall back to {@link
-     * WorkerClasspath#paths} discovery so pure-jk thin jars still get {@code plugin-sdk} (JK-1347).
+     * WorkerClasspath#paths} discovery so pure-jk thin jars still get {@code plugin-sdk}.
      */
     static void writeWorkerClasspathSidecar(Path moduleDir, JkBuild project, Path jarPath, Path cache) {
         String main = project.mainClass();
@@ -159,7 +159,7 @@ public final class PlannerPackage {
                 /* fall through to WorkerClasspath.paths */
             }
             // The closure is authoritative when it produced anything: merging the OLD sidecar back
-            // in (via paths()) would carry removed/upgraded deps forever (JK-1352). Only an empty
+            // in (via paths()) would carry removed/upgraded deps forever. Only an empty
             // closure (e.g. empty lock mid-bootstrap) falls back to sidecar + findPluginSdk.
             if (side.isEmpty()) {
                 for (Path p : WorkerClasspath.paths(jarPath)) {
@@ -237,9 +237,7 @@ public final class PlannerPackage {
                     @SuppressWarnings("unchecked")
                     List<Path> processorCp =
                             (List<Path>) ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
-                    // Match compile-java's freshness inputs exactly — the shared recipe includes
-                    // the processor path the old copy dropped, which kept processor modules from
-                    // ever stamp-matching.
+                    // Match compile-java's freshness inputs exactly, including the processor path.
                     List<Path> stampInputs = mainStampClasspath(
                             baseClasspath,
                             processorCp,

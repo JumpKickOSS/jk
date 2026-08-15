@@ -30,7 +30,7 @@ final class DeterministicJar {
      * DOS time, which the ZIP local header stores, cannot represent anything before 1980; a
      * pre-1980 fixed time (epoch 0) makes the JDK preserve the value in an extended-timestamp
      * extra field on EVERY entry — 18 wasted bytes per entry in both the local header and the
-     * central directory, for a timestamp nobody reads (JK-1676).
+     * central directory, for a timestamp nobody reads.
      */
     public static final long DEFAULT_EPOCH_SECONDS = 318_211_200L;
 
@@ -63,7 +63,7 @@ final class DeterministicJar {
             throws IOException {
         // `in` is evaluated at the call site, so it is already open on entry: take ownership
         // first, or a throwing putNextEntry (duplicate entry name) leaks the caller's file
-        // descriptor — it never reaches the try below (JK-1489).
+        // descriptor — it never reaches the try below.
         try (in) {
             jos.putNextEntry(entry(name, epochSeconds));
             in.transferTo(jos);
@@ -88,8 +88,8 @@ final class DeterministicJar {
      *
      * <p>Frameworks that enumerate resource <em>directories</em> from the classpath (Micronaut's
      * SoftServiceLoader over {@code META-INF/micronaut/...}) resolve them via the jar's directory
-     * entries; a jar with file entries only makes those lookups come back empty (JK-1414). Thin
-     * and fat jars owe the same contract, so they share one implementation (JK-1667).
+     * entries; a jar with file entries only makes those lookups come back empty. Thin
+     * and fat jars owe the same contract, so they share one implementation.
      */
     static void writeParentDirs(JarOutputStream jos, String name, long epochSeconds, Set<String> dirs)
             throws IOException {

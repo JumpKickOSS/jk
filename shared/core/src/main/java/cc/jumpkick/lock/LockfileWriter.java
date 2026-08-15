@@ -28,11 +28,11 @@ public final class LockfileWriter {
     /**
      * As {@link #write(Lockfile, Path)} with a caller-captured {@code manifestsSha256} — capture it
      * when the manifests are first read so a manifest edited mid-resolution leaves a lock that
-     * reads as stale, instead of stamping itself fresh from the live files (JK-1357).
+     * reads as stale, instead of stamping itself fresh from the live files.
      */
     public static void write(Lockfile lockfile, Path file, String manifestsSha256) throws IOException {
         Lockfile stamped = lockfile.withManifestsSha256(manifestsSha256);
-        // Preserve / mint durable project-id (JK-1728): never drop on rewrite.
+        // Preserve / mint durable project-id: never drop on rewrite.
         Path owner = file.toAbsolutePath().normalize().getParent();
         if (stamped.projectId() == null || stamped.projectId().isBlank()) {
             String existing = null;
@@ -49,7 +49,7 @@ public final class LockfileWriter {
                 stamped = cc.jumpkick.builds.ProjectIdentity.ensureProjectId(stamped, owner);
             }
         }
-        // Atomic (temp + rename): concurrent readers never observe a truncated lock (JK-1356).
+        // Atomic (temp + rename): concurrent readers never observe a truncated lock.
         cc.jumpkick.util.AtomicWrites.replace(file, render(stamped));
         // Materialize identity.toml so project= id resolves to a checkout without a prior build.
         try {

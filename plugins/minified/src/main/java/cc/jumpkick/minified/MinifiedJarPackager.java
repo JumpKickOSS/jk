@@ -92,7 +92,7 @@ final class MinifiedJarPackager {
                 if (entry.jar() != null) program.add(entry.jar());
             }
             // R8 judges program inputs by extension; store-materialized runtime jars are
-            // extensionless CAS blobs — alias them as .jar before they reach the tool (JK-1449).
+            // extensionless CAS blobs — alias them as .jar before they reach the tool.
             program = jarSuffixed(work, program);
 
             boolean obfuscate = io.config().bool("obfuscate", false);
@@ -340,7 +340,7 @@ final class MinifiedJarPackager {
      * <p>Parent directory entries are synthesized for every file: frameworks that enumerate
      * resource directories from the classpath (Micronaut's SoftServiceLoader over {@code
      * META-INF/micronaut/...}) resolve them via the jar's directory entries, and R8's output
-     * carries none. Thin, fat, and minified jars owe the same contract (JK-1414/JK-1667/JK-1755).
+     * carries none. Thin, fat, and minified jars owe the same contract.
      */
     // Package-private for MinifiedJarPackagerTest.
     static void writeOutputJar(Path shrunk, Path artifact, String mainClass) throws IOException {

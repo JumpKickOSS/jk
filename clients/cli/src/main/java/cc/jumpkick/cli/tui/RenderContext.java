@@ -13,7 +13,7 @@ import org.jline.utils.AttributedString;
  *
  * <p>Nerd Font capability is a {@link NerdFontCaps} pair, not a flag — see {@link #wedge()} and
  * {@link #pill()}. The two axes have genuinely different font availability, so widgets must ask for
- * the one they paint (JK-1970).
+ * the one they paint.
  */
 public record RenderContext(Theme theme, boolean ansi, NerdFontCaps nerd, int width, int frame) {
 
@@ -92,7 +92,7 @@ public record RenderContext(Theme theme, boolean ansi, NerdFontCaps nerd, int wi
     /**
      * OSC sequences (hyperlinks, taskbar progress): {@code ESC ] … (BEL | ESC \)}. The {@code \z}
      * alternative also strips a sequence truncated upstream (a tool line clipped mid-OSC) — its
-     * payload must measure as zero columns, not as the URL's length (JK-1967).
+     * payload must measure as zero columns, not as the URL's length.
      */
     private static final Pattern OSC_SEQUENCE =
             Pattern.compile("\\u001b\\][^\\u0007\\u001b]*(?:\\u0007|\\u001b\\\\|\\z)");
@@ -102,7 +102,7 @@ public record RenderContext(Theme theme, boolean ansi, NerdFontCaps nerd, int wi
      * CSI {@code ESC [ … final}, OSC {@code ESC ] … (BEL | ESC \)} — an unterminated OSC consumes
      * to end-of-string — else the two-char {@code ESC x} form. The one escape scanner shared by
      * the width/truncation helpers, so a private copy can never again learn only CSI and count a
-     * hyperlink's URL as columns (JK-1967).
+     * hyperlink's URL as columns.
      */
     public static int skipEscape(String s, int i) {
         if (i + 1 >= s.length()) return s.length();
@@ -133,7 +133,7 @@ public record RenderContext(Theme theme, boolean ansi, NerdFontCaps nerd, int wi
     /**
      * Strip CSI and OSC alike. JLine's {@code AttributedString.stripAnsi} leaves OSC bytes in
      * place, so an OSC-8 hyperlink would otherwise inflate measured width by its URL plus escape
-     * bytes (JK-1887).
+     * bytes.
      */
     public static String stripAnsi(String s) {
         if (s == null) return "";

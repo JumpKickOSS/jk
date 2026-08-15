@@ -55,7 +55,7 @@ public final class WorkspaceProgressTracker {
         this(ProgressBarMode.fromEnvironment());
     }
 
-    /** Per-request mode from the wire (JK-1816); falls back to the process env when absent. */
+    /** Per-request mode from the wire; falls back to the process env when absent. */
     public WorkspaceProgressTracker(ProgressBarMode mode) {
         this.mode = mode == null ? ProgressBarMode.fromEnvironment() : mode;
     }
@@ -132,7 +132,7 @@ public final class WorkspaceProgressTracker {
         // re-seed always re-anchors (setRemainingWorkEstimate). The old `seedAtElapsedMs == 0`
         // guard conflated "never seeded" with "seeded at elapsed 0": a provisional → refined
         // re-seed kept the stale anchor iff the first seed landed later than tracker-elapsed 0,
-        // and SSE percent silently diverged from the TUI bar (JK-1851).
+        // and SSE percent silently diverged from the TUI bar.
         if (r0 > 0) seedAtElapsedMs = elapsedClockMs;
         return recompute();
     }
@@ -239,7 +239,7 @@ public final class WorkspaceProgressTracker {
 
     private void tickElapsed() {
         // Monotonic synthetic clock via a System.nanoTime base — wall clock jumps (NTP steps)
-        // inflated or froze elapsed when this used currentTimeMillis (JK-1829). First call
+        // inflated or froze elapsed when this used currentTimeMillis. First call
         // establishes the epoch.
         long nowNanos = System.nanoTime();
         if (elapsedEpochNanos == 0) {

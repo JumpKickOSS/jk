@@ -192,7 +192,7 @@ final class AotCachePackage {
         if (!exited) {
             process.destroyForcibly();
             // A run that never came back proved nothing — reporting it as verified is exactly
-            // the silent-cold-start trap verification exists to close (JK-1783).
+            // the silent-cold-start trap verification exists to close.
             return "verification run did not exit within " + TRAINING_TIMEOUT_SECONDS + "s — cache not verified";
         }
         reader.join(5_000);
@@ -200,7 +200,7 @@ final class AotCachePackage {
             if (!line.contains("[aot]")) continue;
             String lower = line.toLowerCase(Locale.ROOT);
             // The refusal shapes -Xlog:aot emits — but not per-item noise like "failed to
-            // load class X", which appears on runs where the cache mapped fine (JK-1783).
+            // load class X", which appears on runs where the cache mapped fine.
             if (lower.contains("mismatch")
                     || lower.contains("different version")
                     || lower.contains("unable to map")
@@ -245,10 +245,9 @@ final class AotCachePackage {
             if (recorded.isEmpty() || builtFrom.isEmpty()) return;
             Path jar = Path.of(builtFrom);
             String actual = Files.isRegularFile(jar) ? cc.jumpkick.util.Hashing.sha256Hex(jar) : "";
-            // The lock is the dependency closure's identity: a dep-only bump rebuilds nothing in
-            // the thin main jar, but run.sh would keep executing the old lib/ copies — stale
-            // code, not a cold start. An old manifest without the key cannot be validated, which
-            // is the same situation.
+            // The lock is the dependency closure's identity: a dep-only bump rebuilds nothing
+            // in the thin main jar, but run.sh would keep executing stale lib/ copies. A
+            // manifest without the lock key cannot be validated.
             boolean lockFresh = valueOf(text, "lock-sha256").equals(currentLockSha(projectDir));
             if (recorded.equals(actual) && lockFresh) return;
             PathUtil.deleteRecursively(outDir);
@@ -376,7 +375,7 @@ final class AotCachePackage {
             } catch (IOException ignored) {
             }
         });
-        // Bounded: an unresponsive extract must not hang the build forever (JK-1761).
+        // Bounded: an unresponsive extract must not hang the build forever.
         if (!process.waitFor(TRAINING_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
             process.destroyForcibly();
             throw new IOException("Spring Boot extract did not finish within " + TRAINING_TIMEOUT_SECONDS + "s");
@@ -388,7 +387,7 @@ final class AotCachePackage {
         }
         try (var stream = Files.list(outDir)) {
             // Sorted, like BootLayout.launcherJarIn: Files.list order is filesystem-dependent,
-            // and an unordered pick is nondeterministic if extract ever emits two jars (JK-1784).
+            // and an unordered pick is nondeterministic if extract ever emits two jars.
             return stream.filter(p -> p.getFileName().toString().endsWith(".jar"))
                     .map(p -> p.getFileName().toString())
                     .sorted()

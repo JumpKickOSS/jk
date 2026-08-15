@@ -5,9 +5,9 @@ package cc.jumpkick.runtime.progress;
  * Effort-weight bar: engine plan numerator/denominator with a monotonic displayed fraction.
  *
  * <p>The peak is fraction-space and shared with the paired clock strategy ({@link SharedPeak},
- * JK-1815), so neither a denominator growth (calibrate, mid-run reweight) nor an AUTO
+ * ), so neither a denominator growth (calibrate, mid-run reweight) nor an AUTO
  * clock-takeover can paint the bar backwards — the contract's "bar never goes backwards" is
- * absolute (JK-1823). When the denominator grows, the fraction holds at the floor until real
+ * absolute. When the denominator grows, the fraction holds at the floor until real
  * progress passes it; both {@link #display} and {@link #onWeightProgress} share the same clamp.
  */
 public final class WeightedProgressStrategy implements HeaderProgressStrategy {
@@ -15,7 +15,7 @@ public final class WeightedProgressStrategy implements HeaderProgressStrategy {
     private long numerator;
     private long denominator;
 
-    /** Cross-strategy monotonic floor — shared with the paired clock strategy (JK-1815). */
+    /** Cross-strategy monotonic floor — shared with the paired clock strategy. */
     private final SharedPeak peak;
 
     public WeightedProgressStrategy() {
