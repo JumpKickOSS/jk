@@ -71,8 +71,7 @@ class BuildJournalTest {
      * The rollup buckets by the stage the plan <em>declared</em>, not by re-guessing from the task
      * name. Those disagreed: a plugin source generator reports {@code generate} on the wire and was
      * bucketed {@code compile} here, and every {@code stage(RESOLVE)} task in ScriptPlans landed in
-     * {@code other} — so the priors were fed by a different task set than the UI displayed
-     *.
+     * {@code other} — so the priors were fed by a different task set than the UI displayed.
      */
     @Test
     void metrics_bucket_by_the_declared_stage_not_the_task_name() throws Exception {

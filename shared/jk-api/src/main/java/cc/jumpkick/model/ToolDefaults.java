@@ -14,8 +14,7 @@ public final class ToolDefaults {
      * where jk's bare-is-caret rule makes it a floor and the lock pins exact.
      *
      * <p>Never write this into a Maven POM: Maven has no caret, so {@code quarkus-bom:3} is a
-     * literal version that does not exist. Use {@link #QUARKUS_TOOLING_BOM_VERSION} there
-     *.
+     * literal version that does not exist. Use {@link #QUARKUS_TOOLING_BOM_VERSION} there.
      */
     public static final String QUARKUS_PLATFORM_FLOOR = "3";
 

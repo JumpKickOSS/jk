@@ -24,8 +24,7 @@ import java.util.Set;
 /**
  * Runtime jars for one module: lockfile transitive closure of declared external deps (and of
  * workspace siblings' main/export/runtime externals) plus sibling thin jars. Shared by packaging
- * (assembly) and thin-worker install (classpath sidecars) — never the whole workspace lock
- *.
+ * (assembly) and thin-worker install (classpath sidecars) — never the whole workspace lock.
  */
 public final class ModuleRuntimeClasspath {
 

@@ -67,8 +67,7 @@ public final class LockPlans {
 
     /**
      * Cross-step key: manifests digest captured at parse time — the write step stamps this instead
-     * of re-reading live files, so a manifest edited mid-resolution leaves a stale-reading lock
-     *.
+     * of re-reading live files, so a manifest edited mid-resolution leaves a stale-reading lock.
      */
     public static final BuildPlanKey<String> MANIFESTS_SHA = BuildPlanKey.of("manifests-sha", String.class);
 

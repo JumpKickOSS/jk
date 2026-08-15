@@ -320,8 +320,7 @@ public final class DependencyGraphModel {
         private final Map<String, SiblingModule> siblingByName = new LinkedHashMap<>();
         /**
          * Packages whose lockfile deps have already been emitted — shared across the whole
-         * expansion, so the reachable closure is walked once instead of once per declared root
-         *.
+         * expansion, so the reachable closure is walked once instead of once per declared root.
          */
         private final Set<String> expanded = new LinkedHashSet<>();
 
@@ -379,8 +378,7 @@ public final class DependencyGraphModel {
          * Workspace identity matches on {@code group:artifact} coordinate or (for unresolved
          * {@code workspace = true} placeholders) bare sibling name — the same
          * {@link ModuleOrder#resolveSibling} rule the build order uses. No table-key fallback: a
-         * declared external whose TOML key happens to equal a module's name stays external
-         *.
+         * declared external whose TOML key happens to equal a module's name stays external.
          */
         private String resolveWorkspaceId(Dependency d) {
             String id = ModuleOrder.resolveSibling(d, idByCoord, idByName);

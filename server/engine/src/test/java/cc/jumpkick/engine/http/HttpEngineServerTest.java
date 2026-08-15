@@ -39,8 +39,7 @@ import org.junit.jupiter.api.io.TempDir;
  * headers, literal {@code..} request targets).
  *
  * <p>Runs under {@code :engine:integrationTest} — the unit-tier {@code test} task excludes
- * {@code @Tag("integration")}, so a {@code test --tests} filter naming this class matches nothing
- *.
+ * {@code @Tag("integration")}, so a {@code test --tests} filter naming this class matches nothing.
  */
 @Tag("integration")
 class HttpEngineServerTest {

@@ -384,10 +384,13 @@ workspace/test → lock family → hosted plans → cache maint → sync reads.
 leave if `EngineServer` is still over 1,200. `EngineMaintenance`
 already exists — finish moving, do not invent a parallel chore type.
 
-**Phase 7 — Lombok sweep.** Project-wide: add `lombok.config` (fluent +
-chain), wire Lombok compile-only on every Java module, and refactor
-hand-rolled getters/setters/ctors/builders/equals to Lombok. Prefer
-records where they still fit. Tracked as a P0 ticket (see KanArtist).
+**Phase 7 — Lombok sweep.** Shipped (JK-2003): root `lombok.config`
+(fluent + chain + generated annotation), compile-only + AP on every
+Java module, `@Builder` on field-copy request types, `@RequiredArgsConstructor`
+on assignment-only composition roots, ticket-id comments gone.
+Remaining hand-rolled builders are accumulators (`Task`, `BuildPlan`,
+`JkBuild`, `WizardStep`, `Invocation`, graph/import builders) — keep
+them. Records stay records. JSpecify still owns nullness.
 
 ### Scoreboard
 
@@ -403,7 +406,7 @@ records where they still fit. Tracked as a P0 ticket (see KanArtist).
 | Events + sinks + bridges | ~800 anonymous | 500–700 | 800 |
 | Per-verb class | (methods) | 80–180 | 250 |
 | `EngineHttpJobs` | ~250 with copies | ~20 | 40 |
-| Hand-rolled getters/setters/builders where Lombok fits | (inventory) | 0 | 0 |
+| Hand-rolled getters/setters/builders where Lombok fits | field-copy + assignment-only ctors | 0 (accumulators kept) | 0 |
 
 **Done** when a new hosted verb is one class + one registry line, rides
 one envelope on every transport, and nobody opens `EngineServer.java`

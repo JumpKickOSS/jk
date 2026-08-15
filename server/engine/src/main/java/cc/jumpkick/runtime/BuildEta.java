@@ -339,8 +339,7 @@ public final class BuildEta {
 
     /**
      * TEST-resource drift specifically — the suite genuinely reruns (test action keys hash test
-     * resources), so unlike main-resource drift it must never discount {@code run-tests}
-     *.
+     * resources), so unlike main-resource drift it must never discount {@code run-tests}.
      */
     static boolean hasTestResourceDriftWork(TaskForecast.Module m) {
         if (m == null || m.steps() == null) return false;

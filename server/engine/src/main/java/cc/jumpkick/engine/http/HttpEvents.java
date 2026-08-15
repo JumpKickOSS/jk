@@ -67,8 +67,7 @@ public final class HttpEvents {
 
     /**
      * As {@link #publish} but delivered to {@link FrameStyle#DASHBOARD} subscriptions only —
-     * engine chrome ({@code status}/{@code cache} vitals) that the MCP surface never advertised
-     *.
+     * engine chrome ({@code status}/{@code cache} vitals) that the MCP surface never advertised.
      */
     public void publishDashboard(String type, JsonOut payload) {
         publish(type, payload, true);

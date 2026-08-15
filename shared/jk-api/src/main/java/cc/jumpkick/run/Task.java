@@ -69,12 +69,6 @@ public final class Task {
         return stage == BuildStage.OTHER ? Optional.empty() : Optional.of(stage.wireName());
     }
 
-    /** @deprecated use {@link #group()} or {@link #stage()}; kept for call-site migration */
-    @Deprecated
-    public Optional<String> phase() {
-        return group();
-    }
-
     public String name() {
         return name;
     }

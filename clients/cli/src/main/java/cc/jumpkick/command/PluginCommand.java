@@ -34,8 +34,7 @@ import java.util.Map;
  *
  * <p>{@code install-local} side-loads workspace <strong>thin</strong> PluginMain jars into the
  * local Maven layout, writes a {@code .classpath} sidecar of runtime deps, and
- * hard-links worker + deps into {@code $JK_STORE_DIR/lib/&lt;id&gt;/} for compact launch paths
- *.
+ * hard-links worker + deps into {@code $JK_STORE_DIR/lib/&lt;id&gt;/} for compact launch paths.
  */
 public final class PluginCommand extends GroupCommand {
 
