@@ -14,10 +14,12 @@ import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -233,6 +235,16 @@ final class WorkspaceFileAccess {
         boolean rootManifest = Files.isRegularFile(absRoot.resolve("jk.toml"));
         if (rootManifest) collected.add(new ListedFile("jk.toml", langOf("jk.toml")));
         boolean truncated = false;
+        Path realRoot;
+        try {
+            realRoot = absRoot.toRealPath();
+        } catch (IOException e) {
+            realRoot = absRoot;
+        }
+        // Real-path visited set: in-root directory symlinks are walked (list/read parity,
+        // JK-1982), and a link pointing at an ancestor would otherwise cycle the BFS.
+        Set<Path> visited = new HashSet<>();
+        visited.add(realRoot);
         List<Path> level = List.of(absRoot);
         for (int depth = 0; depth < MAX_WALK_DEPTH && !level.isEmpty() && !truncated; depth++) {
             List<Path> next = new ArrayList<>();
@@ -249,8 +261,12 @@ final class WorkspaceFileAccess {
                         } catch (IOException unreadable) {
                             continue;
                         }
-                        if (attrs.isDirectory()) {
-                            if (!isSkippedOutputDir(entry)) next.add(entry);
+                        if (attrs.isDirectory() || (attrs.isSymbolicLink() && Files.isDirectory(entry))) {
+                            // Symlinked dirs descend only when their target stays in root
+                            // (read() would reject their files otherwise) and only once.
+                            if (!isSkippedOutputDir(entry) && descendOnce(entry, realRoot, visited)) {
+                                next.add(entry);
+                            }
                             continue;
                         }
                         String lang = langOf(n);
@@ -282,8 +298,25 @@ final class WorkspaceFileAccess {
             }
             level = next;
         }
+        // The depth cap is truncation too: files below it are readable via deep link but
+        // invisible here, so the UI must get its hint (JK-1982). Conservative — the unvisited
+        // dirs may hold nothing servable.
+        if (!level.isEmpty()) truncated = true;
         collected.sort(Comparator.comparing(ListedFile::path));
         return new FileList(absRoot, List.copyOf(collected), truncated);
+    }
+
+    /**
+     * True when {@code dir} should be entered: its real path stays under {@code realRoot} and has
+     * not been walked yet this listing (symlink cycles / diamonds visit a tree once).
+     */
+    private static boolean descendOnce(Path dir, Path realRoot, Set<Path> visited) {
+        try {
+            Path real = dir.toRealPath();
+            return real.startsWith(realRoot) && visited.add(real);
+        } catch (IOException broken) {
+            return false;
+        }
     }
 
     static ReadResult read(Path root, @Nullable String rawRel) {

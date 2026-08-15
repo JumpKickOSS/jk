@@ -150,9 +150,12 @@ Response: `{ projectId, dir, truncated, files: [{ path, lang }] }`. `path` is wo
 with `/` separators. `lang` is `java` / `kotlin` / `groovy` / `toml` / `json` / `markdown` /
 `mermaid` / `graphviz` / `asciidoc` / `d2` / `image` (plus the usual source extensions). Hidden
 segments, `node_modules`, module-root `target`/`build`/`out`, and unknown extensions are omitted.
-The walk is breadth-first and capped at 2000 files, so truncation drops the deepest paths
-first; the workspace-root `jk.toml` is always included when it exists. Entries are sorted by
-path; `truncated: true` means more remain.
+The walk is breadth-first, capped at 2000 files and 32 directory levels, so truncation drops
+the deepest paths first; the workspace-root `jk.toml` is always included when it exists.
+In-root directory symlinks are walked (once — cycles are guarded by real path); links whose
+target escapes the workspace are omitted, matching the read endpoints. Entries are sorted by
+path; `truncated: true` means more remain (file cap or depth cap — deeper files stay readable
+via `GET /api/project/file`).
 
 Errors: missing `project` → **400**; unknown id or missing checkout → **404**. Token-gated.
 

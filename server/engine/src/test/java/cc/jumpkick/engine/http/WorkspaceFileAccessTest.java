@@ -333,6 +333,67 @@ class WorkspaceFileAccessTest {
     }
 
     @Test
+    void depth_cap_reports_truncation(@TempDir Path root) throws Exception {
+        // JK-1982: files below MAX_WALK_DEPTH are readable via deep link but invisible in the
+        // tree — the UI must at least see the truncation hint.
+        writeJkToml(root, "demo");
+        StringBuilder relDir = new StringBuilder();
+        Path deep = root;
+        for (int i = 0; i < WorkspaceFileAccess.MAX_WALK_DEPTH + 2; i++) {
+            deep = deep.resolve("d" + i);
+            relDir.append(relDir.isEmpty() ? "" : "/").append("d").append(i);
+        }
+        Files.createDirectories(deep);
+        Files.writeString(deep.resolve("Deep.java"), "class Deep {}");
+        var list = WorkspaceFileAccess.list(root);
+        assertThat(list.truncated()).isTrue();
+        assertThat(list.files())
+                .extracting(WorkspaceFileAccess.ListedFile::path)
+                .doesNotContain(relDir + "/Deep.java");
+        assertThat(WorkspaceFileAccess.read(root, relDir + "/Deep.java")).isInstanceOf(ReadResult.Ok.class);
+    }
+
+    @Test
+    void in_root_directory_symlinks_are_listed_and_cycles_terminate(@TempDir Path root) throws Exception {
+        // JK-1982: read() serves files under an in-root dir symlink, so list must show them.
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("real"));
+        Files.writeString(root.resolve("real/A.java"), "class A {}");
+        try {
+            Files.createSymbolicLink(root.resolve("linkdir"), root.resolve("real"));
+            // A link back to the root would cycle the BFS without the visited set.
+            Files.createSymbolicLink(root.resolve("real/loop"), root);
+        } catch (UnsupportedOperationException | IOException unsupported) {
+            return;
+        }
+        var list = WorkspaceFileAccess.list(root);
+        // The target tree is walked exactly once, via whichever name the directory stream
+        // yielded first — either spelling is a correct listing, and reads serve both.
+        assertThat(list.files())
+                .extracting(WorkspaceFileAccess.ListedFile::path)
+                .anyMatch(p -> p.equals("real/A.java") || p.equals("linkdir/A.java"));
+        assertThat(WorkspaceFileAccess.read(root, "linkdir/A.java")).isInstanceOf(ReadResult.Ok.class);
+        assertThat(WorkspaceFileAccess.read(root, "real/A.java")).isInstanceOf(ReadResult.Ok.class);
+    }
+
+    @Test
+    void escaping_directory_symlinks_stay_unlisted_and_unreadable(@TempDir Path root, @TempDir Path outside)
+            throws Exception {
+        writeJkToml(root, "demo");
+        Files.writeString(outside.resolve("Secret.java"), "class Secret {}");
+        try {
+            Files.createSymbolicLink(root.resolve("esc"), outside);
+        } catch (UnsupportedOperationException | IOException unsupported) {
+            return;
+        }
+        var list = WorkspaceFileAccess.list(root);
+        assertThat(list.files())
+                .extracting(WorkspaceFileAccess.ListedFile::path)
+                .noneMatch(p -> p.startsWith("esc/"));
+        assertThat(WorkspaceFileAccess.read(root, "esc/Secret.java")).isInstanceOf(ReadResult.NotFound.class);
+    }
+
+    @Test
     void list_caps_and_stays_sorted(@TempDir Path root) throws Exception {
         writeJkToml(root, "demo");
         Files.createDirectories(root.resolve("src"));
