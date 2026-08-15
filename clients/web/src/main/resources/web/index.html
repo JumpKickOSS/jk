@@ -294,7 +294,6 @@
           <template v-if="projectDetail && projectDetail.group"><span class="cg">{{ projectDetail.group }}</span><span class="csep">:</span></template>
           <span class="cn">{{ projectDetail ? projectDetail.name : '' }}</span>
         </span>
-        <span v-if="filesOpen && codePath" class="code-path-pill" :data-tip="codePath">{{ codePath }}</span>
         <span class="spacer"></span>
         <div class="detail-actions">
           <button
@@ -306,9 +305,6 @@
             :data-tip="projectGraphOpen ? 'Hide module dependency graph' : 'Show module dependency graph (loads on demand)'"
           >Dependencies</button>
           <button v-if="!filesOpen" class="ghost" data-tip="Coming soon" disabled>Trends</button>
-          <button v-if="filesOpen" class="ghost" :disabled="!codePath" @click="copyOpenFile()" data-tip="Copy file contents">
-            <jk-icon name="copy"></jk-icon>{{ $refs.codeView && $refs.codeView.copied ? 'Copied' : 'Copy' }}
-          </button>
           <!-- Not on the files pane itself — you are already browsing the codebase there. -->
           <button
             v-if="!filesOpen"
@@ -319,11 +315,12 @@
             aria-label="Browse this codebase"
             data-tip="Browse this codebase"
           ><jk-icon name="folder-open"></jk-icon></button>
-          <button v-if="projectDetail" @click="buildProject(projectDetail.dir)" data-tip="Build this project now"><jk-icon name="bolt"></jk-icon>Build</button>
+          <button v-if="projectDetail" class="action-green" @click="buildProject(projectDetail.dir)" data-tip="Build this project now"><jk-icon name="bolt"></jk-icon>Build</button>
         </div>
       </div>
       <template v-if="filesOpen">
         <code-view ref="codeView" :project-id="selectedProjectId" :path="codePath" :line="codeLine"
+                   :line-err="codeLineErr"
                    :key="selectedProjectId" @navigate="onCodeNavigate"></code-view>
       </template>
       <template v-else>

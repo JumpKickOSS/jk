@@ -1014,7 +1014,7 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 .coord.detail { font-weight: 600; }
 .coord.detail .cn { font-size: 22px; }
 .coord.detail .cg { font-size: 15px; }
-.detail-actions { display: flex; gap: 8px; align-self: center; }
+.detail-actions { display: flex; gap: 8px; align-self: center; align-items: center; }
 .detail-actions button:not(.browse) {
   background: var(--okc);
   border: none;
@@ -1032,6 +1032,7 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
   box-shadow: 0 0 12px rgba(var(--cn-rgb), 0.12);
 }
 .detail-actions button:disabled { opacity: 0.45; cursor: not-allowed; }
+
 
 /* Project-page dependency graph (JK-1542) — lazy panel under Dependencies. */
 .dep-graph-panel { margin: 14px 0; grid-column: 1 / -1; }
@@ -1463,16 +1464,19 @@ a:focus-visible {
 /* primary actions (Build, Use this folder, Create project, New project) — WSLUI-style TINTED neon
  * button: translucent green fill + green border + green text, intensifying on hover (never a flat
  * solid that stays "on"). Plus a one-pass light sweep; overflow:hidden clips it to the rounded
- * button. inline-flex + gap so the leading icon sits with the label. (.browse is excluded — cyan.) */
+ * button. inline-flex + gap so the leading icon sits with the label. (.browse / .action-cyan
+ * excluded — cyan.) */
 .trigger button:not(.ghost):not(.browse),
 .use-folder,
-.detail-actions button:not(.ghost):not(.browse),
+.detail-actions button:not(.ghost):not(.browse):not(.action-cyan),
+button.action-green,
 button.new-project,
 .new-project-form button.primary {
   position: relative;
   overflow: hidden;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   background: rgba(var(--ok-rgb), 0.12);
   color: var(--ok);
@@ -1484,9 +1488,15 @@ button.new-project,
   transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease),
     box-shadow var(--dur) var(--ease);
 }
+/* Project Build + file-tab actions share a min-width so Copy/Preview/Save match Build. */
+.detail-actions button.action-green,
+.file-tab-actions button.action-cyan {
+  min-width: 6.75rem;
+}
 .trigger button:not(.ghost):not(.browse):hover:not(:disabled),
 .use-folder:hover:not(:disabled),
-.detail-actions button:not(.ghost):not(.browse):hover:not(:disabled),
+.detail-actions button:not(.ghost):not(.browse):not(.action-cyan):hover:not(:disabled),
+button.action-green:hover:not(:disabled),
 button.new-project:hover:not(:disabled),
 .new-project-form button.primary:hover:not(:disabled) {
   background: rgba(var(--ok-rgb), 0.22);
@@ -1495,7 +1505,8 @@ button.new-project:hover:not(:disabled),
 }
 .trigger button:not(.ghost):not(.browse)::before,
 .use-folder::before,
-.detail-actions button:not(.ghost):not(.browse)::before,
+.detail-actions button:not(.ghost):not(.browse):not(.action-cyan)::before,
+button.action-green::before,
 button.new-project::before,
 .new-project-form button.primary::before {
   content: '';
@@ -1509,12 +1520,62 @@ button.new-project::before,
 }
 .trigger button:not(.ghost):not(.browse):hover:not(:disabled)::before,
 .use-folder:hover:not(:disabled)::before,
-.detail-actions button:not(.ghost):not(.browse):hover:not(:disabled)::before,
+.detail-actions button:not(.ghost):not(.browse):not(.action-cyan):hover:not(:disabled)::before,
+button.action-green:hover:not(:disabled)::before,
 button.new-project:hover:not(:disabled)::before,
 .new-project-form button.primary:hover:not(:disabled)::before {
   left: 100%;
 }
-.new-project-form button.primary:disabled {
+.new-project-form button.primary:disabled,
+button.action-green:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Cyan twin of the green primary — file tab bar (Copy / Preview / Save). Same geometry, --cn. */
+button.action-cyan,
+.file-tab-actions button.action-cyan {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: rgba(var(--cn-rgb), 0.12);
+  color: var(--cn);
+  border: 1px solid rgba(var(--cn-rgb), 0.4);
+  border-radius: var(--r-md);
+  padding: 7px 13px;
+  font: 600 12.5px var(--mono);
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+button.action-cyan:hover:not(:disabled),
+.file-tab-actions button.action-cyan:hover:not(:disabled) {
+  background: rgba(var(--cn-rgb), 0.22);
+  border-color: rgba(var(--cn-rgb), 0.65);
+  box-shadow: 0 0 16px rgba(var(--cn-rgb), 0.22);
+}
+button.action-cyan::before,
+.file-tab-actions button.action-cyan::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.14), transparent);
+  transition: left var(--dur-slow) var(--ease);
+  pointer-events: none;
+}
+button.action-cyan:hover:not(:disabled)::before,
+.file-tab-actions button.action-cyan:hover:not(:disabled)::before {
+  left: 100%;
+}
+button.action-cyan:disabled,
+.file-tab-actions button.action-cyan:disabled {
   opacity: 0.45;
   cursor: not-allowed;
   box-shadow: none;
@@ -1875,14 +1936,6 @@ label.check:hover .check-box {
 
 /* ---- #project/<id>/files viewer (layout only; syntax colours come from Monaco's vs-dark) ---- */
 main.code-view { max-width: min(96rem, 100%); display: flex; flex-direction: column; min-height: 0; }
-.code-path-pill {
-  font: 500 12px var(--mono);
-  color: var(--path);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 40vw;
-}
 /* Monaco needs a definite height to lay itself out (and it scrolls internally instead of growing
  * the page), so the split is viewport-bounded: header + detail-head + page padding ≈ 13.5rem. */
 .code-split {
@@ -1901,6 +1954,86 @@ main.code-view { max-width: min(96rem, 100%); display: flex; flex-direction: col
   overflow: auto;
   padding: 8px 0 12px;
   background: var(--s1);
+}
+/* Editor column: tab strip + pane. The open-file tab sits on the strip and merges into the pane. */
+.code-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--s1);
+}
+/* Chrome-like tab strip above the editor: file tab left, Copy/Preview/Save right. */
+.file-tab-bar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex: none;
+  gap: 10px;
+  padding: 8px 10px 0 10px;
+  background:
+    linear-gradient(180deg, rgba(var(--cn-rgb), 0.05) 0%, transparent 70%),
+    var(--s1);
+  border-bottom: 1px solid rgba(var(--cn-rgb), 0.22);
+}
+.file-tab-bar-spacer { flex: 1 1 auto; min-width: 0; }
+.file-tab-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  /* Sit slightly above the strip edge so buttons align with the tab crown. */
+  align-self: center;
+  margin-bottom: 6px;
+}
+/* Active file tab: larger mono name, cyan accent, flush with the editor surface below. */
+.file-name-pill {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(32rem, 85%);
+  margin-bottom: -1px; /* sit on the strip border so the tab “opens” into the editor */
+  padding: 9px 18px 10px;
+  font: 600 14.5px/1.2 var(--mono);
+  letter-spacing: 0.01em;
+  color: var(--cn);
+  background: var(--console-bg);
+  border: 1px solid rgba(var(--cn-rgb), 0.4);
+  border-bottom-color: var(--console-bg);
+  border-radius: 11px 11px 0 0;
+  box-shadow:
+    0 -4px 18px rgba(var(--cn-rgb), 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+  cursor: default;
+  user-select: none;
+}
+/* Soft top highlight — Jk neon without looking like a flat Chrome grey tab. */
+.file-name-pill::before {
+  content: '';
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  top: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, rgba(var(--cn-rgb), 0.75), transparent);
+  pointer-events: none;
+}
+.file-name-pill .ico {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  color: var(--cn);
+  opacity: 0.9;
+}
+.file-name-pill-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 0 12px rgba(var(--cn-rgb), 0.25);
 }
 /* Filter box: the funnel sits inside the field, so the input carries the left padding. */
 .code-filter-box { position: relative; margin: 0 8px 8px; }
@@ -1952,14 +2085,138 @@ main.code-view { max-width: min(96rem, 100%); display: flex; flex-direction: col
 .code-row.on .code-glyph { color: var(--cn); }
 .code-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Same token the editor's theme override reads (consoleBackground in code.js) — the pane already
- * shows the final canvas while Monaco is still loading. */
-.code-pane { overflow: auto; min-width: 0; background: var(--console-bg); }
+ * shows the final canvas while Monaco is still loading.
+ * flex:1 fills .code-main under the tab strip; without it the editor stays content-height (~Monaco's
+ * first measure) and leaves a blank band when Preview closes. */
+.code-pane {
+  overflow: hidden;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  background: var(--console-bg);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+/* Live Preview: Monaco + rendered pane stacked (text); image Preview fills the pane alone.
+ * Always flex-grow the active surface(s) so Source ↔ Preview toggles don't leave a dead zone. */
+.code-pane.mode-split .code-editor {
+  flex: 1 1 50%;
+  min-height: 0;
+  border-bottom: 1px solid var(--bd);
+}
+.code-pane.mode-split .code-preview {
+  flex: 1 1 50%;
+  min-height: 0;
+  position: relative;
+}
+.code-pane.mode-editor .code-editor {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.code-pane.mode-preview-only .code-preview {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+}
+.code-preview {
+  overflow: auto;
+  padding: 16px 18px;
+  background: var(--console-bg);
+  color: var(--tx);
+  font: 13.5px/1.55 var(--sans, system-ui, sans-serif);
+}
+.code-preview-img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  margin: 0 auto;
+  image-rendering: auto;
+  background:
+    linear-gradient(45deg, rgba(var(--cn-rgb), 0.06) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(var(--cn-rgb), 0.06) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(var(--cn-rgb), 0.06) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(var(--cn-rgb), 0.06) 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+.code-preview-body { max-width: 52rem; }
+.code-preview-body h1,
+.code-preview-body h2,
+.code-preview-body h3 { color: var(--bright); margin: 1.1em 0 0.45em; font-weight: 700; }
+.code-preview-body h1 { font-size: 1.45em; }
+.code-preview-body h2 { font-size: 1.2em; }
+.code-preview-body h3 { font-size: 1.05em; }
+.code-preview-body p { margin: 0.55em 0; }
+.code-preview-body a { color: var(--cn); }
+.code-preview-body code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  background: rgba(var(--cn-rgb), 0.08);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+.code-preview-body pre {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  background: var(--s1);
+  border: 1px solid var(--bd);
+  border-radius: var(--r-md);
+  padding: 10px 12px;
+  overflow: auto;
+}
+.code-preview-body pre code { background: none; padding: 0; }
+.code-preview-body ul, .code-preview-body ol { margin: 0.5em 0; padding-left: 1.4em; }
+.code-preview-body blockquote {
+  margin: 0.6em 0;
+  padding: 0.2em 0 0.2em 0.9em;
+  border-left: 3px solid rgba(var(--cn-rgb), 0.45);
+  color: var(--mu);
+}
+.code-preview-body table { border-collapse: collapse; margin: 0.7em 0; }
+.code-preview-body th, .code-preview-body td {
+  border: 1px solid var(--bd);
+  padding: 4px 8px;
+  text-align: left;
+}
+.code-preview-body svg { max-width: 100%; height: auto; display: block; margin: 0.5em auto; }
+.code-preview-diagram {
+  margin: 1em 0;
+  padding: 10px;
+  overflow: auto;
+  background: rgba(var(--cn-rgb), 0.04);
+  border: 1px solid rgba(var(--cn-rgb), 0.14);
+  border-radius: var(--r-md);
+}
+.code-preview-diagram svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+.code-preview-diagram-err {
+  margin: 1em 0;
+  padding: 10px 12px;
+  font: 12.5px var(--mono);
+  color: var(--err);
+  background: rgba(var(--err-rgb), 0.08);
+  border: 1px solid rgba(var(--err-rgb), 0.35);
+  border-radius: var(--r-md);
+  white-space: pre-wrap;
+}
 /* Sibling of .code-editor, and the only place the pane's conditional messages render: that keeps
- * the editor host a static node Vue never swaps out from under a live editor. */
-.code-msgs:empty { display: none; }
-/* Full height only when it has something to say, so .code-empty can centre inside the pane.
- * The plain-text fallback must not shrink to fit — the pane scrolls it. */
-.code-msgs:not(:empty) { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+ * the editor host a static node Vue never swaps out from under a live editor.
+ * Do not use :empty / height:100% here: Vue leaves whitespace text nodes so :not(:empty) was always
+ * true and stole the whole pane from Monaco. Fill only for explicit full-pane states (:has). */
+.code-msgs {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.code-msgs:not(:has(*)) { display: none; }
+/* Full-pane empty / loading / error / plain fallback — take remaining height so prompts centre. */
+.code-msgs:has(.code-empty),
+.code-msgs:has(> .empty),
+.code-msgs:has(> .error),
+.code-msgs:has(.code-pre) {
+  flex: 1 1 auto;
+}
 .code-msgs > .code-pre { flex: 0 0 auto; }
 /* No file open: centred glyph + prompt, instead of one dim line stranded in the top-left. */
 .code-empty {
@@ -1976,13 +2233,23 @@ main.code-view { max-width: min(96rem, 100%); display: flex; flex-direction: col
 .code-empty p { margin: 0; }
 .code-empty-head { font: 600 13px var(--mono); color: var(--mu); }
 .code-empty-sub { font: 400 11.5px var(--mono); color: var(--dim); }
-/* 4px of breathing room so the editor's gutter and minimap are not flush with the pane border.
- * box-sizing is border-box globally, and Monaco sizes itself off the content box, so it lays out
- * inside the inset instead of overflowing it. */
-.code-editor { height: 100%; min-width: 0; padding: 8px; }
-/* ?line= target, drawn by Monaco decorations (lineDecorations in code.js). */
+/* Flex-fill the pane (not height:100% — that collapses to Monaco's first measure in a flex column). */
+.code-editor {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+  padding: 8px;
+}
+/* Neutral ?line= jump (ordinary deep link). Soft wash + cyan gutter rail. */
 .code-line-hl { background: rgba(255, 255, 255, 0.08); }
 .code-line-hl-gutter { border-left: 2px solid var(--cn); }
+/* Fail-report / OSC-8 jump: ?line=N&err=true — matches .fail-src-err / CLI ERROR_LINE_BG. */
+.code-line-err { background: rgba(var(--err-rgb), 0.3); }
+.code-line-err-gutter {
+  background: rgba(var(--err-rgb), 0.3);
+  border-left: 2px solid var(--err);
+}
 /* Plain-text fallback: file over the highlight budget, or Monaco failed to load. */
 .code-pane .code-pre {
   margin: 0;
@@ -1992,7 +2259,9 @@ main.code-view { max-width: min(96rem, 100%); display: flex; flex-direction: col
 }
 .code-plain { padding-left: 0 !important; }
 .code-plain-row { display: flex; white-space: pre; }
+/* Plain-text fallback for ?line= (when Monaco is skipped). */
 .code-line-on { background: rgba(255, 255, 255, 0.08); }
+.code-line-err-plain { background: rgba(var(--err-rgb), 0.3); }
 .code-pick { display: flex; flex-direction: column; gap: 4px; max-width: 36rem; }
 .code-pick-row {
   text-align: left;

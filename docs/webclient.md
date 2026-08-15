@@ -47,8 +47,11 @@ panel with the same soft Jk Dark shell as retention / sysbox / the millis I/O ti
 Vue (and ECharts for history sparks **and** the Project-page module dependency graph) load from
 the CDN, **version-pinned with an SRI `integrity` hash** — a CDN compromise must not be able to
 script a page that can trigger builds. When bumping a pin, update the `integrity` hash in
-`index.html` in the same change. There is no bundler and no npm build step: the shell ships as
-static resources inside the engine jar.
+`index.html` in the same change. Preview-only libraries (marked, DOMPurify, mermaid, viz-js,
+Asciidoctor; D2 via dynamic ESM) are pinned in `code.js` and load **only** when Preview is used —
+same unpkg origin, never self-hosted. Their classic UMD tags load with `window.define` parked (refcounted, so parallel marked + purify +
+mermaid loads do not restore AMD mid-flight) so Monaco's loader does not swallow them. There is no
+bundler and no npm build step: the shell ships as static resources inside the engine jar.
 
 **Monaco is the one partial exception.** Its version is pinned and `loader.js` carries SRI
 (`MONACO_LOADER` in `code.js`), but the loader then fetches `editor.main.js`, `editor.main.css` and
@@ -81,7 +84,9 @@ picker) sits next to **Build** and opens `#project/<id>/files` (tree). It is hid
 pane — you are already browsing there — which is also where the header's back control drops its
 label: a bare chevron that goes up one level to `#project/<id>`, not out to the project list.
 Selecting a file appends the workspace-relative path as extra hash segments (each `encodeURIComponent`;
-`/` stays a separator). Optional `?line=` is a 1-based highlight for fail-report jumps.
+`/` stays a separator). Optional `?line=` is a 1-based highlight; fail-report and CLI OSC-8 jumps
+add `&err=true` so the target line uses the error-red wash (plain `?line=` stays a soft cyan
+rail).
 The underlined path above a test-failure snippet is a real hash deep link into that route (so
 middle-click / copy-link work). Module-relative paths join `rel(checkout, module.dir)` +
 `rep.file`; an empty live single-plan module dir leaves `rep.file` as already checkout-relative.
@@ -108,18 +113,44 @@ whole tree is one non-recursive `v-for` (2000 paths, no recursive components). T
 box switches to a **flat list of matching full paths** — the tree is for browsing, the filter
 answers like GitHub's file finder; every row carries its full path as a `data-tip`.
 
-The pane lists `GET /api/project/files` and reads `GET /api/project/file` (see [http.md](http.md)).
+The pane lists `GET /api/project/files`, reads `GET /api/project/file`, writes
+`PUT /api/project/file`, and loads image Preview via `GET /api/project/file/raw` (see
+[http.md](http.md)).
+
+**Chrome** (files open):
+
+```text
+header:  [ ← ] [ coord ]                    [ Build ]
+tab bar: [ file-name-pill ]   [ Copy ] [ Preview ] [ Save ]
+```
+
+- **Copy / Preview / Save** live on the editor tab strip (right-justified), cyan tinted-neon
+  (same geometry as Build: `inline-flex`, `gap: 6px`, shimmer on hover, shared `min-width`).
+- **Build** stays in the project header (green primary).
+- **Save** is disabled until the Monaco buffer differs from the last load/save; oversized plain-text
+  fallback and image-only opens are not editable. On success the label flips to **Saved** briefly
+  (same pattern as Copy → Copied). Failures use plain-language messages (engine down, unauthorized,
+  too large, concurrency). Saves send the load-time `etag`; a **409 file changed on disk** means
+  another tab or process rewrote the file — reload to continue.
+- **Preview** is enabled for markdown, images, mermaid (`.mmd`/`.mermaid`), Graphviz (`.dot`/`.gv`),
+  AsciiDoc (`.adoc`/`.asciidoc`), and D2 (`.d2`). Renderers load **lazily from unpkg only** (never
+  self-hosted); images use an auth-fetch → blob URL. Markdown also renders fenced
+  ` ```mermaid ` blocks. While Preview is open, text buffers re-render on a short debounce as you
+  type. D2 is WASM-heavy and may fail under CSP — the pane shows the error rather than shipping a
+  binary.
+
 Monaco **0.56.0** loads lazily from unpkg (AMD loader SRI-pinned; see the CDN section) only when
-`/files` is open, and renders a **read-only** editor in the built-in **Visual Studio Dark**
+`/files` is open, and renders a **light editor** in the built-in **Visual Studio Dark**
 (`vs-dark`) theme: Monaco's own line numbers, folding, minimap and find widget, no context menu or
 suggestions. The theme is registered as `jk-vs-dark` — vs-dark inherited verbatim with a single
 override, `editor.background` read from style.css's `--console-bg`, so a source pane reads as the
 same surface as the console tail and log panels instead of VS Code's `#1e1e1e`. `?line=` is a
-whole-line decoration (`.code-line-hl`) plus `revealLineInCenter`, not a selection. Monaco ships no
+whole-line decoration (`.code-line-hl` soft/cyan, or `.code-line-err` red when `err=true`) plus
+`revealLineInCenter`, not a selection. Monaco ships no
 Groovy or TOML grammar, so `.groovy` tokenizes as `java` and `.toml` as
 `ini` (`MONACO_LANG` in `code.js`); anything unknown falls back to `plaintext`. Highlighting is
 skipped above 200 KiB / 4000 lines, and when the CDN is unreachable; the file then renders as
-plain text with a gutter so `?line=` can still scroll.
+plain text with a gutter so `?line=` can still scroll (Save stays disabled in that branch).
 
 `code.js` is tested headlessly (`node --test` via `WebClientCodeTest`), same shape as `fold.js`.
 

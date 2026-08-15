@@ -93,7 +93,7 @@ class TestFailureHighlightTest {
         DashboardCodeLink.putHttpCache("http://127.0.0.1:8910/");
         DashboardCodeLink.putProjectId("proj");
         String path = "src/test/java/Foo.java";
-        String expectedUrl = "http://127.0.0.1:8910#project/proj/files/src/test/java/Foo.java?line=9";
+        String expectedUrl = "http://127.0.0.1:8910#project/proj/files/src/test/java/Foo.java?line=9&err=true";
         String painted;
         try (var scope = DashboardCodeLink.open(Path.of("/ws"), Path.of("/ws"))) {
             painted = TestFailureHighlight.paintSourcePath(

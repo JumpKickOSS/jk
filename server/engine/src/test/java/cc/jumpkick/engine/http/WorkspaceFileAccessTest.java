@@ -178,6 +178,74 @@ class WorkspaceFileAccessTest {
     }
 
     @Test
+    void preview_and_image_extensions_are_servable(@TempDir Path root) throws Exception {
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("docs"));
+        Files.writeString(root.resolve("docs/diagram.mmd"), "graph TD; A-->B");
+        Files.writeString(root.resolve("docs/g.dot"), "digraph { a -> b }");
+        Files.writeString(root.resolve("docs/note.adoc"), "= Title");
+        Files.writeString(root.resolve("docs/box.d2"), "a -> b");
+        Files.write(root.resolve("docs/logo.png"), new byte[] {(byte) 0x89, 'P', 'N', 'G', 0, 1, 2});
+        assertThat(WorkspaceFileAccess.langOf("diagram.mmd")).isEqualTo("mermaid");
+        assertThat(WorkspaceFileAccess.langOf("g.dot")).isEqualTo("graphviz");
+        assertThat(WorkspaceFileAccess.langOf("note.adoc")).isEqualTo("asciidoc");
+        assertThat(WorkspaceFileAccess.langOf("box.d2")).isEqualTo("d2");
+        assertThat(WorkspaceFileAccess.langOf("logo.png")).isEqualTo("image");
+        assertThat(WorkspaceFileAccess.read(root, "docs/diagram.mmd")).isInstanceOf(ReadResult.Ok.class);
+        assertThat(WorkspaceFileAccess.read(root, "docs/logo.png")).isInstanceOf(ReadResult.Binary.class);
+        var raw = WorkspaceFileAccess.readRaw(root, "docs/logo.png");
+        assertThat(raw).isInstanceOf(WorkspaceFileAccess.RawResult.Ok.class);
+        var body = ((WorkspaceFileAccess.RawResult.Ok) raw).body();
+        assertThat(body.contentType()).isEqualTo("image/png");
+        assertThat(body.bytes()).hasSize(7);
+    }
+
+    @Test
+    void write_replaces_text_file_atomically(@TempDir Path root) throws Exception {
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("src"));
+        Files.writeString(root.resolve("src/Main.java"), "class Main {}\n");
+        var written = WorkspaceFileAccess.write(root, "src/Main.java", "class Main { int x; }\n");
+        assertThat(written).isInstanceOf(WorkspaceFileAccess.WriteResult.Ok.class);
+        var ok = (WorkspaceFileAccess.WriteResult.Ok) written;
+        assertThat(ok.body().path()).isEqualTo("src/Main.java");
+        assertThat(ok.body().lines()).isEqualTo(1);
+        assertThat(ok.body().etag()).isNotBlank();
+        assertThat(Files.readString(root.resolve("src/Main.java"))).isEqualTo("class Main { int x; }\n");
+    }
+
+    @Test
+    void write_with_stale_etag_is_conflict(@TempDir Path root) throws Exception {
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("src"));
+        Files.writeString(root.resolve("src/Main.java"), "class Main {}\n");
+        var read = (WorkspaceFileAccess.ReadResult.Ok) WorkspaceFileAccess.read(root, "src/Main.java");
+        String etag = read.body().etag();
+        Files.writeString(root.resolve("src/Main.java"), "class Main { changed; }\n");
+        var conflict = WorkspaceFileAccess.write(root, "src/Main.java", "class Main { x; }\n", etag);
+        assertThat(conflict).isInstanceOf(WorkspaceFileAccess.WriteResult.Conflict.class);
+        var ok = WorkspaceFileAccess.write(
+                root,
+                "src/Main.java",
+                "class Main { x; }\n",
+                ((WorkspaceFileAccess.WriteResult.Conflict) conflict).currentEtag());
+        assertThat(ok).isInstanceOf(WorkspaceFileAccess.WriteResult.Ok.class);
+    }
+
+    @Test
+    void write_rejects_images_and_traversal(@TempDir Path root) throws Exception {
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("docs"));
+        Files.write(root.resolve("docs/logo.png"), new byte[] {1, 2, 3});
+        assertThat(WorkspaceFileAccess.write(root, "docs/logo.png", "nope"))
+                .isInstanceOf(WorkspaceFileAccess.WriteResult.NotWritable.class);
+        assertThat(WorkspaceFileAccess.write(root, "../x.java", "x"))
+                .isInstanceOf(WorkspaceFileAccess.WriteResult.BadRequest.class);
+        assertThat(WorkspaceFileAccess.write(root, "src/Missing.java", "x"))
+                .isInstanceOf(WorkspaceFileAccess.WriteResult.NotFound.class);
+    }
+
+    @Test
     void non_utf8_files_fall_back_to_latin1_with_the_encoding_flagged(@TempDir Path root) throws Exception {
         // JK-1954: a Latin-1 source previously decoded with silent U+FFFD substitution and no
         // indicator — corrupted content presented as the file's true text.

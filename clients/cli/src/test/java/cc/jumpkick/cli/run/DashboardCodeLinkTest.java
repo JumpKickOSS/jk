@@ -35,9 +35,9 @@ class DashboardCodeLinkTest {
     @Test
     void fileUrl_matches_web_hash_route() {
         assertThat(DashboardCodeLink.fileUrl("http://127.0.0.1:8910/", "ab12", "src/test/java/FooTest.java", 23))
-                .isEqualTo("http://127.0.0.1:8910#project/ab12/files/src/test/java/FooTest.java?line=23");
+                .isEqualTo("http://127.0.0.1:8910#project/ab12/files/src/test/java/FooTest.java?line=23&err=true");
         assertThat(DashboardCodeLink.fileUrl("http://127.0.0.1:8910", "ab", "src/A+B.java", 3))
-                .isEqualTo("http://127.0.0.1:8910#project/ab/files/src/A%2BB.java?line=3");
+                .isEqualTo("http://127.0.0.1:8910#project/ab/files/src/A%2BB.java?line=3&err=true");
         assertThat(DashboardCodeLink.fileUrl("http://x", "id", "src/Main.java", 0))
                 .isEqualTo("http://x#project/id/files/src/Main.java");
         assertThat(DashboardCodeLink.fileUrl(null, "id", "src/Main.java", 1)).isNull();

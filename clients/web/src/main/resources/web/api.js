@@ -190,6 +190,33 @@ export async function post(path, body) {
   return json;
 }
 
+/** PUT a flat object to an /api path; returns parsed JSON, throws {status, error} on non-2xx. */
+export async function put(path, body) {
+  const resp = await fetch(path, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...headers(true) },
+    body: JSON.stringify(body),
+  });
+  if (await handleEpochConflict(resp)) throw { status: 409, error: 'engine-epoch-mismatch' };
+  const json = await resp.json().catch(() => ({}));
+  if (!resp.ok) throwHttp(resp, json);
+  return json;
+}
+
+/**
+ * GET an /api path as a Blob (raw file bytes for image Preview). Throws {status, error?} on
+ * non-2xx. Uses the same Authorization / epoch headers as other mutations.
+ */
+export async function getBlob(path, opts = {}) {
+  const resp = await fetch(path, { headers: headers(true), signal: opts.signal });
+  if (await handleEpochConflict(resp)) throw { status: 409, error: 'engine-epoch-mismatch' };
+  if (!resp.ok) {
+    const json = await resp.json().catch(() => ({}));
+    throwHttp(resp, json);
+  }
+  return resp.blob();
+}
+
 /** GET an /api path as plain text (the log tail). Throws {status} on any non-2xx. */
 export async function getText(path) {
   const resp = await fetch(path, { headers: headers(true) });

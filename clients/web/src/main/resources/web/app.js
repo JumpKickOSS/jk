@@ -84,6 +84,10 @@ const ICON_PATHS = {
   plus: 'M12 5v14M5 12h14',
   // Two overlapping rectangles — clipboard / copy affordance (lucide-style).
   copy: 'M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2M8 2h8a1 1 0 0 1 1 1v2H7V3a1 1 0 0 1 1-1z',
+  // Floppy-disk save affordance (Files toolbar).
+  save: 'M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2zM17 21v-8H7v8M7 3v5h8',
+  // Eye — Preview affordance (Files toolbar).
+  eye: 'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
 };
 // Icons that read better as a solid shape than an outline at small sizes.
 const ICON_SOLID = {
@@ -293,6 +297,7 @@ const FailReport = {
         files: true,
         path: this.codePath,
         line: this.rep.line || 0,
+        err: true, // red error-line highlight on the fail jump
       });
     },
   },
@@ -849,6 +854,7 @@ Vue.createApp({
     filesOpen: !!routeFromHash().files, // #project/<id>/files[/<rel>]
     codePath: routeFromHash().path,
     codeLine: routeFromHash().line,
+    codeLineErr: !!routeFromHash().lineErr,
     selectedProjectDir: null, // checkout path resolved from project meta
     projectMeta: null, // live /api/project payload (coord + description + dir) for the open project
     // JK-1542: Dependencies panel on the Project page — closed by default; graph fetch + echarts
@@ -1327,6 +1333,10 @@ Vue.createApp({
 
     /** The files pane's Back control: up one level to the project page, not out to the list. */
     closeCode() {
+      const view = this.$refs.codeView;
+      if (view && view.dirty && typeof view.confirmDiscard === 'function' && !view.confirmDiscard()) {
+        return;
+      }
       if (this.selectedProjectId) this.openProject(this.selectedProjectId);
       else this.setView('projects');
     },
@@ -1347,6 +1357,7 @@ Vue.createApp({
       this.filesOpen = !!r.files;
       this.codePath = r.path;
       this.codeLine = r.line;
+      this.codeLineErr = !!r.lineErr;
       // Collapse the expensive graph panel when leaving project view or switching projects.
       if (r.view !== 'project' || idChanged || r.files) this.projectGraphOpen = false;
       // Project identity cannot change between two clicks on the same #project/<id> route, and
@@ -1367,7 +1378,7 @@ Vue.createApp({
       this.openCode({ projectId: this.selectedProjectId });
     },
 
-    openCode({ projectId, path, line, replace } = {}) {
+    openCode({ projectId, path, line, err, replace } = {}) {
       if (this.authModal) return;
       const id = projectId || this.selectedProjectId;
       if (!id) return;
@@ -1376,6 +1387,7 @@ Vue.createApp({
         files: true,
         path: path || null,
         line: line || 0,
+        err: !!err,
       });
       if (replace) {
         // replaceState does not fire hashchange — apply the route ourselves.
@@ -1393,11 +1405,6 @@ Vue.createApp({
         line: line || 0,
         replace: !!replace,
       });
-    },
-
-    copyOpenFile() {
-      const view = this.$refs.codeView;
-      if (view && typeof view.copy === 'function') view.copy();
     },
 
     /** Toggle the Project-page Dependencies accordion (lazy graph load on open). */

@@ -193,7 +193,8 @@ final class StaticContent {
             }
         }
         // The shipped SPA's only external resources: Vue + ECharts + Monaco (lazy,
-        // #project/…/files) from unpkg (version-pinned; SRI on every static tag) and the JetBrains
+        // #project/…/files) + Preview CDNs (marked/mermaid/…, also lazy) from unpkg
+        // (version-pinned; SRI on every static tag where possible) and the JetBrains
         // Mono webfonts from Google Fonts (CSS on fonts.googleapis.com, font files on
         // fonts.gstatic.com). style-src includes unpkg for Monaco's editor.main.css, which its
         // loader injects itself.
@@ -211,7 +212,9 @@ final class StaticContent {
                         "Content-Security-Policy",
                         "default-src 'self'; script-src 'self' 'unsafe-eval' blob: https://unpkg.com; "
                                 + "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; "
-                                + "font-src https://fonts.gstatic.com data:; worker-src blob:");
+                                + "font-src https://fonts.gstatic.com data:; worker-src blob:; "
+                                // Preview pane: auth-fetch → blob: object URLs for images; data: for rare inlines.
+                                + "img-src 'self' blob: data:;");
         if (snapshotVersion) {
             exchange.getResponseHeaders().set("Cache-Control", "no-cache"); // see snapshotVersion javadoc
         } else {

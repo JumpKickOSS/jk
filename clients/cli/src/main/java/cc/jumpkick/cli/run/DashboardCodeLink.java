@@ -13,7 +13,8 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Deep links from CLI failure snippets into the dashboard Monaco files pane
- * ({@code #project/<id>/files/<rel>?line=N} — same route as the web fail-report path).
+ * ({@code #project/<id>/files/<rel>?line=N&err=true} — same route as the web fail-report path;
+ * {@code err=true} paints the jump line with the error wash).
  *
  * <p>HTTP base and project id are best-effort: when the engine HTTP surface is off or the checkout
  * has no durable id, callers paint an unlinked path. Token bootstrap stays on {@code #t=} from
@@ -113,7 +114,8 @@ public final class DashboardCodeLink {
 
     /**
      * Full dashboard URL for a workspace-relative file and 1-based line, or null when any piece is
-     * missing. Line {@code 0} omits {@code ?line=}.
+     * missing. Line {@code 0} omits the query. Failure jumps always include {@code err=true} so the
+     * files pane uses the red error-line decoration (neutral {@code ?line=} stays soft/cyan).
      */
     public static String fileUrl(String httpBase, String projectId, String workspaceRelPath, int line) {
         if (httpBase == null || httpBase.isBlank()) return null;
@@ -126,7 +128,7 @@ public final class DashboardCodeLink {
             if (seg.isEmpty()) continue;
             hash.append('/').append(encodeSeg(seg));
         }
-        if (line > 0) hash.append("?line=").append(line);
+        if (line > 0) hash.append("?line=").append(line).append("&err=true");
         String base = httpBase.strip();
         while (base.endsWith("/")) base = base.substring(0, base.length() - 1);
         return base + hash;

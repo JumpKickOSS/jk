@@ -410,8 +410,187 @@ final class HttpProjectApi {
                 body.put("bytes", b.bytes());
                 body.put("lines", b.lines());
                 body.put("encoding", b.encoding());
+                body.put("etag", b.etag());
                 body.put("content", b.content());
                 HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.plugin.protocol.MiniJson.write(body));
+            }
+        }
+    }
+
+    /**
+     * {@code GET /api/project/file/raw?project=&lt;id&gt;&amp;path=&lt;rel&gt;} — raw bytes of one
+     * allow-listed file (images for the Preview pane). Same sandbox as the JSON body endpoint.
+     * Clients must {@code fetch} with the bearer token and build a blob URL — a bare
+     * {@code <img src>} cannot send Authorization.
+     */
+    void handleProjectFileRaw(HttpExchange exchange) throws IOException {
+        String projectId;
+        String path;
+        try {
+            String q = exchange.getRequestURI().getRawQuery();
+            projectId = HttpEngineServer.queryParam(q, "project");
+            path = HttpEngineServer.queryParam(q, "path");
+        } catch (IllegalArgumentException e) {
+            HttpEngineServer.sendJson(
+                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
+            return;
+        }
+        if (projectId == null || projectId.isBlank()) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    400,
+                    JsonOut.object().put("error", "missing \"project\"").toString());
+            return;
+        }
+        if (path == null || path.isBlank()) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    400,
+                    JsonOut.object().put("error", "missing \"path\"").toString());
+            return;
+        }
+        var root = WorkspaceFileAccess.resolveRoot(projectId);
+        if (root.isEmpty()) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    404,
+                    JsonOut.object()
+                            .put("error", "unknown project id or checkout path missing: " + projectId)
+                            .put("projectId", projectId)
+                            .toString());
+            return;
+        }
+        switch (WorkspaceFileAccess.readRaw(root.get(), path)) {
+            case WorkspaceFileAccess.RawResult.BadRequest bad ->
+                HttpEngineServer.sendJson(
+                        exchange,
+                        400,
+                        JsonOut.object().put("error", bad.error()).toString());
+            case WorkspaceFileAccess.RawResult.NotFound ignored ->
+                HttpEngineServer.sendJson(
+                        exchange,
+                        404,
+                        JsonOut.object().put("error", "not found").toString());
+            case WorkspaceFileAccess.RawResult.TooLarge too ->
+                HttpEngineServer.sendJson(
+                        exchange,
+                        413,
+                        JsonOut.object()
+                                .put("error", "file too large")
+                                .put("bytes", too.bytes())
+                                .put("maxBytes", too.maxBytes())
+                                .toString());
+            case WorkspaceFileAccess.RawResult.Ok ok ->
+                HttpEngineServer.sendBytes(
+                        exchange, 200, ok.body().contentType(), ok.body().bytes());
+        }
+    }
+
+    /**
+     * {@code PUT /api/project/file} — replace a text-servable file under the identity checkout.
+     * Body JSON: {@code { "project", "path", "content", "etag"? }}. When {@code etag} is present it
+     * must match the current on-disk SHA-256 or the write is {@code 409}. Cap matches {@link
+     * WorkspaceFileAccess#MAX_FILE_BYTES} (not the smaller global POST body limit).
+     */
+    void handleProjectFilePut(HttpExchange exchange) throws IOException {
+        // File write can be up to 1 MiB of content plus JSON quoting overhead; read past the
+        // engine-wide 64 KiB mutation cap used for build/cancel/scaffold.
+        int maxBody = WorkspaceFileAccess.MAX_FILE_BYTES * 3 + 4096;
+        byte[] raw = exchange.getRequestBody().readNBytes(maxBody + 1);
+        if (raw.length > maxBody) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    413,
+                    JsonOut.object()
+                            .put("error", "request body too large")
+                            .put("maxBytes", maxBody)
+                            .toString());
+            return;
+        }
+        String body = new String(raw, StandardCharsets.UTF_8);
+        String projectId = cc.jumpkick.plugin.protocol.Jsonl.topStr(body, "project");
+        String path = cc.jumpkick.plugin.protocol.Jsonl.topStr(body, "path");
+        String content = cc.jumpkick.plugin.protocol.Jsonl.topStr(body, "content");
+        String etag = cc.jumpkick.plugin.protocol.Jsonl.topStr(body, "etag");
+        if (projectId == null || projectId.isBlank()) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    400,
+                    JsonOut.object().put("error", "missing \"project\"").toString());
+            return;
+        }
+        if (path == null || path.isBlank()) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    400,
+                    JsonOut.object().put("error", "missing \"path\"").toString());
+            return;
+        }
+        if (content == null) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    400,
+                    JsonOut.object().put("error", "missing \"content\"").toString());
+            return;
+        }
+        var root = WorkspaceFileAccess.resolveRoot(projectId);
+        if (root.isEmpty()) {
+            HttpEngineServer.sendJson(
+                    exchange,
+                    404,
+                    JsonOut.object()
+                            .put("error", "unknown project id or checkout path missing: " + projectId)
+                            .put("projectId", projectId)
+                            .toString());
+            return;
+        }
+        switch (WorkspaceFileAccess.write(root.get(), path, content, etag)) {
+            case WorkspaceFileAccess.WriteResult.BadRequest bad ->
+                HttpEngineServer.sendJson(
+                        exchange,
+                        400,
+                        JsonOut.object().put("error", bad.error()).toString());
+            case WorkspaceFileAccess.WriteResult.NotFound ignored ->
+                HttpEngineServer.sendJson(
+                        exchange,
+                        404,
+                        JsonOut.object().put("error", "not found").toString());
+            case WorkspaceFileAccess.WriteResult.TooLarge too ->
+                HttpEngineServer.sendJson(
+                        exchange,
+                        413,
+                        JsonOut.object()
+                                .put("error", "file too large")
+                                .put("bytes", too.bytes())
+                                .put("maxBytes", too.maxBytes())
+                                .toString());
+            case WorkspaceFileAccess.WriteResult.NotWritable nw ->
+                HttpEngineServer.sendJson(
+                        exchange, 415, JsonOut.object().put("error", nw.error()).toString());
+            case WorkspaceFileAccess.WriteResult.Conflict conflict ->
+                HttpEngineServer.sendJson(
+                        exchange,
+                        409,
+                        JsonOut.object()
+                                .put("error", "file changed on disk")
+                                .put("etag", conflict.currentEtag())
+                                .toString());
+            case WorkspaceFileAccess.WriteResult.Failed failed ->
+                HttpEngineServer.sendJson(
+                        exchange,
+                        500,
+                        JsonOut.object().put("error", failed.error()).toString());
+            case WorkspaceFileAccess.WriteResult.Ok ok -> {
+                var w = ok.body();
+                Map<String, Object> resp = new LinkedHashMap<>();
+                resp.put("projectId", projectId);
+                resp.put("dir", w.root().toString());
+                resp.put("path", w.path());
+                resp.put("lang", w.lang());
+                resp.put("bytes", w.bytes());
+                resp.put("lines", w.lines());
+                resp.put("etag", w.etag());
+                HttpEngineServer.sendJson(exchange, 200, cc.jumpkick.plugin.protocol.MiniJson.write(resp));
             }
         }
     }

@@ -838,6 +838,69 @@ class HttpEngineServerTest {
             HttpResponse<String> bin = get("/api/project/file?project=" + id + "&path=src%2FBin.java");
             assertThat(bin.statusCode()).isEqualTo(415);
             assertThat(bin.body()).contains("binary");
+
+            Files.createDirectories(checkout.resolve("docs"));
+            Files.write(checkout.resolve("docs/logo.png"), new byte[] {(byte) 0x89, 'P', 'N', 'G', 0});
+            Files.writeString(checkout.resolve("docs/flow.mmd"), "graph TD; A-->B\n");
+            assertThat(get("/api/project/files?project=" + id).body())
+                    .contains("docs/logo.png")
+                    .contains("docs/flow.mmd");
+            HttpResponse<String> imgJson = get("/api/project/file?project=" + id + "&path=docs%2Flogo.png");
+            assertThat(imgJson.statusCode()).isEqualTo(415);
+            HttpResponse<byte[]> imgRaw = client.send(
+                    HttpRequest.newBuilder(URI.create(
+                                    baseUrl + "api/project/file/raw?project=" + id + "&path=docs%2Flogo.png"))
+                            .header("Authorization", "Bearer " + token())
+                            .header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch())
+                            .build(),
+                    HttpResponse.BodyHandlers.ofByteArray());
+            assertThat(imgRaw.statusCode()).isEqualTo(200);
+            assertThat(imgRaw.headers().firstValue("Content-Type").orElse("")).isEqualTo("image/png");
+            assertThat(imgRaw.body()).startsWith((byte) 0x89, (byte) 'P');
+
+            assertThat(file.body()).contains("\"etag\":");
+            String etag = file.body().replaceAll("(?s).*\"etag\":\"([0-9a-f]+)\".*", "$1");
+            assertThat(etag).hasSize(64);
+
+            HttpResponse<String> put = client.send(
+                    HttpRequest.newBuilder(URI.create(baseUrl + "api/project/file"))
+                            .header("Authorization", "Bearer " + token())
+                            .header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch())
+                            .header("Content-Type", "application/json")
+                            .PUT(HttpRequest.BodyPublishers.ofString(
+                                    "{\"project\":\"" + id + "\",\"path\":\"src/Main.java\","
+                                            + "\"content\":\"class Main { int y; }\\n\","
+                                            + "\"etag\":\"" + etag + "\"}"))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(put.statusCode()).isEqualTo(200);
+            assertThat(put.body()).contains("\"path\":\"src/Main.java\"").contains("\"etag\":");
+            assertThat(Files.readString(checkout.resolve("src/Main.java"))).isEqualTo("class Main { int y; }\n");
+
+            HttpResponse<String> stale = client.send(
+                    HttpRequest.newBuilder(URI.create(baseUrl + "api/project/file"))
+                            .header("Authorization", "Bearer " + token())
+                            .header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch())
+                            .header("Content-Type", "application/json")
+                            .PUT(HttpRequest.BodyPublishers.ofString(
+                                    "{\"project\":\"" + id + "\",\"path\":\"src/Main.java\","
+                                            + "\"content\":\"class Main { stale; }\\n\","
+                                            + "\"etag\":\"" + etag + "\"}"))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(stale.statusCode()).isEqualTo(409);
+            assertThat(stale.body()).contains("file changed on disk");
+
+            HttpResponse<String> putImg = client.send(
+                    HttpRequest.newBuilder(URI.create(baseUrl + "api/project/file"))
+                            .header("Authorization", "Bearer " + token())
+                            .header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch())
+                            .header("Content-Type", "application/json")
+                            .PUT(HttpRequest.BodyPublishers.ofString("{\"project\":\"" + id
+                                    + "\",\"path\":\"docs/logo.png\"," + "\"content\":\"nope\"}"))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(putImg.statusCode()).isEqualTo(415);
         } finally {
             System.clearProperty("jk.env.JK_BUILDS_DIR");
         }

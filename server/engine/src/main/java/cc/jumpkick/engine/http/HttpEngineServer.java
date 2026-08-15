@@ -186,6 +186,8 @@ public final class HttpEngineServer implements AutoCloseable {
         api.register("GET", "/api/project/graph", projectApi::handleProjectGraph);
         api.register("GET", "/api/project/files", projectApi::handleProjectFiles);
         api.register("GET", "/api/project/file", projectApi::handleProjectFile);
+        api.register("PUT", "/api/project/file", projectApi::handleProjectFilePut);
+        api.register("GET", "/api/project/file/raw", projectApi::handleProjectFileRaw);
         api.register("POST", "/api/projects", projectApi::handleNewProject);
         api.register("GET", "/api/projects/defaults", projectApi::handleProjectDefaults);
         api.register("GET", "/api/templates", projectApi::handleTemplates);
@@ -744,6 +746,19 @@ public final class HttpEngineServer implements AutoCloseable {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         exchange.sendResponseHeaders(status, bytes.length);
         exchange.getResponseBody().write(bytes);
+    }
+
+    /** Binary response with an explicit content type (image preview raw endpoint). */
+    static void sendBytes(HttpExchange exchange, int status, String contentType, byte[] body) throws IOException {
+        exchange.getResponseHeaders()
+                .set("Content-Type", contentType == null ? "application/octet-stream" : contentType);
+        exchange.getResponseHeaders().set("Cache-Control", "no-store");
+        if (exchange.getRequestMethod().equals("HEAD")) {
+            exchange.sendResponseHeaders(status, -1);
+            return;
+        }
+        exchange.sendResponseHeaders(status, body.length);
+        exchange.getResponseBody().write(body);
     }
 
     /** Test seam: the admission gate, so a saturated-server {@code 503} is deterministically testable. */
