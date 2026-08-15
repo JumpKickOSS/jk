@@ -8,12 +8,14 @@ import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestFailureInfo;
 import java.time.Duration;
 import java.util.function.Function;
+import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 
 /**
  * One plan listener: redact, emit to the sink, then run engine side-effects (SSE / acc /
  * workspace tracker). CLI and HTTP differ only by which {@link EventSink} they pass.
  */
+@RequiredArgsConstructor
 public final class BridgingPlanListener implements BuildPlanListener {
 
     /** Engine-owned progress, journal fold, and SSE. */
@@ -40,19 +42,10 @@ public final class BridgingPlanListener implements BuildPlanListener {
         this(dir, sink, hooks, null);
     }
 
-    public BridgingPlanListener(
-            String dir, EventSink sink, Hooks hooks, @Nullable Function<BuildPlanResult, String> finishEncoder) {
-        this.dir = dir;
-        this.sink = sink;
-        this.hooks = hooks;
-        this.finishEncoder = finishEncoder;
-    }
-
     /**
-     * One redactor per plan (JK-1942): building it re-derives the env lookup (workspace-root walk
-     * + {@code .env} parse), which is far too heavy per output line. The {@code .env} set is
-     * frozen for the plan's life; a failed build is never broken by redaction (fail open,
-     * uncached so a transient failure retries on the next event).
+     * One redactor per plan: building it re-derives the env lookup (workspace-root walk +
+     * {@code .env} parse), which is too heavy per output line. The {@code .env} set is frozen
+     * for the plan's life. Redaction fail-open: a failed lookup does not fail the build.
      */
     private volatile cc.jumpkick.config.@Nullable SecretRedactor redactor;
 
@@ -196,9 +189,9 @@ public final class BridgingPlanListener implements BuildPlanListener {
                         dir, d.step(), d.code(), redact(d.message()), d.test(), d.exceptionClass()));
             }
         }
-        // Timeline + exclusive-slot release must precede the terminal plan-finish line
-        // (JK-1714): a client that has returned must not observe the engine still writing
-        // the chrome profile, and a reconnect must not see an already-running fingerprint.
+        // Timeline + exclusive-slot release must precede the terminal plan-finish line:
+        // a client that has returned must not observe the engine still writing the chrome
+        // profile, and a reconnect must not see an already-running fingerprint.
         hooks.planFinished(dir, result);
         if (finishEncoder != null) {
             sink.emit(new EngineEvent.PlanFinishLine(finishEncoder.apply(result)));

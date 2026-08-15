@@ -16,8 +16,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
+import lombok.AccessLevel;
+import lombok.RequiredArgsConstructor;
 
 /** Read-tier status surfaces plus POST build/cancel. */
+@RequiredArgsConstructor(access = AccessLevel.PACKAGE)
 final class HttpReadApi {
 
     /** Directory listings above this are truncated — a picker, not a filesystem dump. */
@@ -31,25 +34,6 @@ final class HttpReadApi {
     private final Supplier<List<cc.jumpkick.runtime.BuildMetrics.Entry>> metrics;
     private final Supplier<CacheSnapshot> cache;
     private final Supplier<String> url;
-
-    HttpReadApi(
-            JkHttpConfig config,
-            Path webRoot,
-            Path logFile,
-            Supplier<StatusSnapshot> status,
-            EngineHttpJobs jobs,
-            Supplier<List<cc.jumpkick.runtime.BuildMetrics.Entry>> metrics,
-            Supplier<CacheSnapshot> cache,
-            Supplier<String> url) {
-        this.config = config;
-        this.webRoot = webRoot;
-        this.logFile = logFile;
-        this.status = status;
-        this.jobs = jobs;
-        this.metrics = metrics;
-        this.cache = cache;
-        this.url = url;
-    }
 
     void handleStatus(HttpExchange exchange) throws IOException {
         StatusSnapshot s = status.get();

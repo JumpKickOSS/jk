@@ -25,9 +25,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
+import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
 
 /** CLI / HTTP listener factories: wire sink plus SSE and journal hooks. */
+@RequiredArgsConstructor
 public final class EngineListeners {
 
     private final JobSessions sessions;
@@ -35,19 +37,6 @@ public final class EngineListeners {
     private final JournalWriter journal;
     private final InFlightBuilds inFlight;
     private final LongSupplier eventRequestId;
-
-    public EngineListeners(
-            JobSessions sessions,
-            SsePublisher sse,
-            JournalWriter journal,
-            InFlightBuilds inFlight,
-            LongSupplier eventRequestId) {
-        this.sessions = sessions;
-        this.sse = sse;
-        this.journal = journal;
-        this.inFlight = inFlight;
-        this.eventRequestId = eventRequestId;
-    }
 
     public WorkspaceBuildListener wire(BufferedWriter writer, String workspaceDir) {
         return workspace(workspaceDir, new WireEventSink(writer), writer);
