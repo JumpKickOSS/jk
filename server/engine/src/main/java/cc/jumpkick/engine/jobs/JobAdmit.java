@@ -46,7 +46,7 @@ public final class JobAdmit {
             var raced = host.inFlight().tryAcquire(candidate);
             if (raced.isPresent()) {
                 // Scoped: journalId is this project's build number, which another project may
-                // also use (JK-1471).
+                // also use.
                 if (journalId != null) host.journal().delete(journalId, coord, dir);
                 return AdmitResult.reject(raced.get());
             }
@@ -56,7 +56,7 @@ public final class JobAdmit {
         return AdmitResult.ok(buildNumber, journalId);
     }
 
-    /** job-start wire line with buildNumber + details path for the CLI transcript. */
+    /** Job-start wire line with buildNumber + details path for the CLI transcript. */
     public static String jobStartLine(JobEnvelope.Host host, long jid, String kind, String dir, AdmitResult admit) {
         String detailsPath = null;
         if (admit.buildNumber() > 0) {

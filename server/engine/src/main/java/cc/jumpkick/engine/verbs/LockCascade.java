@@ -24,7 +24,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * One lock/update plan that writes the single workspace (or standalone) {@code jk-lock.toml}.
- * Members redirect to the root. Serialized per lock dir (JK-1356).
+ * Members redirect to the root. Serialized per lock dir.
  */
 final class LockCascade {
 

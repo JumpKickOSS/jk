@@ -49,7 +49,7 @@ public final class ExclusiveGroups {
      * built-in lists do). The old bare-inclusive wildcard made it impossible to bind subgroups
      * without also capturing the bare group, and Google's Android Maven exclusively captured
      * {@code com.google.android:annotations} (Central-only) that way, silently dropping
-     * grpc-netty-shaded's closure from locks (JK-1811).
+     * grpc-netty-shaded's closure from locks.
      */
     public static boolean matches(String pattern, String groupId) {
         if (pattern == null || pattern.isBlank() || groupId == null || groupId.isBlank()) return false;

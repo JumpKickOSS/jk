@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit;
  *
  * <p>{@link cc.jumpkick.builds.ProjectIdentity#resolve} parses jk.toml twice and, for a checkout
  * whose lock predates {@code project-id}, spawns git subprocesses — fine once per build, ruinous
- * once per journal row per {@code /api/history} request (JK-1750). Identity is stable for a
+ * once per journal row per {@code /api/history} request. Identity is stable for a
  * checkout except when a lock first mints an id, so a short TTL plus an explicit
  * {@link #refresh} at build admission keeps the memo honest.
  */

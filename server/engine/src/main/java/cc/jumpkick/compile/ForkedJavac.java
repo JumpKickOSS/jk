@@ -172,7 +172,7 @@ public final class ForkedJavac {
         jvmFlags.addAll(cc.jumpkick.engine.plugin.JvmOptions.batchFlags(1));
         boolean win = HostPlatform.isWindows();
         Path javaExe = hostJavaHome.resolve("bin").resolve(win ? "java.exe" : "java");
-        // Same classpath as the real fork (JK-1368): the classpath is part of the AOT key, and a
+        // Same classpath as the real fork: the classpath is part of the AOT key, and a
         // thin worker jar alone would CNFE on PluginMain, silently never training.
         return cc.jumpkick.engine.plugin.PluginLoader.command(
                 javaExe, workerCp, jvmFlags, List.of("@" + trainSpec.toAbsolutePath()));

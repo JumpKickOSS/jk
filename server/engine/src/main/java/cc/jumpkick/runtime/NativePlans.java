@@ -60,7 +60,7 @@ public final class NativePlans {
      * As {@link #moduleBuildPlan(Path, JkBuild, Path, Path, Path, String, List, boolean, boolean)}
      * with {@code allowNative}: a prereq the cascade pulled in for a {@code -m} selection builds to
      * a jar only — the user selected what gets native-compiled, and the client resolved GraalVM
-     * homes for the selection alone (JK-1361).
+     * homes for the selection alone.
      */
     public static BuildPlan moduleBuildPlan(
             Path moduleDir,

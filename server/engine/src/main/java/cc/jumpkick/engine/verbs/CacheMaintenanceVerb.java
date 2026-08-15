@@ -89,7 +89,7 @@ public final class CacheMaintenanceVerb implements HostedVerb {
                             host.streamSinglePlan(plan, session, writer, result -> {
                                 // An explicit clean IS a prune — stamp it, or `usage` keeps warning
                                 // "Last cleaned: never" right after a successful clean and the idle
-                                // scheduler re-runs work the user just did (JK-1771). Same file for
+                                // scheduler re-runs work the user just did. Same file for
                                 // the store tier: its usage footer reads from its own root.
                                 if (result.success() && !dryRun && ("prune".equals(op) || "sweep".equals(op))) {
                                     try {

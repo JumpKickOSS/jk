@@ -96,7 +96,7 @@ public final class PlannerSetup {
                         ctx.label("resolve deps (first run)");
                         LockFlow.Result result;
                         try {
-                            // noDefaultFeatures=false — same feature selection as `jk lock` (JK-1358).
+                            // noDefaultFeatures=false — same feature selection as `jk lock`.
                             result = LockFlow.run(in.lockDir(), in.cache(), List.of(), false, null);
                         } catch (UnsatisfiableException e) {
                             ctx.error("verbatim", e.getMessage());
@@ -172,8 +172,8 @@ public final class PlannerSetup {
                     WorkspaceClasspath.Result processorSiblings =
                             WorkspaceClasspath.resolve(in.dir(), project, Set.of(Scope.PROCESSOR));
                     // A declared processor that cannot be found generates nothing, and a build
-                    // that silently skips code generation is worse than one that fails
-                    // . Mirror the main-classpath missing-sibling guard above.
+                    // that silently skips code generation is worse than one that fails.
+                    // Mirror the main-classpath missing-sibling guard above.
                     if (!processorSiblings.missingSiblingJars().isEmpty()) {
                         for (String missing : processorSiblings.missingSiblingJars())
                             ctx.error("workspace", "processor sibling not built — " + missing);

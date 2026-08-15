@@ -60,7 +60,7 @@ public final class WorkerAotBootstrap {
         skipped.add("groovy (not AOT-cached; GroovycDriver has no cache integration)");
         // test-runner: suite -cp always includes the module's test classes + runtime deps, so every
         // project would need its own AOT key; caches would not transfer and would thrash disk.
-        skipped.add("test-runner (per-project classpath; AOT not reusable — JK-1398)");
+        skipped.add("test-runner (per-project classpath; AOT not reusable)");
         return new Result(trained, skipped, notes);
     }
 

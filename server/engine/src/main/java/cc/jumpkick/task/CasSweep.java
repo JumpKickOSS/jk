@@ -27,7 +27,7 @@ public final class CasSweep {
 
     private CasSweep() {}
 
-    /** {@code deletedShas}: the victims' hashes — lets a same-pass evictor skip them (JK-1526). */
+    /** {@code deletedShas}: the victims' hashes — lets a same-pass evictor skip them. */
     public record Report(int deleted, long freedBytes, int kept, Set<String> deletedShas) {}
 
     /**

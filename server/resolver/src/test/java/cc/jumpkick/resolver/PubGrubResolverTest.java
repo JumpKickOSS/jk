@@ -198,7 +198,7 @@ class PubGrubResolverTest {
     }
 
     /**
-     * JK-1660 / {@code ea6dc765}: the hermetic version of the logback-core regression. An
+     * {@code ea6dc765}: the hermetic version of the logback-core regression. An
      * exclusion on one edge decides what gets *selected*; it must not erase a real POM edge
      * pointing at a package that something else brought in anyway, or the closure ships without
      * classes the runtime loads by reflection.

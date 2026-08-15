@@ -55,8 +55,7 @@ public final class JobWorkers {
      * threads inherit whatever scope happened to be open when the pool first created them — so a
      * javac forked for request 7 could land under request 1 (or nowhere), and cancel would never
      * kill it. The propagator registered below carries the submitting thread's scope across that
-     * pool hop, which is what makes the cancel contract in the class javadoc actually hold
-     * (JK-1469).
+     * pool hop, which is what makes the cancel contract in the class javadoc actually hold.
      */
     private static final InheritableThreadLocal<Long> CURRENT = new InheritableThreadLocal<>();
 
