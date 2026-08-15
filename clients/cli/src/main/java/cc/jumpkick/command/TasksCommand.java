@@ -217,7 +217,7 @@ public final class TasksCommand implements CliCommand {
         String modulesSpec = in.value("modules").orElse(null);
         String affected = in.value("affected-since").orElse(null);
         // Inside a workspace member with a selector: resolve against the enclosing root so
-        // `-m sibling` works exactly like build/test (JK-1366). No selector stays module-local.
+        // `-m sibling` works exactly like build/test. No selector stays module-local.
         if (!entry.isWorkspaceRoot()
                 && ((modulesSpec != null && !modulesSpec.isBlank()) || (affected != null && !affected.isBlank()))) {
             var rootOpt = cc.jumpkick.config.WorkspaceLocator.findRoot(root);

@@ -8,7 +8,7 @@ import java.util.function.Function;
  * Does this terminal rewrap already-painted lines when its width shrinks?
  *
  * <p>The answer decides how far {@code JkManagerView} climbs to wipe the live region after a
- * shrink (JK-1989): a reflowing terminal spreads the old paint over extra physical rows, so the
+ * shrink: a reflowing terminal spreads the old paint over extra physical rows, so the
  * wipe must climb the <em>estimated</em> reflowed height; a clipping terminal keeps one physical
  * row per logical line, and climbing the reflow estimate there overshoots into completed output
  * above the region and erases it.

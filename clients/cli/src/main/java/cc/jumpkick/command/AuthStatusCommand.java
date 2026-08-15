@@ -58,7 +58,7 @@ public final class AuthStatusCommand implements CliCommand {
         boolean anyAuthenticated = false;
 
         Theme t = Theme.active();
-        // Wedge header + status rows (JK-1375): chrome up top, per-forge lines below.
+        // Wedge header + status rows: chrome up top, per-forge lines below.
         cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
         CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.menu("Auth status"));
         for (ForgeKind kind : kinds) {

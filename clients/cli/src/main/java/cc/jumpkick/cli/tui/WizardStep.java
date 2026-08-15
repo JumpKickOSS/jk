@@ -324,7 +324,7 @@ public sealed interface WizardStep
 
             /**
              * Type-to-filter the choice list (vertical). Characters edit a filter line; Space still
-             * toggles the focused row (JK-1197 library picker).
+             * toggles the focused row (library picker).
              */
             public Builder filterable(boolean filterable) {
                 this.filterable = filterable;

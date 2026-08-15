@@ -180,7 +180,7 @@ public final class CommandDispatch {
     }
 
     /** The ported commands — used to list them in the top-level (picocli) help. */
-    /** Top-level name/prefix resolution, exposed for tests (JK-1364 prefix regressions). */
+    /** Top-level name/prefix resolution, exposed for tests (prefix regressions). */
     static Abbreviations.Result<CliCommand> resolveName(String token) {
         return Abbreviations.resolve(token, BY_NAME);
     }

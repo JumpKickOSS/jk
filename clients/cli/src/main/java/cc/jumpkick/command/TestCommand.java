@@ -136,8 +136,8 @@ public final class TestCommand implements CliCommand {
 
         cc.jumpkick.model.JkBuild entry = cc.jumpkick.config.JkBuildParser.parse(buildFile);
 
-        // Workspace root: fan out to members (JK-1285). Bare `jk test` at the root used to run
-        // only the root module's (usually empty) suite and print a green "No tests".
+        // Workspace root: fan out to members so a bare `jk test` is not just the root
+        // module's (usually empty) suite.
         if (entry.isWorkspaceRoot()) {
             Set<Path> moduleDirs;
             boolean selective = (affectedSince != null && !affectedSince.isBlank())

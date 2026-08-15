@@ -139,7 +139,7 @@ public final class NewWizard {
                 .when(a -> "kotlin".equals(a.get("lang")))
                 .build();
 
-        // Type-ahead library picker (JK-1197): catalog short names + free-form GAV.
+        // Type-ahead library picker: catalog short names + free-form GAV.
         var librariesStep = WizardStep.MultiSelectStep.vertical("libraries", "Libraries / dependencies:")
                 .choicesFn(a -> libraryPickerChoices())
                 .filterable(true)

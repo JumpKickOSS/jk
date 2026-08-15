@@ -35,7 +35,7 @@ public final class ProgressBar {
 
     /**
      * Cached default-gradient instance. The constructor precomputes a {@value #SEGMENTS}-style
-     * gradient — too heavy to rebuild on every 80ms animation frame (JK-1893). Instances are
+     * gradient — too heavy to rebuild on every 80ms animation frame. Instances are
      * immutable, so sharing is safe; the cache refreshes if the active theme's gradient changes.
      */
     public static ProgressBar shared() {

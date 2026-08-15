@@ -24,7 +24,7 @@ public final class RadioButton implements Widget {
         String glyph = selected || focused ? Rail.RADIO_ON : Rail.RADIO_OFF;
         if (!ctx.ansi()) {
             // ASCII directly — plain mode's contract is ASCII-only, and widgets rendered outside
-            // the CliOutput boundary never pass through PlainAscii.transform (JK-1892).
+            // the CliOutput boundary never pass through PlainAscii.transform.
             String plain = selected || focused ? "(*)" : "( )";
             return plain + " " + label + (hint.isEmpty() ? "" : "  " + hint);
         }
