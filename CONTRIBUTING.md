@@ -45,9 +45,9 @@ full suite.
 
 ### Formatting
 
-jk formats itself. Run `jk format` before you commit; CI runs `jk format --check` in the
-`self-host-jvm` job and fails the build on drift (JK-1664). There is no pre-commit hook — if
-you want one, `jk format --check` is the command, but the CI gate is what's authoritative.
+jk formats itself. Run `jk format` before you commit. There is no pre-commit hook or CI
+format job — `jk format --check` is the local gate (required before every commit; see
+[AGENTS.md](AGENTS.md#code-formatting-mandatory-before-every-commit)).
 
 ### Code as Art
 
@@ -111,8 +111,8 @@ The client never embeds the engine (ticket-1020). Spawning uses
 
 | Still Gradle | Why |
 |---|---|
-| `./gradlew test` (unit tier) / `integrationTest` / `checkAll` | CI source of truth for the test suite (Linux; unit on every push/PR, integration on `main` pushes + heavy-path PRs) — see [docs/perf/test-suite-tiers.md](docs/perf/test-suite-tiers.md) |
-| `./gradlew dist` / `nativeCompile` | Prefer `jk release` for dogfood ship layout; Gradle still for native CI matrix |
+| `./gradlew test` (unit tier) / `integrationTest` / `checkAll` | CI: unit on every push/PR (`ci.yml`); integration on Linux nightly (`ci-nightly.yml`). Local pre-merge bar is still `checkAll` when you touch wire/engine/CLI — see [docs/perf/test-suite-tiers.md](docs/perf/test-suite-tiers.md) |
+| `./gradlew dist` / `nativeCompile` | Prefer `jk release` for dogfood ship layout; Gradle still for native release matrix |
 | `./gradlew installLocal` | Workers + **engine materialize/bounce** (JK-1194); or `jk plugin install-local` after `jk build` for workers only |
 
 Dogfood ship layout (after bootstrap `jk` on PATH; Graal for native CLI):
@@ -122,31 +122,23 @@ jk release --skip-tests    # native CLI + JVM engine + workers; alias: jk dist
 ./install.sh target/dist/jk
 ```
 
-### Per-OS CI (JK-1073)
+### CI lanes
 
 | Lane | When | What |
 |---|---|---|
-| **Linux** (`ci.yml`) | Every push / PR | Unit `./gradlew test` always; `./gradlew integrationTest` on `main` pushes + heavy-path PRs; self-host, showcase |
-| **Windows + macOS** (`ci-os-nightly.yml`) | **Nightly** (cron) + manual `workflow_dispatch` | Filtered `:core:test :wire:test :engine:test :cli:test` plus the matching `:integrationTest` tasks; Windows exercises real TCP+token engine transport (JK-1011 field path); macOS thin-client smoke |
+| **Push / PR** (`ci.yml`) | Every push to `main` and every PR | Commit-authorship scan; `./gradlew test` (unit tier) on Linux |
+| **Nightly** (`ci-nightly.yml`) | Daily cron + manual `workflow_dispatch` | `./gradlew integrationTest` on Linux |
 
-Rationale: macOS runners ~10× and Windows ~2× Linux minutes — not every push. Native-image
-per OS waits on the release matrix (JK-1066).
+Native multi-OS builds stay on the **release** matrix (`release.yml`), not CI. Windows/macOS
+test lanes are deferred to keep Actions minutes low.
 
 **Reproduce locally**
 
 ```bash
-# Same filter as nightly (unit + integration for the OS-sensitive modules):
-./gradlew :core:test :wire:test :engine:test :cli:test \
-  :core:integrationTest :wire:integrationTest :engine:integrationTest :cli:integrationTest
-
-# Windows local install of a thin client (PowerShell):
-#   .\gradlew :cli:installDist :engine:shadowJar
-#   pwsh -File scripts\install.ps1 -LocalPath clients\cli\build\install\jk\bin\jk.bat
-# Download install on Windows is stubbed until JK-1066.
+./gradlew test                 # same as push/PR CI
+./gradlew integrationTest      # same as nightly
+./gradlew checkAll             # unit + integration before merge when you touch heavy paths
 ```
-
-Flakes on new OS lanes: open a ticket; known flake classes include TempDir/pipe-closed on
-Linux and are expected to grow Windows path/FD variants.
 
 #### Engine / CLI tests under self-host
 
@@ -188,8 +180,6 @@ cd docs/features/examples/workspace-showcase
 jk lock && jk build && jk test --modules app
 # optional: jk build --modules app
 ```
-
-CI job **Showcase monorepo (jk)** runs the same path (no `continue-on-error`).
 
 ### One build at a time per checkout
 
