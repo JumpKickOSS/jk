@@ -71,7 +71,7 @@ class DiagnosticReportTest {
         if (Theme.active().isAnsi()) {
             Theme t = Theme.active();
             // Black on amber chip body. Pill axis: half-circle caps around bare label;
-            // without it, Badge.pill pads the label with spaces (JK-1970).
+            // without it, Badge.pill pads the label with spaces.
             AttributedStyle blackOnAmber = t.withBackground(t.bright(0, 0, 0), Rgb.hex(0xFFB800));
             String body = GlobalConfig.nerdFont().pill() ? "Compile Java" : " Compile Java ";
             assertThat(report).contains(Theme.colorize(body, blackOnAmber));

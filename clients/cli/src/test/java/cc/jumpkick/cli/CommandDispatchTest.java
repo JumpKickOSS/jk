@@ -27,7 +27,7 @@ class CommandDispatchTest {
 
     @Test
     void hidden_verb_aliases_stay_out_of_prefix_dispatch() {
-        // JK-1364: plan / why-rebuilt are VERB_ALIASES rewrites (exact token only), never
+        // Plan / why-rebuilt are VERB_ALIASES rewrites (exact token only), never
         // dispatcher names — otherwise `jk pl` is ambiguous with plugin and `jk wh` with why.
         var pl = CommandDispatch.resolveName("pl");
         assertThat(pl.resolved()).as("jk pl → plugin, not ambiguous").isTrue();

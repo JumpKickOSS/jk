@@ -28,7 +28,7 @@ class OpenBrowserTest {
 
     @Test
     void windows_uses_rundll32_never_cmd() {
-        // JK-1515: cmd would parse `&` in an unquoted URL as a command separator — and the auth
+        // Cmd would parse `&` in an unquoted URL as a command separator — and the auth
         // login URL is network-supplied. rundll32's FileProtocolHandler does no shell parsing.
         String hostile = "https://forge/device?user_code=X&calc";
         List<String> cmd = OpenBrowser.command(hostile, k -> null, "Windows 11");

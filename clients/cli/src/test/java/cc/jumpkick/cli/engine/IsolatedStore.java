@@ -8,7 +8,7 @@ import java.lang.annotation.Target;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 /**
- * Gives every test method in the class its own fresh artifact store (JK-1450).
+ * Gives every test method in the class its own fresh artifact store.
  *
  * <p>Since the cache/store split, mirrors and the CAS are shared per module test harness
  * ({@code test-jk-home/store}) by design — so fixtures that mint the same coordinate

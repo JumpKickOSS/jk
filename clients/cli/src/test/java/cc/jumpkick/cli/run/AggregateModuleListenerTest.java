@@ -122,7 +122,7 @@ class AggregateModuleListenerTest {
 
     @Test
     void buffered_failure_block_survives_a_plan_that_never_reaches_step_finish() {
-        // JK-1915: cancel/disconnect between the block's lines and stepFinish must still print
+        // Cancel/disconnect between the block's lines and stepFinish must still print
         // the already-received report; before, planFinish settled without flushing it.
         var buf = new ByteArrayOutputStream();
         PrintStream out = new PrintStream(buf, true, StandardCharsets.UTF_8);

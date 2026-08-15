@@ -10,7 +10,7 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** JK-1285: workspace-root test selection fans out to members. */
+/** Workspace-root test selection fans out to members. */
 class TestCommandWorkspaceTest {
 
     @Test

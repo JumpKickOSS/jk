@@ -176,7 +176,7 @@ class BuildCommandTest {
         assertThat(exit).isEqualTo(0);
 
         // All three modules produced their jars (parallel default).
-        // Mill layout (JK-1198): workspace members build into <workspace>/target/<module>/.
+        // Mill layout: workspace members build into <workspace>/target/<module>/.
         assertThat(tempDir.resolve("target/liba/lib/liba-1.0.0.jar")).exists();
         assertThat(tempDir.resolve("target/libb/lib/libb-1.0.0.jar")).exists();
         assertThat(tempDir.resolve("target/app/lib/app-1.0.0.jar")).exists();

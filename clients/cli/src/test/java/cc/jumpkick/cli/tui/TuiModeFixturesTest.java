@@ -15,7 +15,7 @@ import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
 /**
- * JK-1376: golden shape checks for the three human chrome modes — nerd (PUA caps), ansi (unicode,
+ * Golden shape checks for the three human chrome modes — nerd (PUA caps), ansi (unicode,
  * no PUA), and plain ({@code --no-ansi} ASCII, no CSI).
  */
 class TuiModeFixturesTest {

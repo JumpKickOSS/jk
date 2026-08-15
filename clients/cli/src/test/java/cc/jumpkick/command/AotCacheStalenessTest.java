@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1747: a dependency-only change (new lock, unchanged main jar) must discard
+ * A dependency-only change (new lock, unchanged main jar) must discard
  * {@code target/aot-cache} — run.sh would otherwise keep executing the old lib/ copies.
  */
 class AotCacheStalenessTest {

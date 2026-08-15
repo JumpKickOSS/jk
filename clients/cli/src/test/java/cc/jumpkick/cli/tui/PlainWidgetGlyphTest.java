@@ -8,7 +8,7 @@ import cc.jumpkick.config.NerdFontCaps;
 import org.junit.jupiter.api.Test;
 
 /**
- * JK-1892: plain mode is ASCII-only (docs/tui.md), and widgets rendered directly via
+ * Plain mode is ASCII-only (docs/tui.md), and widgets rendered directly via
  * {@code Widget.render(plainCtx)} bypass the CliOutput PlainAscii boundary — so the plain
  * branches must emit ASCII themselves.
  */
