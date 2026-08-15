@@ -168,6 +168,7 @@ public final class HistoryShowVerb implements HostedVerb {
                 stack,
                 d.file(),
                 d.line(),
+                d.col(),
                 d.snippetStart(),
                 d.snippet(),
                 d.worker());

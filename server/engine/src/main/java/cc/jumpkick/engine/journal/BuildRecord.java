@@ -226,6 +226,7 @@ public record BuildRecord(
             String stack,
             String file,
             int line,
+            int col,
             int snippetStart,
             List<String> snippet,
             int worker) {
@@ -264,6 +265,7 @@ public record BuildRecord(
                     method,
                     stack,
                     "",
+                    0,
                     0,
                     0,
                     List.of(),

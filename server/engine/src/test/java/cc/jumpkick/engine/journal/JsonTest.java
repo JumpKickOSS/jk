@@ -77,6 +77,7 @@ class JsonTest {
         assertThat(back.diagnostics().get(0).dir()).isEqualTo("/proj");
         assertThat(back.diagnostics().get(0).message()).isEqualTo("expected 1 but was 2\nline two");
         assertThat(back.diagnostics().get(0).exceptionClass()).isEqualTo("org.opentest4j.AssertionFailedError");
+        assertThat(back.diagnostics().get(0).col()).isZero();
         assertThat(back.benefit()).isNotNull();
         assertThat(back.benefit().estimatedUncachedMillis()).isEqualTo(9000);
         assertThat(back.benefit().savedMillis()).isEqualTo(6000);

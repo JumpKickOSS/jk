@@ -187,6 +187,7 @@ public final class JournalWriter {
         if (d.stack() != null && !d.stack().isEmpty()) o.put("stack", d.stack());
         if (d.file() != null && !d.file().isEmpty()) o.put("file", d.file());
         if (d.line() > 0) o.put("line", d.line());
+        if (d.col() > 0) o.put("col", d.col());
         if (d.snippetStart() > 0) o.put("snippetStart", d.snippetStart());
         if (d.snippet() != null && !d.snippet().isEmpty()) o.putStrings("snippet", d.snippet());
         if (d.worker() > 0) o.put("worker", d.worker());
