@@ -11,6 +11,7 @@ import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import org.jline.utils.Signals;
 
@@ -59,11 +60,24 @@ public final class TerminalSize {
         }
         try {
             // Same reflective path as GlobalCancel — avoids sun.misc compile warnings.
-            Signals.register("WINCH", () -> cached = null);
+            Signals.register("WINCH", TerminalSize::onResize);
         } catch (Throwable t) {
             // unsupported runtime — the plan-start refresh still applies
         }
     }
+
+    /**
+     * Resize invalidation. The generation bump comes FIRST: a probe that was already in flight
+     * when the resize landed re-checks the generation before caching, so its (possibly pre-resize)
+     * result cannot overwrite the invalidation (JK-1988). Bump-then-clear, because
+     * clear-then-bump reopens the window: the probe could store between the two.
+     */
+    static void onResize() {
+        resizeGeneration.incrementAndGet();
+        cached = null;
+    }
+
+    private static final AtomicInteger resizeGeneration = new AtomicInteger();
 
     private TerminalSize() {}
 
@@ -72,8 +86,11 @@ public final class TerminalSize {
         ensureWinchHandler();
         int[] s = cached;
         if (s == null) {
+            int gen = resizeGeneration.get();
             s = probe.get();
-            cached = s;
+            // A WINCH mid-probe means this result may be pre-resize: return it (best effort for
+            // this frame) but leave the cache empty so the next consumer re-probes (JK-1988).
+            if (resizeGeneration.get() == gen) cached = s;
         }
         return s;
     }
@@ -88,8 +105,9 @@ public final class TerminalSize {
     /** Re-probe and cache — call at plan start, never from a render path. */
     public static int[] refresh() {
         ensureWinchHandler();
+        int gen = resizeGeneration.get();
         int[] s = probe.get();
-        cached = s;
+        if (resizeGeneration.get() == gen) cached = s;
         return s;
     }
 

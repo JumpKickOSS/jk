@@ -96,6 +96,26 @@ class TerminalSizeTest {
     }
 
     @Test
+    void winch_during_an_in_flight_probe_is_never_lost() {
+        // JK-1988: the resize lands between the ioctl and the cache store — the (possibly
+        // pre-resize) result must not be cached over the invalidation.
+        TerminalSize.probe = () -> {
+            probes.incrementAndGet();
+            TerminalSize.onResize(); // deterministic mid-probe WINCH
+            return new int[] {24, 80}; // pre-resize geometry
+        };
+        assertThat(TerminalSize.size()).containsExactly(24, 80); // best effort for this frame
+        // The cache stayed empty, so the next read re-probes and sees post-resize geometry.
+        TerminalSize.probe = () -> {
+            probes.incrementAndGet();
+            return new int[] {50, 100};
+        };
+        assertThat(TerminalSize.size()).containsExactly(50, 100);
+        assertThat(TerminalSize.size()).containsExactly(50, 100); // now cached
+        assertThat(probes.get()).isEqualTo(2);
+    }
+
+    @Test
     void env_size_uses_defaults_when_env_absent_or_invalid() {
         // Cannot clear process env in-process; defaults must at least be positive and stable.
         int[] size = TerminalSize.envSize();
