@@ -964,6 +964,10 @@ export const CodeView = {
     line() {
       this.$nextTick(() => this.scrollToLine());
     },
+    // A buffer going clean releases an epoch reload the user declined while dirty (JK-1973).
+    dirty(next) {
+      if (!next && this._api) this._api.releaseDeferredEpochReload();
+    },
     lineErr() {
       this.$nextTick(() => {
         if (this._decorations) this._decorations.set(lineDecorations(this.line, this.lineErr));
@@ -983,6 +987,18 @@ export const CodeView = {
     },
   },
   async mounted() {
+    // Browser-level loss guards (JK-1973): warn on tab close/F5 with unsaved edits, and let the
+    // epoch hard-reload ask before discarding the buffer.
+    this._api = await import('./api.js');
+    this._dirtyProbe = () => this.dirty;
+    this._api.registerDirtyGuard(this._dirtyProbe);
+    this._beforeUnload = (e) => {
+      if (this.dirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', this._beforeUnload);
     await this.loadList();
     await this.loadFile();
   },
@@ -991,6 +1007,14 @@ export const CodeView = {
   },
   methods: {
     teardown() {
+      if (this._beforeUnload) {
+        window.removeEventListener('beforeunload', this._beforeUnload);
+        this._beforeUnload = null;
+      }
+      if (this._api && this._dirtyProbe) {
+        this._api.unregisterDirtyGuard(this._dirtyProbe);
+        this._dirtyProbe = null;
+      }
       if (this._listAbort) this._listAbort.abort();
       if (this._fileAbort) this._fileAbort.abort();
       if (this._copiedTimer) clearTimeout(this._copiedTimer);
