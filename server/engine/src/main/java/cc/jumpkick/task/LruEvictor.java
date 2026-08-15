@@ -22,7 +22,7 @@ import java.util.stream.Stream;
  * <p>Ordering: prefer low recompute-cost-per-byte victims first ({@code preferEvict} — Class-C
  * heavy ship outputs: natives, OCI tarballs, fat jars), then oldest {@link AccessLedger} touch
  * (mtime fallback), then larger size. A recently-touched 80 MiB native must not displace a cold
- * 20 KiB class blob that costs milliseconds to restore (JK-1721).
+ * 20 KiB class blob that costs milliseconds to restore.
  *
  * <p>When the budget forces us to delete a still-reachable object, that's counted as {@code
  * reachableEvicted} and surfaced in the report — the user gets a "your budget is below your live
@@ -53,7 +53,7 @@ public final class LruEvictor {
      * As {@link #evictDownTo(Cas, long, Set, AccessLedger, boolean)}, excluding {@code excluded}
      * shas from both the size total and the candidate list — blobs a same-pass {@link CasSweep}
      * already claimed. In a real run the files are gone before the evictor walks (harmless no-op);
-     * in a dry run this keeps FILES/BYTES from counting the same blob twice (JK-1526).
+     * in a dry run this keeps FILES/BYTES from counting the same blob twice.
      */
     public static Report evictDownTo(
             Cas cas, long maxBytes, Set<String> reachable, AccessLedger ledger, boolean dryRun, Set<String> excluded)

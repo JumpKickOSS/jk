@@ -57,8 +57,7 @@ class LibrarySearchCommandTest {
             String stdout = out.toString(StandardCharsets.UTF_8);
             assertThat(stdout).contains("junit-jupiter");
             assertThat(stdout).contains("junit-platform-launcher");
-            // The layer is opt-in via --show-layer; with it, a Layer column tags bundled rows
-            // (JK-1375 table form — the old inline [bundled] suffix is gone).
+            // The layer is opt-in via --show-layer; with it, a Layer column tags bundled rows.
             assertThat(stdout).contains("Layer");
             assertThat(stdout).contains("bundled");
         } finally {
@@ -117,7 +116,7 @@ class LibrarySearchCommandTest {
         int exit = Jk.execute("library", "search", "junit", "--offline", "--cache-dir", cache.toString());
         assertThat(exit).isZero();
         String stdout = out.toString(StandardCharsets.UTF_8);
-        // The cached coord is shown with its local version in the Cached column (JK-1375)...
+        // The cached coord is shown with its local version in the Cached column...
         assertThat(stdout).contains("junit-jupiter").contains("6.1.0");
         // ...the uncached sibling is filtered out under --offline.
         assertThat(stdout).doesNotContain("junit-platform-launcher");

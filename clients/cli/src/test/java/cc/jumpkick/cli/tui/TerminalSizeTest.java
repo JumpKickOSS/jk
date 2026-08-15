@@ -70,7 +70,7 @@ class TerminalSizeTest {
     @Test
     @org.junit.jupiter.api.condition.DisabledOnOs(org.junit.jupiter.api.condition.OS.WINDOWS)
     void sigwinch_invalidates_the_cache_so_the_next_read_reprobes() throws Exception {
-        // JK-1966: a mid-build resize must reach post-resize rendering (failure snippets,
+        // a mid-build resize must reach post-resize rendering (failure snippets,
         // settle wedges) without waiting for the next plan start. The handler only drops the
         // cache; the next consumer pays the single re-probe.
         assertThat(TerminalSize.columns()).isEqualTo(120);
@@ -97,7 +97,7 @@ class TerminalSizeTest {
 
     @Test
     void winch_during_an_in_flight_probe_is_never_lost() {
-        // JK-1988: the resize lands between the ioctl and the cache store — the (possibly
+        // the resize lands between the ioctl and the cache store — the (possibly
         // pre-resize) result must not be cached over the invalidation.
         TerminalSize.probe = () -> {
             probes.incrementAndGet();

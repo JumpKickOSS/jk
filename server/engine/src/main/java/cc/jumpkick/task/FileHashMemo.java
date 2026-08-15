@@ -33,7 +33,7 @@ public final class FileHashMemo {
     private static final long SETTLE_MS = 2_000;
 
     /**
-     * Pathology backstop per thread cache (JK-1942): the idle boundary clears these anyway, but a
+     * Pathology backstop per thread cache: the idle boundary clears these anyway, but a
      * single build over an enormous tree must not grow one map without limit either. ~300 bytes
      * per entry; the disk memo absorbs the cost of a mid-build clear.
      */
@@ -43,7 +43,7 @@ public final class FileHashMemo {
      * Every live thread's walk cache, weakly held so a dead thread's map can be collected. The
      * idle boundary clears them all ({@link #clearAllThreadCaches}) — without that, the immortal
      * {@code jk-cpu-N} pool threads accrete entries forever, because the cache key embeds the
-     * nanosecond mtime and every rebuild mints new keys (JK-1942).
+     * nanosecond mtime and every rebuild mints new keys.
      */
     private static final Set<Map<String, String>> LIVE_CACHES =
             Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));

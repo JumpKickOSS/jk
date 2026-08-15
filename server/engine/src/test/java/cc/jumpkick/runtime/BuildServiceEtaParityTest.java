@@ -25,7 +25,7 @@ class BuildServiceEtaParityTest {
     private static final Path MOD = Path.of("/ws/cli");
 
     /**
-     * Regression (JK-1585): under --force/--redo the ETA seed comes from a shape-only plan (no
+     * Regression: under --force/--redo the ETA seed comes from a shape-only plan (no
      * TaskForecaster content-prediction walk); the distrust fallback in etaCostsFromExplainPlan
      * prices each module from its full plan shape, so the seed is still non-zero.
      */
@@ -65,7 +65,7 @@ class BuildServiceEtaParityTest {
     }
 
     /**
-     * Regression (JK-1584): a selection build's ETA seed must price only the hinted modules —
+     * Regression: a selection build's ETA seed must price only the hinted modules —
      * the whole-graph forecast would bill dirty modules the build will never schedule.
      */
     @Test

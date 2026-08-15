@@ -89,7 +89,7 @@ public final class ManifestBuild {
                         + " (e.g. name = \"…\", group = \"…\", version = \"…\")");
             }
             if ("shrink".equals(key)) {
-                // The plugin was renamed (JK-1798); steer pre-rename projects the same way the
+                // The plugin was renamed; steer pre-rename projects the same way the
                 // `assembly = "shrink"` migration message does.
                 throw new JkBuildParseException(
                         "[shrink] was renamed — use a [minified] table (and `assembly = \"minified\"`)");
@@ -184,7 +184,7 @@ public final class ManifestBuild {
         TomlTable test = root.getTable("test");
         TomlTable resolve = root.getTable("resolve");
         // Dead/renamed [test] keys fail loudly: silently ignoring default-exclude-tags would run
-        // the slow/integration tests the config meant to exclude with no signal (JK-1825).
+        // the slow/integration tests the config meant to exclude with no signal.
         if (test != null) {
             if (test.contains("default-exclude-tags")) {
                 throw new JkBuildParseException("[test].default-exclude-tags was renamed to exclude-tags "

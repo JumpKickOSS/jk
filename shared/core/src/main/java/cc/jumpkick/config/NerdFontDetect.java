@@ -19,7 +19,7 @@ import java.util.function.Supplier;
  * fail a build.
  *
  * <p>Superseded the previous install-time-only probe, which shelled out to {@code fc-list} with a
- * two-second timeout and so could never run per-launch (JK-1970).
+ * two-second timeout and so could never run per-launch.
  */
 public final class NerdFontDetect {
 
@@ -86,7 +86,7 @@ public final class NerdFontDetect {
         // T3 — identified terminal whose font we can look up.
         if (termProgram.equals("apple_terminal")) {
             // Pinned to the wedge. Terminal.app stores its font as an NSKeyedArchiver blob, which
-            // we deliberately do not decode (JK-1970 non-goal); the triangles are the safe subset.
+            // we deliberately do not decode; the triangles are the safe subset.
             return new Result(NerdFontCaps.WEDGE_ONLY, "apple-terminal", "Terminal.app — wedge glyphs only");
         }
         if (termProgram.equals("iterm.app")) {

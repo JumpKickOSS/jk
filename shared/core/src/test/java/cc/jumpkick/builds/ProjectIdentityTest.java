@@ -60,7 +60,7 @@ class ProjectIdentityTest {
     @Test
     void coord_rename_preserves_identity_for_lockless_projects(@TempDir Path dir, @TempDir Path buildsDir)
             throws Exception {
-        // Coord is display metadata, not identity material (JK-1794): renaming project
+        // Coord is display metadata, not identity material: renaming project
         // group/name must not split a lockless project into two dashboard projects.
         System.setProperty("jk.env.JK_BUILDS_DIR", buildsDir.toString());
         try {
@@ -87,7 +87,7 @@ class ProjectIdentityTest {
     void recovers_recorded_id_before_hashing(@TempDir Path tmp, @TempDir Path buildsDir) throws Exception {
         // A checkout whose lock is gone (or that is gone entirely — dead checkout in history
         // enrichment) must resolve to the id recorded in identity.toml, not a fresh hash that
-        // matches no project home (JK-1794).
+        // matches no project home.
         System.setProperty("jk.env.JK_BUILDS_DIR", buildsDir.toString());
         try {
             Path checkout = tmp.resolve("workspace");

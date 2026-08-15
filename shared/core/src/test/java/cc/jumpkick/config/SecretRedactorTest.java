@@ -40,7 +40,7 @@ class SecretRedactorTest {
 
     @Test
     void a_dangling_secret_prefix_at_a_truncation_cut_is_masked() {
-        // JK-1960: capture-time truncation can cut mid-value; the surviving prefix no longer
+        // capture-time truncation can cut mid-value; the surviving prefix no longer
         // matches the exact-substring pass and must be masked at the seam by the caller.
         SecretRedactor r = SecretRedactor.of(List.of("s3cret-token-value"));
         assertThat(r.maskTrailingSecretPrefix("Bearer s3cret-tok")).isEqualTo("Bearer " + SecretRedactor.MASK);
@@ -93,7 +93,7 @@ class SecretRedactorTest {
 
     @Test
     void escaped_json_view_masks_both_renderings() {
-        // JK-1975: replay paths redact escaped JSON documents; a secret with a quote, backslash,
+        // replay paths redact escaped JSON documents; a secret with a quote, backslash,
         // or newline was persisted in escaped form.
         SecretRedactor r = SecretRedactor.of(List.of("pa\\ss\"wd\n9"));
         SecretRedactor json = r.forEscapedJson();

@@ -39,7 +39,7 @@ class Giter8LocalApplyTest {
 
     @Test
     void template_property_cannot_escape_the_destination(@TempDir Path tmp) throws Exception {
-        // JK-1463: a hostile template controls both default.properties and the file names that
+        // a hostile template controls both default.properties and the file names that
         // reference it — a traversing value must not place a write outside dest.
         Path template = tmp.resolve("evil.g8");
         Path g8 = template.resolve("src/main/g8");
@@ -57,7 +57,7 @@ class Giter8LocalApplyTest {
 
     @Test
     void symlinked_template_entries_are_skipped_not_dereferenced(@TempDir Path tmp) throws Exception {
-        // JK-1465: following a link would copy host files into the generated project.
+        // following a link would copy host files into the generated project.
         Path secret = tmp.resolve("id_ed25519");
         Files.writeString(secret, "PRIVATE KEY MATERIAL\n");
         Path template = tmp.resolve("t.g8");

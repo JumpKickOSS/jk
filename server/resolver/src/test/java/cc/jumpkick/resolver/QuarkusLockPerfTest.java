@@ -32,7 +32,7 @@ import org.junit.jupiter.api.io.TempDir;
  * metadata into the developer's artifact store. The first lock's wall time is dominated by
  * hundreds of Central round trips, so timing it measures the network, not PubGrub — and on a cold
  * or partial store it blew the old 30s deadline and reported a resolve regression that was not
- * one (JK-1597).
+ * one.
  */
 @Tag("network")
 @Tag("slow")
@@ -42,7 +42,7 @@ class QuarkusLockPerfTest {
      * Kill switch for any Quarkus-graph test that talks to Maven Central. It is not a budget —
      * the budget is {@link #WARM_BUDGET_MS}, asserted separately. This only has to outlast a cold
      * store's download burst, so it is generous on purpose: a deadline tight enough to trip on a
-     * slow link reports a resolve regression that is not one, which is how JK-1597 happened.
+     * slow link reports a resolve regression that is not one, which is how  happened.
      *
      * <p>Shared by every test in this family so the three of them cannot drift apart again.
      * Matches the project-wide network/integration test budget (5 minutes).

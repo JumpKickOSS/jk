@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The JK-1622 shape: a sibling that is both a main dep ([dependencies] widget-core.workspace=true)
+ * The  shape: a sibling that is both a main dep ([dependencies] widget-core.workspace=true)
  * and a tests-kind dep ([test-dependencies] widget-core = { workspace = true, kind = "tests" }).
  * IdeOps collapses that to one {@link IdeWireModel#SCOPE_COMPILE_TEST_KIND} row; generators must
  * emit exactly one module entry (JDT rejects duplicates) plus the sibling test-classes attachment.
@@ -57,7 +57,7 @@ class SiblingTestsKindGeneratorTest {
         assertThat(iml).containsOnlyOnce("module-name=\"widget-core\"");
         assertThat(iml).contains("<orderEntry type=\"module\" module-name=\"widget-core\" />");
         assertThat(iml).contains("widget-core (tests)");
-        // JK-1644: the tests-kind library rides $MODULE_DIR$ like every other .iml path —
+        // the tests-kind library rides $MODULE_DIR$ like every other .iml path —
         // an absolute path breaks a moved or shared checkout.
         assertThat(iml).contains("file://$MODULE_DIR$/../widget-core/target/test-classes");
         assertThat(iml).doesNotContain("file://" + ws);
