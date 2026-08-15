@@ -418,52 +418,6 @@ final class HttpProjectApi {
     }
 
     /**
-     * {@code GET /api/preview/image?url=} — fetch a remote image for markdown Preview (GitHub
-     * README banners / shields badges). Host allow-list only; not a general proxy.
-     */
-    void handlePreviewImage(HttpExchange exchange) throws IOException {
-        String url;
-        try {
-            url = HttpEngineServer.queryParam(exchange.getRequestURI().getRawQuery(), "url");
-        } catch (IllegalArgumentException e) {
-            HttpEngineServer.sendJson(
-                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
-            return;
-        }
-        switch (PreviewImageFetch.fetch(url)) {
-            case PreviewImageFetch.Result.BadRequest bad ->
-                HttpEngineServer.sendJson(
-                        exchange,
-                        400,
-                        JsonOut.object().put("error", bad.error()).toString());
-            case PreviewImageFetch.Result.Forbidden forbidden ->
-                HttpEngineServer.sendJson(
-                        exchange,
-                        403,
-                        JsonOut.object().put("error", forbidden.error()).toString());
-            case PreviewImageFetch.Result.Upstream up
-            when up.status() == 413 ->
-                HttpEngineServer.sendJson(
-                        exchange, 413, JsonOut.object().put("error", up.error()).toString());
-            case PreviewImageFetch.Result.Upstream up ->
-                HttpEngineServer.sendJson(
-                        exchange,
-                        502,
-                        JsonOut.object()
-                                .put("error", up.error())
-                                .put("upstreamStatus", up.status())
-                                .toString());
-            case PreviewImageFetch.Result.Failed failed ->
-                HttpEngineServer.sendJson(
-                        exchange,
-                        502,
-                        JsonOut.object().put("error", failed.error()).toString());
-            case PreviewImageFetch.Result.Ok ok ->
-                HttpEngineServer.sendBytes(exchange, 200, ok.contentType(), ok.bytes());
-        }
-    }
-
-    /**
      * {@code GET /api/project/file/raw?project=&lt;id&gt;&amp;path=&lt;rel&gt;} — raw bytes of one
      * allow-listed file (images for the Preview pane). Same sandbox as the JSON body endpoint.
      * Clients must {@code fetch} with the bearer token and build a blob URL — a bare

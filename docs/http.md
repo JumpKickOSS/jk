@@ -222,23 +222,6 @@ Response: `{ projectId, dir, path, lang, bytes, lines, etag }` (new content hash
 
 The dashboard `#project/<id>/files/…` pane is the primary consumer (Copy / Preview / Save + Build).
 
-### `GET /api/preview/image`
-
-`GET /api/preview/image?url=<absolute-http(s)-url>`
-
-Fetch a remote image for the files-pane markdown Preview (GitHub README banners, shields.io
-badges, etc.). **Host allow-list only** (github.com, `*.githubusercontent.com`, img.shields.io,
-…); not a general open proxy. Token-gated. Response is raw image bytes with an image content type.
-
-| Status | When |
-| --- | --- |
-| 200 | OK |
-| 400 | missing/illegal `url` |
-| 401 | no / bad bearer |
-| 403 | host not allowed / blocked address |
-| 413 | image larger than 5 MiB |
-| 502 | upstream failure |
-
 ### `GET /api/metrics`
 
 Aggregate build history as a flat array, one object per row, averages pre-computed so clients stay

@@ -202,7 +202,7 @@ export function resolveWorkspaceRelPath(fromFile, href) {
 
 /**
  * Image-only resolve: workspace-relative path must be a previewable image type.
- * Remote http(s) returns null — hydrate via {@code /api/preview/image}.
+ * Remote http(s) returns null — remote images stay on their own URLs (no proxy).
  */
 export function resolveMarkdownImagePath(fromFile, href) {
   const rel = resolveWorkspaceRelPath(fromFile, href);
