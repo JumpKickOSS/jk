@@ -396,7 +396,7 @@ public final class HttpEngineServer implements AutoCloseable {
             }
             // MCP is agent-facing; always token-gated (even loopback) — same CSRF posture as POST /api/build.
             if (!tokenValid(bearerToken(exchange.getRequestHeaders().getFirst("Authorization")))
-                    && !tokenValid(queryParam(exchange.getRequestURI().getRawQuery(), "access_token"))) {
+                    && !tokenValid(queryParamLenient(exchange.getRequestURI().getRawQuery(), "access_token"))) {
                 exchange.getResponseHeaders().set("WWW-Authenticate", "Bearer");
                 sendText(exchange, 401, "missing or invalid bearer token\n");
                 return;
@@ -540,7 +540,7 @@ public final class HttpEngineServer implements AutoCloseable {
      * leakage); open SSE after tools/call returns, or use {@code requestId} from the tool result.
      */
     Long resolveMcpEventFilter(String query) {
-        String rid = queryParam(query, "requestId");
+        String rid = queryParamLenient(query, "requestId");
         if (rid != null && !rid.isBlank()) {
             try {
                 return Long.parseLong(rid.trim());
@@ -548,7 +548,7 @@ public final class HttpEngineServer implements AutoCloseable {
                 return null;
             }
         }
-        String tok = queryParam(query, "progressToken");
+        String tok = queryParamLenient(query, "progressToken");
         if (tok != null && !tok.isBlank()) {
             Long bound = progressTokens.resolve(tok.trim());
             // -1 never appears as a real requestId; filtered stream stays quiet until bind lands
@@ -615,7 +615,7 @@ public final class HttpEngineServer implements AutoCloseable {
         boolean read = method.equals("GET") || method.equals("HEAD");
         return read
                 && exchange.getRequestURI().getPath().equals("/api/events")
-                && tokenValid(queryParam(exchange.getRequestURI().getRawQuery(), "access_token"));
+                && tokenValid(queryParamLenient(exchange.getRequestURI().getRawQuery(), "access_token"));
     }
 
     private static String bearerToken(String authorization) {
@@ -643,6 +643,20 @@ public final class HttpEngineServer implements AutoCloseable {
     /** Percent-decode without the {@code application/x-www-form-urlencoded} {@code +}→space rule. */
     private static String decodeOnce(String raw) {
         return java.net.URLDecoder.decode(raw.replace("+", "%2B"), StandardCharsets.UTF_8);
+    }
+
+    /**
+     * {@link #queryParam} that treats malformed percent-encoding as an absent parameter instead of
+     * throwing. For token / filter lookups where the caller's answer to garbage is "no" (401 /
+     * unfiltered), not a 500 from the generic handler (JK-1980). Handlers that owe the client a
+     * message keep the throwing form and map it to 400 themselves.
+     */
+    static String queryParamLenient(String rawQuery, String name) {
+        try {
+            return queryParam(rawQuery, name);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     private boolean tokenValid(String presented) {

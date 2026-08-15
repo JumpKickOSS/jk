@@ -153,8 +153,17 @@ final class HttpProjectApi {
      */
     void handleProject(HttpExchange exchange) throws IOException {
         String q = exchange.getRequestURI().getRawQuery();
-        String projectId = HttpEngineServer.queryParam(q, "project");
-        String dir = HttpEngineServer.queryParam(q, "dir");
+        String projectId;
+        String dir;
+        try {
+            projectId = HttpEngineServer.queryParam(q, "project");
+            dir = HttpEngineServer.queryParam(q, "dir");
+        } catch (IllegalArgumentException e) {
+            // Malformed percent-encoding is the client's error, not a 500 (JK-1980).
+            HttpEngineServer.sendJson(
+                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
+            return;
+        }
         if ((projectId == null || projectId.isBlank()) && (dir == null || dir.isBlank())) {
             HttpEngineServer.sendJson(
                     exchange,
@@ -236,7 +245,7 @@ final class HttpProjectApi {
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
             return;
         }
-        boolean transitive = parseTruthy(HttpEngineServer.queryParam(query, "transitive"));
+        boolean transitive = parseTruthy(HttpEngineServer.queryParamLenient(query, "transitive"));
         cc.jumpkick.resolver.DependencyGraphModel.Graph data;
         try {
             data = cc.jumpkick.resolver.DependencyGraphModel.forProjectDir(projectDir, scopes, transitive);

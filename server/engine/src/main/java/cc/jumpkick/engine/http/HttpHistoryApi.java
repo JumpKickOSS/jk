@@ -36,7 +36,7 @@ final class HttpHistoryApi {
      * {@code requestId}/{@code progress}.
      */
     void handleHistory(HttpExchange exchange) throws IOException {
-        String id = HttpEngineServer.queryParam(exchange.getRequestURI().getRawQuery(), "id");
+        String id = HttpEngineServer.queryParamLenient(exchange.getRequestURI().getRawQuery(), "id");
         if (id != null && !id.isBlank()) {
             var record = journal.recordFile(id);
             if (record.isEmpty()) {
@@ -292,7 +292,8 @@ final class HttpHistoryApi {
     void handleHistoryArtifact(HttpExchange exchange) throws IOException {
         String query = exchange.getRequestURI().getRawQuery();
         var artifact =
-                journal.artifact(HttpEngineServer.queryParam(query, "id"), HttpEngineServer.queryParam(query, "name"));
+                journal.artifact(
+                HttpEngineServer.queryParamLenient(query, "id"), HttpEngineServer.queryParamLenient(query, "name"));
         if (artifact.isEmpty()) {
             HttpEngineServer.sendJson(
                     exchange,
@@ -308,7 +309,7 @@ final class HttpHistoryApi {
      * token is required even on loopback (CSRF defense).
      */
     void handleHistoryDelete(HttpExchange exchange) throws IOException {
-        String id = HttpEngineServer.queryParam(exchange.getRequestURI().getRawQuery(), "id");
+        String id = HttpEngineServer.queryParamLenient(exchange.getRequestURI().getRawQuery(), "id");
         if (id == null || !journal.delete(id)) {
             HttpEngineServer.sendJson(
                     exchange,
