@@ -206,48 +206,55 @@ public final class MacPrefs {
         if (cfInitAttempted) return;
         synchronized (MacPrefs.class) {
             if (cfInitAttempted) return;
-            cfInitAttempted = true;
-            Linker linker = Linker.nativeLinker();
-            SymbolLookup cf = SymbolLookup.libraryLookup(CORE_FOUNDATION, Arena.global());
+            // Flag written LAST (finally): the fast path reads it unsynchronized, so an early
+            // write would publish attempted=true with null handles to a concurrent caller
+            // (JK-1987 — benign here beyond one spurious empty read, but same idiom as
+            // TerminalSize).
+            try {
+                Linker linker = Linker.nativeLinker();
+                SymbolLookup cf = SymbolLookup.libraryLookup(CORE_FOUNDATION, Arena.global());
 
-            var typeIdOfRef = FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
-            var typeIdConstant = FunctionDescriptor.of(ValueLayout.JAVA_LONG);
+                var typeIdOfRef = FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
+                var typeIdConstant = FunctionDescriptor.of(ValueLayout.JAVA_LONG);
 
-            cfStringCreateWithCString = linker.downcallHandle(
-                    cf.findOrThrow("CFStringCreateWithCString"),
-                    FunctionDescriptor.of(
-                            ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-            cfPreferencesCopyAppValue = linker.downcallHandle(
-                    cf.findOrThrow("CFPreferencesCopyAppValue"),
-                    FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-            cfArrayGetCount = linker.downcallHandle(cf.findOrThrow("CFArrayGetCount"), typeIdOfRef);
-            cfArrayGetValueAtIndex = linker.downcallHandle(
-                    cf.findOrThrow("CFArrayGetValueAtIndex"),
-                    FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
-            cfDictionaryGetValue = linker.downcallHandle(
-                    cf.findOrThrow("CFDictionaryGetValue"),
-                    FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-            cfGetTypeID = linker.downcallHandle(cf.findOrThrow("CFGetTypeID"), typeIdOfRef);
-            cfStringGetTypeID = linker.downcallHandle(cf.findOrThrow("CFStringGetTypeID"), typeIdConstant);
-            cfArrayGetTypeID = linker.downcallHandle(cf.findOrThrow("CFArrayGetTypeID"), typeIdConstant);
-            cfDictionaryGetTypeID = linker.downcallHandle(cf.findOrThrow("CFDictionaryGetTypeID"), typeIdConstant);
-            cfStringGetCStringPtr = linker.downcallHandle(
-                    cf.findOrThrow("CFStringGetCStringPtr"),
-                    FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-            cfStringGetCString = linker.downcallHandle(
-                    cf.findOrThrow("CFStringGetCString"),
-                    FunctionDescriptor.of(
-                            ValueLayout.JAVA_BOOLEAN,
-                            ValueLayout.ADDRESS,
-                            ValueLayout.ADDRESS,
-                            ValueLayout.JAVA_LONG,
-                            ValueLayout.JAVA_INT));
-            cfStringGetLength = linker.downcallHandle(cf.findOrThrow("CFStringGetLength"), typeIdOfRef);
-            cfStringGetMaximumSizeForEncoding = linker.downcallHandle(
-                    cf.findOrThrow("CFStringGetMaximumSizeForEncoding"),
-                    FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
-            cfRelease =
-                    linker.downcallHandle(cf.findOrThrow("CFRelease"), FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+                cfStringCreateWithCString = linker.downcallHandle(
+                        cf.findOrThrow("CFStringCreateWithCString"),
+                        FunctionDescriptor.of(
+                                ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+                cfPreferencesCopyAppValue = linker.downcallHandle(
+                        cf.findOrThrow("CFPreferencesCopyAppValue"),
+                        FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+                cfArrayGetCount = linker.downcallHandle(cf.findOrThrow("CFArrayGetCount"), typeIdOfRef);
+                cfArrayGetValueAtIndex = linker.downcallHandle(
+                        cf.findOrThrow("CFArrayGetValueAtIndex"),
+                        FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
+                cfDictionaryGetValue = linker.downcallHandle(
+                        cf.findOrThrow("CFDictionaryGetValue"),
+                        FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+                cfGetTypeID = linker.downcallHandle(cf.findOrThrow("CFGetTypeID"), typeIdOfRef);
+                cfStringGetTypeID = linker.downcallHandle(cf.findOrThrow("CFStringGetTypeID"), typeIdConstant);
+                cfArrayGetTypeID = linker.downcallHandle(cf.findOrThrow("CFArrayGetTypeID"), typeIdConstant);
+                cfDictionaryGetTypeID = linker.downcallHandle(cf.findOrThrow("CFDictionaryGetTypeID"), typeIdConstant);
+                cfStringGetCStringPtr = linker.downcallHandle(
+                        cf.findOrThrow("CFStringGetCStringPtr"),
+                        FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+                cfStringGetCString = linker.downcallHandle(
+                        cf.findOrThrow("CFStringGetCString"),
+                        FunctionDescriptor.of(
+                                ValueLayout.JAVA_BOOLEAN,
+                                ValueLayout.ADDRESS,
+                                ValueLayout.ADDRESS,
+                                ValueLayout.JAVA_LONG,
+                                ValueLayout.JAVA_INT));
+                cfStringGetLength = linker.downcallHandle(cf.findOrThrow("CFStringGetLength"), typeIdOfRef);
+                cfStringGetMaximumSizeForEncoding = linker.downcallHandle(
+                        cf.findOrThrow("CFStringGetMaximumSizeForEncoding"),
+                        FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
+                cfRelease = linker.downcallHandle(
+                        cf.findOrThrow("CFRelease"), FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+            } finally {
+                cfInitAttempted = true;
+            }
         }
     }
 

@@ -147,23 +147,32 @@ public final class TerminalSize {
         if (posixInitAttempted) return;
         synchronized (TerminalSize.class) {
             if (posixInitAttempted) return;
-            posixInitAttempted = true;
-            Linker linker = Linker.nativeLinker();
-            SymbolLookup lookup = linker.defaultLookup();
-            posixOpen = linker.downcallHandle(
-                    lookup.findOrThrow("open"),
-                    FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-            posixClose = linker.downcallHandle(
-                    lookup.findOrThrow("close"), FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
-            posixIsatty = linker.downcallHandle(
-                    lookup.findOrThrow("isatty"), FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
-            // ioctl is variadic; third arg is the winsize pointer.
-            posixIoctl = linker.downcallHandle(
-                    lookup.findOrThrow("ioctl"),
-                    FunctionDescriptor.of(
-                            ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS),
-                    Linker.Option.firstVariadicArg(2));
-            posixTiocgwinsz = tiocgwinszConstant();
+            // The volatile flag is written LAST (finally): the unsynchronized fast path above
+            // reads it without the monitor, so publishing it before the handles let a second
+            // thread see attempted=true with null handles and cache the 80x24 env fallback as
+            // the process-wide size (JK-1987). finally keeps a linker failure from re-throwing
+            // on every later probe.
+            try {
+                Linker linker = Linker.nativeLinker();
+                SymbolLookup lookup = linker.defaultLookup();
+                posixOpen = linker.downcallHandle(
+                        lookup.findOrThrow("open"),
+                        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+                posixClose = linker.downcallHandle(
+                        lookup.findOrThrow("close"), FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+                posixIsatty = linker.downcallHandle(
+                        lookup.findOrThrow("isatty"),
+                        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+                // ioctl is variadic; third arg is the winsize pointer.
+                posixIoctl = linker.downcallHandle(
+                        lookup.findOrThrow("ioctl"),
+                        FunctionDescriptor.of(
+                                ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS),
+                        Linker.Option.firstVariadicArg(2));
+                posixTiocgwinsz = tiocgwinszConstant();
+            } finally {
+                posixInitAttempted = true;
+            }
         }
     }
 
