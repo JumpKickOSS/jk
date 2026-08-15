@@ -37,7 +37,7 @@ class TestEffortTest {
     }
 
     /**
-     * Regression (JK-1587): the documented specificity ladder is module residual → project
+     * Regression: the documented specificity ladder is module residual → project
      * median → host absolute. Sibling-module rates must win over a host-wide average that may
      * have been trained by unrelated projects.
      */

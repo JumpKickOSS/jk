@@ -13,7 +13,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * JK-1746: image jar names must keep the classifier (per-arch natives are distinct lock rows),
+ * Image jar names must keep the classifier (per-arch natives are distinct lock rows),
  * disambiguate same-name rows with the group, and refuse a residual collision instead of letting
  * the tar layer silently keep one of the two.
  */

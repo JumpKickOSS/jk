@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * a known {@code.env} value must never appear in free-form engine output (wire/journal)
+ * A known {@code.env} value must never appear in free-form engine output (wire/journal)
  * or in stamp/cache key material that lands under {@code target/}.
  */
 class EnvSecretRedactionTest {
@@ -82,7 +82,7 @@ class EnvSecretRedactionTest {
     @Test
     void redactFailure_masks_message_and_stack(@TempDir Path tmp) throws Exception {
         // printStackTrace text repeats the raw message on its first line, so masking message
-        // alone still leaks the secret through the stack field (JK-1878).
+        // alone still leaks the secret through the stack field.
         Files.writeString(tmp.resolve(".env"), "TOKEN=" + SECRET + "\n");
         var f = new cc.jumpkick.run.TestFailureInfo(
                 "g:a",

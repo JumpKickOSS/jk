@@ -112,8 +112,7 @@ class TaskForecasterDepScopeTest {
     @Test
     void order_after_only_dirty_prereq_is_orderDepDirty(@TempDir Path tmp) throws Exception {
         // A dirty order-after-only sibling (incl. test-plugin-jars) prices no compile/test work
-        // but must schedule the dependent so real action keys re-check out-of-band outputs
-        // (JK-1810).
+        // but must schedule the dependent so real action keys re-check out-of-band outputs.
         Path gen = tmp.resolve("gen");
         Path app = tmp.resolve("app");
         Files.createDirectories(gen);

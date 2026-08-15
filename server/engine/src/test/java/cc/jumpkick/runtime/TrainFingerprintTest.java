@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1748: the train fingerprint must cover the profiles the run actually observed. A
+ * The train fingerprint must cover the profiles the run actually observed. A
  * {@code --profile smoke} run merges one profile's surface and must not satisfy the full-set
  * freshness check (`require-fresh`, and the up-to-date shortcut).
  */

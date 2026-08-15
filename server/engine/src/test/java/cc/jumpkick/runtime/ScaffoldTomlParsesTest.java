@@ -17,7 +17,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
 /**
- * JK-1671: the scaffolded jk.toml is the client's base plus the plugin's fragments, and nothing
+ * The scaffolded jk.toml is the client's base plus the plugin's fragments, and nothing
  * checked the result was valid TOML. `jk new --micronaut` shipped emitting two `[application]`
  * tables, so `jk lock` failed on the very next command. Render every framework scaffold and parse
  * what comes out.

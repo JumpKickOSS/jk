@@ -9,7 +9,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * JK-1661: the tool-closure CAS lookup is {@code Files.isDirectory(dir)} with no content check,
+ * The tool-closure CAS lookup is {@code Files.isDirectory(dir)} with no content check,
  * so two distinct closures sharing a directory name silently serve each other's jars.
  */
 class ToolClosureCacheKeyTest {

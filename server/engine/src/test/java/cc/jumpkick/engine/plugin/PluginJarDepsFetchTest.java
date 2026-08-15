@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1351: a thin worker fetched from the official repo provisions its runtime classpath from the
+ * A thin worker fetched from the official repo provisions its runtime classpath from the
  * published {@code <jar>.deps} coordinate closure — no install-local required on a cold store.
  * Legacy artifacts without {@code .deps} fetch exactly as before.
  */
