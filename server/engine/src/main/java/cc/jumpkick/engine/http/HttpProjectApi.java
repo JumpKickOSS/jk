@@ -20,7 +20,7 @@ final class HttpProjectApi {
 
     /**
      * {@code GET /api/templates} response cache — building the index walks every template root
-     * (JK-1455). One immutable holder rather than two volatiles: a reader must never pair the old
+     *. One immutable holder rather than two volatiles: a reader must never pair the old
      * JSON with the new timestamp and serve stale rows for a full TTL.
      */
     private record TemplatesCache(String json, long atNanos) {}
@@ -35,7 +35,7 @@ final class HttpProjectApi {
     }
 
     /**
-     * {@code POST /api/projects} — scaffold a new project under {@code parentDir} (JK-1193). Same
+     * {@code POST /api/projects} — scaffold a new project under {@code parentDir}. Same
      * {@link cc.jumpkick.scaffold.NewScaffolder} path as {@code jk new}.
      */
     void handleNewProject(HttpExchange exchange) throws IOException {
@@ -54,7 +54,7 @@ final class HttpProjectApi {
                     new cc.jumpkick.engine.runtime.NewProjectOps.Request(
                             name, parentDir, group, lang, layout, template, executable, framework));
             // Resolve the durable projectId so the SPA can route #project/<id> immediately
-            // (JK-1775) — an absolute path in the hash 404s (isValidId rejects '/'). The
+            // — an absolute path in the hash 404s (isValidId rejects '/'). The
             // scaffolder writes no lock, so materialize identity.toml under the project home;
             // without it GET /api/project?project=<id> cannot map the id back to the checkout.
             String projectId = null;
@@ -130,7 +130,7 @@ final class HttpProjectApi {
             HttpEngineServer.sendJson(exchange, 200, cached.json());
             return;
         }
-        // Same roots the short-name resolver uses (JK-1458) — the picker must never list a
+        // Same roots the short-name resolver uses — the picker must never list a
         // template that then resolves differently, or miss one that would resolve.
         var entries =
                 cc.jumpkick.scaffold.Giter8TemplateIndex.build(cc.jumpkick.scaffold.Giter8TemplateIndex.searchRoots());
@@ -164,7 +164,7 @@ final class HttpProjectApi {
             projectId = HttpEngineServer.queryParam(q, "project");
             dir = HttpEngineServer.queryParam(q, "dir");
         } catch (IllegalArgumentException e) {
-            // Malformed percent-encoding is the client's error, not a 500 (JK-1980).
+            // Malformed percent-encoding is the client's error, not a 500.
             HttpEngineServer.sendJson(
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
             return;
@@ -194,7 +194,7 @@ final class HttpProjectApi {
         }
         // Resolve identity BEFORE the jk.toml parse: resolution succeeds without a parseable
         // manifest (lock / identity.toml / hash), so a ?dir= call on a broken or deleted
-        // workspace still gets its durable projectId in the fallback branch (JK-1796).
+        // workspace still gets its durable projectId in the fallback branch.
         String resolvedId = projectId;
         try {
             resolvedId =
@@ -227,7 +227,7 @@ final class HttpProjectApi {
 
     /**
      * {@code GET /api/project/graph?dir=…[&scopes=main,test][&transitive=0|1]} — dependency graph
-     * for the Project page ECharts panel (JK-1542).
+     * for the Project page ECharts panel.
      */
     void handleProjectGraph(HttpExchange exchange) throws IOException {
         String query = exchange.getRequestURI().getRawQuery();
@@ -511,7 +511,7 @@ final class HttpProjectApi {
         // engine-wide 64 KiB mutation cap used for build/cancel/scaffold. Factor 6, not 3:
         // JSON.stringify escapes each control char to six bytes (backslash-u form), and the
         // binary probe only rejects NUL, so a legal control-char-heavy file under the 1 MiB
-        // write cap can escape past 3x (JK-1981).
+        // write cap can escape past 3x.
         int maxBody = WorkspaceFileAccess.MAX_FILE_BYTES * 6 + 4096;
         byte[] raw = exchange.getRequestBody().readNBytes(maxBody + 1);
         if (raw.length > maxBody) {
@@ -609,7 +609,7 @@ final class HttpProjectApi {
                 resp.put("lines", w.lines());
                 resp.put("etag", w.etag());
                 // A manifest edit stales the lock's manifests-sha256 stamp: the next build pays a
-                // full re-resolve. Tell the pane so the user is not surprised (JK-1983).
+                // full re-resolve. Tell the pane so the user is not surprised.
                 String fileName = w.path().substring(w.path().lastIndexOf('/') + 1);
                 if (fileName.equals("jk.toml") || fileName.equals("jk-libs.toml")) {
                     resp.put("lockStale", Boolean.TRUE);

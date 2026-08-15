@@ -237,14 +237,14 @@ public final class BuildJournal {
     /**
      * Serializes every mutation of a run's {@code metrics.toml}: {@link #appendHostSamples} is a
      * read-modify-write and {@code complete()} moves a freshly written file over the same path, so
-     * without this one of the two silently loses (JK-1491). Keyed by run dir; entries are dropped
+     * without this one of the two silently loses. Keyed by run dir; entries are dropped
      * once the run is complete.
      */
     private static final ConcurrentHashMap<Path, Object> METRICS_LOCKS = new ConcurrentHashMap<>();
 
     private static Object metricsLock(Path runDir) {
         // complete() removes entries, but a crashed/cancelled run leaks its key — bound the
-        // residue (ProjectIds idiom, JK-1942).
+        // residue (same bound as ProjectIds).
         if (METRICS_LOCKS.size() >= 4_096) METRICS_LOCKS.clear();
         return METRICS_LOCKS.computeIfAbsent(runDir.toAbsolutePath().normalize(), k -> new Object());
     }
@@ -393,7 +393,7 @@ public final class BuildJournal {
         // The record already carries the stage the plan declared (wire `stage`). Re-deriving it
         // from the task name put the metrics rollup on a different taxonomy than the UI fold —
         // plugin-android-res reported `generate` on the wire and landed in `phase.compile` here,
-        // and every stage(RESOLVE) task in ScriptPlans landed in `other` (JK-1610). Name inference
+        // and every stage(RESOLVE) task in ScriptPlans landed in `other`. Name inference
         // stays as the fallback for records that carry no stage.
         String declared = s.stage();
         String phase = sanitize(
@@ -413,7 +413,7 @@ public final class BuildJournal {
             // BuildService's success fold takes (removes) the recorded bytes before the journal
             // write runs, so this always fell back to a fresh disk walk that could differ from
             // what ms/MB learning actually used. Size learning rides the in-memory
-            // recordSuccessInputBytes → hostSamples path (JK-1831).
+            // recordSuccessInputBytes → hostSamples path.
             modulePhaseTotals.computeIfAbsent(mod, k -> new LinkedHashMap<>()).merge(phase, s.millis(), Long::sum);
         }
     }
@@ -493,22 +493,16 @@ public final class BuildJournal {
     private record Loaded(BuildRecord record, String json, Path dir) {}
 
     /**
-     * Every non-synthetic record, newest first, read <em>once</em>.
-     *
-     * <p>Callers used to parse the whole journal and then re-read the same {@code record.json}
-     * files as raw text, so a dashboard refresh cost two full passes over every run on disk
-     * (JK-1479). Keeping the source JSON alongside the parsed record makes the second pass free.
+     * Every non-synthetic record, newest first, read once. Source JSON rides with the parsed
+     * record so a later raw-text consumer does not re-read the file.
      */
     private List<Loaded> loadAll() {
         return loadNewest(Integer.MAX_VALUE);
     }
 
     /**
-     * The newest {@code limit} records, reading no further down the journal than the limit
-     * requires. {@code entryDirs()} is already newest-first by run-dir mtime (one stat per dir,
-     * JK-1480), so stopping after {@code limit} loads bounds the whole pass at O(limit) reads +
-     * parses instead of materialising every record on disk — at the 2000-run retention default a
-     * 200-row dashboard page used to read and parse 10× what it returned (JK-1942).
+     * The newest {@code limit} records. {@code entryDirs()} is newest-first by run-dir mtime
+     * (one stat per dir), so stopping after {@code limit} loads is O(limit) reads.
      */
     private List<Loaded> loadNewest(int limit) {
         List<Loaded> out = new ArrayList<>();
@@ -528,7 +522,7 @@ public final class BuildJournal {
             } catch (RuntimeException e) {
                 continue;
             }
-            // Defense in depth: never surface optimize/calibrate fixtures (JK-1390).
+            // Defense in depth: never surface optimize/calibrate fixtures.
             if (parsed != null && !parsed.synthetic()) out.add(new Loaded(parsed, json, dir));
         }
         // Newest first by startedAt / finishedAt
@@ -598,7 +592,7 @@ public final class BuildJournal {
      * different run in every project home; the unscoped {@link #delete(String)} resolves it by
      * scanning project homes in sorted order and taking the first hit, which can wipe an unrelated
      * project's history. Callers that know the project (they just wrote the record) must use this
-     * (JK-1471). Falls back to the unscoped lookup only when the project is unknown or the number
+     *. Falls back to the unscoped lookup only when the project is unknown or the number
      * does not exist under it — e.g. a history id rather than a build number.
      */
     public boolean delete(String idOrLocator, String coord, String dir) {
@@ -626,7 +620,7 @@ public final class BuildJournal {
         for (Path dir : entryDirs()) {
             // Never reap a run that has not finished: the idle gate is checked before this call,
             // so a build admitted in between would otherwise have its `running` stub deleted out
-            // from under it (JK-1491).
+            // from under it.
             if (readRecord(dir).map(BuildRecord::running).orElse(false)) continue;
             entries.add(new Entry(dir, entryMillis(dir, nowMillis), sizeOf(dir)));
         }

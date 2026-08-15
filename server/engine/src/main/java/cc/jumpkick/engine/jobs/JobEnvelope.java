@@ -29,7 +29,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.jspecify.annotations.Nullable;
 
 /**
- * One job lifecycle for CLI (and, in JK-1928, HTTP/MCP). Admit, heartbeat, cancel, deadline,
+ * One job lifecycle for CLI (and, in , HTTP/MCP). Admit, heartbeat, cancel, deadline,
  * and request-finish live here as one story — do not split the race comments into hooks.
  */
 public final class JobEnvelope {
@@ -148,7 +148,7 @@ public final class JobEnvelope {
         // normally can't even get here — its handshake sees `draining` and fails first — but guard the
         // server too so a raced/last-moment request is rejected instead of prolonging the drain.
         // A plan claims its slot in the same breath, so shutdown can never observe zero
-        // plans for a job that is about to start (JK-1470).
+        // plans for a job that is about to start.
         boolean claimedBuildPlanSlot = false;
         if (plan) {
             claimedBuildPlanSlot = host.tryStartBuildPlan();
@@ -170,7 +170,7 @@ public final class JobEnvelope {
         CountDownLatch done = new CountDownLatch(1);
         long eventRequestId = host.nextRequestId();
         // The requesting shell's JK_PROGRESS_MODE rides the request — the resident engine's own
-        // startup env is not the client's (JK-1816).
+        // startup env is not the client's.
         host.putMode(eventRequestId, ProtoJobs.progressModeOf(requestLine));
         // The kind rides explicitly from the dispatch site (never parsed back out of a thread
         // name); the journal dir falls back to a request's specific location field so non-build
@@ -240,7 +240,7 @@ public final class JobEnvelope {
                 eventKind,
                 workspaceStream);
         Thread started = Thread.ofVirtual().name(threadPrefix, 0).unstarted(() -> {
-            // Nothing between the lock and the try (JK-1959): a throw from the setup calls would
+            // Nothing between the lock and the try: a throw from the setup calls would
             // leak the read lock — one leak and the cache prune's write-lock tryLock never
             // succeeds again for the engine's life — and would strand the in-flight fingerprint
             // and the done latch. The teardown calls are all remove-style and safe to run even
@@ -275,7 +275,7 @@ public final class JobEnvelope {
             }
         });
         runnerRef.set(started);
-        started.start(); // JK-1478: register live job + runnerRef before start
+        started.start(); // register live job + runnerRef before start
         // Keep-alive + optional wall deadline while the job runs.
         // Client stream idle (JK_STREAM_IDLE_MS) resets on each heartbeat line. On deadline:
         // cancel + worker shutdown (grace→force) + interrupt runner; connection join is bounded.
@@ -326,7 +326,7 @@ public final class JobEnvelope {
                             parkedOnRead.set(false);
                             if (line == null) {
                                 // EOF / client gone mid-job — same bounded cancel path (not explicit:
-                                // an EOF after a reported failure is the terminal-read race, JK-1521).
+                                // an EOF after a reported failure is the terminal-read race).
                                 beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs, false);
                                 break;
                             }
@@ -407,12 +407,11 @@ public final class JobEnvelope {
                 // build (success or failure) can look cancelled. Correct it once here for both the
                 // dashboard event and the journal.
                 boolean cancelled = effectiveCancelled(eventRequestId, cancelToken.cancelled());
-                // success: same default as BuildAccumulator.toRecord — HTTP jobs always sent it; CLI
-                // socket jobs used to omit it and force the SPA to derive from module rows (JK-1499).
+                // Same default as BuildAccumulator.toRecord — always emit success.
                 BuildAccumulator finishAcc = host.accumulatorOf(eventRequestId);
                 boolean success = finishAcc != null ? finishAcc.effectiveSuccess(cancelled) : !cancelled;
                 // Pin 100% only on success — a failed build keeps its last true percent, matching the
-                // workspace-runner path and the stated policy (JK-1521).
+                // workspace-runner path and the stated policy.
                 if (success && !cancelled) host.putLastProgress(eventRequestId, 100.0);
                 // Safety net: if the runner was abandoned/interrupted without a terminal
                 // wire event, still tell the CLI the job was cancelled so it does not report a crash.
@@ -423,7 +422,7 @@ public final class JobEnvelope {
                     sendQuiet(writer, cancelledTerminalLine(workspaceStream, eventDir));
                 }
                 // Release the plan slot before request-finish so status SSE carries the post-finish
-                // activeBuildPlans count (JK-1725) — Live activity finishes in the same frame.
+                // activeBuildPlans count — Live activity finishes in the same frame.
                 if (plan) host.noteBuildPlanFinished();
                 host.publishEvent(
                         "request-finish",
@@ -518,7 +517,7 @@ public final class JobEnvelope {
     public boolean cancelJob(long jid) {
         LiveJob job = liveJobs.get(jid);
         if (job == null) return false;
-        // Remote `jk cancel` / POST /api/cancel — an explicit signal (JK-1521).
+        // Remote `jk cancel` / POST /api/cancel — an explicit signal.
         beginUserCancel(jid, job.token(), job.runnerRef(), JobWorkers.cancelGraceMs(), true);
         // Terminal + reader wake happen off-thread: the job's stream writer can be wedged in a
         // socket write (client not draining), and `jk cancel` / POST /api/cancel must ack
@@ -622,7 +621,7 @@ public final class JobEnvelope {
      * end-of-request EOF (client closes the socket the instant it reads the terminal message). For a
      * request with an accumulator we trust an explicit stamp from BUILD_CANCEL / mid-job EOF /
      * deadline. A runner that already stamped a terminal outcome is never re-labelled cancelled by
-     * that race (JK-1521).
+     * that race.
      */
     public boolean effectiveCancelled(long requestId, boolean rawCancelled) {
         BuildAccumulator a = host.accumulatorOf(requestId);

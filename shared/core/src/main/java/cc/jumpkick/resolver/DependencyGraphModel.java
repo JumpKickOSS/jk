@@ -72,7 +72,7 @@ public final class DependencyGraphModel {
 
     /**
      * {@code truncated} is true when the transitive expansion hit {@link #MAX_NODES} /
-     * {@link #MAX_EDGES} and the graph is a prefix of the full closure (JK-1625). Consumers should
+     * {@link #MAX_EDGES} and the graph is a prefix of the full closure. Consumers should
      * surface it — a silently clipped graph reads as "these are all the dependencies".
      */
     public record Graph(
@@ -96,7 +96,7 @@ public final class DependencyGraphModel {
     }
 
     /**
-     * Transitive-expansion caps (JK-1625): a 1000+ artifact lock with every scope ticked would
+     * Transitive-expansion caps: a 1000+ artifact lock with every scope ticked would
      * otherwise hand the browser a force-layout simulation it cannot finish. Workspace modules and
      * declared deps are never clipped — only lockfile expansion stops at the cap, with
      * {@link Graph#truncated()} set.
@@ -133,7 +133,7 @@ public final class DependencyGraphModel {
      * <p>An unrecognized token <strong>throws</strong>. Silently dropping it and falling back to
      * a default made a whole class of caller bug invisible: the endpoint forgot to percent-decode
      * this parameter, so {@code main%2Ctest} parsed as one unknown token and the user got a
-     * wrong graph with boxes still ticked (JK-1607).
+     * wrong graph with boxes still ticked.
      */
     public static List<Scope> parseScopes(String scopesQuery) {
         if (scopesQuery == null || scopesQuery.isBlank()) {
@@ -163,11 +163,11 @@ public final class DependencyGraphModel {
      * (a deleted or non-jk checkout is not an error). Everything else that fails — malformed toml,
      * a workspace member whose {@code jk.toml} is missing, IO trouble — <strong>throws</strong>
      * ({@link cc.jumpkick.config.JkBuildParseException} / {@link IOException}) so callers surface
-     * the message instead of telling the user their project has no dependencies (JK-1624). A
+     * the message instead of telling the user their project has no dependencies. A
      * missing lockfile still shows modules + declared externals (versions may be null).
      *
      * <p>Default scopes (null/empty {@code scopes}) are {@link #defaultScopes()} — the same
-     * {@code export, main, runtime} set {@code jk tree} uses, from the same definition (JK-1638).
+     * {@code export, main, runtime} set {@code jk tree} uses, from the same definition.
      */
     public static Graph forProjectDir(Path projectDir, List<Scope> scopes, boolean transitive) throws IOException {
         Objects.requireNonNull(projectDir, "projectDir");
@@ -202,7 +202,7 @@ public final class DependencyGraphModel {
     /**
      * Single-project graph. When {@code dir} is a member of a workspace (the dashboard hands module
      * dirs straight from journal records), sibling modules the project depends on are drawn as
-     * {@code module} nodes — not as version-less external artifacts (JK-1639). Sibling discovery is
+     * {@code module} nodes — not as version-less external artifacts. Sibling discovery is
      * best-effort: a broken workspace root never blocks the module's own graph.
      */
     private static Graph buildStandalone(
@@ -237,7 +237,7 @@ public final class DependencyGraphModel {
         Map<Path, String> idByDir = new LinkedHashMap<>();
 
         // The workspace root is a node too: its own [dependencies] are part of the build and were
-        // previously invisible (JK-1639).
+        // previously invisible.
         String rootId = b.moduleNode(root, rootBuild, ".");
         for (var e : modulesByDir.entrySet()) {
             Path dir = e.getKey().toAbsolutePath().normalize();
@@ -263,7 +263,7 @@ public final class DependencyGraphModel {
     }
 
     /**
-     * Canonical node identity for an external artifact (JK-1636): the full package key
+     * Canonical node identity for an external artifact: the full package key
      * ({@code g:a:type:classifier}), so a test-jar and the main jar of one GA — or two classifier
      * variants — stay distinct nodes. Falls back to the raw key for non-Maven (git/path/workspace
      * placeholder) modules.
@@ -314,14 +314,14 @@ public final class DependencyGraphModel {
         private final Map<String, String> idByCoord = new LinkedHashMap<>();
 
         private final Map<String, String> idByName = new LinkedHashMap<>();
-        /** Lazily materialized siblings (module-dir graphs, JK-1639). */
+        /** Lazily materialized siblings (module-dir graphs). */
         private final Map<String, SiblingModule> siblingByCoord = new LinkedHashMap<>();
 
         private final Map<String, SiblingModule> siblingByName = new LinkedHashMap<>();
         /**
          * Packages whose lockfile deps have already been emitted — shared across the whole
          * expansion, so the reachable closure is walked once instead of once per declared root
-         * (JK-1625).
+         *.
          */
         private final Set<String> expanded = new LinkedHashSet<>();
 
@@ -380,7 +380,7 @@ public final class DependencyGraphModel {
          * {@code workspace = true} placeholders) bare sibling name — the same
          * {@link ModuleOrder#resolveSibling} rule the build order uses. No table-key fallback: a
          * declared external whose TOML key happens to equal a module's name stays external
-         * (JK-1623).
+         *.
          */
         private String resolveWorkspaceId(Dependency d) {
             String id = ModuleOrder.resolveSibling(d, idByCoord, idByName);
@@ -414,7 +414,7 @@ public final class DependencyGraphModel {
          * BFS over lockfile deps from one declared root. {@code expanded} is shared across every
          * root, so a subgraph reachable from several declared deps is walked once; its edges are
          * already in the graph from the first walk. Node/edge caps set {@code truncated} instead of
-         * growing without bound (JK-1625).
+         * growing without bound.
          */
         private void expandTransitive(String fromKey) {
             if (!expanded.add(fromKey)) return;

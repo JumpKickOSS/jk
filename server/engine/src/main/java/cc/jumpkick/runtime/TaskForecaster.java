@@ -88,7 +88,7 @@ public final class TaskForecaster {
             // Package matters on its own: a consumer's compile classpath hashes sibling JAR
             // *content*, so an upstream whose compile is cached but whose jar is stale
             // repackages and invalidates the consumer.
-            //
+
             // Also seed when a compile-scope dep is dirty even if predictors still look cached
             // against pre-rebuild sibling jars (pessimistic; avoids under-reserve).
             if (seedsCompileConsumerCascade(m) || dep.compileDepDirty()) {
@@ -126,7 +126,7 @@ public final class TaskForecaster {
      * <em>schedule</em> so its real action keys re-check the prereq's out-of-band outputs
      * (test-plugin jars ride the run-tests stamp; users add order-after precisely for
      * consumption the classpath cannot express). Pricing nothing keeps ETA honest; skipping
-     * the module entirely shipped stale outputs (JK-1810).
+     * the module entirely shipped stale outputs.
      */
     record DepDirtiness(boolean compileDepDirty, boolean testDepDirty, boolean orderDepDirty) {
         static final DepDirtiness NONE = new DepDirtiness(false, false, false);
@@ -261,7 +261,7 @@ public final class TaskForecaster {
                     "compile-main", TaskForecast.Status.RUN, "not locked yet (run `jk build`)", null));
             return new TaskForecast.Module(u.dir(), u.coord(), steps, 0, 0, false, false);
         }
-        // Digest-only staleness — the same predicate the build's freshen uses (JK-1358), so the
+        // Digest-only staleness — the same predicate the build's freshen uses, so the
         // forecast and the live build agree on whether a lock update runs.
         if (cc.jumpkick.runtime.AutoLock.isStale(dir, lockFile)) {
             steps.add(new TaskForecast.Task(
@@ -505,7 +505,7 @@ public final class TaskForecaster {
             // (emit block, package/assembly tokens): the emit-time and token-time re-walks both
             // re-read the filesystem and could disagree with this detection when the tree changed
             // in between — a copy-resources step for a tree that no longer drifts, with the
-            // package token projected from yet another read (JK-1844).
+            // package token projected from yet another read.
             boolean mainResourceDrift = false;
             boolean extraOnlyResourceDrift = false;
             boolean testResourceDrift = false;
@@ -534,7 +534,7 @@ public final class TaskForecaster {
                 // Source-less registered module: the live build still runs package-jar and
                 // produces an (empty) jar that sibling classpaths demand. Forecasting "nothing
                 // to package" left the module unscheduled forever while consumers failed with
-                // "sibling not built" (JK-1648) — schedule it until its jar exists.
+                // "sibling not built" — schedule it until its jar exists.
                 if (!Files.isRegularFile(layout.mainJar())) {
                     steps.add(new TaskForecast.Task(
                             "package-jar", TaskForecast.Status.RUN, "package · module has no sources", null));
@@ -637,7 +637,7 @@ public final class TaskForecaster {
             }
 
             // ---- emit resource-drift steps (detected before package) ----
-            // Main/extra resource drift schedules the module so the jar ships fresh bytes (JK-1808).
+            // Main/extra resource drift schedules the module so the jar ships fresh bytes.
             // Cascade to compile consumers is owned by package-jar above, not by these steps.
             if (mainResourceDrift) {
                 steps.add(new TaskForecast.Task(
@@ -681,7 +681,7 @@ public final class TaskForecaster {
             // A dirty order-after-only prereq prices nothing, but the module must still schedule:
             // its real action keys are what re-check the prereq's out-of-band outputs (e.g. a
             // rebuilt test-plugin jar hashed by the run-tests stamp). Unchanged inputs resolve as
-            // cheap cache hits at execute (JK-1810).
+            // cheap cache hits at execute.
             if (dep.orderDepDirty() && steps.stream().allMatch(TaskForecast.Task::cached)) {
                 steps.add(new TaskForecast.Task(
                         "order-check", TaskForecast.Status.RUN, "ordered-after sibling rebuilding", null));
@@ -720,7 +720,7 @@ public final class TaskForecaster {
             throws IOException {
         Path classesDir = layout.classesDir();
         if (classesDirHasContent(classesDir)) {
-            // Reuse the forecast's single drift detection when it ran (JK-1844) — a re-walk here
+            // Reuse the forecast's single drift detection when it ran — a re-walk here
             // could disagree with it and project the token from a different tree state.
             boolean drifted = knownResourceDrift != null
                     ? knownResourceDrift
@@ -792,7 +792,7 @@ public final class TaskForecaster {
     /**
      * Whether {@code package-assembly}'s action cache holds a hit for the same key the live step
      * computes (classes + module runtime-closure deps + main + manifest + packaging:fat). Dep jars
-     * must come from {@link BuildPlanner#assemblyDependencyJars} (JK-1345) — never the whole
+     * must come from {@link BuildPlanner#assemblyDependencyJars} — never the whole
      * workspace lock RUNTIME set, or explain permanently shows "repackage" after a warm assembly.
      * Sibling jars missing after clean are fingerprinted via CAS shas recovered from each sibling's
      * package record.
@@ -817,7 +817,7 @@ public final class TaskForecaster {
                 actionCache,
                 compileMainKey,
                 knownResourceDrift);
-        // Same jar set as BuildPlanner.assemblyStep (ModuleRuntimeClasspath / JK-1345).
+        // Same jar set as BuildPlanner.assemblyStep (ModuleRuntimeClasspath / ).
         List<Path> depJars = BuildPlanner.assemblyDependencyJars(dir, project, lockFile, cache);
         String depsTok = fingerprintDepJars(depJars, actionCache, restoredJarShas);
         // contrib: must match live assemblyStep tokens (same bug class as package-jar).
@@ -873,7 +873,7 @@ public final class TaskForecaster {
             if (Files.isRegularFile(blob)) {
                 // The blob path would classify as "cas:<abs>", but the live step fingerprinted the
                 // on-disk sibling as "file:<content sha>" — return that form so a post-clean
-                // assembly forecast can match the stored key (JK-1369).
+                // assembly forecast can match the stored key.
                 return "file:" + sha;
             }
         }
@@ -988,7 +988,7 @@ public final class TaskForecaster {
      * Record exists AND every <em>payload</em> blob is still in the action cache's CAS. LRU
      * eviction removes payloads while their records live on (records die by TTL), and a record
      * whose blobs are gone cannot restore — forecasting it CACHED would over-promise: wrong
-     * {@code jk explain}, undercounted dirty set, deflated ETA seed (JK-1529).
+     * {@code jk explain}, undercounted dirty set, deflated ETA seed.
      *
      * <p>Only 64-char hex values are payload digests. Marker records (run-tests green stamp)
      * park small scalars such as {@code tests.total=0} in the same map — those are not CAS

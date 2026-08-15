@@ -84,7 +84,7 @@ final class WorkspaceFileAccess {
 
     /**
      * {@code encoding} is {@code utf-8}, or {@code iso-8859-1} when the bytes were not valid UTF-8
-     * (JK-1954). {@code etag} is the SHA-256 hex of the on-disk bytes (optimistic concurrency for
+     *. {@code etag} is the SHA-256 hex of the on-disk bytes (optimistic concurrency for
      * PUT).
      */
     record FileBody(
@@ -224,14 +224,10 @@ final class WorkspaceFileAccess {
     }
 
     /**
-     * Breadth-first listing bounded at {@link #MAX_LIST_FILES} entries (JK-1944). Truncation
-     * therefore trims the deepest leaves — the old walk sorted everything lexically and kept the
-     * first 2000, so a big workspace lost {@code jk.toml} and the whole tail of the alphabet
-     * (including the pane's default file), and the walk materialised every servable path before
-     * the cap. The workspace-root {@code jk.toml} is pre-seeded so the default-open contract
-     * survives any truncation. Prune rules match {@link #servable}: the per-file ancestor re-walk
-     * the old visitor paid (~depth×8 stats per file) is unnecessary because ancestors are pruned
-     * before descent.
+     * Breadth-first listing bounded at {@link #MAX_LIST_FILES} entries. Truncation trims the
+     * deepest leaves. The workspace-root {@code jk.toml} is pre-seeded so the default-open
+     * contract survives any truncation. Prune rules match {@link #servable}; ancestors are
+     * pruned before descent.
      */
     static FileList list(Path root) throws IOException {
         Path absRoot = root.toAbsolutePath().normalize();
@@ -246,7 +242,7 @@ final class WorkspaceFileAccess {
             realRoot = absRoot;
         }
         // Real-path visited set: in-root directory symlinks are walked (list/read parity,
-        // JK-1982), and a link pointing at an ancestor would otherwise cycle the BFS.
+        // ), and a link pointing at an ancestor would otherwise cycle the BFS.
         Set<Path> visited = new HashSet<>();
         visited.add(realRoot);
         List<Path> level = List.of(absRoot);
@@ -275,7 +271,7 @@ final class WorkspaceFileAccess {
                         }
                         String lang = langOf(n);
                         if (lang == null) continue;
-                        // list/read parity (JK-1952): read() rejects symlinks whose real path
+                        // list/read parity: read() rejects symlinks whose real path
                         // escapes the root, so an escaping link must not appear in the tree only
                         // to 404 on click. Only symlinks pay the real-path check.
                         if (attrs.isSymbolicLink()) {
@@ -303,7 +299,7 @@ final class WorkspaceFileAccess {
             level = next;
         }
         // The depth cap is truncation too: files below it are readable via deep link but
-        // invisible here, so the UI must get its hint (JK-1982). Conservative — the unvisited
+        // invisible here, so the UI must get its hint. Conservative — the unvisited
         // dirs may hold nothing servable.
         if (!level.isEmpty()) truncated = true;
         collected.sort(Comparator.comparing(ListedFile::path));
@@ -364,7 +360,7 @@ final class WorkspaceFileAccess {
         for (int i = 0; i < probe; i++) {
             if (bytes[i] == 0) return new ReadResult.Binary();
         }
-        // Strict decode first (JK-1954): new String(bytes, UTF_8) silently swaps every bad byte
+        // Strict decode first: new String(bytes, UTF_8) silently swaps every bad byte
         // for U+FFFD, so a Latin-1 source rendered as mojibake presented as the file's true text.
         // Non-UTF-8 files fall back to ISO-8859-1 (every byte maps) with the encoding flagged so
         // the pane can say so.
@@ -439,10 +435,9 @@ final class WorkspaceFileAccess {
      * etag).
      *
      * <p>{@code encoding} is the charset the client read the file under ({@link ReadResult.Ok}'s
-     * {@code encoding} field, JK-1954): null/blank/{@code utf-8} writes UTF-8; {@code iso-8859-1}
-     * re-encodes to the original bytes so a save cannot silently transcode a Latin-1 file
-     * (JK-1972). Content that no longer fits the declared charset is rejected rather than
-     * transcoded.
+     * {@code encoding} field): null/blank/{@code utf-8} writes UTF-8; {@code iso-8859-1}
+     * re-encodes to the original bytes so a save cannot silently transcode a Latin-1 file.
+     * Content that no longer fits the declared charset is rejected rather than transcoded.
      */
     static WriteResult write(
             Path root,

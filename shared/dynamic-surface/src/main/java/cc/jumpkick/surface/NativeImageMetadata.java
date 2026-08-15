@@ -76,7 +76,7 @@ public final class NativeImageMetadata {
                 reflection(Json.list(root, "jni"), origin, JNI_TYPE, JNI_MEMBER, out);
                 reflection(Json.list(root, "serialization"), origin, SERIALIZATION_TYPE, null, out);
                 // Not part of GraalVM's unified schema (proxies live inside "reflection"), but
-                // files jk emitted before JK-1752 used this section — keep reading them.
+                // files jk emitted before  used this section — keep reading them.
                 proxies(Json.list(root, "reflection-proxies"), origin, out);
                 resources(Json.get(root, "resources"), origin, out);
             }
@@ -89,7 +89,7 @@ public final class NativeImageMetadata {
      * {@code [{"name": …, "fields": [{"name": …}], "methods": [{"name": …}]}]}. A type asking only
      * for named members becomes a member entry of {@code memberKind} — which carries the
      * originating section, so a jni-config member round-trips into {@code jni}, not
-     * {@code reflection} (JK-1779); anything broader keeps the whole type. A null
+     * {@code reflection}; anything broader keeps the whole type. A null
      * {@code memberKind} never demotes: serialization registration is per-type in GraalVM's
      * schema, so named members still register the type itself.
      */
@@ -105,7 +105,7 @@ public final class NativeImageMetadata {
             if (name == null) name = Json.str(item, "type");
             if (name == null || name.isBlank()) {
                 // Unified-schema proxies are reflection entries with a map-shaped type:
-                // {"type": {"proxy": ["a.B", "c.D"]}} (JK-1752).
+                // {"type": {"proxy": ["a.B", "c.D"]}}.
                 addProxy(Json.list(Json.map(item, "type"), "proxy"), origin, out);
                 continue;
             }
@@ -125,7 +125,7 @@ public final class NativeImageMetadata {
 
             if (memberKind == null) {
                 // Serialization mode: the declared deserialization constructor rides along as a
-                // tagged member so it survives the round trip (JK-1801).
+                // tagged member so it survives the round trip.
                 Set<String> extras = new TreeSet<>();
                 String ctor = Json.str(item, "customTargetConstructorClass");
                 if (ctor != null && !ctor.isBlank()) extras.add(DynamicSurface.customConstructorMember(ctor));
@@ -142,7 +142,7 @@ public final class NativeImageMetadata {
     /**
      * Two serialization-config generations: the legacy flat array of {@code {"name": …}}, and the
      * newer agent wrapper {@code {"types": […], "lambdaCapturingTypes": […], "proxies": […]}}
-     * (JK-1778). Wrapper proxies are arrays of interface names and register proxy classes for
+     *. Wrapper proxies are arrays of interface names and register proxy classes for
      * serialization; they are read as proxy entries so both emitters cover them.
      */
     private static void serialization(Object root, String origin, List<DynamicSurface.Entry> out) {
@@ -157,7 +157,7 @@ public final class NativeImageMetadata {
 
     /**
      * {@code [{"interfaces": ["a.B", "c.D"]}]} — each proxy declaration is one entry carrying its
-     * whole ordered interface list (JK-1799). The serialization-config wrapper writes each proxy
+     * whole ordered interface list. The serialization-config wrapper writes each proxy
      * as a bare interface-name array instead; both shapes are read.
      */
     private static void proxies(Object root, String origin, List<DynamicSurface.Entry> out) {
@@ -200,7 +200,7 @@ public final class NativeImageMetadata {
                 continue;
             }
             // Split-schema "pattern" entries are Java regexes; a regex re-emitted as a glob
-            // matches nothing. Translate the faithful cases, keep the rest as regex (JK-1777).
+            // matches nothing. Translate the faithful cases, keep the rest as regex.
             String pattern = Json.str(include, "pattern");
             if (pattern == null || pattern.isBlank()) continue;
             String translated = regexToGlob(pattern);
@@ -212,7 +212,7 @@ public final class NativeImageMetadata {
     }
 
     /**
-     * A library's declared resource exclusions (JK-1800). Kept in regex form: the split schema
+     * A library's declared resource exclusions. Kept in regex form: the split schema
      * writes excludes as {@code "pattern"} regexes, and the sidecar they are re-emitted into
      * takes regexes; a glob exclude converts exactly ({@code **} spans levels, {@code *} stays
      * within one, everything else is quoted).

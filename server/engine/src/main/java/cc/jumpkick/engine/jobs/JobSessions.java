@@ -11,7 +11,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The one process-lifetime map of {@link JobSession}. Retired ids stay marked so a late
- * {@code computeIfAbsent} cannot leak a session for the life of the daemon (JK-1474).
+ * {@code computeIfAbsent} cannot leak a session for the life of the daemon.
  */
 public final class JobSessions {
     /** How far below the newest request id a retired marker is still worth keeping. */
